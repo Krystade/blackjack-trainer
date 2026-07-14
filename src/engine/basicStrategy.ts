@@ -5,8 +5,8 @@ export type ChartAction = 'H' | 'S' | 'Dh' | 'Ds' | 'P' | 'Ph' | 'Rh' | 'Rs' | '
 export type UpIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9; // dealer 2,3,4,5,6,7,8,9,10,A
 
 /**
- * Map dealer up-card rank to index 0-9
- * '2'→0, '3'→1, ..., '9'→7, '10'/'J'/'Q'/'K'→8, 'A'→9
+ * Map dealer up-card rank to index 0-9.
+ * '2'->0 ... '9'->7, '10'/'J'/'Q'/'K'->8, 'A'->9
  */
 export function upIndex(up: Rank): UpIndex {
   switch (up) {
@@ -46,6 +46,7 @@ const H = 'H',
   Rs = 'Rs',
   Rp = 'Rp';
 
+// Engine data, verbatim from task-5 brief. Columns are dealer 2 3 4 5 6 7 8 9 10 A.
 export const HARD: Record<number, ChartAction[]> = {
   4: [H, H, H, H, H, H, H, H, H, H],
   5: [H, H, H, H, H, H, H, H, H, H],
@@ -87,17 +88,18 @@ export const PAIRS: Partial<Record<Rank, ChartAction[]>> = {
   '7': [P, P, P, P, P, P, H, H, H, H],
   '8': [P, P, P, P, P, P, P, P, P, Rp],
   '9': [P, P, P, P, P, S, P, P, S, S],
-  'A': [P, P, P, P, P, P, P, P, P, P],
+  A: [P, P, P, P, P, P, P, P, P, P],
 };
 
 /**
  * Look up the basic strategy action for a player hand vs dealer up-card.
- * Routing: pairs first (if available), then soft, then hard
+ * Routing: pairs first (if the pair rank has a PAIRS row), then soft, then hard.
+ * pairRank normalizes ten-value pairs to '10' (absent from PAIRS -> falls to
+ * hard 20) and 5,5 is also absent from PAIRS -> falls to hard 10.
  */
 export function chartLookup(cards: Card[], dealerUp: Rank): ChartAction {
   const idx = upIndex(dealerUp);
 
-  // Check for pair first
   if (isPair(cards)) {
     const rank = pairRank(cards);
     if (rank && rank in PAIRS) {
@@ -108,11 +110,9 @@ export function chartLookup(cards: Card[], dealerUp: Rank): ChartAction {
 
   const hv = handValue(cards);
 
-  // Soft hand (Ace counted as 11)
   if (hv.soft) {
     return SOFT[hv.total][idx];
   }
 
-  // Hard hand
   return HARD[hv.total][idx];
 }
