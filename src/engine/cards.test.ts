@@ -1,5 +1,6 @@
 import { expect, test, describe } from 'vitest';
-import { Card, Rank, Shoe, rankValue, mulberry32, RANKS } from './cards';
+import { Shoe, rankValue, mulberry32, RANKS } from './cards';
+import type { Rank } from './cards';
 
 describe('rankValue', () => {
   test('A returns 11', () => {
@@ -191,6 +192,33 @@ describe('Shoe', () => {
 
     expect(shoe.cardsRemaining).toBe(312);
     expect(shoe.cardsDealt).toBe(0);
+  });
+
+  test('shuffle() produces a new order, not a replay of the original', () => {
+    const shoe = new Shoe({ seed: 777 });
+    const firstTen = Array.from({ length: 10 }, () => shoe.draw());
+
+    shoe.shuffle();
+    const nextTen = Array.from({ length: 10 }, () => shoe.draw());
+
+    // The rng stream continues, so the reshuffled order must differ
+    expect(nextTen).not.toEqual(firstTen);
+  });
+
+  test('same-seed shoes performing identical ops stay deterministic across shuffle()', () => {
+    const shoe1 = new Shoe({ seed: 777 });
+    const shoe2 = new Shoe({ seed: 777 });
+
+    for (let i = 0; i < 10; i++) {
+      expect(shoe1.draw()).toEqual(shoe2.draw());
+    }
+
+    shoe1.shuffle();
+    shoe2.shuffle();
+
+    for (let i = 0; i < 10; i++) {
+      expect(shoe1.draw()).toEqual(shoe2.draw());
+    }
   });
 
   test('custom deck count', () => {

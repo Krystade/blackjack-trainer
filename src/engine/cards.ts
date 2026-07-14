@@ -47,13 +47,11 @@ export class Shoe {
   private deckCount: number;
   private penetration: number;
   private rng: () => number;
-  private originalSeed?: number;
 
   constructor(opts: { decks?: number; penetration?: number; seed?: number } = {}) {
     this.deckCount = opts.decks ?? 6;
     this.penetration = opts.penetration ?? 0.75;
     this.cardsDealtCount = 0;
-    this.originalSeed = opts.seed;
 
     const seed = opts.seed ?? Date.now();
     this.rng = mulberry32(seed);
@@ -108,8 +106,6 @@ export class Shoe {
 
   shuffle(): void {
     this.cardsDealtCount = 0;
-    const seed = this.originalSeed ?? Date.now();
-    this.rng = mulberry32(seed);
     this.cards = this.buildShoe();
   }
 }
