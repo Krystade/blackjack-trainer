@@ -2,7 +2,7 @@ import type { Card, Rank } from './cards';
 import type { Action, DeviationId } from './deviations';
 import type { Advice } from './strategy';
 import { ILLUSTRIOUS_18 } from './deviations';
-import { handValue, isPair } from './hand';
+import { handValue, isPair, pairRank } from './hand';
 import { upIndex } from './basicStrategy';
 
 export type MistakeClass = 'correct' | 'basic-error' | 'missed-deviation' | 'phantom-deviation' | 'wrong-anyway';
@@ -39,6 +39,7 @@ export function classifyAction(
   basicOnly: Advice,
   cards: Card[],
   up: Rank,
+  // Unused: the tc is already baked into withCount/basicOnly by the caller.
   _tc: number,
 ): { classification: MistakeClass; correct: boolean } {
   // Step 1: taken === withCount.action -> correct
@@ -75,7 +76,7 @@ export function classifyAction(
 function isPhantomDeviation(taken: Action, cards: Card[], up: Rank): boolean {
   const hv = handValue(cards);
   const upIdx = upIndex(up);
-  const pair = isPair(cards);
+  const isTenPair = pairRank(cards) === '10'; // pairRank normalizes 10/J/Q/K to '10'
 
   for (const dev of ILLUSTRIOUS_18) {
     if (!dev.active) continue;
@@ -91,13 +92,6 @@ function isPhantomDeviation(taken: Action, cards: Card[], up: Rank): boolean {
       return true; // Found a matching active hard deviation with the same action
     } else if (dev.kind === 'pair10') {
       // Pair10 deviations only match ten-value pairs
-      if (!pair) continue; // Not a pair
-      const firstRank = cards[0].rank;
-      const secondRank = cards[1].rank;
-      // Check if both are ten-value cards
-      const isTenPair =
-        (firstRank === '10' || firstRank === 'J' || firstRank === 'Q' || firstRank === 'K') &&
-        (secondRank === '10' || secondRank === 'J' || secondRank === 'Q' || secondRank === 'K');
       if (!isTenPair) continue;
       if (dev.up === undefined) continue;
       if (upIndex(dev.up) !== upIdx) continue;
