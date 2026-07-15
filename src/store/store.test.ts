@@ -59,6 +59,43 @@ describe('store/persist', () => {
       });
       expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
     });
+
+    test('mutating a loaded settings object does not pollute the defaults', () => {
+      const first = loadSettings();
+      // Deep mutation of the returned object
+      first.drill.flashCategory = 'pairs';
+      first.spread[0]!.units = 999;
+      first.bankrollStart = -1;
+
+      // Fresh loads (and the module singletons) must be unpolluted
+      const second = loadSettings();
+      expect(second.drill.flashCategory).toBe('all');
+      expect(second.spread[0]!.units).toBe(1);
+      expect(second.bankrollStart).toBe(100);
+      expect(DEFAULT_SETTINGS.drill.flashCategory).toBe('all');
+      expect(DEFAULT_SETTINGS.spread[0]!.units).toBe(1);
+    });
+
+    test('partial {version:1} blob loads as complete DEFAULT_SETTINGS shape', () => {
+      storage['bjtrainer.settings.v1'] = '{"version":1}';
+      expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
+    });
+
+    test('partial blob keeps its fields and defaults the rest', () => {
+      storage['bjtrainer.settings.v1'] = '{"version":1,"bankrollStart":250}';
+      const loaded = loadSettings();
+      expect(loaded.bankrollStart).toBe(250);
+      expect(loaded).toEqual({ ...DEFAULT_SETTINGS, bankrollStart: 250 });
+    });
+
+    test('partial nested drill is merged over the default drill', () => {
+      storage['bjtrainer.settings.v1'] = '{"version":1,"drill":{"countGroup":3}}';
+      const loaded = loadSettings();
+      expect(loaded.drill.countGroup).toBe(3);
+      expect(loaded.drill.flashCategory).toBe('all');
+      expect(loaded.drill.countIntervalMs).toBe(800);
+      expect(loaded.drill.countLengthCards).toBe(52);
+    });
   });
 
   describe('stats', () => {
@@ -96,6 +133,58 @@ describe('store/persist', () => {
         categories: {},
       });
       expect(loadStats()).toEqual(EMPTY_STATS);
+    });
+
+    test('mutating a loaded stats object does not pollute EMPTY_STATS', () => {
+      const first = loadStats();
+      first.categories.hard.right = 42;
+      first.mistakes['basic-error'] = 7;
+      first.sessions.push({ date: 'x', rounds: 1, graded: 1, correct: 1, bankrollDelta: 0 });
+
+      const second = loadStats();
+      expect(second.categories.hard.right).toBe(0);
+      expect(second.mistakes['basic-error']).toBe(0);
+      expect(second.sessions).toEqual([]);
+      expect(EMPTY_STATS.categories.hard.right).toBe(0);
+      expect(EMPTY_STATS.mistakes['basic-error']).toBe(0);
+      expect(EMPTY_STATS.sessions).toEqual([]);
+    });
+
+    test('partial {version:1} stats blob loads as complete EMPTY_STATS shape', () => {
+      storage['bjtrainer.stats.v1'] = '{"version":1}';
+      expect(loadStats()).toEqual(EMPTY_STATS);
+    });
+
+    test('partial stats blob keeps its sections and defaults the rest', () => {
+      storage['bjtrainer.stats.v1'] =
+        '{"version":1,"mistakes":{"basic-error":3},"perIndex":{"16v10":{"right":1,"wrong":2}}}';
+      const loaded = loadStats();
+      expect(loaded.mistakes['basic-error']).toBe(3);
+      expect(loaded.mistakes.correct).toBe(0); // defaulted within merged section
+      expect(loaded.perIndex['16v10']).toEqual({ right: 1, wrong: 2 });
+      expect(loaded.categories).toEqual(EMPTY_STATS.categories);
+      expect(loaded.countDrill).toEqual(EMPTY_STATS.countDrill);
+      expect(loaded.sessions).toEqual([]);
+    });
+  });
+
+  describe('missing-localStorage fallback', () => {
+    test('save→load round-trips through the persistent in-memory fallback', () => {
+      // Remove the injected storage; in node there is no window.localStorage,
+      // so persist falls back to its module-level in-memory store.
+      _setStorage(null);
+
+      const custom: Settings = { ...DEFAULT_SETTINGS, dealSpeedMs: 1234 };
+      saveSettings(custom);
+      expect(loadSettings()).toEqual(custom); // NOT defaults: fallback persists
+
+      // Re-inject for safety (beforeEach also does this for the next test)
+      _setStorage({
+        getItem: (key) => storage[key] ?? null,
+        setItem: (key, value) => {
+          storage[key] = value;
+        },
+      });
     });
   });
 

@@ -7,51 +7,103 @@ export function _setStorage(s: Pick<Storage, 'getItem' | 'setItem'> | null): voi
   storage = s;
 }
 
+// Single persistent in-memory fallback for environments without localStorage.
+// Created once at module level so save→load round-trips work in node.
+const fallbackMap = new Map<string, string>();
+const fallbackStorage: Pick<Storage, 'getItem' | 'setItem'> = {
+  getItem: (key) => fallbackMap.get(key) ?? null,
+  setItem: (key, value) => {
+    fallbackMap.set(key, value);
+  },
+};
+
 // Default storage resolver (lazy, never throws)
 function getStorage(): Pick<Storage, 'getItem' | 'setItem'> {
   if (storage !== null) {
     return storage;
   }
 
-  // Use real localStorage if available, otherwise in-memory fallback
+  // Use real localStorage if available, otherwise the persistent in-memory fallback
   if (typeof window !== 'undefined' && window.localStorage) {
     return window.localStorage;
   }
 
-  // Node environment or no localStorage: use in-memory fallback
-  const fallback: Record<string, string> = {};
+  return fallbackStorage;
+}
+
+function isVersion1Object(parsed: unknown): parsed is Record<string, unknown> {
+  return (
+    typeof parsed === 'object' &&
+    parsed !== null &&
+    (parsed as { version?: unknown }).version === 1
+  );
+}
+
+/**
+ * Merge a parsed (possibly partial) settings blob over a deep copy of the
+ * defaults: top-level fields plus the nested drill object. Guarantees a
+ * complete Settings shape even if stored data is missing fields, and never
+ * shares references with the DEFAULT_SETTINGS singleton.
+ */
+function mergeSettings(parsed: Record<string, unknown>): Settings {
+  const base = structuredClone(DEFAULT_SETTINGS);
+  const p = parsed as Partial<Settings>;
+  const drill =
+    typeof p.drill === 'object' && p.drill !== null
+      ? { ...base.drill, ...p.drill }
+      : base.drill;
+  return { ...base, ...p, version: 1, drill };
+}
+
+/**
+ * Merge a parsed (possibly partial) stats blob over a deep copy of the empty
+ * stats: top-level fields plus the five nested sections (categories, perIndex,
+ * mistakes, countDrill, sessions).
+ */
+function mergeStats(parsed: Record<string, unknown>): Stats {
+  const base = structuredClone(EMPTY_STATS);
+  const p = parsed as Partial<Stats>;
   return {
-    getItem: (key) => fallback[key] ?? null,
-    setItem: (key, value) => {
-      fallback[key] = value;
-    },
+    ...base,
+    ...p,
+    version: 1,
+    categories:
+      typeof p.categories === 'object' && p.categories !== null
+        ? { ...base.categories, ...p.categories }
+        : base.categories,
+    perIndex:
+      typeof p.perIndex === 'object' && p.perIndex !== null
+        ? { ...base.perIndex, ...p.perIndex }
+        : base.perIndex,
+    mistakes:
+      typeof p.mistakes === 'object' && p.mistakes !== null
+        ? { ...base.mistakes, ...p.mistakes }
+        : base.mistakes,
+    countDrill:
+      typeof p.countDrill === 'object' && p.countDrill !== null
+        ? { ...base.countDrill, ...p.countDrill }
+        : base.countDrill,
+    sessions: Array.isArray(p.sessions) ? p.sessions : base.sessions,
   };
 }
 
 export function loadSettings(): Settings {
   const store = getStorage();
-  const key = 'bjtrainer.settings.v1';
-  const json = store.getItem(key);
+  const json = store.getItem('bjtrainer.settings.v1');
 
   if (!json) {
-    return DEFAULT_SETTINGS;
+    return structuredClone(DEFAULT_SETTINGS);
   }
 
   try {
     const parsed = JSON.parse(json) as unknown;
-
-    // Check version
-    if (typeof parsed === 'object' && parsed !== null && 'version' in parsed) {
-      const obj = parsed as { version: unknown };
-      if (obj.version === 1) {
-        return parsed as Settings;
-      }
+    if (isVersion1Object(parsed)) {
+      return mergeSettings(parsed);
     }
-
-    return DEFAULT_SETTINGS;
+    return structuredClone(DEFAULT_SETTINGS);
   } catch {
-    // JSON parse error or type mismatch
-    return DEFAULT_SETTINGS;
+    // JSON parse error
+    return structuredClone(DEFAULT_SETTINGS);
   }
 }
 
@@ -62,28 +114,21 @@ export function saveSettings(s: Settings): void {
 
 export function loadStats(): Stats {
   const store = getStorage();
-  const key = 'bjtrainer.stats.v1';
-  const json = store.getItem(key);
+  const json = store.getItem('bjtrainer.stats.v1');
 
   if (!json) {
-    return EMPTY_STATS;
+    return structuredClone(EMPTY_STATS);
   }
 
   try {
     const parsed = JSON.parse(json) as unknown;
-
-    // Check version
-    if (typeof parsed === 'object' && parsed !== null && 'version' in parsed) {
-      const obj = parsed as { version: unknown };
-      if (obj.version === 1) {
-        return parsed as Stats;
-      }
+    if (isVersion1Object(parsed)) {
+      return mergeStats(parsed);
     }
-
-    return EMPTY_STATS;
+    return structuredClone(EMPTY_STATS);
   } catch {
-    // JSON parse error or type mismatch
-    return EMPTY_STATS;
+    // JSON parse error
+    return structuredClone(EMPTY_STATS);
   }
 }
 
@@ -112,29 +157,17 @@ export function importAll(json: string): { ok: boolean; error?: string } {
       return { ok: false, error: 'Missing settings or stats' };
     }
 
-    // Validate settings version
-    const settingsObj = obj.settings as unknown;
-    if (typeof settingsObj !== 'object' || settingsObj === null) {
-      return { ok: false, error: 'Invalid settings object' };
-    }
-    const settingsWithVersion = settingsObj as { version?: unknown };
-    if (settingsWithVersion.version !== 1) {
+    if (!isVersion1Object(obj.settings)) {
       return { ok: false, error: 'Invalid settings version' };
     }
-
-    // Validate stats version
-    const statsObj = obj.stats as unknown;
-    if (typeof statsObj !== 'object' || statsObj === null) {
-      return { ok: false, error: 'Invalid stats object' };
-    }
-    const statsWithVersion = statsObj as { version?: unknown };
-    if (statsWithVersion.version !== 1) {
+    if (!isVersion1Object(obj.stats)) {
       return { ok: false, error: 'Invalid stats version' };
     }
 
-    // All validations passed, save to storage
-    saveSettings(settingsObj as Settings);
-    saveStats(statsObj as Stats);
+    // All validations passed: merge over defaults so a partial blob never
+    // persists an incomplete shape, then save.
+    saveSettings(mergeSettings(obj.settings));
+    saveStats(mergeStats(obj.stats));
 
     return { ok: true };
   } catch (err) {
