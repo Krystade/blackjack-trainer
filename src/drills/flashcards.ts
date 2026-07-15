@@ -1,7 +1,8 @@
 import type { Card, Rank } from '../engine/cards';
-import { RANKS, mulberry32, rankValue } from '../engine/cards';
+import { mulberry32 } from '../engine/cards';
 import { correctPlay } from '../engine/strategy';
 import type { Action } from '../engine/deviations';
+import { makeHardHand } from './buildHand';
 
 export interface Flashcard {
   cards: [Card, Card];
@@ -22,9 +23,11 @@ interface Cell {
 /**
  * Generate all possible flashcard cells.
  * Categories:
- * - hard: hard totals 5-17 (2 non-pair cards)
+ * - hard: hard totals 5-19, built from two non-pair non-ace cards
+ *   (4 and 20 are excluded: only constructible as pairs)
  * - soft: soft hands A+x (A with another card making soft totals 13-20)
  * - pairs: all pair ranks (A,2,3,4,5,6,7,8,9,10)
+ * Universe size: (15 hard + 8 soft + 10 pair) x 10 upcards = 330 cells.
  */
 function generateAllCells(): Cell[] {
   const cells: Cell[] = [];
@@ -35,26 +38,12 @@ function generateAllCells(): Cell[] {
     cells.push({ id, cards, up });
   }
 
-  // Hard totals: 5-17
-  // 5 = 2+3, 6 = 2+4, 7 = 2+5, ..., 17 = 10+7
+  // Hard totals: 5-19 (aces excluded — A+x is always soft; pairs excluded).
   for (const up of upcards) {
-    for (let total = 5; total <= 17; total++) {
-      // Find two cards that sum to total (avoiding pairs)
-      // Strategy: try different combinations
-      let found = false;
-      for (const r1 of RANKS) {
-        if (found) break;
-        for (const r2 of RANKS) {
-          const v1 = rankValue(r1);
-          const v2 = rankValue(r2);
-
-          if (v1 === v2) continue; // skip pairs for hard totals
-          if (v1 + v2 === total) {
-            addCell(`hard-${total}-v-${up}`, [{ rank: r1, suit: 's' }, { rank: r2, suit: 's' }], up);
-            found = true;
-            break;
-          }
-        }
+    for (let total = 5; total <= 19; total++) {
+      const hand = makeHardHand(total);
+      if (hand) {
+        addCell(`hard-${total}-v-${up}`, hand, up);
       }
     }
   }

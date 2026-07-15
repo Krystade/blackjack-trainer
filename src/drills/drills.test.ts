@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { hiLoTag } from '../engine/count';
-import { isPair } from '../engine/hand';
+import { isPair, handValue } from '../engine/hand';
 import { correctPlay, insuranceCorrect } from '../engine/strategy';
 import { ILLUSTRIOUS_18 } from '../engine/deviations';
 import { makeCountDrill, makeCountdown } from './countDrill';
@@ -103,6 +103,39 @@ describe('flashcards', () => {
       }
     });
 
+    it('structural: hard cells are truly hard, soft cells truly soft, pair cells true pairs (200 seeded draws)', () => {
+      for (let i = 0; i < 200; i++) {
+        const card = drawFlashcard('all', {}, 20000 + i);
+        const match = card.cellId.match(/^(hard|soft|pair)-([A0-9]+)-v-/);
+        expect(match).not.toBeNull();
+        const [, kind, labeled] = match!;
+        const hv = handValue(card.cards);
+
+        if (kind === 'hard') {
+          expect(hv.total, `${card.cellId}: total`).toBe(Number(labeled));
+          expect(hv.soft, `${card.cellId}: must be a HARD hand`).toBe(false);
+          expect(isPair(card.cards), `${card.cellId}: must not be a pair`).toBe(false);
+        } else if (kind === 'soft') {
+          expect(hv.total, `${card.cellId}: total`).toBe(Number(labeled));
+          expect(hv.soft, `${card.cellId}: must be a SOFT hand`).toBe(true);
+        } else {
+          expect(isPair(card.cards), `${card.cellId}: must be a pair`).toBe(true);
+        }
+      }
+    });
+
+    it('hard universe includes hard 18 and hard 19 (constructible non-pair hard totals)', () => {
+      // Weight each target cell heavily; it must be drawable from the 'hard' category.
+      for (const target of ['hard-18-v-5', 'hard-19-v-6']) {
+        let hit = false;
+        for (let i = 0; i < 200 && !hit; i++) {
+          const card = drawFlashcard('hard', { [target]: 1000 }, 30000 + i);
+          if (card.cellId === target) hit = true;
+        }
+        expect(hit, `${target} must exist in the hard universe`).toBe(true);
+      }
+    });
+
     it('should respect weighting: 50-weight cell gets ≥30% of 200 draws', () => {
       const missWeights: Record<string, number> = {};
       const targetCellId = 'hard-16-v-9';
@@ -170,15 +203,42 @@ describe('deviationQuiz', () => {
       }
     });
 
-    it('11vA (inactive) should always return correct=double', () => {
+    it('structural: hard-kind quiz items have the exact hard total, non-soft, non-pair (200 seeded draws)', () => {
+      for (let i = 0; i < 200; i++) {
+        const item = drawQuizItem(21000 + i);
+        const entry = ILLUSTRIOUS_18.find((d) => d.id === item.deviationId)!;
+        if (entry.kind === 'hard') {
+          expect(item.cards).not.toBeNull();
+          const hv = handValue(item.cards!);
+          expect(hv.total, `${entry.id}: total`).toBe(entry.total!);
+          expect(hv.soft, `${entry.id}: must be a HARD hand`).toBe(false);
+          expect(isPair(item.cards!), `${entry.id}: must not be a pair`).toBe(false);
+        } else if (entry.kind === 'pair10') {
+          expect(item.cards).not.toBeNull();
+          expect(isPair(item.cards!)).toBe(true);
+          const hv = handValue(item.cards!);
+          expect(hv.total).toBe(20);
+        }
+      }
+    });
+
+    it('11vA (inactive): the ENGINE recomputation yields double at every sampled tc', () => {
+      let seen = 0;
       for (let i = 0; i < 500; i++) {
         const item = drawQuizItem(6000 + i);
         if (item.deviationId === '11vA') {
-          expect(item.correct).toBe('double');
+          seen++;
+          // item.correct must come from the engine, and the engine must say double
+          const advice = correctPlay(item.cards!, item.up, item.tc, {
+            canDouble: true,
+            canSplit: true,
+            canSurrender: true,
+          });
+          expect(advice.action).toBe('double');
+          expect(item.correct).toBe(advice.action);
         }
       }
-      // Note: 11vA is just one of 18 entries, might not hit in 500 draws,
-      // but if it does, it should be 'double'
+      expect(seen).toBeGreaterThan(0);
     });
 
     it('insurance items should have cards=null and correct be take/decline-insurance', () => {
