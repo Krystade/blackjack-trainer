@@ -420,6 +420,252 @@ button {
   cursor: pointer;
 }
 
+/* ---------- Drills: picker ---------- */
+
+.drills-picker {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  background: radial-gradient(circle at 50% 0%, #163d29 0%, #0d2318 70%);
+}
+
+.drills-title {
+  font-size: 1.6rem;
+  text-align: center;
+  color: #d8b969;
+  letter-spacing: 0.02em;
+}
+
+.drills-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 22rem;
+}
+
+.drills-nav-btn {
+  min-height: 64px;
+  border-radius: 12px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  font-size: 1.05rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.drills-nav-btn:hover {
+  background: #1b4c31;
+}
+
+.drills-back-btn {
+  min-height: 48px;
+  padding: 0 1.5rem;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  cursor: pointer;
+}
+
+/* ---------- Drills: shared drill-screen shell ---------- */
+
+.drill-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.drill-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: #0a1c14;
+  border-bottom: 1px solid #1e4530;
+}
+
+.drill-back-btn,
+.drill-start-btn,
+.drill-replay-btn,
+.drill-next-btn {
+  min-height: 48px;
+  padding: 0 1rem;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.drill-start-btn,
+.drill-replay-btn,
+.drill-next-btn {
+  background: #1b4c31;
+}
+
+.drill-heading {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #d8b969;
+}
+
+/* ---------- Count Drill ---------- */
+
+.count-setup {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.count-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+  min-height: 48px;
+}
+
+.count-toggle input {
+  width: 22px;
+  height: 22px;
+}
+
+.count-config {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: #b7d3c2;
+}
+
+.count-flash-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.count-flash-cards {
+  display: flex;
+  gap: 0.4rem;
+  min-height: 68px;
+}
+
+.count-flash-progress {
+  font-size: 0.85rem;
+  color: #b7d3c2;
+}
+
+.tag-guess {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1.5rem;
+}
+
+.tag-guess-label {
+  font-size: 1rem;
+  color: #eaf3ec;
+}
+
+.tag-guess-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.tag-guess-btn {
+  min-height: 56px;
+  min-width: 72px;
+  border-radius: 10px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.drill-result {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.result-detail {
+  font-size: 0.9rem;
+  color: #b7d3c2;
+}
+
+.result-correct {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #6fcf97;
+}
+
+.result-wrong {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #eb5757;
+}
+
+/* ---------- Flashcards / Deviation Quiz ---------- */
+
+.feedback-cell {
+  font-size: 0.8rem;
+  color: #b7d3c2;
+}
+
+.quiz-tc {
+  text-align: center;
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #d8b969;
+  padding: 0.75rem 0;
+}
+
+.quiz-insurance-prompt {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  text-align: center;
+  font-size: 1.05rem;
+}
+
+.quiz-label {
+  font-size: 0.85rem;
+  color: #b7d3c2;
+  text-align: center;
+  padding: 0 1rem;
+}
+
 /* ---------- Report screen ---------- */
 
 .report-screen {

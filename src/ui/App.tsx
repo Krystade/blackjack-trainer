@@ -2,6 +2,7 @@ import { useState } from 'react';
 import './app.css';
 import { Home } from './screens/Home';
 import { Table } from './screens/Table';
+import { Drills } from './screens/Drills';
 import { loadSettings } from '../store/persist';
 import type { Settings } from '../store/types';
 
@@ -29,7 +30,7 @@ function App() {
     case 'table':
       return <Table settings={settings} onNavigate={setScreen} />;
     case 'drills':
-      return <Placeholder title="Drills" onNavigate={setScreen} />;
+      return <Drills settings={settings} onNavigate={setScreen} />;
     case 'stats':
       return <Placeholder title="Stats" onNavigate={setScreen} />;
     case 'settings':
