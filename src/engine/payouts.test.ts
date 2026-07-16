@@ -38,7 +38,7 @@ describe('payout audit — table-driven settlement paths', () => {
       expectedDelta: 1.5,
     },
     {
-      description: 'player win +1 (P 20 vs D 18)',
+      description: 'player win +1 (P 20 vs D 17)',
       shoe: ['10', '9', '6', '8', '4'],
       actions: ['hit', 'stand'], // P: 10,6,4=20; D: 9,8=17
       expectedDelta: 1,
@@ -56,13 +56,13 @@ describe('payout audit — table-driven settlement paths', () => {
       expectedDelta: 0,
     },
     {
-      description: 'double win +2 (P double 5,6=11→10 vs D 18)',
+      description: 'double win +2 (P double 5,6=11→10 vs D 17)',
       shoe: ['5', '9', '6', '8', '10'],
       actions: ['double'], // P: 5,6,10=21; D: 9,8=17
       expectedDelta: 2,
     },
     {
-      description: 'double lose -2 (P double 5,6=11→3 vs D 18)',
+      description: 'double lose -2 (P double 5,6=11→3 vs D 17)',
       shoe: ['5', '9', '6', '8', '3'],
       actions: ['double'], // P: 5,6,3=14; D: 9,8=17
       expectedDelta: -2,
@@ -79,9 +79,25 @@ describe('payout audit — table-driven settlement paths', () => {
       actions: ['split', 'stand', 'stand'], // P: hand0 5,10=15; hand1 5,3=8; D: 8,6=14,hit 7=21; both lose
       expectedDelta: -2, // Both hands lose to dealer 21
     },
-    // Note: Insurance settlement tests (4 quadrants) are more thoroughly tested in game.test.ts
-    // which avoids the complexity of predicting dealer play. These scenarios focus on
-    // non-insurance payouts to ensure the settle logic works across all hand types.
+    // Insurance audit tests
+    {
+      description: 'insurance taken + dealer BJ (delta 0 for insurance)',
+      shoe: ['10', 'A', 'K', 'K'],
+      actions: ['insurance:take'], // P: 10,K=20; D: A(up), K(hole)=BJ; insurance wins 1.0, hand loses 1.0, net = 0
+      expectedDelta: 0,
+    },
+    {
+      description: 'insurance taken + dealer no BJ (delta −1.5 for simple case)',
+      shoe: ['10', 'A', 'K', '5', '5'],
+      actions: ['insurance:take', 'stand'], // P: 10,K=20; D: A(up), 5(hole)=soft 16, hits 5=soft 21; dealer wins, insurance loses
+      expectedDelta: -1.5,
+    },
+    {
+      description: 'insurance declined + dealer BJ (delta −1)',
+      shoe: ['10', 'A', 'K', 'K'],
+      actions: ['insurance:decline'], // P: 10,K=20; D: A(up), K(hole)=BJ; no insurance, hand loses 1.0
+      expectedDelta: -1,
+    },
   ];
 
   scenarios.forEach((scenario) => {

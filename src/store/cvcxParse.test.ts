@@ -262,6 +262,64 @@ TC 2	4`;
   });
 
   describe('error cases', () => {
+    test('rejects junk first line with error (not silent skip)', () => {
+      const text = `abc	xyz`;
+      const result = parseCvcxRamp(text);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toMatch(/Line 1/);
+        expect(result.error).toContain('could not parse');
+      }
+    });
+
+    test('rejects junk first line followed by valid data (error, not skip)', () => {
+      const text = `abc	xyz
+1	2`;
+      const result = parseCvcxRamp(text);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toMatch(/Line 1/);
+      }
+    });
+
+    test('accepts header line with no digits (TC and Bet are pure text)', () => {
+      const text = `TC	Bet
+1	2`;
+      const result = parseCvcxRamp(text);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.rows).toEqual([{ minTc: 1, units: 2 }]);
+      }
+    });
+
+    test('rejects unparseable line with digits in wrong places (1x is not numeric)', () => {
+      const text = `1x	2`;
+      const result = parseCvcxRamp(text);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toMatch(/Line 1/);
+        expect(result.error).toContain('could not parse');
+      }
+    });
+
+    test('parses case-insensitive tc prefix: "tc 2 8" -> {minTc:2, units:8}', () => {
+      const text = `tc 2 8`;
+      const result = parseCvcxRamp(text);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.rows).toEqual([{ minTc: 2, units: 8 }]);
+      }
+    });
+
+    test('parses case-insensitive tc prefix: "Tc +3\\t8" -> {minTc:3, units:8}', () => {
+      const text = `Tc +3	8`;
+      const result = parseCvcxRamp(text);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.rows).toEqual([{ minTc: 3, units: 8 }]);
+      }
+    });
+
     test('rejects dollar amounts without unitDollars', () => {
       const text = `1	$10
 2	$20`;

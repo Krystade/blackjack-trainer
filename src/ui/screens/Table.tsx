@@ -215,12 +215,20 @@ export function Table({ settings, onNavigate }: TableProps) {
 
       <div className="message-strip">
         {game.shuffledLastRound && <div className="message-shuffle">Shuffling…</div>}
-        {game.phase === 'settled' &&
-          game.hands.map((h, i) => (
-            <div key={i} className="message-result">
-              {resultMessage(h, i, multiHand)}
-            </div>
-          ))}
+        {game.phase === 'settled' && (
+          <>
+            {game.hands.map((h, i) => (
+              <div key={i} className="message-result">
+                {resultMessage(h, i, multiHand)}
+              </div>
+            ))}
+            {game.insuranceNet !== null && (
+              <div className="message-result">
+                Insurance {formatSigned(game.insuranceNet)}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <ActionBar mode={barMode} />

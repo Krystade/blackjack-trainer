@@ -29,23 +29,33 @@ export function parseCvcxRamp(
 
     const [tcStr, betStr] = columns;
 
-    // Skip header row (first non-blank line that is non-numeric)
-    if (firstValidLineIdx === -1) {
-      if (!isNumericLike(tcStr) || !isNumericLike(betStr)) {
-        // This is likely a header row
-        firstValidLineIdx = lineNum;
-        continue;
-      }
-      firstValidLineIdx = lineNum;
-    }
-
     // Parse TC
     const tc = parseTC(tcStr);
     if (tc === null) {
+      // Failed to parse TC column. Check if this is a header on the first line.
+      // A header is ONLY valid if:
+      // 1. It's the first line (firstValidLineIdx === -1)
+      // 2. The entire line contains no digits
+      // 3. At least one column looks like a recognized header label (e.g., "TC", "Bet")
+      if (
+        firstValidLineIdx === -1 &&
+        !hasAnyDigit(trimmed) &&
+        (looksLikeHeaderLabel(tcStr) || looksLikeHeaderLabel(betStr))
+      ) {
+        // This is a valid header row on line 1
+        firstValidLineIdx = lineNum;
+        continue;
+      }
+      // Not a valid header; error
       return {
         ok: false,
         error: `Line ${lineNum}: could not parse "${trimmed}"`,
       };
+    }
+
+    // Mark first valid line if this is the first numeric line
+    if (firstValidLineIdx === -1) {
+      firstValidLineIdx = lineNum;
     }
 
     // Check for dollar amounts
@@ -157,7 +167,7 @@ function parseColumns(line: string): [string, string] | null {
   // If 3 tokens and first is "TC" (case-insensitive), join first two
   if (
     singleSpaceParts.length === 3 &&
-    singleSpaceParts[0].toUpperCase() === 'TC'
+    /^tc$/i.test(singleSpaceParts[0])
   ) {
     return [singleSpaceParts[0] + ' ' + singleSpaceParts[1], singleSpaceParts[2]];
   }
@@ -166,19 +176,32 @@ function parseColumns(line: string): [string, string] | null {
 }
 
 /**
- * Check if a string looks like a number or numeric decoration.
+ * Check if a string contains any decimal digits at all.
  */
-function isNumericLike(s: string): boolean {
-  const normalized = s
-    .replace(/^TC\s+/, '')
-    .replace(/^[≤<=]+\s*/, '')
-    .replace(/\+$/, '')
-    .replace(/^\+/, '')
-    .replace(/\$/g, '')
-    .replace(/\s+/g, '')
-    .trim();
+function hasAnyDigit(s: string): boolean {
+  return /\d/.test(s);
+}
 
-  return /^-?\d+(\.\d+)?$/.test(normalized);
+/**
+ * Check if a column looks like a valid header label.
+ * Valid header labels contain recognizable words (case-insensitive).
+ */
+function looksLikeHeaderLabel(s: string): boolean {
+  const lower = s.toLowerCase().trim();
+  // List of recognized header words/abbreviations
+  const headerWords = [
+    'tc', 'rc', 'true count', 'running count', 'count',
+    'bet', 'units', 'unit', 'wager', 'amount', 'min', 'minimum', 'max', 'maximum',
+    'dollar', 'dollars', 'spread', 'deviation'
+  ];
+
+  // Check if the label contains or is one of the known header words
+  for (const word of headerWords) {
+    if (lower === word || lower.includes(word)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -187,8 +210,8 @@ function isNumericLike(s: string): boolean {
 function parseTC(s: string): number | null {
   let normalized = s.trim();
 
-  // Remove "TC " prefix
-  normalized = normalized.replace(/^TC\s+/, '');
+  // Remove "TC " prefix (case-insensitive)
+  normalized = normalized.replace(/^tc\s+/i, '');
 
   // Remove "≤" or "<=" prefix
   normalized = normalized.replace(/^≤\s*/, '').replace(/^<=\s*/, '');
@@ -202,10 +225,12 @@ function parseTC(s: string): number | null {
   // Remove spaces
   normalized = normalized.trim();
 
-  const num = parseFloat(normalized);
-  if (isNaN(num) || !Number.isInteger(num)) {
+  // Check that the entire normalized string is a valid integer (no trailing junk like "1x")
+  if (!/^-?\d+$/.test(normalized)) {
     return null;
   }
+
+  const num = parseInt(normalized, 10);
   return num;
 }
 
