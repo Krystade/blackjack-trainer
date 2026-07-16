@@ -97,6 +97,26 @@ describe('store/persist', () => {
       expect(loaded.drill.countIntervalMs).toBe(800);
       expect(loaded.drill.countLengthCards).toBe(52);
     });
+
+    test('a stored v1-drill blob without countManual/quizIndex backfills both from defaults', () => {
+      // Simulates a pre-Cycle-1 stored blob: drill object present but missing
+      // the new fields entirely.
+      storage['bjtrainer.settings.v1'] = JSON.stringify({
+        version: 1,
+        drill: {
+          flashCategory: 'hard',
+          countGroup: 2,
+          countIntervalMs: 900,
+          countLengthCards: 104,
+        },
+      });
+      const loaded = loadSettings();
+      expect(loaded.drill.countManual).toBe(false);
+      expect(loaded.drill.quizIndex).toBe('all');
+      // Existing fields still preserved
+      expect(loaded.drill.flashCategory).toBe('hard');
+      expect(loaded.drill.countGroup).toBe(2);
+    });
   });
 
   describe('stats', () => {

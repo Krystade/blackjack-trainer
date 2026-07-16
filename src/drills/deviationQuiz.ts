@@ -29,14 +29,26 @@ function makePair10Cards(): [Card, Card] {
  * Draw a random quiz item from the Illustrious 18.
  *
  * @param seed - Optional seed for reproducibility
+ * @param filter - Optional deviation id; when set, always draws that entry
+ *   (tc is still randomized within ±2 of its threshold). Additive param —
+ *   omitting it preserves the original random-entry behavior exactly.
  * @returns A quiz item
  */
-export function drawQuizItem(seed?: number): QuizItem {
+export function drawQuizItem(seed?: number, filter?: DeviationId): QuizItem {
   const rng = mulberry32(seed ?? Date.now());
 
-  // Pick a random entry from ILLUSTRIOUS_18
-  const entryIndex = Math.floor(rng() * ILLUSTRIOUS_18.length);
-  const entry = ILLUSTRIOUS_18[entryIndex];
+  // Pick the filtered entry if given, otherwise a random entry from ILLUSTRIOUS_18
+  let entry: (typeof ILLUSTRIOUS_18)[number];
+  if (filter) {
+    const found = ILLUSTRIOUS_18.find((d) => d.id === filter);
+    if (!found) {
+      throw new Error(`drawQuizItem: unknown deviation id "${filter}"`);
+    }
+    entry = found;
+  } else {
+    const entryIndex = Math.floor(rng() * ILLUSTRIOUS_18.length);
+    entry = ILLUSTRIOUS_18[entryIndex];
+  }
 
   // Generate tc: integer uniform in [threshold - 2, threshold + 2]
   const tcMin = entry.threshold - 2;

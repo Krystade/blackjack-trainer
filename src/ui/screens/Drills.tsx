@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { Screen } from '../App';
 import type { Settings } from '../../store/types';
 import type { Card } from '../../engine/cards';
-import type { Action } from '../../engine/deviations';
+import type { Action, DeviationId } from '../../engine/deviations';
+import { ILLUSTRIOUS_18 } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
 import { classifyAction, actionCategory, classifyInsurance } from '../../engine/grade';
 import type { PlayContext } from '../../engine/strategy';
@@ -14,15 +15,17 @@ import { drawFlashcard } from '../../drills/flashcards';
 import type { Flashcard } from '../../drills/flashcards';
 import { drawQuizItem } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
-import { loadStats, saveStats } from '../../store/persist';
+import { loadStats, saveStats, saveSettings } from '../../store/persist';
 import { applyEvents } from '../../store/stats';
 import { PlayingCard } from '../components/PlayingCard';
 import { NumPad } from '../components/NumPad';
 import { ActionBar } from '../components/ActionBar';
+import { Segmented, Stepper } from './Settings';
 
 interface DrillsProps {
   settings: Settings;
   onNavigate: (screen: Screen) => void;
+  onSettingsChange: (settings: Settings) => void;
 }
 
 const ALL_ACTIONS: Action[] = ['hit', 'stand', 'double', 'split', 'surrender'];
@@ -41,7 +44,15 @@ function formatSigned(n: number): string {
 
 type CountPhase = 'setup' | 'flashing' | 'answering' | 'result';
 
-function CountDrillView({ settings, onBack }: { settings: Settings; onBack: () => void }) {
+function CountDrillView({
+  settings,
+  onBack,
+  onSettingsChange,
+}: {
+  settings: Settings;
+  onBack: () => void;
+  onSettingsChange: (settings: Settings) => void;
+}) {
   const [countdownMode, setCountdownMode] = useState(false);
   const [phase, setPhase] = useState<CountPhase>('setup');
   const [drillRound, setDrillRound] = useState<CountDrillRound | null>(null);
@@ -50,6 +61,12 @@ function CountDrillView({ settings, onBack }: { settings: Settings; onBack: () =
   const [wasCorrect, setWasCorrect] = useState(false);
   const [actualValue, setActualValue] = useState(0);
   const [enteredValue, setEnteredValue] = useState(0);
+
+  const updateDrill = (patch: Partial<Settings['drill']>) => {
+    const next: Settings = { ...settings, drill: { ...settings.drill, ...patch } };
+    saveSettings(next);
+    onSettingsChange(next);
+  };
 
   const groups: Card[][] = countdownMode
     ? countdownRound
@@ -60,7 +77,7 @@ function CountDrillView({ settings, onBack }: { settings: Settings; onBack: () =
       : [];
 
   useEffect(() => {
-    if (phase !== 'flashing' || groups.length === 0) return undefined;
+    if (phase !== 'flashing' || groups.length === 0 || settings.drill.countManual) return undefined;
 
     if (shownIndex >= groups.length - 1) {
       const t = setTimeout(() => setPhase('answering'), settings.drill.countIntervalMs);
@@ -69,7 +86,15 @@ function CountDrillView({ settings, onBack }: { settings: Settings; onBack: () =
 
     const t = setTimeout(() => setShownIndex((i) => i + 1), settings.drill.countIntervalMs);
     return () => clearTimeout(t);
-  }, [phase, shownIndex, groups.length, settings.drill.countIntervalMs]);
+  }, [phase, shownIndex, groups.length, settings.drill.countIntervalMs, settings.drill.countManual]);
+
+  const advanceManual = () => {
+    if (shownIndex >= groups.length - 1) {
+      setPhase('answering');
+    } else {
+      setShownIndex((i) => i + 1);
+    }
+  };
 
   const start = () => {
     const seed = randomSeed();
@@ -141,20 +166,73 @@ function CountDrillView({ settings, onBack }: { settings: Settings; onBack: () =
             />
             Countdown (52-card, guess the hidden card&apos;s tag)
           </label>
+
           {!countdownMode && (
-            <div className="count-config">
-              <div>Length: {settings.drill.countLengthCards} cards</div>
-              <div>Group size: {settings.drill.countGroup}</div>
-              <div>Interval: {settings.drill.countIntervalMs}ms</div>
-            </div>
+            <>
+              <Stepper
+                label="Length"
+                value={settings.drill.countLengthCards}
+                min={13}
+                max={312}
+                step={13}
+                format={(v) => `${v} cards`}
+                onChange={(v) => updateDrill({ countLengthCards: v })}
+              />
+              <div className="settings-row">
+                <span className="settings-label">Group size</span>
+                <Segmented
+                  options={[
+                    { value: '1', label: '1' },
+                    { value: '2', label: '2' },
+                    { value: '3', label: '3' },
+                  ]}
+                  value={String(settings.drill.countGroup)}
+                  onChange={(v) => updateDrill({ countGroup: Number(v) as 1 | 2 | 3 })}
+                />
+              </div>
+            </>
           )}
+
+          <Stepper
+            label="Speed"
+            value={settings.drill.countIntervalMs}
+            min={300}
+            max={3000}
+            step={100}
+            format={(v) => `${v}ms`}
+            onChange={(v) => updateDrill({ countIntervalMs: v })}
+          />
+
+          <div className="settings-row">
+            <span className="settings-label">Mode</span>
+            <Segmented
+              options={[
+                { value: 'timed', label: 'Timed' },
+                { value: 'manual', label: 'Manual' },
+              ]}
+              value={settings.drill.countManual ? 'manual' : 'timed'}
+              onChange={(v) => updateDrill({ countManual: v === 'manual' })}
+            />
+          </div>
+
           <button type="button" className="drill-start-btn" onClick={start}>
             Start
           </button>
         </div>
       )}
 
-      {phase === 'flashing' && (
+      {phase === 'flashing' && settings.drill.countManual && (
+        <div className="manual-tap-zone" onClick={advanceManual}>
+          <div className="count-flash-cards">
+            {currentGroup?.map((c, i) => <PlayingCard key={i} card={c} />)}
+          </div>
+          <div className="manual-tap-hint">
+            tap to advance &middot; {shownIndex + 1}/{groups.length}
+          </div>
+        </div>
+      )}
+
+      {phase === 'flashing' && !settings.drill.countManual && (
         <div className="count-flash-area">
           <div className="count-flash-cards">
             {currentGroup?.map((c, i) => <PlayingCard key={i} card={c} />)}
@@ -241,16 +319,31 @@ function cellCategory(cellId: string, correct: Action): 'hard' | 'soft' | 'pairs
   return 'pairs';
 }
 
-function FlashcardsView({ settings, onBack }: { settings: Settings; onBack: () => void }) {
+function FlashcardsView({
+  settings,
+  onBack,
+  onSettingsChange,
+}: {
+  settings: Settings;
+  onBack: () => void;
+  onSettingsChange: (settings: Settings) => void;
+}) {
   const weightsRef = useRef<Record<string, number>>(loadFlashWeights());
   const [card, setCard] = useState<Flashcard>(() =>
     drawFlashcard(settings.drill.flashCategory, weightsRef.current, randomSeed()),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action } | null>(null);
 
-  const next = () => {
-    setCard(drawFlashcard(settings.drill.flashCategory, weightsRef.current, randomSeed()));
+  const next = (category: Settings['drill']['flashCategory'] = settings.drill.flashCategory) => {
+    setCard(drawFlashcard(category, weightsRef.current, randomSeed()));
     setFeedback(null);
+  };
+
+  const changeCategory = (category: Settings['drill']['flashCategory']) => {
+    const nextSettings: Settings = { ...settings, drill: { ...settings.drill, flashCategory: category } };
+    saveSettings(nextSettings);
+    onSettingsChange(nextSettings);
+    next(category);
   };
 
   const handleAction = (taken: Action) => {
@@ -289,6 +382,22 @@ function FlashcardsView({ settings, onBack }: { settings: Settings; onBack: () =
         <div className="drill-heading">Flashcards</div>
       </div>
 
+      <div className="drill-inline-controls">
+        <div className="settings-row">
+          <span className="settings-label">Category</span>
+          <Segmented
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'hard', label: 'Hard' },
+              { value: 'soft', label: 'Soft' },
+              { value: 'pairs', label: 'Pairs' },
+            ]}
+            value={settings.drill.flashCategory}
+            onChange={changeCategory}
+          />
+        </div>
+      </div>
+
       <div className="dealer-area">
         <PlayingCard card={{ rank: card.up, suit: 's' }} />
       </div>
@@ -318,7 +427,7 @@ function FlashcardsView({ settings, onBack }: { settings: Settings; onBack: () =
         <ActionBar mode={{ kind: 'actions', legal: ALL_ACTIONS, onAction: handleAction }} />
       ) : (
         <div className="action-bar">
-          <button type="button" className="drill-next-btn" onClick={next}>
+          <button type="button" className="drill-next-btn" onClick={() => next()}>
             Next
           </button>
         </div>
@@ -370,13 +479,34 @@ function buildQuizEvent(item: QuizItem, taken: string): GradedEvent {
   };
 }
 
-function DeviationQuizView({ onBack }: { onBack: () => void }) {
-  const [item, setItem] = useState<QuizItem>(() => drawQuizItem(randomSeed()));
+function quizFilterArg(quizIndex: DeviationId | 'all'): DeviationId | undefined {
+  return quizIndex === 'all' ? undefined : quizIndex;
+}
+
+function DeviationQuizView({
+  settings,
+  onBack,
+  onSettingsChange,
+}: {
+  settings: Settings;
+  onBack: () => void;
+  onSettingsChange: (settings: Settings) => void;
+}) {
+  const [item, setItem] = useState<QuizItem>(() =>
+    drawQuizItem(randomSeed(), quizFilterArg(settings.drill.quizIndex)),
+  );
   const [feedback, setFeedback] = useState<{ correct: boolean } | null>(null);
 
-  const next = () => {
-    setItem(drawQuizItem(randomSeed()));
+  const next = (filter: DeviationId | 'all' = settings.drill.quizIndex) => {
+    setItem(drawQuizItem(randomSeed(), quizFilterArg(filter)));
     setFeedback(null);
+  };
+
+  const changeIndex = (quizIndex: DeviationId | 'all') => {
+    const nextSettings: Settings = { ...settings, drill: { ...settings.drill, quizIndex } };
+    saveSettings(nextSettings);
+    onSettingsChange(nextSettings);
+    next(quizIndex);
   };
 
   const handleAnswer = (taken: string) => {
@@ -392,6 +522,24 @@ function DeviationQuizView({ onBack }: { onBack: () => void }) {
           Back
         </button>
         <div className="drill-heading">Deviation Quiz</div>
+      </div>
+
+      <div className="drill-inline-controls">
+        <label className="settings-row">
+          <span className="settings-label">Index</span>
+          <select
+            className="quiz-index-select"
+            value={settings.drill.quizIndex}
+            onChange={(e) => changeIndex(e.target.value as DeviationId | 'all')}
+          >
+            <option value="all">All indices</option>
+            {ILLUSTRIOUS_18.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="quiz-tc">TC {formatSigned(item.tc)}</div>
@@ -441,7 +589,7 @@ function DeviationQuizView({ onBack }: { onBack: () => void }) {
         )
       ) : (
         <div className="action-bar">
-          <button type="button" className="drill-next-btn" onClick={next}>
+          <button type="button" className="drill-next-btn" onClick={() => next()}>
             Next
           </button>
         </div>
@@ -454,17 +602,35 @@ function DeviationQuizView({ onBack }: { onBack: () => void }) {
 /* Picker                                                             */
 /* ---------------------------------------------------------------- */
 
-export function Drills({ settings, onNavigate }: DrillsProps) {
+export function Drills({ settings, onNavigate, onSettingsChange }: DrillsProps) {
   const [mode, setMode] = useState<'picker' | 'count' | 'flash' | 'quiz'>('picker');
 
   if (mode === 'count') {
-    return <CountDrillView settings={settings} onBack={() => setMode('picker')} />;
+    return (
+      <CountDrillView
+        settings={settings}
+        onBack={() => setMode('picker')}
+        onSettingsChange={onSettingsChange}
+      />
+    );
   }
   if (mode === 'flash') {
-    return <FlashcardsView settings={settings} onBack={() => setMode('picker')} />;
+    return (
+      <FlashcardsView
+        settings={settings}
+        onBack={() => setMode('picker')}
+        onSettingsChange={onSettingsChange}
+      />
+    );
   }
   if (mode === 'quiz') {
-    return <DeviationQuizView onBack={() => setMode('picker')} />;
+    return (
+      <DeviationQuizView
+        settings={settings}
+        onBack={() => setMode('picker')}
+        onSettingsChange={onSettingsChange}
+      />
+    );
   }
 
   return (

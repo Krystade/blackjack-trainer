@@ -18,6 +18,8 @@ export interface Settings {
     countGroup: 1 | 2 | 3;
     countIntervalMs: number;
     countLengthCards: number;
+    countManual: boolean;
+    quizIndex: DeviationId | 'all';
   };
 }
 
@@ -36,6 +38,8 @@ export const DEFAULT_SETTINGS: Settings = {
     countGroup: 1,
     countIntervalMs: 800,
     countLengthCards: 52,
+    countManual: false,
+    quizIndex: 'all',
   },
 };
 

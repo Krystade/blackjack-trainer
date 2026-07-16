@@ -17,7 +17,7 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
-function Segmented<T extends string>({
+export function Segmented<T extends string>({
   options,
   value,
   onChange,
@@ -64,7 +64,7 @@ function Toggle({
   );
 }
 
-function Stepper({
+export function Stepper({
   label,
   value,
   min,

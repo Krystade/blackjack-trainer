@@ -574,6 +574,55 @@ button {
   color: #b7d3c2;
 }
 
+/* ---------- Manual tap-advance (count drill + countdown) ---------- */
+
+.manual-tap-zone {
+  flex: 1;
+  min-height: 60vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  cursor: pointer;
+  background: #0f2a1c;
+  border-top: 1px solid #1e4530;
+  border-bottom: 1px solid #1e4530;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.manual-tap-zone:active {
+  background: #163d29;
+}
+
+.manual-tap-hint {
+  font-size: 0.85rem;
+  color: #b7d3c2;
+}
+
+/* ---------- Drills: inline setup controls (reuses .settings-row/.segmented) ---------- */
+
+.drill-inline-controls {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.quiz-index-select {
+  min-height: 48px;
+  min-width: 12rem;
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  font-size: 0.85rem;
+  padding: 0 0.5rem;
+}
+
 .tag-guess {
   flex: 1;
   display: flex;

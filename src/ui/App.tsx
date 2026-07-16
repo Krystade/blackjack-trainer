@@ -20,7 +20,7 @@ function App() {
     case 'table':
       return <Table settings={settings} onNavigate={setScreen} />;
     case 'drills':
-      return <Drills settings={settings} onNavigate={setScreen} />;
+      return <Drills settings={settings} onNavigate={setScreen} onSettingsChange={setSettings} />;
     case 'stats':
       return <Stats onNavigate={setScreen} onSettingsChange={setSettings} />;
     case 'settings':

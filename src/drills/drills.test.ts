@@ -284,6 +284,38 @@ describe('deviationQuiz', () => {
       expect(seen.false).toBe(true);
     });
 
+    it('filter param: always returns the requested id across 50 seeded draws', () => {
+      for (let i = 0; i < 50; i++) {
+        const item = drawQuizItem(60000 + i, '16v10');
+        expect(item.deviationId).toBe('16v10');
+      }
+    });
+
+    it('filter param: works for an insurance-kind id too', () => {
+      for (let i = 0; i < 50; i++) {
+        const item = drawQuizItem(61000 + i, 'ins');
+        expect(item.deviationId).toBe('ins');
+        expect(item.cards).toBeNull();
+      }
+    });
+
+    it('filter param: tc still stays within ±2 of the entry threshold', () => {
+      const entry = ILLUSTRIOUS_18.find((d) => d.id === '12v6')!;
+      for (let i = 0; i < 50; i++) {
+        const item = drawQuizItem(62000 + i, '12v6');
+        expect(Math.abs(item.tc - entry.threshold)).toBeLessThanOrEqual(2);
+      }
+    });
+
+    it('no-filter behavior is unaffected by the presence of the new optional param (variety still seen)', () => {
+      const seen = new Set<string>();
+      for (let i = 0; i < 200; i++) {
+        const item = drawQuizItem(63000 + i);
+        seen.add(item.deviationId);
+      }
+      expect(seen.size).toBeGreaterThan(5);
+    });
+
     it('16v10/15v10/16v9 are surrenderable 2-card hands: quiz must model surrender-unavailable, so correct is stand at/above threshold and hit below — never surrender', () => {
       const targets: { id: DeviationId; threshold: number }[] = [
         { id: '16v10', threshold: 0 },
