@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Card, Rank } from './cards';
-import { classifyAction, actionCategory } from './grade';
+import { classifyAction, actionCategory, classifyInsurance } from './grade';
 import { correctPlay, basicPlay } from './strategy';
 import type { PlayContext } from './strategy';
 
@@ -177,5 +177,31 @@ describe('actionCategory', () => {
     const hand = cards('10', '9');
     const result = actionCategory(hand, 'stand');
     expect(result).toBe('hard');
+  });
+});
+
+describe('classifyInsurance', () => {
+  it('take at tc 3 -> correct', () => {
+    const result = classifyInsurance(true, 3);
+    expect(result.correct).toBe(true);
+    expect(result.classification).toBe('correct');
+  });
+
+  it('decline at tc 2 -> correct', () => {
+    const result = classifyInsurance(false, 2);
+    expect(result.correct).toBe(true);
+    expect(result.classification).toBe('correct');
+  });
+
+  it('decline at tc 3 -> missed-deviation', () => {
+    const result = classifyInsurance(false, 3);
+    expect(result.correct).toBe(false);
+    expect(result.classification).toBe('missed-deviation');
+  });
+
+  it('take at tc 2 -> phantom-deviation', () => {
+    const result = classifyInsurance(true, 2);
+    expect(result.correct).toBe(false);
+    expect(result.classification).toBe('phantom-deviation');
   });
 });

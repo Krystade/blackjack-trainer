@@ -3,8 +3,8 @@ import type { Screen } from '../App';
 import type { Settings } from '../../store/types';
 import type { Card } from '../../engine/cards';
 import type { Action } from '../../engine/deviations';
-import type { GradedEvent, MistakeClass } from '../../engine/grade';
-import { classifyAction, actionCategory } from '../../engine/grade';
+import type { GradedEvent } from '../../engine/grade';
+import { classifyAction, actionCategory, classifyInsurance } from '../../engine/grade';
 import type { PlayContext } from '../../engine/strategy';
 import { correctPlay, basicPlay } from '../../engine/strategy';
 import { hiLoTag } from '../../engine/count';
@@ -234,7 +234,8 @@ function saveFlashWeights(weights: Record<string, number>): void {
   }
 }
 
-function cellCategory(cellId: string): 'hard' | 'soft' | 'pairs' {
+function cellCategory(cellId: string, correct: Action): 'hard' | 'soft' | 'pairs' | 'surrender' {
+  if (correct === 'surrender') return 'surrender';
   if (cellId.startsWith('hard-')) return 'hard';
   if (cellId.startsWith('soft-')) return 'soft';
   return 'pairs';
@@ -265,7 +266,7 @@ function FlashcardsView({ settings, onBack }: { settings: Settings; onBack: () =
 
     const event: GradedEvent = {
       kind: 'action',
-      category: cellCategory(card.cellId),
+      category: cellCategory(card.cellId, card.correct),
       correct,
       classification,
       taken,
@@ -330,24 +331,21 @@ function FlashcardsView({ settings, onBack }: { settings: Settings; onBack: () =
 /* Deviation Quiz                                                     */
 /* ---------------------------------------------------------------- */
 
-function insuranceClassification(taken: string, correct: string): MistakeClass {
-  if (taken === correct) return 'correct';
-  return correct === 'take-insurance' ? 'missed-deviation' : 'phantom-deviation';
-}
-
 function buildQuizEvent(item: QuizItem, taken: string): GradedEvent {
   if (item.cards === null) {
-    const correct = taken === item.correct;
+    const take = taken === 'take-insurance';
+    const { classification, correct } = classifyInsurance(take, item.tc);
     return {
       kind: 'insurance',
       category: 'insurance',
       correct,
-      classification: insuranceClassification(taken, item.correct),
-      taken,
-      expected: item.correct,
+      classification,
+      taken: take ? 'take' : 'decline',
+      expected: item.correct === 'take-insurance' ? 'take' : 'decline',
       reason: item.label,
       deviationId: item.deviationId,
       tc: item.tc,
+      hand: 'dealer A',
     };
   }
 

@@ -4,7 +4,7 @@ import { handValue, isBust, isBlackjack, isPair } from './hand';
 import { hiLoTag, trueCount } from './count';
 import { correctPlay, basicPlay, insuranceCorrect } from './strategy';
 import type { PlayContext, Advice } from './strategy';
-import { classifyAction, actionCategory } from './grade';
+import { classifyAction, actionCategory, classifyInsurance } from './grade';
 import type { GradedEvent } from './grade';
 import type { Action } from './deviations';
 
@@ -213,16 +213,17 @@ export class Game {
   insuranceDecision(take: boolean): void {
     const tc = this.trueCountNow;
     const advice = insuranceCorrect(tc);
-    const correct = take === advice;
+    const { classification, correct } = classifyInsurance(take, tc);
     const up = this.dealerCards[0].rank;
     this.events.push({
       kind: 'insurance',
       category: 'insurance',
       correct,
-      classification: correct ? 'correct' : 'basic-error',
+      classification,
       taken: take ? 'take' : 'decline',
       expected: advice ? 'take' : 'decline',
       reason: `Insurance vs dealer ${up} at tc ${tc}`,
+      deviationId: 'ins',
       tc,
       hand: `dealer ${up}`,
     });

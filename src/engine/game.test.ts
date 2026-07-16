@@ -112,11 +112,13 @@ describe('insurance grading', () => {
     expect(ev.kind).toBe('insurance');
     expect(ev.category).toBe('insurance');
     expect(ev.correct).toBe(true);
+    expect(ev.classification).toBe('correct');
     expect(ev.taken).toBe('take');
     expect(ev.expected).toBe('take');
+    expect(ev.deviationId).toBe('ins');
   });
 
-  it('tc < 3 at offer -> take:true is wrong (decline is correct)', () => {
+  it('tc < 3 at offer -> take:true is wrong (decline is correct) -> phantom-deviation', () => {
     const game = Game.withRiggedShoe(cfg(), rig('2', 'A', '2', '2'));
     game.startRound();
     expect(game.phase).toBe('insurance');
@@ -125,8 +127,32 @@ describe('insurance grading', () => {
     game.insuranceDecision(true);
     const ev = game.events[game.events.length - 1];
     expect(ev.correct).toBe(false);
+    expect(ev.classification).toBe('phantom-deviation');
     expect(ev.taken).toBe('take');
     expect(ev.expected).toBe('decline');
+    expect(ev.deviationId).toBe('ins');
+  });
+
+  it('tc >= 3 at offer -> take:false is wrong (take is correct) -> missed-deviation', () => {
+    const filler: Rank[] = ['3', '2', '2', '2', '2', '2', '2', '2', '2', '2', '2'];
+    const round2: Rank[] = ['2', 'A', '3', '2'];
+    const padding: Rank[] = ['2', '2', '2', '2', '2'];
+    const game = Game.withRiggedShoe(cfg(), rig(...filler, ...round2, ...padding));
+
+    game.startRound();
+    game.act('stand'); // dealer plays out and settles the filler round
+
+    game.startRound();
+    expect(game.phase).toBe('insurance');
+    expect(game.trueCountNow).toBeGreaterThanOrEqual(3);
+
+    game.insuranceDecision(false);
+    const ev = game.events[game.events.length - 1];
+    expect(ev.correct).toBe(false);
+    expect(ev.classification).toBe('missed-deviation');
+    expect(ev.taken).toBe('decline');
+    expect(ev.expected).toBe('take');
+    expect(ev.deviationId).toBe('ins');
   });
 });
 

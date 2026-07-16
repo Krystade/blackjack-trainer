@@ -104,6 +104,27 @@ function isPhantomDeviation(taken: Action, cards: Card[], up: Rank): boolean {
 }
 
 /**
+ * Classify an insurance decision using the finer deviation-aware taxonomy.
+ * The Illustrious 18 insurance index is tc >= 3 (see insuranceCorrect in strategy.ts).
+ *
+ * @param take Whether the player took insurance
+ * @param tc The true count at the time of the offer
+ * @returns An object with classification and correct flag
+ */
+export function classifyInsurance(take: boolean, tc: number): { classification: MistakeClass; correct: boolean } {
+  const shouldTake = tc >= 3;
+  if (take === shouldTake) {
+    return { classification: 'correct', correct: true };
+  }
+  // take === false, shouldTake === true: declined when the count justified taking
+  if (shouldTake) {
+    return { classification: 'missed-deviation', correct: false };
+  }
+  // take === true, shouldTake === false: took when the count did not justify it
+  return { classification: 'phantom-deviation', correct: false };
+}
+
+/**
  * Determine the category of action for a hand.
  *
  * @param cards The player's hand
