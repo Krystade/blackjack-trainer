@@ -192,7 +192,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         <Stepper
           label="Deal speed"
           value={settings.dealSpeedMs}
-          min={0}
+          min={100}
           max={1000}
           step={100}
           format={(v) => `${v}ms`}
@@ -247,7 +247,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         />
       </section>
 
-      {settings.betSpreadOn && (
       <section className="settings-section">
         <h2 className="settings-section-title">Bet spread</h2>
         <div className="spread-table">
@@ -308,7 +307,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           Add row
         </button>
       </section>
-      )}
     </div>
   );
 }
