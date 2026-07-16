@@ -799,6 +799,12 @@ button {
   gap: 0.6rem;
 }
 
+.category-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .category-row-top {
   display: flex;
   justify-content: space-between;

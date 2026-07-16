@@ -96,6 +96,7 @@ export function Stats({ onNavigate, onSettingsChange }: StatsProps) {
         setMessage(`Import failed: ${result.error ?? 'unknown error'}`);
       }
     };
+    reader.onerror = () => setMessage('Import failed: could not read file');
     reader.readAsText(file);
   };
 
@@ -111,7 +112,7 @@ export function Stats({ onNavigate, onSettingsChange }: StatsProps) {
     correctHistory.length === 0
       ? null
       : correctHistory.reduce((best, cur) => (cur.intervalMs < best.intervalMs ? cur : best));
-  const recentRuns = stats.countDrill.history.slice(-10).reverse();
+  const recentRuns = stats.countDrill.history.slice(-5).reverse();
   const sessions = [...stats.sessions].reverse();
 
   return (
