@@ -1,0 +1,127 @@
+import { describe, it, expect } from 'vitest';
+import type { Card, Rank } from './cards';
+import { Game, DEFAULT_SPREAD } from './game';
+import type { GameConfig } from './game';
+
+function rig(...ranks: Rank[]): Card[] {
+  return ranks.map((rank) => ({ rank, suit: 's' }) as Card);
+}
+
+function cfg(overrides: Partial<GameConfig> = {}): GameConfig {
+  return {
+    penetration: 0.75,
+    betSpreadOn: false,
+    spread: DEFAULT_SPREAD,
+    bankrollStart: 100,
+    countCheckEvery: 0,
+    seed: 1,
+    ...overrides,
+  };
+}
+
+describe('payout audit — table-driven settlement paths', () => {
+  // Each row: { description, shoe, actions, expectedDelta }
+  // expectedDelta = final bankroll - initial bankroll
+
+  interface PayoutRow {
+    description: string;
+    shoe: Rank[];
+    actions: string[]; // 'stand', 'hit', 'double', 'split', 'surrender', 'insurance:take', 'insurance:decline'
+    expectedDelta: number;
+  }
+
+  const scenarios: PayoutRow[] = [
+    {
+      description: 'natural BJ 3:2 (P A,K vs D 9,8)',
+      shoe: ['A', '9', 'K', '8'],
+      actions: [],
+      expectedDelta: 1.5,
+    },
+    {
+      description: 'player win +1 (P 20 vs D 18)',
+      shoe: ['10', '9', '6', '8', '4'],
+      actions: ['hit', 'stand'], // P: 10,6,4=20; D: 9,8=17
+      expectedDelta: 1,
+    },
+    {
+      description: 'player lose -1 (P 15 bust vs D 17)',
+      shoe: ['10', '9', '6', '8', 'K'],
+      actions: ['hit'], // P: 10,6,K=bust; instant lose
+      expectedDelta: -1,
+    },
+    {
+      description: 'push 0 (P 17 vs D 17)',
+      shoe: ['9', '10', '8', '7', '2'],
+      actions: ['stand'], // P: 9,8=17; D: 10,7=17
+      expectedDelta: 0,
+    },
+    {
+      description: 'double win +2 (P double 5,6=11→10 vs D 18)',
+      shoe: ['5', '9', '6', '8', '10'],
+      actions: ['double'], // P: 5,6,10=21; D: 9,8=17
+      expectedDelta: 2,
+    },
+    {
+      description: 'double lose -2 (P double 5,6=11→3 vs D 18)',
+      shoe: ['5', '9', '6', '8', '3'],
+      actions: ['double'], // P: 5,6,3=14; D: 9,8=17
+      expectedDelta: -2,
+    },
+    {
+      description: 'surrender -0.5 (P 16 vs D 10)',
+      shoe: ['10', '9', '6', '2'],
+      actions: ['surrender'], // P: 10,6=16; instant -0.5
+      expectedDelta: -0.5,
+    },
+    {
+      description: 'split pair (5,5): both hands play independently',
+      shoe: ['5', '8', '5', '6', '10', '3', '7'],
+      actions: ['split', 'stand', 'stand'], // P: hand0 5,10=15; hand1 5,3=8; D: 8,6=14,hit 7=21; both lose
+      expectedDelta: -2, // Both hands lose to dealer 21
+    },
+    // Note: Insurance settlement tests (4 quadrants) are more thoroughly tested in game.test.ts
+    // which avoids the complexity of predicting dealer play. These scenarios focus on
+    // non-insurance payouts to ensure the settle logic works across all hand types.
+  ];
+
+  scenarios.forEach((scenario) => {
+    it(scenario.description, () => {
+      const game = Game.withRiggedShoe(cfg(), rig(...scenario.shoe));
+      const initialBankroll = game.bankroll;
+
+      // Start round before processing any actions
+      game.startRound();
+
+      // Execute actions in order
+      for (const action of scenario.actions) {
+        if (action === 'insurance:take') {
+          if (game.phase === 'insurance') {
+            game.insuranceDecision(true);
+          }
+        } else if (action === 'insurance:decline') {
+          if (game.phase === 'insurance') {
+            game.insuranceDecision(false);
+          }
+        } else {
+          // Regular action
+          if (game.phase === 'player') {
+            game.act(action as any);
+          }
+        }
+      }
+
+      // Handle insurance phase if not already handled
+      if (game.phase === 'insurance') {
+        game.insuranceDecision(false);
+      }
+
+      // Drain remaining actions until settled
+      while (game.phase === 'player') {
+        game.act('stand');
+      }
+
+      const finalDelta = game.bankroll - initialBankroll;
+      expect(finalDelta).toBe(scenario.expectedDelta);
+    });
+  });
+});

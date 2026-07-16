@@ -113,6 +113,7 @@ export class Game {
   countCheckDue = false;
   askTcToo = false;
   shuffledLastRound = false;
+  insuranceNet: number | null = null;
 
   private countCheckPromptCount = 0;
 
@@ -146,6 +147,7 @@ export class Game {
   startRound(betUnits?: number): void {
     this.roundNo += 1;
     this.countCheckDue = false;
+    this.insuranceNet = null;
 
     if (this.shoe.cutCardReached) {
       this.shoe.shuffle();
@@ -215,6 +217,7 @@ export class Game {
     const advice = insuranceCorrect(tc);
     const { classification, correct } = classifyInsurance(take, tc);
     const up = this.dealerCards[0].rank;
+    const bet = this.hands[0].bet;
     this.events.push({
       kind: 'insurance',
       category: 'insurance',
@@ -228,10 +231,30 @@ export class Game {
       hand: `dealer ${up}`,
     });
 
-    if (isBlackjack(this.dealerCards)) {
-      this.settleDealerBlackjack();
+    const dealerHasBlackjack = isBlackjack(this.dealerCards);
+
+    if (take) {
+      // Stake bet/2 on insurance
+      if (dealerHasBlackjack) {
+        // Dealer has blackjack: insurance pays 2:1
+        // Receive 2 × (bet/2) = bet
+        this.insuranceNet = bet;
+        this.bankroll += bet;
+        this.settleDealerBlackjack();
+      } else {
+        // No dealer blackjack: lose the insurance stake immediately
+        this.insuranceNet = -bet / 2;
+        this.bankroll -= bet / 2;
+        this.resolveAfterPeek();
+      }
     } else {
-      this.resolveAfterPeek();
+      // Insurance declined
+      this.insuranceNet = null;
+      if (dealerHasBlackjack) {
+        this.settleDealerBlackjack();
+      } else {
+        this.resolveAfterPeek();
+      }
     }
   }
 

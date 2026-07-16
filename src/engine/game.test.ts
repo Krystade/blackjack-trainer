@@ -75,6 +75,78 @@ describe('dealer BJ peek', () => {
     expect(game.holeRevealed).toBe(true);
     expect(game.runningCount).toBe(hiLoTag('A') + hiLoTag('K') + hiLoTag('10') + hiLoTag('6'));
   });
+
+  describe('insurance settlement', () => {
+    it('take insurance + dealer BJ + player no-BJ: net 0 (even-money wash), insuranceNet = +bet', () => {
+      // P(10,6), D(A,K) -> player loses main hand but insurance pays 2:1
+      const game = Game.withRiggedShoe(cfg(), rig('10', 'A', '6', 'K'));
+      game.startRound();
+      const initialBankroll = game.bankroll;
+      const bet = game.hands[0].bet;
+
+      game.insuranceDecision(true);
+      expect(game.phase).toBe('settled');
+      expect(game.hands[0].result).toBe('lose');
+      expect(game.hands[0].net).toBe(-bet);
+      expect(game.insuranceNet).toBe(bet);
+      expect(game.bankroll).toBe(initialBankroll); // -bet + bet = 0
+    });
+
+    it('take insurance + dealer BJ + player BJ: player push, insurance +bet, net +bet', () => {
+      // P(A,K), D(A,Q) -> player blackjack pushes, insurance pays 2:1
+      const game = Game.withRiggedShoe(cfg(), rig('A', 'A', 'K', 'Q'));
+      game.startRound();
+      const initialBankroll = game.bankroll;
+      const bet = game.hands[0].bet;
+
+      game.insuranceDecision(true);
+      expect(game.phase).toBe('settled');
+      expect(game.hands[0].result).toBe('push');
+      expect(game.hands[0].net).toBe(0);
+      expect(game.insuranceNet).toBe(bet);
+      expect(game.bankroll).toBe(initialBankroll + bet);
+    });
+
+    it('take insurance + no dealer BJ: lose bet/2 immediately, insuranceNet = -bet/2, round continues', () => {
+      // P(10,6), D(A,5) -> insurance taken, dealer no BJ, round continues
+      const game = Game.withRiggedShoe(cfg(), rig('10', 'A', '6', '5', '8'));
+      game.startRound();
+      const initialBankroll = game.bankroll;
+      const bet = game.hands[0].bet;
+
+      game.insuranceDecision(true);
+      expect(game.phase).toBe('player');
+      expect(game.insuranceNet).toBe(-bet / 2);
+      expect(game.bankroll).toBe(initialBankroll - bet / 2); // immediate loss
+    });
+
+    it('decline insurance + dealer BJ: lose full bet, insuranceNet = null, no settlement change', () => {
+      // P(10,6), D(A,K) -> insurance declined, hand loses normally
+      const game = Game.withRiggedShoe(cfg(), rig('10', 'A', '6', 'K'));
+      game.startRound();
+      const initialBankroll = game.bankroll;
+      const bet = game.hands[0].bet;
+
+      game.insuranceDecision(false);
+      expect(game.phase).toBe('settled');
+      expect(game.hands[0].result).toBe('lose');
+      expect(game.hands[0].net).toBe(-bet);
+      expect(game.insuranceNet).toBeNull();
+      expect(game.bankroll).toBe(initialBankroll - bet);
+    });
+
+    it('decline insurance + no dealer BJ: round continues normally, insuranceNet = null', () => {
+      // P(10,6), D(A,5) -> insurance declined, round continues
+      const game = Game.withRiggedShoe(cfg(), rig('10', 'A', '6', '5', '8'));
+      game.startRound();
+      const initialBankroll = game.bankroll;
+
+      game.insuranceDecision(false);
+      expect(game.phase).toBe('player');
+      expect(game.insuranceNet).toBeNull();
+      expect(game.bankroll).toBe(initialBankroll); // no change until round settles
+    });
+  });
 });
 
 describe('player BJ vs dealer BJ', () => {
