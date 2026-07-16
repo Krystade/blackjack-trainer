@@ -142,10 +142,24 @@ function parseColumns(line: string): [string, string] | null {
     }
   }
 
-  // Try space separator (runs of spaces)
+  // Try space separator (runs of 2+ spaces)
   const spaceParts = line.split(/\s{2,}/).map((s) => s.trim());
   if (spaceParts.length >= 2) {
     return [spaceParts[0], spaceParts[1]];
+  }
+
+  // Try single-space separator
+  const singleSpaceParts = line.split(/\s+/).filter((s) => s.length > 0);
+  if (singleSpaceParts.length === 2) {
+    return [singleSpaceParts[0], singleSpaceParts[1]];
+  }
+
+  // If 3 tokens and first is "TC" (case-insensitive), join first two
+  if (
+    singleSpaceParts.length === 3 &&
+    singleSpaceParts[0].toUpperCase() === 'TC'
+  ) {
+    return [singleSpaceParts[0] + ' ' + singleSpaceParts[1], singleSpaceParts[2]];
   }
 
   return null;
@@ -188,8 +202,11 @@ function parseTC(s: string): number | null {
   // Remove spaces
   normalized = normalized.trim();
 
-  const num = parseInt(normalized, 10);
-  return isNaN(num) ? null : num;
+  const num = parseFloat(normalized);
+  if (isNaN(num) || !Number.isInteger(num)) {
+    return null;
+  }
+  return num;
 }
 
 /**

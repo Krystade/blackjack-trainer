@@ -72,6 +72,39 @@ describe('parseCvcxRamp', () => {
       }
     });
 
+    test('parses single-space-separated columns', () => {
+      const text = `3 8`;
+      const result = parseCvcxRamp(text);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.rows).toEqual([
+          { minTc: 3, units: 8 },
+        ]);
+      }
+    });
+
+    test('parses single-space with negative TC', () => {
+      const text = `-1 1`;
+      const result = parseCvcxRamp(text);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.rows).toEqual([
+          { minTc: -1, units: 1 },
+        ]);
+      }
+    });
+
+    test('parses "TC N M" format with single spaces', () => {
+      const text = `TC 2 8`;
+      const result = parseCvcxRamp(text);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.rows).toEqual([
+          { minTc: 2, units: 8 },
+        ]);
+      }
+    });
+
     test('parses comma-separated columns', () => {
       const text = `1,2
 2,4
@@ -306,6 +339,26 @@ invalid	4
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error).toContain('No rows found');
+      }
+    });
+
+    test('rejects fractional TC values', () => {
+      const text = `1.5	4`;
+      const result = parseCvcxRamp(text);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toMatch(/Line 1/);
+        expect(result.error).toContain('could not parse');
+      }
+    });
+
+    test('rejects four space-separated tokens', () => {
+      const text = `1 2 3 4`;
+      const result = parseCvcxRamp(text);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toMatch(/Line 1/);
+        expect(result.error).toContain('could not parse');
       }
     });
   });
