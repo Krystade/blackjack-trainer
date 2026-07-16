@@ -7,6 +7,8 @@ import type { PlayContext, Advice } from './strategy';
 import { classifyAction, actionCategory, classifyInsurance } from './grade';
 import type { GradedEvent } from './grade';
 import type { Action } from './deviations';
+import { DEFAULT_RULES } from './ruleset';
+import type { RuleSet } from './ruleset';
 
 export interface SpreadRow {
   minTc: number;
@@ -30,6 +32,7 @@ export interface GameConfig {
   bankrollStart: number; // units
   countCheckEvery: number; // rounds; 0 = off
   seed?: number;
+  rules?: RuleSet; // defaults to DEFAULT_RULES (v1's game); C1.13 wires this to the active profile
 }
 
 export type Phase = 'idle' | 'insurance' | 'player' | 'settled';
@@ -100,6 +103,7 @@ function makeRiggedShoe(cards: Card[], penetration: number): Shoe {
 
 export class Game {
   readonly cfg: GameConfig;
+  readonly rules: RuleSet;
   phase: Phase = 'idle';
   shoe: Shoe;
   runningCount = 0;
@@ -119,6 +123,7 @@ export class Game {
 
   constructor(cfg: GameConfig) {
     this.cfg = cfg;
+    this.rules = cfg.rules ?? DEFAULT_RULES;
     this.shoe = new Shoe({ penetration: cfg.penetration, seed: cfg.seed });
     this.bankroll = cfg.bankrollStart;
   }
@@ -270,8 +275,8 @@ export class Game {
       canSplit: isPair(hand.cards) && this.hands.length < 4 && !hand.splitAces,
       canSurrender: hand.cards.length === 2 && !hand.fromSplit,
     };
-    const withCount: Advice = correctPlay(hand.cards, up, tc, ctx);
-    const basicOnly: Advice = basicPlay(hand.cards, up, ctx);
+    const withCount: Advice = correctPlay(hand.cards, up, tc, ctx, this.rules);
+    const basicOnly: Advice = basicPlay(hand.cards, up, ctx, this.rules);
     const { classification, correct } = classifyAction(action, withCount, basicOnly, hand.cards, up, tc);
     const category = actionCategory(hand.cards, withCount.action);
 

@@ -1,7 +1,11 @@
 import type { Card, Rank } from './cards';
 import { handValue, isPair, pairRank } from './hand';
+import { DEFAULT_RULES } from './ruleset';
+import type { RuleSet } from './ruleset';
+import { getChart } from './charts';
+import type { ChartAction } from './charts';
 
-export type ChartAction = 'H' | 'S' | 'Dh' | 'Ds' | 'P' | 'Ph' | 'Rh' | 'Rs' | 'Rp';
+export type { ChartAction } from './charts';
 export type UpIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9; // dealer 2,3,4,5,6,7,8,9,10,A
 
 /**
@@ -36,60 +40,10 @@ export function upIndex(up: Rank): UpIndex {
   }
 }
 
-const H = 'H',
-  S = 'S',
-  Dh = 'Dh',
-  Ds = 'Ds',
-  P = 'P',
-  Ph = 'Ph',
-  Rh = 'Rh',
-  Rs = 'Rs',
-  Rp = 'Rp';
-
-// Engine data, verbatim from task-5 brief. Columns are dealer 2 3 4 5 6 7 8 9 10 A.
-export const HARD: Record<number, ChartAction[]> = {
-  4: [H, H, H, H, H, H, H, H, H, H],
-  5: [H, H, H, H, H, H, H, H, H, H],
-  6: [H, H, H, H, H, H, H, H, H, H],
-  7: [H, H, H, H, H, H, H, H, H, H],
-  8: [H, H, H, H, H, H, H, H, H, H],
-  9: [H, Dh, Dh, Dh, Dh, H, H, H, H, H],
-  10: [Dh, Dh, Dh, Dh, Dh, Dh, Dh, Dh, H, H],
-  11: [Dh, Dh, Dh, Dh, Dh, Dh, Dh, Dh, Dh, Dh],
-  12: [H, H, S, S, S, H, H, H, H, H],
-  13: [S, S, S, S, S, H, H, H, H, H],
-  14: [S, S, S, S, S, H, H, H, H, H],
-  15: [S, S, S, S, S, H, H, H, Rh, Rh],
-  16: [S, S, S, S, S, H, H, Rh, Rh, Rh],
-  17: [S, S, S, S, S, S, S, S, S, Rs],
-  18: [S, S, S, S, S, S, S, S, S, S],
-  19: [S, S, S, S, S, S, S, S, S, S],
-  20: [S, S, S, S, S, S, S, S, S, S],
-  21: [S, S, S, S, S, S, S, S, S, S],
-};
-
-export const SOFT: Record<number, ChartAction[]> = {
-  13: [H, H, H, Dh, Dh, H, H, H, H, H],
-  14: [H, H, H, Dh, Dh, H, H, H, H, H],
-  15: [H, H, Dh, Dh, Dh, H, H, H, H, H],
-  16: [H, H, Dh, Dh, Dh, H, H, H, H, H],
-  17: [H, Dh, Dh, Dh, Dh, H, H, H, H, H],
-  18: [Ds, Ds, Ds, Ds, Ds, S, S, H, H, H],
-  19: [S, S, S, S, Ds, S, S, S, S, S],
-  20: [S, S, S, S, S, S, S, S, S, S],
-  21: [S, S, S, S, S, S, S, S, S, S],
-};
-
-export const PAIRS: Partial<Record<Rank, ChartAction[]>> = {
-  '2': [Ph, Ph, P, P, P, P, H, H, H, H],
-  '3': [Ph, Ph, P, P, P, P, H, H, H, H],
-  '4': [H, H, H, Ph, Ph, H, H, H, H, H],
-  '6': [Ph, P, P, P, P, H, H, H, H, H],
-  '7': [P, P, P, P, P, P, H, H, H, H],
-  '8': [P, P, P, P, P, P, P, P, P, Rp],
-  '9': [P, P, P, P, P, S, P, P, S, S],
-  A: [P, P, P, P, P, P, P, P, P, P],
-};
+// Re-exported for backward compatibility (v1's 340-cell test imports these
+// directly) and as the default/v1 chart. Actual data now lives in
+// charts/d68_h17.ts; per-ruleset selection goes through charts/index.ts.
+export { HARD, SOFT, PAIRS } from './charts/d68_h17';
 
 /**
  * Look up the basic strategy action for a player hand vs dealer up-card.
@@ -97,7 +51,8 @@ export const PAIRS: Partial<Record<Rank, ChartAction[]>> = {
  * pairRank normalizes ten-value pairs to '10' (absent from PAIRS -> falls to
  * hard 20) and 5,5 is also absent from PAIRS -> falls to hard 10.
  */
-export function chartLookup(cards: Card[], dealerUp: Rank): ChartAction {
+export function chartLookup(cards: Card[], dealerUp: Rank, rules: RuleSet = DEFAULT_RULES): ChartAction {
+  const { HARD, SOFT, PAIRS } = getChart(rules);
   const idx = upIndex(dealerUp);
 
   if (isPair(cards)) {

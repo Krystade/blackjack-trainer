@@ -1,9 +1,13 @@
 import type { Card, Rank } from './cards';
 import { handValue, isPair, pairRank } from './hand';
-import { HARD, SOFT, PAIRS, upIndex } from './basicStrategy';
+import { upIndex } from './basicStrategy';
 import type { ChartAction } from './basicStrategy';
 import type { Action, Deviation, DeviationId } from './deviations';
 import { ILLUSTRIOUS_18 } from './deviations';
+import { DEFAULT_RULES } from './ruleset';
+import type { RuleSet } from './ruleset';
+import { getChart } from './charts';
+import type { Chart } from './charts';
 
 export interface PlayContext {
   canDouble: boolean;
@@ -32,10 +36,10 @@ function deviation(dev: Deviation, action: Action): Advice {
 }
 
 /** Hard/soft chart action for a hand total, ignoring the PAIRS table entirely. */
-function hardSoftChartAction(cards: Card[], dealerUp: Rank): { action: ChartAction; total: number; soft: boolean } {
+function hardSoftChartAction(cards: Card[], dealerUp: Rank, chart: Chart): { action: ChartAction; total: number; soft: boolean } {
   const hv = handValue(cards);
   const idx = upIndex(dealerUp);
-  const action = hv.soft ? SOFT[hv.total][idx] : HARD[hv.total][idx];
+  const action = hv.soft ? chart.SOFT[hv.total][idx] : chart.HARD[hv.total][idx];
   return { action, total: hv.total, soft: hv.soft };
 }
 
@@ -59,8 +63,15 @@ function findHardDeviation(
  * basic surrender, then hard-total deviations, then the basic chart.
  * Used both for non-pair hands and for pairs re-looked-up because !canSplit.
  */
-function resolveAsTotal(cards: Card[], dealerUp: Rank, tc: number, ctx: PlayContext, deviations: Deviation[]): Advice {
-  const { action, total, soft } = hardSoftChartAction(cards, dealerUp);
+function resolveAsTotal(
+  cards: Card[],
+  dealerUp: Rank,
+  tc: number,
+  ctx: PlayContext,
+  deviations: Deviation[],
+  chart: Chart,
+): Advice {
+  const { action, total, soft } = hardSoftChartAction(cards, dealerUp, chart);
 
   // Step 2: basic surrender beats deviations; count never overrides it.
   if (ctx.canSurrender && (action === 'Rh' || action === 'Rs')) {
@@ -100,10 +111,26 @@ function resolveAsTotal(cards: Card[], dealerUp: Rank, tc: number, ctx: PlayCont
     case 'Rp':
       // Not reachable: HARD/SOFT tables never contain pair-only actions.
       return basic('hit', `Basic hit vs dealer ${dealerUp}`);
+    case 'Pd':
+    case 'Ps':
+      // Not reachable yet: no registered chart uses Pd/Ps (single-deck-only,
+      // pair-only cells; see charts/types.ts). Throw loudly instead of
+      // silently mis-resolving -- the das/ls transform task (C1.9) must add
+      // real DAS-aware resolution here before any chart can use these.
+      throw new Error(
+        `ChartAction '${action}' reached hard/soft resolution unresolved -- DAS-aware pair resolution for '${action}' is not implemented yet`,
+      );
   }
 }
 
-function play(cards: Card[], dealerUp: Rank, tc: number, ctx: PlayContext, deviations: Deviation[]): Advice {
+function play(
+  cards: Card[],
+  dealerUp: Rank,
+  tc: number,
+  ctx: PlayContext,
+  deviations: Deviation[],
+  chart: Chart,
+): Advice {
   // Step 1: pair path, only when splitting is actually available.
   if (isPair(cards) && ctx.canSplit) {
     const rank = pairRank(cards)!;
@@ -125,27 +152,30 @@ function play(cards: Card[], dealerUp: Rank, tc: number, ctx: PlayContext, devia
         : basic('split', 'Basic split vs dealer A (surrender unavailable)');
     }
 
-    if (rank in PAIRS) {
+    if (rank in chart.PAIRS) {
       const idx = upIndex(dealerUp);
-      const action = PAIRS[rank]![idx];
+      const action = chart.PAIRS[rank]![idx];
       if (action === 'P' || action === 'Ph') return basic('split', `Basic split vs dealer ${dealerUp}`);
       if (action === 'H') return basic('hit', `Basic hit vs dealer ${dealerUp}`);
       if (action === 'S') return basic('stand', `Basic stand vs dealer ${dealerUp}`);
       // Rp only occurs for 8,8 v A, already handled above.
+      // Pd/Ps: not reachable yet -- no registered chart uses them (see
+      // resolveAsTotal's Pd/Ps cases for why this stays a loud gap, not a
+      // silent one, once a chart does).
     }
     // rank not in PAIRS (e.g. '5') -> falls through to hard/soft re-lookup below.
   }
 
   // Step 2-4: non-pair hands, or pairs re-looked-up as hard/soft totals
   // (either !canSplit, or a pair rank absent from PAIRS).
-  return resolveAsTotal(cards, dealerUp, tc, ctx, deviations);
+  return resolveAsTotal(cards, dealerUp, tc, ctx, deviations, chart);
 }
 
-export function correctPlay(cards: Card[], dealerUp: Rank, tc: number, ctx: PlayContext): Advice {
-  return play(cards, dealerUp, tc, ctx, ILLUSTRIOUS_18);
+export function correctPlay(cards: Card[], dealerUp: Rank, tc: number, ctx: PlayContext, rules: RuleSet = DEFAULT_RULES): Advice {
+  return play(cards, dealerUp, tc, ctx, ILLUSTRIOUS_18, getChart(rules));
 }
 
 /** Same algorithm with deviations OFF (used by the grader). */
-export function basicPlay(cards: Card[], dealerUp: Rank, ctx: PlayContext): Advice {
-  return play(cards, dealerUp, 0, ctx, []);
+export function basicPlay(cards: Card[], dealerUp: Rank, ctx: PlayContext, rules: RuleSet = DEFAULT_RULES): Advice {
+  return play(cards, dealerUp, 0, ctx, [], getChart(rules));
 }
