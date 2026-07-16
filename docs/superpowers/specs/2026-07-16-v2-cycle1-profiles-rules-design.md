@@ -140,6 +140,25 @@ truth; the trainer drills execution of its plan.
   stands A,6 — seeded); manual countdown tap-through; paste-import happy path + error;
   quiz index filter. Screenshots for new screens reviewed as v1.
 
+## Atomic decomposition (lowest-level pieces)
+
+C1.1 Engine: insurance staking/settlement (2:1, even-money math) + insuranceNet + UI strip message + four-quadrant payout tests
+C1.2 Engine: table-driven payout audit test (every settle path × hand-computed deltas)
+C1.3 Drill UI: count-drill inline knobs + manual tap-advance mode (drill + countdown variants) + settings fields
+C1.4 Drill UI: flashcard inline category filter + quiz index filter (settings.drill.quizIndex)
+C1.5 Engine: RuleSet type + chart module skeleton (chartLookup(cards, up, rules)) with 4-8D H17 base wired (v1 parity, zero behavior change) + tests
+C1.6 Data: 4-8D S17 base table (verified transcription + independent test transcription, image-reviewed sources vendored)
+C1.7 Data: 2D H17 + 2D S17 base tables (same verification bar)
+C1.8 Data: 1D H17 + 1D S17 base tables (same verification bar)
+C1.9 Engine: das:false pair-delta transforms per deck class + ls:false resolution + transform matrix tests
+C1.10 Engine: rsa gameplay legality + bj65 payout (game.ts) + tests (incl. payout audit rows)
+C1.11 Engine: S17 Illustrious-18 variant set + s17-driven selection + threshold tests for both sets
+C1.12 Store: Profile type + profiles/activeProfile storage keys + v1→v2 migration (idempotent, tested)
+C1.13 UI: profile picker (Home) + profile editor screen (rules toggles, penetration, ramp, bankroll/unit, count-check, CVCX fields)
+C1.14 UI+engine wiring: Table/drills/grading read active profile (chart, indices, ramp, payouts); Stats per-profile header with CVCX-vs-actual
+C1.15 CVCX ramp paste-parser (pure function + loud errors) + parser unit suite + import dialog with preview
+C1.16 E2e: profile create/switch (S17 dealer stands A,6 seeded), manual countdown tap-through, paste-import happy+error, quiz index filter + screenshots + coordinator review
+
 ## Out of scope (cycle 1)
 
 Multi-hand/bots (cycle 2); all audio (cycle 3); custom/imported index sets; 1D/2D index
