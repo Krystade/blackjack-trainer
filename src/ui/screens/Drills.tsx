@@ -349,7 +349,9 @@ function buildQuizEvent(item: QuizItem, taken: string): GradedEvent {
     };
   }
 
-  const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: true };
+  // canSurrender: false must match drawQuizItem's ctx (deviationQuiz.ts) so the
+  // grader agrees with item.correct — see the deviation-quiz surrender-masking fix.
+  const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: false };
   const withCount = correctPlay(item.cards, item.up, item.tc, ctx);
   const basicOnly = basicPlay(item.cards, item.up, ctx);
   const { classification, correct } = classifyAction(taken as Action, withCount, basicOnly, item.cards, item.up, item.tc);

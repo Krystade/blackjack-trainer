@@ -6,6 +6,7 @@ import { ILLUSTRIOUS_18 } from '../engine/deviations';
 import { makeCountDrill, makeCountdown } from './countDrill';
 import { drawFlashcard } from './flashcards';
 import { drawQuizItem } from './deviationQuiz';
+import type { DeviationId } from '../engine/deviations';
 
 describe('countDrill', () => {
   describe('makeCountDrill', () => {
@@ -188,7 +189,7 @@ describe('deviationQuiz', () => {
       }
     });
 
-    it('correct action should match correctPlay for hard/pair items', () => {
+    it('correct action should match correctPlay for hard/pair items (surrender unavailable, matching drawQuizItem)', () => {
       for (let i = 0; i < 50; i++) {
         const item = drawQuizItem(5000 + i);
         const entry = ILLUSTRIOUS_18.find((d) => d.id === item.deviationId);
@@ -196,7 +197,7 @@ describe('deviationQuiz', () => {
           const advice = correctPlay(item.cards, item.up, item.tc, {
             canDouble: true,
             canSplit: true,
-            canSurrender: true,
+            canSurrender: false,
           });
           expect(item.correct).toBe(advice.action);
         }
@@ -281,6 +282,33 @@ describe('deviationQuiz', () => {
       }
       expect(seen.true).toBe(true);
       expect(seen.false).toBe(true);
+    });
+
+    it('16v10/15v10/16v9 are surrenderable 2-card hands: quiz must model surrender-unavailable, so correct is stand at/above threshold and hit below — never surrender', () => {
+      const targets: { id: DeviationId; threshold: number }[] = [
+        { id: '16v10', threshold: 0 },
+        { id: '15v10', threshold: 4 },
+        { id: '16v9', threshold: 4 },
+      ];
+
+      for (const { id, threshold } of targets) {
+        let sawBelow = false;
+        let sawAtOrAbove = false;
+        for (let i = 0; i < 2000 && !(sawBelow && sawAtOrAbove); i++) {
+          const item = drawQuizItem(50000 + i);
+          if (item.deviationId !== id) continue;
+          expect(item.correct, `${id} at tc=${item.tc}`).not.toBe('surrender');
+          if (item.tc >= threshold) {
+            expect(item.correct, `${id} at tc=${item.tc} (>= threshold ${threshold})`).toBe('stand');
+            sawAtOrAbove = true;
+          } else {
+            expect(item.correct, `${id} at tc=${item.tc} (< threshold ${threshold})`).toBe('hit');
+            sawBelow = true;
+          }
+        }
+        expect(sawBelow, `${id}: must see a below-threshold draw in the sample`).toBe(true);
+        expect(sawAtOrAbove, `${id}: must see an at/above-threshold draw in the sample`).toBe(true);
+      }
     });
   });
 });

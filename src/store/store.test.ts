@@ -5,6 +5,7 @@ import {
   type Settings,
   type Stats,
 } from './types';
+import { DEFAULT_SPREAD } from '../engine/game';
 import {
   _setStorage,
   loadSettings,
@@ -500,5 +501,23 @@ describe('store/stats', () => {
     expect(result.mistakes['phantom-deviation']).toBe(1);
     expect(result.mistakes['wrong-anyway']).toBe(1);
     expect(result.perIndex['TTv5']).toEqual({ right: 0, wrong: 1 });
+  });
+});
+
+describe('DEFAULT_SETTINGS.spread aliasing', () => {
+  test('DEFAULT_SETTINGS.spread is an independent copy, not the DEFAULT_SPREAD singleton', () => {
+    expect(DEFAULT_SETTINGS.spread).not.toBe(DEFAULT_SPREAD);
+    expect(DEFAULT_SETTINGS.spread[0]).not.toBe(DEFAULT_SPREAD[0]);
+    expect(DEFAULT_SETTINGS.spread).toEqual(DEFAULT_SPREAD);
+  });
+
+  test('mutating DEFAULT_SETTINGS.spread[0].units does not change DEFAULT_SPREAD[0].units', () => {
+    const original = DEFAULT_SPREAD[0].units;
+    DEFAULT_SETTINGS.spread[0].units = original + 999;
+    try {
+      expect(DEFAULT_SPREAD[0].units).toBe(original);
+    } finally {
+      DEFAULT_SETTINGS.spread[0].units = original;
+    }
   });
 });

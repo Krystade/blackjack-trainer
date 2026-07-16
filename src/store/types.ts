@@ -25,7 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
   version: 1,
   feedbackMode: 'training',
   betSpreadOn: false,
-  spread: DEFAULT_SPREAD,
+  spread: DEFAULT_SPREAD.map((row) => ({ ...row })),
   bankrollStart: 100,
   countCheckEvery: 5,
   penetration: 0.75,

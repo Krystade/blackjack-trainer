@@ -57,10 +57,15 @@ export function drawQuizItem(seed?: number): QuizItem {
   } else if (entry.kind === 'pair10') {
     // pair10: two ten-value cards
     cards = makePair10Cards();
+    // canSurrender: false models the standard index-play situation (surrender
+    // unavailable, e.g. a multi-card or post-split hand) — see deviationQuiz
+    // surrender-masking fix: with surrender on, basic surrender beats the
+    // 16v10/15v10/16v9 deviations at every TC, making those thresholds
+    // unlearnable and contradicting the displayed index label.
     const advice = correctPlay(cards, entry.up!, tc, {
       canDouble: true,
       canSplit: true,
-      canSurrender: true,
+      canSurrender: false,
     });
     correct = advice.action;
   } else {
@@ -71,10 +76,11 @@ export function drawQuizItem(seed?: number): QuizItem {
       throw new Error(`Cannot construct hard total ${entry.total}`);
     }
     cards = totalCards;
+    // canSurrender: false — see note above.
     const advice = correctPlay(cards, entry.up!, tc, {
       canDouble: true,
       canSplit: true,
-      canSurrender: true,
+      canSurrender: false,
     });
     // Note: no special-casing for 11vA — the entry is inactive, so the engine's
     // basic chart (HARD[11] = Dh) already yields 'double' at every tc.

@@ -69,6 +69,8 @@ The workflow:
 - Builds production output
 - Deploys to GitHub Pages
 
+The GitHub Actions workflow gates deploys on the unit test suite (`npm test`) and the production build (`npm run build`) only; the Playwright e2e suite is not run in CI and must be run locally (`npm run e2e`) before pushing.
+
 ## Browser Storage
 
 Stats and settings are stored in the browser's **localStorage** (per device). Use the **Export/Import** buttons on the Stats screen to move your progress and preferences between devices or browsers.
@@ -84,4 +86,4 @@ npm test              # Unit tests
 npm run e2e           # E2E tests
 ```
 
-The CI/CD pipeline runs both before each deploy.
+The CI/CD pipeline runs unit tests + build before each deploy; e2e tests are run locally (see Deploying above).
