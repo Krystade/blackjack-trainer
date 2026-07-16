@@ -44,7 +44,7 @@ describe('payout audit — table-driven settlement paths', () => {
       expectedDelta: 1,
     },
     {
-      description: 'player lose -1 (P 15 bust vs D 17)',
+      description: 'player lose -1 (P 16 hits to bust vs D up 9)',
       shoe: ['10', '9', '6', '8', 'K'],
       actions: ['hit'], // P: 10,6,K=bust; instant lose
       expectedDelta: -1,
@@ -68,7 +68,7 @@ describe('payout audit — table-driven settlement paths', () => {
       expectedDelta: -2,
     },
     {
-      description: 'surrender -0.5 (P 16 vs D 10)',
+      description: 'surrender -0.5 (P 16 vs D up 9)',
       shoe: ['10', '9', '6', '2'],
       actions: ['surrender'], // P: 10,6=16; instant -0.5
       expectedDelta: -0.5,
