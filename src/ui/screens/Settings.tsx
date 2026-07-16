@@ -192,7 +192,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         <Stepper
           label="Deal speed"
           value={settings.dealSpeedMs}
-          min={0}
+          min={100}
           max={1000}
           step={100}
           format={(v) => `${v}ms`}
@@ -247,68 +247,66 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         />
       </section>
 
-      {settings.betSpreadOn && (
-        <section className="settings-section">
-          <h2 className="settings-section-title">Bet spread</h2>
-          <div className="spread-table">
-            {settings.spread.map((row, i) => (
-              <div className="spread-row" key={i}>
-                <div className="spread-field">
-                  <span className="spread-field-label">TC ≥</span>
-                  <div className="stepper">
-                    <button
-                      type="button"
-                      className="stepper-btn"
-                      onClick={() => updateSpreadRow(i, { minTc: row.minTc - 1 })}
-                    >
-                      &minus;
-                    </button>
-                    <span className="stepper-value">{row.minTc}</span>
-                    <button
-                      type="button"
-                      className="stepper-btn"
-                      onClick={() => updateSpreadRow(i, { minTc: row.minTc + 1 })}
-                    >
-                      +
-                    </button>
-                  </div>
+      <section className="settings-section">
+        <h2 className="settings-section-title">Bet spread</h2>
+        <div className="spread-table">
+          {settings.spread.map((row, i) => (
+            <div className="spread-row" key={i}>
+              <div className="spread-field">
+                <span className="spread-field-label">TC ≥</span>
+                <div className="stepper">
+                  <button
+                    type="button"
+                    className="stepper-btn"
+                    onClick={() => updateSpreadRow(i, { minTc: row.minTc - 1 })}
+                  >
+                    &minus;
+                  </button>
+                  <span className="stepper-value">{row.minTc}</span>
+                  <button
+                    type="button"
+                    className="stepper-btn"
+                    onClick={() => updateSpreadRow(i, { minTc: row.minTc + 1 })}
+                  >
+                    +
+                  </button>
                 </div>
-                <div className="spread-field">
-                  <span className="spread-field-label">Units</span>
-                  <div className="stepper">
-                    <button
-                      type="button"
-                      className="stepper-btn"
-                      onClick={() => updateSpreadRow(i, { units: Math.max(1, row.units - 1) })}
-                    >
-                      &minus;
-                    </button>
-                    <span className="stepper-value">{row.units}</span>
-                    <button
-                      type="button"
-                      className="stepper-btn"
-                      onClick={() => updateSpreadRow(i, { units: row.units + 1 })}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="spread-remove-btn"
-                  onClick={() => removeSpreadRow(i)}
-                  disabled={settings.spread.length <= 1}
-                >
-                  Remove
-                </button>
               </div>
-            ))}
-          </div>
-          <button type="button" className="spread-add-btn" onClick={addSpreadRow}>
-            Add row
-          </button>
-        </section>
-      )}
+              <div className="spread-field">
+                <span className="spread-field-label">Units</span>
+                <div className="stepper">
+                  <button
+                    type="button"
+                    className="stepper-btn"
+                    onClick={() => updateSpreadRow(i, { units: Math.max(1, row.units - 1) })}
+                  >
+                    &minus;
+                  </button>
+                  <span className="stepper-value">{row.units}</span>
+                  <button
+                    type="button"
+                    className="stepper-btn"
+                    onClick={() => updateSpreadRow(i, { units: row.units + 1 })}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="spread-remove-btn"
+                onClick={() => removeSpreadRow(i)}
+                disabled={settings.spread.length <= 1}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+        <button type="button" className="spread-add-btn" onClick={addSpreadRow}>
+          Add row
+        </button>
+      </section>
     </div>
   );
 }
