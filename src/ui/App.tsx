@@ -3,26 +3,16 @@ import './app.css';
 import { Home } from './screens/Home';
 import { Table } from './screens/Table';
 import { Drills } from './screens/Drills';
+import { Stats } from './screens/Stats';
+import { Settings } from './screens/Settings';
 import { loadSettings } from '../store/persist';
-import type { Settings } from '../store/types';
+import type { Settings as SettingsData } from '../store/types';
 
 export type Screen = 'home' | 'table' | 'drills' | 'stats' | 'settings';
 
-function Placeholder({ title, onNavigate }: { title: string; onNavigate: (screen: Screen) => void }) {
-  return (
-    <div className="placeholder-screen">
-      <h1>{title}</h1>
-      <p>Coming in a later task.</p>
-      <button type="button" onClick={() => onNavigate('home')}>
-        Back
-      </button>
-    </div>
-  );
-}
-
 function App() {
   const [screen, setScreen] = useState<Screen>('home');
-  const [settings] = useState<Settings>(() => loadSettings());
+  const [settings, setSettings] = useState<SettingsData>(() => loadSettings());
 
   switch (screen) {
     case 'home':
@@ -32,9 +22,9 @@ function App() {
     case 'drills':
       return <Drills settings={settings} onNavigate={setScreen} />;
     case 'stats':
-      return <Placeholder title="Stats" onNavigate={setScreen} />;
+      return <Stats onNavigate={setScreen} onSettingsChange={setSettings} />;
     case 'settings':
-      return <Placeholder title="Settings" onNavigate={setScreen} />;
+      return <Settings settings={settings} onNavigate={setScreen} onSettingsChange={setSettings} />;
   }
 }
 

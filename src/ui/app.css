@@ -723,3 +723,363 @@ button {
   cursor: pointer;
   margin-top: auto;
 }
+
+/* ---------- Stats & Settings: shared shell ---------- */
+
+.stats-screen,
+.settings-screen {
+  min-height: 100vh;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 1.5rem;
+}
+
+.stats-topbar,
+.settings-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: #0a1c14;
+  border-bottom: 1px solid #1e4530;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.stats-back-btn,
+.settings-back-btn {
+  min-height: 48px;
+  padding: 0 1rem;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.stats-heading,
+.settings-heading {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #d8b969;
+}
+
+.stats-section,
+.settings-section {
+  padding: 1rem 0.9rem;
+  border-bottom: 1px solid #16311f;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.stats-section-title,
+.settings-section-title {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #d8b969;
+}
+
+.stats-detail {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #b7d3c2;
+}
+
+/* ---------- Stats: category accuracy ---------- */
+
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.category-row-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.category-label {
+  color: #eaf3ec;
+}
+
+.category-fraction {
+  color: #b7d3c2;
+}
+
+.category-bar-track {
+  height: 10px;
+  border-radius: 5px;
+  background: #0a1c14;
+  border: 1px solid #1e4530;
+  overflow: hidden;
+}
+
+.category-bar-fill {
+  height: 100%;
+  background: #6fcf97;
+}
+
+/* ---------- Stats: per-index table ---------- */
+
+.index-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.index-table th,
+.index-table td {
+  border: 1px solid #2c5c41;
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+}
+
+.index-table td:nth-child(2),
+.index-table td:nth-child(3),
+.index-table th:nth-child(2),
+.index-table th:nth-child(3) {
+  text-align: center;
+  width: 3.5rem;
+}
+
+/* ---------- Stats: mistake tallies ---------- */
+
+.mistake-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.mistake-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem;
+  border: 1px solid #2c5c41;
+  border-radius: 8px;
+  background: #0a1c14;
+  font-size: 0.85rem;
+}
+
+/* ---------- Stats: count-drill history & sessions ---------- */
+
+.count-history-list,
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.count-history-row,
+.session-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  border: 1px solid #2c5c41;
+  border-radius: 8px;
+  background: #0a1c14;
+  font-size: 0.8rem;
+  flex-wrap: wrap;
+}
+
+/* ---------- Stats: actions ---------- */
+
+.stats-actions {
+  gap: 0.75rem;
+}
+
+.stats-action-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.stats-action-btn {
+  flex: 1 1 auto;
+  min-height: 48px;
+  padding: 0 1rem;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #1b4c31;
+  color: #eaf3ec;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.stats-danger-btn {
+  background: #4a1f1f;
+  border-color: #6b2c2c;
+}
+
+.stats-file-input {
+  display: none;
+}
+
+.stats-message {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #d8b969;
+}
+
+/* ---------- Settings: controls ---------- */
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 48px;
+  flex-wrap: wrap;
+}
+
+.settings-label {
+  font-size: 0.9rem;
+  color: #eaf3ec;
+}
+
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 48px;
+  cursor: pointer;
+}
+
+.settings-toggle {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  accent-color: #6fcf97;
+}
+
+.segmented {
+  display: flex;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #2c5c41;
+}
+
+.segmented-btn {
+  flex: 1;
+  min-height: 48px;
+  padding: 0 0.75rem;
+  border: none;
+  border-right: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.segmented-btn:last-child {
+  border-right: none;
+}
+
+.segmented-btn-active {
+  background: #1b4c31;
+  color: #d8b969;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stepper-btn {
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.stepper-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.stepper-value {
+  min-width: 4.5rem;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+
+/* ---------- Settings: bet spread editor ---------- */
+
+.spread-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.spread-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.5rem;
+  border: 1px solid #2c5c41;
+  border-radius: 8px;
+  background: #0a1c14;
+}
+
+.spread-field {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.spread-field-label {
+  font-size: 0.75rem;
+  color: #b7d3c2;
+}
+
+.spread-remove-btn {
+  min-height: 48px;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #6b2c2c;
+  background: #4a1f1f;
+  color: #eaf3ec;
+  cursor: pointer;
+}
+
+.spread-remove-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.spread-add-btn {
+  min-height: 48px;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #1b4c31;
+  color: #eaf3ec;
+  font-weight: 600;
+  cursor: pointer;
+}
