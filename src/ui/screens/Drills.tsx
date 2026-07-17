@@ -3,7 +3,7 @@ import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
 import type { Card } from '../../engine/cards';
 import type { Action, DeviationId } from '../../engine/deviations';
-import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../../engine/deviations';
+import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17, isIndexActive } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
 import { classifyAction, actionCategory, classifyInsurance } from '../../engine/grade';
 import type { PlayContext } from '../../engine/strategy';
@@ -487,6 +487,18 @@ function quizFilterArg(quizIndex: DeviationId | 'all'): DeviationId | undefined 
   return quizIndex === 'all' ? undefined : quizIndex;
 }
 
+/**
+ * Get the active quiz filter, falling back to 'all' if the saved index is
+ * inactive in the current ruleset.
+ */
+function getActiveQuizFilter(quizIndex: DeviationId | 'all', activeProfile: Profile): DeviationId | 'all' {
+  if (quizIndex === 'all') return 'all';
+  if (!isIndexActive(quizIndex, activeProfile.rules)) {
+    return 'all';
+  }
+  return quizIndex;
+}
+
 function DeviationQuizView({
   settings,
   activeProfile,
@@ -498,12 +510,15 @@ function DeviationQuizView({
   onBack: () => void;
   onSettingsChange: (settings: Settings) => void;
 }) {
+  // Use the active filter (falls back to 'all' if saved index is inactive)
+  const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
+
   const [item, setItem] = useState<QuizItem>(() =>
-    drawQuizItem(randomSeed(), quizFilterArg(settings.drill.quizIndex), activeProfile.rules),
+    drawQuizItem(randomSeed(), quizFilterArg(activeFilter), activeProfile.rules),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean } | null>(null);
 
-  const next = (filter: DeviationId | 'all' = settings.drill.quizIndex) => {
+  const next = (filter: DeviationId | 'all' = activeFilter) => {
     setItem(drawQuizItem(randomSeed(), quizFilterArg(filter), activeProfile.rules));
     setFeedback(null);
   };
@@ -537,13 +552,14 @@ function DeviationQuizView({
           <span className="settings-label">Index</span>
           <select
             className="quiz-index-select"
-            value={settings.drill.quizIndex}
+            value={activeFilter}
             onChange={(e) => changeIndex(e.target.value as DeviationId | 'all')}
           >
             <option value="all">All indices</option>
             {indexList.map((d) => (
-              <option key={d.id} value={d.id}>
+              <option key={d.id} value={d.id} disabled={!d.active}>
                 {d.label}
+                {!d.active ? ' (inactive for this profile)' : ''}
               </option>
             ))}
           </select>

@@ -5,7 +5,7 @@ import type { Profile, Settings, Stats as StatsData } from '../../store/types';
 import { EMPTY_STATS } from '../../store/types';
 import { loadStats, saveStats, loadSettings, exportAll, importAll } from '../../store/persist';
 import type { Category, MistakeClass } from '../../engine/grade';
-import { ILLUSTRIOUS_18 } from '../../engine/deviations';
+import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../../engine/deviations';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -209,7 +209,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
             </tr>
           </thead>
           <tbody>
-            {ILLUSTRIOUS_18.map((dev) => {
+            {(activeProfile.rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18).map((dev) => {
               const tally = stats.perIndex[dev.id];
               return (
                 <tr key={dev.id}>

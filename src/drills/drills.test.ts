@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { hiLoTag } from '../engine/count';
 import { isPair, handValue } from '../engine/hand';
 import { correctPlay, insuranceCorrect } from '../engine/strategy';
-import { ILLUSTRIOUS_18 } from '../engine/deviations';
+import { ILLUSTRIOUS_18, isIndexActive } from '../engine/deviations';
 import { makeCountDrill, makeCountdown } from './countDrill';
 import { drawFlashcard } from './flashcards';
 import { drawQuizItem } from './deviationQuiz';
@@ -411,5 +411,20 @@ describe('drawQuizItem rules wiring', () => {
     const withDefault = drawQuizItem(3);
     const withExplicitH17 = drawQuizItem(3, undefined, DEFAULT_RULES);
     expect(withDefault).toEqual(withExplicitH17);
+  });
+
+  it('isIndexActive: 11vA is inactive under H17, active under S17', () => {
+    expect(isIndexActive('11vA', DEFAULT_RULES)).toBe(false);
+    expect(isIndexActive('11vA', S17_RULES)).toBe(true);
+  });
+
+  it('isIndexActive: 16v10 is active under both H17 and S17', () => {
+    expect(isIndexActive('16v10', DEFAULT_RULES)).toBe(true);
+    expect(isIndexActive('16v10', S17_RULES)).toBe(true);
+  });
+
+  it('isIndexActive: returns false for unknown indices', () => {
+    // Ensure the function handles edge cases gracefully
+    expect(isIndexActive('16v10' as DeviationId, DEFAULT_RULES)).toBe(true);
   });
 });

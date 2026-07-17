@@ -73,3 +73,16 @@ export const ILLUSTRIOUS_18_S17: Deviation[] = ILLUSTRIOUS_18.map((dev) => {
   }
   return dev;
 });
+
+/**
+ * Check if a deviation index is active for the given ruleset.
+ *
+ * @param id - The deviation ID to check
+ * @param rules - The ruleset (H17 or S17)
+ * @returns true if the index is active, false otherwise
+ */
+export function isIndexActive(id: DeviationId, rules: { s17: boolean }): boolean {
+  const deviationSet = rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
+  const deviation = deviationSet.find((d) => d.id === id);
+  return deviation?.active ?? false;
+}
