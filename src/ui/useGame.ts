@@ -3,7 +3,7 @@ import { Game } from '../engine/game';
 import type { GameConfig } from '../engine/game';
 import type { Action } from '../engine/deviations';
 import type { Category, GradedEvent } from '../engine/grade';
-import type { Settings } from '../store/types';
+import type { Profile, Settings } from '../store/types';
 import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
 
@@ -66,16 +66,24 @@ function buildReport(events: GradedEvent[], bankrollDelta: number): SessionRepor
  * require immutable state plumbing) and forces a re-render via a version
  * counter after every engine call. All reads should go through `game`
  * directly (e.g. game.phase, game.hands) — it is always the live object.
+ *
+ * GameConfig is built from the ACTIVE PROFILE (penetration, betSpreadOn,
+ * spread, bankrollStart, countCheckEvery, rules) — Cycle-1 Task 13: every
+ * grading/payout/dealer-behavior surface reads the active profile, not
+ * Settings. Settings only supplies non-game fields (feedbackMode here;
+ * countPeek/dealSpeedMs/drill.* are read directly by the screens). The
+ * `?seed=` override remains for deterministic e2e/test runs.
  */
-export function useGame(settings: Settings) {
+export function useGame(settings: Settings, profile: Profile) {
   const gameRef = useRef<Game | null>(null);
   if (gameRef.current === null) {
     const cfg: GameConfig = {
-      penetration: settings.penetration,
-      betSpreadOn: settings.betSpreadOn,
-      spread: settings.spread,
-      bankrollStart: settings.bankrollStart,
-      countCheckEvery: settings.countCheckEvery,
+      penetration: profile.penetration,
+      betSpreadOn: profile.betSpreadOn,
+      spread: profile.spread,
+      bankrollStart: profile.bankrollStart,
+      countCheckEvery: profile.countCheckEvery,
+      rules: profile.rules,
       seed: readSeed(),
     };
     gameRef.current = new Game(cfg);
@@ -132,7 +140,7 @@ export function useGame(settings: Settings) {
 
   const endSession = useCallback((): SessionReport => {
     const events = game.events;
-    const bankrollDelta = game.bankroll - settings.bankrollStart;
+    const bankrollDelta = game.bankroll - profile.bankrollStart;
 
     const stats = loadStats();
     const updated = applyEvents(stats, events);
@@ -142,13 +150,15 @@ export function useGame(settings: Settings) {
       graded: events.length,
       correct: events.filter((e) => e.correct).length,
       bankrollDelta,
+      profileId: profile.id,
+      profileName: profile.name,
     });
     saveStats(updated);
 
     const rep = buildReport(events, bankrollDelta);
     setReport(rep);
     return rep;
-  }, [game, settings.bankrollStart]);
+  }, [game, profile.bankrollStart, profile.id, profile.name]);
 
   return { game, deal, act, insure, submitCount, overlay, dismissOverlay, report, endSession };
 }

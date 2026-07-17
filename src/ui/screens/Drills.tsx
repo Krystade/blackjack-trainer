@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Screen } from '../App';
-import type { Settings } from '../../store/types';
+import type { Profile, Settings } from '../../store/types';
 import type { Card } from '../../engine/cards';
 import type { Action, DeviationId } from '../../engine/deviations';
-import { ILLUSTRIOUS_18 } from '../../engine/deviations';
+import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
 import { classifyAction, actionCategory, classifyInsurance } from '../../engine/grade';
 import type { PlayContext } from '../../engine/strategy';
 import { correctPlay, basicPlay } from '../../engine/strategy';
+import type { RuleSet } from '../../engine/ruleset';
 import { hiLoTag } from '../../engine/count';
 import { makeCountDrill, makeCountdown } from '../../drills/countDrill';
 import type { CountDrillRound, CountdownRound } from '../../drills/countDrill';
@@ -24,6 +25,7 @@ import { Segmented, Stepper } from './Settings';
 
 interface DrillsProps {
   settings: Settings;
+  activeProfile: Profile;
   onNavigate: (screen: Screen) => void;
   onSettingsChange: (settings: Settings) => void;
 }
@@ -321,21 +323,23 @@ function cellCategory(cellId: string, correct: Action): 'hard' | 'soft' | 'pairs
 
 function FlashcardsView({
   settings,
+  activeProfile,
   onBack,
   onSettingsChange,
 }: {
   settings: Settings;
+  activeProfile: Profile;
   onBack: () => void;
   onSettingsChange: (settings: Settings) => void;
 }) {
   const weightsRef = useRef<Record<string, number>>(loadFlashWeights());
   const [card, setCard] = useState<Flashcard>(() =>
-    drawFlashcard(settings.drill.flashCategory, weightsRef.current, randomSeed()),
+    drawFlashcard(settings.drill.flashCategory, weightsRef.current, randomSeed(), activeProfile.rules),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action } | null>(null);
 
   const next = (category: Settings['drill']['flashCategory'] = settings.drill.flashCategory) => {
-    setCard(drawFlashcard(category, weightsRef.current, randomSeed()));
+    setCard(drawFlashcard(category, weightsRef.current, randomSeed(), activeProfile.rules));
     setFeedback(null);
   };
 
@@ -348,8 +352,8 @@ function FlashcardsView({
 
   const handleAction = (taken: Action) => {
     const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: true };
-    const withCount = correctPlay(card.cards, card.up, 0, ctx);
-    const basicOnly = basicPlay(card.cards, card.up, ctx);
+    const withCount = correctPlay(card.cards, card.up, 0, ctx, activeProfile.rules);
+    const basicOnly = basicPlay(card.cards, card.up, ctx, activeProfile.rules);
     const { classification, correct } = classifyAction(taken, withCount, basicOnly, card.cards, card.up, 0);
 
     if (!correct) {
@@ -440,7 +444,7 @@ function FlashcardsView({
 /* Deviation Quiz                                                     */
 /* ---------------------------------------------------------------- */
 
-function buildQuizEvent(item: QuizItem, taken: string): GradedEvent {
+function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet): GradedEvent {
   if (item.cards === null) {
     const take = taken === 'take-insurance';
     const { classification, correct } = classifyInsurance(take, item.tc);
@@ -461,8 +465,8 @@ function buildQuizEvent(item: QuizItem, taken: string): GradedEvent {
   // canSurrender: false must match drawQuizItem's ctx (deviationQuiz.ts) so the
   // grader agrees with item.correct — see the deviation-quiz surrender-masking fix.
   const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: false };
-  const withCount = correctPlay(item.cards, item.up, item.tc, ctx);
-  const basicOnly = basicPlay(item.cards, item.up, ctx);
+  const withCount = correctPlay(item.cards, item.up, item.tc, ctx, rules);
+  const basicOnly = basicPlay(item.cards, item.up, ctx, rules);
   const { classification, correct } = classifyAction(taken as Action, withCount, basicOnly, item.cards, item.up, item.tc);
 
   return {
@@ -485,20 +489,22 @@ function quizFilterArg(quizIndex: DeviationId | 'all'): DeviationId | undefined 
 
 function DeviationQuizView({
   settings,
+  activeProfile,
   onBack,
   onSettingsChange,
 }: {
   settings: Settings;
+  activeProfile: Profile;
   onBack: () => void;
   onSettingsChange: (settings: Settings) => void;
 }) {
   const [item, setItem] = useState<QuizItem>(() =>
-    drawQuizItem(randomSeed(), quizFilterArg(settings.drill.quizIndex)),
+    drawQuizItem(randomSeed(), quizFilterArg(settings.drill.quizIndex), activeProfile.rules),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean } | null>(null);
 
   const next = (filter: DeviationId | 'all' = settings.drill.quizIndex) => {
-    setItem(drawQuizItem(randomSeed(), quizFilterArg(filter)));
+    setItem(drawQuizItem(randomSeed(), quizFilterArg(filter), activeProfile.rules));
     setFeedback(null);
   };
 
@@ -510,10 +516,12 @@ function DeviationQuizView({
   };
 
   const handleAnswer = (taken: string) => {
-    const event = buildQuizEvent(item, taken);
+    const event = buildQuizEvent(item, taken, activeProfile.rules);
     saveStats(applyEvents(loadStats(), [event]));
     setFeedback({ correct: event.correct });
   };
+
+  const indexList = activeProfile.rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
 
   return (
     <div className="drill-screen">
@@ -533,7 +541,7 @@ function DeviationQuizView({
             onChange={(e) => changeIndex(e.target.value as DeviationId | 'all')}
           >
             <option value="all">All indices</option>
-            {ILLUSTRIOUS_18.map((d) => (
+            {indexList.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.label}
               </option>
@@ -602,7 +610,7 @@ function DeviationQuizView({
 /* Picker                                                             */
 /* ---------------------------------------------------------------- */
 
-export function Drills({ settings, onNavigate, onSettingsChange }: DrillsProps) {
+export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
   const [mode, setMode] = useState<'picker' | 'count' | 'flash' | 'quiz'>('picker');
 
   if (mode === 'count') {
@@ -618,6 +626,7 @@ export function Drills({ settings, onNavigate, onSettingsChange }: DrillsProps) 
     return (
       <FlashcardsView
         settings={settings}
+        activeProfile={activeProfile}
         onBack={() => setMode('picker')}
         onSettingsChange={onSettingsChange}
       />
@@ -627,6 +636,7 @@ export function Drills({ settings, onNavigate, onSettingsChange }: DrillsProps) 
     return (
       <DeviationQuizView
         settings={settings}
+        activeProfile={activeProfile}
         onBack={() => setMode('picker')}
         onSettingsChange={onSettingsChange}
       />

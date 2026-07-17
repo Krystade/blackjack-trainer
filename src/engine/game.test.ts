@@ -495,6 +495,33 @@ describe('dealer H17', () => {
   });
 });
 
+describe('dealer s17 rule wiring (Cycle-1 Task 13)', () => {
+  it('h17 (default rules): D(A,6) hits soft 17', () => {
+    const game = Game.withRiggedShoe(cfg(), rig('10', 'A', '9', '6', '4'));
+    game.startRound();
+    expect(game.phase).toBe('insurance');
+    game.insuranceDecision(false);
+    expect(game.phase).toBe('player');
+    game.act('stand');
+    expect(game.dealerCards.length).toBe(3); // drew on soft 17
+  });
+
+  it('s17:true: D(A,6) stands on soft 17 (no draw)', () => {
+    const game = Game.withRiggedShoe(
+      cfg({ rules: { decks: 6, s17: true, das: true, ls: true, rsa: false, bj65: false } }),
+      rig('10', 'A', '9', '6'),
+    );
+    game.startRound();
+    expect(game.phase).toBe('insurance');
+    game.insuranceDecision(false);
+    expect(game.phase).toBe('player');
+    game.act('stand');
+    expect(game.phase).toBe('settled');
+    expect(game.dealerCards.length).toBe(2); // does NOT draw on soft 17 under s17
+    expect(game.dealerCards.map((c) => c.rank)).toEqual(['A', '6']);
+  });
+});
+
 describe('RC visibility', () => {
   it('runningCount equals the sum of hiLoTags of all visible cards after a full round', () => {
     const game = Game.withRiggedShoe(cfg(), rig('10', '9', '6', '8', '5'));

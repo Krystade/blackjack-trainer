@@ -30,11 +30,18 @@ function App() {
     case 'home':
       return <Home onNavigate={navigate} activeProfile={activeProfile} />;
     case 'table':
-      return <Table settings={settings} onNavigate={navigate} />;
+      return <Table settings={settings} onNavigate={navigate} activeProfile={activeProfile} />;
     case 'drills':
-      return <Drills settings={settings} onNavigate={navigate} onSettingsChange={setSettings} />;
+      return (
+        <Drills
+          settings={settings}
+          onNavigate={navigate}
+          onSettingsChange={setSettings}
+          activeProfile={activeProfile}
+        />
+      );
     case 'stats':
-      return <Stats onNavigate={navigate} onSettingsChange={setSettings} />;
+      return <Stats onNavigate={navigate} onSettingsChange={setSettings} activeProfile={activeProfile} />;
     case 'settings':
       return <Settings settings={settings} onNavigate={navigate} onSettingsChange={setSettings} />;
     case 'profiles':

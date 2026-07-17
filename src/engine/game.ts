@@ -511,7 +511,7 @@ export class Game {
   private dealerShouldHit(): boolean {
     const hv = handValue(this.dealerCards);
     if (hv.total < 17) return true;
-    if (hv.total === 17 && hv.soft) return true; // hits soft 17
+    if (hv.total === 17 && hv.soft && !this.rules.s17) return true; // hits soft 17 unless rules say stand
     return false;
   }
 

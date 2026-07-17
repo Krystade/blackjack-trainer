@@ -1,13 +1,14 @@
 import { useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import type { Screen } from '../App';
-import type { Settings, Stats as StatsData } from '../../store/types';
+import type { Profile, Settings, Stats as StatsData } from '../../store/types';
 import { EMPTY_STATS } from '../../store/types';
 import { loadStats, saveStats, loadSettings, exportAll, importAll } from '../../store/persist';
 import type { Category, MistakeClass } from '../../engine/grade';
 import { ILLUSTRIOUS_18 } from '../../engine/deviations';
 
 interface StatsProps {
+  activeProfile: Profile;
   onNavigate: (screen: Screen) => void;
   onSettingsChange: (settings: Settings) => void;
 }
@@ -53,7 +54,12 @@ function formatDate(iso: string): string {
   return d.toLocaleString();
 }
 
-export function Stats({ onNavigate, onSettingsChange }: StatsProps) {
+/** em-dash for "no data" — used throughout the per-profile header. */
+function dash(): string {
+  return '—';
+}
+
+export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProps) {
   const [stats, setStats] = useState<StatsData>(() => loadStats());
   const [message, setMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -115,6 +121,20 @@ export function Stats({ onNavigate, onSettingsChange }: StatsProps) {
   const recentRuns = stats.countDrill.history.slice(-5).reverse();
   const sessions = [...stats.sessions].reverse();
 
+  // Per-profile header (Cycle-1 Task 13): CVCX numbers (when the profile has
+  // them) alongside actual results computed from this profile's own sessions
+  // only (sessions persisted before profileId existed never match, and are
+  // simply excluded rather than mis-attributed).
+  const profileSessions = stats.sessions.filter((s) => s.profileId === activeProfile.id);
+  const totalGraded = profileSessions.reduce((sum, s) => sum + s.graded, 0);
+  const totalCorrect = profileSessions.reduce((sum, s) => sum + s.correct, 0);
+  const totalRounds = profileSessions.reduce((sum, s) => sum + s.rounds, 0);
+  const totalBankrollDelta = profileSessions.reduce((sum, s) => sum + s.bankrollDelta, 0);
+  const actualAccuracyPct = totalGraded === 0 ? null : (totalCorrect / totalGraded) * 100;
+  // units won / rounds * assumed rounds-per-hour, per spec §4.
+  const unitsPerHourProxy = totalRounds === 0 ? null : (totalBankrollDelta / totalRounds) * 80;
+  const cvcx = activeProfile.cvcx;
+
   return (
     <div className="stats-screen">
       <div className="stats-topbar">
@@ -123,6 +143,36 @@ export function Stats({ onNavigate, onSettingsChange }: StatsProps) {
         </button>
         <div className="stats-heading">Stats</div>
       </div>
+
+      <section className="stats-section">
+        <h2 className="stats-section-title">Profile: {activeProfile.name}</h2>
+        <ul className="mistake-list">
+          <li className="mistake-row">
+            <span>CVCX score</span>
+            <span>{cvcx?.score !== undefined ? cvcx.score : dash()}</span>
+          </li>
+          <li className="mistake-row">
+            <span>CVCX EV/hr</span>
+            <span>{cvcx?.evPerHour !== undefined ? formatSigned(cvcx.evPerHour) : dash()}</span>
+          </li>
+          <li className="mistake-row">
+            <span>CVCX risk of ruin</span>
+            <span>{cvcx?.riskOfRuin !== undefined ? `${cvcx.riskOfRuin}%` : dash()}</span>
+          </li>
+          <li className="mistake-row">
+            <span>CVCX sim note</span>
+            <span>{cvcx?.simNote ? cvcx.simNote : dash()}</span>
+          </li>
+          <li className="mistake-row">
+            <span>Actual play accuracy</span>
+            <span>{actualAccuracyPct === null ? dash() : `${Math.round(actualAccuracyPct)}%`}</span>
+          </li>
+          <li className="mistake-row">
+            <span>Actual units/hr (assumes 80 rounds/hr)</span>
+            <span>{unitsPerHourProxy === null ? dash() : formatSigned(Math.round(unitsPerHourProxy * 10) / 10)}</span>
+          </li>
+        </ul>
+      </section>
 
       <section className="stats-section">
         <h2 className="stats-section-title">Accuracy by category</h2>
@@ -218,6 +268,7 @@ export function Stats({ onNavigate, onSettingsChange }: StatsProps) {
             {sessions.map((s, i) => (
               <li className="session-row" key={i}>
                 <span>{formatDate(s.date)}</span>
+                <span>{s.profileName ?? dash()}</span>
                 <span>{s.rounds} rounds</span>
                 <span>{pct(s.correct, s.graded)}</span>
                 <span className={s.bankrollDelta >= 0 ? 'result-correct' : 'result-wrong'}>

@@ -7,6 +7,8 @@ import { makeCountDrill, makeCountdown } from './countDrill';
 import { drawFlashcard } from './flashcards';
 import { drawQuizItem } from './deviationQuiz';
 import type { DeviationId } from '../engine/deviations';
+import { DEFAULT_RULES } from '../engine/ruleset';
+import type { RuleSet } from '../engine/ruleset';
 
 describe('countDrill', () => {
   describe('makeCountDrill', () => {
@@ -342,5 +344,72 @@ describe('deviationQuiz', () => {
         expect(sawAtOrAbove, `${id}: must see an at/above-threshold draw in the sample`).toBe(true);
       }
     });
+  });
+});
+
+// Cycle-1 Task 13 (active-profile wiring): drawFlashcard/drawQuizItem gained
+// an optional `rules` param so drills grade against the active profile's
+// ruleset instead of always defaulting to v1's H17 6-deck game. These tests
+// pin a case where the h17 vs s17 answer actually diverges, per spec §3
+// (chart data verified against docs/sources; d68_h17.ts SOFT[18][0]='Ds' vs
+// d68_s17.ts SOFT[18][0]='S').
+const S17_RULES: RuleSet = { ...DEFAULT_RULES, s17: true };
+
+describe('drawFlashcard rules wiring', () => {
+  it('same seed (same cell drawn): h17 says double, s17 says stand for soft 18 (A,7) v 2', () => {
+    // Cell selection depends only on category/missWeights/seed, never on
+    // rules -- find a seed that lands on the soft-18-v-2 cell first, using
+    // whichever (default) rules happen to be in effect (irrelevant to the search).
+    let seed = -1;
+    for (let candidate = 0; candidate < 5000; candidate++) {
+      const probe = drawFlashcard('soft', {}, candidate);
+      if (probe.cellId === 'soft-18-v-2') {
+        seed = candidate;
+        break;
+      }
+    }
+    expect(seed, 'expected to find a seed landing on soft-18-v-2 within 5000 tries').toBeGreaterThanOrEqual(0);
+
+    const h17Card = drawFlashcard('soft', {}, seed, DEFAULT_RULES);
+    const s17Card = drawFlashcard('soft', {}, seed, S17_RULES);
+
+    // Same seed -> identical cell regardless of rules.
+    expect(h17Card.cellId).toBe('soft-18-v-2');
+    expect(s17Card.cellId).toBe('soft-18-v-2');
+
+    // The correct action diverges by ruleset.
+    expect(h17Card.correct).toBe('double');
+    expect(s17Card.correct).toBe('stand');
+  });
+
+  it('omitting rules preserves v1 (H17) behavior exactly', () => {
+    const withDefault = drawFlashcard('hard', {}, 7);
+    const withExplicitH17 = drawFlashcard('hard', {}, 7, DEFAULT_RULES);
+    expect(withDefault).toEqual(withExplicitH17);
+  });
+});
+
+describe('drawQuizItem rules wiring', () => {
+  it('filter 11vA: h17 selects the inactive/threshold-0 H17 entry; s17 selects the active/threshold-1 S17 entry', () => {
+    const h17Item = drawQuizItem(1, '11vA', DEFAULT_RULES);
+    const s17Item = drawQuizItem(1, '11vA', S17_RULES);
+
+    expect(h17Item.label).toContain('H17');
+    expect(s17Item.label).toContain('S17');
+    expect(h17Item.deviationId).toBe('11vA');
+    expect(s17Item.deviationId).toBe('11vA');
+
+    // tc is randomized within +/-2 of the entry's threshold -- the two
+    // rulesets use different thresholds (0 vs 1), so their tc ranges differ.
+    expect(h17Item.tc).toBeGreaterThanOrEqual(0 - 2);
+    expect(h17Item.tc).toBeLessThanOrEqual(0 + 2);
+    expect(s17Item.tc).toBeGreaterThanOrEqual(1 - 2);
+    expect(s17Item.tc).toBeLessThanOrEqual(1 + 2);
+  });
+
+  it('omitting rules preserves v1 (H17) behavior exactly', () => {
+    const withDefault = drawQuizItem(3);
+    const withExplicitH17 = drawQuizItem(3, undefined, DEFAULT_RULES);
+    expect(withDefault).toEqual(withExplicitH17);
   });
 });

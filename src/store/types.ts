@@ -82,6 +82,10 @@ export interface Stats {
     graded: number;
     correct: number;
     bankrollDelta: number;
+    // Cycle-1 Task 13: which active profile the session was played under.
+    // Optional — sessions persisted before this change won't have them.
+    profileId?: string;
+    profileName?: string;
   }[];
 }
 

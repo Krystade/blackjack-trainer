@@ -2,7 +2,9 @@ import type { Card, Rank } from '../engine/cards';
 import { mulberry32 } from '../engine/cards';
 import { correctPlay, insuranceCorrect } from '../engine/strategy';
 import type { Action, DeviationId } from '../engine/deviations';
-import { ILLUSTRIOUS_18 } from '../engine/deviations';
+import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../engine/deviations';
+import { DEFAULT_RULES } from '../engine/ruleset';
+import type { RuleSet } from '../engine/ruleset';
 import { makeHardHand } from './buildHand';
 
 export interface QuizItem {
@@ -32,22 +34,28 @@ function makePair10Cards(): [Card, Card] {
  * @param filter - Optional deviation id; when set, always draws that entry
  *   (tc is still randomized within ±2 of its threshold). Additive param —
  *   omitting it preserves the original random-entry behavior exactly.
+ * @param rules - Optional ruleset (defaults to DEFAULT_RULES). Selects the
+ *   H17 vs S17 Illustrious-18 variant (both the entry pool and the
+ *   correctPlay grading) so quiz thresholds/labels and grading stay
+ *   consistent with the active profile — additive param, omitting it
+ *   preserves v1 (H17) behavior exactly.
  * @returns A quiz item
  */
-export function drawQuizItem(seed?: number, filter?: DeviationId): QuizItem {
+export function drawQuizItem(seed?: number, filter?: DeviationId, rules: RuleSet = DEFAULT_RULES): QuizItem {
   const rng = mulberry32(seed ?? Date.now());
+  const deviationSet = rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
 
-  // Pick the filtered entry if given, otherwise a random entry from ILLUSTRIOUS_18
-  let entry: (typeof ILLUSTRIOUS_18)[number];
+  // Pick the filtered entry if given, otherwise a random entry from the active ruleset's set
+  let entry: (typeof deviationSet)[number];
   if (filter) {
-    const found = ILLUSTRIOUS_18.find((d) => d.id === filter);
+    const found = deviationSet.find((d) => d.id === filter);
     if (!found) {
       throw new Error(`drawQuizItem: unknown deviation id "${filter}"`);
     }
     entry = found;
   } else {
-    const entryIndex = Math.floor(rng() * ILLUSTRIOUS_18.length);
-    entry = ILLUSTRIOUS_18[entryIndex];
+    const entryIndex = Math.floor(rng() * deviationSet.length);
+    entry = deviationSet[entryIndex];
   }
 
   // Generate tc: integer uniform in [threshold - 2, threshold + 2]
@@ -74,11 +82,17 @@ export function drawQuizItem(seed?: number, filter?: DeviationId): QuizItem {
     // surrender-masking fix: with surrender on, basic surrender beats the
     // 16v10/15v10/16v9 deviations at every TC, making those thresholds
     // unlearnable and contradicting the displayed index label.
-    const advice = correctPlay(cards, entry.up!, tc, {
-      canDouble: true,
-      canSplit: true,
-      canSurrender: false,
-    });
+    const advice = correctPlay(
+      cards,
+      entry.up!,
+      tc,
+      {
+        canDouble: true,
+        canSplit: true,
+        canSurrender: false,
+      },
+      rules,
+    );
     correct = advice.action;
   } else {
     // hard: construct a truly hard (non-pair, non-ace) hand with the specified total
@@ -89,13 +103,21 @@ export function drawQuizItem(seed?: number, filter?: DeviationId): QuizItem {
     }
     cards = totalCards;
     // canSurrender: false — see note above.
-    const advice = correctPlay(cards, entry.up!, tc, {
-      canDouble: true,
-      canSplit: true,
-      canSurrender: false,
-    });
-    // Note: no special-casing for 11vA — the entry is inactive, so the engine's
-    // basic chart (HARD[11] = Dh) already yields 'double' at every tc.
+    const advice = correctPlay(
+      cards,
+      entry.up!,
+      tc,
+      {
+        canDouble: true,
+        canSplit: true,
+        canSurrender: false,
+      },
+      rules,
+    );
+    // Note: no special-casing for 11vA. Under h17 it's inactive, so the engine's
+    // basic chart (HARD[11] = Dh) already yields 'double' at every tc; under
+    // s17 it's active (vs A the S17 basic chart is H) so correctPlay(rules)
+    // applies the index (double at tc >= +1) via the S17 deviations set.
     correct = advice.action;
   }
 

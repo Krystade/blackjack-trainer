@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Screen } from '../App';
-import type { Settings } from '../../store/types';
+import type { Profile, Settings } from '../../store/types';
 import type { PlayerHand } from '../../engine/game';
 import type { Action } from '../../engine/deviations';
 import type { PlayContext } from '../../engine/strategy';
@@ -15,6 +15,7 @@ import { NumPad } from '../components/NumPad';
 
 interface TableProps {
   settings: Settings;
+  activeProfile: Profile;
   onNavigate: (screen: Screen) => void;
 }
 
@@ -93,8 +94,11 @@ function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () =>
   );
 }
 
-export function Table({ settings, onNavigate }: TableProps) {
-  const { game, deal, act, insure, submitCount, overlay, dismissOverlay, report, endSession } = useGame(settings);
+export function Table({ settings, activeProfile, onNavigate }: TableProps) {
+  const { game, deal, act, insure, submitCount, overlay, dismissOverlay, report, endSession } = useGame(
+    settings,
+    activeProfile,
+  );
   const [selectedBet, setSelectedBet] = useState(1);
   const [countStage, setCountStage] = useState<'rc' | 'tc'>('rc');
   const [pendingRc, setPendingRc] = useState(0);
@@ -102,7 +106,7 @@ export function Table({ settings, onNavigate }: TableProps) {
   const [showReport, setShowReport] = useState(false);
 
   const handleDeal = () => {
-    deal(settings.betSpreadOn ? selectedBet : undefined);
+    deal(activeProfile.betSpreadOn ? selectedBet : undefined);
     setCountStage('rc');
   };
 
@@ -148,7 +152,7 @@ export function Table({ settings, onNavigate }: TableProps) {
       canSplit: legal.includes('split'),
       canSurrender: legal.includes('surrender'),
     };
-    advice = correctPlay(activeHand.cards, game.dealerCards[0].rank, game.trueCountNow, ctx).action;
+    advice = correctPlay(activeHand.cards, game.dealerCards[0].rank, game.trueCountNow, ctx, activeProfile.rules).action;
   }
 
   let barMode: ActionBarMode;
@@ -157,7 +161,7 @@ export function Table({ settings, onNavigate }: TableProps) {
   } else if ((game.phase === 'idle' || game.phase === 'settled') && !game.countCheckDue) {
     barMode = {
       kind: 'bet',
-      betSpreadOn: settings.betSpreadOn,
+      betSpreadOn: activeProfile.betSpreadOn,
       selectedBet,
       onSelectBet: setSelectedBet,
       onDeal: handleDeal,
@@ -171,7 +175,12 @@ export function Table({ settings, onNavigate }: TableProps) {
   return (
     <div className="table-screen">
       <div className="topbar">
-        <div className="topbar-stat">Bankroll: {game.bankroll}</div>
+        <div className="topbar-stat">
+          Bankroll: {game.bankroll}
+          <span className="topbar-profile-name" style={{ marginLeft: 6, fontSize: '0.7em', opacity: 0.65 }}>
+            {activeProfile.name}
+          </span>
+        </div>
         <div className="topbar-stat">Round {game.roundNo}</div>
         {settings.countPeek && (
           <button

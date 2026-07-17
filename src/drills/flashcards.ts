@@ -2,6 +2,8 @@ import type { Card, Rank } from '../engine/cards';
 import { mulberry32 } from '../engine/cards';
 import { correctPlay } from '../engine/strategy';
 import type { Action } from '../engine/deviations';
+import { DEFAULT_RULES } from '../engine/ruleset';
+import type { RuleSet } from '../engine/ruleset';
 import { makeHardHand } from './buildHand';
 
 export interface Flashcard {
@@ -83,12 +85,17 @@ function generateAllCells(): Cell[] {
  * @param category - 'all', 'hard', 'soft', or 'pairs'
  * @param missWeights - Weight map (cellId -> weight) for missed cards
  * @param seed - Optional seed for reproducibility
+ * @param rules - Optional ruleset (defaults to DEFAULT_RULES); selects the
+ *   chart/deviations the correct action is graded against — additive param,
+ *   omitting it preserves v1 (H17 6-deck) behavior exactly. Note: which cell
+ *   is drawn depends only on category/missWeights/seed, never on rules.
  * @returns A flashcard with correct action
  */
 export function drawFlashcard(
   category: 'all' | 'hard' | 'soft' | 'pairs',
   missWeights: Record<string, number>,
   seed?: number,
+  rules: RuleSet = DEFAULT_RULES,
 ): Flashcard {
   const rng = mulberry32(seed ?? Date.now());
 
@@ -127,11 +134,17 @@ export function drawFlashcard(
   const cell = cells[selectedIndex];
 
   // Get correct action
-  const advice = correctPlay(cell.cards, cell.up, 0, {
-    canDouble: true,
-    canSplit: true,
-    canSurrender: true,
-  });
+  const advice = correctPlay(
+    cell.cards,
+    cell.up,
+    0,
+    {
+      canDouble: true,
+      canSplit: true,
+      canSurrender: true,
+    },
+    rules,
+  );
 
   return {
     cards: cell.cards as [Card, Card],
