@@ -134,6 +134,7 @@ NEW LEGEND ENTRIES (1D): Pd = split if DAS allowed, otherwise DOUBLE; Ps = split
 
 ## 1D S17 (bj_1d_s17.gif)
 HARD
+4: H H H H H H H H H H   (coordinator note 2026-07-16: the source image's first hard row is labeled "5-7" — hard 4 exists only as 2,2, which the PAIRS table owns; the engine HARD table still needs a row 4 and H is universally correct across all six charts. Deliberate, confirmed; matches implementer inference flagged by the Wave-3 audit.)
 5-7: H H H H H H H H H H
 8:  H H H Dh Dh H H H H H
 9:  Dh Dh Dh Dh Dh H H H H H
