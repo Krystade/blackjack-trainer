@@ -57,3 +57,19 @@ export const ILLUSTRIOUS_18: Deviation[] = [
   { id: '12v6', kind: 'hard', total: 12, up: '6', action: 'hit', threshold: -3, dir: 'lte', active: true, label: '12 v 6: hit at TC ≤ −3 (H17)' },
   { id: '13v3', kind: 'hard', total: 13, up: '3', action: 'hit', threshold: -2, dir: 'lte', active: true, label: '13 v 3: hit at TC ≤ −2' },
 ];
+
+// VERIFIED S17-ADJUSTED INDICES — derived from H17 ILLUSTRIOUS_18 with four overrides
+// per spec §3: 11vA (+1 active), 16v9 (+5), 10vA (+4), 12v6 (−1 lte).
+// Insurance threshold remains +3 in both sets.
+export const ILLUSTRIOUS_18_S17: Deviation[] = ILLUSTRIOUS_18.map((dev) => {
+  const overrides: Record<string, Partial<Deviation>> = {
+    '11vA': { active: true, threshold: 1, label: '11 v A: double at TC ≥ +1 (S17)' },
+    '16v9': { threshold: 5, label: '16 v 9: stand at TC ≥ +5' },
+    '10vA': { threshold: 4, label: '10 v A: double at TC ≥ +4' },
+    '12v6': { threshold: -1, label: '12 v 6: hit at TC ≤ −1' },
+  };
+  if (dev.id in overrides) {
+    return { ...dev, ...overrides[dev.id] };
+  }
+  return dev;
+});

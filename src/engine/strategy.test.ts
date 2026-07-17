@@ -360,3 +360,91 @@ describe('basicPlay: deviations OFF', () => {
     expectAdvice(basicPlay(cards('10', '6'), '10', ctx({ canSurrender: false })), 'hit');
   });
 });
+
+describe('S17 Illustrious-18 variant: 11vA active at +1 threshold', () => {
+  const s17Rules: RuleSet = { decks: 6, s17: true, das: true, ls: true, rsa: false, bj65: false };
+
+  it('H17 (6,5) v A, tc 0 -> double basic (11vA inactive)', () => {
+    const h17Rules: RuleSet = { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false };
+    expectAdvice(correctPlay(cards('6', '5'), 'A', 0, ctx(), h17Rules), 'double');
+  });
+
+  it('S17 (6,5) v A, tc 0 -> hit basic (11vA active but threshold not met)', () => {
+    expectAdvice(correctPlay(cards('6', '5'), 'A', 0, ctx(), s17Rules), 'hit');
+  });
+
+  it('S17 (6,5) v A, tc 1 -> double 11vA at threshold', () => {
+    expectAdvice(correctPlay(cards('6', '5'), 'A', 1, ctx(), s17Rules), 'double', '11vA');
+  });
+
+  it('S17 (6,5) v A, tc 5 -> double 11vA above threshold', () => {
+    expectAdvice(correctPlay(cards('6', '5'), 'A', 5, ctx(), s17Rules), 'double', '11vA');
+  });
+});
+
+describe('S17 Illustrious-18 variant: 16v9 threshold +5', () => {
+  const s17Rules: RuleSet = { decks: 6, s17: true, das: true, ls: true, rsa: false, bj65: false };
+
+  it('H17 (9,7) v 9, tc 4 -> stand 16v9', () => {
+    const h17Rules: RuleSet = { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false };
+    expectAdvice(correctPlay(cards('9', '7'), '9', 4, ctx(), h17Rules), 'stand', '16v9');
+  });
+
+  it('S17 (9,7) v 9, tc 4 -> hit basic (16v9 threshold not met)', () => {
+    expectAdvice(correctPlay(cards('9', '7'), '9', 4, ctx(), s17Rules), 'hit');
+  });
+
+  it('S17 (9,7) v 9, tc 5 -> stand 16v9 at threshold', () => {
+    expectAdvice(correctPlay(cards('9', '7'), '9', 5, ctx(), s17Rules), 'stand', '16v9');
+  });
+
+  it('S17 (9,7) v 9, tc 8 -> stand 16v9 above threshold', () => {
+    expectAdvice(correctPlay(cards('9', '7'), '9', 8, ctx(), s17Rules), 'stand', '16v9');
+  });
+});
+
+describe('S17 Illustrious-18 variant: 10vA threshold +4', () => {
+  const s17Rules: RuleSet = { decks: 6, s17: true, das: true, ls: true, rsa: false, bj65: false };
+
+  it('H17 (6,4) v A, tc 3 -> double 10vA', () => {
+    const h17Rules: RuleSet = { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false };
+    expectAdvice(correctPlay(cards('6', '4'), 'A', 3, ctx(), h17Rules), 'double', '10vA');
+  });
+
+  it('S17 (6,4) v A, tc 3 -> hit basic (10vA threshold not met)', () => {
+    expectAdvice(correctPlay(cards('6', '4'), 'A', 3, ctx(), s17Rules), 'hit');
+  });
+
+  it('S17 (6,4) v A, tc 4 -> double 10vA at threshold', () => {
+    expectAdvice(correctPlay(cards('6', '4'), 'A', 4, ctx(), s17Rules), 'double', '10vA');
+  });
+
+  it('S17 (6,4) v A, tc 7 -> double 10vA above threshold', () => {
+    expectAdvice(correctPlay(cards('6', '4'), 'A', 7, ctx(), s17Rules), 'double', '10vA');
+  });
+});
+
+describe('S17 Illustrious-18 variant: 12v6 threshold −1 (lte)', () => {
+  const s17Rules: RuleSet = { decks: 6, s17: true, das: true, ls: true, rsa: false, bj65: false };
+
+  it('H17 (10,2) v 6, tc -3 -> hit 12v6', () => {
+    const h17Rules: RuleSet = { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false };
+    expectAdvice(correctPlay(cards('10', '2'), '6', -3, ctx(), h17Rules), 'hit', '12v6');
+  });
+
+  it('S17 (10,2) v 6, tc -2 -> hit 12v6 at threshold', () => {
+    expectAdvice(correctPlay(cards('10', '2'), '6', -2, ctx(), s17Rules), 'hit', '12v6');
+  });
+
+  it('S17 (10,2) v 6, tc -1 -> hit 12v6 at threshold', () => {
+    expectAdvice(correctPlay(cards('10', '2'), '6', -1, ctx(), s17Rules), 'hit', '12v6');
+  });
+
+  it('S17 (10,2) v 6, tc -5 -> hit 12v6 below threshold', () => {
+    expectAdvice(correctPlay(cards('10', '2'), '6', -5, ctx(), s17Rules), 'hit', '12v6');
+  });
+
+  it('S17 (10,2) v 6, tc 0 -> stand basic (tc > threshold)', () => {
+    expectAdvice(correctPlay(cards('10', '2'), '6', 0, ctx(), s17Rules), 'stand');
+  });
+});

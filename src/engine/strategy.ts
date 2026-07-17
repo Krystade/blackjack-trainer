@@ -3,7 +3,7 @@ import { handValue, isPair, pairRank } from './hand';
 import { upIndex } from './basicStrategy';
 import type { ChartAction } from './basicStrategy';
 import type { Action, Deviation, DeviationId } from './deviations';
-import { ILLUSTRIOUS_18 } from './deviations';
+import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from './deviations';
 import { DEFAULT_RULES } from './ruleset';
 import type { RuleSet } from './ruleset';
 import { getChart } from './charts';
@@ -210,7 +210,8 @@ export function play(
 }
 
 export function correctPlay(cards: Card[], dealerUp: Rank, tc: number, ctx: PlayContext, rules: RuleSet = DEFAULT_RULES): Advice {
-  return play(cards, dealerUp, tc, ctx, ILLUSTRIOUS_18, getChart(rules));
+  const deviations = rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
+  return play(cards, dealerUp, tc, ctx, deviations, getChart(rules));
 }
 
 /** Same algorithm with deviations OFF (used by the grader). */
