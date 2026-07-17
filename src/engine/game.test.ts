@@ -364,6 +364,53 @@ describe('split aces', () => {
       expect(game.hands.length).toBe(3);
       expect(game.hands[0].splitAces).toBe(false); // Still not a split-aces hand
     });
+
+    it('rsa:true: resplit-ace hand that draws an ace stays open but no hit/double legal', () => {
+      // CRITICAL TEST: with rsa:true, split A,A -> hand0 draws A (forming A,A pair),
+      // hand0 must remain open for potential resplit, but hit and double MUST NOT be legal
+      // Rig: P(A,A) v D(2,9) -> split draws A to hand0 (A,A pair) and K to hand1 (A,K done)
+      // Deal order: A, 2, A, 9, A, K, ...
+      const game = Game.withRiggedShoe(cfg({ rules: { decks: 6, s17: false, das: true, ls: true, rsa: true, bj65: false } }), rig('A', '2', 'A', '9', 'A', 'K', '2', '3', '4', '5'));
+      game.startRound();
+      expect(game.phase).toBe('player');
+
+      game.act('split'); // Split initial A,A
+      expect(game.hands.length).toBe(2);
+      expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['A', 'A']);
+      expect(game.hands[0].done).toBe(false); // Can resplit
+      expect(game.hands[0].splitAces).toBe(true);
+      expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['A', 'K']);
+      expect(game.hands[1].done).toBe(true);
+
+      // hand0 is active and open (A,A pair with rsa:true)
+      // Legal actions must be exactly ['stand', 'split'] — NO hit, NO double
+      const actions = game.legalActions();
+      expect(actions).toContain('stand');
+      expect(actions).toContain('split');
+      expect(actions).not.toContain('hit');
+      expect(actions).not.toContain('double');
+      expect(actions).toEqual(['stand', 'split']);
+    });
+
+    it('rsa:true: 4-hand cap prevents further action and legalActions is empty', () => {
+      // When hands.length reaches 4, no further splits are possible.
+      // Even if resplit-aces could continue, the cap ensures they're marked done.
+      const game = Game.withRiggedShoe(cfg({ rules: { decks: 6, s17: false, das: true, ls: true, rsa: true, bj65: false } }), rig('8', '2', '8', '9', '8', '8', '8', '8', '8', '8', '8', '2'));
+      game.startRound();
+
+      game.act('split'); // 1 -> 2 hands
+      expect(game.hands.length).toBe(2);
+      expect(game.legalActions()).toContain('split');
+
+      game.act('split'); // 2 -> 3 hands
+      expect(game.hands.length).toBe(3);
+      expect(game.legalActions()).toContain('split');
+
+      game.act('split'); // 3 -> 4 hands
+      expect(game.hands.length).toBe(4);
+      // Once we reach 4 hands, no further actions: split is no longer legal
+      expect(game.legalActions()).not.toContain('split');
+    });
   });
 });
 

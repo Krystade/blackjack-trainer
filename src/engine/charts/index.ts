@@ -46,6 +46,7 @@ const ASSEMBLED_CACHE = new Map<string, Chart>();
  * resolveDas (das-conditional pair cells) followed by stripLs (surrender
  * fallbacks), and asserts no conditional cell survived. The returned Chart
  * always contains only H/S/Dh/Ds/P/Rh/Rs/Rp -- never Ph/Pd/Ps.
+ * The returned chart is immutable (frozen).
  */
 export function getChart(rules: RuleSet): Chart {
   const deckClass = deckClassFor(rules.decks);
@@ -62,6 +63,16 @@ export function getChart(rules: RuleSet): Chart {
 
   const assembled = stripLs(resolveDas(base, rules.das, deckClass), rules.ls);
   assertFullyResolved(assembled);
+
+  // Freeze the chart to prevent mutations: freeze row arrays first, then the records and object
+  for (const row of Object.values(assembled.HARD)) Object.freeze(row);
+  for (const row of Object.values(assembled.SOFT)) Object.freeze(row);
+  for (const row of Object.values(assembled.PAIRS)) Object.freeze(row);
+  Object.freeze(assembled.HARD);
+  Object.freeze(assembled.SOFT);
+  Object.freeze(assembled.PAIRS);
+  Object.freeze(assembled);
+
   ASSEMBLED_CACHE.set(cacheKey, assembled);
   return assembled;
 }

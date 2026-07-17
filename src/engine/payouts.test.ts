@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Card, Rank } from './cards';
 import { Game, DEFAULT_SPREAD } from './game';
 import type { GameConfig } from './game';
+import type { RuleSet } from './ruleset';
 
 function rig(...ranks: Rank[]): Card[] {
   return ranks.map((rank) => ({ rank, suit: 's' }) as Card);
@@ -28,7 +29,7 @@ describe('payout audit — table-driven settlement paths', () => {
     shoe: Rank[];
     actions: string[]; // 'stand', 'hit', 'double', 'split', 'surrender', 'insurance:take', 'insurance:decline'
     expectedDelta: number;
-    rules?: any;
+    rules?: RuleSet;
   }
 
   const scenarios: PayoutRow[] = [

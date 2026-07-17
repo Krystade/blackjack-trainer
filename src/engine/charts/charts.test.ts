@@ -37,6 +37,32 @@ describe('getChart', () => {
     expect(chart.PAIRS).toEqual(expectedPairs(raw, 'd68'));
   });
 
+  it('returned chart is immutable: cannot mutate arrays or nested objects', () => {
+    const chart = getChart(DEFAULT_RULES);
+
+    // In strict mode, mutations throw; we use expect(...).toThrow to catch them.
+    // Get the first row from each chart record.
+    const hardFirstRow = Object.values(chart.HARD)[0];
+    const softFirstRow = Object.values(chart.SOFT)[0];
+    const pairsFirstRow = Object.values(chart.PAIRS)[0];
+
+    expect(() => {
+      hardFirstRow[0] = 'X' as any;
+    }).toThrow();
+
+    expect(() => {
+      softFirstRow[0] = 'X' as any;
+    }).toThrow();
+
+    expect(() => {
+      pairsFirstRow[0] = 'X' as any;
+    }).toThrow();
+
+    expect(() => {
+      (chart as any).HARD = {};
+    }).toThrow();
+  });
+
   describe('resolves all (decks) × (s17) combos to the correct modules', () => {
     it('d1 H17 (decks=1, s17=false)', () => {
       const rules: RuleSet = { ...DEFAULT_RULES, decks: 1, s17: false };

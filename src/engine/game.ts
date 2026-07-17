@@ -138,18 +138,25 @@ export class Game {
     return trueCount(this.runningCount, this.shoe.decksRemaining);
   }
 
+  private handOptions(hand: PlayerHand): { canHit: boolean; canDouble: boolean; canSplit: boolean; canSurrender: boolean } {
+    return {
+      canHit: !hand.splitAces,
+      canDouble: hand.cards.length === 2 && !hand.doubled && !hand.splitAces,
+      canSplit: isPair(hand.cards) && this.hands.length < 4 && (!hand.splitAces || this.rules.rsa),
+      canSurrender: hand.cards.length === 2 && !hand.fromSplit,
+    };
+  }
+
   legalActions(): Action[] {
     if (this.phase !== 'player') return [];
     const hand = this.hands[this.active];
     if (!hand || hand.done) return [];
-    const actions: Action[] = ['hit', 'stand'];
-    if (hand.cards.length === 2 && !hand.doubled) actions.push('double');
-    // Split is legal if:
-    // - hand is a pair AND
-    // - fewer than 4 hands total AND
-    // - either: NOT from a previous ace split, OR rsa is enabled
-    if (isPair(hand.cards) && this.hands.length < 4 && (!hand.splitAces || this.rules.rsa)) actions.push('split');
-    if (hand.cards.length === 2 && !hand.fromSplit) actions.push('surrender');
+    const options = this.handOptions(hand);
+    const actions: Action[] = ['stand'];
+    if (options.canHit) actions.push('hit');
+    if (options.canDouble) actions.push('double');
+    if (options.canSplit) actions.push('split');
+    if (options.canSurrender) actions.push('surrender');
     return actions;
   }
 
@@ -274,10 +281,11 @@ export class Game {
     const hand = this.hands[this.active];
     const up = this.dealerCards[0].rank;
     const tc = this.trueCountNow;
+    const options = this.handOptions(hand);
     const ctx: PlayContext = {
-      canDouble: hand.cards.length === 2 && !hand.doubled,
-      canSplit: isPair(hand.cards) && this.hands.length < 4 && (!hand.splitAces || this.rules.rsa),
-      canSurrender: hand.cards.length === 2 && !hand.fromSplit,
+      canDouble: options.canDouble,
+      canSplit: options.canSplit,
+      canSurrender: options.canSurrender,
     };
     const withCount: Advice = correctPlay(hand.cards, up, tc, ctx, this.rules);
     const basicOnly: Advice = basicPlay(hand.cards, up, ctx, this.rules);
@@ -437,8 +445,8 @@ export class Game {
       const hand0HasAce = hand.cards[1].rank === 'A';
       const hand1HasAce = newHand.cards[1].rank === 'A';
 
-      hand.done = !this.rules.rsa || !hand0HasAce;
-      newHand.done = !this.rules.rsa || !hand1HasAce;
+      hand.done = !this.rules.rsa || !hand0HasAce || this.hands.length === 4;
+      newHand.done = !this.rules.rsa || !hand1HasAce || this.hands.length === 4;
     }
   }
 
