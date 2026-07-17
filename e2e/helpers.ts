@@ -18,6 +18,52 @@ export async function withSettings(page: Page, patch: Record<string, unknown>): 
   }, json);
 }
 
+/**
+ * Write a single Profile into localStorage as both `bjtrainer.profiles.v1`
+ * (an array of one) and `bjtrainer.activeProfile.v1` (its id), BEFORE the
+ * app's first script runs — mirrors `withSettings` above, but for the v2
+ * profiles store (src/store/profiles.ts). Table/Drills/grading read the
+ * ACTIVE profile for rules/ramp/payouts (Cycle-1 Task 13/14), so this is how
+ * e2e specs pin dealer rules (e.g. s17) or a bet ramp deterministically
+ * without going through the profile-editor UI.
+ *
+ * Defaults mirror `makeDefaultProfile()` (v1-parity rules, v1 default ramp);
+ * `patch.rules` merges shallowly over the default RuleSet, everything else
+ * merges shallowly over the default Profile fields.
+ */
+export async function withProfile(page: Page, patch: Record<string, unknown> = {}): Promise<void> {
+  const defaultRules = { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false };
+  const defaultSpread = [
+    { minTc: -99, units: 1 },
+    { minTc: 1, units: 2 },
+    { minTc: 2, units: 4 },
+    { minTc: 3, units: 8 },
+    { minTc: 4, units: 10 },
+    { minTc: 5, units: 12 },
+  ];
+  const { rules: rulesPatch, ...rest } = patch as { rules?: Record<string, unknown> } & Record<string, unknown>;
+  const profile = {
+    id: 'e2e-profile',
+    name: 'E2E Profile',
+    rules: { ...defaultRules, ...(rulesPatch ?? {}) },
+    penetration: 0.75,
+    spread: defaultSpread,
+    bankrollStart: 100,
+    countCheckEvery: 0,
+    betSpreadOn: false,
+    ...rest,
+  };
+  const profilesJson = JSON.stringify([profile]);
+  const activeId = profile.id;
+  await page.addInitScript(
+    ({ profilesJson, activeId }) => {
+      window.localStorage.setItem('bjtrainer.profiles.v1', profilesJson);
+      window.localStorage.setItem('bjtrainer.activeProfile.v1', activeId);
+    },
+    { profilesJson, activeId },
+  );
+}
+
 /** Navigate home, then click the named Home nav button ("Play" | "Drills" | "Stats" | "Settings"). */
 export async function goHomeAndNavigate(page: Page, url: string, button: 'Play' | 'Drills' | 'Stats' | 'Settings'): Promise<void> {
   await page.goto(url);
