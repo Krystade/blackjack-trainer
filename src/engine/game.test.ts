@@ -60,6 +60,24 @@ describe('blackjack', () => {
     expect(game.hands[0].net).toBe(1.5);
     expect(game.bankroll).toBe(cfg().bankrollStart + 1.5);
   });
+
+  it('bj65:false (default): natural BJ pays 1.5x', () => {
+    const game = Game.withRiggedShoe(cfg({ rules: { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false } }), rig('A', '9', 'K', '8'));
+    game.startRound();
+    expect(game.phase).toBe('settled');
+    expect(game.hands[0].result).toBe('blackjack');
+    expect(game.hands[0].net).toBe(1.5);
+    expect(game.bankroll).toBe(cfg().bankrollStart + 1.5);
+  });
+
+  it('bj65:true: natural BJ pays 1.2x', () => {
+    const game = Game.withRiggedShoe(cfg({ rules: { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: true } }), rig('A', '9', 'K', '8'));
+    game.startRound();
+    expect(game.phase).toBe('settled');
+    expect(game.hands[0].result).toBe('blackjack');
+    expect(game.hands[0].net).toBe(1.2);
+    expect(game.bankroll).toBe(cfg().bankrollStart + 1.2);
+  });
 });
 
 describe('dealer BJ peek', () => {
@@ -279,6 +297,73 @@ describe('split aces', () => {
     expect(game.phase).toBe('settled');
     expect(game.hands[0].result).toBe('win'); // 21 beats 18
     expect(game.hands[0].net).toBe(1); // 1x, NOT blackjack 1.5x
+  });
+
+  describe('resplit aces (RSA)', () => {
+    it('rsa:false: after splitting A,A, split action is not legal on A,A pair', () => {
+      // Test that with rsa:false, legalActions does not include 'split' for a split-ace hand
+      const game = Game.withRiggedShoe(cfg({ rules: { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false } }), rig('A', '2', 'A', 'A', 'K', '3', '2', '3', '2', '3'));
+      game.startRound();
+      expect(game.legalActions()).toContain('split');
+
+      // First split
+      game.act('split');
+      expect(game.hands.length).toBe(2);
+      expect(game.hands[0].done).toBe(true);
+      expect(game.hands[1].done).toBe(true);
+      // Both hands done immediately when rsa:false
+      expect(game.phase).toBe('settled');
+    });
+
+    it('rsa:true: A,A pair in a split hand can be resplit', () => {
+      // Rig: P(A,A) v D(2,9) -> split draws A to hand0 and K to hand1
+      // Deal order: A, 2, A, 9, A, K, 2, 3, ...
+      const game = Game.withRiggedShoe(cfg({ rules: { decks: 6, s17: false, das: true, ls: true, rsa: true, bj65: false } }), rig('A', '2', 'A', '9', 'A', 'K', '2', '3', '4', '5'));
+      game.startRound();
+      expect(game.legalActions()).toContain('split');
+
+      game.act('split'); // Split initial A,A
+      expect(game.hands.length).toBe(2);
+      // hand0 got A (A,A), hand1 got K
+      expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['A', 'A']);
+      expect(game.hands[0].done).toBe(false); // NOT done; can resplit
+      expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['A', 'K']);
+      expect(game.hands[1].done).toBe(true);
+
+      // hand0 is A,A and rsa:true, so split is legal
+      expect(game.legalActions()).toContain('split');
+
+      game.act('split'); // Resplit hand0: draws 2 to hand0, 3 to new hand1
+      expect(game.hands.length).toBe(3);
+      // After resplit: hand0 [A, 2], hand1 [A, 3] (new), hand2 [A, K] (original hand1)
+      expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['A', '2']);
+      expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['A', '3']);
+      expect(game.hands[2].cards.map((c) => c.rank)).toEqual(['A', 'K']);
+      // All done after resplit
+      expect(game.hands[0].done).toBe(true);
+      expect(game.hands[1].done).toBe(true);
+      expect(game.hands[2].done).toBe(true);
+    });
+
+    it('rsa:true: non-ace pair still resplits normally', () => {
+      // Verify rsa:true doesn't break regular pair resplits
+      // Just verify that split is legal for a non-ace pair, even with rsa:true
+      const game = Game.withRiggedShoe(cfg({ rules: { decks: 6, s17: false, das: true, ls: true, rsa: true, bj65: false } }), rig('8', '5', '8', '9', '8', '3', '2', '3', '4', '5', '6', '7'));
+      game.startRound();
+      expect(game.legalActions()).toContain('split');
+
+      game.act('split'); // Split 8,8
+      expect(game.hands.length).toBe(2);
+      // hand0 got 8 (8,8), hand1 got 3 (8,3)
+      expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['8', '8']);
+      expect(game.hands[0].splitAces).toBe(false);
+      expect(game.legalActions()).toContain('split'); // Can resplit the 8,8 pair
+
+      game.act('split'); // Resplit hand0 (8,8)
+      // After resplit: hand0 [8,2], hand1 [8,3] (new from resplit), hand2 [8,3] (original)
+      expect(game.hands.length).toBe(3);
+      expect(game.hands[0].splitAces).toBe(false); // Still not a split-aces hand
+    });
   });
 });
 

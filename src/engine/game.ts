@@ -144,7 +144,11 @@ export class Game {
     if (!hand || hand.done) return [];
     const actions: Action[] = ['hit', 'stand'];
     if (hand.cards.length === 2 && !hand.doubled) actions.push('double');
-    if (isPair(hand.cards) && this.hands.length < 4 && !hand.splitAces) actions.push('split');
+    // Split is legal if:
+    // - hand is a pair AND
+    // - fewer than 4 hands total AND
+    // - either: NOT from a previous ace split, OR rsa is enabled
+    if (isPair(hand.cards) && this.hands.length < 4 && (!hand.splitAces || this.rules.rsa)) actions.push('split');
     if (hand.cards.length === 2 && !hand.fromSplit) actions.push('surrender');
     return actions;
   }
@@ -272,7 +276,7 @@ export class Game {
     const tc = this.trueCountNow;
     const ctx: PlayContext = {
       canDouble: hand.cards.length === 2 && !hand.doubled,
-      canSplit: isPair(hand.cards) && this.hands.length < 4 && !hand.splitAces,
+      canSplit: isPair(hand.cards) && this.hands.length < 4 && (!hand.splitAces || this.rules.rsa),
       canSurrender: hand.cards.length === 2 && !hand.fromSplit,
     };
     const withCount: Advice = correctPlay(hand.cards, up, tc, ctx, this.rules);
@@ -382,7 +386,8 @@ export class Game {
     const hand = this.hands[0];
     if (isBlackjack(hand.cards)) {
       hand.result = 'blackjack';
-      hand.net = 1.5 * hand.bet;
+      // BJ payout: 1.2x if rules.bj65 is true, 1.5x otherwise
+      hand.net = (this.rules.bj65 ? 1.2 : 1.5) * hand.bet;
       this.bankroll += hand.net;
       this.finishRound();
       return;
@@ -427,8 +432,13 @@ export class Game {
     this.drawToHand(newHand);
 
     if (isAces) {
-      hand.done = true;
-      newHand.done = true;
+      // If RSA (resplit aces) is enabled, hands stay open if they draw an ace (forming A,A pair)
+      // Otherwise, mark both hands done immediately
+      const hand0HasAce = hand.cards[1].rank === 'A';
+      const hand1HasAce = newHand.cards[1].rank === 'A';
+
+      hand.done = !this.rules.rsa || !hand0HasAce;
+      newHand.done = !this.rules.rsa || !hand1HasAce;
     }
   }
 
