@@ -24,3 +24,11 @@ asserts the message text functionally).
 
 **Seeds used:** fixed seeds per spec file (see `e2e/*.spec.ts`); the split scenario
 hunts seeds 1–50 at runtime and logs the one used (seed 8 at review time).
+
+## Cycle-1 review addendum (2026-07-17)
+Shots 26-45 (profiles, S17 dealer-stand proof, manual countdown, quiz filter, CVCX import
+happy/error, profile bet grading) captured by the cycle-1 e2e suite (22 specs, dc0b863)
+and reviewed by the coordinator: all layout-distinct states inspected (26,28,30,31,34,
+41,43,45 in detail; remainder are data-variants of reviewed layouts). PASS. Key visual
+proof: shot 31 — dealer stands on 6+A under the S17 profile with the profile name in the
+top bar.
