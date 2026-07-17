@@ -1314,3 +1314,155 @@ button {
   opacity: 0.35;
   cursor: not-allowed;
 }
+
+/* ---------- CVCX import panel ---------- */
+
+.spread-button-row {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.spread-paste-btn {
+  flex: 1;
+  min-height: 48px;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #1b4c31;
+  color: #eaf3ec;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.spread-paste-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.cvcx-import-panel {
+  padding: 1rem;
+  margin-top: 0.75rem;
+  border: 1px solid #2c5c41;
+  border-radius: 8px;
+  background: #0a1c14;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cvcx-textarea {
+  min-height: 80px;
+  min-width: 100%;
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  font-family: monospace;
+  font-size: 0.9rem;
+  padding: 0.6rem;
+  resize: vertical;
+}
+
+.cvcx-textarea::placeholder {
+  color: #b7d3c2;
+}
+
+.cvcx-unit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 48px;
+  flex-wrap: wrap;
+}
+
+.cvcx-unit-label {
+  font-size: 0.9rem;
+  color: #eaf3ec;
+}
+
+.cvcx-unit-input {
+  min-height: 48px;
+  min-width: 8rem;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  font-size: 0.9rem;
+  padding: 0 0.6rem;
+}
+
+.cvcx-error {
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: rgba(235, 87, 87, 0.1);
+  border: 1px solid #eb5757;
+  color: #eb5757;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cvcx-button-row {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.cvcx-parse-btn,
+.cvcx-confirm-btn {
+  flex: 1;
+  min-height: 48px;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #1b4c31;
+  color: #eaf3ec;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cvcx-cancel-btn {
+  flex: 1;
+  min-height: 48px;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cvcx-preview-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  border: 1px solid #2c5c41;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cvcx-preview-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: #0f2a1c;
+  border-bottom: 1px solid #2c5c41;
+  font-weight: 600;
+}
+
+.cvcx-preview-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid #2c5c41;
+}
+
+.cvcx-preview-row:last-child {
+  border-bottom: none;
+}
+
+.cvcx-preview-col {
+  padding: 0.75rem;
+  font-size: 0.9rem;
+  text-align: center;
+  color: #eaf3ec;
+}

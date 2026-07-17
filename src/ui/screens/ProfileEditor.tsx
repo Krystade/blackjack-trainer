@@ -10,6 +10,7 @@ import {
   setActiveProfile,
   makeDefaultProfile,
 } from '../../store/profiles';
+import { parseCvcxRamp } from '../../store/cvcxParse';
 import { Segmented, Stepper } from './Settings';
 
 interface ProfileEditorProps {
@@ -223,6 +224,11 @@ export function ProfileEditor({ onNavigate }: ProfileEditorProps) {
   );
 }
 
+type CvcxImportState =
+  | { kind: 'closed' }
+  | { kind: 'input'; text: string; unitDollars?: number; error?: string; preview?: SpreadRow[] }
+  | { kind: 'preview'; rows: SpreadRow[]; unitDollars?: number };
+
 function ProfileEditForm({
   draft: initialDraft,
   isNew,
@@ -239,6 +245,7 @@ function ProfileEditForm({
   onDelete: () => void;
 }) {
   const [draft, setDraft] = useState<Profile>(initialDraft);
+  const [cvcxImport, setCvcxImport] = useState<CvcxImportState>({ kind: 'closed' });
 
   const update = (patch: Partial<Profile>) => setDraft((d) => ({ ...d, ...patch }));
   const updateRules = (patch: Partial<RuleSet>) =>
@@ -259,6 +266,34 @@ function ProfileEditForm({
 
   const removeSpreadRow = (index: number) => {
     setDraft((d) => ({ ...d, spread: d.spread.filter((_, i) => i !== index) }));
+  };
+
+  const handleCvcxPaste = () => {
+    setCvcxImport({ kind: 'input', text: '', unitDollars: draft.unitDollars });
+  };
+
+  const handleCvcxParse = () => {
+    if (cvcxImport.kind !== 'input') return;
+    const result = parseCvcxRamp(cvcxImport.text, cvcxImport.unitDollars);
+    if (result.ok) {
+      setCvcxImport({ kind: 'preview', rows: result.rows, unitDollars: cvcxImport.unitDollars });
+    } else {
+      setCvcxImport({ kind: 'input', text: cvcxImport.text, unitDollars: cvcxImport.unitDollars, error: result.error });
+    }
+  };
+
+  const handleCvcxConfirm = () => {
+    if (cvcxImport.kind !== 'preview') return;
+    setDraft((d) => ({
+      ...d,
+      spread: cvcxImport.rows,
+      unitDollars: cvcxImport.unitDollars,
+    }));
+    setCvcxImport({ kind: 'closed' });
+  };
+
+  const handleCvcxCancel = () => {
+    setCvcxImport({ kind: 'closed' });
   };
 
   return (
@@ -420,10 +455,90 @@ function ProfileEditForm({
               </div>
             ))}
           </div>
-          <button type="button" className="spread-add-btn" onClick={addSpreadRow}>
-            Add row
-          </button>
+          <div className="spread-button-row">
+            <button type="button" className="spread-add-btn" onClick={addSpreadRow}>
+              Add row
+            </button>
+            <button
+              type="button"
+              className="spread-paste-btn"
+              onClick={handleCvcxPaste}
+              disabled={cvcxImport.kind !== 'closed'}
+            >
+              Paste from CVCX
+            </button>
+          </div>
           <p className="stats-detail">Ramp is sorted by TC when you save.</p>
+
+          {cvcxImport.kind !== 'closed' && (
+            <div className="cvcx-import-panel">
+              {cvcxImport.kind === 'input' && (
+                <>
+                  <textarea
+                    className="cvcx-textarea"
+                    placeholder="TC Bet&#10;1 2"
+                    value={cvcxImport.text}
+                    onChange={(e) =>
+                      setCvcxImport({ kind: 'input', text: e.target.value, unitDollars: cvcxImport.unitDollars })
+                    }
+                  />
+                  {cvcxImport.error?.includes('Dollar amounts found') && (
+                    <div className="cvcx-unit-row">
+                      <label className="cvcx-unit-label">$ per unit</label>
+                      <input
+                        type="number"
+                        className="cvcx-unit-input"
+                        placeholder="e.g., 25"
+                        value={cvcxImport.unitDollars || ''}
+                        onChange={(e) =>
+                          setCvcxImport({
+                            kind: 'input',
+                            text: cvcxImport.text,
+                            unitDollars: e.target.value === '' ? undefined : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                  )}
+                  {cvcxImport.error && (
+                    <div className="cvcx-error">{cvcxImport.error}</div>
+                  )}
+                  <div className="cvcx-button-row">
+                    <button type="button" className="cvcx-parse-btn" onClick={handleCvcxParse}>
+                      Parse
+                    </button>
+                    <button type="button" className="cvcx-cancel-btn" onClick={handleCvcxCancel}>
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
+              {cvcxImport.kind === 'preview' && (
+                <>
+                  <div className="cvcx-preview-table">
+                    <div className="cvcx-preview-header">
+                      <div className="cvcx-preview-col">TC</div>
+                      <div className="cvcx-preview-col">Units</div>
+                    </div>
+                    {cvcxImport.rows.map((row, i) => (
+                      <div className="cvcx-preview-row" key={i}>
+                        <div className="cvcx-preview-col">{row.minTc}</div>
+                        <div className="cvcx-preview-col">{row.units}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="cvcx-button-row">
+                    <button type="button" className="cvcx-confirm-btn" onClick={handleCvcxConfirm}>
+                      Confirm
+                    </button>
+                    <button type="button" className="cvcx-cancel-btn" onClick={handleCvcxCancel}>
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </section>
       )}
 
