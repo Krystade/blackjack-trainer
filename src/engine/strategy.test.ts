@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Card, Rank } from './cards';
 import { correctPlay, basicPlay, insuranceCorrect } from './strategy';
 import type { PlayContext, Advice } from './strategy';
+import type { RuleSet } from './ruleset';
 
 function cards(...ranks: Rank[]): Card[] {
   return ranks.map((rank) => ({ rank, suit: 's' }) as Card);
@@ -268,6 +269,74 @@ describe('correctPlay: 8,8 v A precedence (Rp)', () => {
   });
   it('canSurrender:false -> split', () => {
     expectAdvice(correctPlay(cards('8', '8'), 'A', 0, ctx({ canSurrender: false })), 'split');
+  });
+});
+
+describe('T8b: pair path consumes the assembled PAIRS cell generically (no hardcoded 8,8vA)', () => {
+  describe('2D H17 (8,8) v A -- driven by whatever getChart resolved, not a hardcoded rank/up check', () => {
+    it('das:true ls:true -> cell resolves to plain P at assembly -> split even though canSurrender:true', () => {
+      const rules: RuleSet = { decks: 2, s17: false, das: true, ls: true, rsa: false, bj65: false };
+      expectAdvice(
+        correctPlay(cards('8', '8'), 'A', 0, ctx({ canSurrender: true, canSplit: true }), rules),
+        'split',
+      );
+    });
+
+    it('das:false ls:true -> cell stays Rp -> surrender', () => {
+      const rules: RuleSet = { decks: 2, s17: false, das: false, ls: true, rsa: false, bj65: false };
+      expectAdvice(
+        correctPlay(cards('8', '8'), 'A', 0, ctx({ canSurrender: true, canSplit: true }), rules),
+        'surrender',
+      );
+    });
+
+    it('das:false ls:false -> stripLs resolves Rp -> P -> split', () => {
+      const rules: RuleSet = { decks: 2, s17: false, das: false, ls: false, rsa: false, bj65: false };
+      expectAdvice(
+        correctPlay(cards('8', '8'), 'A', 0, ctx({ canSurrender: true, canSplit: true }), rules),
+        'split',
+      );
+    });
+  });
+
+  describe('1D H17 (7,7) v 10 -- Rs pair cell, previously unhandled in the pair path', () => {
+    const rules: RuleSet = { decks: 1, s17: false, das: true, ls: true, rsa: false, bj65: false };
+
+    it('canSurrender:true -> surrender', () => {
+      expectAdvice(correctPlay(cards('7', '7'), '10', 0, ctx({ canSurrender: true }), rules), 'surrender');
+    });
+    it('canSurrender:false -> stand (Rs fallback)', () => {
+      expectAdvice(correctPlay(cards('7', '7'), '10', 0, ctx({ canSurrender: false }), rules), 'stand');
+    });
+    it('canSplit:false, canSurrender:false -> stand still (cell semantics, NOT a hard-14 re-lookup)', () => {
+      // The 1D H17 hard-14 row vs dealer 10 is 'H' (hit) -- if this fell
+      // through to resolveAsTotal instead of applying the pair cell's own
+      // Rs-fallback, it would wrongly hit instead of stand.
+      expectAdvice(
+        correctPlay(cards('7', '7'), '10', 0, ctx({ canSplit: false, canSurrender: false }), rules),
+        'stand',
+      );
+    });
+  });
+
+  describe('1D H17 (7,7) v A -- Rh pair cell', () => {
+    const rules: RuleSet = { decks: 1, s17: false, das: true, ls: true, rsa: false, bj65: false };
+
+    it('canSurrender:true -> surrender', () => {
+      expectAdvice(correctPlay(cards('7', '7'), 'A', 0, ctx({ canSurrender: true }), rules), 'surrender');
+    });
+    it('canSurrender:false -> hit (Rh fallback)', () => {
+      expectAdvice(correctPlay(cards('7', '7'), 'A', 0, ctx({ canSurrender: false }), rules), 'hit');
+    });
+  });
+
+  describe('DEFAULT_RULES parity: (8,8) v A unchanged (v1 behavior, d68 Rp)', () => {
+    it('canSurrender:true -> surrender', () => {
+      expectAdvice(correctPlay(cards('8', '8'), 'A', 0, ctx({ canSurrender: true })), 'surrender');
+    });
+    it('canSurrender:false -> split', () => {
+      expectAdvice(correctPlay(cards('8', '8'), 'A', 0, ctx({ canSurrender: false })), 'split');
+    });
   });
 });
 

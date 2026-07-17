@@ -138,46 +138,70 @@ export function play(
   deviations: Deviation[],
   chart: Chart,
 ): Advice {
-  // Step 1: pair path, only when splitting is actually available.
-  if (isPair(cards) && ctx.canSplit) {
+  // Step 1: pair path. Entered for any pair (not gated on ctx.canSplit --
+  // several resolved cell types, e.g. Rs/Rh/S/H, don't involve splitting at
+  // all, so their fallback applies even when splitting isn't legal).
+  if (isPair(cards)) {
     const rank = pairRank(cards)!;
 
     if (rank === '10') {
       const idx = upIndex(dealerUp);
-      const ttv5 = deviations.find((d) => d.id === 'TTv5' && d.active);
-      const ttv6 = deviations.find((d) => d.id === 'TTv6' && d.active);
-      if (ttv5 && upIndex(ttv5.up!) === idx && tc >= ttv5.threshold) return deviation(ttv5, 'split');
-      if (ttv6 && upIndex(ttv6.up!) === idx && tc >= ttv6.threshold) return deviation(ttv6, 'split');
+      if (ctx.canSplit) {
+        const ttv5 = deviations.find((d) => d.id === 'TTv5' && d.active);
+        const ttv6 = deviations.find((d) => d.id === 'TTv6' && d.active);
+        if (ttv5 && upIndex(ttv5.up!) === idx && tc >= ttv5.threshold) return deviation(ttv5, 'split');
+        if (ttv6 && upIndex(ttv6.up!) === idx && tc >= ttv6.threshold) return deviation(ttv6, 'split');
+      }
       // Ten-pairs are absent from PAIRS -> basic fallback is always hard-20 stand.
       return basic('stand', `Basic stand vs dealer ${dealerUp}`);
-    }
-
-    if (rank === '8' && dealerUp === 'A') {
-      // Rp: surrender if available, else split.
-      return ctx.canSurrender
-        ? basic('surrender', 'Basic surrender vs dealer A')
-        : basic('split', 'Basic split vs dealer A (surrender unavailable)');
     }
 
     if (rank in chart.PAIRS) {
       const idx = upIndex(dealerUp);
       const action = chart.PAIRS[rank]![idx];
-      if (action === 'P') return basic('split', `Basic split vs dealer ${dealerUp}`);
-      if (action === 'H') return basic('hit', `Basic hit vs dealer ${dealerUp}`);
-      if (action === 'S') return basic('stand', `Basic stand vs dealer ${dealerUp}`);
-      if (action === 'Ph' || action === 'Pd' || action === 'Ps') {
-        // Not reachable via getChart(): resolveDas resolves every Ph/Pd/Ps
-        // pair cell at chart-assembly time and getChart() asserts none
-        // survive. Reaching here means a caller passed a Chart that
-        // bypassed getChart's transform pipeline -- fail loud instead of
-        // silently treating it as a split.
-        throw new Error(
-          `ChartAction '${action}' reached the pair-lookup path unresolved -- assembled charts must never contain conditional pair cells; getChart's resolveDas should have resolved this (pair ${rank},${rank} vs dealer ${dealerUp})`,
-        );
+      switch (action) {
+        case 'P':
+          if (ctx.canSplit) return basic('split', `Basic split vs dealer ${dealerUp}`);
+          break; // canSplit false -> fall through to hard/soft re-lookup below.
+        case 'Rp':
+          if (ctx.canSurrender) return basic('surrender', `Basic surrender vs dealer ${dealerUp}`);
+          if (ctx.canSplit) return basic('split', `Basic split vs dealer ${dealerUp} (surrender unavailable)`);
+          break; // neither surrender nor split available -> fall through.
+        case 'Rs':
+          return ctx.canSurrender
+            ? basic('surrender', `Basic surrender vs dealer ${dealerUp}`)
+            : basic('stand', `Basic stand (surrender unavailable) vs dealer ${dealerUp}`);
+        case 'Rh':
+          return ctx.canSurrender
+            ? basic('surrender', `Basic surrender vs dealer ${dealerUp}`)
+            : basic('hit', `Basic hit (surrender unavailable) vs dealer ${dealerUp}`);
+        case 'H':
+          return basic('hit', `Basic hit vs dealer ${dealerUp}`);
+        case 'S':
+          return basic('stand', `Basic stand vs dealer ${dealerUp}`);
+        case 'Dh':
+          return ctx.canDouble
+            ? basic('double', `Basic double vs dealer ${dealerUp}`)
+            : basic('hit', `Basic hit (double unavailable) vs dealer ${dealerUp}`);
+        case 'Ds':
+          return ctx.canDouble
+            ? basic('double', `Basic double vs dealer ${dealerUp}`)
+            : basic('stand', `Basic stand (double unavailable) vs dealer ${dealerUp}`);
+        case 'Ph':
+        case 'Pd':
+        case 'Ps':
+          // Not reachable via getChart(): resolveDas resolves every Ph/Pd/Ps
+          // pair cell at chart-assembly time and getChart() asserts none
+          // survive. Reaching here means a caller passed a Chart that
+          // bypassed getChart's transform pipeline -- fail loud instead of
+          // silently treating it as a split.
+          throw new Error(
+            `ChartAction '${action}' reached the pair-lookup path unresolved -- assembled charts must never contain conditional pair cells; getChart's resolveDas should have resolved this (pair ${rank},${rank} vs dealer ${dealerUp})`,
+          );
       }
-      // Rp only occurs for 8,8 v A, already handled above.
     }
-    // rank not in PAIRS (e.g. '5') -> falls through to hard/soft re-lookup below.
+    // rank not in PAIRS (e.g. '5'), or the resolved cell (P/Rp) fell through
+    // because splitting/surrender wasn't available -> hard/soft re-lookup below.
   }
 
   // Step 2-4: non-pair hands, or pairs re-looked-up as hard/soft totals
