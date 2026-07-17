@@ -3,7 +3,12 @@ import type { Card, Rank } from '../cards';
 import { DEFAULT_RULES } from '../ruleset';
 import type { RuleSet } from '../ruleset';
 import { getChart } from './index';
-import { HARD, SOFT, PAIRS } from './d68_h17';
+import { HARD as HARD_D68_H17, SOFT as SOFT_D68_H17, PAIRS as PAIRS_D68_H17 } from './d68_h17';
+import { HARD as HARD_D68_S17, SOFT as SOFT_D68_S17, PAIRS as PAIRS_D68_S17 } from './d68_s17';
+import { HARD as HARD_D2_H17, SOFT as SOFT_D2_H17, PAIRS as PAIRS_D2_H17 } from './d2_h17';
+import { HARD as HARD_D2_S17, SOFT as SOFT_D2_S17, PAIRS as PAIRS_D2_S17 } from './d2_s17';
+import { HARD as HARD_D1_H17, SOFT as SOFT_D1_H17, PAIRS as PAIRS_D1_H17 } from './d1_h17';
+import { HARD as HARD_D1_S17, SOFT as SOFT_D1_S17, PAIRS as PAIRS_D1_S17 } from './d1_s17';
 import { chartLookup } from '../basicStrategy';
 import { correctPlay, basicPlay } from '../strategy';
 import type { PlayContext } from '../strategy';
@@ -15,24 +20,75 @@ function cards(...ranks: Rank[]): Card[] {
 describe('getChart', () => {
   it('getChart(DEFAULT_RULES) deep-equals the v1 d68_h17 tables', () => {
     const chart = getChart(DEFAULT_RULES);
-    expect(chart.HARD).toEqual(HARD);
-    expect(chart.SOFT).toEqual(SOFT);
-    expect(chart.PAIRS).toEqual(PAIRS);
+    expect(chart.HARD).toEqual(HARD_D68_H17);
+    expect(chart.SOFT).toEqual(SOFT_D68_H17);
+    expect(chart.PAIRS).toEqual(PAIRS_D68_H17);
   });
 
-  it('throws a pinned message for an unregistered combo: d68 S17', () => {
-    const rules: RuleSet = { ...DEFAULT_RULES, s17: true };
-    expect(() => getChart(rules)).toThrow('No chart for d68 S17 yet');
-  });
+  describe('resolves all (decks) × (s17) combos to the correct modules', () => {
+    it('d1 H17 (decks=1, s17=false)', () => {
+      const rules: RuleSet = { ...DEFAULT_RULES, decks: 1, s17: false };
+      const chart = getChart(rules);
+      expect(chart.HARD).toEqual(HARD_D1_H17);
+      expect(chart.SOFT).toEqual(SOFT_D1_H17);
+      expect(chart.PAIRS).toEqual(PAIRS_D1_H17);
+    });
 
-  it('throws a pinned message for an unregistered combo: d2 H17', () => {
-    const rules: RuleSet = { ...DEFAULT_RULES, decks: 2 };
-    expect(() => getChart(rules)).toThrow('No chart for d2 H17 yet');
-  });
+    it('d1 S17 (decks=1, s17=true)', () => {
+      const rules: RuleSet = { ...DEFAULT_RULES, decks: 1, s17: true };
+      const chart = getChart(rules);
+      expect(chart.HARD).toEqual(HARD_D1_S17);
+      expect(chart.SOFT).toEqual(SOFT_D1_S17);
+      expect(chart.PAIRS).toEqual(PAIRS_D1_S17);
+    });
 
-  it('throws a pinned message for an unregistered combo: d1 S17', () => {
-    const rules: RuleSet = { ...DEFAULT_RULES, decks: 1, s17: true };
-    expect(() => getChart(rules)).toThrow('No chart for d1 S17 yet');
+    it('d2 H17 (decks=2, s17=false)', () => {
+      const rules: RuleSet = { ...DEFAULT_RULES, decks: 2, s17: false };
+      const chart = getChart(rules);
+      expect(chart.HARD).toEqual(HARD_D2_H17);
+      expect(chart.SOFT).toEqual(SOFT_D2_H17);
+      expect(chart.PAIRS).toEqual(PAIRS_D2_H17);
+    });
+
+    it('d2 S17 (decks=2, s17=true)', () => {
+      const rules: RuleSet = { ...DEFAULT_RULES, decks: 2, s17: true };
+      const chart = getChart(rules);
+      expect(chart.HARD).toEqual(HARD_D2_S17);
+      expect(chart.SOFT).toEqual(SOFT_D2_S17);
+      expect(chart.PAIRS).toEqual(PAIRS_D2_S17);
+    });
+
+    it('d68 H17 (decks=6, s17=false)', () => {
+      const rules: RuleSet = { ...DEFAULT_RULES, decks: 6, s17: false };
+      const chart = getChart(rules);
+      expect(chart.HARD).toEqual(HARD_D68_H17);
+      expect(chart.SOFT).toEqual(SOFT_D68_H17);
+      expect(chart.PAIRS).toEqual(PAIRS_D68_H17);
+    });
+
+    it('d68 S17 (decks=6, s17=true)', () => {
+      const rules: RuleSet = { ...DEFAULT_RULES, decks: 6, s17: true };
+      const chart = getChart(rules);
+      expect(chart.HARD).toEqual(HARD_D68_S17);
+      expect(chart.SOFT).toEqual(SOFT_D68_S17);
+      expect(chart.PAIRS).toEqual(PAIRS_D68_S17);
+    });
+
+    it('d68 H17 (decks=8, s17=false) maps to same d68_h17 as decks=6', () => {
+      const rules: RuleSet = { ...DEFAULT_RULES, decks: 8, s17: false };
+      const chart = getChart(rules);
+      expect(chart.HARD).toEqual(HARD_D68_H17);
+      expect(chart.SOFT).toEqual(SOFT_D68_H17);
+      expect(chart.PAIRS).toEqual(PAIRS_D68_H17);
+    });
+
+    it('d68 S17 (decks=8, s17=true) maps to same d68_s17 as decks=6', () => {
+      const rules: RuleSet = { ...DEFAULT_RULES, decks: 8, s17: true };
+      const chart = getChart(rules);
+      expect(chart.HARD).toEqual(HARD_D68_S17);
+      expect(chart.SOFT).toEqual(SOFT_D68_S17);
+      expect(chart.PAIRS).toEqual(PAIRS_D68_S17);
+    });
   });
 });
 
