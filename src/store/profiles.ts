@@ -37,7 +37,7 @@ const ACTIVE_KEY = 'bjtrainer.activeProfile.v1';
 // Raw read only (never via loadSettings) to avoid coupling to persist.ts.
 const SETTINGS_KEY = 'bjtrainer.settings.v1';
 
-function makeId(): string {
+export function makeId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }

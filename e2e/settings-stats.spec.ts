@@ -7,18 +7,18 @@ test('a changed setting persists across reload', async ({ page }) => {
   await expect(page.locator('.settings-heading')).toHaveText('Settings');
   await shot(page, '21-settings-default');
 
-  const betSpreadToggle = page.locator('.settings-toggle-row', { hasText: 'Bet spread on' }).locator('input.settings-toggle');
-  await expect(betSpreadToggle).not.toBeChecked();
-  await betSpreadToggle.click();
-  await expect(betSpreadToggle).toBeChecked();
+  const countPeekToggle = page.locator('.settings-toggle-row', { hasText: 'Count peek' }).locator('input.settings-toggle');
+  await expect(countPeekToggle).toBeChecked();
+  await countPeekToggle.click();
+  await expect(countPeekToggle).not.toBeChecked();
   await shot(page, '22-settings-changed');
 
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const betSpreadToggleAfterReload = page
-    .locator('.settings-toggle-row', { hasText: 'Bet spread on' })
+  const countPeekToggleAfterReload = page
+    .locator('.settings-toggle-row', { hasText: 'Count peek' })
     .locator('input.settings-toggle');
-  await expect(betSpreadToggleAfterReload).toBeChecked();
+  await expect(countPeekToggleAfterReload).not.toBeChecked();
   await shot(page, '23-settings-persisted-after-reload');
 });
 

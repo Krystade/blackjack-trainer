@@ -30,7 +30,10 @@ function App() {
     case 'home':
       return <Home onNavigate={navigate} activeProfile={activeProfile} />;
     case 'table':
-      return <Table settings={settings} onNavigate={navigate} activeProfile={activeProfile} />;
+      // key={activeProfile.id} forces a remount on profile switch: useGame builds its
+      // Game instance once per mount, so without this key a profile change (rules,
+      // penetration, ramp, bankroll) would leave a stale Game running under the new profile.
+      return <Table key={activeProfile.id} settings={settings} onNavigate={navigate} activeProfile={activeProfile} />;
     case 'drills':
       return (
         <Drills

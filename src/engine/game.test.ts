@@ -593,6 +593,29 @@ describe('count check', () => {
   });
 });
 
+describe('rules.decks wired into the shoe (Cycle-1 closing fix)', () => {
+  it('1D rules: shoe starts with 52 cards, not the 6-deck default', () => {
+    const game = new Game(cfg({ rules: { decks: 1, s17: false, das: true, ls: true, rsa: false, bj65: false } }));
+    expect(game.shoe.cardsRemaining).toBe(52);
+  });
+
+  it('2D rules: shoe starts with 104 cards', () => {
+    const game = new Game(cfg({ rules: { decks: 2, s17: false, das: true, ls: true, rsa: false, bj65: false } }));
+    expect(game.shoe.cardsRemaining).toBe(104);
+  });
+
+  it('no rules override: shoe falls back to DEFAULT_RULES (6 decks = 312 cards)', () => {
+    const game = new Game(cfg());
+    expect(game.shoe.cardsRemaining).toBe(312);
+  });
+
+  it('1D game: trueCountNow uses a 1-deck divisor, not the 6-deck default', () => {
+    const game = new Game(cfg({ rules: { decks: 1, s17: false, das: true, ls: true, rsa: false, bj65: false } }));
+    game.runningCount = 2; // ~1 deck left (fresh 1D shoe) -> floor(2/1) = 2; a 6-deck divisor would floor(2/6) = 0
+    expect(game.trueCountNow).toBe(2);
+  });
+});
+
 describe('reshuffle', () => {
   it('penetration 0.5: reaching cutCardReached triggers a reshuffle on the next startRound', () => {
     // 8-card rig at penetration 0.5 -> cut card at 4 cards dealt, i.e. exactly

@@ -1,7 +1,6 @@
 import type { Screen } from '../App';
 import type { Settings as SettingsData } from '../../store/types';
 import { saveSettings } from '../../store/persist';
-import type { SpreadRow } from '../../engine/game';
 
 interface SettingsProps {
   settings: SettingsData;
@@ -99,10 +98,6 @@ export function Stepper({
   );
 }
 
-function sortSpread(rows: SpreadRow[]): SpreadRow[] {
-  return [...rows].sort((a, b) => a.minTc - b.minTc);
-}
-
 export function Settings({ settings, onNavigate, onSettingsChange }: SettingsProps) {
   const commit = (next: SettingsData) => {
     saveSettings(next);
@@ -115,19 +110,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
 
   const updateDrill = (patch: Partial<SettingsData['drill']>) => {
     update({ drill: { ...settings.drill, ...patch } });
-  };
-
-  const updateSpreadRow = (index: number, patch: Partial<SpreadRow>) => {
-    const rows = settings.spread.map((r, i) => (i === index ? { ...r, ...patch } : r));
-    update({ spread: sortSpread(rows) });
-  };
-
-  const addSpreadRow = () => {
-    update({ spread: sortSpread([...settings.spread, { minTc: 0, units: 1 }]) });
-  };
-
-  const removeSpreadRow = (index: number) => {
-    update({ spread: settings.spread.filter((_, i) => i !== index) });
   };
 
   return (
@@ -154,40 +136,9 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
       <section className="settings-section">
         <h2 className="settings-section-title">Play</h2>
         <Toggle
-          label="Bet spread on"
-          checked={settings.betSpreadOn}
-          onChange={(v) => update({ betSpreadOn: v })}
-        />
-        <Toggle
           label="Count peek"
           checked={settings.countPeek}
           onChange={(v) => update({ countPeek: v })}
-        />
-        <Stepper
-          label="Starting bankroll"
-          value={settings.bankrollStart}
-          min={25}
-          max={1000}
-          step={25}
-          onChange={(v) => update({ bankrollStart: v })}
-        />
-        <Stepper
-          label="Count check every"
-          value={settings.countCheckEvery}
-          min={0}
-          max={20}
-          step={1}
-          format={(v) => (v === 0 ? 'off' : `${v} rounds`)}
-          onChange={(v) => update({ countCheckEvery: v })}
-        />
-        <Stepper
-          label="Penetration"
-          value={settings.penetration}
-          min={0.5}
-          max={0.9}
-          step={0.05}
-          format={(v) => `${Math.round(v * 100)}%`}
-          onChange={(v) => update({ penetration: v })}
         />
         <Stepper
           label="Deal speed"
@@ -198,6 +149,9 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           format={(v) => `${v}ms`}
           onChange={(v) => update({ dealSpeedMs: v })}
         />
+        <div className="settings-row settings-note-row">
+          Game rules, bankroll &amp; bet spread live in Profiles now
+        </div>
       </section>
 
       <section className="settings-section">
@@ -246,69 +200,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           onChange={(v) => updateDrill({ countLengthCards: v })}
         />
       </section>
-
-      {settings.betSpreadOn && (
-        <section className="settings-section">
-          <h2 className="settings-section-title">Bet spread</h2>
-          <div className="spread-table">
-            {settings.spread.map((row, i) => (
-              <div className="spread-row" key={i}>
-                <div className="spread-field">
-                  <span className="spread-field-label">TC ≥</span>
-                  <div className="stepper">
-                    <button
-                      type="button"
-                      className="stepper-btn"
-                      onClick={() => updateSpreadRow(i, { minTc: row.minTc - 1 })}
-                    >
-                      &minus;
-                    </button>
-                    <span className="stepper-value">{row.minTc}</span>
-                    <button
-                      type="button"
-                      className="stepper-btn"
-                      onClick={() => updateSpreadRow(i, { minTc: row.minTc + 1 })}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <div className="spread-field">
-                  <span className="spread-field-label">Units</span>
-                  <div className="stepper">
-                    <button
-                      type="button"
-                      className="stepper-btn"
-                      onClick={() => updateSpreadRow(i, { units: Math.max(1, row.units - 1) })}
-                    >
-                      &minus;
-                    </button>
-                    <span className="stepper-value">{row.units}</span>
-                    <button
-                      type="button"
-                      className="stepper-btn"
-                      onClick={() => updateSpreadRow(i, { units: row.units + 1 })}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="spread-remove-btn"
-                  onClick={() => removeSpreadRow(i)}
-                  disabled={settings.spread.length <= 1}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-          <button type="button" className="spread-add-btn" onClick={addSpreadRow}>
-            Add row
-          </button>
-        </section>
-      )}
     </div>
   );
 }

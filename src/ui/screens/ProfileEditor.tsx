@@ -9,6 +9,7 @@ import {
   getActiveProfile,
   setActiveProfile,
   makeDefaultProfile,
+  makeId,
 } from '../../store/profiles';
 import { parseCvcxRamp } from '../../store/cvcxParse';
 import { Segmented, Stepper } from './Settings';
@@ -117,7 +118,7 @@ export function ProfileEditor({ onNavigate }: ProfileEditorProps) {
 
   const duplicateProfile = (profile: Profile) => {
     const copy = structuredClone(profile);
-    copy.id = crypto.randomUUID ? crypto.randomUUID() : `p-${Date.now().toString(36)}`;
+    copy.id = makeId();
     copy.name = `${profile.name} (copy)`;
     const next = [...profiles, copy];
     saveProfiles(next);

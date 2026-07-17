@@ -124,7 +124,7 @@ export class Game {
   constructor(cfg: GameConfig) {
     this.cfg = cfg;
     this.rules = cfg.rules ?? DEFAULT_RULES;
-    this.shoe = new Shoe({ penetration: cfg.penetration, seed: cfg.seed });
+    this.shoe = new Shoe({ decks: this.rules.decks, penetration: cfg.penetration, seed: cfg.seed });
     this.bankroll = cfg.bankrollStart;
   }
 
