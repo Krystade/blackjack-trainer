@@ -107,23 +107,30 @@ function resolveAsTotal(
     case 'Rs':
       return basic('stand', `Basic stand (surrender unavailable) vs dealer ${dealerUp}`);
     case 'P':
-    case 'Ph':
     case 'Rp':
       // Not reachable: HARD/SOFT tables never contain pair-only actions.
       return basic('hit', `Basic hit vs dealer ${dealerUp}`);
+    case 'Ph':
     case 'Pd':
     case 'Ps':
-      // Not reachable yet: no registered chart uses Pd/Ps (single-deck-only,
-      // pair-only cells; see charts/types.ts). Throw loudly instead of
-      // silently mis-resolving -- the das/ls transform task (C1.9) must add
-      // real DAS-aware resolution here before any chart can use these.
+      // Not reachable via getChart(): resolveDas resolves every Ph/Pd/Ps
+      // pair cell at chart-assembly time (charts/transforms.ts), and
+      // getChart() asserts none survive. Reaching here means a caller
+      // constructed/passed a Chart that bypassed getChart's transform
+      // pipeline -- fail loud rather than silently mis-resolving.
       throw new Error(
-        `ChartAction '${action}' reached hard/soft resolution unresolved -- DAS-aware pair resolution for '${action}' is not implemented yet`,
+        `ChartAction '${action}' reached hard/soft resolution unresolved -- assembled charts must never contain conditional pair cells; getChart's resolveDas should have resolved this`,
       );
   }
 }
 
-function play(
+/**
+ * Core play algorithm, parameterized on an already-assembled Chart. Exported
+ * (in addition to correctPlay/basicPlay) so tests can drive it directly with
+ * a hand-crafted Chart that bypasses getChart -- e.g. to pin the fail-loud
+ * behavior when a chart still contains a conditional pair cell (Ph/Pd/Ps).
+ */
+export function play(
   cards: Card[],
   dealerUp: Rank,
   tc: number,
@@ -155,13 +162,20 @@ function play(
     if (rank in chart.PAIRS) {
       const idx = upIndex(dealerUp);
       const action = chart.PAIRS[rank]![idx];
-      if (action === 'P' || action === 'Ph') return basic('split', `Basic split vs dealer ${dealerUp}`);
+      if (action === 'P') return basic('split', `Basic split vs dealer ${dealerUp}`);
       if (action === 'H') return basic('hit', `Basic hit vs dealer ${dealerUp}`);
       if (action === 'S') return basic('stand', `Basic stand vs dealer ${dealerUp}`);
+      if (action === 'Ph' || action === 'Pd' || action === 'Ps') {
+        // Not reachable via getChart(): resolveDas resolves every Ph/Pd/Ps
+        // pair cell at chart-assembly time and getChart() asserts none
+        // survive. Reaching here means a caller passed a Chart that
+        // bypassed getChart's transform pipeline -- fail loud instead of
+        // silently treating it as a split.
+        throw new Error(
+          `ChartAction '${action}' reached the pair-lookup path unresolved -- assembled charts must never contain conditional pair cells; getChart's resolveDas should have resolved this (pair ${rank},${rank} vs dealer ${dealerUp})`,
+        );
+      }
       // Rp only occurs for 8,8 v A, already handled above.
-      // Pd/Ps: not reachable yet -- no registered chart uses them (see
-      // resolveAsTotal's Pd/Ps cases for why this stays a loud gap, not a
-      // silent one, once a chart does).
     }
     // rank not in PAIRS (e.g. '5') -> falls through to hard/soft re-lookup below.
   }

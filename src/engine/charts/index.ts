@@ -1,22 +1,15 @@
-import type { Rank } from '../cards';
 import type { RuleSet } from '../ruleset';
-import type { ChartAction } from './types';
+import type { Chart, DeckClass } from './types';
 import { HARD as HARD_D68_H17, SOFT as SOFT_D68_H17, PAIRS as PAIRS_D68_H17 } from './d68_h17';
 import { HARD as HARD_D68_S17, SOFT as SOFT_D68_S17, PAIRS as PAIRS_D68_S17 } from './d68_s17';
 import { HARD as HARD_D2_H17, SOFT as SOFT_D2_H17, PAIRS as PAIRS_D2_H17 } from './d2_h17';
 import { HARD as HARD_D2_S17, SOFT as SOFT_D2_S17, PAIRS as PAIRS_D2_S17 } from './d2_s17';
 import { HARD as HARD_D1_H17, SOFT as SOFT_D1_H17, PAIRS as PAIRS_D1_H17 } from './d1_h17';
 import { HARD as HARD_D1_S17, SOFT as SOFT_D1_S17, PAIRS as PAIRS_D1_S17 } from './d1_s17';
+import { resolveDas, stripLs, assertFullyResolved } from './transforms';
 
-export type { ChartAction } from './types';
+export type { ChartAction, Chart, DeckClass } from './types';
 
-export interface Chart {
-  HARD: Record<number, ChartAction[]>;
-  SOFT: Record<number, ChartAction[]>;
-  PAIRS: Partial<Record<Rank, ChartAction[]>>;
-}
-
-type DeckClass = 'd68' | 'd2' | 'd1';
 type S17Key = 'H17' | 'S17';
 
 function deckClassFor(decks: RuleSet['decks']): DeckClass {
@@ -25,8 +18,10 @@ function deckClassFor(decks: RuleSet['decks']): DeckClass {
   return 'd1';
 }
 
-// Registry of assembled charts, keyed by (deckClass, s17). All six base charts
-// are registered: d68/H17, d68/S17, d2/H17, d2/S17, d1/H17, d1/S17.
+// Registry of RAW base charts, keyed by (deckClass, s17). These may still
+// contain DAS-conditional pair cells (Ph/Pd/Ps) and Rp -- getChart() below
+// resolves them per-ruleset before returning. All six base charts are
+// registered: d68/H17, d68/S17, d2/H17, d2/S17, d1/H17, d1/S17.
 const REGISTRY: Partial<Record<DeckClass, Partial<Record<S17Key, Chart>>>> = {
   d68: {
     H17: { HARD: HARD_D68_H17, SOFT: SOFT_D68_H17, PAIRS: PAIRS_D68_H17 },
@@ -42,13 +37,31 @@ const REGISTRY: Partial<Record<DeckClass, Partial<Record<S17Key, Chart>>>> = {
   },
 };
 
-/** Select the assembled {HARD, SOFT, PAIRS} chart for a ruleset's deck count + dealer-soft-17 rule. */
+// Assembled-chart cache, keyed by (deckClass, s17, das, ls).
+const ASSEMBLED_CACHE = new Map<string, Chart>();
+
+/**
+ * Select and fully resolve the {HARD, SOFT, PAIRS} chart for a ruleset:
+ * picks the base table by deck count + dealer-soft-17 rule, then applies
+ * resolveDas (das-conditional pair cells) followed by stripLs (surrender
+ * fallbacks), and asserts no conditional cell survived. The returned Chart
+ * always contains only H/S/Dh/Ds/P/Rh/Rs/Rp -- never Ph/Pd/Ps.
+ */
 export function getChart(rules: RuleSet): Chart {
   const deckClass = deckClassFor(rules.decks);
   const s17Key: S17Key = rules.s17 ? 'S17' : 'H17';
-  const chart = REGISTRY[deckClass]?.[s17Key];
-  if (!chart) {
+  const cacheKey = `${deckClass}|${s17Key}|${rules.das}|${rules.ls}`;
+
+  const cached = ASSEMBLED_CACHE.get(cacheKey);
+  if (cached) return cached;
+
+  const base = REGISTRY[deckClass]?.[s17Key];
+  if (!base) {
     throw new Error(`No chart for ${deckClass} ${s17Key} yet`);
   }
-  return chart;
+
+  const assembled = stripLs(resolveDas(base, rules.das, deckClass), rules.ls);
+  assertFullyResolved(assembled);
+  ASSEMBLED_CACHE.set(cacheKey, assembled);
+  return assembled;
 }

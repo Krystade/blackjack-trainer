@@ -126,8 +126,8 @@ describe('chartLookup behavioral cases', () => {
     expect(chartLookup(cards('A', '4'), '4')).toBe('Dh');
   });
 
-  it('(2,2) v 2 -> Ph', () => {
-    expect(chartLookup(cards('2', '2'), '2')).toBe('Ph');
+  it('(2,2) v 2 -> P (DEFAULT_RULES das:true resolves Ph -> P at assembly)', () => {
+    expect(chartLookup(cards('2', '2'), '2')).toBe('P');
   });
 
   it('3-card (5,4,7)=16 v 10 -> Rh (chart is card-count agnostic)', () => {

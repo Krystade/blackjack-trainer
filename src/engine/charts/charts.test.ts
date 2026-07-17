@@ -3,6 +3,8 @@ import type { Card, Rank } from '../cards';
 import { DEFAULT_RULES } from '../ruleset';
 import type { RuleSet } from '../ruleset';
 import { getChart } from './index';
+import type { Chart, DeckClass } from './types';
+import { resolveDas } from './transforms';
 import { HARD as HARD_D68_H17, SOFT as SOFT_D68_H17, PAIRS as PAIRS_D68_H17 } from './d68_h17';
 import { HARD as HARD_D68_S17, SOFT as SOFT_D68_S17, PAIRS as PAIRS_D68_S17 } from './d68_s17';
 import { HARD as HARD_D2_H17, SOFT as SOFT_D2_H17, PAIRS as PAIRS_D2_H17 } from './d2_h17';
@@ -17,12 +19,22 @@ function cards(...ranks: Rank[]): Card[] {
   return ranks.map((rank) => ({ rank, suit: 's' }) as Card);
 }
 
+// DEFAULT_RULES (and every override below) keeps das:true, ls:true. HARD/SOFT
+// are untouched by resolveDas and stripLs is a no-op when ls:true, so they
+// still deep-equal the raw base modules. PAIRS is das-resolved (Ph/Pd/Ps/Rp
+// may turn into P) -- compare against resolveDas applied to the raw module,
+// which is what getChart is documented to do, rather than the raw table.
+function expectedPairs(raw: Chart, deckClass: DeckClass): Chart['PAIRS'] {
+  return resolveDas(raw, true, deckClass).PAIRS;
+}
+
 describe('getChart', () => {
-  it('getChart(DEFAULT_RULES) deep-equals the v1 d68_h17 tables', () => {
+  it('getChart(DEFAULT_RULES) resolves the v1 d68_h17 tables (das:true collapses Ph/Ps cells to P)', () => {
+    const raw: Chart = { HARD: HARD_D68_H17, SOFT: SOFT_D68_H17, PAIRS: PAIRS_D68_H17 };
     const chart = getChart(DEFAULT_RULES);
     expect(chart.HARD).toEqual(HARD_D68_H17);
     expect(chart.SOFT).toEqual(SOFT_D68_H17);
-    expect(chart.PAIRS).toEqual(PAIRS_D68_H17);
+    expect(chart.PAIRS).toEqual(expectedPairs(raw, 'd68'));
   });
 
   describe('resolves all (decks) × (s17) combos to the correct modules', () => {
@@ -31,7 +43,7 @@ describe('getChart', () => {
       const chart = getChart(rules);
       expect(chart.HARD).toEqual(HARD_D1_H17);
       expect(chart.SOFT).toEqual(SOFT_D1_H17);
-      expect(chart.PAIRS).toEqual(PAIRS_D1_H17);
+      expect(chart.PAIRS).toEqual(expectedPairs({ HARD: HARD_D1_H17, SOFT: SOFT_D1_H17, PAIRS: PAIRS_D1_H17 }, 'd1'));
     });
 
     it('d1 S17 (decks=1, s17=true)', () => {
@@ -39,7 +51,7 @@ describe('getChart', () => {
       const chart = getChart(rules);
       expect(chart.HARD).toEqual(HARD_D1_S17);
       expect(chart.SOFT).toEqual(SOFT_D1_S17);
-      expect(chart.PAIRS).toEqual(PAIRS_D1_S17);
+      expect(chart.PAIRS).toEqual(expectedPairs({ HARD: HARD_D1_S17, SOFT: SOFT_D1_S17, PAIRS: PAIRS_D1_S17 }, 'd1'));
     });
 
     it('d2 H17 (decks=2, s17=false)', () => {
@@ -47,7 +59,7 @@ describe('getChart', () => {
       const chart = getChart(rules);
       expect(chart.HARD).toEqual(HARD_D2_H17);
       expect(chart.SOFT).toEqual(SOFT_D2_H17);
-      expect(chart.PAIRS).toEqual(PAIRS_D2_H17);
+      expect(chart.PAIRS).toEqual(expectedPairs({ HARD: HARD_D2_H17, SOFT: SOFT_D2_H17, PAIRS: PAIRS_D2_H17 }, 'd2'));
     });
 
     it('d2 S17 (decks=2, s17=true)', () => {
@@ -55,7 +67,7 @@ describe('getChart', () => {
       const chart = getChart(rules);
       expect(chart.HARD).toEqual(HARD_D2_S17);
       expect(chart.SOFT).toEqual(SOFT_D2_S17);
-      expect(chart.PAIRS).toEqual(PAIRS_D2_S17);
+      expect(chart.PAIRS).toEqual(expectedPairs({ HARD: HARD_D2_S17, SOFT: SOFT_D2_S17, PAIRS: PAIRS_D2_S17 }, 'd2'));
     });
 
     it('d68 H17 (decks=6, s17=false)', () => {
@@ -63,7 +75,7 @@ describe('getChart', () => {
       const chart = getChart(rules);
       expect(chart.HARD).toEqual(HARD_D68_H17);
       expect(chart.SOFT).toEqual(SOFT_D68_H17);
-      expect(chart.PAIRS).toEqual(PAIRS_D68_H17);
+      expect(chart.PAIRS).toEqual(expectedPairs({ HARD: HARD_D68_H17, SOFT: SOFT_D68_H17, PAIRS: PAIRS_D68_H17 }, 'd68'));
     });
 
     it('d68 S17 (decks=6, s17=true)', () => {
@@ -71,7 +83,7 @@ describe('getChart', () => {
       const chart = getChart(rules);
       expect(chart.HARD).toEqual(HARD_D68_S17);
       expect(chart.SOFT).toEqual(SOFT_D68_S17);
-      expect(chart.PAIRS).toEqual(PAIRS_D68_S17);
+      expect(chart.PAIRS).toEqual(expectedPairs({ HARD: HARD_D68_S17, SOFT: SOFT_D68_S17, PAIRS: PAIRS_D68_S17 }, 'd68'));
     });
 
     it('d68 H17 (decks=8, s17=false) maps to same d68_h17 as decks=6', () => {
@@ -79,7 +91,7 @@ describe('getChart', () => {
       const chart = getChart(rules);
       expect(chart.HARD).toEqual(HARD_D68_H17);
       expect(chart.SOFT).toEqual(SOFT_D68_H17);
-      expect(chart.PAIRS).toEqual(PAIRS_D68_H17);
+      expect(chart.PAIRS).toEqual(expectedPairs({ HARD: HARD_D68_H17, SOFT: SOFT_D68_H17, PAIRS: PAIRS_D68_H17 }, 'd68'));
     });
 
     it('d68 S17 (decks=8, s17=true) maps to same d68_s17 as decks=6', () => {
@@ -87,7 +99,7 @@ describe('getChart', () => {
       const chart = getChart(rules);
       expect(chart.HARD).toEqual(HARD_D68_S17);
       expect(chart.SOFT).toEqual(SOFT_D68_S17);
-      expect(chart.PAIRS).toEqual(PAIRS_D68_S17);
+      expect(chart.PAIRS).toEqual(expectedPairs({ HARD: HARD_D68_S17, SOFT: SOFT_D68_S17, PAIRS: PAIRS_D68_S17 }, 'd68'));
     });
   });
 });
