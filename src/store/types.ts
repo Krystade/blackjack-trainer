@@ -2,6 +2,7 @@ import type { SpreadRow } from '../engine/game';
 import { DEFAULT_SPREAD } from '../engine/game';
 import type { Category, MistakeClass } from '../engine/grade';
 import type { DeviationId } from '../engine/deviations';
+import type { RuleSet } from '../engine/ruleset';
 
 export interface Settings {
   version: 1;
@@ -42,6 +43,25 @@ export const DEFAULT_SETTINGS: Settings = {
     quizIndex: 'all',
   },
 };
+
+/** A saved game profile: rules + ramp + bankroll config, selectable at the Home screen. */
+export interface Profile {
+  id: string;
+  name: string;
+  rules: RuleSet;
+  penetration: number;
+  spread: SpreadRow[];
+  bankrollStart: number;
+  unitDollars?: number;
+  countCheckEvery: number;
+  betSpreadOn: boolean;
+  cvcx?: {
+    score?: number;
+    evPerHour?: number;
+    riskOfRuin?: number;
+    simNote?: string;
+  };
+}
 
 export interface TallyRW {
   right: number;
