@@ -1,7 +1,14 @@
 import { DEFAULT_RULES } from '../engine/ruleset';
 import { DEFAULT_SPREAD } from '../engine/game';
-import type { SpreadRow } from '../engine/game';
+import type { SpreadRow, SeatConfig } from '../engine/game';
 import type { Profile } from './types';
+
+export const DEFAULT_SEATS: SeatConfig = {
+  playerHands: 1,
+  bots: 0,
+  botMistakePct: 0,
+  playerPosition: 0,
+};
 
 // Storage injection for testing (guards missing localStorage in node).
 // Deliberately local to this module (not shared with persist.ts) per the
@@ -49,6 +56,33 @@ function cloneProfile(p: Profile): Profile {
   return structuredClone(p);
 }
 
+/**
+ * Backfill missing or partial seats in a profile by merging over DEFAULT_SEATS.
+ * Ensures legacy profiles without seats get the defaults, and partially-specified
+ * seats get filled in from the defaults.
+ */
+function backfillSeats(p: Profile): Profile {
+  if (!p.seats) {
+    return {
+      ...p,
+      seats: { ...DEFAULT_SEATS },
+    };
+  }
+
+  // Merge partial seats with defaults
+  const mergedSeats: SeatConfig = {
+    playerHands: p.seats.playerHands ?? DEFAULT_SEATS.playerHands,
+    bots: p.seats.bots ?? DEFAULT_SEATS.bots,
+    botMistakePct: p.seats.botMistakePct ?? DEFAULT_SEATS.botMistakePct,
+    playerPosition: p.seats.playerPosition ?? DEFAULT_SEATS.playerPosition,
+  };
+
+  return {
+    ...p,
+    seats: mergedSeats,
+  };
+}
+
 function isValidProfile(p: unknown): p is Profile {
   if (typeof p !== 'object' || p === null) {
     return false;
@@ -82,6 +116,7 @@ export function makeDefaultProfile(): Profile {
     bankrollStart: 100,
     countCheckEvery: 5,
     betSpreadOn: false,
+    seats: { ...DEFAULT_SEATS },
   };
 }
 
@@ -120,6 +155,7 @@ function buildDefaultFromSettingsBlob(json: string | null): Profile {
         typeof p.countCheckEvery === 'number' ? p.countCheckEvery : base.countCheckEvery,
       penetration: typeof p.penetration === 'number' ? p.penetration : base.penetration,
       betSpreadOn: typeof p.betSpreadOn === 'boolean' ? p.betSpreadOn : base.betSpreadOn,
+      seats: { ...base.seats },
     };
   } catch {
     return base;
@@ -140,7 +176,8 @@ function persistFreshDefault(profile: Profile): void {
  * - Profiles key present but corrupt/wrong-shape/empty: reset to a fresh
  *   plain default (never re-attempts settings migration) and persist.
  * - Profiles key present and valid: return a deep-cloned copy (no shared
- *   references with storage or between calls).
+ *   references with storage or between calls). Missing or partial seats are
+ *   backfilled with DEFAULT_SEATS during load.
  */
 export function loadProfiles(): Profile[] {
   const store = getStorage();
@@ -150,7 +187,7 @@ export function loadProfiles(): Profile[] {
     try {
       const parsed = JSON.parse(json) as unknown;
       if (isValidProfilesArray(parsed) && parsed.length > 0) {
-        return parsed.map(cloneProfile);
+        return parsed.map((p) => backfillSeats(cloneProfile(p)));
       }
     } catch {
       // corrupt JSON: fall through to the plain-default reset below

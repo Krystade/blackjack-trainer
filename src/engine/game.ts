@@ -10,6 +10,18 @@ import type { Action } from './deviations';
 import { DEFAULT_RULES } from './ruleset';
 import type { RuleSet } from './ruleset';
 
+export interface SeatConfig {
+  playerHands: 1 | 2 | 3;
+  bots: 0 | 1 | 2 | 3 | 4 | 5;
+  botMistakePct: number;
+  playerPosition: number;
+}
+
+export interface Seat {
+  kind: 'player' | 'bot';
+  hands: PlayerHand[];
+}
+
 export interface SpreadRow {
   minTc: number;
   units: number;

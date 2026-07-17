@@ -261,4 +261,118 @@ describe('store/profiles', () => {
       });
     });
   });
+
+  describe('seats: config and backfill migration', () => {
+    test('makeDefaultProfile includes DEFAULT_SEATS', () => {
+      const p = makeDefaultProfile();
+      expect(p.seats).toBeDefined();
+      expect(p.seats.playerHands).toBe(1);
+      expect(p.seats.bots).toBe(0);
+      expect(p.seats.botMistakePct).toBe(0);
+      expect(p.seats.playerPosition).toBe(0);
+    });
+
+    test('two makeDefaultProfile calls produce independent seats objects', () => {
+      const a = makeDefaultProfile();
+      const b = makeDefaultProfile();
+      expect(a.seats).not.toBe(b.seats);
+      expect(a.seats).toEqual(b.seats);
+    });
+
+    test('loadProfiles: stored profile WITHOUT seats -> loads with DEFAULT_SEATS (deep-equal, not reference-equal)', () => {
+      const oldProfile = {
+        id: 'old-1',
+        name: 'Old Profile',
+        rules: DEFAULT_RULES,
+        penetration: 0.75,
+        spread: DEFAULT_SPREAD,
+        bankrollStart: 100,
+        countCheckEvery: 5,
+        betSpreadOn: false,
+        // Omit seats to simulate legacy profile
+      } as any;
+
+      storage['bjtrainer.profiles.v1'] = JSON.stringify([oldProfile]);
+
+      const profiles = loadProfiles();
+      expect(profiles).toHaveLength(1);
+      const loaded = profiles[0]!;
+
+      // Must have seats filled in
+      expect(loaded.seats).toBeDefined();
+      expect(loaded.seats.playerHands).toBe(1);
+      expect(loaded.seats.bots).toBe(0);
+      expect(loaded.seats.botMistakePct).toBe(0);
+      expect(loaded.seats.playerPosition).toBe(0);
+
+      // Must not be reference-equal to the default
+      const defaultSeats = makeDefaultProfile().seats;
+      expect(loaded.seats).not.toBe(defaultSeats);
+    });
+
+    test('loadProfiles: stored profile with PARTIAL seats -> merged with DEFAULT_SEATS', () => {
+      const partialProfile = {
+        id: 'partial-1',
+        name: 'Partial Profile',
+        rules: DEFAULT_RULES,
+        penetration: 0.75,
+        spread: DEFAULT_SPREAD,
+        bankrollStart: 100,
+        countCheckEvery: 5,
+        betSpreadOn: false,
+        seats: {
+          playerHands: 1,
+          bots: 3,
+          // Missing botMistakePct and playerPosition
+        },
+      } as any;
+
+      storage['bjtrainer.profiles.v1'] = JSON.stringify([partialProfile]);
+
+      const profiles = loadProfiles();
+      expect(profiles).toHaveLength(1);
+      const loaded = profiles[0]!;
+
+      // Partial seats should be merged with defaults
+      expect(loaded.seats.playerHands).toBe(1); // provided
+      expect(loaded.seats.bots).toBe(3); // provided
+      expect(loaded.seats.botMistakePct).toBe(0); // filled from default
+      expect(loaded.seats.playerPosition).toBe(0); // filled from default
+    });
+
+    test('loadProfiles: migration from v1 settings WITHOUT seats -> adds DEFAULT_SEATS', () => {
+      const v1Settings = {
+        version: 1,
+        feedbackMode: 'test',
+        betSpreadOn: true,
+        spread: [{ minTc: -99, units: 1 }],
+        bankrollStart: 250,
+        countCheckEvery: 3,
+        penetration: 0.6,
+        countPeek: false,
+        dealSpeedMs: 500,
+        drill: { flashCategory: 'all', countGroup: 1 },
+      };
+      storage['bjtrainer.settings.v1'] = JSON.stringify(v1Settings);
+
+      const profiles = loadProfiles();
+      expect(profiles).toHaveLength(1);
+      const p = profiles[0]!;
+
+      expect(p.seats).toBeDefined();
+      expect(p.seats.playerHands).toBe(1);
+      expect(p.seats.bots).toBe(0);
+      expect(p.seats.botMistakePct).toBe(0);
+      expect(p.seats.playerPosition).toBe(0);
+    });
+
+    test('new profiles (no legacy data) carry seats in round-trip', () => {
+      const fresh = makeDefaultProfile();
+      saveProfiles([fresh]);
+
+      const loaded = loadProfiles();
+      expect(loaded[0]!.seats).toBeDefined();
+      expect(loaded[0]!.seats).toEqual(fresh.seats);
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import type { SpreadRow } from '../engine/game';
+import type { SpreadRow, SeatConfig } from '../engine/game';
 import { DEFAULT_SPREAD } from '../engine/game';
 import type { Category, MistakeClass } from '../engine/grade';
 import type { DeviationId } from '../engine/deviations';
@@ -55,6 +55,7 @@ export interface Profile {
   unitDollars?: number;
   countCheckEvery: number;
   betSpreadOn: boolean;
+  seats: SeatConfig;
   cvcx?: {
     score?: number;
     evPerHour?: number;
