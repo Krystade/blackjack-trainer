@@ -354,7 +354,7 @@ function FlashcardsView({
     const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: true };
     const withCount = correctPlay(card.cards, card.up, 0, ctx, activeProfile.rules);
     const basicOnly = basicPlay(card.cards, card.up, ctx, activeProfile.rules);
-    const { classification, correct } = classifyAction(taken, withCount, basicOnly, card.cards, card.up, 0);
+    const { classification, correct } = classifyAction(taken, withCount, basicOnly, card.cards, card.up, 0, activeProfile.rules);
 
     if (!correct) {
       weightsRef.current = { ...weightsRef.current, [card.cellId]: (weightsRef.current[card.cellId] ?? 0) + 1 };
@@ -467,7 +467,7 @@ function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet): GradedEv
   const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: false };
   const withCount = correctPlay(item.cards, item.up, item.tc, ctx, rules);
   const basicOnly = basicPlay(item.cards, item.up, ctx, rules);
-  const { classification, correct } = classifyAction(taken as Action, withCount, basicOnly, item.cards, item.up, item.tc);
+  const { classification, correct } = classifyAction(taken as Action, withCount, basicOnly, item.cards, item.up, item.tc, rules);
 
   return {
     kind: 'action',

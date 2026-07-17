@@ -1,9 +1,11 @@
 import type { Card, Rank } from './cards';
 import type { Action, DeviationId } from './deviations';
 import type { Advice } from './strategy';
-import { ILLUSTRIOUS_18 } from './deviations';
+import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from './deviations';
 import { handValue, isPair, pairRank } from './hand';
 import { upIndex } from './basicStrategy';
+import { DEFAULT_RULES } from './ruleset';
+import type { RuleSet } from './ruleset';
 
 export type MistakeClass = 'correct' | 'basic-error' | 'missed-deviation' | 'phantom-deviation' | 'wrong-anyway';
 export type EventKind = 'action' | 'insurance' | 'bet' | 'countCheck';
@@ -31,6 +33,7 @@ export interface GradedEvent {
  * @param cards The player's hand
  * @param up The dealer's up-card
  * @param tc The true count
+ * @param rules The ruleset to use for phantom-deviation detection (defaults to H17)
  * @returns An object with classification and correct flag
  */
 export function classifyAction(
@@ -41,6 +44,7 @@ export function classifyAction(
   up: Rank,
   // Unused: the tc is already baked into withCount/basicOnly by the caller.
   _tc: number,
+  rules: RuleSet = DEFAULT_RULES,
 ): { classification: MistakeClass; correct: boolean } {
   // Step 1: taken === withCount.action -> correct
   if (taken === withCount.action) {
@@ -60,7 +64,7 @@ export function classifyAction(
   } else {
     // withCount.source === 'basic' (no deviation applied at this count)
     // Check for phantom-deviation: an ACTIVE I18 entry exists for this (hand,up) with action === taken
-    if (isPhantomDeviation(taken, cards, up)) {
+    if (isPhantomDeviation(taken, cards, up, rules)) {
       return { classification: 'phantom-deviation', correct: false };
     } else {
       return { classification: 'basic-error', correct: false };
@@ -72,13 +76,21 @@ export function classifyAction(
  * Check if there's an active deviation entry that the player guessed.
  * The player took an action that's offered by the Illustrious 18 for this hand/up,
  * but the count didn't justify it.
+ *
+ * @param taken The action the player took
+ * @param cards The player's hand
+ * @param up The dealer's up-card
+ * @param rules The ruleset to determine which deviation set to use (H17 vs S17)
  */
-function isPhantomDeviation(taken: Action, cards: Card[], up: Rank): boolean {
+function isPhantomDeviation(taken: Action, cards: Card[], up: Rank, rules: RuleSet = DEFAULT_RULES): boolean {
   const hv = handValue(cards);
   const upIdx = upIndex(up);
   const isTenPair = pairRank(cards) === '10'; // pairRank normalizes 10/J/Q/K to '10'
 
-  for (const dev of ILLUSTRIOUS_18) {
+  // Select the appropriate deviation set based on ruleset
+  const deviationSet = rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
+
+  for (const dev of deviationSet) {
     if (!dev.active) continue;
     if (dev.action !== taken) continue;
 

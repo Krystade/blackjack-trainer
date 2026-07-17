@@ -289,7 +289,7 @@ export class Game {
     };
     const withCount: Advice = correctPlay(hand.cards, up, tc, ctx, this.rules);
     const basicOnly: Advice = basicPlay(hand.cards, up, ctx, this.rules);
-    const { classification, correct } = classifyAction(action, withCount, basicOnly, hand.cards, up, tc);
+    const { classification, correct } = classifyAction(action, withCount, basicOnly, hand.cards, up, tc, this.rules);
     const category = actionCategory(hand.cards, withCount.action);
 
     this.events.push({

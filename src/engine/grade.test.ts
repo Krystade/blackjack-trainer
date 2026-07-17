@@ -3,6 +3,8 @@ import type { Card, Rank } from './cards';
 import { classifyAction, actionCategory, classifyInsurance } from './grade';
 import { correctPlay, basicPlay } from './strategy';
 import type { PlayContext } from './strategy';
+import { DEFAULT_RULES } from './ruleset';
+import type { RuleSet } from './ruleset';
 
 function cards(...ranks: Rank[]): Card[] {
   return ranks.map((rank) => ({ rank, suit: 's' }) as Card);
@@ -203,5 +205,61 @@ describe('classifyInsurance', () => {
     const result = classifyInsurance(true, 2);
     expect(result.correct).toBe(false);
     expect(result.classification).toBe('phantom-deviation');
+  });
+});
+
+describe('classifyAction: S17 phantom-deviation detection (11vA)', () => {
+  // Under S17 rules, 11vA doubles at TC >= +1 (active)
+  // Under H17 rules, 11vA is inactive (absorbed into basic)
+  const hand = cards('6', '5'); // hard 11
+  const up = 'A' as Rank;
+  const tc = 0;
+
+  const s17Rules: RuleSet = { ...DEFAULT_RULES, s17: true };
+
+  it('S17: (6,5)vA tc 0, taken double -> phantom-deviation', () => {
+    const withCount = correctPlay(hand, up, tc, ctx(), s17Rules);
+    const basicOnly = basicPlay(hand, up, ctx(), s17Rules);
+    expect(withCount.source).toBe('basic'); // tc 0 is below the +1 threshold
+    const result = classifyAction('double', withCount, basicOnly, hand, up, tc, s17Rules);
+    expect(result.correct).toBe(false);
+    expect(result.classification).toBe('phantom-deviation');
+  });
+
+  it('H17: (6,5)vA tc 0, taken double -> correct (inactive index under H17)', () => {
+    const withCount = correctPlay(hand, up, tc, ctx(), DEFAULT_RULES);
+    const basicOnly = basicPlay(hand, up, ctx(), DEFAULT_RULES);
+    expect(withCount.source).toBe('basic'); // 11vA is absorbed into basic under H17
+    const result = classifyAction('double', withCount, basicOnly, hand, up, tc, DEFAULT_RULES);
+    expect(result.correct).toBe(true);
+    expect(result.classification).toBe('correct');
+  });
+});
+
+describe('classifyAction: S17 phantom-deviation detection (16v9)', () => {
+  // Under S17 rules, 16v9 stands at TC >= +5
+  // Under H17 rules, 16v9 stands at TC >= +4
+  const hand = cards('9', '7'); // hard 16
+  const up = '9' as Rank;
+  const tc = 4;
+
+  const s17Rules: RuleSet = { ...DEFAULT_RULES, s17: true };
+
+  it('S17: (9,7)v9 tc 4, taken stand -> phantom-deviation', () => {
+    const withCount = correctPlay(hand, up, tc, ctx(), s17Rules);
+    const basicOnly = basicPlay(hand, up, ctx(), s17Rules);
+    expect(withCount.source).toBe('basic'); // tc 4 is below the +5 threshold in S17
+    const result = classifyAction('stand', withCount, basicOnly, hand, up, tc, s17Rules);
+    expect(result.correct).toBe(false);
+    expect(result.classification).toBe('phantom-deviation');
+  });
+
+  it('H17: (9,7)v9 tc 4, taken stand -> correct (tc 4 meets threshold +4 in H17)', () => {
+    const withCount = correctPlay(hand, up, tc, ctx(), DEFAULT_RULES);
+    const basicOnly = basicPlay(hand, up, ctx(), DEFAULT_RULES);
+    expect(withCount.source).toBe('illustrious18'); // tc 4 meets the +4 threshold in H17
+    const result = classifyAction('stand', withCount, basicOnly, hand, up, tc, DEFAULT_RULES);
+    expect(result.correct).toBe(true);
+    expect(result.classification).toBe('correct');
   });
 });
