@@ -1,14 +1,7 @@
 import { DEFAULT_RULES } from '../engine/ruleset';
-import { DEFAULT_SPREAD } from '../engine/game';
+import { DEFAULT_SPREAD, DEFAULT_SEATS } from '../engine/game';
 import type { SpreadRow, SeatConfig } from '../engine/game';
 import type { Profile } from './types';
-
-export const DEFAULT_SEATS: SeatConfig = {
-  playerHands: 1,
-  bots: 0,
-  botMistakePct: 0,
-  playerPosition: 0,
-};
 
 // Storage injection for testing (guards missing localStorage in node).
 // Deliberately local to this module (not shared with persist.ts) per the

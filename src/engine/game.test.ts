@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Card, Rank } from './cards';
 import { hiLoTag } from './count';
 import { Game, DEFAULT_SPREAD } from './game';
-import type { GameConfig } from './game';
+import type { GameConfig, SeatConfig } from './game';
 
 function rig(...ranks: Rank[]): Card[] {
   return ranks.map((rank) => ({ rank, suit: 's' }) as Card);
@@ -660,5 +660,99 @@ describe('grading wiring', () => {
     const ev = game.events[game.events.length - 1];
     expect(ev.classification).toBe('missed-deviation');
     expect(ev.deviationId).toBe('16v10');
+  });
+});
+
+describe('multi-seat dealing (Cycle-2 Task 2)', () => {
+  it('default cfg (no seats) -> single player seat with one hand; solo round settles byte-identically to v1', () => {
+    const game = Game.withRiggedShoe(cfg(), rig('10', '9', '6', '8', '5'));
+    expect(game.seats).toHaveLength(1);
+    expect(game.seats[0].kind).toBe('player');
+
+    game.startRound();
+    expect(game.phase).toBe('player');
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['10', '6']);
+    expect(game.dealerCards[0].rank).toBe('9');
+    expect(game.seats[0].hands).toBe(game.hands); // getter is a live view over the seat
+
+    game.act('hit');
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['10', '6', '5']); // 21
+
+    game.act('stand');
+    expect(game.phase).toBe('settled');
+    expect(game.dealerCards.map((c) => c.rank)).toEqual(['9', '8']); // hard 17, no extra draw
+    expect(game.hands[0].result).toBe('win');
+    expect(game.hands[0].net).toBe(1);
+    expect(game.bankroll).toBe(cfg().bankrollStart + 1);
+  });
+
+  it('2 bots + player at position 1, playerHands 1 -> exact card-to-seat mapping across both passes; RC = sum of visible tags (hole excluded)', () => {
+    const seats: SeatConfig = { playerHands: 1, bots: 2, botMistakePct: 0, playerPosition: 1 };
+    // Seat order (bots first, player spliced in at index 1): [bot0, player, bot1].
+    // Pass 1: bot0 c1, player c1, bot1 c1, dealer up.
+    // Pass 2: bot0 c2, player c2, bot1 c2, dealer hole.
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('2', '3', '4', '9', '5', '6', '7', '8'));
+    game.startRound();
+
+    expect(game.seats).toHaveLength(3);
+    expect(game.seats.map((s) => s.kind)).toEqual(['bot', 'player', 'bot']);
+
+    expect(game.seats[0].hands[0].cards.map((c) => c.rank)).toEqual(['2', '5']); // bot before player
+    expect(game.seats[1].hands[0].cards.map((c) => c.rank)).toEqual(['3', '6']); // player seat
+    expect(game.seats[2].hands[0].cards.map((c) => c.rank)).toEqual(['4', '7']); // bot after player
+    expect(game.dealerCards[0].rank).toBe('9'); // upcard, dealt right after pass 1
+    expect(game.dealerCards[1].rank).toBe('8'); // hole, dealt right after pass 2, not counted
+
+    // v1-compatible view: game.hands/active are the player seat's hands.
+    expect(game.hands).toBe(game.seats[1].hands);
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['3', '6']);
+
+    const visibleCards = [
+      ...game.seats[0].hands[0].cards,
+      ...game.seats[1].hands[0].cards,
+      ...game.seats[2].hands[0].cards,
+      game.dealerCards[0],
+    ];
+    const expectedRc = visibleCards.reduce((sum, c) => sum + hiLoTag(c.rank), 0);
+    expect(game.runningCount).toBe(expectedRc);
+  });
+
+  it('playerHands 2, solo (bots:0) -> both player hands dealt in hand order across both passes', () => {
+    const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
+    // Pass 1: hand0 c1, hand1 c1, dealer up. Pass 2: hand0 c2, hand1 c2, dealer hole.
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('2', '3', '9', '4', '5', '6'));
+    game.startRound();
+
+    expect(game.seats).toHaveLength(1);
+    expect(game.hands).toHaveLength(2);
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['2', '4']);
+    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['3', '5']);
+    expect(game.dealerCards[0].rank).toBe('9');
+    expect(game.dealerCards[1].rank).toBe('6');
+    expect(game.active).toBe(0);
+  });
+
+  it('bots sit without acting (T2 interim) -> dealer settles only the player hand; bot results stay undefined', () => {
+    const seats: SeatConfig = { playerHands: 1, bots: 2, botMistakePct: 0, playerPosition: 0 };
+    // Seat order: [player, bot0, bot1]. Player 16 v dealer hard 17 -> lose.
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', '2', '3', '9', '6', '4', '5', '8'));
+    game.startRound();
+    expect(game.phase).toBe('player');
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['10', '6']);
+    expect(game.seats[1].hands[0].cards.map((c) => c.rank)).toEqual(['2', '4']);
+    expect(game.seats[2].hands[0].cards.map((c) => c.rank)).toEqual(['3', '5']);
+
+    game.act('stand');
+    expect(game.phase).toBe('settled');
+    expect(game.dealerCards.map((c) => c.rank)).toEqual(['9', '8']); // hard 17, no extra draw
+    expect(game.hands[0].result).toBe('lose');
+    expect(game.hands[0].net).toBe(-1);
+    expect(game.bankroll).toBe(cfg().bankrollStart - 1);
+
+    for (const seat of game.seats) {
+      if (seat.kind === 'bot') {
+        expect(seat.hands[0].result).toBeUndefined();
+      }
+    }
   });
 });

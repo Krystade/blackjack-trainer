@@ -22,6 +22,17 @@ export interface Seat {
   hands: PlayerHand[];
 }
 
+/** Engine-owned default seating: solo player, no bots (v1 parity). Profile
+ * storage (src/store/profiles.ts) imports this rather than owning its own
+ * copy — the engine must not depend on src/store, but src/store may depend
+ * on the engine. */
+export const DEFAULT_SEATS: SeatConfig = {
+  playerHands: 1,
+  bots: 0,
+  botMistakePct: 0,
+  playerPosition: 0,
+};
+
 export interface SpreadRow {
   minTc: number;
   units: number;
@@ -45,6 +56,7 @@ export interface GameConfig {
   countCheckEvery: number; // rounds; 0 = off
   seed?: number;
   rules?: RuleSet; // defaults to DEFAULT_RULES (v1's game); C1.13 wires this to the active profile
+  seats?: SeatConfig; // defaults to DEFAULT_SEATS (v1 solo parity) when absent
 }
 
 export type Phase = 'idle' | 'insurance' | 'player' | 'settled';
@@ -76,6 +88,18 @@ function isTenValueUp(up: Rank): boolean {
 
 function describeHand(cards: Card[], up: Rank): string {
   return `${cards.map((c) => c.rank).join(',')} v ${up}`;
+}
+
+function freshHand(bet: number): PlayerHand {
+  return {
+    cards: [],
+    bet,
+    doubled: false,
+    surrendered: false,
+    fromSplit: false,
+    splitAces: false,
+    done: false,
+  };
 }
 
 /**
@@ -121,8 +145,12 @@ export class Game {
   runningCount = 0;
   dealerCards: Card[] = [];
   holeRevealed = false;
-  hands: PlayerHand[] = [];
-  active = 0;
+  /** Casino seat order, index 0 = first base. Rebuilt each startRound() from
+   * cfg.seats. The player's own seat lives at `playerSeatIndex`; `hands` and
+   * `active` below are v1-API-compatible views over it. */
+  seats: Seat[] = [{ kind: 'player', hands: [] }];
+  private playerSeatIndex = 0;
+  private _active = 0;
   bankroll: number;
   roundNo = 0;
   events: GradedEvent[] = [];
@@ -138,6 +166,18 @@ export class Game {
     this.rules = cfg.rules ?? DEFAULT_RULES;
     this.shoe = new Shoe({ decks: this.rules.decks, penetration: cfg.penetration, seed: cfg.seed });
     this.bankroll = cfg.bankrollStart;
+  }
+
+  /** v1-compatible view: the player seat's hands (getter over `seats`, not a
+   * separate array — mutations to the returned array, e.g. splice on split,
+   * write straight through to the seat). */
+  get hands(): PlayerHand[] {
+    return this.seats[this.playerSeatIndex].hands;
+  }
+
+  /** v1-compatible view: index of the active hand within the player seat. */
+  get active(): number {
+    return this._active;
   }
 
   static withRiggedShoe(cfg: GameConfig, cards: Card[]): Game {
@@ -205,25 +245,29 @@ export class Game {
 
     this.dealerCards = [];
     this.holeRevealed = false;
-    this.active = 0;
-    this.hands = [
-      {
-        cards: [],
-        bet,
-        doubled: false,
-        surrendered: false,
-        fromSplit: false,
-        splitAces: false,
-        done: false,
-      },
-    ];
+    this._active = 0;
+    this.buildSeats(bet);
 
-    // Deal order: P, D(up), P, D(hole)
-    this.drawToHand(this.hands[0]);
+    // Two-pass casino deal in seat order (index 0 = first base): pass 1 deals
+    // one card to each hand of every seat (bots included, in seat order;
+    // within the player seat, its hands in order), then the dealer's
+    // upcard; pass 2 deals a second card the same way, then the dealer's
+    // hole card. Every card except the hole is face-up, so runningCount
+    // updates immediately for bot cards too (drawToHand does the counting).
+    for (const seat of this.seats) {
+      for (const hand of seat.hands) {
+        this.drawToHand(hand);
+      }
+    }
     const up = this.shoe.draw();
     this.dealerCards.push(up);
     this.runningCount += hiLoTag(up.rank);
-    this.drawToHand(this.hands[0]);
+
+    for (const seat of this.seats) {
+      for (const hand of seat.hands) {
+        this.drawToHand(hand);
+      }
+    }
     const hole = this.shoe.draw();
     this.dealerCards.push(hole); // hidden: not counted yet
 
@@ -388,6 +432,35 @@ export class Game {
 
   // ---- internal helpers ----
 
+  /** Construct this round's seats from cfg.seats: `bots` bot seats plus the
+   * player seat (holding `playerHands` fresh hands) inserted at
+   * clamp(playerPosition, 0, bots). Rebuilt every startRound() so seat count
+   * can change between rounds if the config does.
+   *
+   * T2 interim: bot seats are dealt into but never act — they simply sit
+   * with their dealt cards (no hit/stand/double, no settlement; a bot
+   * hand's `result` stays undefined). This is intentionally incomplete and
+   * is resolved in T3, which adds resolveBotHands() autoplay (basicPlay +
+   * seeded mistake substitution) before the dealer plays out. */
+  private buildSeats(bet: number): void {
+    const seatCfg = this.cfg.seats ?? DEFAULT_SEATS;
+    const clampedPos = Math.min(Math.max(seatCfg.playerPosition, 0), seatCfg.bots);
+
+    const seats: Seat[] = [];
+    for (let i = 0; i < seatCfg.bots; i++) {
+      seats.push({ kind: 'bot', hands: [freshHand(1)] });
+    }
+
+    const playerHands: PlayerHand[] = [];
+    for (let i = 0; i < seatCfg.playerHands; i++) {
+      playerHands.push(freshHand(bet));
+    }
+    seats.splice(clampedPos, 0, { kind: 'player', hands: playerHands });
+
+    this.seats = seats;
+    this.playerSeatIndex = clampedPos;
+  }
+
   private drawToHand(hand: PlayerHand): void {
     const c = this.shoe.draw();
     hand.cards.push(c);
@@ -468,7 +541,7 @@ export class Game {
 
     for (let i = this.active + 1; i < this.hands.length; i++) {
       if (!this.hands[i].done) {
-        this.active = i;
+        this._active = i;
         return;
       }
     }
