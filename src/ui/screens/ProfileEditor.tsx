@@ -261,6 +261,17 @@ function ProfileEditForm({
     }));
   };
 
+  const updateSeats = (patch: Partial<NonNullable<Profile['seats']>>) => {
+    setDraft((d) => {
+      const newSeats = { ...d.seats, ...patch };
+      // Clamp playerPosition to [0, bots]
+      if (newSeats.playerPosition > newSeats.bots) {
+        newSeats.playerPosition = newSeats.bots;
+      }
+      return { ...d, seats: newSeats };
+    });
+  };
+
   const addSpreadRow = () => {
     setDraft((d) => ({ ...d, spread: [...d.spread, { minTc: 0, units: 1 }] }));
   };
@@ -365,6 +376,48 @@ function ProfileEditForm({
           step={0.05}
           format={(v) => `${Math.round(v * 100)}%`}
           onChange={(v) => update({ penetration: v })}
+        />
+      </section>
+
+      <section className="settings-section">
+        <h2 className="settings-section-title">Seats</h2>
+        <div className="settings-row">
+          <span className="settings-label">Your hands</span>
+          <Segmented
+            options={[
+              { value: '1', label: '1' },
+              { value: '2', label: '2' },
+              { value: '3', label: '3' },
+            ]}
+            value={String(draft.seats.playerHands)}
+            onChange={(v) => updateSeats({ playerHands: Number(v) as 1 | 2 | 3 })}
+          />
+        </div>
+        <Stepper
+          label="Bot players"
+          value={draft.seats.bots}
+          min={0}
+          max={5}
+          step={1}
+          onChange={(v) => updateSeats({ bots: v as 0 | 1 | 2 | 3 | 4 | 5 })}
+        />
+        <Stepper
+          label="Bot mistakes"
+          value={draft.seats.botMistakePct}
+          min={0}
+          max={20}
+          step={1}
+          format={(v) => (v === 0 ? 'Perfect' : `${v}%`)}
+          onChange={(v) => updateSeats({ botMistakePct: v })}
+        />
+        <Stepper
+          label="Your seat"
+          value={draft.seats.playerPosition}
+          min={0}
+          max={draft.seats.bots}
+          step={1}
+          format={(v) => `Seat ${v + 1} of ${draft.seats.bots + 1}`}
+          onChange={(v) => updateSeats({ playerPosition: v })}
         />
       </section>
 
