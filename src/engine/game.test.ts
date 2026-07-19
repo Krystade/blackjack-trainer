@@ -773,6 +773,110 @@ describe('multi-seat dealing (Cycle-2 Task 2)', () => {
   });
 });
 
+describe('multi-hand player (Cycle-2 Task 4)', () => {
+  it('2 hands, betSpreadOn off, distinct rigged outcomes -> independent nets, bankroll delta = sum', () => {
+    const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
+    // Pass1: hand0c1(8) hand1c1(8) dealerUp(5); Pass2: hand0c2(9) hand1c2(6) dealerHole(6).
+    // hand0 = 8,9=17->hit to... wait, keep it simple: hand0 stands at 19 (win),
+    // hand1 hits into a bust (lose). Dealer 5,6=11 must hit; give it a 6 -> 17 stand.
+    const game = Game.withRiggedShoe(
+      cfg({ seats }),
+      rig('10', '10', '5', '9', '6', '6', 'K', '6'),
+    );
+    game.startRound([1, 5]);
+    expect(game.hands).toHaveLength(2);
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['10', '9']); // 19
+    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['10', '6']); // 16
+    expect(game.hands[0].bet).toBe(1);
+    expect(game.hands[1].bet).toBe(5);
+
+    const initialBankroll = game.bankroll;
+    game.act('stand'); // hand0 stands at 19
+    expect(game.active).toBe(1);
+    game.act('hit'); // hand1 draws K -> bust (26)
+    expect(game.phase).toBe('settled');
+
+    expect(game.hands[0].result).toBe('win');
+    expect(game.hands[0].net).toBe(1);
+    expect(game.hands[1].result).toBe('lose');
+    expect(game.hands[1].net).toBe(-5);
+    expect(game.bankroll).toBe(initialBankroll + 1 - 5);
+  });
+
+  it('betSpreadOn, tc forced 0, startRound([1,1]) -> two bet GradedEvents, both graded', () => {
+    const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
+    const game = Game.withRiggedShoe(
+      cfg({ betSpreadOn: true, seats }),
+      rig('2', '3', '4', '5', '6', '7'),
+    );
+    expect(game.trueCountNow).toBe(0);
+    game.startRound([1, 1]);
+
+    const betEvents = game.events.filter((e) => e.kind === 'bet');
+    expect(betEvents).toHaveLength(2);
+    expect(betEvents[0].correct).toBe(true);
+    expect(betEvents[0].expected).toBe('1');
+    expect(betEvents[0].taken).toBe('1');
+    expect(betEvents[1].correct).toBe(true);
+    expect(betEvents[1].expected).toBe('1');
+    expect(betEvents[1].taken).toBe('1');
+  });
+
+  it('scalar startRound(2) with playerHands 2 -> both hands bet 2 (back-compat)', () => {
+    const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('2', '3', '4', '5', '6', '7'));
+    game.startRound(2);
+    expect(game.hands[0].bet).toBe(2);
+    expect(game.hands[1].bet).toBe(2);
+  });
+
+  it('split inside hand 0 does not consume hand 1s split budget (per-origin 4-hand cap)', () => {
+    const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
+    // Deal: hand0=[8,8], hand1=[8,8], dealer 5/6 (irrelevant, never reached).
+    // Chain-split hand0's lineage up to 3 hands (still < 4, its own cap), while
+    // hand1 (a completely separate original hand / origin) has split 0 times.
+    // Total array length reaches 4 at that point -- a GLOBAL hands.length<4 cap
+    // would (wrongly) block hand1 from ever splitting; a PER-ORIGIN cap must not.
+    const game = Game.withRiggedShoe(
+      cfg({ seats }),
+      rig('8', '8', '5', '8', '8', '6', '8', '2', '8', '3', '8', '3'),
+    );
+    game.startRound();
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['8', '8']);
+    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['8', '8']);
+
+    game.act('split'); // hand0 -> hand0a[8,8] hand0b[8,2]; hands=[hand0a,hand0b,hand1]
+    expect(game.hands).toHaveLength(3);
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['8', '8']);
+    expect(game.active).toBe(0); // still on hand0a (re-formed pair)
+
+    game.act('split'); // hand0a -> hand0a2[8,8] hand0a-split[8,3]; hands=[hand0a2,hand0a-split,hand0b,hand1]
+    expect(game.hands).toHaveLength(4);
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['8', '8']);
+
+    // Total hands.length is now 4 -- exactly the GLOBAL cap. hand0's own
+    // lineage (origin) has only 3 hands, so ONE more split must still be
+    // legal for it under a correct per-origin cap.
+    expect(game.legalActions()).toContain('split');
+
+    game.act('stand'); // hand0a2 done -> advance to hand0a-split
+    expect(game.active).toBe(1);
+    game.act('stand'); // hand0a-split done -> advance to hand0b
+    expect(game.active).toBe(2);
+    game.act('stand'); // hand0b done -> advance to hand1
+    expect(game.active).toBe(3);
+
+    // hand1 has never split -- its own origin group has exactly 1 hand, so
+    // split must be legal for it regardless of hand0's lineage already
+    // sitting at the global total of 4.
+    expect(game.legalActions()).toContain('split');
+    game.act('split');
+    expect(game.hands).toHaveLength(5);
+    expect(game.hands[3].cards.map((c) => c.rank)).toEqual(['8', '8']);
+    expect(game.hands[4].cards.map((c) => c.rank)).toEqual(['8', '3']);
+  });
+});
+
 describe('bot autoplay + mistakes + determinism (Cycle-2 Task 3)', () => {
   type BotDecision = {
     seat: number;

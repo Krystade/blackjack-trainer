@@ -71,6 +71,15 @@ export interface PlayerHand {
   done: boolean;
   result?: 'win' | 'lose' | 'push' | 'blackjack' | 'surrender';
   net?: number; // units
+  /** Index of the ORIGINAL player hand this hand descends from (Cycle-2 Task
+   * 4: multi-hand player). A fresh hand's originIndex is its own position
+   * among the round's initial `playerHands` hands (0, 1, 2, ...); a split
+   * child inherits its parent's originIndex. The 4-hands-per-original-hand
+   * casino split cap is enforced by counting hands that share an
+   * originIndex, NOT by the seat's total hands.length -- so splitting one
+   * original hand to its cap never blocks another original hand (dealt in
+   * the same round) from splitting independently. */
+  originIndex: number;
 }
 
 /** Find the last spread row (sorted asc by minTc) whose minTc <= tc. */
@@ -90,7 +99,7 @@ function describeHand(cards: Card[], up: Rank): string {
   return `${cards.map((c) => c.rank).join(',')} v ${up}`;
 }
 
-function freshHand(bet: number): PlayerHand {
+function freshHand(bet: number, originIndex: number): PlayerHand {
   return {
     cards: [],
     bet,
@@ -99,6 +108,7 @@ function freshHand(bet: number): PlayerHand {
     fromSplit: false,
     splitAces: false,
     done: false,
+    originIndex,
   };
 }
 
@@ -227,6 +237,15 @@ export class Game {
     return trueCount(this.runningCount, this.shoe.decksRemaining);
   }
 
+  /** How many hands in `hands` share `originIndex` -- i.e. how many of the
+   * (up to 4) casino-standard split slots for that ORIGINAL hand are already
+   * in use. Used to cap splits per-origin rather than against the seat's
+   * total hands.length, so one original hand's split chain never eats into
+   * another original hand's own 4-hand budget (Cycle-2 Task 4). */
+  private countHandsWithOrigin(hands: PlayerHand[], originIndex: number): number {
+    return hands.filter((h) => h.originIndex === originIndex).length;
+  }
+
   private handOptions(
     hand: PlayerHand,
     hands: PlayerHand[] = this.hands,
@@ -234,7 +253,10 @@ export class Game {
     return {
       canHit: !hand.splitAces,
       canDouble: hand.cards.length === 2 && !hand.doubled && !hand.splitAces,
-      canSplit: isPair(hand.cards) && hands.length < 4 && (!hand.splitAces || this.rules.rsa),
+      canSplit:
+        isPair(hand.cards) &&
+        this.countHandsWithOrigin(hands, hand.originIndex) < 4 &&
+        (!hand.splitAces || this.rules.rsa),
       canSurrender: hand.cards.length === 2 && !hand.fromSplit,
     };
   }
@@ -261,7 +283,13 @@ export class Game {
     return this.legalActionsForHand(hand, this.hands);
   }
 
-  startRound(betUnits?: number): void {
+  /**
+   * `bets` is one bet per player hand: an array (length = cfg.seats.playerHands)
+   * grades and stakes each hand independently, or a scalar applies the same
+   * bet to every hand (back-compat with v1/solo callers; also the default of
+   * 1 unit when omitted). Cycle-2 Task 4.
+   */
+  startRound(bets?: number | number[]): void {
     this.roundNo += 1;
     this.countCheckDue = false;
     this.insuranceNet = null;
@@ -276,27 +304,34 @@ export class Game {
     }
 
     const preDealTc = this.trueCountNow;
-    const bet = betUnits ?? 1;
+    const playerHandsCount = this.seatCfg.playerHands;
+    const betArray: number[] = Array.isArray(bets)
+      ? bets
+      : new Array(playerHandsCount).fill(bets ?? 1);
 
     if (this.cfg.betSpreadOn) {
       const expectedUnits = spreadUnitsFor(preDealTc, this.cfg.spread);
-      const correct = bet === expectedUnits;
-      this.events.push({
-        kind: 'bet',
-        category: 'bet',
-        correct,
-        classification: correct ? 'correct' : 'basic-error',
-        taken: String(bet),
-        expected: String(expectedUnits),
-        reason: `Spread bet at tc ${preDealTc}`,
-        tc: preDealTc,
-      });
+      // One bet GradedEvent PER HAND, left to right -- each hand's own bet is
+      // graded against the same pre-deal true count (Cycle-2 Task 4).
+      for (const bet of betArray) {
+        const correct = bet === expectedUnits;
+        this.events.push({
+          kind: 'bet',
+          category: 'bet',
+          correct,
+          classification: correct ? 'correct' : 'basic-error',
+          taken: String(bet),
+          expected: String(expectedUnits),
+          reason: `Spread bet at tc ${preDealTc}`,
+          tc: preDealTc,
+        });
+      }
     }
 
     this.dealerCards = [];
     this.holeRevealed = false;
     this._active = 0;
-    this.buildSeats(bet);
+    this.buildSeats(betArray);
 
     // Two-pass casino deal in seat order (index 0 = first base): pass 1 deals
     // one card to each hand of every seat (bots included, in seat order;
@@ -339,6 +374,9 @@ export class Game {
     const advice = insuranceCorrect(tc);
     const { classification, correct } = classifyInsurance(take, tc);
     const up = this.dealerCards[0].rank;
+    // Cycle-2 Task 4: still a SINGLE decision staked on hands[0].bet only.
+    // Multi-hand insurance math (stake = sum of all player hands' bets) is
+    // Cycle-2 Task 5's job -- left as-is here on purpose.
     const bet = this.hands[0].bet;
     this.events.push({
       kind: 'insurance',
@@ -492,18 +530,21 @@ export class Game {
    * resolveAfterPeek() and finishAfterPlayerDone()), then settle for
    * display in playDealerAndSettle()/settleDealerBlackjack() -- bots never
    * touch the bankroll (Cycle-2 Task 3). */
-  private buildSeats(bet: number): void {
+  private buildSeats(bets: number[]): void {
     const seatCfg = this.cfg.seats ?? DEFAULT_SEATS;
     const clampedPos = Math.min(Math.max(seatCfg.playerPosition, 0), seatCfg.bots);
 
     const seats: Seat[] = [];
     for (let i = 0; i < seatCfg.bots; i++) {
-      seats.push({ kind: 'bot', hands: [freshHand(1)] });
+      seats.push({ kind: 'bot', hands: [freshHand(1, 0)] });
     }
 
     const playerHands: PlayerHand[] = [];
     for (let i = 0; i < seatCfg.playerHands; i++) {
-      playerHands.push(freshHand(bet));
+      // originIndex = i: each dealt hand starts as its own origin group: any
+      // splits made off of it inherit i, so its 4-hand cap never competes
+      // with another original hand's budget (Cycle-2 Task 4).
+      playerHands.push(freshHand(bets[i] ?? 1, i));
     }
     seats.splice(clampedPos, 0, { kind: 'player', hands: playerHands });
 
@@ -626,18 +667,31 @@ export class Game {
    * before the player (casino seat order) autoplay right away, then settle
    * a player blackjack immediately if present, else move to the player's
    * turn. */
+  /** Checks EVERY initial player hand for a natural blackjack (not just
+   * hands[0]) -- with multi-hand play, one hand having a natural must not
+   * skip the others' turns: it settles immediately (real casino timing) and
+   * play proceeds left-to-right to the first hand that didn't (Cycle-2 Task
+   * 4). No splits exist yet at this point, so `this.hands` is exactly the
+   * round's initial hands. */
   private resolveAfterPeek(): void {
     this.resolveBotsBefore();
 
-    const hand = this.hands[0];
-    if (isBlackjack(hand.cards)) {
-      hand.result = 'blackjack';
-      // BJ payout: 1.2x if rules.bj65 is true, 1.5x otherwise
-      hand.net = (this.rules.bj65 ? 1.2 : 1.5) * hand.bet;
-      this.bankroll += hand.net;
+    for (const hand of this.hands) {
+      if (isBlackjack(hand.cards)) {
+        hand.result = 'blackjack';
+        hand.done = true;
+        // BJ payout: 1.2x if rules.bj65 is true, 1.5x otherwise
+        hand.net = (this.rules.bj65 ? 1.2 : 1.5) * hand.bet;
+        this.bankroll += hand.net;
+      }
+    }
+
+    const firstLive = this.hands.findIndex((h) => h.result === undefined);
+    if (firstLive === -1) {
       this.finishAfterPlayerDone();
       return;
     }
+    this._active = firstLive;
     this.phase = 'player';
   }
 
@@ -688,6 +742,7 @@ export class Game {
       fromSplit: true,
       splitAces: isAces,
       done: false,
+      originIndex: hand.originIndex,
     };
     hand.cards = [hand.cards[0]];
     hand.fromSplit = true;
@@ -703,9 +758,12 @@ export class Game {
       // Otherwise, mark both hands done immediately
       const hand0HasAce = hand.cards[1].rank === 'A';
       const hand1HasAce = newHand.cards[1].rank === 'A';
+      // Cap is per-origin (this original hand's own 4-hand budget), not the
+      // seat's total hands.length (Cycle-2 Task 4).
+      const atOriginCap = this.countHandsWithOrigin(hands, hand.originIndex) === 4;
 
-      hand.done = !this.rules.rsa || !hand0HasAce || hands.length === 4;
-      newHand.done = !this.rules.rsa || !hand1HasAce || hands.length === 4;
+      hand.done = !this.rules.rsa || !hand0HasAce || atOriginCap;
+      newHand.done = !this.rules.rsa || !hand1HasAce || atOriginCap;
     }
   }
 

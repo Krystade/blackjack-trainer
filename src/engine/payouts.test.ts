@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Card, Rank } from './cards';
 import { Game, DEFAULT_SPREAD } from './game';
-import type { GameConfig } from './game';
+import type { GameConfig, SeatConfig } from './game';
 import type { RuleSet } from './ruleset';
 
 function rig(...ranks: Rank[]): Card[] {
@@ -30,6 +30,8 @@ describe('payout audit — table-driven settlement paths', () => {
     actions: string[]; // 'stand', 'hit', 'double', 'split', 'surrender', 'insurance:take', 'insurance:decline'
     expectedDelta: number;
     rules?: RuleSet;
+    seats?: SeatConfig; // Cycle-2 Task 4: multi-hand player rows
+    bets?: number | number[]; // Cycle-2 Task 4: per-hand bets (defaults to startRound())
   }
 
   const scenarios: PayoutRow[] = [
@@ -118,15 +120,30 @@ describe('payout audit — table-driven settlement paths', () => {
       expectedDelta: -1,
       rules: { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false },
     },
+    // Cycle-2 Task 4: multi-hand player -- mixed win/lose/push settle independently, bankroll delta = sum
+    {
+      description: 'multi-hand (3 hands, distinct bets): win + lose + push sums to -1',
+      // Deal order (playerHands 3, bots 0): pass1 hand0c1,hand1c1,hand2c1,dealerUp;
+      // pass2 hand0c2,hand1c2,hand2c2,dealerHole.
+      // hand0 = 10,9=19 (bet 1) win vs dealer 18 -> +1
+      // hand1 = 10,7=17 (bet 2) lose vs dealer 18 -> -2
+      // hand2 = 10,8=18 (bet 3) push vs dealer 18 -> 0
+      shoe: ['10', '10', '10', '9', '9', '7', '8', '9'],
+      actions: ['stand', 'stand', 'stand'],
+      expectedDelta: -1,
+      rules: { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false },
+      seats: { playerHands: 3, bots: 0, botMistakePct: 0, playerPosition: 0 },
+      bets: [1, 2, 3],
+    },
   ];
 
   scenarios.forEach((scenario) => {
     it(scenario.description, () => {
-      const game = Game.withRiggedShoe(cfg({ rules: scenario.rules }), rig(...scenario.shoe));
+      const game = Game.withRiggedShoe(cfg({ rules: scenario.rules, seats: scenario.seats }), rig(...scenario.shoe));
       const initialBankroll = game.bankroll;
 
       // Start round before processing any actions
-      game.startRound();
+      game.startRound(scenario.bets);
 
       // Execute actions in order
       for (const action of scenario.actions) {
