@@ -309,6 +309,10 @@ export class Game {
       ? bets
       : new Array(playerHandsCount).fill(bets ?? 1);
 
+    if (Array.isArray(bets) && bets.length !== playerHandsCount) {
+      throw new Error(`startRound: bets array length ${bets.length} does not match playerHands ${playerHandsCount}`);
+    }
+
     if (this.cfg.betSpreadOn) {
       const expectedUnits = spreadUnitsFor(preDealTc, this.cfg.spread);
       // One bet GradedEvent PER HAND, left to right -- each hand's own bet is
@@ -664,15 +668,15 @@ export class Game {
   }
 
   /** After the deal (and any peek that did not find dealer blackjack): seats
-   * before the player (casino seat order) autoplay right away, then settle
-   * a player blackjack immediately if present, else move to the player's
-   * turn. */
-  /** Checks EVERY initial player hand for a natural blackjack (not just
-   * hands[0]) -- with multi-hand play, one hand having a natural must not
-   * skip the others' turns: it settles immediately (real casino timing) and
-   * play proceeds left-to-right to the first hand that didn't (Cycle-2 Task
-   * 4). No splits exist yet at this point, so `this.hands` is exactly the
-   * round's initial hands. */
+   * before the player (casino seat order) autoplay right away, then check
+   * EVERY initial player hand for a natural blackjack. With multi-hand play,
+   * one hand having a natural must not skip the others' turns: it settles
+   * immediately (real casino timing) and play proceeds left-to-right to the
+   * first hand that didn't (Cycle-2 Task 4). No splits exist yet at this
+   * point, so `this.hands` is exactly the round's initial hands. If any hand
+   * has a natural, it is marked done with result 'blackjack' and bankroll
+   * credited; the phase then moves to 'player' on the first non-settled hand,
+   * or directly to settlement if all hands are naturals. */
   private resolveAfterPeek(): void {
     this.resolveBotsBefore();
 

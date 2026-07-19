@@ -875,6 +875,56 @@ describe('multi-hand player (Cycle-2 Task 4)', () => {
     expect(game.hands[3].cards.map((c) => c.rank)).toEqual(['8', '8']);
     expect(game.hands[4].cards.map((c) => c.rank)).toEqual(['8', '3']);
   });
+
+  it('bets array length !== playerHands -> throws Error', () => {
+    const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('2', '3', '4', '5', '6', '7'));
+
+    // bets array has length 3 but playerHands is 2
+    expect(() => game.startRound([1, 2, 3])).toThrow(
+      /startRound: bets array length 3 does not match playerHands 2/,
+    );
+  });
+
+  it('hand0 live (10,6=16), hand1 natural (A,K=BJ): BJ settled immediately, player completes hand0, outcomes summed', () => {
+    const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
+    // Deal order: hand0c1, hand1c1, dealerUp, hand0c2, hand1c2, dealerHole, dealerDraws...
+    // To get hand0=(10,6)=16, hand1=(A,K)=BJ, dealer=(9,7)=16 then hits K->bust:
+    const game = Game.withRiggedShoe(
+      cfg({ seats }),
+      rig('10', 'A', '9', '6', 'K', '7', 'K'),
+    );
+    const initialBankroll = game.bankroll;
+
+    game.startRound();
+
+    // After startRound, hand1 is a natural blackjack (done, result set, bankroll credited)
+    // hand0 is still awaiting play (active=0, phase='player')
+    expect(game.hands).toHaveLength(2);
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['10', '6']); // 16
+    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['A', 'K']); // blackjack
+
+    expect(game.hands[1].result).toBe('blackjack');
+    expect(game.hands[1].done).toBe(true);
+    expect(game.hands[1].net).toBe(1.5);
+
+    expect(game.hands[0].result).toBeUndefined();
+    expect(game.hands[0].done).toBe(false);
+    expect(game.phase).toBe('player');
+    expect(game.active).toBe(0); // first live hand
+
+    // Player completes hand0 (stands at 16)
+    game.act('stand');
+    expect(game.phase).toBe('settled');
+
+    // Dealer 9,7 (hard 16) hits and draws K -> bust (26)
+    // Player 16 wins vs bust
+    expect(game.hands[0].result).toBe('win');
+    expect(game.hands[0].net).toBe(1);
+
+    // Bankroll reflects both: hand1's BJ (+1.5) + hand0's win (+1) = +2.5
+    expect(game.bankroll).toBe(initialBankroll + 2.5);
+  });
 });
 
 describe('bot autoplay + mistakes + determinism (Cycle-2 Task 3)', () => {
