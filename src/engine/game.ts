@@ -1,4 +1,4 @@
-import { Shoe, rankValue } from './cards';
+import { Shoe, rankValue, mulberry32 } from './cards';
 import type { Card, Rank } from './cards';
 import { handValue, isBust, isBlackjack, isPair } from './hand';
 import { hiLoTag, trueCount } from './count';
@@ -159,6 +159,37 @@ export class Game {
   shuffledLastRound = false;
   insuranceNet: number | null = null;
 
+  /** Seeded deterministic stream for bot-mistake substitution (Cycle-2 Task
+   * 3). Same mulberry32 generator the Shoe itself is seeded with (see
+   * Shoe's constructor in cards.ts) -- a single instance, held for the
+   * Game's whole lifetime, so replaying the same seed + SeatConfig always
+   * substitutes the same mistakes at the same decisions. Never Math.random. */
+  private rng: () => number;
+
+  /** UI pacing feed (Cycle-2 Task 3/6): one entry per bot decision, in the
+   * order decided. Reset at the top of every startRound() -- represents
+   * only the CURRENT round's bot actions. `card` is set for hit/double
+   * (the card drawn); undefined for stand/surrender/split. */
+  botActionLog: { seat: number; handIndex: number; action: Action; card?: Card }[] = [];
+
+  /** Test/diagnostic hook only -- never set by production UI code. If
+   * present, called synchronously right after each bot decision is
+   * finalized (post mistake-substitution) with the exact hand snapshot,
+   * dealer up, context, legal actions, and both the chart-correct and
+   * actual action. Lets tests verify bot fidelity/mistakes against
+   * `basicPlay` directly, without reconstructing hand state from
+   * `botActionLog` (which is shaped for UI narration, not verification). */
+  onBotDecision?: (info: {
+    seat: number;
+    handIndex: number;
+    cardsBefore: Card[];
+    dealerUp: Rank;
+    ctx: PlayContext;
+    legal: Action[];
+    correctAction: Action;
+    action: Action;
+  }) => void;
+
   private countCheckPromptCount = 0;
 
   constructor(cfg: GameConfig) {
@@ -166,6 +197,12 @@ export class Game {
     this.rules = cfg.rules ?? DEFAULT_RULES;
     this.shoe = new Shoe({ decks: this.rules.decks, penetration: cfg.penetration, seed: cfg.seed });
     this.bankroll = cfg.bankrollStart;
+    this.rng = mulberry32(cfg.seed ?? Date.now());
+  }
+
+  /** SeatConfig for this game (falls back to DEFAULT_SEATS, v1 solo parity). */
+  private get seatCfg(): SeatConfig {
+    return this.cfg.seats ?? DEFAULT_SEATS;
   }
 
   /** v1-compatible view: the player seat's hands (getter over `seats`, not a
@@ -190,20 +227,25 @@ export class Game {
     return trueCount(this.runningCount, this.shoe.decksRemaining);
   }
 
-  private handOptions(hand: PlayerHand): { canHit: boolean; canDouble: boolean; canSplit: boolean; canSurrender: boolean } {
+  private handOptions(
+    hand: PlayerHand,
+    hands: PlayerHand[] = this.hands,
+  ): { canHit: boolean; canDouble: boolean; canSplit: boolean; canSurrender: boolean } {
     return {
       canHit: !hand.splitAces,
       canDouble: hand.cards.length === 2 && !hand.doubled && !hand.splitAces,
-      canSplit: isPair(hand.cards) && this.hands.length < 4 && (!hand.splitAces || this.rules.rsa),
+      canSplit: isPair(hand.cards) && hands.length < 4 && (!hand.splitAces || this.rules.rsa),
       canSurrender: hand.cards.length === 2 && !hand.fromSplit,
     };
   }
 
-  legalActions(): Action[] {
-    if (this.phase !== 'player') return [];
-    const hand = this.hands[this.active];
-    if (!hand || hand.done) return [];
-    const options = this.handOptions(hand);
+  /** Legal actions for an arbitrary hand within its seat's hands array --
+   * shared by the player's legalActions() and bot decision-making, so bots
+   * get exactly the same canDouble/canSplit/canSurrender rules a real
+   * basic-strategy player would (Cycle-2 Task 3). */
+  private legalActionsForHand(hand: PlayerHand, hands: PlayerHand[]): Action[] {
+    if (hand.done) return [];
+    const options = this.handOptions(hand, hands);
     const actions: Action[] = ['stand'];
     if (options.canHit) actions.push('hit');
     if (options.canDouble) actions.push('double');
@@ -212,10 +254,18 @@ export class Game {
     return actions;
   }
 
+  legalActions(): Action[] {
+    if (this.phase !== 'player') return [];
+    const hand = this.hands[this.active];
+    if (!hand || hand.done) return [];
+    return this.legalActionsForHand(hand, this.hands);
+  }
+
   startRound(betUnits?: number): void {
     this.roundNo += 1;
     this.countCheckDue = false;
     this.insuranceNet = null;
+    this.botActionLog = [];
 
     if (this.shoe.cutCardReached) {
       this.shoe.shuffle();
@@ -383,7 +433,7 @@ export class Game {
         break;
       }
       case 'split': {
-        this.performSplit(hand);
+        this.performSplit(this.hands, this.active);
         break;
       }
     }
@@ -437,11 +487,11 @@ export class Game {
    * clamp(playerPosition, 0, bots). Rebuilt every startRound() so seat count
    * can change between rounds if the config does.
    *
-   * T2 interim: bot seats are dealt into but never act — they simply sit
-   * with their dealt cards (no hit/stand/double, no settlement; a bot
-   * hand's `result` stays undefined). This is intentionally incomplete and
-   * is resolved in T3, which adds resolveBotHands() autoplay (basicPlay +
-   * seeded mistake substitution) before the dealer plays out. */
+   * Bot seats autoplay to completion via resolveBotsBefore()/
+   * resolveBotsAfter() at the correct casino-order point in the flow (see
+   * resolveAfterPeek() and finishAfterPlayerDone()), then settle for
+   * display in playDealerAndSettle()/settleDealerBlackjack() -- bots never
+   * touch the bankroll (Cycle-2 Task 3). */
   private buildSeats(bet: number): void {
     const seatCfg = this.cfg.seats ?? DEFAULT_SEATS;
     const clampedPos = Math.min(Math.max(seatCfg.playerPosition, 0), seatCfg.bots);
@@ -473,21 +523,128 @@ export class Game {
     this.runningCount += hiLoTag(this.dealerCards[1].rank);
   }
 
-  /** After the deal (and any peek that did not find dealer blackjack): settle
-   * a player blackjack immediately, else move to the player's turn. */
+  /** Resolve every bot seat SEATED BEFORE the player, in seat order --
+   * casino reality: first base plays before later seats, so a bot ahead of
+   * the player acts right after the deal/peek, before the player's turn. */
+  private resolveBotsBefore(): void {
+    for (let i = 0; i < this.playerSeatIndex; i++) {
+      this.resolveBotSeat(i);
+    }
+  }
+
+  /** Resolve every bot seat SEATED AFTER the player, in seat order -- called
+   * once the player's last hand is done, before the dealer plays. */
+  private resolveBotsAfter(): void {
+    for (let i = this.playerSeatIndex + 1; i < this.seats.length; i++) {
+      this.resolveBotSeat(i);
+    }
+  }
+
+  /** Resolve one bot seat's hands to completion, left to right, including
+   * any hands created by splitting along the way (the for-loop's bound
+   * re-reads seat.hands.length each iteration, so newly-inserted hands get
+   * their own turn -- same pattern as the player's own advance()). */
+  private resolveBotSeat(seatIndex: number): void {
+    const seat = this.seats[seatIndex];
+    const up = this.dealerCards[0].rank;
+    for (let handIndex = 0; handIndex < seat.hands.length; handIndex++) {
+      const hand = seat.hands[handIndex];
+      while (!hand.done) {
+        this.playOneBotDecision(seatIndex, seat.hands, handIndex, up);
+      }
+    }
+  }
+
+  /** Make and apply exactly one bot decision on `hands[handIndex]`.
+   * Count-blind: uses basicPlay (never correctPlay), mirroring the ctx a
+   * real basic-strategy player would have (canDouble/canSplit/canSurrender
+   * via the same handOptions() the player's own act() uses). With
+   * probability botMistakePct/100 (rolled from the Game's seeded rng),
+   * substitutes a uniformly-random OTHER legal action; never samples an
+   * illegal action, and if no alternative exists (rare), plays correctly
+   * anyway. Bots never insure and never produce GradedEvents -- this method
+   * never touches `this.events`. */
+  private playOneBotDecision(seatIndex: number, hands: PlayerHand[], handIndex: number, up: Rank): void {
+    const hand = hands[handIndex];
+    const cardsBefore = [...hand.cards];
+    const options = this.handOptions(hand, hands);
+    const ctx: PlayContext = {
+      canDouble: options.canDouble,
+      canSplit: options.canSplit,
+      canSurrender: options.canSurrender,
+    };
+    const legal = this.legalActionsForHand(hand, hands);
+    const correctAction = basicPlay(hand.cards, up, ctx, this.rules).action;
+
+    let action: Action = correctAction;
+    const mistakePct = this.seatCfg.botMistakePct;
+    const isMistake = mistakePct > 0 && this.rng() * 100 < mistakePct;
+    if (isMistake) {
+      const alternatives = legal.filter((a) => a !== correctAction);
+      if (alternatives.length > 0) {
+        const idx = Math.floor(this.rng() * alternatives.length);
+        action = alternatives[idx];
+      }
+    }
+
+    this.onBotDecision?.({ seat: seatIndex, handIndex, cardsBefore, dealerUp: up, ctx, legal, correctAction, action });
+
+    let card: Card | undefined;
+    switch (action) {
+      case 'hit': {
+        this.drawToHand(hand);
+        card = hand.cards[hand.cards.length - 1];
+        if (isBust(hand.cards)) hand.done = true;
+        break;
+      }
+      case 'stand': {
+        hand.done = true;
+        break;
+      }
+      case 'double': {
+        hand.doubled = true;
+        this.drawToHand(hand);
+        card = hand.cards[hand.cards.length - 1];
+        hand.done = true;
+        break;
+      }
+      case 'surrender': {
+        hand.surrendered = true;
+        hand.done = true;
+        break;
+      }
+      case 'split': {
+        this.performSplit(hands, handIndex);
+        break;
+      }
+    }
+
+    this.botActionLog.push({ seat: seatIndex, handIndex, action, card });
+  }
+
+  /** After the deal (and any peek that did not find dealer blackjack): seats
+   * before the player (casino seat order) autoplay right away, then settle
+   * a player blackjack immediately if present, else move to the player's
+   * turn. */
   private resolveAfterPeek(): void {
+    this.resolveBotsBefore();
+
     const hand = this.hands[0];
     if (isBlackjack(hand.cards)) {
       hand.result = 'blackjack';
       // BJ payout: 1.2x if rules.bj65 is true, 1.5x otherwise
       hand.net = (this.rules.bj65 ? 1.2 : 1.5) * hand.bet;
       this.bankroll += hand.net;
-      this.finishRound();
+      this.finishAfterPlayerDone();
       return;
     }
     this.phase = 'player';
   }
 
+  /** Dealer peeked and has blackjack: the hand ends before anyone (bots
+   * included) ever gets a turn -- real casino peek timing. Settles every
+   * seat's hands directly against the dealer's natural; bots' net is
+   * display-only (bankroll flows only from player hands). */
   private settleDealerBlackjack(): void {
     this.revealHole();
     for (const hand of this.hands) {
@@ -500,10 +657,27 @@ export class Game {
       }
       this.bankroll += hand.net;
     }
+    for (const seat of this.seats) {
+      if (seat.kind !== 'bot') continue;
+      for (const hand of seat.hands) {
+        if (isBlackjack(hand.cards)) {
+          hand.result = 'push';
+          hand.net = 0;
+        } else {
+          hand.result = 'lose';
+          hand.net = -hand.bet;
+        }
+      }
+    }
     this.finishRound();
   }
 
-  private performSplit(hand: PlayerHand): void {
+  /** Split `hands[index]` in place, inserting the new hand right after it.
+   * Generalized over an arbitrary hands array (not just `this.hands`/
+   * `this.active`) so bot seats can reuse the exact same split mechanics a
+   * real player uses (Cycle-2 Task 3). */
+  private performSplit(hands: PlayerHand[], index: number): void {
+    const hand = hands[index];
     const isAces = hand.cards[0].rank === 'A';
     const secondCard = hand.cards[1];
     const newHand: PlayerHand = {
@@ -519,7 +693,7 @@ export class Game {
     hand.fromSplit = true;
     hand.splitAces = isAces;
 
-    this.hands.splice(this.active + 1, 0, newHand);
+    hands.splice(index + 1, 0, newHand);
 
     this.drawToHand(hand);
     this.drawToHand(newHand);
@@ -530,8 +704,8 @@ export class Game {
       const hand0HasAce = hand.cards[1].rank === 'A';
       const hand1HasAce = newHand.cards[1].rank === 'A';
 
-      hand.done = !this.rules.rsa || !hand0HasAce || this.hands.length === 4;
-      newHand.done = !this.rules.rsa || !hand1HasAce || this.hands.length === 4;
+      hand.done = !this.rules.rsa || !hand0HasAce || hands.length === 4;
+      newHand.done = !this.rules.rsa || !hand1HasAce || hands.length === 4;
     }
   }
 
@@ -546,13 +720,53 @@ export class Game {
       }
     }
 
+    this.finishAfterPlayerDone();
+  }
+
+  /** Casino seat order: once the player's last hand is done, seats after the
+   * player autoplay, then the dealer plays out and everyone settles
+   * (Cycle-2 Task 3). */
+  private finishAfterPlayerDone(): void {
+    this.resolveBotsAfter();
     this.playDealerAndSettle();
+  }
+
+  /** Settle one hand against the already-played-out dealer. Pure: does not
+   * touch bankroll (callers decide whether to, so bot hands can settle for
+   * display without ever crediting/debiting the player's bankroll). */
+  private settleHandVsDealer(hand: PlayerHand, dealerBust: boolean, dealerTotal: number): void {
+    if (hand.surrendered) {
+      hand.result = 'surrender';
+      hand.net = -0.5 * hand.bet;
+    } else if (isBust(hand.cards)) {
+      hand.result = 'lose';
+      hand.net = -(hand.doubled ? 2 : 1) * hand.bet;
+    } else if (dealerBust) {
+      hand.result = 'win';
+      hand.net = (hand.doubled ? 2 : 1) * hand.bet;
+    } else {
+      const playerTotal = handValue(hand.cards).total;
+      if (playerTotal > dealerTotal) {
+        hand.result = 'win';
+        hand.net = (hand.doubled ? 2 : 1) * hand.bet;
+      } else if (playerTotal < dealerTotal) {
+        hand.result = 'lose';
+        hand.net = -(hand.doubled ? 2 : 1) * hand.bet;
+      } else {
+        hand.result = 'push';
+        hand.net = 0;
+      }
+    }
   }
 
   private playDealerAndSettle(): void {
     this.revealHole();
 
-    const liveHands = this.hands.filter((h) => !h.surrendered && !isBust(h.cards));
+    // Whether the dealer needs to draw further depends on EVERY seat's
+    // hands, not just the player's -- a live bot hand still needs a real
+    // dealer result to settle and count, even if the player already busted.
+    const allHands = this.seats.flatMap((s) => s.hands);
+    const liveHands = allHands.filter((h) => !h.surrendered && !isBust(h.cards));
     if (liveHands.length > 0) {
       while (this.dealerShouldHit()) {
         const c = this.shoe.draw();
@@ -565,29 +779,20 @@ export class Game {
     const dealerTotal = handValue(this.dealerCards).total;
 
     for (const hand of this.hands) {
-      if (hand.surrendered) {
-        hand.result = 'surrender';
-        hand.net = -0.5 * hand.bet;
-      } else if (isBust(hand.cards)) {
-        hand.result = 'lose';
-        hand.net = -(hand.doubled ? 2 : 1) * hand.bet;
-      } else if (dealerBust) {
-        hand.result = 'win';
-        hand.net = (hand.doubled ? 2 : 1) * hand.bet;
-      } else {
-        const playerTotal = handValue(hand.cards).total;
-        if (playerTotal > dealerTotal) {
-          hand.result = 'win';
-          hand.net = (hand.doubled ? 2 : 1) * hand.bet;
-        } else if (playerTotal < dealerTotal) {
-          hand.result = 'lose';
-          hand.net = -(hand.doubled ? 2 : 1) * hand.bet;
-        } else {
-          hand.result = 'push';
-          hand.net = 0;
+      if (hand.result === undefined) {
+        this.settleHandVsDealer(hand, dealerBust, dealerTotal);
+        this.bankroll += hand.net!;
+      }
+    }
+
+    for (const seat of this.seats) {
+      if (seat.kind !== 'bot') continue;
+      for (const hand of seat.hands) {
+        if (hand.result === undefined) {
+          this.settleHandVsDealer(hand, dealerBust, dealerTotal);
+          // bots' net is display-only; bankroll flows only from player hands.
         }
       }
-      this.bankroll += hand.net;
     }
 
     this.finishRound();

@@ -3,6 +3,9 @@ import type { Card, Rank } from './cards';
 import { hiLoTag } from './count';
 import { Game, DEFAULT_SPREAD } from './game';
 import type { GameConfig, SeatConfig } from './game';
+import { basicPlay } from './strategy';
+import type { PlayContext } from './strategy';
+import type { Action } from './deviations';
 
 function rig(...ranks: Rank[]): Card[] {
   return ranks.map((rank) => ({ rank, suit: 's' }) as Card);
@@ -691,13 +694,18 @@ describe('multi-seat dealing (Cycle-2 Task 2)', () => {
     // Seat order (bots first, player spliced in at index 1): [bot0, player, bot1].
     // Pass 1: bot0 c1, player c1, bot1 c1, dealer up.
     // Pass 2: bot0 c2, player c2, bot1 c2, dealer hole.
-    const game = Game.withRiggedShoe(cfg({ seats }), rig('2', '3', '4', '9', '5', '6', '7', '8'));
+    // bot0 is dealt hard 19 (10,9) -- Cycle-2 Task 3 autoplays it immediately
+    // to completion, and basic strategy always stands on hard 19 regardless
+    // of dealer up, so it needs no extra cards (the test never advances the
+    // player's turn, so bot1 -- seated after the player -- never autoplays
+    // here and its dealt cards are untouched).
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', '3', '4', '9', '9', '6', '7', '8'));
     game.startRound();
 
     expect(game.seats).toHaveLength(3);
     expect(game.seats.map((s) => s.kind)).toEqual(['bot', 'player', 'bot']);
 
-    expect(game.seats[0].hands[0].cards.map((c) => c.rank)).toEqual(['2', '5']); // bot before player
+    expect(game.seats[0].hands[0].cards.map((c) => c.rank)).toEqual(['10', '9']); // bot before player, autoplayed to hard 19 -> stand
     expect(game.seats[1].hands[0].cards.map((c) => c.rank)).toEqual(['3', '6']); // player seat
     expect(game.seats[2].hands[0].cards.map((c) => c.rank)).toEqual(['4', '7']); // bot after player
     expect(game.dealerCards[0].rank).toBe('9'); // upcard, dealt right after pass 1
@@ -732,27 +740,168 @@ describe('multi-seat dealing (Cycle-2 Task 2)', () => {
     expect(game.active).toBe(0);
   });
 
-  it('bots sit without acting (T2 interim) -> dealer settles only the player hand; bot results stay undefined', () => {
+  it('bots autoplay to completion and settle for display, without touching bankroll (Cycle-2 Task 3)', () => {
     const seats: SeatConfig = { playerHands: 1, bots: 2, botMistakePct: 0, playerPosition: 0 };
     // Seat order: [player, bot0, bot1]. Player 16 v dealer hard 17 -> lose.
-    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', '2', '3', '9', '6', '4', '5', '8'));
+    // Bot hands are dealt as hard 19/18 -- always-stand under basic
+    // strategy regardless of dealer up, so no extra cards are needed.
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', 'K', 'Q', '9', '6', '9', '8', '8'));
     game.startRound();
     expect(game.phase).toBe('player');
     expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['10', '6']);
-    expect(game.seats[1].hands[0].cards.map((c) => c.rank)).toEqual(['2', '4']);
-    expect(game.seats[2].hands[0].cards.map((c) => c.rank)).toEqual(['3', '5']);
+    expect(game.seats[1].hands[0].cards.map((c) => c.rank)).toEqual(['K', '9']); // bot0: hard 19
+    expect(game.seats[2].hands[0].cards.map((c) => c.rank)).toEqual(['Q', '8']); // bot1: hard 18
 
     game.act('stand');
     expect(game.phase).toBe('settled');
     expect(game.dealerCards.map((c) => c.rank)).toEqual(['9', '8']); // hard 17, no extra draw
     expect(game.hands[0].result).toBe('lose');
     expect(game.hands[0].net).toBe(-1);
-    expect(game.bankroll).toBe(cfg().bankrollStart - 1);
+    expect(game.bankroll).toBe(cfg().bankrollStart - 1); // only the player's net affects bankroll
 
-    for (const seat of game.seats) {
-      if (seat.kind === 'bot') {
-        expect(seat.hands[0].result).toBeUndefined();
+    // Bots autoplayed to completion (basic strategy stands on both hard 19
+    // and hard 18) and settle vs the dealer's 17 for display -- but their
+    // wins never touch the bankroll.
+    expect(game.seats[1].hands[0].result).toBe('win');
+    expect(game.seats[1].hands[0].net).toBe(1);
+    expect(game.seats[2].hands[0].result).toBe('win');
+    expect(game.seats[2].hands[0].net).toBe(1);
+    expect(game.botActionLog).toEqual([
+      { seat: 1, handIndex: 0, action: 'stand', card: undefined },
+      { seat: 2, handIndex: 0, action: 'stand', card: undefined },
+    ]);
+  });
+});
+
+describe('bot autoplay + mistakes + determinism (Cycle-2 Task 3)', () => {
+  type BotDecision = {
+    seat: number;
+    handIndex: number;
+    cardsBefore: Card[];
+    dealerUp: Rank;
+    ctx: PlayContext;
+    legal: Action[];
+    correctAction: Action;
+    action: Action;
+  };
+
+  function playRoundStandOnly(game: Game): void {
+    game.startRound();
+    if (game.phase === 'insurance') game.insuranceDecision(false);
+    while (game.phase === 'player') game.act('stand');
+  }
+
+  it('botMistakePct 0: every bot decision equals basicPlay(cards, up, ctx, rules), 300-round seeded soak', () => {
+    const seats: SeatConfig = { playerHands: 1, bots: 3, botMistakePct: 0, playerPosition: 1 };
+    const game = new Game(cfg({ seed: 12345, seats }));
+    const decisions: BotDecision[] = [];
+    game.onBotDecision = (info) => decisions.push(info);
+
+    for (let i = 0; i < 300; i++) {
+      playRoundStandOnly(game);
+    }
+
+    expect(decisions.length).toBeGreaterThan(0);
+    for (const d of decisions) {
+      expect(d.action).toBe(d.correctAction);
+      expect(d.action).toBe(basicPlay(d.cardsBefore, d.dealerUp, d.ctx, game.rules).action);
+    }
+  });
+
+  it('botMistakePct 100: bot action differs from basicPlay whenever an alternative legal action exists, over a soak', () => {
+    const seats: SeatConfig = { playerHands: 1, bots: 3, botMistakePct: 100, playerPosition: 1 };
+    const game = new Game(cfg({ seed: 999, seats }));
+    const decisions: BotDecision[] = [];
+    game.onBotDecision = (info) => decisions.push(info);
+
+    for (let i = 0; i < 300; i++) {
+      playRoundStandOnly(game);
+    }
+
+    expect(decisions.length).toBeGreaterThan(0);
+    let sawAlternative = false;
+    for (const d of decisions) {
+      const correct = basicPlay(d.cardsBefore, d.dealerUp, d.ctx, game.rules).action;
+      expect(d.correctAction).toBe(correct);
+      const alternatives = d.legal.filter((a) => a !== correct);
+      if (alternatives.length > 0) {
+        sawAlternative = true;
+        expect(d.action).not.toBe(correct); // mistake substituted (mistakePct 100)
+        expect(alternatives).toContain(d.action); // never an illegal action
+      } else {
+        expect(d.action).toBe(correct); // rare no-alternative case: plays correctly anyway
       }
     }
+    expect(sawAlternative).toBe(true); // sanity: the soak actually exercised the substitution path
+  });
+
+  it('same seed + same SeatConfig => identical botActionLog and identical final shoe position', () => {
+    const seats: SeatConfig = { playerHands: 1, bots: 2, botMistakePct: 10, playerPosition: 1 };
+
+    function runSoak(): { log: Game['botActionLog']; cardsDealt: number; cardsRemaining: number } {
+      const game = new Game(cfg({ seed: 54321, seats }));
+      const log: Game['botActionLog'] = [];
+      for (let i = 0; i < 50; i++) {
+        playRoundStandOnly(game);
+        log.push(...game.botActionLog);
+      }
+      return { log, cardsDealt: game.shoe.cardsDealt, cardsRemaining: game.shoe.cardsRemaining };
+    }
+
+    const run1 = runSoak();
+    const run2 = runSoak();
+
+    expect(run1.log.length).toBeGreaterThan(0);
+    expect(run1.log).toEqual(run2.log);
+    expect(run1.cardsDealt).toBe(run2.cardsDealt);
+    expect(run1.cardsRemaining).toBe(run2.cardsRemaining);
+  });
+
+  it('RC includes cards bot hands draw on hit, not just the initial deal', () => {
+    const seats: SeatConfig = { playerHands: 1, bots: 1, botMistakePct: 0, playerPosition: 1 };
+    // Seat order: [bot0, player]. Bot0 dealt hard 6 (2,4) -- always hits per
+    // basic strategy regardless of dealer up -- draws a 10 to reach hard 16
+    // v 6 (stand: dealer 2-6 is bust-prone). Player dealt (9,9), untouched.
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('2', '9', '6', '4', '9', '7', '10'));
+    game.startRound();
+
+    expect(game.phase).toBe('player');
+    expect(game.seats[0].hands[0].cards.map((c) => c.rank)).toEqual(['2', '4', '10']);
+    expect(game.botActionLog).toEqual([
+      { seat: 0, handIndex: 0, action: 'hit', card: { rank: '10', suit: 's' } },
+      { seat: 0, handIndex: 0, action: 'stand', card: undefined },
+    ]);
+
+    const visibleCards = [...game.seats.flatMap((s) => s.hands.flatMap((h) => h.cards)), game.dealerCards[0]];
+    const expectedRc = visibleCards.reduce((sum, c) => sum + hiLoTag(c.rank), 0);
+    expect(game.runningCount).toBe(expectedRc);
+  });
+
+  it('bots never take insurance and never produce GradedEvents, even while autoplaying around a dealer ace', () => {
+    const seats: SeatConfig = { playerHands: 1, bots: 2, botMistakePct: 0, playerPosition: 1 };
+    // Seat order: [bot0, player, bot1]. Dealer shows an ace (insurance is
+    // offered to the player only); dealer's hole is a 9 (soft 20, not
+    // blackjack), so bots-before (bot0) autoplay before the player's turn
+    // and bots-after (bot1) autoplay once the player is done.
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('K', '10', 'K', 'A', '9', '9', '8', '9'));
+    game.startRound();
+    expect(game.phase).toBe('insurance');
+
+    game.insuranceDecision(false);
+    expect(game.phase).toBe('player');
+    game.act('stand');
+    expect(game.phase).toBe('settled');
+
+    // Both bots actually played (hard 19 and hard 18 -- straight to stand)...
+    expect(game.botActionLog).toEqual([
+      { seat: 0, handIndex: 0, action: 'stand', card: undefined },
+      { seat: 2, handIndex: 0, action: 'stand', card: undefined },
+    ]);
+    // ...yet the only GradedEvents are the player's: one insurance decision,
+    // one action. Bots never insure (no insurance decision is ever made or
+    // logged for them) and never grade.
+    expect(game.events).toHaveLength(2);
+    expect(game.events[0].kind).toBe('insurance');
+    expect(game.events[1].kind).toBe('action');
   });
 });
