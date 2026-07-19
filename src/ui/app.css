@@ -243,6 +243,88 @@ button {
   border: 1px solid #0f2340;
 }
 
+.card-compact {
+  width: 30px;
+  height: 42px;
+  border-radius: 4px;
+}
+
+.card-compact .card-rank {
+  font-size: 0.65rem;
+}
+
+.card-compact .card-suit {
+  font-size: 0.7rem;
+}
+
+/* ---------- Bot seats (Cycle-2 Task 6) ---------- */
+
+.bot-seats-row {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.4rem 0.75rem 0;
+}
+
+.bot-seat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  min-width: 44px;
+}
+
+.bot-seat-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #9fc2ac;
+  letter-spacing: 0.03em;
+}
+
+.bot-hand {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.bot-hand-cards {
+  display: flex;
+  gap: 0.15rem;
+}
+
+.bot-result-marker {
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.bot-result-W {
+  background: rgba(88, 179, 122, 0.25);
+  color: #6fd694;
+}
+
+.bot-result-L {
+  background: rgba(179, 38, 30, 0.25);
+  color: #e3847d;
+}
+
+.bot-result-P {
+  background: rgba(216, 185, 105, 0.25);
+  color: #d8b969;
+}
+
 .message-strip {
   min-height: 2.5rem;
   display: flex;
@@ -263,6 +345,29 @@ button {
 .message-result {
   color: #eaf3ec;
   font-weight: 600;
+}
+
+.message-bot-narration {
+  color: #9fc2ac;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.fast-forward-btn {
+  align-self: center;
+  min-width: 48px;
+  min-height: 48px;
+  margin: 0.2rem 0;
+  border-radius: 999px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  font-size: 1.3rem;
+  cursor: pointer;
+}
+
+.fast-forward-btn:hover {
+  background: #1b4c31;
 }
 
 .action-bar {

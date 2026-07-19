@@ -1,17 +1,99 @@
 import { useState } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
-import type { PlayerHand } from '../../engine/game';
+import type { Game, PlayerHand, Seat } from '../../engine/game';
 import type { Action } from '../../engine/deviations';
 import type { PlayContext } from '../../engine/strategy';
 import { correctPlay } from '../../engine/strategy';
+import { isBust } from '../../engine/hand';
 import { useGame } from '../useGame';
 import type { SessionReport } from '../useGame';
-import { PlayingCard } from '../components/PlayingCard';
+import { PlayingCard, formatCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import type { ActionBarMode } from '../components/ActionBar';
 import { Modal } from '../components/Modal';
 import { NumPad } from '../components/NumPad';
+
+type BotActionLogEntry = Game['botActionLog'][number];
+
+/** P1..P5 labels, assigned in seat order (casino order) skipping the player
+ * seat — the same seat-order rule for every bot regardless of whether it
+ * sits before or after the player. */
+function botSeatLabels(seats: Seat[]): Map<number, string> {
+  const labels = new Map<number, string>();
+  let n = 0;
+  seats.forEach((seat, i) => {
+    if (seat.kind === 'bot') {
+      n += 1;
+      labels.set(i, `P${n}`);
+    }
+  });
+  return labels;
+}
+
+function resultLetter(result: PlayerHand['result']): string | null {
+  switch (result) {
+    case 'win':
+    case 'blackjack':
+      return 'W';
+    case 'lose':
+    case 'surrender':
+      return 'L';
+    case 'push':
+      return 'P';
+    default:
+      return null;
+  }
+}
+
+function botActionText(entry: BotActionLogEntry, label: string): string {
+  switch (entry.action) {
+    case 'hit':
+      return entry.card ? `${label} hits ${formatCard(entry.card)}` : `${label} hits`;
+    case 'double':
+      return entry.card ? `${label} doubles, hits ${formatCard(entry.card)}` : `${label} doubles`;
+    case 'stand':
+      return `${label} stands`;
+    case 'surrender':
+      return `${label} surrenders`;
+    case 'split':
+      return `${label} splits`;
+    default:
+      return '';
+  }
+}
+
+/** Builds the paced narration lines for the first `revealed` entries of
+ * `game.botActionLog`. A synthetic "{label} busts" line follows a hit/double
+ * whenever it was that hand's LAST logged action and the hand's (already
+ * fully engine-resolved) final cards are bust — the log itself only records
+ * the raw decision, not the outcome. Reveal is by raw log-entry count, so a
+ * bust line always rides along with the action that caused it (no extra
+ * pacing delay). */
+function buildBotNarration(game: Game, revealed: number): string[] {
+  const log = game.botActionLog;
+  if (log.length === 0) return [];
+
+  const labels = botSeatLabels(game.seats);
+  const lastIndexForHand = new Map<string, number>();
+  log.forEach((entry, i) => lastIndexForHand.set(`${entry.seat}:${entry.handIndex}`, i));
+
+  const lines: string[] = [];
+  for (let i = 0; i < revealed && i < log.length; i++) {
+    const entry = log[i];
+    const label = labels.get(entry.seat) ?? `P${entry.seat + 1}`;
+    lines.push(botActionText(entry, label));
+
+    if (entry.action === 'hit' || entry.action === 'double') {
+      const isLastForHand = lastIndexForHand.get(`${entry.seat}:${entry.handIndex}`) === i;
+      const hand = game.seats[entry.seat]?.hands[entry.handIndex];
+      if (isLastForHand && hand && isBust(hand.cards)) {
+        lines.push(`${label} busts`);
+      }
+    }
+  }
+  return lines;
+}
 
 interface TableProps {
   settings: Settings;
@@ -95,10 +177,19 @@ function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () =>
 }
 
 export function Table({ settings, activeProfile, onNavigate }: TableProps) {
-  const { game, deal, act, insure, submitCount, overlay, dismissOverlay, report, endSession } = useGame(
-    settings,
-    activeProfile,
-  );
+  const {
+    game,
+    deal,
+    act,
+    insure,
+    submitCount,
+    overlay,
+    dismissOverlay,
+    report,
+    endSession,
+    botNarrationRevealed,
+    fastForwardNarration,
+  } = useGame(settings, activeProfile);
   const [selectedBet, setSelectedBet] = useState(1);
   const [countStage, setCountStage] = useState<'rc' | 'tc'>('rc');
   const [pendingRc, setPendingRc] = useState(0);
@@ -172,6 +263,16 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
 
   const multiHand = game.hands.length > 1;
 
+  // Cycle-2 Task 6: bot seats/narration/fast-forward are a strict no-op when
+  // the profile has no bots (v1-solo parity — `game.seats` holds just the
+  // player seat and `botActionLog` is always empty, so every value below is
+  // empty/false and nothing extra renders).
+  const botSeats = game.seats.filter((s) => s.kind === 'bot');
+  const hasBots = botSeats.length > 0;
+  const botLabels = botSeatLabels(game.seats);
+  const botNarrationLines = buildBotNarration(game, botNarrationRevealed);
+  const pacingPending = botNarrationRevealed < game.botActionLog.length;
+
   return (
     <div className="table-screen">
       <div className="topbar">
@@ -206,6 +307,34 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
         ))}
       </div>
 
+      {hasBots && (
+        <div className="bot-seats-row">
+          {game.seats.map((seat, seatIndex) => {
+            if (seat.kind !== 'bot') return null;
+            const label = botLabels.get(seatIndex) ?? `P${seatIndex + 1}`;
+            return (
+              <div key={seatIndex} className="bot-seat">
+                <div className="bot-seat-label">{label}</div>
+                {seat.hands.map((hand, handIndex) => (
+                  <div key={handIndex} className="bot-hand">
+                    <div className="bot-hand-cards">
+                      {hand.cards.map((c, j) => (
+                        <PlayingCard key={j} card={c} size="compact" />
+                      ))}
+                    </div>
+                    {game.phase === 'settled' && resultLetter(hand.result) && (
+                      <div className={`bot-result-marker bot-result-${resultLetter(hand.result)}`}>
+                        {resultLetter(hand.result)}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="hands-row">
         {game.hands.map((hand, i) => (
           <div
@@ -222,8 +351,16 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
         ))}
       </div>
 
-      <div className="message-strip">
+      <div
+        className="message-strip"
+        onClick={hasBots ? fastForwardNarration : undefined}
+      >
         {game.shuffledLastRound && <div className="message-shuffle">Shuffling…</div>}
+        {botNarrationLines.map((line, i) => (
+          <div key={i} className="message-bot-narration">
+            {line}
+          </div>
+        ))}
         {game.phase === 'settled' && (
           <>
             {game.hands.map((h, i) => (
@@ -239,6 +376,17 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
           </>
         )}
       </div>
+
+      {hasBots && pacingPending && (
+        <button
+          type="button"
+          className="fast-forward-btn"
+          aria-label="Fast-forward bot actions"
+          onClick={fastForwardNarration}
+        >
+          ⏩
+        </button>
+      )}
 
       <ActionBar mode={barMode} />
 

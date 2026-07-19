@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Game } from '../engine/game';
 import type { GameConfig } from '../engine/game';
 import type { Action } from '../engine/deviations';
@@ -84,6 +84,7 @@ export function useGame(settings: Settings, profile: Profile) {
       bankrollStart: profile.bankrollStart,
       countCheckEvery: profile.countCheckEvery,
       rules: profile.rules,
+      seats: profile.seats,
       seed: readSeed(),
     };
     gameRef.current = new Game(cfg);
@@ -130,6 +131,81 @@ export function useGame(settings: Settings, profile: Profile) {
 
   const dismissOverlay = useCallback(() => setOverlay(null), []);
 
+  /**
+   * Paced bot-narration reveal (Cycle-2 Task 6). `game.botActionLog` is
+   * fully populated by the engine SYNCHRONOUSLY (bots-before resolve inside
+   * startRound(); bots-after resolve inside the player's final act()) — this
+   * state/effect pair is DISPLAY-ONLY catch-up, never drives the engine.
+   * `botNarrationRevealed` is how many of the CURRENT round's log entries
+   * the UI has "caught up to"; a new round is detected by array identity
+   * (startRound() reassigns `botActionLog = []` every round), which resets
+   * the counter and cancels any in-flight timer so pacing never leaks
+   * across rounds or narrates a stale-closure log.
+   */
+  const [botNarrationRevealed, setBotNarrationRevealed] = useState(0);
+  const narrationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const narrationLogRef = useRef<typeof game.botActionLog>(game.botActionLog);
+
+  const clearNarrationTimer = useCallback(() => {
+    if (narrationTimerRef.current !== null) {
+      clearTimeout(narrationTimerRef.current);
+      narrationTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    let revealed = botNarrationRevealed;
+
+    if (game.botActionLog !== narrationLogRef.current) {
+      // New round (or a fresh empty log on a solo/no-bot table): reset.
+      narrationLogRef.current = game.botActionLog;
+      clearNarrationTimer();
+      revealed = 0;
+      if (botNarrationRevealed !== 0) {
+        // State actually changes -> a follow-up render/effect run is
+        // guaranteed, so let THAT pass schedule the timer against the new
+        // log. (If it's already 0 — e.g. the very first round after mount —
+        // setting it again would be a no-op React bails out on, so instead
+        // fall through below and schedule inline against `revealed = 0`.)
+        setBotNarrationRevealed(0);
+        return;
+      }
+    }
+
+    if (revealed >= game.botActionLog.length) {
+      clearNarrationTimer();
+      return;
+    }
+
+    if (narrationTimerRef.current === null) {
+      narrationTimerRef.current = setTimeout(() => {
+        narrationTimerRef.current = null;
+        setBotNarrationRevealed((c) => c + 1);
+      }, Math.max(0, settings.dealSpeedMs));
+    }
+  }, [
+    game,
+    game.botActionLog,
+    // `botActionLog` is mutated in place (push) by bots-after resolving
+    // mid-round inside act(); the array reference alone doesn't change then,
+    // so `.length` is depended on separately to detect newly-appended
+    // entries and resume pacing. A genuinely new round always reassigns the
+    // array (caught by the reference check above), so relying on `.length`
+    // here never masks a round boundary.
+    game.botActionLog.length,
+    botNarrationRevealed,
+    settings.dealSpeedMs,
+    clearNarrationTimer,
+  ]);
+
+  // Unmount-only cleanup so no timer outlives the component.
+  useEffect(() => clearNarrationTimer, [clearNarrationTimer]);
+
+  const fastForwardNarration = useCallback(() => {
+    clearNarrationTimer();
+    setBotNarrationRevealed(game.botActionLog.length);
+  }, [game, clearNarrationTimer]);
+
   const submitCount = useCallback(
     (rc: number, tcGuess?: number) => {
       game.submitCountCheck(rc, tcGuess);
@@ -160,5 +236,17 @@ export function useGame(settings: Settings, profile: Profile) {
     return rep;
   }, [game, profile.bankrollStart, profile.id, profile.name]);
 
-  return { game, deal, act, insure, submitCount, overlay, dismissOverlay, report, endSession };
+  return {
+    game,
+    deal,
+    act,
+    insure,
+    submitCount,
+    overlay,
+    dismissOverlay,
+    report,
+    endSession,
+    botNarrationRevealed,
+    fastForwardNarration,
+  };
 }

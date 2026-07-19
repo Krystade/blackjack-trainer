@@ -3,9 +3,13 @@ import type { Card, Suit } from '../../engine/cards';
 interface PlayingCardProps {
   card?: Card;
   faceDown?: boolean;
+  /** Cycle-2 Task 6: bot seat rows render smaller cards than the player's own
+   * hands. Defaults to 'normal' so every existing (v1 + cycle-2 player-hand)
+   * call site is unaffected. */
+  size?: 'normal' | 'compact';
 }
 
-const SUIT_GLYPH: Record<Suit, string> = {
+export const SUIT_GLYPH: Record<Suit, string> = {
   s: '♠',
   h: '♥',
   d: '♦',
@@ -23,15 +27,24 @@ function isRed(suit: Suit): boolean {
   return suit === 'h' || suit === 'd';
 }
 
-export function PlayingCard({ card, faceDown }: PlayingCardProps) {
+/** Short text label for a card, e.g. "10♣" — used by bot action narration
+ * (Cycle-2 Task 6), which needs the same rank+suit glyph text the card face
+ * renders, outside of any DOM node. */
+export function formatCard(card: Card): string {
+  return `${card.rank}${SUIT_GLYPH[card.suit]}`;
+}
+
+export function PlayingCard({ card, faceDown, size = 'normal' }: PlayingCardProps) {
+  const sizeClass = size === 'compact' ? ' card-compact' : '';
+
   if (!card || faceDown) {
-    return <div className="card card-back" aria-label="face-down card" />;
+    return <div className={`card card-back${sizeClass}`} aria-label="face-down card" />;
   }
 
   const red = isRed(card.suit);
   return (
     <div
-      className={`card ${red ? 'card-red' : 'card-black'}`}
+      className={`card ${red ? 'card-red' : 'card-black'}${sizeClass}`}
       data-card={`${card.rank}${card.suit}`}
       aria-label={`${card.rank} of ${SUIT_NAME[card.suit]}`}
     >
