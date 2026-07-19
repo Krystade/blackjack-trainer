@@ -205,16 +205,9 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
   const [peeking, setPeeking] = useState(false);
   const [showReport, setShowReport] = useState(false);
 
-  // `deal` (from useGame) is typed as (betUnits?: number) => void, mirroring
-  // the engine's v1/solo scalar path; `game.startRound` underneath also
-  // accepts a per-hand `number[]` (Cycle-2 Task 4). Widening the call here
-  // (rather than useGame.ts's exported type) keeps this task's edits inside
-  // Table.tsx/ActionBar.tsx/app.css only.
-  const dealMulti = deal as unknown as (bets?: number | number[]) => void;
-
   const handleDeal = () => {
     if (playerHandsCount > 1) {
-      dealMulti(activeProfile.betSpreadOn ? selectedBets : undefined);
+      deal(activeProfile.betSpreadOn ? selectedBets : undefined);
     } else {
       deal(activeProfile.betSpreadOn ? selectedBets[0] : undefined);
     }

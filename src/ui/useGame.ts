@@ -98,7 +98,7 @@ export function useGame(settings: Settings, profile: Profile) {
   const [report, setReport] = useState<SessionReport | null>(null);
 
   const deal = useCallback(
-    (betUnits?: number) => {
+    (betUnits?: number | number[]) => {
       game.startRound(betUnits);
       bump();
     },
