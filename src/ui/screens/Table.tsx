@@ -190,14 +190,34 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
     botNarrationRevealed,
     fastForwardNarration,
   } = useGame(settings, activeProfile);
-  const [selectedBet, setSelectedBet] = useState(1);
+  // Cycle-2 Task 8: one selected bet per player hand. `playerHandsCount`
+  // comes from the PROFILE's seat config, not `game.hands.length` — the
+  // latter still reflects the *previous* round's (possibly split-grown)
+  // hand count while we're sitting in the bet phase, before `startRound`
+  // rebuilds the seat.
+  const playerHandsCount = activeProfile.seats.playerHands;
+  const [selectedBets, setSelectedBets] = useState<number[]>(() => new Array(playerHandsCount).fill(1));
+  const setBetForHand = (i: number, units: number) => {
+    setSelectedBets((prev) => prev.map((v, idx) => (idx === i ? units : v)));
+  };
   const [countStage, setCountStage] = useState<'rc' | 'tc'>('rc');
   const [pendingRc, setPendingRc] = useState(0);
   const [peeking, setPeeking] = useState(false);
   const [showReport, setShowReport] = useState(false);
 
+  // `deal` (from useGame) is typed as (betUnits?: number) => void, mirroring
+  // the engine's v1/solo scalar path; `game.startRound` underneath also
+  // accepts a per-hand `number[]` (Cycle-2 Task 4). Widening the call here
+  // (rather than useGame.ts's exported type) keeps this task's edits inside
+  // Table.tsx/ActionBar.tsx/app.css only.
+  const dealMulti = deal as unknown as (bets?: number | number[]) => void;
+
   const handleDeal = () => {
-    deal(activeProfile.betSpreadOn ? selectedBet : undefined);
+    if (playerHandsCount > 1) {
+      dealMulti(activeProfile.betSpreadOn ? selectedBets : undefined);
+    } else {
+      deal(activeProfile.betSpreadOn ? selectedBets[0] : undefined);
+    }
     setCountStage('rc');
   };
 
@@ -253,8 +273,10 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
     barMode = {
       kind: 'bet',
       betSpreadOn: activeProfile.betSpreadOn,
-      selectedBet,
-      onSelectBet: setSelectedBet,
+      hands: selectedBets.map((units, i) => ({
+        selectedBet: units,
+        onSelectBet: (u: number) => setBetForHand(i, u),
+      })),
       onDeal: handleDeal,
     };
   } else {
@@ -341,6 +363,7 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
             key={i}
             className={`player-hand${i === game.active && game.phase === 'player' ? ' hand-active' : ''}`}
           >
+            {playerHandsCount > 1 && <div className="hand-label">Hand {i + 1}</div>}
             <div className="hand-cards">
               {hand.cards.map((c, j) => (
                 <PlayingCard key={j} card={c} />

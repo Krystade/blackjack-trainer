@@ -201,6 +201,15 @@ button {
   color: #b7d3c2;
 }
 
+/* ---------- Multi-hand player labels (Cycle-2 Task 8) ---------- */
+
+.hand-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #d8b969;
+  letter-spacing: 0.03em;
+}
+
 .card,
 .card-back {
   width: 48px;
@@ -450,6 +459,62 @@ button {
 .chip-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+/* ---------- Multi-hand bet entry (Cycle-2 Task 8) ---------- */
+
+.bet-hands {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0 max(0.5rem, env(safe-area-inset-left)) 0.4rem max(0.5rem, env(safe-area-inset-right));
+  box-sizing: border-box;
+}
+
+.bet-hand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.bet-hand-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #d8b969;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bet-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+
+.bet-step-btn {
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bet-step-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.bet-stepper-value {
+  min-width: 2.5rem;
+  text-align: center;
+  font-weight: 700;
+  color: #eaf3ec;
 }
 
 /* ---------- Modal ---------- */
