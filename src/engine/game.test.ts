@@ -927,6 +927,114 @@ describe('multi-hand player (Cycle-2 Task 4)', () => {
   });
 });
 
+describe('insurance across all player hands (Cycle-2 Task 5)', () => {
+  it('2 hands, bets [1,3], insurance taken + dealer BJ (both non-natural) -> pays 2:1 on summed stake, classic even-money wash', () => {
+    const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
+    // Deal order: hand0c1, hand1c1, dealerUp, hand0c2, hand1c2, dealerHole.
+    // hand0=(10,6)=16, hand1=(9,7)=16 -- both non-natural. dealer=(A,K)=BJ.
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', '9', 'A', '6', '7', 'K'));
+    game.startRound([1, 3]);
+    expect(game.phase).toBe('insurance');
+    const initialBankroll = game.bankroll;
+
+    game.insuranceDecision(true);
+    expect(game.phase).toBe('settled');
+    expect(game.hands[0].result).toBe('lose');
+    expect(game.hands[0].net).toBe(-1);
+    expect(game.hands[1].result).toBe('lose');
+    expect(game.hands[1].net).toBe(-3);
+    // stake = (1+3)/2 = 2, pays 2:1 -> insuranceNet = 4
+    expect(game.insuranceNet).toBe(4);
+    // -(1+3) + 4 = 0: classic even-money wash across both hands
+    expect(game.bankroll).toBe(initialBankroll);
+  });
+
+  it('2 hands, bets [1,3], insurance taken + dealer NO BJ -> lose (bet0+bet1)/2 immediately, hands then play out', () => {
+    const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
+    // Deal order: hand0c1, hand1c1, dealerUp, hand0c2, hand1c2, dealerHole.
+    // hand0=(10,9)=19, hand1=(8,7)=15, dealer=(A,9)=20 (soft 20, stands -- no
+    // dealer BJ since hole isn't ten-value).
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', '8', 'A', '9', '7', '9'));
+    game.startRound([1, 3]);
+    expect(game.phase).toBe('insurance');
+    const initialBankroll = game.bankroll;
+
+    game.insuranceDecision(true);
+    expect(game.phase).toBe('player');
+    // stake = (1+3)/2 = 2, lost immediately
+    expect(game.insuranceNet).toBe(-2);
+    expect(game.bankroll).toBe(initialBankroll - 2);
+
+    game.act('stand'); // hand0 19 vs dealer 20 -> lose
+    expect(game.active).toBe(1);
+    game.act('stand'); // hand1 15 vs dealer 20 -> lose
+    expect(game.phase).toBe('settled');
+
+    expect(game.hands[0].result).toBe('lose');
+    expect(game.hands[0].net).toBe(-1);
+    expect(game.hands[1].result).toBe('lose');
+    expect(game.hands[1].net).toBe(-3);
+    // insurance loss (-2) + both hand losses (-1, -3)
+    expect(game.bankroll).toBe(initialBankroll - 2 - 1 - 3);
+  });
+
+  it('hand0 normal (10,6=16), hand1 natural (A,K), insurance taken + dealer BJ -> natural pushes, hand0 loses, insurance pays 2:1 on summed stake', () => {
+    const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
+    // Deal order: hand0c1, hand1c1, dealerUp, hand0c2, hand1c2, dealerHole.
+    // hand0=(10,6)=16 (non-natural), hand1=(A,K)=natural BJ. dealer=(A,K)=BJ.
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', 'A', 'A', '6', 'K', 'K'));
+    game.startRound([2, 5]);
+    expect(game.phase).toBe('insurance');
+    const initialBankroll = game.bankroll;
+
+    game.insuranceDecision(true);
+    expect(game.phase).toBe('settled');
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['10', '6']);
+    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['A', 'K']);
+    expect(game.hands[0].result).toBe('lose');
+    expect(game.hands[0].net).toBe(-2);
+    expect(game.hands[1].result).toBe('push'); // player natural pushes vs dealer BJ
+    expect(game.hands[1].net).toBe(0);
+    // stake = (2+5)/2 = 3.5, pays 2:1 -> insuranceNet = 7
+    expect(game.insuranceNet).toBe(7);
+    expect(game.bankroll).toBe(initialBankroll - 2 + 0 + 7);
+  });
+
+  it('playerHands 1 array-bet parity: startRound([2]), take + dealer BJ -> insuranceNet = +2, net 0 overall (byte-identical to scalar path)', () => {
+    const game = Game.withRiggedShoe(cfg(), rig('10', 'A', '6', 'K'));
+    game.startRound([2]);
+    const initialBankroll = game.bankroll;
+
+    game.insuranceDecision(true);
+    expect(game.phase).toBe('settled');
+    expect(game.hands[0].result).toBe('lose');
+    expect(game.hands[0].net).toBe(-2);
+    expect(game.insuranceNet).toBe(2); // sum(bet)=2 -> stake 1 -> pays 2
+    expect(game.bankroll).toBe(initialBankroll); // -2 + 2 = 0
+  });
+
+  it('playerHands 1 array-bet parity: startRound([2]), take + no dealer BJ -> insuranceNet = -1, round continues', () => {
+    const game = Game.withRiggedShoe(cfg(), rig('10', 'A', '6', '5', '8'));
+    game.startRound([2]);
+    const initialBankroll = game.bankroll;
+
+    game.insuranceDecision(true);
+    expect(game.phase).toBe('player');
+    expect(game.insuranceNet).toBe(-1); // sum(bet)/2 = 2/2 = 1
+    expect(game.bankroll).toBe(initialBankroll - 1);
+  });
+
+  it('playerHands 2, insurance taken -> exactly ONE insurance GradedEvent (not one per hand)', () => {
+    const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', '9', 'A', '6', '7', 'K'));
+    game.startRound([1, 3]);
+    game.insuranceDecision(true);
+
+    const insuranceEvents = game.events.filter((e) => e.kind === 'insurance');
+    expect(insuranceEvents).toHaveLength(1);
+  });
+});
+
 describe('bot autoplay + mistakes + determinism (Cycle-2 Task 3)', () => {
   type BotDecision = {
     seat: number;

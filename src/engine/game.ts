@@ -378,10 +378,15 @@ export class Game {
     const advice = insuranceCorrect(tc);
     const { classification, correct } = classifyInsurance(take, tc);
     const up = this.dealerCards[0].rank;
-    // Cycle-2 Task 4: still a SINGLE decision staked on hands[0].bet only.
-    // Multi-hand insurance math (stake = sum of all player hands' bets) is
-    // Cycle-2 Task 5's job -- left as-is here on purpose.
-    const bet = this.hands[0].bet;
+    // Cycle-2 Task 5: ONE insurance decision covers every player hand. Stake
+    // is the summed bet across all player hands (playerHands=1 reduces to
+    // hands[0].bet, so the solo path is byte-identical to pre-Task-5
+    // behavior). Pays 2:1 on that summed stake against dealer blackjack;
+    // otherwise the whole stake is lost immediately and play continues.
+    // Per-hand settlement (push on a player natural, lose on a non-natural)
+    // still happens per-hand in settleDealerBlackjack() below -- this only
+    // changes how much the insurance side bet itself is worth.
+    const bet = this.hands.reduce((sum, h) => sum + h.bet, 0);
     this.events.push({
       kind: 'insurance',
       category: 'insurance',
