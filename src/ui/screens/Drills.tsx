@@ -25,6 +25,7 @@ import { requestWakeLock, releaseWakeLock } from '../../audio/wakeLock';
 import { ZONE_LABEL } from '../../audio/zones';
 import type { ZoneId } from '../../audio/zones';
 import { CountDrillView } from './drills/CountDrillView';
+import { TrueCountDrillView } from './drills/TrueCountDrillView';
 
 interface DrillsProps {
   settings: Settings;
@@ -731,7 +732,7 @@ function DeviationQuizView({
 /* ---------------------------------------------------------------- */
 
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
-  const [mode, setMode] = useState<'picker' | 'count' | 'flash' | 'quiz'>('picker');
+  const [mode, setMode] = useState<'picker' | 'count' | 'truecount' | 'flash' | 'quiz'>('picker');
 
   if (mode === 'count') {
     return (
@@ -741,6 +742,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         onSettingsChange={onSettingsChange}
       />
     );
+  }
+  if (mode === 'truecount') {
+    return <TrueCountDrillView settings={settings} onBack={() => setMode('picker')} />;
   }
   if (mode === 'flash') {
     return (
@@ -769,6 +773,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       <div className="drills-nav">
         <button type="button" className="drills-nav-btn" onClick={() => setMode('count')}>
           Count Drill
+        </button>
+        <button type="button" className="drills-nav-btn" onClick={() => setMode('truecount')}>
+          True Count Drill
         </button>
         <button type="button" className="drills-nav-btn" onClick={() => setMode('flash')}>
           Flashcards
