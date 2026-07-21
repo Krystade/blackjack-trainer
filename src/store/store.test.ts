@@ -1,6 +1,7 @@
 import { expect, test, describe, beforeEach } from 'vitest';
 import {
   DEFAULT_SETTINGS,
+  DEFAULT_AUDIO,
   EMPTY_STATS,
   type Settings,
   type Stats,
@@ -116,6 +117,33 @@ describe('store/persist', () => {
       // Existing fields still preserved
       expect(loaded.drill.flashCategory).toBe('hard');
       expect(loaded.drill.countGroup).toBe(2);
+    });
+
+    test('backfills audio settings when the stored blob predates cycle 3', () => {
+      storage['bjtrainer.settings.v1'] = JSON.stringify({
+        version: 1,
+        feedbackMode: 'training',
+      });
+      const loaded = loadSettings();
+      expect(loaded.audio).toEqual(DEFAULT_AUDIO);
+    });
+
+    test('merges a partial stored audio object field-by-field over the defaults', () => {
+      storage['bjtrainer.settings.v1'] = JSON.stringify({
+        version: 1,
+        audio: { enabled: true, rate: 1.3 },
+      });
+      const loaded = loadSettings();
+      expect(loaded.audio.enabled).toBe(true);
+      expect(loaded.audio.rate).toBe(1.3);
+      expect(loaded.audio.verbosity).toBe('results'); // filled from defaults
+      expect(loaded.audio.chimes).toBe(true); // filled from defaults
+    });
+
+    test('does not share a reference with the DEFAULT_AUDIO singleton', () => {
+      const a = loadSettings();
+      a.audio.enabled = true;
+      expect(loadSettings().audio.enabled).toBe(false);
     });
   });
 

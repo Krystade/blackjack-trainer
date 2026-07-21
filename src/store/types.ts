@@ -22,7 +22,27 @@ export interface Settings {
     countManual: boolean;
     quizIndex: DeviationId | 'all';
   };
+  audio: AudioSettings;
 }
+
+/** Cycle-3: app-wide audio for eyes-free car use. Opt-in — enabled defaults to false. */
+export interface AudioSettings {
+  enabled: boolean;
+  verbosity: 'off' | 'results' | 'full';
+  rate: number; // 0.7 .. 1.5
+  voiceURI: string; // 'default' or a SpeechSynthesisVoice.voiceURI
+  chimes: boolean;
+  answerPauseMs: number; // 2000..5000, the eyes-free self-check pause
+}
+
+export const DEFAULT_AUDIO: AudioSettings = {
+  enabled: false,
+  verbosity: 'results',
+  rate: 1,
+  voiceURI: 'default',
+  chimes: true,
+  answerPauseMs: 3000,
+};
 
 export const DEFAULT_SETTINGS: Settings = {
   version: 1,
@@ -42,6 +62,7 @@ export const DEFAULT_SETTINGS: Settings = {
     countManual: false,
     quizIndex: 'all',
   },
+  audio: { ...DEFAULT_AUDIO },
 };
 
 /** A saved game profile: rules + ramp + bankroll config, selectable at the Home screen. */

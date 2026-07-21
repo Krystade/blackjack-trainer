@@ -41,8 +41,9 @@ function isVersion1Object(parsed: unknown): parsed is Record<string, unknown> {
 
 /**
  * Merge a parsed (possibly partial) settings blob over a deep copy of the
- * defaults: top-level fields plus the nested drill object. Guarantees a
- * complete Settings shape even if stored data is missing fields, and never
+ * defaults: top-level fields plus the nested drill and audio objects.
+ * Guarantees a complete Settings shape even if stored data is missing
+ * fields (or predates cycle 3, i.e. has no audio object at all), and never
  * shares references with the DEFAULT_SETTINGS singleton.
  */
 function mergeSettings(parsed: Record<string, unknown>): Settings {
@@ -52,7 +53,11 @@ function mergeSettings(parsed: Record<string, unknown>): Settings {
     typeof p.drill === 'object' && p.drill !== null
       ? { ...base.drill, ...p.drill }
       : base.drill;
-  return { ...base, ...p, version: 1, drill };
+  const audio =
+    typeof p.audio === 'object' && p.audio !== null
+      ? { ...base.audio, ...p.audio }
+      : base.audio;
+  return { ...base, ...p, version: 1, drill, audio };
 }
 
 /**
