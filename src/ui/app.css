@@ -1643,3 +1643,102 @@ button {
    existing patterns. The Seats section groups playerHands (segmented), bots
    (stepper), botMistakePct (stepper), and playerPosition (stepper with clamping
    logic in React). */
+
+/* ---------- ZonePad: five-zone blind-tap overlay (Cycle-3 Task 8) ---------- */
+/* Fixed full-viewport overlay; the pointer handlers live on .zone-pad itself
+   in ZonePad.tsx and delegate every hit-test decision to hitTestZone(), so
+   this CSS is purely visual — it does not need to match the geometry
+   precisely, only communicate it. `visible: false` sets opacity 0 (never
+   display/visibility/pointer-events none) so the pad stays fully tappable
+   for true eyes-free driving use. */
+
+.zone-pad {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  touch-action: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  background: #0d2318;
+  transition: opacity 0.2s ease;
+}
+
+.zone-pad-hidden {
+  opacity: 0;
+}
+
+.zone-pad-quadrants {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.zone-pad-quad {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #eaf3ec;
+  border: 1px solid #1e4530;
+  pointer-events: none;
+}
+
+.zone-pad-quad-hit,
+.zone-pad-quad-stand {
+  background: #143b26;
+}
+
+.zone-pad-quad-double,
+.zone-pad-quad-split {
+  background: #0f2a1c;
+}
+
+.zone-pad-circle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44vmin;
+  height: 44vmin;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #1b4c31;
+  border: 2px solid #d8b969;
+  color: #d8b969;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+
+.zone-pad-halves {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.zone-pad-half {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #eaf3ec;
+  pointer-events: none;
+}
+
+.zone-pad-take {
+  background: #143b26;
+  border-right: 1px solid #1e4530;
+}
+
+.zone-pad-decline {
+  background: #0f2a1c;
+}
