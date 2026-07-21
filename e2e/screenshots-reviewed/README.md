@@ -58,3 +58,31 @@ Non-blocking notes carried forward: bot *card rows* render fully-resolved while 
 narration text is paced (spec-defensible — pacing is presentation-only over an
 already-resolved engine transcript); changing deal speed mid-narration doesn't retune the
 in-flight timer.
+
+## Cycle-3 review addendum (2026-07-21) — PASS WITH ONE BLOCKING UX DEFECT
+Shots 55-58 captured by the cycle-3 audio e2e suite (35 specs green twice, no flake, `79f8824`)
+and reviewed by the coordinator via direct image inspection.
+
+- **55 (Settings → Audio)** — section renders correctly: "Audio enabled" ticked, Verbosity
+  segmented Off/Results/Full with Full selected, consistent with the existing Play/Drills
+  section idiom. Rate, voice picker, chimes, answer-pause and Test-audio sit below the fold
+  (the e2e asserts them functionally). ✓
+- **56 (eyes-free count drill running)** — card 9♦ with "tap to advance · 1/13" in manual
+  mode. Correct. ✓
+- **57 / 58 (ZonePad overlay)** — ⛔ **DEFECT, not a capture artifact.** Both show the
+  "Eyes-free audio" toggle ticked and the scenario rendered, but **no answer affordance
+  whatsoever** — no buttons and no zone hints, because `Drills.tsx` hardcodes the pad to
+  `visible={false}` (CSS `opacity: 0`, still fully tappable). Shot 58 is an insurance quiz
+  item at TC +5 with the "Insurance: take at TC ≥ +3" filter — correct content, but the
+  Take/Decline affordance is simply gone.
+
+**This reproduces an operator road-test report** ("there are no answer buttons but clicking
+always results in a hit"): every tap in the upper-left quadrant maps to Hit, so the screen is
+indistinguishable from a broken one. Invisibility is the right behaviour only for genuine
+eyes-free driving, and only as an explicit opt-in — never as the default, since the zones
+have to be *learnable* before they can be used blind. Task 8 built the `visible` prop for
+exactly this; Task 9 hardcoding it to `false` was the wrong call.
+
+**Verdict:** the audio harness, narration and e2e coverage PASS. The ZonePad default is a
+blocking UX defect, logged as F2 for the second pass (show labeled zones by default; make
+screen-blanking an explicit "dim screen" opt-in).
