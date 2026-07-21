@@ -1224,3 +1224,41 @@ describe('v1 parity: an all-natural round must not wake the dealer (cycle-2 regr
     expect(game.dealerCards.length).toBeGreaterThan(2);
   });
 });
+
+describe('full-table shoe exhaustion (cycle-2 review I2/M5)', () => {
+  it('never throws "Cannot draw from empty shoe" at deep penetration with a full table', () => {
+    // 5 bots + 3 player hands at 0.9 penetration is the worst realistic case:
+    // the deal alone takes 2*(5+3)+2 = 18 cards, and splitting whenever legal
+    // multiplies that. Before the pre-deal depth guard, ~15% of seeds crashed
+    // here, which blanked the React tree and lost the whole session.
+    const seats: SeatConfig = { playerHands: 3, bots: 5, botMistakePct: 20, playerPosition: 2 };
+    for (let seed = 1; seed <= 60; seed++) {
+      const game = new Game(cfg({ seats, seed, penetration: 0.9 }));
+      expect(() => {
+        for (let round = 0; round < 60; round++) {
+          game.startRound([1, 1, 1]);
+          if (game.phase === 'insurance') game.insuranceDecision(false);
+          let guard = 0;
+          while (game.phase === 'player' && guard++ < 60) {
+            const legal = game.legalActions();
+            // Split whenever it is legal -- maximum card consumption.
+            game.act(legal.includes('split') ? 'split' : 'stand');
+          }
+        }
+      }).not.toThrow();
+    }
+  });
+
+  it('a rejected bets-array length leaves the Game completely unmutated', () => {
+    const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
+    const game = new Game(cfg({ seats }));
+    const roundNoBefore = game.roundNo;
+    const cardsBefore = game.shoe.cardsRemaining;
+
+    expect(() => game.startRound([1, 2, 3])).toThrow(/does not match playerHands/);
+
+    // Validation must happen before ANY state advance.
+    expect(game.roundNo).toBe(roundNoBefore);
+    expect(game.shoe.cardsRemaining).toBe(cardsBefore);
+  });
+});

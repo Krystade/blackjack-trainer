@@ -152,6 +152,10 @@ export class Game {
   readonly rules: RuleSet;
   phase: Phase = 'idle';
   shoe: Shoe;
+  /** True only for `Game.withRiggedShoe`. A rigged shoe is a short, exactly
+   * stacked card list, so the pre-deal depth guard must not "top it up" by
+   * reshuffling -- that would destroy the very sequence the test stacked. */
+  private shoeIsRigged = false;
   runningCount = 0;
   dealerCards: Card[] = [];
   holeRevealed = false;
@@ -230,6 +234,7 @@ export class Game {
   static withRiggedShoe(cfg: GameConfig, cards: Card[]): Game {
     const game = new Game(cfg);
     game.shoe = makeRiggedShoe(cards, cfg.penetration);
+    game.shoeIsRigged = true;
     return game;
   }
 
@@ -290,12 +295,31 @@ export class Game {
    * 1 unit when omitted). Cycle-2 Task 4.
    */
   startRound(bets?: number | number[]): void {
+    const playerHandsCount = this.seatCfg.playerHands;
+
+    // Validate BEFORE mutating anything. This check used to sit below the
+    // round-number increment and the reshuffle, so a rejected call left the
+    // Game wedged in a half-advanced state.
+    if (Array.isArray(bets) && bets.length !== playerHandsCount) {
+      throw new Error(`startRound: bets array length ${bets.length} does not match playerHands ${playerHandsCount}`);
+    }
+
     this.roundNo += 1;
     this.countCheckDue = false;
     this.insuranceNet = null;
     this.botActionLog = [];
 
-    if (this.shoe.cutCardReached) {
+    // A full table can outrun the cut card. Reaching the cut card only
+    // guarantees a handful of cards remain, but the deal alone consumes
+    // 2 x (bots + playerHands) + 2, before any hits, splits or dealer draws --
+    // so at deep penetration with 5 bots and 3 hands the shoe could empty
+    // mid-round and `Shoe.draw()` would throw, blanking the whole React tree
+    // and losing the session. Solo play never came close, which is why this
+    // was unreachable before the seat model.
+    const totalHands = this.seatCfg.bots + playerHandsCount;
+    const needed = 4 * totalHands + 20;
+    const tooShallow = !this.shoeIsRigged && this.shoe.cardsRemaining < needed;
+    if (this.shoe.cutCardReached || tooShallow) {
       this.shoe.shuffle();
       this.runningCount = 0;
       this.shuffledLastRound = true;
@@ -304,14 +328,9 @@ export class Game {
     }
 
     const preDealTc = this.trueCountNow;
-    const playerHandsCount = this.seatCfg.playerHands;
     const betArray: number[] = Array.isArray(bets)
       ? bets
       : new Array(playerHandsCount).fill(bets ?? 1);
-
-    if (Array.isArray(bets) && bets.length !== playerHandsCount) {
-      throw new Error(`startRound: bets array length ${bets.length} does not match playerHands ${playerHandsCount}`);
-    }
 
     if (this.cfg.betSpreadOn) {
       const expectedUnits = spreadUnitsFor(preDealTc, this.cfg.spread);

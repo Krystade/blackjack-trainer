@@ -30,10 +30,29 @@ function App() {
     case 'home':
       return <Home onNavigate={navigate} activeProfile={activeProfile} />;
     case 'table':
-      // key={activeProfile.id} forces a remount on profile switch: useGame builds its
-      // Game instance once per mount, so without this key a profile change (rules,
-      // penetration, ramp, bankroll) would leave a stale Game running under the new profile.
-      return <Table key={activeProfile.id} settings={settings} onNavigate={navigate} activeProfile={activeProfile} />;
+      // The key forces a remount whenever the active profile's CONTENT changes,
+      // not merely when a different profile is selected. useGame builds its Game
+      // instance once per mount, so keying on id alone left a stale Game running
+      // after an in-place edit of the profile you were already playing.
+      //
+      // That was money-relevant for seats: Table reads playerHands live from the
+      // profile while `selectedBets` and the engine's seat config both stayed at
+      // their mount-time values. Editing 3 hands down to 1 and returning would
+      // send a single scalar bet into an engine still holding 3 hands, which fans
+      // it across all three — staking 3x what the bet UI showed. It never threw,
+      // because the array length always matched what the engine expected.
+      // Rules edits (decks, s17) were stale the same way, silently mis-grading.
+      //
+      // Remounting resets the shoe and bankroll, which is the correct reading of
+      // "you changed the game definition": a new table, not a spliced-in change.
+      return (
+        <Table
+          key={`${activeProfile.id}:${JSON.stringify(activeProfile)}`}
+          settings={settings}
+          onNavigate={navigate}
+          activeProfile={activeProfile}
+        />
+      );
     case 'drills':
       return (
         <Drills
