@@ -22,6 +22,14 @@ import { PlayingCard } from '../components/PlayingCard';
 import { NumPad } from '../components/NumPad';
 import { ActionBar } from '../components/ActionBar';
 import { Segmented, Stepper } from './Settings';
+import { useAudio } from '../../audio/useAudio';
+import {
+  narrateCards,
+  narrateCorrection,
+  narrateCountAnswer,
+  narrateCountPrompt,
+  narrateQuizPrompt,
+} from '../../audio/narrate';
 
 interface DrillsProps {
   settings: Settings;
@@ -63,6 +71,7 @@ function CountDrillView({
   const [wasCorrect, setWasCorrect] = useState(false);
   const [actualValue, setActualValue] = useState(0);
   const [enteredValue, setEnteredValue] = useState(0);
+  const audio = useAudio(settings.audio);
 
   const updateDrill = (patch: Partial<Settings['drill']>) => {
     const next: Settings = { ...settings, drill: { ...settings.drill, ...patch } };
@@ -89,6 +98,27 @@ function CountDrillView({
     const t = setTimeout(() => setShownIndex((i) => i + 1), settings.drill.countIntervalMs);
     return () => clearTimeout(t);
   }, [phase, shownIndex, groups.length, settings.drill.countIntervalMs, settings.drill.countManual]);
+
+  // Verbosity 'full': narrate each card group as it's shown. Visual mode
+  // only (countdownMode's hidden-tag guess isn't a running-count answer, so
+  // it's excluded from the "running count" phrasing below). Reacts to the
+  // existing phase/shownIndex state rather than owning a timer of its own,
+  // so a fresh start() naturally re-triggers it -- nothing here can go stale.
+  useEffect(() => {
+    if (phase !== 'flashing' || countdownMode) return;
+    const g = groups[shownIndex];
+    if (!g) return;
+    audio.sayFull(narrateCards(g));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, shownIndex, countdownMode, groups]);
+
+  // Verbosity 'full': announce the running-count prompt once the flash
+  // sequence completes.
+  useEffect(() => {
+    if (phase !== 'answering' || countdownMode) return;
+    audio.sayFull(narrateCountPrompt());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, countdownMode]);
 
   const advanceManual = () => {
     if (shownIndex >= groups.length - 1) {
@@ -138,7 +168,9 @@ function CountDrillView({
 
   const handleRcSubmit = (value: number) => {
     if (!drillRound) return;
-    finishRun(value === drillRound.finalRc, drillRound.finalRc, value);
+    const correct = value === drillRound.finalRc;
+    finishRun(correct, drillRound.finalRc, value);
+    audio.sayFull(`${correct ? 'Correct.' : 'Wrong.'} ${narrateCountAnswer(drillRound.finalRc)}`);
   };
 
   const handleTagGuess = (guess: -1 | 0 | 1) => {
@@ -337,6 +369,7 @@ function FlashcardsView({
     drawFlashcard(settings.drill.flashCategory, weightsRef.current, randomSeed(), activeProfile.rules),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action } | null>(null);
+  const audio = useAudio(settings.audio);
 
   const next = (category: Settings['drill']['flashCategory'] = settings.drill.flashCategory) => {
     setCard(drawFlashcard(category, weightsRef.current, randomSeed(), activeProfile.rules));
@@ -373,6 +406,9 @@ function FlashcardsView({
       hand: card.cellId,
     };
     saveStats(applyEvents(loadStats(), [event]));
+
+    audio.say(narrateCorrection(event), { interrupt: true });
+    audio.ding(correct ? 'good' : 'bad');
 
     setFeedback({ correct, correctAction: withCount.action });
   };
@@ -517,6 +553,14 @@ function DeviationQuizView({
     drawQuizItem(randomSeed(), quizFilterArg(activeFilter), activeProfile.rules),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean } | null>(null);
+  const audio = useAudio(settings.audio);
+
+  // Verbosity 'full': speak the scenario every time a new item is drawn,
+  // including the very first one.
+  useEffect(() => {
+    audio.sayFull(narrateQuizPrompt(item.cards, item.up, item.tc));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item]);
 
   const next = (filter: DeviationId | 'all' = activeFilter) => {
     setItem(drawQuizItem(randomSeed(), quizFilterArg(filter), activeProfile.rules));
@@ -533,6 +577,10 @@ function DeviationQuizView({
   const handleAnswer = (taken: string) => {
     const event = buildQuizEvent(item, taken, activeProfile.rules);
     saveStats(applyEvents(loadStats(), [event]));
+
+    audio.say(narrateCorrection(event), { interrupt: true });
+    audio.ding(event.correct ? 'good' : 'bad');
+
     setFeedback({ correct: event.correct });
   };
 

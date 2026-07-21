@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import type { Screen } from '../App';
-import type { Profile, Settings, Stats as StatsData } from '../../store/types';
+import type { AudioSettings, Profile, Settings, Stats as StatsData } from '../../store/types';
 import { EMPTY_STATS } from '../../store/types';
 import { loadStats, saveStats, loadSettings, exportAll, importAll } from '../../store/persist';
 import type { Category, MistakeClass } from '../../engine/grade';
 import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../../engine/deviations';
+import { useAudio } from '../../audio/useAudio';
+import { narrateStatsSummary } from '../../audio/narrate';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -63,8 +65,17 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   const [stats, setStats] = useState<StatsData>(() => loadStats());
   const [message, setMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Stats isn't handed `settings` as a prop, so it reads audio settings
+  // directly from persistence (same pattern as loadStats() above). Refreshed
+  // on import in case the imported blob changed audio settings.
+  const [audioSettings, setAudioSettings] = useState<AudioSettings>(() => loadSettings().audio);
+  const audio = useAudio(audioSettings);
 
   const refresh = () => setStats(loadStats());
+
+  const handleSpeakSummary = () => {
+    audio.say(narrateStatsSummary(stats), { interrupt: true });
+  };
 
   const handleExport = () => {
     const json = exportAll();
@@ -97,6 +108,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
       if (result.ok) {
         refresh();
         onSettingsChange(loadSettings());
+        setAudioSettings(loadSettings().audio);
         setMessage('Import successful.');
       } else {
         setMessage(`Import failed: ${result.error ?? 'unknown error'}`);
@@ -287,6 +299,9 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
           </button>
           <button type="button" className="stats-action-btn" onClick={handleImportClick}>
             Import
+          </button>
+          <button type="button" className="stats-action-btn" onClick={handleSpeakSummary}>
+            Speak summary
           </button>
           <button type="button" className="stats-action-btn stats-danger-btn" onClick={handleReset}>
             Reset stats

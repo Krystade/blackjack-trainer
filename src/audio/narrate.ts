@@ -1,7 +1,8 @@
 import type { Card, Rank, Suit } from '../engine/cards';
 import type { Action } from '../engine/deviations';
-import type { GradedEvent } from '../engine/grade';
+import type { GradedEvent, MistakeClass } from '../engine/grade';
 import { handValue, isPair, pairRank } from '../engine/hand';
+import type { Stats } from '../store/types';
 
 const SUIT_NAMES: Record<Suit, string> = {
   s: 'spades',
@@ -221,4 +222,46 @@ export function narrateQuizPrompt(cards: [Card, Card] | null, up: Rank, tc: numb
     return `${narrateDealerUp(up)} ${narrateInsuranceOffer()} True count ${narrateTc(tc)}.`;
   }
   return `You have ${narrateHandTotalPhrase(cards)}. ${narrateDealerUp(up)} True count ${narrateTc(tc)}.`;
+}
+
+/** Singular/plural wording pair for a countable noun. */
+function pluralize(n: number, singular: string, plural: string): string {
+  return n === 1 ? singular : plural;
+}
+
+const MISTAKE_SUMMARY_ORDER: Exclude<MistakeClass, 'correct'>[] = [
+  'basic-error',
+  'missed-deviation',
+  'phantom-deviation',
+  'wrong-anyway',
+];
+
+const MISTAKE_SUMMARY_LABELS: Record<Exclude<MistakeClass, 'correct'>, { singular: string; plural: string }> = {
+  'basic-error': { singular: 'basic error', plural: 'basic errors' },
+  'missed-deviation': { singular: 'missed deviation', plural: 'missed deviations' },
+  'phantom-deviation': { singular: 'phantom deviation', plural: 'phantom deviations' },
+  'wrong-anyway': { singular: 'wrong-anyway play', plural: 'wrong-anyway plays' },
+};
+
+/**
+ * Speak a one-line session summary: total decisions plus every nonzero
+ * mistake tally, in a fixed order, with correct singular/plural wording.
+ * "This session" refers to the currently loaded stats blob (reset via the
+ * Stats screen's "Reset stats" action) — there is no separate live-session
+ * mistake breakdown in `Stats`.
+ */
+export function narrateStatsSummary(stats: Stats): string {
+  const decisions = Object.values(stats.mistakes).reduce((sum, n) => sum + n, 0);
+  const decisionsPhrase = `${decisions} ${pluralize(decisions, 'decision', 'decisions')}`;
+
+  const mistakeParts = MISTAKE_SUMMARY_ORDER.filter((cls) => stats.mistakes[cls] > 0).map((cls) => {
+    const n = stats.mistakes[cls];
+    const label = MISTAKE_SUMMARY_LABELS[cls];
+    return `${n} ${pluralize(n, label.singular, label.plural)}`;
+  });
+
+  if (mistakeParts.length === 0) {
+    return `This session: ${decisionsPhrase}, no mistakes.`;
+  }
+  return `This session: ${decisionsPhrase}, ${mistakeParts.join(', ')}.`;
 }

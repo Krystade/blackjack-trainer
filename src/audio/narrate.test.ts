@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import type { Card } from '../engine/cards';
 import type { GradedEvent } from '../engine/grade';
+import type { Stats } from '../store/types';
+import { EMPTY_STATS } from '../store/types';
 import {
   narrateCard, narrateCards, narrateTc, narrateAction, narrateBotAction,
   narrateResult, narrateHandResult, narrateCorrection, narrateCountAnswer,
-  narrateFlashcardPrompt, narrateQuizPrompt, narrateTotal,
+  narrateFlashcardPrompt, narrateQuizPrompt, narrateTotal, narrateStatsSummary,
 } from './narrate';
 
 const c = (rank: Card['rank'], suit: Card['suit']): Card => ({ rank, suit });
@@ -113,5 +115,42 @@ describe('drill prompts', () => {
   it('narrateTotal marks softness', () => {
     expect(narrateTotal(18, true)).toBe('soft eighteen');
     expect(narrateTotal(14, false)).toBe('fourteen');
+  });
+});
+
+describe('narrateStatsSummary', () => {
+  const statsWith = (mistakes: Partial<Stats['mistakes']>): Stats => ({
+    ...EMPTY_STATS,
+    mistakes: { ...EMPTY_STATS.mistakes, ...mistakes },
+  });
+
+  it('summarizes total decisions and nonzero mistake types', () => {
+    expect(
+      narrateStatsSummary(statsWith({ correct: 38, 'basic-error': 3, 'missed-deviation': 1 })),
+    ).toBe('This session: 42 decisions, 3 basic errors, 1 missed deviation.');
+  });
+
+  it('uses singular wording for exactly one decision and one mistake', () => {
+    expect(narrateStatsSummary(statsWith({ 'basic-error': 1 }))).toBe(
+      'This session: 1 decision, 1 basic error.',
+    );
+  });
+
+  it('says "no mistakes" when every mistake tally is zero', () => {
+    expect(narrateStatsSummary(statsWith({ correct: 10 }))).toBe('This session: 10 decisions, no mistakes.');
+  });
+
+  it('reports zero decisions on empty stats', () => {
+    expect(narrateStatsSummary(EMPTY_STATS)).toBe('This session: 0 decisions, no mistakes.');
+  });
+
+  it('lists mistake types in a fixed order regardless of magnitude', () => {
+    expect(
+      narrateStatsSummary(
+        statsWith({ 'wrong-anyway': 2, 'phantom-deviation': 1, 'missed-deviation': 4, 'basic-error': 1 }),
+      ),
+    ).toBe(
+      'This session: 8 decisions, 1 basic error, 4 missed deviations, 1 phantom deviation, 2 wrong-anyway plays.',
+    );
   });
 });
