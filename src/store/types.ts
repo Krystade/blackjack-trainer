@@ -33,6 +33,11 @@ export interface AudioSettings {
   voiceURI: string; // 'default' or a SpeechSynthesisVoice.voiceURI
   chimes: boolean;
   answerPauseMs: number; // 2000..5000, the eyes-free self-check pause
+  // Eyes-free ZonePad presentation: false (default) shows the five labeled
+  // zones so the layout can be learned before it's used blind. true dims
+  // the pad back to transparent-but-tappable, for genuine hands-on-wheel /
+  // eyes-on-road driving use. Opt-in only — never the default.
+  dimZones: boolean;
 }
 
 export const DEFAULT_AUDIO: AudioSettings = {
@@ -42,6 +47,7 @@ export const DEFAULT_AUDIO: AudioSettings = {
   voiceURI: 'default',
   chimes: true,
   answerPauseMs: 3000,
+  dimZones: false,
 };
 
 export const DEFAULT_SETTINGS: Settings = {

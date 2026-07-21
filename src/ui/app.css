@@ -1690,9 +1690,15 @@ button {
 /* Fixed full-viewport overlay; the pointer handlers live on .zone-pad itself
    in ZonePad.tsx and delegate every hit-test decision to hitTestZone(), so
    this CSS is purely visual — it does not need to match the geometry
-   precisely, only communicate it. `visible: false` sets opacity 0 (never
-   display/visibility/pointer-events none) so the pad stays fully tappable
-   for true eyes-free driving use. */
+   precisely, only communicate it.
+
+   `visible` defaults to true: the zones render large and clearly labeled so
+   their layout can be LEARNED before it's ever used blind — this is a
+   glanceable UI, sized to be read at arm's length in a car, not a dense
+   control panel. The "Dim screen" setting (AudioSettings.dimZones) is an
+   explicit opt-in that adds `.zone-pad-hidden` (opacity 0, never
+   display/visibility/pointer-events none, so the pad stays fully tappable)
+   for genuine eyes-free driving use. */
 
 .zone-pad {
   position: fixed;
@@ -1721,21 +1727,30 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.3rem;
-  font-weight: 700;
+  font-size: clamp(1.6rem, 8vmin, 2.4rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
   color: #eaf3ec;
-  border: 1px solid #1e4530;
+  border: 1px solid #2a5c3d;
   pointer-events: none;
+  text-align: center;
+  padding: 1rem;
 }
 
-.zone-pad-quad-hit,
+.zone-pad-quad-hit {
+  background: #17402a;
+}
+
 .zone-pad-quad-stand {
-  background: #143b26;
+  background: #123722;
 }
 
-.zone-pad-quad-double,
+.zone-pad-quad-double {
+  background: #102d1e;
+}
+
 .zone-pad-quad-split {
-  background: #0f2a1c;
+  background: #0d2819;
 }
 
 .zone-pad-circle {
@@ -1752,9 +1767,11 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: clamp(1rem, 5vmin, 1.4rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
   text-align: center;
+  padding: 0 0.5rem;
   pointer-events: none;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
 }
@@ -1770,17 +1787,18 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.4rem;
-  font-weight: 700;
+  font-size: clamp(1.8rem, 9vmin, 2.6rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
   color: #eaf3ec;
   pointer-events: none;
 }
 
 .zone-pad-take {
-  background: #143b26;
-  border-right: 1px solid #1e4530;
+  background: #17402a;
+  border-right: 1px solid #2a5c3d;
 }
 
 .zone-pad-decline {
-  background: #0f2a1c;
+  background: #102d1e;
 }

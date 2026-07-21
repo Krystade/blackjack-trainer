@@ -185,6 +185,15 @@ function FlashcardsView({
     next(category);
   };
 
+  // "Dim screen" (opt-in): the ZonePad is visible-with-labels by default so
+  // its layout can be learned; this switches it back to the transparent-
+  // but-tappable presentation for genuine eyes-free driving use.
+  const toggleDimZones = (dim: boolean) => {
+    const nextSettings: Settings = { ...settings, audio: { ...settings.audio, dimZones: dim } };
+    saveSettings(nextSettings);
+    onSettingsChange(nextSettings);
+  };
+
   const handleBack = () => {
     void releaseWakeLock();
     onBack();
@@ -305,6 +314,15 @@ function FlashcardsView({
           />
           Eyes-free audio
         </label>
+        <label className="count-toggle">
+          <input
+            type="checkbox"
+            checked={settings.audio.dimZones}
+            disabled={!eyesFree}
+            onChange={(e) => toggleDimZones(e.target.checked)}
+          />
+          Dim screen
+        </label>
         {!settings.audio.enabled && (
           <div className="settings-row settings-note-row">
             Enable audio in Settings to use eyes-free mode.
@@ -339,7 +357,12 @@ function FlashcardsView({
 
       {!feedback ? (
         eyesFree ? (
-          <ZonePad mode="action" onAnswer={handleZoneAnswer} onRepeat={handleRepeat} visible={false} />
+          <ZonePad
+            mode="action"
+            onAnswer={handleZoneAnswer}
+            onRepeat={handleRepeat}
+            visible={!settings.audio.dimZones}
+          />
         ) : (
           <ActionBar mode={{ kind: 'actions', legal: ALL_ACTIONS, onAction: handleAction }} />
         )
@@ -507,6 +530,15 @@ function DeviationQuizView({
     next(quizIndex);
   };
 
+  // "Dim screen" (opt-in): the ZonePad is visible-with-labels by default so
+  // its layout can be learned; this switches it back to the transparent-
+  // but-tappable presentation for genuine eyes-free driving use.
+  const toggleDimZones = (dim: boolean) => {
+    const nextSettings: Settings = { ...settings, audio: { ...settings.audio, dimZones: dim } };
+    saveSettings(nextSettings);
+    onSettingsChange(nextSettings);
+  };
+
   const handleBack = () => {
     void releaseWakeLock();
     onBack();
@@ -615,6 +647,15 @@ function DeviationQuizView({
           />
           Eyes-free audio
         </label>
+        <label className="count-toggle">
+          <input
+            type="checkbox"
+            checked={settings.audio.dimZones}
+            disabled={!eyesFree}
+            onChange={(e) => toggleDimZones(e.target.checked)}
+          />
+          Dim screen
+        </label>
         {!settings.audio.enabled && (
           <div className="settings-row settings-note-row">
             Enable audio in Settings to use eyes-free mode.
@@ -660,7 +701,7 @@ function DeviationQuizView({
             mode={item.cards === null ? 'insurance' : 'action'}
             onAnswer={handleZoneAnswer}
             onRepeat={handleRepeat}
-            visible={false}
+            visible={!settings.audio.dimZones}
           />
         ) : item.cards === null ? (
           <div className="action-bar">

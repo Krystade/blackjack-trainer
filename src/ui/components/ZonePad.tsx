@@ -7,7 +7,10 @@ export interface ZonePadProps {
   mode: ZoneMode;
   onAnswer: (zone: ZoneId | 'take' | 'decline') => void;
   onRepeat: () => void; // fired by a long-press (>=600ms) anywhere
-  visible: boolean; // false => transparent but still tappable (true eyes-free use)
+  // true (default) => zones are shown with labels, learnable before use.
+  // false => transparent but still tappable, for genuine eyes-free driving
+  // ("Dim screen" opt-in).
+  visible: boolean;
 }
 
 const LONG_PRESS_MS = 600;
