@@ -26,6 +26,7 @@ import { ZONE_LABEL } from '../../audio/zones';
 import type { ZoneId } from '../../audio/zones';
 import { CountDrillView } from './drills/CountDrillView';
 import { TrueCountDrillView } from './drills/TrueCountDrillView';
+import { DeckEstimationView } from './drills/DeckEstimationView';
 
 interface DrillsProps {
   settings: Settings;
@@ -732,7 +733,7 @@ function DeviationQuizView({
 /* ---------------------------------------------------------------- */
 
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
-  const [mode, setMode] = useState<'picker' | 'count' | 'truecount' | 'flash' | 'quiz'>('picker');
+  const [mode, setMode] = useState<'picker' | 'count' | 'truecount' | 'deckest' | 'flash' | 'quiz'>('picker');
 
   if (mode === 'count') {
     return (
@@ -745,6 +746,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   }
   if (mode === 'truecount') {
     return <TrueCountDrillView settings={settings} onBack={() => setMode('picker')} />;
+  }
+  if (mode === 'deckest') {
+    return <DeckEstimationView settings={settings} onBack={() => setMode('picker')} />;
   }
   if (mode === 'flash') {
     return (
@@ -776,6 +780,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         </button>
         <button type="button" className="drills-nav-btn" onClick={() => setMode('truecount')}>
           True Count Drill
+        </button>
+        <button type="button" className="drills-nav-btn" onClick={() => setMode('deckest')}>
+          Deck Estimation
         </button>
         <button type="button" className="drills-nav-btn" onClick={() => setMode('flash')}>
           Flashcards

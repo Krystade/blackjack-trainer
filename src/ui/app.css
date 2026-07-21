@@ -1802,3 +1802,106 @@ button {
 .zone-pad-decline {
   background: #102d1e;
 }
+
+/* ==================================================================== */
+/* Deck / discard-tray depth-estimation drill                            */
+/*                                                                        */
+/* Deliberately visual-only (judging a physical card stack) -- unlike    */
+/* every other drill in this app it has NO eyes-free/audio styling.      */
+/* See docs/research/2026-07-21-priority-list.md item 7.                 */
+/* ==================================================================== */
+
+.deck-estimation-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1.5rem;
+}
+
+.deck-tray-context {
+  font-size: 0.95rem;
+  color: #b7d3c2;
+  letter-spacing: 0.02em;
+}
+
+/* The tray frame is the fixed-size "container"; .deck-tray-fill is the
+   bottom-anchored stack whose height (set inline, proportional to
+   cardsDealt) is the whole point of the drill -- it must read as a
+   believable stack of individual cards, not a flat color block. The
+   repeating-linear-gradient below draws thin alternating card-edge
+   stripes (~3px "card thickness"); a pseudo-element adds a bright top
+   edge so the current top card of the stack reads clearly. */
+.deck-tray-frame {
+  position: relative;
+  width: 128px;
+  height: 260px;
+  border: 2px solid #2c5c41;
+  border-radius: 6px 6px 12px 12px;
+  background: #0a1c14;
+  overflow: hidden;
+  box-shadow: inset 0 3px 8px rgba(0, 0, 0, 0.55);
+}
+
+.deck-tray-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: repeating-linear-gradient(
+    to top,
+    #f4ead1 0px,
+    #f4ead1 1.5px,
+    #d8c9a3 1.5px,
+    #d8c9a3 2px,
+    #c2b184 2px,
+    #c2b184 3px
+  );
+  transition: height 0.25s ease;
+}
+
+.deck-tray-fill::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #fffbe8;
+  box-shadow: 0 0 6px rgba(255, 251, 232, 0.6);
+}
+
+.deck-guess-question {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #eaf3ec;
+  text-align: center;
+}
+
+.deck-guess-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 22rem;
+  margin: 0 auto;
+  padding: 0.75rem 1rem 1.5rem;
+}
+
+.deck-guess-btn {
+  min-height: 48px;
+  min-width: 48px;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.deck-guess-btn:hover {
+  background: #1b4c31;
+}
