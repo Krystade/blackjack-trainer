@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
-import type { Card } from '../../engine/cards';
 import type { Action, DeviationId } from '../../engine/deviations';
 import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17, isIndexActive } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
@@ -9,9 +8,6 @@ import { classifyAction, actionCategory, classifyInsurance } from '../../engine/
 import type { PlayContext } from '../../engine/strategy';
 import { correctPlay, basicPlay } from '../../engine/strategy';
 import type { RuleSet } from '../../engine/ruleset';
-import { hiLoTag } from '../../engine/count';
-import { makeCountDrill, makeCountdown } from '../../drills/countDrill';
-import type { CountDrillRound, CountdownRound } from '../../drills/countDrill';
 import { drawFlashcard } from '../../drills/flashcards';
 import type { Flashcard } from '../../drills/flashcards';
 import { drawQuizItem } from '../../drills/deviationQuiz';
@@ -19,17 +15,11 @@ import type { QuizItem } from '../../drills/deviationQuiz';
 import { loadStats, saveStats, saveSettings } from '../../store/persist';
 import { applyEvents } from '../../store/stats';
 import { PlayingCard } from '../components/PlayingCard';
-import { NumPad } from '../components/NumPad';
 import { ActionBar } from '../components/ActionBar';
-import { Segmented, Stepper } from './Settings';
+import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
-import {
-  narrateCards,
-  narrateCorrection,
-  narrateCountAnswer,
-  narrateCountPrompt,
-  narrateQuizPrompt,
-} from '../../audio/narrate';
+import { narrateCorrection, narrateQuizPrompt } from '../../audio/narrate';
+import { CountDrillView } from './drills/CountDrillView';
 
 interface DrillsProps {
   settings: Settings;
@@ -46,276 +36,6 @@ function randomSeed(): number {
 
 function formatSigned(n: number): string {
   return n >= 0 ? `+${n}` : String(n);
-}
-
-/* ---------------------------------------------------------------- */
-/* Count Drill                                                       */
-/* ---------------------------------------------------------------- */
-
-type CountPhase = 'setup' | 'flashing' | 'answering' | 'result';
-
-function CountDrillView({
-  settings,
-  onBack,
-  onSettingsChange,
-}: {
-  settings: Settings;
-  onBack: () => void;
-  onSettingsChange: (settings: Settings) => void;
-}) {
-  const [countdownMode, setCountdownMode] = useState(false);
-  const [phase, setPhase] = useState<CountPhase>('setup');
-  const [drillRound, setDrillRound] = useState<CountDrillRound | null>(null);
-  const [countdownRound, setCountdownRound] = useState<CountdownRound | null>(null);
-  const [shownIndex, setShownIndex] = useState(0);
-  const [wasCorrect, setWasCorrect] = useState(false);
-  const [actualValue, setActualValue] = useState(0);
-  const [enteredValue, setEnteredValue] = useState(0);
-  const audio = useAudio(settings.audio);
-
-  const updateDrill = (patch: Partial<Settings['drill']>) => {
-    const next: Settings = { ...settings, drill: { ...settings.drill, ...patch } };
-    saveSettings(next);
-    onSettingsChange(next);
-  };
-
-  const groups: Card[][] = countdownMode
-    ? countdownRound
-      ? countdownRound.shown.map((c) => [c])
-      : []
-    : drillRound
-      ? drillRound.groups
-      : [];
-
-  useEffect(() => {
-    if (phase !== 'flashing' || groups.length === 0 || settings.drill.countManual) return undefined;
-
-    if (shownIndex >= groups.length - 1) {
-      const t = setTimeout(() => setPhase('answering'), settings.drill.countIntervalMs);
-      return () => clearTimeout(t);
-    }
-
-    const t = setTimeout(() => setShownIndex((i) => i + 1), settings.drill.countIntervalMs);
-    return () => clearTimeout(t);
-  }, [phase, shownIndex, groups.length, settings.drill.countIntervalMs, settings.drill.countManual]);
-
-  // Verbosity 'full': narrate each card group as it's shown. Visual mode
-  // only (countdownMode's hidden-tag guess isn't a running-count answer, so
-  // it's excluded from the "running count" phrasing below). Reacts to the
-  // existing phase/shownIndex state rather than owning a timer of its own,
-  // so a fresh start() naturally re-triggers it -- nothing here can go stale.
-  useEffect(() => {
-    if (phase !== 'flashing' || countdownMode) return;
-    const g = groups[shownIndex];
-    if (!g) return;
-    audio.sayFull(narrateCards(g));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, shownIndex, countdownMode, groups]);
-
-  // Verbosity 'full': announce the running-count prompt once the flash
-  // sequence completes.
-  useEffect(() => {
-    if (phase !== 'answering' || countdownMode) return;
-    audio.sayFull(narrateCountPrompt());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, countdownMode]);
-
-  const advanceManual = () => {
-    if (shownIndex >= groups.length - 1) {
-      setPhase('answering');
-    } else {
-      setShownIndex((i) => i + 1);
-    }
-  };
-
-  const start = () => {
-    const seed = randomSeed();
-    if (countdownMode) {
-      setCountdownRound(makeCountdown(seed));
-      setDrillRound(null);
-    } else {
-      setDrillRound(makeCountDrill(settings.drill.countLengthCards, settings.drill.countGroup, seed));
-      setCountdownRound(null);
-    }
-    setShownIndex(0);
-    setPhase('flashing');
-  };
-
-  const finishRun = (correct: boolean, actual: number, entered: number) => {
-    setWasCorrect(correct);
-    setActualValue(actual);
-    setEnteredValue(entered);
-    setPhase('result');
-
-    const cardsInRun = countdownMode ? 52 : settings.drill.countLengthCards;
-    const stats = loadStats();
-    const updated = {
-      ...stats,
-      countDrill: {
-        history: [
-          ...stats.countDrill.history,
-          {
-            date: new Date().toISOString(),
-            cards: cardsInRun,
-            intervalMs: settings.drill.countIntervalMs,
-            correct,
-          },
-        ],
-      },
-    };
-    saveStats(updated);
-  };
-
-  const handleRcSubmit = (value: number) => {
-    if (!drillRound) return;
-    const correct = value === drillRound.finalRc;
-    finishRun(correct, drillRound.finalRc, value);
-    audio.sayFull(`${correct ? 'Correct.' : 'Wrong.'} ${narrateCountAnswer(drillRound.finalRc)}`);
-  };
-
-  const handleTagGuess = (guess: -1 | 0 | 1) => {
-    if (!countdownRound) return;
-    const actual = hiLoTag(countdownRound.hidden.rank);
-    finishRun(guess === actual, actual, guess);
-  };
-
-  const currentGroup = shownIndex < groups.length ? groups[shownIndex] : null;
-
-  return (
-    <div className="drill-screen">
-      <div className="drill-topbar">
-        <button type="button" className="drill-back-btn" onClick={onBack}>
-          Back
-        </button>
-        <div className="drill-heading">Count Drill</div>
-      </div>
-
-      {phase === 'setup' && (
-        <div className="count-setup">
-          <label className="count-toggle">
-            <input
-              type="checkbox"
-              checked={countdownMode}
-              onChange={(e) => setCountdownMode(e.target.checked)}
-            />
-            Countdown (52-card, guess the hidden card&apos;s tag)
-          </label>
-
-          {!countdownMode && (
-            <>
-              <Stepper
-                label="Length"
-                value={settings.drill.countLengthCards}
-                min={13}
-                max={312}
-                step={13}
-                format={(v) => `${v} cards`}
-                onChange={(v) => updateDrill({ countLengthCards: v })}
-              />
-              <div className="settings-row">
-                <span className="settings-label">Group size</span>
-                <Segmented
-                  options={[
-                    { value: '1', label: '1' },
-                    { value: '2', label: '2' },
-                    { value: '3', label: '3' },
-                  ]}
-                  value={String(settings.drill.countGroup)}
-                  onChange={(v) => updateDrill({ countGroup: Number(v) as 1 | 2 | 3 })}
-                />
-              </div>
-            </>
-          )}
-
-          <Stepper
-            label="Speed"
-            value={settings.drill.countIntervalMs}
-            min={300}
-            max={3000}
-            step={100}
-            format={(v) => `${v}ms`}
-            onChange={(v) => updateDrill({ countIntervalMs: v })}
-          />
-
-          <div className="settings-row">
-            <span className="settings-label">Mode</span>
-            <Segmented
-              options={[
-                { value: 'timed', label: 'Timed' },
-                { value: 'manual', label: 'Manual' },
-              ]}
-              value={settings.drill.countManual ? 'manual' : 'timed'}
-              onChange={(v) => updateDrill({ countManual: v === 'manual' })}
-            />
-          </div>
-
-          <button type="button" className="drill-start-btn" onClick={start}>
-            Start
-          </button>
-        </div>
-      )}
-
-      {phase === 'flashing' && settings.drill.countManual && (
-        <div className="manual-tap-zone" onClick={advanceManual}>
-          <div className="count-flash-cards">
-            {currentGroup?.map((c, i) => <PlayingCard key={i} card={c} />)}
-          </div>
-          <div className="manual-tap-hint">
-            tap to advance &middot; {shownIndex + 1}/{groups.length}
-          </div>
-        </div>
-      )}
-
-      {phase === 'flashing' && !settings.drill.countManual && (
-        <div className="count-flash-area">
-          <div className="count-flash-cards">
-            {currentGroup?.map((c, i) => <PlayingCard key={i} card={c} />)}
-          </div>
-          <div className="count-flash-progress">
-            {shownIndex + 1} / {groups.length}
-          </div>
-        </div>
-      )}
-
-      {phase === 'answering' && !countdownMode && (
-        <NumPad label="Enter the running count" onSubmit={handleRcSubmit} />
-      )}
-
-      {phase === 'answering' && countdownMode && (
-        <div className="tag-guess">
-          <div className="tag-guess-label">What&apos;s the hidden card&apos;s tag?</div>
-          <div className="tag-guess-row">
-            <button type="button" className="tag-guess-btn" onClick={() => handleTagGuess(1)}>
-              +1
-            </button>
-            <button type="button" className="tag-guess-btn" onClick={() => handleTagGuess(0)}>
-              0
-            </button>
-            <button type="button" className="tag-guess-btn" onClick={() => handleTagGuess(-1)}>
-              &minus;1
-            </button>
-          </div>
-        </div>
-      )}
-
-      {phase === 'result' && (
-        <div className="drill-result">
-          <div className={wasCorrect ? 'result-correct' : 'result-wrong'}>
-            {wasCorrect ? 'Correct!' : 'Wrong'}
-          </div>
-          <div className="result-detail">
-            You entered {enteredValue}, actual was {actualValue}
-          </div>
-          <button type="button" className="drill-replay-btn" onClick={start}>
-            Replay
-          </button>
-          <button type="button" className="drill-back-btn" onClick={onBack}>
-            Back to Drills
-          </button>
-        </div>
-      )}
-    </div>
-  );
 }
 
 /* ---------------------------------------------------------------- */
