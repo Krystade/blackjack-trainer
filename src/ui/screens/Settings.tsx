@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import type { Screen } from '../App';
-import type { Settings as SettingsData } from '../../store/types';
+import type { AudioSettings, Settings as SettingsData } from '../../store/types';
 import { saveSettings } from '../../store/persist';
+import { chime, isSpeechSupported, listVoices, speak } from '../../audio';
 
 interface SettingsProps {
   settings: SettingsData;
@@ -20,10 +22,12 @@ export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  disabled,
 }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="segmented">
@@ -33,6 +37,7 @@ export function Segmented<T extends string>({
           type="button"
           className={`segmented-btn${opt.value === value ? ' segmented-btn-active' : ''}`}
           onClick={() => onChange(opt.value)}
+          disabled={disabled}
         >
           {opt.label}
         </button>
@@ -45,10 +50,12 @@ function Toggle({
   label,
   checked,
   onChange,
+  disabled,
 }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <label className="settings-toggle-row">
@@ -58,6 +65,7 @@ function Toggle({
         className="settings-toggle"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
+        disabled={disabled}
       />
     </label>
   );
@@ -71,6 +79,7 @@ export function Stepper({
   step,
   format,
   onChange,
+  disabled,
 }: {
   label: string;
   value: number;
@@ -79,6 +88,7 @@ export function Stepper({
   step: number;
   format?: (v: number) => string;
   onChange: (v: number) => void;
+  disabled?: boolean;
 }) {
   const dec = () => onChange(clamp(round2(value - step), min, max));
   const inc = () => onChange(clamp(round2(value + step), min, max));
@@ -86,11 +96,11 @@ export function Stepper({
     <div className="settings-row">
       <span className="settings-label">{label}</span>
       <div className="stepper">
-        <button type="button" className="stepper-btn" onClick={dec} disabled={value <= min}>
+        <button type="button" className="stepper-btn" onClick={dec} disabled={disabled || value <= min}>
           &minus;
         </button>
         <span className="stepper-value">{format ? format(value) : value}</span>
-        <button type="button" className="stepper-btn" onClick={inc} disabled={value >= max}>
+        <button type="button" className="stepper-btn" onClick={inc} disabled={disabled || value >= max}>
           +
         </button>
       </div>
@@ -111,6 +121,27 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
   const updateDrill = (patch: Partial<SettingsData['drill']>) => {
     update({ drill: { ...settings.drill, ...patch } });
   };
+
+  const updateAudio = (patch: Partial<AudioSettings>) => {
+    update({ audio: { ...settings.audio, ...patch } });
+  };
+
+  const speechSupported = isSpeechSupported();
+  const [voices, setVoices] = useState(() => listVoices());
+
+  // Chrome loads voices asynchronously — the list is often empty on first
+  // read and fires `voiceschanged` once the real list is ready.
+  useEffect(() => {
+    if (!speechSupported) return;
+    const synth = window.speechSynthesis;
+    const handleVoicesChanged = () => setVoices(listVoices());
+    synth.onvoiceschanged = handleVoicesChanged;
+    return () => {
+      synth.onvoiceschanged = null;
+    };
+  }, [speechSupported]);
+
+  const audioDisabled = !settings.audio.enabled;
 
   return (
     <div className="settings-screen">
@@ -199,6 +230,91 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           format={(v) => `${v} cards`}
           onChange={(v) => updateDrill({ countLengthCards: v })}
         />
+      </section>
+
+      <section className="settings-section">
+        <h2 className="settings-section-title">Audio</h2>
+        <Toggle
+          label="Audio enabled"
+          checked={settings.audio.enabled}
+          onChange={(v) => updateAudio({ enabled: v })}
+        />
+        <div className="settings-row">
+          <span className="settings-label">Verbosity</span>
+          <Segmented
+            options={[
+              { value: 'off', label: 'Off' },
+              { value: 'results', label: 'Results' },
+              { value: 'full', label: 'Full' },
+            ]}
+            value={settings.audio.verbosity}
+            onChange={(v) => updateAudio({ verbosity: v })}
+            disabled={audioDisabled}
+          />
+        </div>
+        <Stepper
+          label="Speech rate"
+          value={settings.audio.rate}
+          min={0.7}
+          max={1.5}
+          step={0.1}
+          format={(v) => `${v.toFixed(1)}×`}
+          onChange={(v) => updateAudio({ rate: v })}
+          disabled={audioDisabled}
+        />
+        <div className="settings-row">
+          <span className="settings-label">Voice</span>
+          {speechSupported ? (
+            <select
+              className="settings-select"
+              value={settings.audio.voiceURI}
+              onChange={(e) => updateAudio({ voiceURI: e.target.value })}
+              disabled={audioDisabled}
+            >
+              <option value="default">Default</option>
+              {voices.map((v) => (
+                <option key={v.voiceURI} value={v.voiceURI}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select className="settings-select" disabled>
+              <option>Speech not supported on this device</option>
+            </select>
+          )}
+        </div>
+        <Toggle
+          label="Chimes"
+          checked={settings.audio.chimes}
+          onChange={(v) => updateAudio({ chimes: v })}
+          disabled={audioDisabled}
+        />
+        <Stepper
+          label="Answer pause"
+          value={settings.audio.answerPauseMs}
+          min={2000}
+          max={5000}
+          step={500}
+          format={(v) => `${(v / 1000).toFixed(1)} s`}
+          onChange={(v) => updateAudio({ answerPauseMs: v })}
+          disabled={audioDisabled}
+        />
+        <div className="settings-row">
+          <button
+            type="button"
+            className="settings-test-audio-btn"
+            disabled={audioDisabled}
+            onClick={() => {
+              speak('Audio is working. True count plus three.', { interrupt: true });
+              if (settings.audio.chimes) {
+                chime('good');
+              }
+            }}
+          >
+            Test audio
+          </button>
+        </div>
       </section>
     </div>
   );

@@ -1278,6 +1278,48 @@ button {
   font-size: 0.9rem;
 }
 
+.segmented-btn:disabled,
+.settings-toggle:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ---------- Settings: audio section ---------- */
+
+.settings-select {
+  min-height: 48px;
+  min-width: 12rem;
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: #eaf3ec;
+  font-size: 0.85rem;
+  padding: 0 0.5rem;
+}
+
+.settings-select:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.settings-test-audio-btn {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 1rem;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #1b4c31;
+  color: #eaf3ec;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.settings-test-audio-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 
 /* ---------- Settings: bet spread editor ---------- */
 
