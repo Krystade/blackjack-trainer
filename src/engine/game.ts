@@ -262,7 +262,7 @@ export class Game {
         isPair(hand.cards) &&
         this.countHandsWithOrigin(hands, hand.originIndex) < 4 &&
         (!hand.splitAces || this.rules.rsa),
-      canSurrender: hand.cards.length === 2 && !hand.fromSplit,
+      canSurrender: hand.cards.length === 2 && !hand.fromSplit && this.rules.ls,
     };
   }
 
@@ -840,11 +840,32 @@ export class Game {
 
   /** Settle one hand against the already-played-out dealer. Pure: does not
    * touch bankroll (callers decide whether to, so bot hands can settle for
-   * display without ever crediting/debiting the player's bankroll). */
+   * display without ever crediting/debiting the player's bankroll).
+   *
+   * Player naturals never reach this method: they are settled in
+   * resolveAfterPeek() (before the dealer plays at all) and playDealerAndSettle's
+   * caller filters on `result === undefined`, which already-settled naturals
+   * fail -- so this natural check below can only ever fire for BOT hands
+   * (code review M4). A hand with `fromSplit` reaching 21 on two cards is a
+   * split-hand 21, not a natural, and must NOT pay blackjack odds -- same
+   * rule resolveAfterPeek relies on implicitly (it only ever sees pre-split
+   * hands). The dealer-natural branch below is defensive/unreachable in
+   * practice: settleDealerBlackjack() already intercepts every seat's hands
+   * the moment a dealer natural is peeked, before playDealerAndSettle (and
+   * thus this method) ever runs. */
   private settleHandVsDealer(hand: PlayerHand, dealerBust: boolean, dealerTotal: number): void {
     if (hand.surrendered) {
       hand.result = 'surrender';
       hand.net = -0.5 * hand.bet;
+    } else if (isBlackjack(hand.cards) && !hand.fromSplit) {
+      const dealerNatural = this.dealerCards.length === 2 && isBlackjack(this.dealerCards);
+      if (dealerNatural) {
+        hand.result = 'push';
+        hand.net = 0;
+      } else {
+        hand.result = 'blackjack';
+        hand.net = (this.rules.bj65 ? 1.2 : 1.5) * hand.bet;
+      }
     } else if (isBust(hand.cards)) {
       hand.result = 'lose';
       hand.net = -(hand.doubled ? 2 : 1) * hand.bet;

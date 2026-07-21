@@ -261,7 +261,7 @@ function ProfileEditForm({
     }));
   };
 
-  const updateSeats = (patch: Partial<NonNullable<Profile['seats']>>) => {
+  const updateSeats = (patch: Partial<Profile['seats']>) => {
     setDraft((d) => {
       const newSeats = { ...d.seats, ...patch };
       // Clamp playerPosition to [0, bots]

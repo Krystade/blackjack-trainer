@@ -6,6 +6,7 @@ import type { GameConfig, SeatConfig } from './game';
 import { basicPlay } from './strategy';
 import type { PlayContext } from './strategy';
 import type { Action } from './deviations';
+import type { RuleSet } from './ruleset';
 
 function rig(...ranks: Rank[]): Card[] {
   return ranks.map((rank) => ({ rank, suit: 's' }) as Card);
@@ -80,6 +81,87 @@ describe('blackjack', () => {
     expect(game.hands[0].result).toBe('blackjack');
     expect(game.hands[0].net).toBe(1.2);
     expect(game.bankroll).toBe(cfg().bankrollStart + 1.2);
+  });
+});
+
+describe('bot naturals settle correctly vs a non-natural dealer total (code review M4)', () => {
+  it('bot dealt A,K beats a non-natural dealer 21 and pays 1.5x, display-only (bankroll untouched)', () => {
+    const seats: SeatConfig = { playerHands: 1, bots: 1, botMistakePct: 0, playerPosition: 1 };
+    // Seat order: [bot0, player]. bot0 = A,K (natural). player = 10,10 (stands
+    // at hard 20). Dealer up=2, hole=4 (6), draws 9 then 6 to land on a
+    // NON-natural 21 (4 cards) -- the exact shape the M4 bug mishandled.
+    const game = Game.withRiggedShoe(
+      cfg({ seats }),
+      rig('A', '10', '2', 'K', '10', '4', '9', '6'),
+    );
+    const initialBankroll = game.bankroll;
+    game.startRound();
+    expect(game.seats[0].hands[0].cards.map((c) => c.rank)).toEqual(['A', 'K']);
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['10', '10']);
+    expect(game.phase).toBe('player');
+
+    game.act('stand'); // player 20 vs dealer, dealer plays out to 21
+    expect(game.phase).toBe('settled');
+    expect(game.dealerCards.map((c) => c.rank)).toEqual(['2', '4', '9', '6']); // non-natural 21
+
+    // The bug: bot natural fell through to a plain total comparison (21 vs
+    // 21) and settled as 'push'. Correct: a 2-card natural beats ANY
+    // non-natural dealer total, paying 1.5x.
+    expect(game.seats[0].hands[0].result).toBe('blackjack');
+    expect(game.seats[0].hands[0].net).toBe(1.5);
+
+    // Player 20 loses to dealer 21.
+    expect(game.hands[0].result).toBe('lose');
+    expect(game.hands[0].net).toBe(-1);
+
+    // Bot's net is display-only: bankroll reflects ONLY the player's -1 loss,
+    // never the bot's +1.5.
+    expect(game.bankroll).toBe(initialBankroll - 1);
+  });
+
+  it('bj65:true: bot natural pays 1.2x instead of 1.5x', () => {
+    const seats: SeatConfig = { playerHands: 1, bots: 1, botMistakePct: 0, playerPosition: 1 };
+    const rules: RuleSet = { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: true };
+    const game = Game.withRiggedShoe(
+      cfg({ seats, rules }),
+      rig('A', '10', '2', 'K', '10', '4', '9', '6'),
+    );
+    game.startRound();
+    game.act('stand');
+    expect(game.phase).toBe('settled');
+    expect(game.seats[0].hands[0].result).toBe('blackjack');
+    expect(game.seats[0].hands[0].net).toBe(1.2);
+  });
+
+  it('MONEY SAFETY: player natural (settled pre-dealer) is never re-settled by settleHandVsDealer -- pays 1.5x exactly ONCE even with a live bot forcing the dealer to play', () => {
+    const seats: SeatConfig = { playerHands: 1, bots: 1, botMistakePct: 0, playerPosition: 0 };
+    // Seat order: [player, bot0]. player = A,K (natural, settles immediately
+    // in resolveAfterPeek). bot0 = 10,9 (hard 19, always stands) -- a live
+    // hand that forces the dealer to actually play, routing the round
+    // through playDealerAndSettle (the shared method this fix touches).
+    const game = Game.withRiggedShoe(
+      cfg({ seats }),
+      rig('A', '10', '9', 'K', '9', '5', '3'),
+    );
+    const initialBankroll = game.bankroll;
+
+    game.startRound();
+    // Player natural settles immediately, before the dealer or bot ever act.
+    expect(game.hands[0].result).toBe('blackjack');
+    expect(game.hands[0].net).toBe(1.5);
+    expect(game.bankroll).toBe(initialBankroll + 1.5);
+    expect(game.phase).toBe('settled'); // bot-after + dealer play happen synchronously inside startRound
+
+    // The bot (live hand) forced the dealer to draw: 9,5=14 -> hits 3 -> 17.
+    expect(game.dealerCards.map((c) => c.rank)).toEqual(['9', '5', '3']);
+    expect(game.seats[1].hands[0].result).toBe('win'); // bot 19 beats dealer 17
+    expect(game.seats[1].hands[0].net).toBe(1); // display-only
+
+    // Player's hand must be untouched by the later playDealerAndSettle pass:
+    // net is still exactly 1.5 (not overwritten, not doubled), and the
+    // bankroll reflects that ONE credit only -- the bot's win never touches it.
+    expect(game.hands[0].net).toBe(1.5);
+    expect(game.bankroll).toBe(initialBankroll + 1.5);
   });
 });
 
@@ -464,6 +546,57 @@ describe('surrender', () => {
     expect(game.hands[0].net).toBe(-0.5);
     expect(game.phase).toBe('settled');
     expect(game.bankroll).toBe(cfg().bankrollStart - 0.5);
+  });
+
+  describe('rules.ls gates surrender legality (code review M7)', () => {
+    const noLsRules: RuleSet = { decks: 6, s17: false, das: true, ls: false, rsa: false, bj65: false };
+
+    it('ls:false -> surrender is not in legalActions even as the first action', () => {
+      const game = Game.withRiggedShoe(cfg({ rules: noLsRules }), rig('10', '9', '6', '2'));
+      game.startRound();
+      expect(game.legalActions()).not.toContain('surrender');
+    });
+
+    it('ls:false -> act(surrender) is rejected exactly like any other illegal action', () => {
+      const game = Game.withRiggedShoe(cfg({ rules: noLsRules }), rig('10', '9', '6', '2'));
+      game.startRound();
+      expect(() => game.act('surrender')).toThrow(/Illegal action: surrender/);
+    });
+
+    it('ls:true (default) -> surrender remains legal as the first action, unaffected', () => {
+      const game = Game.withRiggedShoe(cfg(), rig('10', '9', '6', '2'));
+      game.startRound();
+      expect(game.legalActions()).toContain('surrender');
+    });
+
+    it('ls:false -> a bot 2-card hand never has surrender among its legal actions (closes the mistake-substitution hole too)', () => {
+      // basicPlay itself is already ls-aware -- getChart() bakes rules.ls in
+      // via stripLs, converting every Rh/Rs/Rp cell to its fallback when
+      // ls:false -- so a bot's CORRECT action was never literally
+      // 'surrender' here; that was never the bug. The bug is that
+      // legalActionsForHand (via handOptions.canSurrender) still listed
+      // 'surrender' as a legal ALTERNATIVE, which botMistakePct's random
+      // substitution could pick. Assert directly on `legal`, not on the
+      // action taken, so this fails pre-fix and passes post-fix regardless
+      // of mistake substitution.
+      const seats: SeatConfig = { playerHands: 1, bots: 1, botMistakePct: 0, playerPosition: 1 };
+      // bot0 = 10,7 v dealer 9 -- hard 17, stands immediately (no extra
+      // draws needed), so the rig only needs the initial 6 cards.
+      const game = Game.withRiggedShoe(
+        cfg({ seats, rules: noLsRules }),
+        rig('10', '5', '9', '7', '5', '2'),
+      );
+      const seenLegal: Action[][] = [];
+      game.onBotDecision = (info) => seenLegal.push(info.legal);
+
+      game.startRound();
+
+      expect(game.seats[0].hands[0].cards.map((c) => c.rank)).toEqual(['10', '7']);
+      expect(seenLegal.length).toBeGreaterThan(0);
+      for (const legal of seenLegal) {
+        expect(legal).not.toContain('surrender');
+      }
+    });
   });
 });
 

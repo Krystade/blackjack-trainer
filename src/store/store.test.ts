@@ -18,6 +18,11 @@ import {
 } from './persist';
 import { applyEvents } from './stats';
 import type { GradedEvent } from '../engine/grade';
+import {
+  _setStorage as _setProfilesStorage,
+  loadProfiles,
+  makeDefaultProfile,
+} from './profiles';
 
 describe('store/persist', () => {
   let storage: Record<string, string>;
@@ -567,5 +572,106 @@ describe('DEFAULT_SETTINGS.spread aliasing', () => {
     } finally {
       DEFAULT_SETTINGS.spread[0].units = original;
     }
+  });
+});
+
+describe('store/profiles: seats validation (code review M9)', () => {
+  // profiles.ts owns its own storage injection, deliberately separate from
+  // persist.ts's (see profiles.ts's _setStorage doc comment) -- so this
+  // needs its own in-memory backing map, not the outer `storage` above.
+  let profilesStorage: Record<string, string>;
+
+  beforeEach(() => {
+    profilesStorage = {};
+    _setProfilesStorage({
+      getItem: (key) => profilesStorage[key] ?? null,
+      setItem: (key, value) => {
+        profilesStorage[key] = value;
+      },
+    });
+  });
+
+  test('a profile with hand-corrupted seats (wrong field types) is rejected -> resets to a fresh default profile instead of crashing downstream', () => {
+    const corrupted = {
+      id: 'corrupt-1',
+      name: 'Corrupted',
+      rules: makeDefaultProfile().rules,
+      penetration: 0.75,
+      spread: [{ minTc: -99, units: 1 }],
+      bankrollStart: 100,
+      countCheckEvery: 5,
+      betSpreadOn: false,
+      // Hand-corrupted: playerHands/bots are the wrong type. Pre-fix,
+      // isValidProfile never looked at `seats` at all, so this blob passed
+      // validation and backfillSeats's `?? DEFAULT_SEATS.x` merge left the
+      // bad values in place (nullish coalescing doesn't catch wrong-typed-
+      // but-defined values) -- exactly what would crash
+      // ProfileEditForm at `draft.seats.playerHands`.
+      seats: { playerHands: 'two', bots: 'lots', botMistakePct: 0, playerPosition: 0 },
+    };
+    profilesStorage['bjtrainer.profiles.v1'] = JSON.stringify([corrupted]);
+
+    const profiles = loadProfiles();
+
+    expect(profiles).toHaveLength(1);
+    // Rejected as a whole (matching the existing wrong-shape-profile
+    // behavior) -- resets to a fresh default, not a profile built around the
+    // corrupted seats blob.
+    expect(profiles[0]!.id).not.toBe('corrupt-1');
+    expect(profiles[0]!.name).toBe('Default (6D H17)');
+    expect(typeof profiles[0]!.seats.playerHands).toBe('number');
+    expect(typeof profiles[0]!.seats.bots).toBe('number');
+    expect(profiles[0]!.seats.playerHands).toBe(1);
+    expect(profiles[0]!.seats.bots).toBe(0);
+  });
+
+  test('a profile with seats entirely absent is still valid -- existing legacy-backfill behavior is untouched', () => {
+    const legacy = {
+      id: 'legacy-1',
+      name: 'Legacy',
+      rules: makeDefaultProfile().rules,
+      penetration: 0.75,
+      spread: [{ minTc: -99, units: 1 }],
+      bankrollStart: 100,
+      countCheckEvery: 5,
+      betSpreadOn: false,
+      // seats omitted entirely, simulating a pre-seats stored profile.
+    };
+    profilesStorage['bjtrainer.profiles.v1'] = JSON.stringify([legacy]);
+
+    const profiles = loadProfiles();
+
+    expect(profiles).toHaveLength(1);
+    // NOT treated as corrupt -- the original profile (and its id) survives,
+    // with seats backfilled from DEFAULT_SEATS.
+    expect(profiles[0]!.id).toBe('legacy-1');
+    expect(profiles[0]!.seats.playerHands).toBe(1);
+    expect(profiles[0]!.seats.bots).toBe(0);
+    expect(profiles[0]!.seats.botMistakePct).toBe(0);
+    expect(profiles[0]!.seats.playerPosition).toBe(0);
+  });
+
+  test('a profile with PARTIAL but correctly-typed seats is still valid -- existing partial-merge behavior is untouched', () => {
+    const partial = {
+      id: 'partial-1',
+      name: 'Partial',
+      rules: makeDefaultProfile().rules,
+      penetration: 0.75,
+      spread: [{ minTc: -99, units: 1 }],
+      bankrollStart: 100,
+      countCheckEvery: 5,
+      betSpreadOn: false,
+      seats: { playerHands: 2, bots: 3 }, // botMistakePct/playerPosition missing, both numbers
+    };
+    profilesStorage['bjtrainer.profiles.v1'] = JSON.stringify([partial]);
+
+    const profiles = loadProfiles();
+
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]!.id).toBe('partial-1');
+    expect(profiles[0]!.seats.playerHands).toBe(2);
+    expect(profiles[0]!.seats.bots).toBe(3);
+    expect(profiles[0]!.seats.botMistakePct).toBe(0); // backfilled
+    expect(profiles[0]!.seats.playerPosition).toBe(0); // backfilled
   });
 });

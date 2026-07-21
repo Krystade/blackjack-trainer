@@ -76,6 +76,29 @@ function backfillSeats(p: Profile): Profile {
   };
 }
 
+/**
+ * `seats` is REQUIRED on `Profile` (src/store/types.ts), but the load path
+ * always backfills it (see `backfillSeats` below) -- so a profile with
+ * `seats` entirely absent is NOT corrupt, it's just pre-seats-era legacy
+ * data, and must still validate here. Only reject when `seats` is PRESENT
+ * but hand-corrupted: not an object, or a present field of the wrong type.
+ * A present-but-partial seats object (some fields missing) is fine --
+ * backfillSeats merges the rest in from DEFAULT_SEATS via `??`, which only
+ * catches null/undefined, not wrong-typed-but-defined values. Without this
+ * check, a corrupted field (e.g. `playerHands: "two"`) would silently
+ * survive the merge and crash `ProfileEditForm` at `draft.seats.playerHands`.
+ */
+function isValidSeats(seats: unknown): boolean {
+  if (seats === undefined || seats === null) return true; // absent -- backfillSeats handles it
+  if (typeof seats !== 'object' || Array.isArray(seats)) return false;
+  const s = seats as Record<string, unknown>;
+  if ('playerHands' in s && typeof s.playerHands !== 'number') return false;
+  if ('bots' in s && typeof s.bots !== 'number') return false;
+  if ('botMistakePct' in s && typeof s.botMistakePct !== 'number') return false;
+  if ('playerPosition' in s && typeof s.playerPosition !== 'number') return false;
+  return true;
+}
+
 function isValidProfile(p: unknown): p is Profile {
   if (typeof p !== 'object' || p === null) {
     return false;
@@ -90,7 +113,8 @@ function isValidProfile(p: unknown): p is Profile {
     Array.isArray(obj.spread) &&
     typeof obj.bankrollStart === 'number' &&
     typeof obj.countCheckEvery === 'number' &&
-    typeof obj.betSpreadOn === 'boolean'
+    typeof obj.betSpreadOn === 'boolean' &&
+    isValidSeats(obj.seats)
   );
 }
 
