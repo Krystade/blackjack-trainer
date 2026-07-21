@@ -37,6 +37,24 @@ The app includes the full **Illustrious 18 deviation table** with H17 adjustment
 
 **Optional**: Bet-spread practice with simulated bankroll management; count accuracy checks every N rounds.
 
+## Audio & car use
+
+Audio is **opt-in** — enable it on the Settings screen (Audio section). It defaults to off.
+
+- **First speech needs a tap.** Browsers block speech synthesis until a user gesture unlocks it. Use the **Test audio** button on the Settings screen, or a drill's **Start** button — either satisfies it.
+- **Keep the tab foregrounded.** Audio pauses when the tab is backgrounded or the phone locks; browsers suspend `speechSynthesis` (and often reclaim the screen) in that state, and it won't resume speaking silently in the background.
+- **The screen stays awake automatically** while an audio mode is running, via the Screen Wake Lock API. This is best-effort: unsupported browsers silently skip it (no error, no crash), and the lock is dropped and reacquired if the tab is hidden and shown again.
+- **Voice availability and quality vary by device and OS.** The voice picker in Settings lists whatever voices the browser/OS expose — pick whichever sounds clearest.
+
+### Manual QA checklist (real phone)
+
+Run through this on an actual device before relying on audio for a drive — unit tests can't verify browser/OS audio behavior:
+
+- [ ] Settings → Audio → **Voice** picker lists real device voices (not just "Default").
+- [ ] Start an audio mode, let the phone sit idle for a couple minutes — speech keeps working and the screen does not sleep.
+- [ ] Chimes (good/bad/attention) are clearly audible over road noise at a normal listening volume.
+- [ ] In an eyes-free drill, blind zone taps register correctly through a screen protector.
+
 ## Getting Started
 
 ```bash
