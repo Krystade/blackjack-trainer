@@ -9,12 +9,18 @@ import { PlayingCard } from '../../components/PlayingCard';
 import { NumPad } from '../../components/NumPad';
 import { Segmented, Stepper } from '../Settings';
 import { useAudio } from '../../../audio/useAudio';
-import { speak } from '../../../audio/speech';
+import { cancelSpeech, speak, speakAsync } from '../../../audio/speech';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import { narrateCards, narrateCountAnswer, narrateCountPrompt } from '../../../audio/narrate';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
+}
+
+/** Plain cancelable-by-caller delay -- the caller re-checks staleness after
+ * the await resolves rather than this helper aborting itself. */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // 'selfcheck' is the eyes-free honor-system self-check: prompt spoken, a
@@ -100,8 +106,13 @@ export function CountDrillView({
       ? drillRound.groups
       : [];
 
+  // Visual-mode (non-eyes-free) fixed-interval advance -- UNCHANGED behavior.
+  // Eyes-free auto mode is driven by speech instead (see the effect below),
+  // so it's explicitly excluded here rather than sharing this timer.
   useEffect(() => {
-    if (phase !== 'flashing' || groups.length === 0 || settings.drill.countManual) return undefined;
+    if (phase !== 'flashing' || groups.length === 0 || settings.drill.countManual || eyesFree) {
+      return undefined;
+    }
 
     if (shownIndex >= groups.length - 1) {
       const t = setTimeout(() => enterAnswerPhase(), settings.drill.countIntervalMs);
@@ -122,10 +133,88 @@ export function CountDrillView({
     countdownMode,
   ]);
 
+  // Eyes-free AUTO (timed) mode: speech drives the pace instead of a fixed
+  // timer. The old bug -- a fixed setTimeout kept advancing shownIndex while
+  // window.speechSynthesis.speak() silently QUEUED each utterance -- meant
+  // speech fell further behind the display with every card and could never
+  // catch up. Here we instead: speak the current group, `await` it actually
+  // finishing (speakAsync resolves on onend/onerror/watchdog), wait the
+  // configured inter-card gap (countIntervalMs repurposed as a gap rather
+  // than a cadence), then advance. The display only moves once its narration
+  // is done, so the two can never drift.
+  //
+  // Manual mode and visual mode are untouched by this effect (guarded out
+  // below) -- manual advance narrates via the shownIndex-reactive effect
+  // beneath this one; visual auto advance is the timer effect above.
+  //
+  // Async/unmount safety: `runId` is captured once, up front, from the same
+  // `runIdRef` bumped by start()/handleBack()/unmount so any of those make
+  // every future staleness check fail immediately -- no reliance on effect
+  // cleanup ordering relative to the resumed await. `cancelled` is set by
+  // this effect's own cleanup (phase change, unmount, or a dep change) and
+  // is checked together with runId via `isStale()` after every await, so an
+  // await that resumes into a torn-down run bails before touching state.
+  // Because React always runs this cleanup before starting a new instance of
+  // this effect, and the cleanup force-resolves any in-flight speakAsync via
+  // cancelSpeech(), at most one loop can ever be advancing state at a time.
+  useEffect(() => {
+    if (
+      phase !== 'flashing' ||
+      groups.length === 0 ||
+      !eyesFree ||
+      settings.drill.countManual ||
+      countdownMode
+    ) {
+      return undefined;
+    }
+
+    const runId = runIdRef.current;
+    let cancelled = false;
+    const rate = settings.audio.rate;
+    const voiceURI = settings.audio.voiceURI;
+    const gapMs = settings.drill.countIntervalMs;
+    const isStale = () => cancelled || runIdRef.current !== runId;
+
+    const run = async () => {
+      let i = shownIndex;
+      while (!isStale()) {
+        const g = groups[i];
+        if (!g) return;
+
+        await speakAsync(narrateCards(g), { rate, voiceURI });
+        if (isStale()) return;
+
+        if (i >= groups.length - 1) {
+          enterAnswerPhase();
+          return;
+        }
+
+        if (gapMs > 0) {
+          await delay(gapMs);
+          if (isStale()) return;
+        }
+
+        i += 1;
+        setShownIndex(i);
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+      cancelSpeech();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, groups.length, eyesFree, settings.drill.countManual, countdownMode]);
+
   // Narrate each card group as it's shown. Visual mode speaks only at
-  // verbosity 'full' (existing Task 5 behavior); eyes-free mode speaks
-  // regardless of verbosity, since spoken cards ARE the drill in that mode
-  // -- so the two branches are mutually exclusive to avoid double-speaking.
+  // verbosity 'full' (existing Task 5 behavior, UNCHANGED); eyes-free MANUAL
+  // mode speaks regardless of verbosity, with `interrupt: true` so a fast
+  // tap cuts off whatever the previous card's narration was still saying
+  // rather than letting it queue and fall behind. Eyes-free AUTO (timed)
+  // mode is excluded here -- it narrates inline as part of its own
+  // speech-driven loop above, so this would otherwise double-speak.
   // Countdown mode's hidden-tag guess isn't a running-count answer, so it's
   // excluded from eyes-free entirely (see the setup section below). Reacts
   // to the existing phase/shownIndex state rather than owning a timer of its
@@ -133,15 +222,20 @@ export function CountDrillView({
   // stale.
   useEffect(() => {
     if (phase !== 'flashing' || countdownMode) return;
+    if (eyesFree && !settings.drill.countManual) return;
     const g = groups[shownIndex];
     if (!g) return;
     if (eyesFree) {
-      speak(narrateCards(g), { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+      speak(narrateCards(g), {
+        interrupt: true,
+        rate: settings.audio.rate,
+        voiceURI: settings.audio.voiceURI,
+      });
     } else {
       audio.sayFull(narrateCards(g));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, shownIndex, countdownMode, groups, eyesFree]);
+  }, [phase, shownIndex, countdownMode, groups, eyesFree, settings.drill.countManual]);
 
   // Announce the running-count prompt once the flash sequence completes and
   // the NumPad phase is reached (visual mode: only at verbosity 'full';
@@ -190,6 +284,12 @@ export function CountDrillView({
 
   useEffect(() => {
     return () => {
+      // Safety net for unmounts that don't go through handleBack (e.g. a
+      // parent-level navigation) -- same runId-bump + cancelSpeech pattern so
+      // any in-flight speech-driven loop dies immediately rather than
+      // resuming into a torn-down component.
+      runIdRef.current += 1;
+      cancelSpeech();
       void releaseWakeLock();
     };
   }, []);
@@ -204,6 +304,10 @@ export function CountDrillView({
 
   const start = () => {
     runIdRef.current += 1;
+    // Cancel any trailing speech from the previous round (e.g. a verdict or
+    // self-check answer still playing) so it can't bleed into / queue ahead
+    // of the new round's narration.
+    cancelSpeech();
     const seed = randomSeed();
     if (countdownMode) {
       setCountdownRound(makeCountdown(seed));
@@ -221,6 +325,13 @@ export function CountDrillView({
   };
 
   const handleBack = () => {
+    // Bump runId synchronously (before onBack triggers any unmount) so any
+    // in-flight speech-driven loop's next staleness check fails immediately,
+    // regardless of exactly when React runs this component's own unmount
+    // cleanup relative to a resumed await. cancelSpeech() then force-resolves
+    // whatever speakAsync call is currently pending so that check runs soon.
+    runIdRef.current += 1;
+    cancelSpeech();
     void releaseWakeLock();
     onBack();
   };
