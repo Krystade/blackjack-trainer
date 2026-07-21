@@ -32,3 +32,29 @@ and reviewed by the coordinator: all layout-distinct states inspected (26,28,30,
 41,43,45 in detail; remainder are data-variants of reviewed layouts). PASS. Key visual
 proof: shot 31 — dealer stands on 6+A under the S17 profile with the profile name in the
 top bar.
+
+## Cycle-2 review addendum (2026-07-20)
+Shots 46-54 (bot seats, fast-forward, multi-hand, seats round-trip, solo parity) captured
+by the cycle-2 e2e suite (27 specs green twice, `4ba54fc`) and reviewed by the coordinator
+via direct image inspection. **PASS** — every card value was re-added by hand:
+
+- **47 (full table settled)** — dealer 6♦2♦3♥Q♦ = 21. All three bots played chart-perfect
+  against the up-6: P1 doubled soft-14 (3♣A♦) and drew Q♦; P2 stood on 20; P3 stood on
+  hard-14. All three marked `L` vs 21; player 12 loses −1; bankroll 100→99. ✓
+- **46 (dealt)** — hole card face-down, Split correctly *disabled* on 4,8, Surrender
+  offered on the first two cards under LS. ✓
+- **48 (fast-forward)** — identical fully-revealed state to 47 with pacing skipped. ✓
+- **49/51 (multi-hand)** — per-hand bet steppers "Hand 1 = 2u / Hand 2 = 4u"; settled shows
+  dealer 18, Hand 1 (4♠4♣A♦ = soft 19) Win +2, Hand 2 (3♣6♦J♣ = 19) Win +4,
+  bankroll 100+6 = 106. ✓
+- **52/53 (seats round-trip)** — editor set to 2 hands / 2 bots / "Perfect" mistakes, and
+  the table then renders exactly P1+P2 with two player hands, Hand 1 highlighted. ✓
+- **54 (solo parity)** — no bot rows at all; layout matches the v1 solo table. ✓
+
+Layout: `.bot-seats-row` is `flex-wrap: wrap`, so the untested 4–5 bot configurations wrap
+to a second line rather than overflowing 390px — the 3-bot capture is representative.
+
+Non-blocking notes carried forward: bot *card rows* render fully-resolved while only the
+narration text is paced (spec-defensible — pacing is presentation-only over an
+already-resolved engine transcript); changing deal speed mid-narration doesn't retune the
+in-flight timer.
