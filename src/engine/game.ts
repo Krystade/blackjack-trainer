@@ -795,6 +795,27 @@ export class Game {
    * (Cycle-2 Task 3). */
   private finishAfterPlayerDone(): void {
     this.resolveBotsAfter();
+
+    // v1 PARITY (cycle-2 regression fix): if every hand at the table is
+    // already resolved -- the all-naturals case -- the dealer never acts at
+    // all. v1 short-circuited a player natural with `finishRound(); return;`
+    // without ever entering playDealerAndSettle, so the hole card stayed
+    // face-down and uncounted. Routing that case through the dealer would
+    // leak the hole (and any draws) into the shoe position and the running
+    // count, desynchronising every later round of a seeded session.
+    //
+    // Note this deliberately checks `result === undefined`, NOT "not bust":
+    // a busted hand is still unresolved here (settleHandVsDealer assigns its
+    // result), and v1 DID reveal the hole on a bust. Only already-settled
+    // hands (naturals) can suppress the dealer.
+    const someHandUnresolved = this.seats
+      .flatMap((s) => s.hands)
+      .some((h) => h.result === undefined);
+    if (!someHandUnresolved) {
+      this.finishRound();
+      return;
+    }
+
     this.playDealerAndSettle();
   }
 
@@ -833,7 +854,12 @@ export class Game {
     // hands, not just the player's -- a live bot hand still needs a real
     // dealer result to settle and count, even if the player already busted.
     const allHands = this.seats.flatMap((s) => s.hands);
-    const liveHands = allHands.filter((h) => !h.surrendered && !isBust(h.cards));
+    // `result === undefined` excludes hands already settled as naturals: a
+    // player blackjack needs no dealer total, so it must not drag the dealer
+    // into drawing (e.g. player natural while every bot busted).
+    const liveHands = allHands.filter(
+      (h) => h.result === undefined && !h.surrendered && !isBust(h.cards),
+    );
     if (liveHands.length > 0) {
       while (this.dealerShouldHit()) {
         const c = this.shoe.draw();

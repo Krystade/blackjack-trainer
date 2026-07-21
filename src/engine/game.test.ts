@@ -1167,3 +1167,60 @@ describe('bot autoplay + mistakes + determinism (Cycle-2 Task 3)', () => {
     expect(game.events[1].kind).toBe('action');
   });
 });
+
+describe('v1 parity: an all-natural round must not wake the dealer (cycle-2 regression)', () => {
+  // v1 short-circuited a player natural with `finishRound(); return;` -- it never
+  // entered playDealerAndSettle, so the hole card was NEVER revealed and the
+  // dealer NEVER drew. Cycle 2 routed every path through playDealerAndSettle,
+  // whose `live hand` filter ignored already-settled hands, so a settled
+  // 'blackjack' still counted as live and the dealer played on. That leaks the
+  // hole card (and any draws) into the shoe position and the running count,
+  // desynchronising every later round of a seeded session.
+  it('solo player natural: hole stays down, dealer does not draw, RC excludes the hole', () => {
+    // Deal order (solo): p1, dealerUp, p2, dealerHole => player A,K = natural;
+    // dealer 9,5 (hard 14 -- would certainly draw if it were ever asked to).
+    const game = Game.withRiggedShoe(cfg(), rig('A', '9', 'K', '5', '6'));
+    game.startRound();
+
+    expect(game.phase).toBe('settled');
+    expect(game.hands[0].result).toBe('blackjack');
+    expect(game.bankroll).toBe(101.5);
+
+    // The dealer never acts on an all-natural round.
+    expect(game.holeRevealed).toBe(false);
+    expect(game.dealerCards).toHaveLength(2);
+
+    // Only the three FACE-UP cards are counted: A(-1) + 9(0) + K(-1) = -2.
+    // The hole 5 (+1) and the would-be draw 6 (+1) must not appear.
+    expect(game.runningCount).toBe(-2);
+    expect(game.shoe.cardsRemaining).toBe(1);
+  });
+
+  it('solo player BUST still reveals the hole (v1 did enter playDealerAndSettle here)', () => {
+    // player 10,6 then hits K = bust; dealer 9,5.
+    const game = Game.withRiggedShoe(cfg(), rig('10', '9', '6', '5', 'K'));
+    game.startRound();
+    game.act('hit');
+
+    expect(game.phase).toBe('settled');
+    expect(game.hands[0].result).toBe('lose');
+    // Busting does NOT suppress the reveal -- matching v1 exactly.
+    expect(game.holeRevealed).toBe(true);
+    // ...but the dealer still must not DRAW to a bust-only table.
+    expect(game.dealerCards).toHaveLength(2);
+  });
+
+  it('with bots at the table, a player natural still lets the dealer play for them', () => {
+    // A live bot hand genuinely needs a real dealer total to settle against.
+    const seats: SeatConfig = { playerHands: 1, bots: 1, botMistakePct: 0, playerPosition: 1 };
+    // Deal order (bot seat 0, player seat 1): bot1, p1, dealerUp, bot2, p2, hole
+    // bot = 10,7 = 17 (stands); player = A,K = natural; dealer = 9,5 = 14 -> draws.
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', 'A', '9', '7', 'K', '5', '6'));
+    game.startRound();
+
+    expect(game.phase).toBe('settled');
+    expect(game.hands[0].result).toBe('blackjack');
+    expect(game.holeRevealed).toBe(true);
+    expect(game.dealerCards.length).toBeGreaterThan(2);
+  });
+});
