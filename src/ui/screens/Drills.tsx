@@ -16,9 +16,14 @@ import { loadStats, saveStats, saveSettings } from '../../store/persist';
 import { applyEvents } from '../../store/stats';
 import { PlayingCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
+import { ZonePad } from '../components/ZonePad';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
-import { narrateCorrection, narrateQuizPrompt } from '../../audio/narrate';
+import { narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt } from '../../audio/narrate';
+import { speak } from '../../audio/speech';
+import { requestWakeLock, releaseWakeLock } from '../../audio/wakeLock';
+import { ZONE_LABEL } from '../../audio/zones';
+import type { ZoneId } from '../../audio/zones';
 import { CountDrillView } from './drills/CountDrillView';
 
 interface DrillsProps {
@@ -36,6 +41,24 @@ function randomSeed(): number {
 
 function formatSigned(n: number): string {
   return n >= 0 ? `+${n}` : String(n);
+}
+
+/* ---------------------------------------------------------------- */
+/* Eyes-free (Task 9): shared zone-label echo for both drills.       */
+/* ZONE_LABEL (src/audio/zones.ts) only covers the five action zones;*/
+/* the insurance quiz's two-zone 'take'/'decline' variant isn't a    */
+/* ZoneId, so this widens the lookup rather than editing zones.ts    */
+/* (which is T8's file, already committed).                          */
+/* ---------------------------------------------------------------- */
+
+const INSURANCE_ZONE_LABEL: Record<'take' | 'decline', string> = {
+  take: 'Take',
+  decline: 'Decline',
+};
+
+function zoneLabel(zone: ZoneId | 'take' | 'decline'): string {
+  if (zone === 'take' || zone === 'decline') return INSURANCE_ZONE_LABEL[zone];
+  return ZONE_LABEL[zone];
 }
 
 /* ---------------------------------------------------------------- */
@@ -91,7 +114,66 @@ function FlashcardsView({
   const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action } | null>(null);
   const audio = useAudio(settings.audio);
 
+  // Eyes-free audio (Task 9): local UI state, not persisted, per the
+  // CountDrillView precedent (a per-session choice scoped to this screen).
+  const [eyesFree, setEyesFree] = useState(false);
+  // Bumped every time a new card is drawn so a stale auto-advance timer
+  // from a previous card can recognize itself as stale and no-op, even
+  // though its own effect cleanup already clears it on unmount/early exit.
+  const runIdRef = useRef(0);
+  const advanceTimerRef = useRef<number | null>(null);
+
+  const clearAdvanceTimer = () => {
+    if (advanceTimerRef.current !== null) {
+      window.clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
+  };
+
+  // Clear any pending auto-advance timer on unmount.
+  useEffect(() => clearAdvanceTimer, []);
+
+  // Eyes-free requires audio to be enabled; drop it if audio gets disabled
+  // (e.g. via Settings) while checked, rather than leaving a checked-but-
+  // disabled control.
+  useEffect(() => {
+    if (!settings.audio.enabled) setEyesFree(false);
+  }, [settings.audio.enabled]);
+
+  // Wake lock lifecycle: held for as long as eyes-free is active, released
+  // the moment it's turned off (and unconditionally on unmount below).
+  useEffect(() => {
+    if (eyesFree) {
+      void requestWakeLock();
+    } else {
+      void releaseWakeLock();
+    }
+  }, [eyesFree]);
+
+  useEffect(() => {
+    return () => {
+      void releaseWakeLock();
+    };
+  }, []);
+
+  // Speak the scenario whenever a new card is drawn, or the instant
+  // eyes-free is switched on for the current card. Unlike Phase-A's
+  // verbosity-gated narration, eyes-free speaks regardless of verbosity --
+  // it IS the primary output channel in this mode, not decoration (same
+  // precedent as CountDrillView's flashing-card narration).
+  useEffect(() => {
+    if (!eyesFree) return;
+    speak(narrateFlashcardPrompt(card.cards, card.up), {
+      interrupt: true,
+      rate: settings.audio.rate,
+      voiceURI: settings.audio.voiceURI,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card, eyesFree]);
+
   const next = (category: Settings['drill']['flashCategory'] = settings.drill.flashCategory) => {
+    runIdRef.current += 1;
+    clearAdvanceTimer();
     setCard(drawFlashcard(category, weightsRef.current, randomSeed(), activeProfile.rules));
     setFeedback(null);
   };
@@ -103,7 +185,34 @@ function FlashcardsView({
     next(category);
   };
 
-  const handleAction = (taken: Action) => {
+  const handleBack = () => {
+    void releaseWakeLock();
+    onBack();
+  };
+
+  const handleRepeat = () => {
+    speak(narrateFlashcardPrompt(card.cards, card.up), {
+      interrupt: true,
+      rate: settings.audio.rate,
+      voiceURI: settings.audio.voiceURI,
+    });
+  };
+
+  const scheduleAutoAdvance = () => {
+    clearAdvanceTimer();
+    const runId = runIdRef.current;
+    advanceTimerRef.current = window.setTimeout(() => {
+      advanceTimerRef.current = null;
+      if (runIdRef.current !== runId) return;
+      next();
+    }, settings.audio.answerPauseMs);
+  };
+
+  // Shared grading core: the SAME function backs both the visual ActionBar
+  // taps and the eyes-free ZonePad taps, so the two paths cannot drift.
+  // Pure aside from the weight/stats writes it always performed; no audio,
+  // no setState -- callers layer their own feedback on top.
+  const gradeFlashcardAnswer = (taken: Action): { event: GradedEvent; correctAction: Action } => {
     const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: true };
     const withCount = correctPlay(card.cards, card.up, 0, ctx, activeProfile.rules);
     const basicOnly = basicPlay(card.cards, card.up, ctx, activeProfile.rules);
@@ -127,16 +236,46 @@ function FlashcardsView({
     };
     saveStats(applyEvents(loadStats(), [event]));
 
-    audio.say(narrateCorrection(event), { interrupt: true });
-    audio.ding(correct ? 'good' : 'bad');
+    return { event, correctAction: withCount.action };
+  };
 
-    setFeedback({ correct, correctAction: withCount.action });
+  const handleAction = (taken: Action) => {
+    const { event, correctAction } = gradeFlashcardAnswer(taken);
+
+    audio.say(narrateCorrection(event), { interrupt: true });
+    audio.ding(event.correct ? 'good' : 'bad');
+
+    setFeedback({ correct: event.correct, correctAction });
+  };
+
+  // Eyes-free zone tap: ZoneId and Action are the identical five-member
+  // literal union (hit/stand/double/split/surrender), so the tapped zone
+  // maps straight onto the grading function's `taken` param with no
+  // translation layer to drift out of sync. ZonePad's onAnswer type also
+  // covers the insurance 'take'/'decline' variant it never produces in
+  // 'action' mode -- narrow it away rather than widening this handler.
+  const handleZoneAnswer = (zone: ZoneId | 'take' | 'decline') => {
+    if (zone === 'take' || zone === 'decline') return;
+
+    speak(`${zoneLabel(zone)}…`, {
+      interrupt: true,
+      rate: settings.audio.rate,
+      voiceURI: settings.audio.voiceURI,
+    });
+
+    const { event, correctAction } = gradeFlashcardAnswer(zone);
+
+    speak(narrateCorrection(event), { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+    audio.ding(event.correct ? 'good' : 'bad');
+
+    setFeedback({ correct: event.correct, correctAction });
+    scheduleAutoAdvance();
   };
 
   return (
     <div className="drill-screen">
       <div className="drill-topbar">
-        <button type="button" className="drill-back-btn" onClick={onBack}>
+        <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
         </button>
         <div className="drill-heading">Flashcards</div>
@@ -156,6 +295,21 @@ function FlashcardsView({
             onChange={changeCategory}
           />
         </div>
+
+        <label className="count-toggle">
+          <input
+            type="checkbox"
+            checked={eyesFree}
+            disabled={!settings.audio.enabled}
+            onChange={(e) => setEyesFree(e.target.checked)}
+          />
+          Eyes-free audio
+        </label>
+        {!settings.audio.enabled && (
+          <div className="settings-row settings-note-row">
+            Enable audio in Settings to use eyes-free mode.
+          </div>
+        )}
       </div>
 
       <div className="dealer-area">
@@ -184,7 +338,11 @@ function FlashcardsView({
       </div>
 
       {!feedback ? (
-        <ActionBar mode={{ kind: 'actions', legal: ALL_ACTIONS, onAction: handleAction }} />
+        eyesFree ? (
+          <ZonePad mode="action" onAnswer={handleZoneAnswer} onRepeat={handleRepeat} visible={false} />
+        ) : (
+          <ActionBar mode={{ kind: 'actions', legal: ALL_ACTIONS, onAction: handleAction }} />
+        )
       ) : (
         <div className="action-bar">
           <button type="button" className="drill-next-btn" onClick={() => next()}>
@@ -275,14 +433,69 @@ function DeviationQuizView({
   const [feedback, setFeedback] = useState<{ correct: boolean } | null>(null);
   const audio = useAudio(settings.audio);
 
-  // Verbosity 'full': speak the scenario every time a new item is drawn,
-  // including the very first one.
+  // Eyes-free audio (Task 9): local UI state, not persisted, per the
+  // CountDrillView precedent (a per-session choice scoped to this screen).
+  const [eyesFree, setEyesFree] = useState(false);
+  // Bumped every time a new item is drawn so a stale auto-advance timer
+  // from a previous item can recognize itself as stale and no-op, even
+  // though its own effect cleanup already clears it on unmount/early exit.
+  const runIdRef = useRef(0);
+  const advanceTimerRef = useRef<number | null>(null);
+
+  const clearAdvanceTimer = () => {
+    if (advanceTimerRef.current !== null) {
+      window.clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
+  };
+
+  // Clear any pending auto-advance timer on unmount.
+  useEffect(() => clearAdvanceTimer, []);
+
+  // Eyes-free requires audio to be enabled; drop it if audio gets disabled
+  // (e.g. via Settings) while checked, rather than leaving a checked-but-
+  // disabled control.
   useEffect(() => {
-    audio.sayFull(narrateQuizPrompt(item.cards, item.up, item.tc));
+    if (!settings.audio.enabled) setEyesFree(false);
+  }, [settings.audio.enabled]);
+
+  // Wake lock lifecycle: held for as long as eyes-free is active, released
+  // the moment it's turned off (and unconditionally on unmount below).
+  useEffect(() => {
+    if (eyesFree) {
+      void requestWakeLock();
+    } else {
+      void releaseWakeLock();
+    }
+  }, [eyesFree]);
+
+  useEffect(() => {
+    return () => {
+      void releaseWakeLock();
+    };
+  }, []);
+
+  // Speak the scenario every time a new item is drawn, including the very
+  // first one. Eyes-free bypasses the verbosity gate entirely (it's the
+  // primary output channel in that mode, not decoration); visual mode keeps
+  // the existing Phase-A verbosity-'full' behavior unchanged. The two
+  // branches are mutually exclusive so nothing double-speaks.
+  useEffect(() => {
+    if (eyesFree) {
+      speak(narrateQuizPrompt(item.cards, item.up, item.tc), {
+        interrupt: true,
+        rate: settings.audio.rate,
+        voiceURI: settings.audio.voiceURI,
+      });
+    } else {
+      audio.sayFull(narrateQuizPrompt(item.cards, item.up, item.tc));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item]);
+  }, [item, eyesFree]);
 
   const next = (filter: DeviationId | 'all' = activeFilter) => {
+    runIdRef.current += 1;
+    clearAdvanceTimer();
     setItem(drawQuizItem(randomSeed(), quizFilterArg(filter), activeProfile.rules));
     setFeedback(null);
   };
@@ -294,9 +507,41 @@ function DeviationQuizView({
     next(quizIndex);
   };
 
-  const handleAnswer = (taken: string) => {
+  const handleBack = () => {
+    void releaseWakeLock();
+    onBack();
+  };
+
+  const handleRepeat = () => {
+    speak(narrateQuizPrompt(item.cards, item.up, item.tc), {
+      interrupt: true,
+      rate: settings.audio.rate,
+      voiceURI: settings.audio.voiceURI,
+    });
+  };
+
+  const scheduleAutoAdvance = () => {
+    clearAdvanceTimer();
+    const runId = runIdRef.current;
+    advanceTimerRef.current = window.setTimeout(() => {
+      advanceTimerRef.current = null;
+      if (runIdRef.current !== runId) return;
+      next();
+    }, settings.audio.answerPauseMs);
+  };
+
+  // Shared grading core: the SAME function backs both the visual buttons
+  // (ActionBar / Take-Decline) and the eyes-free ZonePad taps, so the two
+  // paths cannot drift. No audio, no setState -- callers layer their own
+  // feedback on top.
+  const gradeQuizAnswer = (taken: string): GradedEvent => {
     const event = buildQuizEvent(item, taken, activeProfile.rules);
     saveStats(applyEvents(loadStats(), [event]));
+    return event;
+  };
+
+  const handleAnswer = (taken: string) => {
+    const event = gradeQuizAnswer(taken);
 
     audio.say(narrateCorrection(event), { interrupt: true });
     audio.ding(event.correct ? 'good' : 'bad');
@@ -304,12 +549,40 @@ function DeviationQuizView({
     setFeedback({ correct: event.correct });
   };
 
+  // Eyes-free zone tap. Non-insurance items: ZoneId and Action are the
+  // identical five-member literal union, so the tapped zone maps straight
+  // onto `taken`. Insurance items: ZonePad's 'action'-mode zones ('hit'
+  // etc.) never appear here since the pad is rendered in 'insurance' mode
+  // for these items -- only 'take'/'decline' can arrive, translated to the
+  // 'take-insurance'/'decline-insurance' strings buildQuizEvent expects
+  // (matching the existing Take/Decline Insurance buttons exactly).
+  const handleZoneAnswer = (zone: ZoneId | 'take' | 'decline') => {
+    const isInsurance = item.cards === null;
+    if (isInsurance !== (zone === 'take' || zone === 'decline')) return; // mode/zone mismatch guard
+
+    const taken = zone === 'take' ? 'take-insurance' : zone === 'decline' ? 'decline-insurance' : zone;
+
+    speak(`${zoneLabel(zone)}…`, {
+      interrupt: true,
+      rate: settings.audio.rate,
+      voiceURI: settings.audio.voiceURI,
+    });
+
+    const event = gradeQuizAnswer(taken);
+
+    speak(narrateCorrection(event), { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+    audio.ding(event.correct ? 'good' : 'bad');
+
+    setFeedback({ correct: event.correct });
+    scheduleAutoAdvance();
+  };
+
   const indexList = activeProfile.rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
 
   return (
     <div className="drill-screen">
       <div className="drill-topbar">
-        <button type="button" className="drill-back-btn" onClick={onBack}>
+        <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
         </button>
         <div className="drill-heading">Deviation Quiz</div>
@@ -332,6 +605,21 @@ function DeviationQuizView({
             ))}
           </select>
         </label>
+
+        <label className="count-toggle">
+          <input
+            type="checkbox"
+            checked={eyesFree}
+            disabled={!settings.audio.enabled}
+            onChange={(e) => setEyesFree(e.target.checked)}
+          />
+          Eyes-free audio
+        </label>
+        {!settings.audio.enabled && (
+          <div className="settings-row settings-note-row">
+            Enable audio in Settings to use eyes-free mode.
+          </div>
+        )}
       </div>
 
       <div className="quiz-tc">TC {formatSigned(item.tc)}</div>
@@ -367,7 +655,14 @@ function DeviationQuizView({
       </div>
 
       {!feedback ? (
-        item.cards === null ? (
+        eyesFree ? (
+          <ZonePad
+            mode={item.cards === null ? 'insurance' : 'action'}
+            onAnswer={handleZoneAnswer}
+            onRepeat={handleRepeat}
+            visible={false}
+          />
+        ) : item.cards === null ? (
           <div className="action-bar">
             <button type="button" className="action-btn" onClick={() => handleAnswer('take-insurance')}>
               Take Insurance
