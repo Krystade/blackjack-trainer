@@ -38,6 +38,12 @@ export interface AudioSettings {
   // the pad back to transparent-but-tappable, for genuine hands-on-wheel /
   // eyes-on-road driving use. Opt-in only — never the default.
   dimZones: boolean;
+  // How much detail spoken cards carry. 'full' = "queen of hearts" (suit
+  // included); 'rank' = "queen" (suit dropped, default — suit is irrelevant
+  // to counting and roughly doubles every utterance); 'face' = 'rank' but
+  // every ten-value card (10/J/Q/K) collapses to "ten", matching how a
+  // Hi-Lo counter actually subvocalises (all four share the same -1 tag).
+  cardDetail: 'full' | 'rank' | 'face';
 }
 
 export const DEFAULT_AUDIO: AudioSettings = {
@@ -48,6 +54,7 @@ export const DEFAULT_AUDIO: AudioSettings = {
   chimes: true,
   answerPauseMs: 3000,
   dimZones: false,
+  cardDetail: 'rank',
 };
 
 export const DEFAULT_SETTINGS: Settings = {

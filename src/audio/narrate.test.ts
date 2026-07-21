@@ -25,6 +25,57 @@ describe('narrateCard — every rank and suit', () => {
   });
 });
 
+describe('narrateCard / narrateCards — detail levels', () => {
+  it('omitting detail defaults to "full" and stays byte-identical to today\'s output', () => {
+    expect(narrateCard(c('Q', 'h'))).toBe('queen of hearts');
+    expect(narrateCard(c('A', 's'))).toBe('ace of spades');
+    expect(narrateCard(c('10', 'd'))).toBe('ten of diamonds');
+    expect(narrateCards([c('Q', 'h'), c('4', 's')])).toBe('queen of hearts, four of spades');
+  });
+
+  it('detail "full" is identical to the default', () => {
+    expect(narrateCard(c('Q', 'h'), 'full')).toBe('queen of hearts');
+    expect(narrateCard(c('10', 'd'), 'full')).toBe('ten of diamonds');
+    expect(narrateCards([c('Q', 'h'), c('4', 's')], 'full')).toBe('queen of hearts, four of spades');
+  });
+
+  it('detail "rank" drops the suit for every rank', () => {
+    expect(narrateCard(c('Q', 'h'), 'rank')).toBe('queen');
+    expect(narrateCard(c('A', 's'), 'rank')).toBe('ace');
+    expect(narrateCard(c('10', 'd'), 'rank')).toBe('ten');
+    expect(narrateCard(c('J', 'c'), 'rank')).toBe('jack');
+    expect(narrateCard(c('K', 'h'), 'rank')).toBe('king');
+    expect(narrateCard(c('7', 's'), 'rank')).toBe('seven');
+    expect(narrateCards([c('Q', 'h'), c('4', 's')], 'rank')).toBe('queen, four');
+  });
+
+  it('detail "face" collapses every ten-value rank (10/J/Q/K) to "ten"', () => {
+    expect(narrateCard(c('10', 'd'), 'face')).toBe('ten');
+    expect(narrateCard(c('J', 'c'), 'face')).toBe('ten');
+    expect(narrateCard(c('Q', 'h'), 'face')).toBe('ten');
+    expect(narrateCard(c('K', 's'), 'face')).toBe('ten');
+  });
+
+  it('detail "face" leaves non-ten ranks the same as "rank"', () => {
+    expect(narrateCard(c('A', 's'), 'face')).toBe('ace');
+    expect(narrateCard(c('7', 'h'), 'face')).toBe('seven');
+    expect(narrateCard(c('2', 'd'), 'face')).toBe('two');
+    expect(narrateCard(c('9', 'c'), 'face')).toBe('nine');
+  });
+
+  it('"rank" and "face" remain distinct for ten-value cards', () => {
+    expect(narrateCard(c('K', 'h'), 'rank')).toBe('king');
+    expect(narrateCard(c('K', 'h'), 'face')).toBe('ten');
+    expect(narrateCard(c('J', 'h'), 'rank')).toBe('jack');
+    expect(narrateCard(c('J', 'h'), 'face')).toBe('ten');
+  });
+
+  it('narrateCards forwards the detail level to every card', () => {
+    expect(narrateCards([c('K', 'h'), c('J', 's'), c('7', 'd')], 'face')).toBe('ten, ten, seven');
+    expect(narrateCards([c('K', 'h'), c('J', 's'), c('7', 'd')], 'rank')).toBe('king, jack, seven');
+  });
+});
+
 describe('narrateAction', () => {
   it('speaks each action verbatim', () => {
     expect(narrateAction('hit')).toBe('hit');

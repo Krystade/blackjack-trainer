@@ -77,12 +77,25 @@ export function narrateRank(rank: Rank): string {
   return RANK_NAMES[rank];
 }
 
-export function narrateCard(card: Card): string {
-  return `${narrateRank(card.rank)} of ${SUIT_NAMES[card.suit]}`;
+/** Card-detail narration level: see `AudioSettings.cardDetail` in store/types.ts. */
+export type CardDetail = 'full' | 'rank' | 'face';
+
+// Every rank worth ten in Hi-Lo — 10/J/Q/K all carry the identical -1 tag,
+// so 'face' detail collapses them all to "ten" (what a counter subvocalises).
+const TEN_VALUE_RANKS: ReadonlySet<Rank> = new Set(['10', 'J', 'Q', 'K']);
+
+export function narrateCard(card: Card, detail: CardDetail = 'full'): string {
+  if (detail === 'full') {
+    return `${narrateRank(card.rank)} of ${SUIT_NAMES[card.suit]}`;
+  }
+  if (detail === 'face' && TEN_VALUE_RANKS.has(card.rank)) {
+    return 'ten';
+  }
+  return narrateRank(card.rank);
 }
 
-export function narrateCards(cards: Card[]): string {
-  return cards.map(narrateCard).join(', ');
+export function narrateCards(cards: Card[], detail: CardDetail = 'full'): string {
+  return cards.map((card) => narrateCard(card, detail)).join(', ');
 }
 
 export function narrateTc(tc: number): string {

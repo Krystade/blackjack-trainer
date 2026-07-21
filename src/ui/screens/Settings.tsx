@@ -252,6 +252,19 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             disabled={audioDisabled}
           />
         </div>
+        <div className="settings-row">
+          <span className="settings-label">Card detail</span>
+          <Segmented
+            options={[
+              { value: 'full', label: 'Full' },
+              { value: 'rank', label: 'Rank' },
+              { value: 'face', label: 'Face' },
+            ]}
+            value={settings.audio.cardDetail}
+            onChange={(v) => updateAudio({ cardDetail: v })}
+            disabled={audioDisabled}
+          />
+        </div>
         <Stepper
           label="Speech rate"
           value={settings.audio.rate}
@@ -268,10 +281,18 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             <select
               className="settings-select"
               value={settings.audio.voiceURI}
-              onChange={(e) => updateAudio({ voiceURI: e.target.value })}
+              onChange={(e) => {
+                const voiceURI = e.target.value;
+                updateAudio({ voiceURI });
+                speak('Queen. True count plus three.', {
+                  interrupt: true,
+                  rate: settings.audio.rate,
+                  voiceURI,
+                });
+              }}
               disabled={audioDisabled}
             >
-              <option value="default">Default</option>
+              <option value="default">Automatic (best available)</option>
               {voices.map((v) => (
                 <option key={v.voiceURI} value={v.voiceURI}>
                   {v.name}
@@ -306,7 +327,11 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             className="settings-test-audio-btn"
             disabled={audioDisabled}
             onClick={() => {
-              speak('Audio is working. True count plus three.', { interrupt: true });
+              speak('Audio is working. True count plus three.', {
+                interrupt: true,
+                rate: settings.audio.rate,
+                voiceURI: settings.audio.voiceURI,
+              });
               if (settings.audio.chimes) {
                 chime('good');
               }
