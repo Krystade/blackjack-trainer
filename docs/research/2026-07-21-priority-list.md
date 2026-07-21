@@ -3,7 +3,7 @@
 Synthesis of three research streams (`training-tools-landscape.md`, `practitioner-pain-points.md`,
 `web-tts-options.md`) plus the operator's road-test feedback (F1–F4) and the parked defect log.
 
-**Status: awaiting operator approval. Nothing below has been started.**
+**Status: APPROVED 2026-07-21 — operator goal is "autonomously complete all 3 tiers". Tier 1 in progress.**
 
 ## The strategic finding
 
@@ -30,7 +30,8 @@ that sits at the intersection of "essential gap" and "our differentiator".
 | 1 | **F2 — show labeled zones by default**; make screen-blanking an explicit "dim screen" opt-in | Blocking. Ticking eyes-free currently removes every answer affordance; operator read it as "the quiz is broken". Zones must be *learnable* before they can be used blind. `visible` prop already exists (T8) — T9 hardcoding `false` was the defect. | XS |
 | 2 | **F1 — speech-driven pacing** for the count drill (await `onend`, then advance) | Blocking for car use. `speak()` silently queues (MDN), so a fixed-interval driver is structurally blind to falling behind and drift compounds every card. Not tunable — needs the clock inverted. Guard: hold an utterance reference (GC drops callbacks); Safari won't fire `onend` after `cancel()`. | S |
 | 3 | **F3a — voice auto-selection heuristic** (prefer `Google`/`Natural`/`Neural`, penalise `Microsoft David`/`Zira`/`eSpeak`) | Largest perceived-quality win per line of code. The API exposes no quality flag, so name-scoring is what every real implementation does. | XS |
-| 4 | **Rank-only narration** for counting ("queen", not "queen of hearts") | Suit is irrelevant to Hi-Lo; roughly halves utterance length, which independently reduces drift and cognitive noise. | XS |
+| 4 | **Card-detail narration setting**: `full` ("queen of hearts") / `rank` ("queen") / `face` (all ten-value cards collapse to "face" or "ten") | Operator request 2026-07-21. Suit is irrelevant to Hi-Lo and every ten-value card carries the same −1 tag, so collapsing them is both faster and closer to how a counter actually thinks. Shorter utterances also independently reduce drift. | XS |
+| 4b | **F5 — Test-audio button ignores the selected voice and rate** | Operator: "I change the voice and retest and it doesn't change at all", on BOTH platforms. ROOT-CAUSED: `Settings.tsx:309` calls `speak(text, { interrupt: true })` with no `rate`/`voiceURI`, so it always uses the browser default. `useAudio` forwards both correctly, so the picker likely works everywhere EXCEPT the button used to test it — making a working feature look dead. Introduced by the T3 task brief. Also make voice lookup match on `voiceURI` **or** `name`, since iOS reports different/empty `voiceURI`s (operator sees a very different voice list on iPhone vs PC). | XS |
 
 ### Tier 2 — The essential missing drills (research-backed)
 
