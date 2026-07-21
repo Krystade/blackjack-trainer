@@ -8,6 +8,7 @@ import { correctPlay } from '../../engine/strategy';
 import { isBust } from '../../engine/hand';
 import { useGame } from '../useGame';
 import type { SessionReport } from '../useGame';
+import { useAudio } from '../../audio/useAudio';
 import { PlayingCard, formatCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import type { ActionBarMode } from '../components/ActionBar';
@@ -177,6 +178,14 @@ function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () =>
 }
 
 export function Table({ settings, activeProfile, onNavigate }: TableProps) {
+  // Cycle-3 Task 4: constructed once here (Table owns `settings`) and
+  // threaded into useGame, which wraps every engine call (deal/act/insure/
+  // submitCount) and the existing bot-narration pacing timer -- that's
+  // where every Phase-A speak()/chime() trigger for the table actually
+  // lives. `useAudio` is referentially stable, so this never causes extra
+  // re-renders or re-fires of useGame's effects beyond audio settings
+  // actually changing.
+  const audio = useAudio(settings.audio);
   const {
     game,
     deal,
@@ -189,7 +198,7 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
     endSession,
     botNarrationRevealed,
     fastForwardNarration,
-  } = useGame(settings, activeProfile);
+  } = useGame(settings, activeProfile, audio);
   // Cycle-2 Task 8: one selected bet per player hand. `playerHandsCount`
   // comes from the PROFILE's seat config, not `game.hands.length` — the
   // latter still reflects the *previous* round's (possibly split-grown)
