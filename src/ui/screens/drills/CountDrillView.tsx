@@ -446,8 +446,38 @@ export function CountDrillView({
     setEnteredValue(entered);
     setPhase('result');
 
-    const cardsInRun = countdownMode ? 52 : settings.drill.countLengthCards;
     const stats = loadStats();
+
+    // Timed Challenge runs are graded on speed as well as correctness, and
+    // that's a materially different metric than the plain count drill's
+    // intervalMs (a fixed pace, not an elapsed-time result) -- they go to
+    // their own timedCount.history rather than double-counting into
+    // countDrill.history alongside ordinary runs. Countdown mode always has
+    // timedChallenge=false (see the effect that drops it on mode switch),
+    // so this branch can only ever fire for the main count drill.
+    if (timedChallenge && timedResult) {
+      const spd = secondsPerDeck(timedResult.elapsedMs, timedResult.cardsShown);
+      const tier = classifySpeed(spd);
+      saveStats({
+        ...stats,
+        timedCount: {
+          history: [
+            ...stats.timedCount.history,
+            {
+              date: new Date().toISOString(),
+              cards: timedResult.cardsShown,
+              elapsedMs: timedResult.elapsedMs,
+              secondsPerDeck: spd,
+              tier,
+              correct,
+            },
+          ],
+        },
+      });
+      return;
+    }
+
+    const cardsInRun = countdownMode ? 52 : settings.drill.countLengthCards;
     const updated = {
       ...stats,
       countDrill: {

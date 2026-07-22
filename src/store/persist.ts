@@ -62,8 +62,13 @@ function mergeSettings(parsed: Record<string, unknown>): Settings {
 
 /**
  * Merge a parsed (possibly partial) stats blob over a deep copy of the empty
- * stats: top-level fields plus the five nested sections (categories, perIndex,
- * mistakes, countDrill, sessions).
+ * stats: top-level fields plus the eight nested sections (categories,
+ * perIndex, mistakes, countDrill, trueCount, deckEstimation, timedCount,
+ * sessions). The three telemetry sections (trueCount/deckEstimation/
+ * timedCount) postdate the original stats shape, so any blob persisted
+ * before they existed lacks them entirely -- the same
+ * `typeof ... === 'object'` guard used for countDrill backfills them to an
+ * empty history rather than leaving them undefined.
  */
 function mergeStats(parsed: Record<string, unknown>): Stats {
   const base = structuredClone(EMPTY_STATS);
@@ -88,6 +93,18 @@ function mergeStats(parsed: Record<string, unknown>): Stats {
       typeof p.countDrill === 'object' && p.countDrill !== null
         ? { ...base.countDrill, ...p.countDrill }
         : base.countDrill,
+    trueCount:
+      typeof p.trueCount === 'object' && p.trueCount !== null
+        ? { ...base.trueCount, ...p.trueCount }
+        : base.trueCount,
+    deckEstimation:
+      typeof p.deckEstimation === 'object' && p.deckEstimation !== null
+        ? { ...base.deckEstimation, ...p.deckEstimation }
+        : base.deckEstimation,
+    timedCount:
+      typeof p.timedCount === 'object' && p.timedCount !== null
+        ? { ...base.timedCount, ...p.timedCount }
+        : base.timedCount,
     sessions: Array.isArray(p.sessions) ? p.sessions : base.sessions,
   };
 }

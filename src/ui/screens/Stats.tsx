@@ -4,6 +4,7 @@ import type { Screen } from '../App';
 import type { AudioSettings, Profile, Settings, Stats as StatsData } from '../../store/types';
 import { EMPTY_STATS } from '../../store/types';
 import { loadStats, saveStats, loadSettings, exportAll, importAll } from '../../store/persist';
+import { summarize, bestSecondsPerDeck, signedErrorBreakdown } from '../../store/drillStats';
 import type { Category, MistakeClass } from '../../engine/grade';
 import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../../engine/deviations';
 import { useAudio } from '../../audio/useAudio';
@@ -132,6 +133,20 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
       : correctHistory.reduce((best, cur) => (cur.intervalMs < best.intervalMs ? cur : best));
   const recentRuns = stats.countDrill.history.slice(-5).reverse();
   const sessions = [...stats.sessions].reverse();
+
+  // Cycle-4 per-drill telemetry (docs/research/2026-07-21-priority-list.md
+  // item 8): same slice(-5).reverse() "recent runs" idiom as the count
+  // drill's recentRuns above, one precomputed block per new drill.
+  const trueCountSummary = summarize(stats.trueCount.history);
+  const trueCountBreakdown = signedErrorBreakdown(stats.trueCount.history);
+  const trueCountRecent = stats.trueCount.history.slice(-5).reverse();
+
+  const deckEstSummary = summarize(stats.deckEstimation.history);
+  const deckEstRecent = stats.deckEstimation.history.slice(-5).reverse();
+
+  const timedCountSummary = summarize(stats.timedCount.history);
+  const timedCountBest = bestSecondsPerDeck(stats.timedCount.history);
+  const timedCountRecent = stats.timedCount.history.slice(-5).reverse();
 
   // Per-profile header (Cycle-1 Task 13): CVCX numbers (when the profile has
   // them) alongside actual results computed from this profile's own sessions
@@ -262,6 +277,104 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
                 <span>{formatDate(run.date)}</span>
                 <span>{run.cards} cards</span>
                 <span>{run.intervalMs}ms</span>
+                <span className={run.correct ? 'result-correct' : 'result-wrong'}>
+                  {run.correct ? 'correct' : 'wrong'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="stats-section">
+        <h2 className="stats-section-title">Timed count challenge</h2>
+        <p className="stats-detail">
+          {timedCountSummary.attempts === 0
+            ? 'No timed runs yet.'
+            : `${timedCountSummary.correct}/${timedCountSummary.attempts} correct (${pct(timedCountSummary.correct, timedCountSummary.attempts)})`}
+        </p>
+        <p className="stats-detail">
+          Best clean speed: {timedCountBest === null ? '—' : `${timedCountBest.toFixed(1)}s / deck`}
+        </p>
+        {timedCountRecent.length === 0 ? (
+          <p className="stats-detail">No timed runs yet.</p>
+        ) : (
+          <ul className="count-history-list">
+            {timedCountRecent.map((run, i) => (
+              <li className="count-history-row" key={i}>
+                <span>{formatDate(run.date)}</span>
+                <span>{run.cards} cards</span>
+                <span>{run.secondsPerDeck.toFixed(1)}s/deck</span>
+                <span>{run.tier}</span>
+                <span className={run.correct ? 'result-correct' : 'result-wrong'}>
+                  {run.correct ? 'correct' : 'wrong'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="stats-section">
+        <h2 className="stats-section-title">True count drill</h2>
+        <p className="stats-detail">
+          {trueCountSummary.attempts === 0
+            ? 'No true-count attempts yet.'
+            : `${trueCountSummary.correct}/${trueCountSummary.attempts} correct (${pct(trueCountSummary.correct, trueCountSummary.attempts)})`}
+        </p>
+        {trueCountSummary.attempts > 0 && (
+          <ul className="mistake-list">
+            <li className="mistake-row">
+              <span>Guessed too high</span>
+              <span>{trueCountBreakdown.tooHigh}</span>
+            </li>
+            <li className="mistake-row">
+              <span>Guessed too low</span>
+              <span>{trueCountBreakdown.tooLow}</span>
+            </li>
+            <li className="mistake-row">
+              <span>Exact</span>
+              <span>{trueCountBreakdown.exact}</span>
+            </li>
+          </ul>
+        )}
+        {trueCountRecent.length === 0 ? (
+          <p className="stats-detail">No true-count attempts yet.</p>
+        ) : (
+          <ul className="count-history-list">
+            {trueCountRecent.map((run, i) => (
+              <li className="count-history-row" key={i}>
+                <span>{formatDate(run.date)}</span>
+                <span>
+                  RC {formatSigned(run.runningCount)} / {run.decksRemaining} decks
+                </span>
+                <span>guess {formatSigned(run.guess)}</span>
+                <span className={run.correct ? 'result-correct' : 'result-wrong'}>
+                  {run.correct ? 'correct' : 'wrong'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="stats-section">
+        <h2 className="stats-section-title">Deck estimation drill</h2>
+        <p className="stats-detail">
+          {deckEstSummary.attempts === 0
+            ? 'No deck-estimation attempts yet.'
+            : `${deckEstSummary.correct}/${deckEstSummary.attempts} correct (${pct(deckEstSummary.correct, deckEstSummary.attempts)})`}
+        </p>
+        {deckEstRecent.length === 0 ? (
+          <p className="stats-detail">No deck-estimation attempts yet.</p>
+        ) : (
+          <ul className="count-history-list">
+            {deckEstRecent.map((run, i) => (
+              <li className="count-history-row" key={i}>
+                <span>{formatDate(run.date)}</span>
+                <span>guessed {run.guess}</span>
+                <span>actual {run.actualDecks.toFixed(2)}</span>
+                <span>off by {run.errorDecks.toFixed(2)}</span>
                 <span className={run.correct ? 'result-correct' : 'result-wrong'}>
                   {run.correct ? 'correct' : 'wrong'}
                 </span>

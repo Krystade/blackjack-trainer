@@ -220,6 +220,27 @@ describe('store/persist', () => {
       expect(loaded.countDrill).toEqual(EMPTY_STATS.countDrill);
       expect(loaded.sessions).toEqual([]);
     });
+
+    test('an old stats blob without trueCount/deckEstimation/timedCount loads with empty histories', () => {
+      // Simulates a blob persisted before Cycle-4's per-drill telemetry
+      // shipped: {version:1} plus a couple of pre-existing sections, but
+      // none of the three new ones at all (not even as empty objects).
+      storage['bjtrainer.stats.v1'] = JSON.stringify({
+        version: 1,
+        categories: { hard: { right: 2, wrong: 1 } },
+        countDrill: { history: [{ date: 'x', cards: 52, intervalMs: 800, correct: true }] },
+      });
+      const loaded = loadStats();
+      expect(loaded.trueCount).toEqual(EMPTY_STATS.trueCount);
+      expect(loaded.deckEstimation).toEqual(EMPTY_STATS.deckEstimation);
+      expect(loaded.timedCount).toEqual(EMPTY_STATS.timedCount);
+      expect(loaded.trueCount.history).toEqual([]);
+      expect(loaded.deckEstimation.history).toEqual([]);
+      expect(loaded.timedCount.history).toEqual([]);
+      // Pre-existing sections are unaffected by the backfill.
+      expect(loaded.categories.hard).toEqual({ right: 2, wrong: 1 });
+      expect(loaded.countDrill.history).toHaveLength(1);
+    });
   });
 
   describe('missing-localStorage fallback', () => {

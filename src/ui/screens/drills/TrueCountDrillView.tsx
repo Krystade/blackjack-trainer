@@ -8,6 +8,7 @@ import { useAudio } from '../../../audio/useAudio';
 import { speak } from '../../../audio/speech';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import { narrateTc } from '../../../audio/narrate';
+import { loadStats, saveStats } from '../../../store/persist';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -172,6 +173,28 @@ export function TrueCountDrillView({
     setEnteredValue(value);
     setHonorCheck(false);
     setPhase('result');
+
+    // Graded attempt (unlike the honor-system self-check path above, which
+    // never reaches here) -- record telemetry so Stats can show accuracy
+    // and the too-high/too-low error breakdown. Mirrors CountDrillView's
+    // finishRun precedent: loadStats -> append -> saveStats.
+    const stats = loadStats();
+    saveStats({
+      ...stats,
+      trueCount: {
+        history: [
+          ...stats.trueCount.history,
+          {
+            date: new Date().toISOString(),
+            runningCount: question.runningCount,
+            decksRemaining: question.decksRemaining,
+            guess: value,
+            correctTc: question.correctTc,
+            correct,
+          },
+        ],
+      },
+    });
 
     const verdict = `${correct ? 'Correct.' : 'Wrong.'} ${narrateTcAnswer(question.correctTc)}`;
     if (eyesFree) {

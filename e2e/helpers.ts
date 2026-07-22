@@ -64,6 +64,21 @@ export async function withProfile(page: Page, patch: Record<string, unknown> = {
   );
 }
 
+/**
+ * Read back the persisted stats blob (`bjtrainer.stats.v1`) from
+ * localStorage as a plain object, or `null` if nothing has been saved yet.
+ * Used to prove a drill actually WROTE telemetry (src/store/persist.ts
+ * saveStats), rather than just trusting the UI's result screen -- the
+ * project has been bitten three times by a drill that renders fine but
+ * silently records nothing.
+ */
+export async function readStats(page: Page): Promise<Record<string, unknown> | null> {
+  return page.evaluate(() => {
+    const json = window.localStorage.getItem('bjtrainer.stats.v1');
+    return json ? (JSON.parse(json) as Record<string, unknown>) : null;
+  });
+}
+
 /** Navigate home, then click the named Home nav button ("Play" | "Drills" | "Stats" | "Settings"). */
 export async function goHomeAndNavigate(page: Page, url: string, button: 'Play' | 'Drills' | 'Stats' | 'Settings'): Promise<void> {
   await page.goto(url);

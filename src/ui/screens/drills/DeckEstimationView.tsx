@@ -3,6 +3,7 @@ import type { Settings } from '../../../store/types';
 import { makeDeckEstimationQuestion, gradeDeckEstimate } from '../../../drills/deckEstimation';
 import type { DeckEstimationQuestion } from '../../../drills/deckEstimation';
 import { Stepper } from '../Settings';
+import { loadStats, saveStats } from '../../../store/persist';
 
 // This drill is deliberately visual-only (judging a physical card stack) --
 // unlike the other drills it has NO eyes-free/audio mode. See
@@ -75,6 +76,27 @@ export function DeckEstimationView({
     setWasCorrect(correct);
     setErrorDecks(err);
     setPhase('result');
+
+    // Record telemetry -- this drill previously wrote nothing at all, so a
+    // user had no way to see whether their deck-estimation eye was
+    // improving. Mirrors CountDrillView's finishRun precedent: loadStats ->
+    // append -> saveStats.
+    const stats = loadStats();
+    saveStats({
+      ...stats,
+      deckEstimation: {
+        history: [
+          ...stats.deckEstimation.history,
+          {
+            date: new Date().toISOString(),
+            actualDecks: question.decksRemaining,
+            guess: value,
+            errorDecks: err,
+            correct,
+          },
+        ],
+      },
+    });
   };
 
   const handleBack = () => {

@@ -118,6 +118,34 @@ export interface Stats {
   countDrill: {
     history: { date: string; cards: number; intervalMs: number; correct: boolean }[];
   };
+  // Cycle-4 (docs/research/2026-07-21-priority-list.md item 8): per-drill
+  // speed & accuracy telemetry for the three drills that previously
+  // recorded nothing. `date` is always written by the calling component via
+  // `new Date().toISOString()` -- never computed inside a pure helper or
+  // the store itself, so every pure drill-math module stays deterministic.
+  trueCount: {
+    history: {
+      date: string;
+      runningCount: number;
+      decksRemaining: number;
+      guess: number;
+      correctTc: number;
+      correct: boolean;
+    }[];
+  };
+  deckEstimation: {
+    history: { date: string; actualDecks: number; guess: number; errorDecks: number; correct: boolean }[];
+  };
+  timedCount: {
+    history: {
+      date: string;
+      cards: number;
+      elapsedMs: number;
+      secondsPerDeck: number;
+      tier: string;
+      correct: boolean;
+    }[];
+  };
   sessions: {
     date: string;
     rounds: number;
@@ -151,6 +179,15 @@ export const EMPTY_STATS: Stats = {
     'wrong-anyway': 0,
   },
   countDrill: {
+    history: [],
+  },
+  trueCount: {
+    history: [],
+  },
+  deckEstimation: {
+    history: [],
+  },
+  timedCount: {
     history: [],
   },
   sessions: [],
