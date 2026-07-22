@@ -124,6 +124,12 @@ function FlashcardsView({
   // though its own effect cleanup already clears it on unmount/early exit.
   const runIdRef = useRef(0);
   const advanceTimerRef = useRef<number | null>(null);
+  // Spoken "Correct." is only wanted once per drill session -- after that,
+  // correct answers still chime but skip the spoken text. `useRef(false)`
+  // is fresh on every mount, and this view is unmounted/remounted each time
+  // it's (re)entered from the picker (see the Drills switch below), so a
+  // new session always starts with this false; no extra reset effect needed.
+  const spokenCorrectOnceRef = useRef(false);
 
   const clearAdvanceTimer = () => {
     if (advanceTimerRef.current !== null) {
@@ -250,10 +256,21 @@ function FlashcardsView({
     return { event, correctAction: withCount.action };
   };
 
+  // Gates the SPOKEN "Correct." text (never the chime, never wrong-answer
+  // speech, never the visible badge) to once per drill session: the first
+  // correct answer speaks in full and flips the ref; every correct answer
+  // after that skips `doSpeak` entirely so only the chime plays. Shared by
+  // both handlers below so the visual and eyes-free paths can't drift.
+  const speakCorrectionOnceGated = (event: GradedEvent, doSpeak: (text: string) => void) => {
+    if (event.correct && spokenCorrectOnceRef.current) return;
+    doSpeak(narrateCorrection(event));
+    if (event.correct) spokenCorrectOnceRef.current = true;
+  };
+
   const handleAction = (taken: Action) => {
     const { event, correctAction } = gradeFlashcardAnswer(taken);
 
-    audio.say(narrateCorrection(event), { interrupt: true });
+    speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
 
     setFeedback({ correct: event.correct, correctAction });
@@ -276,7 +293,9 @@ function FlashcardsView({
 
     const { event, correctAction } = gradeFlashcardAnswer(zone);
 
-    speak(narrateCorrection(event), { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+    speakCorrectionOnceGated(event, (text) =>
+      speak(text, { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI }),
+    );
     audio.ding(event.correct ? 'good' : 'bad');
 
     setFeedback({ correct: event.correct, correctAction });
@@ -466,6 +485,12 @@ function DeviationQuizView({
   // though its own effect cleanup already clears it on unmount/early exit.
   const runIdRef = useRef(0);
   const advanceTimerRef = useRef<number | null>(null);
+  // Spoken "Correct." is only wanted once per drill session -- after that,
+  // correct answers still chime but skip the spoken text. `useRef(false)`
+  // is fresh on every mount, and this view is unmounted/remounted each time
+  // it's (re)entered from the picker (see the Drills switch below), so a
+  // new session always starts with this false; no extra reset effect needed.
+  const spokenCorrectOnceRef = useRef(false);
 
   const clearAdvanceTimer = () => {
     if (advanceTimerRef.current !== null) {
@@ -574,10 +599,21 @@ function DeviationQuizView({
     return event;
   };
 
+  // Gates the SPOKEN "Correct." text (never the chime, never wrong-answer
+  // speech, never the visible badge) to once per drill session: the first
+  // correct answer speaks in full and flips the ref; every correct answer
+  // after that skips `doSpeak` entirely so only the chime plays. Shared by
+  // both handlers below so the visual and eyes-free paths can't drift.
+  const speakCorrectionOnceGated = (event: GradedEvent, doSpeak: (text: string) => void) => {
+    if (event.correct && spokenCorrectOnceRef.current) return;
+    doSpeak(narrateCorrection(event));
+    if (event.correct) spokenCorrectOnceRef.current = true;
+  };
+
   const handleAnswer = (taken: string) => {
     const event = gradeQuizAnswer(taken);
 
-    audio.say(narrateCorrection(event), { interrupt: true });
+    speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
 
     setFeedback({ correct: event.correct });
@@ -604,7 +640,9 @@ function DeviationQuizView({
 
     const event = gradeQuizAnswer(taken);
 
-    speak(narrateCorrection(event), { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+    speakCorrectionOnceGated(event, (text) =>
+      speak(text, { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI }),
+    );
     audio.ding(event.correct ? 'good' : 'bad');
 
     setFeedback({ correct: event.correct });
