@@ -1906,6 +1906,19 @@ button {
   background: #1b4c31;
 }
 
+/* Keyboard-typed guess (DeckEstimationView): highlights the grid option that
+   matches the in-progress typed value, and a small readout above the grid. */
+.deck-guess-btn-typed {
+  outline: 2px solid #d8b969;
+  outline-offset: 1px;
+}
+
+.deck-typed-display {
+  font-size: 0.85rem;
+  color: #d8b969;
+  text-align: center;
+}
+
 /* ---------- Count Drill: Timed Challenge (speed ramp) ---------- */
 
 .count-timed-badge {

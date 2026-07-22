@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Settings } from '../../../store/types';
 import { makeDeckEstimationQuestion, gradeDeckEstimate } from '../../../drills/deckEstimation';
 import type { DeckEstimationQuestion } from '../../../drills/deckEstimation';
@@ -47,6 +47,23 @@ function halfDeckOptions(totalDecks: number): number[] {
   return out;
 }
 
+/**
+ * Desktop keyboard input (operator request): typed-digit entry for this
+ * button-grid drill. Chose the "type the value" approach over arrow-key
+ * grid navigation (the spec's offered alternative) because it's the most
+ * direct match for "pressing numbers" -- digits build the whole-deck part,
+ * '.' starts the half, and '5' completes it, mirroring how the values are
+ * actually labeled ("2", "2.5", ...). Only a COMPLETE typed string (a bare
+ * integer, or integer + ".5") resolves to a value; "2." is deliberately
+ * mid-entry and resolves to null so the grid doesn't highlight a
+ * non-existent option while the user is still typing the half.
+ */
+function typedToValue(typed: string): number | null {
+  if (/^\d+$/.test(typed)) return Number(typed);
+  if (/^\d+\.5$/.test(typed)) return Number(typed);
+  return null;
+}
+
 type Phase = 'setup' | 'answering' | 'result';
 
 export function DeckEstimationView({
@@ -62,10 +79,15 @@ export function DeckEstimationView({
   const [guessValue, setGuessValue] = useState(0);
   const [wasCorrect, setWasCorrect] = useState(false);
   const [errorDecks, setErrorDecks] = useState(0);
+  // The in-progress keyboard-typed guess ("2", "2.5", ...) -- see
+  // typedToValue above for the exact grammar. Reset whenever a new
+  // question starts or a guess (typed or tapped) is submitted.
+  const [typed, setTyped] = useState('');
 
   const start = () => {
     const q = makeDeckEstimationQuestion(randomSeed(), { totalDecks });
     setQuestion(q);
+    setTyped('');
     setPhase('answering');
   };
 
@@ -75,6 +97,7 @@ export function DeckEstimationView({
     setGuessValue(value);
     setWasCorrect(correct);
     setErrorDecks(err);
+    setTyped('');
     setPhase('result');
 
     // Record telemetry -- this drill previously wrote nothing at all, so a
@@ -102,6 +125,52 @@ export function DeckEstimationView({
   const handleBack = () => {
     onBack();
   };
+
+  // Desktop keyboard input (operator request): digits/'.'/Backspace build
+  // `typed` (see typedToValue above); Enter submits by calling the SAME
+  // handleGuess the grid buttons call whenever `typed` resolves to a
+  // complete, legal value -- no parallel grading path. Gated to the
+  // 'answering' phase (the only time the grid is shown) and skipped when a
+  // native input/select/textarea has focus.
+  useEffect(() => {
+    if (phase !== 'answering' || !question) return undefined;
+    const options = halfDeckOptions(question.totalDecks);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        setTyped((t) => {
+          if (t.includes('.')) {
+            // Only '5' immediately after the dot completes a half; anything
+            // else once the half slot is already filled is a no-op.
+            return t.endsWith('.') && e.key === '5' ? t + '5' : t;
+          }
+          return t + e.key;
+        });
+      } else if (e.key === '.') {
+        e.preventDefault();
+        setTyped((t) => (t !== '' && !t.includes('.') ? t + '.' : t));
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        setTyped((t) => t.slice(0, -1));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const value = typedToValue(typed);
+        if (value !== null && options.includes(value)) {
+          handleGuess(value);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, question, typed]);
+
+  const typedValue = typedToValue(typed);
 
   const fraction = question ? question.cardsDealt / (question.totalDecks * 52) : 0;
   // Keep a small sliver visible even at the low end so the tray never reads
@@ -147,13 +216,19 @@ export function DeckEstimationView({
               <div className="deck-tray-fill" style={{ height: `${fillPct}%` }} />
             </div>
             <div className="deck-guess-question">How many decks remain?</div>
+            {typed !== '' && (
+              <div className="deck-typed-display">
+                Typed: {typed}
+                {typedValue === null ? '…' : ''}
+              </div>
+            )}
           </div>
           <div className="deck-guess-grid">
             {halfDeckOptions(question.totalDecks).map((v) => (
               <button
                 key={v}
                 type="button"
-                className="deck-guess-btn"
+                className={`deck-guess-btn${typedValue === v ? ' deck-guess-btn-typed' : ''}`}
                 onClick={() => handleGuess(v)}
               >
                 {formatGuess(v)}

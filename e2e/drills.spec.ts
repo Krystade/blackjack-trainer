@@ -195,6 +195,74 @@ test('flashcards: answer shows feedback, Next draws a new card', async ({ page }
   await expect(page.locator('.feedback-cell')).not.toBeVisible();
 });
 
+/**
+ * Keyboard input (operator request): pressing '2' must feed the exact same
+ * handleAction the "Stand" ActionBar button calls -- not a parallel path
+ * that merely looks similar. Proved by fixing Math.random (so the SAME
+ * flashcard is drawn on both loads below) and diffing the full result --
+ * feedback text AND persisted stats -- between a keyboard-driven answer and
+ * a click-driven answer to the identical card.
+ */
+test('flashcards: pressing "2" answers Stand, grading identically to a click', async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
+
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+
+  await page.keyboard.press('2');
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+  const keyboardResult = await page.locator('.message-strip').innerText();
+  const keyboardStats = await readStats(page);
+
+  // Reset both persisted stats and the flashcard weighting (which a wrong
+  // answer would otherwise perturb) before replaying the identical seed via
+  // a real click, so the two runs start from identical conditions.
+  await page.evaluate(() => {
+    window.localStorage.removeItem('bjtrainer.stats.v1');
+    window.localStorage.removeItem('bjtrainer.flashweights.v1');
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+
+  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+  const clickResult = await page.locator('.message-strip').innerText();
+  const clickStats = await readStats(page);
+
+  expect(keyboardResult).toBe(clickResult);
+  expect(keyboardStats).toEqual(clickStats);
+});
+
+/**
+ * Keyboard input (operator request): digits typed on the keyboard build the
+ * SAME NumPad value the on-screen digit buttons build, and Enter calls the
+ * same submit path as the OK button -- proved end-to-end by checking the
+ * display echoes the typed digit and the result screen reflects the typed
+ * value, exactly like e2e's existing tap-driven count-drill spec above.
+ */
+test('count drill: typed digit + Enter submits the running-count answer via keyboard', async ({ page }) => {
+  await withSettings(page, { drill: { countIntervalMs: 300, countLengthCards: 4, countGroup: 1 } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press('3');
+  await expect(page.locator('.numpad-display')).toHaveText('3');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
+  await expect(page.locator('.result-detail')).toContainText('You entered 3');
+});
+
 test('deviation quiz: answer shows feedback with the index/label text', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();

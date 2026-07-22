@@ -37,6 +37,19 @@ interface DrillsProps {
 
 const ALL_ACTIONS: Action[] = ['hit', 'stand', 'double', 'split', 'surrender'];
 
+// Desktop keyboard input (operator request): number keys map onto the
+// action-zone layout so a keypress grades identically to tapping the
+// matching ActionBar button / ZonePad zone. Shared by FlashcardsView and
+// DeviationQuizView's action items -- the insurance quiz variant uses its
+// own 1=Take/2=Decline mapping instead (see DeviationQuizView's handler).
+const KEY_TO_ACTION: Record<string, Action> = {
+  '1': 'hit',
+  '2': 'stand',
+  '3': 'double',
+  '4': 'split',
+  '5': 'surrender',
+};
+
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
@@ -301,6 +314,44 @@ function FlashcardsView({
     setFeedback({ correct: event.correct, correctAction });
     scheduleAutoAdvance();
   };
+
+  // Desktop keyboard input (operator request): while an answer is awaited,
+  // number keys 1-5 feed the SAME handler a tap on that action would use --
+  // handleAction in visual mode, handleZoneAnswer in eyes-free mode (so the
+  // eyes-free zone-name echo/audio path is identical to a real zone tap,
+  // and visual-mode grading/audio is identical to an ActionBar click).
+  // Enter/Space advance once feedback (the "Next" state) is showing.
+  // Skipped whenever a native input/select/textarea has focus, so the
+  // category Segmented control / toggles above are unaffected. Depends on
+  // `feedback` (not `card`): a fresh card is always drawn in the same
+  // render that resets feedback to null, so this closure is never stale.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+      if (!feedback) {
+        const action = KEY_TO_ACTION[e.key];
+        if (!action) return;
+        e.preventDefault();
+        if (eyesFree) {
+          handleZoneAnswer(action);
+        } else {
+          handleAction(action);
+        }
+        return;
+      }
+
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        next();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedback, eyesFree]);
 
   return (
     <div className="drill-screen">
@@ -648,6 +699,58 @@ function DeviationQuizView({
     setFeedback({ correct: event.correct });
     scheduleAutoAdvance();
   };
+
+  // Desktop keyboard input (operator request): while an answer is awaited,
+  // number keys feed the SAME handler a tap would use -- handleAnswer in
+  // visual mode, handleZoneAnswer in eyes-free mode -- so grading/stats/
+  // audio can't drift from a real tap. Action items use the same 1-5
+  // hit/stand/double/split/surrender mapping as FlashcardsView; insurance
+  // items (item.cards === null) use 1=Take/2=Decline instead, matching the
+  // visual Take/Decline Insurance buttons and the ZonePad's insurance
+  // variant. Enter/Space advance once feedback (the "Next" state) is
+  // showing. Skipped whenever a native input/select/textarea has focus, so
+  // the Index <select> and toggles above are unaffected.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+      if (!feedback) {
+        const isInsurance = item.cards === null;
+        if (isInsurance) {
+          if (e.key === '1') {
+            e.preventDefault();
+            if (eyesFree) handleZoneAnswer('take');
+            else handleAnswer('take-insurance');
+          } else if (e.key === '2') {
+            e.preventDefault();
+            if (eyesFree) handleZoneAnswer('decline');
+            else handleAnswer('decline-insurance');
+          }
+          return;
+        }
+
+        const action = KEY_TO_ACTION[e.key];
+        if (!action) return;
+        e.preventDefault();
+        if (eyesFree) {
+          handleZoneAnswer(action);
+        } else {
+          handleAnswer(action);
+        }
+        return;
+      }
+
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        next();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedback, eyesFree, item]);
 
   const indexList = activeProfile.rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
 

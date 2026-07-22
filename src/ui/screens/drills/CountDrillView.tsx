@@ -402,6 +402,31 @@ export function CountDrillView({
     }
   };
 
+  // Desktop keyboard input (operator request): Space/Enter/ArrowRight
+  // advance the manual-tap flash exactly like tapping the drill area --
+  // calls the SAME advanceManual used by the onClick below, so pacing/
+  // narration behavior can't drift between a tap and a keypress. Gated to
+  // the exact phase/mode the manual-tap-zone itself renders under (see the
+  // JSX below), so it's a no-op outside that state and never fights the
+  // timed/auto-advance effects above. NumPad's own keydown listener (see
+  // src/ui/components/NumPad.tsx) covers the running-count entry phase.
+  useEffect(() => {
+    if (phase !== 'flashing' || !settings.drill.countManual || timedChallenge) return undefined;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        advanceManual();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, settings.drill.countManual, timedChallenge, shownIndex, groups.length]);
+
   const start = () => {
     runIdRef.current += 1;
     // Cancel any trailing speech from the previous round (e.g. a verdict or
