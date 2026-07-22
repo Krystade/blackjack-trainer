@@ -1,0 +1,17 @@
+{
+  "voices": [
+    {
+      "id": "af_bella",
+      "label": "Bella"
+    },
+    {
+      "id": "bf_emma",
+      "label": "Emma"
+    },
+    {
+      "id": "bm_george",
+      "label": "George"
+    }
+  ],
+  "default": "af_bella"
+}
