@@ -1,14 +1,33 @@
 /**
- * Pre-rendered clip playback over the Web Audio API. Absence-guarded like
- * speech.ts: unit tests run in node, where `window`/`fetch`/`AudioContext`
- * may be undefined or faked, and every export here must behave as a silent
- * no-op (never throw) so the app always has a safe live-TTS fallback.
+ * Pre-rendered clip playback for ANY drill utterance, via a longest-first
+ * segmentation cascade over per-voice manifests plus native HTMLAudioElement
+ * playback. Absence-guarded like speech.ts: unit tests run in node, where
+ * `window`/`fetch`/`Audio` may be undefined or faked, and every export here
+ * must behave as a silent no-op (never throw) so the app always has a safe
+ * live-TTS fallback.
  *
- * Manifest shape (`public/clips/manifest.json`):
- *   { "voice": "en-US-AriaNeural", "clips": { "<exact spoken string>": "<file>.mp3" } }
- * The keys are the EXACT strings `src/audio/narrate.ts` emits. Matching is
- * exact-string only (see `manifestLookup`) -- there is no fuzzy/substring
- * matching, so "queen" never matches the "queen of hearts" entry.
+ * Asset contract (generated separately -- this module never writes to
+ * `public/clips/`, and gracefully degrades to live TTS whether the layout is
+ * missing entirely or just a voice's manifest is):
+ *
+ *   public/clips/index.json               = { "voices": [{ "id", "label" }, ...], "default": "<voiceId>" }
+ *   public/clips/<voiceId>/manifest.json   = { "clips": { "<exact spoken string>": "<slug>.mp3" } }
+ *   public/clips/<voiceId>/<slug>.mp3
+ *
+ * Segmentation (`segmentForClips`) is a pure, longest-first cascade:
+ *   a. Whole-string exact match against the manifest.
+ *   b. Else split into SENTENCES on ". " / "? " / "! ", each sentence
+ *      KEEPING its terminal punctuation (the final sentence keeps its
+ *      trailing punctuation too, since there's nothing after it to strip).
+ *   c. Any sentence that misses AND has no terminal sentence punctuation of
+ *      its own (a list-like segment, e.g. a comma-joined card list) is split
+ *      on ", " -- DROPPING the comma -- into items, each matched exactly.
+ *   d. Anything still unmatched -> `null`. The caller then live-TTSes the
+ *      WHOLE utterance; clip and live audio are never mixed within one
+ *      utterance.
+ * There is no fuzzy/substring matching anywhere in this cascade --
+ * `manifestLookup` is exact-key-only, so "queen" never matches a "queen of
+ * hearts" entry.
  */
 
 function hasWindow(): boolean {
@@ -16,17 +35,18 @@ function hasWindow(): boolean {
 }
 
 /* ------------------------------------------------------------------------ */
-/* Clip-enable flag                                                         */
+/* Clip-enable flag + current clip voice                                    */
 /* ------------------------------------------------------------------------ */
 /*
  * Wiring note: speech.ts must stay free of React/store imports (see its own
- * header comment), so the enable flag can't flow in as a prop/import of
- * AudioSettings. Instead this is a plain module-level flag: `useAudio.ts`
- * (via a useEffect keyed on `audio.useClips`) and the Settings screen's
- * toggle both call `setClipsEnabled()` whenever the setting changes, and
- * speech.ts calls `isClipsEnabled()` to read it at speak-time. Neither
- * clips.ts nor speech.ts imports React or the store -- only useAudio.ts and
- * Settings.tsx (which already depend on both) do the wiring.
+ * header comment), so both the enable flag and the selected voice can't flow
+ * in as props/imports of AudioSettings. Instead these are plain module-level
+ * flags: `useAudio.ts` (via effects keyed on `audio.useClips`/
+ * `audio.clipVoice`) and the Settings screen's controls both call
+ * `setClipsEnabled`/`setClipVoice` whenever the setting changes, and
+ * speech.ts calls `isClipsEnabled()`/reads the current voice at speak-time.
+ * Neither clips.ts nor speech.ts imports React or the store -- only
+ * useAudio.ts and Settings.tsx (which already depend on both) do the wiring.
  */
 
 // Default false: matches DEFAULT_AUDIO.useClips (store/types.ts) so a cold
@@ -42,48 +62,174 @@ export function isClipsEnabled(): boolean {
   return clipsEnabled;
 }
 
+// '' means "use whatever public/clips/index.json names as its default" --
+// matches DEFAULT_AUDIO.clipVoice (store/types.ts).
+let currentClipVoice = '';
+
+/** Sets the voice used to resolve manifests going forward. Pass `''` to fall
+ * back to `index.json`'s `default`. Never throws/validates against the
+ * index -- an unknown id simply resolves no manifest, degrading to live TTS. */
+export function setClipVoice(voiceId: string): void {
+  currentClipVoice = voiceId;
+}
+
 /* ------------------------------------------------------------------------ */
-/* Manifest loading                                                         */
+/* Manifest lookup -- pure, no I/O                                          */
 /* ------------------------------------------------------------------------ */
 
 export type ClipManifest = Record<string, string>;
 
-let manifestPromise: Promise<ClipManifest> | null = null;
-let manifestCache: ClipManifest = {};
+export interface ClipVoiceInfo {
+  id: string;
+  label: string;
+}
+
+export interface ClipIndex {
+  voices: ClipVoiceInfo[];
+  default: string;
+}
 
 /**
  * Pure exact-key lookup -- no fuzzy/substring matching. Uses
  * `hasOwnProperty` (rather than a bare `manifest[text]`) so an inherited
  * `Object.prototype` member (e.g. `"constructor"`, `"toString"`) can never
- * be mistaken for a real clip entry. Exported standalone so the matching
- * logic is unit-testable without a browser or fetch.
+ * be mistaken for a real clip entry.
  */
 export function manifestLookup(manifest: ClipManifest, text: string): string | null {
   if (!Object.prototype.hasOwnProperty.call(manifest, text)) return null;
   return manifest[text];
 }
 
+/** True when `sentence` ends with sentence-terminal punctuation of its own --
+ * i.e. it is NOT a bare list-like segment eligible for comma-splitting. */
+function hasTerminalPunctuation(sentence: string): boolean {
+  return /[.?!]$/.test(sentence);
+}
+
+/**
+ * Splits `text` into sentences on ". " / "? " / "! ", keeping the terminal
+ * punctuation on the PRECEDING piece (a positive lookbehind split) so the
+ * final sentence also keeps its own trailing punctuation -- there being
+ * nothing after it to strip. Text with no sentence punctuation at all
+ * (e.g. a bare comma list) comes back as a single one-element array.
+ */
+function splitIntoSentences(text: string): string[] {
+  return text.split(/(?<=[.?!]) /);
+}
+
+/**
+ * Matches a single sentence-shaped segment: an exact hit first, else --
+ * only when the segment carries no terminal sentence punctuation of its own
+ * (step c, list-like segments) -- a ", "-split (comma DROPPED) where every
+ * item must match exactly. `null` if nothing matches.
+ */
+function matchSentence(sentence: string, manifest: ClipManifest): string[] | null {
+  const direct = manifestLookup(manifest, sentence);
+  if (direct !== null) return [direct];
+
+  if (hasTerminalPunctuation(sentence)) return null;
+
+  const items = sentence.split(', ');
+  if (items.length <= 1) return null;
+
+  const files: string[] = [];
+  for (const item of items) {
+    const file = manifestLookup(manifest, item);
+    if (file === null) return null;
+    files.push(file);
+  }
+  return files;
+}
+
+/**
+ * Longest-first cascade (see the module header) turning `text` into an
+ * ordered list of clip filenames, or `null` if any piece is unmatched. Pure
+ * and fully unit-testable -- no I/O, no browser APIs.
+ */
+export function segmentForClips(text: string, manifest: ClipManifest): string[] | null {
+  const whole = manifestLookup(manifest, text);
+  if (whole !== null) return [whole];
+
+  const files: string[] = [];
+  for (const sentence of splitIntoSentences(text)) {
+    const matched = matchSentence(sentence, manifest);
+    if (matched === null) return null;
+    files.push(...matched);
+  }
+  return files;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Index + per-voice manifest loading                                       */
+/* ------------------------------------------------------------------------ */
+
 function clipsBaseUrl(): string {
   const base = (import.meta.env.BASE_URL as string | undefined) ?? '/';
   return base;
 }
 
-/**
- * Fetches and memoizes `public/clips/manifest.json`. Built from
- * `import.meta.env.BASE_URL` -- never a leading-slash absolute path, since
- * the app is served from a non-root GitHub Pages base path. Resolves to
- * `{}` on ANY failure (fetch unsupported, network error, non-OK response,
- * malformed JSON), so callers silently fall back to live TTS rather than
- * throwing or rejecting.
- */
-export function loadClipManifest(): Promise<ClipManifest> {
-  if (manifestPromise) return manifestPromise;
+let indexPromise: Promise<ClipIndex | null> | null = null;
+let indexCache: ClipIndex | null = null;
 
-  manifestPromise = (async () => {
+function parseClipIndex(json: unknown): ClipIndex | null {
+  const obj = json as { voices?: unknown; default?: unknown } | null;
+  if (!obj || !Array.isArray(obj.voices) || typeof obj.default !== 'string') return null;
+
+  const voices: ClipVoiceInfo[] = [];
+  for (const v of obj.voices) {
+    const id = (v as { id?: unknown } | null)?.id;
+    const label = (v as { label?: unknown } | null)?.label;
+    if (typeof id === 'string' && typeof label === 'string') {
+      voices.push({ id, label });
+    }
+  }
+  return { voices, default: obj.default };
+}
+
+/**
+ * Fetches and memoizes `public/clips/index.json` (the voice list + default).
+ * Built from `import.meta.env.BASE_URL` -- never a leading-slash absolute
+ * path. Resolves to `null` on ANY failure (fetch unsupported, network error,
+ * non-OK response, malformed JSON), so callers silently fall back to live
+ * TTS rather than throwing or rejecting.
+ */
+export function loadClipIndex(): Promise<ClipIndex | null> {
+  if (indexPromise) return indexPromise;
+
+  indexPromise = (async () => {
+    if (typeof fetch !== 'function') return null;
+    try {
+      const res = await fetch(`${clipsBaseUrl()}clips/index.json`);
+      if (!res.ok) return null;
+      const json = (await res.json()) as unknown;
+      return parseClipIndex(json);
+    } catch {
+      return null;
+    }
+  })();
+
+  void indexPromise.then((idx) => {
+    indexCache = idx;
+  });
+
+  return indexPromise;
+}
+
+const voiceManifestPromises = new Map<string, Promise<ClipManifest>>();
+const voiceManifestCache = new Map<string, ClipManifest>();
+
+/**
+ * Fetches and memoizes (per `voiceId`) `public/clips/<voiceId>/manifest.json`.
+ * Resolves to `{}` on ANY failure, same rationale as `loadClipIndex`.
+ */
+export function loadVoiceManifest(voiceId: string): Promise<ClipManifest> {
+  const existing = voiceManifestPromises.get(voiceId);
+  if (existing) return existing;
+
+  const pending = (async () => {
     if (typeof fetch !== 'function') return {};
     try {
-      const url = `${clipsBaseUrl()}clips/manifest.json`;
-      const res = await fetch(url);
+      const res = await fetch(`${clipsBaseUrl()}clips/${voiceId}/manifest.json`);
       if (!res.ok) return {};
       const json = (await res.json()) as unknown;
       const clips = (json as { clips?: unknown } | null)?.clips;
@@ -96,196 +242,197 @@ export function loadClipManifest(): Promise<ClipManifest> {
     }
   })();
 
-  // Keep a synchronous-readable cache for hasClip() once this settles.
-  void manifestPromise.then((m) => {
-    manifestCache = m;
+  voiceManifestPromises.set(voiceId, pending);
+  void pending.then((m) => {
+    voiceManifestCache.set(voiceId, m);
   });
-
-  return manifestPromise;
-}
-
-/**
- * Exact-key check against whatever manifest is CURRENTLY loaded. Synchronous
- * by design (callers like speech.ts need a sync gate before deciding to
- * `await playClipAsync`), so it reads `manifestCache` rather than awaiting
- * the fetch. If no load has started yet, this kicks one off in the
- * background (fire-and-forget) so a later call sees fresh data -- meaning
- * the very first lookup after enabling clips may miss once and fall back to
- * live TTS, then clips take over from then on.
- */
-export function hasClip(text: string): boolean {
-  if (!manifestPromise) {
-    void loadClipManifest();
-  }
-  return manifestLookup(manifestCache, text) !== null;
-}
-
-/* ------------------------------------------------------------------------ */
-/* Web Audio playback                                                       */
-/* ------------------------------------------------------------------------ */
-
-type AudioContextCtor = new () => AudioContext;
-
-let sharedAudioContext: AudioContext | null = null;
-
-function getAudioContextCtor(): AudioContextCtor | undefined {
-  if (!hasWindow()) return undefined;
-  const w = window as unknown as {
-    AudioContext?: AudioContextCtor;
-    webkitAudioContext?: AudioContextCtor;
-  };
-  return w.AudioContext ?? w.webkitAudioContext;
-}
-
-function getSharedAudioContext(): AudioContext | null {
-  if (sharedAudioContext) return sharedAudioContext;
-  const Ctor = getAudioContextCtor();
-  if (!Ctor) return null;
-  try {
-    sharedAudioContext = new Ctor();
-    return sharedAudioContext;
-  } catch {
-    return null;
-  }
-}
-
-// Decoded-buffer cache, memoized per filename so repeated plays of the same
-// clip never re-fetch/re-decode.
-const bufferCache = new Map<string, AudioBuffer>();
-const bufferLoadPromises = new Map<string, Promise<AudioBuffer | null>>();
-
-async function loadClipBuffer(ctx: AudioContext, file: string): Promise<AudioBuffer | null> {
-  const cached = bufferCache.get(file);
-  if (cached) return cached;
-
-  let pending = bufferLoadPromises.get(file);
-  if (!pending) {
-    pending = (async () => {
-      try {
-        if (typeof fetch !== 'function') return null;
-        const res = await fetch(`${clipsBaseUrl()}clips/${file}`);
-        if (!res.ok) return null;
-        const arrayBuffer = await res.arrayBuffer();
-        const buffer = await ctx.decodeAudioData(arrayBuffer);
-        bufferCache.set(file, buffer);
-        return buffer;
-      } catch {
-        return null;
-      } finally {
-        bufferLoadPromises.delete(file);
-      }
-    })();
-    bufferLoadPromises.set(file, pending);
-  }
   return pending;
 }
 
-type PendingClip = {
-  // Kept alive so the node can't be GC'd mid-play (same rationale as
-  // speech.ts's PendingSpeech.utterance).
-  source: AudioBufferSourceNode;
-  resolve: (played: boolean) => void;
-  watchdog: ReturnType<typeof setTimeout>;
-};
-
-/**
- * Clips currently awaiting `onended`/watchdog. A stop/interrupt settles
- * these as `true` (superseded/stopped deliberately, not a decode/playback
- * failure) so a caller never wrongly falls back to live TTS over a clip
- * that was intentionally cut off.
- */
-let pendingClips: PendingClip[] = [];
-
-function settlePendingClip(pending: PendingClip, played: boolean): void {
-  const idx = pendingClips.indexOf(pending);
-  if (idx !== -1) pendingClips.splice(idx, 1);
-  clearTimeout(pending.watchdog);
-  pending.resolve(played);
+async function resolveDefaultVoiceId(): Promise<string | null> {
+  const idx = await loadClipIndex();
+  return idx?.default || null;
 }
 
-function stopAllPendingClips(): void {
-  const pending = pendingClips;
-  pendingClips = [];
-  for (const p of pending) {
-    clearTimeout(p.watchdog);
-    try {
-      p.source.stop();
-    } catch {
-      // Already stopped/ended -- never throw.
-    }
-    p.resolve(true);
+/** Sync (cache-only) resolution of "which voice manifest applies right now",
+ * kicking off background loads as needed. Used by `hasClips`, which must
+ * answer synchronously. */
+function resolveVoiceIdSync(): string | null {
+  if (currentClipVoice) return currentClipVoice;
+  if (!indexPromise) {
+    void loadClipIndex();
+    return null;
   }
+  return indexCache?.default || null;
 }
 
-/** Stops any currently-playing clip(s) and settles their pending promises. */
-export function stopClips(): void {
-  stopAllPendingClips();
-}
-
-const CLIP_WATCHDOG_FLOOR_MS = 500;
-const CLIP_WATCHDOG_MARGIN_MS = 1000;
-
-/** Generous, buffer-duration-scaled bound so a lost `onended` can never hang
- * the caller forever (mirrors speech.ts's speakAsync watchdog). */
-function estimateClipWatchdogMs(durationSec: number): number {
-  return Math.max(CLIP_WATCHDOG_FLOOR_MS, durationSec * 1000 + CLIP_WATCHDOG_MARGIN_MS);
+function currentManifestSync(): ClipManifest | null {
+  const voiceId = resolveVoiceIdSync();
+  if (!voiceId) return null;
+  const cached = voiceManifestCache.get(voiceId);
+  if (cached) return cached;
+  void loadVoiceManifest(voiceId);
+  return null;
 }
 
 /**
- * Plays the pre-rendered clip for `text` via Web Audio buffer scheduling.
- * Resolves `true` once playback ends (`onended`, an explicit stop/interrupt,
- * or the watchdog firing after a lost `onended`), `false` if there is no
- * clip for `text` or anything fails (decode error, no AudioContext, etc) --
- * the caller should then fall back to live TTS. Never throws/rejects.
+ * Exact-cascade check (via `segmentForClips`) against whatever manifest is
+ * CURRENTLY loaded for the current voice. Synchronous by design (callers
+ * like speech.ts need a sync gate before deciding to `await
+ * playClipsAsync`), so it reads caches rather than awaiting fetches. If
+ * nothing has loaded yet, this kicks a load off in the background
+ * (fire-and-forget) so a later call sees fresh data -- meaning the very
+ * first lookup after enabling clips may miss once and fall back to live
+ * TTS, then clips take over from then on.
  */
-export function playClipAsync(text: string, opts?: { interrupt?: boolean }): Promise<boolean> {
+export function hasClips(text: string): boolean {
+  const manifest = currentManifestSync();
+  if (manifest === null) return false;
+  return segmentForClips(text, manifest) !== null;
+}
+
+/* ------------------------------------------------------------------------ */
+/* HTMLAudioElement playback                                                */
+/* ------------------------------------------------------------------------ */
+
+function getAudioCtor(): (new () => HTMLAudioElement) | undefined {
+  if (!hasWindow()) return undefined;
+  const w = window as unknown as { Audio?: new () => HTMLAudioElement };
+  return w.Audio;
+}
+
+interface ActiveChain {
+  audio: HTMLAudioElement | null;
+  watchdog: ReturnType<typeof setTimeout> | null;
+  settled: boolean;
+  settle: (played: boolean) => void;
+}
+
+/** The clip chain currently playing (or awaiting its next-clip watchdog), if
+ * any -- at most one at a time, matching speech.ts's single-utterance model. */
+let activeChain: ActiveChain | null = null;
+
+function clearActiveWatchdog(chain: ActiveChain): void {
+  if (chain.watchdog !== null) clearTimeout(chain.watchdog);
+  chain.watchdog = null;
+}
+
+function settleChain(chain: ActiveChain, played: boolean): void {
+  if (chain.settled) return;
+  chain.settled = true;
+  clearActiveWatchdog(chain);
+  if (activeChain === chain) activeChain = null;
+  chain.settle(played);
+}
+
+function stopActiveChain(): void {
+  const chain = activeChain;
+  if (!chain) return;
+  try {
+    chain.audio?.pause();
+  } catch {
+    // never throw
+  }
+  // Settled by the interrupt/stop, not a failure -- a caller must never
+  // wrongly fall back to live TTS over a clip that was cut off on purpose.
+  settleChain(chain, true);
+}
+
+/** Stops any currently-playing clip chain and settles its pending promise. */
+export function stopClips(): void {
+  stopActiveChain();
+}
+
+// Generous per-clip ceiling so a lost `ended` event can never hang the
+// caller forever (mirrors speech.ts's speakAsync watchdog). Re-armed on
+// every clip in the chain rather than sized to a single total duration,
+// since duration isn't known ahead of playback for an HTMLAudioElement.
+const CLIP_WATCHDOG_PER_CLIP_MS = 8000;
+
+/**
+ * Plays the ordered clip list for `text` (via `segmentForClips` against the
+ * current voice's manifest) as a chain of HTMLAudioElements, one per
+ * segment, advancing on `ended`. `preservesPitch` is forced `true` and
+ * `playbackRate` set from `opts.rate` (default 1) on every clip, so fast
+ * playback stays natural instead of chipmunking. A small natural gap between
+ * clips is fine -- there is no cross-fade/gapless stitching.
+ *
+ * Resolves `true` once the whole chain finishes (`ended` on every clip, an
+ * explicit stop/interrupt, or a watchdog firing after a lost `ended`),
+ * `false` if there's no clip-voice resolvable, no cascade match for `text`,
+ * or playback fails -- the caller should then fall back to live TTS. Never
+ * throws/rejects.
+ */
+export function playClipsAsync(
+  text: string,
+  opts?: { interrupt?: boolean; rate?: number },
+): Promise<boolean> {
   return (async () => {
     try {
-      const manifest = manifestPromise ? await manifestPromise : await loadClipManifest();
-      const file = manifestLookup(manifest, text);
-      if (!file) return false;
-
-      const ctx = getSharedAudioContext();
-      if (!ctx) return false;
-
       if (opts?.interrupt) {
-        stopAllPendingClips();
+        stopActiveChain();
       }
 
-      // Some browsers create AudioContext in a 'suspended' state until a
-      // user gesture resumes it; resume() is a no-op if already running.
-      if (ctx.state === 'suspended') {
-        try {
-          await ctx.resume();
-        } catch {
-          // Ignore -- proceed to try playback regardless.
-        }
-      }
+      const voiceId = currentClipVoice || (await resolveDefaultVoiceId());
+      if (!voiceId) return false;
 
-      const buffer = await loadClipBuffer(ctx, file);
-      if (!buffer) return false;
+      const manifest = await loadVoiceManifest(voiceId);
+      const files = segmentForClips(text, manifest);
+      if (!files || files.length === 0) return false;
+
+      const AudioCtor = getAudioCtor();
+      if (!AudioCtor) return false;
+
+      const rate = opts?.rate ?? 1;
+      const base = clipsBaseUrl();
+      const fileList: string[] = files;
 
       return await new Promise<boolean>((resolve) => {
-        try {
-          const source = ctx.createBufferSource();
-          source.buffer = buffer;
-          source.connect(ctx.destination);
+        const chain: ActiveChain = {
+          audio: null,
+          watchdog: null,
+          settled: false,
+          settle: resolve,
+        };
+        activeChain = chain;
 
-          const pending: PendingClip = {
-            source,
-            resolve,
-            watchdog: setTimeout(
-              () => settlePendingClip(pending, true),
-              estimateClipWatchdogMs(buffer.duration),
-            ),
-          };
-          pendingClips.push(pending);
+        let index = 0;
 
-          source.onended = () => settlePendingClip(pending, true);
-          source.start(0);
-        } catch {
-          resolve(false);
-        }
+        const armWatchdog = () => {
+          clearActiveWatchdog(chain);
+          chain.watchdog = setTimeout(() => settleChain(chain, true), CLIP_WATCHDOG_PER_CLIP_MS);
+        };
+
+        const playNext = () => {
+          if (chain.settled) return;
+          if (index >= fileList.length) {
+            settleChain(chain, true);
+            return;
+          }
+          try {
+            const audio = new AudioCtor();
+            audio.src = `${base}clips/${voiceId}/${fileList[index]}`;
+            audio.preservesPitch = true;
+            audio.playbackRate = rate;
+            chain.audio = audio;
+            armWatchdog();
+
+            audio.onended = () => {
+              index += 1;
+              playNext();
+            };
+            audio.onerror = () => settleChain(chain, false);
+
+            const playResult = audio.play();
+            if (playResult && typeof playResult.catch === 'function') {
+              playResult.catch(() => settleChain(chain, false));
+            }
+          } catch {
+            settleChain(chain, false);
+          }
+        };
+
+        playNext();
       });
     } catch {
       return false;
@@ -301,13 +448,13 @@ export function playClipAsync(text: string, opts?: { interrupt?: boolean }): Pro
  * called from app code (mirrors persist.ts's `_setStorage` convention). */
 export function _resetClipsForTest(): void {
   clipsEnabled = false;
-  manifestPromise = null;
-  manifestCache = {};
-  sharedAudioContext = null;
-  bufferCache.clear();
-  bufferLoadPromises.clear();
-  for (const p of pendingClips) {
-    clearTimeout(p.watchdog);
+  currentClipVoice = '';
+  indexPromise = null;
+  indexCache = null;
+  voiceManifestPromises.clear();
+  voiceManifestCache.clear();
+  if (activeChain) {
+    clearActiveWatchdog(activeChain);
   }
-  pendingClips = [];
+  activeChain = null;
 }

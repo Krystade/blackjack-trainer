@@ -3,7 +3,7 @@ import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
 import { saveSettings } from '../../store/persist';
 import { chime, isSpeechSupported, listVoices, speak } from '../../audio';
-import { setClipsEnabled } from '../../audio/clips';
+import { setClipsEnabled, setClipVoice, loadClipIndex, type ClipVoiceInfo } from '../../audio/clips';
 
 interface SettingsProps {
   settings: SettingsData;
@@ -136,6 +136,14 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
     updateAudio({ useClips: v });
   };
 
+  // Same wiring rationale as updateUseClips above -- Settings renders
+  // without calling useAudio(), so it drives clips.ts's module-level clip
+  // voice directly on change too.
+  const updateClipVoice = (v: string) => {
+    setClipVoice(v);
+    updateAudio({ clipVoice: v });
+  };
+
   const speechSupported = isSpeechSupported();
   const [voices, setVoices] = useState(() => listVoices());
 
@@ -150,6 +158,20 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
       synth.onvoiceschanged = null;
     };
   }, [speechSupported]);
+
+  // public/clips/index.json's voice list, for the clip-voice picker below.
+  // Absent/failed assets resolve `null` (see clips.ts) and the picker simply
+  // doesn't render -- no error state to show.
+  const [clipVoices, setClipVoices] = useState<ClipVoiceInfo[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void loadClipIndex().then((idx) => {
+      if (!cancelled && idx) setClipVoices(idx.voices);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const audioDisabled = !settings.audio.enabled;
 
@@ -250,15 +272,34 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           onChange={(v) => updateAudio({ enabled: v })}
         />
         <Toggle
-          label="Use recorded voice (higher quality, one fixed voice)"
+          label="Use recorded voice (higher quality)"
           checked={settings.audio.useClips}
           onChange={updateUseClips}
           disabled={audioDisabled}
         />
         <div className="settings-row settings-note-row">
-          Recorded clips use a single neural voice for the exact card/count/prompt phrases; the
-          speech rate and voice picker below apply only when live speech is used as a fallback.
+          Recorded clips cover any card/count/prompt phrase by concatenating per-sentence and
+          per-item clips; anything not covered falls back to live speech. Speech rate applies to
+          both -- clip playback speeds up without changing pitch.
         </div>
+        {settings.audio.useClips && clipVoices.length > 0 && (
+          <div className="settings-row">
+            <span className="settings-label">Clip voice</span>
+            <select
+              className="settings-select"
+              value={settings.audio.clipVoice}
+              onChange={(e) => updateClipVoice(e.target.value)}
+              disabled={audioDisabled}
+            >
+              <option value="">Automatic (default)</option>
+              {clipVoices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="settings-row">
           <span className="settings-label">Verbosity</span>
           <Segmented
@@ -288,8 +329,8 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         <Stepper
           label="Speech rate"
           value={settings.audio.rate}
-          min={0.7}
-          max={1.5}
+          min={0.5}
+          max={3.0}
           step={0.1}
           format={(v) => `${v.toFixed(1)}×`}
           onChange={(v) => updateAudio({ rate: v })}
@@ -334,7 +375,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         <Stepper
           label="Answer pause"
           value={settings.audio.answerPauseMs}
-          min={2000}
+          min={0}
           max={5000}
           step={500}
           format={(v) => `${(v / 1000).toFixed(1)} s`}

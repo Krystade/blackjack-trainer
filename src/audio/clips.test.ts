@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   manifestLookup,
-  loadClipManifest,
-  hasClip,
-  playClipAsync,
+  segmentForClips,
+  loadClipIndex,
+  loadVoiceManifest,
+  hasClips,
+  playClipsAsync,
   stopClips,
   setClipsEnabled,
   isClipsEnabled,
+  setClipVoice,
   _resetClipsForTest,
   type ClipManifest,
 } from './clips';
@@ -53,7 +56,84 @@ describe('manifestLookup — pure exact-key matching', () => {
 });
 
 /* ------------------------------------------------------------------------ */
-/* setClipsEnabled / isClipsEnabled                                         */
+/* segmentForClips — pure longest-first cascade, no browser needed          */
+/* ------------------------------------------------------------------------ */
+
+describe('segmentForClips — longest-first cascade', () => {
+  it('takes the whole-string exact match fast path', () => {
+    const manifest: ClipManifest = {
+      'You have fourteen. Dealer shows ten.': 'combo.mp3',
+      'You have fourteen.': 'a.mp3',
+      'Dealer shows ten.': 'b.mp3',
+    };
+    expect(segmentForClips('You have fourteen. Dealer shows ten.', manifest)).toEqual(['combo.mp3']);
+  });
+
+  it('splits two sentences, each keeping its own terminal punctuation', () => {
+    const manifest: ClipManifest = {
+      'You have fourteen.': 'fourteen.mp3',
+      'Dealer shows ten.': 'dealer-ten.mp3',
+    };
+    expect(segmentForClips('You have fourteen. Dealer shows ten.', manifest)).toEqual([
+      'fourteen.mp3',
+      'dealer-ten.mp3',
+    ]);
+  });
+
+  it('comma-splits a bare list into items, dropping the comma', () => {
+    const manifest: ClipManifest = {
+      queen: 'queen.mp3',
+      four: 'four.mp3',
+      king: 'king.mp3',
+    };
+    expect(segmentForClips('queen, four, king', manifest)).toEqual(['queen.mp3', 'four.mp3', 'king.mp3']);
+  });
+
+  it('handles a mixed run of independent sentences', () => {
+    const manifest: ClipManifest = {
+      'Running count plus eight.': 'rc8.mp3',
+      'Two decks remaining.': 'decks2.mp3',
+    };
+    expect(segmentForClips('Running count plus eight. Two decks remaining.', manifest)).toEqual([
+      'rc8.mp3',
+      'decks2.mp3',
+    ]);
+  });
+
+  it('returns null when any single piece is missing', () => {
+    const manifest: ClipManifest = { queen: 'queen.mp3', four: 'four.mp3' }; // no 'king'
+    expect(segmentForClips('queen, four, king', manifest)).toBeNull();
+  });
+
+  it('returns null against an empty manifest', () => {
+    expect(segmentForClips('queen', {})).toBeNull();
+  });
+
+  it('does not fuzzy-match a bare rank against a longer manifest entry', () => {
+    const manifest: ClipManifest = { 'queen of hearts': 'qoh.mp3' };
+    expect(segmentForClips('queen', manifest)).toBeNull();
+  });
+
+  it('never falls back to a substring/fuzzy match anywhere in the cascade', () => {
+    const manifest: ClipManifest = { 'Dealer shows ten.': 'dealer-ten.mp3' };
+    expect(segmentForClips('Dealer shows te', manifest)).toBeNull();
+  });
+
+  it('does not comma-split a sentence that carries its own terminal punctuation', () => {
+    // "Wrong, try again." ends in '.', so it must be treated as ONE sentence
+    // (matched whole or not at all), never split on the internal comma.
+    const manifest: ClipManifest = { wrong: 'wrong.mp3', 'try again': 'try-again.mp3' };
+    expect(segmentForClips('Wrong, try again.', manifest)).toBeNull();
+  });
+
+  it('matches a full sentence that itself contains a comma when present verbatim', () => {
+    const manifest: ClipManifest = { 'Wrong, try again.': 'wrong-try-again.mp3' };
+    expect(segmentForClips('Wrong, try again.', manifest)).toEqual(['wrong-try-again.mp3']);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* setClipsEnabled / isClipsEnabled / setClipVoice                         */
 /* ------------------------------------------------------------------------ */
 
 describe('setClipsEnabled / isClipsEnabled', () => {
@@ -72,14 +152,14 @@ describe('setClipsEnabled / isClipsEnabled', () => {
 });
 
 /* ------------------------------------------------------------------------ */
-/* loadClipManifest — memoized fetch, absence/failure guarded               */
+/* loadClipIndex — memoized fetch, absence/failure guarded                  */
 /* ------------------------------------------------------------------------ */
 
 function mockFetchOnce(impl: (url: string) => Promise<{ ok: boolean; json?: () => Promise<unknown> }>): void {
   (globalThis as any).fetch = vi.fn(impl);
 }
 
-describe('loadClipManifest', () => {
+describe('loadClipIndex', () => {
   const realFetch = (globalThis as any).fetch;
 
   beforeEach(() => _resetClipsForTest());
@@ -88,77 +168,84 @@ describe('loadClipManifest', () => {
     (globalThis as any).fetch = realFetch;
   });
 
-  it('resolves the clips object from a successful fetch', async () => {
+  it('resolves the voices + default from a successful fetch', async () => {
     mockFetchOnce(async () => ({
       ok: true,
-      json: async () => ({ voice: 'en-US-AriaNeural', clips: { queen: 'queen.mp3' } }),
+      json: async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
     }));
-    const manifest = await loadClipManifest();
-    expect(manifest).toEqual({ queen: 'queen.mp3' });
+    const idx = await loadClipIndex();
+    expect(idx).toEqual({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' });
   });
 
   it('builds the URL from import.meta.env.BASE_URL, never a leading-slash absolute path', async () => {
     let seenUrl = '';
     mockFetchOnce(async (url) => {
       seenUrl = url;
-      return { ok: true, json: async () => ({ clips: {} }) };
+      return { ok: true, json: async () => ({ voices: [], default: 'aria' }) };
     });
-    await loadClipManifest();
-    expect(seenUrl).toBe(`${import.meta.env.BASE_URL}clips/manifest.json`);
+    await loadClipIndex();
+    expect(seenUrl).toBe(`${import.meta.env.BASE_URL}clips/index.json`);
     expect(seenUrl.startsWith('//')).toBe(false);
   });
 
   it('memoizes: a second call does not re-fetch', async () => {
-    const fetchSpy = vi.fn(async () => ({ ok: true, json: async () => ({ clips: { queen: 'queen.mp3' } }) }));
+    const fetchSpy = vi.fn(async () => ({ ok: true, json: async () => ({ voices: [], default: 'aria' }) }));
     (globalThis as any).fetch = fetchSpy;
-    await loadClipManifest();
-    await loadClipManifest();
+    await loadClipIndex();
+    await loadClipIndex();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('resolves to {} when fetch is not a function (no fetch support)', async () => {
+  it('resolves to null when fetch is not a function (no fetch support)', async () => {
     delete (globalThis as any).fetch;
-    const manifest = await loadClipManifest();
-    expect(manifest).toEqual({});
+    expect(await loadClipIndex()).toBeNull();
   });
 
-  it('resolves to {} when fetch rejects', async () => {
+  it('resolves to null when fetch rejects', async () => {
     (globalThis as any).fetch = vi.fn(async () => {
       throw new Error('network down');
     });
-    const manifest = await loadClipManifest();
-    expect(manifest).toEqual({});
+    expect(await loadClipIndex()).toBeNull();
   });
 
-  it('resolves to {} when the response is not ok', async () => {
+  it('resolves to null when the response is not ok', async () => {
     mockFetchOnce(async () => ({ ok: false }));
-    const manifest = await loadClipManifest();
-    expect(manifest).toEqual({});
+    expect(await loadClipIndex()).toBeNull();
   });
 
-  it('resolves to {} when the JSON body has no clips object', async () => {
-    mockFetchOnce(async () => ({ ok: true, json: async () => ({ voice: 'en-US-AriaNeural' }) }));
-    const manifest = await loadClipManifest();
-    expect(manifest).toEqual({});
+  it('resolves to null when the JSON body is missing voices/default', async () => {
+    mockFetchOnce(async () => ({ ok: true, json: async () => ({ voices: [] }) }));
+    expect(await loadClipIndex()).toBeNull();
   });
 
-  it('resolves to {} when json() itself throws (malformed body)', async () => {
+  it('resolves to null when json() itself throws (malformed body)', async () => {
     mockFetchOnce(async () => ({
       ok: true,
       json: async () => {
         throw new SyntaxError('bad json');
       },
     }));
-    const manifest = await loadClipManifest();
-    expect(manifest).toEqual({});
+    expect(await loadClipIndex()).toBeNull();
+  });
+
+  it('drops malformed voice entries but keeps well-formed ones', async () => {
+    mockFetchOnce(async () => ({
+      ok: true,
+      json: async () => ({
+        voices: [{ id: 'aria', label: 'Aria' }, { id: 'bad' }, 'not-an-object'],
+        default: 'aria',
+      }),
+    }));
+    const idx = await loadClipIndex();
+    expect(idx).toEqual({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' });
   });
 });
 
 /* ------------------------------------------------------------------------ */
-/* hasClip — sync exact-key check against whatever's currently loaded       */
+/* loadVoiceManifest — memoized PER VOICE, absence/failure guarded          */
 /* ------------------------------------------------------------------------ */
 
-describe('hasClip', () => {
+describe('loadVoiceManifest', () => {
   const realFetch = (globalThis as any).fetch;
 
   beforeEach(() => _resetClipsForTest());
@@ -167,32 +254,134 @@ describe('hasClip', () => {
     (globalThis as any).fetch = realFetch;
   });
 
-  it('returns false before any manifest has loaded', () => {
+  it('resolves the clips object for the given voice from a successful fetch', async () => {
+    mockFetchOnce(async () => ({ ok: true, json: async () => ({ clips: { queen: 'queen.mp3' } }) }));
+    const manifest = await loadVoiceManifest('aria');
+    expect(manifest).toEqual({ queen: 'queen.mp3' });
+  });
+
+  it('builds the URL from BASE_URL + voiceId, never a leading-slash absolute path', async () => {
+    let seenUrl = '';
+    mockFetchOnce(async (url) => {
+      seenUrl = url;
+      return { ok: true, json: async () => ({ clips: {} }) };
+    });
+    await loadVoiceManifest('aria');
+    expect(seenUrl).toBe(`${import.meta.env.BASE_URL}clips/aria/manifest.json`);
+    expect(seenUrl.startsWith('//')).toBe(false);
+  });
+
+  it('memoizes per voice: a second call for the same voice does not re-fetch', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, json: async () => ({ clips: { queen: 'queen.mp3' } }) }));
+    (globalThis as any).fetch = fetchSpy;
+    await loadVoiceManifest('aria');
+    await loadVoiceManifest('aria');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('fetches independently for a different voice id', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, json: async () => ({ clips: { queen: 'queen.mp3' } }) }));
+    (globalThis as any).fetch = fetchSpy;
+    await loadVoiceManifest('aria');
+    await loadVoiceManifest('guy');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('resolves to {} when fetch is not a function (no fetch support)', async () => {
     delete (globalThis as any).fetch;
-    expect(hasClip('queen')).toBe(false);
+    expect(await loadVoiceManifest('aria')).toEqual({});
   });
 
-  it('returns true for a key present in the loaded manifest, false for a miss', async () => {
-    mockFetchOnce(async () => ({ ok: true, json: async () => ({ clips: { queen: 'queen.mp3' } }) }));
-    await loadClipManifest();
-    expect(hasClip('queen')).toBe(true);
-    expect(hasClip('king')).toBe(false);
+  it('resolves to {} when fetch rejects', async () => {
+    (globalThis as any).fetch = vi.fn(async () => {
+      throw new Error('network down');
+    });
+    expect(await loadVoiceManifest('aria')).toEqual({});
   });
 
-  it('kicks off loading in the background so a later call sees fresh data', async () => {
-    mockFetchOnce(async () => ({ ok: true, json: async () => ({ clips: { queen: 'queen.mp3' } }) }));
-    expect(hasClip('queen')).toBe(false); // not loaded yet, but load has been kicked off
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(hasClip('queen')).toBe(true);
+  it('resolves to {} when the response is not ok (e.g. this voice has no assets)', async () => {
+    mockFetchOnce(async () => ({ ok: false }));
+    expect(await loadVoiceManifest('aria')).toEqual({});
+  });
+
+  it('resolves to {} when the JSON body has no clips object', async () => {
+    mockFetchOnce(async () => ({ ok: true, json: async () => ({ voice: 'aria' }) }));
+    expect(await loadVoiceManifest('aria')).toEqual({});
   });
 });
 
 /* ------------------------------------------------------------------------ */
-/* playClipAsync / stopClips — absence guards (no window/AudioContext)      */
+/* hasClips — sync cascade check against whatever's currently loaded        */
 /* ------------------------------------------------------------------------ */
 
-describe('playClipAsync / stopClips — absence guards in node (no window)', () => {
+describe('hasClips', () => {
+  const realFetch = (globalThis as any).fetch;
+
+  beforeEach(() => _resetClipsForTest());
+  afterEach(() => {
+    _resetClipsForTest();
+    (globalThis as any).fetch = realFetch;
+  });
+
+  it('returns false before anything has loaded', () => {
+    delete (globalThis as any).fetch;
+    expect(hasClips('queen')).toBe(false);
+  });
+
+  it('resolves via the index default once index + voice manifest have loaded', async () => {
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url.includes('index.json')) {
+        return { ok: true, json: async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }) };
+      }
+      return { ok: true, json: async () => ({ clips: { queen: 'queen.mp3' } }) };
+    });
+    await loadClipIndex();
+    await loadVoiceManifest('aria');
+    expect(hasClips('queen')).toBe(true);
+    expect(hasClips('king')).toBe(false);
+  });
+
+  it('resolves via an explicitly set clip voice, bypassing the index default', async () => {
+    (globalThis as any).fetch = vi.fn(async () => ({ ok: true, json: async () => ({ clips: { queen: 'queen.mp3' } }) }));
+    setClipVoice('guy');
+    await loadVoiceManifest('guy');
+    expect(hasClips('queen')).toBe(true);
+  });
+
+  it('kicks off loading in the background so a later call sees fresh data', async () => {
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url.includes('index.json')) {
+        return { ok: true, json: async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }) };
+      }
+      return { ok: true, json: async () => ({ clips: { queen: 'queen.mp3' } }) };
+    });
+    expect(hasClips('queen')).toBe(false); // nothing loaded yet, but a load has been kicked off
+    // Flush enough microtask ticks for index.json, then aria/manifest.json,
+    // to both resolve and populate their sync caches.
+    for (let i = 0; i < 6; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      hasClips('queen'); // each call may kick off the next hop
+    }
+    expect(hasClips('queen')).toBe(true);
+  });
+
+  it('reflects segmentForClips, not just a raw exact hit (e.g. a comma list)', async () => {
+    (globalThis as any).fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ clips: { queen: 'queen.mp3', four: 'four.mp3', king: 'king.mp3' } }),
+    }));
+    setClipVoice('aria');
+    await loadVoiceManifest('aria');
+    expect(hasClips('queen, four, king')).toBe(true);
+    expect(hasClips('queen, four, jack')).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* playClipsAsync / stopClips — absence guards (no window)                  */
+/* ------------------------------------------------------------------------ */
+
+describe('playClipsAsync / stopClips — absence guards in node (no window)', () => {
   const realFetch = (globalThis as any).fetch;
 
   beforeEach(() => _resetClipsForTest());
@@ -202,14 +391,19 @@ describe('playClipAsync / stopClips — absence guards in node (no window)', () 
     delete (globalThis as any).window;
   });
 
-  it('playClipAsync resolves false (never throws) with no clip and no window', async () => {
+  it('resolves false (never throws) with no clip index and no window', async () => {
     delete (globalThis as any).fetch;
-    await expect(playClipAsync('anything')).resolves.toBe(false);
+    await expect(playClipsAsync('anything')).resolves.toBe(false);
   });
 
-  it('playClipAsync resolves false when a clip exists in the manifest but no AudioContext is available', async () => {
-    mockFetchOnce(async () => ({ ok: true, json: async () => ({ clips: { queen: 'queen.mp3' } }) }));
-    await expect(playClipAsync('queen')).resolves.toBe(false);
+  it('resolves false when a clip exists in the manifest but no Audio ctor is available', async () => {
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url.includes('index.json')) {
+        return { ok: true, json: async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }) };
+      }
+      return { ok: true, json: async () => ({ clips: { queen: 'queen.mp3' } }) };
+    });
+    await expect(playClipsAsync('queen')).resolves.toBe(false);
   });
 
   it('stopClips() never throws when nothing is playing', () => {
@@ -218,45 +412,37 @@ describe('playClipAsync / stopClips — absence guards in node (no window)', () 
 });
 
 /* ------------------------------------------------------------------------ */
-/* playClipAsync — full happy path with a fake Web Audio environment        */
+/* playClipsAsync — full happy path with a fake HTMLAudioElement env        */
 /* ------------------------------------------------------------------------ */
 
-class FakeAudioBufferSourceNode {
-  buffer: unknown = null;
+class FakeAudioElement {
+  src = '';
+  preservesPitch = false;
+  playbackRate = 1;
   onended: (() => void) | null = null;
-  started = false;
-  stopped = false;
-  connect(): void {}
-  start(): void {
-    this.started = true;
-  }
-  stop(): void {
-    this.stopped = true;
-  }
-}
-
-class FakeAudioContext {
-  state: 'running' | 'suspended' = 'running';
-  destination = {};
-  sources: FakeAudioBufferSourceNode[] = [];
-  createBufferSource(): FakeAudioBufferSourceNode {
-    const node = new FakeAudioBufferSourceNode();
-    this.sources.push(node);
-    return node;
-  }
-  decodeAudioData(): Promise<{ duration: number }> {
-    return Promise.resolve({ duration: 0.5 });
-  }
-  resume(): Promise<void> {
-    this.state = 'running';
+  onerror: (() => void) | null = null;
+  played = false;
+  paused = true;
+  play(): Promise<void> {
+    this.played = true;
+    this.paused = false;
     return Promise.resolve();
   }
+  pause(): void {
+    this.paused = true;
+  }
 }
 
-function installFakeWebAudioEnv(): FakeAudioContext {
-  const ctx = new FakeAudioContext();
-  (globalThis as any).window = { AudioContext: function () { return ctx; } };
-  return ctx;
+function installFakeAudioEnv(): { instances: FakeAudioElement[] } {
+  const instances: FakeAudioElement[] = [];
+  class TrackedFakeAudioElement extends FakeAudioElement {
+    constructor() {
+      super();
+      instances.push(this);
+    }
+  }
+  (globalThis as any).window = { Audio: TrackedFakeAudioElement };
+  return { instances };
 }
 
 function mockFetchRouter(routes: Record<string, () => Promise<unknown>>): void {
@@ -264,15 +450,11 @@ function mockFetchRouter(routes: Record<string, () => Promise<unknown>>): void {
     const key = Object.keys(routes).find((r) => url.includes(r));
     if (!key) return { ok: false };
     const body = await routes[key]();
-    return {
-      ok: true,
-      json: async () => body,
-      arrayBuffer: async () => new ArrayBuffer(8),
-    };
+    return { ok: true, json: async () => body };
   });
 }
 
-describe('playClipAsync — happy path (fake Web Audio + fetch)', () => {
+describe('playClipsAsync — happy path (fake Audio + fetch)', () => {
   const realFetch = (globalThis as any).fetch;
 
   beforeEach(() => _resetClipsForTest());
@@ -282,109 +464,158 @@ describe('playClipAsync — happy path (fake Web Audio + fetch)', () => {
     delete (globalThis as any).window;
   });
 
-  it('resolves true once the source fires onended', async () => {
-    installFakeWebAudioEnv();
+  it('plays a single-clip cascade and resolves true once it fires ended', async () => {
+    const env = installFakeAudioEnv();
     mockFetchRouter({
+      'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
       'manifest.json': async () => ({ clips: { queen: 'queen.mp3' } }),
-      'queen.mp3': async () => ({}),
     });
 
-    const playPromise = playClipAsync('queen');
-    // Let the manifest + buffer fetch/decode microtasks resolve, then fire onended.
-    await vi.waitFor(() => {
-      expect((globalThis as any).fetch).toHaveBeenCalled();
-    });
-    // Allow the internal awaits (manifest fetch, arrayBuffer, decodeAudioData) to settle.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    const playPromise = playClipsAsync('queen');
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
 
-    const ctx = (globalThis as any).window.AudioContext();
-    const source = ctx.sources[ctx.sources.length - 1];
-    expect(source.started).toBe(true);
-    source.onended?.();
+    const clip = env.instances[0];
+    expect(clip.src).toBe(`${import.meta.env.BASE_URL}clips/aria/queen.mp3`);
+    expect(clip.preservesPitch).toBe(true);
+    expect(clip.playbackRate).toBe(1);
+    expect(clip.played).toBe(true);
+
+    clip.onended?.();
+    await expect(playPromise).resolves.toBe(true);
+  });
+
+  it('applies opts.rate as playbackRate on every clip in the chain', async () => {
+    const env = installFakeAudioEnv();
+    mockFetchRouter({
+      'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
+      'manifest.json': async () => ({ clips: { 'You have fourteen.': 'a.mp3', 'Dealer shows ten.': 'b.mp3' } }),
+    });
+
+    const playPromise = playClipsAsync('You have fourteen. Dealer shows ten.', { rate: 3 });
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    expect(env.instances[0].playbackRate).toBe(3);
+    env.instances[0].onended?.();
+
+    await vi.waitFor(() => expect(env.instances.length).toBe(2));
+    expect(env.instances[1].playbackRate).toBe(3);
+    expect(env.instances[1].src).toBe(`${import.meta.env.BASE_URL}clips/aria/b.mp3`);
+    env.instances[1].onended?.();
 
     await expect(playPromise).resolves.toBe(true);
   });
 
-  it('resolves false for text with no manifest match, without touching AudioContext', async () => {
-    installFakeWebAudioEnv();
-    mockFetchRouter({ 'manifest.json': async () => ({ clips: { queen: 'queen.mp3' } }) });
-    await expect(playClipAsync('nonexistent phrase')).resolves.toBe(false);
-  });
-
-  it("interrupt stops a currently-playing clip's source", async () => {
-    const ctx = installFakeWebAudioEnv();
+  it('chains multiple clips in sequence, playing the next only after the previous ends', async () => {
+    const env = installFakeAudioEnv();
     mockFetchRouter({
-      'manifest.json': async () => ({ clips: { queen: 'queen.mp3', king: 'king.mp3' } }),
-      'queen.mp3': async () => ({}),
-      'king.mp3': async () => ({}),
+      'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
+      'manifest.json': async () => ({ clips: { queen: 'queen.mp3', four: 'four.mp3', king: 'king.mp3' } }),
     });
 
-    const first = playClipAsync('queen');
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const firstSource = ctx.sources[ctx.sources.length - 1];
-    expect(firstSource.started).toBe(true);
+    const playPromise = playClipsAsync('queen, four, king');
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    expect(env.instances[0].src).toContain('queen.mp3');
 
-    const second = playClipAsync('king', { interrupt: true });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    env.instances[0].onended?.();
+    await vi.waitFor(() => expect(env.instances.length).toBe(2));
+    expect(env.instances[1].src).toContain('four.mp3');
 
-    expect(firstSource.stopped).toBe(true);
+    env.instances[1].onended?.();
+    await vi.waitFor(() => expect(env.instances.length).toBe(3));
+    expect(env.instances[2].src).toContain('king.mp3');
+
+    env.instances[2].onended?.();
+    await expect(playPromise).resolves.toBe(true);
+  });
+
+  it('resolves false for text with no cascade match, without touching Audio', async () => {
+    installFakeAudioEnv();
+    mockFetchRouter({
+      'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
+      'manifest.json': async () => ({ clips: { queen: 'queen.mp3' } }),
+    });
+    await expect(playClipsAsync('nonexistent phrase')).resolves.toBe(false);
+  });
+
+  it("interrupt stops a currently-playing chain and settles it true", async () => {
+    const env = installFakeAudioEnv();
+    mockFetchRouter({
+      'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
+      'manifest.json': async () => ({ clips: { queen: 'queen.mp3', king: 'king.mp3' } }),
+    });
+
+    const first = playClipsAsync('queen');
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    expect(env.instances[0].paused).toBe(false);
+
+    const second = playClipsAsync('king', { interrupt: true });
     await expect(first).resolves.toBe(true); // settled by the interrupt, not a failure
+    expect(env.instances[0].paused).toBe(true);
 
-    const secondSource = ctx.sources[ctx.sources.length - 1];
-    secondSource.onended?.();
+    await vi.waitFor(() => expect(env.instances.length).toBe(2));
+    env.instances[1].onended?.();
     await expect(second).resolves.toBe(true);
   });
 
-  it('stopClips() stops the active source and settles its promise', async () => {
-    const ctx = installFakeWebAudioEnv();
+  it('stopClips() stops the active chain and settles its promise true', async () => {
+    const env = installFakeAudioEnv();
     mockFetchRouter({
+      'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
       'manifest.json': async () => ({ clips: { queen: 'queen.mp3' } }),
-      'queen.mp3': async () => ({}),
     });
 
-    const playing = playClipAsync('queen');
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const source = ctx.sources[ctx.sources.length - 1];
-    expect(source.started).toBe(true);
+    const playing = playClipsAsync('queen');
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
 
     stopClips();
-    expect(source.stopped).toBe(true);
+    expect(env.instances[0].paused).toBe(true);
     await expect(playing).resolves.toBe(true);
   });
 
-  it('a lost onended is settled by the watchdog rather than hanging forever', async () => {
+  it('a lost ended event is settled by the watchdog rather than hanging forever', async () => {
     vi.useFakeTimers();
     try {
-      installFakeWebAudioEnv();
+      installFakeAudioEnv();
       mockFetchRouter({
+        'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
         'manifest.json': async () => ({ clips: { queen: 'queen.mp3' } }),
-        'queen.mp3': async () => ({}),
       });
 
-      const playPromise = playClipAsync('queen');
+      const playPromise = playClipsAsync('queen');
       let settled = false;
       void playPromise.then(() => {
         settled = true;
       });
 
-      // Flush the microtask chain (manifest fetch -> buffer fetch -> decode)
+      // Flush the microtask chain (index fetch -> manifest fetch -> play())
       // without touching timers, so the watchdog timer actually gets armed.
       await vi.advanceTimersByTimeAsync(0);
       await vi.advanceTimersByTimeAsync(0);
       expect(settled).toBe(false);
 
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(20_000);
       expect(settled).toBe(true);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('uses an explicitly set clip voice over the index default', async () => {
+    const env = installFakeAudioEnv();
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url.includes('index.json')) {
+        return { ok: true, json: async () => ({ voices: [{ id: 'aria', label: 'Aria' }, { id: 'guy', label: 'Guy' }], default: 'aria' }) };
+      }
+      if (url.includes('/guy/')) {
+        return { ok: true, json: async () => ({ clips: { queen: 'guy-queen.mp3' } }) };
+      }
+      return { ok: true, json: async () => ({ clips: { queen: 'aria-queen.mp3' } }) };
+    });
+
+    setClipVoice('guy');
+    const playPromise = playClipsAsync('queen');
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    expect(env.instances[0].src).toBe(`${import.meta.env.BASE_URL}clips/guy/guy-queen.mp3`);
+    env.instances[0].onended?.();
+    await expect(playPromise).resolves.toBe(true);
   });
 });

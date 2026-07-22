@@ -35,10 +35,10 @@ export interface Settings {
 export interface AudioSettings {
   enabled: boolean;
   verbosity: 'off' | 'results' | 'full';
-  rate: number; // 0.7 .. 1.5
+  rate: number; // 0.5 .. 3.0 -- applied to both live speechSynthesis and clip playbackRate
   voiceURI: string; // 'default' or a SpeechSynthesisVoice.voiceURI
   chimes: boolean;
-  answerPauseMs: number; // 2000..5000, the eyes-free self-check pause
+  answerPauseMs: number; // 0..5000, the eyes-free self-check pause
   // Eyes-free ZonePad presentation: false (default) shows the five labeled
   // zones so the layout can be learned before it's used blind. true dims
   // the pad back to transparent-but-tappable, for genuine hands-on-wheel /
@@ -51,12 +51,19 @@ export interface AudioSettings {
   // Hi-Lo counter actually subvocalises (all four share the same -1 tag).
   cardDetail: 'full' | 'rank' | 'face';
   // Play pre-rendered neural-voice clips (public/clips/) instead of live
-  // speechSynthesis whenever an exact clip exists for the spoken text (see
-  // src/audio/clips.ts), falling back to live TTS otherwise. Defaults to
-  // false: the operator has not yet validated clip audio on their phone, so
-  // the shipped default keeps today's live-TTS-only behavior unchanged; a
-  // Settings toggle opts in.
+  // speechSynthesis whenever a segmentForClips cascade match exists for the
+  // spoken text -- a whole-utterance clip, or several per-sentence/per-item
+  // clips concatenated in sequence (see src/audio/clips.ts) -- falling back
+  // to live TTS otherwise. Defaults to false: the operator has not yet
+  // validated clip audio on their phone, so the shipped default keeps
+  // today's live-TTS-only behavior unchanged; a Settings toggle opts in.
   useClips: boolean;
+  // Which recorded voice's clips to use (an id from public/clips/index.json's
+  // "voices" list). '' (default) means "use index.json's own `default`" --
+  // most installs ship exactly one voice, so this is normally left alone;
+  // the Settings clip-voice picker only renders once loadClipIndex() (see
+  // src/audio/clips.ts) actually resolves more than a bare default.
+  clipVoice: string;
 }
 
 export const DEFAULT_AUDIO: AudioSettings = {
@@ -69,6 +76,7 @@ export const DEFAULT_AUDIO: AudioSettings = {
   dimZones: false,
   cardDetail: 'rank',
   useClips: false,
+  clipVoice: '',
 };
 
 export const DEFAULT_SETTINGS: Settings = {

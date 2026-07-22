@@ -14,13 +14,16 @@
  * never touched under e2e, keeping all existing e2e specs unaffected.
  *
  * Pre-rendered clip playback (`./clips.ts`) is layered on top: when clips
- * are enabled (`setClipsEnabled`, driven by `AudioSettings.useClips`) and an
- * exact clip exists for the text, speak()/speakAsync() play it instead of
- * calling live TTS, falling back to the live path below if the clip lookup
- * misses or playback fails. clips.ts has no store/React dependency, so this
- * import doesn't change speech.ts's dependency profile.
+ * are enabled (`setClipsEnabled`, driven by `AudioSettings.useClips`) and a
+ * `segmentForClips` cascade match exists for the text (possibly several
+ * concatenated clips), speak()/speakAsync() play it instead of calling live
+ * TTS, falling back to the live path below if the cascade misses or
+ * playback fails. `opts.rate` flows through to clip playback too (clips.ts
+ * forces `preservesPitch = true` so fast clip playback stays natural).
+ * clips.ts has no store/React dependency, so this import doesn't change
+ * speech.ts's dependency profile.
  */
-import { hasClip, isClipsEnabled, playClipAsync } from './clips';
+import { hasClips, isClipsEnabled, playClipsAsync } from './clips';
 
 declare global {
   interface Window {
@@ -209,9 +212,9 @@ function speakLive(text: string, opts?: { interrupt?: boolean; rate?: number; vo
 /**
  * Speaks `text`. In e2e mode, records the raw text into `window.__speechLog`
  * instead of calling the real API (clips are fully bypassed in this mode).
- * Otherwise, when clips are enabled and an exact clip exists for `text`,
- * plays the pre-rendered clip and falls back to live `speechSynthesis` only
- * if that fails. Never throws.
+ * Otherwise, when clips are enabled and a cascade match exists for `text`,
+ * plays the concatenated clip(s) and falls back to live `speechSynthesis`
+ * only if that fails. Never throws.
  */
 export function speak(
   text: string,
@@ -222,8 +225,8 @@ export function speak(
     return;
   }
 
-  if (isClipsEnabled() && hasClip(text)) {
-    void playClipAsync(text, { interrupt: opts?.interrupt }).then((played) => {
+  if (isClipsEnabled() && hasClips(text)) {
+    void playClipsAsync(text, { interrupt: opts?.interrupt, rate: opts?.rate }).then((played: boolean) => {
       if (!played) speakLive(text, opts);
     });
     return;
@@ -335,8 +338,8 @@ function speakAsyncLive(
  *
  * In e2e mode, records the raw text into `window.__speechLog` instead of
  * calling any real API (clips are fully bypassed in this mode). Otherwise,
- * when clips are enabled and an exact clip exists for `text`, awaits
- * `playClipAsync` and falls back to live `speechSynthesis` only if that
+ * when clips are enabled and a cascade match exists for `text`, awaits
+ * `playClipsAsync` and falls back to live `speechSynthesis` only if that
  * resolves `false`.
  *
  * Never rejects — a failed/lost utterance (or clip) resolves the promise so
@@ -355,8 +358,8 @@ export function speakAsync(
     return Promise.resolve();
   }
 
-  if (isClipsEnabled() && hasClip(text)) {
-    return playClipAsync(text, { interrupt: opts?.interrupt }).then((played) => {
+  if (isClipsEnabled() && hasClips(text)) {
+    return playClipsAsync(text, { interrupt: opts?.interrupt, rate: opts?.rate }).then((played: boolean) => {
       if (played) return;
       return speakAsyncLive(text, opts);
     });
