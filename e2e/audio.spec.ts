@@ -59,7 +59,12 @@ interface DealOpts {
  * (still async -- see waitForSpeechLogMatch) without disabling it.
  */
 async function dealToDecision(page: Page, opts: DealOpts): Promise<boolean> {
-  await withSettings(page, { dealSpeedMs: 0, audio: { enabled: true, verbosity: opts.verbosity } });
+  // cardDetail defaults to 'rank' now (bare "queen"); these table specs match
+  // on CARD_RE's full "<rank> of <suit>" format, so pin 'full' explicitly.
+  await withSettings(page, {
+    dealSpeedMs: 0,
+    audio: { enabled: true, verbosity: opts.verbosity, cardDetail: 'full' },
+  });
   await withProfile(page, {
     name: 'Audio E2E Profile',
     seats: opts.seats ?? { playerHands: 1, bots: 0, botMistakePct: 0, playerPosition: 0 },
@@ -176,7 +181,7 @@ test('training correction: a wrong play speaks "Wrong. ..." and chimes bad', asy
 test('eyes-free count drill: cards, then the count prompt, then the spoken answer', async ({ page }) => {
   test.setTimeout(30_000);
   await withSettings(page, {
-    audio: { enabled: true, verbosity: 'results', answerPauseMs: 2000 },
+    audio: { enabled: true, verbosity: 'results', answerPauseMs: 2000, cardDetail: 'full' },
     drill: { countLengthCards: 13, countGroup: 1, countManual: true },
   });
   await withProfile(page, { name: 'Audio Count Drill Profile' });
@@ -211,6 +216,102 @@ test('eyes-free count drill: cards, then the count prompt, then the spoken answe
 
   const answerIndex = log.findIndex((l, i) => i > promptIndex && /^The count is .+\.$/.test(l));
   expect(answerIndex, `expected the spoken count answer in ${JSON.stringify(log)}`).toBeGreaterThanOrEqual(0);
+});
+
+/* ---------------------------------------------------------------- */
+/* Case 4b: Eyes-free AUTO (timed) count drill -- regression coverage */
+/* for eb6edb6 (speech-driven pacing). The existing Case 4 above only */
+/* exercises the MANUAL (tap-to-advance) path; nothing previously    */
+/* drove the timed/auto loop in CountDrillView.tsx, so the bug it     */
+/* fixed (a fixed setTimeout advancing the UI while speech silently   */
+/* queued and fell behind) had zero regression protection.            */
+/* ---------------------------------------------------------------- */
+
+test('eyes-free AUTO count drill: every card is spoken before the count prompt, and the loop completes', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'results', answerPauseMs: 500, cardDetail: 'full' },
+    drill: { countManual: false, countLengthCards: 5, countGroup: 1, countIntervalMs: 0 },
+  });
+  await withProfile(page, { name: 'Audio Count Drill Auto Profile' });
+
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+
+  await page.getByLabel('Eyes-free audio').check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  // No taps here -- unlike Case 4 (manual), the auto loop must advance on
+  // its own, driven by `await speakAsync(...)` inside CountDrillView's
+  // effect. If the fix regressed (fixed timer racing ahead of speech, or
+  // the loop stalling on a bad await), this would time out.
+  await expect(page.locator('.drill-result')).toBeVisible({ timeout: 15_000 });
+
+  const log = await readSpeechLog(page);
+  const promptIndex = log.indexOf("What's the running count?");
+  expect(promptIndex, `expected the count prompt in ${JSON.stringify(log)}`).toBeGreaterThanOrEqual(0);
+
+  // Every one of the 5 dealt cards (countGroup:1 -> one speakAsync call per
+  // card) must have been spoken, and -- the exact property the fix
+  // guarantees -- ALL of them before the count prompt, never after/queued
+  // behind it.
+  const cardIndices = log.reduce<number[]>((acc, l, i) => {
+    if (CARD_RE.test(l)) acc.push(i);
+    return acc;
+  }, []);
+  expect(cardIndices.length, `expected 5 card entries in ${JSON.stringify(log)}`).toBe(5);
+  for (const i of cardIndices) {
+    expect(i, `expected card entry at ${i} to precede the prompt at ${promptIndex} in ${JSON.stringify(log)}`).toBeLessThan(
+      promptIndex,
+    );
+  }
+
+  const answerIndex = log.findIndex((l, i) => i > promptIndex && /^The count is .+\.$/.test(l));
+  expect(answerIndex, `expected the spoken count answer in ${JSON.stringify(log)}`).toBeGreaterThanOrEqual(0);
+});
+
+/* ---------------------------------------------------------------- */
+/* Case 4c: cardDetail 'face' actually changes count-drill narration */
+/* -- locks in the Job 1 wiring (narrateCards call sites now pass    */
+/* settings.audio.cardDetail) so the setting can't silently go dead   */
+/* again. A single 52-card, group-1 deck always contains exactly 16   */
+/* ten-value cards (4 each of 10/J/Q/K -- see engine/cards.ts RANKS), */
+/* so this is deterministic, not probabilistic.                       */
+/* ---------------------------------------------------------------- */
+
+test("cardDetail 'face': ten-value cards are spoken as \"ten\", never king/queen/jack", async ({ page }) => {
+  test.setTimeout(30_000);
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'results', cardDetail: 'face', answerPauseMs: 300 },
+    drill: { countManual: false, countLengthCards: 52, countGroup: 1, countIntervalMs: 0 },
+  });
+  await withProfile(page, { name: 'Audio Card Detail Face Profile' });
+
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+
+  await page.getByLabel('Eyes-free audio').check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  await expect(page.locator('.drill-result')).toBeVisible({ timeout: 15_000 });
+
+  const log = await readSpeechLog(page);
+
+  // 'face' detail never speaks "of <suit>" or the bare rank word for a
+  // ten-value card -- no king/queen/jack should ever appear.
+  expect(
+    log.some((l) => /\b(king|queen|jack)\b/i.test(l)),
+    `expected no king/queen/jack entries with cardDetail 'face', got ${JSON.stringify(log)}`,
+  ).toBe(false);
+
+  // Positive check: a single 52-card deck has exactly 16 ten-value cards
+  // (4x 10, 4x J, 4x Q, 4x K), all collapsed to the bare word "ten".
+  const tenCount = log.filter((l) => l === 'ten').length;
+  expect(tenCount, `expected exactly 16 "ten" entries in ${JSON.stringify(log)}`).toBe(16);
 });
 
 /* ---------------------------------------------------------------- */

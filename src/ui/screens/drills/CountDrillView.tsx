@@ -181,7 +181,7 @@ export function CountDrillView({
         const g = groups[i];
         if (!g) return;
 
-        await speakAsync(narrateCards(g), { rate, voiceURI });
+        await speakAsync(narrateCards(g, settings.audio.cardDetail), { rate, voiceURI });
         if (isStale()) return;
 
         if (i >= groups.length - 1) {
@@ -226,13 +226,13 @@ export function CountDrillView({
     const g = groups[shownIndex];
     if (!g) return;
     if (eyesFree) {
-      speak(narrateCards(g), {
+      speak(narrateCards(g, settings.audio.cardDetail), {
         interrupt: true,
         rate: settings.audio.rate,
         voiceURI: settings.audio.voiceURI,
       });
     } else {
-      audio.sayFull(narrateCards(g));
+      audio.sayFull(narrateCards(g, settings.audio.cardDetail));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, shownIndex, countdownMode, groups, eyesFree, settings.drill.countManual]);

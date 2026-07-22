@@ -7,6 +7,7 @@ import type { Profile, Settings } from '../store/types';
 import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
 import type { AudioApi } from '../audio/useAudio';
+import type { CardDetail } from '../audio/narrate';
 import {
   narrateBotAction,
   narrateCard,
@@ -100,13 +101,13 @@ function botLabelFor(game: Game, seatIndex: number): string {
  * the mid-round bot HIT/DOUBLE cards get paced (see the narration-reveal
  * effect below), because those are the only cards the UI itself paces.
  */
-function narrateDeal(game: Game, audio: AudioApi): void {
+function narrateDeal(game: Game, audio: AudioApi, cardDetail: CardDetail): void {
   if (game.shuffledLastRound) {
     audio.say(narrateShuffle());
   }
   for (const seat of game.seats) {
     for (const hand of seat.hands) {
-      if (hand.cards[0]) audio.sayFull(narrateCard(hand.cards[0]));
+      if (hand.cards[0]) audio.sayFull(narrateCard(hand.cards[0], cardDetail));
     }
   }
   if (game.dealerCards[0]) {
@@ -114,7 +115,7 @@ function narrateDeal(game: Game, audio: AudioApi): void {
   }
   for (const seat of game.seats) {
     for (const hand of seat.hands) {
-      if (hand.cards[1]) audio.sayFull(narrateCard(hand.cards[1]));
+      if (hand.cards[1]) audio.sayFull(narrateCard(hand.cards[1], cardDetail));
     }
   }
   if (game.phase === 'insurance') {
@@ -132,12 +133,12 @@ function narrateDeal(game: Game, audio: AudioApi): void {
  * already spoken by `narrateDeal`/the bot-action pacing effect), each
  * hand's result, and the count-check prompt + attention chime if one is due.
  */
-function narrateSettlement(game: Game, audio: AudioApi): void {
+function narrateSettlement(game: Game, audio: AudioApi, cardDetail: CardDetail): void {
   if (game.phase !== 'settled') return;
 
   if (game.holeRevealed) {
     for (const card of game.dealerCards.slice(1)) {
-      audio.sayFull(narrateCard(card));
+      audio.sayFull(narrateCard(card, cardDetail));
     }
   }
 
@@ -192,20 +193,20 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const deal = useCallback(
     (betUnits?: number | number[]) => {
       game.startRound(betUnits);
-      narrateDeal(game, audio);
-      narrateSettlement(game, audio); // instant dealer-blackjack / all-naturals rounds settle inside startRound()
+      narrateDeal(game, audio, settings.audio.cardDetail);
+      narrateSettlement(game, audio, settings.audio.cardDetail); // instant dealer-blackjack / all-naturals rounds settle inside startRound()
       bump();
     },
-    [game, bump, audio],
+    [game, bump, audio, settings.audio.cardDetail],
   );
 
   const insure = useCallback(
     (take: boolean) => {
       game.insuranceDecision(take);
-      narrateSettlement(game, audio);
+      narrateSettlement(game, audio, settings.audio.cardDetail);
       bump();
     },
-    [game, bump, audio],
+    [game, bump, audio, settings.audio.cardDetail],
   );
 
   const act = useCallback(
@@ -224,10 +225,10 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
           setOverlay({ taken: action, expected: wrong.expected, reason: wrong.reason, tc: wrong.tc });
         }
       }
-      narrateSettlement(game, audio);
+      narrateSettlement(game, audio, settings.audio.cardDetail);
       bump();
     },
-    [game, bump, settings.feedbackMode, audio],
+    [game, bump, settings.feedbackMode, audio, settings.audio.cardDetail],
   );
 
   const dismissOverlay = useCallback(() => setOverlay(null), []);
