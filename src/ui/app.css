@@ -1905,3 +1905,67 @@ button {
 .deck-guess-btn:hover {
   background: #1b4c31;
 }
+
+/* ---------- Count Drill: Timed Challenge (speed ramp) ---------- */
+
+.count-timed-badge {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: #d8b969;
+  letter-spacing: 0.02em;
+}
+
+.timed-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0 0.25rem;
+}
+
+.timed-result-time {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #eaf3ec;
+}
+
+.timed-result-spd {
+  font-size: 0.9rem;
+  color: #b7d3c2;
+}
+
+.timed-result-tier {
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.15rem 0.75rem;
+  border-radius: 999px;
+  margin-top: 0.15rem;
+}
+
+.timed-tier-learning {
+  color: #b7d3c2;
+  background: #143b26;
+}
+
+.timed-tier-table-ready {
+  color: #eaf3ec;
+  background: #1b4c31;
+}
+
+.timed-tier-pro {
+  color: #16311f;
+  background: #d8b969;
+}
+
+.timed-tier-expert {
+  color: #16311f;
+  background: #6fcf97;
+}
+
+.timed-result-benchmark {
+  font-size: 0.7rem;
+  color: #7fa08e;
+  text-align: center;
+  max-width: 20rem;
+}

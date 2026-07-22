@@ -4,6 +4,8 @@ import type { Card } from '../../../engine/cards';
 import { hiLoTag } from '../../../engine/count';
 import { makeCountDrill, makeCountdown } from '../../../drills/countDrill';
 import type { CountDrillRound, CountdownRound } from '../../../drills/countDrill';
+import { classifySpeed, formatDuration, rampIntervalMs, secondsPerDeck } from '../../../drills/countSpeed';
+import type { SpeedTier } from '../../../drills/countSpeed';
 import { loadStats, saveStats, saveSettings } from '../../../store/persist';
 import { PlayingCard } from '../../components/PlayingCard';
 import { NumPad } from '../../components/NumPad';
@@ -22,6 +24,16 @@ function randomSeed(): number {
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+// Display-only tier labels for the Timed Challenge result screen -- kept
+// here rather than in drills/countSpeed.ts since that module is pure
+// speed math with zero UI/display concerns.
+const TIER_LABEL: Record<SpeedTier, string> = {
+  learning: 'Learning',
+  'table-ready': 'Table-ready',
+  pro: 'Pro',
+  expert: 'Expert',
+};
 
 // 'selfcheck' is the eyes-free honor-system self-check: prompt spoken, a
 // pause, then the answer spoken -- no keypad, no grading (see Task 7 in the
@@ -63,12 +75,42 @@ export function CountDrillView({
   // teardown -- belt-and-suspenders per the cycle-2 timer-discipline lesson.
   const runIdRef = useRef(0);
 
+  // TIMED CHALLENGE: a per-session toggle (like eyesFree/strictMode above,
+  // not a persisted setting) that forces cards to auto-advance on a RAMPING
+  // interval (drills/countSpeed.ts rampIntervalMs) regardless of the
+  // Manual/Timed Mode segmented control, then grades speed alongside
+  // correctness. Only offered for the main count drill, not Countdown mode
+  // (see the `!countdownMode` guard in the setup JSX below).
+  const [timedChallenge, setTimedChallenge] = useState(false);
+  // Set (via performance.now(), never Date.now() at module scope -- this is
+  // a live UI concern, the pure math in countSpeed.ts never touches the
+  // clock) at the start of a timed run; read once the ramp finishes to
+  // compute elapsed time. null when the current run isn't timed.
+  const timedStartRef = useRef<number | null>(null);
+  // Populated right as the ramp completes (before entering the answer
+  // phase) so it survives into the result screen even though timedChallenge
+  // itself could theoretically change later. Deliberately a flat
+  // {elapsedMs, cardsShown} pair rather than a pre-computed tier/spd --
+  // keeps the derivation (secondsPerDeck/classifySpeed) reusable by a
+  // future telemetry hook without rework.
+  const [timedResult, setTimedResult] = useState<{ elapsedMs: number; cardsShown: number } | null>(
+    null,
+  );
+
   // Eyes-free requires audio to be enabled; if the user disables audio
   // (e.g. via Settings) while it's checked, drop it rather than leave a
   // checked-but-disabled control.
   useEffect(() => {
     if (!settings.audio.enabled) setEyesFree(false);
   }, [settings.audio.enabled]);
+
+  // Timed Challenge is only offered for the main count drill (see the
+  // `!countdownMode` guard around its setup checkbox); drop it if the user
+  // switches to Countdown mode while it's checked, same pattern as the
+  // eyes-free auto-drop above.
+  useEffect(() => {
+    if (countdownMode) setTimedChallenge(false);
+  }, [countdownMode]);
 
   // Decides what comes after the last card: the eyes-free honor-system
   // self-check (spoken-only), or the existing 'answering' phase (NumPad /
@@ -77,7 +119,10 @@ export function CountDrillView({
   // (those calls only ever fire from a later setTimeout/tap, well after this
   // render's declarations have run) rather than a forward reference.
   const enterAnswerPhase = () => {
-    setPhase(eyesFree && !strictMode && !countdownMode ? 'selfcheck' : 'answering');
+    // Timed Challenge always grades (never the honor-system self-check) --
+    // the whole point is a scored count + a scored speed, per the "a fast
+    // wrong answer is still wrong" requirement.
+    setPhase(eyesFree && !strictMode && !countdownMode && !timedChallenge ? 'selfcheck' : 'answering');
   };
 
   // Completes the honor-system self-check: no keypad entry was ever taken,
@@ -110,7 +155,13 @@ export function CountDrillView({
   // Eyes-free auto mode is driven by speech instead (see the effect below),
   // so it's explicitly excluded here rather than sharing this timer.
   useEffect(() => {
-    if (phase !== 'flashing' || groups.length === 0 || settings.drill.countManual || eyesFree) {
+    if (
+      phase !== 'flashing' ||
+      groups.length === 0 ||
+      settings.drill.countManual ||
+      eyesFree ||
+      timedChallenge
+    ) {
       return undefined;
     }
 
@@ -131,6 +182,7 @@ export function CountDrillView({
     eyesFree,
     strictMode,
     countdownMode,
+    timedChallenge,
   ]);
 
   // Eyes-free AUTO (timed) mode: speech drives the pace instead of a fixed
@@ -163,7 +215,8 @@ export function CountDrillView({
       groups.length === 0 ||
       !eyesFree ||
       settings.drill.countManual ||
-      countdownMode
+      countdownMode ||
+      timedChallenge
     ) {
       return undefined;
     }
@@ -206,7 +259,7 @@ export function CountDrillView({
       cancelSpeech();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, groups.length, eyesFree, settings.drill.countManual, countdownMode]);
+  }, [phase, groups.length, eyesFree, settings.drill.countManual, countdownMode, timedChallenge]);
 
   // Narrate each card group as it's shown. Visual mode speaks only at
   // verbosity 'full' (existing Task 5 behavior, UNCHANGED); eyes-free MANUAL
@@ -214,7 +267,11 @@ export function CountDrillView({
   // tap cuts off whatever the previous card's narration was still saying
   // rather than letting it queue and fall behind. Eyes-free AUTO (timed)
   // mode is excluded here -- it narrates inline as part of its own
-  // speech-driven loop above, so this would otherwise double-speak.
+  // speech-driven loop above, so this would otherwise double-speak. Timed
+  // CHALLENGE mode (timedChallenge) is an exception to that exclusion: its
+  // ramp effect never speech-paces (a hard deadline can't wait on speech to
+  // finish), so it falls through to this same interrupt:true narration
+  // instead, same as eyes-free MANUAL.
   // Countdown mode's hidden-tag guess isn't a running-count answer, so it's
   // excluded from eyes-free entirely (see the setup section below). Reacts
   // to the existing phase/shownIndex state rather than owning a timer of its
@@ -222,7 +279,7 @@ export function CountDrillView({
   // stale.
   useEffect(() => {
     if (phase !== 'flashing' || countdownMode) return;
-    if (eyesFree && !settings.drill.countManual) return;
+    if (eyesFree && !settings.drill.countManual && !timedChallenge) return;
     const g = groups[shownIndex];
     if (!g) return;
     if (eyesFree) {
@@ -235,7 +292,50 @@ export function CountDrillView({
       audio.sayFull(narrateCards(g, settings.audio.cardDetail));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, shownIndex, countdownMode, groups, eyesFree, settings.drill.countManual]);
+  }, [phase, shownIndex, countdownMode, groups, eyesFree, settings.drill.countManual, timedChallenge]);
+
+  // TIMED CHALLENGE ramp: cards auto-advance on a geometrically SHRINKING
+  // interval (drills/countSpeed.ts rampIntervalMs), regardless of the
+  // Manual/Timed Mode segmented control or eyes-free's own speech-driven
+  // pacing (both guarded out above via !timedChallenge) -- only one loop
+  // may ever be advancing shownIndex at a time. Right as the last card's
+  // interval elapses, this records elapsedMs (performance.now() minus the
+  // start() timestamp in timedStartRef) into timedResult before entering
+  // the answer phase, so the result screen can report speed alongside
+  // correctness. Cleanup clears the pending timeout on every dep change /
+  // unmount, same discipline as the plain fixed-interval effect above.
+  useEffect(() => {
+    if (phase !== 'flashing' || groups.length === 0 || countdownMode || !timedChallenge) {
+      return undefined;
+    }
+
+    const ms = rampIntervalMs(shownIndex, settings.drill.countTimedStartMs);
+
+    if (shownIndex >= groups.length - 1) {
+      const t = setTimeout(() => {
+        if (timedStartRef.current !== null) {
+          setTimedResult({
+            elapsedMs: performance.now() - timedStartRef.current,
+            cardsShown: settings.drill.countLengthCards,
+          });
+        }
+        enterAnswerPhase();
+      }, ms);
+      return () => clearTimeout(t);
+    }
+
+    const t = setTimeout(() => setShownIndex((i) => i + 1), ms);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    phase,
+    shownIndex,
+    groups.length,
+    settings.drill.countTimedStartMs,
+    settings.drill.countLengthCards,
+    countdownMode,
+    timedChallenge,
+  ]);
 
   // Announce the running-count prompt once the flash sequence completes and
   // the NumPad phase is reached (visual mode: only at verbosity 'full';
@@ -318,6 +418,10 @@ export function CountDrillView({
     }
     setShownIndex(0);
     setHonorCheck(false);
+    setTimedResult(null);
+    // Read the clock here (a live UI concern), never inside drills/countSpeed.ts
+    // -- that module stays pure and deterministic for unit testing.
+    timedStartRef.current = timedChallenge && !countdownMode ? performance.now() : null;
     setPhase('flashing');
     if (eyesFree) {
       void requestWakeLock();
@@ -370,6 +474,18 @@ export function CountDrillView({
       // Strict eyes-free: speak the verdict regardless of verbosity -- it's
       // the primary output channel in this mode, not decoration.
       speak(verdict, { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+      // Timed Challenge: also speak the speed tier, using the same
+      // direct-speak pattern (no new narration helper -- a plain templated
+      // string). Queues naturally after the verdict above (no interrupt),
+      // same as any other sequential eyes-free narration in this file.
+      if (timedResult) {
+        const spd = secondsPerDeck(timedResult.elapsedMs, timedResult.cardsShown);
+        const tier = TIER_LABEL[classifySpeed(spd)];
+        speak(`${formatDuration(timedResult.elapsedMs)}, ${spd.toFixed(1)} seconds per deck. ${tier}.`, {
+          rate: settings.audio.rate,
+          voiceURI: settings.audio.voiceURI,
+        });
+      }
     } else {
       audio.sayFull(verdict);
     }
@@ -456,6 +572,35 @@ export function CountDrillView({
               <label className="count-toggle">
                 <input
                   type="checkbox"
+                  checked={timedChallenge}
+                  onChange={(e) => setTimedChallenge(e.target.checked)}
+                />
+                Timed challenge (speed ramp)
+              </label>
+              {timedChallenge && (
+                <>
+                  <div className="settings-row settings-note-row">
+                    Auto-advances and speeds up each card, regardless of Mode above.
+                  </div>
+                  <Stepper
+                    label="Starting pace"
+                    value={settings.drill.countTimedStartMs}
+                    min={300}
+                    max={2000}
+                    step={100}
+                    format={(v) => `${v}ms`}
+                    onChange={(v) => updateDrill({ countTimedStartMs: v })}
+                  />
+                </>
+              )}
+            </>
+          )}
+
+          {!countdownMode && (
+            <>
+              <label className="count-toggle">
+                <input
+                  type="checkbox"
                   checked={eyesFree}
                   disabled={!settings.audio.enabled}
                   onChange={(e) => setEyesFree(e.target.checked)}
@@ -486,7 +631,7 @@ export function CountDrillView({
         </div>
       )}
 
-      {phase === 'flashing' && settings.drill.countManual && (
+      {phase === 'flashing' && settings.drill.countManual && !timedChallenge && (
         <div className="manual-tap-zone" onClick={advanceManual}>
           <div className="count-flash-cards">
             {currentGroup?.map((c, i) => <PlayingCard key={i} card={c} />)}
@@ -497,13 +642,14 @@ export function CountDrillView({
         </div>
       )}
 
-      {phase === 'flashing' && !settings.drill.countManual && (
+      {phase === 'flashing' && (!settings.drill.countManual || timedChallenge) && (
         <div className="count-flash-area">
           <div className="count-flash-cards">
             {currentGroup?.map((c, i) => <PlayingCard key={i} card={c} />)}
           </div>
           <div className="count-flash-progress">
             {shownIndex + 1} / {groups.length}
+            {timedChallenge && <span className="count-timed-badge">speeding up&hellip;</span>}
           </div>
         </div>
       )}
@@ -558,6 +704,21 @@ export function CountDrillView({
           <div className="result-detail">
             You entered {enteredValue}, actual was {actualValue}
           </div>
+          {timedResult &&
+            (() => {
+              const spd = secondsPerDeck(timedResult.elapsedMs, timedResult.cardsShown);
+              const tier = classifySpeed(spd);
+              return (
+                <div className="timed-result">
+                  <div className="timed-result-time">{formatDuration(timedResult.elapsedMs)}</div>
+                  <div className="timed-result-spd">{spd.toFixed(1)}s / deck</div>
+                  <div className={`timed-result-tier timed-tier-${tier}`}>{TIER_LABEL[tier]}</div>
+                  <div className="timed-result-benchmark">
+                    Benchmarks: &le;30s table-ready &middot; &le;22s pro &middot; &le;12s expert
+                  </div>
+                </div>
+              );
+            })()}
           <button type="button" className="drill-replay-btn" onClick={start}>
             Replay
           </button>

@@ -21,6 +21,12 @@ export interface Settings {
     countLengthCards: number;
     countManual: boolean;
     quizIndex: DeviationId | 'all';
+    // Starting per-card pace (ms) for the count drill's TIMED CHALLENGE
+    // (speed-ramp) mode -- distinct from countIntervalMs, which paces the
+    // ordinary constant-speed auto/eyes-free flash. The ramp decays from
+    // this value toward a fixed floor (see drills/countSpeed.ts
+    // rampIntervalMs/RAMP_FLOOR_MS) as the run progresses.
+    countTimedStartMs: number;
   };
   audio: AudioSettings;
 }
@@ -74,6 +80,7 @@ export const DEFAULT_SETTINGS: Settings = {
     countLengthCards: 52,
     countManual: false,
     quizIndex: 'all',
+    countTimedStartMs: 900,
   },
   audio: { ...DEFAULT_AUDIO },
 };
