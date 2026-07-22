@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { AudioSettings } from '../store/types';
 import { speak, chime } from './speech';
+import { setClipsEnabled } from './clips';
 
 /**
  * Stable narration/chime handle bound to the current `AudioSettings`.
@@ -25,7 +26,16 @@ export interface AudioApi {
  * re-fire loop.
  */
 export function useAudio(audio: AudioSettings): AudioApi {
-  const { enabled, verbosity, rate, voiceURI, chimes } = audio;
+  const { enabled, verbosity, rate, voiceURI, chimes, useClips } = audio;
+
+  // Keep speech.ts's module-level clip flag (clips.ts) in sync with the
+  // current setting. This is the "useAudio side" of the wiring described in
+  // clips.ts/speech.ts -- the Settings screen additionally calls
+  // setClipsEnabled directly on toggle, since it renders without calling
+  // useAudio itself.
+  useEffect(() => {
+    setClipsEnabled(useClips);
+  }, [useClips]);
 
   return useMemo<AudioApi>(() => {
     const say: AudioApi['say'] = (text, opts) => {

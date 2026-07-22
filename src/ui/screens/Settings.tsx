@@ -3,6 +3,7 @@ import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
 import { saveSettings } from '../../store/persist';
 import { chime, isSpeechSupported, listVoices, speak } from '../../audio';
+import { setClipsEnabled } from '../../audio/clips';
 
 interface SettingsProps {
   settings: SettingsData;
@@ -126,6 +127,15 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
     update({ audio: { ...settings.audio, ...patch } });
   };
 
+  // Settings renders without calling useAudio() (unlike Table/Drills/Stats),
+  // so it has to update speech.ts's clip-enable flag directly on toggle
+  // rather than relying on useAudio's effect -- see clips.ts's header
+  // comment for the full wiring picture.
+  const updateUseClips = (v: boolean) => {
+    setClipsEnabled(v);
+    updateAudio({ useClips: v });
+  };
+
   const speechSupported = isSpeechSupported();
   const [voices, setVoices] = useState(() => listVoices());
 
@@ -239,6 +249,16 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           checked={settings.audio.enabled}
           onChange={(v) => updateAudio({ enabled: v })}
         />
+        <Toggle
+          label="Use recorded voice (higher quality, one fixed voice)"
+          checked={settings.audio.useClips}
+          onChange={updateUseClips}
+          disabled={audioDisabled}
+        />
+        <div className="settings-row settings-note-row">
+          Recorded clips use a single neural voice for the exact card/count/prompt phrases; the
+          speech rate and voice picker below apply only when live speech is used as a fallback.
+        </div>
         <div className="settings-row">
           <span className="settings-label">Verbosity</span>
           <Segmented

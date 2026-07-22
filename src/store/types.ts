@@ -50,6 +50,13 @@ export interface AudioSettings {
   // every ten-value card (10/J/Q/K) collapses to "ten", matching how a
   // Hi-Lo counter actually subvocalises (all four share the same -1 tag).
   cardDetail: 'full' | 'rank' | 'face';
+  // Play pre-rendered neural-voice clips (public/clips/) instead of live
+  // speechSynthesis whenever an exact clip exists for the spoken text (see
+  // src/audio/clips.ts), falling back to live TTS otherwise. Defaults to
+  // false: the operator has not yet validated clip audio on their phone, so
+  // the shipped default keeps today's live-TTS-only behavior unchanged; a
+  // Settings toggle opts in.
+  useClips: boolean;
 }
 
 export const DEFAULT_AUDIO: AudioSettings = {
@@ -61,6 +68,7 @@ export const DEFAULT_AUDIO: AudioSettings = {
   answerPauseMs: 3000,
   dimZones: false,
   cardDetail: 'rank',
+  useClips: false,
 };
 
 export const DEFAULT_SETTINGS: Settings = {

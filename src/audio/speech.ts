@@ -9,8 +9,18 @@
  *
  * `?e2e=1` in the page URL switches speak()/chime() into a log-only mode
  * (`window.__speechLog`) for Playwright assertions instead of calling the
- * real APIs.
+ * real APIs. e2e mode is checked FIRST in speak()/speakAsync(), before the
+ * clip gate below, so `?e2e=1` fully bypasses clips.ts too -- Web Audio is
+ * never touched under e2e, keeping all existing e2e specs unaffected.
+ *
+ * Pre-rendered clip playback (`./clips.ts`) is layered on top: when clips
+ * are enabled (`setClipsEnabled`, driven by `AudioSettings.useClips`) and an
+ * exact clip exists for the text, speak()/speakAsync() play it instead of
+ * calling live TTS, falling back to the live path below if the clip lookup
+ * misses or playback fails. clips.ts has no store/React dependency, so this
+ * import doesn't change speech.ts's dependency profile.
  */
+import { hasClip, isClipsEnabled, playClipAsync } from './clips';
 
 declare global {
   interface Window {
@@ -173,19 +183,9 @@ export function cancelSpeech(): void {
   }
 }
 
-/**
- * Speaks `text`. In e2e mode, records the raw text into `window.__speechLog`
- * instead of calling the real API. Never throws.
- */
-export function speak(
-  text: string,
-  opts?: { interrupt?: boolean; rate?: number; voiceURI?: string },
-): void {
-  if (isE2eAudioMode()) {
-    pushSpeechLog(text);
-    return;
-  }
-
+/** The live-`speechSynthesis` path, used directly when clips are disabled/
+ * absent, and as the fallback when a clip lookup misses or playback fails. */
+function speakLive(text: string, opts?: { interrupt?: boolean; rate?: number; voiceURI?: string }): void {
   if (!isSpeechSupported()) return;
 
   try {
@@ -204,6 +204,32 @@ export function speak(
   } catch {
     // never throw
   }
+}
+
+/**
+ * Speaks `text`. In e2e mode, records the raw text into `window.__speechLog`
+ * instead of calling the real API (clips are fully bypassed in this mode).
+ * Otherwise, when clips are enabled and an exact clip exists for `text`,
+ * plays the pre-rendered clip and falls back to live `speechSynthesis` only
+ * if that fails. Never throws.
+ */
+export function speak(
+  text: string,
+  opts?: { interrupt?: boolean; rate?: number; voiceURI?: string },
+): void {
+  if (isE2eAudioMode()) {
+    pushSpeechLog(text);
+    return;
+  }
+
+  if (isClipsEnabled() && hasClip(text)) {
+    void playClipAsync(text, { interrupt: opts?.interrupt }).then((played) => {
+      if (!played) speakLive(text, opts);
+    });
+    return;
+  }
+
+  speakLive(text, opts);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -254,29 +280,13 @@ function estimateWatchdogMs(text: string): number {
   return Math.max(WATCHDOG_FLOOR_MS, WATCHDOG_BASE_MS + text.length * WATCHDOG_PER_CHAR_MS);
 }
 
-/**
- * Like `speak()`, but returns a Promise that resolves once the utterance
- * finishes (or is abandoned) rather than firing and forgetting.
- * `speechSynthesis.speak()` silently *queues* — a caller advancing the UI on
- * a fixed interval falls permanently behind actual speech. Awaiting this
- * lets speech drive the UI instead.
- *
- * Never rejects — a failed/lost utterance resolves the promise so it can
- * never break a caller's loop. Guards three real gotchas (see
- * docs/research/2026-07-21-web-tts-options.md §2-3): utterance GC mid-speech
- * (module-level reference kept until settled), Safari not firing `onend`
- * after `cancel()` (`cancelSpeech()`/`{interrupt:true}` settle explicitly),
- * and a lost/never-fired `onend` (watchdog timeout settles it anyway).
- */
-export function speakAsync(
+/** The live-`speechSynthesis` path for `speakAsync`, used directly when
+ * clips are disabled/absent, and as the fallback when a clip lookup misses
+ * or playback fails. */
+function speakAsyncLive(
   text: string,
   opts?: { interrupt?: boolean; rate?: number; voiceURI?: string },
 ): Promise<void> {
-  if (isE2eAudioMode()) {
-    pushSpeechLog(text);
-    return Promise.resolve();
-  }
-
   if (!isSpeechSupported()) {
     return Promise.resolve();
   }
@@ -314,6 +324,45 @@ export function speakAsync(
       resolve();
     }
   });
+}
+
+/**
+ * Like `speak()`, but returns a Promise that resolves once the utterance
+ * finishes (or is abandoned) rather than firing and forgetting.
+ * `speechSynthesis.speak()` silently *queues* — a caller advancing the UI on
+ * a fixed interval falls permanently behind actual speech. Awaiting this
+ * lets speech drive the UI instead.
+ *
+ * In e2e mode, records the raw text into `window.__speechLog` instead of
+ * calling any real API (clips are fully bypassed in this mode). Otherwise,
+ * when clips are enabled and an exact clip exists for `text`, awaits
+ * `playClipAsync` and falls back to live `speechSynthesis` only if that
+ * resolves `false`.
+ *
+ * Never rejects — a failed/lost utterance (or clip) resolves the promise so
+ * it can never break a caller's loop. Guards three real gotchas (see
+ * docs/research/2026-07-21-web-tts-options.md §2-3): utterance GC mid-speech
+ * (module-level reference kept until settled), Safari not firing `onend`
+ * after `cancel()` (`cancelSpeech()`/`{interrupt:true}` settle explicitly),
+ * and a lost/never-fired `onend` (watchdog timeout settles it anyway).
+ */
+export function speakAsync(
+  text: string,
+  opts?: { interrupt?: boolean; rate?: number; voiceURI?: string },
+): Promise<void> {
+  if (isE2eAudioMode()) {
+    pushSpeechLog(text);
+    return Promise.resolve();
+  }
+
+  if (isClipsEnabled() && hasClip(text)) {
+    return playClipAsync(text, { interrupt: opts?.interrupt }).then((played) => {
+      if (played) return;
+      return speakAsyncLive(text, opts);
+    });
+  }
+
+  return speakAsyncLive(text, opts);
 }
 
 type AudioContextCtor = new () => AudioContext;
