@@ -285,3 +285,52 @@ test('deviation quiz: answer shows feedback with the index/label text', async ({
 
   await page.getByRole('button', { name: 'Next', exact: true }).click();
 });
+
+test('deviation quiz: "Mix in fakes" segmented control persists quizDistractorPct across reload', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+
+  const mixRow = page.locator('.settings-row', { hasText: 'Mix in fakes' });
+  await expect(mixRow.getByRole('button', { name: '0%', exact: true })).toHaveClass(/segmented-btn-active/);
+
+  await mixRow.getByRole('button', { name: '50%', exact: true }).click();
+  await expect(mixRow.getByRole('button', { name: '50%', exact: true })).toHaveClass(/segmented-btn-active/);
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  const mixRowAfterReload = page.locator('.settings-row', { hasText: 'Mix in fakes' });
+  await expect(mixRowAfterReload.getByRole('button', { name: '50%', exact: true })).toHaveClass(/segmented-btn-active/);
+});
+
+/**
+ * quizDistractorPct: 100 forces EVERY draw to be a distractor (see
+ * drills/deviationQuiz.ts drawQuizItem) regardless of the item's own random
+ * seed -- a deterministic path without needing to pin the seed itself.
+ * Presentation is identical to a real item (no visual tell); only the
+ * post-answer label differs, which is what this test pins down.
+ */
+test('deviation quiz distractors: quizDistractorPct 100 always shows the "no index applies" feedback label', async ({ page }) => {
+  await withSettings(page, { drill: { quizDistractorPct: 100 } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation Quiz');
+
+  await expect(page.locator('.settings-row', { hasText: 'Mix in fakes' })).toBeVisible();
+  await shot(page, '61-quiz-distractor-question');
+
+  const insurancePrompt = page.locator('.quiz-insurance-prompt');
+  if (await insurancePrompt.isVisible().catch(() => false)) {
+    await page.getByRole('button', { name: 'Decline Insurance', exact: true }).click();
+  } else {
+    await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
+  }
+
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+  await expect(page.locator('.quiz-label')).toContainText('No index applies here');
+  await shot(page, '62-quiz-distractor-feedback');
+
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+});

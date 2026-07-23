@@ -163,7 +163,8 @@ describe('deviationQuiz', () => {
       const seen = new Set<string>();
       for (let i = 0; i < 200; i++) {
         const item = drawQuizItem(2000 + i);
-        seen.add(item.deviationId);
+        // distractorPct defaults to 0 here, so deviationId is always a real id.
+        seen.add(item.deviationId!);
       }
       // Should see at least some variety; 11vA might appear
       expect(seen.size).toBeGreaterThan(5);
@@ -313,7 +314,8 @@ describe('deviationQuiz', () => {
       const seen = new Set<string>();
       for (let i = 0; i < 200; i++) {
         const item = drawQuizItem(63000 + i);
-        seen.add(item.deviationId);
+        // distractorPct defaults to 0 here, so deviationId is always a real id.
+        seen.add(item.deviationId!);
       }
       expect(seen.size).toBeGreaterThan(5);
     });
@@ -342,6 +344,118 @@ describe('deviationQuiz', () => {
         }
         expect(sawBelow, `${id}: must see a below-threshold draw in the sample`).toBe(true);
         expect(sawAtOrAbove, `${id}: must see an at/above-threshold draw in the sample`).toBe(true);
+      }
+    });
+  });
+
+  // Operator request: "mix in fakes" -- drawQuizItem gains a 4th optional
+  // `distractorPct` param. distractorPct=0 (the default, and the value used
+  // by every call above) must be BYTE-IDENTICAL to today's behavior; all
+  // grading for a distractor must come from the engine itself
+  // (correctPlay/basicPlay), never a hand-authored table -- same anti-drift
+  // principle as the true-count drill's engine sweep.
+  describe('drawQuizItem distractors (distractorPct)', () => {
+    it('distractorPct=0 (default/omitted) never produces a distractor -- isDistractor is always false and deviationId always a real id', () => {
+      for (let i = 0; i < 200; i++) {
+        const viaDefault = drawQuizItem(70000 + i);
+        const viaExplicitZero = drawQuizItem(70000 + i, undefined, DEFAULT_RULES, 0);
+        expect(viaDefault.isDistractor).toBe(false);
+        expect(viaExplicitZero).toEqual(viaDefault);
+        expect(viaDefault.deviationId).toBeDefined();
+      }
+    });
+
+    it('distractorPct=100: every draw is a distractor, deviationId is omitted (undefined), label says no index applies', () => {
+      for (let i = 0; i < 300; i++) {
+        const item = drawQuizItem(71000 + i, undefined, DEFAULT_RULES, 100);
+        expect(item.isDistractor).toBe(true);
+        expect(item.deviationId).toBeUndefined();
+        expect(item.isDeviationSide).toBe(false);
+        expect(item.label).toContain('No index applies here');
+      }
+    });
+
+    it('sweep (300 seeded, H17): every hand distractor\'s `correct` matches correctPlay(tc), and correctPlay(tc).source is "basic" (no active index actually triggers)', () => {
+      let handCount = 0;
+      for (let i = 0; i < 300; i++) {
+        const item = drawQuizItem(72000 + i, undefined, DEFAULT_RULES, 100);
+        if (item.cards === null) continue;
+        handCount++;
+        const ctx = { canDouble: true, canSplit: true, canSurrender: false };
+        const withCount = correctPlay(item.cards, item.up, item.tc, ctx, DEFAULT_RULES);
+        expect(item.correct).toBe(withCount.action);
+        expect(withCount.source, `seed ${72000 + i}: ${item.label} tc=${item.tc}`).toBe('basic');
+      }
+      expect(handCount).toBeGreaterThan(0);
+    });
+
+    it('sweep (300 seeded, S17): same engine-agreement invariant under the S17 ruleset', () => {
+      let handCount = 0;
+      for (let i = 0; i < 300; i++) {
+        const item = drawQuizItem(73000 + i, undefined, S17_RULES, 100);
+        if (item.cards === null) continue;
+        handCount++;
+        const ctx = { canDouble: true, canSplit: true, canSurrender: false };
+        const withCount = correctPlay(item.cards, item.up, item.tc, ctx, S17_RULES);
+        expect(item.correct).toBe(withCount.action);
+        expect(withCount.source).toBe('basic'); // the whole point: no index triggers
+      }
+      expect(handCount).toBeGreaterThan(0);
+    });
+
+    it('insurance-flavored distractors: cards null, tc is always BELOW the +3 threshold, correct always decline', () => {
+      let insuranceCount = 0;
+      for (let i = 0; i < 300; i++) {
+        const item = drawQuizItem(74000 + i, 'ins', DEFAULT_RULES, 100);
+        expect(item.cards).toBeNull();
+        insuranceCount++;
+        expect(item.tc).toBeLessThan(3);
+        expect(item.correct).toBe('decline-insurance');
+        expect(insuranceCorrect(item.tc)).toBe(false);
+      }
+      expect(insuranceCount).toBeGreaterThan(0);
+    });
+
+    it('a pinned filter keeps every distractor "near" that same index (CLOSE only, no wandering to a random unrelated hand)', () => {
+      for (let i = 0; i < 100; i++) {
+        const item = drawQuizItem(75000 + i, '16v10', DEFAULT_RULES, 100);
+        expect(item.label).toContain('near 16 v 10');
+      }
+    });
+
+    it('with no filter, both CLOSE ("near") and RANDOM (no "near") labels occur across many draws', () => {
+      let sawNear = false;
+      let sawRandom = false;
+      for (let i = 0; i < 300; i++) {
+        const item = drawQuizItem(76000 + i, undefined, DEFAULT_RULES, 100);
+        if (item.cards === null) continue; // insurance base entries are always "near"-labeled; skip for this check
+        if (item.label.includes('(near ')) sawNear = true;
+        else sawRandom = true;
+      }
+      expect(sawNear).toBe(true);
+      expect(sawRandom).toBe(true);
+    });
+
+    it('CLOSE hard-hand distractors never land on a hand that is itself a real active index for this ruleset (engine-verified per draw)', () => {
+      for (let i = 0; i < 300; i++) {
+        const item = drawQuizItem(77000 + i, undefined, DEFAULT_RULES, 100);
+        if (item.cards === null) continue;
+        const ctx = { canDouble: true, canSplit: true, canSurrender: false };
+        const withCount = correctPlay(item.cards, item.up, item.tc, ctx, DEFAULT_RULES);
+        expect(withCount.source, `seed ${77000 + i}: ${item.label} tc=${item.tc}`).toBe('basic');
+      }
+    });
+
+    it('distractorPct=25/50: roughly matches the requested rate over a large sample (within a generous tolerance)', () => {
+      for (const pct of [25, 50]) {
+        let distractors = 0;
+        const n = 2000;
+        for (let i = 0; i < n; i++) {
+          const item = drawQuizItem(80000 + pct * 100000 + i, undefined, DEFAULT_RULES, pct);
+          if (item.isDistractor) distractors++;
+        }
+        const rate = (distractors / n) * 100;
+        expect(Math.abs(rate - pct), `pct=${pct} observed rate=${rate}`).toBeLessThan(8);
       }
     });
   });

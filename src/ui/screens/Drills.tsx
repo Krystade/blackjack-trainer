@@ -523,7 +523,7 @@ function DeviationQuizView({
   const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
 
   const [item, setItem] = useState<QuizItem>(() =>
-    drawQuizItem(randomSeed(), quizFilterArg(activeFilter), activeProfile.rules),
+    drawQuizItem(randomSeed(), quizFilterArg(activeFilter), activeProfile.rules, settings.drill.quizDistractorPct),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean } | null>(null);
   const audio = useAudio(settings.audio);
@@ -594,10 +594,10 @@ function DeviationQuizView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item, eyesFree]);
 
-  const next = (filter: DeviationId | 'all' = activeFilter) => {
+  const next = (filter: DeviationId | 'all' = activeFilter, distractorPct: number = settings.drill.quizDistractorPct) => {
     runIdRef.current += 1;
     clearAdvanceTimer();
-    setItem(drawQuizItem(randomSeed(), quizFilterArg(filter), activeProfile.rules));
+    setItem(drawQuizItem(randomSeed(), quizFilterArg(filter), activeProfile.rules, distractorPct));
     setFeedback(null);
   };
 
@@ -606,6 +606,16 @@ function DeviationQuizView({
     saveSettings(nextSettings);
     onSettingsChange(nextSettings);
     next(quizIndex);
+  };
+
+  // "Mix in fakes" (operator request): 0/25/50% chance a drawn item is a
+  // distractor (see drills/deviationQuiz.ts). Redraws immediately so the
+  // new rate takes effect on the very next item, matching changeIndex.
+  const changeDistractorPct = (quizDistractorPct: number) => {
+    const nextSettings: Settings = { ...settings, drill: { ...settings.drill, quizDistractorPct } };
+    saveSettings(nextSettings);
+    onSettingsChange(nextSettings);
+    next(activeFilter, quizDistractorPct);
   };
 
   // "Dim screen" (opt-in): the ZonePad is visible-with-labels by default so
@@ -780,6 +790,19 @@ function DeviationQuizView({
             ))}
           </select>
         </label>
+
+        <div className="settings-row">
+          <span className="settings-label">Mix in fakes</span>
+          <Segmented
+            options={[
+              { value: '0', label: '0%' },
+              { value: '25', label: '25%' },
+              { value: '50', label: '50%' },
+            ]}
+            value={String(settings.drill.quizDistractorPct) as '0' | '25' | '50'}
+            onChange={(v) => changeDistractorPct(Number(v))}
+          />
+        </div>
 
         <label className="count-toggle">
           <input

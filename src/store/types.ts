@@ -27,6 +27,12 @@ export interface Settings {
     // this value toward a fixed floor (see drills/countSpeed.ts
     // rampIntervalMs/RAMP_FLOOR_MS) as the run progresses.
     countTimedStartMs: number;
+    // "Mix in fakes" (operator request): 0-100 chance that a Deviation Quiz
+    // draw is a DISTRACTOR item instead of a real index -- see
+    // drills/deviationQuiz.ts drawQuizItem's `distractorPct` param. Default
+    // 0 keeps quiz behavior unchanged out of the box; the UI only offers
+    // 0/25/50 but any 0-100 value is valid.
+    quizDistractorPct: number;
   };
   audio: AudioSettings;
 }
@@ -97,6 +103,7 @@ export const DEFAULT_SETTINGS: Settings = {
     countManual: false,
     quizIndex: 'all',
     countTimedStartMs: 900,
+    quizDistractorPct: 0,
   },
   audio: { ...DEFAULT_AUDIO },
 };

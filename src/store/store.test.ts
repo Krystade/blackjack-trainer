@@ -124,6 +124,26 @@ describe('store/persist', () => {
       expect(loaded.drill.countGroup).toBe(2);
     });
 
+    test('a stored v1-drill blob without quizDistractorPct backfills it to 0 (distractor mix off by default)', () => {
+      storage['bjtrainer.settings.v1'] = JSON.stringify({
+        version: 1,
+        drill: {
+          flashCategory: 'hard',
+          countGroup: 2,
+          countIntervalMs: 900,
+          countLengthCards: 104,
+        },
+      });
+      const loaded = loadSettings();
+      expect(loaded.drill.quizDistractorPct).toBe(0);
+      // A stored non-zero value round-trips too.
+      storage['bjtrainer.settings.v1'] = JSON.stringify({
+        version: 1,
+        drill: { quizDistractorPct: 25 },
+      });
+      expect(loadSettings().drill.quizDistractorPct).toBe(25);
+    });
+
     test('backfills audio settings when the stored blob predates cycle 3', () => {
       storage['bjtrainer.settings.v1'] = JSON.stringify({
         version: 1,
