@@ -104,3 +104,35 @@ export function medianLatency(history: { elapsedMs?: number }[]): number | null 
   }
   return values[mid]!;
 }
+
+/**
+ * D1 (docs/BACKLOG.md, distraction training): the two failure modes a
+ * distraction run can produce are independent -- getting the interruption's
+ * own arithmetic wrong, and losing the running count while distracted -- so
+ * this reports both percentages separately rather than a single combined
+ * score. `countKept` semantics are defined by the caller (part 2 wires it
+ * into the count drill); this summary is agnostic to how it was decided.
+ */
+export interface DistractionSummary {
+  attempts: number;
+  /** Percentage 0-100 of entries with answerCorrect true, or null when empty. */
+  answerAccuracyPct: number | null;
+  /** Percentage 0-100 of entries with countKept true, or null when empty. */
+  countKeptPct: number | null;
+}
+
+export function distractionSummary(
+  history: { answerCorrect: boolean; countKept: boolean }[],
+): DistractionSummary {
+  const attempts = history.length;
+  if (attempts === 0) {
+    return { attempts: 0, answerAccuracyPct: null, countKeptPct: null };
+  }
+  const answerCorrectCount = history.filter((h) => h.answerCorrect).length;
+  const countKeptCount = history.filter((h) => h.countKept).length;
+  return {
+    attempts,
+    answerAccuracyPct: (answerCorrectCount / attempts) * 100,
+    countKeptPct: (countKeptCount / attempts) * 100,
+  };
+}

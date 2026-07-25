@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { summarize, bestSecondsPerDeck, signedErrorBreakdown, medianLatency } from './drillStats';
+import {
+  summarize,
+  bestSecondsPerDeck,
+  signedErrorBreakdown,
+  medianLatency,
+  distractionSummary,
+} from './drillStats';
 
 describe('summarize', () => {
   it('reports zero attempts / null accuracy for an empty history', () => {
@@ -124,5 +130,68 @@ describe('medianLatency', () => {
     const history = [{ elapsedMs: 100 }, { elapsedMs: 120 }, { elapsedMs: 110 }, { elapsedMs: 9000 }];
     // median of sorted [100,110,120,9000] -> (110+120)/2 = 115, nowhere near the mean (~2332.5)
     expect(medianLatency(history)).toBe(115);
+  });
+});
+
+describe('distractionSummary', () => {
+  it('reports zero attempts / null percentages for an empty history', () => {
+    expect(distractionSummary([])).toEqual({
+      attempts: 0,
+      answerAccuracyPct: null,
+      countKeptPct: null,
+    });
+  });
+
+  it('reports 100% on both axes when every entry got the math right and kept the count', () => {
+    const history = [
+      { answerCorrect: true, countKept: true },
+      { answerCorrect: true, countKept: true },
+    ];
+    expect(distractionSummary(history)).toEqual({
+      attempts: 2,
+      answerAccuracyPct: 100,
+      countKeptPct: 100,
+    });
+  });
+
+  it('reports 0% on both axes when every entry missed the math and lost the count', () => {
+    const history = [
+      { answerCorrect: false, countKept: false },
+      { answerCorrect: false, countKept: false },
+    ];
+    expect(distractionSummary(history)).toEqual({
+      attempts: 2,
+      answerAccuracyPct: 0,
+      countKeptPct: 0,
+    });
+  });
+
+  it('tracks answer-correctness and count-kept independently on a mixed history', () => {
+    // The whole point of D1: a wrong math answer and a lost count are
+    // separate failure modes -- a run can get the arithmetic right but
+    // still lose the count (or vice versa), so the two percentages must
+    // never be derived from each other.
+    const history = [
+      { answerCorrect: true, countKept: false }, // nailed the math, lost the count
+      { answerCorrect: false, countKept: true }, // botched the math, kept the count
+      { answerCorrect: true, countKept: true },
+      { answerCorrect: false, countKept: false },
+    ];
+    expect(distractionSummary(history)).toEqual({
+      attempts: 4,
+      answerAccuracyPct: 50,
+      countKeptPct: 50,
+    });
+  });
+
+  it('ignores extra fields on each history entry (structural typing, e.g. date/kind/elapsedMs)', () => {
+    const history = [
+      { answerCorrect: true, countKept: true, date: 'x', kind: 'near-count' as const, elapsedMs: 1200 },
+    ];
+    expect(distractionSummary(history)).toEqual({
+      attempts: 1,
+      answerAccuracyPct: 100,
+      countKeptPct: 100,
+    });
   });
 });

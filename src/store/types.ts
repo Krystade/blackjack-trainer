@@ -4,6 +4,7 @@ import type { Category, MistakeClass } from '../engine/grade';
 import type { DeviationId } from '../engine/deviations';
 import type { RuleSet } from '../engine/ruleset';
 import type { SpeedTier } from '../drills/countSpeed';
+import type { DistractionMode } from '../drills/distraction';
 
 export interface Settings {
   version: 1;
@@ -211,6 +212,25 @@ export interface Stats {
   // screen, right next to that category's existing accuracy -- flashcards
   // and the deviation quiz already share the same Category taxonomy there.
   latencyHistory: { category: Category; elapsedMs: number }[];
+  // D1 part 1 (docs/BACKLOG.md, distraction training): telemetry for the
+  // mid-drill interruption generator (drills/distraction.ts). This part is
+  // additive-only -- nothing writes to this history yet; part 2 wires the
+  // generator into the count drill and populates it there.
+  // `answerCorrect` grades the distraction's own arithmetic; `countKept`
+  // grades whether the drill's final running count was still correct on a
+  // run that contained distractions -- deliberately separate fields (see
+  // drillStats.ts's distractionSummary) since a user can nail one and miss
+  // the other. `elapsedMs` is optional, mirroring latencyHistory/timedCount,
+  // for a run that doesn't capture timing.
+  distraction: {
+    history: {
+      date: string;
+      kind: DistractionMode;
+      answerCorrect: boolean;
+      countKept: boolean;
+      elapsedMs?: number;
+    }[];
+  };
 }
 
 export const EMPTY_STATS: Stats = {
@@ -246,4 +266,7 @@ export const EMPTY_STATS: Stats = {
   },
   sessions: [],
   latencyHistory: [],
+  distraction: {
+    history: [],
+  },
 };

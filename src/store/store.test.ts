@@ -292,6 +292,42 @@ describe('store/persist', () => {
       expect(loaded.categories.hard).toEqual({ right: 2, wrong: 1 });
     });
 
+    test('an old stats blob without distraction (D1 part 1) loads with an empty history', () => {
+      // Simulates a blob persisted before distraction telemetry shipped --
+      // same backfill-to-empty idiom as trueCount/deckEstimation/timedCount
+      // above: a blob that lacks the section entirely (not even as an empty
+      // object) still loads to a complete Stats shape.
+      storage['bjtrainer.stats.v1'] = JSON.stringify({
+        version: 1,
+        categories: { hard: { right: 2, wrong: 1 } },
+      });
+      const loaded = loadStats();
+      expect(loaded.distraction).toEqual(EMPTY_STATS.distraction);
+      expect(loaded.distraction.history).toEqual([]);
+      // Pre-existing sections are unaffected by the backfill.
+      expect(loaded.categories.hard).toEqual({ right: 2, wrong: 1 });
+    });
+
+    test('a distraction history persisted on a newer blob round-trips through loadStats untouched', () => {
+      storage['bjtrainer.stats.v1'] = JSON.stringify({
+        version: 1,
+        distraction: {
+          history: [
+            { date: 'x', kind: 'near-count', answerCorrect: true, countKept: false, elapsedMs: 1500 },
+          ],
+        },
+      });
+      const loaded = loadStats();
+      expect(loaded.distraction.history).toHaveLength(1);
+      expect(loaded.distraction.history[0]).toEqual({
+        date: 'x',
+        kind: 'near-count',
+        answerCorrect: true,
+        countKept: false,
+        elapsedMs: 1500,
+      });
+    });
+
     test('a stored latencyHistory array round-trips', () => {
       storage['bjtrainer.stats.v1'] = JSON.stringify({
         version: 1,
