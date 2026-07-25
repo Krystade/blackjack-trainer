@@ -180,6 +180,15 @@ export interface Stats {
     profileId?: string;
     profileName?: string;
   }[];
+  // R1 (docs/BACKLOG.md, decision-latency telemetry): one entry per GRADED
+  // EVENT that actually captured a decision time (flashcards + deviation
+  // quiz today; table play doesn't set GradedEvent.elapsedMs yet, so its
+  // events never land here -- see stats.ts's applyEvents). Deliberately flat
+  // (not nested under a per-drill section) so a single medianLatency() call
+  // filtered by `category` powers the per-category figure on the Stats
+  // screen, right next to that category's existing accuracy -- flashcards
+  // and the deviation quiz already share the same Category taxonomy there.
+  latencyHistory: { category: Category; elapsedMs: number }[];
 }
 
 export const EMPTY_STATS: Stats = {
@@ -214,4 +223,5 @@ export const EMPTY_STATS: Stats = {
     history: [],
   },
   sessions: [],
+  latencyHistory: [],
 };

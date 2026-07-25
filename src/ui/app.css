@@ -1079,6 +1079,13 @@ button {
   background: #6fcf97;
 }
 
+/* R1 (docs/BACKLOG.md, decision-latency telemetry): median decision time,
+   shown right under the accuracy bar for the same category. */
+.category-latency {
+  font-size: 0.75rem;
+  color: #b7d3c2;
+}
+
 /* ---------- Stats: per-index table ---------- */
 
 .index-table {

@@ -106,6 +106,10 @@ function mergeStats(parsed: Record<string, unknown>): Stats {
         ? { ...base.timedCount, ...p.timedCount }
         : base.timedCount,
     sessions: Array.isArray(p.sessions) ? p.sessions : base.sessions,
+    // R1 (docs/BACKLOG.md): a blob persisted before decision-latency
+    // telemetry shipped lacks this array entirely -- same Array.isArray
+    // backfill-to-empty idiom as `sessions` above.
+    latencyHistory: Array.isArray(p.latencyHistory) ? p.latencyHistory : base.latencyHistory,
   };
 }
 

@@ -36,6 +36,15 @@ export function applyEvents(stats: Stats, events: GradedEvent[]): Stats {
 
     // Update mistakes tally by classification
     result.mistakes[event.classification] += 1;
+
+    // R1 (docs/BACKLOG.md): append to latencyHistory only when the producer
+    // actually captured a decision time. A missing elapsedMs (every existing
+    // producer, e.g. table play) must stay absent from this history, never
+    // be coerced to 0 -- medianLatency would otherwise be dragged toward a
+    // false "instant" reading by events that were never timed at all.
+    if (event.elapsedMs !== undefined) {
+      result.latencyHistory.push({ category: event.category, elapsedMs: event.elapsedMs });
+    }
   }
 
   return result;

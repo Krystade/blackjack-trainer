@@ -22,6 +22,14 @@ export interface GradedEvent {
   deviationId?: DeviationId;
   tc: number;
   hand?: string; // e.g. "10,6 v 9"
+  // R1 (docs/BACKLOG.md): decision latency in milliseconds, from prompt-shown
+  // to graded. OPTIONAL and purely additive -- every producer that predates
+  // this field (table play, any test fixture) simply omits it, and every
+  // consumer (applyEvents/Stats) must treat a missing value as "no latency
+  // data", never as zero. Always computed by the CALLING COMPONENT via
+  // `performance.now()` (never `Date.now()`, never inside this pure engine
+  // module) -- see Drills.tsx's gradeFlashcardAnswer/gradeQuizAnswer.
+  elapsedMs?: number;
 }
 
 /**

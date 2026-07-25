@@ -4,7 +4,7 @@ import type { Screen } from '../App';
 import type { AudioSettings, Profile, Settings, Stats as StatsData } from '../../store/types';
 import { EMPTY_STATS } from '../../store/types';
 import { loadStats, saveStats, loadSettings, exportAll, importAll } from '../../store/persist';
-import { summarize, bestSecondsPerDeck, signedErrorBreakdown } from '../../store/drillStats';
+import { summarize, bestSecondsPerDeck, signedErrorBreakdown, medianLatency } from '../../store/drillStats';
 import type { Category, MistakeClass } from '../../engine/grade';
 import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../../engine/deviations';
 import { useAudio } from '../../audio/useAudio';
@@ -49,6 +49,18 @@ function pct(right: number, total: number): string {
 
 function formatSigned(n: number): string {
   return n >= 0 ? `+${n}` : String(n);
+}
+
+/**
+ * R1 (docs/BACKLOG.md, decision-latency telemetry): render a median
+ * elapsedMs figure in seconds, one decimal place -- matching the existing
+ * `Xs / deck` / `Xs` conventions already used for the timed-count and
+ * count-drill sections below. `null` (no captured latency for this
+ * category yet) renders as the same "no data" dash used everywhere else.
+ */
+function formatLatency(ms: number | null): string {
+  if (ms === null) return dash();
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 function formatDate(iso: string): string {
@@ -208,6 +220,12 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
             const tally = stats.categories[cat];
             const total = tally.right + tally.wrong;
             const pctNum = total === 0 ? 0 : (tally.right / total) * 100;
+            // R1: median decision time for this category, sourced from
+            // whichever drills currently capture elapsedMs (flashcards +
+            // deviation quiz) -- entries lacking it (e.g. table play) never
+            // reach latencyHistory at all (see stats.ts applyEvents), so no
+            // extra filtering is needed here beyond matching the category.
+            const latencyMs = medianLatency(stats.latencyHistory.filter((e) => e.category === cat));
             return (
               <div className="category-row" key={cat}>
                 <div className="category-row-top">
@@ -219,6 +237,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
                 <div className="category-bar-track">
                   <div className="category-bar-fill" style={{ width: `${pctNum}%` }} />
                 </div>
+                <div className="category-latency">Median decision: {formatLatency(latencyMs)}</div>
               </div>
             );
           })}

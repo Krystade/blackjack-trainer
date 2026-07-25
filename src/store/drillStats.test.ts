@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { summarize, bestSecondsPerDeck, signedErrorBreakdown } from './drillStats';
+import { summarize, bestSecondsPerDeck, signedErrorBreakdown, medianLatency } from './drillStats';
 
 describe('summarize', () => {
   it('reports zero attempts / null accuracy for an empty history', () => {
@@ -92,5 +92,37 @@ describe('signedErrorBreakdown', () => {
   it('treats negative correctTc/guess values correctly (sign of the difference, not the values)', () => {
     const history = [{ guess: -5, correctTc: -8 }]; // -5 > -8 -> too high
     expect(signedErrorBreakdown(history)).toEqual({ tooHigh: 1, tooLow: 0, exact: 0 });
+  });
+});
+
+describe('medianLatency', () => {
+  it('returns null for an empty history', () => {
+    expect(medianLatency([])).toBeNull();
+  });
+
+  it('returns the middle value for an odd-length history', () => {
+    const history = [{ elapsedMs: 500 }, { elapsedMs: 100 }, { elapsedMs: 300 }];
+    expect(medianLatency(history)).toBe(300);
+  });
+
+  it('averages the two middle values for an even-length history', () => {
+    const history = [{ elapsedMs: 100 }, { elapsedMs: 200 }, { elapsedMs: 300 }, { elapsedMs: 400 }];
+    expect(medianLatency(history)).toBe(250);
+  });
+
+  it('ignores entries lacking elapsedMs (pre-latency data mixed with fresh data)', () => {
+    const history = [{ elapsedMs: undefined }, { elapsedMs: 400 }, {}, { elapsedMs: 200 }];
+    expect(medianLatency(history)).toBe(300);
+  });
+
+  it('returns null when every entry lacks elapsedMs', () => {
+    const history = [{}, { elapsedMs: undefined }];
+    expect(medianLatency(history)).toBeNull();
+  });
+
+  it('is not skewed by a single outlier (right-skew resistance is the whole point of using median over mean)', () => {
+    const history = [{ elapsedMs: 100 }, { elapsedMs: 120 }, { elapsedMs: 110 }, { elapsedMs: 9000 }];
+    // median of sorted [100,110,120,9000] -> (110+120)/2 = 115, nowhere near the mean (~2332.5)
+    expect(medianLatency(history)).toBe(115);
   });
 });

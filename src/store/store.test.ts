@@ -261,6 +261,25 @@ describe('store/persist', () => {
       expect(loaded.categories.hard).toEqual({ right: 2, wrong: 1 });
       expect(loaded.countDrill.history).toHaveLength(1);
     });
+
+    test('an old stats blob without latencyHistory (R1) loads with an empty array', () => {
+      storage['bjtrainer.stats.v1'] = JSON.stringify({
+        version: 1,
+        categories: { hard: { right: 2, wrong: 1 } },
+      });
+      const loaded = loadStats();
+      expect(loaded.latencyHistory).toEqual([]);
+      expect(loaded.categories.hard).toEqual({ right: 2, wrong: 1 });
+    });
+
+    test('a stored latencyHistory array round-trips', () => {
+      storage['bjtrainer.stats.v1'] = JSON.stringify({
+        version: 1,
+        latencyHistory: [{ category: 'hard', elapsedMs: 900 }],
+      });
+      const loaded = loadStats();
+      expect(loaded.latencyHistory).toEqual([{ category: 'hard', elapsedMs: 900 }]);
+    });
   });
 
   describe('missing-localStorage fallback', () => {
@@ -563,6 +582,58 @@ describe('store/stats', () => {
     expect(result.mistakes.correct).toBe(2); // 1 hard + 1 countCheck
     expect(result.mistakes['missed-deviation']).toBe(1);
     expect(result.mistakes['basic-error']).toBe(2); // insurance + bet
+  });
+
+  test('applyEvents appends elapsedMs to latencyHistory when present (R1 decision-latency telemetry)', () => {
+    const stats = EMPTY_STATS;
+    const events: GradedEvent[] = [
+      {
+        kind: 'action',
+        category: 'hard',
+        correct: true,
+        classification: 'correct',
+        taken: 'stand',
+        expected: 'stand',
+        reason: 'Basic strategy',
+        tc: 0,
+        elapsedMs: 1234,
+      },
+      // No elapsedMs -- pre-latency-telemetry producer (e.g. table play);
+      // must be silently skipped, never coerced to 0.
+      {
+        kind: 'action',
+        category: 'soft',
+        correct: false,
+        classification: 'basic-error',
+        taken: 'hit',
+        expected: 'stand',
+        reason: 'Basic strategy',
+        tc: 0,
+      },
+    ];
+
+    const result = applyEvents(stats, events);
+    expect(result.latencyHistory).toEqual([{ category: 'hard', elapsedMs: 1234 }]);
+  });
+
+  test('applyEvents does not mutate the input stats latencyHistory (purity)', () => {
+    const stats = { ...EMPTY_STATS };
+    const originalJson = JSON.stringify(stats);
+    const events: GradedEvent[] = [
+      {
+        kind: 'action',
+        category: 'pairs',
+        correct: true,
+        classification: 'correct',
+        taken: 'split',
+        expected: 'split',
+        reason: 'Basic strategy',
+        tc: 0,
+        elapsedMs: 500,
+      },
+    ];
+    applyEvents(stats, events);
+    expect(JSON.stringify(stats)).toBe(originalJson);
   });
 
   test('applyEvents with phantom-deviation and wrong-anyway classifications', () => {

@@ -137,6 +137,17 @@ function FlashcardsView({
   // though its own effect cleanup already clears it on unmount/early exit.
   const runIdRef = useRef(0);
   const advanceTimerRef = useRef<number | null>(null);
+  // R1 (docs/BACKLOG.md, decision-latency telemetry): performance.now() at
+  // the moment the CURRENT card was drawn -- read in gradeFlashcardAnswer
+  // (the shared grade site) to compute elapsedMs. Written in the exact same
+  // place as `runIdRef.current += 1` below (both `next()` and this initial
+  // value), so it can never point at a stale, already-answered card: there
+  // is no async gap between drawing a card and this ref being updated for
+  // it, unlike the auto-advance timer runIdRef guards against.
+  // `performance.now()`, never `Date.now()` -- monotonic, immune to
+  // wall-clock adjustments, and matches the elapsedMs contract on
+  // GradedEvent.
+  const promptShownAtRef = useRef(performance.now());
   // Spoken "Correct." is only wanted once per drill session -- after that,
   // correct answers still chime but skip the spoken text. `useRef(false)`
   // is fresh on every mount, and this view is unmounted/remounted each time
@@ -197,6 +208,7 @@ function FlashcardsView({
     clearAdvanceTimer();
     setCard(drawFlashcard(category, weightsRef.current, randomSeed(), activeProfile.rules));
     setFeedback(null);
+    promptShownAtRef.current = performance.now();
   };
 
   const changeCategory = (category: Settings['drill']['flashCategory']) => {
@@ -243,6 +255,11 @@ function FlashcardsView({
   // Pure aside from the weight/stats writes it always performed; no audio,
   // no setState -- callers layer their own feedback on top.
   const gradeFlashcardAnswer = (taken: Action): { event: GradedEvent; correctAction: Action } => {
+    // R1 (docs/BACKLOG.md, decision-latency telemetry): read BEFORE any
+    // other work in this function so grading logic itself never inflates
+    // the measured decision time.
+    const elapsedMs = performance.now() - promptShownAtRef.current;
+
     const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: true };
     const withCount = correctPlay(card.cards, card.up, 0, ctx, activeProfile.rules);
     const basicOnly = basicPlay(card.cards, card.up, ctx, activeProfile.rules);
@@ -263,6 +280,7 @@ function FlashcardsView({
       reason: card.cellId,
       tc: 0,
       hand: card.cellId,
+      elapsedMs,
     };
     saveStats(applyEvents(loadStats(), [event]));
 
@@ -453,7 +471,7 @@ function FlashcardsView({
 /* Deviation Quiz                                                     */
 /* ---------------------------------------------------------------- */
 
-function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet): GradedEvent {
+function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet, elapsedMs?: number): GradedEvent {
   if (item.cards === null) {
     const take = taken === 'take-insurance';
     const { classification, correct } = classifyInsurance(take, item.tc);
@@ -468,6 +486,7 @@ function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet): GradedEv
       deviationId: item.deviationId,
       tc: item.tc,
       hand: 'dealer A',
+      elapsedMs,
     };
   }
 
@@ -489,6 +508,7 @@ function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet): GradedEv
     deviationId: item.deviationId,
     tc: item.tc,
     hand: item.label,
+    elapsedMs,
   };
 }
 
@@ -536,6 +556,13 @@ function DeviationQuizView({
   // though its own effect cleanup already clears it on unmount/early exit.
   const runIdRef = useRef(0);
   const advanceTimerRef = useRef<number | null>(null);
+  // R1 (docs/BACKLOG.md, decision-latency telemetry): performance.now() at
+  // the moment the CURRENT item was drawn -- read in gradeQuizAnswer (the
+  // shared grade site) to compute elapsedMs. Written in the exact same place
+  // as `runIdRef.current += 1` below (both `next()` and this initial
+  // value), so it can never point at a stale, already-answered item.
+  // `performance.now()`, never `Date.now()`.
+  const promptShownAtRef = useRef(performance.now());
   // Spoken "Correct." is only wanted once per drill session -- after that,
   // correct answers still chime but skip the spoken text. `useRef(false)`
   // is fresh on every mount, and this view is unmounted/remounted each time
@@ -599,6 +626,7 @@ function DeviationQuizView({
     clearAdvanceTimer();
     setItem(drawQuizItem(randomSeed(), quizFilterArg(filter), activeProfile.rules, distractorPct));
     setFeedback(null);
+    promptShownAtRef.current = performance.now();
   };
 
   const changeIndex = (quizIndex: DeviationId | 'all') => {
@@ -655,7 +683,10 @@ function DeviationQuizView({
   // paths cannot drift. No audio, no setState -- callers layer their own
   // feedback on top.
   const gradeQuizAnswer = (taken: string): GradedEvent => {
-    const event = buildQuizEvent(item, taken, activeProfile.rules);
+    // R1 (docs/BACKLOG.md, decision-latency telemetry): read BEFORE
+    // buildQuizEvent does any classification work.
+    const elapsedMs = performance.now() - promptShownAtRef.current;
+    const event = buildQuizEvent(item, taken, activeProfile.rules, elapsedMs);
     saveStats(applyEvents(loadStats(), [event]));
     return event;
   };

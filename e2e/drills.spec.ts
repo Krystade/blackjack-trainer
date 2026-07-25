@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { shot, withSettings, readStats } from './helpers';
+import { shot, withSettings, readStats, goHomeAndNavigate } from './helpers';
 
 const SPEED_TIERS = ['Learning', 'Table-ready', 'Pro', 'Expert'];
 
@@ -196,6 +196,74 @@ test('flashcards: answer shows feedback, Next draws a new card', async ({ page }
 });
 
 /**
+ * R1 (docs/BACKLOG.md, decision-latency telemetry): answering a flashcard
+ * must record a positive `elapsedMs` into stats.latencyHistory -- proof the
+ * capture actually fires end-to-end (component mounts, prompt is shown,
+ * `performance.now()` is read at draw time and again at grade time), not
+ * just that the types compile. A tiny artificial delay before answering
+ * guarantees elapsedMs is meaningfully > 0 rather than a flaky near-zero
+ * timing race.
+ */
+test('flashcards: answering records a positive elapsedMs into stats.latencyHistory', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+
+  expect(await readStats(page)).toBeNull(); // nothing persisted before the first attempt
+
+  await page.waitForTimeout(120); // ensure a non-trivial, deterministic elapsed time
+
+  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+
+  const stats = await readStats(page);
+  const latencyHistory = (stats?.latencyHistory as { category: string; elapsedMs: number }[] | undefined) ?? [];
+  expect(latencyHistory).toHaveLength(1);
+  expect(latencyHistory[0]!.elapsedMs).toBeGreaterThan(0);
+  expect(latencyHistory[0]!.elapsedMs).toBeGreaterThanOrEqual(100); // the waitForTimeout(120) floor, with slack
+  expect(['hard', 'soft', 'pairs', 'surrender']).toContain(latencyHistory[0]!.category);
+});
+
+/**
+ * R1 (docs/BACKLOG.md, decision-latency telemetry): the captured latency
+ * must actually SURFACE on the Stats screen, next to that category's
+ * existing accuracy -- not just sit unused in localStorage. Reads back
+ * which category the answered card landed in (drawFlashcard's category is
+ * seed-driven, so this doesn't pin a specific one) and checks that row's
+ * median-decision figure is no longer the "no data" dash.
+ */
+test('flashcards: a graded answer surfaces a median decision time on the Stats screen', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+
+  await page.waitForTimeout(120);
+  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+
+  const stats = await readStats(page);
+  const latencyHistory = (stats?.latencyHistory as { category: string; elapsedMs: number }[] | undefined) ?? [];
+  expect(latencyHistory).toHaveLength(1);
+  const category = latencyHistory[0]!.category;
+
+  const CATEGORY_LABELS: Record<string, string> = {
+    hard: 'Hard totals',
+    soft: 'Soft totals',
+    pairs: 'Pairs',
+    surrender: 'Surrender',
+  };
+
+  await goHomeAndNavigate(page, '/?e2e=1', 'Stats');
+  await expect(page.locator('.stats-heading')).toHaveText('Stats');
+
+  const row = page.locator('.category-row', { hasText: CATEGORY_LABELS[category] });
+  await expect(row.locator('.category-latency')).not.toHaveText('—');
+  await expect(row.locator('.category-latency')).toContainText('s');
+});
+
+/**
  * Keyboard input (operator request): pressing '2' must feed the exact same
  * handleAction the "Stand" ActionBar button calls -- not a parallel path
  * that merely looks similar. Proved by fixing Math.random (so the SAME
@@ -236,7 +304,29 @@ test('flashcards: pressing "2" answers Stand, grading identically to a click', a
   const clickStats = await readStats(page);
 
   expect(keyboardResult).toBe(clickResult);
-  expect(keyboardStats).toEqual(clickStats);
+
+  // R1 (decision-latency telemetry): elapsedMs is real wall-clock time, so
+  // the keyboard run and the click run will legitimately differ by a few ms
+  // even for an "identical" answer -- that's not a grading divergence, it's
+  // two separate button presses taking two separate amounts of time. Both
+  // paths must still capture SOME positive latency (proving the shared
+  // grade site fires either way); the grading-equivalence check below
+  // normalizes elapsedMs out so it keeps comparing everything else
+  // byte-for-byte, exactly as before this field existed.
+  const keyboardLatency = (keyboardStats?.latencyHistory as { elapsedMs: number }[] | undefined) ?? [];
+  const clickLatency = (clickStats?.latencyHistory as { elapsedMs: number }[] | undefined) ?? [];
+  expect(keyboardLatency).toHaveLength(1);
+  expect(clickLatency).toHaveLength(1);
+  expect(keyboardLatency[0]!.elapsedMs).toBeGreaterThan(0);
+  expect(clickLatency[0]!.elapsedMs).toBeGreaterThan(0);
+
+  const normalizeLatency = (stats: Record<string, unknown> | null) => ({
+    ...stats,
+    latencyHistory: ((stats?.latencyHistory as { category: string; elapsedMs: number }[] | undefined) ?? []).map(
+      (e) => ({ category: e.category, elapsedMs: 'NORMALIZED' }),
+    ),
+  });
+  expect(normalizeLatency(keyboardStats)).toEqual(normalizeLatency(clickStats));
 });
 
 /**

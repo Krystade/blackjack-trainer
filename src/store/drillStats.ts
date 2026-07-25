@@ -76,3 +76,31 @@ export function signedErrorBreakdown(
   }
   return { tooHigh, tooLow, exact };
 }
+
+/**
+ * Median decision latency (R1: docs/BACKLOG.md, decision-latency
+ * telemetry). Median, not mean -- latency is right-skewed (a single slow
+ * outlier, e.g. a bathroom-break pause mid-drill, would drag a mean far from
+ * what a player actually experiences most of the time).
+ *
+ * Structurally typed like `summarize` above: works over any history array
+ * whose entries MAY carry an `elapsedMs` field. Entries without it (either
+ * pre-latency-telemetry data, or a drill that doesn't capture timing) are
+ * silently ignored rather than treated as zero -- they contribute no
+ * information about speed, so counting them would bias the median toward
+ * whatever placeholder value was chosen.
+ */
+export function medianLatency(history: { elapsedMs?: number }[]): number | null {
+  const values = history
+    .map((h) => h.elapsedMs)
+    .filter((ms): ms is number => typeof ms === 'number')
+    .sort((a, b) => a - b);
+
+  if (values.length === 0) return null;
+
+  const mid = Math.floor(values.length / 2);
+  if (values.length % 2 === 0) {
+    return (values[mid - 1]! + values[mid]!) / 2;
+  }
+  return values[mid]!;
+}
