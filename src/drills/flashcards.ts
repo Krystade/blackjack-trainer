@@ -5,6 +5,7 @@ import type { Action } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import type { RuleSet } from '../engine/ruleset';
 import { makeHardHand } from './buildHand';
+import { missWeight, weightedIndex } from './weightedDraw';
 
 export interface Flashcard {
   cards: [Card, Card];
@@ -112,25 +113,11 @@ export function drawFlashcard(
     cells = allCells.filter((c) => c.id.startsWith(category + '-'));
   }
 
-  // Compute weights: 1 + 2 * missWeight
-  const weights = cells.map((c) => {
-    const missCount = missWeights[c.id] ?? 0;
-    return 1 + 2 * missCount;
-  });
+  // R3 (docs/BACKLOG.md, spaced-repetition): weight = 1 + 2*missCount, shared
+  // with the deviation quiz's index weighting via weightedDraw.ts.
+  const weights = cells.map((c) => missWeight(missWeights[c.id] ?? 0));
 
-  // Weighted random selection
-  const totalWeight = weights.reduce((a, b) => a + b, 0);
-  let random = rng() * totalWeight;
-  let selectedIndex = 0;
-
-  for (let i = 0; i < weights.length; i++) {
-    random -= weights[i];
-    if (random <= 0) {
-      selectedIndex = i;
-      break;
-    }
-  }
-
+  const selectedIndex = weightedIndex(rng, weights);
   const cell = cells[selectedIndex];
 
   // Get correct action

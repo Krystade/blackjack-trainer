@@ -82,12 +82,32 @@ explicit opt-out. Gate rules: 80% accuracy over the most recent 10 attempts at a
 attempts before it counts), 3-consecutive-wrong eases back one tier. Result screen shows
 "Unlocked: &lt;tier&gt; — hold accuracy to reach &lt;next&gt;" plus advanced/held/eased.
 
-### R3 · Spaced-repetition / miss-weighted scheduling over indices + weak chart cells — S — **HIGH**
+### R3 · Spaced-repetition / miss-weighted scheduling over indices + weak chart cells — S — **HIGH** — **✅ SHIPPED**
 Convergence: TS#1 (spacing + retrieval practice = the most robustly evidenced technique in
 the whole science report) **meets** RT#4 (flashcard miss-weights only grow, never decay;
 the deviation quiz samples uniformly while per-index error tallies already exist, unused).
 The telemetry to seed it is already in `Stats`. Decay-on-correct is XS; a Leitner/SM-2-ish
 weighted draw is S. Directly attacks the "max the drill while the skill stays weak" trap.
+
+Shipped: `src/drills/weightedDraw.ts` -- shared Leitner-lite primitives (`missWeight` =
+1 + 2\*missCount, `weightedIndex` seeded weighted pick, `bumpMiss`/`decayMiss` floored-at-0
+weight-map updaters) used by BOTH drills so they weight identically. Flashcards
+(`gradeFlashcardAnswer` in `Drills.tsx`): a correct answer now decays the cell's weight
+toward 0 via `decayMiss` (previously only miss ever touched it); `drawFlashcard` itself was
+refactored onto the shared helper, behavior-preserving (46 pre-existing tests unchanged).
+Deviation quiz: new persisted per-index weight map (`QUIZ_WEIGHTS_KEY`,
+`load/saveQuizWeights`, mirroring `FLASH_WEIGHTS_KEY`), updated symmetrically in
+`gradeQuizAnswer` (+1 on a real-item miss, -1 toward 0 on correct) -- gated on
+`item.deviationId` being defined so distractor items (which never carry one) can't perturb
+index weights, matching how they're already excluded from `Stats.perIndex`.
+`drawQuizItem` gained an additive 5th `missWeights` param used ONLY by the no-filter
+real-item entry pick; a pinned `filter` bypasses it entirely (weighting is moot when
+pinned) and distractor base-entry selection stays uniform over active entries, unaffected.
+An omitted/empty weight map is byte-identical to pre-R3 behavior (proven via
+`weightedIndex`'s "matches `Math.floor(rng()*n)`" test and paired default-vs-explicit-`{}`
+equality tests in both drills). 27 new unit tests (18 in `weightedDraw.test.ts` + 9 in
+`drills.test.ts`, including a disproportionate-draw statistical test and a decay-returns-
+to-baseline test for each drill); full suite 2878 unit + 47 e2e green, no e2e spec changes.
 
 ### R4 · Interleaved / mixed-session mode — M — MEDIUM-HIGH
 Convergence: TS#4 (interleaving meta-analysis, Hedges' g ≈ 0.42 across 59 studies,

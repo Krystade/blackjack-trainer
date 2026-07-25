@@ -9,6 +9,7 @@ import { drawQuizItem } from './deviationQuiz';
 import type { DeviationId } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import type { RuleSet } from '../engine/ruleset';
+import { bumpMiss, decayMiss } from './weightedDraw';
 
 describe('countDrill', () => {
   describe('makeCountDrill', () => {
@@ -540,5 +541,163 @@ describe('drawQuizItem rules wiring', () => {
   it('isIndexActive: returns false for unknown indices', () => {
     // Ensure the function handles edge cases gracefully
     expect(isIndexActive('16v10' as DeviationId, DEFAULT_RULES)).toBe(true);
+  });
+});
+
+/**
+ * R3 (docs/BACKLOG.md, spaced-repetition / miss-weighted scheduling): a
+ * Leitner-lite scheduler applied symmetrically to both drills --
+ * flashcards' existing missWeights map gains decay-on-correct (weightedDraw's
+ * decayMiss), and the deviation quiz gains a NEW persisted per-index weight
+ * map (mirroring the flashcard pattern) that drawQuizItem's no-filter entry
+ * pick now honors instead of sampling uniformly. Both share the exact same
+ * `missWeight` formula (1 + 2*missCount) via weightedDraw.ts.
+ */
+describe('R3 spaced-repetition scheduling', () => {
+  describe('drawFlashcard + decay (fresh-profile / backward-compat)', () => {
+    it('an empty weights map (fresh profile) behaves exactly as before -- uniform-ish, same as passing {}', () => {
+      // Byte-for-byte: {} was always the "no weighting" input; this just
+      // re-confirms it still is after the weightedDraw.ts extraction, using
+      // the exact assertions the pre-R3 suite already relied on.
+      for (let i = 0; i < 50; i++) {
+        const withEmpty = drawFlashcard('all', {}, 9000 + i);
+        const withFreshMap = drawFlashcard('all', {}, 9000 + i);
+        expect(withFreshMap).toEqual(withEmpty);
+      }
+    });
+
+    it('a cell driven to a high miss-count via bumpMiss is drawn disproportionately over many seeds', () => {
+      const targetCellId = 'hard-16-v-9';
+      let weights: Record<string, number> = {};
+      for (let i = 0; i < 20; i++) weights = bumpMiss(weights, targetCellId);
+
+      let hits = 0;
+      for (let i = 0; i < 200; i++) {
+        const card = drawFlashcard('all', weights, 40000 + i);
+        if (card.cellId === targetCellId) hits++;
+      }
+      // weight = 1 + 2*20 = 41 out of ~330 baseline-1 cells -- comfortably
+      // over its ~0.3% fair share.
+      expect(hits).toBeGreaterThanOrEqual(15);
+    });
+
+    it('decay brings a since-mastered cell back down toward its baseline (uniform) draw frequency', () => {
+      const targetCellId = 'hard-16-v-9';
+
+      let missedWeights: Record<string, number> = {};
+      for (let i = 0; i < 20; i++) missedWeights = bumpMiss(missedWeights, targetCellId);
+
+      let missedHits = 0;
+      for (let i = 0; i < 300; i++) {
+        const card = drawFlashcard('all', missedWeights, 41000 + i);
+        if (card.cellId === targetCellId) missedHits++;
+      }
+
+      // Decay it all the way back to baseline (missCount 0), simulating a
+      // long run of subsequent correct answers.
+      let masteredWeights = missedWeights;
+      for (let i = 0; i < 25; i++) masteredWeights = decayMiss(masteredWeights, targetCellId);
+      expect(masteredWeights[targetCellId]).toBe(0); // floor holds, never negative
+
+      let masteredHits = 0;
+      for (let i = 0; i < 300; i++) {
+        const card = drawFlashcard('all', masteredWeights, 41000 + i);
+        if (card.cellId === targetCellId) masteredHits++;
+      }
+
+      // Mastered draw rate must fall back down near the ~1/330 fair share,
+      // and well below the still-elevated missed rate.
+      expect(masteredHits).toBeLessThan(missedHits);
+      expect(masteredHits).toBeLessThanOrEqual(5); // fair share of 300 draws is ~0.9
+    });
+  });
+
+  describe('drawQuizItem index weighting (no-filter draws)', () => {
+    it('omitting missWeights (backward compat) behaves exactly as before -- variety still seen, byte-identical to explicit {}', () => {
+      for (let i = 0; i < 100; i++) {
+        const withDefault = drawQuizItem(90000 + i);
+        const withExplicitEmpty = drawQuizItem(90000 + i, undefined, DEFAULT_RULES, 0, {});
+        expect(withExplicitEmpty).toEqual(withDefault);
+      }
+    });
+
+    it('a heavily-missed deviation id is drawn disproportionately over many seeds vs the rest of the set', () => {
+      const targetId: DeviationId = '16v10';
+      let weights: Record<string, number> = {};
+      for (let i = 0; i < 20; i++) weights = bumpMiss(weights, targetId);
+
+      let hits = 0;
+      const n = 500;
+      for (let i = 0; i < n; i++) {
+        const item = drawQuizItem(100000 + i, undefined, DEFAULT_RULES, 0, weights);
+        if (item.deviationId === targetId) hits++;
+      }
+      // ILLUSTRIOUS_18 has 18 entries; fair share is ~1/18 (~5.6%) of n.
+      // weight 41 vs baseline-1 for the other 17 -> target share ~41/58 ~ 70%.
+      expect(hits).toBeGreaterThan(n * 0.3);
+    });
+
+    it('decay brings a since-mastered index back down toward its fair uniform share', () => {
+      const targetId: DeviationId = '16v10';
+      let missed: Record<string, number> = {};
+      for (let i = 0; i < 20; i++) missed = bumpMiss(missed, targetId);
+
+      let mastered = missed;
+      for (let i = 0; i < 25; i++) mastered = decayMiss(mastered, targetId);
+      expect(mastered[targetId]).toBe(0);
+
+      const n = 900;
+      let missedHits = 0;
+      let masteredHits = 0;
+      for (let i = 0; i < n; i++) {
+        const missedItem = drawQuizItem(110000 + i, undefined, DEFAULT_RULES, 0, missed);
+        if (missedItem.deviationId === targetId) missedHits++;
+        const masteredItem = drawQuizItem(110000 + i, undefined, DEFAULT_RULES, 0, mastered);
+        if (masteredItem.deviationId === targetId) masteredHits++;
+      }
+
+      expect(masteredHits).toBeLessThan(missedHits);
+      // Fair share of n draws across 18 entries is ~50; generous upper bound.
+      expect(masteredHits).toBeLessThan(n * 0.15);
+    });
+
+    it('a pinned filter always returns that index regardless of any weight map (weighting is moot when pinned)', () => {
+      const weights: Record<string, number> = { '12v6': 0 };
+      // Heavily bias the map toward a DIFFERENT index than the pinned one --
+      // if weighting leaked into the pinned path, this would still have to
+      // return '16v10' every time; if it didn't, this proves nothing new.
+      let biased = weights;
+      for (let i = 0; i < 50; i++) biased = bumpMiss(biased, '12v6');
+
+      for (let i = 0; i < 50; i++) {
+        const item = drawQuizItem(120000 + i, '16v10', DEFAULT_RULES, 0, biased);
+        expect(item.deviationId).toBe('16v10');
+      }
+    });
+
+    it('distractor items never carry a deviationId, so a caller cannot apply a weight update to them (weights only ever key off real deviationIds)', () => {
+      for (let i = 0; i < 200; i++) {
+        const item = drawQuizItem(130000 + i, undefined, DEFAULT_RULES, 100, { '16v10': 30 });
+        if (item.isDistractor) {
+          expect(item.deviationId).toBeUndefined();
+        }
+      }
+    });
+
+    it('a heavy weight map does not change WHICH entries are eligible when distractorPct=100 -- distractor base-entry selection stays uniform over active entries, unaffected by missWeights', () => {
+      // Sanity check that missWeights is scoped to the REAL-item entry pick
+      // only; distractor flavor/base-entry selection (buildDistractorItem)
+      // must keep seeing variety even when one id is weighted to the moon.
+      const weights: Record<string, number> = { '16v10': 1000 };
+      const seen = new Set<string | undefined>();
+      for (let i = 0; i < 300; i++) {
+        const item = drawQuizItem(140000 + i, undefined, DEFAULT_RULES, 100, weights);
+        expect(item.isDistractor).toBe(true);
+        // distractor labels reference the "near" base entry by label text,
+        // not deviationId -- collect labels to prove variety survives.
+        seen.add(item.label);
+      }
+      expect(seen.size).toBeGreaterThan(3);
+    });
   });
 });

@@ -12,6 +12,7 @@ import { drawFlashcard } from '../../drills/flashcards';
 import type { Flashcard } from '../../drills/flashcards';
 import { drawQuizItem } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
+import { bumpMiss, decayMiss } from '../../drills/weightedDraw';
 import { loadStats, saveStats, saveSettings } from '../../store/persist';
 import { applyEvents } from '../../store/stats';
 import { PlayingCard } from '../components/PlayingCard';
@@ -82,10 +83,14 @@ function zoneLabel(zone: ZoneId | 'take' | 'decline'): string {
 
 const FLASH_WEIGHTS_KEY = 'bjtrainer.flashweights.v1';
 
-function loadFlashWeights(): Record<string, number> {
+// R3 (docs/BACKLOG.md, spaced-repetition): the deviation quiz's per-index
+// weight map (QUIZ_WEIGHTS_KEY below) persists identically -- shared load/save
+// plumbing, one localStorage key each so a corrupt/absent value in one drill
+// can never affect the other.
+function loadWeightMap(key: string): Record<string, number> {
   try {
     if (typeof window === 'undefined' || !window.localStorage) return {};
-    const raw = window.localStorage.getItem(FLASH_WEIGHTS_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (typeof parsed === 'object' && parsed !== null) return parsed as Record<string, number>;
@@ -95,13 +100,21 @@ function loadFlashWeights(): Record<string, number> {
   }
 }
 
-function saveFlashWeights(weights: Record<string, number>): void {
+function saveWeightMap(key: string, weights: Record<string, number>): void {
   try {
     if (typeof window === 'undefined' || !window.localStorage) return;
-    window.localStorage.setItem(FLASH_WEIGHTS_KEY, JSON.stringify(weights));
+    window.localStorage.setItem(key, JSON.stringify(weights));
   } catch {
     // best-effort persistence only
   }
+}
+
+function loadFlashWeights(): Record<string, number> {
+  return loadWeightMap(FLASH_WEIGHTS_KEY);
+}
+
+function saveFlashWeights(weights: Record<string, number>): void {
+  saveWeightMap(FLASH_WEIGHTS_KEY, weights);
 }
 
 function cellCategory(cellId: string, correct: Action): 'hard' | 'soft' | 'pairs' | 'surrender' {
@@ -265,10 +278,14 @@ function FlashcardsView({
     const basicOnly = basicPlay(card.cards, card.up, ctx, activeProfile.rules);
     const { classification, correct } = classifyAction(taken, withCount, basicOnly, card.cards, card.up, 0, activeProfile.rules);
 
-    if (!correct) {
-      weightsRef.current = { ...weightsRef.current, [card.cellId]: (weightsRef.current[card.cellId] ?? 0) + 1 };
-      saveFlashWeights(weightsRef.current);
-    }
+    // R3 (docs/BACKLOG.md, spaced-repetition): a miss grows this cell's
+    // weight (unchanged); a correct answer now DECAYS it back toward
+    // baseline (floor 0) instead of leaving it frozen at whatever peak a
+    // now-mastered cell last reached -- see weightedDraw.ts.
+    weightsRef.current = correct
+      ? decayMiss(weightsRef.current, card.cellId)
+      : bumpMiss(weightsRef.current, card.cellId);
+    saveFlashWeights(weightsRef.current);
 
     const event: GradedEvent = {
       kind: 'action',
@@ -471,6 +488,19 @@ function FlashcardsView({
 /* Deviation Quiz                                                     */
 /* ---------------------------------------------------------------- */
 
+// R3 (docs/BACKLOG.md, spaced-repetition): mirrors FLASH_WEIGHTS_KEY -- a
+// per-index (DeviationId) miss-weight map, own localStorage key so it's
+// independent of the flashcard weights.
+const QUIZ_WEIGHTS_KEY = 'bjtrainer.quizweights.v1';
+
+function loadQuizWeights(): Record<string, number> {
+  return loadWeightMap(QUIZ_WEIGHTS_KEY);
+}
+
+function saveQuizWeights(weights: Record<string, number>): void {
+  saveWeightMap(QUIZ_WEIGHTS_KEY, weights);
+}
+
 function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet, elapsedMs?: number): GradedEvent {
   if (item.cards === null) {
     const take = taken === 'take-insurance';
@@ -542,8 +572,18 @@ function DeviationQuizView({
   // Use the active filter (falls back to 'all' if saved index is inactive)
   const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
 
+  // R3 (docs/BACKLOG.md, spaced-repetition): per-index miss-weight map,
+  // loaded once per mount exactly like FlashcardsView's weightsRef.
+  const weightsRef = useRef<Record<string, number>>(loadQuizWeights());
+
   const [item, setItem] = useState<QuizItem>(() =>
-    drawQuizItem(randomSeed(), quizFilterArg(activeFilter), activeProfile.rules, settings.drill.quizDistractorPct),
+    drawQuizItem(
+      randomSeed(),
+      quizFilterArg(activeFilter),
+      activeProfile.rules,
+      settings.drill.quizDistractorPct,
+      weightsRef.current,
+    ),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean } | null>(null);
   const audio = useAudio(settings.audio);
@@ -624,7 +664,7 @@ function DeviationQuizView({
   const next = (filter: DeviationId | 'all' = activeFilter, distractorPct: number = settings.drill.quizDistractorPct) => {
     runIdRef.current += 1;
     clearAdvanceTimer();
-    setItem(drawQuizItem(randomSeed(), quizFilterArg(filter), activeProfile.rules, distractorPct));
+    setItem(drawQuizItem(randomSeed(), quizFilterArg(filter), activeProfile.rules, distractorPct, weightsRef.current));
     setFeedback(null);
     promptShownAtRef.current = performance.now();
   };
@@ -687,6 +727,19 @@ function DeviationQuizView({
     // buildQuizEvent does any classification work.
     const elapsedMs = performance.now() - promptShownAtRef.current;
     const event = buildQuizEvent(item, taken, activeProfile.rules, elapsedMs);
+
+    // R3 (docs/BACKLOG.md, spaced-repetition): symmetric to FlashcardsView --
+    // a miss grows this index's weight, a correct answer decays it. Only
+    // REAL items carry a deviationId (distractors never do, same exclusion
+    // stats.ts's perIndex already applies) -- a distractor never tested this
+    // index's own threshold, so it must not perturb its weight either way.
+    if (item.deviationId) {
+      weightsRef.current = event.correct
+        ? decayMiss(weightsRef.current, item.deviationId)
+        : bumpMiss(weightsRef.current, item.deviationId);
+      saveQuizWeights(weightsRef.current);
+    }
+
     saveStats(applyEvents(loadStats(), [event]));
     return event;
   };

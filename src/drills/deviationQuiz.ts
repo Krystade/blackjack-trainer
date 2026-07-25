@@ -7,6 +7,7 @@ import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import type { RuleSet } from '../engine/ruleset';
 import { makeHardHand } from './buildHand';
+import { missWeight, weightedIndex } from './weightedDraw';
 
 export interface QuizItem {
   cards: [Card, Card] | null; // null for insurance items
@@ -301,6 +302,16 @@ function buildDistractorItem(
  *   answer is plain basic strategy. See buildDistractorItem. 0 (the
  *   default) never draws a rng() sample for this decision, so omitting the
  *   param preserves today's behavior byte-for-byte.
+ * @param missWeights - R3 (docs/BACKLOG.md, spaced-repetition): optional
+ *   weight map (deviationId -> missCount), mirroring flashcards.ts's
+ *   missWeights. ONLY affects the no-filter real-item entry pick (the
+ *   `!entry` branch below) -- a pinned `filter` always draws that exact
+ *   entry regardless of this map (weighting is moot when pinned), and
+ *   distractor base-entry selection (buildDistractorItem) stays uniform
+ *   over active entries, unaffected by it. An empty/omitted map (the
+ *   default) makes every entry weight 1 -- byte-for-byte identical to the
+ *   pre-R3 `Math.floor(rng() * deviationSet.length)` uniform pick (see
+ *   weightedIndex's "matches Math.floor" test in weightedDraw.test.ts).
  * @returns A quiz item
  */
 export function drawQuizItem(
@@ -308,6 +319,7 @@ export function drawQuizItem(
   filter?: DeviationId,
   rules: RuleSet = DEFAULT_RULES,
   distractorPct = 0,
+  missWeights: Record<string, number> = {},
 ): QuizItem {
   const rng = mulberry32(seed ?? Date.now());
   const deviationSet = rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
@@ -328,10 +340,12 @@ export function drawQuizItem(
     return buildDistractorItem(rng, entry, rules, deviationSet);
   }
 
-  // No filter: pick a random entry from the active ruleset's set (this rng()
-  // draw only happens here, exactly as before distractorPct existed).
+  // No filter: pick an entry from the active ruleset's set, weighted by
+  // missWeights (R3) -- this rng() draw only happens here, exactly as
+  // before distractorPct existed.
   if (!entry) {
-    const entryIndex = Math.floor(rng() * deviationSet.length);
+    const weights = deviationSet.map((d) => missWeight(missWeights[d.id] ?? 0));
+    const entryIndex = weightedIndex(rng, weights);
     entry = deviationSet[entryIndex];
   }
 
