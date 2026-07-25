@@ -51,7 +51,7 @@ CONVERGENCE first** — where independent legs (code attack / learning science /
 practitioner community) point at the same gap, confidence is high regardless of any one
 leg's opinion.
 
-### R1 · Decision-latency telemetry + optional shot clock — S — **BUILD FIRST**
+### R1 · Decision-latency telemetry + optional shot clock — S — **✅ SHIPPED 5b617ba (telemetry half; shot clock still open)**
 Convergence: RT#1 (no latency field on `GradedEvent`; the app can't detect absence of
 automaticity — the variable that most predicts table survival) **meets** TS (speed-accuracy
 literature: you can't gate on speed you don't measure) **meets** CM#3 (dealer-training
