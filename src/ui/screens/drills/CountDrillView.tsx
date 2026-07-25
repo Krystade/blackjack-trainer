@@ -4,8 +4,16 @@ import type { Card } from '../../../engine/cards';
 import { hiLoTag } from '../../../engine/count';
 import { makeCountDrill, makeCountdown } from '../../../drills/countDrill';
 import type { CountDrillRound, CountdownRound } from '../../../drills/countDrill';
-import { classifySpeed, formatDuration, rampIntervalMs, secondsPerDeck } from '../../../drills/countSpeed';
+import {
+  classifySpeed,
+  formatDuration,
+  rampIntervalMs,
+  secondsPerDeck,
+  tierStartIntervalMs,
+  RAMP_FLOOR_MS,
+} from '../../../drills/countSpeed';
 import type { SpeedTier } from '../../../drills/countSpeed';
+import { computeUnlockedTier, tierAbove, SPEED_TIER_ORDER } from '../../../drills/competenceGate';
 import { loadStats, saveStats, saveSettings } from '../../../store/persist';
 import { PlayingCard } from '../../components/PlayingCard';
 import { NumPad } from '../../components/NumPad';
@@ -23,6 +31,20 @@ function randomSeed(): number {
  * the await resolves rather than this helper aborting itself. */
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Adapts a persisted `timedCount.history` array into the minimal
+ * `{ tier, correct }` shape drills/competenceGate.ts's computeUnlockedTier
+ * expects -- preferring the ATTEMPTED tier (the pace the run was actually
+ * paced at) over the ACHIEVED tier (`tier`, classified from the run's
+ * measured elapsed speed) whenever it's present, so the gate reads real
+ * demonstrated-pace signal rather than a schedule-driven ramp's incidental
+ * result. Entries persisted before `attemptedTier` shipped simply fall back
+ * to `tier` -- close enough for old data, and never a crash. */
+function mapTimedHistory(
+  history: { tier: string; correct: boolean; attemptedTier?: SpeedTier }[],
+): { tier: SpeedTier; correct: boolean }[] {
+  return history.map((h) => ({ tier: (h.attemptedTier ?? (h.tier as SpeedTier)), correct: h.correct }));
 }
 
 // Display-only tier labels for the Timed Challenge result screen -- kept
@@ -96,6 +118,28 @@ export function CountDrillView({
   const [timedResult, setTimedResult] = useState<{ elapsedMs: number; cardsShown: number } | null>(
     null,
   );
+
+  // R2 (docs/BACKLOG.md, accuracy-gated difficulty): the effective
+  // start/floor ms/card the CURRENT run's ramp effect actually uses, and the
+  // tier that pace is attempting -- set once at start() (see below), read by
+  // the ramp effect on every tick. Refs (not state) because they must be
+  // fixed for the lifetime of a single run and reading them shouldn't
+  // trigger a re-render; the ramp effect already re-reads on its own
+  // shownIndex-driven schedule. `timedStartMsRef`/`timedFloorMsRef` default
+  // to today's fixed-pace values so a render before the first start() (or a
+  // non-adaptive run) behaves exactly as before this feature shipped.
+  const attemptedTierRef = useRef<SpeedTier | null>(null);
+  const timedStartMsRef = useRef<number>(settings.drill.countTimedStartMs);
+  const timedFloorMsRef = useRef<number>(RAMP_FLOOR_MS);
+  // Populated right alongside timedResult (in finishRun) so the result
+  // screen can report whether accuracy-gated difficulty just advanced/held/
+  // eased the unlocked tier. null whenever the just-finished run wasn't a
+  // graded Timed Challenge run (ordinary count drill / countdown / honor
+  // self-check never touch this).
+  const [gateOutcome, setGateOutcome] = useState<{
+    tier: SpeedTier;
+    change: 'advanced' | 'held' | 'eased';
+  } | null>(null);
 
   // Eyes-free requires audio to be enabled; if the user disables audio
   // (e.g. via Settings) while it's checked, drop it rather than leave a
@@ -304,12 +348,25 @@ export function CountDrillView({
   // the answer phase, so the result screen can report speed alongside
   // correctness. Cleanup clears the pending timeout on every dep change /
   // unmount, same discipline as the plain fixed-interval effect above.
+  //
+  // R2 (docs/BACKLOG.md, accuracy-gated difficulty): the start/floor ms fed
+  // to rampIntervalMs come from timedStartMsRef/timedFloorMsRef, set once by
+  // start() below -- NOT read directly from settings.drill.countTimedStartMs
+  // here, so a mid-run render can't silently change a run's pace. In
+  // adaptive mode those refs are both set to the SAME value
+  // (tierStartIntervalMs(unlockedTier)), so the ramp is flat at exactly the
+  // earned tier's pace for the whole run -- the fix for the studied bug
+  // (a fixed decaying ramp inflates scores by speeding up regardless of
+  // accuracy): the run never accelerates past what's actually been earned.
+  // Non-adaptive mode leaves both refs at their pre-R2 defaults
+  // (countTimedStartMs / RAMP_FLOOR_MS), so its ramp is byte-for-byte the
+  // same schedule as before this feature shipped.
   useEffect(() => {
     if (phase !== 'flashing' || groups.length === 0 || countdownMode || !timedChallenge) {
       return undefined;
     }
 
-    const ms = rampIntervalMs(shownIndex, settings.drill.countTimedStartMs);
+    const ms = rampIntervalMs(shownIndex, timedStartMsRef.current, { floorMs: timedFloorMsRef.current });
 
     if (shownIndex >= groups.length - 1) {
       const t = setTimeout(() => {
@@ -331,7 +388,6 @@ export function CountDrillView({
     phase,
     shownIndex,
     groups.length,
-    settings.drill.countTimedStartMs,
     settings.drill.countLengthCards,
     countdownMode,
     timedChallenge,
@@ -444,6 +500,27 @@ export function CountDrillView({
     setShownIndex(0);
     setHonorCheck(false);
     setTimedResult(null);
+    setGateOutcome(null);
+
+    // R2 (docs/BACKLOG.md, accuracy-gated difficulty): decide THIS run's
+    // effective ramp start/floor before it begins, so the ramp effect above
+    // never has to reach into settings/stats itself. Adaptive mode derives
+    // both from the competence gate's currently-unlocked tier (start==floor
+    // -- see the ramp effect's comment for why); non-adaptive keeps today's
+    // fixed-pace values byte-for-byte. attemptedTierRef is set the SAME way
+    // regardless of mode (classified from whatever pace is actually used) so
+    // every timed run -- adaptive or not -- feeds the gate real signal.
+    if (timedChallenge && !countdownMode) {
+      const startMs = settings.drill.timedAdaptive
+        ? tierStartIntervalMs(computeUnlockedTier(mapTimedHistory(loadStats().timedCount.history)).unlockedTier)
+        : settings.drill.countTimedStartMs;
+      timedStartMsRef.current = startMs;
+      timedFloorMsRef.current = settings.drill.timedAdaptive ? startMs : RAMP_FLOOR_MS;
+      attemptedTierRef.current = classifySpeed(secondsPerDeck(startMs, 1));
+    } else {
+      attemptedTierRef.current = null;
+    }
+
     // Read the clock here (a live UI concern), never inside drills/countSpeed.ts
     // -- that module stays pure and deterministic for unit testing.
     timedStartRef.current = timedChallenge && !countdownMode ? performance.now() : null;
@@ -483,21 +560,35 @@ export function CountDrillView({
     if (timedChallenge && timedResult) {
       const spd = secondsPerDeck(timedResult.elapsedMs, timedResult.cardsShown);
       const tier = classifySpeed(spd);
+      const newEntry = {
+        date: new Date().toISOString(),
+        cards: timedResult.cardsShown,
+        elapsedMs: timedResult.elapsedMs,
+        secondsPerDeck: spd,
+        tier,
+        correct,
+        // R2: the tier this run was PACED at (see start()), distinct from
+        // `tier` above (the ACHIEVED tier from the run's measured speed) --
+        // always set for a Timed Challenge run, adaptive or not.
+        ...(attemptedTierRef.current ? { attemptedTier: attemptedTierRef.current } : {}),
+      };
       saveStats({
         ...stats,
-        timedCount: {
-          history: [
-            ...stats.timedCount.history,
-            {
-              date: new Date().toISOString(),
-              cards: timedResult.cardsShown,
-              elapsedMs: timedResult.elapsedMs,
-              secondsPerDeck: spd,
-              tier,
-              correct,
-            },
-          ],
-        },
+        timedCount: { history: [...stats.timedCount.history, newEntry] },
+      });
+
+      // R2: report whether accuracy-gated difficulty advanced/held/eased the
+      // unlocked tier as a RESULT of this run -- compare the gate's verdict
+      // just before vs. just after this run's entry is folded in. Computed
+      // regardless of whether THIS run was paced adaptively: the gate is a
+      // property of the whole history, useful feedback either way.
+      const before = computeUnlockedTier(mapTimedHistory(stats.timedCount.history));
+      const after = computeUnlockedTier(mapTimedHistory([...stats.timedCount.history, newEntry]));
+      const beforeRank = SPEED_TIER_ORDER.indexOf(before.unlockedTier);
+      const afterRank = SPEED_TIER_ORDER.indexOf(after.unlockedTier);
+      setGateOutcome({
+        tier: after.unlockedTier,
+        change: afterRank > beforeRank ? 'advanced' : afterRank < beforeRank ? 'eased' : 'held',
       });
       return;
     }
@@ -646,6 +737,25 @@ export function CountDrillView({
                     format={(v) => `${v}ms`}
                     onChange={(v) => updateDrill({ countTimedStartMs: v })}
                   />
+                  <label className="count-toggle">
+                    <input
+                      type="checkbox"
+                      checked={settings.drill.timedAdaptive}
+                      onChange={(e) => updateDrill({ timedAdaptive: e.target.checked })}
+                    />
+                    Adaptive difficulty
+                  </label>
+                  {settings.drill.timedAdaptive &&
+                    (() => {
+                      const gate = computeUnlockedTier(mapTimedHistory(loadStats().timedCount.history));
+                      return (
+                        <div className="settings-row settings-note-row">
+                          Paces this run at your unlocked tier ({TIER_LABEL[gate.unlockedTier]},{' '}
+                          {tierStartIntervalMs(gate.unlockedTier)}ms/card) instead of the manual pace
+                          setting above -- speeds up only once accuracy holds there.
+                        </div>
+                      );
+                    })()}
                 </>
               )}
             </>
@@ -771,6 +881,18 @@ export function CountDrillView({
                   <div className="timed-result-benchmark">
                     Benchmarks: &le;30s table-ready &middot; &le;22s pro &middot; &le;12s expert
                   </div>
+                  {gateOutcome &&
+                    (() => {
+                      const next = tierAbove(gateOutcome.tier);
+                      return (
+                        <div className={`timed-result-gate gate-outcome-${gateOutcome.change}`}>
+                          Unlocked: {TIER_LABEL[gateOutcome.tier]}
+                          {next ? ` — hold accuracy to reach ${TIER_LABEL[next]}` : ' — top tier'}
+                          {gateOutcome.change === 'advanced' && ' (advanced!)'}
+                          {gateOutcome.change === 'eased' && ' (eased back)'}
+                        </div>
+                      );
+                    })()}
                 </div>
               );
             })()}

@@ -5,7 +5,9 @@ import {
   formatDuration,
   rampIntervalMs,
   RAMP_FLOOR_MS,
+  tierStartIntervalMs,
 } from './countSpeed';
+import type { SpeedTier } from './countSpeed';
 
 describe('classifySpeed', () => {
   // Cutoffs (see countSpeed.ts doc comment for sourcing):
@@ -161,5 +163,45 @@ describe('rampIntervalMs', () => {
 
   it('is deterministic for the same inputs', () => {
     expect(rampIntervalMs(10, 900)).toBe(rampIntervalMs(10, 900));
+  });
+});
+
+describe('tierStartIntervalMs', () => {
+  // One source of truth for "what starting ms/card pace does each unlocked
+  // tier earn", so drills/competenceGate.ts's progression and the timed
+  // drill's adaptive pacing (CountDrillView.tsx) can never drift apart.
+  // learning has no natural upper cutoff in classifySpeed (>30s is simply
+  // "learning"), so its pace is the existing shipped default
+  // (DEFAULT_SETTINGS.drill.countTimedStartMs) rather than a derived
+  // boundary. The other three are derived directly from classifySpeed's own
+  // tested cutoffs (30s/22s/12s per 52-card deck), converted to ms/card.
+
+  it('learning starts at the existing shipped default pace (900ms/card)', () => {
+    expect(tierStartIntervalMs('learning')).toBe(900);
+  });
+
+  it('table-ready starts at the 30s/deck cutoff converted to ms/card', () => {
+    expect(tierStartIntervalMs('table-ready')).toBe(Math.round((30 * 1000) / 52));
+  });
+
+  it('pro starts at the 22s/deck cutoff converted to ms/card', () => {
+    expect(tierStartIntervalMs('pro')).toBe(Math.round((22 * 1000) / 52));
+  });
+
+  it('expert starts at the 12s/deck cutoff converted to ms/card', () => {
+    expect(tierStartIntervalMs('expert')).toBe(Math.round((12 * 1000) / 52));
+  });
+
+  it('is strictly faster (lower ms) for each successive tier', () => {
+    const order: SpeedTier[] = ['learning', 'table-ready', 'pro', 'expert'];
+    for (let i = 1; i < order.length; i++) {
+      expect(tierStartIntervalMs(order[i]!)).toBeLessThan(tierStartIntervalMs(order[i - 1]!));
+    }
+  });
+
+  it('never returns a pace below the ramp floor', () => {
+    for (const tier of ['learning', 'table-ready', 'pro', 'expert'] as SpeedTier[]) {
+      expect(tierStartIntervalMs(tier)).toBeGreaterThanOrEqual(RAMP_FLOOR_MS);
+    }
   });
 });

@@ -144,6 +144,26 @@ describe('store/persist', () => {
       expect(loadSettings().drill.quizDistractorPct).toBe(25);
     });
 
+    test('a stored v1-drill blob without timedAdaptive backfills it to true (R2 evidence-based default)', () => {
+      storage['bjtrainer.settings.v1'] = JSON.stringify({
+        version: 1,
+        drill: {
+          flashCategory: 'hard',
+          countGroup: 2,
+          countIntervalMs: 900,
+          countLengthCards: 104,
+        },
+      });
+      const loaded = loadSettings();
+      expect(loaded.drill.timedAdaptive).toBe(true);
+      // An explicit false round-trips too (the toggle is user-overridable).
+      storage['bjtrainer.settings.v1'] = JSON.stringify({
+        version: 1,
+        drill: { timedAdaptive: false },
+      });
+      expect(loadSettings().drill.timedAdaptive).toBe(false);
+    });
+
     test('backfills audio settings when the stored blob predates cycle 3', () => {
       storage['bjtrainer.settings.v1'] = JSON.stringify({
         version: 1,

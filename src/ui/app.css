@@ -1989,3 +1989,22 @@ button {
   text-align: center;
   max-width: 20rem;
 }
+
+/* R2 (docs/BACKLOG.md, accuracy-gated difficulty): the competence gate's
+   verdict on the just-finished Timed Challenge run. Reuses the existing
+   timed-result palette rather than introducing a new one. */
+.timed-result-gate {
+  font-size: 0.75rem;
+  color: #b7d3c2;
+  text-align: center;
+  max-width: 20rem;
+  margin-top: 0.15rem;
+}
+
+.gate-outcome-advanced {
+  color: #6fcf97;
+}
+
+.gate-outcome-eased {
+  color: #d8b969;
+}

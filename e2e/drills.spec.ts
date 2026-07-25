@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { shot, withSettings, readStats, goHomeAndNavigate } from './helpers';
+import { shot, withSettings, withStats, readStats, goHomeAndNavigate } from './helpers';
 
 const SPEED_TIERS = ['Learning', 'Table-ready', 'Pro', 'Expert'];
 
@@ -105,6 +105,68 @@ test('count drill: timed challenge auto-advances and reports elapsed time + spee
 
   await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();
+});
+
+/**
+ * R2 (docs/BACKLOG.md, accuracy-gated difficulty): with Adaptive difficulty
+ * ON (the default), a history of accurate table-ready-tier runs should
+ * unlock 'pro' and pace the NEXT run's ramp at pro's faster rate --
+ * regardless of the configured "Starting pace" setting (2000ms/card here,
+ * deliberately slow) and regardless of the un-earned 'learning' default a
+ * fresh user would get. Proven two ways: the persisted history's new entry
+ * records `attemptedTier: 'pro'`, and the run's measured elapsedMs is far
+ * below what either the configured 2000ms/card or the learning-tier 900ms/
+ * card pace would produce for 5 cards (~10000ms / ~4500ms respectively) --
+ * pro's pace (drills/countSpeed.ts tierStartIntervalMs('pro') ~423ms/card)
+ * finishes in ~2.1s.
+ */
+test('count drill: adaptive difficulty picks a faster start after a history of accurate runs', async ({
+  page,
+}) => {
+  const accurateTableReadyRuns = Array.from({ length: 8 }, () => ({
+    date: new Date().toISOString(),
+    cards: 52,
+    elapsedMs: 20_000,
+    secondsPerDeck: 20,
+    tier: 'table-ready',
+    correct: true,
+    attemptedTier: 'table-ready',
+  }));
+  await withStats(page, { timedCount: { history: accurateTableReadyRuns } });
+  await withSettings(page, {
+    drill: { countLengthCards: 5, countGroup: 1, countTimedStartMs: 2000 },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+
+  await page.getByLabel('Timed challenge (speed ramp)').check();
+  // Adaptive difficulty defaults to true -- left unchecked/untouched here to
+  // exercise the shipped default rather than forcing it.
+  await expect(page.getByLabel('Adaptive difficulty')).toBeChecked();
+  await expect(page.locator('.settings-note-row', { hasText: 'Paces this run' })).toContainText('Pro');
+
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.count-flash-area')).toBeVisible();
+
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+  await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await expect(page.locator('.timed-result')).toBeVisible();
+
+  const stats = await readStats(page);
+  const timedHistory = (stats?.timedCount as { history: Record<string, unknown>[] } | undefined)?.history ?? [];
+  expect(timedHistory).toHaveLength(9); // the 8 seeded + this run
+  const newEntry = timedHistory[8]!;
+  expect(newEntry.attemptedTier).toBe('pro');
+  // Well under the learning-tier (900ms/card * 5 ~= 4500ms) and configured
+  // (2000ms/card * 5 = 10000ms) baselines -- proves the FASTER, earned pace
+  // was actually used, not just recorded.
+  expect(newEntry.elapsedMs as number).toBeLessThan(3500);
+
+  await expect(page.locator('.timed-result-gate')).toContainText('Unlocked: Pro');
 });
 
 test('true count drill: answering a question persists a trueCount history entry', async ({ page }) => {

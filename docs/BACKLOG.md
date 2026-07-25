@@ -60,7 +60,7 @@ measurement layer that makes almost everything below provable — including D1 (
 must be scored as "count kept AND how much slower"). Add `elapsedMs` to graded events +
 surface per-drill; the shot clock is a cheap follow-on. Highest leverage in the file.
 
-### R2 · Accuracy-gate the hard modes (fix the timed ramp; gate distraction/speed/interleave) — S — **HIGH**
+### R2 · Accuracy-gate the hard modes (fix the timed ramp; gate distraction/speed/interleave) — S — **HIGH** — **✅ SHIPPED (timed-drill half; distraction/interleave gating still open for D1/R4)**
 Convergence: TS#2+TS#3 (three independent literatures — stress-inoculation,
 desirable-difficulties, speed-accuracy — converge on "unlock harder only after a measured
 competence floor"; a controlled npj Science of Learning study read in full shows
@@ -69,6 +69,18 @@ skill) **meets** RT (plateau-trap findings). CONCRETE + slightly self-correcting
 just-shipped timed drill ramps on elapsed cards, not accuracy — change it to advance a
 speed tier only when accuracy holds at threshold. Also the onboarding rule for D1. Depends
 on R1's measurement.
+
+Shipped: `src/drills/competenceGate.ts` (`computeUnlockedTier` -- reusable gate, generic over
+any `{tier, correct}` history so D1 can reuse it unchanged) + `tierStartIntervalMs` in
+`countSpeed.ts` (one source of truth mapping a SpeedTier to its ms/card pace, derived from
+`classifySpeed`'s own tested cutoffs). Wired into the timed drill's "Adaptive difficulty"
+toggle (`Settings.drill.timedAdaptive`, default true): the run's starting pace is set to the
+unlocked tier's pace and the within-run ramp is capped there (start==floor -- no
+schedule-driven overspeed beyond earned competence), gated on per-run correctness recorded
+across runs (`timedCount.history[].attemptedTier`). Fixed-pace mode is kept, unchanged, as an
+explicit opt-out. Gate rules: 80% accuracy over the most recent 10 attempts at a tier (min 5
+attempts before it counts), 3-consecutive-wrong eases back one tier. Result screen shows
+"Unlocked: &lt;tier&gt; — hold accuracy to reach &lt;next&gt;" plus advanced/held/eased.
 
 ### R3 · Spaced-repetition / miss-weighted scheduling over indices + weak chart cells — S — **HIGH**
 Convergence: TS#1 (spacing + retrieval practice = the most robustly evidenced technique in

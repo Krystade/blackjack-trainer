@@ -3,6 +3,7 @@ import { DEFAULT_SPREAD } from '../engine/game';
 import type { Category, MistakeClass } from '../engine/grade';
 import type { DeviationId } from '../engine/deviations';
 import type { RuleSet } from '../engine/ruleset';
+import type { SpeedTier } from '../drills/countSpeed';
 
 export interface Settings {
   version: 1;
@@ -33,6 +34,17 @@ export interface Settings {
     // 0 keeps quiz behavior unchanged out of the box; the UI only offers
     // 0/25/50 but any 0-100 value is valid.
     quizDistractorPct: number;
+    // R2 (docs/BACKLOG.md, accuracy-gated difficulty): when true, the Timed
+    // Challenge picks its starting pace from drills/competenceGate.ts's
+    // computeUnlockedTier (the fastest tier the user has recently been
+    // ACCURATE at) and caps the within-run ramp at that tier's pace, instead
+    // of always ramping from `countTimedStartMs` on a fixed schedule
+    // regardless of accuracy. Defaults to true -- the evidence-based
+    // default per the training-science research (schedule-driven speed
+    // pressure inflates in-drill scores without improving retained skill).
+    // When false, Timed Challenge behaves exactly as it did before this
+    // feature shipped (fixed `countTimedStartMs` ramp, unchanged).
+    timedAdaptive: boolean;
   };
   audio: AudioSettings;
 }
@@ -104,6 +116,7 @@ export const DEFAULT_SETTINGS: Settings = {
     quizIndex: 'all',
     countTimedStartMs: 900,
     quizDistractorPct: 0,
+    timedAdaptive: true,
   },
   audio: { ...DEFAULT_AUDIO },
 };
@@ -167,6 +180,15 @@ export interface Stats {
       secondsPerDeck: number;
       tier: string;
       correct: boolean;
+      // R2 (docs/BACKLOG.md, accuracy-gated difficulty): the tier this run
+      // was PACED at (from drills/competenceGate.ts's computeUnlockedTier at
+      // the moment the run started), as distinct from `tier` above (the
+      // ACHIEVED tier, classified from the run's measured elapsed speed).
+      // The gate reads this field (falling back to `tier` when absent) so
+      // it judges the user's demonstrated pace, not a schedule-driven ramp's
+      // incidental result. Optional -- entries persisted before this field
+      // shipped simply lack it, no migration needed.
+      attemptedTier?: SpeedTier;
     }[];
   };
   sessions: {

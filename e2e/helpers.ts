@@ -65,6 +65,22 @@ export async function withProfile(page: Page, patch: Record<string, unknown> = {
 }
 
 /**
+ * Write a partial Stats object into localStorage BEFORE the app's first
+ * script runs -- mirrors `withSettings` above, but for `bjtrainer.stats.v1`
+ * (src/store/persist.ts's mergeStats deep-merges partial blobs over
+ * EMPTY_STATS the same way mergeSettings does for Settings). Lets a test pre-
+ * seed drill history (e.g. `timedCount.history`) so it can exercise gate/
+ * telemetry logic that depends on PRIOR runs, without having to play through
+ * dozens of real drill attempts first.
+ */
+export async function withStats(page: Page, patch: Record<string, unknown>): Promise<void> {
+  const json = JSON.stringify({ version: 1, ...patch });
+  await page.addInitScript((statsJson) => {
+    window.localStorage.setItem('bjtrainer.stats.v1', statsJson);
+  }, json);
+}
+
+/**
  * Read back the persisted stats blob (`bjtrainer.stats.v1`) from
  * localStorage as a plain object, or `null` if nothing has been saved yet.
  * Used to prove a drill actually WROTE telemetry (src/store/persist.ts

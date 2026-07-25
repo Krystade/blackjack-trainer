@@ -96,3 +96,39 @@ export function rampIntervalMs(
   const decayed = startMs * Math.pow(decay, clampedIndex);
   return Math.max(floorMs, Math.round(decayed));
 }
+
+/** Converts a "count a 52-card deck in N seconds" benchmark into a per-card
+ * millisecond interval -- the inverse of `secondsPerDeck`'s own
+ * `msPerCard * 52 / 1000` conversion, kept private since callers only ever
+ * need the per-tier mapping below, not the raw conversion. */
+function msPerCardForDeckSeconds(deckSeconds: number): number {
+  return Math.round((deckSeconds * 1000) / 52);
+}
+
+/**
+ * Maps a SpeedTier (drills/competenceGate.ts's unlocked-tier gate) to the
+ * starting per-card pace (ms) a run at that tier should use -- the single
+ * source of truth for "how fast does earning tier X let you go", so the
+ * timed drill's adaptive mode (CountDrillView.tsx) and the competence gate
+ * never drift apart on what a tier's pace actually means.
+ *
+ * 'learning' has no natural upper cutoff in `classifySpeed` (anything slower
+ * than table-ready's 30s/deck is simply "learning"), so its pace is pinned
+ * to the existing shipped default (`DEFAULT_SETTINGS.drill.countTimedStartMs`,
+ * 900ms) rather than derived from a boundary that doesn't exist. The other
+ * three tiers are derived directly from `classifySpeed`'s own tested cutoffs
+ * (<=30s table-ready, <=22s pro, <=12s expert) converted to ms/card, so
+ * raising/lowering those cutoffs automatically keeps this mapping in sync.
+ */
+export function tierStartIntervalMs(tier: SpeedTier): number {
+  switch (tier) {
+    case 'learning':
+      return 900;
+    case 'table-ready':
+      return msPerCardForDeckSeconds(30);
+    case 'pro':
+      return msPerCardForDeckSeconds(22);
+    case 'expert':
+      return msPerCardForDeckSeconds(12);
+  }
+}
