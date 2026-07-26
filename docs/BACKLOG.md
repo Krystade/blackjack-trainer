@@ -174,10 +174,26 @@ surfaces demand.
 
 ---
 
-**Recommended build order:** R1 → R2 → R3 (the measurement-and-mastery spine, all S, all
-convergent) → then D1 (distraction — operator-requested, and it *needs* R1+R2 to be scored
-and onboarded correctly) → R5/R6 (realism) → R4 (interleave) → R8 mechanics as appetite
-allows. R1 first is non-negotiable: it's the instrument the rest are measured with.
+**Build order — OPERATOR-SET 2026-07-26:** R1→R2→R3→D1 ✅ done. NEXT: **T0 complete
+functional test coverage** → **R7** peek accountability → **R4** interleave → **R5**
+wonging → **R8** community mechanics → **R9** spot-reading → then the rest (R6, D2,
+follow-ons). (Supersedes the original convergence order below; R6 deprioritized by the
+operator, still open.)
+
+### T0 · Complete functional test coverage (operator request 2026-07-26) — M — **NEXT**
+Not "more tests" — a *coverage guarantee*: every screen, drill mode, setting/toggle, and
+shipped feature is exercised by an automated test, plus one full-journey smoke run. Known
+gaps to close: (1) **clip audio PLAYBACK is e2e-bypassed** (`?e2e=1` short-circuits it) — a
+whole feature verified only by a manual deployed-site probe; needs a committed repeatable
+test against a real built+served site with the actual mp3s. (2) ProfileEditor rule toggles
+(decks/S17/DAS/LS/RSA/bj65/penetration) + Seats + bet-spread editor not each exercised. (3)
+audio Settings (useClips, clipVoice picker, rate→3x, pause→0, cardDetail full/rank/face).
+(4) keyboard input across all drills (only flashcard "2" + count digit are e2e'd). Deliver:
+a coverage MATRIX doc (feature→spec|GAP), e2e specs filling every gap, a single
+full-journey smoke spec touching every screen+mode, and the clip-playback harness.
+
+**Original convergence order (superseded, kept for rationale):** R1 → R2 → R3 → D1 →
+R5/R6 → R4 → R8. R1 first was non-negotiable: it's the instrument the rest are measured with.
 
 ## Parked (unchanged)
 M6 bot-mistake RNG correlated with shoe seed · M8 bot cards render instantly while
