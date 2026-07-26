@@ -86,3 +86,35 @@ export function makeDistraction(runningCount: number, mode: DistractionMode, see
   const rng = mulberry32(seed ?? Date.now());
   return mode === 'near-count' ? makeNearCount(runningCount, rng) : makeGeneric(rng);
 }
+
+/**
+ * D1 part 2 (docs/BACKLOG.md, distraction training): how often a count-drill
+ * run's card advances get interrupted by a distraction. 'off' is the default
+ * (see Settings.drill.distractionFreq) -- every existing test/e2e and all
+ * default behavior is unchanged until a user opts in.
+ */
+export type DistractionFreq = 'off' | 'occasional' | 'relentless';
+
+// Fixed cadence (cards shown between interruptions), not a probabilistic
+// roll -- deterministic given only (shownIndex, freq), so a test/e2e never
+// needs to fix a seed to know WHEN a distraction fires, only what it asks
+// (still seeded via makeDistraction above). Maps the operator's ballparks
+// (docs/BACKLOG.md D1: occasional "~15% of card advances or every ~7 cards",
+// relentless "every ~3 cards") onto concrete intervals.
+const FREQ_INTERVAL: Record<Exclude<DistractionFreq, 'off'>, number> = {
+  occasional: 7,
+  relentless: 3,
+};
+
+/**
+ * True when the card advance FROM `shownIndex` (0-indexed, the card just
+ * shown) should be interrupted by a distraction instead of proceeding
+ * straight to the next card / the answer phase. Fires on the Nth card shown
+ * (index N-1) for cadence N, so the very first card (index 0) never
+ * triggers -- there's no running count worth quizzing yet with only one
+ * card seen.
+ */
+export function isDistractionPoint(shownIndex: number, freq: DistractionFreq): boolean {
+  if (freq === 'off') return false;
+  return (shownIndex + 1) % FREQ_INTERVAL[freq] === 0;
+}

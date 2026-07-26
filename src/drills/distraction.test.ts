@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeDistraction } from './distraction';
+import { makeDistraction, isDistractionPoint } from './distraction';
 
 /**
  * Anti-drift parsing helper for tests only (mirrors the true-count drill's
@@ -135,5 +135,52 @@ describe('makeDistraction', () => {
         expect(parsed.b).toBeLessThanOrEqual(12);
       }
     }
+  });
+});
+
+/**
+ * D1 part 2 (docs/BACKLOG.md, distraction training): WHEN a card advance
+ * should be interrupted by a distraction. Deliberately a fixed cadence (no
+ * RNG) rather than a probabilistic roll -- the operator's ~15%/~7-cards
+ * ("occasional") and ~33%/~3-cards ("relentless") ballparks map cleanly onto
+ * concrete "every Nth card" intervals, and a fixed cadence is fully
+ * deterministic given only (shownIndex, freq) -- no seed required to predict
+ * WHEN one fires (unlike WHAT it asks, which still comes from the seeded
+ * makeDistraction above). CountDrillView is the caller; it checks this once
+ * per card-advance decision across all three of its advance mechanisms
+ * (fixed-interval, eyes-free speech loop, manual tap), and skips the check
+ * entirely for countdownMode/timedChallenge runs (out of scope for D1 v1).
+ */
+describe('isDistractionPoint', () => {
+  it('never fires when freq is off, at any index', () => {
+    for (let i = 0; i < 50; i++) {
+      expect(isDistractionPoint(i, 'off')).toBe(false);
+    }
+  });
+
+  it('occasional fires every 7th card shown (index 6, 13, 20, ...)', () => {
+    const fired = Array.from({ length: 21 }, (_, i) => i).filter((i) => isDistractionPoint(i, 'occasional'));
+    expect(fired).toEqual([6, 13, 20]);
+  });
+
+  it('relentless fires every 3rd card shown (index 2, 5, 8, ...)', () => {
+    const fired = Array.from({ length: 10 }, (_, i) => i).filter((i) => isDistractionPoint(i, 'relentless'));
+    expect(fired).toEqual([2, 5, 8]);
+  });
+
+  it('relentless fires strictly more often than occasional (sanity check on the two ballparks)', () => {
+    const N = 100;
+    const occasionalCount = Array.from({ length: N }, (_, i) => i).filter((i) =>
+      isDistractionPoint(i, 'occasional'),
+    ).length;
+    const relentlessCount = Array.from({ length: N }, (_, i) => i).filter((i) =>
+      isDistractionPoint(i, 'relentless'),
+    ).length;
+    expect(relentlessCount).toBeGreaterThan(occasionalCount);
+  });
+
+  it('never fires on the very first card (index 0) for either active frequency', () => {
+    expect(isDistractionPoint(0, 'occasional')).toBe(false);
+    expect(isDistractionPoint(0, 'relentless')).toBe(false);
   });
 });

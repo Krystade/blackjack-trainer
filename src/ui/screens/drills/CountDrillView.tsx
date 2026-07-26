@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { Settings } from '../../../store/types';
 import type { Card } from '../../../engine/cards';
 import { hiLoTag } from '../../../engine/count';
-import { makeCountDrill, makeCountdown } from '../../../drills/countDrill';
+import { makeCountDrill, makeCountdown, runningCountThrough } from '../../../drills/countDrill';
 import type { CountDrillRound, CountdownRound } from '../../../drills/countDrill';
+import { makeDistraction, isDistractionPoint } from '../../../drills/distraction';
+import type { Distraction } from '../../../drills/distraction';
 import {
   classifySpeed,
   formatDuration,
@@ -61,7 +63,13 @@ const TIER_LABEL: Record<SpeedTier, string> = {
 // pause, then the answer spoken -- no keypad, no grading (see Task 7 in the
 // cycle-3 plan). Distinct from 'answering', which still shows the NumPad
 // (used by the visual flow AND by eyes-free "strict mode").
-type CountPhase = 'setup' | 'flashing' | 'answering' | 'selfcheck' | 'result';
+// 'distraction' (D1 part 2, docs/BACKLOG.md): a mid-flash interruption --
+// the card stream pauses, a distraction arithmetic challenge is posed (a
+// NumPad answer, plus a live-spoken prompt in eyes-free mode), and once
+// answered the stream resumes exactly where it paused. Standard count-drill
+// flashing only (auto/eyes-free/manual); never entered for countdownMode or
+// timedChallenge (see isDistractionPoint call sites below).
+type CountPhase = 'setup' | 'flashing' | 'answering' | 'selfcheck' | 'distraction' | 'result';
 
 export function CountDrillView({
   settings,
@@ -141,6 +149,34 @@ export function CountDrillView({
     change: 'advanced' | 'held' | 'eased';
   } | null>(null);
 
+  // D1 part 2 (docs/BACKLOG.md, distraction training): the currently-posed
+  // distraction challenge, or null when not in the 'distraction' phase.
+  const [distraction, setDistraction] = useState<Distraction | null>(null);
+  // The seed passed to makeCountDrill/makeCountdown for the CURRENT run, set
+  // once by start() -- reused (offset by the triggering card's shownIndex)
+  // to seed each distraction's own makeDistraction() call, so a run is fully
+  // reproducible given only its outer seed (matching the seeded idiom used
+  // throughout drills/*.ts).
+  const runSeedRef = useRef(0);
+  // performance.now() at the moment the current distraction was posed --
+  // read (never displayed) to compute its elapsedMs on answer. null when no
+  // distraction is currently pending.
+  const distractionShownAtRef = useRef<number | null>(null);
+  // What to do once the pending distraction is answered: advance shownIndex
+  // to this index, or 'finish' (the distraction was posed on the last card,
+  // so resuming means entering the answer phase instead). null when no
+  // distraction is pending.
+  const pendingResumeRef = useRef<'finish' | number | null>(null);
+  // Every distraction.history row created so far THIS run -- countKept is
+  // left provisional (false) here and back-filled with the run's actual
+  // final-count correctness once it's graded (finishRun below), then
+  // persisted together. Cleared by start() so a run can never inherit a
+  // previous run's rows (the death-race/stale-run lesson applies here too:
+  // this ref, like runIdRef, must never let run N's data bleed into N+1).
+  const runDistractionRowsRef = useRef<
+    { date: string; kind: Distraction['kind']; answerCorrect: boolean; countKept: boolean; elapsedMs?: number }[]
+  >([]);
+
   // Eyes-free requires audio to be enabled; if the user disables audio
   // (e.g. via Settings) while it's checked, drop it rather than leave a
   // checked-but-disabled control.
@@ -195,9 +231,42 @@ export function CountDrillView({
       ? drillRound.groups
       : [];
 
-  // Visual-mode (non-eyes-free) fixed-interval advance -- UNCHANGED behavior.
-  // Eyes-free auto mode is driven by speech instead (see the effect below),
-  // so it's explicitly excluded here rather than sharing this timer.
+  // D1 part 2 (docs/BACKLOG.md, distraction training): pause the flashing
+  // stream and pose a distraction. Called from all three of the standard
+  // count drill's advance mechanisms (the fixed-interval effect, the
+  // eyes-free speech loop, and manual tap) right at the moment they would
+  // otherwise advance past `idxAtTrigger` -- never from Countdown mode or
+  // Timed Challenge, both out of scope for D1 v1 (see each call site's own
+  // guard). `isLast` tells the resume step (handleDistractionSubmit below)
+  // whether resuming means showing the next card or entering the answer
+  // phase, exactly mirroring what the caller would have done had no
+  // distraction fired.
+  //
+  // The running count fed to makeDistraction is a PRIVATE computation --
+  // runningCountThrough's result is read here and passed straight into
+  // makeDistraction, never assigned to any piece of state and never touched
+  // by narration/JSX, so there is no code path that could accidentally
+  // display or speak it (the whole point of the drill is testing whether
+  // the user can keep it in their own head through the interruption).
+  const triggerDistraction = (idxAtTrigger: number, isLast: boolean) => {
+    const rc = runningCountThrough(groups, idxAtTrigger);
+    const seed = runSeedRef.current + idxAtTrigger;
+    const d = makeDistraction(rc, settings.drill.distractionMode, seed);
+    setDistraction(d);
+    distractionShownAtRef.current = performance.now();
+    pendingResumeRef.current = isLast ? 'finish' : idxAtTrigger + 1;
+    setPhase('distraction');
+    if (eyesFree) {
+      // Live TTS, not a clip/narration helper -- the math is dynamic per
+      // trigger, so no pre-rendered clip could ever cover it.
+      speak(d.prompt, { interrupt: true, rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+    }
+  };
+
+  // Visual-mode (non-eyes-free) fixed-interval advance -- UNCHANGED behavior
+  // apart from the D1 distraction check below. Eyes-free auto mode is driven
+  // by speech instead (see the effect below), so it's explicitly excluded
+  // here rather than sharing this timer.
   useEffect(() => {
     if (
       phase !== 'flashing' ||
@@ -209,12 +278,20 @@ export function CountDrillView({
       return undefined;
     }
 
-    if (shownIndex >= groups.length - 1) {
-      const t = setTimeout(() => enterAnswerPhase(), settings.drill.countIntervalMs);
-      return () => clearTimeout(t);
-    }
-
-    const t = setTimeout(() => setShownIndex((i) => i + 1), settings.drill.countIntervalMs);
+    const isLast = shownIndex >= groups.length - 1;
+    const t = setTimeout(() => {
+      // D1 part 2: countdownMode (tag-guess) is out of scope -- Timed
+      // Challenge never reaches this effect at all (guarded above), so it
+      // needs no separate check here. `distractionFreq: 'off'` (the
+      // shipped default) makes isDistractionPoint always false, so this is
+      // a pure no-op until a user opts in.
+      if (!countdownMode && isDistractionPoint(shownIndex, settings.drill.distractionFreq)) {
+        triggerDistraction(shownIndex, isLast);
+        return;
+      }
+      if (isLast) enterAnswerPhase();
+      else setShownIndex((i) => i + 1);
+    }, settings.drill.countIntervalMs);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -223,6 +300,7 @@ export function CountDrillView({
     groups.length,
     settings.drill.countIntervalMs,
     settings.drill.countManual,
+    settings.drill.distractionFreq,
     eyesFree,
     strictMode,
     countdownMode,
@@ -281,7 +359,25 @@ export function CountDrillView({
         await speakAsync(narrateCards(g, settings.audio.cardDetail), { rate, voiceURI });
         if (isStale()) return;
 
-        if (i >= groups.length - 1) {
+        const isLast = i >= groups.length - 1;
+
+        // D1 part 2 (docs/BACKLOG.md, distraction training): pause here --
+        // triggerDistraction flips `phase` away from 'flashing', which this
+        // effect's own cleanup (below) reacts to (cancelled=true +
+        // cancelSpeech()), tearing this loop down entirely. Resuming
+        // (handleDistractionSubmit) flips `phase` back to 'flashing' with
+        // shownIndex already advanced past `i`, mounting a FRESH instance of
+        // this same effect that picks up exactly there. That gives the
+        // "await the distraction resolution before speaking the next card"
+        // guarantee for free: the next card's speakAsync literally cannot
+        // start running until the distraction is answered, without needing
+        // an in-closure await spanning the interruption itself.
+        if (isDistractionPoint(i, settings.drill.distractionFreq)) {
+          triggerDistraction(i, isLast);
+          return;
+        }
+
+        if (isLast) {
           enterAnswerPhase();
           return;
         }
@@ -303,7 +399,15 @@ export function CountDrillView({
       cancelSpeech();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, groups.length, eyesFree, settings.drill.countManual, countdownMode, timedChallenge]);
+  }, [
+    phase,
+    groups.length,
+    eyesFree,
+    settings.drill.countManual,
+    settings.drill.distractionFreq,
+    countdownMode,
+    timedChallenge,
+  ]);
 
   // Narrate each card group as it's shown. Visual mode speaks only at
   // verbosity 'full' (existing Task 5 behavior, UNCHANGED); eyes-free MANUAL
@@ -451,7 +555,15 @@ export function CountDrillView({
   }, []);
 
   const advanceManual = () => {
-    if (shownIndex >= groups.length - 1) {
+    const isLast = shownIndex >= groups.length - 1;
+    // D1 part 2: this tap zone is shared with Countdown mode's manual
+    // advance (see the JSX below), which is out of scope for distractions --
+    // guard it out explicitly rather than relying on distractionFreq alone.
+    if (!countdownMode && isDistractionPoint(shownIndex, settings.drill.distractionFreq)) {
+      triggerDistraction(shownIndex, isLast);
+      return;
+    }
+    if (isLast) {
       enterAnswerPhase();
     } else {
       setShownIndex((i) => i + 1);
@@ -490,6 +602,14 @@ export function CountDrillView({
     // of the new round's narration.
     cancelSpeech();
     const seed = randomSeed();
+    // D1 part 2: this run's own distraction seed base (see triggerDistraction
+    // above) and its accumulated distraction.history rows -- cleared here so
+    // a fresh run/Replay can never inherit a previous run's rows.
+    runSeedRef.current = seed;
+    runDistractionRowsRef.current = [];
+    setDistraction(null);
+    distractionShownAtRef.current = null;
+    pendingResumeRef.current = null;
     if (countdownMode) {
       setCountdownRound(makeCountdown(seed));
       setDrillRound(null);
@@ -550,6 +670,19 @@ export function CountDrillView({
 
     const stats = loadStats();
 
+    // D1 part 2 (docs/BACKLOG.md, distraction training): countKept back-fill
+    // -- every distraction posed DURING this run gets graded on whether the
+    // run's FINAL count survived the interruption(s), which is only known
+    // now. Empty for countdownMode/timedChallenge runs (distractions never
+    // trigger there -- see each advance mechanism's guard), so this is a
+    // pure no-op for them; `statsWithDistraction` is just `stats` unchanged
+    // in that case (same reference, no spread needed).
+    const distractionRows = runDistractionRowsRef.current.map((row) => ({ ...row, countKept: correct }));
+    const statsWithDistraction =
+      distractionRows.length === 0
+        ? stats
+        : { ...stats, distraction: { history: [...stats.distraction.history, ...distractionRows] } };
+
     // Timed Challenge runs are graded on speed as well as correctness, and
     // that's a materially different metric than the plain count drill's
     // intervalMs (a fixed pace, not an elapsed-time result) -- they go to
@@ -573,7 +706,7 @@ export function CountDrillView({
         ...(attemptedTierRef.current ? { attemptedTier: attemptedTierRef.current } : {}),
       };
       saveStats({
-        ...stats,
+        ...statsWithDistraction,
         timedCount: { history: [...stats.timedCount.history, newEntry] },
       });
 
@@ -595,7 +728,7 @@ export function CountDrillView({
 
     const cardsInRun = countdownMode ? 52 : settings.drill.countLengthCards;
     const updated = {
-      ...stats,
+      ...statsWithDistraction,
       countDrill: {
         history: [
           ...stats.countDrill.history,
@@ -609,6 +742,44 @@ export function CountDrillView({
       },
     };
     saveStats(updated);
+  };
+
+  // D1 part 2 (docs/BACKLOG.md, distraction training): grades the posed
+  // distraction's own arithmetic, records a (provisional-countKept) row into
+  // this run's collector, then resumes the flashing stream exactly where it
+  // paused -- either the next card (pendingResumeRef holds its shownIndex)
+  // or the answer phase (pendingResumeRef === 'finish'), mirroring exactly
+  // what the triggering advance mechanism would have done had no
+  // distraction fired.
+  const handleDistractionSubmit = (value: number) => {
+    if (!distraction) return;
+    const shownAt = distractionShownAtRef.current;
+    const elapsedMs = shownAt !== null ? performance.now() - shownAt : undefined;
+    const answerCorrect = value === distraction.answer;
+    runDistractionRowsRef.current = [
+      ...runDistractionRowsRef.current,
+      {
+        date: new Date().toISOString(),
+        kind: distraction.kind,
+        answerCorrect,
+        // Provisional -- back-filled with the run's actual final-count
+        // correctness in finishRun once the run itself is graded.
+        countKept: false,
+        ...(elapsedMs !== undefined ? { elapsedMs } : {}),
+      },
+    ];
+
+    const resume = pendingResumeRef.current;
+    pendingResumeRef.current = null;
+    setDistraction(null);
+    distractionShownAtRef.current = null;
+
+    if (resume === 'finish') {
+      enterAnswerPhase();
+    } else if (typeof resume === 'number') {
+      setShownIndex(resume);
+      setPhase('flashing');
+    }
   };
 
   const handleRcSubmit = (value: number) => {
@@ -790,6 +961,54 @@ export function CountDrillView({
             </>
           )}
 
+          {/* D1 part 2 (docs/BACKLOG.md, distraction training): only meaningful
+              for the standard count drill's flashing phase -- excluded for
+              Countdown mode (tag-guess, not a running-count answer) and for
+              Timed Challenge (its speed ramp/measurement is a separate,
+              deliberately untangled concern; see the module header comment).
+              Follows the same persisted-only-here-in-CountDrillView pattern
+              as timedAdaptive above (not duplicated into Settings.tsx). */}
+          {!countdownMode && !timedChallenge && (
+            <>
+              <div className="settings-row">
+                <span className="settings-label">Distractions</span>
+                <Segmented
+                  options={[
+                    { value: 'off', label: 'Off' },
+                    { value: 'occasional', label: 'Occasional' },
+                    { value: 'relentless', label: 'Relentless' },
+                  ]}
+                  value={settings.drill.distractionFreq}
+                  onChange={(v) => updateDrill({ distractionFreq: v })}
+                />
+              </div>
+              {settings.drill.distractionFreq !== 'off' && (
+                <>
+                  <div className="settings-row settings-note-row">
+                    Pauses the count every {settings.drill.distractionFreq === 'relentless' ? '3rd' : '7th'} card
+                    for a quick math interruption, then resumes -- simulates table talk.
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-label">Distraction type</span>
+                    <Segmented
+                      options={[
+                        { value: 'near-count', label: 'Near-count' },
+                        { value: 'generic', label: 'Generic' },
+                      ]}
+                      value={settings.drill.distractionMode}
+                      onChange={(v) => updateDrill({ distractionMode: v })}
+                    />
+                  </div>
+                </>
+              )}
+            </>
+          )}
+          {!countdownMode && timedChallenge && settings.drill.distractionFreq !== 'off' && (
+            <div className="settings-row settings-note-row">
+              Distractions don&apos;t apply to Timed Challenge runs.
+            </div>
+          )}
+
           <button type="button" className="drill-start-btn" onClick={start}>
             Start
           </button>
@@ -822,6 +1041,14 @@ export function CountDrillView({
       {phase === 'selfcheck' && (
         <div className="count-flash-area">
           <div className="count-flash-progress">Listen for the running count&hellip;</div>
+        </div>
+      )}
+
+      {phase === 'distraction' && distraction && (
+        <div className="distraction-area">
+          <div className="distraction-label">Quick -- what&apos;s this?</div>
+          <div className="distraction-prompt">{distraction.prompt}</div>
+          <NumPad label="Answer" onSubmit={handleDistractionSubmit} />
         </div>
       )}
 

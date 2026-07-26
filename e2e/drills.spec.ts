@@ -415,6 +415,128 @@ test('count drill: typed digit + Enter submits the running-count answer via keyb
   await expect(page.locator('.result-detail')).toContainText('You entered 3');
 });
 
+/**
+ * D1 part 2 (docs/BACKLOG.md, distraction training): the mid-drill
+ * interruption generator (drills/distraction.ts, shipped part 1) actually
+ * wired into the count drill. `distractionFreq: 'relentless'` fires on the
+ * 3rd card shown (isDistractionPoint's fixed cadence -- deterministic given
+ * only the index, no seed needed for WHEN it fires); `countLengthCards: 4`
+ * makes that the ONLY interruption in the run (index 2 of 0..3), so the
+ * stream resumes cleanly to a normal graded finish afterward. Math.random is
+ * pinned (same idiom as the existing keyboard-vs-click parity test above)
+ * purely so the whole run is fully reproducible, not because the trigger
+ * itself needs a seed.
+ *
+ * Proves: the prompt appears mid-stream (not instead of the flash, not at
+ * the start), answering it writes a distraction.history row with a real
+ * elapsedMs, the stream resumes and reaches a normal graded result, and
+ * countKept was back-filled to match the run's own final-count grade.
+ */
+test('count drill: relentless distractions interrupt mid-stream and grade countKept against the final count', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
+  await withSettings(page, {
+    drill: {
+      countIntervalMs: 200,
+      countLengthCards: 4,
+      countGroup: 1,
+      distractionFreq: 'relentless',
+    },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await expect(page.locator('.count-setup')).toBeVisible();
+
+  // The setup screen's own control reflects the forced setting.
+  const freqRow = page.locator('.settings-row', { hasText: 'Distractions' });
+  await expect(freqRow.getByRole('button', { name: 'Relentless', exact: true })).toHaveClass(/segmented-btn-active/);
+
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.count-flash-area')).toBeVisible();
+  await shot(page, '70-distraction-flashing');
+
+  // Mid-stream: the flash pauses and a distraction challenge appears --
+  // never at the very start (isDistractionPoint(0, ...) is always false).
+  await expect(page.locator('.distraction-area')).toBeVisible({ timeout: 10_000 });
+  const prompt = await page.locator('.distraction-prompt').innerText();
+  expect(prompt.trim().length).toBeGreaterThan(0);
+  await shot(page, '71-distraction-prompt');
+
+  // Answer it (the value itself isn't asserted -- this run isn't pinned to
+  // land on the right answer, only that answering records real telemetry).
+  await page.locator('.numpad-btn', { hasText: /^7$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+
+  // Resumes the flashing stream -- the distraction UI is gone, and the run
+  // reaches its normal graded finish (NOT stuck, NOT skipped ahead).
+  await expect(page.locator('.distraction-area')).not.toBeVisible();
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+  await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
+  await shot(page, '72-distraction-result');
+
+  const stats = await readStats(page);
+  const distractionHistory =
+    (stats?.distraction as { history: Record<string, unknown>[] } | undefined)?.history ?? [];
+  expect(distractionHistory).toHaveLength(1);
+  const row = distractionHistory[0]!;
+  expect(row.kind).toBe('near-count'); // the default distractionMode
+  expect(typeof row.answerCorrect).toBe('boolean');
+  expect(row.elapsedMs as number).toBeGreaterThan(0);
+
+  // countKept was back-filled from the run's own final grade -- cross-check
+  // against the SAME run's countDrill.history entry rather than re-deriving
+  // correctness independently (there's exactly one of each here).
+  const countDrillHistory =
+    (stats?.countDrill as { history: Record<string, unknown>[] } | undefined)?.history ?? [];
+  expect(countDrillHistory).toHaveLength(1);
+  expect(row.countKept).toBe(countDrillHistory[0]!.correct);
+
+  await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+  await expect(page.locator('.drills-picker')).toBeVisible();
+});
+
+/**
+ * D1 part 2: distractionFreq defaults to 'off', so an ordinary run (every
+ * existing test/e2e's implicit assumption) never enters the 'distraction'
+ * phase at all, regardless of run length -- proving the opt-in default keeps
+ * pre-D1 behavior byte-for-byte unless a user explicitly turns it on.
+ */
+test('count drill: distractionFreq off (default) never shows a distraction, even across many cards', async ({
+  page,
+}) => {
+  await withSettings(page, {
+    drill: { countIntervalMs: 150, countLengthCards: 13, countGroup: 1 },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+
+  const freqRow = page.locator('.settings-row', { hasText: 'Distractions' });
+  await expect(freqRow.getByRole('button', { name: 'Off', exact: true })).toHaveClass(/segmented-btn-active/);
+
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.count-flash-area')).toBeVisible();
+
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('.distraction-area')).toHaveCount(0);
+  await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+
+  await expect(page.locator('.drill-result')).toBeVisible();
+  const stats = await readStats(page);
+  const distractionHistory =
+    (stats?.distraction as { history: unknown[] } | undefined)?.history ?? [];
+  expect(distractionHistory).toHaveLength(0);
+});
+
 test('deviation quiz: answer shows feedback with the index/label text', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();

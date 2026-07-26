@@ -36,6 +36,28 @@ export function makeCountDrill(cards: number, groupSize: 1 | 2 | 3, seed?: numbe
   return { groups, finalRc };
 }
 
+/**
+ * D1 part 2 (docs/BACKLOG.md, distraction training): sum of hiLoTag over
+ * every card in groups[0..uptoIndex] inclusive -- the running count "as of
+ * now" mid-flash. Used by CountDrillView to privately seed a distraction
+ * interruption's makeDistraction() call; the caller MUST NEVER display or
+ * speak this value, only feed it in as the seed for the distraction's
+ * arithmetic (see distraction.ts). Pure and independent of CountDrillRound
+ * (takes a plain groups array) so it works against a run already in
+ * progress rather than needing the whole round object.
+ *
+ * `uptoIndex` is clamped safely on both ends: negative (nothing shown yet)
+ * sums to 0, and an index beyond the array simply sums whatever exists --
+ * never throws.
+ */
+export function runningCountThrough(groups: Card[][], uptoIndex: number): number {
+  let rc = 0;
+  for (let i = 0; i <= uptoIndex && i < groups.length; i++) {
+    for (const c of groups[i]!) rc += hiLoTag(c.rank);
+  }
+  return rc;
+}
+
 export interface CountdownRound {
   shown: Card[];
   hidden: Card;

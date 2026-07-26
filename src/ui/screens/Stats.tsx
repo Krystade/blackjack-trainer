@@ -4,7 +4,13 @@ import type { Screen } from '../App';
 import type { AudioSettings, Profile, Settings, Stats as StatsData } from '../../store/types';
 import { EMPTY_STATS } from '../../store/types';
 import { loadStats, saveStats, loadSettings, exportAll, importAll } from '../../store/persist';
-import { summarize, bestSecondsPerDeck, signedErrorBreakdown, medianLatency } from '../../store/drillStats';
+import {
+  summarize,
+  bestSecondsPerDeck,
+  signedErrorBreakdown,
+  medianLatency,
+  distractionSummary,
+} from '../../store/drillStats';
 import type { Category, MistakeClass } from '../../engine/grade';
 import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../../engine/deviations';
 import { useAudio } from '../../audio/useAudio';
@@ -159,6 +165,11 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   const timedCountSummary = summarize(stats.timedCount.history);
   const timedCountBest = bestSecondsPerDeck(stats.timedCount.history);
   const timedCountRecent = stats.timedCount.history.slice(-5).reverse();
+
+  // D1 part 2 (docs/BACKLOG.md, distraction training): answer accuracy and
+  // count-survival are reported separately -- see distractionSummary's own
+  // header comment for why they're independent failure modes.
+  const distractionSum = distractionSummary(stats.distraction.history);
 
   // Per-profile header (Cycle-1 Task 13): CVCX numbers (when the profile has
   // them) alongside actual results computed from this profile's own sessions
@@ -330,6 +341,34 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
                 </span>
               </li>
             ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="stats-section">
+        <h2 className="stats-section-title">Distraction</h2>
+        {distractionSum.attempts === 0 ? (
+          <p className="stats-detail">No distraction interruptions yet.</p>
+        ) : (
+          <ul className="mistake-list">
+            <li className="mistake-row">
+              <span>Attempts</span>
+              <span>{distractionSum.attempts}</span>
+            </li>
+            <li className="mistake-row">
+              <span>Answer accuracy</span>
+              <span>
+                {distractionSum.answerAccuracyPct === null
+                  ? dash()
+                  : `${Math.round(distractionSum.answerAccuracyPct)}%`}
+              </span>
+            </li>
+            <li className="mistake-row">
+              <span>Count kept</span>
+              <span>
+                {distractionSum.countKeptPct === null ? dash() : `${Math.round(distractionSum.countKeptPct)}%`}
+              </span>
+            </li>
           </ul>
         )}
       </section>

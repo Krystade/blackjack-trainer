@@ -13,11 +13,31 @@ shipped as a third choice unless the operator asks to drop it.
 
 ## Candidates — operator-sourced
 
-### D1 · Distraction training (operator idea 2026-07-23) — HIGH interest
+### D1 · Distraction training (operator idea 2026-07-23) — HIGH interest — **✅ SHIPPED (parts 1+2)**
 Mid-drill interruptions that simulate the real-table cost of talking while counting:
 pause the card stream, inject a challenge that MUST be answered, then resume; the final
 count is graded as usual — the skill being trained is *holding the count through
 interference*.
+
+Shipped: part 1 — `src/drills/distraction.ts` (`makeDistraction(runningCount, mode, seed)`,
+near-count + generic modes, anti-drift tested) and additive telemetry
+(`Stats.distraction.history[]` + `distractionSummary()` in `src/store/drillStats.ts`). Part
+2 wired it into the standard count drill (`src/ui/screens/drills/CountDrillView.tsx`):
+`Settings.drill.distractionFreq` ('off' default / 'occasional' / 'relentless') and
+`distractionMode` gate a new `'distraction'` phase, entered from all three flashing advance
+mechanisms (fixed-interval, eyes-free speech loop, manual tap) via a shared
+`isDistractionPoint`/`triggerDistraction` check — excluded from Countdown mode and Timed
+Challenge (both out of scope for v1). Cadence is a fixed, seed-free interval
+(`drills/distraction.ts`'s `isDistractionPoint`): occasional every 7th card shown,
+relentless every 3rd. The running count fed to `makeDistraction` (`runningCountThrough` in
+`countDrill.ts`) is computed and consumed privately — never displayed or spoken. Each
+answered distraction lands a provisional row (`answerCorrect`, `elapsedMs`); `countKept` is
+back-filled against the run's own final-count grade once it's known (`finishRun`). Stats
+screen gained a "Distraction" section (attempts / answer accuracy / count-kept %). R2's
+competence gate is deliberately NOT wired to distraction yet (feature-first per the
+operator's ask; 'off' default is the gentle onboarding) — future work, not blocking.
+Timed-Challenge-plus-distraction is a noted future combo, intentionally untangled from this
+ship.
 
 - **Interference types**, escalating:
   - **Near-count math** (operator's key insight): arithmetic whose operands/answers sit

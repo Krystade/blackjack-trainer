@@ -4,7 +4,7 @@ import type { Category, MistakeClass } from '../engine/grade';
 import type { DeviationId } from '../engine/deviations';
 import type { RuleSet } from '../engine/ruleset';
 import type { SpeedTier } from '../drills/countSpeed';
-import type { DistractionMode } from '../drills/distraction';
+import type { DistractionMode, DistractionFreq } from '../drills/distraction';
 
 export interface Settings {
   version: 1;
@@ -46,6 +46,19 @@ export interface Settings {
     // When false, Timed Challenge behaves exactly as it did before this
     // feature shipped (fixed `countTimedStartMs` ramp, unchanged).
     timedAdaptive: boolean;
+    // D1 part 2 (docs/BACKLOG.md, distraction training): how often the
+    // standard count drill's card stream gets interrupted by a distraction
+    // (drills/distraction.ts's isDistractionPoint picks the concrete
+    // cadence). 'off' is the default -- opt-in, so every existing test/e2e
+    // and all default behavior is unchanged out of the box. Only meaningful
+    // for the standard count drill's flashing phase (auto/eyes-free/manual);
+    // Countdown mode and Timed Challenge runs never check this.
+    distractionFreq: DistractionFreq;
+    // Which kind of arithmetic a distraction poses (drills/distraction.ts's
+    // DistractionMode) -- 'near-count' (confusable with the count itself,
+    // the operator's key insight) or 'generic' (a table-talk simulacrum).
+    // Defaults to 'near-count', the more realistic/harder mode.
+    distractionMode: DistractionMode;
   };
   audio: AudioSettings;
 }
@@ -118,6 +131,8 @@ export const DEFAULT_SETTINGS: Settings = {
     countTimedStartMs: 900,
     quizDistractorPct: 0,
     timedAdaptive: true,
+    distractionFreq: 'off',
+    distractionMode: 'near-count',
   },
   audio: { ...DEFAULT_AUDIO },
 };

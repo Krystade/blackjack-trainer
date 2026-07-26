@@ -164,6 +164,29 @@ describe('store/persist', () => {
       expect(loadSettings().drill.timedAdaptive).toBe(false);
     });
 
+    test('a stored v1-drill blob without distractionFreq/distractionMode backfills to off/near-count (D1 part 2 opt-in defaults)', () => {
+      storage['bjtrainer.settings.v1'] = JSON.stringify({
+        version: 1,
+        drill: {
+          flashCategory: 'hard',
+          countGroup: 2,
+          countIntervalMs: 900,
+          countLengthCards: 104,
+        },
+      });
+      const loaded = loadSettings();
+      expect(loaded.drill.distractionFreq).toBe('off');
+      expect(loaded.drill.distractionMode).toBe('near-count');
+      // Explicit non-default values round-trip too (both are user-overridable).
+      storage['bjtrainer.settings.v1'] = JSON.stringify({
+        version: 1,
+        drill: { distractionFreq: 'relentless', distractionMode: 'generic' },
+      });
+      const reloaded = loadSettings();
+      expect(reloaded.drill.distractionFreq).toBe('relentless');
+      expect(reloaded.drill.distractionMode).toBe('generic');
+    });
+
     test('backfills audio settings when the stored blob predates cycle 3', () => {
       storage['bjtrainer.settings.v1'] = JSON.stringify({
         version: 1,
