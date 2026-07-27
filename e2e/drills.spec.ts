@@ -1,7 +1,54 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { shot, withSettings, withStats, readStats, goHomeAndNavigate } from './helpers';
 
 const SPEED_TIERS = ['Learning', 'Table-ready', 'Pro', 'Expert'];
+
+/**
+ * T0 gaps #14-23 (docs/research/2026-07-26-test-coverage-matrix.md §3): drill
+ * sub-modes and keyboard-input parity that the original per-feature specs
+ * above never drove. These three helpers mirror e2e/audio.spec.ts's
+ * `__speechLog`/settings-readback idioms locally (e2e/helpers.ts is for
+ * cross-suite reuse only) rather than importing from that spec file.
+ */
+declare global {
+  interface Window {
+    __speechLog?: string[];
+  }
+}
+
+async function readSpeechLog(page: Page): Promise<string[]> {
+  return page.evaluate(() => window.__speechLog ?? []);
+}
+
+/** Polls `window.__speechLog` until some entry matches `re`, or times out --
+ * see audio.spec.ts's identical helper for why this is a poll, not a single
+ * read (narration is paced by an async effect, even at 0ms configured pace). */
+async function waitForSpeechLogMatch(page: Page, re: RegExp, timeoutMs = 10_000): Promise<void> {
+  await page.waitForFunction(
+    (source) => {
+      const log = (window as unknown as { __speechLog?: string[] }).__speechLog;
+      if (!log) return false;
+      const regex = new RegExp(source);
+      return log.some((l) => regex.test(l));
+    },
+    re.source,
+    { timeout: timeoutMs },
+  );
+}
+
+/**
+ * Read back the persisted settings blob (`bjtrainer.settings.v1`) WITHOUT
+ * navigating -- per the known trap, `withSettings`'s `page.addInitScript`
+ * re-seeds this key on every navigation/reload, so a real (post-toggle) value
+ * can only be read reliably by evaluating the live page's localStorage in
+ * place, never after a reload.
+ */
+async function readSettings(page: Page): Promise<Record<string, unknown> | null> {
+  return page.evaluate(() => {
+    const json = window.localStorage.getItem('bjtrainer.settings.v1');
+    return json ? (JSON.parse(json) as Record<string, unknown>) : null;
+  });
+}
 
 test('count drill: flash 4 cards fast, submit RC, see result', async ({ page }) => {
   await withSettings(page, { drill: { countIntervalMs: 300, countLengthCards: 4, countGroup: 1 } });
@@ -607,4 +654,220 @@ test('deviation quiz distractors: quizDistractorPct 100 always shows the "no ind
   await shot(page, '62-quiz-distractor-feedback');
 
   await page.getByRole('button', { name: 'Next', exact: true }).click();
+});
+
+/* ==================================================================== */
+/* T0 gap #14 / #20: keyboard input parity across the remaining drills. */
+/* Count drill's typed-digit + Enter and flashcards' "2" key are already */
+/* covered above; these close manual-mode advance keys, deck estimation's */
+/* typed-value grammar, the deviation quiz's shared keydown wiring, and   */
+/* flashcards' 3/4/5 + Enter/Space-next.                                  */
+/* ==================================================================== */
+
+test('count drill: manual mode advances via Space, Enter, and ArrowRight, matching a tap', async ({ page }) => {
+  await withSettings(page, { drill: { countManual: true, countLengthCards: 4, countGroup: 1 } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  const tapZone = page.locator('.manual-tap-zone');
+  await expect(tapZone).toBeVisible();
+  await expect(tapZone.locator('.manual-tap-hint')).toContainText('1/4');
+
+  await page.keyboard.press('Space');
+  await expect(tapZone.locator('.manual-tap-hint')).toContainText('2/4');
+
+  await page.keyboard.press('Enter');
+  await expect(tapZone.locator('.manual-tap-hint')).toContainText('3/4');
+
+  await page.keyboard.press('ArrowRight');
+  await expect(tapZone.locator('.manual-tap-hint')).toContainText('4/4');
+
+  // One more advance FROM the last card enters the answering phase --
+  // exactly what the manual-tap-zone's onClick does for the same card.
+  await page.keyboard.press('Space');
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+});
+
+test('deck estimation: typed digit + "." + Enter submits a half-deck guess via keyboard', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deck Estimation', exact: true }).click();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.deck-guess-grid')).toBeVisible();
+
+  await page.keyboard.press('2');
+  await page.keyboard.press('.');
+  // Mid-entry ("2.") is deliberately incomplete -- shows the "still typing"
+  // ellipsis rather than resolving/highlighting a grid option.
+  await expect(page.locator('.deck-typed-display')).toContainText('Typed: 2.');
+  await expect(page.locator('.deck-guess-btn-typed')).toHaveCount(0);
+
+  await page.keyboard.press('5');
+  await expect(page.locator('.deck-typed-display')).toContainText('Typed: 2.5');
+  await expect(page.locator('.deck-guess-btn-typed')).toHaveText('2.5');
+
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await expect(page.locator('.result-detail').first()).toContainText('You guessed 2.5 decks');
+
+  const stats = await readStats(page);
+  const history = (stats?.deckEstimation as { history: { guess: number }[] } | undefined)?.history ?? [];
+  expect(history).toHaveLength(1);
+  expect(history[0]!.guess).toBe(2.5);
+});
+
+test('flashcards: keyboard 3/4/5 answer Double/Split/Surrender, grading identically to a click', async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
+
+  const KEYS: { key: string; label: string }[] = [
+    { key: '3', label: 'Double' },
+    { key: '4', label: 'Split' },
+    { key: '5', label: 'Surrender' },
+  ];
+
+  for (const { key, label } of KEYS) {
+    await page.goto('/?e2e=1');
+    await page.getByRole('button', { name: 'Drills', exact: true }).click();
+    await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+    await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+
+    await page.keyboard.press(key);
+    await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+    const keyboardResult = await page.locator('.message-strip').innerText();
+
+    // Reset stats/weights (same idiom as the existing "pressing 2" spec)
+    // before replaying the identical seed via a real click.
+    await page.evaluate(() => {
+      window.localStorage.removeItem('bjtrainer.stats.v1');
+      window.localStorage.removeItem('bjtrainer.flashweights.v1');
+    });
+    await page.reload();
+    await page.getByRole('button', { name: 'Drills', exact: true }).click();
+    await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+    await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+
+    await page.locator('.action-bar button.action-btn', { hasText: label }).click();
+    await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+    const clickResult = await page.locator('.message-strip').innerText();
+
+    expect(keyboardResult, `key "${key}" (${label}) should grade identically to a click`).toBe(clickResult);
+
+    await page.evaluate(() => {
+      window.localStorage.removeItem('bjtrainer.stats.v1');
+      window.localStorage.removeItem('bjtrainer.flashweights.v1');
+    });
+  }
+});
+
+test('flashcards: Enter and Space both advance past feedback via keyboard, same as clicking Next', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+
+  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
+  await expect(page.locator('.feedback-cell')).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.feedback-cell')).not.toBeVisible();
+
+  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
+  await expect(page.locator('.feedback-cell')).toBeVisible();
+  await page.keyboard.press('Space');
+  await expect(page.locator('.feedback-cell')).not.toBeVisible();
+});
+
+test('deviation quiz: keyboard action key grades identically to clicking the matching button', async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
+  // Pinned to a real (non-insurance) index so the item is deterministically
+  // an action item -- the shared 1-5 key->action map is already fully
+  // proven by the flashcards spec above; this proves the QUIZ view's own
+  // keydown handler is wired to that same map and grading path.
+  await withSettings(page, { drill: { quizIndex: '16v10' } });
+
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation Quiz');
+
+  await page.keyboard.press('1'); // KEY_TO_ACTION['1'] = 'hit'
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+  const keyboardResult = await page.locator('.message-strip').innerText();
+  expect(await readStats(page)).not.toBeNull();
+
+  await page.evaluate(() => {
+    window.localStorage.removeItem('bjtrainer.stats.v1');
+    window.localStorage.removeItem('bjtrainer.quizweights.v1');
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation Quiz');
+
+  await page.locator('.action-bar button.action-btn', { hasText: 'Hit' }).click();
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+  const clickResult = await page.locator('.message-strip').innerText();
+
+  expect(keyboardResult).toBe(clickResult);
+});
+
+test('deviation quiz: keyboard "1" takes insurance identically to clicking Take Insurance', async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.7;
+  });
+  await withSettings(page, { drill: { quizIndex: 'ins' } }); // forces every drawn item to insurance
+
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await expect(page.locator('.quiz-insurance-prompt')).toBeVisible();
+
+  await page.keyboard.press('1');
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+  const keyboardResult = await page.locator('.message-strip').innerText();
+
+  await page.evaluate(() => window.localStorage.removeItem('bjtrainer.stats.v1'));
+  await page.reload();
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await expect(page.locator('.quiz-insurance-prompt')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Take Insurance', exact: true }).click();
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+  const clickResult = await page.locator('.message-strip').innerText();
+
+  expect(keyboardResult).toBe(clickResult);
+});
+
+test('deviation quiz: keyboard "2" declines insurance identically to clicking Decline Insurance', async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.7;
+  });
+  await withSettings(page, { drill: { quizIndex: 'ins' } });
+
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await expect(page.locator('.quiz-insurance-prompt')).toBeVisible();
+
+  await page.keyboard.press('2');
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+  const keyboardResult = await page.locator('.message-strip').innerText();
+
+  await page.evaluate(() => window.localStorage.removeItem('bjtrainer.stats.v1'));
+  await page.reload();
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await expect(page.locator('.quiz-insurance-prompt')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Decline Insurance', exact: true }).click();
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+  const clickResult = await page.locator('.message-strip').innerText();
+
+  expect(keyboardResult).toBe(clickResult);
 });
