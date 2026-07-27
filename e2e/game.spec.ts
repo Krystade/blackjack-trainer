@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { shot, withSettings, resolveInsurance, playRoundByAdvice } from './helpers';
+import { shot, withSettings, withProfile, resolveInsurance, playRoundByAdvice } from './helpers';
 
 test('home renders and navigates to the table', async ({ page }) => {
   await page.goto('/?e2e=1');
@@ -218,4 +218,123 @@ test('split flow: find a ten-value pair seed, split, and play both hands out', a
   await playRoundByAdvice(page);
   await expect(page.locator('.message-strip .message-result')).not.toHaveCount(0);
   await shot(page, '11-split-round-settled');
+});
+
+test('dealer showing an ace: taking insurance settles and shows an insurance-net message', async ({ page }) => {
+  // T0 gap #24 (docs/research/2026-07-26-test-coverage-matrix.md): mirrors
+  // the existing decline spec above but clicks Take, so the insure(true)
+  // path (2:1 payout on dealer BJ, or -bet/2 otherwise -- engine/game.ts's
+  // insuranceDecision) and its `insuranceNet` message get e2e coverage too.
+  await withSettings(page, { countCheckEvery: 0 });
+
+  let found = false;
+  for (let seed = 1; seed <= 25 && !found; seed++) {
+    await page.goto(`/?seed=${seed}&e2e=1`);
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    const modal = page.locator('.modal-backdrop', { hasText: 'Insurance?' });
+    if (await modal.isVisible().catch(() => false)) {
+      found = true;
+      await modal.getByRole('button', { name: 'Take', exact: true }).click();
+      await playRoundByAdvice(page);
+    }
+  }
+  expect(found, 'expected at least one of seeds 1..25 to deal a dealer ace up-card').toBe(true);
+
+  const insuranceMsg = page.locator('.message-strip .message-result', { hasText: 'Insurance' });
+  await expect(insuranceMsg).toBeVisible();
+  // insuranceNet is always non-null once insurance was taken -- either
+  // +bet (dealer had blackjack, 2:1 payout) or -bet/2 (no dealer blackjack).
+  // formatSigned always prefixes a sign, so either outcome matches.
+  await expect(insuranceMsg).toHaveText(/Insurance [+-]\d+(\.\d+)?/);
+  await shot(page, '12-insurance-take-result');
+});
+
+test('count-check modal: RC then TC two-stage prompt on the 2nd trigger (askTcToo)', async ({ page }) => {
+  // T0 gap #25: engine/game.ts's finishRound() flips askTcToo true on every
+  // EVEN-numbered count-check trigger (countCheckPromptCount % 2 === 0).
+  // With countCheckEvery:1 every round triggers a check, so round 1 is
+  // RC-only (askTcToo false) and round 2 is the RC->TC two-stage prompt
+  // (Table.tsx's handleCountSubmit / countStage state machine).
+  await withSettings(page, { countCheckEvery: 1 });
+  await page.goto('/?seed=101&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+
+  // Round 1: first trigger -> RC-only.
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await playRoundByAdvice(page);
+
+  const modal = page.locator('.modal-backdrop');
+  await expect(modal.locator('.modal-title')).toHaveText('Running Count?');
+  await modal.getByRole('button', { name: '5', exact: true }).click();
+  await modal.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(modal).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
+
+  // Round 2: second trigger -> RC stage, then (without closing) TC stage.
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await playRoundByAdvice(page);
+
+  await expect(modal.locator('.modal-title')).toHaveText('Running Count?');
+  await modal.getByRole('button', { name: '3', exact: true }).click();
+  await modal.getByRole('button', { name: 'OK', exact: true }).click();
+
+  // Still open -- now asking for TC, not settled yet.
+  await expect(modal).toBeVisible();
+  await expect(modal.locator('.modal-title')).toHaveText('True Count?');
+  await shot(page, '13-count-check-tc-stage');
+
+  await modal.getByRole('button', { name: '1', exact: true }).click();
+  await modal.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(modal).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
+});
+
+test('TC peek button reveals RC/TC on press and hides again on release', async ({ page }) => {
+  // T0 gap #26: settings.countPeek gates the `.tc-peek-btn` in Table.tsx's
+  // topbar; press-and-hold swaps its label from "TC" to "RC x / TC y".
+  await withSettings(page, { countCheckEvery: 0, countPeek: true });
+  await page.goto('/?seed=102&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await resolveInsurance(page, false);
+
+  const peekBtn = page.locator('.tc-peek-btn');
+  await expect(peekBtn).toHaveText('TC');
+  await peekBtn.dispatchEvent('mousedown');
+  await expect(peekBtn).toHaveText(/^RC [+-]?\d+ \/ TC [+-]?\d+$/);
+  await shot(page, '14-tc-peek-revealed');
+  await peekBtn.dispatchEvent('mouseup');
+  await expect(peekBtn).toHaveText('TC');
+});
+
+test('player surrender: takes a -0.5 net when the LS rule is on', async ({ page }) => {
+  // T0 gap #27: canSurrender (engine/game.ts's legalActionsForHand) only
+  // requires a fresh 2-card hand + rules.ls -- it doesn't depend on the
+  // advised action or the dealer's up-card -- so with LS on (the helper's
+  // default), Surrender is enabled at the very first decision of almost any
+  // non-immediately-settled round. Seed-hunt only to skip seeds that deal an
+  // immediate blackjack push/settle (no player-phase decision at all).
+  await withProfile(page); // default rules.ls: true (see helpers.ts)
+  await withSettings(page, { countCheckEvery: 0 });
+
+  let found = false;
+  for (let seed = 1; seed <= 30 && !found; seed++) {
+    await page.goto(`/?seed=${seed}&e2e=1`);
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await resolveInsurance(page, false);
+
+    const bar = page.locator('.action-bar[data-advice]');
+    if (!(await bar.isVisible().catch(() => false))) continue;
+    const surrenderBtn = bar.getByRole('button', { name: 'Surrender', exact: true });
+    if (await surrenderBtn.isEnabled().catch(() => false)) {
+      found = true;
+      await surrenderBtn.click();
+    }
+  }
+  expect(found, 'expected at least one of seeds 1..30 to offer Surrender at the first decision').toBe(true);
+
+  await expect(page.locator('.message-strip .message-result')).toContainText('Surrender -0.5');
+  await shot(page, '15-surrender-result');
 });
