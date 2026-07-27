@@ -421,3 +421,177 @@ test('audio off (default): a full round leaves __speechLog empty or undefined', 
     true,
   );
 });
+
+/* ------------------------------------------------------------------------ */
+/* Settings audio controls (T0 gaps #3-9, docs/research/2026-07-26-test-    */
+/* coverage-matrix.md). Each control below is DRIVEN through its real UI    */
+/* element (click/select/check), not pre-seeded via `withSettings` -- the   */
+/* whole point is exercising Settings.tsx's onChange wiring itself.         */
+/*                                                                          */
+/* Persistence is read straight from `bjtrainer.settings.v1` in             */
+/* localStorage WITHOUT reloading the page: Settings.tsx's `commit()` calls */
+/* `saveSettings()` synchronously on every change, so the write is already  */
+/* there. Reloading to "double check" would be actively wrong here --       */
+/* `withSettings`/`withProfile` seed via `addInitScript`, which RE-RUNS on  */
+/* every navigation and would stomp the just-saved value with the original */
+/* seed (see profiles.spec.ts's identical note on its own persistence       */
+/* checks).                                                                 */
+/* ------------------------------------------------------------------------ */
+
+interface SettingsBlob {
+  audio?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+async function readSettingsBlob(page: Page): Promise<SettingsBlob | null> {
+  return page.evaluate(() => {
+    const json = window.localStorage.getItem('bjtrainer.settings.v1');
+    return json ? (JSON.parse(json) as SettingsBlob) : null;
+  });
+}
+
+/** Scopes to the single `.settings-row` whose label/content is EXACTLY
+ * `label` -- a substring `hasText` filter would also catch the Audio
+ * section's prose note row ("...Speech rate applies to both...") for a
+ * label like "Speech rate", so this matches on exact text instead. */
+function settingsRow(page: Page, label: string) {
+  return page.locator('.settings-row').filter({ has: page.getByText(label, { exact: true }) });
+}
+
+/** Opens Settings and flips "Audio enabled" on through the real toggle --
+ * every other Audio-section control below is `disabled` while it's off. */
+async function openSettingsWithAudioOn(page: Page): Promise<void> {
+  await withProfile(page, { name: 'Audio Settings Controls Profile' });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.locator('.settings-heading')).toHaveText('Settings');
+  await page.getByLabel('Audio enabled').check();
+}
+
+test('settings: "Use recorded voice" reveals the clip-voice picker; both persist', async ({ page }) => {
+  await openSettingsWithAudioOn(page);
+
+  const clipVoiceRow = settingsRow(page, 'Clip voice');
+  await expect(clipVoiceRow).toHaveCount(0);
+
+  await page.getByLabel('Use recorded voice (higher quality)').check();
+
+  // loadClipIndex() (Settings' Audio-section effect) is a real fetch of
+  // public/clips/index.json -- give it a moment to resolve.
+  await expect(clipVoiceRow).toBeVisible({ timeout: 10_000 });
+  const select = clipVoiceRow.locator('select');
+  const optionTexts = await select.locator('option').allInnerTexts();
+  expect(
+    optionTexts.length,
+    `expected >1 clip-voice option (Automatic + real voices), got ${JSON.stringify(optionTexts)}`,
+  ).toBeGreaterThan(1);
+
+  await select.selectOption('bf_emma');
+
+  const saved = await readSettingsBlob(page);
+  expect(saved?.audio?.useClips).toBe(true);
+  expect(saved?.audio?.clipVoice).toBe('bf_emma');
+});
+
+test('settings: speech-rate stepper reaches its 3.0 max and persists', async ({ page }) => {
+  await openSettingsWithAudioOn(page);
+
+  const rateRow = settingsRow(page, 'Speech rate');
+  await expect(rateRow.locator('.stepper-value')).toHaveText('1.0×');
+
+  const inc = rateRow.getByRole('button', { name: '+', exact: true });
+  for (let i = 0; i < 20; i++) {
+    // 1.0 -> 3.0 in 0.1 steps (20 clicks); the component clamps/rounds each
+    // step, so this lands exactly on the max rather than drifting past it.
+    await inc.click();
+  }
+  await expect(rateRow.locator('.stepper-value')).toHaveText('3.0×');
+  await expect(inc).toBeDisabled();
+
+  const saved = await readSettingsBlob(page);
+  expect(saved?.audio?.rate).toBe(3);
+});
+
+test('settings: answer-pause stepper reaches its 0s minimum and persists', async ({ page }) => {
+  await openSettingsWithAudioOn(page);
+
+  const pauseRow = settingsRow(page, 'Answer pause');
+  await expect(pauseRow.locator('.stepper-value')).toHaveText('3.0 s');
+
+  const dec = pauseRow.getByRole('button', { name: '−', exact: true }); // U+2212 minus, not ASCII '-'
+  for (let i = 0; i < 6; i++) {
+    // 3000ms -> 0ms in 500ms steps (6 clicks).
+    await dec.click();
+  }
+  await expect(pauseRow.locator('.stepper-value')).toHaveText('0.0 s');
+  await expect(dec).toBeDisabled();
+
+  const saved = await readSettingsBlob(page);
+  expect(saved?.audio?.answerPauseMs).toBe(0);
+});
+
+test('settings: card-detail segmented drives and persists all three values', async ({ page }) => {
+  await openSettingsWithAudioOn(page);
+
+  const cardDetailRow = settingsRow(page, 'Card detail');
+
+  await cardDetailRow.getByRole('button', { name: 'Rank', exact: true }).click();
+  expect((await readSettingsBlob(page))?.audio?.cardDetail).toBe('rank');
+
+  await cardDetailRow.getByRole('button', { name: 'Face', exact: true }).click();
+  expect((await readSettingsBlob(page))?.audio?.cardDetail).toBe('face');
+
+  await cardDetailRow.getByRole('button', { name: 'Full', exact: true }).click();
+  expect((await readSettingsBlob(page))?.audio?.cardDetail).toBe('full');
+});
+
+test('settings: voice-picker change fires a live preview into __speechLog and persists', async ({ page }) => {
+  // Headless Chromium on this runner reports zero (or, flakily, a handful of
+  // OS SAPI) speechSynthesis voices, so the real Voice <select> can't be
+  // relied on to offer a second option. Stub exactly one fake voice BEFORE
+  // the app loads -- same shape a real device with one installed voice would
+  // present -- so the picker is deterministic while everything downstream
+  // (the onChange handler, the preview `speak()` call, persistence) is real.
+  await page.addInitScript(() => {
+    const fakeVoice = {
+      name: 'Test Voice One',
+      voiceURI: 'test-voice-1',
+      lang: 'en-US',
+      localService: true,
+      default: false,
+    } as unknown as SpeechSynthesisVoice;
+    if (typeof window.speechSynthesis !== 'undefined') {
+      window.speechSynthesis.getVoices = () => [fakeVoice];
+    }
+  });
+
+  await openSettingsWithAudioOn(page);
+
+  const voiceRow = settingsRow(page, 'Voice');
+  const select = voiceRow.locator('select');
+  await expect(select.locator('option')).toHaveCount(2);
+
+  await select.selectOption('test-voice-1');
+
+  const log = await page.evaluate(() => window.__speechLog ?? []);
+  expect(
+    log.includes('Queen. True count plus three.'),
+    `expected the voice-preview line in ${JSON.stringify(log)}`,
+  ).toBe(true);
+
+  const saved = await readSettingsBlob(page);
+  expect(saved?.audio?.voiceURI).toBe('test-voice-1');
+});
+
+test('settings: Test-audio button speaks a preview and chimes good', async ({ page }) => {
+  await openSettingsWithAudioOn(page);
+
+  await page.getByRole('button', { name: 'Test audio', exact: true }).click();
+
+  const log = await page.evaluate(() => window.__speechLog ?? []);
+  expect(
+    log.includes('Audio is working. True count plus three.'),
+    `expected the test-audio line in ${JSON.stringify(log)}`,
+  ).toBe(true);
+  expect(log).toContain('chime:good');
+});
