@@ -226,3 +226,34 @@ a synthesis pass into this file's Candidates section:
 Rules carried from the first research pass: cite a URL per claim, quarantine
 search-snippet-only sources, say plainly when evidence is thin, and never let a lead
 into Candidates without a one-line "why it makes the counting practice better".
+
+---
+
+## T0 status (2026-07-26) — coverage sweep DONE, 1 real bug + smoke test remain
+
+**Shipped:** 88 e2e (from 49). Closed 26 of 28 gaps across profiles (81cfd7a), table+stats
+(23b01cd, 3703d4e), clip-playback harness + audio settings (cb07fba, 998606b), drills
+sub-modes + keyboard (02410f7, 370e08b). The headline gap — REAL clip audio playback — now
+has an automated `chromium-audio` Playwright project (no `?e2e=1`, autoplay arg) asserting
+real mp3 fetches + no-hang + zero console errors. Whole sweep found ZERO app bugs except:
+
+**T0-BUG1 · Dim-screen toggle unreachable by tap — REAL, still open (HIGH, small-but-careful).**
+The eyes-free "Dim screen" checkbox is `disabled` until eyes-free is on, but turning eyes-free
+on mounts `.zone-pad` (`position:fixed; inset:0; z-index:60`, opaque) which physically covers
+that checkbox — a real tap/click is intercepted (Playwright confirmed, not a headless artifact;
+a real finger hits the same overlay). The dim-screen e2e currently reaches it via Tab+Space
+(keyboard bypasses the pointer hit-test) and documents the bug.
+  ⚠️ TRAP (learned 2026-07-26): the naive fix — raise `.drill-inline-controls` to
+  `z-index:70` above the pad — WORKS for reachability but then the top control strip
+  intercepts taps meant for the pad's TOP quadrants (Hit/Stand), breaking the
+  quiz-action-ZonePad test. Reverted. The real fix must keep the pad's tap zones clear:
+  options = (a) move the Dim-screen (and maybe Eyes-free) toggle into a pre-Start setup area /
+  Settings so it's set BEFORE the pad mounts; or (b) inset the pad BELOW the control strip
+  (`top: <controls height>` not `inset:0`) — the pad hit-test uses its own bounding rect so
+  geometry stays correct. Needs a screenshot review (visual, can't fully verify headless).
+
+**T0 remaining deliverable · Full-journey smoke spec** (matrix gap #2, spec in
+`docs/research/2026-07-26-test-coverage-matrix.md` § "SPEC — Single full-journey smoke test").
+One `e2e/smoke.spec.ts` walking Home→Profiles→Settings→Table→each of the 5 Drills→Stats in one
+session, asserting each screen mounts + a session/drill history wrote through. Held (5h sleep
+threshold); dispatch next full window. THEN R7.
