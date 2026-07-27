@@ -871,3 +871,397 @@ test('deviation quiz: keyboard "2" declines insurance identically to clicking De
 
   expect(keyboardResult).toBe(clickResult);
 });
+
+/* ==================================================================== */
+/* T0 gap #15: Count drill Countdown mode (52-card, guess the hidden      */
+/* card's tag) -- unit-tested (countDrill.test's makeCountdown) but never */
+/* e2e'd end to end through the toggle -> tag-guess -> result path.       */
+/* ==================================================================== */
+
+test('count drill: Countdown mode reaches the tag-guess result and records a 52-card entry', async ({ page }) => {
+  test.setTimeout(30_000);
+  await withSettings(page, { drill: { countManual: true } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await expect(page.locator('.count-setup')).toBeVisible();
+
+  await page
+    .locator('.count-toggle', { hasText: 'Countdown' })
+    .locator('input[type="checkbox"]')
+    .check();
+  // Countdown mode hides the ordinary-drill-only Length/Group-size rows.
+  await expect(page.getByText('Group size')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  const tapZone = page.locator('.manual-tap-zone');
+  await expect(tapZone).toBeVisible();
+
+  // A countdown round is the full 52-card deck minus the one hidden card --
+  // 51 shown cards, one manual tap per card (see makeCountdown/countDrill.ts).
+  for (let i = 0; i < 51; i++) {
+    await tapZone.click();
+  }
+
+  await expect(page.locator('.tag-guess')).toBeVisible();
+  await page.locator('.tag-guess-btn', { hasText: '0' }).click();
+
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
+
+  const stats = await readStats(page);
+  const history = (stats?.countDrill as { history: { cards: number }[] } | undefined)?.history ?? [];
+  expect(history).toHaveLength(1);
+  expect(history[0]!.cards).toBe(52);
+});
+
+/* ==================================================================== */
+/* T0 gap #16: Count drill eyes-free STRICT mode -- unlike the honor-     */
+/* system self-check (audio.spec Case 4), strict mode still shows the     */
+/* graded NumPad and writes a countDrill.history entry.                   */
+/* ==================================================================== */
+
+test('count drill: eyes-free Strict mode grades via NumPad and speaks the verdict (unlike the honor self-check)', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'results', cardDetail: 'full' },
+    drill: { countManual: false, countLengthCards: 4, countGroup: 1, countIntervalMs: 0 },
+  });
+
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+
+  await page.getByLabel('Eyes-free audio').check();
+  await page.getByLabel('Strict mode (keypad entry, graded)').check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  // Strict mode still shows the graded NumPad -- the honor-system
+  // self-check path (audio.spec Case 4) never shows a keypad at all.
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 15_000 });
+
+  await page.keyboard.press('3');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
+
+  const log = await readSpeechLog(page);
+  const verdictIndex = log.findIndex((l) => l === 'Correct.' || l.startsWith('Wrong. '));
+  expect(verdictIndex, `expected a spoken verdict in ${JSON.stringify(log)}`).toBeGreaterThanOrEqual(0);
+
+  // Strict mode GRADES (unlike the self-check honor path, which never
+  // writes stats) -- proven by an actual countDrill.history write.
+  const stats = await readStats(page);
+  const history = (stats?.countDrill as { history: unknown[] } | undefined)?.history ?? [];
+  expect(history).toHaveLength(1);
+});
+
+/* ==================================================================== */
+/* T0 gap #17: distraction cadence/mode variants -- only 'relentless' +   */
+/* 'near-count' were e2e'd before; these close 'occasional' cadence and   */
+/* 'generic' mode.                                                        */
+/* ==================================================================== */
+
+test('count drill: occasional distractions interrupt on the 7th card (not the 3rd), mid-stream', async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
+  await withSettings(page, {
+    drill: { countIntervalMs: 150, countLengthCards: 8, countGroup: 1, distractionFreq: 'occasional' },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+
+  const freqRow = page.locator('.settings-row', { hasText: 'Distractions' });
+  await expect(freqRow.getByRole('button', { name: 'Occasional', exact: true })).toHaveClass(/segmented-btn-active/);
+  await expect(page.locator('.settings-note-row', { hasText: '7th card' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.count-flash-area')).toBeVisible();
+
+  // Mid-stream (shownIndex 6 of 0..7 -- the 7th card shown, cadence 7): the
+  // 8-card run means this is the ONLY interruption, and it's not the last
+  // card, so the stream must resume and reach a normal graded finish.
+  await expect(page.locator('.distraction-area')).toBeVisible({ timeout: 10_000 });
+  await page.locator('.numpad-btn', { hasText: /^7$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+
+  await expect(page.locator('.distraction-area')).not.toBeVisible();
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+  await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+
+  await expect(page.locator('.drill-result')).toBeVisible();
+
+  const stats = await readStats(page);
+  const distractionHistory =
+    (stats?.distraction as { history: Record<string, unknown>[] } | undefined)?.history ?? [];
+  expect(distractionHistory).toHaveLength(1);
+  expect(distractionHistory[0]!.kind).toBe('near-count');
+});
+
+test('count drill: distraction type "Generic" poses plain arithmetic unrelated to the running count', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
+  await withSettings(page, {
+    drill: {
+      countIntervalMs: 150,
+      countLengthCards: 4,
+      countGroup: 1,
+      distractionFreq: 'relentless',
+      distractionMode: 'generic',
+    },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+
+  const typeRow = page.locator('.settings-row', { hasText: 'Distraction type' });
+  await expect(typeRow.getByRole('button', { name: 'Generic', exact: true })).toHaveClass(/segmented-btn-active/);
+
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.distraction-area')).toBeVisible({ timeout: 10_000 });
+
+  // Generic operands are fixed 2..12 joined by + or × (drills/distraction.ts
+  // GENERIC_MIN/MAX) -- never the near-count mode's count-relative operands.
+  const prompt = await page.locator('.distraction-prompt').innerText();
+  expect(prompt).toMatch(/^\d+ [+×] \d+$/);
+
+  await page.locator('.numpad-btn', { hasText: /^7$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+  await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.locator('.drill-result')).toBeVisible();
+
+  const stats = await readStats(page);
+  const distractionHistory =
+    (stats?.distraction as { history: Record<string, unknown>[] } | undefined)?.history ?? [];
+  expect(distractionHistory).toHaveLength(1);
+  expect(distractionHistory[0]!.kind).toBe('generic');
+});
+
+/* ==================================================================== */
+/* T0 gap #18: count group size 2/3 -- every prior e2e used group 1;      */
+/* multi-card groups were unit-tested (countDrill.test) but never         */
+/* rendered through the real UI.                                         */
+/* ==================================================================== */
+
+test('count drill: group size 2 and 3 flash multiple cards per flash step', async ({ page }) => {
+  await withSettings(page, { drill: { countManual: true, countLengthCards: 6, countGroup: 3 } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+
+  const groupRow = page.locator('.settings-row', { hasText: 'Group size' });
+  await expect(groupRow.getByRole('button', { name: '3', exact: true })).toHaveClass(/segmented-btn-active/);
+
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.manual-tap-zone')).toBeVisible();
+  await expect(page.locator('.count-flash-cards .card')).toHaveCount(3);
+
+  // CountDrillView's "Back" button exits all the way to the Drills picker
+  // (its onBack prop is Drills.tsx's setMode('picker')), not back to this
+  // drill's own setup phase -- re-enter via the picker rather than assuming
+  // an in-place phase reset.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.locator('.drills-picker')).toBeVisible();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await expect(page.locator('.count-setup')).toBeVisible();
+
+  await groupRow.getByRole('button', { name: '2', exact: true }).click();
+  await expect(groupRow.getByRole('button', { name: '2', exact: true })).toHaveClass(/segmented-btn-active/);
+
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.manual-tap-zone')).toBeVisible();
+  await expect(page.locator('.count-flash-cards .card')).toHaveCount(2);
+});
+
+/* ==================================================================== */
+/* T0 gap #19: True Count drill eyes-free honor self-check + strict mode  */
+/* -- mirrors CountDrillView's precedent (audio.spec Case 4 / gap #16     */
+/* above) but for TrueCountDrillView, which had zero eyes-free coverage.  */
+/* ==================================================================== */
+
+test('true count drill: eyes-free honor self-check speaks without grading; strict mode grades via NumPad', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await withSettings(page, { audio: { enabled: true, verbosity: 'results', answerPauseMs: 300 } });
+
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+
+  await page.getByLabel('Eyes-free audio').check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  await expect(page.locator('.count-flash-progress')).toContainText('Listen for the running count');
+  await expect(page.locator('.drill-result')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('.result-detail')).toContainText('self-check, no grade recorded');
+
+  const selfCheckLog = await readSpeechLog(page);
+  expect(selfCheckLog.some((l) => l.startsWith('Running count'))).toBe(true);
+  expect(selfCheckLog.some((l) => l.startsWith('True count'))).toBe(true);
+  // Honor-system self-check never writes telemetry -- nothing to grade.
+  expect(await readStats(page)).toBeNull();
+
+  // Fresh setup (component remount resets the local eyesFree/strictMode
+  // state) -- this time with Strict mode on too.
+  await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+
+  await page.getByLabel('Eyes-free audio').check();
+  await page.getByLabel('Strict mode (keypad entry, graded)').check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  await expect(page.locator('.numpad')).toBeVisible();
+  await page.keyboard.press('0');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await expect(page.locator('.result-detail')).not.toContainText('self-check');
+
+  const stats = await readStats(page);
+  const history = (stats?.trueCount as { history: unknown[] } | undefined)?.history ?? [];
+  expect(history).toHaveLength(1);
+});
+
+/* ==================================================================== */
+/* T0 gap #21: Deviation Quiz eyes-free ACTION ZonePad (non-insurance) -- */
+/* audio.spec Case 5/6 cover flashcards' action zonepad and the quiz's    */
+/* insurance-variant zonepad; the quiz's own non-insurance action zonepad */
+/* path was never separately exercised.                                  */
+/* ==================================================================== */
+
+test('eyes-free deviation quiz: action ZonePad (non-insurance item), quadrant tap logs echo + verdict + chime', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'results' },
+    drill: { quizIndex: '16v10' }, // forces a real (non-insurance) action item
+  });
+
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await expect(page.locator('.dealer-area')).toBeVisible(); // non-insurance: cards render, not the insurance prompt
+
+  await page.getByLabel('Eyes-free audio').check();
+  const zonePad = page.locator('.zone-pad');
+  await expect(zonePad).toBeAttached();
+  await expect(page.locator('.zone-pad-quadrants')).toBeVisible(); // action mode, not the insurance halves
+
+  // Top-left quadrant (same coordinates as audio.spec's flashcards case) --
+  // lands on 'hit'.
+  await page.mouse.click(60, 100);
+
+  await waitForSpeechLogMatch(page, /^Hit/);
+  const log = await readSpeechLog(page);
+  const echoIndex = log.findIndex((l) => l.startsWith('Hit'));
+  expect(echoIndex, `expected the "Hit..." echo in ${JSON.stringify(log)}`).toBeGreaterThanOrEqual(0);
+
+  const verdictIndex = log.findIndex((l, i) => i > echoIndex && (l === 'Correct.' || l.startsWith('Wrong. ')));
+  expect(verdictIndex, `expected a verdict line in ${JSON.stringify(log)}`).toBeGreaterThanOrEqual(0);
+
+  const chimeIndex = log.findIndex((l, i) => i > verdictIndex && (l === 'chime:good' || l === 'chime:bad'));
+  expect(chimeIndex, `expected a chime after the verdict in ${JSON.stringify(log)}`).toBeGreaterThanOrEqual(0);
+
+  expect(await readStats(page)).not.toBeNull();
+});
+
+/* ==================================================================== */
+/* T0 gap #22: "Dim screen" (dimZones) toggle -- never exercised anywhere. */
+/* ==================================================================== */
+
+/**
+ * BUG FOUND while writing this test (docs/research/2026-07-26-test-coverage-
+ * matrix.md gap #22): "Dim screen" is the ONLY on-screen control for
+ * `audio.dimZones` anywhere in the app (Settings.tsx has no copy of it), and
+ * it's `disabled={!eyesFree}` -- it can only ever be checked while eyes-free
+ * is already on. But `.zone-pad` (src/ui/app.css:1734) is a `position:
+ * fixed; inset: 0; z-index: 60` opaque full-viewport overlay that mounts the
+ * instant eyes-free turns on (whenever `!feedback`, which is immediately
+ * true) -- and it physically covers the very checkbox that's supposed to
+ * dim it. Confirmed via Playwright's own actionability check: a real
+ * `.check()` click times out with "<div class="zone-pad-quadrants"> ...
+ * intercepts pointer events". This isn't a headless artifact -- the CSS is a
+ * real fixed/opaque/z-60 overlay, so a real touchscreen tap hits the exact
+ * same obstruction. A keyboard user can still Tab to the checkbox and press
+ * Space (focus/keyboard dispatch bypasses the pointer hit-test the overlay
+ * blocks), so this test exercises that path to verify the toggle's own
+ * logic/persistence -- but on the touch-first device this app targets, the
+ * control is unreachable by tap once its own prerequisite is met. Flagged
+ * to the operator rather than worked around (e.g. `force: true`, which
+ * would silently mask the very click-block this test caught).
+ */
+test('flashcards: Dim screen toggle switches the ZonePad to hidden-but-tappable and persists dimZones', async ({
+  page,
+}) => {
+  await withSettings(page, { audio: { enabled: true } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+
+  await page.getByLabel('Eyes-free audio').check();
+  const zonePad = page.locator('.zone-pad');
+  await expect(zonePad).toBeAttached();
+  await expect(zonePad).not.toHaveClass(/zone-pad-hidden/);
+
+  // A real mouse/touch .check() here times out -- the ZonePad's opaque
+  // full-viewport overlay intercepts the click (see the bug note above).
+  // Tab-focus + Space is a genuinely different, real input path (not a
+  // hack around the assertion) that still exercises the checkbox's actual
+  // onChange -> toggleDimZones -> saveSettings logic.
+  await page.getByLabel('Dim screen').focus();
+  await page.keyboard.press('Space');
+
+  await expect(zonePad).toHaveClass(/zone-pad-hidden/);
+  await expect(zonePad).toBeAttached(); // still attached/tappable, just visually dimmed
+
+  // Read the just-saved value straight out of localStorage WITHOUT a reload
+  // -- withSettings' addInitScript would re-seed the pre-toggle blob on any
+  // subsequent navigation (the documented trap), so a reload would silently
+  // read back the ORIGINAL seeded value, not what was just toggled.
+  const settings = await readSettings(page);
+  expect((settings?.audio as { dimZones?: boolean } | undefined)?.dimZones).toBe(true);
+});
+
+/* ==================================================================== */
+/* T0 gap #23: Flashcards' INLINE Category segmented -- the Settings-     */
+/* screen copy of this same control is also uncovered, but this closes    */
+/* the more direct, always-visible inline one on the drill screen itself. */
+/* ==================================================================== */
+
+test('flashcards: inline Category segmented redraws from the chosen category and persists flashCategory', async ({
+  page,
+}) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+
+  const categoryRow = page.locator('.settings-row', { hasText: 'Category' });
+  await expect(categoryRow.getByRole('button', { name: 'All', exact: true })).toHaveClass(/segmented-btn-active/);
+
+  await categoryRow.getByRole('button', { name: 'Pairs', exact: true }).click();
+  await expect(categoryRow.getByRole('button', { name: 'Pairs', exact: true })).toHaveClass(/segmented-btn-active/);
+
+  // Redraw actually respected the filter -- the graded answer's cellId is a
+  // pair cell (drills/flashcards.ts: "pair-<rank>-v-<up>"), never hard/soft.
+  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
+  await expect(page.locator('.feedback-cell')).toBeVisible();
+  const cellId = await page.locator('.feedback-cell').innerText();
+  expect(cellId.startsWith('pair-'), `expected a pair cell, got "${cellId}"`).toBe(true);
+
+  const settings = await readSettings(page);
+  expect((settings?.drill as { flashCategory?: string } | undefined)?.flashCategory).toBe('pairs');
+});
