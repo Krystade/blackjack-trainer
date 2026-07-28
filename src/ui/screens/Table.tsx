@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
 import type { Game, PlayerHand, Seat } from '../../engine/game';
@@ -14,6 +14,7 @@ import { ActionBar } from '../components/ActionBar';
 import type { ActionBarMode } from '../components/ActionBar';
 import { Modal } from '../components/Modal';
 import { NumPad } from '../components/NumPad';
+import { assistedFlag } from '../peekFlag';
 
 type BotActionLogEntry = Game['botActionLog'][number];
 
@@ -130,12 +131,17 @@ function formatSigned(n: number): string {
 }
 
 function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () => void }) {
+  // R7 (docs/BACKLOG.md): this screen only shows in TEST mode (see handleEnd),
+  // so a peek-assisted session's accuracy is flagged right under the headline
+  // number it qualifies — the number can't be mistaken for unassisted.
+  const assisted = assistedFlag(report.peeks);
   return (
     <div className="report-screen">
       <h1>Session Report</h1>
       <p className="report-summary">
         {report.correct} / {report.graded} correct &middot; bankroll {formatSigned(report.bankrollDelta)}
       </p>
+      {assisted && <p className="report-assisted">{assisted}</p>}
       <table className="report-categories">
         <thead>
           <tr>
@@ -214,6 +220,28 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
   const [peeking, setPeeking] = useState(false);
   const [showReport, setShowReport] = useState(false);
 
+  // R7 (docs/BACKLOG.md, count-peek accountability): tally each peek-button
+  // activation so the session report / Stats can flag a peek-assisted accuracy.
+  // The button fires BOTH onTouchStart and (synthesized) onMouseDown for a
+  // single tap on touch devices, so a naive per-handler increment would
+  // double-count. `peekingRef` mirrors the `peeking` state synchronously and is
+  // the rising-edge guard: only the press that transitions hidden->revealed
+  // increments; the trailing synthesized event finds the ref already true and
+  // is a no-op. A genuinely separate peek requires a release (mouseup/
+  // touchend/mouseleave clears the ref) in between, so it counts as a new one.
+  const [peeks, setPeeks] = useState(0);
+  const peekingRef = useRef(false);
+  const activatePeek = () => {
+    if (peekingRef.current) return;
+    peekingRef.current = true;
+    setPeeking(true);
+    setPeeks((n) => n + 1);
+  };
+  const releasePeek = () => {
+    peekingRef.current = false;
+    setPeeking(false);
+  };
+
   const handleDeal = () => {
     if (playerHandsCount > 1) {
       deal(activeProfile.betSpreadOn ? selectedBets : undefined);
@@ -238,7 +266,7 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
   };
 
   const handleEnd = () => {
-    endSession();
+    endSession(peeks);
     if (settings.feedbackMode === 'test') {
       setShowReport(true);
     } else {
@@ -311,11 +339,11 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
           <button
             type="button"
             className="tc-peek-btn"
-            onMouseDown={() => setPeeking(true)}
-            onMouseUp={() => setPeeking(false)}
-            onMouseLeave={() => setPeeking(false)}
-            onTouchStart={() => setPeeking(true)}
-            onTouchEnd={() => setPeeking(false)}
+            onMouseDown={activatePeek}
+            onMouseUp={releasePeek}
+            onMouseLeave={releasePeek}
+            onTouchStart={activatePeek}
+            onTouchEnd={releasePeek}
           >
             {peeking ? `RC ${formatSigned(game.runningCount)} / TC ${formatSigned(game.trueCountNow)}` : 'TC'}
           </button>

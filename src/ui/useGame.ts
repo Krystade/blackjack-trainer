@@ -40,6 +40,9 @@ export interface SessionReport {
   graded: number;
   correct: number;
   bankrollDelta: number;
+  // R7 (docs/BACKLOG.md): number of RC/TC peek-button activations this
+  // session, so the report can flag a peek-assisted accuracy.
+  peeks: number;
 }
 
 function readSeed(): number | undefined {
@@ -50,7 +53,7 @@ function readSeed(): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-function buildReport(events: GradedEvent[], bankrollDelta: number): SessionReport {
+function buildReport(events: GradedEvent[], bankrollDelta: number, peeks: number): SessionReport {
   const byCategory = new Map<Category, { right: number; wrong: number }>();
   for (const ev of events) {
     const tally = byCategory.get(ev.category) ?? { right: 0, wrong: 0 };
@@ -71,6 +74,7 @@ function buildReport(events: GradedEvent[], bankrollDelta: number): SessionRepor
     graded: events.length,
     correct: events.filter((e) => e.correct).length,
     bankrollDelta,
+    peeks,
   };
 }
 
@@ -334,27 +338,33 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     [game, bump, audio],
   );
 
-  const endSession = useCallback((): SessionReport => {
-    const events = game.events;
-    const bankrollDelta = game.bankroll - profile.bankrollStart;
+  const endSession = useCallback(
+    (peeks = 0): SessionReport => {
+      const events = game.events;
+      const bankrollDelta = game.bankroll - profile.bankrollStart;
 
-    const stats = loadStats();
-    const updated = applyEvents(stats, events);
-    updated.sessions.push({
-      date: new Date().toISOString(),
-      rounds: game.roundNo,
-      graded: events.length,
-      correct: events.filter((e) => e.correct).length,
-      bankrollDelta,
-      profileId: profile.id,
-      profileName: profile.name,
-    });
-    saveStats(updated);
+      const stats = loadStats();
+      const updated = applyEvents(stats, events);
+      updated.sessions.push({
+        date: new Date().toISOString(),
+        rounds: game.roundNo,
+        graded: events.length,
+        correct: events.filter((e) => e.correct).length,
+        bankrollDelta,
+        profileId: profile.id,
+        profileName: profile.name,
+        // R7: only persist the field when peeks actually happened, so a
+        // clean (0-peek) session's blob is byte-for-byte what it was pre-R7.
+        ...(peeks > 0 ? { peeks } : {}),
+      });
+      saveStats(updated);
 
-    const rep = buildReport(events, bankrollDelta);
-    setReport(rep);
-    return rep;
-  }, [game, profile.bankrollStart, profile.id, profile.name]);
+      const rep = buildReport(events, bankrollDelta, peeks);
+      setReport(rep);
+      return rep;
+    },
+    [game, profile.bankrollStart, profile.id, profile.name],
+  );
 
   return {
     game,

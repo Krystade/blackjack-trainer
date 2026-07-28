@@ -217,6 +217,11 @@ export interface Stats {
     // Optional — sessions persisted before this change won't have them.
     profileId?: string;
     profileName?: string;
+    // R7 (docs/BACKLOG.md, count-peek accountability): how many times the RC/TC
+    // peek button was activated during the session. Optional — sessions
+    // persisted before R7 lack it (persist merges `sessions` by pass-through,
+    // so no migration is needed), and a session with 0 peeks omits it too.
+    peeks?: number;
   }[];
   // R1 (docs/BACKLOG.md, decision-latency telemetry): one entry per GRADED
   // EVENT that actually captured a decision time (flashcards + deviation

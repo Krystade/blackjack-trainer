@@ -953,6 +953,20 @@ button {
   font-weight: 600;
 }
 
+/* R7 (docs/BACKLOG.md): peek-assisted-session flag. Warning-toned so a
+   test-mode accuracy is never mistaken for an unassisted one. */
+.report-assisted {
+  color: #e0a33a;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-top: -0.25rem;
+}
+
+.session-assisted {
+  color: #e0a33a;
+  font-size: 0.75em;
+}
+
 .report-categories {
   width: 100%;
   border-collapse: collapse;

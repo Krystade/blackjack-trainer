@@ -308,6 +308,36 @@ test('TC peek button reveals RC/TC on press and hides again on release', async (
   await expect(peekBtn).toHaveText('TC');
 });
 
+test('R7: peeks are counted (single-press dedup) and flag a test-mode session as assisted', async ({ page }) => {
+  // R7 (docs/BACKLOG.md, RT#5): the RC/TC peek is a legit training aid kept in
+  // both modes, but a peek-assisted test-mode accuracy must be labelled so it
+  // can't be read as unassisted. Each press-and-release is ONE peek; the
+  // rising-edge guard means a single press firing BOTH mousedown and touchstart
+  // counts once, not twice.
+  await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0, countPeek: true });
+  await page.goto('/?seed=102&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await resolveInsurance(page, false);
+
+  const peekBtn = page.locator('.tc-peek-btn');
+  // First activation: a mousedown + a synthesized touchstart before release
+  // (what a touch tap does) must count as a single peek.
+  await peekBtn.dispatchEvent('mousedown');
+  await peekBtn.dispatchEvent('touchstart');
+  await peekBtn.dispatchEvent('mouseup');
+  // Second, genuinely separate activation.
+  await peekBtn.dispatchEvent('mousedown');
+  await peekBtn.dispatchEvent('mouseup');
+
+  await playRoundByAdvice(page);
+  await page.locator('.end-btn').click();
+
+  await expect(page.locator('.report-screen')).toBeVisible();
+  await expect(page.locator('.report-assisted')).toHaveText('assisted — used 2 peeks');
+  await shot(page, '14b-tc-peek-assisted-report');
+});
+
 test('player surrender: takes a -0.5 net when the LS rule is on', async ({ page }) => {
   // T0 gap #27: canSurrender (engine/game.ts's legalActionsForHand) only
   // requires a fresh 2-card hand + rules.ls -- it doesn't depend on the

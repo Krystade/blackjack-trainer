@@ -15,6 +15,7 @@ import type { Category, MistakeClass } from '../../engine/grade';
 import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../../engine/deviations';
 import { useAudio } from '../../audio/useAudio';
 import { narrateStatsSummary } from '../../audio/narrate';
+import { assistedFlag } from '../peekFlag';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -181,6 +182,11 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   const totalRounds = profileSessions.reduce((sum, s) => sum + s.rounds, 0);
   const totalBankrollDelta = profileSessions.reduce((sum, s) => sum + s.bankrollDelta, 0);
   const actualAccuracyPct = totalGraded === 0 ? null : (totalCorrect / totalGraded) * 100;
+  // R7 (docs/BACKLOG.md, count-peek accountability / RT#5): the "actual play
+  // accuracy" number is uninterpretable if it was silently peek-assisted, so
+  // flag the aggregate whenever ANY of this profile's sessions used a peek.
+  const totalPeeks = profileSessions.reduce((sum, s) => sum + (s.peeks ?? 0), 0);
+  const actualAccuracyAssisted = assistedFlag(totalPeeks);
   // units won / rounds * assumed rounds-per-hour, per spec §4.
   const unitsPerHourProxy = totalRounds === 0 ? null : (totalBankrollDelta / totalRounds) * 80;
   const cvcx = activeProfile.cvcx;
@@ -214,7 +220,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
             <span>{cvcx?.simNote ? cvcx.simNote : dash()}</span>
           </li>
           <li className="mistake-row">
-            <span>Actual play accuracy</span>
+            <span>Actual play accuracy{actualAccuracyAssisted ? ` (${actualAccuracyAssisted})` : ''}</span>
             <span>{actualAccuracyPct === null ? dash() : `${Math.round(actualAccuracyPct)}%`}</span>
           </li>
           <li className="mistake-row">
@@ -453,7 +459,15 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
                 <span>{formatDate(s.date)}</span>
                 <span>{s.profileName ?? dash()}</span>
                 <span>{s.rounds} rounds</span>
-                <span>{pct(s.correct, s.graded)}</span>
+                <span>
+                  {pct(s.correct, s.graded)}
+                  {/* R7: a peek-assisted session's accuracy is labelled so it
+                      can't be read as unassisted (RT#5). Omitted for the common
+                      0-peek session to keep the row uncluttered. */}
+                  {assistedFlag(s.peeks) && (
+                    <span className="session-assisted"> · {assistedFlag(s.peeks)}</span>
+                  )}
+                </span>
                 <span className={s.bankrollDelta >= 0 ? 'result-correct' : 'result-wrong'}>
                   {formatSigned(s.bankrollDelta)}
                 </span>

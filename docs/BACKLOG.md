@@ -149,9 +149,15 @@ mistraining estimation and stranding the deck-estimation drill as an island. The
 visual already exists in `DeckEstimationView` — reuse it on `Table.tsx` so table count-checks
 require real estimation. Cheap, and it connects a drill to its point of use.
 
-### R7 · Count-peek accountability — XS — MEDIUM (quick integrity fix)
+### R7 · Count-peek accountability — XS — MEDIUM (quick integrity fix) — ✅ SHIPPED 2026-07-27
 RT#5: the RC/TC peek button works even in test mode and is never logged, making "actual
 play accuracy" uninterpretable. Log peeks; disable (or flag) in test mode.
+SHIPPED: peeks counted per session (rising-edge guard dedups the mouse+touch double-fire),
+recorded on `SessionReport.peeks` + optional `Stats.sessions[].peeks` (no migration — persist
+passes `sessions` through). Kept the button available in BOTH modes (a legit training aid);
+instead surface it — test-mode session report, Stats sessions list, and the aggregate "Actual
+play accuracy" header all show an "assisted — used N peeks" flag when peeks>0 (pure helper
+`src/ui/peekFlag.ts`, unit-tested; e2e asserts the count + flag). 0-peek sessions unchanged.
 
 ### R8 · New drill mechanics from the community hunt — S–M each — MEDIUM/EXPLORATORY
 Genuinely novel, verified in primary sources (CVBJ manual / practitioner forums):
