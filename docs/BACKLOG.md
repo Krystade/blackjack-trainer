@@ -237,20 +237,28 @@ sub-modes + keyboard (02410f7, 370e08b). The headline gap — REAL clip audio pl
 has an automated `chromium-audio` Playwright project (no `?e2e=1`, autoplay arg) asserting
 real mp3 fetches + no-hang + zero console errors. Whole sweep found ZERO app bugs except:
 
-**T0-BUG1 · Dim-screen toggle unreachable by tap — REAL, still open (HIGH, small-but-careful).**
+**T0-BUG1 · Dim-screen toggle unreachable by tap — ✅ FIXED 2026-07-27 (option (b)).**
 The eyes-free "Dim screen" checkbox is `disabled` until eyes-free is on, but turning eyes-free
-on mounts `.zone-pad` (`position:fixed; inset:0; z-index:60`, opaque) which physically covers
-that checkbox — a real tap/click is intercepted (Playwright confirmed, not a headless artifact;
-a real finger hits the same overlay). The dim-screen e2e currently reaches it via Tab+Space
-(keyboard bypasses the pointer hit-test) and documents the bug.
-  ⚠️ TRAP (learned 2026-07-26): the naive fix — raise `.drill-inline-controls` to
+on mounted `.zone-pad` (`position:fixed; inset:0; z-index:60`, opaque) which physically covered
+that checkbox — a real tap/click was intercepted (Playwright confirmed, not a headless artifact;
+a real finger hit the same overlay).
+  Fix (option (b), the pad's-own-rect geometry route): `.drill-screen` now measures its
+  `.drill-inline-controls` control strip via a shared `useControlStripBottom` hook
+  (ResizeObserver, no magic px) and publishes the strip's bottom edge as a `--zone-pad-top`
+  CSS var; `.zone-pad` starts at `top: var(--zone-pad-top, 0px)` instead of `top:0`, so the
+  strip (and its Dim-screen/Eyes-free toggles) stays uncovered and tappable while the pad
+  still covers the whole card/dealer area below. hitTestZone is unaffected — ZonePad computes
+  every zone from its OWN getBoundingClientRect, so the five zones just re-fit the smaller
+  area. Touched: `src/ui/screens/Drills.tsx`, `src/ui/app.css`. Regression guard: the
+  dim-screen e2e now asserts a REAL `.check()` (no `force:true`); the coordinate-based
+  ZonePad quadrant taps in `e2e/drills.spec.ts` + `e2e/audio.spec.ts` were switched to
+  pad-relative bounding-box taps (a hardcoded top-of-viewport coord now lands on the strip
+  above the offset pad). All e2e green — the dim-real-click and the quiz-quadrant tests pass
+  TOGETHER (the exact pair the naive z-index bump couldn't satisfy). Screenshot-reviewed.
+  ⚠️ TRAP (learned 2026-07-26, avoided): the naive fix — raise `.drill-inline-controls` to
   `z-index:70` above the pad — WORKS for reachability but then the top control strip
   intercepts taps meant for the pad's TOP quadrants (Hit/Stand), breaking the
-  quiz-action-ZonePad test. Reverted. The real fix must keep the pad's tap zones clear:
-  options = (a) move the Dim-screen (and maybe Eyes-free) toggle into a pre-Start setup area /
-  Settings so it's set BEFORE the pad mounts; or (b) inset the pad BELOW the control strip
-  (`top: <controls height>` not `inset:0`) — the pad hit-test uses its own bounding rect so
-  geometry stays correct. Needs a screenshot review (visual, can't fully verify headless).
+  quiz-action-ZonePad test. NOT used.
 
 **T0 remaining deliverable · Full-journey smoke spec** (matrix gap #2, spec in
 `docs/research/2026-07-26-test-coverage-matrix.md` § "SPEC — Single full-journey smoke test").
