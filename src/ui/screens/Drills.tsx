@@ -4,17 +4,24 @@ import type { Profile, Settings } from '../../store/types';
 import type { Action, DeviationId } from '../../engine/deviations';
 import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17, isIndexActive } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
-import { classifyAction, actionCategory, classifyInsurance } from '../../engine/grade';
-import type { PlayContext } from '../../engine/strategy';
-import { correctPlay, basicPlay } from '../../engine/strategy';
-import type { RuleSet } from '../../engine/ruleset';
 import { drawFlashcard } from '../../drills/flashcards';
 import type { Flashcard } from '../../drills/flashcards';
 import { drawQuizItem } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
-import { bumpMiss, decayMiss } from '../../drills/weightedDraw';
-import { loadStats, saveStats, saveSettings } from '../../store/persist';
-import { applyEvents } from '../../store/stats';
+// R4 (docs/BACKLOG.md, interleaved mixed-session mode): the ONE shared grade
+// path -- gradeFlashcardAnswer/gradeQuizAnswer back the standalone
+// FlashcardsView/DeviationQuizView AND the mixed-session view, so the two
+// contexts cannot drift (same engine graders, same R3 weights, same R1
+// latency, same GradedEvent + Stats write). See src/drills/gradeAnswer.ts.
+import {
+  gradeFlashcardAnswer as gradeFlashcard,
+  gradeQuizAnswer as gradeQuiz,
+  loadFlashWeights,
+  loadQuizWeights,
+} from '../../drills/gradeAnswer';
+import { pickMixedType } from '../../drills/mixedSession';
+import type { MixedItemType } from '../../drills/mixedSession';
+import { saveSettings } from '../../store/persist';
 import { PlayingCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import { ZonePad } from '../components/ZonePad';
@@ -119,49 +126,6 @@ function drillScreenStyle(padTop: number): CSSProperties {
 /* ---------------------------------------------------------------- */
 /* Flashcards                                                        */
 /* ---------------------------------------------------------------- */
-
-const FLASH_WEIGHTS_KEY = 'bjtrainer.flashweights.v1';
-
-// R3 (docs/BACKLOG.md, spaced-repetition): the deviation quiz's per-index
-// weight map (QUIZ_WEIGHTS_KEY below) persists identically -- shared load/save
-// plumbing, one localStorage key each so a corrupt/absent value in one drill
-// can never affect the other.
-function loadWeightMap(key: string): Record<string, number> {
-  try {
-    if (typeof window === 'undefined' || !window.localStorage) return {};
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    if (typeof parsed === 'object' && parsed !== null) return parsed as Record<string, number>;
-    return {};
-  } catch {
-    return {};
-  }
-}
-
-function saveWeightMap(key: string, weights: Record<string, number>): void {
-  try {
-    if (typeof window === 'undefined' || !window.localStorage) return;
-    window.localStorage.setItem(key, JSON.stringify(weights));
-  } catch {
-    // best-effort persistence only
-  }
-}
-
-function loadFlashWeights(): Record<string, number> {
-  return loadWeightMap(FLASH_WEIGHTS_KEY);
-}
-
-function saveFlashWeights(weights: Record<string, number>): void {
-  saveWeightMap(FLASH_WEIGHTS_KEY, weights);
-}
-
-function cellCategory(cellId: string, correct: Action): 'hard' | 'soft' | 'pairs' | 'surrender' {
-  if (correct === 'surrender') return 'surrender';
-  if (cellId.startsWith('hard-')) return 'hard';
-  if (cellId.startsWith('soft-')) return 'soft';
-  return 'pairs';
-}
 
 function FlashcardsView({
   settings,
@@ -305,45 +269,17 @@ function FlashcardsView({
     }, settings.audio.answerPauseMs);
   };
 
-  // Shared grading core: the SAME function backs both the visual ActionBar
-  // taps and the eyes-free ZonePad taps, so the two paths cannot drift.
-  // Pure aside from the weight/stats writes it always performed; no audio,
-  // no setState -- callers layer their own feedback on top.
+  // Shared grading core (R4): the SAME gradeFlashcard function backs the
+  // visual ActionBar taps, the eyes-free ZonePad taps, AND the mixed-session
+  // view, so none of them can drift. R1 latency is captured here (BEFORE any
+  // classification work) and passed in; R3 weights + the Stats write happen
+  // inside gradeFlashcard. No audio, no setState -- callers layer their own
+  // feedback on top.
   const gradeFlashcardAnswer = (taken: Action): { event: GradedEvent; correctAction: Action } => {
-    // R1 (docs/BACKLOG.md, decision-latency telemetry): read BEFORE any
-    // other work in this function so grading logic itself never inflates
-    // the measured decision time.
     const elapsedMs = performance.now() - promptShownAtRef.current;
-
-    const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: true };
-    const withCount = correctPlay(card.cards, card.up, 0, ctx, activeProfile.rules);
-    const basicOnly = basicPlay(card.cards, card.up, ctx, activeProfile.rules);
-    const { classification, correct } = classifyAction(taken, withCount, basicOnly, card.cards, card.up, 0, activeProfile.rules);
-
-    // R3 (docs/BACKLOG.md, spaced-repetition): a miss grows this cell's
-    // weight (unchanged); a correct answer now DECAYS it back toward
-    // baseline (floor 0) instead of leaving it frozen at whatever peak a
-    // now-mastered cell last reached -- see weightedDraw.ts.
-    weightsRef.current = correct
-      ? decayMiss(weightsRef.current, card.cellId)
-      : bumpMiss(weightsRef.current, card.cellId);
-    saveFlashWeights(weightsRef.current);
-
-    const event: GradedEvent = {
-      kind: 'action',
-      category: cellCategory(card.cellId, card.correct),
-      correct,
-      classification,
-      taken,
-      expected: card.correct,
-      reason: card.cellId,
-      tc: 0,
-      hand: card.cellId,
-      elapsedMs,
-    };
-    saveStats(applyEvents(loadStats(), [event]));
-
-    return { event, correctAction: withCount.action };
+    const result = gradeFlashcard(card, taken, activeProfile.rules, elapsedMs, weightsRef.current);
+    weightsRef.current = result.nextWeights;
+    return { event: result.event, correctAction: result.correctAction };
   };
 
   // Gates the SPOKEN "Correct." text (never the chime, never wrong-answer
@@ -530,60 +466,6 @@ function FlashcardsView({
 /* Deviation Quiz                                                     */
 /* ---------------------------------------------------------------- */
 
-// R3 (docs/BACKLOG.md, spaced-repetition): mirrors FLASH_WEIGHTS_KEY -- a
-// per-index (DeviationId) miss-weight map, own localStorage key so it's
-// independent of the flashcard weights.
-const QUIZ_WEIGHTS_KEY = 'bjtrainer.quizweights.v1';
-
-function loadQuizWeights(): Record<string, number> {
-  return loadWeightMap(QUIZ_WEIGHTS_KEY);
-}
-
-function saveQuizWeights(weights: Record<string, number>): void {
-  saveWeightMap(QUIZ_WEIGHTS_KEY, weights);
-}
-
-function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet, elapsedMs?: number): GradedEvent {
-  if (item.cards === null) {
-    const take = taken === 'take-insurance';
-    const { classification, correct } = classifyInsurance(take, item.tc);
-    return {
-      kind: 'insurance',
-      category: 'insurance',
-      correct,
-      classification,
-      taken: take ? 'take' : 'decline',
-      expected: item.correct === 'take-insurance' ? 'take' : 'decline',
-      reason: item.label,
-      deviationId: item.deviationId,
-      tc: item.tc,
-      hand: 'dealer A',
-      elapsedMs,
-    };
-  }
-
-  // canSurrender: false must match drawQuizItem's ctx (deviationQuiz.ts) so the
-  // grader agrees with item.correct — see the deviation-quiz surrender-masking fix.
-  const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: false };
-  const withCount = correctPlay(item.cards, item.up, item.tc, ctx, rules);
-  const basicOnly = basicPlay(item.cards, item.up, ctx, rules);
-  const { classification, correct } = classifyAction(taken as Action, withCount, basicOnly, item.cards, item.up, item.tc, rules);
-
-  return {
-    kind: 'action',
-    category: actionCategory(item.cards, item.correct as Action),
-    correct,
-    classification,
-    taken,
-    expected: item.correct,
-    reason: item.label,
-    deviationId: item.deviationId,
-    tc: item.tc,
-    hand: item.label,
-    elapsedMs,
-  };
-}
-
 function quizFilterArg(quizIndex: DeviationId | 'all'): DeviationId | undefined {
   return quizIndex === 'all' ? undefined : quizIndex;
 }
@@ -763,30 +645,16 @@ function DeviationQuizView({
     }, settings.audio.answerPauseMs);
   };
 
-  // Shared grading core: the SAME function backs both the visual buttons
-  // (ActionBar / Take-Decline) and the eyes-free ZonePad taps, so the two
-  // paths cannot drift. No audio, no setState -- callers layer their own
-  // feedback on top.
+  // Shared grading core (R4): the SAME gradeQuiz function backs the visual
+  // buttons (ActionBar / Take-Decline), the eyes-free ZonePad taps, AND the
+  // mixed-session view. R1 latency is captured here; R3 index weights
+  // (real items only) + the Stats write happen inside gradeQuiz. No audio,
+  // no setState -- callers layer their own feedback on top.
   const gradeQuizAnswer = (taken: string): GradedEvent => {
-    // R1 (docs/BACKLOG.md, decision-latency telemetry): read BEFORE
-    // buildQuizEvent does any classification work.
     const elapsedMs = performance.now() - promptShownAtRef.current;
-    const event = buildQuizEvent(item, taken, activeProfile.rules, elapsedMs);
-
-    // R3 (docs/BACKLOG.md, spaced-repetition): symmetric to FlashcardsView --
-    // a miss grows this index's weight, a correct answer decays it. Only
-    // REAL items carry a deviationId (distractors never do, same exclusion
-    // stats.ts's perIndex already applies) -- a distractor never tested this
-    // index's own threshold, so it must not perturb its weight either way.
-    if (item.deviationId) {
-      weightsRef.current = event.correct
-        ? decayMiss(weightsRef.current, item.deviationId)
-        : bumpMiss(weightsRef.current, item.deviationId);
-      saveQuizWeights(weightsRef.current);
-    }
-
-    saveStats(applyEvents(loadStats(), [event]));
-    return event;
+    const result = gradeQuiz(item, taken, activeProfile.rules, elapsedMs, weightsRef.current);
+    weightsRef.current = result.nextWeights;
+    return result.event;
   };
 
   // Gates the SPOKEN "Correct." text (never the chime, never wrong-answer
@@ -1022,11 +890,365 @@ function DeviationQuizView({
 }
 
 /* ---------------------------------------------------------------- */
+/* Mixed session (R4, docs/BACKLOG.md, interleaved / mixed-session)   */
+/* Blends flashcard items (pure basic strategy, NO count) with        */
+/* deviation-quiz items (count-dependent) in one session so the       */
+/* learner keeps switching between "the count doesn't matter" and     */
+/* "the count matters" -- the near-miss discrimination the            */
+/* interleaving meta-analysis says beats blocked practice. Each item  */
+/* is a seeded coin flip (pickMixedType), NOT a rigid A-B-A. Every    */
+/* item grades through the EXACT shared path (gradeFlashcard/         */
+/* gradeQuiz) the standalone views use -- see src/drills/gradeAnswer. */
+/* ---------------------------------------------------------------- */
+
+type MixedCurrent = { type: 'flash'; card: Flashcard } | { type: 'quiz'; item: QuizItem };
+
+function MixedSessionView({
+  settings,
+  activeProfile,
+  onBack,
+  onSettingsChange,
+}: {
+  settings: Settings;
+  activeProfile: Profile;
+  onBack: () => void;
+  onSettingsChange: (settings: Settings) => void;
+}) {
+  // R3 weight maps -- one per drill, held exactly as the standalone views do
+  // so a mixed session's misses/decays feed the same persisted weighting.
+  const flashWeightsRef = useRef<Record<string, number>>(loadFlashWeights());
+  const quizWeightsRef = useRef<Record<string, number>>(loadQuizWeights());
+
+  // Seeded interleave: the session seed is drawn once (lazily, StrictMode-
+  // safe) and each position's type comes from pickMixedType(seed, index) --
+  // pure, so a re-render can never desync it. itemIndexRef tracks position.
+  const sessionSeedRef = useRef<number | null>(null);
+  const sessionSeed = () => {
+    if (sessionSeedRef.current === null) sessionSeedRef.current = randomSeed();
+    return sessionSeedRef.current;
+  };
+  const itemIndexRef = useRef(0);
+
+  const drawFor = (type: MixedItemType): MixedCurrent => {
+    if (type === 'flash') {
+      return {
+        type,
+        card: drawFlashcard(settings.drill.flashCategory, flashWeightsRef.current, randomSeed(), activeProfile.rules),
+      };
+    }
+    const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
+    return {
+      type,
+      item: drawQuizItem(
+        randomSeed(),
+        quizFilterArg(activeFilter),
+        activeProfile.rules,
+        settings.drill.quizDistractorPct,
+        quizWeightsRef.current,
+      ),
+    };
+  };
+
+  const [current, setCurrent] = useState<MixedCurrent>(() => drawFor(pickMixedType(sessionSeed(), 0)));
+  const [feedback, setFeedback] = useState<{ correct: boolean; correctAction?: Action } | null>(null);
+  const audio = useAudio(settings.audio);
+
+  const [eyesFree, setEyesFree] = useState(false);
+  const runIdRef = useRef(0);
+  const advanceTimerRef = useRef<number | null>(null);
+  const promptShownAtRef = useRef(performance.now());
+  const spokenCorrectOnceRef = useRef(false);
+  const [controlsRef, padTop] = useControlStripBottom();
+
+  const isInsuranceItem = current.type === 'quiz' && current.item.cards === null;
+
+  const clearAdvanceTimer = () => {
+    if (advanceTimerRef.current !== null) {
+      window.clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => clearAdvanceTimer, []);
+
+  useEffect(() => {
+    if (!settings.audio.enabled) setEyesFree(false);
+  }, [settings.audio.enabled]);
+
+  useEffect(() => {
+    if (eyesFree) {
+      void requestWakeLock();
+    } else {
+      void releaseWakeLock();
+    }
+  }, [eyesFree]);
+
+  useEffect(() => {
+    return () => {
+      void releaseWakeLock();
+    };
+  }, []);
+
+  const promptFor = (c: MixedCurrent): string =>
+    c.type === 'flash'
+      ? narrateFlashcardPrompt(c.card.cards, c.card.up)
+      : narrateQuizPrompt(c.item.cards, c.item.up, c.item.tc);
+
+  // Narrate each new item. Eyes-free speaks every item (its primary output
+  // channel); visual mode mirrors each drill's standalone behavior -- the
+  // quiz's verbosity-gated sayFull, and the flashcard's silence -- reusing
+  // the same prompt builders (the quiz prompt includes the spoken TC, the
+  // flashcard prompt never does, making the discrimination audible too).
+  useEffect(() => {
+    if (eyesFree) {
+      speak(promptFor(current), { interrupt: true, rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+    } else if (current.type === 'quiz') {
+      audio.sayFull(narrateQuizPrompt(current.item.cards, current.item.up, current.item.tc));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, eyesFree]);
+
+  const next = () => {
+    runIdRef.current += 1;
+    clearAdvanceTimer();
+    const idx = itemIndexRef.current + 1;
+    itemIndexRef.current = idx;
+    setCurrent(drawFor(pickMixedType(sessionSeed(), idx)));
+    setFeedback(null);
+    promptShownAtRef.current = performance.now();
+  };
+
+  const toggleDimZones = (dim: boolean) => {
+    const nextSettings: Settings = { ...settings, audio: { ...settings.audio, dimZones: dim } };
+    saveSettings(nextSettings);
+    onSettingsChange(nextSettings);
+  };
+
+  const handleBack = () => {
+    void releaseWakeLock();
+    onBack();
+  };
+
+  const handleRepeat = () => {
+    speak(promptFor(current), { interrupt: true, rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+  };
+
+  const scheduleAutoAdvance = () => {
+    clearAdvanceTimer();
+    const runId = runIdRef.current;
+    advanceTimerRef.current = window.setTimeout(() => {
+      advanceTimerRef.current = null;
+      if (runIdRef.current !== runId) return;
+      next();
+    }, settings.audio.answerPauseMs);
+  };
+
+  // THE shared grade path (R4): dispatch to gradeFlashcard or gradeQuiz by the
+  // current item's type -- byte-identical to what the standalone views call.
+  // R1 latency captured here; R3 weights + Stats write happen inside.
+  const gradeCurrent = (taken: string): { correct: boolean; correctAction?: Action; event: GradedEvent } => {
+    const elapsedMs = performance.now() - promptShownAtRef.current;
+    if (current.type === 'flash') {
+      const result = gradeFlashcard(current.card, taken as Action, activeProfile.rules, elapsedMs, flashWeightsRef.current);
+      flashWeightsRef.current = result.nextWeights;
+      return { correct: result.event.correct, correctAction: result.correctAction, event: result.event };
+    }
+    const result = gradeQuiz(current.item, taken, activeProfile.rules, elapsedMs, quizWeightsRef.current);
+    quizWeightsRef.current = result.nextWeights;
+    return { correct: result.event.correct, event: result.event };
+  };
+
+  const speakCorrectionOnceGated = (event: GradedEvent, doSpeak: (text: string) => void) => {
+    if (event.correct && spokenCorrectOnceRef.current) return;
+    doSpeak(narrateCorrection(event));
+    if (event.correct) spokenCorrectOnceRef.current = true;
+  };
+
+  const handleAnswer = (taken: string) => {
+    const { correct, correctAction, event } = gradeCurrent(taken);
+    speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
+    audio.ding(correct ? 'good' : 'bad');
+    setFeedback({ correct, correctAction });
+  };
+
+  const handleZoneAnswer = (zone: ZoneId | 'take' | 'decline') => {
+    // Insurance items expose only take/decline zones; every other item the
+    // five action zones. Reject a mode/zone mismatch, exactly as the
+    // standalone quiz view does.
+    if (isInsuranceItem !== (zone === 'take' || zone === 'decline')) return;
+    const taken = zone === 'take' ? 'take-insurance' : zone === 'decline' ? 'decline-insurance' : zone;
+
+    speak(`${zoneLabel(zone)}…`, { interrupt: true, rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+
+    const { correct, correctAction, event } = gradeCurrent(taken);
+    speakCorrectionOnceGated(event, (text) => speak(text, { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI }));
+    audio.ding(correct ? 'good' : 'bad');
+    setFeedback({ correct, correctAction });
+    scheduleAutoAdvance();
+  };
+
+  // Keyboard: identical mapping to the standalone views -- 1-5 action keys for
+  // flashcard + quiz-action items, 1=Take/2=Decline for quiz insurance items,
+  // Enter/Space to advance past feedback. Routed to the eyes-free or visual
+  // handler so grading/audio can't drift from a real tap.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+      if (!feedback) {
+        if (isInsuranceItem) {
+          if (e.key === '1') {
+            e.preventDefault();
+            if (eyesFree) handleZoneAnswer('take');
+            else handleAnswer('take-insurance');
+          } else if (e.key === '2') {
+            e.preventDefault();
+            if (eyesFree) handleZoneAnswer('decline');
+            else handleAnswer('decline-insurance');
+          }
+          return;
+        }
+
+        const action = KEY_TO_ACTION[e.key];
+        if (!action) return;
+        e.preventDefault();
+        if (eyesFree) handleZoneAnswer(action);
+        else handleAnswer(action);
+        return;
+      }
+
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        next();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedback, eyesFree, current]);
+
+  const dealerUp = current.type === 'flash' ? current.card.up : current.item.up;
+  const handCards = current.type === 'flash' ? current.card.cards : current.item.cards;
+
+  return (
+    <div className="drill-screen" style={drillScreenStyle(padTop)}>
+      <div className="drill-topbar">
+        <button type="button" className="drill-back-btn" onClick={handleBack}>
+          Back
+        </button>
+        <div className="drill-heading">Mixed</div>
+      </div>
+
+      <div className="drill-inline-controls" ref={controlsRef}>
+        <div className="settings-row settings-note-row">
+          Basic-strategy and count-dependent hands, interleaved.
+        </div>
+        <label className="count-toggle">
+          <input
+            type="checkbox"
+            checked={eyesFree}
+            disabled={!settings.audio.enabled}
+            onChange={(e) => setEyesFree(e.target.checked)}
+          />
+          Eyes-free audio
+        </label>
+        <label className="count-toggle">
+          <input
+            type="checkbox"
+            checked={settings.audio.dimZones}
+            disabled={!eyesFree}
+            onChange={(e) => toggleDimZones(e.target.checked)}
+          />
+          Dim screen
+        </label>
+        {!settings.audio.enabled && (
+          <div className="settings-row settings-note-row">
+            Enable audio in Settings to use eyes-free mode.
+          </div>
+        )}
+      </div>
+
+      {/* A quiz item shows its true count; a flashcard item shows none -- the
+          visible cue that tells the learner which regime applies. */}
+      {current.type === 'quiz' && <div className="quiz-tc">TC {formatSigned(current.item.tc)}</div>}
+
+      {handCards !== null ? (
+        <>
+          <div className="dealer-area">
+            <PlayingCard card={{ rank: dealerUp, suit: 's' }} />
+          </div>
+          <div className="hands-row">
+            <div className="player-hand">
+              <div className="hand-cards">
+                {handCards.map((c, i) => (
+                  <PlayingCard key={i} card={c} />
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="quiz-insurance-prompt">Dealer shows an Ace. Insurance?</div>
+      )}
+
+      <div className="message-strip">
+        {feedback &&
+          (current.type === 'flash' ? (
+            <>
+              <div className={feedback.correct ? 'result-correct' : 'result-wrong'}>
+                {feedback.correct ? 'Correct!' : `Wrong — correct: ${feedback.correctAction?.toUpperCase()}`}
+              </div>
+              <div className="feedback-cell">{current.card.cellId}</div>
+            </>
+          ) : (
+            <>
+              <div className={feedback.correct ? 'result-correct' : 'result-wrong'}>
+                {feedback.correct ? 'Correct!' : 'Wrong'}
+              </div>
+              <div className="quiz-label">{current.item.label}</div>
+            </>
+          ))}
+      </div>
+
+      {!feedback ? (
+        eyesFree ? (
+          <ZonePad
+            mode={isInsuranceItem ? 'insurance' : 'action'}
+            onAnswer={handleZoneAnswer}
+            onRepeat={handleRepeat}
+            visible={!settings.audio.dimZones}
+          />
+        ) : isInsuranceItem ? (
+          <div className="action-bar">
+            <button type="button" className="action-btn" onClick={() => handleAnswer('take-insurance')}>
+              Take Insurance
+            </button>
+            <button type="button" className="action-btn" onClick={() => handleAnswer('decline-insurance')}>
+              Decline Insurance
+            </button>
+          </div>
+        ) : (
+          <ActionBar mode={{ kind: 'actions', legal: ALL_ACTIONS, onAction: handleAnswer }} />
+        )
+      ) : (
+        <div className="action-bar">
+          <button type="button" className="drill-next-btn" onClick={() => next()}>
+            Next
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
 /* Picker                                                             */
 /* ---------------------------------------------------------------- */
 
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
-  const [mode, setMode] = useState<'picker' | 'count' | 'truecount' | 'deckest' | 'flash' | 'quiz'>('picker');
+  const [mode, setMode] = useState<'picker' | 'count' | 'truecount' | 'deckest' | 'flash' | 'quiz' | 'mixed'>('picker');
 
   if (mode === 'count') {
     return (
@@ -1063,6 +1285,16 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       />
     );
   }
+  if (mode === 'mixed') {
+    return (
+      <MixedSessionView
+        settings={settings}
+        activeProfile={activeProfile}
+        onBack={() => setMode('picker')}
+        onSettingsChange={onSettingsChange}
+      />
+    );
+  }
 
   return (
     <div className="drills-picker">
@@ -1082,6 +1314,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         </button>
         <button type="button" className="drills-nav-btn" onClick={() => setMode('quiz')}>
           Deviation Quiz
+        </button>
+        <button type="button" className="drills-nav-btn" onClick={() => setMode('mixed')}>
+          Mixed
         </button>
       </div>
       <button type="button" className="drills-back-btn" onClick={() => onNavigate('home')}>

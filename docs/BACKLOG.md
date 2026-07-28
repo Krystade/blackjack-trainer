@@ -129,12 +129,22 @@ equality tests in both drills). 27 new unit tests (18 in `weightedDraw.test.ts` 
 `drills.test.ts`, including a disproportionate-draw statistical test and a decay-returns-
 to-baseline test for each drill); full suite 2878 unit + 47 e2e green, no e2e spec changes.
 
-### R4 · Interleaved / mixed-session mode — M — MEDIUM-HIGH
+### R4 · Interleaved / mixed-session mode — M — MEDIUM-HIGH — ✅ SHIPPED 2026-07-28
 Convergence: TS#4 (interleaving meta-analysis, Hedges' g ≈ 0.42 across 59 studies,
 strongest exactly for discriminating *similar* categories) **meets** CM#2 (coaches sequence
 students through mixed table-like practice, not isolated drills) **meets** the existing
 fake-deviations feature (near-miss discrimination is the same skill). A session mode that
 blends basic-strategy + deviation items on neighboring hands. Pairs naturally with R3.
+SHIPPED: new **Mixed** picker mode + `MixedSessionView`. Each position's type is a seeded
+coin flip (`src/drills/mixedSession.ts` `pickMixedType` — random interleave, NOT rigid A-B-A,
+consecutive same-type runs allowed, ~50/50). A quiz item shows its TC; a flashcard shows none
+— the visible cue that IS the discrimination trained. Anti-drift guaranteed by construction:
+the two grade paths were **extracted** into `src/drills/gradeAnswer.ts` (`gradeFlashcardAnswer`/
+`gradeQuizAnswer` — engine graders + R3 weights + R1 latency + the Stats write, single-sourced),
+and the standalone views AND the mixed view all call those exact functions. Unit test pins
+byte-identical GradedEvent/nextWeights/Stats write for identical inputs; e2e proves one mixed
+session populates both histories (6 latency, 6 category grades, exactly 3 perIndex) with no fork.
+Reuses ActionBar/ZonePad/1-5 keyboard/dim-screen surfaces. 2927 unit + 91 e2e green.
 
 ### R5 · Wonging / sit-out practice — M — MEDIUM-HIGH (biggest *realism* hole)
 RT#2, standalone but high-conviction: `startRound` always stakes; there's no sit-out, so

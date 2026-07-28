@@ -1263,3 +1263,88 @@ test('flashcards: inline Category segmented redraws from the chosen category and
   const settings = await readSettings(page);
   expect((settings?.drill as { flashCategory?: string } | undefined)?.flashCategory).toBe('pairs');
 });
+
+/* ==================================================================== */
+/* R4 (docs/BACKLOG.md): interleaved / mixed-session mode. Blends       */
+/* flashcard items (basic strategy, NO true count) with deviation-quiz  */
+/* items (count-dependent) in one session. Pinning Math.random makes    */
+/* the interleave seed deterministic (randomSeed() = floor(0.42*1e9) =  */
+/* 420000000), whose pickMixedType schedule is quiz,quiz,quiz,flash,    */
+/* flash,flash (proven in src/drills/mixedSession.test.ts) -- so a      */
+/* 6-item run deterministically grades BOTH a quiz-type and a           */
+/* flashcard-type item. Every item grades through the SAME shared path  */
+/* the standalone drills use (src/drills/gradeAnswer.ts), so both       */
+/* histories populate from one session.                                 */
+/* ==================================================================== */
+
+test('mixed session: interleaves flashcard + quiz items, grading each through its standalone path', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await expect(page.locator('.drills-title')).toHaveText('Drills');
+
+  await page.getByRole('button', { name: 'Mixed', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Mixed');
+  await shot(page, '80-mixed-session');
+
+  // The seeded interleave for this pinned session (see mixedSession.test.ts).
+  const EXPECTED_TYPES = ['quiz', 'quiz', 'quiz', 'flash', 'flash', 'flash'];
+  let sawFlash = false;
+  let sawQuiz = false;
+
+  for (let i = 0; i < EXPECTED_TYPES.length; i++) {
+    // A quiz item shows a true count (.quiz-tc); a flashcard item never does.
+    // That visible cue IS the discrimination the mode trains.
+    await expect(page.locator('.action-bar')).toBeVisible();
+    const isQuiz = (await page.locator('.quiz-tc').count()) > 0;
+    expect(isQuiz ? 'quiz' : 'flash', `item ${i} type`).toBe(EXPECTED_TYPES[i]);
+
+    // Answer via the SAME surfaces the standalone views expose: insurance
+    // items get Decline; everything else gets Stand.
+    const insurancePrompt = page.locator('.quiz-insurance-prompt');
+    if (await insurancePrompt.isVisible().catch(() => false)) {
+      await page.getByRole('button', { name: 'Decline Insurance', exact: true }).click();
+    } else {
+      await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
+    }
+
+    // Feedback renders per item -- reusing the standalone feedback surfaces:
+    // flashcards show .feedback-cell (the chart cell), quiz items .quiz-label.
+    await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+    if (await page.locator('.feedback-cell').isVisible().catch(() => false)) sawFlash = true;
+    if (await page.locator('.quiz-label').isVisible().catch(() => false)) sawQuiz = true;
+
+    if (i === 0) await shot(page, '81-mixed-quiz-item-feedback');
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toHaveCount(0);
+  }
+
+  // BOTH item types appeared and were graded across the seeded run.
+  expect(sawFlash, 'a flashcard-type item must appear').toBe(true);
+  expect(sawQuiz, 'a quiz-type item must appear').toBe(true);
+
+  // Telemetry: one mixed session naturally populates BOTH histories through
+  // the shared grade path. Every graded item (flash + quiz) captures an R1
+  // latency; only the 3 real quiz items write perIndex (flashcards never do),
+  // so the counts prove exactly which path each item took -- no drift.
+  const stats = await readStats(page);
+  const latency = (stats?.latencyHistory as { elapsedMs: number }[] | undefined) ?? [];
+  expect(latency).toHaveLength(6);
+  for (const l of latency) expect(l.elapsedMs).toBeGreaterThan(0);
+
+  const categories = (stats?.categories as Record<string, { right: number; wrong: number }> | undefined) ?? {};
+  const categoryGrades = Object.values(categories).reduce((sum, t) => sum + t.right + t.wrong, 0);
+  expect(categoryGrades, 'every graded item bumps exactly one category tally').toBe(6);
+
+  const perIndex = (stats?.perIndex as Record<string, { right: number; wrong: number }> | undefined) ?? {};
+  const quizGrades = Object.values(perIndex).reduce((sum, t) => sum + t.right + t.wrong, 0);
+  expect(quizGrades, 'the 3 quiz items graded through the quiz path (flashcards write no perIndex)').toBe(3);
+
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.locator('.drills-picker')).toBeVisible();
+});
