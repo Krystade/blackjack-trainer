@@ -334,10 +334,15 @@ test('eyes-free flashcards: prompt, coordinate tap, spoken echo + verdict + chim
   await expect(zonePad).toBeAttached();
   await shot(page, '57-zonepad-overlay-flashcards');
 
-  // Top-left quadrant of the 390x844 viewport, well clear of the center
-  // circle (radius 0.22 * min(390,844) ~= 86px around (195, 422)) -- lands
-  // on 'hit' (src/audio/zones.ts).
-  await page.mouse.click(60, 100);
+  // Top-left quadrant of the pad's OWN bounding box -> 'hit'. Computed from
+  // the pad rect rather than a fixed viewport coordinate because T0-BUG1's
+  // fix starts the pad below the control strip (it no longer spans from y=0),
+  // so a hardcoded (60,100) would land on the controls above it. 25%/25% is
+  // well clear of the center 'surrender' circle (src/audio/zones.ts) and
+  // hit-tests against this same rect.
+  const box = await zonePad.boundingBox();
+  if (!box) throw new Error('ZonePad has no bounding box');
+  await page.mouse.click(box.x + box.width * 0.25, box.y + box.height * 0.25);
 
   await waitForSpeechLogMatch(page, /^Hit/);
   const log = await readSpeechLog(page);

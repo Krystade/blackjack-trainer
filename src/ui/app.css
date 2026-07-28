@@ -1729,11 +1729,23 @@ button {
    control panel. The "Dim screen" setting (AudioSettings.dimZones) is an
    explicit opt-in that adds `.zone-pad-hidden` (opacity 0, never
    display/visibility/pointer-events none, so the pad stays fully tappable)
-   for genuine eyes-free driving use. */
+   for genuine eyes-free driving use.
+
+   T0-BUG1 (docs/BACKLOG.md): the pad must NOT start at the very top of the
+   viewport, or it covers the drill's top control strip — including the
+   "Dim screen"/"Eyes-free" toggles that live there — and a real tap on those
+   toggles is intercepted by this opaque overlay. `.drill-screen` measures the
+   control strip's bottom edge (viewport px) and publishes it as
+   `--zone-pad-top`; the pad starts there instead of `top: 0`, leaving the
+   strip uncovered and tappable. The hit-test is unaffected: ZonePad.tsx
+   computes every zone from its OWN getBoundingClientRect, so the five zones
+   simply re-fit the area below the strip. Falls back to 0 (full-viewport)
+   before the first measurement or anywhere the var is unset. */
 
 .zone-pad {
   position: fixed;
   inset: 0;
+  top: var(--zone-pad-top, 0px);
   z-index: 60;
   touch-action: none;
   user-select: none;

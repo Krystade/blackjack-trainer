@@ -1161,9 +1161,15 @@ test('eyes-free deviation quiz: action ZonePad (non-insurance item), quadrant ta
   await expect(zonePad).toBeAttached();
   await expect(page.locator('.zone-pad-quadrants')).toBeVisible(); // action mode, not the insurance halves
 
-  // Top-left quadrant (same coordinates as audio.spec's flashcards case) --
-  // lands on 'hit'.
-  await page.mouse.click(60, 100);
+  // Tap the top-left quadrant of the pad's OWN bounding box -> 'hit'. Computed
+  // from the pad rect (not a fixed viewport coordinate) because T0-BUG1's fix
+  // starts the pad below the control strip: the pad no longer spans from y=0,
+  // so a hardcoded (60,100) would land on the controls above it. 25%/25% is
+  // well clear of the center 'surrender' circle regardless of the strip's
+  // measured height (ZonePad hit-tests against this same rect).
+  const box = await zonePad.boundingBox();
+  if (!box) throw new Error('ZonePad has no bounding box');
+  await page.mouse.click(box.x + box.width * 0.25, box.y + box.height * 0.25);
 
   await waitForSpeechLogMatch(page, /^Hit/);
   const log = await readSpeechLog(page);
@@ -1184,25 +1190,19 @@ test('eyes-free deviation quiz: action ZonePad (non-insurance item), quadrant ta
 /* ==================================================================== */
 
 /**
- * BUG FOUND while writing this test (docs/research/2026-07-26-test-coverage-
- * matrix.md gap #22): "Dim screen" is the ONLY on-screen control for
- * `audio.dimZones` anywhere in the app (Settings.tsx has no copy of it), and
- * it's `disabled={!eyesFree}` -- it can only ever be checked while eyes-free
- * is already on. But `.zone-pad` (src/ui/app.css:1734) is a `position:
- * fixed; inset: 0; z-index: 60` opaque full-viewport overlay that mounts the
- * instant eyes-free turns on (whenever `!feedback`, which is immediately
- * true) -- and it physically covers the very checkbox that's supposed to
- * dim it. Confirmed via Playwright's own actionability check: a real
- * `.check()` click times out with "<div class="zone-pad-quadrants"> ...
- * intercepts pointer events". This isn't a headless artifact -- the CSS is a
- * real fixed/opaque/z-60 overlay, so a real touchscreen tap hits the exact
- * same obstruction. A keyboard user can still Tab to the checkbox and press
- * Space (focus/keyboard dispatch bypasses the pointer hit-test the overlay
- * blocks), so this test exercises that path to verify the toggle's own
- * logic/persistence -- but on the touch-first device this app targets, the
- * control is unreachable by tap once its own prerequisite is met. Flagged
- * to the operator rather than worked around (e.g. `force: true`, which
- * would silently mask the very click-block this test caught).
+ * T0-BUG1 REGRESSION GUARD (docs/BACKLOG.md "T0 status"): "Dim screen" is the
+ * ONLY on-screen control for `audio.dimZones` anywhere in the app
+ * (Settings.tsx has no copy of it), and it's `disabled={!eyesFree}` -- it can
+ * only ever be checked while eyes-free is already on, which mounts the
+ * `.zone-pad` overlay. The bug was that the pad (a fixed, opaque,
+ * full-viewport `inset:0` overlay) physically covered this very checkbox, so
+ * a real tap/click was intercepted -- reproducible in Playwright AND under a
+ * real finger. The fix starts the pad BELOW the drill's control strip (a
+ * `--zone-pad-top` offset measured from the strip's height), leaving the
+ * toggle uncovered. This test therefore asserts a REAL `.check()` succeeds
+ * (NO `force: true`, which would silently mask exactly the click-block the
+ * bug was about); if the pad ever creeps back over the toggle, Playwright's
+ * actionability check makes this fail again.
  */
 test('flashcards: Dim screen toggle switches the ZonePad to hidden-but-tappable and persists dimZones', async ({
   page,
@@ -1217,13 +1217,11 @@ test('flashcards: Dim screen toggle switches the ZonePad to hidden-but-tappable 
   await expect(zonePad).toBeAttached();
   await expect(zonePad).not.toHaveClass(/zone-pad-hidden/);
 
-  // A real mouse/touch .check() here times out -- the ZonePad's opaque
-  // full-viewport overlay intercepts the click (see the bug note above).
-  // Tab-focus + Space is a genuinely different, real input path (not a
-  // hack around the assertion) that still exercises the checkbox's actual
-  // onChange -> toggleDimZones -> saveSettings logic.
-  await page.getByLabel('Dim screen').focus();
-  await page.keyboard.press('Space');
+  // A REAL mouse/touch .check() -- no force -- must reach the toggle. Before
+  // the T0-BUG1 fix this timed out with the ZonePad's opaque overlay
+  // "intercepts pointer events"; now the pad starts below the control strip,
+  // so the pointer hit-test lands on the checkbox itself.
+  await page.getByLabel('Dim screen').check();
 
   await expect(zonePad).toHaveClass(/zone-pad-hidden/);
   await expect(zonePad).toBeAttached(); // still attached/tappable, just visually dimmed

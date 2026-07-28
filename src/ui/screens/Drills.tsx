@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
 import type { Action, DeviationId } from '../../engine/deviations';
@@ -75,6 +75,45 @@ const INSURANCE_ZONE_LABEL: Record<'take' | 'decline', string> = {
 function zoneLabel(zone: ZoneId | 'take' | 'decline'): string {
   if (zone === 'take' || zone === 'decline') return INSURANCE_ZONE_LABEL[zone];
   return ZONE_LABEL[zone];
+}
+
+/* ---------------------------------------------------------------- */
+/* Eyes-free ZonePad layout (T0-BUG1, docs/BACKLOG.md).             */
+/* The eyes-free ZonePad is a fixed, opaque, full-viewport overlay. */
+/* Left at inset:0 it covers the drill's top control strip -- and   */
+/* the "Dim screen"/"Eyes-free" toggles that live there -- so a     */
+/* real tap on those toggles is intercepted by the pad. We measure  */
+/* the control strip's bottom edge and publish it as the            */
+/* `--zone-pad-top` CSS var on `.drill-screen`; `.zone-pad` starts  */
+/* there instead of top:0, leaving the strip uncovered and tappable */
+/* while the pad still covers the whole card/dealer area below it.   */
+/* The strip's height is dynamic (category/index rows, an optional  */
+/* note), so it's measured live via ResizeObserver rather than      */
+/* hardcoded to a magic pixel value. hitTestZone stays correct      */
+/* because ZonePad reads its OWN bounding rect -- the five zones     */
+/* just re-fit the smaller area beneath the strip.                  */
+/* ---------------------------------------------------------------- */
+function useControlStripBottom() {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [bottom, setBottom] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setBottom(el.getBoundingClientRect().bottom);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+  return [ref, bottom] as const;
+}
+
+function drillScreenStyle(padTop: number): CSSProperties {
+  return { ['--zone-pad-top']: `${padTop}px` } as CSSProperties;
 }
 
 /* ---------------------------------------------------------------- */
@@ -167,6 +206,9 @@ function FlashcardsView({
   // it's (re)entered from the picker (see the Drills switch below), so a
   // new session always starts with this false; no extra reset effect needed.
   const spokenCorrectOnceRef = useRef(false);
+  // T0-BUG1: measure the control strip so the eyes-free ZonePad overlay can
+  // start BELOW it (keeping its Dim-screen/Eyes-free toggles tappable).
+  const [controlsRef, padTop] = useControlStripBottom();
 
   const clearAdvanceTimer = () => {
     if (advanceTimerRef.current !== null) {
@@ -389,7 +431,7 @@ function FlashcardsView({
   }, [feedback, eyesFree]);
 
   return (
-    <div className="drill-screen">
+    <div className="drill-screen" style={drillScreenStyle(padTop)}>
       <div className="drill-topbar">
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
@@ -397,7 +439,7 @@ function FlashcardsView({
         <div className="drill-heading">Flashcards</div>
       </div>
 
-      <div className="drill-inline-controls">
+      <div className="drill-inline-controls" ref={controlsRef}>
         <div className="settings-row">
           <span className="settings-label">Category</span>
           <Segmented
@@ -609,6 +651,9 @@ function DeviationQuizView({
   // it's (re)entered from the picker (see the Drills switch below), so a
   // new session always starts with this false; no extra reset effect needed.
   const spokenCorrectOnceRef = useRef(false);
+  // T0-BUG1: measure the control strip so the eyes-free ZonePad overlay can
+  // start BELOW it (keeping its Dim-screen/Eyes-free toggles tappable).
+  const [controlsRef, padTop] = useControlStripBottom();
 
   const clearAdvanceTimer = () => {
     if (advanceTimerRef.current !== null) {
@@ -849,7 +894,7 @@ function DeviationQuizView({
   const indexList = activeProfile.rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
 
   return (
-    <div className="drill-screen">
+    <div className="drill-screen" style={drillScreenStyle(padTop)}>
       <div className="drill-topbar">
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
@@ -857,7 +902,7 @@ function DeviationQuizView({
         <div className="drill-heading">Deviation Quiz</div>
       </div>
 
-      <div className="drill-inline-controls">
+      <div className="drill-inline-controls" ref={controlsRef}>
         <label className="settings-row">
           <span className="settings-label">Index</span>
           <select
