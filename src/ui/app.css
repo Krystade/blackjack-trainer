@@ -1930,6 +1930,50 @@ button {
    repeating-linear-gradient below draws thin alternating card-edge
    stripes (~3px "card thickness"); a pseudo-element adds a bright top
    edge so the current top card of the stack reads clearly. */
+/* R6: compact horizontal discard tray on the live table — a depth cue to
+   estimate from during count checks (echoes the deck-estimation drill's tray,
+   in a thin table-header form). Cards "stack" left-to-right as the shoe burns. */
+.table-discard-tray {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem max(0.5rem, env(safe-area-inset-left)) 0.2rem max(0.5rem, env(safe-area-inset-right));
+}
+
+.table-discard-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #7fa890;
+  flex: 0 0 auto;
+}
+
+.table-discard-frame {
+  position: relative;
+  flex: 1 1 auto;
+  height: 10px;
+  border: 1px solid #2c5c41;
+  border-radius: 5px;
+  background: #0a1c14;
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+.table-discard-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background-image: repeating-linear-gradient(
+    to right,
+    #f4ead1 0px,
+    #f4ead1 1.5px,
+    #c2b184 1.5px,
+    #c2b184 3px
+  );
+  transition: width 0.25s ease;
+}
+
 .deck-tray-frame {
   position: relative;
   width: 128px;

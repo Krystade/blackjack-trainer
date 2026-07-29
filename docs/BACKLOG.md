@@ -172,11 +172,18 @@ existing `bet` events); event-order-sensitive tests (game.test.ts:286/303/325/79
 be audited first. Also possible: a standalone back-counting *drill* mode (watch a shoe, tap
 enter/sit) as the fuller unstaked version RT#2 references.
 
-### R6 · Discard-tray depth cue on the live table — S — MEDIUM (cheap realism repair)
+### R6 · Discard-tray depth cue on the live table — S — MEDIUM (cheap realism repair) — 🟡 VISUAL CUE SHIPPED 2026-07-28
 RT#3: table TC checks grade against the shoe's *exact* depth with no visual tray, actively
 mistraining estimation and stranding the deck-estimation drill as an island. The tray-fill
 visual already exists in `DeckEstimationView` — reuse it on `Table.tsx` so table count-checks
 require real estimation. Cheap, and it connects a drill to its point of use.
+✅ SHIPPED (the visual cue): a compact horizontal **discard tray** below the table topbar that
+fills as the shoe burns (`game.shoe.cardsDealt / decks*52`), giving a live by-eye referent to
+estimate decks-remaining from during count checks — deliberately shows ONLY the fill (no exact
+number) so estimation is still required, connecting the deck-estimation drill to its point of
+use. e2e asserts the fill widens across a dealt round. REMAINING (deferred, operator-
+deprioritized): make the count-check TC grading tolerant of a reasonable by-eye estimate band
+rather than exact depth — the fuller RT#3 fix, but it touches the tested count-check grading.
 
 ### R7 · Count-peek accountability — XS — MEDIUM (quick integrity fix) — ✅ SHIPPED 2026-07-27
 RT#5: the RC/TC peek button works even in test mode and is never logged, making "actual

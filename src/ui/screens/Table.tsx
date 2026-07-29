@@ -365,6 +365,26 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
         </button>
       </div>
 
+      {/* R6 (docs/BACKLOG.md, RT#3): a live discard-tray depth cue. Real tables
+          have a visible tray; without one, the table's TC checks give no
+          referent to ESTIMATE decks-remaining from, stranding the deck-
+          estimation drill as an island. Shows only the fill (deliberately NO
+          exact number) so the count-check still requires a real by-eye
+          estimate — connecting that drill to its point of use. */}
+      {(() => {
+        const dealt = game.shoe.cardsDealt;
+        const totalCards = activeProfile.rules.decks * 52;
+        const fillPct = Math.min(98, Math.max(1, (dealt / totalCards) * 100));
+        return (
+          <div className="table-discard-tray" aria-label="Discard tray">
+            <span className="table-discard-label">Discard</span>
+            <div className="table-discard-frame">
+              <div className="table-discard-fill" style={{ width: `${fillPct}%` }} />
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="dealer-area">
         {game.dealerCards.map((c, i) => (
           <PlayingCard key={i} card={c} faceDown={i === 1 && !game.holeRevealed} />

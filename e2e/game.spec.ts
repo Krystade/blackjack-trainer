@@ -399,3 +399,19 @@ test('player surrender: takes a -0.5 net when the LS rule is on', async ({ page 
   await expect(page.locator('.message-strip .message-result')).toContainText('Surrender -0.5');
   await shot(page, '15-surrender-result');
 });
+
+/* R6 (RT#3): the live discard-tray depth cue fills as the shoe burns, giving */
+/* a by-eye referent to estimate decks-remaining from during count checks.    */
+test('R6: the discard tray fills as the shoe burns through a round', async ({ page }) => {
+  await page.goto('/?seed=2&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+
+  const fill = page.locator('.table-discard-fill');
+  await expect(fill).toBeVisible();
+  const widthOf = () => fill.evaluate((el) => parseFloat((el as HTMLElement).style.width) || 0);
+  const before = await widthOf();
+
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  // A dealt round burns several cards, so the tray fill widens.
+  await expect.poll(widthOf).toBeGreaterThan(before);
+});
