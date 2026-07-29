@@ -262,6 +262,21 @@ export interface Stats {
       elapsedMs?: number;
     }[];
   };
+  // R8/TS#6 (docs/BACKLOG.md, pair-cancellation drill): one entry per graded
+  // pair. `net` is the correct net Hi-Lo tag (-2..2), `guess` what the user
+  // answered, `cancelling` whether it was a genuine cancel (a +1/-1 pair, the
+  // canonical chunk). `date` is written by the calling component, never a pure
+  // helper. Additive telemetry section — migration-safe (mergeStats backfills).
+  pairCancel: {
+    history: {
+      date: string;
+      net: number;
+      guess: number;
+      correct: boolean;
+      cancelling: boolean;
+      elapsedMs?: number;
+    }[];
+  };
 }
 
 export const EMPTY_STATS: Stats = {
@@ -299,6 +314,9 @@ export const EMPTY_STATS: Stats = {
   sessions: [],
   latencyHistory: [],
   distraction: {
+    history: [],
+  },
+  pairCancel: {
     history: [],
   },
 };
