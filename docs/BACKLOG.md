@@ -188,10 +188,18 @@ instead surface it — test-mode session report, Stats sessions list, and the ag
 play accuracy" header all show an "assisted — used N peeks" flag when peeks>0 (pure helper
 `src/ui/peekFlag.ts`, unit-tested; e2e asserts the count + flag). 0-peek sessions unchanged.
 
-### R8 · New drill mechanics from the community hunt — S–M each — MEDIUM/EXPLORATORY
+### R8 · New drill mechanics from the community hunt — S–M each — MEDIUM/EXPLORATORY — 🟡 IN PROGRESS (bias dealing ✅ 2026-07-28)
 Genuinely novel, verified in primary sources (CVBJ manual / practitioner forums):
 - **Bias dealing** (CM#1): deliberately cluster same-sign cards to force counting-through-
   zero and sign-reversal reps — a weak spot random dealing under-samples. A shoe-gen param.
+  ✅ SHIPPED: `makeCountDrill(cards, group, seed, bias)` — a stable sort by Hi-Lo tag clusters
+  same-sign cards toward the front ('negative' front-loads high/−1 cards ⇒ count dives then
+  climbs; 'positive' front-loads low/+1 ⇒ spikes then falls). Same finalRc (order-independent
+  sum): same destination, harder journey. Within-tag order stays seeded-shuffled so counting
+  stays non-trivial. Setting `drill.countBias` (migration-safe, default 'none'); a "Count bias"
+  Segmented on the count-drill setup, scoped to the ordinary drill — Timed Challenge forces
+  'none' so a harder shoe can't contaminate the R2 speed-tier grading. Directly answers the
+  red-team's "negative-count arithmetic systematically undertrained" (#6). 2939 unit + 93 e2e.
 - **Card-removal deduction** (CM#2, repeated-theme): remove 1–2 cards before dealing; after
   the countdown the user deduces the removed card's value from count self-consistency.
   Tests correctness, not just speed. Novel — no existing trainer found with it.

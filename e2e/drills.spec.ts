@@ -79,6 +79,40 @@ test('count drill: flash 4 cards fast, submit RC, see result', async ({ page }) 
   await expect(page.locator('.drills-picker')).toBeVisible();
 });
 
+/* R8/CM#1: the adversarial "Count bias" control clusters same-sign cards so */
+/* the count runs through zero. This asserts the control persists the setting */
+/* AND that a biased shoe drills end-to-end to a graded result (the setting   */
+/* actually reaches makeCountDrill; the biasing MECHANIC is proven exactly in */
+/* src/drills/countDrill.test.ts). */
+test('count drill: Count bias control persists and a biased shoe drills to a graded result', async ({
+  page,
+}) => {
+  await withSettings(page, { drill: { countIntervalMs: 200, countLengthCards: 6, countGroup: 1 } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await expect(page.locator('.count-setup')).toBeVisible();
+
+  // Default is None; switch to Neg-first via the setup control.
+  const biasRow = page.locator('.settings-row', { hasText: 'Count bias' });
+  await expect(biasRow.getByRole('button', { name: 'None', exact: true })).toHaveClass(/segmented-btn-active/);
+  await biasRow.getByRole('button', { name: 'Neg-first', exact: true }).click();
+  await expect(biasRow.getByRole('button', { name: 'Neg-first', exact: true })).toHaveClass(
+    /segmented-btn-active/,
+  );
+  const biasSettings = await readSettings(page);
+  expect((biasSettings?.drill as { countBias?: string } | undefined)?.countBias).toBe('negative');
+
+  // A biased run still reaches a normal graded finish (not stuck, not thrown).
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.count-flash-area')).toBeVisible();
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+  await page.locator('.numpad-btn', { hasText: /^0$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
+});
+
 /**
  * Timed Challenge (speed ramp): a short deck + a fast (but floored) starting
  * pace keeps this deterministic and quick under `?e2e=1` (timers still run

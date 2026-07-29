@@ -5,6 +5,7 @@ import type { DeviationId } from '../engine/deviations';
 import type { RuleSet } from '../engine/ruleset';
 import type { SpeedTier } from '../drills/countSpeed';
 import type { DistractionMode, DistractionFreq } from '../drills/distraction';
+import type { CountDrillBias } from '../drills/countDrill';
 
 export interface Settings {
   version: 1;
@@ -59,6 +60,15 @@ export interface Settings {
     // the operator's key insight) or 'generic' (a table-talk simulacrum).
     // Defaults to 'near-count', the more realistic/harder mode.
     distractionMode: DistractionMode;
+    // R8/CM#1 (docs/BACKLOG.md, adversarial shoe composition): deliberately
+    // cluster same-sign Hi-Lo cards toward the front of the count drill's shoe
+    // to force counting-through-zero / sign-reversal reps (see
+    // drills/countDrill.ts makeCountDrill's `bias`). 'none' is the default --
+    // opt-in, so default behavior and every existing test are unchanged. Only
+    // the ORDINARY count drill applies it; Countdown mode builds its own shoe,
+    // and Timed Challenge runs force 'none' so a biased shoe can't contaminate
+    // the speed-tier grading (see CountDrillView).
+    countBias: CountDrillBias;
   };
   audio: AudioSettings;
 }
@@ -133,6 +143,7 @@ export const DEFAULT_SETTINGS: Settings = {
     timedAdaptive: true,
     distractionFreq: 'off',
     distractionMode: 'near-count',
+    countBias: 'none',
   },
   audio: { ...DEFAULT_AUDIO },
 };

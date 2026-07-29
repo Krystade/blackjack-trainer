@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Card, Rank } from '../engine/cards';
 import { hiLoTag } from '../engine/count';
-import { runningCountThrough } from './countDrill';
+import { runningCountThrough, makeCountDrill } from './countDrill';
 
 /** Builds a minimal Card for a given rank -- suit is irrelevant to hiLoTag. */
 function card(rank: Rank): Card {
@@ -44,5 +44,62 @@ describe('runningCountThrough', () => {
 
   it('is 0 for an empty groups array regardless of uptoIndex', () => {
     expect(runningCountThrough([], 5)).toBe(0);
+  });
+});
+
+describe('makeCountDrill bias (R8/CM#1 — adversarial same-sign clustering)', () => {
+  const tagsOf = (round: { groups: Card[][] }) => round.groups.flat().map((c) => hiLoTag(c.rank));
+
+  it("bias 'none' is unbiased and deterministic for a seed (unchanged default behavior)", () => {
+    const a = makeCountDrill(52, 1, 7);
+    const b = makeCountDrill(52, 1, 7, 'none');
+    expect(tagsOf(b)).toEqual(tagsOf(a)); // omitting bias === passing 'none'
+    // A random shoe interleaves signs: a −1 appears somewhere after a +1.
+    const tags = tagsOf(a);
+    const firstPos = tags.indexOf(1);
+    const lastNeg = tags.lastIndexOf(-1);
+    expect(firstPos).toBeGreaterThanOrEqual(0);
+    expect(lastNeg).toBeGreaterThan(firstPos); // signs are interleaved, not clustered
+  });
+
+  it("bias 'negative' front-loads every negative-tag card ahead of every positive-tag card (count dives, then climbs)", () => {
+    const tags = tagsOf(makeCountDrill(52, 1, 7, 'negative'));
+    const lastNeg = tags.lastIndexOf(-1);
+    const firstPos = tags.indexOf(1);
+    expect(lastNeg).toBeGreaterThanOrEqual(0);
+    expect(firstPos).toBeGreaterThan(lastNeg); // all −1s precede all +1s
+    // The running count reaches its global minimum before recovering upward.
+    let rc = 0;
+    let min = 0;
+    let minIdx = 0;
+    tags.forEach((t, i) => {
+      rc += t;
+      if (rc < min) {
+        min = rc;
+        minIdx = i;
+      }
+    });
+    expect(min).toBeLessThan(0);
+    expect(minIdx).toBeGreaterThan(0);
+  });
+
+  it("bias 'positive' front-loads every positive-tag card ahead of every negative-tag card", () => {
+    const tags = tagsOf(makeCountDrill(52, 1, 7, 'positive'));
+    const lastPos = tags.lastIndexOf(1);
+    const firstNeg = tags.indexOf(-1);
+    expect(lastPos).toBeGreaterThanOrEqual(0);
+    expect(firstNeg).toBeGreaterThan(lastPos); // all +1s precede all −1s
+  });
+
+  it('bias preserves the multiset: same finalRc and card count as the unbiased shoe (same journey endpoint, harder path)', () => {
+    const plain = makeCountDrill(52, 1, 7);
+    for (const bias of ['negative', 'positive'] as const) {
+      const biased = makeCountDrill(52, 1, 7, bias);
+      expect(biased.finalRc).toBe(plain.finalRc); // order-independent sum
+      expect(biased.groups.flat()).toHaveLength(plain.groups.flat().length);
+      // Same multiset of tags, just reordered.
+      const sorted = (r: { groups: Card[][] }) => tagsOf(r).slice().sort();
+      expect(sorted(biased)).toEqual(sorted(plain));
+    }
   });
 });

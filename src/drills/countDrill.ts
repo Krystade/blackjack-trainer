@@ -8,20 +8,50 @@ export interface CountDrillRound {
 }
 
 /**
+ * Adversarial shoe-composition bias (R8, CM#1 — CVBJ "Bias", VERIFIED direct
+ * PDF read). Clusters same-sign Hi-Lo cards toward the front so the counter
+ * runs deep into ONE sign and then back across zero as the opposite-sign cards
+ * arrive — the count-through-zero / sign-reversal reps a flat-random shoe
+ * under-samples (and exactly the negative-count arithmetic the red-team flagged
+ * as systematically undertrained). 'none' is the default (unbiased random).
+ * 'negative' front-loads the negative-tag (high) cards → the count dives
+ * negative, then climbs back; 'positive' front-loads the positive-tag (low)
+ * cards → the count spikes positive, then falls back.
+ */
+export type CountDrillBias = 'none' | 'negative' | 'positive';
+
+/**
  * Generate a count drill round with the specified number of cards, grouped by groupSize.
  * Uses a seeded Shoe to ensure deterministic generation.
  *
  * @param cards - Total number of cards to generate (up to 312 for 6-deck shoe)
  * @param groupSize - Size of each group (1, 2, or 3)
  * @param seed - Optional seed for reproducibility
+ * @param bias - Adversarial same-sign clustering (R8/CM#1); 'none' = unbiased
  * @returns CountDrillRound with grouped cards and final running count
  */
-export function makeCountDrill(cards: number, groupSize: 1 | 2 | 3, seed?: number): CountDrillRound {
+export function makeCountDrill(
+  cards: number,
+  groupSize: 1 | 2 | 3,
+  seed?: number,
+  bias: CountDrillBias = 'none',
+): CountDrillRound {
   const shoe = new Shoe({ decks: Math.ceil(cards / 52), seed });
 
   const allCards: Card[] = [];
   for (let i = 0; i < cards; i++) {
     allCards.push(shoe.draw());
+  }
+
+  if (bias !== 'none') {
+    // Stable sort by Hi-Lo tag so same-sign cards cluster in the first half.
+    // V8's Array.sort is stable, so cards WITHIN a tag group keep their seeded
+    // shuffle order — the counting stays non-trivial; only the sign path is
+    // biased. 'negative' => ascending tag (−1s first); 'positive' => descending
+    // (+1s first). The final count is unchanged (a sum is order-independent):
+    // same destination, harder journey, which is the whole point.
+    const dir = bias === 'negative' ? 1 : -1;
+    allCards.sort((a, b) => (hiLoTag(a.rank) - hiLoTag(b.rank)) * dir);
   }
 
   // Group the cards

@@ -614,7 +614,12 @@ export function CountDrillView({
       setCountdownRound(makeCountdown(seed));
       setDrillRound(null);
     } else {
-      setDrillRound(makeCountDrill(settings.drill.countLengthCards, settings.drill.countGroup, seed));
+      // R8/CM#1: apply the adversarial same-sign bias only to the ORDINARY
+      // count drill, never a Timed Challenge run -- a biased shoe is harder in
+      // the sign-traversal dimension, which would contaminate the speed-tier
+      // grading the Timed Challenge feeds into R2's competence gate.
+      const bias = timedChallenge ? 'none' : settings.drill.countBias;
+      setDrillRound(makeCountDrill(settings.drill.countLengthCards, settings.drill.countGroup, seed, bias));
       setCountdownRound(null);
     }
     setShownIndex(0);
@@ -1006,6 +1011,39 @@ export function CountDrillView({
           {!countdownMode && timedChallenge && settings.drill.distractionFreq !== 'off' && (
             <div className="settings-row settings-note-row">
               Distractions don&apos;t apply to Timed Challenge runs.
+            </div>
+          )}
+
+          {/* R8/CM#1 (docs/BACKLOG.md): adversarial same-sign shoe bias. Same
+              scope as distractions -- the ordinary count drill only; Countdown
+              builds its own shoe and Timed Challenge forces 'none' so a harder
+              shoe never contaminates the speed-tier grading. */}
+          {!countdownMode && !timedChallenge && (
+            <>
+              <div className="settings-row">
+                <span className="settings-label">Count bias</span>
+                <Segmented
+                  options={[
+                    { value: 'none', label: 'None' },
+                    { value: 'negative', label: 'Neg-first' },
+                    { value: 'positive', label: 'Pos-first' },
+                  ]}
+                  value={settings.drill.countBias}
+                  onChange={(v) => updateDrill({ countBias: v })}
+                />
+              </div>
+              {settings.drill.countBias !== 'none' && (
+                <div className="settings-row settings-note-row">
+                  Clusters same-sign cards so the count runs{' '}
+                  {settings.drill.countBias === 'negative' ? 'down then climbs back' : 'up then falls back'} —
+                  extra reps counting through zero and reversing sign.
+                </div>
+              )}
+            </>
+          )}
+          {!countdownMode && timedChallenge && settings.drill.countBias !== 'none' && (
+            <div className="settings-row settings-note-row">
+              Count bias doesn&apos;t apply to Timed Challenge runs.
             </div>
           )}
 
