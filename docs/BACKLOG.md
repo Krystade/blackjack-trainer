@@ -188,7 +188,7 @@ instead surface it — test-mode session report, Stats sessions list, and the ag
 play accuracy" header all show an "assisted — used N peeks" flag when peeks>0 (pure helper
 `src/ui/peekFlag.ts`, unit-tested; e2e asserts the count + flag). 0-peek sessions unchanged.
 
-### R8 · New drill mechanics from the community hunt — S–M each — MEDIUM/EXPLORATORY — 🟡 IN PROGRESS (bias dealing ✅ 2026-07-28)
+### R8 · New drill mechanics from the community hunt — S–M each — MEDIUM/EXPLORATORY — ✅ SUBSTANTIALLY DONE (bias ✅ + pair-cancellation ✅ 2026-07-28; card-removal ≈ existing Countdown; guided-session deferred as packaging)
 Genuinely novel, verified in primary sources (CVBJ manual / practitioner forums):
 - **Bias dealing** (CM#1): deliberately cluster same-sign cards to force counting-through-
   zero and sign-reversal reps — a weak spot random dealing under-samples. A shoe-gen param.
@@ -203,6 +203,13 @@ Genuinely novel, verified in primary sources (CVBJ manual / practitioner forums)
 - **Card-removal deduction** (CM#2, repeated-theme): remove 1–2 cards before dealing; after
   the countdown the user deduces the removed card's value from count self-consistency.
   Tests correctness, not just speed. Novel — no existing trainer found with it.
+  ⏸️ LARGELY ALREADY SHIPPED — deprioritized as a near-duplicate. The existing **Countdown**
+  mode (`makeCountdown` + CountDrillView's tag-guess) is exactly single-card remove-then-deduce:
+  count 51 cards, deduce the hidden card's tag from the residual count. The ONLY genuinely-new
+  delta is a 2-card-removal variant (deduce the net tag of two removed cards) — a small
+  generalization of `makeCountdown` (drop N cards, ask the net removed tag), not a new drill.
+  Not worth a whole new mode; folded into Countdown as an optional future enhancement (low
+  marginal value now that pair-cancellation + bias — the high-value R8 items — have shipped).
 - **Pair-cancellation drill** (CM/TS#5 convergence): drill recognizing canceling pairs
   (e.g. a +1 and a −1 arriving together = 0) as a unit — the chunking stage after
   single-card speed. Backed by chess-chunking research AND the community progression.
