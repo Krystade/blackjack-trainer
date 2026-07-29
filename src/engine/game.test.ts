@@ -692,7 +692,7 @@ describe('bet grading', () => {
 });
 
 describe('wong-out / sit-out (R5)', () => {
-  const seats2Bots: SeatConfig = { bots: 2, playerHands: 1, playerPosition: 1 };
+  const seats2Bots: SeatConfig = { bots: 2, playerHands: 1, playerPosition: 1, botMistakePct: 0 };
 
   it('solo sit-out: no player hand, dealer up counted, bankroll untouched, phase settled', () => {
     const game = Game.withRiggedShoe(cfg(), rig('5', 'K'));

@@ -23,7 +23,7 @@ interface StatsProps {
   onSettingsChange: (settings: Settings) => void;
 }
 
-const CATEGORY_ORDER: Category[] = ['hard', 'soft', 'pairs', 'surrender', 'insurance', 'bet', 'countCheck'];
+const CATEGORY_ORDER: Category[] = ['hard', 'soft', 'pairs', 'surrender', 'insurance', 'bet', 'countCheck', 'wong'];
 
 const CATEGORY_LABELS: Record<Category, string> = {
   hard: 'Hard totals',
@@ -33,6 +33,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
   insurance: 'Insurance',
   bet: 'Bet sizing',
   countCheck: 'Count checks',
+  wong: 'Wong-outs',
 };
 
 const MISTAKE_ORDER: Exclude<MistakeClass, 'correct'>[] = [
@@ -171,6 +172,16 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   // count-survival are reported separately -- see distractionSummary's own
   // header comment for why they're independent failure modes.
   const distractionSum = distractionSummary(stats.distraction.history);
+
+  // R8/TS#6 (docs/BACKLOG.md, pair-cancellation): overall accuracy plus a
+  // dedicated figure for genuine cancelling pairs (the canonical chunk) --
+  // nailing a +2/-2 reinforcing pair is easier than recognizing a +1/-1 that
+  // cancels to 0, so the two are worth seeing apart.
+  const pairCancelHistory = stats.pairCancel.history;
+  const pairCancelAttempts = pairCancelHistory.length;
+  const pairCancelCorrect = pairCancelHistory.filter((h) => h.correct).length;
+  const pairCancelCancelling = pairCancelHistory.filter((h) => h.cancelling);
+  const pairCancelCancelCorrect = pairCancelCancelling.filter((h) => h.correct).length;
 
   // Per-profile header (Cycle-1 Task 13): CVCX numbers (when the profile has
   // them) alongside actual results computed from this profile's own sessions
@@ -373,6 +384,32 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
               <span>Count kept</span>
               <span>
                 {distractionSum.countKeptPct === null ? dash() : `${Math.round(distractionSum.countKeptPct)}%`}
+              </span>
+            </li>
+          </ul>
+        )}
+      </section>
+
+      <section className="stats-section">
+        <h2 className="stats-section-title">Pair cancellation</h2>
+        {pairCancelAttempts === 0 ? (
+          <p className="stats-detail">No pair-cancellation attempts yet.</p>
+        ) : (
+          <ul className="mistake-list">
+            <li className="mistake-row">
+              <span>Attempts</span>
+              <span>{pairCancelAttempts}</span>
+            </li>
+            <li className="mistake-row">
+              <span>Accuracy</span>
+              <span>{pct(pairCancelCorrect, pairCancelAttempts)}</span>
+            </li>
+            <li className="mistake-row">
+              <span>Cancelling pairs</span>
+              <span>
+                {pairCancelCancelling.length === 0
+                  ? dash()
+                  : pct(pairCancelCancelCorrect, pairCancelCancelling.length)}
               </span>
             </li>
           </ul>
