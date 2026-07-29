@@ -147,6 +147,11 @@ export function narrateDealerUp(up: Rank): string {
   return `Dealer shows ${narrateRank(up)}.`;
 }
 
+/** Spoken when the player wongs out (sits the round out). R5. */
+export function narrateSitOut(): string {
+  return 'Sitting out.';
+}
+
 /** Speak a settlement amount, sign-correct, with "point" for fractional values. */
 function narrateAmount(net: number): string {
   const sign = net > 0 ? 'plus' : net < 0 ? 'minus' : 'plus';

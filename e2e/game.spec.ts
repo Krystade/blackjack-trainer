@@ -175,6 +175,37 @@ test('bet spread: a deliberately bad bet is graded and shows in the test-mode re
   await shot(page, '09-bet-spread-report');
 });
 
+test('wong-out (R5): Sit Out plays the round unstaked, keeps the bankroll flat, and grades the wong', async ({
+  page,
+}) => {
+  await withSettings(page, { feedbackMode: 'test', betSpreadOn: true, countCheckEvery: 0 });
+  await page.goto('/?seed=6&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+
+  // The Sit Out button appears beside Deal only when a spread is configured
+  // (wong-out is meaningless flat-betting) — the same gate the engine grades on.
+  const sitOut = page.getByRole('button', { name: 'Sit Out', exact: true });
+  await expect(sitOut).toBeVisible();
+  await sitOut.click();
+
+  // The round settled with NO player hand: the wong-out message shows and no
+  // player-result row appears — nothing was staked.
+  await expect(page.locator('.message-sat-out')).toHaveText('Sat out — no bet.');
+  await expect(page.locator('.hands-row .player-hand')).toHaveCount(0);
+  await shot(page, '30-wong-sit-out');
+
+  // We're back in the bet phase for the next round (the shoe/count kept
+  // running through the sit-out). End the session and confirm the wong
+  // decision was graded: a 'wong' category row in the test-mode report, and
+  // no 'bet' row (a sit-out never stakes, so it emits no bet event).
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
+  await page.locator('.end-btn').click();
+  await expect(page.locator('.report-screen')).toBeVisible();
+  await expect(page.locator('.report-categories tr', { hasText: 'wong' })).toBeVisible();
+  await expect(page.locator('.report-categories tr', { hasText: /^bet/ })).toHaveCount(0);
+  await shot(page, '31-wong-report');
+});
+
 test('split flow: find a ten-value pair seed, split, and play both hands out', async ({ page }) => {
   await withSettings(page, { countCheckEvery: 0 });
 

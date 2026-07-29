@@ -455,10 +455,29 @@ button {
   cursor: pointer;
 }
 
+/* Wong-out (R5): a quieter sibling of Deal — it's the road-not-usually-taken
+   exit decision, so it reads as secondary to the primary Deal action. */
+.sit-out-btn {
+  min-height: 48px;
+  border-radius: 8px;
+  border: 1px solid #4a4030;
+  background: transparent;
+  color: #d8b969;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 0.4rem;
+}
+
 .deal-btn:disabled,
+.sit-out-btn:disabled,
 .chip-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.message-sat-out {
+  color: #d8b969;
+  font-style: italic;
 }
 
 /* ---------- Multi-hand bet entry (Cycle-2 Task 8) ---------- */

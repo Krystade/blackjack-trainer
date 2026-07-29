@@ -204,6 +204,7 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
     endSession,
     botNarrationRevealed,
     fastForwardNarration,
+    sitOut,
   } = useGame(settings, activeProfile, audio);
   // Cycle-2 Task 8: one selected bet per player hand. `playerHandsCount`
   // comes from the PROFILE's seat config, not `game.hands.length` — the
@@ -248,6 +249,14 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
     } else {
       deal(activeProfile.betSpreadOn ? selectedBets[0] : undefined);
     }
+    setCountStage('rc');
+  };
+
+  // Wong-out (R5): sit the round out. The engine still plays it (bots + dealer),
+  // so the count/penetration advance and the sit-out is graded against the
+  // spread — the exit decision the table otherwise can't practice.
+  const handleSitOut = () => {
+    sitOut();
     setCountStage('rc');
   };
 
@@ -308,6 +317,9 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
         onSelectBet: (u: number) => setBetForHand(i, u),
       })),
       onDeal: handleDeal,
+      // Wong-out only makes sense against a spread (the same gate the engine
+      // uses to grade it); a flat-bet table hides the Sit Out button entirely.
+      onSitOut: activeProfile.betSpreadOn ? handleSitOut : undefined,
     };
   } else {
     barMode = { kind: 'hidden' };
@@ -416,6 +428,13 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
         ))}
         {game.phase === 'settled' && (
           <>
+            {/* A settled round with no player hand is a wong-out (R5): the
+                round played out (count/penetration advanced) but nothing was
+                staked. Uniquely identifiable — every staked round has ≥1 hand,
+                and the pre-round state is phase 'idle', never 'settled'. */}
+            {game.hands.length === 0 && (
+              <div className="message-result message-sat-out">Sat out — no bet.</div>
+            )}
             {game.hands.map((h, i) => (
               <div key={i} className="message-result">
                 {resultMessage(h, i, multiHand)}

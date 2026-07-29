@@ -18,6 +18,7 @@ import {
   narrateHandResult,
   narrateInsuranceOffer,
   narrateShuffle,
+  narrateSitOut,
 } from '../audio/narrate';
 
 export interface OverlayInfo {
@@ -204,6 +205,19 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     [game, bump, audio, settings.audio.cardDetail],
   );
 
+  const sitOut = useCallback(() => {
+    // Wong-out: the engine plays the whole round (bots + dealer) synchronously,
+    // so the shuffle line (if the shoe rolled over), the sit-out announcement,
+    // and any settlement narration (dealer draws + count-check prompt) all
+    // resolve in one pass -- exactly like an instant dealer-blackjack deal. No
+    // player cards to narrate: the player was dealt none. R5.
+    game.sitOut();
+    if (game.shuffledLastRound) audio.say(narrateShuffle());
+    audio.say(narrateSitOut());
+    narrateSettlement(game, audio, settings.audio.cardDetail);
+    bump();
+  }, [game, bump, audio, settings.audio.cardDetail]);
+
   const insure = useCallback(
     (take: boolean) => {
       game.insuranceDecision(take);
@@ -369,6 +383,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   return {
     game,
     deal,
+    sitOut,
     act,
     insure,
     submitCount,

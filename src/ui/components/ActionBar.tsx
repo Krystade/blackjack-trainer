@@ -14,6 +14,11 @@ export type ActionBarMode =
       betSpreadOn: boolean;
       hands: BetHandEntry[];
       onDeal: () => void;
+      /** Wong-out: sit the round out (staked nothing) while the shoe/count
+       * still runs. Rendered as a second button beside Deal only when
+       * provided — the Table wires it when a bet spread is on, so the exit
+       * decision is practiceable. R5, docs/BACKLOG.md. */
+      onSitOut?: () => void;
       disabled?: boolean;
     }
   | { kind: 'hidden' };
@@ -80,6 +85,16 @@ export function ActionBar({ mode }: ActionBarProps) {
         <button type="button" className="deal-btn" disabled={mode.disabled} onClick={mode.onDeal}>
           Deal
         </button>
+        {mode.onSitOut && (
+          <button
+            type="button"
+            className="sit-out-btn"
+            disabled={mode.disabled}
+            onClick={mode.onSitOut}
+          >
+            Sit Out
+          </button>
+        )}
       </div>
     );
   }
@@ -128,6 +143,11 @@ export function ActionBar({ mode }: ActionBarProps) {
       <button type="button" className="deal-btn" disabled={mode.disabled} onClick={mode.onDeal}>
         Deal
       </button>
+      {mode.onSitOut && (
+        <button type="button" className="sit-out-btn" disabled={mode.disabled} onClick={mode.onSitOut}>
+          Sit Out
+        </button>
+      )}
     </div>
   );
 }
