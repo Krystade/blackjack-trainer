@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { hiLoTag } from '../engine/count';
-import { makePairCancel, isCancellingPair, PAIR_CANCEL_NETS } from './pairCancellation';
+import { makePairCancel, isCancellingPair, pairCancelBias, PAIR_CANCEL_NETS } from './pairCancellation';
 
 describe('makePairCancel (R8 pair-cancellation drill)', () => {
   it('is deterministic for a seed: same seed -> identical pair and net', () => {
@@ -56,5 +56,55 @@ describe('isCancellingPair', () => {
       typeof makePairCancel
     >;
     expect(isCancellingPair(round)).toBe(false);
+  });
+});
+
+describe('makePairCancel cancellingBias (TS#6 content-weighting)', () => {
+  it('cancellingBias=0 (default) is unchanged: identical to the bare call', () => {
+    for (let seed = 0; seed < 100; seed++) {
+      const a = makePairCancel(seed);
+      const b = makePairCancel(seed, 0);
+      expect(b.cards.map((c) => `${c.rank}${c.suit}`)).toEqual(a.cards.map((c) => `${c.rank}${c.suit}`));
+      expect(b.net).toBe(a.net);
+    }
+  });
+
+  it('cancellingBias=1 ALWAYS yields a genuine cancelling pair (net 0, +1/-1)', () => {
+    for (let seed = 0; seed < 300; seed++) {
+      const round = makePairCancel(seed, 1);
+      expect(round.net).toBe(0);
+      expect(isCancellingPair(round)).toBe(true);
+    }
+  });
+
+  it('a positive bias raises the genuine-cancel rate well above the unbiased draw', () => {
+    const rate = (bias: number) => {
+      let cancels = 0;
+      const n = 400;
+      for (let seed = 0; seed < n; seed++) if (isCancellingPair(makePairCancel(seed, bias))) cancels++;
+      return cancels / n;
+    };
+    const unbiased = rate(0);
+    const biased = rate(0.6);
+    expect(biased).toBeGreaterThan(unbiased);
+  });
+});
+
+describe('pairCancelBias schedule (TS#6)', () => {
+  it('starts high and decays monotonically to 0, clamped to [0,1]', () => {
+    expect(pairCancelBias(0)).toBeCloseTo(0.6, 5);
+    let prev = Infinity;
+    for (let r = 0; r < 30; r++) {
+      const b = pairCancelBias(r);
+      expect(b).toBeGreaterThanOrEqual(0);
+      expect(b).toBeLessThanOrEqual(1);
+      expect(b).toBeLessThanOrEqual(prev); // non-increasing
+      prev = b;
+    }
+    expect(pairCancelBias(20)).toBe(0); // fully decayed
+  });
+
+  it('negative round indices clamp to the starting bias (never above it)', () => {
+    expect(pairCancelBias(-5)).toBe(0.6);
   });
 });

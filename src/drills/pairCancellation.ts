@@ -1,5 +1,5 @@
 import type { Card } from '../engine/cards';
-import { Shoe } from '../engine/cards';
+import { Shoe, mulberry32 } from '../engine/cards';
 import { hiLoTag } from '../engine/count';
 
 /**
@@ -29,12 +29,51 @@ export const PAIR_CANCEL_NETS = [-2, -1, 0, 1, 2] as const;
  * Hi-Lo tag. Pure/deterministic given the seed (a fresh Shoe per call), so it
  * is immune to React StrictMode double-invocation and trivially reproducible
  * in tests/e2e.
+ *
+ * `cancellingBias` (0–1, default 0) is the content-weighting follow-on from
+ * TS#6: with that probability the pair is forced to be a GENUINE cancelling
+ * pair (one +1 low card and one −1 high card, net 0). A purely random draw
+ * under-represents the canonical chunk — most net-0 pairs are two zero-tag
+ * cards (7,8) that don't actually cancel — so oversampling real cancels early
+ * trains the recognition the drill is FOR. Default 0 keeps the unbiased draw
+ * (and every existing caller/test) unchanged.
  */
-export function makePairCancel(seed?: number): PairCancelRound {
+export function makePairCancel(seed?: number, cancellingBias = 0): PairCancelRound {
   const shoe = new Shoe({ decks: 1, seed });
-  const a = shoe.draw();
-  const b = shoe.draw();
-  return { cards: [a, b], net: hiLoTag(a.rank) + hiLoTag(b.rank) };
+
+  // Independent coin stream (decorrelated from the shoe) decides whether to
+  // force a cancel, so the bias never perturbs the unbiased draw's sequence.
+  const forceCancel =
+    cancellingBias > 0 && seed !== undefined && mulberry32((seed ^ 0x5f356495) >>> 0)() < cancellingBias;
+
+  if (!forceCancel) {
+    const a = shoe.draw();
+    const b = shoe.draw();
+    return { cards: [a, b], net: hiLoTag(a.rank) + hiLoTag(b.rank) };
+  }
+
+  // Force a genuine cancel: draw the whole deck (deterministic order) and take
+  // the first +1 (low) and first −1 (high) card. A 52-card deck always has
+  // both, so this never fails; the pair is presented in draw order.
+  const all: Card[] = [];
+  while (all.length < 52) all.push(shoe.draw());
+  const low = all.find((c) => hiLoTag(c.rank) === 1)!;
+  const high = all.find((c) => hiLoTag(c.rank) === -1)!;
+  const cards: [Card, Card] = all.indexOf(low) < all.indexOf(high) ? [low, high] : [high, low];
+  return { cards, net: 0 };
+}
+
+/**
+ * Session content-weighting schedule (TS#6): the cancelling-pair bias for the
+ * Nth round of a pair-cancellation session. Starts high so the learner sees
+ * the canonical chunk often, then decays toward the natural (unbiased) draw as
+ * they progress — the chunk-frequency logic chess/template theory describes.
+ * Pure and clamped to [0, 1].
+ */
+export function pairCancelBias(roundIndex: number): number {
+  const START = 0.6;
+  const DECAY_PER_ROUND = 0.05;
+  return Math.max(0, START - Math.max(0, roundIndex) * DECAY_PER_ROUND);
 }
 
 /** True when the pair cancels: both cards carry a non-zero tag and they sum to

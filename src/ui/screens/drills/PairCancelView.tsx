@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Settings } from '../../../store/types';
-import { makePairCancel, isCancellingPair, PAIR_CANCEL_NETS } from '../../../drills/pairCancellation';
+import {
+  makePairCancel,
+  isCancellingPair,
+  pairCancelBias,
+  PAIR_CANCEL_NETS,
+} from '../../../drills/pairCancellation';
 import type { PairCancelRound } from '../../../drills/pairCancellation';
 import { PlayingCard } from '../../components/PlayingCard';
 import { cardJitter, jitterTransform } from '../../../drills/cardJitter';
@@ -26,7 +31,13 @@ function formatSigned(n: number): string {
  */
 export function PairCancelView({ settings, onBack }: { settings: Settings; onBack: () => void }) {
   const audio = useAudio(settings.audio);
-  const [round, setRound] = useState<PairCancelRound>(() => makePairCancel(randomSeed()));
+  // TS#6 content-weighting: oversample genuine cancelling pairs early (the
+  // canonical chunk a random draw under-represents), decaying toward the
+  // natural distribution as the session progresses (see pairCancelBias).
+  const roundIndexRef = useRef(0);
+  const [round, setRound] = useState<PairCancelRound>(() =>
+    makePairCancel(randomSeed(), pairCancelBias(0)),
+  );
   const [feedback, setFeedback] = useState<{ correct: boolean; guess: number } | null>(null);
   // R1-style latency: prompt-shown → answered, captured in the component (never
   // a pure helper) so telemetry can track chunk-recognition speed over time.
@@ -59,7 +70,8 @@ export function PairCancelView({ settings, onBack }: { settings: Settings; onBac
   };
 
   const next = () => {
-    setRound(makePairCancel(randomSeed()));
+    roundIndexRef.current += 1;
+    setRound(makePairCancel(randomSeed(), pairCancelBias(roundIndexRef.current)));
     setFeedback(null);
     shownAtRef.current = performance.now();
   };
