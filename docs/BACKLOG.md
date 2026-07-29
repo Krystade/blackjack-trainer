@@ -206,6 +206,14 @@ Genuinely novel, verified in primary sources (CVBJ manual / practitioner forums)
 - **Pair-cancellation drill** (CM/TS#5 convergence): drill recognizing canceling pairs
   (e.g. a +1 and a −1 arriving together = 0) as a unit — the chunking stage after
   single-card speed. Backed by chess-chunking research AND the community progression.
+  ✅ SHIPPED 2026-07-28: new **Pair Cancellation** drill mode. Two cards shown at once, pick
+  the net Hi-Lo tag (−2…+2); `makePairCancel` (pure/seeded) + `isCancellingPair` (a genuine
+  +1/−1 cancel, stricter than net===0). Deliberately VISUAL-ONLY — no eyes-free — since the
+  skill is gestalt pair recognition that serial audio would defeat (red-team item 10).
+  Continuous flow like Flashcards; keyboard 1–5 → the five nets; R1-style latency captured.
+  Migration-safe `Stats.pairCancel` telemetry (net/guess/correct/cancelling/elapsedMs). 2946
+  unit + 94 e2e. FOLLOW-ON (the S-sized content-weighting from TS#6): weight early rounds
+  toward the highest-frequency real cancelling pairs, then broaden — chunk-frequency logic.
 - **Guided 15-min session template** (CM): warm-up → speed → true-count → hidden-value with
   a month-over-month error target. Provenance is template-like (flagged), so treat as a
   packaging idea for R1–R5, not its own evidence.

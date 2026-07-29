@@ -34,6 +34,7 @@ import { ZONE_LABEL } from '../../audio/zones';
 import type { ZoneId } from '../../audio/zones';
 import { CountDrillView } from './drills/CountDrillView';
 import { TrueCountDrillView } from './drills/TrueCountDrillView';
+import { PairCancelView } from './drills/PairCancelView';
 import { DeckEstimationView } from './drills/DeckEstimationView';
 
 interface DrillsProps {
@@ -1248,7 +1249,9 @@ function MixedSessionView({
 /* ---------------------------------------------------------------- */
 
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
-  const [mode, setMode] = useState<'picker' | 'count' | 'truecount' | 'deckest' | 'flash' | 'quiz' | 'mixed'>('picker');
+  const [mode, setMode] = useState<
+    'picker' | 'count' | 'truecount' | 'deckest' | 'flash' | 'quiz' | 'mixed' | 'paircancel'
+  >('picker');
 
   if (mode === 'count') {
     return (
@@ -1295,6 +1298,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       />
     );
   }
+  if (mode === 'paircancel') {
+    return <PairCancelView settings={settings} onBack={() => setMode('picker')} />;
+  }
 
   return (
     <div className="drills-picker">
@@ -1317,6 +1323,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         </button>
         <button type="button" className="drills-nav-btn" onClick={() => setMode('mixed')}>
           Mixed
+        </button>
+        <button type="button" className="drills-nav-btn" onClick={() => setMode('paircancel')}>
+          Pair Cancellation
         </button>
       </div>
       <button type="button" className="drills-back-btn" onClick={() => onNavigate('home')}>

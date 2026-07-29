@@ -1382,3 +1382,38 @@ test('mixed session: interleaves flashcard + quiz items, grading each through it
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();
 });
+
+/* R8/TS#6: pair-cancellation drill. Two cards, pick the net Hi-Lo tag. This  */
+/* validates the full wiring deterministically WITHOUT pre-computing the      */
+/* seed's net: it clicks a fixed answer, then reads the recorded telemetry    */
+/* and asserts self-consistency (guess matches, net in range, correctness =   */
+/* (net===0)). The net-computation itself is proven in the unit tests. */
+test('pair cancellation: answering a pair grades it and records self-consistent telemetry', async ({
+  page,
+}) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Pair Cancellation', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Pair Cancellation');
+  await expect(page.locator('.pair-cancel-cards .card')).toHaveCount(2);
+  await shot(page, '90-pair-cancel');
+
+  // Answer "0" (a fixed choice from the five −2..+2 buttons).
+  await page.locator('.pair-cancel-answers button.action-btn', { hasText: /^0$/ }).click();
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+
+  const stats = await readStats(page);
+  const history = (stats?.pairCancel as { history: Record<string, number | boolean>[] } | undefined)?.history ?? [];
+  expect(history).toHaveLength(1);
+  const row = history[0]!;
+  expect(row.guess).toBe(0);
+  expect([-2, -1, 0, 1, 2]).toContain(row.net);
+  expect(row.correct).toBe(row.net === 0); // grading is consistent with the shown net
+  expect(row.cancelling).toBe(row.net === 0 ? row.cancelling : false);
+  expect(row.elapsedMs as number).toBeGreaterThanOrEqual(0);
+
+  // Next draws a fresh pair and clears the feedback.
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toHaveCount(0);
+  await expect(page.locator('.pair-cancel-cards .card')).toHaveCount(2);
+});
