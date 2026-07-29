@@ -248,6 +248,40 @@ applies to every count-drill flash mode AND the pair-cancellation drill. `drill.
 (genuinely park-worthy, no demand surfaced): CM#5 backward-deduction from a visible bust
 outcome — overlaps the existing Countdown / card-removal deduction; leave parked.
 
+### From the 2026-07-28 red-team v2 (post R4–R9) — full doc: `docs/research/2026-07-28-adversarial-redteam-v2.md`
+Fresh adversarial re-attack after the R4–R9 batch shipped; 9 cited findings, biggest NEW gaps
+first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory; ground against spec
+§4/§5 + `docs/sources/` before building (flagged inline).
+
+- **RV1 · Bankroll / variance / risk-of-ruin pillar — M–L — [PRO+SCI], top new gap.** `riskOfRuin`
+  is only a manually-typed CVCX display field (`types.ts:174`, `Stats.tsx:226`); nothing simulates
+  a bankroll journey, RoR/Kelly/N0, or downswing drawdown. The app trains the edge and omits the
+  risk that decides survival — no variance/tilt inoculation. Highest-conviction new direction.
+- **RV2 · TC rounding-convention honesty + tolerance grading — S–M — [SCI+PRO].** ⚠️GROUND TRUTH.
+  The app asserts floor-toward-−∞ TC as the SOLE correct answer (`count.ts:24`) and exact-match
+  grades it, yet grades deck estimation within ±0.5 deck (`deckEstimation.ts:63`) — an internal
+  contradiction that marks a legitimate round-to-nearest learner wrong at the insurance boundary.
+  Verify the intended convention against spec/sources before changing anything.
+- **RV3 · Surrender (Fab 4) deviations — S–M — [PRO].** ⚠️GROUND TRUTH (needs verified Fab-4 index
+  values from `docs/sources/`, not memory). The deviation set (`deviations.ts:40-75`) is
+  hit/stand/double/split only; count-based late surrender is unrepresentable and ungraded.
+- **RV4 · Spacing vs error-weighting in R3 — M — [SCI].** `missWeight = 1+2·missCount` has no time
+  term; no cross-session scheduling, no delayed retention test — in-drill accuracy overstates
+  table-day competence. Add a time/spacing term + a delayed-retention check.
+- **RV5 · Distraction cadence is fixed/predictable — XS — [SCI], cheapest win.** `isDistractionPoint`
+  fires every 7th/3rd card (`distraction.ts:117-120`); learners pre-buffer the count, defeating the
+  divided-attention purpose. Jitter the cadence (seeded) so it's unpredictable. Clean, testable, no
+  ground-truth issue — the natural next quick win.
+- **RV6 · No integrated simultaneous-competence score — M — [PRO+SCI].** Bet/play/insurance/count
+  are siloed, peek stays available, no composite "table-ready" score across all skills at once.
+- **RV7–9 · known-deferred items re-confirmed as live mistrainings:** R5 rewards min-betting a
+  should-wong count (the symmetric-grading follow-on already logged under R5); bet grading demands
+  exact ramp conformity with zero cover concept (RT#11); count drill grades final RC only, so
+  offsetting mid-count errors pass silently (RT#12).
+
+**Red-team's top-3 to build next:** RV1 bankroll/RoR pillar · RV2 rounding honesty + tolerance ·
+RV4 time-based spacing + retention measurement. (RV5 is the cheapest standalone win.)
+
 ---
 
 **Build order — OPERATOR-SET 2026-07-26:** R1→R2→R3→D1 ✅ done. NEXT: **T0 complete
