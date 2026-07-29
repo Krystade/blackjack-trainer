@@ -146,12 +146,31 @@ byte-identical GradedEvent/nextWeights/Stats write for identical inputs; e2e pro
 session populates both histories (6 latency, 6 category grades, exactly 3 perIndex) with no fork.
 Reuses ActionBar/ZonePad/1-5 keyboard/dim-screen surfaces. 2927 unit + 91 e2e green.
 
-### R5 · Wonging / sit-out practice — M — MEDIUM-HIGH (biggest *realism* hole)
+### R5 · Wonging / sit-out practice — M — MEDIUM-HIGH (biggest *realism* hole) — ✅ SHIPPED 2026-07-28
 RT#2, standalone but high-conviction: `startRound` always stakes; there's no sit-out, so
 the most profitable shoe decision (wong out of negative counts, back-count in) is
 structurally unpracticeable, and the default spread quietly teaches playing all counts. A
 graded "sit out this round" action + back-counting entry drill. Larger because it touches
 the game loop.
+SHIPPED: `Game.sitOut()` (engine) + a **Sit Out** button beside Deal in the bet phase,
+shown only when a bet spread is on. Sitting out plays the whole round (bots + dealer) so
+the running count advances and penetration burns exactly as a staked round would — the
+count carried into the next bet is real — but the player is dealt no hand and the bankroll
+is untouched; a dealer Ace never prompts insurance (no stake to insure). Graded as a new
+`wong` GradedEvent kind/category: **correct when the profile's OWN spread calls only for the
+table minimum at the pre-deal TC** (no hard-coded count threshold asserted as strategy
+truth — the wong-out line moves with the configured spread). Back-counting-in falls out
+naturally: sit through negative counts, Deal when the count rises. Engineering: extracted
+`beginRound()` (shared bookkeeping/reshuffle), `buildSeats` keys player-hand count off
+`bets.length` ([] ⇒ empty player seat, byte-identical for staked rounds); `wong` category is
+migration-safe. 2935 unit (+8 sit-out) + 92 e2e (+1 wong-out) green.
+FOLLOW-ON (deliberately deferred to keep stage 1 additive/zero-risk to the money-math
+suite): grade the *play* path symmetrically — dealing in at a should-wong count should
+register a wong error too, not just be silently rewarded by a "correct" min-bet grade.
+Requires touching the heavily-tested deal path's event stream (push a `wong` event after the
+existing `bet` events); event-order-sensitive tests (game.test.ts:286/303/325/796/1298) must
+be audited first. Also possible: a standalone back-counting *drill* mode (watch a shoe, tap
+enter/sit) as the fuller unstaked version RT#2 references.
 
 ### R6 · Discard-tray depth cue on the live table — S — MEDIUM (cheap realism repair)
 RT#3: table TC checks grade against the shoe's *exact* depth with no visual tray, actively
