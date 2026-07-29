@@ -3,6 +3,7 @@ import type { Settings } from '../../../store/types';
 import { makePairCancel, isCancellingPair, PAIR_CANCEL_NETS } from '../../../drills/pairCancellation';
 import type { PairCancelRound } from '../../../drills/pairCancellation';
 import { PlayingCard } from '../../components/PlayingCard';
+import { cardJitter, jitterTransform } from '../../../drills/cardJitter';
 import { useAudio } from '../../../audio/useAudio';
 import { loadStats, saveStats } from '../../../store/persist';
 
@@ -102,8 +103,24 @@ export function PairCancelView({ settings, onBack }: { settings: Settings; onBac
       </div>
 
       <div className="pair-cancel-cards">
-        <PlayingCard card={round.cards[0]} />
-        <PlayingCard card={round.cards[1]} />
+        {round.cards.map((c, i) => {
+          if (!settings.drill.messyCards) return <PlayingCard key={i} card={c} />;
+          // R9: seed the jitter deterministically from the pair itself so it's
+          // stable while shown and changes with each new pair — no stored seed.
+          const jitterSeed = round.cards.reduce(
+            (h, card) => (h * 31 + card.rank.charCodeAt(0) + card.suit.charCodeAt(0)) >>> 0,
+            7,
+          );
+          return (
+            <span
+              key={i}
+              className="messy-card"
+              style={{ display: 'inline-block', transform: jitterTransform(cardJitter(jitterSeed, i)) }}
+            >
+              <PlayingCard card={c} />
+            </span>
+          );
+        })}
       </div>
 
       <div className="message-strip">

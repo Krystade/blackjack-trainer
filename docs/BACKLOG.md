@@ -225,10 +225,18 @@ Genuinely novel, verified in primary sources (CVBJ manual / practitioner forums)
   a month-over-month error target. Provenance is template-like (flagged), so treat as a
   packaging idea for R1–R5, not its own evidence.
 
-### R9 · Spot-reading / obscured-card recovery — M — LOW/EXPLORATORY
+### R9 · Spot-reading / obscured-card recovery — M — LOW/EXPLORATORY — 🟡 VISUAL SLICE SHIPPED 2026-07-28
 CM#4+CM#5: recognizing cards by pip layout (pips-not-numerals), and reasoning backward from
 a visible outcome to a hidden card's count value. Interesting, niche; park unless a session
 surfaces demand.
+✅ SHIPPED (the high-value visual-recognition slice, = red-team #7): **Messy cards** — a small
+seeded rotation/offset per card (`drills/cardJitter.ts`, pure + unit-tested; deterministic per
+seed so it's stable while shown and reproducible in tests) trains the visual-recognition half
+of counting that a robotically-aligned stream doesn't. A toggle on the count-drill setup;
+applies to every count-drill flash mode AND the pair-cancellation drill. `drill.messyCards`
+(migration-safe, default false). 2951 unit + e2e assert the transform is applied. REMAINING
+(genuinely park-worthy, no demand surfaced): CM#5 backward-deduction from a visible bust
+outcome — overlaps the existing Countdown / card-removal deduction; leave parked.
 
 ---
 

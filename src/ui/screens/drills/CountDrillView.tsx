@@ -18,6 +18,7 @@ import type { SpeedTier } from '../../../drills/countSpeed';
 import { computeUnlockedTier, tierAbove, SPEED_TIER_ORDER } from '../../../drills/competenceGate';
 import { loadStats, saveStats, saveSettings } from '../../../store/persist';
 import { PlayingCard } from '../../components/PlayingCard';
+import { cardJitter, jitterTransform } from '../../../drills/cardJitter';
 import { NumPad } from '../../components/NumPad';
 import { Segmented, Stepper } from '../Settings';
 import { useAudio } from '../../../audio/useAudio';
@@ -821,6 +822,20 @@ export function CountDrillView({
 
   const currentGroup = shownIndex < groups.length ? groups[shownIndex] : null;
 
+  // R9 / red-team #7: render a flashed card, optionally with a small seeded
+  // rotation/offset ("messy cards"). Seeded by this run's seed + the card's
+  // absolute position so the jitter is stable while the card is on screen and
+  // reproducible in tests, but visibly different card-to-card.
+  const renderFlashCard = (c: Card, i: number) => {
+    if (!settings.drill.messyCards) return <PlayingCard key={i} card={c} />;
+    const jitter = jitterTransform(cardJitter(runSeedRef.current, shownIndex * 4 + i));
+    return (
+      <span key={i} className="messy-card" style={{ display: 'inline-block', transform: jitter }}>
+        <PlayingCard card={c} />
+      </span>
+    );
+  };
+
   return (
     <div className="drill-screen">
       <div className="drill-topbar">
@@ -1047,6 +1062,18 @@ export function CountDrillView({
             </div>
           )}
 
+          {/* R9 / red-team #7: "messy" card presentation trains the visual-
+              recognition half of counting. Applies to every count-drill mode's
+              flashed cards (and the Pair Cancellation drill). */}
+          <label className="count-toggle">
+            <input
+              type="checkbox"
+              checked={settings.drill.messyCards}
+              onChange={(e) => updateDrill({ messyCards: e.target.checked })}
+            />
+            Messy cards (rotated / offset, like a real table)
+          </label>
+
           <button type="button" className="drill-start-btn" onClick={start}>
             Start
           </button>
@@ -1056,7 +1083,7 @@ export function CountDrillView({
       {phase === 'flashing' && settings.drill.countManual && !timedChallenge && (
         <div className="manual-tap-zone" onClick={advanceManual}>
           <div className="count-flash-cards">
-            {currentGroup?.map((c, i) => <PlayingCard key={i} card={c} />)}
+            {currentGroup?.map(renderFlashCard)}
           </div>
           <div className="manual-tap-hint">
             tap to advance &middot; {shownIndex + 1}/{groups.length}
@@ -1067,7 +1094,7 @@ export function CountDrillView({
       {phase === 'flashing' && (!settings.drill.countManual || timedChallenge) && (
         <div className="count-flash-area">
           <div className="count-flash-cards">
-            {currentGroup?.map((c, i) => <PlayingCard key={i} card={c} />)}
+            {currentGroup?.map(renderFlashCard)}
           </div>
           <div className="count-flash-progress">
             {shownIndex + 1} / {groups.length}

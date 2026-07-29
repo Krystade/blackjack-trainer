@@ -1417,3 +1417,25 @@ test('pair cancellation: answering a pair grades it and records self-consistent 
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toHaveCount(0);
   await expect(page.locator('.pair-cancel-cards .card')).toHaveCount(2);
 });
+
+/* R9 / red-team #7: "messy" card presentation applies a small per-card         */
+/* rotation/offset so the visual-recognition half of counting is trained. This  */
+/* asserts the transform is actually applied to flashed cards when the toggle    */
+/* is on (the jitter math is proven in src/drills/cardJitter.test.ts). */
+test('count drill: Messy cards applies a per-card transform to the flashed cards', async ({ page }) => {
+  await withSettings(page, { drill: { countIntervalMs: 500, countLengthCards: 4, countGroup: 1 } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await expect(page.locator('.count-setup')).toBeVisible();
+
+  await page.getByRole('checkbox', { name: /Messy cards/ }).check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  // A flashed card is wrapped in a .messy-card span carrying a translate+rotate.
+  const messy = page.locator('.count-flash-cards .messy-card').first();
+  await expect(messy).toBeVisible();
+  const transform = await messy.evaluate((el) => (el as HTMLElement).style.transform);
+  expect(transform).toContain('rotate');
+  expect(transform).toContain('translate');
+});

@@ -69,6 +69,13 @@ export interface Settings {
     // and Timed Challenge runs force 'none' so a biased shoe can't contaminate
     // the speed-tier grading (see CountDrillView).
     countBias: CountDrillBias;
+    // R9 / red-team #7 (docs/BACKLOG.md): "messy" card presentation — a small
+    // seeded rotation/offset per card (drills/cardJitter.ts) so the visual-
+    // recognition half of counting is trained, not just a robotically-aligned
+    // stream. Applies to the visual counting/recognition drills (count-drill
+    // flash + pair-cancellation). Default false — opt-in, all existing behavior
+    // and tests unchanged.
+    messyCards: boolean;
   };
   audio: AudioSettings;
 }
@@ -144,6 +151,7 @@ export const DEFAULT_SETTINGS: Settings = {
     distractionFreq: 'off',
     distractionMode: 'near-count',
     countBias: 'none',
+    messyCards: false,
   },
   audio: { ...DEFAULT_AUDIO },
 };
