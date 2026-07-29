@@ -231,6 +231,7 @@ describe('store/persist', () => {
           insurance: { right: 2, wrong: 1 },
           bet: { right: 4, wrong: 0 },
           countCheck: { right: 1, wrong: 0 },
+          wong: { right: 2, wrong: 1 },
         },
       };
       saveStats(customStats);
@@ -397,6 +398,7 @@ describe('store/persist', () => {
           insurance: { right: 0, wrong: 0 },
           bet: { right: 0, wrong: 0 },
           countCheck: { right: 0, wrong: 0 },
+          wong: { right: 0, wrong: 0 },
         },
       };
       saveSettings(customSettings);
@@ -423,6 +425,7 @@ describe('store/persist', () => {
           insurance: { right: 1, wrong: 0 },
           bet: { right: 2, wrong: 0 },
           countCheck: { right: 1, wrong: 0 },
+          wong: { right: 3, wrong: 1 },
         },
       };
       saveSettings(customSettings);

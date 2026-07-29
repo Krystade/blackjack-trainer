@@ -8,8 +8,8 @@ import { DEFAULT_RULES } from './ruleset';
 import type { RuleSet } from './ruleset';
 
 export type MistakeClass = 'correct' | 'basic-error' | 'missed-deviation' | 'phantom-deviation' | 'wrong-anyway';
-export type EventKind = 'action' | 'insurance' | 'bet' | 'countCheck';
-export type Category = 'hard' | 'soft' | 'pairs' | 'surrender' | 'insurance' | 'bet' | 'countCheck';
+export type EventKind = 'action' | 'insurance' | 'bet' | 'countCheck' | 'wong';
+export type Category = 'hard' | 'soft' | 'pairs' | 'surrender' | 'insurance' | 'bet' | 'countCheck' | 'wong';
 
 export interface GradedEvent {
   kind: EventKind;

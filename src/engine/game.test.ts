@@ -691,6 +691,110 @@ describe('bet grading', () => {
   });
 });
 
+describe('wong-out / sit-out (R5)', () => {
+  const seats2Bots: SeatConfig = { bots: 2, playerHands: 1, playerPosition: 1 };
+
+  it('solo sit-out: no player hand, dealer up counted, bankroll untouched, phase settled', () => {
+    const game = Game.withRiggedShoe(cfg(), rig('5', 'K'));
+    const startBankroll = game.bankroll;
+    game.sitOut();
+
+    expect(game.hands).toHaveLength(0); // player was dealt nothing
+    expect(game.bankroll).toBe(startBankroll); // wong-out never stakes
+    expect(game.phase).toBe('settled');
+    expect(game.roundNo).toBe(1);
+    expect(game.dealerCards.map((c) => c.rank)).toEqual(['5', 'K']);
+    // Only the face-up dealer card counts; the hole stays hidden/uncounted
+    // because with no live hand the dealer never plays out.
+    expect(game.runningCount).toBe(hiLoTag('5'));
+    expect(game.holeRevealed).toBe(false);
+  });
+
+  it('sit-out still burns the shoe + advances the count with bots at the table', () => {
+    // 2 bots + dealer up are all face-up: their Hi-Lo tags move the count even
+    // though the player staked nothing.
+    const game = Game.withRiggedShoe(
+      cfg({ seats: seats2Bots }),
+      // seat order: bot, player(empty), bot, dealer. Pass1: bot1, bot2, up.
+      // Pass2: bot1, bot2, hole. Then dealer plays out vs the live bots.
+      rig('10', '10', '6', '2', '3', '9', '7', '4', '8'),
+    );
+    const startBankroll = game.bankroll;
+    const startDealt = game.shoe.cardsDealt;
+    game.sitOut();
+
+    expect(game.hands).toHaveLength(0);
+    expect(game.bankroll).toBe(startBankroll); // bots settle for display only
+    expect(game.phase).toBe('settled');
+    expect(game.shoe.cardsDealt).toBeGreaterThan(startDealt); // penetration burned
+  });
+
+  it('a later staked round continues the SAME shoe (no reshuffle) after a sit-out', () => {
+    const game = Game.withRiggedShoe(cfg(), rig('5', 'K', '10', '9', '6', '8', '5'));
+    game.sitOut();
+    expect(game.hands).toHaveLength(0);
+    const dealtAfterSit = game.shoe.cardsDealt;
+
+    game.startRound(); // now actually play
+    expect(game.hands).toHaveLength(1);
+    expect(game.roundNo).toBe(2);
+    // The shoe was NOT reshuffled between the sit-out and the played round --
+    // the count carried into the bet is real, which is the whole point of a
+    // wong-out: cards keep coming off the same shoe.
+    expect(game.shuffledLastRound).toBe(false);
+    expect(game.shoe.cardsDealt).toBeGreaterThan(dealtAfterSit);
+  });
+
+  it('dealer Ace on a sit-out never prompts insurance (no stake to insure)', () => {
+    const game = Game.withRiggedShoe(cfg(), rig('A', '5')); // Ace up, no dealer BJ
+    game.sitOut();
+    expect(game.phase).toBe('settled');
+    expect(game.phase).not.toBe('insurance');
+    expect(game.bankroll).toBe(cfg().bankrollStart);
+  });
+
+  it('dealer blackjack on a sit-out settles bots only; player bankroll untouched', () => {
+    const game = Game.withRiggedShoe(
+      cfg({ seats: seats2Bots }),
+      // up=A (pos 5), hole=K (pos 8) -> dealer natural, peeked before anyone acts.
+      rig('9', '9', 'A', '2', '3', 'K'),
+    );
+    const startBankroll = game.bankroll;
+    game.sitOut();
+    expect(game.phase).toBe('settled');
+    expect(game.holeRevealed).toBe(true); // dealer natural reveals the hole
+    expect(game.bankroll).toBe(startBankroll);
+  });
+
+  it('betSpreadOn: sitting out at tc<=0 grades the wong decision CORRECT (spread wants only the min bet)', () => {
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('5', 'K'));
+    game.sitOut();
+    const wong = game.events.filter((e) => e.kind === 'wong');
+    expect(wong).toHaveLength(1);
+    expect(wong[0].correct).toBe(true);
+    expect(wong[0].taken).toBe('sit-out');
+    expect(wong[0].expected).toBe('sit-out');
+    // A sit-out never emits a bet event -- nothing was staked.
+    expect(game.events.some((e) => e.kind === 'bet')).toBe(false);
+  });
+
+  it('betSpreadOn: sitting out at a high +tc grades WRONG (the count wanted a real bet)', () => {
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('5', 'K'));
+    game.runningCount = 6; // decksRemaining≈0.5 => tc≈12, well into "bet up" territory
+    game.sitOut();
+    const wong = game.events.filter((e) => e.kind === 'wong');
+    expect(wong).toHaveLength(1);
+    expect(wong[0].correct).toBe(false);
+    expect(wong[0].expected).toBe('play');
+  });
+
+  it('betSpreadOn OFF: a sit-out grades nothing (no spread to judge the wong against)', () => {
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: false }), rig('5', 'K'));
+    game.sitOut();
+    expect(game.events.filter((e) => e.kind === 'wong')).toHaveLength(0);
+  });
+});
+
 describe('count check', () => {
   it('countCheckEvery:2 triggers after the 2nd round settles; 2nd trigger also asks TC', () => {
     const game = new Game(cfg({ countCheckEvery: 2, seed: 42 }));

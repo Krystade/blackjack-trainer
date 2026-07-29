@@ -263,6 +263,7 @@ export const EMPTY_STATS: Stats = {
     insurance: { right: 0, wrong: 0 },
     bet: { right: 0, wrong: 0 },
     countCheck: { right: 0, wrong: 0 },
+    wong: { right: 0, wrong: 0 },
   },
   perIndex: {},
   mistakes: {

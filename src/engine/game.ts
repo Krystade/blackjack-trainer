@@ -289,6 +289,58 @@ export class Game {
   }
 
   /**
+   * Round-start bookkeeping + the pre-deal depth/cut-card reshuffle guard,
+   * shared by startRound (staked) and sitOut (wong-out). Extracted so a
+   * sit-out round advances the shoe, cut card and running-count reset on
+   * exactly the same terms a played round does -- the count you carry into
+   * your next bet is real either way (R5, docs/BACKLOG.md).
+   */
+  private beginRound(): void {
+    this.roundNo += 1;
+    this.countCheckDue = false;
+    this.insuranceNet = null;
+    this.botActionLog = [];
+
+    // A full table can outrun the cut card. Reaching the cut card only
+    // guarantees a handful of cards remain, but the deal alone consumes
+    // 2 x (bots + playerHands) + 2, before any hits, splits or dealer draws --
+    // so at deep penetration with 5 bots and 3 hands the shoe could empty
+    // mid-round and `Shoe.draw()` would throw, blanking the whole React tree
+    // and losing the session. Solo play never came close, which is why this
+    // was unreachable before the seat model. The depth budget uses the seat's
+    // configured playerHands even on a sit-out (conservative: a sit-out deals
+    // strictly fewer cards, so a shoe deep enough for a full round is deep
+    // enough to sit out).
+    const totalHands = this.seatCfg.bots + this.seatCfg.playerHands;
+    const needed = 4 * totalHands + 20;
+    const tooShallow = !this.shoeIsRigged && this.shoe.cardsRemaining < needed;
+    if (this.shoe.cutCardReached || tooShallow) {
+      this.shoe.shuffle();
+      this.runningCount = 0;
+      this.shuffledLastRound = true;
+    } else {
+      this.shuffledLastRound = false;
+    }
+  }
+
+  /**
+   * A wong-out (sit-out) is correct when the configured bet spread calls only
+   * for the table-minimum bet at this true count -- the count gives no edge
+   * worth staking above the floor, so back-counting beats playing at the
+   * minimum. Grounded entirely in the profile's OWN spread (no hard-coded
+   * count threshold asserted as strategy truth): if the user configures a
+   * spread that bets above the minimum starting at TC +1, the wong-out line
+   * moves with it. Empty spread => never correct to sit out (nothing to grade
+   * against). R5, docs/BACKLOG.md.
+   */
+  private sitOutIsCorrect(tc: number): boolean {
+    const spread = this.cfg.spread;
+    if (spread.length === 0) return false;
+    const minUnits = Math.min(...spread.map((r) => r.units));
+    return spreadUnitsFor(tc, spread) <= minUnits;
+  }
+
+  /**
    * `bets` is one bet per player hand: an array (length = cfg.seats.playerHands)
    * grades and stakes each hand independently, or a scalar applies the same
    * bet to every hand (back-compat with v1/solo callers; also the default of
@@ -304,28 +356,7 @@ export class Game {
       throw new Error(`startRound: bets array length ${bets.length} does not match playerHands ${playerHandsCount}`);
     }
 
-    this.roundNo += 1;
-    this.countCheckDue = false;
-    this.insuranceNet = null;
-    this.botActionLog = [];
-
-    // A full table can outrun the cut card. Reaching the cut card only
-    // guarantees a handful of cards remain, but the deal alone consumes
-    // 2 x (bots + playerHands) + 2, before any hits, splits or dealer draws --
-    // so at deep penetration with 5 bots and 3 hands the shoe could empty
-    // mid-round and `Shoe.draw()` would throw, blanking the whole React tree
-    // and losing the session. Solo play never came close, which is why this
-    // was unreachable before the seat model.
-    const totalHands = this.seatCfg.bots + playerHandsCount;
-    const needed = 4 * totalHands + 20;
-    const tooShallow = !this.shoeIsRigged && this.shoe.cardsRemaining < needed;
-    if (this.shoe.cutCardReached || tooShallow) {
-      this.shoe.shuffle();
-      this.runningCount = 0;
-      this.shuffledLastRound = true;
-    } else {
-      this.shuffledLastRound = false;
-    }
+    this.beginRound();
 
     const preDealTc = this.trueCountNow;
     const betArray: number[] = Array.isArray(bets)
@@ -389,6 +420,78 @@ export class Game {
       return;
     }
 
+    this.resolveAfterPeek();
+  }
+
+  /**
+   * Wong-out: sit this round out. The player stakes nothing and is dealt no
+   * hand, but the round is still PLAYED (bots + dealer) so the running count
+   * advances and the shoe's penetration burns exactly as a staked round would
+   * -- the count carried into your next bet is real. Bankroll is untouched.
+   *
+   * The sit-out is graded as a wong decision against the pre-deal true count
+   * (correct when `sitOutIsCorrect` -- the spread calls only for the table
+   * minimum), mirroring how startRound grades the bet, and only when
+   * betSpreadOn (the wong decision is meaningless without a spread, same gate
+   * bet grading uses). R5, docs/BACKLOG.md.
+   *
+   * With zero player hands the peek/settle path collapses cleanly: the deal
+   * loops skip the empty player seat, resolveAfterPeek finds no live player
+   * hand and hands straight to the dealer, and the settle loops over
+   * `this.hands` (empty) never touch the bankroll -- only bots settle (for
+   * display) and the dealer plays out to keep the count honest. A dealer Ace
+   * never prompts insurance here: there is no stake to insure.
+   */
+  sitOut(): void {
+    this.beginRound();
+
+    const preDealTc = this.trueCountNow;
+    if (this.cfg.betSpreadOn) {
+      const correct = this.sitOutIsCorrect(preDealTc);
+      this.events.push({
+        kind: 'wong',
+        category: 'wong',
+        correct,
+        classification: correct ? 'correct' : 'basic-error',
+        taken: 'sit-out',
+        expected: correct ? 'sit-out' : 'play',
+        reason: `Wong decision at tc ${preDealTc}`,
+        tc: preDealTc,
+      });
+    }
+
+    this.dealerCards = [];
+    this.holeRevealed = false;
+    this._active = 0;
+    this.buildSeats([]); // zero player hands; bot seats per the seat config
+
+    // Two-pass casino deal -- bots + dealer only (the player seat is empty, so
+    // its inner loop is a no-op). Identical card timing to startRound.
+    for (const seat of this.seats) {
+      for (const hand of seat.hands) {
+        this.drawToHand(hand);
+      }
+    }
+    const up = this.shoe.draw();
+    this.dealerCards.push(up);
+    this.runningCount += hiLoTag(up.rank);
+
+    for (const seat of this.seats) {
+      for (const hand of seat.hands) {
+        this.drawToHand(hand);
+      }
+    }
+    const hole = this.shoe.draw();
+    this.dealerCards.push(hole); // hidden: not counted yet
+
+    // No player stake => no insurance step even on a dealer Ace. Peek for a
+    // dealer natural directly: settle the bots against it, otherwise play the
+    // round out (resolveAfterPeek -> dealer -> settle, all bankroll-neutral
+    // for the sitting-out player).
+    if ((up.rank === 'A' || isTenValueUp(up.rank)) && isBlackjack(this.dealerCards)) {
+      this.settleDealerBlackjack();
+      return;
+    }
     this.resolveAfterPeek();
   }
 
@@ -567,8 +670,12 @@ export class Game {
       seats.push({ kind: 'bot', hands: [freshHand(1, 0)] });
     }
 
+    // The player-hand count is driven by `bets.length`, not seatCfg.playerHands:
+    // startRound always passes a bet-per-hand array of length playerHands (so
+    // this is byte-identical to the old bound for every staked round), while a
+    // wong-out sit-out passes [] to build a player seat with zero hands (R5).
     const playerHands: PlayerHand[] = [];
-    for (let i = 0; i < seatCfg.playerHands; i++) {
+    for (let i = 0; i < bets.length; i++) {
       // originIndex = i: each dealt hand starts as its own origin group: any
       // splits made off of it inherit i, so its 4-hand cap never competes
       // with another original hand's budget (Cycle-2 Task 4).
