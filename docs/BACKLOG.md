@@ -253,10 +253,12 @@ Fresh adversarial re-attack after the R4–R9 batch shipped; 9 cited findings, b
 first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory; ground against spec
 §4/§5 + `docs/sources/` before building (flagged inline).
 
-- **RV1 · Bankroll / variance / risk-of-ruin pillar — M–L — [PRO+SCI], top new gap.** `riskOfRuin`
-  is only a manually-typed CVCX display field (`types.ts:174`, `Stats.tsx:226`); nothing simulates
-  a bankroll journey, RoR/Kelly/N0, or downswing drawdown. The app trains the edge and omits the
-  risk that decides survival — no variance/tilt inoculation. Highest-conviction new direction.
+- **RV1 · Bankroll / variance / risk-of-ruin pillar — ⏸️ PARKED (operator has CVCX, 2026-07-29).**
+  Two halves: (a) the NUMBERS (RoR/Kelly/N0/EV) — redundant with the operator's CVCX, which the app
+  already imports into profiles; building a calculator would duplicate (less accurately) what they
+  own. (b) the EXPERIENTIAL downswing/tilt inoculation (live a 40-buy-in drawdown, keep betting the
+  spread) — the one thing CVCX doesn't do, but low-value for someone who already understands variance
+  via CVCX. Net: parked. Only revisit the experiential-sim slice if the operator asks.
 - **RV2 · TC rounding convention — ❌ NOT A GAP (verified 2026-07-29), keep as-is.** Ground-truth
   check: the spec is explicit and source-grounded — "true count = running count ÷ decks remaining,
   **floored** (toward −∞)" (`specs/2026-07-13-...:22-23`, `:129`, from `docs/sources/BJA_H17.pdf`
@@ -282,7 +284,17 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
   and never the first card. Setup note reworded ("unpredictable moments"). 2958 unit + 4 distraction
   e2e (made robust to a variable per-run distraction count).
 - **RV6 · No integrated simultaneous-competence score — M — [PRO+SCI].** Bet/play/insurance/count
-  are siloed, peek stays available, no composite "table-ready" score across all skills at once.
+  are siloed, peek stays available, no composite "table-ready" score across all skills at once — you
+  can ace each drill in isolation and still fall apart doing them together. Three design options
+  (operator to pick):
+  - **A · passive rollup** — weight-average existing per-skill accuracies into one Stats %. Cheap,
+    but a sum of siloed numbers; does NOT test simultaneity → doesn't actually close the gap.
+  - **B · live integrated scoring** — grade every axis at once during a normal table session
+    (bet+play+insurance+count-kept, peek disabled) into one session score. Actually addresses the
+    complaint; judgment call = axis weighting. **(Recommended.)**
+  - **C · "graduation exam" mode** — fixed-length proctored session (no peek/advice, checks on,
+    test feedback) → pass/fail + per-axis breakdown vs thresholds. Strongest signal; opinionated
+    thresholds.
 - **RV7–9 · known-deferred items re-confirmed as live mistrainings:** R5 rewards min-betting a
   should-wong count (the symmetric-grading follow-on already logged under R5); bet grading demands
   exact ramp conformity with zero cover concept (RT#11); count drill grades final RC only, so
