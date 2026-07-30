@@ -547,17 +547,20 @@ test('count drill: relentless distractions interrupt mid-stream and grade countK
   expect(prompt.trim().length).toBeGreaterThan(0);
   await shot(page, '71-distraction-prompt');
 
-  // Answer it (the value itself isn't asserted -- this run isn't pinned to
-  // land on the right answer, only that answering records real telemetry).
-  await page.locator('.numpad-btn', { hasText: /^7$/ }).click();
-  await page.getByRole('button', { name: 'OK', exact: true }).click();
-
-  // Resumes the flashing stream -- the distraction UI is gone, and the run
-  // reaches its normal graded finish (NOT stuck, NOT skipped ahead).
-  await expect(page.locator('.distraction-area')).not.toBeVisible();
-  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
-  await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
-  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  // Answer through the run: the jittered cadence (RV5) may fire more than one
+  // distraction, so answer each numpad that appears until the FINAL running-
+  // count numpad (shown with NO distraction-area) is submitted. The answer
+  // values aren't asserted -- only that the stream resumes to a graded finish.
+  for (let guard = 0; guard < 12; guard++) {
+    await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+    const isDistraction = await page
+      .locator('.distraction-area')
+      .isVisible()
+      .catch(() => false);
+    await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    if (!isDistraction) break; // that was the final count answer
+  }
 
   await expect(page.locator('.drill-result')).toBeVisible();
   await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
@@ -566,7 +569,8 @@ test('count drill: relentless distractions interrupt mid-stream and grade countK
   const stats = await readStats(page);
   const distractionHistory =
     (stats?.distraction as { history: Record<string, unknown>[] } | undefined)?.history ?? [];
-  expect(distractionHistory).toHaveLength(1);
+  // Jittered cadence (RV5): at least one distraction fired; assert the first.
+  expect(distractionHistory.length).toBeGreaterThanOrEqual(1);
   const row = distractionHistory[0]!;
   expect(row.kind).toBe('near-count'); // the default distractionMode
   expect(typeof row.answerCorrect).toBe('boolean');
@@ -1000,7 +1004,7 @@ test('count drill: eyes-free Strict mode grades via NumPad and speaks the verdic
 /* 'generic' mode.                                                        */
 /* ==================================================================== */
 
-test('count drill: occasional distractions interrupt on the 7th card (not the 3rd), mid-stream', async ({ page }) => {
+test('count drill: occasional distractions interrupt mid-stream (jittered, sparser than relentless)', async ({ page }) => {
   await page.addInitScript(() => {
     Math.random = () => 0.42;
   });
@@ -1013,29 +1017,35 @@ test('count drill: occasional distractions interrupt on the 7th card (not the 3r
 
   const freqRow = page.locator('.settings-row', { hasText: 'Distractions' });
   await expect(freqRow.getByRole('button', { name: 'Occasional', exact: true })).toHaveClass(/segmented-btn-active/);
-  await expect(page.locator('.settings-note-row', { hasText: '7th card' })).toBeVisible();
+  await expect(page.locator('.settings-note-row', { hasText: 'unpredictable' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.count-flash-area')).toBeVisible();
 
-  // Mid-stream (shownIndex 6 of 0..7 -- the 7th card shown, cadence 7): the
-  // 8-card run means this is the ONLY interruption, and it's not the last
-  // card, so the stream must resume and reach a normal graded finish.
+  // Mid-stream (RV5: jittered cadence, one per 7-card window) at least one
+  // distraction fires before the count answer; it's not the very first card.
   await expect(page.locator('.distraction-area')).toBeVisible({ timeout: 10_000 });
-  await page.locator('.numpad-btn', { hasText: /^7$/ }).click();
-  await page.getByRole('button', { name: 'OK', exact: true }).click();
 
-  await expect(page.locator('.distraction-area')).not.toBeVisible();
-  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
-  await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
-  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  // Answer through the run: answer each numpad until the FINAL count numpad
+  // (no distraction-area) is submitted -- robust to how many distractions the
+  // jittered cadence fires across the 8-card run.
+  for (let guard = 0; guard < 12; guard++) {
+    await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+    const isDistraction = await page
+      .locator('.distraction-area')
+      .isVisible()
+      .catch(() => false);
+    await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    if (!isDistraction) break;
+  }
 
   await expect(page.locator('.drill-result')).toBeVisible();
 
   const stats = await readStats(page);
   const distractionHistory =
     (stats?.distraction as { history: Record<string, unknown>[] } | undefined)?.history ?? [];
-  expect(distractionHistory).toHaveLength(1);
+  expect(distractionHistory.length).toBeGreaterThanOrEqual(1);
   expect(distractionHistory[0]!.kind).toBe('near-count');
 });
 
@@ -1069,17 +1079,24 @@ test('count drill: distraction type "Generic" poses plain arithmetic unrelated t
   const prompt = await page.locator('.distraction-prompt').innerText();
   expect(prompt).toMatch(/^\d+ [+×] \d+$/);
 
-  await page.locator('.numpad-btn', { hasText: /^7$/ }).click();
-  await page.getByRole('button', { name: 'OK', exact: true }).click();
-  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
-  await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
-  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  // Answer through the run (jittered cadence may fire more than one) until the
+  // final count numpad (no distraction-area) is submitted.
+  for (let guard = 0; guard < 12; guard++) {
+    await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+    const isDistraction = await page
+      .locator('.distraction-area')
+      .isVisible()
+      .catch(() => false);
+    await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    if (!isDistraction) break;
+  }
   await expect(page.locator('.drill-result')).toBeVisible();
 
   const stats = await readStats(page);
   const distractionHistory =
     (stats?.distraction as { history: Record<string, unknown>[] } | undefined)?.history ?? [];
-  expect(distractionHistory).toHaveLength(1);
+  expect(distractionHistory.length).toBeGreaterThanOrEqual(1);
   expect(distractionHistory[0]!.kind).toBe('generic');
 });
 

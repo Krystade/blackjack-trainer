@@ -158,14 +158,44 @@ describe('isDistractionPoint', () => {
     }
   });
 
-  it('occasional fires every 7th card shown (index 6, 13, 20, ...)', () => {
-    const fired = Array.from({ length: 21 }, (_, i) => i).filter((i) => isDistractionPoint(i, 'occasional'));
-    expect(fired).toEqual([6, 13, 20]);
+  // RV5: the cadence is jittered — exactly one distraction per window of
+  // `interval` cards, but on a pseudo-random position within the window, so
+  // the learner can't pre-buffer for a fixed every-Nth interruption.
+  const firedIn = (freq: 'occasional' | 'relentless', n: number) =>
+    Array.from({ length: n }, (_, i) => i).filter((i) => isDistractionPoint(i, freq));
+
+  it('occasional fires exactly once per 7-card window (avg rate 1/7)', () => {
+    const interval = 7;
+    for (let w = 0; w < 6; w++) {
+      const inWindow = firedIn('occasional', 6 * interval).filter(
+        (i) => Math.floor(i / interval) === w,
+      );
+      expect(inWindow).toHaveLength(1);
+    }
   });
 
-  it('relentless fires every 3rd card shown (index 2, 5, 8, ...)', () => {
-    const fired = Array.from({ length: 10 }, (_, i) => i).filter((i) => isDistractionPoint(i, 'relentless'));
-    expect(fired).toEqual([2, 5, 8]);
+  it('relentless fires exactly once per 3-card window (avg rate 1/3)', () => {
+    const interval = 3;
+    for (let w = 0; w < 8; w++) {
+      const inWindow = firedIn('relentless', 8 * interval).filter(
+        (i) => Math.floor(i / interval) === w,
+      );
+      expect(inWindow).toHaveLength(1);
+    }
+  });
+
+  it('is jittered, not a fixed every-Nth cadence: the fire position varies across windows', () => {
+    const interval = 7;
+    const positions = new Set(firedIn('occasional', 20 * interval).map((i) => i % interval));
+    // A fixed cadence would put every fire at the same within-window slot.
+    expect(positions.size).toBeGreaterThan(1);
+  });
+
+  it('is deterministic per index (same index+freq always gives the same answer)', () => {
+    for (let i = 0; i < 40; i++) {
+      expect(isDistractionPoint(i, 'occasional')).toBe(isDistractionPoint(i, 'occasional'));
+      expect(isDistractionPoint(i, 'relentless')).toBe(isDistractionPoint(i, 'relentless'));
+    }
   });
 
   it('relentless fires strictly more often than occasional (sanity check on the two ballparks)', () => {

@@ -268,10 +268,12 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
 - **RV4 · Spacing vs error-weighting in R3 — M — [SCI].** `missWeight = 1+2·missCount` has no time
   term; no cross-session scheduling, no delayed retention test — in-drill accuracy overstates
   table-day competence. Add a time/spacing term + a delayed-retention check.
-- **RV5 · Distraction cadence is fixed/predictable — XS — [SCI], cheapest win.** `isDistractionPoint`
-  fires every 7th/3rd card (`distraction.ts:117-120`); learners pre-buffer the count, defeating the
-  divided-attention purpose. Jitter the cadence (seeded) so it's unpredictable. Clean, testable, no
-  ground-truth issue — the natural next quick win.
+- **RV5 · Distraction cadence is fixed/predictable — XS — [SCI], cheapest win.** ✅ SHIPPED 2026-07-29.
+  `isDistractionPoint` fired every 7th/3rd card; learners could pre-buffer the count. Now JITTERED:
+  exactly one distraction per window of `interval` cards, on a window-index-seeded pseudo-random
+  position within it — same average rate, unpredictable timing, still deterministic/unit-testable
+  and never the first card. Setup note reworded ("unpredictable moments"). 2958 unit + 4 distraction
+  e2e (made robust to a variable per-run distraction count).
 - **RV6 · No integrated simultaneous-competence score — M — [PRO+SCI].** Bet/play/insurance/count
   are siloed, peek stays available, no composite "table-ready" score across all skills at once.
 - **RV7–9 · known-deferred items re-confirmed as live mistrainings:** R5 rewards min-betting a

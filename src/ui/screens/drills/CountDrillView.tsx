@@ -1005,8 +1005,9 @@ export function CountDrillView({
               {settings.drill.distractionFreq !== 'off' && (
                 <>
                   <div className="settings-row settings-note-row">
-                    Pauses the count every {settings.drill.distractionFreq === 'relentless' ? '3rd' : '7th'} card
-                    for a quick math interruption, then resumes -- simulates table talk.
+                    Pauses the count for a quick math interruption at{' '}
+                    {settings.drill.distractionFreq === 'relentless' ? 'unpredictable' : 'unpredictable, sparser'}{' '}
+                    moments, then resumes -- simulates table talk you can&apos;t time.
                   </div>
                   <div className="settings-row">
                     <span className="settings-label">Distraction type</span>

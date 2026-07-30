@@ -108,13 +108,25 @@ const FREQ_INTERVAL: Record<Exclude<DistractionFreq, 'off'>, number> = {
 
 /**
  * True when the card advance FROM `shownIndex` (0-indexed, the card just
- * shown) should be interrupted by a distraction instead of proceeding
- * straight to the next card / the answer phase. Fires on the Nth card shown
- * (index N-1) for cadence N, so the very first card (index 0) never
- * triggers -- there's no running count worth quizzing yet with only one
- * card seen.
+ * shown) should be interrupted by a distraction.
+ *
+ * RV5 (red-team v2, docs/BACKLOG.md): the cadence is JITTERED, not a fixed
+ * every-Nth. A predictable "every 7th card" lets the learner pre-buffer the
+ * count right before each interruption, defeating the divided-attention
+ * training. Instead the stream is partitioned into windows of `interval`
+ * cards and EXACTLY ONE distraction fires per window, on a pseudo-random
+ * position within it (seeded by the window index, so it's deterministic per
+ * run and unit-testable but unpredictable to the counter). The average rate
+ * is unchanged (~1 per `interval` cards). The very first card (index 0) never
+ * triggers -- no running count worth quizzing yet.
  */
 export function isDistractionPoint(shownIndex: number, freq: DistractionFreq): boolean {
-  if (freq === 'off') return false;
-  return (shownIndex + 1) % FREQ_INTERVAL[freq] === 0;
+  if (freq === 'off' || shownIndex < 0) return false;
+  const interval = FREQ_INTERVAL[freq];
+  const windowIndex = Math.floor(shownIndex / interval);
+  let firePos = Math.floor(mulberry32((windowIndex * 0x9e3779b1 + 1) >>> 0)() * interval);
+  // Never interrupt the very first card: if window 0's chosen slot is 0, nudge
+  // it forward so the first distraction lands at index >= 1.
+  if (windowIndex === 0 && firePos === 0) firePos = 1;
+  return shownIndex % interval === firePos;
 }
