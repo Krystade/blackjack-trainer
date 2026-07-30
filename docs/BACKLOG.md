@@ -257,14 +257,21 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
   is only a manually-typed CVCX display field (`types.ts:174`, `Stats.tsx:226`); nothing simulates
   a bankroll journey, RoR/Kelly/N0, or downswing drawdown. The app trains the edge and omits the
   risk that decides survival — no variance/tilt inoculation. Highest-conviction new direction.
-- **RV2 · TC rounding-convention honesty + tolerance grading — S–M — [SCI+PRO].** ⚠️GROUND TRUTH.
-  The app asserts floor-toward-−∞ TC as the SOLE correct answer (`count.ts:24`) and exact-match
-  grades it, yet grades deck estimation within ±0.5 deck (`deckEstimation.ts:63`) — an internal
-  contradiction that marks a legitimate round-to-nearest learner wrong at the insurance boundary.
-  Verify the intended convention against spec/sources before changing anything.
-- **RV3 · Surrender (Fab 4) deviations — S–M — [PRO].** ⚠️GROUND TRUTH (needs verified Fab-4 index
-  values from `docs/sources/`, not memory). The deviation set (`deviations.ts:40-75`) is
-  hit/stand/double/split only; count-based late surrender is unrepresentable and ungraded.
+- **RV2 · TC rounding convention — ❌ NOT A GAP (verified 2026-07-29), keep as-is.** Ground-truth
+  check: the spec is explicit and source-grounded — "true count = running count ÷ decks remaining,
+  **floored** (toward −∞)" (`specs/2026-07-13-...:22-23`, `:129`, from `docs/sources/BJA_H17.pdf`
+  direct review). Floored TC is the VERIFIED standard, not an arbitrary assertion; accepting
+  round-to-nearest would contradict the source. The red-team's "±0.5 inconsistency" conflates two
+  DIFFERENT drills — deck-*estimation* (a by-eye estimate, rightly ±0.5) vs true-count *conversion*
+  (given exact inputs, one floored answer, rightly exact). No change; documented so it isn't
+  re-raised.
+- **RV3 · Surrender (Fab 4) deviations — ⛔ BLOCKED on operator (spec explicitly out-of-scope).**
+  The deviation set (`deviations.ts:40-75`) is hit/stand/double/split only — factually true — BUT
+  the spec DELIBERATELY excludes Fab 4: "Out of scope (explicitly): Fab 4 surrender deviations"
+  (`specs/2026-07-13-...:33`, also `:163-164`). This is an operator scope decision, not an
+  oversight. To act: (1) operator brings Fab 4 in-scope, (2) source-verified index values land in
+  `docs/sources/` (the red-team's "14v10/15v9/15v10/15vA" is its own claim, NOT verified — do not
+  add from memory). Real EV lever and a genuine training gap, but not autonomously actionable.
 - **RV4 · Spacing vs error-weighting in R3 — M — [SCI].** `missWeight = 1+2·missCount` has no time
   term; no cross-session scheduling, no delayed retention test — in-drill accuracy overstates
   table-day competence. Add a time/spacing term + a delayed-retention check.
