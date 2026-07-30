@@ -316,9 +316,11 @@ R5/R6 → R4 → R8. R1 first was non-negotiable: it's the instrument the rest a
 
 ## Parked (unchanged)
 M6 bot-mistake RNG correlated with shoe seed · M8 bot cards render instantly while
-narration paces · `dealSpeedMs` stale in-flight timer · `cvcxParse` single-space
-decorated negative TC · payout audit's 2 trivial insurance quadrants · `game.ts` ~949
-lines · `Stats.tsx` reads `loadSettings().audio` directly.
+narration paces · `dealSpeedMs` stale in-flight timer · ~~`cvcxParse` single-space
+decorated negative TC~~ ✅ FIXED 2026-07-29 (parseColumns now joins a ≤/<= decoration
+like it already did for "TC"; `≤ -1 1` single-space pastes parse) · payout audit's 2
+trivial insurance quadrants · `game.ts` ~949 lines · `Stats.tsx` reads
+`loadSettings().audio` directly.
 
 ---
 

@@ -164,10 +164,14 @@ function parseColumns(line: string): [string, string] | null {
     return [singleSpaceParts[0], singleSpaceParts[1]];
   }
 
-  // If 3 tokens and first is "TC" (case-insensitive), join first two
+  // If 3 tokens and the first is a TC-column DECORATION that `parseTC` knows how
+  // to strip -- "TC" (case-insensitive) or a ≤ / <= comparison operator -- join
+  // the first two as the TC column. Without this a legitimate single-space paste
+  // of a decorated negative bottom row ("≤ -1 1") split into 3 tokens and was
+  // rejected, even though "TC -1 1" was accepted.
   if (
     singleSpaceParts.length === 3 &&
-    /^tc$/i.test(singleSpaceParts[0])
+    /^(tc|≤|<=)$/i.test(singleSpaceParts[0])
   ) {
     return [singleSpaceParts[0] + ' ' + singleSpaceParts[1], singleSpaceParts[2]];
   }

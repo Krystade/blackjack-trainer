@@ -105,6 +105,34 @@ describe('parseCvcxRamp', () => {
       }
     });
 
+    test('parses "≤ -1  M" decorated negative bottom row with single spaces', () => {
+      // CVCX often labels the bottom row "≤ -1"; with single-space separation
+      // that split into 3 tokens whose first is the operator, and only "TC"
+      // was joined — so this legitimate paste failed. parseTC already strips ≤.
+      const text = `≤ -1 1\n0 2\n2 4`;
+      const result = parseCvcxRamp(text);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.rows).toEqual([
+          { minTc: -1, units: 1 },
+          { minTc: 0, units: 2 },
+          { minTc: 2, units: 4 },
+        ]);
+      }
+    });
+
+    test('parses "<= -1 M" (ASCII operator) decorated negative row with single spaces', () => {
+      const text = `<= -1 1\n0 2`;
+      const result = parseCvcxRamp(text);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.rows).toEqual([
+          { minTc: -1, units: 1 },
+          { minTc: 0, units: 2 },
+        ]);
+      }
+    });
+
     test('parses comma-separated columns', () => {
       const text = `1,2
 2,4
