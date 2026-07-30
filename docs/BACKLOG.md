@@ -258,7 +258,11 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
   already imports into profiles; building a calculator would duplicate (less accurately) what they
   own. (b) the EXPERIENTIAL downswing/tilt inoculation (live a 40-buy-in drawdown, keep betting the
   spread) — the one thing CVCX doesn't do, but low-value for someone who already understands variance
-  via CVCX. Net: parked. Only revisit the experiential-sim slice if the operator asks.
+  via CVCX. Net: parked as a CALCULATOR. UPDATE 2026-07-29 (operator): the experiential/training
+  side IS wanted (just low priority) — and the operator wants a dedicated RESEARCH pass on OTHER
+  training-function features "in the same vein" (things that build real-table behavior/discipline,
+  not just drill accuracy) before building. PLAN ORDER: ship RV4 first → then RV1-adjacent training-
+  features research + planning → then development. See RT1 below (parked research task).
 - **RV2 · TC rounding convention — ❌ NOT A GAP (verified 2026-07-29), keep as-is.** Ground-truth
   check: the spec is explicit and source-grounded — "true count = running count ÷ decks remaining,
   **floored** (toward −∞)" (`specs/2026-07-13-...:22-23`, `:129`, from `docs/sources/BJA_H17.pdf`
@@ -295,6 +299,8 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
   - **C · "graduation exam" mode** — fixed-length proctored session (no peek/advice, checks on,
     test feedback) → pass/fail + per-axis breakdown vs thresholds. Strongest signal; opinionated
     thresholds.
+  ❌ DECLINED 2026-07-29 (operator): no composite score — individual per-skill grades are plenty,
+  since the goal is to get every skill to 100% anyway. Keep skills scored separately.
 - **RV7–9 · known-deferred items re-confirmed as live mistrainings:** R5 rewards min-betting a
   should-wong count (the symmetric-grading follow-on already logged under R5); bet grading demands
   exact ramp conformity with zero cover concept (RT#11); count drill grades final RC only, so
