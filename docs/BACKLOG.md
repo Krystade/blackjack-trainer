@@ -262,7 +262,8 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
   side IS wanted (just low priority) — and the operator wants a dedicated RESEARCH pass on OTHER
   training-function features "in the same vein" (things that build real-table behavior/discipline,
   not just drill accuracy) before building. PLAN ORDER: ship RV4 first → then RV1-adjacent training-
-  features research + planning → then development. See RT1 below (parked research task).
+  features research + planning → then development. ✅ Research DONE — see the "Experiential /
+  behavioral training features" section (ET1–ET7) below; RV1's experiential half is ET1 (flagship).
 - **RV2 · TC rounding convention — ❌ NOT A GAP (verified 2026-07-29), keep as-is.** Ground-truth
   check: the spec is explicit and source-grounded — "true count = running count ÷ decks remaining,
   **floored** (toward −∞)" (`specs/2026-07-13-...:22-23`, `:129`, from `docs/sources/BJA_H17.pdf`
@@ -308,6 +309,32 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
 
 **Red-team's top-3 to build next:** RV1 bankroll/RoR pillar · RV2 rounding honesty + tolerance ·
 RV4 time-based spacing + retention measurement. (RV5 is the cheapest standalone win.)
+
+### Experiential / behavioral training features (operator-requested research 2026-07-29) — full doc: `docs/research/2026-07-30-experiential-training-features.md`
+The "behavioral half" of counting the drills don't touch — discipline, composure, judgment under
+real-table conditions. Grounded in pressure-training science (practicing under simulated pressure
+≈ Hedges' g 0.67 [SEARCH-SNIPPET], effective only when calibrated/progressive and GATED behind
+base fluency — so all of these are late-stage modes behind `competenceGate.ts`). 7 solo-drillable
+candidates, ranked:
+- **ET1 · Downswing / tilt inoculation session — L — flagship (= RV1's experiential half).** Scripted
+  30–40 buy-in drawdown, spread stays on; grade spread-conformity under stress + log emotional
+  checkpoints vs actual deviations. The one thing CVCX can't rehearse.
+- **ET2 · Loss-of-count recovery drill — M — best novelty/effort.** Count is taken away mid-shoe;
+  estimate a plausible resume value from tray depth or correctly bail to min-bet. NO known trainer
+  drills this; reuses the shipped discard tray (R6).
+- **ET3 · Risk-decision: bet / sit / leave — M.** Count+bankroll+rules snapshots graded on EV/risk
+  (uses imported CVCX numbers); extends R5's binary wong-out with the missing *leave* axis.
+- **ET4 · Cover / heat decision drill — M.** Scenarios graded on the practitioner cover rule (cover
+  only when it cuts heat AND cost < EV given). The *decision* to cover is drillable; the performance isn't.
+- **ET5 · Endurance / fatigue drift session — M — best science grounding.** Long low-stimulation run
+  measuring accuracy/latency decay front-half vs back-half (vigilance decrement); analytics over
+  shipped R1 telemetry.
+- **ET6 · Pre-commitment / stop-loss adherence — M.** Commit a plan, get tempted, graded on honoring
+  your own quit-points. Natural layer on ET1.
+- **ET7 · Adversarial dealer-pace pressure — S.** Sudden mid-shoe speed-ups (distinct from D1/RV5).
+**Top 3: ET1, ET2, ET3.** ET1/ET5/ET6 share a "pressure-session runner" substrate — build once if
+several land. Out-of-scope (in-casino/two-person): physical act-natural tells, table-talk, team
+wonging signals, deck-brick heft.
 
 ---
 
