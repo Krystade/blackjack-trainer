@@ -1,6 +1,11 @@
 # RV4 · Spaced repetition + retention measurement — design
 
-Status: **AWAITING OPERATOR APPROVAL** (design presented for review; no code until approved).
+Status: **STAGE 1 BUILT (pure core, reversible); STAGES 2–6 AWAIT OPERATOR REVIEW.**
+The operator said "start with RV4 now" + picked both design forks, so Stage 1 — the pure,
+zero-dependency `spacedRepetition.ts` scheduler + 15 unit tests (`src/drills/spacedRepetition.ts`,
+`.test.ts`) — is built (nothing imports it yet, fully reversible). The wiring/schema/**migration**
+stages (2–6) are HELD pending operator review of the open migration question + the tunable
+constants, since those touch the shared grade path across 3 views and persistence.
 Date: 2026-07-30. Source: backlog RV4 (red-team v2). Operator decisions (2026-07-29):
 **wall-clock Leitner (true SR)** for the time model, and **include the delayed-retention
 measurement now** (one increment).
@@ -116,7 +121,7 @@ re-warming at worst. (Documented so it's a deliberate choice, not a silent data 
 
 ## Staged delivery (each stage committed green: `tsc -b` + unit + targeted e2e)
 
-1. `spacedRepetition.ts` + exhaustive unit tests (pure module; no wiring). **Safe checkpoint.**
+1. ✅ DONE — `spacedRepetition.ts` + 15 unit tests (pure module; no wiring). **Safe checkpoint.**
 2. `Stats.retention` type + EMPTY_STATS + mergeStats + store round-trip test.
 3. Grade path: `gradeAnswer.ts` → `reviewCard` + retention write + `now`; anti-drift test.
 4. Draw path: `drawFlashcard`/`drawQuizItem` → `srWeight`; update the 3 views' call sites.
