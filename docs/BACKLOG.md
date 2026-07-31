@@ -279,9 +279,18 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
   oversight. To act: (1) operator brings Fab 4 in-scope, (2) source-verified index values land in
   `docs/sources/` (the red-team's "14v10/15v9/15v10/15vA" is its own claim, NOT verified — do not
   add from memory). Real EV lever and a genuine training gap, but not autonomously actionable.
-- **RV4 · Spacing vs error-weighting in R3 — M — [SCI].** `missWeight = 1+2·missCount` has no time
-  term; no cross-session scheduling, no delayed retention test — in-drill accuracy overstates
-  table-day competence. Add a time/spacing term + a delayed-retention check.
+- **RV4 · Spacing vs error-weighting in R3 — M — [SCI] — ✅ SHIPPED 2026-07-30.** Spec:
+  `docs/superpowers/specs/2026-07-30-rv4-spaced-repetition-design.md`. Replaced R3's miss-count
+  weighting with a wall-clock **Leitner spaced-repetition scheduler** (`src/drills/spacedRepetition.ts`,
+  pure/injected-clock): each cell/index lives in a box with an expanding day-interval `dueAt`;
+  correct promotes + pushes the interval out, a miss collapses to box 0. `srWeight` feeds the
+  existing weighted draw so DUE/overdue items resurface (unseen items stay high-weight so new
+  material still surfaces). Grade path schedules via `reviewCard`, persists per-drill SR decks
+  (fresh-start under new keys `bjtrainer.flashsr/quizsr.v1` — old miss-count keys abandoned, operator
+  chose option A). **Delayed-retention measurement:** a gap review (learned item recalled after its
+  interval) writes a `Stats.retention` row; a new Stats **Retention** section shows retained accuracy
+  DISTINCT from in-drill accuracy — the honest table-readiness read. Shared R4 grade path + DRY
+  preserved (anti-drift test extended). 2974 unit + e2e; dead R3 weight fns removed.
 - **RV5 · Distraction cadence is fixed/predictable — XS — [SCI], cheapest win.** ✅ SHIPPED 2026-07-29.
   `isDistractionPoint` fired every 7th/3rd card; learners could pre-buffer the count. Now JITTERED:
   exactly one distraction per window of `interval` cards, on a window-index-seeded pseudo-random
