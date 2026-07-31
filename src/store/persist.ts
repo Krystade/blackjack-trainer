@@ -62,9 +62,9 @@ function mergeSettings(parsed: Record<string, unknown>): Settings {
 
 /**
  * Merge a parsed (possibly partial) stats blob over a deep copy of the empty
- * stats: top-level fields plus the ten nested sections (categories,
+ * stats: top-level fields plus the eleven nested sections (categories,
  * perIndex, mistakes, countDrill, trueCount, deckEstimation, timedCount,
- * sessions, distraction, pairCancel). The telemetry sections (trueCount/deckEstimation/
+ * sessions, distraction, pairCancel, retention). The telemetry sections (trueCount/deckEstimation/
  * timedCount/distraction) postdate the original stats shape, so any blob
  * persisted before they existed lacks them entirely -- the same
  * `typeof ... === 'object'` guard used for countDrill backfills them to an
@@ -124,6 +124,11 @@ function mergeStats(parsed: Record<string, unknown>): Stats {
       typeof p.pairCancel === 'object' && p.pairCancel !== null
         ? { ...base.pairCancel, ...p.pairCancel }
         : base.pairCancel,
+    // RV4 (docs/BACKLOG.md, spaced-repetition retention): same backfill idiom.
+    retention:
+      typeof p.retention === 'object' && p.retention !== null
+        ? { ...base.retention, ...p.retention }
+        : base.retention,
   };
 }
 

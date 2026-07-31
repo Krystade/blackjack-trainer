@@ -434,7 +434,7 @@ test('flashcards: pressing "2" answers Stand, grading identically to a click', a
   // a real click, so the two runs start from identical conditions.
   await page.evaluate(() => {
     window.localStorage.removeItem('bjtrainer.stats.v1');
-    window.localStorage.removeItem('bjtrainer.flashweights.v1');
+    window.localStorage.removeItem('bjtrainer.flashsr.v1');
   });
   await page.reload();
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
@@ -781,7 +781,7 @@ test('flashcards: keyboard 3/4/5 answer Double/Split/Surrender, grading identica
     // before replaying the identical seed via a real click.
     await page.evaluate(() => {
       window.localStorage.removeItem('bjtrainer.stats.v1');
-      window.localStorage.removeItem('bjtrainer.flashweights.v1');
+      window.localStorage.removeItem('bjtrainer.flashsr.v1');
     });
     await page.reload();
     await page.getByRole('button', { name: 'Drills', exact: true }).click();
@@ -796,7 +796,7 @@ test('flashcards: keyboard 3/4/5 answer Double/Split/Surrender, grading identica
 
     await page.evaluate(() => {
       window.localStorage.removeItem('bjtrainer.stats.v1');
-      window.localStorage.removeItem('bjtrainer.flashweights.v1');
+      window.localStorage.removeItem('bjtrainer.flashsr.v1');
     });
   }
 });
@@ -840,7 +840,7 @@ test('deviation quiz: keyboard action key grades identically to clicking the mat
 
   await page.evaluate(() => {
     window.localStorage.removeItem('bjtrainer.stats.v1');
-    window.localStorage.removeItem('bjtrainer.quizweights.v1');
+    window.localStorage.removeItem('bjtrainer.quizsr.v1');
   });
   await page.reload();
   await page.getByRole('button', { name: 'Drills', exact: true }).click();

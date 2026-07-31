@@ -285,6 +285,22 @@ export interface Stats {
       elapsedMs?: number;
     }[];
   };
+  // RV4 (docs/BACKLOG.md; spec 2026-07-30-rv4-spaced-repetition): delayed-
+  // retention telemetry. One entry per GAP REVIEW — a flashcard/deviation item
+  // recalled after its spaced-repetition interval elapsed (box >= LEARNED_BOX),
+  // i.e. a real retention test rather than massed same-session repetition. Lets
+  // Stats show retained accuracy DISTINCT from raw in-drill accuracy. `key` is
+  // the cellId/DeviationId, `box` the pre-review box, `gapMs` how long since the
+  // item was last seen. `date` written by the calling component. Migration-safe.
+  retention: {
+    history: {
+      date: string;
+      key: string;
+      box: number;
+      gapMs: number;
+      correct: boolean;
+    }[];
+  };
 }
 
 export const EMPTY_STATS: Stats = {
@@ -325,6 +341,9 @@ export const EMPTY_STATS: Stats = {
     history: [],
   },
   pairCancel: {
+    history: [],
+  },
+  retention: {
     history: [],
   },
 };

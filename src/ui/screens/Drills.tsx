@@ -16,9 +16,10 @@ import type { QuizItem } from '../../drills/deviationQuiz';
 import {
   gradeFlashcardAnswer as gradeFlashcard,
   gradeQuizAnswer as gradeQuiz,
-  loadFlashWeights,
-  loadQuizWeights,
+  loadFlashSr,
+  loadQuizSr,
 } from '../../drills/gradeAnswer';
+import type { SrDeck } from '../../drills/spacedRepetition';
 import { pickMixedType } from '../../drills/mixedSession';
 import type { MixedItemType } from '../../drills/mixedSession';
 import { saveSettings } from '../../store/persist';
@@ -139,9 +140,9 @@ function FlashcardsView({
   onBack: () => void;
   onSettingsChange: (settings: Settings) => void;
 }) {
-  const weightsRef = useRef<Record<string, number>>(loadFlashWeights());
+  const srDeckRef = useRef<SrDeck>(loadFlashSr());
   const [card, setCard] = useState<Flashcard>(() =>
-    drawFlashcard(settings.drill.flashCategory, weightsRef.current, randomSeed(), activeProfile.rules),
+    drawFlashcard(settings.drill.flashCategory, srDeckRef.current, Date.now(), randomSeed(), activeProfile.rules),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action } | null>(null);
   const audio = useAudio(settings.audio);
@@ -226,7 +227,7 @@ function FlashcardsView({
   const next = (category: Settings['drill']['flashCategory'] = settings.drill.flashCategory) => {
     runIdRef.current += 1;
     clearAdvanceTimer();
-    setCard(drawFlashcard(category, weightsRef.current, randomSeed(), activeProfile.rules));
+    setCard(drawFlashcard(category, srDeckRef.current, Date.now(), randomSeed(), activeProfile.rules));
     setFeedback(null);
     promptShownAtRef.current = performance.now();
   };
@@ -278,8 +279,8 @@ function FlashcardsView({
   // feedback on top.
   const gradeFlashcardAnswer = (taken: Action): { event: GradedEvent; correctAction: Action } => {
     const elapsedMs = performance.now() - promptShownAtRef.current;
-    const result = gradeFlashcard(card, taken, activeProfile.rules, elapsedMs, weightsRef.current);
-    weightsRef.current = result.nextWeights;
+    const result = gradeFlashcard(card, taken, activeProfile.rules, elapsedMs, srDeckRef.current, Date.now());
+    srDeckRef.current = result.nextDeck;
     return { event: result.event, correctAction: result.correctAction };
   };
 
@@ -498,8 +499,8 @@ function DeviationQuizView({
   const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
 
   // R3 (docs/BACKLOG.md, spaced-repetition): per-index miss-weight map,
-  // loaded once per mount exactly like FlashcardsView's weightsRef.
-  const weightsRef = useRef<Record<string, number>>(loadQuizWeights());
+  // loaded once per mount exactly like FlashcardsView's srDeckRef.
+  const srDeckRef = useRef<SrDeck>(loadQuizSr());
 
   const [item, setItem] = useState<QuizItem>(() =>
     drawQuizItem(
@@ -507,7 +508,8 @@ function DeviationQuizView({
       quizFilterArg(activeFilter),
       activeProfile.rules,
       settings.drill.quizDistractorPct,
-      weightsRef.current,
+      srDeckRef.current,
+      Date.now(),
     ),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean } | null>(null);
@@ -592,7 +594,9 @@ function DeviationQuizView({
   const next = (filter: DeviationId | 'all' = activeFilter, distractorPct: number = settings.drill.quizDistractorPct) => {
     runIdRef.current += 1;
     clearAdvanceTimer();
-    setItem(drawQuizItem(randomSeed(), quizFilterArg(filter), activeProfile.rules, distractorPct, weightsRef.current));
+    setItem(
+      drawQuizItem(randomSeed(), quizFilterArg(filter), activeProfile.rules, distractorPct, srDeckRef.current, Date.now()),
+    );
     setFeedback(null);
     promptShownAtRef.current = performance.now();
   };
@@ -653,8 +657,8 @@ function DeviationQuizView({
   // no setState -- callers layer their own feedback on top.
   const gradeQuizAnswer = (taken: string): GradedEvent => {
     const elapsedMs = performance.now() - promptShownAtRef.current;
-    const result = gradeQuiz(item, taken, activeProfile.rules, elapsedMs, weightsRef.current);
-    weightsRef.current = result.nextWeights;
+    const result = gradeQuiz(item, taken, activeProfile.rules, elapsedMs, srDeckRef.current, Date.now());
+    srDeckRef.current = result.nextDeck;
     return result.event;
   };
 
@@ -917,8 +921,8 @@ function MixedSessionView({
 }) {
   // R3 weight maps -- one per drill, held exactly as the standalone views do
   // so a mixed session's misses/decays feed the same persisted weighting.
-  const flashWeightsRef = useRef<Record<string, number>>(loadFlashWeights());
-  const quizWeightsRef = useRef<Record<string, number>>(loadQuizWeights());
+  const flashSrRef = useRef<SrDeck>(loadFlashSr());
+  const quizSrRef = useRef<SrDeck>(loadQuizSr());
 
   // Seeded interleave: the session seed is drawn once (lazily, StrictMode-
   // safe) and each position's type comes from pickMixedType(seed, index) --
@@ -934,7 +938,7 @@ function MixedSessionView({
     if (type === 'flash') {
       return {
         type,
-        card: drawFlashcard(settings.drill.flashCategory, flashWeightsRef.current, randomSeed(), activeProfile.rules),
+        card: drawFlashcard(settings.drill.flashCategory, flashSrRef.current, Date.now(), randomSeed(), activeProfile.rules),
       };
     }
     const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
@@ -945,7 +949,8 @@ function MixedSessionView({
         quizFilterArg(activeFilter),
         activeProfile.rules,
         settings.drill.quizDistractorPct,
-        quizWeightsRef.current,
+        quizSrRef.current,
+        Date.now(),
       ),
     };
   };
@@ -1050,12 +1055,12 @@ function MixedSessionView({
   const gradeCurrent = (taken: string): { correct: boolean; correctAction?: Action; event: GradedEvent } => {
     const elapsedMs = performance.now() - promptShownAtRef.current;
     if (current.type === 'flash') {
-      const result = gradeFlashcard(current.card, taken as Action, activeProfile.rules, elapsedMs, flashWeightsRef.current);
-      flashWeightsRef.current = result.nextWeights;
+      const result = gradeFlashcard(current.card, taken as Action, activeProfile.rules, elapsedMs, flashSrRef.current, Date.now());
+      flashSrRef.current = result.nextDeck;
       return { correct: result.event.correct, correctAction: result.correctAction, event: result.event };
     }
-    const result = gradeQuiz(current.item, taken, activeProfile.rules, elapsedMs, quizWeightsRef.current);
-    quizWeightsRef.current = result.nextWeights;
+    const result = gradeQuiz(current.item, taken, activeProfile.rules, elapsedMs, quizSrRef.current, Date.now());
+    quizSrRef.current = result.nextDeck;
     return { correct: result.event.correct, event: result.event };
   };
 

@@ -7,6 +7,7 @@ import {
   gradeFlashcardAnswer,
   gradeQuizAnswer,
 } from './gradeAnswer';
+import type { SrDeck } from './spacedRepetition';
 import { _setStorage, loadStats } from '../store/persist';
 import { EMPTY_STATS } from '../store/types';
 import { applyEvents } from '../store/stats';
@@ -17,13 +18,17 @@ import { DEFAULT_RULES } from '../engine/ruleset';
  * standalone drill views (FlashcardsView / DeviationQuizView in Drills.tsx)
  * grade through ONE implementation -- the wrappers in gradeAnswer.ts. These
  * tests pin that implementation so a "mixed-mode flashcard/quiz item produces
- * the byte-identical GradedEvent + Stats write as the standalone drill for the
- * same seed/hand" is guaranteed by construction: given identical inputs the
- * function is deterministic, and BOTH call sites pass identical inputs.
+ * the byte-identical GradedEvent + Stats write + SR-deck update as the
+ * standalone drill for the same seed/hand/now" is guaranteed by construction:
+ * given identical inputs the function is deterministic, and BOTH call sites
+ * pass identical inputs. RV4: the shared path now schedules via the Leitner
+ * SR deck (`now` is wall-clock epoch ms, passed by the component).
  *
  * An injected in-memory storage isolates each test's Stats write so the
  * loadStats() assertions read exactly what the graded event produced.
  */
+const NOW = 1_700_000_000_000; // a fixed wall-clock so SR scheduling is deterministic in-test
+
 function freshStorage() {
   const map = new Map<string, string>();
   _setStorage({
@@ -41,53 +46,49 @@ beforeEach(() => {
 describe('gradeAnswer shared grade path (R4 anti-drift)', () => {
   describe('flashcards', () => {
     it('buildFlashcardEvent is deterministic: identical inputs -> byte-identical event (mixed == standalone)', () => {
-      // Both the standalone FlashcardsView and the mixed view draw a card and
-      // feed it to buildFlashcardEvent; for the SAME seed/hand + answer they
-      // must produce identical events. elapsedMs is passed in (captured by the
-      // component) so the pure builder stays deterministic.
-      const card = drawFlashcard('all', {}, 12345, DEFAULT_RULES);
+      const card = drawFlashcard('all', {}, 0, 12345, DEFAULT_RULES);
       const standalone = buildFlashcardEvent(card, 'stand', DEFAULT_RULES, 111);
       const mixed = buildFlashcardEvent(card, 'stand', DEFAULT_RULES, 111);
       expect(mixed).toEqual(standalone);
-      // Spot-check the event shape a flashcard must always carry.
       expect(standalone.event.kind).toBe('action');
       expect(standalone.event.tc).toBe(0); // flashcards are ALWAYS count-free
       expect(standalone.event.reason).toBe(card.cellId);
       expect(standalone.event.elapsedMs).toBe(111);
     });
 
-    it('gradeFlashcardAnswer: identical inputs -> identical event, correctAction, nextWeights, AND Stats write', () => {
-      const card = drawFlashcard('all', {}, 424242, DEFAULT_RULES);
+    it('gradeFlashcardAnswer: identical inputs -> identical event, correctAction, nextDeck, AND Stats write', () => {
+      const card = drawFlashcard('all', {}, 0, 424242, DEFAULT_RULES);
 
       freshStorage();
-      const a = gradeFlashcardAnswer(card, 'hit', DEFAULT_RULES, 250, {});
+      const a = gradeFlashcardAnswer(card, 'hit', DEFAULT_RULES, 250, {}, NOW);
       const statsAfterA = loadStats();
 
       freshStorage();
-      const b = gradeFlashcardAnswer(card, 'hit', DEFAULT_RULES, 250, {});
+      const b = gradeFlashcardAnswer(card, 'hit', DEFAULT_RULES, 250, {}, NOW);
       const statsAfterB = loadStats();
 
       expect(b.event).toEqual(a.event);
       expect(b.correctAction).toEqual(a.correctAction);
-      expect(b.nextWeights).toEqual(a.nextWeights);
+      expect(b.nextDeck).toEqual(a.nextDeck);
       expect(statsAfterB).toEqual(statsAfterA);
 
-      // The persisted Stats write is exactly applyEvents(EMPTY, [event]) --
-      // the same thing the standalone view writes.
+      // A fresh-deck answer is never a gap review, so the Stats write is exactly
+      // applyEvents(EMPTY, [event]) -- the same thing the standalone view writes.
       expect(statsAfterA).toEqual(applyEvents(EMPTY_STATS, [a.event]));
     });
 
-    it('gradeFlashcardAnswer: a miss bumps the cell weight, a correct answer decays it (R3 preserved)', () => {
-      const card = drawFlashcard('all', {}, 777, DEFAULT_RULES);
+    it('gradeFlashcardAnswer: a miss schedules the cell due-now at box 0; a correct answer promotes it to box 1 (SR)', () => {
+      const card = drawFlashcard('all', {}, 0, 777, DEFAULT_RULES);
       const wrong = card.correct === 'stand' ? 'hit' : 'stand';
 
-      const missed = gradeFlashcardAnswer(card, wrong, DEFAULT_RULES, 10, {});
+      const missed = gradeFlashcardAnswer(card, wrong, DEFAULT_RULES, 10, {}, NOW);
       expect(missed.event.correct).toBe(false);
-      expect(missed.nextWeights[card.cellId]).toBe(1); // bumpMiss from 0
+      expect(missed.nextDeck[card.cellId].box).toBe(0);
+      expect(missed.nextDeck[card.cellId].dueAt).toBe(NOW); // box-0 interval is 0 -> due now
 
-      const recovered = gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 10, missed.nextWeights);
+      const recovered = gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 10, missed.nextDeck, NOW);
       expect(recovered.event.correct).toBe(true);
-      expect(recovered.nextWeights[card.cellId]).toBe(0); // decayMiss back to floor
+      expect(recovered.nextDeck[card.cellId].box).toBe(1); // promoted one box
     });
   });
 
@@ -98,49 +99,66 @@ describe('gradeAnswer shared grade path (R4 anti-drift)', () => {
       const mixed = buildQuizEvent(item, 'stand', DEFAULT_RULES, 222);
       expect(mixed).toEqual(standalone);
       expect(standalone.elapsedMs).toBe(222);
-      // A real quiz item carries its tested index + the count that matters.
       expect(standalone.deviationId).toBe(item.deviationId);
     });
 
-    it('gradeQuizAnswer: identical inputs -> identical event, nextWeights, AND Stats write', () => {
+    it('gradeQuizAnswer: identical inputs -> identical event, nextDeck, AND Stats write', () => {
       const item = drawQuizItem(55555, undefined, DEFAULT_RULES);
 
       freshStorage();
-      const a = gradeQuizAnswer(item, 'stand', DEFAULT_RULES, 300, {});
+      const a = gradeQuizAnswer(item, 'stand', DEFAULT_RULES, 300, {}, NOW);
       const statsAfterA = loadStats();
 
       freshStorage();
-      const b = gradeQuizAnswer(item, 'stand', DEFAULT_RULES, 300, {});
+      const b = gradeQuizAnswer(item, 'stand', DEFAULT_RULES, 300, {}, NOW);
       const statsAfterB = loadStats();
 
       expect(b.event).toEqual(a.event);
-      expect(b.nextWeights).toEqual(a.nextWeights);
+      expect(b.nextDeck).toEqual(a.nextDeck);
       expect(statsAfterB).toEqual(statsAfterA);
       expect(statsAfterA).toEqual(applyEvents(EMPTY_STATS, [a.event]));
     });
 
-    it('gradeQuizAnswer: only real items (with a deviationId) perturb the index weight; distractors never do', () => {
+    it('gradeQuizAnswer: only real items (with a deviationId) touch the SR deck; distractors never do', () => {
       // Force a distractor (distractorPct 100): it carries no deviationId, so
-      // the weight map must be returned unchanged.
+      // the SR deck must be returned unchanged.
       const distractor = drawQuizItem(31000, undefined, DEFAULT_RULES, 100);
       expect(distractor.deviationId).toBeUndefined();
-      const before = { '16v10': 3 };
-      const graded = gradeQuizAnswer(distractor, distractor.correct, DEFAULT_RULES, 10, before);
-      expect(graded.nextWeights).toEqual(before); // untouched
+      const before: SrDeck = { '16v10': { box: 2, dueAt: 0, lastSeenAt: 0, lapses: 1, reviews: 3 } };
+      const graded = gradeQuizAnswer(distractor, distractor.correct, DEFAULT_RULES, 10, before, NOW);
+      expect(graded.nextDeck).toEqual(before); // untouched
     });
   });
 
   describe('cross-context byte-identity for the same seed/hand', () => {
     it('a flashcard graded via the shared path writes tc=0 and NO deviationId; a quiz item writes its tc + deviationId -- the discrimination is visible in the telemetry', () => {
-      const card = drawFlashcard('all', {}, 246810, DEFAULT_RULES);
-      const flashEvent = gradeFlashcardAnswer(card, 'stand', DEFAULT_RULES, 5, {}).event;
+      const card = drawFlashcard('all', {}, 0, 246810, DEFAULT_RULES);
+      const flashEvent = gradeFlashcardAnswer(card, 'stand', DEFAULT_RULES, 5, {}, NOW).event;
       expect(flashEvent.tc).toBe(0);
       expect(flashEvent.deviationId).toBeUndefined();
 
       const item = drawQuizItem(1357, undefined, DEFAULT_RULES);
-      const quizEvent = gradeQuizAnswer(item, 'stand', DEFAULT_RULES, 5, {}).event;
+      const quizEvent = gradeQuizAnswer(item, 'stand', DEFAULT_RULES, 5, {}, NOW).event;
       expect(quizEvent.tc).toBe(item.tc);
       expect(quizEvent.deviationId).toBe(item.deviationId);
+    });
+
+    it('a gap review (learned cell recalled after its interval) records a retention row through the shared path', () => {
+      const card = drawFlashcard('all', {}, 0, 999, DEFAULT_RULES);
+      // Seed the cell as learned (box 2) and long overdue, so THIS grade is a gap review.
+      const DAY = 24 * 60 * 60 * 1000;
+      const deck: SrDeck = {
+        [card.cellId]: { box: 2, dueAt: NOW - 5 * DAY, lastSeenAt: NOW - 12 * DAY, lapses: 0, reviews: 3 },
+      };
+      freshStorage();
+      gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 5, deck, NOW);
+      const stats = loadStats();
+      expect(stats.retention.history).toHaveLength(1);
+      const row = stats.retention.history[0]!;
+      expect(row.key).toBe(card.cellId);
+      expect(row.correct).toBe(true);
+      expect(row.box).toBe(2); // the PRE-review box
+      expect(row.gapMs).toBe(12 * DAY);
     });
   });
 });

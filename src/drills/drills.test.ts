@@ -9,7 +9,7 @@ import { drawQuizItem } from './deviationQuiz';
 import type { DeviationId } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import type { RuleSet } from '../engine/ruleset';
-import { bumpMiss, decayMiss } from './weightedDraw';
+import type { SrDeck } from './spacedRepetition';
 
 describe('countDrill', () => {
   describe('makeCountDrill', () => {
@@ -84,13 +84,13 @@ describe('flashcards', () => {
   describe('drawFlashcard', () => {
     it('pairs category should only return pair hands', () => {
       for (let i = 0; i < 20; i++) {
-        const card = drawFlashcard('pairs', {}, 1000 + i);
+        const card = drawFlashcard('pairs', {}, 0, 1000 + i);
         expect(isPair(card.cards)).toBe(true);
       }
     });
 
     it('correct action should match correctPlay at tc=0 with full context', () => {
-      const card = drawFlashcard('all', {}, 42);
+      const card = drawFlashcard('all', {}, 0, 42);
       const advice = correctPlay(card.cards, card.up, 0, {
         canDouble: true,
         canSplit: true,
@@ -101,7 +101,7 @@ describe('flashcards', () => {
 
     it('cellId should have format like hard-16-v-9 or soft-18-v-A or pair-8-v-10', () => {
       for (let i = 0; i < 20; i++) {
-        const card = drawFlashcard('all', {}, 1000 + i);
+        const card = drawFlashcard('all', {}, 0, 1000 + i);
         const cellId = card.cellId;
         expect(cellId).toMatch(/^(hard|soft)-\d+-v-(A|2|3|4|5|6|7|8|9|10)$|^pair-(A|2|3|4|5|6|7|8|9|10)-v-(A|2|3|4|5|6|7|8|9|10)$/);
       }
@@ -109,7 +109,7 @@ describe('flashcards', () => {
 
     it('structural: hard cells are truly hard, soft cells truly soft, pair cells true pairs (200 seeded draws)', () => {
       for (let i = 0; i < 200; i++) {
-        const card = drawFlashcard('all', {}, 20000 + i);
+        const card = drawFlashcard('all', {}, 0, 20000 + i);
         const match = card.cellId.match(/^(hard|soft|pair)-([A0-9]+)-v-/);
         expect(match).not.toBeNull();
         const [, kind, labeled] = match!;
@@ -129,32 +129,19 @@ describe('flashcards', () => {
     });
 
     it('hard universe includes hard 18 and hard 19 (constructible non-pair hard totals)', () => {
-      // Weight each target cell heavily; it must be drawable from the 'hard' category.
+      // An empty SR deck draws uniformly, so each hard cell is reachable within
+      // enough draws -- this just asserts the cell EXISTS in the 'hard' universe.
       for (const target of ['hard-18-v-5', 'hard-19-v-6']) {
         let hit = false;
-        for (let i = 0; i < 200 && !hit; i++) {
-          const card = drawFlashcard('hard', { [target]: 1000 }, 30000 + i);
+        for (let i = 0; i < 400 && !hit; i++) {
+          const card = drawFlashcard('hard', {}, 0, 30000 + i);
           if (card.cellId === target) hit = true;
         }
         expect(hit, `${target} must exist in the hard universe`).toBe(true);
       }
     });
-
-    it('should respect weighting: 50-weight cell gets ≥30% of 200 draws', () => {
-      const missWeights: Record<string, number> = {};
-      const targetCellId = 'hard-16-v-9';
-      missWeights[targetCellId] = 50;
-
-      let hits = 0;
-      for (let i = 0; i < 200; i++) {
-        const card = drawFlashcard('all', missWeights, 5000 + i);
-        if (card.cellId === targetCellId) hits++;
-      }
-
-      // weight = 1 + 2*50 = 101 for target, so ~101/sum should be hit rate
-      // over 200 draws, expecting roughly 30%+ hits (60+ hits)
-      expect(hits).toBeGreaterThanOrEqual(30);
-    });
+    // (SR due-weighting of the draw is covered in the "RV4 spaced-repetition
+    // scheduling" block below.)
   });
 });
 
@@ -477,7 +464,7 @@ describe('drawFlashcard rules wiring', () => {
     // whichever (default) rules happen to be in effect (irrelevant to the search).
     let seed = -1;
     for (let candidate = 0; candidate < 5000; candidate++) {
-      const probe = drawFlashcard('soft', {}, candidate);
+      const probe = drawFlashcard('soft', {}, 0, candidate);
       if (probe.cellId === 'soft-18-v-2') {
         seed = candidate;
         break;
@@ -485,8 +472,8 @@ describe('drawFlashcard rules wiring', () => {
     }
     expect(seed, 'expected to find a seed landing on soft-18-v-2 within 5000 tries').toBeGreaterThanOrEqual(0);
 
-    const h17Card = drawFlashcard('soft', {}, seed, DEFAULT_RULES);
-    const s17Card = drawFlashcard('soft', {}, seed, S17_RULES);
+    const h17Card = drawFlashcard('soft', {}, 0, seed, DEFAULT_RULES);
+    const s17Card = drawFlashcard('soft', {}, 0, seed, S17_RULES);
 
     // Same seed -> identical cell regardless of rules.
     expect(h17Card.cellId).toBe('soft-18-v-2');
@@ -498,8 +485,8 @@ describe('drawFlashcard rules wiring', () => {
   });
 
   it('omitting rules preserves v1 (H17) behavior exactly', () => {
-    const withDefault = drawFlashcard('hard', {}, 7);
-    const withExplicitH17 = drawFlashcard('hard', {}, 7, DEFAULT_RULES);
+    const withDefault = drawFlashcard('hard', {}, 0, 7);
+    const withExplicitH17 = drawFlashcard('hard', {}, 0, 7, DEFAULT_RULES);
     expect(withDefault).toEqual(withExplicitH17);
   });
 });
@@ -545,156 +532,102 @@ describe('drawQuizItem rules wiring', () => {
 });
 
 /**
- * R3 (docs/BACKLOG.md, spaced-repetition / miss-weighted scheduling): a
- * Leitner-lite scheduler applied symmetrically to both drills --
- * flashcards' existing missWeights map gains decay-on-correct (weightedDraw's
- * decayMiss), and the deviation quiz gains a NEW persisted per-index weight
- * map (mirroring the flashcard pattern) that drawQuizItem's no-filter entry
- * pick now honors instead of sampling uniformly. Both share the exact same
- * `missWeight` formula (1 + 2*missCount) via weightedDraw.ts.
+ * RV4 (docs/BACKLOG.md; spec 2026-07-30-rv4-spaced-repetition): the draw
+ * functions weight candidates by SR due-ness (`srWeight`) instead of R3 miss
+ * count. These INTEGRATION tests confirm drawFlashcard/drawQuizItem actually
+ * consult the SR deck; the srWeight math itself is exhaustively covered in
+ * spacedRepetition.test.ts. All draws pass an explicit wall-clock `now`. Note
+ * that under SR, UNSEEN cells are intentionally high-weight (new material
+ * surfaces), so the faithful contrast is "overdue vs the same item scheduled
+ * ahead", not "weighted vs a uniform baseline".
  */
-describe('R3 spaced-repetition scheduling', () => {
-  describe('drawFlashcard + decay (fresh-profile / backward-compat)', () => {
-    it('an empty weights map (fresh profile) behaves exactly as before -- uniform-ish, same as passing {}', () => {
-      // Byte-for-byte: {} was always the "no weighting" input; this just
-      // re-confirms it still is after the weightedDraw.ts extraction, using
-      // the exact assertions the pre-R3 suite already relied on.
+describe('RV4 spaced-repetition scheduling (draw integration)', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const NOW = 1_000_000_000_000;
+  // A heavily-overdue box-0 card -- the heaviest srWeight (1 + cap + MAX_BOX).
+  const overdueDeck = (id: string): SrDeck => ({
+    [id]: { box: 0, dueAt: NOW - 90 * DAY, lastSeenAt: NOW - 91 * DAY, lapses: 3, reviews: 3 },
+  });
+  // A mastered card scheduled far ahead -- the lightest srWeight (the floor).
+  const masteredDeck = (id: string): SrDeck => ({
+    [id]: { box: 5, dueAt: NOW + 60 * DAY, lastSeenAt: NOW, lapses: 0, reviews: 10 },
+  });
+
+  describe('drawFlashcard', () => {
+    it('an empty deck (fresh profile) is uniform -- byte-identical across two empty-deck draws', () => {
       for (let i = 0; i < 50; i++) {
-        const withEmpty = drawFlashcard('all', {}, 9000 + i);
-        const withFreshMap = drawFlashcard('all', {}, 9000 + i);
-        expect(withFreshMap).toEqual(withEmpty);
+        expect(drawFlashcard('all', {}, NOW, 9000 + i)).toEqual(drawFlashcard('all', {}, NOW, 9000 + i));
       }
     });
 
-    it('a cell driven to a high miss-count via bumpMiss is drawn disproportionately over many seeds', () => {
-      const targetCellId = 'hard-16-v-9';
-      let weights: Record<string, number> = {};
-      for (let i = 0; i < 20; i++) weights = bumpMiss(weights, targetCellId);
-
-      let hits = 0;
-      for (let i = 0; i < 200; i++) {
-        const card = drawFlashcard('all', weights, 40000 + i);
-        if (card.cellId === targetCellId) hits++;
-      }
-      // weight = 1 + 2*20 = 41 out of ~330 baseline-1 cells -- comfortably
-      // over its ~0.3% fair share.
-      expect(hits).toBeGreaterThanOrEqual(15);
-    });
-
-    it('decay brings a since-mastered cell back down toward its baseline (uniform) draw frequency', () => {
-      const targetCellId = 'hard-16-v-9';
-
-      let missedWeights: Record<string, number> = {};
-      for (let i = 0; i < 20; i++) missedWeights = bumpMiss(missedWeights, targetCellId);
-
-      let missedHits = 0;
-      for (let i = 0; i < 300; i++) {
-        const card = drawFlashcard('all', missedWeights, 41000 + i);
-        if (card.cellId === targetCellId) missedHits++;
-      }
-
-      // Decay it all the way back to baseline (missCount 0), simulating a
-      // long run of subsequent correct answers.
-      let masteredWeights = missedWeights;
-      for (let i = 0; i < 25; i++) masteredWeights = decayMiss(masteredWeights, targetCellId);
-      expect(masteredWeights[targetCellId]).toBe(0); // floor holds, never negative
-
+    it('an overdue cell is drawn far more often than the same cell scheduled ahead (due-weighting drives the draw)', () => {
+      const target = 'hard-16-v-9';
+      let overdueHits = 0;
       let masteredHits = 0;
-      for (let i = 0; i < 300; i++) {
-        const card = drawFlashcard('all', masteredWeights, 41000 + i);
-        if (card.cellId === targetCellId) masteredHits++;
+      for (let i = 0; i < 1000; i++) {
+        if (drawFlashcard('all', overdueDeck(target), NOW, 40000 + i).cellId === target) overdueHits++;
+        if (drawFlashcard('all', masteredDeck(target), NOW, 40000 + i).cellId === target) masteredHits++;
       }
-
-      // Mastered draw rate must fall back down near the ~1/330 fair share,
-      // and well below the still-elevated missed rate.
-      expect(masteredHits).toBeLessThan(missedHits);
-      expect(masteredHits).toBeLessThanOrEqual(5); // fair share of 300 draws is ~0.9
+      expect(overdueHits).toBeGreaterThan(masteredHits);
     });
   });
 
   describe('drawQuizItem index weighting (no-filter draws)', () => {
-    it('omitting missWeights (backward compat) behaves exactly as before -- variety still seen, byte-identical to explicit {}', () => {
+    it('omitting the SR deck (backward compat) is byte-identical to an explicit empty deck', () => {
       for (let i = 0; i < 100; i++) {
-        const withDefault = drawQuizItem(90000 + i);
-        const withExplicitEmpty = drawQuizItem(90000 + i, undefined, DEFAULT_RULES, 0, {});
-        expect(withExplicitEmpty).toEqual(withDefault);
+        expect(drawQuizItem(90000 + i, undefined, DEFAULT_RULES, 0, {})).toEqual(drawQuizItem(90000 + i));
       }
     });
 
-    it('a heavily-missed deviation id is drawn disproportionately over many seeds vs the rest of the set', () => {
-      const targetId: DeviationId = '16v10';
-      let weights: Record<string, number> = {};
-      for (let i = 0; i < 20; i++) weights = bumpMiss(weights, targetId);
-
+    it('an overdue index is drawn disproportionately vs the rest of the 18-entry set', () => {
+      const target: DeviationId = '16v10';
       let hits = 0;
       const n = 500;
       for (let i = 0; i < n; i++) {
-        const item = drawQuizItem(100000 + i, undefined, DEFAULT_RULES, 0, weights);
-        if (item.deviationId === targetId) hits++;
+        if (drawQuizItem(100000 + i, undefined, DEFAULT_RULES, 0, overdueDeck(target), NOW).deviationId === target) {
+          hits++;
+        }
       }
-      // ILLUSTRIOUS_18 has 18 entries; fair share is ~1/18 (~5.6%) of n.
-      // weight 41 vs baseline-1 for the other 17 -> target share ~41/58 ~ 70%.
-      expect(hits).toBeGreaterThan(n * 0.3);
+      // Overdue weight ~36 vs ~8 for each of the 17 unseen -> ~21% share.
+      expect(hits).toBeGreaterThan(n * 0.12);
     });
 
-    it('decay brings a since-mastered index back down toward its fair uniform share', () => {
-      const targetId: DeviationId = '16v10';
-      let missed: Record<string, number> = {};
-      for (let i = 0; i < 20; i++) missed = bumpMiss(missed, targetId);
-
-      let mastered = missed;
-      for (let i = 0; i < 25; i++) mastered = decayMiss(mastered, targetId);
-      expect(mastered[targetId]).toBe(0);
-
+    it('a mastered, not-yet-due index is drawn far LESS than an overdue one', () => {
+      const target: DeviationId = '16v10';
       const n = 900;
-      let missedHits = 0;
+      let overdueHits = 0;
       let masteredHits = 0;
       for (let i = 0; i < n; i++) {
-        const missedItem = drawQuizItem(110000 + i, undefined, DEFAULT_RULES, 0, missed);
-        if (missedItem.deviationId === targetId) missedHits++;
-        const masteredItem = drawQuizItem(110000 + i, undefined, DEFAULT_RULES, 0, mastered);
-        if (masteredItem.deviationId === targetId) masteredHits++;
+        if (drawQuizItem(110000 + i, undefined, DEFAULT_RULES, 0, overdueDeck(target), NOW).deviationId === target) {
+          overdueHits++;
+        }
+        if (drawQuizItem(110000 + i, undefined, DEFAULT_RULES, 0, masteredDeck(target), NOW).deviationId === target) {
+          masteredHits++;
+        }
       }
-
-      expect(masteredHits).toBeLessThan(missedHits);
-      // Fair share of n draws across 18 entries is ~50; generous upper bound.
-      expect(masteredHits).toBeLessThan(n * 0.15);
+      expect(masteredHits).toBeLessThan(overdueHits);
     });
 
-    it('a pinned filter always returns that index regardless of any weight map (weighting is moot when pinned)', () => {
-      const weights: Record<string, number> = { '12v6': 0 };
-      // Heavily bias the map toward a DIFFERENT index than the pinned one --
-      // if weighting leaked into the pinned path, this would still have to
-      // return '16v10' every time; if it didn't, this proves nothing new.
-      let biased = weights;
-      for (let i = 0; i < 50; i++) biased = bumpMiss(biased, '12v6');
-
+    it('a pinned filter always returns that index regardless of the SR deck', () => {
+      // Bias the deck heavily toward a DIFFERENT index; the pinned draw ignores it.
       for (let i = 0; i < 50; i++) {
-        const item = drawQuizItem(120000 + i, '16v10', DEFAULT_RULES, 0, biased);
+        const item = drawQuizItem(120000 + i, '16v10', DEFAULT_RULES, 0, overdueDeck('12v6'), NOW);
         expect(item.deviationId).toBe('16v10');
       }
     });
 
-    it('distractor items never carry a deviationId, so a caller cannot apply a weight update to them (weights only ever key off real deviationIds)', () => {
+    it('distractor items never carry a deviationId (the SR deck only keys off real deviationIds)', () => {
       for (let i = 0; i < 200; i++) {
-        const item = drawQuizItem(130000 + i, undefined, DEFAULT_RULES, 100, { '16v10': 30 });
-        if (item.isDistractor) {
-          expect(item.deviationId).toBeUndefined();
-        }
+        const item = drawQuizItem(130000 + i, undefined, DEFAULT_RULES, 100, overdueDeck('16v10'), NOW);
+        if (item.isDistractor) expect(item.deviationId).toBeUndefined();
       }
     });
 
-    it('a heavy weight map does not change WHICH entries are eligible when distractorPct=100 -- distractor base-entry selection stays uniform over active entries, unaffected by missWeights', () => {
-      // Sanity check that missWeights is scoped to the REAL-item entry pick
-      // only; distractor flavor/base-entry selection (buildDistractorItem)
-      // must keep seeing variety even when one id is weighted to the moon.
-      const weights: Record<string, number> = { '16v10': 1000 };
+    it('a heavy SR deck does not change distractor eligibility at distractorPct=100 -- base-entry selection stays varied', () => {
       const seen = new Set<string | undefined>();
       for (let i = 0; i < 300; i++) {
-        const item = drawQuizItem(140000 + i, undefined, DEFAULT_RULES, 100, weights);
+        const item = drawQuizItem(140000 + i, undefined, DEFAULT_RULES, 100, overdueDeck('16v10'), NOW);
         expect(item.isDistractor).toBe(true);
-        // distractor labels reference the "near" base entry by label text,
-        // not deviationId -- collect labels to prove variety survives.
         seen.add(item.label);
       }
       expect(seen.size).toBeGreaterThan(3);

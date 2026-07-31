@@ -5,7 +5,9 @@ import type { Action } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import type { RuleSet } from '../engine/ruleset';
 import { makeHardHand } from './buildHand';
-import { missWeight, weightedIndex } from './weightedDraw';
+import { weightedIndex } from './weightedDraw';
+import { srWeight } from './spacedRepetition';
+import type { SrDeck } from './spacedRepetition';
 
 export interface Flashcard {
   cards: [Card, Card];
@@ -84,17 +86,19 @@ function generateAllCells(): Cell[] {
  * Draw a random flashcard from the specified category with weighted sampling.
  *
  * @param category - 'all', 'hard', 'soft', or 'pairs'
- * @param missWeights - Weight map (cellId -> weight) for missed cards
+ * @param srDeck - RV4 spaced-repetition deck (cellId -> SrCard); draw prefers DUE cells
+ * @param now - wall-clock epoch ms, used to weight cells by SR due-ness
  * @param seed - Optional seed for reproducibility
  * @param rules - Optional ruleset (defaults to DEFAULT_RULES); selects the
  *   chart/deviations the correct action is graded against — additive param,
  *   omitting it preserves v1 (H17 6-deck) behavior exactly. Note: which cell
- *   is drawn depends only on category/missWeights/seed, never on rules.
+ *   is drawn depends only on category/srDeck/now/seed, never on rules.
  * @returns A flashcard with correct action
  */
 export function drawFlashcard(
   category: 'all' | 'hard' | 'soft' | 'pairs',
-  missWeights: Record<string, number>,
+  srDeck: SrDeck,
+  now: number,
   seed?: number,
   rules: RuleSet = DEFAULT_RULES,
 ): Flashcard {
@@ -113,9 +117,9 @@ export function drawFlashcard(
     cells = allCells.filter((c) => c.id.startsWith(category + '-'));
   }
 
-  // R3 (docs/BACKLOG.md, spaced-repetition): weight = 1 + 2*missCount, shared
-  // with the deviation quiz's index weighting via weightedDraw.ts.
-  const weights = cells.map((c) => missWeight(missWeights[c.id] ?? 0));
+  // RV4 (docs/BACKLOG.md, spaced-repetition): weight each cell by its SR due-ness
+  // (unseen/overdue-low-box heaviest), shared with the deviation quiz via srWeight.
+  const weights = cells.map((c) => srWeight(srDeck[c.id], now));
 
   const selectedIndex = weightedIndex(rng, weights);
   const cell = cells[selectedIndex];
