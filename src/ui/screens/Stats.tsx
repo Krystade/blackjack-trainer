@@ -183,6 +183,16 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   const pairCancelCancelling = pairCancelHistory.filter((h) => h.cancelling);
   const pairCancelCancelCorrect = pairCancelCancelling.filter((h) => h.correct).length;
 
+  // RV4 (docs/BACKLOG.md, spaced-repetition): RETAINED accuracy — how you do on
+  // items recalled after their SR interval elapsed (a real gap), as distinct
+  // from raw in-drill accuracy which is inflated by massed same-session repeats.
+  // Retained accuracy is the honest read on whether it will still be there at
+  // the table; it only accrues across real days of use, so it can legitimately
+  // be empty for a while.
+  const retentionHistory = stats.retention.history;
+  const retentionReviews = retentionHistory.length;
+  const retentionCorrect = retentionHistory.filter((h) => h.correct).length;
+
   // Per-profile header (Cycle-1 Task 13): CVCX numbers (when the profile has
   // them) alongside actual results computed from this profile's own sessions
   // only (sessions persisted before profileId existed never match, and are
@@ -413,6 +423,33 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
               </span>
             </li>
           </ul>
+        )}
+      </section>
+
+      <section className="stats-section">
+        <h2 className="stats-section-title">Retention</h2>
+        {retentionReviews === 0 ? (
+          <p className="stats-detail">
+            No spaced reviews yet — retention accrues as items come due again after a real gap
+            (come back tomorrow).
+          </p>
+        ) : (
+          <>
+            <p className="stats-detail">
+              Accuracy on items recalled after a spaced gap — the honest read on what will still be
+              there at the table, distinct from in-drill accuracy.
+            </p>
+            <ul className="mistake-list">
+              <li className="mistake-row">
+                <span>Spaced reviews</span>
+                <span>{retentionReviews}</span>
+              </li>
+              <li className="mistake-row">
+                <span>Retained accuracy</span>
+                <span>{pct(retentionCorrect, retentionReviews)}</span>
+              </li>
+            </ul>
+          </>
         )}
       </section>
 

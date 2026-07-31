@@ -180,3 +180,36 @@ test('CVCX profile header renders score/EV/ROR/note plus actual accuracy from a 
   await expect(page.locator('.mistake-row', { hasText: 'Actual units/hr' })).not.toContainText('—');
   await shot(page, '28-stats-cvcx-header-session');
 });
+
+/* RV4: the Retention section shows RETAINED accuracy (correct on items recalled */
+/* after a spaced gap) — distinct from in-drill accuracy. Seed a retention       */
+/* history (the write path is unit-tested in gradeAnswer.test.ts) and assert the */
+/* display; also assert the empty-state copy when there are no spaced reviews.   */
+test('stats: Retention section renders retained accuracy from seeded gap reviews', async ({ page }) => {
+  await withStats(page, {
+    retention: {
+      history: [
+        { date: '2026-07-30T00:00:00.000Z', key: 'hard-16-v-10', box: 2, gapMs: 86400000, correct: true },
+        { date: '2026-07-30T00:01:00.000Z', key: '16v10', box: 3, gapMs: 259200000, correct: true },
+        { date: '2026-07-30T00:02:00.000Z', key: 'soft-18-v-9', box: 2, gapMs: 86400000, correct: false },
+      ],
+    },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await expect(page.locator('.stats-heading')).toHaveText('Stats');
+
+  const retention = page.locator('.stats-section', { hasText: 'Retention' });
+  await expect(retention).toBeVisible();
+  await expect(retention.locator('.mistake-row', { hasText: 'Spaced reviews' })).toContainText('3');
+  await expect(retention.locator('.mistake-row', { hasText: 'Retained accuracy' })).toContainText('67%');
+  await shot(page, 'stats-retention');
+});
+
+test('stats: Retention section shows the empty state before any spaced reviews', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  const retention = page.locator('.stats-section', { hasText: 'Retention' });
+  await expect(retention).toBeVisible();
+  await expect(retention).toContainText('No spaced reviews yet');
+});
