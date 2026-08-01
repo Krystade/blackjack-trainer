@@ -337,10 +337,13 @@ frontloaded design answers below.**
   TC≥0→BET; TC≤−1 → LEAVE if `(TC≤−2 OR decks-remaining ≤ ~2) AND freshShoe`, else SIT. Needs a
   `freshShoe` scenario flag (the only way LEAVE is ever correct). Optional per-profile risk knob ±1 TC.
 - **ET4 · Cover / heat decision — ❌ DROPPED (operator 2026-07-31).**
-- **ET5 · Endurance / fatigue drift — M. BUILD 3rd.** DESIGN (operator): **ANALYTICS OVER EXISTING
-  RUNS** (no new drill) — a Stats view comparing early-session vs late-session accuracy/speed (the
-  vigilance decrement) from the dated drill histories; **configurable** (session-gap / min-runs
-  threshold). Note: within-run latency isn't stored, so drift is measured across a session's runs.
+- **ET5 · Endurance / fatigue drift — M — ✅ SHIPPED 2026-08-01. BUILT 3rd.** ANALYTICS OVER EXISTING
+  RUNS (operator's choice, no new drill): `drills/fatigueDrift.ts` (pure) groups the dated counting
+  runs (count drill + timed challenge) into sessions by a **configurable session-gap** and compares
+  front-half vs back-half accuracy — the vigilance decrement. A Stats "Endurance / fatigue" section
+  with a session-gap Stepper shows early- vs late-session accuracy + a signed drift verdict
+  (slips-late / steady / holds-up). Within-run latency isn't stored, so drift is at run granularity
+  across a session. 7 unit + 2 e2e (declining session + empty state).
 - **ET6 · Pre-commitment / stop-loss — ❌ DROPPED (operator 2026-07-31).**
 - **ET7 · Adversarial dealer-pace pressure — S — ✅ SHIPPED 2026-08-01. BUILT 1st.** A "Pace pressure"
   toggle on the count drill: seeded sudden speed-up **bursts that recover** (operator's choice; not

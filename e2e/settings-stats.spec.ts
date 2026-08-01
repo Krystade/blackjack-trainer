@@ -213,3 +213,33 @@ test('stats: Retention section shows the empty state before any spaced reviews',
   await expect(retention).toBeVisible();
   await expect(retention).toContainText('No spaced reviews yet');
 });
+
+/* ET5: Endurance/fatigue drift — front-half vs back-half accuracy within a      */
+/* practice session (vigilance decrement). Seed a session that declines and      */
+/* assert the drift shows; the grouping math is unit-tested in fatigueDrift.test. */
+test('stats: Endurance/fatigue shows front vs back-half drift from a declining session', async ({ page }) => {
+  const T0 = Date.parse('2026-07-31T10:00:00.000Z');
+  const history = [];
+  for (let i = 0; i < 8; i++) {
+    // 8 runs 1 min apart (one 30-min session); front 4 correct, back 4 wrong.
+    history.push({ date: new Date(T0 + i * 60000).toISOString(), cards: 20, intervalMs: 800, correct: i < 4 });
+  }
+  await withStats(page, { countDrill: { history } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+
+  const section = page.locator('.stats-section', { hasText: 'Endurance' });
+  await expect(section).toBeVisible();
+  await expect(section.locator('.mistake-row', { hasText: 'Early-session' })).toContainText('100%');
+  await expect(section.locator('.mistake-row', { hasText: 'Late-session' })).toContainText('0%');
+  await expect(section.locator('.mistake-row', { hasText: 'Drift' })).toContainText('fatigue');
+  await shot(page, 'stats-fatigue');
+});
+
+test('stats: Endurance/fatigue shows the empty state before enough back-to-back runs', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  const section = page.locator('.stats-section', { hasText: 'Endurance' });
+  await expect(section).toBeVisible();
+  await expect(section).toContainText('Not enough back-to-back counting runs yet');
+});

@@ -16,6 +16,8 @@ import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../../engine/deviations';
 import { useAudio } from '../../audio/useAudio';
 import { narrateStatsSummary } from '../../audio/narrate';
 import { assistedFlag } from '../peekFlag';
+import { fatigueDrift, type DatedResult } from '../../drills/fatigueDrift';
+import { Stepper } from './Settings';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -85,6 +87,9 @@ function dash(): string {
 export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProps) {
   const [stats, setStats] = useState<StatsData>(() => loadStats());
   const [message, setMessage] = useState<string | null>(null);
+  // ET5: the session-gap for the fatigue-drift analysis is configurable (a gap
+  // longer than this splits practice sessions). Local to this screen.
+  const [fatigueGapMin, setFatigueGapMin] = useState(30);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Stats isn't handed `settings` as a prop, so it reads audio settings
   // directly from persistence (same pattern as loadStats() above). Refreshed
@@ -201,6 +206,24 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   const bslCorrect = bslHistory.filter((h) => h.correct).length;
   const bslLeaveRows = bslHistory.filter((h) => h.correctAction === 'leave');
   const bslLeaveCorrect = bslLeaveRows.filter((h) => h.correct).length;
+
+  // ET5: fatigue drift over the COUNTING runs you've logged (count drill + timed
+  // challenge — both dated per-run accuracy), grouped into sessions by the
+  // configurable gap. Front-half vs back-half accuracy within a session reveals
+  // the vigilance decrement — does your count slip late in a long session?
+  const countingResults: DatedResult[] = [
+    ...stats.countDrill.history.map((h) => ({ date: h.date, correct: h.correct })),
+    ...stats.timedCount.history.map((h) => ({ date: h.date, correct: h.correct })),
+  ];
+  const fatigue = fatigueDrift(countingResults, { gapMs: fatigueGapMin * 60 * 1000, minPerSession: 6 });
+  const fatigueVerdict =
+    fatigue.drift === null
+      ? null
+      : fatigue.drift <= -0.05
+        ? 'slips late (fatigue)'
+        : fatigue.drift >= 0.05
+          ? 'holds up / warms up'
+          : 'steady';
 
   // Per-profile header (Cycle-1 Task 13): CVCX numbers (when the profile has
   // them) alongside actual results computed from this profile's own sessions
@@ -481,6 +504,49 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
               <span>{bslLeaveRows.length === 0 ? dash() : pct(bslLeaveCorrect, bslLeaveRows.length)}</span>
             </li>
           </ul>
+        )}
+      </section>
+
+      <section className="stats-section">
+        <h2 className="stats-section-title">Endurance / fatigue</h2>
+        <Stepper
+          label="Session gap"
+          value={fatigueGapMin}
+          min={5}
+          max={120}
+          step={5}
+          format={(v) => `${v} min`}
+          onChange={setFatigueGapMin}
+        />
+        {fatigue.drift === null ? (
+          <p className="stats-detail">
+            Not enough back-to-back counting runs yet — do several count / timed runs in one sitting
+            and this compares your early-session vs late-session accuracy.
+          </p>
+        ) : (
+          <>
+            <p className="stats-detail">
+              Front-half vs back-half accuracy within a session — does your count hold up late, or
+              slip? ({fatigue.sessions} session{fatigue.sessions === 1 ? '' : 's'}, {fatigue.samples} runs)
+            </p>
+            <ul className="mistake-list">
+              <li className="mistake-row">
+                <span>Early-session</span>
+                <span>{pct(Math.round((fatigue.frontAccuracy ?? 0) * 1000), 1000)}</span>
+              </li>
+              <li className="mistake-row">
+                <span>Late-session</span>
+                <span>{pct(Math.round((fatigue.backAccuracy ?? 0) * 1000), 1000)}</span>
+              </li>
+              <li className="mistake-row">
+                <span>Drift</span>
+                <span>
+                  {(fatigue.drift > 0 ? '+' : '') + Math.round(fatigue.drift * 100)}%{' '}
+                  {fatigueVerdict ? `(${fatigueVerdict})` : ''}
+                </span>
+              </li>
+            </ul>
+          </>
         )}
       </section>
 
