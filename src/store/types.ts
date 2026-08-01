@@ -76,6 +76,12 @@ export interface Settings {
     // flash + pair-cancellation). Default false — opt-in, all existing behavior
     // and tests unchanged.
     messyCards: boolean;
+    // ET7 (docs/BACKLOG.md, experiential training): adversarial dealer-pace
+    // pressure — sudden seeded speed-up bursts during the ordinary count-drill
+    // flash that then recover (drills/pacePressure.ts). Default false — opt-in.
+    // Only the ordinary auto-flash count drill applies it; Countdown and Timed
+    // Challenge (which owns pacing) ignore it, same scoping as messyCards.
+    pacePressure: boolean;
   };
   audio: AudioSettings;
 }
@@ -152,6 +158,7 @@ export const DEFAULT_SETTINGS: Settings = {
     distractionMode: 'near-count',
     countBias: 'none',
     messyCards: false,
+    pacePressure: false,
   },
   audio: { ...DEFAULT_AUDIO },
 };

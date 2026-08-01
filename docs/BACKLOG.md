@@ -323,27 +323,32 @@ RV4 time-based spacing + retention measurement. (RV5 is the cheapest standalone 
 The "behavioral half" of counting the drills don't touch — discipline, composure, judgment under
 real-table conditions. Grounded in pressure-training science (practicing under simulated pressure
 ≈ Hedges' g 0.67 [SEARCH-SNIPPET], effective only when calibrated/progressive and GATED behind
-base fluency — so all of these are late-stage modes behind `competenceGate.ts`). 7 solo-drillable
-candidates, ranked:
-- **ET1 · Downswing / tilt inoculation session — L — flagship (= RV1's experiential half).** Scripted
-  30–40 buy-in drawdown, spread stays on; grade spread-conformity under stress + log emotional
-  checkpoints vs actual deviations. The one thing CVCX can't rehearse.
-- **ET2 · Loss-of-count recovery drill — M — best novelty/effort.** Count is taken away mid-shoe;
-  estimate a plausible resume value from tray depth or correctly bail to min-bet. NO known trainer
-  drills this; reuses the shipped discard tray (R6).
-- **ET3 · Risk-decision: bet / sit / leave — M.** Count+bankroll+rules snapshots graded on EV/risk
-  (uses imported CVCX numbers); extends R5's binary wong-out with the missing *leave* axis.
-- **ET4 · Cover / heat decision drill — M.** Scenarios graded on the practitioner cover rule (cover
-  only when it cuts heat AND cost < EV given). The *decision* to cover is drillable; the performance isn't.
-- **ET5 · Endurance / fatigue drift session — M — best science grounding.** Long low-stimulation run
-  measuring accuracy/latency decay front-half vs back-half (vigilance decrement); analytics over
-  shipped R1 telemetry.
-- **ET6 · Pre-commitment / stop-loss adherence — M.** Commit a plan, get tempted, graded on honoring
-  your own quit-points. Natural layer on ET1.
-- **ET7 · Adversarial dealer-pace pressure — S.** Sudden mid-shoe speed-ups (distinct from D1/RV5).
-**Top 3: ET1, ET2, ET3.** ET1/ET5/ET6 share a "pressure-session runner" substrate — build once if
-several land. Out-of-scope (in-casino/two-person): physical act-natural tells, table-talk, team
-wonging signals, deck-brick heft.
+base fluency — so all of these are late-stage modes behind `competenceGate.ts`). **OPERATOR
+DECISION 2026-07-31: drop ET2/ET4/ET6; build ET7 → ET3 → ET5 → ET1 (quick-wins-first order),
+frontloaded design answers below.**
+- **ET1 · Downswing / tilt inoculation session — L — flagship (= RV1's experiential half). BUILD 4th.**
+  DESIGN (operator): delivery = **RIGGED REAL HANDS** (engine plays a real, rigged 30–40 buy-in
+  losing run; you bet + play each); grading = **spread-conformity ONLY** (did you keep betting your
+  ramp through the downswing?) — operator explicitly does NOT want temptation prompts or an
+  urge-to-deviate self-report. The one thing CVCX can't rehearse.
+- **ET2 · Loss-of-count recovery — ❌ DROPPED (operator 2026-07-31).**
+- **ET3 · Risk-decision: bet / sit / leave — M. BUILD 2nd.** Adds the *leave* axis to R5 wong-out.
+  Grading rule = the RESEARCHED consensus (`docs/research/2026-08-01-bet-sit-leave-consensus.md`):
+  TC≥0→BET; TC≤−1 → LEAVE if `(TC≤−2 OR decks-remaining ≤ ~2) AND freshShoe`, else SIT. Needs a
+  `freshShoe` scenario flag (the only way LEAVE is ever correct). Optional per-profile risk knob ±1 TC.
+- **ET4 · Cover / heat decision — ❌ DROPPED (operator 2026-07-31).**
+- **ET5 · Endurance / fatigue drift — M. BUILD 3rd.** DESIGN (operator): **ANALYTICS OVER EXISTING
+  RUNS** (no new drill) — a Stats view comparing early-session vs late-session accuracy/speed (the
+  vigilance decrement) from the dated drill histories; **configurable** (session-gap / min-runs
+  threshold). Note: within-run latency isn't stored, so drift is measured across a session's runs.
+- **ET6 · Pre-commitment / stop-loss — ❌ DROPPED (operator 2026-07-31).**
+- **ET7 · Adversarial dealer-pace pressure — S — ✅ SHIPPED 2026-08-01. BUILT 1st.** A "Pace pressure"
+  toggle on the count drill: seeded sudden speed-up **bursts that recover** (operator's choice; not
+  escalating) — `drills/pacePressure.ts` (pure, one burst per 8-card window at a seeded offset,
+  2.5× during the burst), applied to the ordinary auto-flash interval; setting `drill.pacePressure`
+  (migration-safe, default off). Distinct from Timed Challenge (smooth ramp) + distractions. 6 unit
+  + e2e (toggle persists + pressured run grades).
+Out-of-scope (in-casino/two-person): physical act-natural tells, table-talk, team wonging, deck heft.
 
 ---
 

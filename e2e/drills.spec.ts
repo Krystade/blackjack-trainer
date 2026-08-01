@@ -1456,3 +1456,33 @@ test('count drill: Messy cards applies a per-card transform to the flashed cards
   expect(transform).toContain('rotate');
   expect(transform).toContain('translate');
 });
+
+/* ET7: adversarial dealer-pace pressure — sudden fast bursts on the count-drill */
+/* flash. Asserts the toggle persists AND a pressured run drills to a graded     */
+/* result (the burst timing math is proven in src/drills/pacePressure.test.ts). */
+test('count drill: Pace pressure toggle persists and a pressured run drills to a graded result', async ({
+  page,
+}) => {
+  await withSettings(page, { drill: { countIntervalMs: 150, countLengthCards: 6, countGroup: 1 } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await expect(page.locator('.count-setup')).toBeVisible();
+
+  const paceToggle = page.getByRole('checkbox', { name: /Pace pressure/ });
+  await expect(paceToggle).not.toBeChecked();
+  await paceToggle.check();
+  await expect(paceToggle).toBeChecked();
+  const settings = await readSettings(page);
+  expect((settings?.drill as { pacePressure?: boolean } | undefined)?.pacePressure).toBe(true);
+
+  // A pressured run still reaches a normal graded finish (bursts shorten some
+  // intervals but never stall the drill).
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.count-flash-area')).toBeVisible();
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+  await page.locator('.numpad-btn', { hasText: /^0$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
+});

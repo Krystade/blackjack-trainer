@@ -19,6 +19,7 @@ import { computeUnlockedTier, tierAbove, SPEED_TIER_ORDER } from '../../../drill
 import { loadStats, saveStats, saveSettings } from '../../../store/persist';
 import { PlayingCard } from '../../components/PlayingCard';
 import { cardJitter, jitterTransform } from '../../../drills/cardJitter';
+import { paceMultiplier } from '../../../drills/pacePressure';
 import { NumPad } from '../../components/NumPad';
 import { Segmented, Stepper } from '../Settings';
 import { useAudio } from '../../../audio/useAudio';
@@ -292,7 +293,10 @@ export function CountDrillView({
       }
       if (isLast) enterAnswerPhase();
       else setShownIndex((i) => i + 1);
-    }, settings.drill.countIntervalMs);
+      // ET7: adversarial dealer-pace pressure -- a seeded speed-up burst shortens
+      // THIS card's interval, then recovers (paceMultiplier returns 1 off-burst,
+      // and always 1 when the toggle is off, so default pacing is byte-identical).
+    }, settings.drill.countIntervalMs * (settings.drill.pacePressure ? paceMultiplier(runSeedRef.current, shownIndex) : 1));
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -302,6 +306,7 @@ export function CountDrillView({
     settings.drill.countIntervalMs,
     settings.drill.countManual,
     settings.drill.distractionFreq,
+    settings.drill.pacePressure,
     eyesFree,
     strictMode,
     countdownMode,
@@ -1074,6 +1079,23 @@ export function CountDrillView({
             />
             Messy cards (rotated / offset, like a real table)
           </label>
+
+          {/* ET7: adversarial dealer-pace pressure. Only meaningful for the
+              ordinary auto-flash count drill (Timed Challenge owns its own
+              pacing; manual/eyes-free are self-paced), so it's noted as such. */}
+          <label className="count-toggle">
+            <input
+              type="checkbox"
+              checked={settings.drill.pacePressure}
+              onChange={(e) => updateDrill({ pacePressure: e.target.checked })}
+            />
+            Pace pressure (sudden fast bursts, like a rushing dealer)
+          </label>
+          {settings.drill.pacePressure && (settings.drill.countManual || timedChallenge) && (
+            <div className="settings-row settings-note-row">
+              Pace pressure applies to the auto-flash drill — not manual or Timed Challenge runs.
+            </div>
+          )}
 
           <button type="button" className="drill-start-btn" onClick={start}>
             Start
