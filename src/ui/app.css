@@ -861,6 +861,21 @@ button {
   text-align: center;
 }
 
+/* ---------- Downswing / tilt-inoculation session (ET1) ---------- */
+
+.downswing-hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem max(0.6rem, env(safe-area-inset-left)) 0.4rem max(0.6rem, env(safe-area-inset-right));
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.downswing-bankroll {
+  color: #d8b969;
+}
+
 /* ---------- Distraction interruption (D1 part 2) ---------- */
 
 .distraction-area {

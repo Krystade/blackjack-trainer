@@ -326,11 +326,16 @@ real-table conditions. Grounded in pressure-training science (practicing under s
 base fluency — so all of these are late-stage modes behind `competenceGate.ts`). **OPERATOR
 DECISION 2026-07-31: drop ET2/ET4/ET6; build ET7 → ET3 → ET5 → ET1 (quick-wins-first order),
 frontloaded design answers below.**
-- **ET1 · Downswing / tilt inoculation session — L — flagship (= RV1's experiential half). BUILD 4th.**
-  DESIGN (operator): delivery = **RIGGED REAL HANDS** (engine plays a real, rigged 30–40 buy-in
-  losing run; you bet + play each); grading = **spread-conformity ONLY** (did you keep betting your
-  ramp through the downswing?) — operator explicitly does NOT want temptation prompts or an
-  urge-to-deviate self-report. The one thing CVCX can't rehearse.
+- **ET1 · Downswing / tilt inoculation session — L — ✅ SHIPPED 2026-08-01. BUILT 4th (flagship).**
+  RIGGED REAL HANDS + spread-conformity grading only (operator's choice; no temptations/self-report).
+  `drills/downswingShoe.ts` (pure, engine-validated) generates a rigged SOLO shoe of reliably-losing
+  PAT-HAND rounds (player made 17–19 stands, loses to a higher dealer 18–20 — no hits/Aces, 4 cards/
+  round, can't desync). New `DownswingView` runs it through the REAL Game engine (isolated from the
+  main Table) with the spread forced ON; the negative count makes the ramp call for the MINIMUM bet,
+  so the discipline tested is holding the minimum and NOT chasing. You watch the bankroll drain over
+  25 hands, then a report grades spread-conformity through the drawdown. 8 unit (incl. real-engine
+  loss validation) + e2e (full 25-hand session → 100% conformity at min bet). Follow-on: positive-
+  count "bet big and still lose" rounds (needs count-steering) for the richer tilt trigger.
 - **ET2 · Loss-of-count recovery — ❌ DROPPED (operator 2026-07-31).**
 - **ET3 · Risk-decision: bet / sit / leave — M. BUILD 2nd.** Adds the *leave* axis to R5 wong-out.
   Grading rule = the RESEARCHED consensus (`docs/research/2026-08-01-bet-sit-leave-consensus.md`):

@@ -1515,3 +1515,31 @@ test('bet/sit/leave: answering a scenario grades it and records self-consistent 
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toHaveCount(0);
   await expect(page.locator('.bsl-tc')).toBeVisible();
 });
+
+/* ET1: the tilt-inoculation Downswing session. Plays the full rigged losing run */
+/* (default bet = the minimum = the correct ramp bet at a negative count), then  */
+/* asserts the end report shows held-discipline + 100% conformity + a drawdown.  */
+/* The rig's per-round loss is proven against the engine in downswingShoe.test.  */
+test('downswing: playing the rigged session at min bet holds discipline (100% conformity) as the bankroll falls', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Downswing', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Downswing');
+  await shot(page, '96-downswing');
+
+  for (let r = 0; r < 25; r++) {
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    const stand = page.getByRole('button', { name: 'Stand', exact: true });
+    if (await stand.isVisible().catch(() => false)) await stand.click();
+    await page.getByRole('button', { name: r < 24 ? 'Next hand' : 'See result', exact: true }).click();
+  }
+
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await expect(page.locator('.drill-result .result-correct')).toContainText('held your discipline');
+  await expect(page.locator('.drill-result')).toContainText('100%');
+  await expect(page.locator('.drill-result')).toContainText('downswing');
+  await shot(page, '97-downswing-report');
+});

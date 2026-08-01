@@ -37,6 +37,7 @@ import { CountDrillView } from './drills/CountDrillView';
 import { TrueCountDrillView } from './drills/TrueCountDrillView';
 import { PairCancelView } from './drills/PairCancelView';
 import { BetSitLeaveView } from './drills/BetSitLeaveView';
+import { DownswingView } from './drills/DownswingView';
 import { DeckEstimationView } from './drills/DeckEstimationView';
 
 interface DrillsProps {
@@ -1256,7 +1257,16 @@ function MixedSessionView({
 
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
   const [mode, setMode] = useState<
-    'picker' | 'count' | 'truecount' | 'deckest' | 'flash' | 'quiz' | 'mixed' | 'paircancel' | 'betsitleave'
+    | 'picker'
+    | 'count'
+    | 'truecount'
+    | 'deckest'
+    | 'flash'
+    | 'quiz'
+    | 'mixed'
+    | 'paircancel'
+    | 'betsitleave'
+    | 'downswing'
   >('picker');
 
   if (mode === 'count') {
@@ -1310,6 +1320,11 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   if (mode === 'betsitleave') {
     return <BetSitLeaveView settings={settings} onBack={() => setMode('picker')} />;
   }
+  if (mode === 'downswing') {
+    return (
+      <DownswingView settings={settings} activeProfile={activeProfile} onBack={() => setMode('picker')} />
+    );
+  }
 
   return (
     <div className="drills-picker">
@@ -1338,6 +1353,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         </button>
         <button type="button" className="drills-nav-btn" onClick={() => setMode('betsitleave')}>
           Bet / Sit / Leave
+        </button>
+        <button type="button" className="drills-nav-btn" onClick={() => setMode('downswing')}>
+          Downswing
         </button>
       </div>
       <button type="button" className="drills-back-btn" onClick={() => onNavigate('home')}>
