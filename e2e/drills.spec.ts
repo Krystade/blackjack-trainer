@@ -1486,3 +1486,32 @@ test('count drill: Pace pressure toggle persists and a pressured run drills to a
   await expect(page.locator('.drill-result')).toBeVisible();
   await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
 });
+
+/* ET3: bet/sit/leave decision drill. Validates wiring deterministically without */
+/* pinning the seed: click a fixed action, then assert the recorded telemetry is */
+/* self-consistent (the consensus grading rule is proven in betSitLeave.test.ts). */
+test('bet/sit/leave: answering a scenario grades it and records self-consistent telemetry', async ({
+  page,
+}) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Bet / Sit / Leave', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Bet / Sit / Leave');
+  await expect(page.locator('.bsl-tc')).toBeVisible();
+  await shot(page, '95-bet-sit-leave');
+
+  await page.locator('.bsl-answers').getByRole('button', { name: 'Bet', exact: true }).click();
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+
+  const stats = await readStats(page);
+  const history = (stats?.betSitLeave as { history: Record<string, unknown>[] } | undefined)?.history ?? [];
+  expect(history).toHaveLength(1);
+  const row = history[0]!;
+  expect(row.taken).toBe('bet');
+  expect(['bet', 'sit', 'leave']).toContain(row.correctAction);
+  expect(row.correct).toBe(row.taken === row.correctAction); // grading is consistent
+
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toHaveCount(0);
+  await expect(page.locator('.bsl-tc')).toBeVisible();
+});

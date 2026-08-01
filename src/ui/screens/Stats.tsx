@@ -193,6 +193,15 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   const retentionReviews = retentionHistory.length;
   const retentionCorrect = retentionHistory.filter((h) => h.correct).length;
 
+  // ET3 (docs/BACKLOG.md, bet/sit/leave): overall accuracy + a dedicated LEAVE
+  // figure — leaving is the novel, hardest axis (R5's wong-out only covers
+  // bet vs sit), so it's worth seeing on its own.
+  const bslHistory = stats.betSitLeave.history;
+  const bslAttempts = bslHistory.length;
+  const bslCorrect = bslHistory.filter((h) => h.correct).length;
+  const bslLeaveRows = bslHistory.filter((h) => h.correctAction === 'leave');
+  const bslLeaveCorrect = bslLeaveRows.filter((h) => h.correct).length;
+
   // Per-profile header (Cycle-1 Task 13): CVCX numbers (when the profile has
   // them) alongside actual results computed from this profile's own sessions
   // only (sessions persisted before profileId existed never match, and are
@@ -450,6 +459,28 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
               </li>
             </ul>
           </>
+        )}
+      </section>
+
+      <section className="stats-section">
+        <h2 className="stats-section-title">Bet / sit / leave</h2>
+        {bslAttempts === 0 ? (
+          <p className="stats-detail">No bet/sit/leave decisions yet.</p>
+        ) : (
+          <ul className="mistake-list">
+            <li className="mistake-row">
+              <span>Decisions</span>
+              <span>{bslAttempts}</span>
+            </li>
+            <li className="mistake-row">
+              <span>Accuracy</span>
+              <span>{pct(bslCorrect, bslAttempts)}</span>
+            </li>
+            <li className="mistake-row">
+              <span>Leave calls</span>
+              <span>{bslLeaveRows.length === 0 ? dash() : pct(bslLeaveCorrect, bslLeaveRows.length)}</span>
+            </li>
+          </ul>
         )}
       </section>
 

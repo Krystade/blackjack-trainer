@@ -308,6 +308,18 @@ export interface Stats {
       correct: boolean;
     }[];
   };
+  // ET3 (docs/BACKLOG.md, experiential training): bet/sit/leave decision drill.
+  // One row per graded scenario; `correctAction` is the consensus-correct choice
+  // so Stats can show overall accuracy AND a per-action breakdown (the LEAVE
+  // axis is the hard, novel one). Migration-safe.
+  betSitLeave: {
+    history: {
+      date: string;
+      taken: 'bet' | 'sit' | 'leave';
+      correctAction: 'bet' | 'sit' | 'leave';
+      correct: boolean;
+    }[];
+  };
 }
 
 export const EMPTY_STATS: Stats = {
@@ -351,6 +363,9 @@ export const EMPTY_STATS: Stats = {
     history: [],
   },
   retention: {
+    history: [],
+  },
+  betSitLeave: {
     history: [],
   },
 };

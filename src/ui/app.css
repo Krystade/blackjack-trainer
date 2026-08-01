@@ -810,6 +810,57 @@ button {
   color: #b7d3c2;
 }
 
+/* ---------- Bet / Sit / Leave decision drill (ET3) ---------- */
+
+.bsl-snapshot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: center;
+  flex: 1;
+  justify-content: center;
+  padding: 0 1rem;
+}
+
+.bsl-snapshot .table-discard-tray {
+  width: 100%;
+  max-width: 340px;
+}
+
+.bsl-tc {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.bsl-freshshoe {
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid #2c5c41;
+}
+
+.bsl-fresh-yes {
+  color: #8fe0b0;
+  background: rgba(60, 140, 90, 0.15);
+}
+
+.bsl-fresh-no {
+  color: #b7d3c2;
+  background: rgba(120, 120, 120, 0.12);
+}
+
+.bsl-answers {
+  gap: 0.4rem;
+}
+
+.bsl-explain {
+  font-size: 0.85rem;
+  color: #b7d3c2;
+  text-align: center;
+}
+
 /* ---------- Distraction interruption (D1 part 2) ---------- */
 
 .distraction-area {
