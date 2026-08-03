@@ -320,6 +320,17 @@ export interface Stats {
       correct: boolean;
     }[];
   };
+  // ET1 (docs/BACKLOG.md, tilt-inoculation Downswing): one row per completed
+  // session (V3-1 fix — the session used to persist nothing). `correct`/`total`
+  // are the bets that matched the ramp; `drawdown` the units lost. Migration-safe.
+  downswing: {
+    history: {
+      date: string;
+      correct: number;
+      total: number;
+      drawdown: number;
+    }[];
+  };
 }
 
 export const EMPTY_STATS: Stats = {
@@ -366,6 +377,9 @@ export const EMPTY_STATS: Stats = {
     history: [],
   },
   betSitLeave: {
+    history: [],
+  },
+  downswing: {
     history: [],
   },
 };

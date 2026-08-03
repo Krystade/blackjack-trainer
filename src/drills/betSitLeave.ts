@@ -58,16 +58,29 @@ export function explainAction(s: BetSitLeaveScenario): string {
   return 'Early, mild negative — sit out; the shoe can still turn positive.';
 }
 
+const TOTAL_DECKS = 6;
+const TC_CLAMP = 6; // realistic true-count bound
+
 /**
- * Generate a seeded decision scenario. The TC is drawn over [-4, 3] (weighted
- * toward the negative decisions the drill exists to train), decks-remaining in
- * 0.5-deck steps over a 6-deck shoe, and a fresh table 50/50 — a mix that
- * naturally surfaces all three correct actions.
+ * Generate a seeded, PHYSICALLY-CONSISTENT decision scenario (V3-3 fix): the
+ * true count is derived from a plausible running count bounded by how much of
+ * the shoe has been dealt, so a big |TC| only occurs deep in the shoe — never
+ * an impossible "TC -4 with a near-full shoe". Decks-remaining in 0.5-deck steps
+ * over a 6-deck shoe; a fresh table 50/50. This naturally puts the sit/leave
+ * decisions where they really happen (deeper, negative shoes) and keeps early
+ * shoes near neutral (bet), while still surfacing all three correct actions.
  */
 export function makeBetSitLeaveScenario(seed?: number): BetSitLeaveScenario {
   const rng = mulberry32(seed ?? Date.now());
-  const trueCount = -4 + Math.floor(rng() * 8); // -4..3
   const decksRemaining = 0.5 * (1 + Math.floor(rng() * 12)); // 0.5..6.0
+  const decksDealt = TOTAL_DECKS - decksRemaining;
+  // Running count can only have swung as far as the dealt cards allow; ~±2 per
+  // dealt deck is already an extreme, so it bounds the plausible spread.
+  const rcMax = Math.round(2 * decksDealt) + 1;
+  const runningCount = -rcMax + Math.floor(rng() * (2 * rcMax + 1));
+  // App convention: floored true count. Clamp to a realistic band.
+  const rawTc = Math.floor(runningCount / decksRemaining);
+  const trueCount = Math.max(-TC_CLAMP, Math.min(TC_CLAMP, rawTc));
   const freshShoe = rng() < 0.5;
   return { trueCount, decksRemaining, freshShoe };
 }

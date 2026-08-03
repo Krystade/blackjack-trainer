@@ -6,6 +6,7 @@ import type { PlayerHand } from '../../../engine/game';
 import { makeDownswingShoe } from '../../../drills/downswingShoe';
 import { PlayingCard } from '../../components/PlayingCard';
 import { useAudio } from '../../../audio/useAudio';
+import { loadStats, saveStats } from '../../../store/persist';
 
 const ROUNDS = 25; // length of a downswing session (v1)
 const SOLO_SEATS: SeatConfig = { bots: 0, playerHands: 1, playerPosition: 0, botMistakePct: 0 };
@@ -94,6 +95,24 @@ export function DownswingView({
 
   const next = () => {
     if (round >= ROUNDS) {
+      // V3-1: persist the completed session so it's visible on Stats (it used to
+      // vanish on Back). One row per session: ramp-conformity + units lost.
+      const c = conformRef.current;
+      const stats = loadStats();
+      saveStats({
+        ...stats,
+        downswing: {
+          history: [
+            ...stats.downswing.history,
+            {
+              date: new Date().toISOString(),
+              correct: c.correct,
+              total: c.total,
+              drawdown: startBankrollRef.current - game.bankroll,
+            },
+          ],
+        },
+      });
       setPhase('done');
       return;
     }

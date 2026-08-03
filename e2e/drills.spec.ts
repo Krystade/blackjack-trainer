@@ -1551,4 +1551,12 @@ test('downswing: betting the ramp for the (swinging) count holds discipline — 
   await expect(page.locator('.drill-result')).toContainText('100%');
   await expect(page.locator('.drill-result')).toContainText('downswing');
   await shot(page, '97-downswing-report');
+
+  // V3-1: the session is now PERSISTED to Stats (it used to vanish on Back).
+  const stats = await readStats(page);
+  const dsHistory = (stats?.downswing as { history: Record<string, number>[] } | undefined)?.history ?? [];
+  expect(dsHistory).toHaveLength(1);
+  expect(dsHistory[0]!.total).toBe(25);
+  expect(dsHistory[0]!.correct).toBe(25); // perfect ramp play -> all bets matched
+  expect(dsHistory[0]!.drawdown).toBeGreaterThan(0);
 });

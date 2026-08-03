@@ -367,7 +367,7 @@ Fresh re-attack after the ETs shipped; 8 cited findings. Several are flaws in th
 - **V3-1 · ET1 flagship is near-unfailable + records nothing — S, HIGH.** It shows the live TC then
   grades bets by exact-match to that shown count (pass bar 90%, defaults 100%) → hard to fail; and it
   persists NO telemetry (`conformRef` is local, no load/save) so the session vanishes on Back, invisible
-  to Stats/ET5/Retention. FIXES: (a) persist ET1 results to Stats [clean — DOING]; (b) whether to HIDE
+  to Stats/ET5/Retention. FIXES: (a) persist ET1 results to Stats [✅ DONE 2026-08-02 — new Stats "Downswing" section]; (b) whether to HIDE
   the TC so you must count through the drawdown (harder, tests counting-under-tilt) vs keep it shown
   (pure betting-discipline) is a FLAGSHIP DESIGN CALL for the operator; (c) bet chips are hardcoded
   `[1..12]`, decoupled from the profile spread — should use the profile's ramp.
@@ -376,7 +376,7 @@ Fresh re-attack after the ETs shipped; 8 cited findings. Several are flaws in th
   composed — the actual live-table operation. An integrated "count a shoe → produce the TC" drill.
 - **V3-3 · ET3 draws TC and decks INDEPENDENTLY — S.** `betSitLeave.ts:69-71` yields physically-
   impossible snapshots (TC −4 with a near-full shoe); depth becomes a pure distractor on positive
-  counts. FIX: generate a plausible RC + depth, derive TC from them [clean — DOING]. (Also: never
+  counts. FIX: [✅ DONE 2026-08-02] generate a plausible RC + depth (bounded by dealt cards), derive TC. (Also: never
   trains the back-counter's wong-IN entry — larger follow-on.)
 - **V3-4 · Picker is a flat 9-button list, pressure modes ungated — S/M.** `computeUnlockedTier` has one
   caller; ET1/ET7 present identically to onboarding drills, contradicting the app's own competence-gate

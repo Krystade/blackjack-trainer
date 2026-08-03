@@ -207,6 +207,12 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   const bslLeaveRows = bslHistory.filter((h) => h.correctAction === 'leave');
   const bslLeaveCorrect = bslLeaveRows.filter((h) => h.correct).length;
 
+  // ET1 (V3-1): downswing sessions ridden out + spread-conformity through them.
+  const downswingHistory = stats.downswing.history;
+  const downswingSessions = downswingHistory.length;
+  const downswingConformCorrect = downswingHistory.reduce((s, h) => s + h.correct, 0);
+  const downswingConformTotal = downswingHistory.reduce((s, h) => s + h.total, 0);
+
   // ET5: fatigue drift over the COUNTING runs you've logged (count drill + timed
   // challenge — both dated per-run accuracy), grouped into sessions by the
   // configurable gap. Front-half vs back-half accuracy within a session reveals
@@ -502,6 +508,24 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
             <li className="mistake-row">
               <span>Leave calls</span>
               <span>{bslLeaveRows.length === 0 ? dash() : pct(bslLeaveCorrect, bslLeaveRows.length)}</span>
+            </li>
+          </ul>
+        )}
+      </section>
+
+      <section className="stats-section">
+        <h2 className="stats-section-title">Downswing (tilt inoculation)</h2>
+        {downswingSessions === 0 ? (
+          <p className="stats-detail">No downswing sessions yet.</p>
+        ) : (
+          <ul className="mistake-list">
+            <li className="mistake-row">
+              <span>Sessions ridden out</span>
+              <span>{downswingSessions}</span>
+            </li>
+            <li className="mistake-row">
+              <span>Spread-conformity (bets held to the ramp)</span>
+              <span>{pct(downswingConformCorrect, downswingConformTotal)}</span>
             </li>
           </ul>
         )}

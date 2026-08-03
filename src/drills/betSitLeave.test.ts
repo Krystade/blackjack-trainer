@@ -66,16 +66,26 @@ describe('makeBetSitLeaveScenario', () => {
     expect(makeBetSitLeaveScenario(42)).toEqual(makeBetSitLeaveScenario(42));
   });
 
-  it('draws TC in [-4, 3], decks in 0.5..6 (half steps), and a boolean fresh shoe', () => {
+  it('draws an integer TC in [-6, 6], decks in 0.5..6 (half steps), and a boolean fresh shoe', () => {
     for (let seed = 0; seed < 500; seed++) {
       const s = makeBetSitLeaveScenario(seed);
-      expect(s.trueCount).toBeGreaterThanOrEqual(-4);
-      expect(s.trueCount).toBeLessThanOrEqual(3);
+      expect(s.trueCount).toBeGreaterThanOrEqual(-6);
+      expect(s.trueCount).toBeLessThanOrEqual(6);
       expect(Number.isInteger(s.trueCount)).toBe(true);
       expect(s.decksRemaining).toBeGreaterThanOrEqual(0.5);
       expect(s.decksRemaining).toBeLessThanOrEqual(6);
       expect((s.decksRemaining * 2) % 1).toBe(0); // half-deck increments
       expect(typeof s.freshShoe).toBe('boolean');
+    }
+  });
+
+  it('is physically plausible (V3-3): big |TC| only occurs deep in the shoe — no "TC -4 at a near-full shoe"', () => {
+    for (let seed = 0; seed < 800; seed++) {
+      const s = makeBetSitLeaveScenario(seed);
+      // The running count can only have swung ~±2 per dealt deck, so |TC| is
+      // depth-limited: near-full shoes stay neutral; extreme counts need depth.
+      if (s.decksRemaining >= 5) expect(Math.abs(s.trueCount)).toBeLessThanOrEqual(1);
+      if (s.decksRemaining >= 3) expect(Math.abs(s.trueCount)).toBeLessThanOrEqual(3);
     }
   });
 
