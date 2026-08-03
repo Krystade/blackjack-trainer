@@ -362,6 +362,32 @@ frontloaded design answers below.**
   + e2e (toggle persists + pressured run grades).
 Out-of-scope (in-casino/two-person): physical act-natural tells, table-talk, team wonging, deck heft.
 
+### From the 2026-08-02 red-team v3 (post RV4 + ET7/3/5/1) — full doc: `docs/research/2026-08-02-adversarial-redteam-v3.md`
+Fresh re-attack after the ETs shipped; 8 cited findings. Several are flaws in the JUST-shipped ETs.
+- **V3-1 · ET1 flagship is near-unfailable + records nothing — S, HIGH.** It shows the live TC then
+  grades bets by exact-match to that shown count (pass bar 90%, defaults 100%) → hard to fail; and it
+  persists NO telemetry (`conformRef` is local, no load/save) so the session vanishes on Back, invisible
+  to Stats/ET5/Retention. FIXES: (a) persist ET1 results to Stats [clean — DOING]; (b) whether to HIDE
+  the TC so you must count through the drawdown (harder, tests counting-under-tilt) vs keep it shown
+  (pure betting-discipline) is a FLAGSHIP DESIGN CALL for the operator; (c) bet chips are hardcoded
+  `[1..12]`, decoupled from the profile spread — should use the profile's ramp.
+- **V3-2 · No drill makes you PRODUCE a true count — M.** The TC drill hands you RC + decks and asks
+  only the quotient (`trueCountDrill.ts:32`); RC-maintenance + depth-estimation + division are never
+  composed — the actual live-table operation. An integrated "count a shoe → produce the TC" drill.
+- **V3-3 · ET3 draws TC and decks INDEPENDENTLY — S.** `betSitLeave.ts:69-71` yields physically-
+  impossible snapshots (TC −4 with a near-full shoe); depth becomes a pure distractor on positive
+  counts. FIX: generate a plausible RC + depth, derive TC from them [clean — DOING]. (Also: never
+  trains the back-counter's wong-IN entry — larger follow-on.)
+- **V3-4 · Picker is a flat 9-button list, pressure modes ungated — S/M.** `computeUnlockedTier` has one
+  caller; ET1/ET7 present identically to onboarding drills, contradicting the app's own competence-gate
+  principle. Soft-gating/sequencing = a DESIGN CALL (the operator is an expert; gating adds friction).
+- **V3-5..8 (secondary):** ET5 ignores latency drift + spans discrete short runs; RV4 retention is a
+  single pooled number with no "due today" list (and can't accrue for ~4 calendar days); ET1's arc is a
+  100%-loss wall with a Stand-only button; decision drills grade strictly binary (a cheap error scores
+  like a catastrophe).
+**Top-3 (red-team):** fix the flagship ET1 (V3-1), integrated "produce a TC" drill (V3-2), picker
+sequencing/soft-gating (V3-4). Verified RV4 is genuinely wired (not a stub) before critiquing.
+
 ---
 
 **Build order — OPERATOR-SET 2026-07-26:** R1→R2→R3→D1 ✅ done. NEXT: **T0 complete
