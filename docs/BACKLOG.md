@@ -370,7 +370,7 @@ Fresh re-attack after the ETs shipped; 8 cited findings. Several are flaws in th
   to Stats/ET5/Retention. FIXES: (a) persist ET1 results to Stats [✅ DONE 2026-08-02 — new Stats "Downswing" section]; (b) whether to HIDE
   the TC so you must count through the drawdown (harder, tests counting-under-tilt) vs keep it shown
   (pure betting-discipline) is a FLAGSHIP DESIGN CALL for the operator; (c) ✅ DONE 2026-08-02 — bet chips now derive from the profile spread (betChipsFor).
-- **V3-2 · No drill makes you PRODUCE a true count — M.** The TC drill hands you RC + decks and asks
+- **V3-2 · Produce-a-true-count drill — M — ✅ SHIPPED 2026-08-02.** The TC drill hands you RC + decks and asks
   only the quotient (`trueCountDrill.ts:32`); RC-maintenance + depth-estimation + division are never
   composed — the actual live-table operation. An integrated "count a shoe → produce the TC" drill.
 - **V3-3 · ET3 draws TC and decks INDEPENDENTLY — S.** `betSitLeave.ts:69-71` yields physically-

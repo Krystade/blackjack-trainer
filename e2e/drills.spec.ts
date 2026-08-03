@@ -1560,3 +1560,35 @@ test('downswing: betting the ramp for the (swinging) count holds discipline — 
   expect(dsHistory[0]!.correct).toBe(25); // perfect ramp play -> all bets matched
   expect(dsHistory[0]!.drawdown).toBeGreaterThan(0);
 });
+
+/* V3-2: the "produce a true count" drill — flash (maintain RC), judge the tray */
+/* (estimate decks), enter the TRUE count. Validates the full flow + self-       */
+/* consistent telemetry (the grading math is unit-tested in produceTcDrill.test).*/
+test('produce the true count: flash then produce a TC, graded within tolerance and recorded', async ({
+  page,
+}) => {
+  await withSettings(page, { drill: { countIntervalMs: 120, countLengthCards: 6, countGroup: 1 } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Produce the True Count', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Produce the True Count');
+  await expect(page.locator('.count-flash-area')).toBeVisible();
+
+  // After the flash, the discard tray + numpad appear for the TC answer.
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('.table-discard-tray')).toBeVisible();
+  await shot(page, '98-produce-tc');
+  await page.locator('.numpad-btn', { hasText: /^0$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
+
+  const stats = await readStats(page);
+  const history = (stats?.produceTc as { history: Record<string, number>[] } | undefined)?.history ?? [];
+  expect(history).toHaveLength(1);
+  const row = history[0]!;
+  expect(row.produced).toBe(0);
+  // Correctness is consistent with the tolerance (±1) around the shown correctTc.
+  expect(row.correct).toBe((Math.abs(0 - (row.correctTc as number)) <= 1) as unknown as number);
+});

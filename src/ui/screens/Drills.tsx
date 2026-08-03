@@ -35,6 +35,7 @@ import { ZONE_LABEL } from '../../audio/zones';
 import type { ZoneId } from '../../audio/zones';
 import { CountDrillView } from './drills/CountDrillView';
 import { TrueCountDrillView } from './drills/TrueCountDrillView';
+import { ProduceTcDrillView } from './drills/ProduceTcDrillView';
 import { PairCancelView } from './drills/PairCancelView';
 import { BetSitLeaveView } from './drills/BetSitLeaveView';
 import { DownswingView } from './drills/DownswingView';
@@ -1267,6 +1268,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     | 'paircancel'
     | 'betsitleave'
     | 'downswing'
+    | 'producetc'
   >('picker');
 
   if (mode === 'count') {
@@ -1280,6 +1282,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   }
   if (mode === 'truecount') {
     return <TrueCountDrillView settings={settings} onBack={() => setMode('picker')} />;
+  }
+  if (mode === 'producetc') {
+    return <ProduceTcDrillView settings={settings} onBack={() => setMode('picker')} />;
   }
   if (mode === 'deckest') {
     return <DeckEstimationView settings={settings} onBack={() => setMode('picker')} />;
@@ -1335,6 +1340,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         </button>
         <button type="button" className="drills-nav-btn" onClick={() => setMode('truecount')}>
           True Count Drill
+        </button>
+        <button type="button" className="drills-nav-btn" onClick={() => setMode('producetc')}>
+          Produce the True Count
         </button>
         <button type="button" className="drills-nav-btn" onClick={() => setMode('deckest')}>
           Deck Estimation

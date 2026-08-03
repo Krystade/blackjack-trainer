@@ -62,7 +62,7 @@ function mergeSettings(parsed: Record<string, unknown>): Settings {
 
 /**
  * Merge a parsed (possibly partial) stats blob over a deep copy of the empty
- * stats: top-level fields plus the thirteen nested sections (categories,
+ * stats: top-level fields plus the fourteen nested sections (categories,
  * perIndex, mistakes, countDrill, trueCount, deckEstimation, timedCount,
  * sessions, distraction, pairCancel, retention, betSitLeave, downswing). The telemetry sections (trueCount/deckEstimation/
  * timedCount/distraction) postdate the original stats shape, so any blob
@@ -139,6 +139,11 @@ function mergeStats(parsed: Record<string, unknown>): Stats {
       typeof p.downswing === 'object' && p.downswing !== null
         ? { ...base.downswing, ...p.downswing }
         : base.downswing,
+    // V3-2 (docs/BACKLOG.md, produce-a-TC): same backfill idiom.
+    produceTc:
+      typeof p.produceTc === 'object' && p.produceTc !== null
+        ? { ...base.produceTc, ...p.produceTc }
+        : base.produceTc,
   };
 }
 

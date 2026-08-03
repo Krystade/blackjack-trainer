@@ -331,6 +331,16 @@ export interface Stats {
       drawdown: number;
     }[];
   };
+  // V3-2 (docs/BACKLOG.md, produce-a-true-count drill): one row per graded round
+  // (produced TC vs correct, within the by-eye tolerance). Migration-safe.
+  produceTc: {
+    history: {
+      date: string;
+      produced: number;
+      correctTc: number;
+      correct: boolean;
+    }[];
+  };
 }
 
 export const EMPTY_STATS: Stats = {
@@ -380,6 +390,9 @@ export const EMPTY_STATS: Stats = {
     history: [],
   },
   downswing: {
+    history: [],
+  },
+  produceTc: {
     history: [],
   },
 };
