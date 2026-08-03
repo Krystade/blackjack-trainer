@@ -10,7 +10,13 @@ import { loadStats, saveStats } from '../../../store/persist';
 
 const ROUNDS = 25; // length of a downswing session (v1)
 const SOLO_SEATS: SeatConfig = { bots: 0, playerHands: 1, playerPosition: 0, botMistakePct: 0 };
-const BET_CHIPS = [1, 2, 4, 8, 10, 12];
+
+/** V3-1c: the selectable bets are the profile's OWN ramp units (deduped, sorted),
+ * not a hardcoded set — so the chips match the spread the bets are graded against. */
+function betChipsFor(spread: { units: number }[]): number[] {
+  const units = [...new Set(spread.map((r) => r.units))].filter((u) => u > 0).sort((a, b) => a - b);
+  return units.length > 0 ? units : [1];
+}
 
 type Phase = 'bet' | 'play' | 'settled' | 'done';
 
@@ -65,9 +71,10 @@ export function DownswingView({
   const [, setVersion] = useState(0);
   const bump = () => setVersion((v) => v + 1);
 
+  const betChips = betChipsFor(activeProfile.spread);
   const [phase, setPhase] = useState<Phase>('bet');
   const [round, setRound] = useState(1);
-  const [selectedBet, setSelectedBet] = useState(BET_CHIPS[0]);
+  const [selectedBet, setSelectedBet] = useState(betChips[0]);
   // Spread-conformity tally: how many of your bets matched the ramp for the count.
   const conformRef = useRef({ correct: 0, total: 0 });
   const startBankrollRef = useRef(game.bankroll);
@@ -210,7 +217,7 @@ export function DownswingView({
             shrink from a big bet at a good count.
           </div>
           <div className="bet-chips">
-            {BET_CHIPS.map((units) => (
+            {betChips.map((units) => (
               <button
                 key={units}
                 type="button"
