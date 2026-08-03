@@ -18,26 +18,36 @@ import { mulberry32 } from '../engine/cards';
  * the discipline the session tests is holding that minimum, not chasing.
  */
 
-type Pattern = { player: [Rank, Rank]; dealerUp: Rank; dealerHole: Rank };
-
-/** Each pattern is a two-card player pat hand that loses to a higher two-card
- * dealer pat hand. Varied for immersion; all are no-hit, no-Ace, guaranteed
- * losses. */
-const LOSING_PATTERNS: readonly Pattern[] = [
-  { player: ['10', '9'], dealerUp: '10', dealerHole: '10' }, // 19 v 20
-  { player: ['10', '8'], dealerUp: '10', dealerHole: '9' }, //  18 v 19
-  { player: ['10', '8'], dealerUp: '10', dealerHole: '10' }, // 18 v 20
-  { player: ['9', '8'], dealerUp: '10', dealerHole: '8' }, //   17 v 18
-  { player: ['10', '7'], dealerUp: '9', dealerHole: '10' }, //  17 v 19
-];
-
 const card = (rank: Rank): Card => ({ rank, suit: 's' });
 
-/** Cards for one round, in the SOLO deal order the engine consumes them:
- * player card 1, dealer up-card, player card 2, dealer hole-card. */
-function roundCards(p: Pattern): Card[] {
-  return [card(p.player[0]), card(p.dealerUp), card(p.player[1]), card(p.dealerHole)];
-}
+/**
+ * Each losing round is a full card SEQUENCE in the SOLO deal order the engine
+ * consumes them: player card 1, dealer up-card, player card 2, dealer hole-card,
+ * then any dealer hit-cards (the player never hits — every player hand is a made
+ * hard 17-19 that basic strategy stands, and none is a pair, so there's no
+ * split/double temptation either, keeping the deal deterministic).
+ *
+ * TWO families, interleaved so the running count SWINGS across the session:
+ *  - HIGH-CARD PAT losses (4 cards): a 10-heavy loss to a higher dealer pat hand
+ *    — pushes the count NEGATIVE, so the ramp calls for the minimum bet.
+ *  - LOW-CARD DEALER-DRAW-OUT losses (6 cards): the dealer draws small cards out
+ *    to 21 and beats the player's pat 18-19 — pushes the count POSITIVE, so the
+ *    ramp calls for a BIG bet that then loses. That "bet big at a good count and
+ *    lose anyway" hand is the real tilt trigger this session exists to inoculate.
+ */
+const PAT_LOSSES: readonly Rank[][] = [
+  ['10', '10', '9', '10'], // P19 v D20
+  ['10', '10', '8', '9'], //  P18 v D19
+  ['10', '10', '8', '10'], // P18 v D20
+  ['9', '10', '8', '8'], //   P17 v D18
+  ['10', '9', '7', '10'], //  P17 v D19
+];
+
+const DRAW_OUT_LOSSES: readonly Rank[][] = [
+  ['10', '5', '9', '4', '6', '6'], // P19; dealer 5,4 -> hit 6 (15) -> hit 6 (21)
+  ['10', '6', '8', '5', '4', '6'], // P18; dealer 6,5 -> hit 4 (15) -> hit 6 (21)
+  ['10', '4', '9', '3', '6', '8'], // P19; dealer 4,3 -> hit 6 (13) -> hit 8 (21)
+];
 
 /**
  * Build a rigged shoe (Card[]) of `rounds` reliably-losing solo rounds, seeded.
@@ -48,13 +58,20 @@ export function makeDownswingShoe(rounds: number, seed?: number): Card[] {
   const rng = mulberry32(seed ?? Date.now());
   const cards: Card[] = [];
   for (let r = 0; r < rounds; r++) {
-    const pattern = LOSING_PATTERNS[Math.floor(rng() * LOSING_PATTERNS.length)];
-    cards.push(...roundCards(pattern));
+    // A deliberate two-phase ARC so every session visits BOTH count regimes:
+    //   1st half — mostly PAT (high-card) losses -> the count grinds NEGATIVE,
+    //     so the ramp calls for the minimum bet and you lose small, over and over.
+    //   2nd half — mostly DRAW-OUT (low-card) losses -> the count climbs POSITIVE,
+    //     so the ramp calls for a BIG bet that the dealer draws out to beat.
+    // That "you did everything right, bet big at a good count, and lost anyway"
+    // hand is the real tilt trigger. The 20% off-family mix + seeded pattern
+    // choice keep it from feeling scripted.
+    const drawOutProb = r < rounds / 2 ? 0.35 : 0.85;
+    const pool = rng() < drawOutProb ? DRAW_OUT_LOSSES : PAT_LOSSES;
+    const ranks = pool[Math.floor(rng() * pool.length)];
+    for (const rank of ranks) cards.push(card(rank));
   }
   // Buffer (uncounted-by-design tail) so nothing throws on a misplay's stray hit.
   for (let i = 0; i < 8; i++) cards.push(card('10'));
   return cards;
 }
-
-/** Exposed for tests / the view: the fixed cards-per-round of the rigged deal. */
-export const DOWNSWING_CARDS_PER_ROUND = 4;

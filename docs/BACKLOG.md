@@ -331,11 +331,15 @@ frontloaded design answers below.**
   `drills/downswingShoe.ts` (pure, engine-validated) generates a rigged SOLO shoe of reliably-losing
   PAT-HAND rounds (player made 17–19 stands, loses to a higher dealer 18–20 — no hits/Aces, 4 cards/
   round, can't desync). New `DownswingView` runs it through the REAL Game engine (isolated from the
-  main Table) with the spread forced ON; the negative count makes the ramp call for the MINIMUM bet,
-  so the discipline tested is holding the minimum and NOT chasing. You watch the bankroll drain over
-  25 hands, then a report grades spread-conformity through the drawdown. 8 unit (incl. real-engine
-  loss validation) + e2e (full 25-hand session → 100% conformity at min bet). Follow-on: positive-
-  count "bet big and still lose" rounds (needs count-steering) for the richer tilt trigger.
+  main Table) with the spread forced ON; you watch the bankroll drain over 25 hands, then a report
+  grades spread-conformity through the drawdown. ✅ ENRICHED 2026-08-02: the shoe now runs a two-phase
+  ARC — 1st-half pat (high-card) losses grind the count NEGATIVE (bet minimum, lose small); 2nd-half
+  draw-out (low-card) losses climb it POSITIVE, where the ramp calls for a BIG bet the dealer draws
+  out to beat — so you feel the real tilt trigger: bet big at a good count and lose anyway. TC shown
+  in the HUD; conformity graded against the varying ramp. Uses high shoe penetration so the fixed rig
+  never mid-session reshuffles (a reshuffle resets the count and desyncs the graded bet — found+fixed
+  via an in-engine 100%-ramp-conformity test). 6 unit (real-engine loss + count-swing across seeds +
+  ramp-conformity) + e2e (bet the ramp for the swinging count → 100% held-discipline).
 - **ET2 · Loss-of-count recovery — ❌ DROPPED (operator 2026-07-31).**
 - **ET3 · Risk-decision: bet / sit / leave — M. BUILD 2nd.** Adds the *leave* axis to R5 wong-out.
   Grading rule = the RESEARCHED consensus (`docs/research/2026-08-01-bet-sit-leave-consensus.md`):

@@ -1516,14 +1516,19 @@ test('bet/sit/leave: answering a scenario grades it and records self-consistent 
   await expect(page.locator('.bsl-tc')).toBeVisible();
 });
 
-/* ET1: the tilt-inoculation Downswing session. Plays the full rigged losing run */
-/* (default bet = the minimum = the correct ramp bet at a negative count), then  */
-/* asserts the end report shows held-discipline + 100% conformity + a drawdown.  */
-/* The rig's per-round loss is proven against the engine in downswingShoe.test.  */
-test('downswing: playing the rigged session at min bet holds discipline (100% conformity) as the bankroll falls', async ({
+/* ET1: the tilt-inoculation Downswing session. The count now SWINGS (draw-out  */
+/* rounds push it positive, pat rounds negative), so the ramp bet varies. This  */
+/* plays it with PERFECT discipline — betting the DEFAULT_SPREAD ramp for the    */
+/* TC shown each hand — and asserts that scores 100% conformity + held-discipline*/
+/* through the drawdown. The rig's per-round loss + count swing are proven       */
+/* against the engine in downswingShoe.test.ts. */
+test('downswing: betting the ramp for the (swinging) count holds discipline — 100% conformity as the bankroll falls', async ({
   page,
 }) => {
   test.setTimeout(30_000);
+  // DEFAULT_SPREAD ramp: TC<=0->1, 1->2, 2->4, 3->8, 4->10, 5+->12 units.
+  const rampBet = (tc: number) => (tc <= 0 ? 1 : tc === 1 ? 2 : tc === 2 ? 4 : tc === 3 ? 8 : tc === 4 ? 10 : 12);
+
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Downswing', exact: true }).click();
@@ -1531,6 +1536,10 @@ test('downswing: playing the rigged session at min bet holds discipline (100% co
   await shot(page, '96-downswing');
 
   for (let r = 0; r < 25; r++) {
+    // Read the shown true count and bet the ramp exactly.
+    const tcText = await page.locator('.downswing-count').innerText(); // e.g. "TC +2"
+    const tc = parseInt(tcText.replace(/[^-\d]/g, ''), 10) || 0;
+    await page.locator('.bet-chips').getByRole('button', { name: String(rampBet(tc)), exact: true }).click();
     await page.getByRole('button', { name: 'Deal', exact: true }).click();
     const stand = page.getByRole('button', { name: 'Stand', exact: true });
     if (await stand.isVisible().catch(() => false)) await stand.click();

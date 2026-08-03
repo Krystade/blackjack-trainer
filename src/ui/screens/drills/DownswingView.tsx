@@ -17,6 +17,10 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
+function formatSigned(n: number): string {
+  return n > 0 ? `+${n}` : String(n);
+}
+
 /**
  * ET1 (docs/BACKLOG.md): the tilt-inoculation downswing session. Plays a rigged
  * run of REAL but reliably-losing hands (drills/downswingShoe.ts) with the bet
@@ -40,7 +44,12 @@ export function DownswingView({
   const gameRef = useRef<Game | null>(null);
   if (gameRef.current === null) {
     const cfg: GameConfig = {
-      penetration: activeProfile.penetration,
+      // High penetration on purpose: the rigged shoe is a fixed losing sequence
+      // meant to be played to the end. A mid-session reshuffle would reset the
+      // running count (desyncing the bet the player was shown from the count
+      // their bet is graded against), so we push the cut card past where the
+      // session ends — the shoe's built-in buffer guarantees no underflow.
+      penetration: 0.99,
       betSpreadOn: true, // force the ramp on: bets are graded against it
       spread: activeProfile.spread,
       bankrollStart: activeProfile.bankrollStart,
@@ -48,7 +57,7 @@ export function DownswingView({
       rules: activeProfile.rules,
       seats: SOLO_SEATS,
     };
-    gameRef.current = Game.withRiggedShoe(cfg, makeDownswingShoe(ROUNDS + 2, randomSeed()));
+    gameRef.current = Game.withRiggedShoe(cfg, makeDownswingShoe(ROUNDS, randomSeed()));
   }
   const game = gameRef.current;
 
@@ -116,8 +125,10 @@ export function DownswingView({
             {conform.total} bets matched your ramp).
           </div>
           <div className="result-detail">
-            You rode out a {drawdown}-unit downswing over {ROUNDS} hands. The count stayed negative —
-            the disciplined play was to keep betting the minimum, not to chase.
+            You rode out a {drawdown}-unit downswing over {ROUNDS} hands — through negative counts
+            where the play was to bet the minimum, and positive counts where the ramp called for a big
+            bet that lost anyway. The disciplined play was to keep betting your ramp for the count, the
+            whole way down.
           </div>
           <button type="button" className="drill-back-btn" onClick={onBack}>
             Back to Drills
@@ -140,6 +151,7 @@ export function DownswingView({
         <span>
           Hand {round}/{ROUNDS}
         </span>
+        <span className="downswing-count">TC {formatSigned(game.trueCountNow)}</span>
         <span className="downswing-bankroll">Bankroll {game.bankroll}</span>
         <span className={drawdown > 0 ? 'result-wrong' : ''}>−{drawdown}u</span>
       </div>
@@ -175,7 +187,8 @@ export function DownswingView({
       {phase === 'bet' && (
         <div className="action-bar action-bar-bet">
           <div className="settings-row settings-note-row">
-            Count is negative — bet your ramp (the minimum). Don’t chase.
+            Bet your ramp for the count (shown above) — hold it through the losses; don’t chase, don’t
+            shrink from a big bet at a good count.
           </div>
           <div className="bet-chips">
             {BET_CHIPS.map((units) => (

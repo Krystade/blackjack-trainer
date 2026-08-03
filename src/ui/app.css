@@ -876,6 +876,10 @@ button {
   color: #d8b969;
 }
 
+.downswing-count {
+  color: #8fbfe0;
+}
+
 /* ---------- Distraction interruption (D1 part 2) ---------- */
 
 .distraction-area {
