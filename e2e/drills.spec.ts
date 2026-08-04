@@ -1516,48 +1516,41 @@ test('bet/sit/leave: answering a scenario grades it and records self-consistent 
   await expect(page.locator('.bsl-tc')).toBeVisible();
 });
 
-/* ET1: the tilt-inoculation Downswing session. The count now SWINGS (draw-out  */
-/* rounds push it positive, pat rounds negative), so the ramp bet varies. This  */
-/* plays it with PERFECT discipline — betting the DEFAULT_SPREAD ramp for the    */
-/* TC shown each hand — and asserts that scores 100% conformity + held-discipline*/
-/* through the drawdown. The rig's per-round loss + count swing are proven       */
-/* against the engine in downswingShoe.test.ts. */
-test('downswing: betting the ramp for the (swinging) count holds discipline — 100% conformity as the bankroll falls', async ({
+/* ET1: the tilt-inoculation Downswing session. The count is now HIDDEN (operator */
+/* choice): you must keep your OWN count through the losing arc and bet the ramp  */
+/* for it. This e2e can't read a hidden count, so it just plays the session       */
+/* through (min bet each hand) and asserts it completes, reports a conformity     */
+/* figure + drawdown, and PERSISTS the session to Stats. Grading correctness      */
+/* (betting the ramp => 100%) is proven in-engine in downswingShoe.test.ts. */
+test('downswing: plays the rigged losing session to a graded report and persists it to Stats', async ({
   page,
 }) => {
   test.setTimeout(30_000);
-  // DEFAULT_SPREAD ramp: TC<=0->1, 1->2, 2->4, 3->8, 4->10, 5+->12 units.
-  const rampBet = (tc: number) => (tc <= 0 ? 1 : tc === 1 ? 2 : tc === 2 ? 4 : tc === 3 ? 8 : tc === 4 ? 10 : 12);
-
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Downswing', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Downswing');
+  // The count is NOT shown — this is a count-through-the-tilt drill.
+  await expect(page.locator('.downswing-count')).toHaveCount(0);
   await shot(page, '96-downswing');
 
   for (let r = 0; r < 25; r++) {
-    // Read the shown true count and bet the ramp exactly.
-    const tcText = await page.locator('.downswing-count').innerText(); // e.g. "TC +2"
-    const tc = parseInt(tcText.replace(/[^-\d]/g, ''), 10) || 0;
-    await page.locator('.bet-chips').getByRole('button', { name: String(rampBet(tc)), exact: true }).click();
-    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await page.getByRole('button', { name: 'Deal', exact: true }).click(); // default = min bet
     const stand = page.getByRole('button', { name: 'Stand', exact: true });
     if (await stand.isVisible().catch(() => false)) await stand.click();
     await page.getByRole('button', { name: r < 24 ? 'Next hand' : 'See result', exact: true }).click();
   }
 
   await expect(page.locator('.drill-result')).toBeVisible();
-  await expect(page.locator('.drill-result .result-correct')).toContainText('held your discipline');
-  await expect(page.locator('.drill-result')).toContainText('100%');
+  await expect(page.locator('.drill-result')).toContainText('%'); // a spread-conformity figure
   await expect(page.locator('.drill-result')).toContainText('downswing');
   await shot(page, '97-downswing-report');
 
-  // V3-1: the session is now PERSISTED to Stats (it used to vanish on Back).
+  // V3-1: the session is PERSISTED to Stats (it used to vanish on Back).
   const stats = await readStats(page);
   const dsHistory = (stats?.downswing as { history: Record<string, number>[] } | undefined)?.history ?? [];
   expect(dsHistory).toHaveLength(1);
   expect(dsHistory[0]!.total).toBe(25);
-  expect(dsHistory[0]!.correct).toBe(25); // perfect ramp play -> all bets matched
   expect(dsHistory[0]!.drawdown).toBeGreaterThan(0);
 });
 

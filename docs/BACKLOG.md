@@ -367,9 +367,7 @@ Fresh re-attack after the ETs shipped; 8 cited findings. Several are flaws in th
 - **V3-1 · ET1 flagship is near-unfailable + records nothing — S, HIGH.** It shows the live TC then
   grades bets by exact-match to that shown count (pass bar 90%, defaults 100%) → hard to fail; and it
   persists NO telemetry (`conformRef` is local, no load/save) so the session vanishes on Back, invisible
-  to Stats/ET5/Retention. FIXES: (a) persist ET1 results to Stats [✅ DONE 2026-08-02 — new Stats "Downswing" section]; (b) whether to HIDE
-  the TC so you must count through the drawdown (harder, tests counting-under-tilt) vs keep it shown
-  (pure betting-discipline) is a FLAGSHIP DESIGN CALL for the operator; (c) ✅ DONE 2026-08-02 — bet chips now derive from the profile spread (betChipsFor).
+  to Stats/ET5/Retention. FIXES: (a) persist ET1 results to Stats [✅ DONE 2026-08-02 — new Stats "Downswing" section]; (b) ✅ DONE 2026-08-03 (operator): TC is now HIDDEN — you count through the drawdown yourself (counting-under-tilt); (c) ✅ DONE 2026-08-02 — bet chips now derive from the profile spread (betChipsFor).
 - **V3-2 · Produce-a-true-count drill — M — ✅ SHIPPED 2026-08-02.** The TC drill hands you RC + decks and asks
   only the quotient (`trueCountDrill.ts:32`); RC-maintenance + depth-estimation + division are never
   composed — the actual live-table operation. An integrated "count a shoe → produce the TC" drill.

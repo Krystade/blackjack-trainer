@@ -24,10 +24,6 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
-function formatSigned(n: number): string {
-  return n > 0 ? `+${n}` : String(n);
-}
-
 /**
  * ET1 (docs/BACKLOG.md): the tilt-inoculation downswing session. Plays a rigged
  * run of REAL but reliably-losing hands (drills/downswingShoe.ts) with the bet
@@ -177,7 +173,6 @@ export function DownswingView({
         <span>
           Hand {round}/{ROUNDS}
         </span>
-        <span className="downswing-count">TC {formatSigned(game.trueCountNow)}</span>
         <span className="downswing-bankroll">Bankroll {game.bankroll}</span>
         <span className={drawdown > 0 ? 'result-wrong' : ''}>−{drawdown}u</span>
       </div>
@@ -213,8 +208,8 @@ export function DownswingView({
       {phase === 'bet' && (
         <div className="action-bar action-bar-bet">
           <div className="settings-row settings-note-row">
-            Bet your ramp for the count (shown above) — hold it through the losses; don’t chase, don’t
-            shrink from a big bet at a good count.
+            Keep your own count through the losses and bet your ramp for it — the count is NOT shown.
+            Don’t chase, and don’t shrink from a big bet at a good count.
           </div>
           <div className="bet-chips">
             {betChips.map((units) => (
