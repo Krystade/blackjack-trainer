@@ -375,11 +375,10 @@ Fresh re-attack after the ETs shipped; 8 cited findings. Several are flaws in th
   impossible snapshots (TC −4 with a near-full shoe); depth becomes a pure distractor on positive
   counts. FIX: [✅ DONE 2026-08-02] generate a plausible RC + depth (bounded by dealt cards), derive TC. (Also: never
   trains the back-counter's wong-IN entry — larger follow-on.)
-- **V3-4 · Picker is a flat 9-button list, pressure modes ungated — S/M.** `computeUnlockedTier` has one
+- **V3-4 · Soft competence gating of pressure modes — ✅ SHIPPED 2026-08-03 (operator: soft).** `computeUnlockedTier` has one
   caller; ET1/ET7 present identically to onboarding drills, contradicting the app's own competence-gate
   principle. Soft-gating/sequencing = a DESIGN CALL (the operator is an expert; gating adds friction).
-- **V3-5..8 (secondary):** ET5 ignores latency drift + spans discrete short runs; RV4 retention is a
-  single pooled number with no "due today" list (and can't accrue for ~4 calendar days); ET1's arc is a
+- **V3-5..8 (secondary):** ET5 ignores latency drift + spans discrete short runs; RV4 retention "due today" list ❌ DECLINED (operator 2026-08-03); retention is a single pooled number (can't accrue for ~4 calendar days); ET1's arc is a
   100%-loss wall with a Stand-only button; decision drills grade strictly binary (a cheap error scores
   like a catastrophe).
 **Top-3 (red-team):** fix the flagship ET1 (V3-1), integrated "produce a TC" drill (V3-2), picker

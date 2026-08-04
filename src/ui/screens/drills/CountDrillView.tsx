@@ -20,6 +20,7 @@ import { loadStats, saveStats, saveSettings } from '../../../store/persist';
 import { PlayingCard } from '../../components/PlayingCard';
 import { cardJitter, jitterTransform } from '../../../drills/cardJitter';
 import { paceMultiplier } from '../../../drills/pacePressure';
+import { isCountFluent } from '../../../drills/fluencyGate';
 import { NumPad } from '../../components/NumPad';
 import { Segmented, Stepper } from '../Settings';
 import { useAudio } from '../../../audio/useAudio';
@@ -83,6 +84,8 @@ export function CountDrillView({
   onSettingsChange: (settings: Settings) => void;
 }) {
   const [countdownMode, setCountdownMode] = useState(false);
+  // V3-4 soft gate: computed once at mount (fluency doesn't change mid-session).
+  const [countFluent] = useState(() => isCountFluent(loadStats().countDrill.history));
   const [phase, setPhase] = useState<CountPhase>('setup');
   const [drillRound, setDrillRound] = useState<CountDrillRound | null>(null);
   const [countdownRound, setCountdownRound] = useState<CountdownRound | null>(null);
@@ -1091,6 +1094,11 @@ export function CountDrillView({
             />
             Pace pressure (sudden fast bursts, like a rushing dealer)
           </label>
+          {!countFluent && settings.drill.pacePressure && (
+            <div className="settings-row settings-note-row">
+              Advanced — build your count fluency first (it stays available).
+            </div>
+          )}
           {settings.drill.pacePressure && (settings.drill.countManual || timedChallenge) && (
             <div className="settings-row settings-note-row">
               Pace pressure applies to the auto-flash drill — not manual or Timed Challenge runs.

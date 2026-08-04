@@ -22,7 +22,8 @@ import {
 import type { SrDeck } from '../../drills/spacedRepetition';
 import { pickMixedType } from '../../drills/mixedSession';
 import type { MixedItemType } from '../../drills/mixedSession';
-import { saveSettings } from '../../store/persist';
+import { saveSettings, loadStats } from '../../store/persist';
+import { isCountFluent } from '../../drills/fluencyGate';
 import { PlayingCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import { ZonePad } from '../components/ZonePad';
@@ -1331,6 +1332,14 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     );
   }
 
+  // V3-4: SOFT competence gating — advanced pressure modes still work, but show
+  // a "build your fluency first" nudge until the learner has demonstrated basic
+  // count-drill competence. Read once here (only the picker branch reaches this).
+  const fluent = isCountFluent(loadStats().countDrill.history);
+  const advancedNote = fluent ? null : (
+    <div className="drills-nav-note">Advanced — build your count fluency first</div>
+  );
+
   return (
     <div className="drills-picker">
       <h1 className="drills-title">Drills</h1>
@@ -1359,12 +1368,22 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         <button type="button" className="drills-nav-btn" onClick={() => setMode('paircancel')}>
           Pair Cancellation
         </button>
-        <button type="button" className="drills-nav-btn" onClick={() => setMode('betsitleave')}>
+        <button
+          type="button"
+          className={`drills-nav-btn${fluent ? '' : ' drills-nav-btn-advanced'}`}
+          onClick={() => setMode('betsitleave')}
+        >
           Bet / Sit / Leave
         </button>
-        <button type="button" className="drills-nav-btn" onClick={() => setMode('downswing')}>
+        {advancedNote}
+        <button
+          type="button"
+          className={`drills-nav-btn${fluent ? '' : ' drills-nav-btn-advanced'}`}
+          onClick={() => setMode('downswing')}
+        >
           Downswing
         </button>
+        {advancedNote}
       </div>
       <button type="button" className="drills-back-btn" onClick={() => onNavigate('home')}>
         Back to Home

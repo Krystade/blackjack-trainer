@@ -679,6 +679,19 @@ button {
   background: #1b4c31;
 }
 
+/* V3-4 soft gate: advanced pressure modes stay clickable but read as advanced. */
+.drills-nav-btn-advanced {
+  border-style: dashed;
+  border-color: #4a4030;
+}
+
+.drills-nav-note {
+  margin: -0.4rem 0 0.2rem;
+  font-size: 0.75rem;
+  color: #b7a06a;
+  text-align: center;
+}
+
 .drills-back-btn {
   min-height: 48px;
   padding: 0 1.5rem;

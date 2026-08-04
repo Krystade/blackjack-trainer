@@ -1585,3 +1585,34 @@ test('produce the true count: flash then produce a TC, graded within tolerance a
   // Correctness is consistent with the tolerance (±1) around the shown correctTc.
   expect(row.correct).toBe((Math.abs(0 - (row.correctTc as number)) <= 1) as unknown as number);
 });
+
+/* V3-4: SOFT competence gating. The advanced pressure modes (Bet/Sit/Leave,     */
+/* Downswing) show a "build fluency first" nudge until the learner has enough    */
+/* count-drill history — but stay CLICKABLE (soft, not a lock). Gone once fluent. */
+test('drills picker: advanced modes show a soft fluency nudge until fluent, but stay clickable', async ({
+  page,
+}) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await expect(page.locator('.drills-title')).toHaveText('Drills');
+  // Fresh profile: not fluent -> advisory on the two advanced modes.
+  await expect(page.locator('.drills-nav-note')).toHaveCount(2);
+  await shot(page, '99-soft-gate');
+  // Soft, not locked: the mode still opens.
+  await page.getByRole('button', { name: 'Downswing', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Downswing');
+});
+
+test('drills picker: no fluency nudge once the learner is fluent', async ({ page }) => {
+  const history = Array.from({ length: 10 }, () => ({
+    date: '2026-08-03T00:00:00.000Z',
+    cards: 20,
+    intervalMs: 800,
+    correct: true,
+  }));
+  await withStats(page, { countDrill: { history } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await expect(page.locator('.drills-title')).toHaveText('Drills');
+  await expect(page.locator('.drills-nav-note')).toHaveCount(0);
+});
