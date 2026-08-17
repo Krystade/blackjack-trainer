@@ -1,0 +1,260 @@
+/**
+ * Design tokens and the four shipped themes (C1 + C2).
+ *
+ * Before this file, app.css held 311 hardcoded hex literals across 55 distinct
+ * values and zero custom properties — and 89 of the pairs among those 55 were
+ * closer than 22 in RGB distance, i.e. perceptually the same colour
+ * (`#163d29` vs `#17402a` differ by 3.3). Nobody chose those as different
+ * greens; they are drift from adding one screen at a time. That is why the app
+ * could not be re-themed at all: there was no single source of truth to swap.
+ *
+ * A theme here is exactly this token set and nothing else, so adding a fifth
+ * is a block of values rather than a code change.
+ *
+ * MIDNIGHT FELT REPRODUCES TODAY'S PALETTE EXACTLY. C1 is a pure refactor:
+ * every token below is a literal lifted from app.css, mapped by how often it
+ * was used and what it was used for. The before/after screenshots in
+ * docs/sources/c1-{before,after} must be identical.
+ *
+ * Applied via `data-theme` on <html>; the default (attribute absent) is
+ * Midnight Felt, so a user who never opens the picker sees no change.
+ */
+
+:root,
+:root[data-theme='midnight-felt'] {
+  color-scheme: dark;
+
+  /* Grounds, darkest to lightest */
+  --bg: #0d2318;
+  --bg-sunken: #0a1c14;
+  --surface: #143b26;
+  --raised: #1b4c31;
+  --line: #2c5c41;
+
+  /* Ink */
+  --ink: #eaf3ec;
+  --ink-dim: #b7d3c2;
+  /* A third ink tier below --ink-dim, for labels that must recede
+     entirely (the discard-tray caption, benchmark footnotes). */
+  --ink-faint: #7fa890;
+
+  /* One accent, reserved for the live decision and the correct answer */
+  --accent: #d8b969;
+  --accent-ink: #0d2318;
+  --accent-wash: rgb(216 185 105 / 16%);
+
+  /* Semantic — deliberately NOT the accent */
+  --good: #6fcf97;
+  --bad: #eb5757;
+  --bad-surface: #4a1f1f;
+  --bad-line: #6b2c2c;
+
+  /* Playing cards */
+  --card-face: #f4f1e6;
+  --tray-face: #f4ead1;
+  --card-ink: #16241c;
+  --card-red: #c0392b;
+  --card-back: #1b3a63;
+  /* Card edges: the discard tray is a stack-of-cards TEXTURE built from
+     these, so they are not decoration and must not collapse onto the
+     accent -- doing so flattened the tray into a solid gold bar. */
+  --card-border: #c9c3ab;
+  --card-edge: #c2b184;
+  --card-edge-soft: #d8c9a3;
+  /* Card back weave + its edge, and the muted accent hairline used on
+     chips and badges. Explicit per theme rather than color-mix()d off
+     another token: derived guesses drifted visibly from the originals. */
+  --card-back-weave: #24457a;
+  --card-back-edge: #0f2340;
+  /* Distinct values the census first mistook for drift: a muted accent
+     for de-emphasised hints, the rank glyph's red (darker than the suit
+     pip's), and a softer ink for secondary readouts. */
+  --accent-dim: #b7a06a;
+  --card-red-ink: #b3261e;
+  --ink-soft: #cfe8d9;
+  --accent-line: #4a4030;
+
+  /* Strategy-chart action colours (the charts screen) */
+  --act-hit: #a8443f;
+  --act-stand: #9c8134;
+  --act-double: #2c7d76;
+  --act-split: #5c4b96;
+  --act-surrender: #7a5230;
+  --act-ink: #f7f3e8;
+}
+
+/* Paper. The printed strategy card you keep in your wallet — best for
+   studying charts in daylight, worst for night driving. */
+:root[data-theme='bone-ink'] {
+  color-scheme: light;
+
+  --bg: #f2ece0;
+  --bg-sunken: #e6dccb;
+  --surface: #faf6ee;
+  --raised: #ffffff;
+  --line: #d8cdb8;
+
+  --ink: #201c16;
+  --ink-dim: #6f6455;
+  /* A third ink tier below --ink-dim, for labels that must recede
+     entirely (the discard-tray caption, benchmark footnotes). */
+  --ink-faint: #8b8272;
+
+  --accent: #8a5a1e;
+  --accent-ink: #ffffff;
+  --accent-wash: rgb(138 90 30 / 13%);
+
+  --good: #2f7d4f;
+  --bad: #a52f2a;
+  --bad-surface: #f3ded9;
+  --bad-line: #d9b3ac;
+
+  --card-face: #ffffff;
+  --tray-face: #faf3e6;
+  --card-ink: #201c16;
+  --card-red: #b32c22;
+  --card-back: #3c5a86;
+  /* Card edges: the discard tray is a stack-of-cards TEXTURE built from
+     these, so they are not decoration and must not collapse onto the
+     accent -- doing so flattened the tray into a solid gold bar. */
+  --card-border: #c9bfa6;
+  --card-edge: #b3a88f;
+  --card-edge-soft: #cdbf9f;
+  /* Card back weave + its edge, and the muted accent hairline used on
+     chips and badges. Explicit per theme rather than color-mix()d off
+     another token: derived guesses drifted visibly from the originals. */
+  --card-back-weave: #5f7fae;
+  --card-back-edge: #2a4467;
+  /* Distinct values the census first mistook for drift: a muted accent
+     for de-emphasised hints, the rank glyph's red (darker than the suit
+     pip's), and a softer ink for secondary readouts. */
+  --accent-dim: #a1793f;
+  --card-red-ink: #a52a20;
+  --ink-soft: #4a4237;
+  --accent-line: #cbb98d;
+
+  /* Lighter fills than the dark themes: on a light ground the ink is dark, so
+     saturated cells would fight the letter sitting on them. */
+  --act-hit: #c98a84;
+  --act-stand: #d9c68a;
+  --act-double: #8fbdb6;
+  --act-split: #b0a3d4;
+  --act-surrender: #cbab86;
+  --act-ink: #241f18;
+}
+
+/* True black, so an OLED phone lights only the cards. Least glare in a dark
+   car and the longest battery on a long session. */
+:root[data-theme='amoled-night'] {
+  color-scheme: dark;
+
+  --bg: #000000;
+  --bg-sunken: #000000;
+  --surface: #0b0b0c;
+  --raised: #151517;
+  --line: #2a2a2e;
+
+  --ink: #f0f0f2;
+  --ink-dim: #8b8b93;
+  /* A third ink tier below --ink-dim, for labels that must recede
+     entirely (the discard-tray caption, benchmark footnotes). */
+  --ink-faint: #6d6d75;
+
+  --accent: #f2c14e;
+  --accent-ink: #000000;
+  --accent-wash: rgb(242 193 78 / 15%);
+
+  --good: #58d68d;
+  --bad: #ff5c5c;
+  --bad-surface: #2a1414;
+  --bad-line: #522525;
+
+  --card-face: #eeeeee;
+  --tray-face: #e6dfcd;
+  --card-ink: #101012;
+  --card-red: #cc2f26;
+  --card-back: #1e3a63;
+  /* Card edges: the discard tray is a stack-of-cards TEXTURE built from
+     these, so they are not decoration and must not collapse onto the
+     accent -- doing so flattened the tray into a solid gold bar. */
+  --card-border: #c9c3ab;
+  --card-edge: #b7a98a;
+  --card-edge-soft: #d3c7a6;
+  /* Card back weave + its edge, and the muted accent hairline used on
+     chips and badges. Explicit per theme rather than color-mix()d off
+     another token: derived guesses drifted visibly from the originals. */
+  --card-back-weave: #2a4a80;
+  --card-back-edge: #101f38;
+  /* Distinct values the census first mistook for drift: a muted accent
+     for de-emphasised hints, the rank glyph's red (darker than the suit
+     pip's), and a softer ink for secondary readouts. */
+  --accent-dim: #c9a03f;
+  --card-red-ink: #c0261e;
+  --ink-soft: #c9c9d0;
+  --accent-line: #4a4030;
+
+  --act-hit: #8e3a36;
+  --act-stand: #8a7430;
+  --act-double: #1f6f68;
+  --act-split: #4d3f85;
+  --act-surrender: #6b4728;
+  --act-ink: #f5f5f7;
+}
+
+/* Neutral graphite with a copper accent. Charts read cleanest on a hueless
+   ground — nothing competes with the action colours. */
+:root[data-theme='slate-copper'] {
+  color-scheme: dark;
+
+  --bg: #15171a;
+  --bg-sunken: #101215;
+  --surface: #1d2024;
+  --raised: #262a2f;
+  --line: #3a4046;
+
+  --ink: #eceef1;
+  --ink-dim: #98a0a9;
+  /* A third ink tier below --ink-dim, for labels that must recede
+     entirely (the discard-tray caption, benchmark footnotes). */
+  --ink-faint: #7b838c;
+
+  --accent: #d98a5a;
+  --accent-ink: #15171a;
+  --accent-wash: rgb(217 138 90 / 16%);
+
+  --good: #5fc98a;
+  --bad: #f0655c;
+  --bad-surface: #33201f;
+  --bad-line: #5c3330;
+
+  --card-face: #f2f2ef;
+  --tray-face: #e9e6da;
+  --card-ink: #15171a;
+  --card-red: #bf3b2f;
+  --card-back: #33465c;
+  /* Card edges: the discard tray is a stack-of-cards TEXTURE built from
+     these, so they are not decoration and must not collapse onto the
+     accent -- doing so flattened the tray into a solid gold bar. */
+  --card-border: #c9c6bd;
+  --card-edge: #b3ae9f;
+  --card-edge-soft: #d2ccbd;
+  /* Card back weave + its edge, and the muted accent hairline used on
+     chips and badges. Explicit per theme rather than color-mix()d off
+     another token: derived guesses drifted visibly from the originals. */
+  --card-back-weave: #44597a;
+  --card-back-edge: #1d2a3d;
+  /* Distinct values the census first mistook for drift: a muted accent
+     for de-emphasised hints, the rank glyph's red (darker than the suit
+     pip's), and a softer ink for secondary readouts. */
+  --accent-dim: #b4744c;
+  --card-red-ink: #b3352a;
+  --ink-soft: #c8ccd1;
+  --accent-line: #4a3c30;
+
+  --act-hit: #9d4c46;
+  --act-stand: #8f7d3c;
+  --act-double: #2f7b78;
+  --act-split: #5a4f96;
+  --act-surrender: #7e5b39;
+  --act-ink: #f4f5f6;
+}
