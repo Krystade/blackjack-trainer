@@ -150,3 +150,62 @@ clean (3 pre-existing fast-refresh warnings).
   (none exists; installed PWAs get better background audio on Android).
 - Eyes-free ZonePad still silently ignores an illegal zone tap — an audible
   "split isn't available" cue is the open half.
+
+---
+
+# Phase plan agreed 2026-08-17 (operator)
+
+Themes chosen: **Midnight Felt (default)**, Bone & Ink, AMOLED Night,
+Slate & Copper. The other eight from the gallery are dropped.
+
+Order is fixed by the operator: fix bugs -> validate -> publish -> deep bug
+hunt -> validate -> publish -> redesign. No redesign work starts before the
+hunt is clean.
+
+## Phase A — known open bugs
+
+Enumerated 2026-08-17: `grep TODO|FIXME|XXX|HACK|BUG:` over src/ and e2e/
+returns NOTHING, and BACKLOG's only tracked defect (T0-BUG1, dim-screen
+toggle unreachable) was fixed 2026-07-27. So the real list is what this
+session surfaced:
+
+- **A1 · Eyes-free ZonePad silently swallows an illegal action.** Gating the
+  keyboard/zone answer on `drillLegalActions` (item #3) means a Split tap on
+  a non-pair now does nothing at all. Eyes-on that is correct (the button is
+  visibly disabled); eyes-free there is NO disabled affordance, so the user
+  gets silence and cannot tell whether the tap registered. Needs an audible
+  cue. This is a regression introduced by #3 and it lands squarely in the
+  driving use case.
+- **A2 · `hasSpoken()` is not reactive.** `AudioApi.hasSpoken()` reads module
+  state during render, so a Repeat button conditioned on it would not
+  re-render when it changes. Currently unused (the button renders on
+  `audio.enabled` alone), so it is a latent trap rather than a live bug —
+  either make it reactive or delete it.
+- **A3 · Flashcard/quiz `reason` is not a reason.** `gradeAnswer.ts:136,161`
+  sets `reason` to `card.cellId` / `item.label`, so the correction panel and
+  the spoken correction both say "soft-20-v-A" where prose belongs. The
+  MistakeCard's classification note currently carries the whole explanatory
+  load. Not a crash, but it is the weakest part of the #4 work.
+
+## Phase B — deep bug hunt
+
+Parallel read-only sweeps over disjoint areas (engine/grading, audio/clips,
+store/persistence+migration, UI state/lifecycles), each reporting findings
+with a concrete failure scenario. Fix what is real, ignore what is stylistic.
+
+## Phase C — redesign, sequenced
+
+C1  Design tokens: one variable set replacing 311 literals / 55 colours.
+    No visual change intended; pure refactor, screenshots before/after.
+C2  Theme system: the 4 chosen token sets + persisted selection + a Settings
+    picker. Midnight Felt default.
+C3  Primitives: button / card / panel / row / section / topbar.
+C4  Navigation: persistent bottom tab bar; Home becomes a dashboard;
+    Charts + Stats relocate. THIS is the step that rewrites what the e2e
+    specs pin -- specs get updated alongside, never deleted to go green.
+C5  Stats split into tabs (operator's pick).
+C6  Table screen: reclaim the dead felt, promote the discard tray.
+C7  Settings: grouped sections, help text de-emphasised, stale migration
+    note removed.
+C8  Drills picker: grouped by skill rather than 10 identical buttons.
+C9  Full-app visual QA pass across all 4 themes at 320/390/tablet.
