@@ -215,3 +215,33 @@ C7  Settings: grouped sections, help text de-emphasised, stale migration
     note removed.
 C8  Drills picker: grouped by skill rather than 10 identical buttons.
 C9  Full-app visual QA pass across all 4 themes at 320/390/tablet.
+
+## C1 groundwork — colour census of app.css (measured 2026-08-17)
+
+311 hex literals, **55 distinct**, **0 custom properties**. The top seven
+values account for 226 of the 311 uses (73%), so a small token set does most
+of the work:
+
+| uses | value | token |
+|---|---|---|
+| 50 | `#2c5c41` | `--line` |
+| 47 | `#eaf3ec` | `--ink` |
+| 39 | `#d8b969` | `--accent` |
+| 26 | `#143b26` | `--surface` |
+| 23 | `#b7d3c2` | `--ink-dim` |
+| 19 | `#1b4c31` | `--raised` |
+| 14 | `#0a1c14` | `--bg-sunken` |
+|  5 | `#0d2318` | `--bg` |
+|  5 | `#6fcf97` | `--good` |
+|  5 | `#eb5757` | `--bad` |
+
+**The finding that justifies the whole phase:** among those 55 colours there
+are **89 pairs closer than 22 in RGB distance** — i.e. perceptually the same
+colour. The worst are `#163d29` vs `#17402a` (d=3.3), `#0f2a1c` vs `#102d1e`
+(d=3.7) and `#142e20` vs `#16311f` (d=3.7). Nobody chose those as different
+colours; they are drift from adding one screen at a time, each re-eyeballing
+a green. 27 values are used exactly once.
+
+So C1 is not a cosmetic pass: the palette currently has no single source of
+truth, which is precisely why the app cannot be re-themed at all, and why the
+four chosen themes need this step first.
