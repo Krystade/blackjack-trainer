@@ -245,3 +245,59 @@ a green. 27 values are used exactly once.
 So C1 is not a cosmetic pass: the palette currently has no single source of
 truth, which is precisely why the app cannot be re-themed at all, and why the
 four chosen themes need this step first.
+
+## Phase B — deep bug hunt, RESULTS (2026-08-17)
+
+Four read-only sweeps over a suite that was 100% green. Fixed and published in
+`a1a59eb`; the deploy needed a re-run after a transient GitHub Pages 503.
+
+**Two crashes, both reachable in ordinary play:**
+- `correctPlay` threw on A,A when splitting was unavailable (SOFT tables start
+  at 13; A,A is soft 12). `Game.act` calls it *before* applying the action, so
+  it blanked the app and lost the session.
+- Switching flashcard category without answering left the keydown listener on
+  the previous card: the next keypress graded the abandoned hand, accepted an
+  impossible Split, and wrote the miss to Stats + the SR deck under the wrong
+  cellId.
+
+**Data-loss paths (store):** uncapped histories -> 5.6MB/year -> quota ->
+unguarded `setItem` throwing into click handlers; a `null` history blanking
+the app with Reset Stats stranded on the crashing screen; export/import
+silently omitting profiles and both SR decks.
+
+**Audio:** bare rank letters spoken ("cue", and "dealer A." read as the
+article); orphaned wake-lock sentinels; `stopClips` with zero callers; five
+call sites still missing volume.
+
+**UI:** chart overlay advancing underneath itself; wrong chart cell for a
+missed split; every touch peek counted twice.
+
+### Deliberately NOT changed — needs the operator's source
+
+**Negative Illustrious-18 indices may be off by one.** `13v2`, `13v3`,
+`12v5`, `12v6` use the raw index as the `hit at TC <=` threshold, while
+`12v4` is converted (index 0 -> `<= -1`). Canonical I18 states these as
+"stand at TC >= index", which converts to `index - 1`. If canonical is right,
+the trainer demands `hit` on 13 v 2 at exactly TC -1 where the book says
+stand, and grades a correct stand as a missed deviation.
+
+The code matches this repo's own spec verbatim
+(`plans/2026-07-13-blackjack-trainer.md:302-303`), so if it is wrong it is
+wrong at the spec level. The only in-repo primary source is
+`docs/sources/BJA_H17.pdf`, which is scanned images. **Left alone on purpose:**
+silently "fixing" index thresholds against the operator's own written spec,
+on a guess, is exactly how a trainer starts teaching the wrong thing. Needs
+the operator to check their source.
+
+### Also open (lower value, not yet fixed)
+- `handStyle: 'cards'` (the default) has NO clip coverage: 312 of 2197
+  flashcard prompts fall back to live TTS, exactly the soft non-pair set, and
+  the fallback is whole-utterance so the covered "Dealer shows nine." half is
+  lost too. A real tradeoff — better pedagogy, robot voice — and the operator
+  should decide, since new clips cannot be generated here.
+- A mid-chain clip failure replays the whole utterance in live TTS.
+- `applyEvents` deep-clones the entire stats blob per graded answer (~27ms on
+  a year-old blob).
+- No error boundary anywhere; a render throw still blanks the app.
+- Keyboard drilling goes dead after focusing a checkbox or the index select.
+- No cross-tab coordination; last writer wins.
