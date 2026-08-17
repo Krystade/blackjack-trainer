@@ -25,6 +25,7 @@ import { NumPad } from '../../components/NumPad';
 import { Segmented, Stepper } from '../Settings';
 import { useAudio } from '../../../audio/useAudio';
 import { cancelSpeech, speak, speakAsync } from '../../../audio/speech';
+import { speechOptsFrom } from '../../../audio/speechOpts';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import { narrateCards, narrateCountAnswer, narrateCountPrompt } from '../../../audio/narrate';
 
@@ -264,7 +265,7 @@ export function CountDrillView({
     if (eyesFree) {
       // Live TTS, not a clip/narration helper -- the math is dynamic per
       // trigger, so no pre-rendered clip could ever cover it.
-      speak(d.prompt, { interrupt: true, rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+      speak(d.prompt, speechOptsFrom(settings.audio, { interrupt: true }));
     }
   };
 
@@ -440,11 +441,7 @@ export function CountDrillView({
     const g = groups[shownIndex];
     if (!g) return;
     if (eyesFree) {
-      speak(narrateCards(g, settings.audio.cardDetail), {
-        interrupt: true,
-        rate: settings.audio.rate,
-        voiceURI: settings.audio.voiceURI,
-      });
+      speak(narrateCards(g, settings.audio.cardDetail), speechOptsFrom(settings.audio, { interrupt: true }));
     } else {
       audio.sayFull(narrateCards(g, settings.audio.cardDetail));
     }
@@ -514,7 +511,7 @@ export function CountDrillView({
   useEffect(() => {
     if (phase !== 'answering' || countdownMode) return;
     if (eyesFree) {
-      speak(narrateCountPrompt(), { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+      speak(narrateCountPrompt(), speechOptsFrom(settings.audio));
     } else {
       audio.sayFull(narrateCountPrompt());
     }
@@ -804,7 +801,7 @@ export function CountDrillView({
     if (eyesFree) {
       // Strict eyes-free: speak the verdict regardless of verbosity -- it's
       // the primary output channel in this mode, not decoration.
-      speak(verdict, { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+      speak(verdict, speechOptsFrom(settings.audio));
       // Timed Challenge: also speak the speed tier, using the same
       // direct-speak pattern (no new narration helper -- a plain templated
       // string). Queues naturally after the verdict above (no interrupt),
@@ -812,10 +809,7 @@ export function CountDrillView({
       if (timedResult) {
         const spd = secondsPerDeck(timedResult.elapsedMs, timedResult.cardsShown);
         const tier = TIER_LABEL[classifySpeed(spd)];
-        speak(`${formatDuration(timedResult.elapsedMs)}, ${spd.toFixed(1)} seconds per deck. ${tier}.`, {
-          rate: settings.audio.rate,
-          voiceURI: settings.audio.voiceURI,
-        });
+        speak(`${formatDuration(timedResult.elapsedMs)}, ${spd.toFixed(1)} seconds per deck. ${tier}.`, speechOptsFrom(settings.audio));
       }
     } else {
       audio.sayFull(verdict);

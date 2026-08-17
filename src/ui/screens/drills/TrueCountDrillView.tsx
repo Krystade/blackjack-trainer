@@ -6,6 +6,7 @@ import { NumPad } from '../../components/NumPad';
 import { Stepper } from '../Settings';
 import { useAudio } from '../../../audio/useAudio';
 import { speak } from '../../../audio/speech';
+import { speechOptsFrom } from '../../../audio/speechOpts';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import { narrateTc } from '../../../audio/narrate';
 import { loadStats, saveStats } from '../../../store/persist';
@@ -107,7 +108,7 @@ export function TrueCountDrillView({
   useEffect(() => {
     if (phase !== 'answering' || !question) return;
     if (eyesFree) {
-      speak(narrateTcQuestion(question), { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+      speak(narrateTcQuestion(question), speechOptsFrom(settings.audio));
     } else {
       audio.sayFull(narrateTcQuestion(question));
     }
@@ -198,7 +199,7 @@ export function TrueCountDrillView({
 
     const verdict = `${correct ? 'Correct.' : 'Wrong.'} ${narrateTcAnswer(question.correctTc)}`;
     if (eyesFree) {
-      speak(verdict, { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+      speak(verdict, speechOptsFrom(settings.audio));
     } else {
       audio.sayFull(verdict);
     }

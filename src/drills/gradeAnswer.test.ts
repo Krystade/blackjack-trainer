@@ -52,7 +52,15 @@ describe('gradeAnswer shared grade path (R4 anti-drift)', () => {
       expect(mixed).toEqual(standalone);
       expect(standalone.event.kind).toBe('action');
       expect(standalone.event.tc).toBe(0); // flashcards are ALWAYS count-free
-      expect(standalone.event.reason).toBe(card.cellId);
+      // A3: the reason is PROSE from the strategy engine, not the cell id.
+      // It was `card.cellId`, so the correction panel and the spoken
+      // correction both read "soft-20-v-A" where an explanation belongs --
+      // while `withCount.reason` ("Basic stand vs dealer 9") sat right there,
+      // already computed and discarded. The cell id is still carried as
+      // `hand`, which is what it actually is.
+      expect(standalone.event.reason).toMatch(/^Basic /);
+      expect(standalone.event.reason).not.toBe(card.cellId);
+      expect(standalone.event.hand).toBe(card.cellId);
       expect(standalone.event.elapsedMs).toBe(111);
     });
 

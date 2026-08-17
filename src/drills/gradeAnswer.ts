@@ -133,7 +133,12 @@ export function buildFlashcardEvent(
     classification,
     taken,
     expected: card.correct,
-    reason: card.cellId,
+    // A3: the strategy engine's own prose, not the cell id. `withCount.reason`
+    // ("Basic stand vs dealer 9") was already computed two lines above and
+    // thrown away, leaving the correction panel and the SPOKEN correction
+    // both reading out "soft-20-v-A" where an explanation belongs. The cell
+    // id is still carried as `hand`, which is what it actually is.
+    reason: withCount.reason,
     tc: 0,
     hand: card.cellId,
     elapsedMs,

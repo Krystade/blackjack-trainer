@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import type { AudioSettings } from '../store/types';
-import { speak, chime, repeatLast, getLastSpoken } from './speech';
+import { speak, chime, repeatLast } from './speech';
 import { setClipsEnabled, setClipVoice } from './clips';
 
 /**
@@ -18,9 +18,6 @@ export interface AudioApi {
   /** Re-speak the last utterance at the CURRENT rate/voice/volume. Backs the
    * Repeat control; a no-op when audio is off or nothing has been said. */
   replay: () => void;
-  /** Whether there is anything to replay — lets a Repeat button render
-   * disabled rather than dead. */
-  hasSpoken: () => boolean;
   enabled: boolean;
 }
 
@@ -64,6 +61,12 @@ export function useAudio(audio: AudioSettings): AudioApi {
       chime(kind, { volume });
     };
 
+    // There is deliberately no `hasSpoken()` companion (A2). It would have to
+    // read speech.ts's module state during render, which React does not
+    // subscribe to, so a Repeat button disabled by it would not re-enable when
+    // the first line was spoken. `repeatLast()` already no-ops safely with
+    // nothing to say, so the button simply stays live and the trap is gone.
+    //
     // Replay deliberately ignores `verbosity`. The utterance already cleared
     // that gate when it was first spoken -- re-gating here would mean a
     // Repeat button that does nothing at 'results' verbosity for a line the
@@ -73,9 +76,7 @@ export function useAudio(audio: AudioSettings): AudioApi {
       repeatLast({ rate, voiceURI, volume });
     };
 
-    const hasSpoken: AudioApi['hasSpoken'] = () => getLastSpoken() !== null;
-
-    return { say, sayFull, ding, replay, hasSpoken, enabled };
+    return { say, sayFull, ding, replay, enabled };
     // `volume` belongs here with rate/voiceURI: omitting it would freeze every
     // bound closure above at the volume in force when the memo last ran, so
     // dragging the slider would appear to do nothing until some other audio

@@ -6,6 +6,7 @@ import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17, isIndexActive } from '../../engine/
 import type { GradedEvent } from '../../engine/grade';
 import { drawFlashcard } from '../../drills/flashcards';
 import { drillLegalActions } from '../../drills/legalActions';
+import { gateDrillAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
 import { drawQuizItem } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
@@ -34,6 +35,7 @@ import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
 import { narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt } from '../../audio/narrate';
 import { speak } from '../../audio/speech';
+import { speechOptsFrom } from '../../audio/speechOpts';
 import { requestWakeLock, releaseWakeLock } from '../../audio/wakeLock';
 import { ZONE_LABEL } from '../../audio/zones';
 import type { ZoneId } from '../../audio/zones';
@@ -223,11 +225,7 @@ function FlashcardsView({
   // precedent as CountDrillView's flashing-card narration).
   useEffect(() => {
     if (!eyesFree) return;
-    speak(narrateFlashcardPrompt(card.cards, card.up, settings.audio.handStyle), {
-      interrupt: true,
-      rate: settings.audio.rate,
-      voiceURI: settings.audio.voiceURI,
-    });
+    speak(narrateFlashcardPrompt(card.cards, card.up, settings.audio.handStyle), speechOptsFrom(settings.audio, { interrupt: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card, eyesFree]);
 
@@ -261,11 +259,7 @@ function FlashcardsView({
   };
 
   const handleRepeat = () => {
-    speak(narrateFlashcardPrompt(card.cards, card.up, settings.audio.handStyle), {
-      interrupt: true,
-      rate: settings.audio.rate,
-      voiceURI: settings.audio.voiceURI,
-    });
+    speak(narrateFlashcardPrompt(card.cards, card.up, settings.audio.handStyle), speechOptsFrom(settings.audio, { interrupt: true }));
   };
 
   const scheduleAutoAdvance = () => {
@@ -320,16 +314,22 @@ function FlashcardsView({
   const handleZoneAnswer = (zone: ZoneId | 'take' | 'decline') => {
     if (zone === 'take' || zone === 'decline') return;
 
-    speak(`${zoneLabel(zone)}…`, {
-      interrupt: true,
-      rate: settings.audio.rate,
-      voiceURI: settings.audio.voiceURI,
-    });
+    // A1: the ZonePad has no disabled state, so an unavailable action must be
+    // REFUSED and said out loud. Silence is indistinguishable from a dead app,
+    // and letting it through would grade a play that cannot exist -- into
+    // Stats and the spaced-repetition deck both.
+    const gate = gateDrillAnswer(zone, card.cards, activeProfile.rules);
+    if (!gate.accepted) {
+      speak(gate.announcement!, speechOptsFrom(settings.audio, { interrupt: true }));
+      return;
+    }
+
+    speak(`${zoneLabel(zone)}…`, speechOptsFrom(settings.audio, { interrupt: true }));
 
     const { event, correctAction } = gradeFlashcardAnswer(zone);
 
     speakCorrectionOnceGated(event, (text) =>
-      speak(text, { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI }),
+      speak(text, speechOptsFrom(settings.audio)),
     );
     audio.ding(event.correct ? 'good' : 'bad');
 
@@ -360,10 +360,13 @@ function FlashcardsView({
         // legality gate they do. Without this, pressing 4 would submit a
         // Split on a 10,6 that the (disabled) Split button cannot -- and
         // record an impossible play as a "mistake" against the learner.
-        if (!drillLegalActions(card.cards, activeProfile.rules).includes(action)) return;
+        //
+        // Feedback follows the channel: eyes-free routes through
+        // handleZoneAnswer, which refuses OUT LOUD (A1), while eyes-on stays
+        // silent because the button is already visibly dark.
         if (eyesFree) {
           handleZoneAnswer(action);
-        } else {
+        } else if (gateDrillAnswer(action, card.cards, activeProfile.rules).accepted) {
           handleAction(action);
         }
         return;
@@ -627,11 +630,7 @@ function DeviationQuizView({
   // branches are mutually exclusive so nothing double-speaks.
   useEffect(() => {
     if (eyesFree) {
-      speak(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle), {
-        interrupt: true,
-        rate: settings.audio.rate,
-        voiceURI: settings.audio.voiceURI,
-      });
+      speak(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle), speechOptsFrom(settings.audio, { interrupt: true }));
     } else {
       audio.sayFull(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle));
     }
@@ -680,11 +679,7 @@ function DeviationQuizView({
   };
 
   const handleRepeat = () => {
-    speak(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle), {
-      interrupt: true,
-      rate: settings.audio.rate,
-      voiceURI: settings.audio.voiceURI,
-    });
+    speak(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle), speechOptsFrom(settings.audio, { interrupt: true }));
   };
 
   const scheduleAutoAdvance = () => {
@@ -742,16 +737,22 @@ function DeviationQuizView({
 
     const taken = zone === 'take' ? 'take-insurance' : zone === 'decline' ? 'decline-insurance' : zone;
 
-    speak(`${zoneLabel(zone)}…`, {
-      interrupt: true,
-      rate: settings.audio.rate,
-      voiceURI: settings.audio.voiceURI,
-    });
+    // A1: the ZonePad has no disabled state, so an unavailable action must be
+    // REFUSED and said out loud. Silence is indistinguishable from a dead app,
+    // and letting it through would grade a play that cannot exist -- into
+    // Stats and the spaced-repetition deck both.
+    const gate = gateDrillAnswer(taken, item.cards, activeProfile.rules);
+    if (!gate.accepted) {
+      speak(gate.announcement!, speechOptsFrom(settings.audio, { interrupt: true }));
+      return;
+    }
+
+    speak(`${zoneLabel(zone)}…`, speechOptsFrom(settings.audio, { interrupt: true }));
 
     const event = gradeQuizAnswer(taken);
 
     speakCorrectionOnceGated(event, (text) =>
-      speak(text, { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI }),
+      speak(text, speechOptsFrom(settings.audio)),
     );
     audio.ding(event.correct ? 'good' : 'bad');
 
@@ -793,10 +794,9 @@ function DeviationQuizView({
         if (!action) return;
         e.preventDefault();
         // Same legality gate as the ActionBar buttons -- see FlashcardsView.
-        if (item.cards && !drillLegalActions(item.cards, activeProfile.rules).includes(action)) return;
         if (eyesFree) {
           handleZoneAnswer(action);
-        } else {
+        } else if (gateDrillAnswer(action, item.cards, activeProfile.rules).accepted) {
           handleAnswer(action);
         }
         return;
@@ -1088,7 +1088,7 @@ function MixedSessionView({
   // flashcard prompt never does, making the discrimination audible too).
   useEffect(() => {
     if (eyesFree) {
-      speak(promptFor(current), { interrupt: true, rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+      speak(promptFor(current), speechOptsFrom(settings.audio, { interrupt: true }));
     } else if (current.type === 'quiz') {
       audio.sayFull(narrateQuizPrompt(current.item.cards, current.item.up, current.item.tc, settings.audio.handStyle));
     }
@@ -1117,7 +1117,7 @@ function MixedSessionView({
   };
 
   const handleRepeat = () => {
-    speak(promptFor(current), { interrupt: true, rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+    speak(promptFor(current), speechOptsFrom(settings.audio, { interrupt: true }));
   };
 
   const scheduleAutoAdvance = () => {
@@ -1165,10 +1165,20 @@ function MixedSessionView({
     if (isInsuranceItem !== (zone === 'take' || zone === 'decline')) return;
     const taken = zone === 'take' ? 'take-insurance' : zone === 'decline' ? 'decline-insurance' : zone;
 
-    speak(`${zoneLabel(zone)}…`, { interrupt: true, rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
+    // A1: the ZonePad has no disabled state, so an unavailable action must be
+    // REFUSED and said out loud. Silence is indistinguishable from a dead app,
+    // and letting it through would grade a play that cannot exist -- into
+    // Stats and the spaced-repetition deck both.
+    const gate = gateDrillAnswer(taken, handCards, activeProfile.rules);
+    if (!gate.accepted) {
+      speak(gate.announcement!, speechOptsFrom(settings.audio, { interrupt: true }));
+      return;
+    }
+
+    speak(`${zoneLabel(zone)}…`, speechOptsFrom(settings.audio, { interrupt: true }));
 
     const { correct, correctAction, event } = gradeCurrent(taken);
-    speakCorrectionOnceGated(event, (text) => speak(text, { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI }));
+    speakCorrectionOnceGated(event, (text) => speak(text, speechOptsFrom(settings.audio)));
     audio.ding(correct ? 'good' : 'bad');
     setFeedback({ correct, correctAction, event });
     scheduleAutoAdvance();
@@ -1201,9 +1211,8 @@ function MixedSessionView({
         if (!action) return;
         e.preventDefault();
         // Same legality gate as the ActionBar buttons -- see FlashcardsView.
-        if (handCards && !drillLegalActions(handCards, activeProfile.rules).includes(action)) return;
         if (eyesFree) handleZoneAnswer(action);
-        else handleAnswer(action);
+        else if (gateDrillAnswer(action, handCards, activeProfile.rules).accepted) handleAnswer(action);
         return;
       }
 

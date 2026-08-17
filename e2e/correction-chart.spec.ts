@@ -126,3 +126,41 @@ test('#2 no Repeat control when audio is disabled', async ({ page }) => {
   await openFlashcards(page);
   await expect(page.getByRole('button', { name: 'Repeat', exact: true })).toHaveCount(0);
 });
+
+/**
+ * A1 regression guard. Item #3 disabled the unavailable ActionBar buttons and
+ * gated the keyboard, but left the eyes-free ZonePad ungated -- so the one
+ * input with no disabled affordance was the only one that still GRADED an
+ * impossible play, writing it into Stats and the spaced-repetition deck.
+ */
+test('A1 eyes-free: an unavailable action is refused out loud, not graded', async ({ page }) => {
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'full', volume: 1 },
+    drill: { flashCategory: 'hard' },
+  });
+  await page.goto('/?e2e=1');
+  await openFlashcards(page);
+
+  // Hard category never deals a pair, so Split can never be legal here.
+  await page.locator('.count-toggle input').first().check();
+  await expect(page.locator('.zone-pad')).toBeVisible();
+
+  await page.evaluate(() => { window.__speechLog = []; });
+
+  // Tap the actual Split quadrant. Driving the real pad matters here: the
+  // regression WAS that this path alone bypassed the gate, and the keyboard
+  // alias would not exercise it (it also bails while a checkbox holds focus).
+  const quad = page.locator('.zone-pad-quad-split');
+  await expect(quad).toBeVisible();
+  // force: the quadrant divs are labels; the pad itself owns the pointer
+  // handler and hit-tests by coordinate, so Playwright sees them as covered.
+  await quad.click({ force: true });
+
+  // Refused: it says why...
+  await page.waitForFunction(() =>
+    (window.__speechLog ?? []).some((l) => /isn't available/i.test(l)));
+
+  // ...and critically, it did NOT grade. No verdict, no correction panel.
+  await expect(page.locator('.mistake-card')).toHaveCount(0);
+  await expect(page.locator('.message-strip .result-correct')).toHaveCount(0);
+});
