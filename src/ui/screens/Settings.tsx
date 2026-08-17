@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
+import { THEMES, normalizeTheme } from '../theme';
 import { saveSettings } from '../../store/persist';
 import { chime, isSpeechSupported, listVoices, speak } from '../../audio';
 import { setClipsEnabled, setClipVoice, loadClipIndex, type ClipVoiceInfo } from '../../audio/clips';
@@ -183,6 +184,34 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         </button>
         <div className="settings-heading">Settings</div>
       </div>
+
+      <section className="settings-section">
+        <h2 className="settings-section-title">Theme</h2>
+        {/* Picked by PURPOSE, not by swatch: which one you want depends on
+            where you are using the app -- a dark car, bright daylight, or a
+            chart-study session -- so each option states its deciding factor. */}
+        <div className="theme-picker">
+          {THEMES.map((t) => {
+            const selected = normalizeTheme(settings.theme) === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                className={`theme-option${selected ? ' theme-option-selected' : ''}`}
+                aria-pressed={selected}
+                data-theme-id={t.id}
+                onClick={() => update({ theme: t.id })}
+              >
+                <span className="theme-option-head">
+                  <span className="theme-swatch" data-swatch={t.id} aria-hidden="true" />
+                  <span className="theme-option-name">{t.name}</span>
+                </span>
+                <span className="theme-option-note">{t.note}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       <section className="settings-section">
         <h2 className="settings-section-title">Feedback mode</h2>

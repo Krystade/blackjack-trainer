@@ -10,6 +10,11 @@ import type { CountDrillBias } from '../drills/countDrill';
 export interface Settings {
   version: 1;
   feedbackMode: 'training' | 'test';
+  // Selected colour theme, as a plain id string rather than a union imported
+  // from the UI layer -- the store must not depend on src/ui. The UI narrows
+  // it via normalizeTheme (src/ui/theme.ts), which also covers the case of a
+  // stored id outliving the theme it names.
+  theme: string;
   betSpreadOn: boolean;
   spread: SpreadRow[];
   bankrollStart: number;
@@ -153,6 +158,7 @@ export const DEFAULT_AUDIO: AudioSettings = {
 export const DEFAULT_SETTINGS: Settings = {
   version: 1,
   feedbackMode: 'training',
+  theme: 'midnight-felt',
   betSpreadOn: false,
   spread: DEFAULT_SPREAD.map((row) => ({ ...row })),
   bankrollStart: 100,

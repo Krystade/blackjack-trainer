@@ -238,7 +238,10 @@ button {
 }
 
 .card-black {
-  color: var(--bg);
+  /* --card-ink, NOT --bg: the census folded this onto --bg because the
+     two values were near-identical in the dark palette, but the ROLE is card
+     text. On the light theme that made every black suit invisible. */
+  color: var(--card-ink);
 }
 
 .card-red {
@@ -2187,13 +2190,15 @@ button {
   background: var(--raised);
 }
 
+/* Ink that sits ON a saturated fill, so it must invert with the theme --
+   folding it onto a GROUND token made it illegible on the light theme. */
 .timed-tier-pro {
-  color: var(--surface);
+  color: var(--accent-ink);
   background: var(--accent);
 }
 
 .timed-tier-expert {
-  color: var(--surface);
+  color: var(--accent-ink);
   background: var(--good);
 }
 
@@ -2475,4 +2480,81 @@ button {
 
 .repeat-btn:active {
   background: rgb(183 211 194 / 15%);
+}
+
+/* ---------- Theme picker (C2) ---------- */
+
+.theme-picker {
+  display: grid;
+  gap: 0.5rem;
+}
+
+/* A row per theme rather than a swatch grid: the deciding factor is written
+   next to each, and reading it matters more than seeing the hue. */
+.theme-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.theme-option-selected {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+
+.theme-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.theme-option-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.theme-option-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.theme-option-note {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+
+/* Each swatch shows its OWN theme's ground/accent, not the active theme's --
+   otherwise every option looks identical and the picker tells you nothing. */
+.theme-swatch {
+  width: 1.6rem;
+  height: 1.1rem;
+  border-radius: 0.2rem;
+  border: 1px solid var(--line);
+  flex: none;
+}
+
+.theme-swatch[data-swatch='midnight-felt'] {
+  background: linear-gradient(135deg, #0d2318 50%, #d8b969 50%);
+}
+
+.theme-swatch[data-swatch='bone-ink'] {
+  background: linear-gradient(135deg, #f2ece0 50%, #8a5a1e 50%);
+}
+
+.theme-swatch[data-swatch='amoled-night'] {
+  background: linear-gradient(135deg, #000000 50%, #f2c14e 50%);
+}
+
+.theme-swatch[data-swatch='slate-copper'] {
+  background: linear-gradient(135deg, #15171a 50%, #d98a5a 50%);
 }

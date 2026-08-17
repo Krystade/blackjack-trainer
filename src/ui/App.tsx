@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import './app.css';
 import { Home } from './screens/Home';
 import { Table } from './screens/Table';
@@ -8,6 +8,7 @@ import { Settings } from './screens/Settings';
 import { ProfileEditor } from './screens/ProfileEditor';
 import { Charts } from './screens/Charts';
 import { loadSettings } from '../store/persist';
+import { applyTheme, normalizeTheme } from './theme';
 import { getActiveProfile } from '../store/profiles';
 import type { Settings as SettingsData, Profile } from '../store/types';
 
@@ -20,6 +21,13 @@ function App() {
 
   // Navigating away from the profiles screen re-reads the active profile,
   // since the picker/editor there can change it (select / save-while-active).
+  // Publish the selected theme to <html>, where themes.css's [data-theme]
+  // token blocks key off it. Runs on mount too, so a stored choice is applied
+  // before the first paint the user notices.
+  useEffect(() => {
+    applyTheme(normalizeTheme(settings.theme));
+  }, [settings.theme]);
+
   const navigate = (next: Screen) => {
     if (screen === 'profiles' && next !== 'profiles') {
       setActiveProfileState(getActiveProfile());
