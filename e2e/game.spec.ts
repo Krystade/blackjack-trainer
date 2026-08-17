@@ -337,10 +337,10 @@ test('TC peek button reveals RC/TC on press and hides again on release', async (
 
   const peekBtn = page.locator('.tc-peek-btn');
   await expect(peekBtn).toHaveText('TC');
-  await peekBtn.dispatchEvent('mousedown');
+  await peekBtn.dispatchEvent('pointerdown');
   await expect(peekBtn).toHaveText(/^RC [+-]?\d+ \/ TC [+-]?\d+$/);
   await shot(page, '14-tc-peek-revealed');
-  await peekBtn.dispatchEvent('mouseup');
+  await peekBtn.dispatchEvent('pointerup');
   await expect(peekBtn).toHaveText('TC');
 });
 
@@ -348,8 +348,11 @@ test('R7: peeks are counted (single-press dedup) and flag a test-mode session as
   // R7 (docs/BACKLOG.md, RT#5): the RC/TC peek is a legit training aid kept in
   // both modes, but a peek-assisted test-mode accuracy must be labelled so it
   // can't be read as unassisted. Each press-and-release is ONE peek; the
-  // rising-edge guard means a single press firing BOTH mousedown and touchstart
-  // counts once, not twice.
+  // The button listens on POINTER events, which fire once per physical
+  // interaction. The old mouse+touch pair did not: compatibility mouse events
+  // are synthesized AFTER the touch sequence ends, so touchstart(+1) ->
+  // touchend(guard cleared) -> mousedown(+1) counted every tap on a phone as
+  // two peeks, making the assisted flag overstate every real session.
   await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0, countPeek: true });
   await page.goto('/?seed=102&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -357,14 +360,15 @@ test('R7: peeks are counted (single-press dedup) and flag a test-mode session as
   await resolveInsurance(page, false);
 
   const peekBtn = page.locator('.tc-peek-btn');
-  // First activation: a mousedown + a synthesized touchstart before release
-  // (what a touch tap does) must count as a single peek.
+  // A touch tap, faithfully: pointer events plus the compatibility mouse
+  // events the browser synthesizes afterwards. Exactly one peek.
+  await peekBtn.dispatchEvent('pointerdown');
+  await peekBtn.dispatchEvent('pointerup');
   await peekBtn.dispatchEvent('mousedown');
-  await peekBtn.dispatchEvent('touchstart');
   await peekBtn.dispatchEvent('mouseup');
   // Second, genuinely separate activation.
-  await peekBtn.dispatchEvent('mousedown');
-  await peekBtn.dispatchEvent('mouseup');
+  await peekBtn.dispatchEvent('pointerdown');
+  await peekBtn.dispatchEvent('pointerup');
 
   await playRoundByAdvice(page);
   await page.locator('.end-btn').click();

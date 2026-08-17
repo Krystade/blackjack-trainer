@@ -34,7 +34,7 @@ import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
 import { narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt } from '../../audio/narrate';
-import { speak } from '../../audio/speech';
+import { cancelSpeech, speak } from '../../audio/speech';
 import { speechOptsFrom } from '../../audio/speechOpts';
 import { requestWakeLock, releaseWakeLock } from '../../audio/wakeLock';
 import { ZONE_LABEL } from '../../audio/zones';
@@ -232,6 +232,11 @@ function FlashcardsView({
   const next = (category: Settings['drill']['flashCategory'] = settings.drill.flashCategory) => {
     runIdRef.current += 1;
     clearAdvanceTimer();
+    // Advancing invalidates the correction the chart was opened for, so the
+    // overlay must not survive it: left open it re-pointed at the NEW card
+    // (its cards/dealerUp are live props), and the learner closed it onto a
+    // hand they had never been asked about.
+    setShowChart(false);
     setCard(drawFlashcard(category, srDeckRef.current, Date.now(), randomSeed(), activeProfile.rules));
     setFeedback(null);
     promptShownAtRef.current = performance.now();
@@ -254,6 +259,10 @@ function FlashcardsView({
   };
 
   const handleBack = () => {
+    // Stop mid-utterance speech on the way out, matching CountDrillView.
+    // Without it, a correction being spoken carried on over the drill picker.
+    cancelSpeech();
+    clearAdvanceTimer();
     void releaseWakeLock();
     onBack();
   };
@@ -351,6 +360,11 @@ function FlashcardsView({
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (document.activeElement as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      // The chart overlay is modal over a frozen correction. Without this,
+      // Enter (the obvious "dismiss" key) ran next() BEHIND the overlay --
+      // drawing a new card, clearing the correction, and in eyes-free even
+      // narrating it -- while the chart stayed up.
+      if (showChart) return;
 
       if (!feedback) {
         const action = KEY_TO_ACTION[e.key];
@@ -380,8 +394,18 @@ function FlashcardsView({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+    // `card` is a REQUIRED dep, not a convenience. The old comment assumed a
+    // fresh card is always drawn in the same render that resets feedback to
+    // null, so `feedback` alone was a sufficient proxy. `changeCategory`
+    // breaks that: it calls next() while feedback is ALREADY null, React bails
+    // on the no-op state write, the dep array never changes, and the listener
+    // stays bound to the previous card. The next keypress then graded the hand
+    // you had already left -- accepting a Split the visible hand cannot make,
+    // and writing the miss into Stats and the SR deck under the OLD cellId.
+    // Every sibling view (quiz, mixed, pair-cancel, bet/sit/leave) already
+    // lists its item here; this was the only one that did not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feedback, eyesFree]);
+  }, [feedback, eyesFree, card, showChart]);
 
   return (
     <div className="drill-screen" style={drillScreenStyle(padTop)}>
@@ -417,7 +441,13 @@ function FlashcardsView({
             type="checkbox"
             checked={eyesFree}
             disabled={!settings.audio.enabled}
-            onChange={(e) => setEyesFree(e.target.checked)}
+            onChange={(e) => {
+              // A pending auto-advance is an eyes-free affordance; leaving
+              // eyes-free must cancel it, or the correction vanishes and a new
+              // card appears on its own in visual mode.
+              if (!e.target.checked) clearAdvanceTimer();
+              setEyesFree(e.target.checked);
+            }}
           />
           Eyes-free audio
         </label>
@@ -640,6 +670,11 @@ function DeviationQuizView({
   const next = (filter: DeviationId | 'all' = activeFilter, distractorPct: number = settings.drill.quizDistractorPct) => {
     runIdRef.current += 1;
     clearAdvanceTimer();
+    // Advancing invalidates the correction the chart was opened for, so the
+    // overlay must not survive it: left open it re-pointed at the NEW card
+    // (its cards/dealerUp are live props), and the learner closed it onto a
+    // hand they had never been asked about.
+    setShowChart(false);
     setItem(
       drawQuizItem(randomSeed(), quizFilterArg(filter), activeProfile.rules, distractorPct, srDeckRef.current, Date.now()),
     );
@@ -674,6 +709,10 @@ function DeviationQuizView({
   };
 
   const handleBack = () => {
+    // Stop mid-utterance speech on the way out, matching CountDrillView.
+    // Without it, a correction being spoken carried on over the drill picker.
+    cancelSpeech();
+    clearAdvanceTimer();
     void releaseWakeLock();
     onBack();
   };
@@ -774,6 +813,11 @@ function DeviationQuizView({
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (document.activeElement as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      // The chart overlay is modal over a frozen correction. Without this,
+      // Enter (the obvious "dismiss" key) ran next() BEHIND the overlay --
+      // drawing a new card, clearing the correction, and in eyes-free even
+      // narrating it -- while the chart stayed up.
+      if (showChart) return;
 
       if (!feedback) {
         const isInsurance = item.cards === null;
@@ -811,7 +855,7 @@ function DeviationQuizView({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feedback, eyesFree, item]);
+  }, [feedback, eyesFree, item, showChart]);
 
   const indexList = activeProfile.rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
 
@@ -865,7 +909,13 @@ function DeviationQuizView({
             type="checkbox"
             checked={eyesFree}
             disabled={!settings.audio.enabled}
-            onChange={(e) => setEyesFree(e.target.checked)}
+            onChange={(e) => {
+              // A pending auto-advance is an eyes-free affordance; leaving
+              // eyes-free must cancel it, or the correction vanishes and a new
+              // card appears on its own in visual mode.
+              if (!e.target.checked) clearAdvanceTimer();
+              setEyesFree(e.target.checked);
+            }}
           />
           Eyes-free audio
         </label>
@@ -1098,6 +1148,11 @@ function MixedSessionView({
   const next = () => {
     runIdRef.current += 1;
     clearAdvanceTimer();
+    // Advancing invalidates the correction the chart was opened for, so the
+    // overlay must not survive it: left open it re-pointed at the NEW card
+    // (its cards/dealerUp are live props), and the learner closed it onto a
+    // hand they had never been asked about.
+    setShowChart(false);
     const idx = itemIndexRef.current + 1;
     itemIndexRef.current = idx;
     setCurrent(drawFor(pickMixedType(sessionSeed(), idx)));
@@ -1112,6 +1167,10 @@ function MixedSessionView({
   };
 
   const handleBack = () => {
+    // Stop mid-utterance speech on the way out, matching CountDrillView.
+    // Without it, a correction being spoken carried on over the drill picker.
+    cancelSpeech();
+    clearAdvanceTimer();
     void releaseWakeLock();
     onBack();
   };
@@ -1192,6 +1251,11 @@ function MixedSessionView({
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (document.activeElement as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      // The chart overlay is modal over a frozen correction. Without this,
+      // Enter (the obvious "dismiss" key) ran next() BEHIND the overlay --
+      // drawing a new card, clearing the correction, and in eyes-free even
+      // narrating it -- while the chart stayed up.
+      if (showChart) return;
 
       if (!feedback) {
         if (isInsuranceItem) {
@@ -1225,7 +1289,7 @@ function MixedSessionView({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feedback, eyesFree, current]);
+  }, [feedback, eyesFree, current, showChart]);
 
   const dealerUp = current.type === 'flash' ? current.card.up : current.item.up;
   const handCards = current.type === 'flash' ? current.card.cards : current.item.cards;
@@ -1253,7 +1317,13 @@ function MixedSessionView({
             type="checkbox"
             checked={eyesFree}
             disabled={!settings.audio.enabled}
-            onChange={(e) => setEyesFree(e.target.checked)}
+            onChange={(e) => {
+              // A pending auto-advance is an eyes-free affordance; leaving
+              // eyes-free must cancel it, or the correction vanishes and a new
+              // card appears on its own in visual mode.
+              if (!e.target.checked) clearAdvanceTimer();
+              setEyesFree(e.target.checked);
+            }}
           />
           Eyes-free audio
         </label>

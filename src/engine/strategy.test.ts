@@ -3,6 +3,7 @@ import type { Card, Rank } from './cards';
 import { correctPlay, basicPlay, insuranceCorrect } from './strategy';
 import type { PlayContext, Advice } from './strategy';
 import type { RuleSet } from './ruleset';
+import { DEFAULT_RULES } from './ruleset';
 
 function cards(...ranks: Rank[]): Card[] {
   return ranks.map((rank) => ({ rank, suit: 's' }) as Card);
@@ -446,5 +447,36 @@ describe('S17 Illustrious-18 variant: 12v6 threshold −1 (lte)', () => {
 
   it('S17 (10,2) v 6, tc 0 -> stand basic (tc > threshold)', () => {
     expectAdvice(correctPlay(cards('10', '2'), '6', 0, ctx(), s17Rules), 'stand');
+  });
+});
+
+describe('A,A when splitting is unavailable (bug hunt, 2026-08-17)', () => {
+  const AA: Card[] = [{ rank: 'A', suit: 's' }, { rank: 'A', suit: 'h' }];
+  const NO_SPLIT: PlayContext = { canDouble: false, canSplit: false, canSurrender: false };
+
+  it('does not throw when a pair of aces cannot be split', () => {
+    // Every SOFT table starts at total 13, but A,A is soft 12. The pair path
+    // returns `split` only when ctx.canSplit; otherwise it falls through to
+    // resolveAsTotal, which indexed SOFT[12] -> undefined[idx] and threw.
+    // Reachable in real play: after the per-origin split cap with resplit-aces
+    // on, an earlier A,A hand is still open with canSplit false, and
+    // Game.act('stand') calls correctPlay before acting -- blanking the app.
+    expect(() => correctPlay(AA, '5', 0, NO_SPLIT, DEFAULT_RULES)).not.toThrow();
+  });
+
+  it('treats an unsplittable pair of aces as soft 12, i.e. hits', () => {
+    // Soft 12 can never bust and is below any standing total, so hit is the
+    // only sane answer, and matches what A,2 (soft 13) and up already do.
+    expect(correctPlay(AA, '5', 0, NO_SPLIT, DEFAULT_RULES).action).toBe('hit');
+  });
+
+  it('still splits aces when splitting IS available', () => {
+    expect(
+      correctPlay(AA, '5', 0, { canDouble: false, canSplit: true, canSurrender: false }, DEFAULT_RULES).action,
+    ).toBe('split');
+  });
+
+  it('does not throw for basicPlay either', () => {
+    expect(() => basicPlay(AA, '10', NO_SPLIT, DEFAULT_RULES)).not.toThrow();
   });
 });

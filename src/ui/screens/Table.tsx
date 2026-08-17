@@ -355,11 +355,18 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
           <button
             type="button"
             className="tc-peek-btn"
-            onMouseDown={activatePeek}
-            onMouseUp={releasePeek}
-            onMouseLeave={releasePeek}
-            onTouchStart={activatePeek}
-            onTouchEnd={releasePeek}
+            // Pointer events, not mouse+touch. The rising-edge ref guard was
+            // real but the event ORDER defeated it: compatibility mouse events
+            // are synthesized AFTER the touch sequence completes, so
+            // touchstart(+1) -> touchend(ref cleared) -> mousedown(+1) counted
+            // every single tap on a phone as two peeks -- and a phone is the
+            // target device, so the peek-accountability flag this feature
+            // exists for was simply wrong. Pointer events fire once per
+            // physical interaction and need no dedup at all.
+            onPointerDown={activatePeek}
+            onPointerUp={releasePeek}
+            onPointerLeave={releasePeek}
+            onPointerCancel={releasePeek}
           >
             {peeking ? `RC ${formatSigned(game.runningCount)} / TC ${formatSigned(game.trueCountNow)}` : 'TC'}
           </button>
@@ -544,10 +551,10 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
           activeProfile={activeProfile}
           cards={overlay.cards ?? null}
           dealerUp={overlay.dealerUp ?? null}
-          // Whether splitting was on the table decides between a PAIRS cell
-          // and the hard/soft row -- a pair of 8s played from a hand that
-          // could not split belongs to hard 16, not to 8,8.
-          canSplit={legal.includes('split')}
+          // Snapshotted at grade time, NOT read from `legal` here: by now the
+          // engine has applied the action, so `legal` describes a different
+          // (or no) hand. See OverlayInfo.canSplit.
+          canSplit={overlay.canSplit}
           onClose={() => setShowChart(false)}
         />
       )}

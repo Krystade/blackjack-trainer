@@ -39,8 +39,22 @@ function deviation(dev: Deviation, action: Action): Advice {
 function hardSoftChartAction(cards: Card[], dealerUp: Rank, chart: Chart): { action: ChartAction; total: number; soft: boolean } {
   const hv = handValue(cards);
   const idx = upIndex(dealerUp);
-  const action = hv.soft ? chart.SOFT[hv.total][idx] : chart.HARD[hv.total][idx];
-  return { action, total: hv.total, soft: hv.soft };
+  const table = hv.soft ? chart.SOFT : chart.HARD;
+
+  // A,A is soft 12, and every SOFT table starts at 13 — the pair tables answer
+  // A,A directly, so no chart ever needed a soft-12 row. But the PAIRS path
+  // only returns `split` when splitting is actually available; otherwise it
+  // falls through to here, and `SOFT[12]` is `undefined`. That threw a
+  // TypeError out of `correctPlay`, which `Game.act` calls BEFORE applying the
+  // action — blanking the React tree and losing the session. Reachable in
+  // ordinary play: with resplit-aces on, once the per-origin split cap is hit
+  // an earlier A,A hand is still open with canSplit false.
+  //
+  // Clamping to the table's own floor is right rather than merely safe: a soft
+  // total below the floor cannot bust and cannot stand, so it plays exactly as
+  // the lowest soft row does.
+  const row = table[hv.total] ?? table[Math.min(...Object.keys(table).map(Number))];
+  return { action: row[idx], total: hv.total, soft: hv.soft };
 }
 
 /** Find the active hard-total deviation matching (total, up) whose tc condition is met, if any. */

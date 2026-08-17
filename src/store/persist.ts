@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, EMPTY_STATS, type Settings, type Stats } from './types';
+import { capHistories } from './retention';
 
 // Storage injection for testing (guards missing localStorage in node)
 let storage: Pick<Storage, 'getItem' | 'setItem'> | null = null;
@@ -70,10 +71,39 @@ function mergeSettings(parsed: Record<string, unknown>): Settings {
  * `typeof ... === 'object'` guard used for countDrill backfills them to an
  * empty history rather than leaving them undefined.
  */
+/**
+ * Repair a merged stats blob in place: every `{ history: [...] }` payload must
+ * be an array, and every category tally an object.
+ *
+ * The section guards below check the CONTAINER (`typeof x === 'object'`) and
+ * then shallow-spread it, so a stored `{"history": null}` passed straight
+ * through to `Stats.tsx`, where `.filter(...)` threw during render. With no
+ * error boundary in the tree React unmounts the whole root — a blank page —
+ * and the Reset Stats button that would clear the bad blob lives on exactly
+ * the screen that crashes, so there is no way back from inside the app.
+ * "Valid enough to merge" was being treated as "valid enough to render".
+ */
+function repairStats(stats: Stats): Stats {
+  for (const value of Object.values(stats as unknown as Record<string, unknown>)) {
+    if (value && typeof value === 'object' && 'history' in value) {
+      const section = value as { history: unknown };
+      if (!Array.isArray(section.history)) section.history = [];
+    }
+  }
+
+  const cats = stats.categories as unknown as Record<string, unknown>;
+  for (const key of Object.keys(cats)) {
+    const tally = cats[key];
+    if (!tally || typeof tally !== 'object') cats[key] = { right: 0, wrong: 0 };
+  }
+
+  return stats;
+}
+
 function mergeStats(parsed: Record<string, unknown>): Stats {
   const base = structuredClone(EMPTY_STATS);
   const p = parsed as Partial<Stats>;
-  return {
+  return repairStats({
     ...base,
     ...p,
     version: 1,
@@ -144,7 +174,7 @@ function mergeStats(parsed: Record<string, unknown>): Stats {
       typeof p.produceTc === 'object' && p.produceTc !== null
         ? { ...base.produceTc, ...p.produceTc }
         : base.produceTc,
-  };
+  });
 }
 
 export function loadSettings(): Settings {
@@ -167,9 +197,32 @@ export function loadSettings(): Settings {
   }
 }
 
-export function saveSettings(s: Settings): void {
-  const store = getStorage();
-  store.setItem('bjtrainer.settings.v1', JSON.stringify(s));
+/**
+ * Write a key, reporting failure instead of throwing.
+ *
+ * A bare `setItem` throws on a full quota (or in private-mode Safari), and
+ * every caller here sits inside a click handler that does real work AFTER the
+ * save: `useGame.endSession` builds the session report, `persistGrade` renders
+ * the answer feedback, `Settings.commit` applies the new settings. An escaping
+ * throw skipped all of it — the report never appeared, the drill looked
+ * frozen, a toggle snapped back — with no message, because there is no error
+ * boundary. Losing the write is bad; losing the write AND the interaction is
+ * what made it look like the app was broken.
+ *
+ * `saveSrDeck` in drills/gradeAnswer.ts already guarded its write this way;
+ * the store layer simply never did.
+ */
+function writeKey(key: string, value: string): boolean {
+  try {
+    getStorage().setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function saveSettings(s: Settings): boolean {
+  return writeKey('bjtrainer.settings.v1', JSON.stringify(s));
 }
 
 export function loadStats(): Stats {
@@ -192,15 +245,54 @@ export function loadStats(): Stats {
   }
 }
 
-export function saveStats(s: Stats): void {
-  const store = getStorage();
-  store.setItem('bjtrainer.stats.v1', JSON.stringify(s));
+export function saveStats(s: Stats): boolean {
+  // Capped on the way out rather than at each append site: there are eleven
+  // history arrays written from a dozen places, and a policy applied at the
+  // single choke point cannot be forgotten by the next one added.
+  return writeKey('bjtrainer.stats.v1', JSON.stringify(capHistories(s)));
 }
 
+/** Keys the export carries beyond settings+stats, with the blob field each
+ * maps to. Raw strings: this layer must not depend on profiles.ts or the
+ * drills' SR modules just to copy their storage across. */
+const EXTRA_KEYS: { key: string; field: string }[] = [
+  { key: 'bjtrainer.profiles.v1', field: 'profiles' },
+  { key: 'bjtrainer.activeProfile.v1', field: 'activeProfile' },
+  { key: 'bjtrainer.flashsr.v1', field: 'flashSr' },
+  { key: 'bjtrainer.quizsr.v1', field: 'quizSr' },
+];
+
+/**
+ * The whole of the user's state, not just settings+stats.
+ *
+ * This is offered in the UI as a downloadable backup, but it originally
+ * carried only the two keys that existed when it was written. Profiles (rules,
+ * bet ramp, bankroll, CVCX sim figures) and both spaced-repetition decks were
+ * added later and never included — so restoring onto a wiped browser returned
+ * stats and settings and silently lost every profile plus the entire review
+ * schedule. The SR loss is the unrecoverable one: those boxes encode elapsed
+ * real time, which no amount of re-drilling reconstructs.
+ */
 export function exportAll(): string {
-  const settings = loadSettings();
-  const stats = loadStats();
-  return JSON.stringify({ settings, stats });
+  const store = getStorage();
+  const blob: Record<string, unknown> = { settings: loadSettings(), stats: loadStats() };
+
+  for (const { key, field } of EXTRA_KEYS) {
+    const raw = store.getItem(key);
+    if (raw === null) continue;
+    // activeProfile is a bare id string; the rest are JSON documents.
+    if (field === 'activeProfile') {
+      blob[field] = raw;
+      continue;
+    }
+    try {
+      blob[field] = JSON.parse(raw);
+    } catch {
+      // A corrupt key is omitted rather than aborting the whole backup.
+    }
+  }
+
+  return JSON.stringify(blob);
 }
 
 export function importAll(json: string): { ok: boolean; error?: string } {
@@ -228,6 +320,16 @@ export function importAll(json: string): { ok: boolean; error?: string } {
     // persists an incomplete shape, then save.
     saveSettings(mergeSettings(obj.settings));
     saveStats(mergeStats(obj.stats));
+
+    // Restore the rest of the user's state when the blob carries it. Each is
+    // OPTIONAL: exports taken before these were included must keep importing
+    // cleanly, or the backups people already hold become worthless.
+    const extras = parsed as Record<string, unknown>;
+    for (const { key, field } of EXTRA_KEYS) {
+      const value = extras[field];
+      if (value === undefined) continue;
+      writeKey(key, typeof value === 'string' ? value : JSON.stringify(value));
+    }
 
     return { ok: true };
   } catch (err) {

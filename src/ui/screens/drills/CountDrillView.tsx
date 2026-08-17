@@ -355,8 +355,6 @@ export function CountDrillView({
 
     const runId = runIdRef.current;
     let cancelled = false;
-    const rate = settings.audio.rate;
-    const voiceURI = settings.audio.voiceURI;
     const gapMs = settings.drill.countIntervalMs;
     const isStale = () => cancelled || runIdRef.current !== runId;
 
@@ -366,7 +364,7 @@ export function CountDrillView({
         const g = groups[i];
         if (!g) return;
 
-        await speakAsync(narrateCards(g, settings.audio.cardDetail), { rate, voiceURI });
+        await speakAsync(narrateCards(g, settings.audio.cardDetail), speechOptsFrom(settings.audio));
         if (isStale()) return;
 
         const isLast = i >= groups.length - 1;
@@ -527,12 +525,10 @@ export function CountDrillView({
   useEffect(() => {
     if (phase !== 'selfcheck') return undefined;
     const runId = runIdRef.current;
-    const rate = settings.audio.rate;
-    const voiceURI = settings.audio.voiceURI;
-    speak(narrateCountPrompt(), { rate, voiceURI });
+    speak(narrateCountPrompt(), speechOptsFrom(settings.audio));
     const t = setTimeout(() => {
       if (runIdRef.current !== runId || !drillRound) return;
-      speak(narrateCountAnswer(drillRound.finalRc), { rate, voiceURI });
+      speak(narrateCountAnswer(drillRound.finalRc), speechOptsFrom(settings.audio));
       finishSelfCheck(drillRound.finalRc);
     }, settings.audio.answerPauseMs);
     return () => clearTimeout(t);

@@ -123,12 +123,10 @@ export function TrueCountDrillView({
   useEffect(() => {
     if (phase !== 'selfcheck' || !question) return undefined;
     const runId = runIdRef.current;
-    const rate = settings.audio.rate;
-    const voiceURI = settings.audio.voiceURI;
-    speak(narrateTcQuestion(question), { rate, voiceURI });
+    speak(narrateTcQuestion(question), speechOptsFrom(settings.audio));
     const t = setTimeout(() => {
       if (runIdRef.current !== runId) return;
-      speak(narrateTcAnswer(question.correctTc), { rate, voiceURI });
+      speak(narrateTcAnswer(question.correctTc), speechOptsFrom(settings.audio));
       setHonorCheck(true);
       setPhase('result');
     }, settings.audio.answerPauseMs);

@@ -324,15 +324,31 @@ export function narrateReason(reason: string): string {
 
   // 2. A pair matchup ("10,10 v 5") before the comma can be mistaken for a
   //    list separator. Backreference so only a genuine PAIR matches.
-  s = s.replace(/^(10|[AJQK2-9]),\1\b/, (_match, rank: Rank) => `a pair of ${RANK_PLURAL[rank]}`);
+  //    NOT ^-anchored: the deviation quiz wraps labels in prose ("No index
+  //    applies here — basic strategy. (near 10,10 v 5: split at ...)"), and an
+  //    anchored rewrite left those to the digit pass, which said "ten,ten".
+  s = s.replace(
+    /(?<![\w,])(10|[AJQK2-9]),\1(?![\w,])/g,
+    (_match, rank: Rank) => `a pair of ${RANK_PLURAL[rank]}`,
+  );
 
   // 3. Both matchup spellings ("v" in index labels, "vs" in basic reasons).
   s = s.replace(/\bvs?\b/g, 'versus');
 
-  // 4. A dealer ace is the letter A in both shapes; spoken, it must not be
-  //    the article "a". Anchored to "versus" so the "A pair of..." produced
-  //    by step 2 is untouched.
-  s = s.replace(/\bversus A\b/g, 'versus ace');
+  // 4. Upcard LETTERS -> words. Two shapes reach here: the index label's
+  //    "10 v A:" (now "versus A") and basic strategy's "vs dealer A" (now
+  //    "versus dealer A"). Matching only the first left every basic reason
+  //    against a face card speaking the bare letter — "cue", "jay", "kay" —
+  //    and worse, "dealer A." is read as the article, so the upcard dropped
+  //    out of the sentence entirely. That is ~5 of 13 upcards, on every table
+  //    hand. Anchored on the preceding "versus" so the "A pair of..." from
+  //    step 2 is untouched, and so the already-expanded H17/S17 clauses are
+  //    out of reach.
+  s = s.replace(
+    /\bversus (dealer )?([AJQK])\b/g,
+    (_match, dealer: string | undefined, rank: Rank) =>
+      `versus ${dealer ?? ''}${RANK_NAMES[rank]}`,
+  );
 
   // 5. Thresholds, before the generic digit pass, since these carry a sign
   //    and a comparison direction that the digit pass would destroy.

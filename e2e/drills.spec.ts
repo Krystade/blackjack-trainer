@@ -1002,7 +1002,12 @@ test('count drill: eyes-free Strict mode grades via NumPad and speaks the verdic
   await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
 
   const log = await readSpeechLog(page);
-  const verdictIndex = log.findIndex((l) => l === 'Correct.' || l.startsWith('Wrong. '));
+  // The verdict is ONE utterance combining the judgement and the count
+  // (CountDrillView builds `${'Correct.'|'Wrong.'} ${narrateCountAnswer(rc)}`),
+  // so an equality check on 'Correct.' could never match. The spec types a
+  // fixed 3 against four UNSEEDED cards, so it only ever passed on the runs
+  // where the answer happened to be wrong and the 'Wrong. ' prefix matched.
+  const verdictIndex = log.findIndex((l) => l.startsWith('Correct.') || l.startsWith('Wrong. '));
   expect(verdictIndex, `expected a spoken verdict in ${JSON.stringify(log)}`).toBeGreaterThanOrEqual(0);
 
   // Strict mode GRADES (unlike the self-check honor path, which never

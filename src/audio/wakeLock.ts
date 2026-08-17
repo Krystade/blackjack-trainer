@@ -19,17 +19,45 @@ function handleSentinelRelease(): void {
   sentinel = null;
 }
 
+/** In-flight acquire, so two callers racing cannot both request a lock. */
+let acquiring: Promise<void> | null = null;
+
 async function acquire(): Promise<void> {
   if (!isSupported()) return;
-  try {
-    const lock = await navigator.wakeLock.request('screen');
-    sentinel = lock;
-    lock.addEventListener('release', handleSentinelRelease);
-  } catch {
-    // Rejects when the tab is hidden or the platform refuses the lock —
-    // never let that surface as an unhandled error.
-    sentinel = null;
-  }
+
+  // Already holding one: requesting a second would overwrite `sentinel` and
+  // ORPHAN the first, leaving a live lock nothing can ever release. The drill
+  // views call requestWakeLock() on every round start, so this fired on every
+  // round after the first and the screen simply never slept again — a battery
+  // drain in the car-mount case this module exists to serve.
+  if (sentinel) return;
+  if (acquiring) return acquiring;
+
+  acquiring = (async () => {
+    try {
+      const lock = await navigator.wakeLock.request('screen');
+      // Re-check after the await: a visibilitychange could have acquired one
+      // while this request was in flight. Keep the winner, release the loser.
+      if (sentinel) {
+        try {
+          await lock.release();
+        } catch {
+          // never throw
+        }
+        return;
+      }
+      sentinel = lock;
+      lock.addEventListener('release', handleSentinelRelease);
+    } catch {
+      // Rejects when the tab is hidden or the platform refuses the lock —
+      // never let that surface as an unhandled error.
+      sentinel = null;
+    } finally {
+      acquiring = null;
+    }
+  })();
+
+  return acquiring;
 }
 
 function handleVisibilityChange(): void {

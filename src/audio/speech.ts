@@ -23,7 +23,7 @@
  * clips.ts has no store/React dependency, so this import doesn't change
  * speech.ts's dependency profile.
  */
-import { hasClips, isClipsEnabled, playClipsAsync } from './clips';
+import { hasClips, isClipsEnabled, playClipsAsync, stopClips } from './clips';
 
 declare global {
   interface Window {
@@ -177,6 +177,11 @@ function resolveVoice(voiceURI: string | undefined): SpeechSynthesisVoice | null
  * promise (Safari does not fire `onend` after `cancel()`, so we can't rely
  * on the event to unblock an awaiting caller). No-op when unsupported. */
 export function cancelSpeech(): void {
+  // Clips play through HTMLAudioElement, which speechSynthesis.cancel() knows
+  // nothing about. `stopClips` existed for exactly this and had ZERO callers,
+  // so leaving a screen mid-clip left the audio playing over whatever came
+  // next, and an interrupting live-TTS line spoke ON TOP of the clip chain.
+  stopClips();
   settleAllPendingSpeeches();
   if (!isSpeechSupported()) return;
   try {
@@ -221,6 +226,10 @@ function speakLive(text: string, opts?: SpeechOpts): void {
 
   try {
     if (opts?.interrupt) {
+      // Interrupt means interrupt EVERYTHING audible, not just the utterance
+      // queue: a clip chain started by a previous call is still playing and
+      // would otherwise be talked over.
+      stopClips();
       window.speechSynthesis.cancel();
     }
     const utterance = new SpeechSynthesisUtterance(text);
@@ -380,7 +389,9 @@ function speakAsyncLive(
     try {
       if (opts?.interrupt) {
         // A fresh interrupting call must settle whatever was previously
-        // in-flight -- Safari won't fire onend for it after cancel().
+        // in-flight -- Safari won't fire onend for it after cancel(). It must
+        // also stop any clip chain, which speechSynthesis cannot see.
+        stopClips();
         settleAllPendingSpeeches();
         window.speechSynthesis.cancel();
       }

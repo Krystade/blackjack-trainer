@@ -368,3 +368,41 @@ describe('narrateReason', () => {
     expect(narrateReason('')).toBe('');
   });
 });
+
+describe('narrateReason — dealer upcard ranks (bug hunt, 2026-08-17)', () => {
+  it('speaks a dealer queen as a word, not the letter Q', () => {
+    // strategy.ts interpolates the raw Rank into "Basic stand vs dealer Q",
+    // and a voice reads that as "cue". Reachable on ~5/13 of all table hands.
+    expect(narrateReason('Basic stand vs dealer Q')).toBe('Basic stand versus dealer queen.');
+  });
+
+  it('speaks jack and king too', () => {
+    expect(narrateReason('Basic hit vs dealer J')).toBe('Basic hit versus dealer jack.');
+    expect(narrateReason('Basic double vs dealer K')).toBe('Basic double versus dealer king.');
+  });
+
+  it('speaks a dealer ace in the basic-reason shape, not just the index shape', () => {
+    // The worst case: "dealer A." is read as the article, so the upcard
+    // disappears from the sentence entirely.
+    expect(narrateReason('Basic hit vs dealer A')).toBe('Basic hit versus dealer ace.');
+  });
+
+  it('still handles the index-label shape it already covered', () => {
+    expect(narrateReason('11 v A: double at TC ≥ +1 (S17)')).toBe(
+      'Eleven versus ace: double at true count plus one or higher, when the dealer stands soft seventeen.',
+    );
+  });
+
+  it('leaves a rank letter alone when it is not an upcard', () => {
+    // "H17" must not become "H seventeen" or have its H rewritten.
+    expect(narrateReason('16 v 9: stand at TC ≥ +4 (H17)')).toContain('dealer hits soft seventeen');
+  });
+
+  it('speaks a pair matchup embedded mid-string, not only at the start', () => {
+    // Deviation-quiz distractors wrap the label in prose, so the ^-anchored
+    // pair rewrite never fired and "10,10" fell through to the digit pass.
+    expect(narrateReason('No index applies here — basic strategy. (near 10,10 v 5: split at TC ≥ +5)')).toContain(
+      'a pair of tens versus five',
+    );
+  });
+});

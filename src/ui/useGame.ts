@@ -48,6 +48,17 @@ export interface OverlayInfo {
    */
   cards?: Card[];
   dealerUp?: Rank;
+  /**
+   * Whether splitting was on the table for THAT decision.
+   *
+   * Snapshotted for the same reason as `cards`: read live, `game.legalActions()`
+   * describes the state AFTER the action was applied — it returns [] outside
+   * the player phase and never contains 'split' for a 3-card hand, so it was
+   * effectively always false by the time the overlay mounted, and a missed
+   * split on 8,8 rang HARD:16 instead of PAIRS:8. Mid-split it can be wrongly
+   * TRUE, because `active` has already moved to a different hand.
+   */
+  canSplit?: boolean;
 }
 
 export interface ReportCategoryStat {
@@ -256,6 +267,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       const gradedHand = game.hands[game.active];
       const gradedCards = gradedHand ? [...gradedHand.cards] : undefined;
       const gradedUp = game.dealerCards[0]?.rank;
+      const gradedCanSplit = game.legalActions().includes('split');
       game.act(action);
       const newEvents = game.events.slice(before);
       if (settings.feedbackMode === 'training') {
@@ -275,6 +287,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
             classification: wrong.classification,
             cards: gradedCards,
             dealerUp: gradedUp,
+            canSplit: gradedCanSplit,
           });
         }
       }

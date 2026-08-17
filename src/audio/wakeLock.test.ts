@@ -40,6 +40,32 @@ describe('wakeLock — stubbed navigator.wakeLock', () => {
     delete (navigator as { wakeLock?: unknown }).wakeLock;
   });
 
+  it('a second requestWakeLock() does not orphan the first sentinel', async () => {
+    // CountDrillView calls requestWakeLock() on every round start while
+    // eyes-free is on. Overwriting `sentinel` left the previous lock
+    // unreachable, so releaseWakeLock() freed only the last one and the
+    // screen never slept again -- a battery drain in the exact car-mount
+    // scenario this module exists for.
+    const firstRelease = vi.fn().mockResolvedValue(undefined);
+    requestMock.mockResolvedValueOnce({
+      release: firstRelease,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+
+    const { requestWakeLock, releaseWakeLock, isWakeLockActive } = await freshModule();
+    await requestWakeLock();
+    await requestWakeLock();
+
+    // Either it reused the held lock, or it released the old one first.
+    // What must never happen is two live locks and only one released.
+    await releaseWakeLock();
+    expect(isWakeLockActive()).toBe(false);
+    const acquired = requestMock.mock.calls.length;
+    const released = firstRelease.mock.calls.length + releaseMock.mock.calls.length;
+    expect(released).toBe(acquired);
+  });
+
   it('calls request("screen") exactly once and marks the lock active', async () => {
     const { requestWakeLock, isWakeLockActive } = await freshModule();
     await requestWakeLock();
