@@ -169,13 +169,19 @@ returns NOTHING, and BACKLOG's only tracked defect (T0-BUG1, dim-screen
 toggle unreachable) was fixed 2026-07-27. So the real list is what this
 session surfaced:
 
-- **A1 · Eyes-free ZonePad silently swallows an illegal action.** Gating the
-  keyboard/zone answer on `drillLegalActions` (item #3) means a Split tap on
-  a non-pair now does nothing at all. Eyes-on that is correct (the button is
-  visibly disabled); eyes-free there is NO disabled affordance, so the user
-  gets silence and cannot tell whether the tap registered. Needs an audible
-  cue. This is a regression introduced by #3 and it lands squarely in the
-  driving use case.
+- **A1 · Three input paths, three different behaviours.** CORRECTED after
+  investigation 2026-08-17 -- the original description ("silently swallows")
+  was wrong, and the truth is worse. `handleZoneAnswer` never received the
+  gate that item #3 added to the keyboard handler, so on an illegal Split:
+    * eyes-on button click -> `disabled`, impossible (correct);
+    * keyboard 1-5 -> gated, silently ignored (no feedback);
+    * eyes-free ZonePad tap -> UNGATED, grades the impossible play as a real
+      mistake and writes it to Stats AND the spaced-repetition deck.
+  So the one path with no disabled affordance is the only one that still
+  penalises the learner for a play that could not exist -- and it is the
+  driving path. Fix: gate the zone tap for consistency, and make the
+  unavailable case AUDIBLE rather than silent, since eyes-free has no other
+  channel.
 - **A2 · `hasSpoken()` is not reactive.** `AudioApi.hasSpoken()` reads module
   state during render, so a Repeat button conditioned on it would not
   re-render when it changes. Currently unused (the button renders on
