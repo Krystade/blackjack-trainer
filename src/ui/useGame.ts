@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Game } from '../engine/game';
 import type { GameConfig } from '../engine/game';
 import type { Action } from '../engine/deviations';
-import type { Category, GradedEvent } from '../engine/grade';
+import type { Card, Rank } from '../engine/cards';
+import type { Category, GradedEvent, MistakeClass } from '../engine/grade';
 import type { Profile, Settings } from '../store/types';
 import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
@@ -26,6 +27,27 @@ export interface OverlayInfo {
   expected: string;
   reason: string;
   tc: number;
+  /** The matchup in table notation, e.g. "10,6 v 10". Carried so the table's
+   * correction can name the hand it is about — with the round already moved
+   * on underneath the modal, "you should have stood" is otherwise ambiguous
+   * about WHICH hand when a split is in play. */
+  hand?: string;
+  /** Lets the shared MistakeCard name the KIND of error (basic vs missed
+   * index vs phantom index), which the engine already classifies. */
+  classification?: MistakeClass;
+  /**
+   * The hand as it stood WHEN THE DECISION WAS GRADED, plus the dealer
+   * upcard, so "Show me the table" (#7) can ring the cell this mistake
+   * actually belongs to.
+   *
+   * Snapshotted rather than read live off the game: by the time the overlay
+   * is on screen the engine has already applied the action, so the hand may
+   * have drawn a card, busted, or handed `active` to the next split hand.
+   * Reading it live would highlight a cell the learner was never asked
+   * about.
+   */
+  cards?: Card[];
+  dealerUp?: Rank;
 }
 
 export interface ReportCategoryStat {
@@ -230,6 +252,10 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const act = useCallback(
     (action: Action) => {
       const before = game.events.length;
+      // Snapshot BEFORE the engine mutates the hand -- see OverlayInfo.cards.
+      const gradedHand = game.hands[game.active];
+      const gradedCards = gradedHand ? [...gradedHand.cards] : undefined;
+      const gradedUp = game.dealerCards[0]?.rank;
       game.act(action);
       const newEvents = game.events.slice(before);
       if (settings.feedbackMode === 'training') {
@@ -240,7 +266,16 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
         }
         const wrong = newEvents.find((e) => e.kind === 'action' && !e.correct);
         if (wrong) {
-          setOverlay({ taken: action, expected: wrong.expected, reason: wrong.reason, tc: wrong.tc });
+          setOverlay({
+            taken: action,
+            expected: wrong.expected,
+            reason: wrong.reason,
+            tc: wrong.tc,
+            hand: wrong.hand,
+            classification: wrong.classification,
+            cards: gradedCards,
+            dealerUp: gradedUp,
+          });
         }
       }
       narrateSettlement(game, audio, settings.audio.cardDetail);

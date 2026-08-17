@@ -773,6 +773,20 @@ test('flashcards: keyboard 3/4/5 answer Double/Split/Surrender, grading identica
     await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
     await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
 
+    // Unavailable actions are greyed AND disabled (operator item #3), so the
+    // parity this spec guards is now two-sided: a key must do what its button
+    // does, INCLUDING doing nothing when that button is disabled. Whether a
+    // given seeded hand can split/surrender is read from the DOM rather than
+    // hardcoded, so the spec survives a change of seed or ruleset.
+    const button = page.locator('.action-bar button.action-btn', { hasText: label });
+    if (await button.isDisabled()) {
+      await page.keyboard.press(key);
+      await expect(
+        page.locator('.message-strip .result-correct, .message-strip .result-wrong'),
+      ).toHaveCount(0);
+      continue;
+    }
+
     await page.keyboard.press(key);
     await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
     const keyboardResult = await page.locator('.message-strip').innerText();

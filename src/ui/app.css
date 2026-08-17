@@ -2224,3 +2224,257 @@ button {
 .gate-outcome-eased {
   color: #d8b969;
 }
+
+/* ---------- Mistake correction panel (operator item #4) ---------- */
+
+/* Sits on the felt as a raised card with a red edge-light: the verdict has
+   to register before any word is read, but a full red fill would drown the
+   correct play, which is the part that matters. */
+.mistake-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  width: 100%;
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: 0.9rem 1rem 1rem;
+  border: 1px solid #4a2530;
+  border-top: 3px solid #eb5757;
+  border-radius: 0.6rem;
+  background: linear-gradient(180deg, #1d2b25 0%, #142019 100%);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 35%);
+  text-align: left;
+}
+
+.mistake-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.mistake-verdict {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #eb5757;
+}
+
+/* The classification is the diagnosis, so it is labelled like one rather
+   than styled as a decorative tag. */
+.mistake-class {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #d8b969;
+  border: 1px solid #4b431f;
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
+}
+
+.mistake-plays {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.mistake-play {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.45rem;
+  background: rgb(0 0 0 / 22%);
+}
+
+.mistake-play-role {
+  font-size: 0.65rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #8fae9c;
+}
+
+.mistake-play-value {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* Struck through and dimmed: the wrong play is shown for orientation, not
+   for study, and must never compete with the right one. */
+.mistake-play-taken .mistake-play-value {
+  color: #c98b8b;
+  text-decoration: line-through;
+  text-decoration-color: rgb(235 87 87 / 70%);
+}
+
+.mistake-play-expected {
+  background: rgb(216 185 105 / 10%);
+  outline: 1px solid rgb(216 185 105 / 35%);
+}
+
+.mistake-play-expected .mistake-play-value {
+  color: #f0e2bb;
+}
+
+/* The signature element: the correct play drawn as a strategy-chart cell,
+   in chart notation, so the correction reads in the same visual language as
+   the tables being memorised — and so "Show me the table" is an obvious
+   continuation of it rather than an unrelated button. */
+.mistake-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  padding: 0 0.25rem;
+  border: 1px solid #d8b969;
+  border-radius: 0.25rem;
+  background: rgb(216 185 105 / 18%);
+  color: #d8b969;
+  font-size: 0.85rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.mistake-context {
+  display: flex;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  color: #b7d3c2;
+  font-variant-numeric: tabular-nums;
+}
+
+.mistake-hand {
+  font-weight: 700;
+  color: #eaf3ec;
+}
+
+.mistake-note {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #cfe3d6;
+}
+
+.mistake-reason {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: #8fae9c;
+}
+
+.mistake-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mistake-actions > * {
+  flex: 1;
+}
+
+.mistake-table-btn {
+  min-height: 2.6rem;
+  border: 1px solid #d8b969;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: #d8b969;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mistake-table-btn:active {
+  background: rgb(216 185 105 / 18%);
+}
+
+/* Eyes-free: one verdict, one answer, one big target. Everything that would
+   need reading is gone, because the correction arrives by ear. */
+.mistake-card-eyes-free {
+  align-items: center;
+  text-align: center;
+  gap: 1rem;
+  padding: 1.4rem 1rem;
+}
+
+.mistake-card-eyes-free .mistake-verdict {
+  font-size: 1.5rem;
+}
+
+.mistake-eyes-free-answer {
+  font-size: 2.1rem;
+  font-weight: 800;
+  color: #d8b969;
+  letter-spacing: 0.01em;
+}
+
+.mistake-card-eyes-free .drill-next-btn {
+  width: 100%;
+  min-height: 3.2rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mistake-card {
+    animation: mistake-card-in 140ms ease-out;
+  }
+}
+
+@keyframes mistake-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The correction panel renders inside the drills' `.message-strip`, which is
+   a centred column sized for one-line verdicts. The panel is a block that
+   wants the full column width, so it opts out of the strip's centring
+   without disturbing the one-liners that still use it. */
+.message-strip > .mistake-card {
+  align-self: stretch;
+  text-align: left;
+}
+
+/* ---------- "Show me the table" overlay (operator item #7) ---------- */
+
+/* Opaque and fixed: it covers a live drill or an in-progress round, and the
+   chart underneath it scrolls horizontally with a sticky label column, so it
+   must own its own stacking and scroll context rather than inheriting one. */
+.study-chart-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow-y: auto;
+  background: #0d2318;
+  overscroll-behavior: contain;
+}
+
+/* ---------- Repeat control (operator item #2) ---------- */
+
+/* Lives in the topbar beside Back so it sits in the same place on every
+   screen that speaks — the whole point is finding it without looking. */
+.repeat-btn {
+  min-height: 2.2rem;
+  padding: 0 0.7rem;
+  border: 1px solid #3c5a49;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #b7d3c2;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.repeat-btn:active {
+  background: rgb(183 211 194 / 15%);
+}

@@ -24,6 +24,11 @@ export function Home({ onNavigate, activeProfile }: HomeProps) {
         <button type="button" className="home-nav-btn" onClick={() => onNavigate('drills')}>
           Drills
         </button>
+        {/* Charts sits next to Drills, not under Settings: it is study
+            material the operator opens between reps, not configuration. */}
+        <button type="button" className="home-nav-btn" onClick={() => onNavigate('charts')}>
+          Charts
+        </button>
         <button type="button" className="home-nav-btn" onClick={() => onNavigate('stats')}>
           Stats
         </button>

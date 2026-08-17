@@ -5,6 +5,7 @@ import type { Action, DeviationId } from '../../engine/deviations';
 import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17, isIndexActive } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
 import { drawFlashcard } from '../../drills/flashcards';
+import { drillLegalActions } from '../../drills/legalActions';
 import type { Flashcard } from '../../drills/flashcards';
 import { drawQuizItem } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
@@ -27,6 +28,8 @@ import { isCountFluent } from '../../drills/fluencyGate';
 import { PlayingCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import { ZonePad } from '../components/ZonePad';
+import { MistakeCard } from '../components/MistakeCard';
+import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
 import { narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt } from '../../audio/narrate';
@@ -48,8 +51,6 @@ interface DrillsProps {
   onNavigate: (screen: Screen) => void;
   onSettingsChange: (settings: Settings) => void;
 }
-
-const ALL_ACTIONS: Action[] = ['hit', 'stand', 'double', 'split', 'surrender'];
 
 // Desktop keyboard input (operator request): number keys map onto the
 // action-zone layout so a keypress grades identically to tapping the
@@ -148,7 +149,9 @@ function FlashcardsView({
   const [card, setCard] = useState<Flashcard>(() =>
     drawFlashcard(settings.drill.flashCategory, srDeckRef.current, Date.now(), randomSeed(), activeProfile.rules),
   );
-  const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action } | null>(null);
+  const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action; event: GradedEvent } | null>(null);
+  // #7: the chart opened over this correction, closed back onto the same card.
+  const [showChart, setShowChart] = useState(false);
   const audio = useAudio(settings.audio);
 
   // Eyes-free audio (Task 9): local UI state, not persisted, per the
@@ -220,7 +223,7 @@ function FlashcardsView({
   // precedent as CountDrillView's flashing-card narration).
   useEffect(() => {
     if (!eyesFree) return;
-    speak(narrateFlashcardPrompt(card.cards, card.up), {
+    speak(narrateFlashcardPrompt(card.cards, card.up, settings.audio.handStyle), {
       interrupt: true,
       rate: settings.audio.rate,
       voiceURI: settings.audio.voiceURI,
@@ -258,7 +261,7 @@ function FlashcardsView({
   };
 
   const handleRepeat = () => {
-    speak(narrateFlashcardPrompt(card.cards, card.up), {
+    speak(narrateFlashcardPrompt(card.cards, card.up, settings.audio.handStyle), {
       interrupt: true,
       rate: settings.audio.rate,
       voiceURI: settings.audio.voiceURI,
@@ -305,7 +308,7 @@ function FlashcardsView({
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
 
-    setFeedback({ correct: event.correct, correctAction });
+    setFeedback({ correct: event.correct, correctAction, event });
   };
 
   // Eyes-free zone tap: ZoneId and Action are the identical five-member
@@ -330,7 +333,7 @@ function FlashcardsView({
     );
     audio.ding(event.correct ? 'good' : 'bad');
 
-    setFeedback({ correct: event.correct, correctAction });
+    setFeedback({ correct: event.correct, correctAction, event });
     scheduleAutoAdvance();
   };
 
@@ -353,6 +356,11 @@ function FlashcardsView({
         const action = KEY_TO_ACTION[e.key];
         if (!action) return;
         e.preventDefault();
+        // The keyboard is an alias for the buttons, so it obeys the same
+        // legality gate they do. Without this, pressing 4 would submit a
+        // Split on a 10,6 that the (disabled) Split button cannot -- and
+        // record an impossible play as a "mistake" against the learner.
+        if (!drillLegalActions(card.cards, activeProfile.rules).includes(action)) return;
         if (eyesFree) {
           handleZoneAnswer(action);
         } else {
@@ -379,6 +387,11 @@ function FlashcardsView({
           Back
         </button>
         <div className="drill-heading">Flashcards</div>
+        {settings.audio.enabled && (
+          <button type="button" className="repeat-btn" onClick={audio.replay}>
+            Repeat
+          </button>
+        )}
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
@@ -438,9 +451,23 @@ function FlashcardsView({
       <div className="message-strip">
         {feedback && (
           <>
-            <div className={feedback.correct ? 'result-correct' : 'result-wrong'}>
-              {feedback.correct ? 'Correct!' : `Wrong — correct: ${feedback.correctAction.toUpperCase()}`}
-            </div>
+            {feedback.correct ? (
+              <div className="result-correct">Correct!</div>
+            ) : (
+              <MistakeCard
+                taken={feedback.event.taken}
+                expected={feedback.event.expected}
+                reason={feedback.event.reason}
+                tc={feedback.event.tc}
+                hand={feedback.event.hand}
+                classification={feedback.event.classification}
+                eyesFree={eyesFree}
+                onShowTable={() => setShowChart(true)}
+              />
+            )}
+            {/* The cell id names the chart row just drilled, and belongs to
+                the feedback state rather than to either outcome — it is
+                equally worth seeing after a hit or a miss. */}
             <div className="feedback-cell">{card.cellId}</div>
           </>
         )}
@@ -455,7 +482,13 @@ function FlashcardsView({
             visible={!settings.audio.dimZones}
           />
         ) : (
-          <ActionBar mode={{ kind: 'actions', legal: ALL_ACTIONS, onAction: handleAction }} />
+          <ActionBar
+            mode={{
+              kind: 'actions',
+              legal: drillLegalActions(card.cards, activeProfile.rules),
+              onAction: handleAction,
+            }}
+          />
         )
       ) : (
         <div className="action-bar">
@@ -463,6 +496,14 @@ function FlashcardsView({
             Next
           </button>
         </div>
+      )}
+      {showChart && (
+        <StudyChartOverlay
+          activeProfile={activeProfile}
+          cards={card.cards}
+          dealerUp={card.up}
+          onClose={() => setShowChart(false)}
+        />
       )}
     </div>
   );
@@ -516,7 +557,9 @@ function DeviationQuizView({
       Date.now(),
     ),
   );
-  const [feedback, setFeedback] = useState<{ correct: boolean } | null>(null);
+  const [feedback, setFeedback] = useState<{ correct: boolean; event: GradedEvent } | null>(null);
+  // #7: the chart opened over this correction, closed back onto the same card.
+  const [showChart, setShowChart] = useState(false);
   const audio = useAudio(settings.audio);
 
   // Eyes-free audio (Task 9): local UI state, not persisted, per the
@@ -584,13 +627,13 @@ function DeviationQuizView({
   // branches are mutually exclusive so nothing double-speaks.
   useEffect(() => {
     if (eyesFree) {
-      speak(narrateQuizPrompt(item.cards, item.up, item.tc), {
+      speak(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle), {
         interrupt: true,
         rate: settings.audio.rate,
         voiceURI: settings.audio.voiceURI,
       });
     } else {
-      audio.sayFull(narrateQuizPrompt(item.cards, item.up, item.tc));
+      audio.sayFull(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item, eyesFree]);
@@ -637,7 +680,7 @@ function DeviationQuizView({
   };
 
   const handleRepeat = () => {
-    speak(narrateQuizPrompt(item.cards, item.up, item.tc), {
+    speak(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle), {
       interrupt: true,
       rate: settings.audio.rate,
       voiceURI: settings.audio.voiceURI,
@@ -683,7 +726,7 @@ function DeviationQuizView({
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
 
-    setFeedback({ correct: event.correct });
+    setFeedback({ correct: event.correct, event });
   };
 
   // Eyes-free zone tap. Non-insurance items: ZoneId and Action are the
@@ -712,7 +755,7 @@ function DeviationQuizView({
     );
     audio.ding(event.correct ? 'good' : 'bad');
 
-    setFeedback({ correct: event.correct });
+    setFeedback({ correct: event.correct, event });
     scheduleAutoAdvance();
   };
 
@@ -749,6 +792,8 @@ function DeviationQuizView({
         const action = KEY_TO_ACTION[e.key];
         if (!action) return;
         e.preventDefault();
+        // Same legality gate as the ActionBar buttons -- see FlashcardsView.
+        if (item.cards && !drillLegalActions(item.cards, activeProfile.rules).includes(action)) return;
         if (eyesFree) {
           handleZoneAnswer(action);
         } else {
@@ -777,6 +822,11 @@ function DeviationQuizView({
           Back
         </button>
         <div className="drill-heading">Deviation Quiz</div>
+        {settings.audio.enabled && (
+          <button type="button" className="repeat-btn" onClick={audio.replay}>
+            Repeat
+          </button>
+        )}
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
@@ -859,9 +909,20 @@ function DeviationQuizView({
       <div className="message-strip">
         {feedback && (
           <>
-            <div className={feedback.correct ? 'result-correct' : 'result-wrong'}>
-              {feedback.correct ? 'Correct!' : 'Wrong'}
-            </div>
+            {feedback.correct ? (
+              <div className="result-correct">Correct!</div>
+            ) : (
+              <MistakeCard
+                taken={feedback.event.taken}
+                expected={feedback.event.expected}
+                reason={feedback.event.reason}
+                tc={feedback.event.tc}
+                hand={feedback.event.hand}
+                classification={feedback.event.classification}
+                eyesFree={eyesFree}
+                onShowTable={item.cards ? () => setShowChart(true) : undefined}
+              />
+            )}
             <div className="quiz-label">{item.label}</div>
           </>
         )}
@@ -885,7 +946,13 @@ function DeviationQuizView({
             </button>
           </div>
         ) : (
-          <ActionBar mode={{ kind: 'actions', legal: ALL_ACTIONS, onAction: handleAnswer }} />
+          <ActionBar
+            mode={{
+              kind: 'actions',
+              legal: drillLegalActions(item.cards, activeProfile.rules),
+              onAction: handleAnswer,
+            }}
+          />
         )
       ) : (
         <div className="action-bar">
@@ -893,6 +960,14 @@ function DeviationQuizView({
             Next
           </button>
         </div>
+      )}
+      {showChart && (
+        <StudyChartOverlay
+          activeProfile={activeProfile}
+          cards={item.cards}
+          dealerUp={item.up}
+          onClose={() => setShowChart(false)}
+        />
       )}
     </div>
   );
@@ -960,7 +1035,9 @@ function MixedSessionView({
   };
 
   const [current, setCurrent] = useState<MixedCurrent>(() => drawFor(pickMixedType(sessionSeed(), 0)));
-  const [feedback, setFeedback] = useState<{ correct: boolean; correctAction?: Action } | null>(null);
+  const [feedback, setFeedback] = useState<{ correct: boolean; correctAction?: Action; event: GradedEvent } | null>(null);
+  // #7: the chart opened over this correction, closed back onto the same card.
+  const [showChart, setShowChart] = useState(false);
   const audio = useAudio(settings.audio);
 
   const [eyesFree, setEyesFree] = useState(false);
@@ -1001,8 +1078,8 @@ function MixedSessionView({
 
   const promptFor = (c: MixedCurrent): string =>
     c.type === 'flash'
-      ? narrateFlashcardPrompt(c.card.cards, c.card.up)
-      : narrateQuizPrompt(c.item.cards, c.item.up, c.item.tc);
+      ? narrateFlashcardPrompt(c.card.cards, c.card.up, settings.audio.handStyle)
+      : narrateQuizPrompt(c.item.cards, c.item.up, c.item.tc, settings.audio.handStyle);
 
   // Narrate each new item. Eyes-free speaks every item (its primary output
   // channel); visual mode mirrors each drill's standalone behavior -- the
@@ -1013,7 +1090,7 @@ function MixedSessionView({
     if (eyesFree) {
       speak(promptFor(current), { interrupt: true, rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
     } else if (current.type === 'quiz') {
-      audio.sayFull(narrateQuizPrompt(current.item.cards, current.item.up, current.item.tc));
+      audio.sayFull(narrateQuizPrompt(current.item.cards, current.item.up, current.item.tc, settings.audio.handStyle));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, eyesFree]);
@@ -1078,7 +1155,7 @@ function MixedSessionView({
     const { correct, correctAction, event } = gradeCurrent(taken);
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(correct ? 'good' : 'bad');
-    setFeedback({ correct, correctAction });
+    setFeedback({ correct, correctAction, event });
   };
 
   const handleZoneAnswer = (zone: ZoneId | 'take' | 'decline') => {
@@ -1093,7 +1170,7 @@ function MixedSessionView({
     const { correct, correctAction, event } = gradeCurrent(taken);
     speakCorrectionOnceGated(event, (text) => speak(text, { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI }));
     audio.ding(correct ? 'good' : 'bad');
-    setFeedback({ correct, correctAction });
+    setFeedback({ correct, correctAction, event });
     scheduleAutoAdvance();
   };
 
@@ -1123,6 +1200,8 @@ function MixedSessionView({
         const action = KEY_TO_ACTION[e.key];
         if (!action) return;
         e.preventDefault();
+        // Same legality gate as the ActionBar buttons -- see FlashcardsView.
+        if (handCards && !drillLegalActions(handCards, activeProfile.rules).includes(action)) return;
         if (eyesFree) handleZoneAnswer(action);
         else handleAnswer(action);
         return;
@@ -1149,6 +1228,11 @@ function MixedSessionView({
           Back
         </button>
         <div className="drill-heading">Mixed</div>
+        {settings.audio.enabled && (
+          <button type="button" className="repeat-btn" onClick={audio.replay}>
+            Repeat
+          </button>
+        )}
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
@@ -1204,22 +1288,29 @@ function MixedSessionView({
       )}
 
       <div className="message-strip">
-        {feedback &&
-          (current.type === 'flash' ? (
-            <>
-              <div className={feedback.correct ? 'result-correct' : 'result-wrong'}>
-                {feedback.correct ? 'Correct!' : `Wrong — correct: ${feedback.correctAction?.toUpperCase()}`}
-              </div>
+        {feedback && (
+          <>
+            {feedback.correct ? (
+              <div className="result-correct">Correct!</div>
+            ) : (
+              <MistakeCard
+                taken={feedback.event.taken}
+                expected={feedback.event.expected}
+                reason={feedback.event.reason}
+                tc={feedback.event.tc}
+                hand={feedback.event.hand}
+                classification={feedback.event.classification}
+                eyesFree={eyesFree}
+                onShowTable={handCards ? () => setShowChart(true) : undefined}
+              />
+            )}
+            {current.type === 'flash' ? (
               <div className="feedback-cell">{current.card.cellId}</div>
-            </>
-          ) : (
-            <>
-              <div className={feedback.correct ? 'result-correct' : 'result-wrong'}>
-                {feedback.correct ? 'Correct!' : 'Wrong'}
-              </div>
+            ) : (
               <div className="quiz-label">{current.item.label}</div>
-            </>
-          ))}
+            )}
+          </>
+        )}
       </div>
 
       {!feedback ? (
@@ -1240,7 +1331,16 @@ function MixedSessionView({
             </button>
           </div>
         ) : (
-          <ActionBar mode={{ kind: 'actions', legal: ALL_ACTIONS, onAction: handleAnswer }} />
+          <ActionBar
+            mode={{
+              kind: 'actions',
+              // `handCards` is non-null on this branch (the insurance case is
+              // the branch immediately above), so the hand is always the real
+              // two-card hand the legality rules expect.
+              legal: drillLegalActions(handCards ?? [], activeProfile.rules),
+              onAction: handleAnswer,
+            }}
+          />
         )
       ) : (
         <div className="action-bar">
@@ -1248,6 +1348,14 @@ function MixedSessionView({
             Next
           </button>
         </div>
+      )}
+      {showChart && (
+        <StudyChartOverlay
+          activeProfile={activeProfile}
+          cards={handCards}
+          dealerUp={dealerUp}
+          onClose={() => setShowChart(false)}
+        />
       )}
     </div>
   );

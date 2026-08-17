@@ -365,7 +365,7 @@ const CLIP_WATCHDOG_PER_CLIP_MS = 8000;
  */
 export function playClipsAsync(
   text: string,
-  opts?: { interrupt?: boolean; rate?: number },
+  opts?: { interrupt?: boolean; rate?: number; volume?: number },
 ): Promise<boolean> {
   return (async () => {
     try {
@@ -384,6 +384,9 @@ export function playClipsAsync(
       if (!AudioCtor) return false;
 
       const rate = opts?.rate ?? 1;
+      // Presence-checked, never `?? 1` on a truthiness test: volume 0 means
+      // silence and must survive the trip, exactly as on the live-TTS path.
+      const volume = opts?.volume;
       const base = clipsBaseUrl();
       const fileList: string[] = files;
 
@@ -414,6 +417,7 @@ export function playClipsAsync(
             audio.src = `${base}clips/${voiceId}/${fileList[index]}`;
             audio.preservesPitch = true;
             audio.playbackRate = rate;
+            if (volume !== undefined) audio.volume = volume;
             chain.audio = audio;
             armWatchdog();
 

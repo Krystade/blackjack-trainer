@@ -186,9 +186,37 @@ export function cancelSpeech(): void {
   }
 }
 
+/**
+ * The option bag every speaking entry point accepts. `volume` is 0..1 and
+ * maps to `SpeechSynthesisUtterance.volume` (and to the chime's gain peak);
+ * it is threaded through exactly the same paths `rate` already travels.
+ */
+export interface SpeechOpts {
+  interrupt?: boolean;
+  rate?: number;
+  voiceURI?: string;
+  volume?: number;
+}
+
+/**
+ * Apply `opts.volume` to an utterance.
+ *
+ * PRESENCE-checked, not truthiness-checked, unlike `rate` directly above every
+ * call site of this helper. `volume: 0` is a legitimate setting — the operator
+ * dragging the slider to the floor means silence — and `if (opts.volume)`
+ * would silently discard it, leaving the engine default of full volume. That
+ * is the single most surprising bug this feature could ship, so it is pinned
+ * by its own test.
+ */
+function applyVolume(utterance: SpeechSynthesisUtterance, opts?: SpeechOpts): void {
+  if (opts?.volume !== undefined) {
+    utterance.volume = opts.volume;
+  }
+}
+
 /** The live-`speechSynthesis` path, used directly when clips are disabled/
  * absent, and as the fallback when a clip lookup misses or playback fails. */
-function speakLive(text: string, opts?: { interrupt?: boolean; rate?: number; voiceURI?: string }): void {
+function speakLive(text: string, opts?: SpeechOpts): void {
   if (!isSpeechSupported()) return;
 
   try {
@@ -199,6 +227,7 @@ function speakLive(text: string, opts?: { interrupt?: boolean; rate?: number; vo
     if (opts?.rate) {
       utterance.rate = opts.rate;
     }
+    applyVolume(utterance, opts);
     const voice = resolveVoice(opts?.voiceURI);
     if (voice) {
       utterance.voice = voice;
@@ -207,6 +236,58 @@ function speakLive(text: string, opts?: { interrupt?: boolean; rate?: number; vo
   } catch {
     // never throw
   }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Last-utterance tracking — the "say that again" primitive                */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * The most recent thing the app SAID, backing the Repeat control.
+ *
+ * Deliberately the raw spoken string rather than a re-derived prompt. The
+ * pre-existing eyes-free long-press (`ZonePad`'s `onRepeat`) rebuilds the
+ * prompt from current state, which quietly makes it a different feature: it
+ * can only ever repeat the prompt, never the correction, the result, or the
+ * count that just went by — and it re-reads state that may have moved on
+ * since. Storing what was actually uttered means Repeat is honest at every
+ * point in the flow, which is the whole point when the user is driving and
+ * missed a phrase.
+ */
+let lastSpoken: string | null = null;
+
+/** Records an utterance. Called by every public speaking entry point, and by
+ * nothing else — see `chime()`, which pointedly does not call it. */
+function rememberSpoken(text: string): void {
+  lastSpoken = text;
+}
+
+/** The last spoken text, or `null` when nothing has been said yet. */
+export function getLastSpoken(): string | null {
+  return lastSpoken;
+}
+
+/**
+ * Re-speaks the last utterance, returning whether there was anything to say.
+ *
+ * Always interrupts, regardless of `opts`: a repeat that queued behind the
+ * utterance it is repeating would make the user sit through the thing they
+ * already missed before hearing it again.
+ *
+ * Does NOT re-record what it speaks. A repeat is not new information, so
+ * repeating twice must not be able to shift what "last" means.
+ */
+export function repeatLast(opts?: SpeechOpts): boolean {
+  const text = lastSpoken;
+  if (text === null) return false;
+  speak(text, { ...opts, interrupt: true });
+  lastSpoken = text;
+  return true;
+}
+
+/** Test-only reset of the module-level memory above. */
+export function _resetLastSpokenForTest(): void {
+  lastSpoken = null;
 }
 
 /**
@@ -218,15 +299,16 @@ function speakLive(text: string, opts?: { interrupt?: boolean; rate?: number; vo
  */
 export function speak(
   text: string,
-  opts?: { interrupt?: boolean; rate?: number; voiceURI?: string },
+  opts?: SpeechOpts,
 ): void {
+  rememberSpoken(text);
   if (isE2eAudioMode()) {
     pushSpeechLog(text);
     return;
   }
 
   if (isClipsEnabled() && hasClips(text)) {
-    void playClipsAsync(text, { interrupt: opts?.interrupt, rate: opts?.rate }).then((played: boolean) => {
+    void playClipsAsync(text, { interrupt: opts?.interrupt, rate: opts?.rate, volume: opts?.volume }).then((played: boolean) => {
       if (!played) speakLive(text, opts);
     });
     return;
@@ -288,7 +370,7 @@ function estimateWatchdogMs(text: string): number {
  * or playback fails. */
 function speakAsyncLive(
   text: string,
-  opts?: { interrupt?: boolean; rate?: number; voiceURI?: string },
+  opts?: SpeechOpts,
 ): Promise<void> {
   if (!isSpeechSupported()) {
     return Promise.resolve();
@@ -307,6 +389,7 @@ function speakAsyncLive(
       if (opts?.rate) {
         utterance.rate = opts.rate;
       }
+      applyVolume(utterance, opts);
       const voice = resolveVoice(opts?.voiceURI);
       if (voice) {
         utterance.voice = voice;
@@ -351,15 +434,16 @@ function speakAsyncLive(
  */
 export function speakAsync(
   text: string,
-  opts?: { interrupt?: boolean; rate?: number; voiceURI?: string },
+  opts?: SpeechOpts,
 ): Promise<void> {
+  rememberSpoken(text);
   if (isE2eAudioMode()) {
     pushSpeechLog(text);
     return Promise.resolve();
   }
 
   if (isClipsEnabled() && hasClips(text)) {
-    return playClipsAsync(text, { interrupt: opts?.interrupt, rate: opts?.rate }).then((played: boolean) => {
+    return playClipsAsync(text, { interrupt: opts?.interrupt, rate: opts?.rate, volume: opts?.volume }).then((played: boolean) => {
       if (played) return;
       return speakAsyncLive(text, opts);
     });
@@ -381,6 +465,19 @@ function getAudioContextCtor(): AudioContextCtor | undefined {
   return w.AudioContext ?? w.webkitAudioContext;
 }
 
+/**
+ * Test-only drop of the cached context.
+ *
+ * `sharedAudioContext` is memoized for the page's lifetime (constructing an
+ * AudioContext per chime is both wasteful and, on iOS, subject to the
+ * user-gesture unlock rules). That cache outlives a single test: a spec that
+ * swaps in a fresh fake `window.AudioContext` would otherwise keep chiming
+ * into the PREVIOUS test's fake and silently assert nothing.
+ */
+export function _resetSharedAudioContextForTest(): void {
+  sharedAudioContext = null;
+}
+
 function getSharedAudioContext(): AudioContext | null {
   if (sharedAudioContext) return sharedAudioContext;
   const Ctor = getAudioContextCtor();
@@ -393,6 +490,9 @@ function getSharedAudioContext(): AudioContext | null {
   }
 }
 
+/** Full-volume peak of the chime's gain envelope, scaled by `opts.volume`. */
+const CHIME_PEAK_GAIN = 0.3;
+
 const CHIME_FREQUENCY_HZ: Record<'good' | 'bad' | 'attention', number> = {
   good: 880,
   bad: 220,
@@ -403,7 +503,7 @@ const CHIME_FREQUENCY_HZ: Record<'good' | 'bad' | 'attention', number> = {
  * Plays a short (0.12s) gain-ramped sine tone. In e2e mode, records
  * `chime:<kind>` into `window.__speechLog` instead. Never throws.
  */
-export function chime(kind: 'good' | 'bad' | 'attention'): void {
+export function chime(kind: 'good' | 'bad' | 'attention', opts?: { volume?: number }): void {
   if (isE2eAudioMode()) {
     pushSpeechLog(`chime:${kind}`);
     return;
@@ -420,8 +520,13 @@ export function chime(kind: 'good' | 'bad' | 'attention'): void {
 
     const now = ctx.currentTime;
     const duration = 0.12;
+    // The chime rides the same volume setting as speech, so turning the app
+    // down turns ALL of it down. Scaling the envelope peak (rather than
+    // routing through another GainNode) keeps the attack/release shape
+    // identical at every volume. Absent opts, the historical 0.3 stands.
+    const peak = CHIME_PEAK_GAIN * (opts?.volume ?? 1);
     gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.3, now + 0.02);
+    gain.gain.linearRampToValueAtTime(peak, now + 0.02);
     gain.gain.linearRampToValueAtTime(0, now + duration);
 
     oscillator.connect(gain);
