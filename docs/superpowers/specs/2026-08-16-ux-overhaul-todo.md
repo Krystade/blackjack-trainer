@@ -5,12 +5,12 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | # | Item | Path | Status |
 |---|------|------|--------|
 | 1 | Speak soft hands card-by-card ("Ace 3", not "soft 14") | bounded | ☑ |
-| 2 | "Repeat last statement" button | bounded | ◐ plumbing done, button pending |
+| 2 | "Repeat last statement" button | bounded | ☑ |
 | 3 | Grey out + disable unavailable actions | bounded | ☑ |
-| 4 | Major rework of incorrect-answer feedback | architectural | ☐ |
+| 4 | Major rework of incorrect-answer feedback | architectural | ☑ |
 | 5 | Speaking-volume control in Settings | bounded | ☑ |
-| 6 | Viewable strategy charts (both row orderings) | architectural | ☐ |
-| 7 | "Check the correct table" from a mistake, anchored on the cell | architectural | ☐ |
+| 6 | Viewable strategy charts (both row orderings) | architectural | ☑ (default order awaiting operator pick) |
+| 7 | "Check the correct table" from a mistake, anchored on the cell | architectural | ☑ |
 | 8 | Full UX/UI redesign pass | architectural | ☐ DEFERRED by operator until 1-7 land |
 | 9 | Is spaced repetition in the flashcards? | question | ☑ ANSWERED |
 
@@ -100,3 +100,53 @@ The operator's "two versions" = row ordering only:
 - **Descending** (hard 17 at top down to 5) — the Wizard/BJA house style.
 - **Ascending** (hard 5 at top up to 17) — the reversed style.
 Both render from one dataset; a toggle switches them.
+
+
+## Shipped 2026-08-17 (second pass) — items 2, 4, 6, 7
+
+**#4** `ui/components/MistakeCard.tsx`, shared by the table overlay and all
+three drill views. Names the KIND of error from `GradedEvent.classification`
+(the engine already computed it; the UI was discarding it) and draws the
+correct play as a ringed chart CELL in chart notation. `narrateReason()`
+(audio/narrate.ts) rewrites index labels into speech, closing the wording
+half of BACKLOG D2. `eyesFree` collapses the panel to a glanceable verdict:
+no forced pause, no forced re-answer — both wrong at speed.
+
+**#7** `ui/components/StudyChartOverlay.tsx`. An OVERLAY, not a navigation:
+`App`'s router carries no payload and remounts screens, so routing to Charts
+would discard the card under correction and return the learner to an
+unrelated hand — the exact opposite of anchoring. Back closes it onto the
+same card. `OverlayInfo` now snapshots `cards`/`dealerUp` at grade time,
+because by the time the table's modal is on screen the engine has already
+applied the action and the hand may have drawn, busted, or passed `active`
+to the next split hand.
+
+**#2** A `Repeat` control in every drill topbar and on the table, shown only
+when audio is on, calling `AudioApi.replay()`.
+
+**#6** Default row order still DESCENDING pending the operator's pick;
+screenshots in docs/sources/chart-view-{descending,ascending}.png.
+
+New spec `e2e/correction-chart.spec.ts` (4 tests). Two of its own bugs were
+worth keeping notes on:
+- it first asserted the replayed line equalled the last LOG entry, which is
+  often `chime:good`. The failure was the feature behaving correctly —
+  chimes are deliberately not utterances — so the assertion now reaches for
+  the last spoken line;
+- it captured the hand before answering, but the helper advances past cards
+  answered correctly, so the hand under correction is not the one first
+  dealt.
+
+Verified: 3099 unit tests / 46 files, 122 e2e specs, tsc -b clean, oxlint
+clean (3 pre-existing fast-refresh warnings).
+
+## Remaining
+
+- **#8** full UX/UI redesign — deferred by the operator until 1-7 land. They
+  are now all landed.
+- Car/eyes-free follow-ups raised 2026-08-17: Media Session API (steering-
+  wheel controls + head-unit metadata, only reachable via the CLIPS path,
+  since speechSynthesis is not media to a phone OS) and a PWA manifest
+  (none exists; installed PWAs get better background audio on Android).
+- Eyes-free ZonePad still silently ignores an illegal zone tap — an audible
+  "split isn't available" cue is the open half.

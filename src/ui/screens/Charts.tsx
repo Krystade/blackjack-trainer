@@ -73,9 +73,21 @@ interface ChartsProps {
    * parameter (see parseHighlightParam) so the same view can be deep-linked.
    */
   highlight?: ChartHighlight;
+  /**
+   * What the Back control does. Defaults to navigating Home, which is right
+   * when Charts IS the screen.
+   *
+   * The mistake panel's "Show me the table" (#7) opens this same component as
+   * an overlay ON TOP of a live drill instead, because navigating away would
+   * discard the card being corrected — and returning to a fresh, unrelated
+   * card is precisely the opposite of anchoring a correction. That caller
+   * passes a closer, so Back dismisses the overlay and the learner lands back
+   * on the hand they got wrong.
+   */
+  onBack?: () => void;
 }
 
-export function Charts({ onNavigate, activeProfile, highlight }: ChartsProps) {
+export function Charts({ onNavigate, activeProfile, highlight, onBack }: ChartsProps) {
   const [order, setOrder] = useState<RowOrder>(() => {
     if (typeof window === 'undefined') return 'descending';
     try {
@@ -147,7 +159,7 @@ export function Charts({ onNavigate, activeProfile, highlight }: ChartsProps) {
   return (
     <div className="charts-screen">
       <div className="charts-topbar">
-        <button type="button" className="charts-back-btn" onClick={() => onNavigate('home')}>
+        <button type="button" className="charts-back-btn" onClick={() => (onBack ? onBack() : onNavigate('home'))}>
           Back to Home
         </button>
         <div className="charts-heading">Strategy Charts</div>

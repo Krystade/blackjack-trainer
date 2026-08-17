@@ -14,6 +14,7 @@ import { ActionBar } from '../components/ActionBar';
 import type { ActionBarMode } from '../components/ActionBar';
 import { Modal } from '../components/Modal';
 import { MistakeCard } from '../components/MistakeCard';
+import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { NumPad } from '../components/NumPad';
 import { assistedFlag } from '../peekFlag';
 
@@ -221,6 +222,8 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
   const [pendingRc, setPendingRc] = useState(0);
   const [peeking, setPeeking] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  // #7: the strategy chart opened over a wrong play, ringed on its cell.
+  const [showChart, setShowChart] = useState(false);
 
   // R7 (docs/BACKLOG.md, count-peek accountability): tally each peek-button
   // activation so the session report / Stats can flag a peek-assisted accuracy.
@@ -359,6 +362,11 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
             onTouchEnd={releasePeek}
           >
             {peeking ? `RC ${formatSigned(game.runningCount)} / TC ${formatSigned(game.trueCountNow)}` : 'TC'}
+          </button>
+        )}
+        {settings.audio.enabled && (
+          <button type="button" className="repeat-btn" onClick={audio.replay}>
+            Repeat
           </button>
         )}
         <button type="button" className="end-btn" onClick={handleEnd}>
@@ -519,6 +527,7 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
             tc={overlay.tc}
             hand={overlay.hand}
             classification={overlay.classification}
+            onShowTable={() => setShowChart(true)}
           />
           {/* Dismissal stays the table's own Continue button rather than the
               panel's Next: at the table this closes an overlay and hands
@@ -528,6 +537,19 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
             Continue
           </button>
         </Modal>
+      )}
+
+      {showChart && overlay && (
+        <StudyChartOverlay
+          activeProfile={activeProfile}
+          cards={overlay.cards ?? null}
+          dealerUp={overlay.dealerUp ?? null}
+          // Whether splitting was on the table decides between a PAIRS cell
+          // and the hard/soft row -- a pair of 8s played from a hand that
+          // could not split belongs to hard 16, not to 8,8.
+          canSplit={legal.includes('split')}
+          onClose={() => setShowChart(false)}
+        />
       )}
     </div>
   );

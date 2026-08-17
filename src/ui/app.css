@@ -2443,3 +2443,38 @@ button {
   align-self: stretch;
   text-align: left;
 }
+
+/* ---------- "Show me the table" overlay (operator item #7) ---------- */
+
+/* Opaque and fixed: it covers a live drill or an in-progress round, and the
+   chart underneath it scrolls horizontally with a sticky label column, so it
+   must own its own stacking and scroll context rather than inheriting one. */
+.study-chart-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow-y: auto;
+  background: #0d2318;
+  overscroll-behavior: contain;
+}
+
+/* ---------- Repeat control (operator item #2) ---------- */
+
+/* Lives in the topbar beside Back so it sits in the same place on every
+   screen that speaks — the whole point is finding it without looking. */
+.repeat-btn {
+  min-height: 2.2rem;
+  padding: 0 0.7rem;
+  border: 1px solid #3c5a49;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #b7d3c2;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.repeat-btn:active {
+  background: rgb(183 211 194 / 15%);
+}

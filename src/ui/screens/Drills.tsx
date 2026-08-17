@@ -29,6 +29,7 @@ import { PlayingCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import { ZonePad } from '../components/ZonePad';
 import { MistakeCard } from '../components/MistakeCard';
+import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
 import { narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt } from '../../audio/narrate';
@@ -149,6 +150,8 @@ function FlashcardsView({
     drawFlashcard(settings.drill.flashCategory, srDeckRef.current, Date.now(), randomSeed(), activeProfile.rules),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action; event: GradedEvent } | null>(null);
+  // #7: the chart opened over this correction, closed back onto the same card.
+  const [showChart, setShowChart] = useState(false);
   const audio = useAudio(settings.audio);
 
   // Eyes-free audio (Task 9): local UI state, not persisted, per the
@@ -384,6 +387,11 @@ function FlashcardsView({
           Back
         </button>
         <div className="drill-heading">Flashcards</div>
+        {settings.audio.enabled && (
+          <button type="button" className="repeat-btn" onClick={audio.replay}>
+            Repeat
+          </button>
+        )}
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
@@ -454,6 +462,7 @@ function FlashcardsView({
                 hand={feedback.event.hand}
                 classification={feedback.event.classification}
                 eyesFree={eyesFree}
+                onShowTable={() => setShowChart(true)}
               />
             )}
             {/* The cell id names the chart row just drilled, and belongs to
@@ -487,6 +496,14 @@ function FlashcardsView({
             Next
           </button>
         </div>
+      )}
+      {showChart && (
+        <StudyChartOverlay
+          activeProfile={activeProfile}
+          cards={card.cards}
+          dealerUp={card.up}
+          onClose={() => setShowChart(false)}
+        />
       )}
     </div>
   );
@@ -541,6 +558,8 @@ function DeviationQuizView({
     ),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean; event: GradedEvent } | null>(null);
+  // #7: the chart opened over this correction, closed back onto the same card.
+  const [showChart, setShowChart] = useState(false);
   const audio = useAudio(settings.audio);
 
   // Eyes-free audio (Task 9): local UI state, not persisted, per the
@@ -803,6 +822,11 @@ function DeviationQuizView({
           Back
         </button>
         <div className="drill-heading">Deviation Quiz</div>
+        {settings.audio.enabled && (
+          <button type="button" className="repeat-btn" onClick={audio.replay}>
+            Repeat
+          </button>
+        )}
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
@@ -896,6 +920,7 @@ function DeviationQuizView({
                 hand={feedback.event.hand}
                 classification={feedback.event.classification}
                 eyesFree={eyesFree}
+                onShowTable={item.cards ? () => setShowChart(true) : undefined}
               />
             )}
             <div className="quiz-label">{item.label}</div>
@@ -935,6 +960,14 @@ function DeviationQuizView({
             Next
           </button>
         </div>
+      )}
+      {showChart && (
+        <StudyChartOverlay
+          activeProfile={activeProfile}
+          cards={item.cards}
+          dealerUp={item.up}
+          onClose={() => setShowChart(false)}
+        />
       )}
     </div>
   );
@@ -1003,6 +1036,8 @@ function MixedSessionView({
 
   const [current, setCurrent] = useState<MixedCurrent>(() => drawFor(pickMixedType(sessionSeed(), 0)));
   const [feedback, setFeedback] = useState<{ correct: boolean; correctAction?: Action; event: GradedEvent } | null>(null);
+  // #7: the chart opened over this correction, closed back onto the same card.
+  const [showChart, setShowChart] = useState(false);
   const audio = useAudio(settings.audio);
 
   const [eyesFree, setEyesFree] = useState(false);
@@ -1193,6 +1228,11 @@ function MixedSessionView({
           Back
         </button>
         <div className="drill-heading">Mixed</div>
+        {settings.audio.enabled && (
+          <button type="button" className="repeat-btn" onClick={audio.replay}>
+            Repeat
+          </button>
+        )}
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
@@ -1261,6 +1301,7 @@ function MixedSessionView({
                 hand={feedback.event.hand}
                 classification={feedback.event.classification}
                 eyesFree={eyesFree}
+                onShowTable={handCards ? () => setShowChart(true) : undefined}
               />
             )}
             {current.type === 'flash' ? (
@@ -1307,6 +1348,14 @@ function MixedSessionView({
             Next
           </button>
         </div>
+      )}
+      {showChart && (
+        <StudyChartOverlay
+          activeProfile={activeProfile}
+          cards={handCards}
+          dealerUp={dealerUp}
+          onClose={() => setShowChart(false)}
+        />
       )}
     </div>
   );
