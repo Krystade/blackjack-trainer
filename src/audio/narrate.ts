@@ -203,7 +203,7 @@ export function narrateCorrection(event: GradedEvent): string {
   if (event.correct) {
     return 'Correct.';
   }
-  return `Wrong. ${event.reason} Correct play was ${narrateAction(event.expected as Action)}. True count was ${narrateTc(event.tc)}.`;
+  return `Wrong. ${narrateReason(event.reason)} Correct play was ${narrateAction(event.expected as Action)}. True count was ${narrateTc(event.tc)}.`;
 }
 
 export function narrateCountPrompt(): string {
@@ -283,6 +283,78 @@ export function narrateQuizPrompt(
     return `${narrateDealerUp(up)} ${narrateInsuranceOffer()} True count ${narrateTc(tc)}.`;
   }
   return `You have ${narrateHandPhrase(cards, handStyle)}. ${narrateDealerUp(up)} True count ${narrateTc(tc)}.`;
+}
+
+/**
+ * Turn a `GradedEvent.reason` into something a voice can actually say.
+ *
+ * Reasons arrive in two shapes, and one of them is hostile to speech:
+ *  - basic-strategy prose from strategy.ts — "Basic hit vs dealer 9";
+ *  - Illustrious-18 INDEX LABELS from deviations.ts — "16 v 10: stand at
+ *    TC ≥ 0", "13 v 2: hit at TC ≤ −1" (that is U+2212, not a hyphen),
+ *    "10,10 v 5: split at TC ≥ +5", "16 v 9: stand at TC ≥ +4 (H17)".
+ *
+ * Those labels are written to be READ, in a table, by someone who already
+ * knows the notation. Spoken raw they degrade to mush ("sixteen vee ten
+ * colon..."), and — the reason this matters more than cosmetics — the clip
+ * cascade in clips.ts keys on words, so a symbol-bearing string can never
+ * match a pre-rendered Bella clip and silently falls back to robot-voice
+ * live TTS. That happens at exactly the moment the learner most needs to
+ * understand what they got wrong, and in eyes-free/driving use the spoken
+ * correction is the ONLY channel they have. See docs/BACKLOG.md D2.
+ *
+ * Implemented as an ordered rewrite rather than a parser: the two shapes
+ * share no grammar, new index labels get added by hand, and a rewrite that
+ * meets an unfamiliar phrase degrades to "mostly right" instead of throwing.
+ * Order matters and is load-bearing — see the comment on each step.
+ */
+export function narrateReason(reason: string): string {
+  const trimmed = reason.trim();
+  if (!trimmed) return '';
+
+  // Strip terminal punctuation up front so step 9 can add exactly one back
+  // without having to reason about what was already there.
+  let s = trimmed.replace(/[.\s]+$/, '');
+
+  // 1. Dealer-rule suffixes FIRST, while they are still bare tokens. Left
+  //    alone they would reach the digit pass below and be spoken as
+  //    "H seventeen".
+  s = s.replace(/\s*\(H17\)/g, ', when the dealer hits soft seventeen');
+  s = s.replace(/\s*\(S17\)/g, ', when the dealer stands soft seventeen');
+
+  // 2. A pair matchup ("10,10 v 5") before the comma can be mistaken for a
+  //    list separator. Backreference so only a genuine PAIR matches.
+  s = s.replace(/^(10|[AJQK2-9]),\1\b/, (_match, rank: Rank) => `a pair of ${RANK_PLURAL[rank]}`);
+
+  // 3. Both matchup spellings ("v" in index labels, "vs" in basic reasons).
+  s = s.replace(/\bvs?\b/g, 'versus');
+
+  // 4. A dealer ace is the letter A in both shapes; spoken, it must not be
+  //    the article "a". Anchored to "versus" so the "A pair of..." produced
+  //    by step 2 is untouched.
+  s = s.replace(/\bversus A\b/g, 'versus ace');
+
+  // 5. Thresholds, before the generic digit pass, since these carry a sign
+  //    and a comparison direction that the digit pass would destroy.
+  //    Accepts BOTH the unicode minus deviations.ts actually writes and an
+  //    ASCII hyphen, so a hand-typed label is never silently inverted.
+  s = s.replace(/([≥≤])\s*([+−-]?\d+)/g, (_match, cmp: string, num: string) => {
+    const value = Number(num.replace('−', '-').replace('+', ''));
+    return `${narrateTc(value)} or ${cmp === '≥' ? 'higher' : 'lower'}`;
+  });
+
+  // 6. The abbreviation itself, after the thresholds have consumed their
+  //    operands.
+  s = s.replace(/\bTC\b/g, 'true count');
+
+  // 7. Every remaining bare integer is a hand total or a dealer upcard.
+  s = s.replace(/\b\d+\b/g, (match) => numberWord(Number(match)));
+
+  // 8. Sentence case on the first letter, whatever it turned out to be.
+  s = s.replace(/^([a-z])/, (c) => c.toUpperCase());
+
+  // 9. Exactly one terminal stop, so the utterance lands instead of trailing.
+  return `${s}.`;
 }
 
 /** Singular/plural wording pair for a countable noun. */

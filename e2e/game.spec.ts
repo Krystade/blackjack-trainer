@@ -76,7 +76,12 @@ test('training mode: a wrong action shows the mistake overlay', async ({ page })
 
   const overlay = page.locator('.modal-backdrop', { hasText: 'Wrong Play' });
   await expect(overlay).toBeVisible();
-  await expect(overlay).toContainText('Correct:');
+  // The overlay now renders the shared MistakeCard, which labels the two
+  // plays in a column ("You played" / "Correct") rather than the old inline
+  // "You: X — Correct: Y" sentence. Same contract: it must name the correct
+  // play and show the count/basis the correction rests on.
+  await expect(overlay).toContainText('Correct');
+  await expect(overlay).toContainText('You played');
   await expect(overlay).toContainText(/Basic|TC/i);
   await shot(page, '05-training-wrong-overlay');
 

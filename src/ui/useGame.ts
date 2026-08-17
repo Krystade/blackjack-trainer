@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Game } from '../engine/game';
 import type { GameConfig } from '../engine/game';
 import type { Action } from '../engine/deviations';
-import type { Category, GradedEvent } from '../engine/grade';
+import type { Category, GradedEvent, MistakeClass } from '../engine/grade';
 import type { Profile, Settings } from '../store/types';
 import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
@@ -26,6 +26,14 @@ export interface OverlayInfo {
   expected: string;
   reason: string;
   tc: number;
+  /** The matchup in table notation, e.g. "10,6 v 10". Carried so the table's
+   * correction can name the hand it is about — with the round already moved
+   * on underneath the modal, "you should have stood" is otherwise ambiguous
+   * about WHICH hand when a split is in play. */
+  hand?: string;
+  /** Lets the shared MistakeCard name the KIND of error (basic vs missed
+   * index vs phantom index), which the engine already classifies. */
+  classification?: MistakeClass;
 }
 
 export interface ReportCategoryStat {
@@ -240,7 +248,14 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
         }
         const wrong = newEvents.find((e) => e.kind === 'action' && !e.correct);
         if (wrong) {
-          setOverlay({ taken: action, expected: wrong.expected, reason: wrong.reason, tc: wrong.tc });
+          setOverlay({
+            taken: action,
+            expected: wrong.expected,
+            reason: wrong.reason,
+            tc: wrong.tc,
+            hand: wrong.hand,
+            classification: wrong.classification,
+          });
         }
       }
       narrateSettlement(game, audio, settings.audio.cardDetail);

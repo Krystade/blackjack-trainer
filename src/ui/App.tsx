@@ -6,11 +6,12 @@ import { Drills } from './screens/Drills';
 import { Stats } from './screens/Stats';
 import { Settings } from './screens/Settings';
 import { ProfileEditor } from './screens/ProfileEditor';
+import { Charts } from './screens/Charts';
 import { loadSettings } from '../store/persist';
 import { getActiveProfile } from '../store/profiles';
 import type { Settings as SettingsData, Profile } from '../store/types';
 
-export type Screen = 'home' | 'table' | 'drills' | 'stats' | 'settings' | 'profiles';
+export type Screen = 'home' | 'table' | 'drills' | 'stats' | 'settings' | 'profiles' | 'charts';
 
 function App() {
   const [screen, setScreen] = useState<Screen>('home');
@@ -68,6 +69,12 @@ function App() {
       return <Settings settings={settings} onNavigate={navigate} onSettingsChange={setSettings} />;
     case 'profiles':
       return <ProfileEditor onNavigate={navigate} />;
+    case 'charts':
+      // Charts reads getChart(activeProfile.rules) at render time, so unlike
+      // Table it needs no remount key -- there is no long-lived Game instance
+      // here to go stale, and `activeProfile` is already refreshed by
+      // navigate() on the way out of the profiles screen.
+      return <Charts onNavigate={navigate} activeProfile={activeProfile} />;
   }
 }
 

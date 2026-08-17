@@ -7,7 +7,7 @@ import {
   narrateCard, narrateCards, narrateTc, narrateAction, narrateBotAction,
   narrateResult, narrateHandResult, narrateCorrection, narrateCountAnswer,
   narrateFlashcardPrompt, narrateQuizPrompt, narrateTotal, narrateStatsSummary,
-  narrateHandPhrase,
+  narrateHandPhrase, narrateReason,
 } from './narrate';
 
 const c = (rank: Card['rank'], suit: Card['suit']): Card => ({ rank, suit });
@@ -118,9 +118,16 @@ describe('narrateCorrection', () => {
     deviationId: '16v10', tc: 5, hand: '10,6 v 10',
   };
   it('speaks the engine reason, the correct action, and the sign-correct TC', () => {
+    // The reason goes through narrateReason: the raw index label is written to
+    // be read in a table, and spoken verbatim it is both unintelligible and
+    // unclippable (see narrateReason's own comment).
     expect(narrateCorrection(base)).toBe(
-      'Wrong. 16 v 10: stand at TC ≥ 0 Correct play was stand. True count was plus five.',
+      'Wrong. Sixteen versus ten: stand at true count zero or higher. Correct play was stand. True count was plus five.',
     );
+  });
+
+  it('leaves no comparison symbol anywhere in a spoken correction', () => {
+    expect(narrateCorrection(base)).not.toMatch(/[≥≤]/);
   });
   it('speaks a negative TC as "minus"', () => {
     expect(narrateCorrection({ ...base, tc: -3 })).toContain('True count was minus three.');
@@ -260,5 +267,104 @@ describe('narrateStatsSummary', () => {
     ).toBe(
       'This session: 8 decisions, 1 basic error, 4 missed deviations, 1 phantom deviation, 2 wrong-anyway plays.',
     );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* narrateReason — index labels and basic reasons into speakable prose */
+/* ------------------------------------------------------------------ */
+
+describe('narrateReason', () => {
+  it('speaks the "v" in a matchup as "versus"', () => {
+    expect(narrateReason('16 v 10: stand at TC ≥ 0')).toContain('versus');
+  });
+
+  it('never leaves a comparison symbol in the output', () => {
+    // The whole point: these reach the ear via TTS (and the clip cascade,
+    // which cannot match a symbol at all).
+    const spoken = narrateReason('16 v 10: stand at TC ≥ 0');
+    expect(spoken).not.toMatch(/[≥≤]/);
+  });
+
+  it('turns a "greater or equal" threshold into "or higher"', () => {
+    expect(narrateReason('16 v 10: stand at TC ≥ 0')).toBe(
+      'Sixteen versus ten: stand at true count zero or higher.',
+    );
+  });
+
+  it('turns a "less or equal" threshold into "or lower"', () => {
+    expect(narrateReason('13 v 3: hit at TC ≤ -2')).toBe(
+      'Thirteen versus three: hit at true count minus two or lower.',
+    );
+  });
+
+  it('handles the unicode minus sign the deviation table actually uses', () => {
+    // deviations.ts writes U+2212, not ASCII hyphen. A naive parser drops it
+    // and inverts the meaning of the index.
+    expect(narrateReason('13 v 2: hit at TC ≤ −1')).toBe(
+      'Thirteen versus two: hit at true count minus one or lower.',
+    );
+  });
+
+  it('speaks a signed positive threshold as "plus"', () => {
+    expect(narrateReason('15 v 10: stand at TC ≥ +4')).toBe(
+      'Fifteen versus ten: stand at true count plus four or higher.',
+    );
+  });
+
+  it('speaks a pair matchup as a pair rather than two numbers', () => {
+    expect(narrateReason('10,10 v 5: split at TC ≥ +5')).toBe(
+      'A pair of tens versus five: split at true count plus five or higher.',
+    );
+  });
+
+  it('expands the dealer-rule suffix instead of spelling out "H17"', () => {
+    expect(narrateReason('16 v 9: stand at TC ≥ +4 (H17)')).toBe(
+      'Sixteen versus nine: stand at true count plus four or higher, when the dealer hits soft seventeen.',
+    );
+  });
+
+  it('expands the S17 suffix too', () => {
+    expect(narrateReason('11 v A: double at TC ≥ +1 (S17)')).toBe(
+      'Eleven versus ace: double at true count plus one or higher, when the dealer stands soft seventeen.',
+    );
+  });
+
+  it('speaks a dealer ace as "ace", not the letter A', () => {
+    expect(narrateReason('11 v A: double at TC ≥ +1 (S17)')).toContain('versus ace');
+  });
+
+  it('handles the insurance index, which has no hand on the left', () => {
+    expect(narrateReason('Insurance: take at TC ≥ +3')).toBe(
+      'Insurance: take at true count plus three or higher.',
+    );
+  });
+
+  it('handles a prose index with no numeric threshold at all', () => {
+    expect(narrateReason('12 v 4: hit at any negative TC')).toBe(
+      'Twelve versus four: hit at any negative true count.',
+    );
+  });
+
+  it('speaks a plain basic-strategy reason without mangling it', () => {
+    expect(narrateReason('Basic hit vs dealer 9')).toBe('Basic hit versus dealer nine.');
+  });
+
+  it('keeps a parenthetical availability note readable', () => {
+    expect(narrateReason('Basic stand (double unavailable) vs dealer 6')).toBe(
+      'Basic stand (double unavailable) versus dealer six.',
+    );
+  });
+
+  it('leaves an already-clean sentence alone apart from terminal punctuation', () => {
+    expect(narrateReason('Basic surrender vs dealer 10')).toBe('Basic surrender versus dealer ten.');
+  });
+
+  it('does not double up terminal punctuation', () => {
+    expect(narrateReason('Basic hit vs dealer 9.')).toBe('Basic hit versus dealer nine.');
+  });
+
+  it('returns empty for an empty reason rather than a bare full stop', () => {
+    expect(narrateReason('')).toBe('');
   });
 });

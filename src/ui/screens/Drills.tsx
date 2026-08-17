@@ -28,6 +28,7 @@ import { isCountFluent } from '../../drills/fluencyGate';
 import { PlayingCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import { ZonePad } from '../components/ZonePad';
+import { MistakeCard } from '../components/MistakeCard';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
 import { narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt } from '../../audio/narrate';
@@ -147,7 +148,7 @@ function FlashcardsView({
   const [card, setCard] = useState<Flashcard>(() =>
     drawFlashcard(settings.drill.flashCategory, srDeckRef.current, Date.now(), randomSeed(), activeProfile.rules),
   );
-  const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action } | null>(null);
+  const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action; event: GradedEvent } | null>(null);
   const audio = useAudio(settings.audio);
 
   // Eyes-free audio (Task 9): local UI state, not persisted, per the
@@ -304,7 +305,7 @@ function FlashcardsView({
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
 
-    setFeedback({ correct: event.correct, correctAction });
+    setFeedback({ correct: event.correct, correctAction, event });
   };
 
   // Eyes-free zone tap: ZoneId and Action are the identical five-member
@@ -329,7 +330,7 @@ function FlashcardsView({
     );
     audio.ding(event.correct ? 'good' : 'bad');
 
-    setFeedback({ correct: event.correct, correctAction });
+    setFeedback({ correct: event.correct, correctAction, event });
     scheduleAutoAdvance();
   };
 
@@ -442,9 +443,22 @@ function FlashcardsView({
       <div className="message-strip">
         {feedback && (
           <>
-            <div className={feedback.correct ? 'result-correct' : 'result-wrong'}>
-              {feedback.correct ? 'Correct!' : `Wrong — correct: ${feedback.correctAction.toUpperCase()}`}
-            </div>
+            {feedback.correct ? (
+              <div className="result-correct">Correct!</div>
+            ) : (
+              <MistakeCard
+                taken={feedback.event.taken}
+                expected={feedback.event.expected}
+                reason={feedback.event.reason}
+                tc={feedback.event.tc}
+                hand={feedback.event.hand}
+                classification={feedback.event.classification}
+                eyesFree={eyesFree}
+              />
+            )}
+            {/* The cell id names the chart row just drilled, and belongs to
+                the feedback state rather than to either outcome — it is
+                equally worth seeing after a hit or a miss. */}
             <div className="feedback-cell">{card.cellId}</div>
           </>
         )}
@@ -526,7 +540,7 @@ function DeviationQuizView({
       Date.now(),
     ),
   );
-  const [feedback, setFeedback] = useState<{ correct: boolean } | null>(null);
+  const [feedback, setFeedback] = useState<{ correct: boolean; event: GradedEvent } | null>(null);
   const audio = useAudio(settings.audio);
 
   // Eyes-free audio (Task 9): local UI state, not persisted, per the
@@ -693,7 +707,7 @@ function DeviationQuizView({
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
 
-    setFeedback({ correct: event.correct });
+    setFeedback({ correct: event.correct, event });
   };
 
   // Eyes-free zone tap. Non-insurance items: ZoneId and Action are the
@@ -722,7 +736,7 @@ function DeviationQuizView({
     );
     audio.ding(event.correct ? 'good' : 'bad');
 
-    setFeedback({ correct: event.correct });
+    setFeedback({ correct: event.correct, event });
     scheduleAutoAdvance();
   };
 
@@ -871,9 +885,19 @@ function DeviationQuizView({
       <div className="message-strip">
         {feedback && (
           <>
-            <div className={feedback.correct ? 'result-correct' : 'result-wrong'}>
-              {feedback.correct ? 'Correct!' : 'Wrong'}
-            </div>
+            {feedback.correct ? (
+              <div className="result-correct">Correct!</div>
+            ) : (
+              <MistakeCard
+                taken={feedback.event.taken}
+                expected={feedback.event.expected}
+                reason={feedback.event.reason}
+                tc={feedback.event.tc}
+                hand={feedback.event.hand}
+                classification={feedback.event.classification}
+                eyesFree={eyesFree}
+              />
+            )}
             <div className="quiz-label">{item.label}</div>
           </>
         )}
@@ -978,7 +1002,7 @@ function MixedSessionView({
   };
 
   const [current, setCurrent] = useState<MixedCurrent>(() => drawFor(pickMixedType(sessionSeed(), 0)));
-  const [feedback, setFeedback] = useState<{ correct: boolean; correctAction?: Action } | null>(null);
+  const [feedback, setFeedback] = useState<{ correct: boolean; correctAction?: Action; event: GradedEvent } | null>(null);
   const audio = useAudio(settings.audio);
 
   const [eyesFree, setEyesFree] = useState(false);
@@ -1096,7 +1120,7 @@ function MixedSessionView({
     const { correct, correctAction, event } = gradeCurrent(taken);
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(correct ? 'good' : 'bad');
-    setFeedback({ correct, correctAction });
+    setFeedback({ correct, correctAction, event });
   };
 
   const handleZoneAnswer = (zone: ZoneId | 'take' | 'decline') => {
@@ -1111,7 +1135,7 @@ function MixedSessionView({
     const { correct, correctAction, event } = gradeCurrent(taken);
     speakCorrectionOnceGated(event, (text) => speak(text, { rate: settings.audio.rate, voiceURI: settings.audio.voiceURI }));
     audio.ding(correct ? 'good' : 'bad');
-    setFeedback({ correct, correctAction });
+    setFeedback({ correct, correctAction, event });
     scheduleAutoAdvance();
   };
 
@@ -1224,22 +1248,28 @@ function MixedSessionView({
       )}
 
       <div className="message-strip">
-        {feedback &&
-          (current.type === 'flash' ? (
-            <>
-              <div className={feedback.correct ? 'result-correct' : 'result-wrong'}>
-                {feedback.correct ? 'Correct!' : `Wrong — correct: ${feedback.correctAction?.toUpperCase()}`}
-              </div>
+        {feedback && (
+          <>
+            {feedback.correct ? (
+              <div className="result-correct">Correct!</div>
+            ) : (
+              <MistakeCard
+                taken={feedback.event.taken}
+                expected={feedback.event.expected}
+                reason={feedback.event.reason}
+                tc={feedback.event.tc}
+                hand={feedback.event.hand}
+                classification={feedback.event.classification}
+                eyesFree={eyesFree}
+              />
+            )}
+            {current.type === 'flash' ? (
               <div className="feedback-cell">{current.card.cellId}</div>
-            </>
-          ) : (
-            <>
-              <div className={feedback.correct ? 'result-correct' : 'result-wrong'}>
-                {feedback.correct ? 'Correct!' : 'Wrong'}
-              </div>
+            ) : (
               <div className="quiz-label">{current.item.label}</div>
-            </>
-          ))}
+            )}
+          </>
+        )}
       </div>
 
       {!feedback ? (

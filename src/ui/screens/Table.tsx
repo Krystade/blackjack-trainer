@@ -13,6 +13,7 @@ import { PlayingCard, formatCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import type { ActionBarMode } from '../components/ActionBar';
 import { Modal } from '../components/Modal';
+import { MistakeCard } from '../components/MistakeCard';
 import { NumPad } from '../components/NumPad';
 import { assistedFlag } from '../peekFlag';
 
@@ -508,11 +509,21 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
 
       {overlay && (
         <Modal title="Wrong Play">
-          <p>
-            You: {overlay.taken.toUpperCase()} — Correct: {overlay.expected.toUpperCase()}
-          </p>
-          <p>{overlay.reason}</p>
-          <p>(TC was {formatSigned(overlay.tc)})</p>
+          {/* Same panel the drills use, so a correction reads identically
+              wherever it is earned -- the table and the flashcards were
+              previously two different vocabularies for the same event. */}
+          <MistakeCard
+            taken={overlay.taken}
+            expected={overlay.expected}
+            reason={overlay.reason}
+            tc={overlay.tc}
+            hand={overlay.hand}
+            classification={overlay.classification}
+          />
+          {/* Dismissal stays the table's own Continue button rather than the
+              panel's Next: at the table this closes an overlay and hands
+              control back to a round already in progress, which is a
+              different act from advancing to the next drill item. */}
           <button type="button" className="overlay-continue-btn" onClick={dismissOverlay}>
             Continue
           </button>

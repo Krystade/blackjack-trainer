@@ -1,0 +1,490 @@
+/*
+ * Strategy-chart viewer. ALL styles for src/ui/screens/Charts.tsx live here and
+ * nowhere else -- deliberately NOT appended to src/ui/app.css, which several
+ * other screens share and which is edited concurrently.
+ *
+ * Visual thesis: this screen is the plastic basic-strategy card, rendered in
+ * the app's own felt-and-brass world. Two consequences run through everything
+ * below.
+ *
+ * 1. The grid is the design. Cells are set in a MONOSPACE face with fixed
+ *    tracks, because a strategy chart is read by scanning columns for a shape
+ *    ("everything from here right is red"), and a proportional face breaks
+ *    that alignment on exactly the two-letter codes (Dh/Ds/Rh) where it
+ *    matters most. Everything around the grid is deliberately quiet.
+ *
+ * 2. Colour groups the DECISION; the letter carries the detail. Five hue
+ *    families -- hit, stand, double, split, surrender -- and a conditional
+ *    code (Dh, Ds, Rh, Rs, Rp) additionally shows a sliver of its FALLBACK
+ *    family down its left edge. That sliver is the one flourish on the page,
+ *    and it earns its place: the fallback is precisely the half of a
+ *    conditional cell people get wrong at the table, and it is otherwise
+ *    invisible until you read the legend. The letter never goes away, so
+ *    nothing here depends on colour alone.
+ */
+
+.charts-screen {
+  /* --- surfaces: the app's felt, one step deeper so the grid reads as inlay */
+  --felt: #0d2318;
+  --surface: #10281b;
+  --surface-raised: #143726;
+  --hairline: #23533a;
+  --brass: #d8b969;
+  --ink: #eaf3ec;
+  --ink-dim: #8fbba1;
+
+  /* --- action families: background + its own ink */
+  --act-hit: #8e2f3b;
+  --act-hit-ink: #ffe1e5;
+  --act-stand: #7d611a;
+  --act-stand-ink: #ffeec4;
+  --act-double: #145d63;
+  --act-double-ink: #c9f2f7;
+  --act-split: #4b3a8a;
+  --act-split-ink: #e2daff;
+  --act-surrender: #4c5a66;
+  --act-surrender-ink: #e3ebf2;
+
+  /* --- fallback slivers: the light tone of the family being fallen back to */
+  --bar-hit: #f08a97;
+  --bar-stand: #f0c86a;
+  --bar-split: #a99cff;
+
+  --mono:
+    ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', Menlo, Consolas, monospace;
+
+  min-height: 100vh;
+  padding-bottom: 2.5rem;
+  background: radial-gradient(120% 55% at 50% 0%, #16412c 0%, var(--felt) 62%);
+  color: var(--ink);
+
+  /* Requirement: the PAGE never scrolls sideways. Only .chart-scroller does. */
+  overflow-x: hidden;
+}
+
+/* ---------- header ---------- */
+
+.charts-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.charts-back-btn {
+  min-height: 48px;
+  padding: 0 1rem;
+  border-radius: 8px;
+  border: 1px solid #2c5c41;
+  background: #143b26;
+  color: var(--ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.charts-back-btn:hover {
+  background: #1b4c31;
+}
+
+.charts-heading {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--brass);
+}
+
+/*
+ * The ruleset line is the most load-bearing sentence on the screen: change
+ * profile and every cell below can change with it. Set in the same mono face
+ * as the grid so it reads as a stamp ON the card rather than page furniture,
+ * and underlined with the one brass hairline on the page.
+ */
+.charts-ruleset {
+  margin: 0 0.9rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(216, 185, 105, 0.45);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--brass);
+}
+
+.charts-provenance {
+  margin: 0.5rem 0.9rem 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+
+/* ---------- row-order toggle ---------- */
+
+.charts-order {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem;
+}
+
+.charts-order-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.charts-order-group {
+  display: flex;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 3px;
+  gap: 3px;
+}
+
+.charts-order-btn {
+  min-height: 40px;
+  padding: 0 0.95rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.charts-order-btn-active {
+  background: var(--brass);
+  color: #16301f;
+}
+
+.charts-order-btn:focus-visible,
+.charts-back-btn:focus-visible,
+.chart-scroller:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.charts-order-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+
+/* ---------- legend ---------- */
+
+/*
+ * Above the grids, not below: the codes have to be readable BEFORE the first
+ * cell is, and on a phone a legend at the bottom of three tall tables is a
+ * legend nobody reads.
+ */
+.chart-legend {
+  margin: 0 0.9rem 1.25rem;
+  padding: 0.8rem;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.chart-legend-heading {
+  margin: 0 0 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.chart-legend-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem 0.7rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 360px) {
+  .chart-legend-list {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.7rem;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.chart-legend-text {
+  min-width: 0;
+}
+
+.chart-legend-note {
+  margin: 0.7rem 0 0;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+
+/* ---------- sections ---------- */
+
+.chart-section {
+  margin: 0 0.9rem 1.5rem;
+}
+
+.chart-section-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.chart-section-blurb {
+  font-size: 0.68rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-dim);
+}
+
+.chart-section-note {
+  margin: 0.55rem 0 0;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+
+/*
+ * The frame owns the right-edge fade. Ten dealer columns plus a row label do
+ * not fit a 320px phone at any legible size, so the grid scrolls sideways --
+ * and a scroll affordance the reader can't see is a column they never find.
+ * The fade sits over the table's own trailing padding, so it never lands on a
+ * letter.
+ */
+.chart-frame {
+  position: relative;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.chart-frame::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  pointer-events: none;
+  background: linear-gradient(to right, rgba(16, 40, 27, 0), rgba(16, 40, 27, 0.95));
+}
+
+.chart-scroller {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.45rem;
+  padding-right: 1.1rem;
+}
+
+/*
+ * Tile gaps come from per-cell borders in the surface colour, NOT from
+ * border-spacing. border-spacing also inserts a gutter BEFORE the first
+ * column, which the sticky row label cannot pin past -- the label visibly
+ * jumped a couple of pixels the moment the grid started scrolling. Borders
+ * give the same separated-tile look and leave the sticky column dead still.
+ */
+.chart-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-table th,
+.chart-table td {
+  border: 1px solid var(--surface);
+}
+
+/* The section heading above already says this; keep it for screen readers. */
+.chart-caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.chart-up {
+  min-width: 2.15rem;
+  padding: 0.25rem 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink-dim);
+}
+
+/*
+ * Sticky row labels: the operator must always know WHICH total they are
+ * looking at, however far right the grid is scrolled. The drop shadow is the
+ * lift that says "this column is floating over the rest".
+ */
+.chart-rowlabel,
+.chart-corner {
+  position: sticky;
+  left: 0;
+  width: 4rem;
+  min-width: 4rem;
+  padding: 0 0.35rem;
+  text-align: right;
+  background: var(--surface);
+  box-shadow: 7px 0 9px -5px rgba(0, 0, 0, 0.8);
+}
+
+.chart-rowlabel {
+  z-index: 3;
+  height: 2.05rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.chart-corner {
+  z-index: 4;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+/* ---------- cells ---------- */
+
+.chart-cell {
+  position: relative;
+  min-width: 2.15rem;
+  height: 2.05rem;
+  padding: 0;
+  border-radius: 3px;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.chart-cell[data-action='H'],
+.chart-code[data-action='H'] {
+  background: var(--act-hit);
+  color: var(--act-hit-ink);
+}
+
+.chart-cell[data-action='S'],
+.chart-code[data-action='S'] {
+  background: var(--act-stand);
+  color: var(--act-stand-ink);
+}
+
+.chart-cell[data-action='Dh'],
+.chart-cell[data-action='Ds'],
+.chart-code[data-action='Dh'],
+.chart-code[data-action='Ds'] {
+  background: var(--act-double);
+  color: var(--act-double-ink);
+}
+
+.chart-cell[data-action='P'],
+.chart-code[data-action='P'] {
+  background: var(--act-split);
+  color: var(--act-split-ink);
+}
+
+.chart-cell[data-action='Rh'],
+.chart-cell[data-action='Rs'],
+.chart-cell[data-action='Rp'],
+.chart-code[data-action='Rh'],
+.chart-code[data-action='Rs'],
+.chart-code[data-action='Rp'] {
+  background: var(--act-surrender);
+  color: var(--act-surrender-ink);
+}
+
+/* The fallback sliver -- see the file header. */
+.chart-cell[data-action='Dh'],
+.chart-cell[data-action='Rh'],
+.chart-code[data-action='Dh'],
+.chart-code[data-action='Rh'] {
+  box-shadow: inset 3px 0 0 0 var(--bar-hit);
+}
+
+.chart-cell[data-action='Ds'],
+.chart-cell[data-action='Rs'],
+.chart-code[data-action='Ds'],
+.chart-code[data-action='Rs'] {
+  box-shadow: inset 3px 0 0 0 var(--bar-stand);
+}
+
+.chart-cell[data-action='Rp'],
+.chart-code[data-action='Rp'] {
+  box-shadow: inset 3px 0 0 0 var(--bar-split);
+}
+
+/* Legend swatch: the same cell, at the same size, so the mapping is literal. */
+.chart-code {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.15rem;
+  height: 1.6rem;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* ---------- the highlighted cell ---------- */
+
+/*
+ * White appears nowhere else in this palette, so the ring cannot be mistaken
+ * for another action colour. Drawn on a pseudo-element rather than as an
+ * outline so it does not fight the cell's own fallback-sliver box-shadow, and
+ * sat BELOW the sticky label's z-index so the label still occludes it when the
+ * grid is scrolled -- a ring floating over the row label would look broken.
+ *
+ * Nothing else is dimmed. Anchoring a correction against the decisions either
+ * side of it is the entire point of opening the chart here.
+ */
+.chart-cell[data-highlight='true']::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  z-index: 1;
+  border: 2px solid #ffffff;
+  border-radius: 5px;
+  box-shadow:
+    0 0 0 2px rgba(11, 31, 21, 0.9),
+    0 0 14px rgba(255, 255, 255, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .charts-screen * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
