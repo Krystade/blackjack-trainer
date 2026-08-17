@@ -326,6 +326,18 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             disabled={audioDisabled}
           />
         </div>
+        <div className="settings-row">
+          <span className="settings-label">Hand announcement</span>
+          <Segmented
+            options={[
+              { value: 'cards', label: 'Cards' },
+              { value: 'total', label: 'Total' },
+            ]}
+            value={settings.audio.handStyle}
+            onChange={(v) => updateAudio({ handStyle: v })}
+            disabled={audioDisabled}
+          />
+        </div>
         <Stepper
           label="Speech rate"
           value={settings.audio.rate}
@@ -334,6 +346,20 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           step={0.1}
           format={(v) => `${v.toFixed(1)}×`}
           onChange={(v) => updateAudio({ rate: v })}
+          disabled={audioDisabled}
+        />
+        {/* A Stepper rather than a range input, matching Speech rate: the
+            eyes-free use case is a phone in a car mount, where a discrete
+            +/- target is hittable without looking and a thin slider thumb
+            is not. 0% is reachable on purpose -- see AudioSettings.volume. */}
+        <Stepper
+          label="Volume"
+          value={settings.audio.volume}
+          min={0}
+          max={1}
+          step={0.05}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onChange={(v) => updateAudio({ volume: v })}
           disabled={audioDisabled}
         />
         <div className="settings-row">
@@ -349,6 +375,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
                   interrupt: true,
                   rate: settings.audio.rate,
                   voiceURI,
+                  volume: settings.audio.volume,
                 });
               }}
               disabled={audioDisabled}
@@ -392,9 +419,10 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
                 interrupt: true,
                 rate: settings.audio.rate,
                 voiceURI: settings.audio.voiceURI,
+                volume: settings.audio.volume,
               });
               if (settings.audio.chimes) {
-                chime('good');
+                chime('good', { volume: settings.audio.volume });
               }
             }}
           >

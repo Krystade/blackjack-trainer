@@ -5,6 +5,7 @@ import type { Action, DeviationId } from '../../engine/deviations';
 import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17, isIndexActive } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
 import { drawFlashcard } from '../../drills/flashcards';
+import { drillLegalActions } from '../../drills/legalActions';
 import type { Flashcard } from '../../drills/flashcards';
 import { drawQuizItem } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
@@ -48,8 +49,6 @@ interface DrillsProps {
   onNavigate: (screen: Screen) => void;
   onSettingsChange: (settings: Settings) => void;
 }
-
-const ALL_ACTIONS: Action[] = ['hit', 'stand', 'double', 'split', 'surrender'];
 
 // Desktop keyboard input (operator request): number keys map onto the
 // action-zone layout so a keypress grades identically to tapping the
@@ -220,7 +219,7 @@ function FlashcardsView({
   // precedent as CountDrillView's flashing-card narration).
   useEffect(() => {
     if (!eyesFree) return;
-    speak(narrateFlashcardPrompt(card.cards, card.up), {
+    speak(narrateFlashcardPrompt(card.cards, card.up, settings.audio.handStyle), {
       interrupt: true,
       rate: settings.audio.rate,
       voiceURI: settings.audio.voiceURI,
@@ -258,7 +257,7 @@ function FlashcardsView({
   };
 
   const handleRepeat = () => {
-    speak(narrateFlashcardPrompt(card.cards, card.up), {
+    speak(narrateFlashcardPrompt(card.cards, card.up, settings.audio.handStyle), {
       interrupt: true,
       rate: settings.audio.rate,
       voiceURI: settings.audio.voiceURI,
@@ -353,6 +352,11 @@ function FlashcardsView({
         const action = KEY_TO_ACTION[e.key];
         if (!action) return;
         e.preventDefault();
+        // The keyboard is an alias for the buttons, so it obeys the same
+        // legality gate they do. Without this, pressing 4 would submit a
+        // Split on a 10,6 that the (disabled) Split button cannot -- and
+        // record an impossible play as a "mistake" against the learner.
+        if (!drillLegalActions(card.cards, activeProfile.rules).includes(action)) return;
         if (eyesFree) {
           handleZoneAnswer(action);
         } else {
@@ -455,7 +459,13 @@ function FlashcardsView({
             visible={!settings.audio.dimZones}
           />
         ) : (
-          <ActionBar mode={{ kind: 'actions', legal: ALL_ACTIONS, onAction: handleAction }} />
+          <ActionBar
+            mode={{
+              kind: 'actions',
+              legal: drillLegalActions(card.cards, activeProfile.rules),
+              onAction: handleAction,
+            }}
+          />
         )
       ) : (
         <div className="action-bar">
@@ -584,13 +594,13 @@ function DeviationQuizView({
   // branches are mutually exclusive so nothing double-speaks.
   useEffect(() => {
     if (eyesFree) {
-      speak(narrateQuizPrompt(item.cards, item.up, item.tc), {
+      speak(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle), {
         interrupt: true,
         rate: settings.audio.rate,
         voiceURI: settings.audio.voiceURI,
       });
     } else {
-      audio.sayFull(narrateQuizPrompt(item.cards, item.up, item.tc));
+      audio.sayFull(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item, eyesFree]);
@@ -637,7 +647,7 @@ function DeviationQuizView({
   };
 
   const handleRepeat = () => {
-    speak(narrateQuizPrompt(item.cards, item.up, item.tc), {
+    speak(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle), {
       interrupt: true,
       rate: settings.audio.rate,
       voiceURI: settings.audio.voiceURI,
@@ -749,6 +759,8 @@ function DeviationQuizView({
         const action = KEY_TO_ACTION[e.key];
         if (!action) return;
         e.preventDefault();
+        // Same legality gate as the ActionBar buttons -- see FlashcardsView.
+        if (item.cards && !drillLegalActions(item.cards, activeProfile.rules).includes(action)) return;
         if (eyesFree) {
           handleZoneAnswer(action);
         } else {
@@ -885,7 +897,13 @@ function DeviationQuizView({
             </button>
           </div>
         ) : (
-          <ActionBar mode={{ kind: 'actions', legal: ALL_ACTIONS, onAction: handleAnswer }} />
+          <ActionBar
+            mode={{
+              kind: 'actions',
+              legal: drillLegalActions(item.cards, activeProfile.rules),
+              onAction: handleAnswer,
+            }}
+          />
         )
       ) : (
         <div className="action-bar">
@@ -1001,8 +1019,8 @@ function MixedSessionView({
 
   const promptFor = (c: MixedCurrent): string =>
     c.type === 'flash'
-      ? narrateFlashcardPrompt(c.card.cards, c.card.up)
-      : narrateQuizPrompt(c.item.cards, c.item.up, c.item.tc);
+      ? narrateFlashcardPrompt(c.card.cards, c.card.up, settings.audio.handStyle)
+      : narrateQuizPrompt(c.item.cards, c.item.up, c.item.tc, settings.audio.handStyle);
 
   // Narrate each new item. Eyes-free speaks every item (its primary output
   // channel); visual mode mirrors each drill's standalone behavior -- the
@@ -1013,7 +1031,7 @@ function MixedSessionView({
     if (eyesFree) {
       speak(promptFor(current), { interrupt: true, rate: settings.audio.rate, voiceURI: settings.audio.voiceURI });
     } else if (current.type === 'quiz') {
-      audio.sayFull(narrateQuizPrompt(current.item.cards, current.item.up, current.item.tc));
+      audio.sayFull(narrateQuizPrompt(current.item.cards, current.item.up, current.item.tc, settings.audio.handStyle));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, eyesFree]);
@@ -1123,6 +1141,8 @@ function MixedSessionView({
         const action = KEY_TO_ACTION[e.key];
         if (!action) return;
         e.preventDefault();
+        // Same legality gate as the ActionBar buttons -- see FlashcardsView.
+        if (handCards && !drillLegalActions(handCards, activeProfile.rules).includes(action)) return;
         if (eyesFree) handleZoneAnswer(action);
         else handleAnswer(action);
         return;
@@ -1240,7 +1260,16 @@ function MixedSessionView({
             </button>
           </div>
         ) : (
-          <ActionBar mode={{ kind: 'actions', legal: ALL_ACTIONS, onAction: handleAnswer }} />
+          <ActionBar
+            mode={{
+              kind: 'actions',
+              // `handCards` is non-null on this branch (the insurance case is
+              // the branch immediately above), so the hand is always the real
+              // two-card hand the legality rules expect.
+              legal: drillLegalActions(handCards ?? [], activeProfile.rules),
+              onAction: handleAnswer,
+            }}
+          />
         )
       ) : (
         <div className="action-bar">

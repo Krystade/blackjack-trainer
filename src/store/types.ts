@@ -91,6 +91,13 @@ export interface AudioSettings {
   enabled: boolean;
   verbosity: 'off' | 'results' | 'full';
   rate: number; // 0.5 .. 3.0 -- applied to both live speechSynthesis and clip playbackRate
+  // Speaking volume, 0..1, applied to live speechSynthesis, clip playback AND
+  // the chime tone, so one control takes the whole app up or down. Separate
+  // from the device volume on purpose: eyes-free practice in a car competes
+  // with road noise and music, and the phone's own volume is usually already
+  // committed to something else. 0 is a legitimate value (silence) -- every
+  // consumer must presence-check it rather than testing truthiness.
+  volume: number;
   voiceURI: string; // 'default' or a SpeechSynthesisVoice.voiceURI
   chimes: boolean;
   answerPauseMs: number; // 0..5000, the eyes-free self-check pause
@@ -119,12 +126,20 @@ export interface AudioSettings {
   // the Settings clip-voice picker only renders once loadClipIndex() (see
   // src/audio/clips.ts) actually resolves more than a bare default.
   clipVoice: string;
+  // How a two-card drill hand is announced. 'cards' (default) speaks a SOFT
+  // hand card by card -- "ace, three" rather than "soft fourteen" -- because
+  // the composition is what selects the chart row (A-3 and A-7 play nothing
+  // alike), and "soft fourteen" is the exact phrase that gets misheard as a
+  // hard total. Hard hands and pairs are unaffected either way; see
+  // narrateHandPhrase in audio/narrate.ts. 'total' restores the old wording.
+  handStyle: 'cards' | 'total';
 }
 
 export const DEFAULT_AUDIO: AudioSettings = {
   enabled: false,
   verbosity: 'results',
   rate: 1,
+  volume: 1,
   voiceURI: 'default',
   chimes: true,
   answerPauseMs: 3000,
@@ -132,6 +147,7 @@ export const DEFAULT_AUDIO: AudioSettings = {
   cardDetail: 'rank',
   useClips: false,
   clipVoice: '',
+  handStyle: 'cards',
 };
 
 export const DEFAULT_SETTINGS: Settings = {

@@ -231,15 +231,58 @@ function narrateHandTotalPhrase(cards: [Card, Card]): string {
   return narrateTotal(hv.total, hv.soft);
 }
 
-export function narrateFlashcardPrompt(cards: [Card, Card], up: Rank): string {
-  return `You have ${narrateHandTotalPhrase(cards)}. ${narrateDealerUp(up)}`;
+/** How a two-card hand is announced: see `AudioSettings.handStyle` in
+ * store/types.ts. */
+export type HandStyle = 'cards' | 'total';
+
+/**
+ * The spoken form of a drill hand, for both prompt builders.
+ *
+ * `'cards'` (the default) speaks SOFT non-pair hands card by card — "ace,
+ * three" rather than "soft fourteen". A soft total alone forces the learner
+ * to re-derive the composition that actually decides the play (A-3 vs A-7
+ * are different rows of the chart), and "soft fourteen" is the exact phrase
+ * beginners mishear as a hard total. Hard hands and pairs deliberately do
+ * NOT change:
+ *  - a hard hand's play depends only on its total, so "ten, six" is more
+ *    syllables for no teaching value over "sixteen";
+ *  - a pair already names its own composition ("a pair of eights"), and the
+ *    pair-splitting row is the one being drilled.
+ * Suits are never spoken here regardless of `cardDetail` — composition, not
+ * suit, is the whole point of this phrasing, and lowercase bare rank words
+ * ("ace", "three") are also what the clip manifests key on (see clips.ts's
+ * comma-split cascade), so this phrasing stays clip-playable.
+ *
+ * `'total'` reproduces the pre-existing behavior exactly.
+ *
+ * Pure like the rest of this module: the caller passes the style down from
+ * `AudioSettings.handStyle` — narrate.ts never reads the store itself.
+ */
+export function narrateHandPhrase(cards: [Card, Card], style: HandStyle = 'cards'): string {
+  if (style === 'cards' && !isPair(cards) && handValue(cards).soft) {
+    return cards.map((card) => narrateRank(card.rank)).join(', ');
+  }
+  return narrateHandTotalPhrase(cards);
 }
 
-export function narrateQuizPrompt(cards: [Card, Card] | null, up: Rank, tc: number): string {
+export function narrateFlashcardPrompt(
+  cards: [Card, Card],
+  up: Rank,
+  handStyle: HandStyle = 'cards',
+): string {
+  return `You have ${narrateHandPhrase(cards, handStyle)}. ${narrateDealerUp(up)}`;
+}
+
+export function narrateQuizPrompt(
+  cards: [Card, Card] | null,
+  up: Rank,
+  tc: number,
+  handStyle: HandStyle = 'cards',
+): string {
   if (cards === null) {
     return `${narrateDealerUp(up)} ${narrateInsuranceOffer()} True count ${narrateTc(tc)}.`;
   }
-  return `You have ${narrateHandTotalPhrase(cards)}. ${narrateDealerUp(up)} True count ${narrateTc(tc)}.`;
+  return `You have ${narrateHandPhrase(cards, handStyle)}. ${narrateDealerUp(up)} True count ${narrateTc(tc)}.`;
 }
 
 /** Singular/plural wording pair for a countable noun. */

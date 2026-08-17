@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { speak, speakAsync, chime, isSpeechSupported, listVoices, cancelSpeech, pickBestVoice } from './speech';
+import {
+  speak, speakAsync, chime, isSpeechSupported, listVoices, cancelSpeech, pickBestVoice,
+  getLastSpoken, repeatLast, _resetLastSpokenForTest, _resetSharedAudioContextForTest,
+} from './speech';
 
 describe('speech wrapper — absence guards (no browser APIs in jsdom/node)', () => {
   it('speak() does not throw when speechSynthesis is unavailable', () => {
@@ -131,6 +134,9 @@ describe('pickBestVoice', () => {
 class FakeUtterance {
   text: string;
   rate?: number;
+  // Left undefined until speech.ts explicitly assigns it, so a test can tell
+  // "never set" apart from "set to a value" (0 included).
+  volume?: number;
   voice: SpeechSynthesisVoice | null = null;
   onend: (() => void) | null = null;
   onerror: (() => void) | null = null;
@@ -144,6 +150,7 @@ function installFakeSpeechEnv(
   fakeOpts?: { autoEnd?: boolean; search?: string },
 ): FakeUtterance[] {
   const spoken: FakeUtterance[] = [];
+  cancelCount = 0;
   (globalThis as any).SpeechSynthesisUtterance = FakeUtterance;
   (globalThis as any).window = {
     location: { search: fakeOpts?.search ?? '' },
@@ -155,10 +162,20 @@ function installFakeSpeechEnv(
           queueMicrotask(() => u.onend?.());
         }
       },
-      cancel: () => {},
+      cancel: () => {
+        cancelCount += 1;
+      },
     },
   };
   return spoken;
+}
+
+/** How many times the fake `speechSynthesis.cancel()` has been called since
+ * the last `installFakeSpeechEnv` — the observable proof that a call
+ * interrupted whatever was already speaking. */
+let cancelCount = 0;
+function fakeCancelCount(): number {
+  return cancelCount;
 }
 
 function teardownFakeSpeechEnv(): void {
@@ -269,5 +286,194 @@ describe('speakAsync()', () => {
     // the test doesn't wait out the watchdog.
     cancelSpeech();
     await second;
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* opts.volume — speaking volume, 0..1                                      */
+/* ------------------------------------------------------------------------ */
+
+describe('speak()/speakAsync() — opts.volume', () => {
+  afterEach(teardownFakeSpeechEnv);
+
+  it('applies opts.volume to the utterance', () => {
+    const spoken = installFakeSpeechEnv([]);
+    speak('hello', { volume: 0.4 });
+    expect(spoken[0].volume).toBe(0.4);
+  });
+
+  it('applies a volume of 0 (silence is a real setting, not "unset")', () => {
+    // The rate path guards with a truthiness check, which would silently drop
+    // a 0 here — volume must be presence-checked instead.
+    const spoken = installFakeSpeechEnv([]);
+    speak('hello', { volume: 0 });
+    expect(spoken[0].volume).toBe(0);
+  });
+
+  it('leaves the utterance volume untouched when none is given (engine default)', () => {
+    const spoken = installFakeSpeechEnv([]);
+    speak('hello');
+    expect(spoken[0].volume).toBeUndefined();
+  });
+
+  it('applies opts.volume on the speakAsync path too', async () => {
+    const spoken = installFakeSpeechEnv([], { autoEnd: true });
+    await speakAsync('hello', { volume: 0.25 });
+    expect(spoken[0].volume).toBe(0.25);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* chime() — volume scaling of the tone's gain peak                         */
+/* ------------------------------------------------------------------------ */
+
+interface RampCall {
+  value: number;
+  time: number;
+}
+
+/**
+ * Minimal Web Audio stand-in that records the gain envelope chime() builds,
+ * so the peak can be asserted without a real AudioContext.
+ */
+function installFakeAudioContextEnv(): { ramps: RampCall[] } {
+  const ramps: RampCall[] = [];
+  class FakeAudioContext {
+    currentTime = 0;
+    destination = {};
+    createOscillator() {
+      return {
+        type: '',
+        frequency: { value: 0 },
+        connect: () => {},
+        start: () => {},
+        stop: () => {},
+      };
+    }
+    createGain() {
+      return {
+        gain: {
+          setValueAtTime: () => {},
+          linearRampToValueAtTime: (value: number, time: number) => {
+            ramps.push({ value, time });
+          },
+        },
+        connect: () => {},
+      };
+    }
+  }
+  (globalThis as any).window = { location: { search: '' }, AudioContext: FakeAudioContext };
+  return { ramps };
+}
+
+describe('chime() — volume', () => {
+  // The shared AudioContext is memoized for the page's lifetime, so without
+  // this each test after the first would chime into the PREVIOUS test's fake
+  // and record nothing into its own `ramps`.
+  beforeEach(() => _resetSharedAudioContextForTest());
+  afterEach(() => {
+    _resetSharedAudioContextForTest();
+    delete (globalThis as any).window;
+  });
+
+  it('scales the tone\'s gain peak by opts.volume', () => {
+    const env = installFakeAudioContextEnv();
+    chime('good', { volume: 0.5 });
+    // First ramp is the attack to the peak; second is the release to silence.
+    expect(env.ramps[0].value).toBeCloseTo(0.15, 5);
+    expect(env.ramps[1].value).toBe(0);
+  });
+
+  it('keeps the historical 0.3 peak when no volume is given', () => {
+    const env = installFakeAudioContextEnv();
+    chime('good');
+    expect(env.ramps[0].value).toBeCloseTo(0.3, 5);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* Last-utterance tracking — getLastSpoken / repeatLast                     */
+/* ------------------------------------------------------------------------ */
+
+describe('last-utterance tracking', () => {
+  beforeEach(() => _resetLastSpokenForTest());
+  afterEach(() => {
+    _resetLastSpokenForTest();
+    teardownFakeSpeechEnv();
+  });
+
+  it('reports nothing spoken before anything has been said', () => {
+    expect(getLastSpoken()).toBeNull();
+  });
+
+  it('remembers the text passed to speak()', () => {
+    installFakeSpeechEnv([]);
+    speak('You have ace, three.');
+    expect(getLastSpoken()).toBe('You have ace, three.');
+  });
+
+  it('remembers the text passed to speakAsync()', async () => {
+    installFakeSpeechEnv([], { autoEnd: true });
+    await speakAsync('Dealer shows ten.');
+    expect(getLastSpoken()).toBe('Dealer shows ten.');
+  });
+
+  it('remembers text spoken in e2e log mode as well', () => {
+    (globalThis as any).window = { location: { search: '?e2e=1' } };
+    speak('Win, plus two');
+    expect(getLastSpoken()).toBe('Win, plus two');
+  });
+
+  it('does NOT count a chime as an utterance', () => {
+    installFakeSpeechEnv([]);
+    speak('Correct.');
+    chime('good');
+    expect(getLastSpoken()).toBe('Correct.');
+  });
+
+  it('does not count a chime in e2e log mode either', () => {
+    (globalThis as any).window = { location: { search: '?e2e=1' } };
+    speak('Correct.');
+    chime('bad');
+    expect(getLastSpoken()).toBe('Correct.');
+  });
+
+  it('repeatLast() re-speaks the stored text and reports that it did', () => {
+    const spoken = installFakeSpeechEnv([]);
+    speak('You have sixteen.');
+    expect(repeatLast()).toBe(true);
+    expect(spoken.map((u) => u.text)).toEqual(['You have sixteen.', 'You have sixteen.']);
+  });
+
+  it('repeatLast() applies the opts it is given', () => {
+    const spoken = installFakeSpeechEnv([]);
+    speak('You have sixteen.');
+    repeatLast({ rate: 2, volume: 0.5 });
+    expect(spoken[1].rate).toBe(2);
+    expect(spoken[1].volume).toBe(0.5);
+  });
+
+  it('repeatLast() interrupts whatever is speaking, without being told to', () => {
+    // A repeat that queues behind the utterance being repeated would leave
+    // the user waiting through it twice.
+    installFakeSpeechEnv([]);
+    speak('You have sixteen.');
+    const before = fakeCancelCount();
+    repeatLast();
+    expect(fakeCancelCount()).toBe(before + 1);
+  });
+
+  it('repeatLast() does nothing and returns false with nothing to repeat', () => {
+    const spoken = installFakeSpeechEnv([]);
+    expect(repeatLast()).toBe(false);
+    expect(spoken).toEqual([]);
+  });
+
+  it('a repeat does not itself become a new "last spoken" entry to chime over', () => {
+    installFakeSpeechEnv([]);
+    speak('You have sixteen.');
+    repeatLast();
+    chime('good');
+    expect(getLastSpoken()).toBe('You have sixteen.');
   });
 });
