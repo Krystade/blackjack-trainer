@@ -183,6 +183,28 @@ def build_vocabulary() -> list[str]:
     for decks in deck_values:
         phrases.append(f"{capitalize(narrate_decks_remaining(decks))}.")
 
+    # narrateHandPhrase(style='cards') — the DEFAULT since the card-by-card
+    # soft-hand change. A soft non-pair hand is spoken as its two ranks
+    # ("You have ace, three.") rather than as a total, and the generator
+    # predated that: every soft non-pair prompt therefore missed the cascade
+    # and fell back to live TTS. Because the fallback is whole-utterance, it
+    # also cost the already-covered "Dealer shows nine." half of the line.
+    # Both orders are needed — the ace is whichever card was dealt first.
+    non_ace = [r for r in RANK_NAMES if r != "ace"]
+    for other in non_ace:
+        phrases.append(f"You have ace, {other}.")
+        phrases.append(f"You have {other}, ace.")
+
+    # gateDrillAnswer()'s refusal (A1). Spoken when an unavailable action is
+    # tapped on the eyes-free ZonePad, which has no disabled state — so this
+    # line IS the affordance, and it deserves the good voice.
+    for action in ["Hit", "Stand", "Double", "Split", "Surrender"]:
+        phrases.append(f"{action} isn't available on this hand.")
+
+    # narrateCorrection() opens with a bare "Wrong." sentence; only "Correct."
+    # was covered, so every miss dropped to live TTS on its first word.
+    phrases.append("Wrong.")
+
     # De-dupe while preserving order (e.g. "True count <tc>." appears once
     # from the quiz section and once from the true-count drill's own helper —
     # they mirror the identical wording, so only one clip is generated).

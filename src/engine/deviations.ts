@@ -51,11 +51,11 @@ export const ILLUSTRIOUS_18: Deviation[] = [
   { id: '10vA', kind: 'hard', total: 10, up: 'A', action: 'double', threshold: 3, dir: 'gte', active: true, label: '10 v A: double at TC ≥ +3 (H17)' },
   { id: '9v7', kind: 'hard', total: 9, up: '7', action: 'double', threshold: 3, dir: 'gte', active: true, label: '9 v 7: double at TC ≥ +3' },
   { id: '16v9', kind: 'hard', total: 16, up: '9', action: 'stand', threshold: 4, dir: 'gte', active: true, label: '16 v 9: stand at TC ≥ +4 (H17)' },
-  { id: '13v2', kind: 'hard', total: 13, up: '2', action: 'hit', threshold: -1, dir: 'lte', active: true, label: '13 v 2: hit at TC ≤ −1' },
+  { id: '13v2', kind: 'hard', total: 13, up: '2', action: 'hit', threshold: -2, dir: 'lte', active: true, label: '13 v 2: hit at TC ≤ −2' },
   { id: '12v4', kind: 'hard', total: 12, up: '4', action: 'hit', threshold: -1, dir: 'lte', active: true, label: '12 v 4: hit at any negative TC' },
-  { id: '12v5', kind: 'hard', total: 12, up: '5', action: 'hit', threshold: -2, dir: 'lte', active: true, label: '12 v 5: hit at TC ≤ −2' },
+  { id: '12v5', kind: 'hard', total: 12, up: '5', action: 'hit', threshold: -3, dir: 'lte', active: true, label: '12 v 5: hit at TC ≤ −3' },
   { id: '12v6', kind: 'hard', total: 12, up: '6', action: 'hit', threshold: -3, dir: 'lte', active: true, label: '12 v 6: hit at TC ≤ −3 (H17)' },
-  { id: '13v3', kind: 'hard', total: 13, up: '3', action: 'hit', threshold: -2, dir: 'lte', active: true, label: '13 v 3: hit at TC ≤ −2' },
+  { id: '13v3', kind: 'hard', total: 13, up: '3', action: 'hit', threshold: -3, dir: 'lte', active: true, label: '13 v 3: hit at TC ≤ −3' },
 ];
 
 // VERIFIED S17-ADJUSTED INDICES — derived from H17 ILLUSTRIOUS_18 with four overrides
@@ -66,7 +66,7 @@ export const ILLUSTRIOUS_18_S17: Deviation[] = ILLUSTRIOUS_18.map((dev) => {
     '11vA': { active: true, threshold: 1, label: '11 v A: double at TC ≥ +1 (S17)' },
     '16v9': { threshold: 5, label: '16 v 9: stand at TC ≥ +5' },
     '10vA': { threshold: 4, label: '10 v A: double at TC ≥ +4' },
-    '12v6': { threshold: -1, label: '12 v 6: hit at TC ≤ −1' },
+    '12v6': { threshold: -2, label: '12 v 6: hit at TC ≤ −2 (S17)' },
   };
   if (dev.id in overrides) {
     return { ...dev, ...overrides[dev.id] };

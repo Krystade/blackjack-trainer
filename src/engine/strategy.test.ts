@@ -157,8 +157,10 @@ describe('correctPlay: 12v5 -- (10,2) v 5', () => {
   it('tc -1 -> stand (basic, above threshold)', () => {
     expectAdvice(correctPlay(cards('10', '2'), '5', -1, ctx()), 'stand');
   });
-  it('tc -2 -> hit 12v5', () => {
-    expectAdvice(correctPlay(cards('10', '2'), '5', -2, ctx()), 'hit', '12v5');
+  it('tc -3 -> hit 12v5', () => {
+    // Boundary corrected 2026-08-17: the published index is the STAND
+    // threshold, so the hit boundary is index - 1. See deviations.test.ts.
+    expectAdvice(correctPlay(cards('10', '2'), '5', -3, ctx()), 'hit', '12v5');
   });
   it('tc -6 -> hit 12v5 (further below threshold)', () => {
     expectAdvice(correctPlay(cards('10', '2'), '5', -6, ctx()), 'hit', '12v5');
@@ -170,6 +172,8 @@ describe('correctPlay: 12v6 -- (10,2) v 6', () => {
     expectAdvice(correctPlay(cards('10', '2'), '6', -2, ctx()), 'stand');
   });
   it('tc -3 -> hit 12v6', () => {
+    // Boundary corrected 2026-08-17: the published index is the STAND
+    // threshold, so the hit boundary is index - 1. See deviations.test.ts.
     expectAdvice(correctPlay(cards('10', '2'), '6', -3, ctx()), 'hit', '12v6');
   });
   it('tc -7 -> hit 12v6 (further below threshold)', () => {
@@ -178,8 +182,10 @@ describe('correctPlay: 12v6 -- (10,2) v 6', () => {
 });
 
 describe('correctPlay: 13v2 -- (10,3) v 2', () => {
-  it('tc -1 -> hit 13v2', () => {
-    expectAdvice(correctPlay(cards('10', '3'), '2', -1, ctx()), 'hit', '13v2');
+  it('tc -2 -> hit 13v2', () => {
+    // Boundary corrected 2026-08-17: the published index is the STAND
+    // threshold, so the hit boundary is index - 1. See deviations.test.ts.
+    expectAdvice(correctPlay(cards('10', '3'), '2', -2, ctx()), 'hit', '13v2');
   });
   it('tc 0 -> stand (basic, above threshold)', () => {
     expectAdvice(correctPlay(cards('10', '3'), '2', 0, ctx()), 'stand');
@@ -193,8 +199,10 @@ describe('correctPlay: 13v3 -- (10,3) v 3', () => {
   it('tc -1 -> stand (basic, above threshold)', () => {
     expectAdvice(correctPlay(cards('10', '3'), '3', -1, ctx()), 'stand');
   });
-  it('tc -2 -> hit 13v3', () => {
-    expectAdvice(correctPlay(cards('10', '3'), '3', -2, ctx()), 'hit', '13v3');
+  it('tc -3 -> hit 13v3', () => {
+    // Boundary corrected 2026-08-17: the published index is the STAND
+    // threshold, so the hit boundary is index - 1. See deviations.test.ts.
+    expectAdvice(correctPlay(cards('10', '3'), '3', -3, ctx()), 'hit', '13v3');
   });
   it('tc -6 -> hit 13v3 (further below threshold)', () => {
     expectAdvice(correctPlay(cards('10', '3'), '3', -6, ctx()), 'hit', '13v3');
@@ -425,7 +433,7 @@ describe('S17 Illustrious-18 variant: 10vA threshold +4', () => {
   });
 });
 
-describe('S17 Illustrious-18 variant: 12v6 threshold −1 (lte)', () => {
+describe('S17 Illustrious-18 variant: 12v6 threshold −2 (lte)', () => {
   const s17Rules: RuleSet = { decks: 6, s17: true, das: true, ls: true, rsa: false, bj65: false };
 
   it('H17 (10,2) v 6, tc -3 -> hit 12v6', () => {
@@ -437,8 +445,11 @@ describe('S17 Illustrious-18 variant: 12v6 threshold −1 (lte)', () => {
     expectAdvice(correctPlay(cards('10', '2'), '6', -2, ctx(), s17Rules), 'hit', '12v6');
   });
 
-  it('S17 (10,2) v 6, tc -1 -> hit 12v6 at threshold', () => {
-    expectAdvice(correctPlay(cards('10', '2'), '6', -1, ctx(), s17Rules), 'hit', '12v6');
+  it('S17 (10,2) v 6, tc -1 -> STANDS: -1 is the published index itself', () => {
+    // Corrected 2026-08-17. The index (-1) is the STAND threshold, so the
+    // deviation must not fire at exactly -1 -- the old data hit here, which
+    // is the whole off-by-one this change fixes.
+    expectAdvice(correctPlay(cards('10', '2'), '6', -1, ctx(), s17Rules), 'stand');
   });
 
   it('S17 (10,2) v 6, tc -5 -> hit 12v6 below threshold', () => {
