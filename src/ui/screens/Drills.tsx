@@ -2,7 +2,7 @@
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
 import type { Action, DeviationId } from '../../engine/deviations';
-import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17, isIndexActive } from '../../engine/deviations';
+import { isIndexActive, indexSetFor } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
 import { drawFlashcard } from '../../drills/flashcards';
 import { drillLegalActions } from '../../drills/legalActions';
@@ -19,8 +19,7 @@ import {
   gradeFlashcardAnswer as gradeFlashcard,
   gradeQuizAnswer as gradeQuiz,
   loadFlashSr,
-  loadQuizSr,
-} from '../../drills/gradeAnswer';
+  loadQuizSr } from '../../drills/gradeAnswer';
 import type { SrDeck } from '../../drills/spacedRepetition';
 import { pickMixedType } from '../../drills/mixedSession';
 import type { MixedItemType } from '../../drills/mixedSession';
@@ -64,8 +63,7 @@ const KEY_TO_ACTION: Record<string, Action> = {
   '2': 'stand',
   '3': 'double',
   '4': 'split',
-  '5': 'surrender',
-};
+  '5': 'surrender' };
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -85,8 +83,7 @@ function formatSigned(n: number): string {
 
 const INSURANCE_ZONE_LABEL: Record<'take' | 'decline', string> = {
   take: 'Take',
-  decline: 'Decline',
-};
+  decline: 'Decline' };
 
 function zoneLabel(zone: ZoneId | 'take' | 'decline'): string {
   if (zone === 'take' || zone === 'decline') return INSURANCE_ZONE_LABEL[zone];
@@ -140,8 +137,7 @@ function FlashcardsView({
   settings,
   activeProfile,
   onBack,
-  onSettingsChange,
-}: {
+  onSettingsChange }: {
   settings: Settings;
   activeProfile: Profile;
   onBack: () => void;
@@ -519,8 +515,7 @@ function FlashcardsView({
             mode={{
               kind: 'actions',
               legal: drillLegalActions(card.cards, activeProfile.rules),
-              onAction: handleAction,
-            }}
+              onAction: handleAction }}
           />
         )
       ) : (
@@ -566,8 +561,7 @@ function DeviationQuizView({
   settings,
   activeProfile,
   onBack,
-  onSettingsChange,
-}: {
+  onSettingsChange }: {
   settings: Settings;
   activeProfile: Profile;
   onBack: () => void;
@@ -857,7 +851,7 @@ function DeviationQuizView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedback, eyesFree, item, showChart]);
 
-  const indexList = activeProfile.rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
+  const indexList = indexSetFor(activeProfile.rules);
 
   return (
     <div className="drill-screen" style={drillScreenStyle(padTop)}>
@@ -1000,8 +994,7 @@ function DeviationQuizView({
             mode={{
               kind: 'actions',
               legal: drillLegalActions(item.cards, activeProfile.rules),
-              onAction: handleAnswer,
-            }}
+              onAction: handleAnswer }}
           />
         )
       ) : (
@@ -1041,8 +1034,7 @@ function MixedSessionView({
   settings,
   activeProfile,
   onBack,
-  onSettingsChange,
-}: {
+  onSettingsChange }: {
   settings: Settings;
   activeProfile: Profile;
   onBack: () => void;
@@ -1067,8 +1059,7 @@ function MixedSessionView({
     if (type === 'flash') {
       return {
         type,
-        card: drawFlashcard(settings.drill.flashCategory, flashSrRef.current, Date.now(), randomSeed(), activeProfile.rules),
-      };
+        card: drawFlashcard(settings.drill.flashCategory, flashSrRef.current, Date.now(), randomSeed(), activeProfile.rules) };
     }
     const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
     return {
@@ -1080,8 +1071,7 @@ function MixedSessionView({
         settings.drill.quizDistractorPct,
         quizSrRef.current,
         Date.now(),
-      ),
-    };
+      ) };
   };
 
   const [current, setCurrent] = useState<MixedCurrent>(() => drawFor(pickMixedType(sessionSeed(), 0)));
@@ -1417,8 +1407,7 @@ function MixedSessionView({
               // the branch immediately above), so the hand is always the real
               // two-card hand the legality rules expect.
               legal: drillLegalActions(handCards ?? [], activeProfile.rules),
-              onAction: handleAnswer,
-            }}
+              onAction: handleAnswer }}
           />
         )
       ) : (

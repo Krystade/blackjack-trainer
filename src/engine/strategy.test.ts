@@ -491,3 +491,32 @@ describe('A,A when splitting is unavailable (bug hunt, 2026-08-17)', () => {
     expect(() => basicPlay(AA, '10', NO_SPLIT, DEFAULT_RULES)).not.toThrow();
   });
 });
+
+describe('insuranceCorrect is deck-aware (operator request)', () => {
+  const SHOE: RuleSet = { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false };
+  const SINGLE: RuleSet = { ...SHOE, decks: 1 };
+  const DOUBLE: RuleSet = { ...SHOE, decks: 2 };
+
+  it('takes insurance at TC >= 3 in a shoe game', () => {
+    expect(insuranceCorrect(2, SHOE)).toBe(false);
+    expect(insuranceCorrect(3, SHOE)).toBe(true);
+  });
+
+  it('takes insurance one count earlier on single deck', () => {
+    // Published index 1.4; with an integer true count that is TC >= 2.
+    expect(insuranceCorrect(1, SINGLE)).toBe(false);
+    expect(insuranceCorrect(2, SINGLE)).toBe(true);
+  });
+
+  it('keeps double deck at the shoe threshold (2.4 rounds to 3)', () => {
+    expect(insuranceCorrect(2, DOUBLE)).toBe(false);
+    expect(insuranceCorrect(3, DOUBLE)).toBe(true);
+  });
+
+  it('defaults to the shoe threshold when no ruleset is given', () => {
+    // Back-compatible: every existing caller that passes only a tc keeps its
+    // behaviour rather than silently switching to single-deck rules.
+    expect(insuranceCorrect(2)).toBe(false);
+    expect(insuranceCorrect(3)).toBe(true);
+  });
+});

@@ -155,7 +155,7 @@ export function buildFlashcardEvent(
 export function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet, elapsedMs?: number): GradedEvent {
   if (item.cards === null) {
     const take = taken === 'take-insurance';
-    const { classification, correct } = classifyInsurance(take, item.tc);
+    const { classification, correct } = classifyInsurance(take, item.tc, rules);
     return {
       kind: 'insurance',
       category: 'insurance',

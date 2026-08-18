@@ -11,10 +11,9 @@ import {
   bestSecondsPerDeck,
   signedErrorBreakdown,
   medianLatency,
-  distractionSummary,
-} from '../../store/drillStats';
+  distractionSummary } from '../../store/drillStats';
 import type { Category, MistakeClass } from '../../engine/grade';
-import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../../engine/deviations';
+import { indexSetFor } from '../../engine/deviations';
 import { useAudio } from '../../audio/useAudio';
 import { narrateStatsSummary } from '../../audio/narrate';
 import { assistedFlag } from '../peekFlag';
@@ -37,8 +36,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
   insurance: 'Insurance',
   bet: 'Bet sizing',
   countCheck: 'Count checks',
-  wong: 'Wong-outs',
-};
+  wong: 'Wong-outs' };
 
 const MISTAKE_ORDER: Exclude<MistakeClass, 'correct'>[] = [
   'basic-error',
@@ -51,8 +49,7 @@ const MISTAKE_LABELS: Record<Exclude<MistakeClass, 'correct'>, string> = {
   'basic-error': 'Basic-strategy errors',
   'missed-deviation': 'Missed deviations',
   'phantom-deviation': 'Phantom deviations',
-  'wrong-anyway': 'Wrong either way',
-};
+  'wrong-anyway': 'Wrong either way' };
 
 function pct(right: number, total: number): string {
   if (total === 0) return '—';
@@ -100,8 +97,7 @@ type StatsTab = 'play' | 'drills' | 'progress';
 const TAB_LABEL: Record<StatsTab, string> = {
   play: 'Play',
   drills: 'Drills',
-  progress: 'Progress',
-};
+  progress: 'Progress' };
 
 /** Which tab each section title belongs to. */
 const SECTION_TAB: Record<string, StatsTab> = {
@@ -118,8 +114,7 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Retention': 'progress',
   'Downswing (tilt inoculation)': 'progress',
   'Endurance / fatigue': 'progress',
-  'Sessions': 'progress',
-};
+  'Sessions': 'progress' };
 
 export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProps) {
   const [stats, setStats] = useState<StatsData>(() => loadStats());
@@ -427,7 +422,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
             </tr>
           </thead>
           <tbody>
-            {(activeProfile.rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18).map((dev) => {
+            {indexSetFor(activeProfile.rules).map((dev) => {
               const tally = stats.perIndex[dev.id];
               return (
                 <tr key={dev.id}>

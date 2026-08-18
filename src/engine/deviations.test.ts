@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from './deviations';
+import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17, indexSetFor } from './deviations';
 
 /**
  * Index-threshold verification against published sources (2026-08-17).
@@ -39,5 +39,58 @@ describe('negative Hi-Lo indices match the published convention', () => {
     // deviation fired and the trainer demanded a hit.
     const d = [...ILLUSTRIOUS_18].find((x) => x.id === '13v2')!;
     expect(-1 <= d.threshold).toBe(false);
+  });
+});
+
+/**
+ * Deck-size-aware indices (operator request).
+ *
+ * The charts already select by deck class (d1/d2/d68); the indices did not,
+ * so a single-deck profile was trained on shoe thresholds.
+ *
+ * Only ONE per-deck delta is published clearly enough to ship: the insurance
+ * index, given by two independent sources as 1D 1.4 / 2D 2.4 / 6D 3.0. This
+ * app's true count is an integer, so 2.4 and 3.0 both mean "take at TC >= 3"
+ * and only single deck actually moves — to TC >= 2.
+ *
+ * No other per-deck deltas are invented here. The published I18 is a single
+ * set, and practitioners commonly use shoe indices at every deck count
+ * because the EV difference is negligible; guessing values would be exactly
+ * the failure this trainer must not have.
+ */
+describe('indexSetFor — deck-size-aware indices', () => {
+  const ins = (decks: 1 | 2 | 6 | 8, s17: boolean) =>
+    indexSetFor({ decks, s17 }).find((d) => d.id === 'ins')!;
+
+  it('takes insurance at TC >= 3 in a shoe game', () => {
+    expect(ins(6, false).threshold).toBe(3);
+    expect(ins(8, false).threshold).toBe(3);
+  });
+
+  it('takes insurance at TC >= 2 in a single-deck game', () => {
+    // Published 1.4; with an integer true count that is TC >= 2.
+    expect(ins(1, false).threshold).toBe(2);
+  });
+
+  it('keeps double deck at TC >= 3, because 2.4 rounds there on an integer count', () => {
+    expect(ins(2, false).threshold).toBe(3);
+  });
+
+  it('still applies the S17 overrides at every deck count', () => {
+    const s17single = indexSetFor({ decks: 1, s17: true });
+    expect(s17single.find((d) => d.id === '11vA')!.active).toBe(true);
+    expect(s17single.find((d) => d.id === '16v9')!.threshold).toBe(5);
+    // ...and the single-deck insurance delta survives the S17 mapping.
+    expect(s17single.find((d) => d.id === 'ins')!.threshold).toBe(2);
+  });
+
+  it('leaves the hard-total indices identical across deck counts', () => {
+    // Deliberate: no published per-deck values for these, so they must not
+    // silently differ. This test exists so a future edit has to be explicit.
+    const shoe = indexSetFor({ decks: 6, s17: false });
+    const single = indexSetFor({ decks: 1, s17: false });
+    for (const d of shoe.filter((x) => x.id !== 'ins')) {
+      expect(single.find((x) => x.id === d.id)!.threshold).toBe(d.threshold);
+    }
   });
 });

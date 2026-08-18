@@ -37,6 +37,13 @@ button {
      bottom at once. dvh tracks the visible viewport; vh stays as the
      fallback for anything that lacks it. */
   min-height: 100dvh;
+  /* svh LAST, and it is the one that actually guarantees the fit: dvh is the
+     DYNAMIC viewport, which equals the large (toolbar-collapsed) viewport
+     whenever Safari's chrome is hidden, so a screen sized to it is cut off
+     the moment the toolbar slides back in. svh is the small viewport — the
+     worst case — and because this is min-height, a taller viewport simply
+     lets the flex column grow. */
+  min-height: 100svh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -105,6 +112,13 @@ button {
      bottom at once. dvh tracks the visible viewport; vh stays as the
      fallback for anything that lacks it. */
   min-height: 100dvh;
+  /* svh LAST, and it is the one that actually guarantees the fit: dvh is the
+     DYNAMIC viewport, which equals the large (toolbar-collapsed) viewport
+     whenever Safari's chrome is hidden, so a screen sized to it is cut off
+     the moment the toolbar slides back in. svh is the small viewport — the
+     worst case — and because this is min-height, a taller viewport simply
+     lets the flex column grow. */
+  min-height: 100svh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -132,6 +146,13 @@ button {
      bottom at once. dvh tracks the visible viewport; vh stays as the
      fallback for anything that lacks it. */
   min-height: 100dvh;
+  /* svh LAST, and it is the one that actually guarantees the fit: dvh is the
+     DYNAMIC viewport, which equals the large (toolbar-collapsed) viewport
+     whenever Safari's chrome is hidden, so a screen sized to it is cut off
+     the moment the toolbar slides back in. svh is the small viewport — the
+     worst case — and because this is min-height, a taller viewport simply
+     lets the flex column grow. */
+  min-height: 100svh;
   display: flex;
   flex-direction: column;
   max-width: 480px;
@@ -662,6 +683,13 @@ button {
      bottom at once. dvh tracks the visible viewport; vh stays as the
      fallback for anything that lacks it. */
   min-height: 100dvh;
+  /* svh LAST, and it is the one that actually guarantees the fit: dvh is the
+     DYNAMIC viewport, which equals the large (toolbar-collapsed) viewport
+     whenever Safari's chrome is hidden, so a screen sized to it is cut off
+     the moment the toolbar slides back in. svh is the small viewport — the
+     worst case — and because this is min-height, a taller viewport simply
+     lets the flex column grow. */
+  min-height: 100svh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -733,6 +761,13 @@ button {
      bottom at once. dvh tracks the visible viewport; vh stays as the
      fallback for anything that lacks it. */
   min-height: 100dvh;
+  /* svh LAST, and it is the one that actually guarantees the fit: dvh is the
+     DYNAMIC viewport, which equals the large (toolbar-collapsed) viewport
+     whenever Safari's chrome is hidden, so a screen sized to it is cut off
+     the moment the toolbar slides back in. svh is the small viewport — the
+     worst case — and because this is min-height, a taller viewport simply
+     lets the flex column grow. */
+  min-height: 100svh;
   display: flex;
   flex-direction: column;
   max-width: 480px;
@@ -1094,6 +1129,13 @@ button {
      bottom at once. dvh tracks the visible viewport; vh stays as the
      fallback for anything that lacks it. */
   min-height: 100dvh;
+  /* svh LAST, and it is the one that actually guarantees the fit: dvh is the
+     DYNAMIC viewport, which equals the large (toolbar-collapsed) viewport
+     whenever Safari's chrome is hidden, so a screen sized to it is cut off
+     the moment the toolbar slides back in. svh is the small viewport — the
+     worst case — and because this is min-height, a taller viewport simply
+     lets the flex column grow. */
+  min-height: 100svh;
   max-width: 480px;
   margin: 0 auto;
   padding: 1rem;
@@ -1172,6 +1214,13 @@ button {
      bottom at once. dvh tracks the visible viewport; vh stays as the
      fallback for anything that lacks it. */
   min-height: 100dvh;
+  /* svh LAST, and it is the one that actually guarantees the fit: dvh is the
+     DYNAMIC viewport, which equals the large (toolbar-collapsed) viewport
+     whenever Safari's chrome is hidden, so a screen sized to it is cut off
+     the moment the toolbar slides back in. svh is the small viewport — the
+     worst case — and because this is min-height, a taller viewport simply
+     lets the flex column grow. */
+  min-height: 100svh;
   max-width: 480px;
   margin: 0 auto;
   display: flex;
@@ -1591,6 +1640,13 @@ button {
      bottom at once. dvh tracks the visible viewport; vh stays as the
      fallback for anything that lacks it. */
   min-height: 100dvh;
+  /* svh LAST, and it is the one that actually guarantees the fit: dvh is the
+     DYNAMIC viewport, which equals the large (toolbar-collapsed) viewport
+     whenever Safari's chrome is hidden, so a screen sized to it is cut off
+     the moment the toolbar slides back in. svh is the small viewport — the
+     worst case — and because this is min-height, a taller viewport simply
+     lets the flex column grow. */
+  min-height: 100svh;
   max-width: 480px;
   margin: 0 auto;
   display: flex;
@@ -2609,6 +2665,13 @@ button {
      bottom at once. dvh tracks the visible viewport; vh stays as the
      fallback for anything that lacks it. */
   min-height: 100dvh;
+  /* svh LAST, and it is the one that actually guarantees the fit: dvh is the
+     DYNAMIC viewport, which equals the large (toolbar-collapsed) viewport
+     whenever Safari's chrome is hidden, so a screen sized to it is cut off
+     the moment the toolbar slides back in. svh is the small viewport — the
+     worst case — and because this is min-height, a taller viewport simply
+     lets the flex column grow. */
+  min-height: 100svh;
   display: flex;
   flex-direction: column;
   gap: var(--space-5);

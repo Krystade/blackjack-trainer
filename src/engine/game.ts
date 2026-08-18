@@ -497,8 +497,8 @@ export class Game {
 
   insuranceDecision(take: boolean): void {
     const tc = this.trueCountNow;
-    const advice = insuranceCorrect(tc);
-    const { classification, correct } = classifyInsurance(take, tc);
+    const advice = insuranceCorrect(tc, this.rules);
+    const { classification, correct } = classifyInsurance(take, tc, this.rules);
     const up = this.dealerCards[0].rank;
     // Cycle-2 Task 5: ONE insurance decision covers every player hand. Stake
     // is the summed bet across all player hands (playerHands=1 reduces to

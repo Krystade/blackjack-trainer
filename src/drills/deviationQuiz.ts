@@ -3,7 +3,7 @@ import { mulberry32 } from '../engine/cards';
 import { correctPlay, basicPlay, insuranceCorrect } from '../engine/strategy';
 import type { PlayContext } from '../engine/strategy';
 import type { Action, Deviation, DeviationId } from '../engine/deviations';
-import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../engine/deviations';
+import { indexSetFor } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import type { RuleSet } from '../engine/ruleset';
 import { makeHardHand } from './buildHand';
@@ -234,10 +234,9 @@ function buildDistractorItem(
       up: 'A',
       tc,
       isDeviationSide: false,
-      correct: insuranceCorrect(tc) ? 'take-insurance' : 'decline-insurance',
+      correct: insuranceCorrect(tc, rules) ? 'take-insurance' : 'decline-insurance',
       label: distractorLabel(baseEntry),
-      isDistractor: true,
-    };
+      isDistractor: true };
   }
 
   const flavor: 'close' | 'random' = pinnedEntry ? 'close' : rng() < 0.5 ? 'close' : 'random';
@@ -252,8 +251,7 @@ function buildDistractorItem(
         isDeviationSide: false,
         correct: isBasicOnly(random.cards, random.up, random.tc, rules).action,
         label: distractorLabel(),
-        isDistractor: true,
-      };
+        isDistractor: true };
     }
     // Bounded random search failed (not observed in practice) -- fall
     // through to a CLOSE candidate from baseEntry below instead of throwing.
@@ -272,8 +270,7 @@ function buildDistractorItem(
       // apply here either.
       cards: baseEntry.kind === 'pair10' ? makePair10Cards() : makeHardHand(baseEntry.total!)!,
       up: baseEntry.up!,
-      tc: tcWrongSide(baseEntry, rng),
-    };
+      tc: tcWrongSide(baseEntry, rng) };
 
   return {
     cards: resolved.cards,
@@ -282,8 +279,7 @@ function buildDistractorItem(
     isDeviationSide: false,
     correct: isBasicOnly(resolved.cards, resolved.up, resolved.tc, rules).action,
     label: distractorLabel(baseEntry),
-    isDistractor: true,
-  };
+    isDistractor: true };
 }
 
 /**
@@ -324,7 +320,7 @@ export function drawQuizItem(
   now = 0,
 ): QuizItem {
   const rng = mulberry32(seed ?? Date.now());
-  const deviationSet = rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
+  const deviationSet = indexSetFor(rules);
 
   // Resolve the filtered entry up front (if given) so both the distractor
   // and real-item paths below can share it -- identical to the original
@@ -364,7 +360,7 @@ export function drawQuizItem(
   if (entry.kind === 'insurance') {
     // Insurance: no cards, correct is take/decline based on tc
     cards = null;
-    correct = insuranceCorrect(tc) ? 'take-insurance' : 'decline-insurance';
+    correct = insuranceCorrect(tc, rules) ? 'take-insurance' : 'decline-insurance';
   } else if (entry.kind === 'pair10') {
     // pair10: two ten-value cards
     cards = makePair10Cards();
@@ -400,6 +396,5 @@ export function drawQuizItem(
     isDeviationSide,
     correct,
     label: entry.label,
-    isDistractor: false,
-  };
+    isDistractor: false };
 }

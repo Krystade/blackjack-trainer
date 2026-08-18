@@ -3,7 +3,7 @@ import { handValue, isPair, pairRank } from './hand';
 import { upIndex } from './basicStrategy';
 import type { ChartAction } from './basicStrategy';
 import type { Action, Deviation, DeviationId } from './deviations';
-import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from './deviations';
+import { indexSetFor } from './deviations';
 import { DEFAULT_RULES } from './ruleset';
 import type { RuleSet } from './ruleset';
 import { getChart } from './charts';
@@ -22,9 +22,18 @@ export interface Advice {
   reason: string;
 }
 
-/** tc >= 3 is the Illustrious 18 insurance index. */
-export function insuranceCorrect(tc: number): boolean {
-  return tc >= 3;
+/**
+ * The Illustrious 18 insurance index, which is genuinely deck-dependent:
+ * published as 1D 1.4 / 2D 2.4 / 6D 3.0. This app's true count is an integer,
+ * so 2.4 and 3.0 both mean "take at TC >= 3" and only single deck moves — to
+ * TC >= 2, one full count earlier.
+ *
+ * `rules` is optional so the many existing callers that pass only a tc keep
+ * shoe behaviour instead of silently switching to single-deck rules.
+ */
+export function insuranceCorrect(tc: number, rules: RuleSet = DEFAULT_RULES): boolean {
+  const ins = indexSetFor(rules).find((d) => d.id === 'ins');
+  return tc >= (ins?.threshold ?? 3);
 }
 
 function basic(action: Action, reason: string): Advice {
@@ -224,7 +233,7 @@ export function play(
 }
 
 export function correctPlay(cards: Card[], dealerUp: Rank, tc: number, ctx: PlayContext, rules: RuleSet = DEFAULT_RULES): Advice {
-  const deviations = rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
+  const deviations = indexSetFor(rules);
   return play(cards, dealerUp, tc, ctx, deviations, getChart(rules));
 }
 

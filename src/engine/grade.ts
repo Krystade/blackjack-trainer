@@ -1,7 +1,7 @@
 import type { Card, Rank } from './cards';
 import type { Action, DeviationId } from './deviations';
 import type { Advice } from './strategy';
-import { ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from './deviations';
+import { indexSetFor } from './deviations';
 import { handValue, isPair, pairRank } from './hand';
 import { upIndex } from './basicStrategy';
 import { DEFAULT_RULES } from './ruleset';
@@ -96,7 +96,7 @@ function isPhantomDeviation(taken: Action, cards: Card[], up: Rank, rules: RuleS
   const isTenPair = pairRank(cards) === '10'; // pairRank normalizes 10/J/Q/K to '10'
 
   // Select the appropriate deviation set based on ruleset
-  const deviationSet = rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
+  const deviationSet = indexSetFor(rules);
 
   for (const dev of deviationSet) {
     if (!dev.active) continue;
@@ -125,14 +125,26 @@ function isPhantomDeviation(taken: Action, cards: Card[], up: Rank, rules: RuleS
 
 /**
  * Classify an insurance decision using the finer deviation-aware taxonomy.
- * The Illustrious 18 insurance index is tc >= 3 (see insuranceCorrect in strategy.ts).
+ *
+ * The insurance index is deck-dependent (1D 1.4 / 2D 2.4 / 6D 3.0, which on an
+ * integer true count means single deck takes at TC >= 2 and everything else at
+ * TC >= 3), so the threshold comes from indexSetFor rather than a literal --
+ * otherwise a single-deck learner would be graded WRONG for the correct play
+ * at exactly TC +2. `rules` defaults to the shoe so existing callers keep
+ * their behaviour.
  *
  * @param take Whether the player took insurance
  * @param tc The true count at the time of the offer
+ * @param rules The ruleset in play, for the deck-dependent index
  * @returns An object with classification and correct flag
  */
-export function classifyInsurance(take: boolean, tc: number): { classification: MistakeClass; correct: boolean } {
-  const shouldTake = tc >= 3;
+export function classifyInsurance(
+  take: boolean,
+  tc: number,
+  rules: RuleSet = DEFAULT_RULES,
+): { classification: MistakeClass; correct: boolean } {
+  const insIndex = indexSetFor(rules).find((d) => d.id === 'ins')?.threshold ?? 3;
+  const shouldTake = tc >= insIndex;
   if (take === shouldTake) {
     return { classification: 'correct', correct: true };
   }

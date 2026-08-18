@@ -86,3 +86,35 @@ export function isIndexActive(id: DeviationId, rules: { s17: boolean }): boolean
   const deviation = deviationSet.find((d) => d.id === id);
   return deviation?.active ?? false;
 }
+
+/**
+ * The index set for a ruleset, keyed by dealer soft-17 rule AND deck count
+ * (operator request).
+ *
+ * The charts have always selected by deck class (d1/d2/d68 in engine/charts),
+ * so a single-deck profile was already graded against single-deck BASIC
+ * strategy — but its INDICES were the shoe set. This closes that gap.
+ *
+ * Deliberately, only ONE per-deck delta ships: the insurance index, published
+ * by multiple sources as 1D 1.4 / 2D 2.4 / 6D 3.0. Because this app's true
+ * count is an integer (see engine/count.ts), 2.4 and 3.0 both mean "take at
+ * TC >= 3", and only single deck actually moves — to TC >= 2.
+ *
+ * The remaining seventeen are NOT varied by deck. The published Illustrious 18
+ * is a single set; the differences that exist between 4- and 6-deck tables are
+ * small and disputed between sources, and practitioners commonly run shoe
+ * indices at every deck count because the EV cost is negligible. Inventing
+ * per-deck thresholds to look thorough is precisely how a trainer starts
+ * teaching something no book says — so a verified delta is a data addition
+ * here, and nothing more.
+ */
+export function indexSetFor(rules: { decks: number; s17: boolean }): Deviation[] {
+  const base = rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
+  if (rules.decks > 1) return base;
+
+  return base.map((dev) =>
+    dev.id === 'ins'
+      ? { ...dev, threshold: 2, label: 'Insurance: take at TC ≥ +2 (single deck)' }
+      : dev,
+  );
+}
