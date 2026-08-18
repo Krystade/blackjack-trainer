@@ -86,6 +86,41 @@ function dash(): string {
   return '—';
 }
 
+
+/**
+ * Stats tabs (C5).
+ *
+ * Fifteen equal-weight sections in one 3115px column meant the answer to any
+ * question was somewhere in a scroll, and most sections read "No X yet" on a
+ * fresh install. The split follows how the data is EARNED -- at the table, in
+ * the drills, or over time -- because that is how you decide what to look at.
+ */
+type StatsTab = 'play' | 'drills' | 'progress';
+
+const TAB_LABEL: Record<StatsTab, string> = {
+  play: 'Play',
+  drills: 'Drills',
+  progress: 'Progress',
+};
+
+/** Which tab each section title belongs to. */
+const SECTION_TAB: Record<string, StatsTab> = {
+  'Accuracy by category': 'play',
+  'Illustrious 18': 'play',
+  'Mistake types': 'play',
+  'Bet / sit / leave': 'play',
+  'Count drill': 'drills',
+  'Timed count challenge': 'drills',
+  'Distraction': 'drills',
+  'Pair cancellation': 'drills',
+  'True count drill': 'drills',
+  'Deck estimation drill': 'drills',
+  'Retention': 'progress',
+  'Downswing (tilt inoculation)': 'progress',
+  'Endurance / fatigue': 'progress',
+  'Sessions': 'progress',
+};
+
 export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProps) {
   const [stats, setStats] = useState<StatsData>(() => loadStats());
   const [message, setMessage] = useState<string | null>(null);
@@ -95,6 +130,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   // no migration. `now` is captured once per render and threaded in, so every
   // section is filtered against the SAME instant instead of each re-reading
   // the clock and disagreeing at a boundary.
+  const [tab, setTab] = useState<StatsTab>('play');
   const [range, setRange] = useState<TimeRange>({ id: 'all' });
   const now = Date.now();
   const inRange = <T extends { date?: string }>(xs: readonly T[]): T[] =>
@@ -264,12 +300,27 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   const cvcx = activeProfile.cvcx;
 
   return (
-    <div className="stats-screen">
+    <div className="stats-screen" data-active-tab={tab}>
       <div className="stats-topbar">
         <button type="button" className="stats-back-btn" onClick={() => onNavigate('home')}>
           Back to Home
         </button>
         <div className="stats-heading">Stats</div>
+      </div>
+
+      <div className="stats-tabs" role="tablist" aria-label="Stats view">
+        {(['play', 'drills', 'progress'] as StatsTab[]).map((id) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            className={`stats-tab${tab === id ? ' stats-tab-active' : ''}`}
+            onClick={() => setTab(id)}
+          >
+            {TAB_LABEL[id]}
+          </button>
+        ))}
       </div>
 
       <div className="stats-range">
@@ -334,7 +385,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         </ul>
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['Accuracy by category']}>
         <h2 className="stats-section-title">Accuracy by category</h2>
         <div className="category-list">
           {CATEGORY_ORDER.map((cat) => {
@@ -365,7 +416,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         </div>
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['Illustrious 18']}>
         <h2 className="stats-section-title">Illustrious 18</h2>
         <table className="index-table">
           <thead>
@@ -390,7 +441,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         </table>
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['Mistake types']}>
         <h2 className="stats-section-title">Mistake types</h2>
         <ul className="mistake-list">
           {MISTAKE_ORDER.map((cls) => (
@@ -402,7 +453,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         </ul>
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['Count drill']}>
         <h2 className="stats-section-title">Count drill</h2>
         <p className="stats-detail">
           Best clean run:{' '}
@@ -426,7 +477,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         )}
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['Timed count challenge']}>
         <h2 className="stats-section-title">Timed count challenge</h2>
         <p className="stats-detail">
           {timedCountSummary.attempts === 0
@@ -455,7 +506,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         )}
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['Distraction']}>
         <h2 className="stats-section-title">Distraction</h2>
         {distractionSum.attempts === 0 ? (
           <p className="stats-detail">No distraction interruptions yet.</p>
@@ -483,7 +534,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         )}
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['Pair cancellation']}>
         <h2 className="stats-section-title">Pair cancellation</h2>
         {pairCancelAttempts === 0 ? (
           <p className="stats-detail">No pair-cancellation attempts yet.</p>
@@ -509,7 +560,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         )}
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['Retention']}>
         <h2 className="stats-section-title">Retention</h2>
         {retentionReviews === 0 ? (
           <p className="stats-detail">
@@ -536,7 +587,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         )}
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['Bet / sit / leave']}>
         <h2 className="stats-section-title">Bet / sit / leave</h2>
         {bslAttempts === 0 ? (
           <p className="stats-detail">No bet/sit/leave decisions yet.</p>
@@ -558,7 +609,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         )}
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['Downswing (tilt inoculation)']}>
         <h2 className="stats-section-title">Downswing (tilt inoculation)</h2>
         {downswingSessions === 0 ? (
           <p className="stats-detail">No downswing sessions yet.</p>
@@ -576,7 +627,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         )}
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['Endurance / fatigue']}>
         <h2 className="stats-section-title">Endurance / fatigue</h2>
         <Stepper
           label="Session gap"
@@ -619,7 +670,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         )}
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['True count drill']}>
         <h2 className="stats-section-title">True count drill</h2>
         <p className="stats-detail">
           {trueCountSummary.attempts === 0
@@ -662,7 +713,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         )}
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['Deck estimation drill']}>
         <h2 className="stats-section-title">Deck estimation drill</h2>
         <p className="stats-detail">
           {deckEstSummary.attempts === 0
@@ -688,7 +739,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
         )}
       </section>
 
-      <section className="stats-section">
+      <section className="stats-section" data-tab={SECTION_TAB['Sessions']}>
         <h2 className="stats-section-title">Sessions</h2>
         {sessions.length === 0 ? (
           <p className="stats-detail">No sessions yet.</p>

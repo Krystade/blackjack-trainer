@@ -198,6 +198,10 @@ body:has(.tab-bar) .settings-screen,
 body:has(.tab-bar) .stats-screen,
 body:has(.tab-bar) .charts-screen,
 body:has(.tab-bar) .home-screen,
-body:has(.tab-bar) .drills-picker {
+body:has(.tab-bar) .drills-picker,
+/* The session report ends in its own Back button, which the fixed bar sat on
+   top of -- the control was visible but unclickable. */
+body:has(.tab-bar) .report-screen,
+body:has(.tab-bar) .profiles-screen {
   padding-bottom: calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + var(--space-4));
 }

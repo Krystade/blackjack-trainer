@@ -267,7 +267,7 @@ test('profile editor CVCX: score/EV/ROR/simNote entered + saved + surfaced on th
   // the saved CVCX. The store already holds the saved values in memory + localStorage.
   await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
   await expect(page.locator('.home-title')).toBeVisible();
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('.home-stats-link').click();
   await expect(page.locator('.stats-heading')).toBeVisible();
   await expect(page.locator('.mistake-row', { hasText: 'CVCX score' })).toContainText('55');
   await expect(page.locator('.mistake-row', { hasText: 'CVCX EV/hr' })).toContainText('+12');

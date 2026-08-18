@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { shot, withProfile, withSettings, readStats, playRoundByAdvice } from './helpers';
+import { shot, withProfile, withSettings, readStats, playRoundByAdvice, statsTab } from './helpers';
 
 /**
  * T0 gap #2 (docs/research/2026-07-26-test-coverage-matrix.md, "SPEC — Single
@@ -199,9 +199,11 @@ test('full journey: Home -> Profiles -> Settings -> Table -> every Drill mode ->
   // 10. Stats: heading, the Table session, at least one drill history
   //     section rendered on screen
   // ---------------------------------------------------------------
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('.home-stats-link').click();
   await expect(page.locator('.stats-heading')).toHaveText('Stats');
   await expect(page.locator('.session-row')).not.toHaveCount(0);
+  // Count-drill history lives on the Drills tab of Stats (C5).
+  await statsTab(page, 'Drills');
   await expect(page.locator('.count-history-row').first()).toBeVisible();
   await shot(page, 'smoke-11-stats');
 

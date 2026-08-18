@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { shot, withSettings, withStats, withProfile, playRoundByAdvice, readStats } from './helpers';
+import { shot, withSettings, withStats, withProfile, playRoundByAdvice, readStats, statsTab } from './helpers';
 
 test('a changed setting persists across reload', async ({ page }) => {
   await page.goto('/?e2e=1');
@@ -31,15 +31,16 @@ test('a short session shows up on the stats screen', async ({ page }) => {
   await page.locator('.end-btn').click();
   await expect(page.locator('.home-title')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('.home-stats-link').click();
   await expect(page.locator('.stats-heading')).toHaveText('Stats');
+  await statsTab(page, 'Progress');
   await expect(page.locator('.session-row')).not.toHaveCount(0);
   await shot(page, '24-stats-with-session');
 });
 
 test('export downloads bjtrainer-export.json', async ({ page }) => {
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('.home-stats-link').click();
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -50,7 +51,7 @@ test('export downloads bjtrainer-export.json', async ({ page }) => {
 
 test('importing garbage shows an error and leaves the app navigable', async ({ page }) => {
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('.home-stats-link').click();
 
   page.once('dialog', (dialog) => dialog.accept());
   const fileInput = page.locator('input.stats-file-input');
@@ -74,7 +75,7 @@ test('importing a valid export blob restores stats (success path)', async ({ pag
   // validates `version === 1` on both settings and stats, then merges each
   // over its defaults), so it should actually restore.
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('.home-stats-link').click();
 
   const validExport = JSON.stringify({
     settings: { version: 1 },
@@ -103,6 +104,7 @@ test('importing a valid export blob restores stats (success path)', async ({ pag
   });
 
   await expect(page.locator('.stats-message')).toContainText('Import successful');
+  await statsTab(page, 'Progress');
   await expect(page.locator('.session-row', { hasText: 'Imported Profile' })).toBeVisible();
   await shot(page, '26-stats-import-success');
 
@@ -121,13 +123,15 @@ test('Reset stats clears all persisted stats after confirmation', async ({ page 
     ],
   });
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('.home-stats-link').click();
+  await statsTab(page, 'Progress');
   await expect(page.locator('.session-row')).not.toHaveCount(0);
 
   page.once('dialog', (dialog) => dialog.accept());
   await page.locator('.stats-danger-btn', { hasText: 'Reset stats' }).click();
 
   await expect(page.locator('.stats-message')).toContainText('Stats reset.');
+  await statsTab(page, 'Progress');
   await expect(page.locator('.session-row')).toHaveCount(0);
   await shot(page, '27-stats-reset');
 
@@ -143,7 +147,7 @@ test('Speak summary narrates the session summary under ?e2e=1', async ({ page })
   await withSettings(page, { audio: { enabled: true, verbosity: 'results' } });
   await withStats(page, { mistakes: { 'basic-error': 2 } });
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('.home-stats-link').click();
 
   await page.locator('.stats-action-btn', { hasText: 'Speak summary' }).click();
 
@@ -171,7 +175,7 @@ test('CVCX profile header renders score/EV/ROR/note plus actual accuracy from a 
   await page.locator('.end-btn').click();
   await expect(page.locator('.home-title')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('.home-stats-link').click();
   await expect(page.locator('.mistake-row', { hasText: 'CVCX score' })).toContainText('87');
   await expect(page.locator('.mistake-row', { hasText: 'CVCX EV/hr' })).toContainText('+24');
   await expect(page.locator('.mistake-row', { hasText: 'CVCX risk of ruin' })).toContainText('3%');
@@ -196,8 +200,10 @@ test('stats: Retention section renders retained accuracy from seeded gap reviews
     },
   });
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('.home-stats-link').click();
   await expect(page.locator('.stats-heading')).toHaveText('Stats');
+
+  await statsTab(page, 'Progress');
 
   const retention = page.locator('.stats-section', { hasText: 'Retention' });
   await expect(retention).toBeVisible();
@@ -208,7 +214,8 @@ test('stats: Retention section renders retained accuracy from seeded gap reviews
 
 test('stats: Retention section shows the empty state before any spaced reviews', async ({ page }) => {
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('.home-stats-link').click();
+  await statsTab(page, 'Progress');
   const retention = page.locator('.stats-section', { hasText: 'Retention' });
   await expect(retention).toBeVisible();
   await expect(retention).toContainText('No spaced reviews yet');
@@ -226,7 +233,9 @@ test('stats: Endurance/fatigue shows front vs back-half drift from a declining s
   }
   await withStats(page, { countDrill: { history } });
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('.home-stats-link').click();
+
+  await statsTab(page, 'Progress');
 
   const section = page.locator('.stats-section', { hasText: 'Endurance' });
   await expect(section).toBeVisible();
@@ -238,7 +247,8 @@ test('stats: Endurance/fatigue shows front vs back-half drift from a declining s
 
 test('stats: Endurance/fatigue shows the empty state before enough back-to-back runs', async ({ page }) => {
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('.home-stats-link').click();
+  await statsTab(page, 'Progress');
   const section = page.locator('.stats-section', { hasText: 'Endurance' });
   await expect(section).toBeVisible();
   await expect(section).toContainText('Not enough back-to-back counting runs yet');

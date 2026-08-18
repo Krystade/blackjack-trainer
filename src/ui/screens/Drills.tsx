@@ -1530,9 +1530,20 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   return (
     <div className="drills-picker">
       <h1 className="drills-title">Drills</h1>
+      {/* Grouped by the SKILL each drill trains (C8). Ten identical buttons in
+          one list said nothing about what to do next, or about the fact that
+          keeping the count, knowing the plays, and holding up under pressure
+          are three different abilities you build in roughly that order. */}
       <div className="drills-nav">
+        <h2 className="drills-group-title">Keeping the count</h2>
         <button type="button" className="drills-nav-btn" onClick={() => setMode('count')}>
           Count Drill
+        </button>
+        <button type="button" className="drills-nav-btn" onClick={() => setMode('paircancel')}>
+          Pair Cancellation
+        </button>
+        <button type="button" className="drills-nav-btn" onClick={() => setMode('deckest')}>
+          Deck Estimation
         </button>
         <button type="button" className="drills-nav-btn" onClick={() => setMode('truecount')}>
           True Count Drill
@@ -1540,9 +1551,8 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         <button type="button" className="drills-nav-btn" onClick={() => setMode('producetc')}>
           Produce the True Count
         </button>
-        <button type="button" className="drills-nav-btn" onClick={() => setMode('deckest')}>
-          Deck Estimation
-        </button>
+
+        <h2 className="drills-group-title">Knowing the plays</h2>
         <button type="button" className="drills-nav-btn" onClick={() => setMode('flash')}>
           Flashcards
         </button>
@@ -1552,9 +1562,8 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         <button type="button" className="drills-nav-btn" onClick={() => setMode('mixed')}>
           Mixed
         </button>
-        <button type="button" className="drills-nav-btn" onClick={() => setMode('paircancel')}>
-          Pair Cancellation
-        </button>
+
+        <h2 className="drills-group-title">Under pressure</h2>
         <button
           type="button"
           className={`drills-nav-btn${fluent ? '' : ' drills-nav-btn-advanced'}`}

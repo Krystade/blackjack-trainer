@@ -2768,3 +2768,103 @@ button {
   align-items: center;
   gap: var(--space-2);
 }
+
+/* ---------- Stats tabs (C5) ---------- */
+
+.stats-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+.stats-tab {
+  min-height: 2.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.stats-tab-active {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.stats-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Visibility is driven by the screen's active tab rather than by unmounting,
+   so section markup and its readouts stay exactly as they were -- the split
+   changes what you SEE, never what is computed. Untagged sections (the
+   profile header) show on every tab. */
+.stats-screen[data-active-tab='play'] .stats-section[data-tab]:not([data-tab='play']),
+.stats-screen[data-active-tab='drills'] .stats-section[data-tab]:not([data-tab='drills']),
+.stats-screen[data-active-tab='progress'] .stats-section[data-tab]:not([data-tab='progress']) {
+  display: none;
+}
+
+/* ---------- Table layout on a phone (C6) ---------- */
+
+/* The felt between the player's hand and the action bar was ~40% of the
+   screen and carried nothing. The message strip now takes that slack, so
+   results and bot narration appear where the eye already is -- just above
+   the buttons -- instead of tight under the cards with a void beneath. */
+.table-screen > .message-strip {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  padding-bottom: var(--space-3);
+}
+
+/* The discard tray is a real counting cue and was a 4px sliver with a
+   whispered label. Given a readable height and put right under the topbar,
+   where it reads as part of the table rather than as a divider. */
+.table-discard-tray {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-2);
+}
+
+.table-discard-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.table-discard-frame {
+  height: 10px;
+  border-radius: var(--radius-sm);
+}
+
+/* Hands sit higher so the dealer/player relationship is visible in one look
+   without the eye travelling the whole screen. */
+.table-screen .dealer-area {
+  padding-bottom: var(--space-1);
+}
+
+.table-screen .hands-row {
+  padding-top: var(--space-1);
+}
+
+/* ---------- Drills picker groups (C8) ---------- */
+
+.drills-group-title {
+  margin: var(--space-4) 0 var(--space-1);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.drills-group-title:first-child {
+  margin-top: 0;
+}

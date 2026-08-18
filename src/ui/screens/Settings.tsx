@@ -241,9 +241,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           format={(v) => `${v}ms`}
           onChange={(v) => update({ dealSpeedMs: v })}
         />
-        <div className="settings-row settings-note-row">
-          Game rules, bankroll &amp; bet spread live in Profiles now
-        </div>
       </section>
 
       <section className="settings-section">
@@ -306,7 +303,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           onChange={updateUseClips}
           disabled={audioDisabled}
         />
-        <div className="settings-row settings-note-row">
+        <div className="settings-note-row u-note">
           Recorded clips cover any card/count/prompt phrase by concatenating per-sentence and
           per-item clips; anything not covered falls back to live speech. Speech rate applies to
           both -- clip playback speeds up without changing pitch.

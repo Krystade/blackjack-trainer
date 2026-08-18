@@ -147,3 +147,12 @@ export async function playRoundByAdvice(page: Page): Promise<void> {
   }
   throw new Error('playRoundByAdvice: exceeded guard iterations without settling');
 }
+
+/**
+ * Select a Stats tab (C5). The fifteen sections are split by how the data is
+ * earned — at the table, in the drills, or over time — so a spec asserting on
+ * a section must first open the tab that owns it.
+ */
+export async function statsTab(page: Page, tab: 'Play' | 'Drills' | 'Progress'): Promise<void> {
+  await page.locator('.stats-tabs').getByRole('tab', { name: tab, exact: true }).click();
+}
