@@ -98,7 +98,15 @@ export async function readStats(page: Page): Promise<Record<string, unknown> | n
 /** Navigate home, then click the named Home nav button ("Play" | "Drills" | "Stats" | "Settings"). */
 export async function goHomeAndNavigate(page: Page, url: string, button: 'Play' | 'Drills' | 'Stats' | 'Settings'): Promise<void> {
   await page.goto(url);
-  await page.getByRole('button', { name: button, exact: true }).click();
+  // Navigation lives in the persistent tab bar since C4. Stats is the one
+  // destination without a tab -- Home is a dashboard that already carries the
+  // summary, so the full breakdown hangs off it rather than taking a fifth
+  // slot from Settings, which gets changed mid-session.
+  if (button === 'Stats') {
+    await page.locator('.home-stats-link').click();
+    return;
+  }
+  await page.locator('.tab-bar').getByRole('button', { name: button, exact: true }).click();
 }
 
 /** If the insurance modal is currently showing, resolve it (Take/Decline) and return true. */

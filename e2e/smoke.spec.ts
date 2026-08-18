@@ -39,9 +39,14 @@ test('full journey: Home -> Profiles -> Settings -> Table -> every Drill mode ->
   // ---------------------------------------------------------------
   await expect(page.locator('.home-title')).toHaveText('Blackjack Trainer');
   await expect(page.locator('.home-profile-chip')).toBeVisible();
-  for (const label of ['Play', 'Drills', 'Stats', 'Settings']) {
-    await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+  // Navigation moved to the persistent tab bar (C4); Home is a dashboard now,
+  // so it carries the readiness figures and one primary action instead of a
+  // menu. Stats is reached from the summary that makes you want it.
+  for (const label of ['Home', 'Play', 'Drills', 'Charts', 'Settings']) {
+    await expect(page.locator('.tab-bar').getByRole('button', { name: label, exact: true })).toBeVisible();
   }
+  await expect(page.locator('.readiness-figures .readiness-stat')).toHaveCount(3);
+  await expect(page.getByRole('button', { name: 'Play a shoe', exact: true })).toBeVisible();
   await shot(page, 'smoke-01-home');
 
   // ---------------------------------------------------------------

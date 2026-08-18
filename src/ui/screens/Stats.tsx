@@ -3,6 +3,8 @@ import type { ChangeEvent } from 'react';
 import type { Screen } from '../App';
 import type { AudioSettings, Profile, Settings, Stats as StatsData } from '../../store/types';
 import { EMPTY_STATS } from '../../store/types';
+import { filterByRange, RANGE_LABEL } from '../../store/timeRange';
+import type { RangeId, TimeRange } from '../../store/timeRange';
 import { loadStats, saveStats, loadSettings, exportAll, importAll } from '../../store/persist';
 import {
   summarize,
@@ -87,6 +89,16 @@ function dash(): string {
 export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProps) {
   const [stats, setStats] = useState<StatsData>(() => loadStats());
   const [message, setMessage] = useState<string | null>(null);
+
+  // Time range (operator request). Read-side only: every history entry already
+  // carries an ISO `date`, so narrowing the window needs no schema change and
+  // no migration. `now` is captured once per render and threaded in, so every
+  // section is filtered against the SAME instant instead of each re-reading
+  // the clock and disagreeing at a boundary.
+  const [range, setRange] = useState<TimeRange>({ id: 'all' });
+  const now = Date.now();
+  const inRange = <T extends { date?: string }>(xs: readonly T[]): T[] =>
+    filterByRange(xs, range, now);
   // ET5: the session-gap for the fatigue-drift analysis is configurable (a gap
   // longer than this splits practice sessions). Local to this screen.
   const [fatigueGapMin, setFatigueGapMin] = useState(30);
@@ -151,13 +163,14 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
     setMessage('Stats reset.');
   };
 
-  const correctHistory = stats.countDrill.history.filter((h) => h.correct);
+  const countHistory = inRange(stats.countDrill.history);
+  const correctHistory = countHistory.filter((h) => h.correct);
   const bestCleanRun =
     correctHistory.length === 0
       ? null
       : correctHistory.reduce((best, cur) => (cur.intervalMs < best.intervalMs ? cur : best));
-  const recentRuns = stats.countDrill.history.slice(-5).reverse();
-  const sessions = [...stats.sessions].reverse();
+  const recentRuns = countHistory.slice(-5).reverse();
+  const sessions = [...inRange(stats.sessions)].reverse();
 
   // Cycle-4 per-drill telemetry (docs/research/2026-07-21-priority-list.md
   // item 8): same slice(-5).reverse() "recent runs" idiom as the count
@@ -182,7 +195,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   // dedicated figure for genuine cancelling pairs (the canonical chunk) --
   // nailing a +2/-2 reinforcing pair is easier than recognizing a +1/-1 that
   // cancels to 0, so the two are worth seeing apart.
-  const pairCancelHistory = stats.pairCancel.history;
+  const pairCancelHistory = inRange(stats.pairCancel.history);
   const pairCancelAttempts = pairCancelHistory.length;
   const pairCancelCorrect = pairCancelHistory.filter((h) => h.correct).length;
   const pairCancelCancelling = pairCancelHistory.filter((h) => h.cancelling);
@@ -194,7 +207,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   // Retained accuracy is the honest read on whether it will still be there at
   // the table; it only accrues across real days of use, so it can legitimately
   // be empty for a while.
-  const retentionHistory = stats.retention.history;
+  const retentionHistory = inRange(stats.retention.history);
   const retentionReviews = retentionHistory.length;
   const retentionCorrect = retentionHistory.filter((h) => h.correct).length;
 
@@ -257,6 +270,38 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
           Back to Home
         </button>
         <div className="stats-heading">Stats</div>
+      </div>
+
+      <div className="stats-range">
+        <div className="stats-range-options" role="group" aria-label="Time range">
+          {(['all', '7d', '30d', '90d', 'since'] as RangeId[]).map((id) => (
+            <button
+              key={id}
+              type="button"
+              className={`stats-range-btn${range.id === id ? ' stats-range-btn-active' : ''}`}
+              aria-pressed={range.id === id}
+              onClick={() => setRange((r) => ({ id, since: r.since }))}
+            >
+              {RANGE_LABEL[id]}
+            </button>
+          ))}
+        </div>
+        {range.id === 'since' && (
+          <label className="stats-range-since">
+            <span className="u-note">From</span>
+            <input
+              type="date"
+              className="settings-select"
+              value={range.since ?? ''}
+              onChange={(e) => setRange({ id: 'since', since: e.target.value })}
+            />
+          </label>
+        )}
+        <p className="u-note">
+          {range.id === 'all'
+            ? 'Lifetime totals. Category accuracy and the index table are lifetime — they are running tallies, not dated events.'
+            : 'Dated sections only. Category accuracy and the index table stay lifetime.'}
+        </p>
       </div>
 
       <section className="stats-section">

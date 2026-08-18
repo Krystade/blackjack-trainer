@@ -7,6 +7,7 @@ import { Stats } from './screens/Stats';
 import { Settings } from './screens/Settings';
 import { ProfileEditor } from './screens/ProfileEditor';
 import { Charts } from './screens/Charts';
+import { TabBar } from './components/TabBar';
 import { loadSettings } from '../store/persist';
 import { applyTheme, normalizeTheme } from './theme';
 import { getActiveProfile } from '../store/profiles';
@@ -35,55 +36,67 @@ function App() {
     setScreen(next);
   };
 
-  switch (screen) {
-    case 'home':
-      return <Home onNavigate={navigate} activeProfile={activeProfile} />;
-    case 'table':
-      // The key forces a remount whenever the active profile's CONTENT changes,
-      // not merely when a different profile is selected. useGame builds its Game
-      // instance once per mount, so keying on id alone left a stale Game running
-      // after an in-place edit of the profile you were already playing.
-      //
-      // That was money-relevant for seats: Table reads playerHands live from the
-      // profile while `selectedBets` and the engine's seat config both stayed at
-      // their mount-time values. Editing 3 hands down to 1 and returning would
-      // send a single scalar bet into an engine still holding 3 hands, which fans
-      // it across all three — staking 3x what the bet UI showed. It never threw,
-      // because the array length always matched what the engine expected.
-      // Rules edits (decks, s17) were stale the same way, silently mis-grading.
-      //
-      // Remounting resets the shoe and bankroll, which is the correct reading of
-      // "you changed the game definition": a new table, not a spliced-in change.
-      return (
-        <Table
-          key={`${activeProfile.id}:${JSON.stringify(activeProfile)}`}
-          settings={settings}
-          onNavigate={navigate}
-          activeProfile={activeProfile}
-        />
-      );
-    case 'drills':
-      return (
-        <Drills
-          settings={settings}
-          onNavigate={navigate}
-          onSettingsChange={setSettings}
-          activeProfile={activeProfile}
-        />
-      );
-    case 'stats':
-      return <Stats onNavigate={navigate} onSettingsChange={setSettings} activeProfile={activeProfile} />;
-    case 'settings':
-      return <Settings settings={settings} onNavigate={navigate} onSettingsChange={setSettings} />;
-    case 'profiles':
-      return <ProfileEditor onNavigate={navigate} />;
-    case 'charts':
-      // Charts reads getChart(activeProfile.rules) at render time, so unlike
-      // Table it needs no remount key -- there is no long-lived Game instance
-      // here to go stale, and `activeProfile` is already refreshed by
-      // navigate() on the way out of the profiles screen.
-      return <Charts onNavigate={navigate} activeProfile={activeProfile} />;
-  }
+  const body = (() => {
+    switch (screen) {
+      case 'home':
+        return <Home onNavigate={navigate} activeProfile={activeProfile} />;
+      case 'table':
+        // The key forces a remount whenever the active profile's CONTENT changes,
+        // not merely when a different profile is selected. useGame builds its Game
+        // instance once per mount, so keying on id alone left a stale Game running
+        // after an in-place edit of the profile you were already playing.
+        //
+        // That was money-relevant for seats: Table reads playerHands live from the
+        // profile while `selectedBets` and the engine's seat config both stayed at
+        // their mount-time values. Editing 3 hands down to 1 and returning would
+        // send a single scalar bet into an engine still holding 3 hands, which fans
+        // it across all three — staking 3x what the bet UI showed. It never threw,
+        // because the array length always matched what the engine expected.
+        // Rules edits (decks, s17) were stale the same way, silently mis-grading.
+        //
+        // Remounting resets the shoe and bankroll, which is the correct reading of
+        // "you changed the game definition": a new table, not a spliced-in change.
+        return (
+          <Table
+            key={`${activeProfile.id}:${JSON.stringify(activeProfile)}`}
+            settings={settings}
+            onNavigate={navigate}
+            activeProfile={activeProfile}
+          />
+        );
+      case 'drills':
+        return (
+          <Drills
+            settings={settings}
+            onNavigate={navigate}
+            onSettingsChange={setSettings}
+            activeProfile={activeProfile}
+          />
+        );
+      case 'stats':
+        return <Stats onNavigate={navigate} onSettingsChange={setSettings} activeProfile={activeProfile} />;
+      case 'settings':
+        return <Settings settings={settings} onNavigate={navigate} onSettingsChange={setSettings} />;
+      case 'profiles':
+        return <ProfileEditor onNavigate={navigate} />;
+      case 'charts':
+        // Charts reads getChart(activeProfile.rules) at render time, so unlike
+        // Table it needs no remount key -- there is no long-lived Game instance
+        // here to go stale, and `activeProfile` is already refreshed by
+        // navigate() on the way out of the profiles screen.
+        return <Charts onNavigate={navigate} activeProfile={activeProfile} />;
+    }
+  })();
+
+  return (
+    <>
+      {body}
+      {/* Rendered for every screen; app.css stands it down in the
+          immersive modes, which own the bottom edge with their own
+          ActionBar/ZonePad. */}
+      <TabBar current={screen} onNavigate={navigate} />
+    </>
+  );
 }
 
 export default App;

@@ -1,4 +1,5 @@
 @import './themes.css';
+@import './primitives.css';
 
 * {
   box-sizing: border-box;
@@ -31,6 +32,11 @@ button {
 
 .home-screen {
   min-height: 100vh;
+  /* iOS Safari sizes 100vh to the LARGE viewport (no address bar), so a
+     100vh screen runs under the chrome and you cannot see its top and
+     bottom at once. dvh tracks the visible viewport; vh stays as the
+     fallback for anything that lacks it. */
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -94,6 +100,11 @@ button {
 
 .placeholder-screen {
   min-height: 100vh;
+  /* iOS Safari sizes 100vh to the LARGE viewport (no address bar), so a
+     100vh screen runs under the chrome and you cannot see its top and
+     bottom at once. dvh tracks the visible viewport; vh stays as the
+     fallback for anything that lacks it. */
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -116,6 +127,11 @@ button {
 
 .table-screen {
   min-height: 100vh;
+  /* iOS Safari sizes 100vh to the LARGE viewport (no address bar), so a
+     100vh screen runs under the chrome and you cannot see its top and
+     bottom at once. dvh tracks the visible viewport; vh stays as the
+     fallback for anything that lacks it. */
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   max-width: 480px;
@@ -641,6 +657,11 @@ button {
 
 .drills-picker {
   min-height: 100vh;
+  /* iOS Safari sizes 100vh to the LARGE viewport (no address bar), so a
+     100vh screen runs under the chrome and you cannot see its top and
+     bottom at once. dvh tracks the visible viewport; vh stays as the
+     fallback for anything that lacks it. */
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -707,6 +728,11 @@ button {
 
 .drill-screen {
   min-height: 100vh;
+  /* iOS Safari sizes 100vh to the LARGE viewport (no address bar), so a
+     100vh screen runs under the chrome and you cannot see its top and
+     bottom at once. dvh tracks the visible viewport; vh stays as the
+     fallback for anything that lacks it. */
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   max-width: 480px;
@@ -1063,6 +1089,11 @@ button {
 
 .report-screen {
   min-height: 100vh;
+  /* iOS Safari sizes 100vh to the LARGE viewport (no address bar), so a
+     100vh screen runs under the chrome and you cannot see its top and
+     bottom at once. dvh tracks the visible viewport; vh stays as the
+     fallback for anything that lacks it. */
+  min-height: 100dvh;
   max-width: 480px;
   margin: 0 auto;
   padding: 1rem;
@@ -1136,6 +1167,11 @@ button {
 .stats-screen,
 .settings-screen {
   min-height: 100vh;
+  /* iOS Safari sizes 100vh to the LARGE viewport (no address bar), so a
+     100vh screen runs under the chrome and you cannot see its top and
+     bottom at once. dvh tracks the visible viewport; vh stays as the
+     fallback for anything that lacks it. */
+  min-height: 100dvh;
   max-width: 480px;
   margin: 0 auto;
   display: flex;
@@ -1550,6 +1586,11 @@ button {
 
 .profile-editor-screen {
   min-height: 100vh;
+  /* iOS Safari sizes 100vh to the LARGE viewport (no address bar), so a
+     100vh screen runs under the chrome and you cannot see its top and
+     bottom at once. dvh tracks the visible viewport; vh stays as the
+     fallback for anything that lacks it. */
+  min-height: 100dvh;
   max-width: 480px;
   margin: 0 auto;
   display: flex;
@@ -2557,4 +2598,173 @@ button {
 
 .theme-swatch[data-swatch='slate-copper'] {
   background: linear-gradient(135deg, #15171a 50%, #d98a5a 50%);
+}
+
+/* ---------- Home dashboard (C4) ---------- */
+
+.home-screen {
+  min-height: 100vh;
+  /* iOS Safari sizes 100vh to the LARGE viewport (no address bar), so a
+     100vh screen runs under the chrome and you cannot see its top and
+     bottom at once. dvh tracks the visible viewport; vh stays as the
+     fallback for anything that lacks it. */
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-4);
+  background: radial-gradient(circle at 50% 0%, var(--surface) 0%, var(--bg) 70%);
+}
+
+.home-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.home-title {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: 0.01em;
+  color: var(--accent);
+}
+
+/* The readiness block is the reason Home exists now, so it gets the weight
+   the five nav buttons used to take. */
+.readiness {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.readiness-figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+
+.readiness-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.readiness-value {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.readiness-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.home-stats-link {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.home-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.home-play-btn {
+  min-height: 3.25rem;
+  font-size: 1.05rem;
+}
+
+/* ---------- Small-screen drill layout (iPhone 13 mini, 375x812) ---------- */
+
+/* The card area used `flex: 1`, so on a tall screen it absorbed every spare
+   pixel and left the hand marooned in the middle of a large void. Capping the
+   growth keeps the cards in the upper third where the eye already is, and
+   pins the answer bar to the bottom edge instead of letting it drift up. */
+.pair-cancel-cards {
+  flex: 1 1 auto;
+  max-height: 38dvh;
+}
+
+/* The trailing action bar sits on the bottom edge of the screen rather than
+   immediately under whatever content happens to precede it. */
+.drill-screen > .action-bar:last-child {
+  margin-top: auto;
+}
+
+/* A lone Next fills the bar. It was a left-corner button in a flex row, which
+   on a phone is both an awkward reach and a much smaller target than the row
+   it sits in -- and after answering, Next is the ONLY thing to press. */
+.action-bar > .drill-next-btn {
+  flex: 1;
+  width: 100%;
+}
+
+/* ---------- Stats time range (operator request) ---------- */
+
+.stats-range {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Wraps rather than scrolls: five short labels fit two rows on a 375px
+   screen, and a hidden horizontal scroller would bury the last option. */
+.stats-range-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.stats-range-btn {
+  min-height: 2rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.stats-range-btn-active {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.stats-range-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.stats-range-since {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }

@@ -1,0 +1,203 @@
+/**
+ * Shared UI primitives (C3).
+ *
+ * Screens were built one at a time, so each re-invented its own panel,
+ * section heading, and row — which is the structural half of the same drift
+ * the colour census found (55 colours, 89 perceptually-identical pairs). The
+ * classes here are the shared vocabulary those screens now compose from, so a
+ * new screen inherits the app's spacing and hierarchy instead of guessing at
+ * it again.
+ *
+ * Only genuinely repeated shapes live here. A one-off stays local: a
+ * primitive that exists for a single caller is just indirection.
+ */
+
+/* Spacing and radius scale — the values already implied by the screens,
+   named so they stop being re-guessed per file. */
+:root {
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  --radius-sm: 0.3rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-pill: 999px;
+
+  /* Height of the bottom tab bar, published so scrollable screens can pad
+     their last row clear of it instead of hiding under it. */
+  --tab-bar-h: 3.5rem;
+}
+
+/* ---------- Surfaces ---------- */
+
+.u-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.u-panel-raised {
+  background: var(--raised);
+}
+
+/* A titled block of related controls or readouts. */
+.u-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--line);
+}
+
+.u-section-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* Secondary prose. Help text was previously set at full body weight, which
+   made every explanation compete with the control it explained. */
+.u-note {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+
+/* ---------- Rows ---------- */
+
+/* Label on the left, control on the right — the shape almost every settings
+   and stats line already had, with the gap and min-height made consistent. */
+.u-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 2.75rem;
+}
+
+.u-row-label {
+  font-size: 0.9rem;
+}
+
+.u-row-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+
+/* ---------- Buttons ---------- */
+
+.u-btn {
+  min-height: 2.75rem;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--raised);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.u-btn:active {
+  background: var(--surface);
+}
+
+.u-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* The single most important action on a screen. One per screen, at most. */
+.u-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.u-btn-danger {
+  background: var(--bad-surface);
+  border-color: var(--bad-line);
+  color: var(--ink);
+}
+
+/* Every interactive element gets the same visible focus treatment; it was
+   previously left to the browser default on most screens. */
+.u-btn:focus-visible,
+.tab-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Bottom tab bar (C4) ---------- */
+
+.tab-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  height: calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--bg-sunken);
+  border-top: 1px solid var(--line);
+}
+
+.tab-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  cursor: pointer;
+  /* Full-height target: the label alone is a ~10px tap area. */
+  padding: 0;
+}
+
+.tab-btn-active {
+  color: var(--accent);
+}
+
+.tab-glyph {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.tab-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.03em;
+}
+
+/* Immersive modes own the bottom edge with their own ActionBar/ZonePad, so
+   the tab bar stands down rather than stacking a second bar on a 320px
+   screen. Driven off what is on screen instead of a prop, because the drill
+   views own that state internally and App cannot see it. */
+body:has(.table-screen) .tab-bar,
+body:has(.drill-screen) .tab-bar,
+body:has(.zone-pad) .tab-bar,
+body:has(.study-chart-overlay) .tab-bar {
+  display: none;
+}
+
+/* Screens that scroll must clear the fixed bar rather than ending under it. */
+body:has(.tab-bar) .settings-screen,
+body:has(.tab-bar) .stats-screen,
+body:has(.tab-bar) .charts-screen,
+body:has(.tab-bar) .home-screen,
+body:has(.tab-bar) .drills-picker {
+  padding-bottom: calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + var(--space-4));
+}
