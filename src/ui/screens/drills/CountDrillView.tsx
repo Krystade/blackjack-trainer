@@ -28,6 +28,7 @@ import { cancelSpeech, speak, speakAsync } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import { narrateCards, narrateCountAnswer, narrateCountPrompt } from '../../../audio/narrate';
+import { focusSwallowsKey } from '../../keyboardFocus';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -584,8 +585,7 @@ export function CountDrillView({
     if (phase !== 'flashing' || !settings.drill.countManual || timedChallenge) return undefined;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (focusSwallowsKey(e.key)) return;
       if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowRight') {
         e.preventDefault();
         advanceManual();

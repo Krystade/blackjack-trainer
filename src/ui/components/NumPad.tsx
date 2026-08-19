@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { focusSwallowsKey } from '../keyboardFocus';
 
 interface NumPadProps {
   label: string;
@@ -34,8 +35,7 @@ export function NumPad({ label, onSubmit }: NumPadProps) {
   // at a time.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (focusSwallowsKey(e.key)) return;
 
       if (/^[0-9]$/.test(e.key)) {
         e.preventDefault();

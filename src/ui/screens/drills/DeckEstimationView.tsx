@@ -4,6 +4,7 @@ import { makeDeckEstimationQuestion, gradeDeckEstimate } from '../../../drills/d
 import type { DeckEstimationQuestion } from '../../../drills/deckEstimation';
 import { Stepper } from '../Settings';
 import { loadStats, saveStats } from '../../../store/persist';
+import { focusSwallowsKey } from '../../keyboardFocus';
 
 // This drill is deliberately visual-only (judging a physical card stack) --
 // unlike the other drills it has NO eyes-free/audio mode. See
@@ -137,8 +138,7 @@ export function DeckEstimationView({
     const options = halfDeckOptions(question.totalDecks);
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (focusSwallowsKey(e.key)) return;
 
       if (/^[0-9]$/.test(e.key)) {
         e.preventDefault();

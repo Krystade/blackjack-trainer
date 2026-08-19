@@ -11,6 +11,7 @@ import { PlayingCard } from '../../components/PlayingCard';
 import { cardJitter, jitterTransform } from '../../../drills/cardJitter';
 import { useAudio } from '../../../audio/useAudio';
 import { loadStats, saveStats } from '../../../store/persist';
+import { focusSwallowsKey } from '../../keyboardFocus';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -81,8 +82,7 @@ export function PairCancelView({ settings, onBack }: { settings: Settings; onBac
   // input has focus (none here, but consistent with the other drills).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (focusSwallowsKey(e.key)) return;
       if (!feedback) {
         const idx = ['1', '2', '3', '4', '5'].indexOf(e.key);
         if (idx >= 0) {

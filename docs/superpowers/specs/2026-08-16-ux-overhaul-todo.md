@@ -9,9 +9,9 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | 3 | Grey out + disable unavailable actions | bounded | ☑ |
 | 4 | Major rework of incorrect-answer feedback | architectural | ☑ |
 | 5 | Speaking-volume control in Settings | bounded | ☑ |
-| 6 | Viewable strategy charts (both row orderings) | architectural | ☑ (default order awaiting operator pick) |
+| 6 | Viewable strategy charts (both row orderings) | architectural | ☑ (descending — operator's pick) |
 | 7 | "Check the correct table" from a mistake, anchored on the cell | architectural | ☑ |
-| 8 | Full UX/UI redesign pass | architectural | ☐ DEFERRED by operator until 1-7 land |
+| 8 | Full UX/UI redesign pass | architectural | ☑ C1-C9 shipped 2026-08-17/18 |
 | 9 | Is spaced repetition in the flashcards? | question | ☑ ANSWERED |
 
 ## Shipped 2026-08-17
@@ -301,3 +301,61 @@ the operator to check their source.
 - No error boundary anywhere; a render throw still blanks the app.
 - Keyboard drilling goes dead after focusing a checkbox or the index select.
 - No cross-tab coordination; last writer wins.
+
+
+---
+
+# Status as of 2026-08-18 — supersedes the two "open" lists above
+
+Everything in items 1-9 and Phases A/B/C has shipped and deployed. The
+sections above are kept as the record of how it got here; where they conflict
+with this section, this section wins.
+
+## Resolved since those lists were written
+
+- **Negative I18 indices** (was "deliberately NOT changed — needs the
+  operator's source"). The operator asked for multi-source verification. The
+  convention is "stand at TC >= index, hit below", so a stored `lte` threshold
+  must be `index - 1`. Four were wrong and are corrected: 13v2 -1 -> -2,
+  13v3 -2 -> -3, 12v5 -2 -> -3, 12v6 S17 -1 -> -2. `550b632`.
+- **`handStyle: 'cards'` clip coverage** (was "new clips cannot be generated
+  here" — that was wrong; `scripts/generate-audio-clips.py` existed and all
+  three voices are in the public Kokoro model). 32 phrases x 3 voices
+  generated; `public/clips/` now holds 887 files. `550b632`.
+- **Eyes-free ZonePad silently ignoring an illegal tap.** `drills/answerGate.ts`
+  returns a spoken refusal ("Split isn't available on this hand.") because the
+  eyes-free pad has no visual disabled state.
+- **Deck-aware indices.** `indexSetFor(rules)` is the single selection point
+  for strategy, grading, the deviation quiz and both index tables. Insurance
+  is the one genuinely per-deck index (1D 1.4 / 2D 2.4 / 6D 3.0 -> only single
+  deck moves on an integer count, to TC >= 2). The other 17 are pinned
+  identical across deck counts by test, pending a sourced per-deck table
+  (Wong, *Professional Blackjack*, Table A4). `1dd94bc`.
+- **iPhone 13 mini sizing.** All nine full-height screens use `100svh` (with
+  `dvh`/`vh` fallbacks); `dvh` was cutting off because it tracks the
+  toolbar-collapsed viewport. Pair-cancel Next is the full bottom bar; Stats
+  has an all-time / last-N-days / since-date filter. `1dd94bc`.
+- **Drill prompt gutters.** `.settings-note-row` had no CSS rule at all in 20
+  usages; bare inside `.drill-screen` the text ran edge to edge. `e2e/gutters.spec.ts`
+  now walks 9 drills + 5 tabs at 375px asserting no text ink comes within 8px
+  of either edge. `67b93b2`.
+
+## Genuinely still open
+
+None of these has been requested; all are carried deliberately.
+
+| Item | Why it is open | Cost |
+|---|---|---|
+| No error boundary | A render throw still blanks the whole app. The two known crashes are fixed, but nothing catches the next one. | small |
+| `applyEvents` deep-clones all stats per answer | `JSON.parse(JSON.stringify(stats))` in `store/stats.ts:10`, ~27ms on a year-old blob. Invisible now; grows with history. | small |
+| Media Session API | Steering-wheel / head-unit controls for car use. Only reachable via the CLIPS path — `speechSynthesis` is not media to a phone OS. Offered, never approved. | medium |
+| PWA manifest | None exists. Installed PWAs get better background audio on Android and a home-screen launch. Offered, never approved. | small |
+| Mid-chain clip failure | Replays the whole utterance in live TTS rather than resuming. | small |
+| Keyboard drilling goes dead | After focusing a checkbox or the index select, keys stop reaching the drill handler. | small |
+| No cross-tab coordination | Two open tabs: last writer wins on localStorage. | medium |
+| Charts grid overflows horizontally | Intentional (sticky label column + sideways scroll), excluded from the gutter spec. Listed so it is a decision, not a surprise. | n/a |
+
+## Validation at this commit
+
+3177 unit tests / 54 files, 141 e2e (chromium + chromium-audio), `tsc -b`
+clean, `oxlint` clean, build 382.82 kB / 110.20 kB gzip.

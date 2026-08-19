@@ -8,6 +8,7 @@ import {
 import type { BetSitLeaveScenario, TableAction } from '../../../drills/betSitLeave';
 import { useAudio } from '../../../audio/useAudio';
 import { loadStats, saveStats } from '../../../store/persist';
+import { focusSwallowsKey } from '../../keyboardFocus';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -64,8 +65,7 @@ export function BetSitLeaveView({ settings, onBack }: { settings: Settings; onBa
   // Keyboard: 1=Bet, 2=Sit Out, 3=Leave; Enter/Space advances past feedback.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (focusSwallowsKey(e.key)) return;
       if (!feedback) {
         const idx = ['1', '2', '3'].indexOf(e.key);
         if (idx >= 0) {

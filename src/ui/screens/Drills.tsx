@@ -45,6 +45,7 @@ import { PairCancelView } from './drills/PairCancelView';
 import { BetSitLeaveView } from './drills/BetSitLeaveView';
 import { DownswingView } from './drills/DownswingView';
 import { DeckEstimationView } from './drills/DeckEstimationView';
+import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
 
 interface DrillsProps {
   settings: Settings;
@@ -354,8 +355,7 @@ function FlashcardsView({
   // render that resets feedback to null, so this closure is never stale.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (focusSwallowsKey(e.key)) return;
       // The chart overlay is modal over a frozen correction. Without this,
       // Enter (the obvious "dismiss" key) ran next() BEHIND the overlay --
       // drawing a new card, clearing the correction, and in eyes-free even
@@ -805,8 +805,7 @@ function DeviationQuizView({
   // the Index <select> and toggles above are unaffected.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (focusSwallowsKey(e.key)) return;
       // The chart overlay is modal over a frozen correction. Without this,
       // Enter (the obvious "dismiss" key) ran next() BEHIND the overlay --
       // drawing a new card, clearing the correction, and in eyes-free even
@@ -873,7 +872,15 @@ function DeviationQuizView({
           <select
             className="quiz-index-select"
             value={activeFilter}
-            onChange={(e) => changeIndex(e.target.value as DeviationId | 'all')}
+            onChange={(e) => {
+              changeIndex(e.target.value as DeviationId | 'all');
+              // A <select> keeps focus after a choice, and it legitimately
+              // swallows every key (typing jumps between options), so leaving
+              // it focused killed keyboard drilling until the user clicked
+              // elsewhere -- the same dead-keyboard symptom as the checkbox
+              // bug, by a different route. Hand the keyboard back.
+              blurAfterChange(e.target);
+            }}
           >
             <option value="all">All indices</option>
             {indexList.map((d) => (
@@ -1239,8 +1246,7 @@ function MixedSessionView({
   // handler so grading/audio can't drift from a real tap.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (focusSwallowsKey(e.key)) return;
       // The chart overlay is modal over a frozen correction. Without this,
       // Enter (the obvious "dismiss" key) ran next() BEHIND the overlay --
       // drawing a new card, clearing the correction, and in eyes-free even
