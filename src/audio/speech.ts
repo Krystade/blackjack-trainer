@@ -23,7 +23,8 @@
  * clips.ts has no store/React dependency, so this import doesn't change
  * speech.ts's dependency profile.
  */
-import { hasClips, isClipsEnabled, playClipsAsync, stopClips } from './clips';
+import { hasClips, isClipsEnabled, playClipsResumable, stopClips } from './clips';
+import { initMediaSession, setNowPlaying, setPlaybackState } from './mediaSession';
 
 declare global {
   interface Window {
@@ -317,13 +318,47 @@ export function speak(
   }
 
   if (isClipsEnabled() && hasClips(text)) {
-    void playClipsAsync(text, { interrupt: opts?.interrupt, rate: opts?.rate, volume: opts?.volume }).then((played: boolean) => {
-      if (!played) speakLive(text, opts);
+    announceToMediaSession(text);
+    void playClipsResumable(text, {
+      interrupt: opts?.interrupt,
+      rate: opts?.rate,
+      volume: opts?.volume,
+    }).then(({ played, remainder }) => {
+      if (played) return;
+      // A chain that broke PART WAY through reports what is still unsaid.
+      // Speaking `text` there would repeat the half the clips already
+      // delivered -- the user heard the opening twice and the good audio was
+      // thrown away for nothing. Fall back to the remainder when there is
+      // one, and to the whole utterance only when nothing played at all.
+      speakLive(remainder ?? text, opts);
     });
     return;
   }
 
   speakLive(text, opts);
+}
+
+/**
+ * Hand the car's transport controls to this app, and tell the head unit what
+ * is being said.
+ *
+ * Called from the clips path only -- see mediaSession.ts for why live TTS
+ * cannot participate. Registration is one-shot and happens on first clip
+ * playback rather than at startup, because a Media Session claimed before
+ * any audio exists is either ignored or, worse, steals the now-playing slot
+ * from whatever the driver actually had going.
+ */
+function announceToMediaSession(text: string): void {
+  initMediaSession({
+    repeat: () => {
+      repeatLast();
+    },
+    stop: () => {
+      cancelSpeech();
+    },
+  });
+  setNowPlaying(text, (import.meta.env.BASE_URL as string | undefined) ?? '');
+  setPlaybackState('playing');
 }
 
 /* ---------------------------------------------------------------------- */
@@ -454,9 +489,18 @@ export function speakAsync(
   }
 
   if (isClipsEnabled() && hasClips(text)) {
-    return playClipsAsync(text, { interrupt: opts?.interrupt, rate: opts?.rate, volume: opts?.volume }).then((played: boolean) => {
+    announceToMediaSession(text);
+    return playClipsResumable(text, {
+      interrupt: opts?.interrupt,
+      rate: opts?.rate,
+      volume: opts?.volume,
+    }).then(({ played, remainder }) => {
       if (played) return;
-      return speakAsyncLive(text, opts);
+      // Same resume rule as `speak` above: only re-speak what the broken
+      // chain never got to. This path also drives drill PACING, so repeating
+      // the whole utterance here stretched the gap between cards as well as
+      // saying the opening twice.
+      return speakAsyncLive(remainder ?? text, opts);
     });
   }
 

@@ -159,6 +159,33 @@ export function segmentForClips(text: string, manifest: ClipManifest): string[] 
   return files;
 }
 
+/**
+ * The same cascade as `segmentForClips`, but keeping each sentence's TEXT
+ * alongside the clips that speak it.
+ *
+ * `segmentForClips` flattens everything into one file list, which is all the
+ * happy path needs. It is not enough to recover from a failure PART WAY
+ * through: to speak only what is left, the player has to know which words the
+ * clip that just failed was standing in for.
+ */
+export interface ClipSegment {
+  text: string;
+  files: string[];
+}
+
+export function segmentsForClips(text: string, manifest: ClipManifest): ClipSegment[] | null {
+  const whole = manifestLookup(manifest, text);
+  if (whole !== null) return [{ text, files: [whole] }];
+
+  const segments: ClipSegment[] = [];
+  for (const sentence of splitIntoSentences(text)) {
+    const matched = matchSentence(sentence, manifest);
+    if (matched === null) return null;
+    segments.push({ text: sentence, files: matched });
+  }
+  return segments;
+}
+
 /* ------------------------------------------------------------------------ */
 /* Index + per-voice manifest loading                                       */
 /* ------------------------------------------------------------------------ */
@@ -363,10 +390,36 @@ const CLIP_WATCHDOG_PER_CLIP_MS = 8000;
  * or playback fails -- the caller should then fall back to live TTS. Never
  * throws/rejects.
  */
+/**
+ * What a clip chain left unsaid.
+ *
+ * `played: false` with a `remainder` means some clips DID play before the
+ * chain broke. Re-speaking the original text in that case says the opening
+ * twice, which is what used to happen: one failed clip in the middle threw
+ * away the whole utterance and the live-TTS fallback started again from the
+ * top. The remainder lets the caller pick up where the clips stopped.
+ */
+export interface ClipPlayResult {
+  played: boolean;
+  /** Text still unspoken, or null when nothing was spoken (or all of it was). */
+  remainder: string | null;
+}
+
+/** No clip was reached at all, so the caller should speak the whole text. */
+const NOTHING_PLAYED: ClipPlayResult = { played: false, remainder: null };
+
+/** Back-compat wrapper: the boolean half of {@link playClipsResumable}. */
 export function playClipsAsync(
   text: string,
   opts?: { interrupt?: boolean; rate?: number; volume?: number },
 ): Promise<boolean> {
+  return playClipsResumable(text, opts).then((r) => r.played);
+}
+
+export function playClipsResumable(
+  text: string,
+  opts?: { interrupt?: boolean; rate?: number; volume?: number },
+): Promise<ClipPlayResult> {
   return (async () => {
     try {
       if (opts?.interrupt) {
@@ -374,28 +427,51 @@ export function playClipsAsync(
       }
 
       const voiceId = currentClipVoice || (await resolveDefaultVoiceId());
-      if (!voiceId) return false;
+      if (!voiceId) return NOTHING_PLAYED;
 
       const manifest = await loadVoiceManifest(voiceId);
-      const files = segmentForClips(text, manifest);
-      if (!files || files.length === 0) return false;
+      const segments = segmentsForClips(text, manifest);
+      if (!segments || segments.length === 0) return NOTHING_PLAYED;
 
       const AudioCtor = getAudioCtor();
-      if (!AudioCtor) return false;
+      if (!AudioCtor) return NOTHING_PLAYED;
 
       const rate = opts?.rate ?? 1;
       // Presence-checked, never `?? 1` on a truthiness test: volume 0 means
       // silence and must survive the trip, exactly as on the live-TTS path.
       const volume = opts?.volume;
       const base = clipsBaseUrl();
-      const fileList: string[] = files;
+      // Flattened for playback, but each entry remembers the sentence it came
+      // from so a failure can be reported as "everything from here on".
+      const fileList: { file: string; segIndex: number }[] = segments.flatMap((seg, segIndex) =>
+        seg.files.map((file) => ({ file, segIndex })),
+      );
 
-      return await new Promise<boolean>((resolve) => {
+      /**
+       * The text from the sentence containing clip `i` to the end. The
+       * partially-spoken sentence is repeated in full -- there is no way to
+       * resume mid-sentence -- which is a word or two of overlap instead of
+       * the entire utterance.
+       */
+      const remainderFrom = (i: number): string => {
+        const segIndex = fileList[i]?.segIndex ?? 0;
+        return segments.slice(segIndex).map((seg) => seg.text).join(' ');
+      };
+
+      return await new Promise<ClipPlayResult>((resolve) => {
+        // The chain settles with a bare boolean (stopClips and the watchdog
+        // both use it), so translate that into a result here, consulting the
+        // live `index` to work out what was left unsaid.
+        const settleResult = (ok: boolean) => {
+          if (ok) resolve({ played: true, remainder: null });
+          else resolve({ played: false, remainder: index > 0 ? remainderFrom(index) : null });
+        };
+
         const chain: ActiveChain = {
           audio: null,
           watchdog: null,
           settled: false,
-          settle: resolve,
+          settle: settleResult,
         };
         activeChain = chain;
 
@@ -414,7 +490,7 @@ export function playClipsAsync(
           }
           try {
             const audio = new AudioCtor();
-            audio.src = `${base}clips/${voiceId}/${fileList[index]}`;
+            audio.src = `${base}clips/${voiceId}/${fileList[index]!.file}`;
             audio.preservesPitch = true;
             audio.playbackRate = rate;
             if (volume !== undefined) audio.volume = volume;
@@ -439,7 +515,7 @@ export function playClipsAsync(
         playNext();
       });
     } catch {
-      return false;
+      return NOTHING_PLAYED;
     }
   })();
 }
