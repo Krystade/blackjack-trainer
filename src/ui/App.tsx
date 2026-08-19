@@ -11,6 +11,7 @@ import { TabBar } from './components/TabBar';
 import { loadSettings } from '../store/persist';
 import { applyTheme, normalizeTheme } from './theme';
 import { getActiveProfile } from '../store/profiles';
+import { subscribeToExternalWrites, OWNED_KEYS } from '../store/crossTab';
 import type { Settings as SettingsData, Profile } from '../store/types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -42,6 +43,22 @@ function App() {
   useEffect(() => {
     applyTheme(normalizeTheme(settings.theme));
   }, [settings.theme]);
+
+  // Cross-tab safety. Every store here writes a WHOLE blob, and each tab keeps
+  // its own copy in React state -- so a second tab drilling against a snapshot
+  // taken before this tab's write would later save that stale snapshot back
+  // over it, silently discarding everything done in between. Re-reading when
+  // another tab writes is what stops a tab from holding stale state long
+  // enough to do that.
+  //
+  // The `storage` event never fires in the tab that performed the write, so
+  // this cannot react to itself and needs no echo suppression.
+  useEffect(() => {
+    return subscribeToExternalWrites(OWNED_KEYS, () => {
+      setSettings(loadSettings());
+      setActiveProfileState(getActiveProfile());
+    });
+  }, []);
 
   const navigate = (next: Screen) => {
     if (screen === 'profiles' && next !== 'profiles') {
