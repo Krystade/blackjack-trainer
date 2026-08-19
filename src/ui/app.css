@@ -785,6 +785,23 @@ button {
   border-bottom: 1px solid var(--raised);
 }
 
+/* The prompt line under a drill's topbar. `.settings-row` carries no
+   horizontal padding of its own -- in Settings and the Drills list it sits
+   inside a padded panel, so it never needed any. As a bare direct child of
+   `.drill-screen` it had none, and the prompt ran from the left edge of the
+   screen to the right edge (reported on a 375px iPhone 13 mini).
+
+   The gutter hangs off the child combinator rather than the class, because
+   the same class IS correctly nested inside padded containers elsewhere
+   (`.drill-inline-controls`, the settings sections) and would double up
+   there. 0.75rem matches `.drill-topbar`'s horizontal padding, so the prompt
+   aligns with the Back button and heading above it instead of picking an
+   arbitrary inset. */
+.drill-screen > .settings-note-row {
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+
 .drill-back-btn,
 .drill-start-btn,
 .drill-replay-btn,
