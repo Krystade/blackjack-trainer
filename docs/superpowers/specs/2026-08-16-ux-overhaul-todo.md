@@ -340,7 +340,7 @@ with this section, this section wins.
   now walks 9 drills + 5 tabs at 375px asserting no text ink comes within 8px
   of either edge. `67b93b2`.
 
-## Genuinely still open
+## Genuinely still open (CLEARED 2026-08-19 — see below)
 
 None of these has been requested; all are carried deliberately.
 
@@ -359,3 +359,53 @@ None of these has been requested; all are carried deliberately.
 
 3177 unit tests / 54 files, 141 e2e (chromium + chromium-audio), `tsc -b`
 clean, `oxlint` clean, build 382.82 kB / 110.20 kB gzip.
+
+
+---
+
+# 2026-08-19 — the eight carried items are done
+
+All eight cleared, plus one new operator request and one defect found on the
+way. Commits b4ad14f, 7588683, bd51469, 1e005ee, 070af05.
+
+| Item | Resolution |
+|---|---|
+| Keyboard drilling goes dead | The guard treated a checkbox as a text field. `swallowsKey` now asks whether the focused control consumes THAT key; the `<select>` half is fixed by releasing focus on change. |
+| No error boundary | Wraps the SCREEN, keyed by screen, so a broken screen leaves the tab bar alive — the exact trap from the stats-screen incident. Salvage offered before anything destructive. `?crash=1` is an unreferenced seam so it can be proven. |
+| Stats cloned on every answer | Structural sharing; the untouched history subtrees are now reference-identical. Pinned by test so the deep copy cannot come back. |
+| Mid-chain clip failure | `segmentsForClips` keeps each sentence's text beside its clips, so the fallback resumes instead of replaying the whole utterance. Both call sites. |
+| No PWA manifest | Manifest, real 192/512 + maskable icons drawn from the Midnight Felt tokens, apple-touch-icon, `viewport-fit=cover`. All paths relative for the project-subpath deploy. |
+| No Media Session API | `play` and `previoustrack` both REPEAT (a driver has no playlist to skip); `nexttrack` left inert; per-action try/catch for partial support. |
+| No cross-tab coordination | `storage`-event subscription; tabs re-read instead of holding a stale snapshot they would later write back. Two-real-page e2e. |
+| Charts scroll sideways | Confirmed correct and kept. The real defect in that screen was theming — see below. |
+
+## New request, same batch
+
+**Updates on launch and on return to foreground.** The operator installed the
+app to an iPhone home screen, where iOS serves the cached document on launch
+and can keep a stale bundle indefinitely. Each build stamps `__BUILD_ID__`
+and writes the same id to `version.json`; the tab re-checks on
+visibilitychange/pageshow/focus and reloads on a mismatch. Deliberately NOT a
+service worker — a bad one on Pages pins users to a stale bundle permanently,
+the exact failure being prevented. Every ambiguous answer decides "not
+stale", and one reload attempt per id per session, so it cannot loop.
+
+## Found on the way
+
+**The Charts screen never followed the theme.** `.charts-screen` declared its
+own `--surface` / `--ink` / action palette as hex literals, which SHADOW the
+theme tokens for that subtree — so C2's switcher never reached it. On Bone &
+Ink the app painted a bone ground and a bone tab bar with a dark green screen
+between them. C9's "QA across all 4 themes" missed it, and so did the
+existing readability spec, which only inspected `<body>`.
+
+## Still open, deliberately
+
+- **No service worker / no offline.** Considered and rejected while adding the
+  PWA manifest: the stale-bundle risk on Pages is worse than the benefit for
+  an app that ships often. Revisit only with a network-first shell.
+- **17 of the 18 indices stay identical across deck counts**, pending a sourced
+  per-deck table (Wong, *Professional Blackjack*, Table A4).
+
+Validation at 070af05: 3231 unit tests / 62 files, 148 e2e, tsc clean,
+oxlint clean, deployed and verified live.
