@@ -12,8 +12,22 @@ import { loadSettings } from '../store/persist';
 import { applyTheme, normalizeTheme } from './theme';
 import { getActiveProfile } from '../store/profiles';
 import type { Settings as SettingsData, Profile } from '../store/types';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export type Screen = 'home' | 'table' | 'drills' | 'stats' | 'settings' | 'profiles' | 'charts';
+
+/**
+ * A deliberate render throw, reachable ONLY by adding `?crash=1` to the URL.
+ *
+ * An error boundary that is never exercised is an error boundary that does
+ * not work, and React needs a genuine render-time throw to trigger one --
+ * there is no way to fake that from a test without a seam. This is that
+ * seam: no UI references it, nothing links to it, and a user who never types
+ * the parameter can never reach it. e2e/error-boundary.spec.ts drives it.
+ */
+function CrashOnDemand(): never {
+  throw new Error('Deliberate crash for the error-boundary harness (?crash=1)');
+}
 
 function App() {
   const [screen, setScreen] = useState<Screen>('home');
@@ -35,6 +49,11 @@ function App() {
     }
     setScreen(next);
   };
+
+  // See CrashOnDemand above: an opt-in seam so the boundary can be proven.
+  const crashRequested =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('crash');
 
   const body = (() => {
     switch (screen) {
@@ -90,7 +109,16 @@ function App() {
 
   return (
     <>
-      {body}
+      {/* Wraps the SCREEN rather than the whole app, and is keyed by screen
+          so navigating away clears a previous crash. This placement is the
+          lesson from the incident where the stats screen threw: the app
+          blanked, and "Reset Stats" was stranded on the crashing screen with
+          no way to reach it. Keeping the boundary inside the shell means a
+          broken screen leaves the tab bar below it alive, so the user can
+          simply navigate somewhere else. */}
+      <ErrorBoundary key={screen} onReset={() => navigate('home')}>
+        {crashRequested ? <CrashOnDemand /> : body}
+      </ErrorBoundary>
       {/* Rendered for every screen; app.css stands it down in the
           immersive modes, which own the bottom edge with their own
           ActionBar/ZonePad. */}
