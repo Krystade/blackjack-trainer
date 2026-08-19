@@ -55,7 +55,7 @@
 
   min-height: 100vh;
   padding-bottom: 2.5rem;
-  background: radial-gradient(120% 55% at 50% 0%, #16412c 0%, var(--felt) 62%);
+  background: radial-gradient(120% 55% at 50% 0%, var(--surface-raised) 0%, var(--felt) 62%);
   color: var(--ink);
 
   /* Requirement: the PAGE never scrolls sideways. Only .chart-scroller does. */
@@ -75,15 +75,15 @@
   min-height: 48px;
   padding: 0 1rem;
   border-radius: 8px;
-  border: 1px solid #2c5c41;
-  background: #143b26;
+  border: 1px solid var(--hairline);
+  background: var(--surface-raised);
   color: var(--ink);
   font-weight: 600;
   cursor: pointer;
 }
 
 .charts-back-btn:hover {
-  background: #1b4c31;
+  background: var(--surface);
 }
 
 .charts-heading {
@@ -290,7 +290,9 @@
   bottom: 0;
   width: 14px;
   pointer-events: none;
-  background: linear-gradient(to right, rgba(16, 40, 27, 0), rgba(16, 40, 27, 0.95));
+  /* Follows the frame's own surface, so the fade still reads as the grid
+     running out of room in every theme rather than as a dark smear. */
+  background: linear-gradient(to right, transparent, var(--surface) 92%);
 }
 
 .chart-scroller {
@@ -487,4 +489,49 @@
     transition: none !important;
     animation: none !important;
   }
+}
+
+
+/*
+ * THEME OVERRIDES.
+ *
+ * `.charts-screen` above declares its own `--surface`, `--ink` and friends,
+ * which SHADOW the theme tokens for this whole subtree. That was invisible
+ * while there was one theme, and became a real defect once there were four:
+ * on Bone & Ink the app painted a light bone ground and a light tab bar while
+ * this screen stayed dark green, so two themes were on screen at once.
+ *
+ * The defaults above remain Midnight Felt, which is also close enough for the
+ * two other dark themes. Bone & Ink is the one that genuinely inverts, so it
+ * gets its own set here -- deriving these from the root tokens is not possible
+ * for the shadowed names (a `--surface: var(--surface)` self-reference is
+ * invalid), which is exactly why they are restated.
+ *
+ * The action colours keep their own identity rather than becoming pastel:
+ * these cells are read at a glance and the families must stay separable, so
+ * the light set is darkened for contrast against paper instead of tinted.
+ */
+:root[data-theme='bone-ink'] .charts-screen {
+  --felt: #f2ece0;
+  --surface: #faf6ee;
+  --surface-raised: #ffffff;
+  --hairline: #d8cdb8;
+  --brass: #8a5a1e;
+  --ink: #201c16;
+  --ink-dim: #6f6455;
+
+  --act-hit: #a52f2a;
+  --act-hit-ink: #fff1ef;
+  --act-stand: #8a6a1e;
+  --act-stand-ink: #fff8e6;
+  --act-double: #10666d;
+  --act-double-ink: #eafcff;
+  --act-split: #4b3a8a;
+  --act-split-ink: #f0ecff;
+  --act-surrender: #4c5a66;
+  --act-surrender-ink: #eef4f9;
+
+  --bar-hit: #7a1d19;
+  --bar-stand: #5e4712;
+  --bar-split: #2f2461;
 }
