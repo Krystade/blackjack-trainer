@@ -1590,6 +1590,23 @@ button {
   cursor: not-allowed;
 }
 
+/* Secondary actions that sit several-to-a-row (the car-controls panel).
+   Deliberately NOT `.settings-test-audio-btn`: that class names one specific
+   control, and specs locate it by that name -- reusing it for four unrelated
+   buttons broke a strict-mode locator that had every right to expect one. */
+.settings-mini-btn {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
 
 /* ---------- Settings: bet spread editor ---------- */
 
@@ -2947,4 +2964,33 @@ button {
 
 .drills-group-title:first-child {
   margin-top: 0;
+}
+
+/* The right-hand readout in a car-controls row: a value, not a control, so
+   it sits opposite the label and is free to wrap onto its own line when the
+   list of action names gets long. */
+.settings-value {
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  text-align: right;
+  word-break: break-word;
+}
+
+/* Car-controls diagnostic readout (Settings). Monospace because it is a log
+   being read back, and scrollable in its own box so a long report never makes
+   the page scroll sideways. */
+.car-log {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: var(--ink-dim);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.6rem;
+  margin: 0;
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }

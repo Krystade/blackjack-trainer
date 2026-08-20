@@ -5,6 +5,8 @@ import { THEMES, normalizeTheme } from '../theme';
 import { saveSettings } from '../../store/persist';
 import { chime, isSpeechSupported, listVoices, speak } from '../../audio';
 import { setClipsEnabled, setClipVoice, loadClipIndex, type ClipVoiceInfo } from '../../audio/clips';
+import { readLog, clearLog, formatLog } from '../../audio/mediaSessionLog';
+import type { LogEntry } from '../../audio/mediaSessionLog';
 
 interface SettingsProps {
   settings: SettingsData;
@@ -456,6 +458,92 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           </button>
         </div>
       </section>
+
+      <CarDiagnostics />
     </div>
+  );
+}
+
+/**
+ * What the car actually did, read back after the drive.
+ *
+ * Media Session is the one feature here that cannot be verified from a desk,
+ * and the only person who can observe it is driving -- no console, no
+ * devtools. So the app records every transport action the head unit sends
+ * (see audio/mediaSessionLog.ts) and this panel reads it back once parked.
+ *
+ * Deliberately last in Settings and empty-by-default: it is diagnostic, not
+ * a control, and it says nothing at all until there is something to report.
+ */
+function CarDiagnostics() {
+  const [entries, setEntries] = useState<LogEntry[]>(() => readLog());
+  const [shown, setShown] = useState(false);
+
+  const invoked = [...new Set(entries.filter((e) => e.kind === 'invoke').map((e) => e.action))];
+  const accepted = [...new Set(entries.filter((e) => e.kind === 'register' && e.ok).map((e) => e.action))];
+  const refused = [...new Set(entries.filter((e) => e.kind === 'register' && !e.ok).map((e) => e.action))];
+
+  return (
+    <section className="settings-section">
+      <h2 className="settings-section-title">Car controls</h2>
+
+      <div className="settings-note-row u-note">
+        Records which steering-wheel buttons your car sends, so the mapping can be
+        matched to it. Fills in by itself while you drive.
+      </div>
+
+      <div className="settings-row">
+        <span className="settings-label">Buttons your car sent</span>
+        <span className="settings-value">{invoked.length ? invoked.join(', ') : 'none yet'}</span>
+      </div>
+      <div className="settings-row">
+        <span className="settings-label">Accepted by this phone</span>
+        <span className="settings-value">{accepted.length ? accepted.join(', ') : 'none yet'}</span>
+      </div>
+      {refused.length > 0 && (
+        <div className="settings-row">
+          <span className="settings-label">Refused</span>
+          <span className="settings-value">{refused.join(', ')}</span>
+        </div>
+      )}
+
+      <div className="settings-row">
+        <button type="button" className="settings-mini-btn" onClick={() => setEntries(readLog())}>
+          Refresh
+        </button>
+        <button type="button" className="settings-mini-btn" onClick={() => setShown((v) => !v)}>
+          {shown ? 'Hide detail' : 'Show detail'}
+        </button>
+        <button
+          type="button"
+          className="settings-mini-btn"
+          onClick={() => {
+            clearLog();
+            setEntries([]);
+          }}
+        >
+          Clear
+        </button>
+      </div>
+
+      {shown && (
+        <>
+          <div className="settings-row">
+            <button
+              type="button"
+              className="settings-mini-btn"
+              onClick={() => {
+                // Clipboard can be unavailable or denied; the text is on
+                // screen regardless, so a failure needs no alarm.
+                void navigator.clipboard?.writeText(formatLog(entries)).catch(() => {});
+              }}
+            >
+              Copy report
+            </button>
+          </div>
+          <pre className="car-log">{formatLog(entries)}</pre>
+        </>
+      )}
+    </section>
   );
 }

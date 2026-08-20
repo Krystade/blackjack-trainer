@@ -85,16 +85,23 @@ describe('initMediaSession', () => {
     expect(stopped).toBe(2);
   });
 
-  // nexttrack would be meaningless -- there is no playlist -- so it must stay
-  // inert rather than doing something surprising at 70mph.
-  it('leaves next-track unregistered', () => {
+  // nexttrack would be meaningless -- there is no playlist -- so it is
+  // registered ONLY as a diagnostic probe: firing it must record the event
+  // and change nothing, so it stays inert at 70mph.
+  it('registers next-track as an inert probe', () => {
     const actions = new Map<string, () => void>();
     withMediaSession({
       metadata: null,
       setActionHandler: (a: string, h: () => void) => actions.set(a, h),
     });
-    initMediaSession({ repeat: () => {}, stop: () => {} });
-    expect(actions.has('nexttrack')).toBe(false);
+
+    let repeated = 0;
+    let stopped = 0;
+    initMediaSession({ repeat: () => (repeated += 1), stop: () => (stopped += 1) });
+
+    expect(actions.has('nexttrack')).toBe(true);
+    actions.get('nexttrack')!();
+    expect([repeated, stopped]).toEqual([0, 0]);
   });
 
   /**

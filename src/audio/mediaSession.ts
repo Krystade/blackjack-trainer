@@ -17,6 +17,8 @@
  * is relying on must not stop because a transport button was unavailable.
  */
 
+import { appendLog } from './mediaSessionLog';
+
 export interface MediaSessionHandlers {
   /** Repeat the last thing said. The most useful control to a driver. */
   repeat: () => void;
@@ -53,8 +55,9 @@ let registered = false;
  * that again" -- not a track skip, which would be meaningless here since
  * there is no playlist. `play` and `previoustrack` therefore BOTH repeat:
  * whichever button the head unit exposes, the useful thing happens.
- * `nexttrack` is deliberately left unregistered so it stays inert rather
- * than doing something surprising at speed.
+ * `nexttrack` and the seek actions ARE registered, but only as diagnostic
+ * probes: their handlers record the event and do nothing else, so they stay
+ * inert at speed while still revealing which actions this car emits.
  */
 export function initMediaSession(handlers: MediaSessionHandlers): void {
   const ms = session();
@@ -63,10 +66,25 @@ export function initMediaSession(handlers: MediaSessionHandlers): void {
 
   const set = (action: string, handler: () => void): void => {
     try {
-      ms.setActionHandler(action, handler);
-    } catch {
+      ms.setActionHandler(action, () => {
+        // Record what the CAR sent before doing anything with it. This is the
+        // half that cannot be discovered from a desk, and the driver cannot
+        // watch a console, so the evidence has to collect itself.
+        appendLog({ kind: 'invoke', action, ok: true });
+        handler();
+      });
+      appendLog({ kind: 'register', action, ok: true });
+    } catch (e) {
       // This browser knows the action name but refuses it, or does not know
-      // it at all. Either way the others must still be registered.
+      // it at all. Either way the others must still be registered -- and a
+      // refusal is itself worth recording, since it means that button can
+      // never work here however the car behaves.
+      appendLog({
+        kind: 'register',
+        action,
+        ok: false,
+        detail: e instanceof Error ? e.name : 'refused',
+      });
     }
   };
 
@@ -74,6 +92,15 @@ export function initMediaSession(handlers: MediaSessionHandlers): void {
   set('previoustrack', handlers.repeat);
   set('pause', handlers.stop);
   set('stop', handlers.stop);
+
+  // PROBES. These are registered purely to find out what this car actually
+  // sends; each only writes a log entry and deliberately does nothing else,
+  // so behaviour is unchanged -- `nexttrack` in particular stays inert rather
+  // than doing something surprising at speed. Once the log says which of
+  // these a real head unit emits, the useful ones can be given real handlers.
+  for (const probe of ['nexttrack', 'seekforward', 'seekbackward', 'seekto']) {
+    set(probe, () => {});
+  }
 }
 
 /**
