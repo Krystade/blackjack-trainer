@@ -46,6 +46,7 @@ import { BetSitLeaveView } from './drills/BetSitLeaveView';
 import { DownswingView } from './drills/DownswingView';
 import { DeckEstimationView } from './drills/DeckEstimationView';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
+import { enableAudioNow } from '../audioGate';
 
 interface DrillsProps {
   settings: Settings;
@@ -436,8 +437,15 @@ function FlashcardsView({
           <input
             type="checkbox"
             checked={eyesFree}
-            disabled={!settings.audio.enabled}
             onChange={(e) => {
+              // Tapping this IS a request for audio, so honour it instead of
+              // refusing: the control used to sit disabled whenever
+              // `audio.enabled` was false -- which is the shipped default --
+              // making the app's whole driving mode a dead checkbox curable
+              // only from another screen. See ui/audioGate.ts.
+              if (e.target.checked && !settings.audio.enabled) {
+                enableAudioNow(settings, onSettingsChange);
+              }
               // A pending auto-advance is an eyes-free affordance; leaving
               // eyes-free must cancel it, or the correction vanishes and a new
               // card appears on its own in visual mode.
@@ -456,11 +464,6 @@ function FlashcardsView({
           />
           Dim screen
         </label>
-        {!settings.audio.enabled && (
-          <div className="settings-row settings-note-row">
-            Enable audio in Settings to use eyes-free mode.
-          </div>
-        )}
       </div>
 
       <div className="dealer-area">
@@ -909,8 +912,15 @@ function DeviationQuizView({
           <input
             type="checkbox"
             checked={eyesFree}
-            disabled={!settings.audio.enabled}
             onChange={(e) => {
+              // Tapping this IS a request for audio, so honour it instead of
+              // refusing: the control used to sit disabled whenever
+              // `audio.enabled` was false -- which is the shipped default --
+              // making the app's whole driving mode a dead checkbox curable
+              // only from another screen. See ui/audioGate.ts.
+              if (e.target.checked && !settings.audio.enabled) {
+                enableAudioNow(settings, onSettingsChange);
+              }
               // A pending auto-advance is an eyes-free affordance; leaving
               // eyes-free must cancel it, or the correction vanishes and a new
               // card appears on its own in visual mode.
@@ -929,11 +939,6 @@ function DeviationQuizView({
           />
           Dim screen
         </label>
-        {!settings.audio.enabled && (
-          <div className="settings-row settings-note-row">
-            Enable audio in Settings to use eyes-free mode.
-          </div>
-        )}
       </div>
 
       <div className="quiz-tc">TC {formatSigned(item.tc)}</div>
@@ -1312,8 +1317,15 @@ function MixedSessionView({
           <input
             type="checkbox"
             checked={eyesFree}
-            disabled={!settings.audio.enabled}
             onChange={(e) => {
+              // Tapping this IS a request for audio, so honour it instead of
+              // refusing: the control used to sit disabled whenever
+              // `audio.enabled` was false -- which is the shipped default --
+              // making the app's whole driving mode a dead checkbox curable
+              // only from another screen. See ui/audioGate.ts.
+              if (e.target.checked && !settings.audio.enabled) {
+                enableAudioNow(settings, onSettingsChange);
+              }
               // A pending auto-advance is an eyes-free affordance; leaving
               // eyes-free must cancel it, or the correction vanishes and a new
               // card appears on its own in visual mode.
@@ -1332,11 +1344,6 @@ function MixedSessionView({
           />
           Dim screen
         </label>
-        {!settings.audio.enabled && (
-          <div className="settings-row settings-note-row">
-            Enable audio in Settings to use eyes-free mode.
-          </div>
-        )}
       </div>
 
       {/* A quiz item shows its true count; a flashcard item shows none -- the
@@ -1464,7 +1471,13 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     );
   }
   if (mode === 'truecount') {
-    return <TrueCountDrillView settings={settings} onBack={() => setMode('picker')} />;
+    return (
+      <TrueCountDrillView
+        settings={settings}
+        onBack={() => setMode('picker')}
+        onSettingsChange={onSettingsChange}
+      />
+    );
   }
   if (mode === 'producetc') {
     return <ProduceTcDrillView settings={settings} onBack={() => setMode('picker')} />;

@@ -10,6 +10,7 @@ import { speechOptsFrom } from '../../../audio/speechOpts';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import { narrateTc } from '../../../audio/narrate';
 import { loadStats, saveStats } from '../../../store/persist';
+import { enableAudioNow } from '../../audioGate';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -70,9 +71,13 @@ type TcPhase = 'setup' | 'answering' | 'selfcheck' | 'result';
 export function TrueCountDrillView({
   settings,
   onBack,
+  onSettingsChange,
 }: {
   settings: Settings;
   onBack: () => void;
+  // Needed so the eyes-free toggle can enable audio itself rather than
+  // sitting disabled and pointing at another screen -- see ui/audioGate.ts.
+  onSettingsChange: (settings: Settings) => void;
 }) {
   const [phase, setPhase] = useState<TcPhase>('setup');
   const [question, setQuestion] = useState<TrueCountQuestion | null>(null);
@@ -228,16 +233,20 @@ export function TrueCountDrillView({
             <input
               type="checkbox"
               checked={eyesFree}
-              disabled={!settings.audio.enabled}
-              onChange={(e) => setEyesFree(e.target.checked)}
+              onChange={(e) => {
+                // Tapping this IS a request for audio, so honour it rather
+                // than refusing. The control used to sit disabled whenever
+                // `audio.enabled` was false -- the shipped default -- which
+                // made the app's driving mode a dead checkbox curable only
+                // from another screen. See ui/audioGate.ts.
+                if (e.target.checked && !settings.audio.enabled) {
+                  enableAudioNow(settings, onSettingsChange);
+                }
+                setEyesFree(e.target.checked);
+              }}
             />
             Eyes-free audio
           </label>
-          {!settings.audio.enabled && (
-            <div className="settings-row settings-note-row">
-              Enable audio in Settings to use eyes-free mode.
-            </div>
-          )}
           {eyesFree && settings.audio.enabled && (
             <label className="count-toggle">
               <input

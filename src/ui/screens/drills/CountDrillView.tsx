@@ -29,6 +29,7 @@ import { speechOptsFrom } from '../../../audio/speechOpts';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import { narrateCards, narrateCountAnswer, narrateCountPrompt } from '../../../audio/narrate';
 import { focusSwallowsKey } from '../../keyboardFocus';
+import { enableAudioNow } from '../../audioGate';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -956,16 +957,20 @@ export function CountDrillView({
                 <input
                   type="checkbox"
                   checked={eyesFree}
-                  disabled={!settings.audio.enabled}
-                  onChange={(e) => setEyesFree(e.target.checked)}
+                  onChange={(e) => {
+                    // Tapping this IS a request for audio, so honour it rather
+                    // than refusing. The control used to sit disabled whenever
+                    // `audio.enabled` was false -- the shipped default -- which
+                    // made the app's driving mode a dead checkbox curable only
+                    // from another screen. See ui/audioGate.ts.
+                    if (e.target.checked && !settings.audio.enabled) {
+                      enableAudioNow(settings, onSettingsChange);
+                    }
+                    setEyesFree(e.target.checked);
+                  }}
                 />
                 Eyes-free audio
               </label>
-              {!settings.audio.enabled && (
-                <div className="settings-row settings-note-row">
-                  Enable audio in Settings to use eyes-free mode.
-                </div>
-              )}
               {eyesFree && settings.audio.enabled && (
                 <label className="count-toggle">
                   <input
