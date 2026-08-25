@@ -380,14 +380,27 @@ describe('chime() — volume', () => {
     const env = installFakeAudioContextEnv();
     chime('good', { volume: 0.5 });
     // First ramp is the attack to the peak; second is the release to silence.
-    expect(env.ramps[0].value).toBeCloseTo(0.15, 5);
+    expect(env.ramps[0].value).toBeCloseTo(0.25, 5);
     expect(env.ramps[1].value).toBe(0);
   });
 
-  it('keeps the historical 0.3 peak when no volume is given', () => {
+  // The peak was 0.3 for most of this app's life, leaving most of the
+  // available headroom unused -- a bare oscillator reaches full scale at 1.0.
+  // The operator asked for more volume, and the chime was the one path with
+  // room to give it for free (see audio/volume.ts). Now 0.5 at full volume.
+  it('uses the full-volume peak when no volume is given', () => {
     const env = installFakeAudioContextEnv();
     chime('good');
-    expect(env.ramps[0].value).toBeCloseTo(0.3, 5);
+    expect(env.ramps[0].value).toBeCloseTo(0.5, 5);
+  });
+
+  // The boost ceiling reaches the chime too, but a bare oscillator clips
+  // above full scale, so the envelope must saturate rather than overshoot.
+  it('never rings above full scale even at the boost ceiling', () => {
+    const env = installFakeAudioContextEnv();
+    chime('good', { volume: 2 });
+    expect(env.ramps[0].value).toBeLessThanOrEqual(1);
+    expect(env.ramps[0].value).toBeGreaterThan(0.5);
   });
 });
 

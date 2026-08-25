@@ -24,6 +24,10 @@
  * speech.ts's dependency profile.
  */
 import { hasClips, isClipsEnabled, playClipsResumable, stopClips } from './clips';
+import { chimePeak, utteranceVolume } from './volume';
+import { getSharedAudioContext, _resetSharedAudioContextForTest } from './audioContext';
+// Re-exported: existing specs import this reset helper from speech.ts.
+export { _resetSharedAudioContextForTest };
 import { initMediaSession, setNowPlaying, setPlaybackState } from './mediaSession';
 
 declare global {
@@ -216,7 +220,10 @@ export interface SpeechOpts {
  */
 function applyVolume(utterance: SpeechSynthesisUtterance, opts?: SpeechOpts): void {
   if (opts?.volume !== undefined) {
-    utterance.volume = opts.volume;
+    // Above 1 the spec clamps silently, so this changes no behaviour -- it
+    // states the ceiling in the one place someone would look for it. Live
+    // speechSynthesis genuinely cannot be amplified; only the clips path can.
+    utterance.volume = utteranceVolume(opts.volume);
   }
 }
 
@@ -507,47 +514,6 @@ export function speakAsync(
   return speakAsyncLive(text, opts);
 }
 
-type AudioContextCtor = new () => AudioContext;
-
-let sharedAudioContext: AudioContext | null = null;
-
-function getAudioContextCtor(): AudioContextCtor | undefined {
-  if (!hasWindow()) return undefined;
-  const w = window as unknown as {
-    AudioContext?: AudioContextCtor;
-    webkitAudioContext?: AudioContextCtor;
-  };
-  return w.AudioContext ?? w.webkitAudioContext;
-}
-
-/**
- * Test-only drop of the cached context.
- *
- * `sharedAudioContext` is memoized for the page's lifetime (constructing an
- * AudioContext per chime is both wasteful and, on iOS, subject to the
- * user-gesture unlock rules). That cache outlives a single test: a spec that
- * swaps in a fresh fake `window.AudioContext` would otherwise keep chiming
- * into the PREVIOUS test's fake and silently assert nothing.
- */
-export function _resetSharedAudioContextForTest(): void {
-  sharedAudioContext = null;
-}
-
-function getSharedAudioContext(): AudioContext | null {
-  if (sharedAudioContext) return sharedAudioContext;
-  const Ctor = getAudioContextCtor();
-  if (!Ctor) return null;
-  try {
-    sharedAudioContext = new Ctor();
-    return sharedAudioContext;
-  } catch {
-    return null;
-  }
-}
-
-/** Full-volume peak of the chime's gain envelope, scaled by `opts.volume`. */
-const CHIME_PEAK_GAIN = 0.3;
-
 const CHIME_FREQUENCY_HZ: Record<'good' | 'bad' | 'attention', number> = {
   good: 880,
   bad: 220,
@@ -579,7 +545,7 @@ export function chime(kind: 'good' | 'bad' | 'attention', opts?: { volume?: numb
     // down turns ALL of it down. Scaling the envelope peak (rather than
     // routing through another GainNode) keeps the attack/release shape
     // identical at every volume. Absent opts, the historical 0.3 stands.
-    const peak = CHIME_PEAK_GAIN * (opts?.volume ?? 1);
+    const peak = chimePeak(opts?.volume ?? 1);
     gain.gain.setValueAtTime(0, now);
     gain.gain.linearRampToValueAtTime(peak, now + 0.02);
     gain.gain.linearRampToValueAtTime(0, now + duration);

@@ -30,6 +30,9 @@
  * hearts" entry.
  */
 
+import { elementVolume, gainFactor, needsAmplification } from './volume';
+import { getSharedAudioContext, resumeSharedAudioContext } from './audioContext';
+
 function hasWindow(): boolean {
   return typeof window !== 'undefined';
 }
@@ -391,6 +394,38 @@ const CLIP_WATCHDOG_PER_CLIP_MS = 8000;
  * throws/rejects.
  */
 /**
+ * Route a clip through a GainNode so it can play LOUDER than unity.
+ *
+ * `HTMLMediaElement.volume` throws IndexSizeError above 1, so the only way
+ * past 100% is Web Audio. The catch is that once an element is connected to
+ * a MediaElementSource its audio flows ONLY through the graph -- so if the
+ * context is suspended the clip is SILENT rather than quiet, which in a car
+ * is the worst failure this app has.
+ *
+ * Two things keep that safe. This is called only when the user has actually
+ * asked for more than 100% (see `needsAmplification`), so ordinary playback
+ * never touches Web Audio at all; and any failure returns false, leaving the
+ * caller on the plain element path at full-but-unamplified volume.
+ */
+function amplify(audio: HTMLAudioElement, volume: number): boolean {
+  try {
+    const ctx = getSharedAudioContext();
+    if (!ctx || typeof ctx.createMediaElementSource !== 'function') return false;
+    resumeSharedAudioContext();
+    const source = ctx.createMediaElementSource(audio);
+    const gain = ctx.createGain();
+    gain.gain.value = gainFactor(volume);
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    return true;
+  } catch {
+    // createMediaElementSource throws if the element was already routed, and
+    // the graph is unavailable in some privacy modes. Fall back quietly.
+    return false;
+  }
+}
+
+/**
  * What a clip chain left unsaid.
  *
  * `played: false` with a `remainder` means some clips DID play before the
@@ -493,7 +528,13 @@ export function playClipsResumable(
             audio.src = `${base}clips/${voiceId}/${fileList[index]!.file}`;
             audio.preservesPitch = true;
             audio.playbackRate = rate;
-            if (volume !== undefined) audio.volume = volume;
+            // Never hand the element more than 1: the setter THROWS above
+            // that, and a throw here would kill the whole utterance. Anything
+            // above unity is carried by a GainNode instead.
+            if (volume !== undefined) {
+              audio.volume = elementVolume(volume);
+              if (needsAmplification(volume)) amplify(audio, volume);
+            }
             chain.audio = audio;
             armWatchdog();
 

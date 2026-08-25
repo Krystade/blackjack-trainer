@@ -6,6 +6,7 @@ import { saveSettings } from '../../store/persist';
 import { chime, isSpeechSupported, listVoices, speak } from '../../audio';
 import { setClipsEnabled, setClipVoice, loadClipIndex, type ClipVoiceInfo } from '../../audio/clips';
 import { readLog, clearLog, formatLog } from '../../audio/mediaSessionLog';
+import { MAX_VOLUME } from '../../audio/volume';
 import type { LogEntry } from '../../audio/mediaSessionLog';
 
 interface SettingsProps {
@@ -384,12 +385,18 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           label="Volume"
           value={settings.audio.volume}
           min={0}
-          max={1}
+          max={MAX_VOLUME}
           step={0.05}
           format={(v) => `${Math.round(v * 100)}%`}
           onChange={(v) => updateAudio({ volume: v })}
           disabled={audioDisabled}
         />
+        {settings.audio.volume > 1 && !settings.audio.useClips && (
+          <div className="settings-note-row u-note">
+            Above 100% only applies to the recorded voice. Live speech is capped at 100% by
+            the browser and cannot be amplified — turn on the recorded voice to use the boost.
+          </div>
+        )}
         <div className="settings-row">
           <span className="settings-label">Voice</span>
           {speechSupported ? (

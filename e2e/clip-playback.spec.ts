@@ -214,3 +214,106 @@ test('clip playback at rate=2.0 still fetches clips and completes cleanly', asyn
   );
   expect(harness.pageErrors, `expected zero page errors, got ${JSON.stringify(harness.pageErrors)}`).toEqual([]);
 });
+
+/* ------------------------------------------------------------------------ */
+/* Volume boost: the >100% path actually routes, and the normal path doesn't */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Instrument the two things that matter about amplification.
+ *
+ * `HTMLMediaElement.volume` THROWS IndexSizeError above 1, so every value
+ * handed to the element is recorded -- a regression there does not look like
+ * a wrong loudness, it looks like an exception that kills the utterance.
+ * `createMediaElementSource` calls are counted because routing through Web
+ * Audio is the risky path: once an element is in the graph, a suspended
+ * context makes it SILENT rather than quiet.
+ */
+async function instrumentAudioRouting(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __mesCalls: number; __elVolumes: number[]; __gains: number[] };
+    w.__mesCalls = 0;
+    w.__elVolumes = [];
+    w.__gains = [];
+
+    const proto = HTMLMediaElement.prototype as unknown as object;
+    const desc = Object.getOwnPropertyDescriptor(proto, 'volume')!;
+    Object.defineProperty(proto, 'volume', {
+      ...desc,
+      set(this: HTMLMediaElement, v: number) {
+        w.__elVolumes.push(v);
+        desc.set!.call(this, v);
+      },
+    });
+
+    const Ctx = (window as unknown as { AudioContext: typeof AudioContext }).AudioContext;
+    const origMes = Ctx.prototype.createMediaElementSource;
+    Ctx.prototype.createMediaElementSource = function (el: HTMLMediaElement) {
+      w.__mesCalls += 1;
+      return origMes.call(this, el);
+    };
+    const origGain = Ctx.prototype.createGain;
+    Ctx.prototype.createGain = function () {
+      const g = origGain.call(this);
+      const d = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(g.gain), 'value')!;
+      Object.defineProperty(g.gain, 'value', {
+        configurable: true,
+        get() { return d.get!.call(this); },
+        set(v: number) { w.__gains.push(v); d.set!.call(this, v); },
+      });
+      return g;
+    };
+  });
+}
+
+test('volume 200%: clips route through a gain node, and the element stays at 1', async ({ page }) => {
+  test.setTimeout(30_000);
+  await instrumentAudioRouting(page);
+  await seedClipDrillSettings(page, { volume: 2 });
+  await withProfile(page, { name: 'Clip Volume E2E Profile' });
+  const harness = attachClipHarness(page);
+
+  await warmSettingsForClipIndex(page);
+  await startEyesFreeCountDrill(page);
+  await expect(page.locator('.drill-result')).toBeVisible({ timeout: 20_000 });
+
+  const seen = await page.evaluate(() => ({
+    mes: (window as unknown as { __mesCalls: number }).__mesCalls,
+    elVolumes: (window as unknown as { __elVolumes: number[] }).__elVolumes,
+    gains: (window as unknown as { __gains: number[] }).__gains,
+  }));
+
+  // The boost is actually engaged...
+  expect(seen.mes, 'expected clips to be routed through Web Audio at 200%').toBeGreaterThan(0);
+  expect(seen.gains, 'expected a gain of 2 to be applied').toContain(2);
+  // ...and the element was never given a value that would throw.
+  expect(Math.max(...seen.elVolumes)).toBeLessThanOrEqual(1);
+  expect(harness.pageErrors).toEqual([]);
+});
+
+/**
+ * The safety property, and the reason the boost is opt-in rather than always
+ * on: at normal volumes nothing may touch Web Audio at all, so ordinary
+ * playback cannot be silenced by a suspended context.
+ */
+test('volume 100%: clips never touch Web Audio', async ({ page }) => {
+  test.setTimeout(30_000);
+  await instrumentAudioRouting(page);
+  await seedClipDrillSettings(page, { volume: 1 });
+  await withProfile(page, { name: 'Clip Volume E2E Profile' });
+  const harness = attachClipHarness(page);
+
+  await warmSettingsForClipIndex(page);
+  await startEyesFreeCountDrill(page);
+  await expect(page.locator('.drill-result')).toBeVisible({ timeout: 20_000 });
+
+  const seen = await page.evaluate(() => ({
+    mes: (window as unknown as { __mesCalls: number }).__mesCalls,
+    elVolumes: (window as unknown as { __elVolumes: number[] }).__elVolumes,
+  }));
+
+  expect(seen.mes, 'ordinary playback must not be routed through Web Audio').toBe(0);
+  // Proof this test could have failed: clips really did play.
+  expect(seen.elVolumes.length).toBeGreaterThan(0);
+  expect(harness.pageErrors).toEqual([]);
+});

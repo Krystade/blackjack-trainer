@@ -96,7 +96,9 @@ export interface AudioSettings {
   enabled: boolean;
   verbosity: 'off' | 'results' | 'full';
   rate: number; // 0.5 .. 3.0 -- applied to both live speechSynthesis and clip playbackRate
-  // Speaking volume, 0..1, applied to live speechSynthesis, clip playback AND
+  // Speaking volume, 0..2 (see audio/volume.ts for why the ceiling is 2 and
+  // which paths can actually reach above 1), applied to live speechSynthesis,
+  // clip playback AND
   // the chime tone, so one control takes the whole app up or down. Separate
   // from the device volume on purpose: eyes-free practice in a car competes
   // with road noise and music, and the phone's own volume is usually already
