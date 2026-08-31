@@ -52,8 +52,12 @@ export function StudyChartOverlay({
         highlight={highlight}
         // Back closes the overlay instead of routing Home; `onNavigate` is
         // never reached, but the prop is required by the screen's contract.
+        // The label has to say so: this button returns to the hand you were
+        // just corrected on, and calling it "Back to Home" described a
+        // destination it never went to.
         onBack={onClose}
         onNavigate={onClose}
+        backLabel="the hand"
       />
     </div>
   );

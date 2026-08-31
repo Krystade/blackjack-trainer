@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { shot, withSettings, withProfile, resolveInsurance, playRoundByAdvice } from './helpers';
+import { shot, withSettings, withProfile, resolveInsurance, playRoundByAdvice, answerSelfReportIfPresent } from './helpers';
 
 /**
  * Cycle-3 Task 10: `window.__speechLog` e2e coverage for the audio system.
@@ -204,6 +204,7 @@ test('eyes-free count drill: cards, then the count prompt, then the spoken answe
     await tapZone.click();
   }
 
+  await answerSelfReportIfPresent(page);
   await expect(page.locator('.drill-result')).toBeVisible({ timeout: 10_000 });
 
   const log = await readSpeechLog(page);
@@ -248,6 +249,7 @@ test('eyes-free AUTO count drill: every card is spoken before the count prompt, 
   // its own, driven by `await speakAsync(...)` inside CountDrillView's
   // effect. If the fix regressed (fixed timer racing ahead of speech, or
   // the loop stalling on a bad await), this would time out.
+  await answerSelfReportIfPresent(page);
   await expect(page.locator('.drill-result')).toBeVisible({ timeout: 15_000 });
 
   const log = await readSpeechLog(page);
@@ -297,6 +299,7 @@ test("cardDetail 'face': ten-value cards are spoken as \"ten\", never king/queen
   await page.getByLabel('Eyes-free audio').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
+  await answerSelfReportIfPresent(page);
   await expect(page.locator('.drill-result')).toBeVisible({ timeout: 15_000 });
 
   const log = await readSpeechLog(page);

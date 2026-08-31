@@ -156,3 +156,22 @@ export async function playRoundByAdvice(page: Page): Promise<void> {
 export async function statsTab(page: Page, tab: 'Play' | 'Drills' | 'Progress'): Promise<void> {
   await page.locator('.stats-tabs').getByRole('tab', { name: tab, exact: true }).click();
 }
+
+/**
+ * The eyes-free count drill now ENDS with a question.
+ *
+ * It used to speak the answer and jump straight to a result that recorded
+ * nothing -- so the one mode built for the car never told you whether you
+ * were right. It now asks "Did you have it?" and takes a two-zone tap, which
+ * sits between the spoken answer and `.drill-result`.
+ *
+ * Specs that drive an eyes-free run to completion therefore have to answer
+ * it. Reporting a hit is arbitrary but harmless: these specs assert on
+ * speech and playback, not on the verdict.
+ */
+export async function answerSelfReportIfPresent(page: Page): Promise<void> {
+  const yes = page.getByRole('button', { name: 'I had it' });
+  await yes.click({ timeout: 20_000 }).catch(() => {
+    /* Not an eyes-free run, or it ended some other way. */
+  });
+}

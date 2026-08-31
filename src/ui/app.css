@@ -2994,3 +2994,43 @@ button {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Eyes-free self-report (count drill). Two zones splitting the available
+   area so either verdict can be hit without looking -- same reasoning as the
+   ZonePad, and why these are not ordinary buttons in a row. */
+.selfreport-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  min-height: 0;
+}
+
+.selfreport-question {
+  text-align: center;
+  font-size: 1rem;
+  color: var(--ink-dim);
+}
+
+.selfreport-zone {
+  flex: 1;
+  min-height: 96px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.selfreport-yes {
+  background: color-mix(in oklab, var(--good) 22%, var(--surface));
+  border-color: var(--good);
+}
+
+.selfreport-no {
+  background: color-mix(in oklab, var(--bad) 22%, var(--surface));
+  border-color: var(--bad);
+}

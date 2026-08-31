@@ -205,3 +205,50 @@ body:has(.tab-bar) .report-screen,
 body:has(.tab-bar) .profiles-screen {
   padding-bottom: calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + var(--space-4));
 }
+
+/* ---------- Safe areas (notch / status bar / home indicator) ---------- */
+
+/*
+ * The PWA work set `viewport-fit=cover` and an `black-translucent` iOS status
+ * bar, which is what makes `env(safe-area-inset-*)` report real values -- and
+ * which also means the web view now extends UNDER the status bar. Nothing
+ * reserved that space, so on an installed iPhone every screen's top bar ran
+ * beneath the clock: the operator's screenshot shows "Back to Home" with the
+ * time printed straight through it.
+ *
+ * Read once into a variable rather than calling env() at each site, for two
+ * reasons: the fallback lives in exactly one place, and a test can override
+ * `--safe-top` to a real inset and assert content actually moves. env()
+ * itself cannot be simulated from a test, so a rule written directly against
+ * it could only ever be eyeballed.
+ */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/*
+ * Every full-screen root reserves the top inset. These all set their own
+ * `min-height: 100svh`, and `box-sizing: border-box` is global, so the
+ * padding comes out of that height instead of overflowing it.
+ */
+.home-screen,
+.table-screen,
+.drill-screen,
+.report-screen,
+.settings-screen,
+.profile-editor-screen,
+.placeholder-screen,
+.charts-screen {
+  padding-top: var(--safe-top);
+}
+
+/*
+ * Full-viewport overlays are pinned with `inset: 0`, so they sit under the
+ * status bar for the same reason and need the same reservation.
+ */
+.study-chart-overlay,
+.zone-pad,
+.modal-backdrop {
+  padding-top: var(--safe-top);
+}

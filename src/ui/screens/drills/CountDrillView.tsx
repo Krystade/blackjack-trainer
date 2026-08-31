@@ -75,7 +75,17 @@ const TIER_LABEL: Record<SpeedTier, string> = {
 // answered the stream resumes exactly where it paused. Standard count-drill
 // flashing only (auto/eyes-free/manual); never entered for countdownMode or
 // timedChallenge (see isDistractionPoint call sites below).
-type CountPhase = 'setup' | 'flashing' | 'answering' | 'selfcheck' | 'distraction' | 'result';
+type CountPhase =
+  | 'setup'
+  | 'flashing'
+  | 'answering'
+  | 'selfcheck'
+  // Eyes-free: the answer has been spoken and the drill is asking whether you
+  // had it. Exists so the driving path can produce a VERDICT and a recorded
+  // result -- previously it produced neither.
+  | 'selfreport'
+  | 'distraction'
+  | 'result';
 
 export function CountDrillView({
   settings,
@@ -219,10 +229,26 @@ export function CountDrillView({
   // the cycle-3 plan's Global Constraints: grading/stats stay exactly as
   // they were before this task for every OTHER path; this path simply never
   // had a graded entry to begin with.
+  /**
+   * The answer has just been spoken. Ask whether the operator had it.
+   *
+   * This used to jump straight to a result that said "self-check, no grade
+   * recorded" -- so eyes-free drilling, i.e. the whole point of the app in a
+   * car, gave no verdict and wrote nothing to Stats. Strict mode did grade,
+   * but only via keypad entry, which is exactly what you cannot do while
+   * driving. A spoken question plus a two-zone tap closes that gap without
+   * asking anyone to look at the screen or type.
+   */
   const finishSelfCheck = (actual: number) => {
     setActualValue(actual);
     setHonorCheck(true);
-    setPhase('result');
+    setPhase('selfreport');
+  };
+
+  /** The eyes-free verdict: recorded exactly like a keypad run. */
+  const handleSelfReport = (correct: boolean) => {
+    speak(correct ? 'Correct.' : 'Wrong.', speechOptsFrom(settings.audio, { interrupt: true }));
+    finishRun(correct, actualValue, actualValue);
   };
 
   const updateDrill = (patch: Partial<Settings['drill']>) => {
@@ -531,6 +557,7 @@ export function CountDrillView({
     const t = setTimeout(() => {
       if (runIdRef.current !== runId || !drillRound) return;
       speak(narrateCountAnswer(drillRound.finalRc), speechOptsFrom(settings.audio));
+      speak('Did you have it?', speechOptsFrom(settings.audio));
       finishSelfCheck(drillRound.finalRc);
     }, settings.audio.answerPauseMs);
     return () => clearTimeout(t);
@@ -1135,6 +1162,31 @@ export function CountDrillView({
         </div>
       )}
 
+      {/*
+        Eyes-free verdict. Two zones splitting the whole area so either can be
+        hit without looking -- the same reasoning as the ZonePad, and the
+        reason this is not a pair of ordinary buttons.
+      */}
+      {phase === 'selfreport' && (
+        <div className="selfreport-area">
+          <div className="selfreport-question">The count was {actualValue}. Did you have it?</div>
+          <button
+            type="button"
+            className="selfreport-zone selfreport-yes"
+            onClick={() => handleSelfReport(true)}
+          >
+            I had it
+          </button>
+          <button
+            type="button"
+            className="selfreport-zone selfreport-no"
+            onClick={() => handleSelfReport(false)}
+          >
+            I missed it
+          </button>
+        </div>
+      )}
+
       {phase === 'distraction' && distraction && (
         <div className="distraction-area">
           <div className="distraction-label">Quick -- what&apos;s this?</div>
@@ -1166,9 +1218,11 @@ export function CountDrillView({
 
       {phase === 'result' && honorCheck && (
         <div className="drill-result">
-          <div className="result-correct">Count announced</div>
+          <div className={wasCorrect ? 'result-correct' : 'result-wrong'}>
+            {wasCorrect ? 'Correct!' : 'Wrong'}
+          </div>
           <div className="result-detail">
-            The count was {actualValue} &mdash; self-check, no grade recorded
+            The count was {actualValue} &mdash; self-reported, and recorded
           </div>
           <button type="button" className="drill-replay-btn" onClick={start}>
             Replay

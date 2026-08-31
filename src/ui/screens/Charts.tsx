@@ -85,9 +85,11 @@ interface ChartsProps {
    * on the hand they got wrong.
    */
   onBack?: () => void;
+  /** Names the return target, e.g. "the Table". Defaults to Home. */
+  backLabel?: string;
 }
 
-export function Charts({ onNavigate, activeProfile, highlight, onBack }: ChartsProps) {
+export function Charts({ onNavigate, activeProfile, highlight, onBack, backLabel }: ChartsProps) {
   const [order, setOrder] = useState<RowOrder>(() => {
     if (typeof window === 'undefined') return 'descending';
     try {
@@ -159,8 +161,11 @@ export function Charts({ onNavigate, activeProfile, highlight, onBack }: ChartsP
   return (
     <div className="charts-screen">
       <div className="charts-topbar">
+        {/* Named after where you actually came from: Charts is reachable at
+            any moment, and a hardcoded "Back to Home" threw away whatever
+            drill or table you left to go and check a cell. */}
         <button type="button" className="charts-back-btn" onClick={() => (onBack ? onBack() : onNavigate('home'))}>
-          Back to Home
+          Back to {backLabel ?? 'Home'}
         </button>
         <div className="charts-heading">Strategy Charts</div>
       </div>

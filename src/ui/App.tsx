@@ -17,6 +17,17 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 export type Screen = 'home' | 'table' | 'drills' | 'stats' | 'settings' | 'profiles' | 'charts';
 
+/** Human names for the "Back to ..." affordance. */
+const SCREEN_LABEL: Record<Screen, string> = {
+  home: 'Home',
+  table: 'the Table',
+  drills: 'Drills',
+  stats: 'Stats',
+  settings: 'Settings',
+  profiles: 'Profiles',
+  charts: 'Charts',
+};
+
 /**
  * A deliberate render throw, reachable ONLY by adding `?crash=1` to the URL.
  *
@@ -32,6 +43,13 @@ function CrashOnDemand(): never {
 
 function App() {
   const [screen, setScreen] = useState<Screen>('home');
+  /**
+   * Where a Charts visit came FROM, so reviewing a chart mid-session can hand
+   * you back to what you were doing. Charts is reachable from the tab bar at
+   * any moment, and it used to offer only "Back to Home" -- which threw away
+   * whatever drill or table you had open to go and check a cell.
+   */
+  const [chartsReturn, setChartsReturn] = useState<Screen>('home');
   const [settings, setSettings] = useState<SettingsData>(() => loadSettings());
   const [activeProfile, setActiveProfileState] = useState<Profile>(() => getActiveProfile());
 
@@ -64,6 +82,9 @@ function App() {
     if (screen === 'profiles' && next !== 'profiles') {
       setActiveProfileState(getActiveProfile());
     }
+    // Remember the origin of a Charts visit, but never Charts itself -- a
+    // second tap on the Charts tab must not make "back" a no-op loop.
+    if (next === 'charts' && screen !== 'charts') setChartsReturn(screen);
     setScreen(next);
   };
 
@@ -120,7 +141,14 @@ function App() {
         // Table it needs no remount key -- there is no long-lived Game instance
         // here to go stale, and `activeProfile` is already refreshed by
         // navigate() on the way out of the profiles screen.
-        return <Charts onNavigate={navigate} activeProfile={activeProfile} />;
+        return (
+          <Charts
+            onNavigate={navigate}
+            activeProfile={activeProfile}
+            onBack={() => navigate(chartsReturn)}
+            backLabel={SCREEN_LABEL[chartsReturn]}
+          />
+        );
     }
   })();
 

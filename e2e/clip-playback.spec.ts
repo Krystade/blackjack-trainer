@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Response as PWResponse } from '@playwright/test';
-import { withSettings, withProfile } from './helpers';
+import { withSettings, withProfile, answerSelfReportIfPresent } from './helpers';
 
 /**
  * T0 gap 1 (the headline gap, docs/research/2026-07-26-test-coverage-matrix.md
@@ -130,6 +130,7 @@ test('clip playback (no ?e2e=1): eyes-free count drill fetches real clips and co
   // The no-hang guarantee: if a clip promise never resolves, the eyes-free
   // auto loop (CountDrillView's speech-driven effect) stalls forever and
   // this times out.
+  await answerSelfReportIfPresent(page);
   await expect(page.locator('.drill-result')).toBeVisible({ timeout: 20_000 });
 
   const distinctMp3Urls = new Set(harness.mp3Responses.map((r) => r.url()));
@@ -172,6 +173,7 @@ test('clip playback fallback: a bogus clip voice still completes the drill via l
   await page.goto('/');
   await startEyesFreeCountDrill(page);
 
+  await answerSelfReportIfPresent(page);
   await expect(page.locator('.drill-result')).toBeVisible({ timeout: 20_000 });
 
   expect(
@@ -198,6 +200,7 @@ test('clip playback at rate=2.0 still fetches clips and completes cleanly', asyn
   await warmSettingsForClipIndex(page);
   await startEyesFreeCountDrill(page);
 
+  await answerSelfReportIfPresent(page);
   await expect(page.locator('.drill-result')).toBeVisible({ timeout: 20_000 });
 
   const distinctMp3Urls = new Set(harness.mp3Responses.map((r) => r.url()));
@@ -275,6 +278,7 @@ test('volume 200%: clips route through a gain node, and the element stays at 1',
 
   await warmSettingsForClipIndex(page);
   await startEyesFreeCountDrill(page);
+  await answerSelfReportIfPresent(page);
   await expect(page.locator('.drill-result')).toBeVisible({ timeout: 20_000 });
 
   const seen = await page.evaluate(() => ({
@@ -305,6 +309,7 @@ test('volume 100%: clips never touch Web Audio', async ({ page }) => {
 
   await warmSettingsForClipIndex(page);
   await startEyesFreeCountDrill(page);
+  await answerSelfReportIfPresent(page);
   await expect(page.locator('.drill-result')).toBeVisible({ timeout: 20_000 });
 
   const seen = await page.evaluate(() => ({
