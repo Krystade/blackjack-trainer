@@ -1,6 +1,6 @@
 import type { SpreadRow, SeatConfig } from '../engine/game';
 import { DEFAULT_SPREAD } from '../engine/game';
-import type { Category, MistakeClass } from '../engine/grade';
+import type { EventSource, Category, MistakeClass } from '../engine/grade';
 import type { DeviationId } from '../engine/deviations';
 import type { RuleSet } from '../engine/ruleset';
 import type { SpeedTier } from '../drills/countSpeed';
@@ -216,6 +216,14 @@ export interface Stats {
   version: 1;
   categories: Record<Category, TallyRW>;
   perIndex: Partial<Record<DeviationId, TallyRW>>;
+  /**
+   * The same tallies as `categories`, split by where the decision came from.
+   *
+   * OPTIONAL: blobs written before this existed simply lack it, and both the
+   * reader and the writer must cope rather than migrate eagerly. `categories`
+   * stays the pooled total so the existing sections are untouched.
+   */
+  bySource?: Partial<Record<EventSource, Record<Category, TallyRW>>>;
   mistakes: Record<MistakeClass, number>;
   countDrill: {
     history: { date: string; cards: number; intervalMs: number; correct: boolean }[];

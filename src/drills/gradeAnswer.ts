@@ -128,6 +128,7 @@ export function buildFlashcardEvent(
 
   const event: GradedEvent = {
     kind: 'action',
+    source: 'flashcard',
     category: cellCategory(card.cellId, card.correct),
     correct,
     classification,
@@ -158,6 +159,7 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet, el
     const { classification, correct } = classifyInsurance(take, item.tc, rules);
     return {
       kind: 'insurance',
+      source: 'quiz',
       category: 'insurance',
       correct,
       classification,
@@ -180,6 +182,7 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet, el
 
   return {
     kind: 'action',
+    source: 'quiz',
     category: actionCategory(item.cards, item.correct as Action),
     correct,
     classification,

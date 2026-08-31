@@ -9,6 +9,14 @@ import type { RuleSet } from './ruleset';
 
 export type MistakeClass = 'correct' | 'basic-error' | 'missed-deviation' | 'phantom-deviation' | 'wrong-anyway';
 export type EventKind = 'action' | 'insurance' | 'bet' | 'countCheck' | 'wong';
+
+/**
+ * WHERE a graded decision came from, as opposed to what kind of decision it
+ * was (`EventKind`). Both flashcards and live table play produce
+ * `kind: 'action'`, so kind cannot answer "how am I doing at flashcards" --
+ * which is why nothing in Stats could.
+ */
+export type EventSource = 'table' | 'flashcard' | 'quiz';
 export type Category = 'hard' | 'soft' | 'pairs' | 'surrender' | 'insurance' | 'bet' | 'countCheck' | 'wong';
 
 export interface GradedEvent {
@@ -30,6 +38,13 @@ export interface GradedEvent {
   // `performance.now()` (never `Date.now()`, never inside this pure engine
   // module) -- see Drills.tsx's gradeFlashcardAnswer/gradeQuizAnswer.
   elapsedMs?: number;
+  /**
+   * OPTIONAL and purely additive, exactly like `elapsedMs` above: producers
+   * that predate it omit it, and consumers must treat a missing value as
+   * "unattributed" rather than guessing a source. Splits the per-source
+   * tallies without disturbing the pooled `categories` view.
+   */
+  source?: EventSource;
 }
 
 /**

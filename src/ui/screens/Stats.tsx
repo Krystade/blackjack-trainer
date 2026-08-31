@@ -105,6 +105,7 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Illustrious 18': 'play',
   'Mistake types': 'play',
   'Bet / sit / leave': 'play',
+  'Flashcards': 'drills',
   'Count drill': 'drills',
   'Timed count challenge': 'drills',
   'Distraction': 'drills',
@@ -409,6 +410,63 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
             );
           })}
         </div>
+      </section>
+
+      {/*
+        Flashcards had NO section at all, and worse, no way to have one: every
+        graded decision -- flashcards, deviation quiz and live table play --
+        was pooled into `stats.categories`, so a 70% on "soft" could not be
+        attributed to any of them. `bySource` splits the tally; this reads the
+        flashcard slice only.
+
+        `bySource` is optional (blobs written before it exists lack it), so an
+        absent branch renders the empty state rather than throwing.
+      */}
+      <section className="stats-section" data-tab={SECTION_TAB['Flashcards']}>
+        <h2 className="stats-section-title">Flashcards</h2>
+        {(() => {
+          const bucket = stats.bySource?.flashcard;
+          const rows = CATEGORY_ORDER.map((cat) => ({ cat, tally: bucket?.[cat] ?? { right: 0, wrong: 0 } }))
+            .filter((r) => r.tally.right + r.tally.wrong > 0);
+          const answered = rows.reduce((n, r) => n + r.tally.right + r.tally.wrong, 0);
+          const right = rows.reduce((n, r) => n + r.tally.right, 0);
+
+          if (answered === 0) {
+            return (
+              <p className="stats-detail">No flashcards answered yet.</p>
+            );
+          }
+
+          return (
+            <>
+              <div className="stats-headline">
+                <span className="stats-headline-value">{pct(right, answered)}</span>
+                <span className="stats-headline-label">
+                  {right}/{answered} correct
+                </span>
+              </div>
+              <div className="category-list">
+                {rows.map(({ cat, tally }) => {
+                  const total = tally.right + tally.wrong;
+                  const pctNum = (tally.right / total) * 100;
+                  return (
+                    <div className="category-row" key={cat}>
+                      <div className="category-row-top">
+                        <span className="category-label">{CATEGORY_LABELS[cat]}</span>
+                        <span className="category-fraction">
+                          {tally.right}/{total} ({pct(tally.right, total)})
+                        </span>
+                      </div>
+                      <div className="category-bar-track">
+                        <div className="category-bar-fill" style={{ width: `${pctNum}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          );
+        })()}
       </section>
 
       <section className="stats-section" data-tab={SECTION_TAB['Illustrious 18']}>

@@ -3034,3 +3034,24 @@ button {
   background: color-mix(in oklab, var(--bad) 22%, var(--surface));
   border-color: var(--bad);
 }
+
+/* Headline figure for a stats section (Flashcards): the one number worth
+   reading before any breakdown. */
+.stats-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.stats-headline-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-headline-label {
+  font-size: 0.85rem;
+  color: var(--ink-dim);
+}

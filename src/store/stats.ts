@@ -1,5 +1,5 @@
-import type { GradedEvent } from '../engine/grade';
-import type { Stats } from './types';
+import type { Category, GradedEvent } from '../engine/grade';
+import type { Stats, TallyRW } from './types';
 
 /**
  * Apply graded events to stats, returning a new Stats object (pure function).
@@ -34,6 +34,7 @@ export function applyEvents(stats: Stats, events: GradedEvent[]): Stats {
   // them; an untimed, non-deviation event should touch neither.
   let perIndexCopied = false;
   let latencyCopied = false;
+  let bySourceCopied = false;
 
   for (const event of events) {
     // Update category tallies. The tally object itself is copied, not
@@ -61,6 +62,30 @@ export function applyEvents(stats: Stats, events: GradedEvent[]): Stats {
         deviationTally.wrong += 1;
       }
       result.perIndex[deviationId] = deviationTally;
+    }
+
+    // Per-source split, so "how am I doing at flashcards" is answerable at
+    // all. `categories` above stays the POOLED total -- the existing sections
+    // read it and must keep counting everything. An event with no source is
+    // left unattributed rather than guessed at: every producer predating this
+    // field omits it, and inventing a source would quietly fabricate history.
+    if (event.source) {
+      if (!bySourceCopied) {
+        result.bySource = { ...stats.bySource };
+        bySourceCopied = true;
+      }
+      const existing = result.bySource![event.source];
+      // A blob written before this field existed has no branch to copy.
+      const bucket: Record<Category, TallyRW> = existing
+        ? { ...existing }
+        : (Object.fromEntries(
+            Object.keys(stats.categories).map((k) => [k, { right: 0, wrong: 0 }]),
+          ) as Record<Category, TallyRW>);
+      const tally = { ...bucket[event.category] };
+      if (event.correct) tally.right += 1;
+      else tally.wrong += 1;
+      bucket[event.category] = tally;
+      result.bySource![event.source] = bucket;
     }
 
     // Update mistakes tally by classification

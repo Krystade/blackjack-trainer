@@ -370,6 +370,7 @@ export class Game {
       for (const bet of betArray) {
         const correct = bet === expectedUnits;
         this.events.push({
+          source: 'table',
           kind: 'bet',
           category: 'bet',
           correct,
@@ -449,6 +450,7 @@ export class Game {
     if (this.cfg.betSpreadOn) {
       const correct = this.sitOutIsCorrect(preDealTc);
       this.events.push({
+        source: 'table',
         kind: 'wong',
         category: 'wong',
         correct,
@@ -510,6 +512,7 @@ export class Game {
     // changes how much the insurance side bet itself is worth.
     const bet = this.hands.reduce((sum, h) => sum + h.bet, 0);
     this.events.push({
+      source: 'table',
       kind: 'insurance',
       category: 'insurance',
       correct,
@@ -568,6 +571,7 @@ export class Game {
     const category = actionCategory(hand.cards, withCount.action);
 
     this.events.push({
+      source: 'table',
       kind: 'action',
       category,
       correct,
@@ -618,6 +622,7 @@ export class Game {
     const rcCorrect = rc === actualRc;
     const tc = this.trueCountNow;
     this.events.push({
+      source: 'table',
       kind: 'countCheck',
       category: 'countCheck',
       correct: rcCorrect,
@@ -634,6 +639,7 @@ export class Game {
       actualTc = tc;
       tcCorrect = tcGuess === actualTc;
       this.events.push({
+        source: 'table',
         kind: 'countCheck',
         category: 'countCheck',
         correct: tcCorrect,
