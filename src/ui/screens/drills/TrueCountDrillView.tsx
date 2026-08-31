@@ -283,6 +283,10 @@ export function TrueCountDrillView({
       {phase === 'result' && honorCheck && question && (
         <div className="drill-result">
           <div className="result-correct">True count announced</div>
+          <div className="result-question">
+            Running count {formatSigned(question.runningCount)} &middot;{' '}
+            {question.decksRemaining} {question.decksRemaining === 1 ? 'deck' : 'decks'} remaining
+          </div>
           <div className="result-detail">
             The true count was {formatSigned(question.correctTc)} &mdash; self-check, no grade recorded
           </div>
@@ -299,6 +303,10 @@ export function TrueCountDrillView({
         <div className="drill-result">
           <div className={wasCorrect ? 'result-correct' : 'result-wrong'}>
             {wasCorrect ? 'Correct!' : 'Wrong'}
+          </div>
+          <div className="result-question">
+            Running count {formatSigned(question.runningCount)} &middot;{' '}
+            {question.decksRemaining} {question.decksRemaining === 1 ? 'deck' : 'decks'} remaining
           </div>
           <div className="result-detail">
             You entered {formatSigned(enteredValue)}, actual was {formatSigned(question.correctTc)}

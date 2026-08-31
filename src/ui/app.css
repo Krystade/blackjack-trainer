@@ -3055,3 +3055,13 @@ button {
   font-size: 0.85rem;
   color: var(--ink-dim);
 }
+
+/* The question restated on a drill result. Without it a result is
+   unreviewable: "you entered +4, actual was +3" cannot tell you whether you
+   misread the depth, the running count, or the division. */
+.result-question {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.9rem;
+  color: var(--accent);
+  margin-bottom: 0.25rem;
+}
