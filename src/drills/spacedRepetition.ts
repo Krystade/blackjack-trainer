@@ -13,10 +13,15 @@
  * so tests pass an injected/advancing clock and the scheduling math is fully
  * reproducible.
  *
- * STAGE 1 of the staged delivery: this pure module + its tests only. The grade-
- * path/draw-path/persistence/Stats wiring (which includes the schema-migration
- * open question) is deliberately NOT wired here — it awaits operator review of
- * the spec.
+ * SHIPPED (RV4, all 6 stages, 2026-07-30 — see the spec doc's own status
+ * line). The grade path (src/drills/gradeAnswer.ts), the draw path
+ * (src/drills/flashcards.ts, src/drills/deviationQuiz.ts), persistence
+ * (bjtrainer.flashsr.v1 / bjtrainer.quizsr.v1) and the Stats "Retention" +
+ * "Spaced repetition" sections are all wired against this module today.
+ * This comment used to say the wiring was deliberately deferred pending
+ * operator review, back when stage 1 of 6 was the only piece built; it no
+ * longer is, and leaving the old text here would mislead the next reader
+ * into thinking the scheduler is inert.
  */
 
 /** Keyed by `cellId` (flashcards) or `DeviationId` (deviation quiz). */

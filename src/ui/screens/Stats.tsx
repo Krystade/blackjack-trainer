@@ -18,7 +18,11 @@ import { useAudio } from '../../audio/useAudio';
 import { narrateStatsSummary } from '../../audio/narrate';
 import { assistedFlag } from '../peekFlag';
 import { fatigueDrift, type DatedResult } from '../../drills/fatigueDrift';
+import { generateAllCells } from '../../drills/flashcards';
+import { loadFlashSr, loadQuizSr } from '../../drills/gradeAnswer';
+import { summarizeSrDeck, boxBarPercents, type SrDeckSummary } from '../../drills/srStatus';
 import { Stepper } from './Settings';
+import './sr.css';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -83,6 +87,120 @@ function dash(): string {
   return '—';
 }
 
+interface SrStatusPanelProps {
+  /** e.g. "flashcards" / "deviation-quiz items" -- used in both the
+   * empty-state copy and the "N of M ... studied" headline. */
+  deckLabel: string;
+  summary: SrDeckSummary;
+  /** Renders a lapsed item's raw key as something readable: identity for
+   * flashcards (cellId strings like "hard-16-v-9" are already legible), or
+   * a deviation's own label ("16 v 10: stand at TC >= 0") for the quiz deck. */
+  labelForKey: (key: string) => string;
+}
+
+/**
+ * Renders one deck's `SrDeckSummary` as a small Leitner box histogram plus
+ * two supporting stats and a lapses ranking -- see docs/superpowers/plans/
+ * 2026-08-31-C-sr-visualization.md for the full design rationale (D1-D7).
+ * Read-only: takes a pre-computed summary as a prop, never touches
+ * localStorage or the scheduler itself (D7) -- hand-editing a scheduler
+ * from its own status view would defeat the point of having one.
+ *
+ * Kept as a local, non-exported component (used twice below, once per deck)
+ * rather than a separate file: this feature's edit surface was scoped to a
+ * fixed set of files to avoid colliding with concurrent work elsewhere in
+ * the codebase, and Stats.tsx was the only screen file in that set.
+ */
+function SrStatusPanel({ deckLabel, summary, labelForKey }: SrStatusPanelProps) {
+  const reviewed = summary.universeSize - summary.unseen;
+
+  // D3: an empty deck is the very first thing a fresh-install operator
+  // sees, so it renders one clear sentence and NOTHING else -- no row of
+  // seven zero-height bars (which reads as "broken", not "nothing yet"),
+  // no "Due now: 0" / "Due soon: 0" printed as meaningless zeroes.
+  if (reviewed === 0) {
+    return <p className="stats-detail">No {deckLabel} studied yet — status will appear as you drill.</p>;
+  }
+
+  // FIX (review round 1): the bar row shows ONLY the six Leitner boxes,
+  // scaled against each other via boxBarPercents() -- Unseen is
+  // deliberately NOT one of the seven bars. An earlier version rendered
+  // Unseen as a seventh bar sharing the same 0..max scale as the boxes;
+  // measured live with a representative 15-card deck against the real
+  // 330-cell universe (Unseen=315, every box=2-3), that made all six box
+  // bars render at ~3px in a 64px track -- the entire Leitner distribution
+  // this panel exists to show was practically invisible, and it only gets
+  // WORSE the more of the deck has actually been studied. Unseen is
+  // already conveyed exactly by the headline just above ("N of M
+  // studied"), so dropping it here loses no information and fixes the
+  // scale. See boxBarPercents' own doc comment (src/drills/srStatus.ts)
+  // for the full account and its pure-module ratio tests.
+  const barPcts = boxBarPercents(summary.byBox);
+
+  return (
+    <div className="sr-panel">
+      <div className="stats-headline">
+        <span className="stats-headline-value">{reviewed}</span>
+        <span className="stats-headline-label">
+          of {summary.universeSize} {deckLabel} studied
+        </span>
+      </div>
+
+      <div className="sr-bar-row">
+        {summary.byBox.map((count, box) => (
+          <div className="sr-bar-col" key={box}>
+            {/* The count is printed ABOVE the bar, not inside/overlaid on
+                its colour fill (Design Decision D4: colour/height alone
+                never carries the value) -- see sr.css's header comment for
+                why this also sidesteps a per-ramp-stop text-contrast check. */}
+            <span className="sr-bar-count">{count}</span>
+            <div className="sr-bar-track">
+              <div className="sr-bar-fill" data-box={box} style={{ height: `${barPcts[box]}%` }} />
+            </div>
+            <span className="sr-bar-label">Box {box}</span>
+          </div>
+        ))}
+      </div>
+
+      {(summary.dueNow > 0 || summary.dueSoon > 0) && (
+        <ul className="mistake-list">
+          {summary.dueNow > 0 && (
+            <li className="mistake-row">
+              <span>Due now</span>
+              <span>{summary.dueNow}</span>
+            </li>
+          )}
+          {summary.dueSoon > 0 && (
+            <li className="mistake-row">
+              <span>Due soon (24h)</span>
+              <span>{summary.dueSoon}</span>
+            </li>
+          )}
+        </ul>
+      )}
+
+      {summary.mostLapsed.length > 0 && (
+        <div>
+          <h3 className="sr-lapses-title">Most often forgotten</h3>
+          <ul className="mistake-list">
+            {summary.mostLapsed.map((entry) => (
+              <li className="mistake-row" key={entry.key}>
+                <span>{labelForKey(entry.key)}</span>
+                <span>
+                  {entry.lapses} lapse{entry.lapses === 1 ? '' : 's'} (box {entry.box})
+                </span>
+              </li>
+            ))}
+          </ul>
+          {summary.moreLapsedCount > 0 && (
+            <p className="stats-detail sr-more-lapsed">+{summary.moreLapsedCount} more</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 /**
  * Stats tabs (C5).
@@ -112,6 +230,8 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Pair cancellation': 'drills',
   'True count drill': 'drills',
   'Deck estimation drill': 'drills',
+  'Spaced repetition — Flashcards': 'progress',
+  'Spaced repetition — Deviation quiz': 'progress',
   'Retention': 'progress',
   'Downswing (tilt inoculation)': 'progress',
   'Endurance / fatigue': 'progress',
@@ -242,6 +362,22 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   const retentionHistory = inRange(stats.retention.history);
   const retentionReviews = retentionHistory.length;
   const retentionCorrect = retentionHistory.filter((h) => h.correct).length;
+
+  // Spaced-repetition status (operator request: "the ability to view the
+  // status of my spaced repetition somehow visualized"). Unlike every other
+  // number on this screen, these are NOT filtered by the selected time
+  // range -- a Leitner box histogram is a snapshot of the deck's CURRENT
+  // state, not a log of dated events, so "last 7 days" has no meaning here.
+  // `generateAllCells().length` (not a hardcoded literal -- see srStatus.ts's
+  // own header comment) is the flashcard universe's live size, so this
+  // denominator can never silently drift if the cell universe's shape ever
+  // changes; the quiz universe is always `indexSetFor(...).length` (18,
+  // stable across rulesets). Reuses the same `now` every other section on
+  // this screen already agrees on (declared once, above).
+  const flashSrSummary = summarizeSrDeck(loadFlashSr(), generateAllCells().length, now);
+  const quizSrSummary = summarizeSrDeck(loadQuizSr(), indexSetFor(activeProfile.rules).length, now);
+  const quizLabelFor = (key: string) =>
+    indexSetFor(activeProfile.rules).find((d) => d.id === key)?.label ?? key;
 
   // ET3 (docs/BACKLOG.md, bet/sit/leave): overall accuracy + a dedicated LEAVE
   // figure — leaving is the novel, hardest axis (R5's wong-out only covers
@@ -611,6 +747,16 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
             </li>
           </ul>
         )}
+      </section>
+
+      <section className="stats-section" data-tab={SECTION_TAB['Spaced repetition — Flashcards']}>
+        <h2 className="stats-section-title">Spaced repetition — Flashcards</h2>
+        <SrStatusPanel deckLabel="flashcards" summary={flashSrSummary} labelForKey={(k) => k} />
+      </section>
+
+      <section className="stats-section" data-tab={SECTION_TAB['Spaced repetition — Deviation quiz']}>
+        <h2 className="stats-section-title">Spaced repetition — Deviation quiz</h2>
+        <SrStatusPanel deckLabel="deviation-quiz items" summary={quizSrSummary} labelForKey={quizLabelFor} />
       </section>
 
       <section className="stats-section" data-tab={SECTION_TAB['Retention']}>
