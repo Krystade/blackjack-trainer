@@ -304,6 +304,55 @@ button {
   font-size: 0.7rem;
 }
 
+/* Table Realism, Request B: cards fly in from the dealer rather than simply
+   appearing. `--deal-i` (set per-card by Table.tsx, from the round's
+   `game.dealOrder`) staggers the opening two-pass deal in true casino
+   order; a card with no `--deal-i` (a mid-round hit/double/split, or a
+   dealer settlement draw) falls back to 0 -- no extra delay, it just plays
+   the same entrance the instant it mounts. `--deal-speed` is
+   settings.dealSpeedMs, set once on `.table-screen` -- "Deal speed" already
+   means "how fast cards come out" to the player (Settings.tsx), so this is
+   the SAME number, not a second, unrelated pacing knob.
+
+   Scoped to `.card-back`/`.card-red`/`.card-black` specifically (never the
+   constant shared `.card` base class, which never stops matching and so
+   would never re-trigger) because those are exactly the classes that swap
+   when PlayingCard's `faceDown` prop flips: the dealer's hole card mounts
+   once as `.card-back` and later gains `.card-red`/`.card-black` when
+   `game.holeRevealed` goes true, and a selector newly starting to match
+   restarts its animation on that SAME element -- so this one rule doubles
+   as the hole card's flip reveal, with no separate keyframe needed.
+
+   The whole `animation` shorthand (including the delay) lives ONLY inside
+   `prefers-reduced-motion: no-preference` -- under `reduce`, no animation
+   property is set at all, so every card renders in its final, fully-visible
+   state the instant it is in the DOM, exactly today's (pre-animation)
+   behavior. This follows the file's own established pattern (see
+   `mistake-card`/`mistake-card-in` above) rather than merely shrinking the
+   stagger to zero, because prefers-reduced-motion is a vestibular signal,
+   not a "go faster" signal -- keeping a multi-card pacing delay alive under
+   it would make an accessibility preference also change how quickly the
+   table becomes usable. */
+@media (prefers-reduced-motion: no-preference) {
+  .card-back,
+  .card-red,
+  .card-black {
+    animation: card-deal-in 220ms ease-out both;
+    animation-delay: calc(var(--deal-i, 0) * var(--deal-speed, 0ms));
+  }
+}
+
+@keyframes card-deal-in {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) rotate(-6deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* ---------- Bot seats (Cycle-2 Task 6) ---------- */
 
 .bot-seats-row {

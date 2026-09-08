@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { Card, Suit } from '../../engine/cards';
 
 interface PlayingCardProps {
@@ -7,6 +8,14 @@ interface PlayingCardProps {
    * hands. Defaults to 'normal' so every existing (v1 + cycle-2 player-hand)
    * call site is unaffected. */
   size?: 'normal' | 'compact';
+  /** Position of THIS card within the round's `game.dealOrder` (Table
+   * Realism, Request B) -- undefined for any card dealt outside the opening
+   * two-pass deal (a hit, a double, a split, a dealer settlement draw), which
+   * always plays its entrance the instant it mounts, with no extra delay.
+   * Feeds the `--deal-i` custom property, consumed by app.css's
+   * `card-deal-in` keyframe via
+   * `animation-delay: calc(var(--deal-i, 0) * var(--deal-speed, 0ms))`. */
+  dealIndex?: number;
 }
 
 export const SUIT_GLYPH: Record<Suit, string> = {
@@ -34,11 +43,15 @@ export function formatCard(card: Card): string {
   return `${card.rank}${SUIT_GLYPH[card.suit]}`;
 }
 
-export function PlayingCard({ card, faceDown, size = 'normal' }: PlayingCardProps) {
+export function PlayingCard({ card, faceDown, size = 'normal', dealIndex }: PlayingCardProps) {
   const sizeClass = size === 'compact' ? ' card-compact' : '';
+  // `undefined` (no --deal-i set at all) falls back to app.css's own
+  // `var(--deal-i, 0)` default -- identical to explicitly passing 0 -- so
+  // this cast is only ever reached with a real index to set.
+  const style = dealIndex === undefined ? undefined : ({ ['--deal-i']: dealIndex } as CSSProperties);
 
   if (!card || faceDown) {
-    return <div className={`card card-back${sizeClass}`} aria-label="face-down card" />;
+    return <div className={`card card-back${sizeClass}`} aria-label="face-down card" style={style} />;
   }
 
   const red = isRed(card.suit);
@@ -47,6 +60,7 @@ export function PlayingCard({ card, faceDown, size = 'normal' }: PlayingCardProp
       className={`card ${red ? 'card-red' : 'card-black'}${sizeClass}`}
       data-card={`${card.rank}${card.suit}`}
       aria-label={`${card.rank} of ${SUIT_NAME[card.suit]}`}
+      style={style}
     >
       <span className="card-rank">{card.rank}</span>
       <span className="card-suit">{SUIT_GLYPH[card.suit]}</span>

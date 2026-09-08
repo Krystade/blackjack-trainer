@@ -79,6 +79,32 @@ export interface SessionReport {
   peeks: number;
 }
 
+/**
+ * Table Realism (Request B): true while the opening deal's CSS entrance
+ * animation is still plausibly playing, purely so Table.tsx knows how long
+ * to keep offering a skip control. It NEVER gates which cards are in the
+ * DOM -- every card in `game.dealOrder` is already rendered, with its real
+ * `data-card`/attributes, on the exact render `game.startRound()`/
+ * `game.sitOut()` returns from; only its CSS `animation-delay` (computed
+ * from `--deal-i`, see PlayingCard.tsx) is staggered. A caller that ignores
+ * `dealAnimating`/`skipDeal` entirely sees the identical DOM, at the
+ * identical moment, either way -- this is why gating the skip control on it
+ * cannot desync grading, the running count, or e2e/table-seats.spec.ts's
+ * fast-forward path.
+ *
+ * Suppressed entirely under prefers-reduced-motion: reduce -- under that
+ * preference app.css's card-deal-in keyframe is never applied at all (see
+ * app.css), so there is nothing playing to offer a skip control for.
+ */
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// Must match app.css's `card-deal-in` keyframe duration -- a comment there
+// points back here.
+const DEAL_ENTRANCE_MS = 220;
+
 function readSeed(): number | undefined {
   if (typeof window === 'undefined') return undefined;
   const raw = new URLSearchParams(window.location.search).get('seed');
@@ -391,6 +417,57 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     setBotNarrationRevealed(game.botActionLog.length);
   }, [game, clearNarrationTimer]);
 
+  /**
+   * Table Realism (Request B): mirrors the bot-narration pacing effect
+   * immediately above, but as a single duration timer (not a per-tick
+   * chain) since the opening deal's stagger itself lives entirely in CSS
+   * (`--deal-i` * `--deal-speed`, see PlayingCard.tsx/app.css) -- this state
+   * exists ONLY to know how long to keep offering a skip control, never to
+   * gate what's rendered. See the `prefersReducedMotion`/`dealAnimating`
+   * doc comment above for why this can never desync grading or the count.
+   */
+  const [dealAnimating, setDealAnimating] = useState(false);
+  const dealAnimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dealOrderRef = useRef<typeof game.dealOrder>(game.dealOrder);
+
+  const clearDealAnimTimer = useCallback(() => {
+    if (dealAnimTimerRef.current !== null) {
+      clearTimeout(dealAnimTimerRef.current);
+      dealAnimTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    // A new round always reassigns `dealOrder` to a fresh array (see
+    // beginRound()), so a reference change is exactly "a new round just
+    // dealt" -- an in-place mutation (there is none for dealOrder; it's
+    // write-once per round) would never trip this.
+    if (game.dealOrder === dealOrderRef.current) return;
+    dealOrderRef.current = game.dealOrder;
+    clearDealAnimTimer();
+
+    if (game.dealOrder.length === 0 || prefersReducedMotion()) {
+      setDealAnimating(false);
+      return;
+    }
+    setDealAnimating(true);
+    // +40ms slack over the exact CSS timeline so the skip control never
+    // disappears a frame before the LAST card has actually settled.
+    const totalMs = (game.dealOrder.length - 1) * settings.dealSpeedMs + DEAL_ENTRANCE_MS + 40;
+    dealAnimTimerRef.current = setTimeout(() => {
+      dealAnimTimerRef.current = null;
+      setDealAnimating(false);
+    }, totalMs);
+  }, [game, game.dealOrder, settings.dealSpeedMs, clearDealAnimTimer]);
+
+  // Unmount-only cleanup so no timer outlives the component.
+  useEffect(() => clearDealAnimTimer, [clearDealAnimTimer]);
+
+  const skipDeal = useCallback(() => {
+    clearDealAnimTimer();
+    setDealAnimating(false);
+  }, [clearDealAnimTimer]);
+
   const submitCount = useCallback(
     (rc: number, tcGuess?: number) => {
       const result = game.submitCountCheck(rc, tcGuess);
@@ -442,5 +519,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     endSession,
     botNarrationRevealed,
     fastForwardNarration,
+    dealAnimating,
+    skipDeal,
   };
 }

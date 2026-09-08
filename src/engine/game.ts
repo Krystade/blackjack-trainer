@@ -75,6 +75,15 @@ export interface GameConfig {
 
 export type Phase = 'idle' | 'insurance' | 'player' | 'settled';
 
+/** One slot in a round's opening two-pass deal order (see `Game.dealOrder`).
+ * `cardIndex` is which of the two opening cards this is -- never a hit/
+ * double/split/settlement-draw card, all of which happen strictly after the
+ * two-pass loop that populates this log has already finished. */
+export type DealSlot =
+  | { kind: 'player'; handIndex: number; cardIndex: 0 | 1 }
+  | { kind: 'bot'; seatIndex: number; handIndex: number; cardIndex: 0 | 1 }
+  | { kind: 'dealer'; cardIndex: 0 | 1 };
+
 export interface PlayerHand {
   cards: Card[];
   bet: number;
@@ -200,6 +209,24 @@ export class Game {
    * (the card drawn); undefined for stand/surrender/split. */
   botActionLog: { seat: number; handIndex: number; action: Action; card?: Card }[] = [];
 
+  /** Casino order of the CURRENT round's opening two-pass deal, one entry per
+   * card in the exact order dealTwoPassRound() deals it: every seat's hands in
+   * seat order for pass 1, then the dealer's up-card, then every seat's hands
+   * again for pass 2, then the dealer's hole card. Reset in beginRound().
+   *
+   * PRESENTATION-ONLY, read by Table.tsx to time the opening deal's CSS
+   * entrance animation (Table Realism, Request B) -- grading, the running
+   * count, and every phase transition are already fully decided by the time
+   * this array exists, so a UI (or a test) that ignores it entirely sees the
+   * exact same game state, at the exact same moment, it always has.
+   *
+   * A bot split during resolveBotsBefore() -- which runs AFTER this log is
+   * fully populated, since it happens inside resolveAfterPeek(), which itself
+   * only runs once the whole two-pass loop below has finished -- never
+   * appends to or otherwise disturbs this log, so the opening deal's
+   * animation timing can never be corrupted by what a bot decides to do next. */
+  dealOrder: DealSlot[] = [];
+
   /** Test/diagnostic hook only -- never set by production UI code. If
    * present, called synchronously right after each bot decision is
    * finalized (post mistake-substitution) with the exact hand snapshot,
@@ -314,6 +341,7 @@ export class Game {
     this.countCheckDue = false;
     this.insuranceNet = null;
     this.botActionLog = [];
+    this.dealOrder = [];
 
     // A full table can outrun the cut card. Reaching the cut card only
     // guarantees a handful of cards remain, but the deal alone consumes
@@ -402,35 +430,15 @@ export class Game {
     this._active = 0;
     this.buildSeats(betArray);
 
-    // Two-pass casino deal in seat order (index 0 = first base): pass 1 deals
-    // one card to each hand of every seat (bots included, in seat order;
-    // within the player seat, its hands in order), then the dealer's
-    // upcard; pass 2 deals a second card the same way, then the dealer's
-    // hole card. Every card except the hole is face-up, so runningCount
-    // updates immediately for bot cards too (drawToHand does the counting).
-    for (const seat of this.seats) {
-      for (const hand of seat.hands) {
-        this.drawToHand(hand);
-      }
-    }
-    const up = this.shoe.draw();
-    this.dealerCards.push(up);
-    this.runningCount += hiLoTag(up.rank);
+    this.dealTwoPassRound();
 
-    for (const seat of this.seats) {
-      for (const hand of seat.hands) {
-        this.drawToHand(hand);
-      }
-    }
-    const hole = this.shoe.draw();
-    this.dealerCards.push(hole); // hidden: not counted yet
-
-    if (up.rank === 'A') {
+    const upRank = this.dealerCards[0].rank;
+    if (upRank === 'A') {
       this.phase = 'insurance';
       return;
     }
 
-    if (isTenValueUp(up.rank) && isBlackjack(this.dealerCards)) {
+    if (isTenValueUp(upRank) && isBlackjack(this.dealerCards)) {
       this.settleDealerBlackjack();
       return;
     }
@@ -481,30 +489,14 @@ export class Game {
     this._active = 0;
     this.buildSeats([]); // zero player hands; bot seats per the seat config
 
-    // Two-pass casino deal -- bots + dealer only (the player seat is empty, so
-    // its inner loop is a no-op). Identical card timing to startRound.
-    for (const seat of this.seats) {
-      for (const hand of seat.hands) {
-        this.drawToHand(hand);
-      }
-    }
-    const up = this.shoe.draw();
-    this.dealerCards.push(up);
-    this.runningCount += hiLoTag(up.rank);
+    this.dealTwoPassRound();
 
-    for (const seat of this.seats) {
-      for (const hand of seat.hands) {
-        this.drawToHand(hand);
-      }
-    }
-    const hole = this.shoe.draw();
-    this.dealerCards.push(hole); // hidden: not counted yet
-
+    const upRank = this.dealerCards[0].rank;
     // No player stake => no insurance step even on a dealer Ace. Peek for a
     // dealer natural directly: settle the bots against it, otherwise play the
     // round out (resolveAfterPeek -> dealer -> settle, all bankroll-neutral
     // for the sitting-out player).
-    if ((up.rank === 'A' || isTenValueUp(up.rank)) && isBlackjack(this.dealerCards)) {
+    if ((upRank === 'A' || isTenValueUp(upRank)) && isBlackjack(this.dealerCards)) {
       this.settleDealerBlackjack();
       return;
     }
@@ -711,6 +703,51 @@ export class Game {
     const c = this.shoe.draw();
     hand.cards.push(c);
     this.runningCount += hiLoTag(c.rank);
+  }
+
+  /** Deal the two-pass casino sequence -- one card to every hand of every seat
+   * (in seat order; the player's own hands wherever they sit among them),
+   * then the dealer's up-card; then the same seat sweep for card two, then
+   * the dealer's hole card. Shared by startRound() and sitOut() so both a
+   * staked round and a wong-out round burn the shoe/count in EXACTLY the same
+   * order (R5, docs/BACKLOG.md) -- and now also so both populate `dealOrder`
+   * (Table Realism, Request B) identically, rather than keeping two
+   * hand-maintained copies of this loop in sync. Every card except the hole
+   * is face-up, so runningCount updates immediately for bot cards too
+   * (drawToHand does the counting). */
+  private dealTwoPassRound(): void {
+    for (let s = 0; s < this.seats.length; s++) {
+      const seat = this.seats[s];
+      const isPlayerSeat = s === this.playerSeatIndex;
+      for (let h = 0; h < seat.hands.length; h++) {
+        this.drawToHand(seat.hands[h]);
+        this.dealOrder.push(
+          isPlayerSeat
+            ? { kind: 'player', handIndex: h, cardIndex: 0 }
+            : { kind: 'bot', seatIndex: s, handIndex: h, cardIndex: 0 },
+        );
+      }
+    }
+    const up = this.shoe.draw();
+    this.dealerCards.push(up);
+    this.runningCount += hiLoTag(up.rank);
+    this.dealOrder.push({ kind: 'dealer', cardIndex: 0 });
+
+    for (let s = 0; s < this.seats.length; s++) {
+      const seat = this.seats[s];
+      const isPlayerSeat = s === this.playerSeatIndex;
+      for (let h = 0; h < seat.hands.length; h++) {
+        this.drawToHand(seat.hands[h]);
+        this.dealOrder.push(
+          isPlayerSeat
+            ? { kind: 'player', handIndex: h, cardIndex: 1 }
+            : { kind: 'bot', seatIndex: s, handIndex: h, cardIndex: 1 },
+        );
+      }
+    }
+    const hole = this.shoe.draw();
+    this.dealerCards.push(hole); // hidden: not counted yet
+    this.dealOrder.push({ kind: 'dealer', cardIndex: 1 });
   }
 
   private revealHole(): void {

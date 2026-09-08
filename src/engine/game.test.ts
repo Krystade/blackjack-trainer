@@ -1581,3 +1581,43 @@ describe('dealerAlwaysPlaysOut', () => {
     expect(flagged.bankroll).toBe(plain.bankroll);
   });
 });
+
+describe('dealOrder (Table Realism, Request B groundwork: presentation-only deal-order log)', () => {
+  it('solo, no bots: pass1, dealer-up, pass2, dealer-hole, in that exact order', () => {
+    const game = Game.withRiggedShoe(cfg(), rig('10', '9', '6', '8'));
+    game.startRound();
+    expect(game.dealOrder).toEqual([
+      { kind: 'player', handIndex: 0, cardIndex: 0 },
+      { kind: 'dealer', cardIndex: 0 },
+      { kind: 'player', handIndex: 0, cardIndex: 1 },
+      { kind: 'dealer', cardIndex: 1 },
+    ]);
+  });
+
+  it('a bot seated before the player is logged before the player in EACH pass', () => {
+    const seats: SeatConfig = { playerHands: 1, bots: 1, botMistakePct: 0, playerPosition: 1 };
+    const game = Game.withRiggedShoe(
+      cfg({ seats }),
+      rig('10', '10', '2', '5', '10', '4', '9', '6'),
+    );
+    game.startRound();
+    expect(game.dealOrder.slice(0, 6)).toEqual([
+      { kind: 'bot', seatIndex: 0, handIndex: 0, cardIndex: 0 },
+      { kind: 'player', handIndex: 0, cardIndex: 0 },
+      { kind: 'dealer', cardIndex: 0 },
+      { kind: 'bot', seatIndex: 0, handIndex: 0, cardIndex: 1 },
+      { kind: 'player', handIndex: 0, cardIndex: 1 },
+      { kind: 'dealer', cardIndex: 1 },
+    ]);
+  });
+
+  it('a fresh round replaces dealOrder with a NEW array (reference change), not an append', () => {
+    const game = Game.withRiggedShoe(cfg(), rig('10', '9', '6', '8', '5', '7', '4', '9'));
+    game.startRound();
+    const firstOrder = game.dealOrder;
+    game.act('stand');
+    game.startRound();
+    expect(game.dealOrder).not.toBe(firstOrder);
+    expect(game.dealOrder).toHaveLength(4);
+  });
+});

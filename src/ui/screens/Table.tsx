@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
-import type { Game, PlayerHand, Seat } from '../../engine/game';
+import type { DealSlot, Game, PlayerHand, Seat } from '../../engine/game';
 import type { Action } from '../../engine/deviations';
 import type { PlayContext } from '../../engine/strategy';
 import { correctPlay } from '../../engine/strategy';
@@ -33,6 +34,25 @@ function botSeatLabels(seats: Seat[]): Map<number, string> {
     }
   });
   return labels;
+}
+
+/** Position of `slot` within the round's `game.dealOrder`, or `undefined` if
+ * it never occupied one (any card past the opening two cards of a hand, or
+ * past the dealer's first two, is a later hit/double/split/settlement draw
+ * and always animates the instant it mounts -- see PlayingCard.tsx). */
+function dealIndexOf(order: DealSlot[], slot: DealSlot): number | undefined {
+  const idx = order.findIndex((s) => {
+    if (s.kind !== slot.kind) return false;
+    if (s.kind === 'dealer' && slot.kind === 'dealer') return s.cardIndex === slot.cardIndex;
+    if (s.kind === 'player' && slot.kind === 'player') {
+      return s.handIndex === slot.handIndex && s.cardIndex === slot.cardIndex;
+    }
+    if (s.kind === 'bot' && slot.kind === 'bot') {
+      return s.seatIndex === slot.seatIndex && s.handIndex === slot.handIndex && s.cardIndex === slot.cardIndex;
+    }
+    return false;
+  });
+  return idx === -1 ? undefined : idx;
 }
 
 function resultLetter(result: PlayerHand['result']): string | null {
@@ -207,6 +227,8 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
     botNarrationRevealed,
     fastForwardNarration,
     sitOut,
+    dealAnimating,
+    skipDeal,
   } = useGame(settings, activeProfile, audio);
   // Cycle-2 Task 8: one selected bet per player hand. `playerHandsCount`
   // comes from the PROFILE's seat config, not `game.hands.length` — the
@@ -356,9 +378,18 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
   const botLabels = botSeatLabels(game.seats);
   const botNarrationLines = buildBotNarration(game, botNarrationRevealed);
   const pacingPending = botNarrationRevealed < game.botActionLog.length;
+  // Skips BOTH pacing mechanisms together: a tap/click must never leave one
+  // mechanism caught up while the other is still pending, which would keep
+  // the fast-forward button rendered after being clicked (see
+  // e2e/table-seats.spec.ts's "fast-forward" spec, which asserts the button
+  // disappears immediately on click).
+  const skipEverything = () => {
+    fastForwardNarration();
+    skipDeal();
+  };
 
   return (
-    <div className="table-screen">
+    <div className="table-screen" style={{ ['--deal-speed']: `${settings.dealSpeedMs}ms` } as CSSProperties}>
       <div className="topbar">
         <div className="topbar-stat">
           Bankroll: {game.bankroll}
@@ -411,7 +442,16 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
 
       <div className="dealer-area">
         {game.dealerCards.map((c, i) => (
-          <PlayingCard key={i} card={c} faceDown={i === 1 && !game.holeRevealed} />
+          <PlayingCard
+            key={i}
+            card={c}
+            faceDown={i === 1 && !game.holeRevealed}
+            dealIndex={
+              i < 2 && dealAnimating
+                ? dealIndexOf(game.dealOrder, { kind: 'dealer', cardIndex: i as 0 | 1 })
+                : undefined
+            }
+          />
         ))}
       </div>
 
@@ -427,7 +467,21 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
                   <div key={handIndex} className="bot-hand">
                     <div className="bot-hand-cards">
                       {hand.cards.map((c, j) => (
-                        <PlayingCard key={j} card={c} size="compact" />
+                        <PlayingCard
+                          key={j}
+                          card={c}
+                          size="compact"
+                          dealIndex={
+                            j < 2 && dealAnimating
+                              ? dealIndexOf(game.dealOrder, {
+                                  kind: 'bot',
+                                  seatIndex,
+                                  handIndex,
+                                  cardIndex: j as 0 | 1,
+                                })
+                              : undefined
+                          }
+                        />
                       ))}
                     </div>
                     {game.phase === 'settled' && resultLetter(hand.result) && (
@@ -452,7 +506,15 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
             {playerHandsCount > 1 && <div className="hand-label">Hand {i + 1}</div>}
             <div className="hand-cards">
               {hand.cards.map((c, j) => (
-                <PlayingCard key={j} card={c} />
+                <PlayingCard
+                  key={j}
+                  card={c}
+                  dealIndex={
+                    j < 2 && dealAnimating
+                      ? dealIndexOf(game.dealOrder, { kind: 'player', handIndex: i, cardIndex: j as 0 | 1 })
+                      : undefined
+                  }
+                />
               ))}
             </div>
             <div className="hand-bet">Bet: {hand.bet}</div>
@@ -462,7 +524,7 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
 
       <div
         className="message-strip"
-        onClick={hasBots ? fastForwardNarration : undefined}
+        onClick={hasBots || dealAnimating ? skipEverything : undefined}
       >
         {game.shuffledLastRound && <div className="message-shuffle">Shuffling…</div>}
         {botNarrationLines.map((line, i) => (
@@ -493,12 +555,12 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
         )}
       </div>
 
-      {hasBots && pacingPending && (
+      {((hasBots && pacingPending) || dealAnimating) && (
         <button
           type="button"
           className="fast-forward-btn"
-          aria-label="Fast-forward bot actions"
-          onClick={fastForwardNarration}
+          aria-label="Fast-forward bot actions and dealing"
+          onClick={skipEverything}
         >
           ⏩
         </button>
