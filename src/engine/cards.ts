@@ -32,7 +32,7 @@ export function mulberry32(seed: number): () => number {
 /**
  * Fisher-Yates shuffle using a seeded RNG
  */
-function fisherYatesShuffle<T>(array: T[], rng: () => number): T[] {
+export function fisherYatesShuffle<T>(array: T[], rng: () => number): T[] {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));

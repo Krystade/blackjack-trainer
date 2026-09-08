@@ -16,7 +16,7 @@ export type EventKind = 'action' | 'insurance' | 'bet' | 'countCheck' | 'wong';
  * `kind: 'action'`, so kind cannot answer "how am I doing at flashcards" --
  * which is why nothing in Stats could.
  */
-export type EventSource = 'table' | 'flashcard' | 'quiz';
+export type EventSource = 'table' | 'flashcard' | 'quiz' | 'mastery';
 export type Category = 'hard' | 'soft' | 'pairs' | 'surrender' | 'insurance' | 'bet' | 'countCheck' | 'wong';
 
 export interface GradedEvent {

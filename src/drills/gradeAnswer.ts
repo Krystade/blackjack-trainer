@@ -14,7 +14,7 @@
  * top of the returned GradedEvent.
  */
 
-import type { GradedEvent } from '../engine/grade';
+import type { GradedEvent, EventSource } from '../engine/grade';
 import { classifyAction, actionCategory, classifyInsurance } from '../engine/grade';
 import type { PlayContext } from '../engine/strategy';
 import { correctPlay, basicPlay } from '../engine/strategy';
@@ -90,7 +90,7 @@ function retentionRow(key: string, prev: SrCard, correct: boolean, now: number):
 
 /** Persist a graded event and, when the review was a gap review, its retention
  * row -- one load/save so the two writes can't race. */
-function persistGrade(event: GradedEvent, retention: RetentionRow | null): void {
+export function persistGrade(event: GradedEvent, retention: RetentionRow | null): void {
   let stats = applyEvents(loadStats(), [event]);
   if (retention) {
     stats = { ...stats, retention: { history: [...stats.retention.history, retention] } };
@@ -120,6 +120,7 @@ export function buildFlashcardEvent(
   taken: Action,
   rules: RuleSet,
   elapsedMs: number,
+  source: EventSource = 'flashcard',
 ): { event: GradedEvent; correctAction: Action; correct: boolean } {
   const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: true };
   const withCount = correctPlay(card.cards, card.up, 0, ctx, rules);
@@ -128,7 +129,7 @@ export function buildFlashcardEvent(
 
   const event: GradedEvent = {
     kind: 'action',
-    source: 'flashcard',
+    source,
     category: cellCategory(card.cellId, card.correct),
     correct,
     classification,
@@ -238,6 +239,26 @@ export function gradeFlashcardAnswer(
   persistGrade(event, retention);
 
   return { event, correctAction, nextDeck };
+}
+
+/**
+ * Grade a Mastery Challenge answer. Unlike gradeFlashcardAnswer, this does
+ * NOT touch the Flashcards spaced-repetition deck (D6, plan doc): a mastery
+ * run walks a fixed shuffled deck exactly once per attempt, it is not an
+ * SR-scheduled draw, and treating every correct mastery answer as a Flashcards
+ * SR review would distort that schedule's due-ness weighting for a mode the
+ * learner wasn't using. No retention row either -- mastery events are never
+ * gap-reviews.
+ */
+export function gradeMasteryAnswer(
+  cell: Flashcard,
+  taken: Action,
+  rules: RuleSet,
+  elapsedMs: number,
+): { event: GradedEvent; correctAction: Action; correct: boolean } {
+  const result = buildFlashcardEvent(cell, taken, rules, elapsedMs, 'mastery');
+  persistGrade(result.event, null);
+  return result;
 }
 
 export interface QuizGradeResult {

@@ -87,6 +87,13 @@ export interface Settings {
     // Only the ordinary auto-flash count drill applies it; Countdown and Timed
     // Challenge (which owns pacing) ignore it, same scoping as messyCards.
     pacePressure: boolean;
+    // Mastery Challenge's own interruption-difficulty knob (see docs/superpowers/
+    // plans/2026-08-31-B-mastery-challenge.md, Design Decision D4). Deliberately
+    // SEPARATE from `distractionFreq`, which is scoped to the standard count
+    // drill's card stream -- sharing one field would mean changing the difficulty
+    // on one screen silently changes the other. Defaults to 'off' ("none"),
+    // matching the operator's explicit ask.
+    masteryDistractionFreq: DistractionFreq;
   };
   audio: AudioSettings;
 }
@@ -183,6 +190,7 @@ export const DEFAULT_SETTINGS: Settings = {
     countBias: 'none',
     messyCards: false,
     pacePressure: false,
+    masteryDistractionFreq: 'off',
   },
   audio: { ...DEFAULT_AUDIO },
 };

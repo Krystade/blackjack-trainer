@@ -19,7 +19,7 @@ export interface Flashcard {
 /**
  * Cell ID format: "hard-16-v-9", "soft-18-v-A", "pair-8-v-10"
  */
-interface Cell {
+export interface Cell {
   id: string;
   cards: [Card, Card];
   up: Rank;
@@ -34,7 +34,7 @@ interface Cell {
  * - pairs: all pair ranks (A,2,3,4,5,6,7,8,9,10)
  * Universe size: (15 hard + 8 soft + 10 pair) x 10 upcards = 330 cells.
  */
-function generateAllCells(): Cell[] {
+export function generateAllCells(): Cell[] {
   const cells: Cell[] = [];
   const upcards: Rank[] = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'A'];
 
@@ -83,6 +83,20 @@ function generateAllCells(): Cell[] {
 }
 
 /**
+ * Shared by drawFlashcard (weighted, single draw) and the Mastery Challenge
+ * (walks the whole filtered list) so the category->prefix mapping can never
+ * drift between the two consumers.
+ */
+export function filterCellsByCategory<T extends { id: string }>(
+  cells: T[],
+  category: 'all' | 'hard' | 'soft' | 'pairs',
+): T[] {
+  if (category === 'all') return cells;
+  if (category === 'pairs') return cells.filter((c) => c.id.startsWith('pair-'));
+  return cells.filter((c) => c.id.startsWith(category + '-'));
+}
+
+/**
  * Draw a random flashcard from the specified category with weighted sampling.
  *
  * @param category - 'all', 'hard', 'soft', or 'pairs'
@@ -108,14 +122,7 @@ export function drawFlashcard(
   const allCells = generateAllCells();
 
   // Filter by category
-  let cells: Cell[];
-  if (category === 'all') {
-    cells = allCells;
-  } else if (category === 'pairs') {
-    cells = allCells.filter((c) => c.id.startsWith('pair-'));
-  } else {
-    cells = allCells.filter((c) => c.id.startsWith(category + '-'));
-  }
+  const cells = filterCellsByCategory(allCells, category);
 
   // RV4 (docs/BACKLOG.md, spaced-repetition): weight each cell by its SR due-ness
   // (unseen/overdue-low-box heaviest), shared with the deviation quiz via srWeight.

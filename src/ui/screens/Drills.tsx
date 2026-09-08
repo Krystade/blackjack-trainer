@@ -45,6 +45,7 @@ import { PairCancelView } from './drills/PairCancelView';
 import { BetSitLeaveView } from './drills/BetSitLeaveView';
 import { DownswingView } from './drills/DownswingView';
 import { DeckEstimationView } from './drills/DeckEstimationView';
+import { MasteryChallengeView } from './drills/MasteryChallengeView';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
 import { enableAudioNow } from '../audioGate';
 
@@ -60,7 +61,7 @@ interface DrillsProps {
 // matching ActionBar button / ZonePad zone. Shared by FlashcardsView and
 // DeviationQuizView's action items -- the insurance quiz variant uses its
 // own 1=Take/2=Decline mapping instead (see DeviationQuizView's handler).
-const KEY_TO_ACTION: Record<string, Action> = {
+export const KEY_TO_ACTION: Record<string, Action> = {
   '1': 'hit',
   '2': 'stand',
   '3': 'double',
@@ -1459,6 +1460,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     | 'betsitleave'
     | 'downswing'
     | 'producetc'
+    | 'mastery'
   >('picker');
 
   if (mode === 'count') {
@@ -1508,6 +1510,16 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   if (mode === 'mixed') {
     return (
       <MixedSessionView
+        settings={settings}
+        activeProfile={activeProfile}
+        onBack={() => setMode('picker')}
+        onSettingsChange={onSettingsChange}
+      />
+    );
+  }
+  if (mode === 'mastery') {
+    return (
+      <MasteryChallengeView
         settings={settings}
         activeProfile={activeProfile}
         onBack={() => setMode('picker')}
@@ -1569,6 +1581,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         </button>
         <button type="button" className="drills-nav-btn" onClick={() => setMode('mixed')}>
           Mixed
+        </button>
+        <button type="button" className="drills-nav-btn" onClick={() => setMode('mastery')}>
+          Mastery Challenge
         </button>
 
         <h2 className="drills-group-title">Under pressure</h2>

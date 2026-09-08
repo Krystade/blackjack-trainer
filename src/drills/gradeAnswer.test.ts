@@ -6,6 +6,8 @@ import {
   buildQuizEvent,
   gradeFlashcardAnswer,
   gradeQuizAnswer,
+  gradeMasteryAnswer,
+  loadFlashSr,
 } from './gradeAnswer';
 import type { SrDeck } from './spacedRepetition';
 import { _setStorage, loadStats } from '../store/persist';
@@ -167,6 +169,30 @@ describe('gradeAnswer shared grade path (R4 anti-drift)', () => {
       expect(row.correct).toBe(true);
       expect(row.box).toBe(2); // the PRE-review box
       expect(row.gapMs).toBe(12 * DAY);
+    });
+  });
+
+  describe('mastery', () => {
+    it('gradeMasteryAnswer tags the event source as "mastery" and does NOT touch the flashcard SR deck', () => {
+      freshStorage();
+      const card = drawFlashcard('all', {}, 0, 55555, DEFAULT_RULES); // reused as the cell shape
+      const result = gradeMasteryAnswer(card, 'hit', DEFAULT_RULES, 200);
+      expect(result.event.source).toBe('mastery');
+
+      const stats = loadStats();
+      expect(stats.bySource?.mastery).toBeDefined();
+      expect(stats.bySource?.flashcard).toBeUndefined();
+
+      // No SR deck write: loadFlashSr() must still be empty after grading via
+      // the mastery path (a plain flashcard grade WOULD populate it -- that's
+      // gradeFlashcardAnswer's job, deliberately not this one's).
+      expect(loadFlashSr()).toEqual({});
+    });
+
+    it('buildFlashcardEvent still defaults to source "flashcard" when no source is passed (existing callers unaffected)', () => {
+      const card = drawFlashcard('all', {}, 0, 1, DEFAULT_RULES);
+      const { event } = buildFlashcardEvent(card, 'stand', DEFAULT_RULES, 50);
+      expect(event.source).toBe('flashcard');
     });
   });
 });

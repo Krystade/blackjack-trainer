@@ -93,6 +93,26 @@ describe('per-source tallies', () => {
     expect(after.bySource?.flashcard?.soft).toEqual({ right: 1, wrong: 0 });
   });
 
+  it('accepts a mastery-sourced event and tallies it under bySource.mastery without touching bySource.flashcard', () => {
+    const event: GradedEvent = {
+      kind: 'action',
+      source: 'mastery',
+      category: 'hard',
+      correct: true,
+      classification: 'correct',
+      taken: 'hit',
+      expected: 'hit',
+      reason: 'Basic hit vs dealer 9',
+      tc: 0,
+      hand: 'hard-16-v-9',
+    };
+    const result = applyEvents(EMPTY_STATS, [event]);
+    expect(result.bySource?.mastery?.hard).toEqual({ right: 1, wrong: 0 });
+    expect(result.bySource?.flashcard).toBeUndefined();
+    // The pooled total still counts it too -- bySource is a SPLIT, not a replacement.
+    expect(result.categories.hard).toEqual({ right: 1, wrong: 0 });
+  });
+
   it('does not mutate the input', () => {
     const before = structuredClone(EMPTY_STATS);
     const snapshot = JSON.stringify(before);

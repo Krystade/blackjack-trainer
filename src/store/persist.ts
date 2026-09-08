@@ -260,6 +260,7 @@ const EXTRA_KEYS: { key: string; field: string }[] = [
   { key: 'bjtrainer.activeProfile.v1', field: 'activeProfile' },
   { key: 'bjtrainer.flashsr.v1', field: 'flashSr' },
   { key: 'bjtrainer.quizsr.v1', field: 'quizSr' },
+  { key: 'bjtrainer.masteryrun.v1', field: 'masteryRun' },
 ];
 
 /**

@@ -1,6 +1,16 @@
 import { expect, test, describe } from 'vitest';
-import { Shoe, rankValue, mulberry32, RANKS } from './cards';
+import { Shoe, rankValue, mulberry32, RANKS, fisherYatesShuffle } from './cards';
 import type { Rank } from './cards';
+
+describe('fisherYatesShuffle', () => {
+  test('is exported and returns a permutation of the input without mutating it', () => {
+    const input = [1, 2, 3, 4, 5];
+    const rng = mulberry32(42);
+    const result = fisherYatesShuffle(input, rng);
+    expect(input).toEqual([1, 2, 3, 4, 5]); // not mutated
+    expect([...result].sort()).toEqual([1, 2, 3, 4, 5]); // still a permutation
+  });
+});
 
 describe('rankValue', () => {
   test('A returns 11', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { _setStorage, loadStats, exportAll, importAll, saveStats } from './persist';
+import { _setStorage, loadStats, loadSettings, exportAll, importAll, saveStats } from './persist';
 import { EMPTY_STATS } from './types';
 
 function memStore() {
@@ -57,6 +57,18 @@ describe('saveStats — never throws on a full quota', () => {
   });
 });
 
+describe('masteryDistractionFreq default and merge', () => {
+  it('defaults to off for a fresh install', () => {
+    expect(loadSettings().drill.masteryDistractionFreq).toBe('off');
+  });
+
+  it('a partial persisted blob backfills the field from defaults', () => {
+    store.map.set('bjtrainer.settings.v1', JSON.stringify({ version: 1, drill: { flashCategory: 'hard' } }));
+    expect(loadSettings().drill.masteryDistractionFreq).toBe('off');
+    expect(loadSettings().drill.flashCategory).toBe('hard');
+  });
+});
+
 describe('exportAll — is actually a backup', () => {
   it('includes profiles and both spaced-repetition decks', () => {
     // Stats.tsx offers this as a download and warns only that import
@@ -94,5 +106,23 @@ describe('exportAll — is actually a backup', () => {
     // rejected, or users lose the backups they already took.
     const old = JSON.stringify({ settings: { version: 1 }, stats: { version: 1 } });
     expect(importAll(old).ok).toBe(true);
+  });
+
+  it('includes an in-progress mastery run', () => {
+    store.map.set('bjtrainer.masteryrun.v1', JSON.stringify({ scope: 'pairs', seed: 42, index: 17 }));
+    const blob = JSON.parse(exportAll());
+    expect(blob.masteryRun).toEqual({ scope: 'pairs', seed: 42, index: 17 });
+  });
+
+  it('round-trips the mastery run key back through importAll', () => {
+    store.map.set('bjtrainer.profiles.v1', JSON.stringify([{ id: 'p1', name: 'Vegas 6D' }]));
+    store.map.set('bjtrainer.activeProfile.v1', 'p1');
+    store.map.set('bjtrainer.masteryrun.v1', JSON.stringify({ scope: 'pairs', seed: 42, index: 17 }));
+    const blob = exportAll();
+
+    const fresh = memStore();
+    _setStorage(fresh);
+    expect(importAll(blob).ok).toBe(true);
+    expect(fresh.map.get('bjtrainer.masteryrun.v1')).toContain('"scope":"pairs"');
   });
 });

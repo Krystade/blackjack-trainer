@@ -1105,6 +1105,32 @@ button {
   color: var(--bad);
 }
 
+/* ---------- Mastery Challenge ---------- */
+
+.mastery-progress {
+  color: var(--ink-dim);
+  font-size: 0.9rem;
+  padding: 0.25rem 0;
+}
+
+.mastery-reset-banner {
+  color: var(--bad);
+  background: var(--bad-surface);
+  border: 1px solid var(--bad-line);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.mastery-complete {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem 1rem;
+}
+
 /* ---------- Flashcards / Deviation Quiz ---------- */
 
 .feedback-cell {
