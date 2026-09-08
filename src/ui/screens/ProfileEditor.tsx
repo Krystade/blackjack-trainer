@@ -368,6 +368,18 @@ function ProfileEditForm({
           checked={draft.rules.bj65}
           onChange={(v) => updateRules({ bj65: v })}
         />
+        {/*
+          Heads-up, a dealer pays your natural and sweeps without exposing the
+          hole, so you never see that card and correctly never count it --
+          which is the default. At a table with other players the dealer plays
+          on and the hole IS seen. Seating bots produces the same effect on its
+          own, since a live bot hand keeps the round unresolved.
+        */}
+        <Toggle
+          label="Dealer reveals hole on every round"
+          checked={draft.dealerAlwaysPlaysOut ?? false}
+          onChange={(v) => update({ dealerAlwaysPlaysOut: v })}
+        />
         <Stepper
           label="Penetration"
           value={draft.penetration}

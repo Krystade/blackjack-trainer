@@ -206,6 +206,17 @@ export interface Profile {
   unitDollars?: number;
   countCheckEvery: number;
   betSpreadOn: boolean;
+  /**
+   * Reveal the dealer's hole card even when no hand still needs a dealer
+   * total. OPTIONAL so profiles stored before this field load untouched.
+   *
+   * A table rule rather than a preference, which is why it lives here: the
+   * Table screen remounts on any profile CONTENT change, so toggling it takes
+   * effect immediately. On Settings it would have been captured once by
+   * useGame's config and gone stale mid-session -- the exact staleness that
+   * file's own header warns about.
+   */
+  dealerAlwaysPlaysOut?: boolean;
   seats: SeatConfig;
   cvcx?: {
     score?: number;

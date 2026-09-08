@@ -216,6 +216,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       countCheckEvery: profile.countCheckEvery,
       rules: profile.rules,
       seats: profile.seats,
+      dealerAlwaysPlaysOut: profile.dealerAlwaysPlaysOut,
       seed: readSeed(),
     };
     gameRef.current = new Game(cfg);

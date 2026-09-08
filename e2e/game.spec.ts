@@ -329,9 +329,12 @@ test('count-check modal: RC then TC two-stage prompt on the 2nd trigger (askTcTo
   await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
 });
 
-test('TC peek button reveals RC/TC on press and hides again on release', async ({ page }) => {
+test('TC peek button latches RC/TC on a tap and clears on the next tap', async ({ page }) => {
   // T0 gap #26: settings.countPeek gates the `.tc-peek-btn` in Table.tsx's
-  // topbar; press-and-hold swaps its label from "TC" to "RC x / TC y".
+  // topbar. This was press-and-hold; the operator asked for a toggle ("make
+  // the rc tc count reveal a toggle instead of having to hold it"), so the
+  // label now LATCHES on a tap and clears on the next one. Updated
+  // deliberately for that behaviour change, not weakened.
   await withSettings(page, { countCheckEvery: 0, countPeek: true });
   await page.goto('/?seed=102&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -340,22 +343,27 @@ test('TC peek button reveals RC/TC on press and hides again on release', async (
 
   const peekBtn = page.locator('.tc-peek-btn');
   await expect(peekBtn).toHaveText('TC');
-  await peekBtn.dispatchEvent('pointerdown');
+  await peekBtn.click();
+  await expect(peekBtn).toHaveText(/^RC [+-]?\d+ \/ TC [+-]?\d+$/);
+  // The point of a toggle: nothing is held, and it is still showing.
+  await page.waitForTimeout(400);
   await expect(peekBtn).toHaveText(/^RC [+-]?\d+ \/ TC [+-]?\d+$/);
   await shot(page, '14-tc-peek-revealed');
-  await peekBtn.dispatchEvent('pointerup');
+  await peekBtn.click();
   await expect(peekBtn).toHaveText('TC');
 });
 
-test('R7: peeks are counted (single-press dedup) and flag a test-mode session as assisted', async ({ page }) => {
+test('R7: peeks are counted once per reveal and flag a test-mode session as assisted', async ({ page }) => {
   // R7 (docs/BACKLOG.md, RT#5): the RC/TC peek is a legit training aid kept in
   // both modes, but a peek-assisted test-mode accuracy must be labelled so it
-  // can't be read as unassisted. Each press-and-release is ONE peek; the
-  // The button listens on POINTER events, which fire once per physical
-  // interaction. The old mouse+touch pair did not: compatibility mouse events
-  // are synthesized AFTER the touch sequence ends, so touchstart(+1) ->
-  // touchend(guard cleared) -> mousedown(+1) counted every tap on a phone as
-  // two peeks, making the assisted flag overstate every real session.
+  // can't be read as unassisted.
+  //
+  // This used to need dedup: press-and-hold on a phone produced
+  // touchstart -> touchend -> a SYNTHESIZED mousedown, counting one tap as two
+  // peeks, and the fix was pointer events. The toggle deletes that whole
+  // problem -- a click fires exactly once per interaction -- so what is pinned
+  // now is the accounting rule itself: one increment per REVEAL, and turning
+  // the readout back off is not a new peek.
   await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0, countPeek: true });
   await page.goto('/?seed=102&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -363,15 +371,11 @@ test('R7: peeks are counted (single-press dedup) and flag a test-mode session as
   await resolveInsurance(page, false);
 
   const peekBtn = page.locator('.tc-peek-btn');
-  // A touch tap, faithfully: pointer events plus the compatibility mouse
-  // events the browser synthesizes afterwards. Exactly one peek.
-  await peekBtn.dispatchEvent('pointerdown');
-  await peekBtn.dispatchEvent('pointerup');
-  await peekBtn.dispatchEvent('mousedown');
-  await peekBtn.dispatchEvent('mouseup');
-  // Second, genuinely separate activation.
-  await peekBtn.dispatchEvent('pointerdown');
-  await peekBtn.dispatchEvent('pointerup');
+  // Reveal, hide, reveal again == exactly two peeks. If hiding also counted,
+  // this would report three and the assisted label would overstate the session.
+  await peekBtn.click();
+  await peekBtn.click();
+  await peekBtn.click();
 
   await playRoundByAdvice(page);
   await page.locator('.end-btn').click();

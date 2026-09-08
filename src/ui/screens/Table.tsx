@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
 import type { Game, PlayerHand, Seat } from '../../engine/game';
@@ -235,16 +235,32 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
   // is a no-op. A genuinely separate peek requires a release (mouseup/
   // touchend/mouseleave clears the ref) in between, so it counts as a new one.
   const [peeks, setPeeks] = useState(0);
-  const peekingRef = useRef(false);
-  const activatePeek = () => {
-    if (peekingRef.current) return;
-    peekingRef.current = true;
-    setPeeking(true);
-    setPeeks((n) => n + 1);
-  };
-  const releasePeek = () => {
-    peekingRef.current = false;
-    setPeeking(false);
+  /**
+   * TOGGLE, not press-and-hold (operator request). Holding a button steady
+   * while reading two numbers is awkward one-handed and impossible while the
+   * hand is doing anything else, so a tap now latches the readout on and a
+   * second tap clears it.
+   *
+   * This also deletes a whole class of bug rather than working around it. The
+   * hold version had to dedup input: a single tap on a phone produced
+   * touchstart -> touchend -> synthesized mousedown, which double-counted every
+   * peek, and the fix was to move to pointer events (one per physical
+   * interaction). A click handler fires exactly once by construction, so no
+   * rising-edge guard and no ref mirror are needed at all.
+   *
+   * R7 accountability is preserved and arguably sharpened: one increment per
+   * REVEAL. Turning the readout off is not a peek, so a peek still means
+   * "a moment the operator chose to be shown the count".
+   */
+  const togglePeek = () => {
+    // The increment is deliberately OUTSIDE the setPeeking updater. Nesting it
+    // there double-counted every reveal: React invokes state updaters twice in
+    // StrictMode to surface impure ones, so a side effect inside the updater
+    // ran twice per tap and the assisted-session flag overstated every peek.
+    // Updaters must be pure; this reads the rendered value instead, which a
+    // click handler can rely on.
+    if (!peeking) setPeeks((n) => n + 1);
+    setPeeking((on) => !on);
   };
 
   const handleDeal = () => {
@@ -355,18 +371,10 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
           <button
             type="button"
             className="tc-peek-btn"
-            // Pointer events, not mouse+touch. The rising-edge ref guard was
-            // real but the event ORDER defeated it: compatibility mouse events
-            // are synthesized AFTER the touch sequence completes, so
-            // touchstart(+1) -> touchend(ref cleared) -> mousedown(+1) counted
-            // every single tap on a phone as two peeks -- and a phone is the
-            // target device, so the peek-accountability flag this feature
-            // exists for was simply wrong. Pointer events fire once per
-            // physical interaction and need no dedup at all.
-            onPointerDown={activatePeek}
-            onPointerUp={releasePeek}
-            onPointerLeave={releasePeek}
-            onPointerCancel={releasePeek}
+            // A plain click: see togglePeek for why this replaced the
+            // pointer-event hold, and why it needs no dedup.
+            aria-pressed={peeking}
+            onClick={togglePeek}
           >
             {peeking ? `RC ${formatSigned(game.runningCount)} / TC ${formatSigned(game.trueCountNow)}` : 'TC'}
           </button>

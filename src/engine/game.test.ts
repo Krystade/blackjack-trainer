@@ -1499,3 +1499,85 @@ describe('full-table shoe exhaustion (cycle-2 review I2/M5)', () => {
     expect(game.shoe.cardsRemaining).toBe(cardsBefore);
   });
 });
+
+/* ------------------------------------------------------------------------ */
+/* dealerAlwaysPlaysOut: the table-with-others reveal (operator request)     */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Operator: "I just got a blackjack and it instantly went to the next hand,
+ * the dealer is supposed to play out the hand so I can continue counting" --
+ * then, once told the omission was deliberate: "If that's on purpose that's
+ * fine but should be a setting, most of the time I'm playing at a table with
+ * others so I want to emulate that."
+ *
+ * Both behaviours are correct, for different tables. Heads-up, the dealer
+ * pays a natural and sweeps without exposing, so a counter never sees the
+ * hole and must not count it -- that is the default, pinned above. With other
+ * players still live the dealer plays on and the hole IS seen. These specs
+ * pin the opt-in, and specifically that it reveals WITHOUT inventing draws.
+ */
+describe('dealerAlwaysPlaysOut', () => {
+  it('reveals and counts the hole on a solo natural when enabled', () => {
+    // Same rigged shoe as the default-behaviour spec above: player A,K
+    // (natural); dealer 9,5. Only the flag differs.
+    const game = Game.withRiggedShoe(
+      { ...cfg(), dealerAlwaysPlaysOut: true },
+      rig('A', '9', 'K', '5', '6'),
+    );
+    game.startRound();
+
+    expect(game.phase).toBe('settled');
+    expect(game.hands[0].result).toBe('blackjack');
+    // The payout is untouched by a display/count concern.
+    expect(game.bankroll).toBe(101.5);
+
+    // The hole is now SEEN...
+    expect(game.holeRevealed).toBe(true);
+    // ...and counted: A(-1) + 9(0) + K(-1) + hole 5(+1) = -1.
+    expect(game.runningCount).toBe(-1);
+  });
+
+  it('reveals the hole but does NOT draw cards nobody needs', () => {
+    // Dealer holds 9,5 = hard 14, which any live hand would force a draw on.
+    // Nothing is live, so the dealer must stop at two cards -- drawing here
+    // would pull a card out of the shoe that a real table never exposes and
+    // would bias the count in the opposite direction to the bug being fixed.
+    const game = Game.withRiggedShoe(
+      { ...cfg(), dealerAlwaysPlaysOut: true },
+      rig('A', '9', 'K', '5', '6'),
+    );
+    game.startRound();
+
+    expect(game.dealerCards).toHaveLength(2);
+    // The would-be draw (the 6) is still in the shoe.
+    expect(game.shoe.cardsRemaining).toBe(1);
+  });
+
+  it('leaves the default behaviour untouched when disabled', () => {
+    const game = Game.withRiggedShoe({ ...cfg(), dealerAlwaysPlaysOut: false }, rig('A', '9', 'K', '5', '6'));
+    game.startRound();
+    expect(game.holeRevealed).toBe(false);
+    expect(game.runningCount).toBe(-2);
+  });
+
+  // The flag only concerns the all-resolved case. A round with a live hand
+  // already plays the dealer out, so enabling it must change nothing there --
+  // otherwise it would be silently altering ordinary play too.
+  it('changes nothing on a round that already plays the dealer out', () => {
+    const plain = Game.withRiggedShoe(cfg(), rig('5', '9', '6', '5', '6', '7'));
+    plain.startRound();
+    plain.act('stand');
+
+    const flagged = Game.withRiggedShoe(
+      { ...cfg(), dealerAlwaysPlaysOut: true },
+      rig('5', '9', '6', '5', '6', '7'),
+    );
+    flagged.startRound();
+    flagged.act('stand');
+
+    expect(flagged.runningCount).toBe(plain.runningCount);
+    expect(flagged.dealerCards.length).toBe(plain.dealerCards.length);
+    expect(flagged.bankroll).toBe(plain.bankroll);
+  });
+});

@@ -57,6 +57,20 @@ export interface GameConfig {
   seed?: number;
   rules?: RuleSet; // defaults to DEFAULT_RULES (v1's game); C1.13 wires this to the active profile
   seats?: SeatConfig; // defaults to DEFAULT_SEATS (v1 solo parity) when absent
+  /**
+   * Reveal the dealer's hole card even when no hand still needs a dealer
+   * total -- the all-resolved case, which in practice means a solo natural.
+   *
+   * Defaults FALSE, which is faithful to heads-up play: the dealer pays the
+   * natural and sweeps without exposing, so a counter never sees that card
+   * and correctly never counts it. At a table with other players the dealer
+   * does play on and the hole IS exposed, which is what this enables.
+   *
+   * Note the same effect already follows from seating bots: a live bot hand
+   * keeps the round unresolved, so the dealer plays out and the hole is
+   * revealed without this flag at all.
+   */
+  dealerAlwaysPlaysOut?: boolean;
 }
 
 export type Phase = 'idle' | 'insurance' | 'player' | 'settled';
@@ -943,7 +957,12 @@ export class Game {
     const someHandUnresolved = this.seats
       .flatMap((s) => s.hands)
       .some((h) => h.result === undefined);
-    if (!someHandUnresolved) {
+    // `dealerAlwaysPlaysOut` opts into the table-with-others behaviour: run
+    // the dealer anyway so the hole is revealed and counted. It does NOT make
+    // the dealer draw cards nobody needs -- playDealerAndSettle only draws
+    // for live hands, and inventing draws would pull cards out of the shoe
+    // that a real table never exposes, biasing the count the other way.
+    if (!someHandUnresolved && !this.cfg.dealerAlwaysPlaysOut) {
       this.finishRound();
       return;
     }
