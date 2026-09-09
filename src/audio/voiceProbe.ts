@@ -98,6 +98,55 @@ export function appendProbe(kind: ProbeKind, detail: string): void {
   write(entries);
 }
 
+/** How many transcriptions to ask the engine for per utterance. */
+export const ALTERNATIVES_REQUESTED = 3;
+
+export interface Alternative {
+  transcript: string;
+  /** Engines are not obliged to supply this, and several report 0 for
+   * continuous recognition, so its absence is itself worth recording. */
+  confidence?: number;
+}
+
+/**
+ * Render one recognition result for the log.
+ *
+ * The question this exists to answer is what a NOISY environment does to
+ * accuracy -- a phone or car microphone over road noise is where the closed
+ * vocabulary will actually be tested, and a bare "REJECTED" cannot tell the
+ * difference between two very different failures:
+ *
+ *   - the engine heard something unrelated, and rejecting was correct;
+ *   - the engine heard the right word but ranked it second, and a wider
+ *     match would have caught it.
+ *
+ * So a rejection records whether a lower-ranked alternative WOULD have
+ * matched, marked RESCUABLE. That flag is diagnostic only: nothing acts on
+ * runners-up, because promoting rank 2 into a real answer is precisely the
+ * guess this module refuses to make. It exists so the decision to widen
+ * matching can be made from road evidence instead of from a hunch.
+ */
+export function describeResult(alts: Alternative[], visibility: string): string {
+  const top = alts[0];
+  const heard = (top?.transcript ?? '').trim();
+  const matched = matchVoiceAction(heard);
+
+  let verdict: string = matched ?? 'REJECTED';
+  if (!matched) {
+    const rescue = alts.slice(1).map((a) => matchVoiceAction(a.transcript)).find(Boolean);
+    if (rescue) verdict += ` RESCUABLE=${rescue}`;
+  }
+
+  const conf = top?.confidence;
+  const confText = typeof conf === 'number' ? conf.toFixed(2) : 'n/a';
+
+  // Runners-up are only worth the log line when they differ from the winner.
+  const others = alts.slice(1).map((a) => a.transcript.trim()).filter((t) => t && t !== heard);
+  const altText = others.length ? ` alts=[${others.map((t) => `"${t}"`).join(', ')}]` : '';
+
+  return `heard="${heard}" conf=${confText} -> ${verdict}${altText} (visibility=${visibility})`;
+}
+
 export interface ProbeHandle {
   stop: () => void;
 }
@@ -151,20 +200,30 @@ export function startVoiceProbe(opts: { autoRestart: boolean }): ProbeHandle {
       recognition.continuous = true;
       recognition.interimResults = false;
       recognition.lang = 'en-US';
+      // Ask for runners-up. The probe does not ACT on them -- it records
+      // whether the right word was sitting at rank 2 while rank 1 was
+      // rejected, which is the only evidence that would justify widening the
+      // match later. Road noise is the case that decides this.
+      recognition.maxAlternatives = ALTERNATIVES_REQUESTED;
 
       recognition.onstart = () => appendProbe('start', 'recognition started');
       recognition.onerror = (e: { error?: string }) =>
         appendProbe('error', e?.error ?? 'unknown');
-      recognition.onresult = (e: { results?: ArrayLike<ArrayLike<{ transcript?: string }>> }) => {
+      recognition.onresult = (e: {
+        results?: ArrayLike<ArrayLike<{ transcript?: string; confidence?: number }> & { length: number }>;
+      }) => {
         const results = e?.results;
         if (!results) return;
         const last = results[results.length - 1];
-        const transcript = last?.[0]?.transcript ?? '';
-        const matched = matchVoiceAction(transcript);
-        appendProbe(
-          'result',
-          `heard="${transcript.trim()}" -> ${matched ?? 'REJECTED'} (visibility=${document.visibilityState})`,
-        );
+        if (!last) return;
+        const alts: Alternative[] = [];
+        for (let i = 0; i < last.length; i++) {
+          const alt = last[i];
+          if (alt && typeof alt.transcript === 'string') {
+            alts.push({ transcript: alt.transcript, confidence: alt.confidence });
+          }
+        }
+        appendProbe('result', describeResult(alts, document.visibilityState));
       };
       recognition.onend = () => {
         appendProbe('end', `session ended (visibility=${document.visibilityState})`);
@@ -208,12 +267,20 @@ export function formatProbeLog(entries: ProbeEntry[] = readProbeLog()): string {
     (e) => e.kind === 'end' && e.detail.includes('visibility=hidden'),
   ).length;
 
+  // A rejection that a runner-up would have caught is a DIFFERENT failure
+  // from one the engine got plainly wrong, and only the first is evidence
+  // for widening the match. In a car this is the number that matters.
+  const rescuable = heard.filter((e) => e.detail.includes('RESCUABLE=')).length;
+  const anyConfidence = heard.some((e) => /conf=\d/.test(e.detail));
+
   return [
     'Blackjack Trainer — voice recognition probe',
     `captured: ${new Date().toISOString()}`,
     '',
     `phrases heard: ${heard.length}`,
     `matched: ${heard.filter((e) => !e.detail.includes('REJECTED')).length}`,
+    `rejected but rescuable: ${rescuable}  (right word ranked below the winner)`,
+    `confidence: ${anyConfidence ? 'reported' : 'not reported by this engine'}`,
     `errors: ${errors.length ? errors.join(', ') : '(none)'}`,
     `sessions ended: ${ends}  (while tab hidden: ${hiddenEnds})`,
     `auto-restarts: ${restarts}`,
