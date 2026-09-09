@@ -48,12 +48,20 @@ export type VoiceAction = keyof typeof VOICE_ACTIONS;
  *
  * Speech engines mishear short commands in predictable ways, and against a
  * closed vocabulary an alias table is both cheaper and more reliable than
- * fuzzy matching: "hit" comes back as "hid" or "it", "stand" as "stan",
- * "double" as "dubble". Anything not listed is rejected rather than guessed
- * -- acting on a wrong guess mid-drill is worse than asking again.
+ * fuzzy matching: "hit" comes back as "hid", "stand" as "stan", "double" as
+ * "dubble". Anything not listed is rejected rather than guessed -- acting on
+ * a wrong guess mid-drill is worse than asking again.
+ *
+ * AN ALIAS MUST NOT BE A WORD OF ORDINARY ENGLISH. "it" was listed here as a
+ * mishearing of "hit" and the first real device log caught it firing: the
+ * sentence "damn this shit works really well does it" was graded as a HIT.
+ * A recogniser transcribes the whole room, so any alias that also occurs in
+ * conversation will eventually play a hand nobody asked for. The cost of a
+ * missing alias is being asked to repeat a word; the cost of a common-word
+ * alias is a wrong decision at the table. Those are not comparable.
  */
 const ALIASES: Record<string, VoiceAction> = {
-  hit: 'hit', hid: 'hit', it: 'hit', hits: 'hit',
+  hit: 'hit', hid: 'hit', hits: 'hit',
   stand: 'stand', stan: 'stand', stands: 'stand', standing: 'stand',
   double: 'double', dubble: 'double', doubles: 'double', 'double down': 'double',
   split: 'split', splits: 'split', spit: 'split',

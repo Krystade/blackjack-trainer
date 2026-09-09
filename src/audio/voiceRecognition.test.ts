@@ -66,6 +66,57 @@ describe('matchVoiceAction', () => {
     expect(matchVoiceAction('hitting')).toBe(null);
     expect(matchVoiceAction('understand')).toBe(null);
   });
+
+  /**
+   * Every transcript from the first real-device probe run, with the verdict
+   * each one SHOULD get. Recorded verbatim, including the casing and the
+   * swearing, because invented test phrases are exactly what let the bug
+   * below through: nothing anyone writes on purpose looks like line 11.
+   *
+   * That line -- "damn this shit works really well does it" -- was graded as
+   * a HIT, because "it" was listed as a mishearing of "hit". A recogniser
+   * transcribes the whole room, so an alias that is also an ordinary English
+   * word will eventually play a hand nobody asked for.
+   */
+  it('gives the right verdict on every transcript from the device probe', () => {
+    const captured: Array<[string, string | null]> = [
+      ['hello', null],
+      ['hit', 'hit'],
+      ['stand hold', 'stand'],
+      ['double', 'double'],
+      ['hit hit hit hit hit stand HIT stand hold double double', 'double'],
+      ['Split', 'split'],
+      ['surrender', 'surrender'],
+      ['test', null],
+      ['oh wow okay', null],
+      ['damn this shit works really well does it', null],
+      ['welcome home', null],
+      ['yippee', null],
+      ['okay minimize', null],
+      ['typing in a different window', null],
+    ];
+    for (const [heard, expected] of captured) {
+      expect(matchVoiceAction(heard), `heard: "${heard}"`).toBe(expected);
+    }
+  });
+
+  /**
+   * The rule that keeps the table safe, enforced rather than remembered.
+   *
+   * An alias is allowed to be a command word or a garbled non-word. It is not
+   * allowed to be a word that turns up in ordinary speech, because the
+   * microphone is open to the whole room and every such alias is a latent
+   * misfire. This list is the filler heard in one two-minute probe run.
+   */
+  it('lists no alias that is an ordinary conversational word', () => {
+    const conversational = [
+      'it', 'is', 'a', 'the', 'and', 'so', 'well', 'okay', 'oh', 'this',
+      'that', 'does', 'up', 'down', 'one', 'two', 'to', 'too', 'go', 'do',
+    ];
+    for (const word of conversational) {
+      expect(matchVoiceAction(word), `"${word}" must not be an action`).toBe(null);
+    }
+  });
 });
 
 describe('detectVoiceSupport', () => {
