@@ -62,7 +62,7 @@ export type VoiceAction = keyof typeof VOICE_ACTIONS;
  */
 const ALIASES: Record<string, VoiceAction> = {
   hit: 'hit', hid: 'hit', hits: 'hit',
-  stand: 'stand', stan: 'stand', stands: 'stand', standing: 'stand',
+  stand: 'stand', stan: 'stand', stant: 'stand', stands: 'stand', standing: 'stand',
   double: 'double', dubble: 'double', doubles: 'double', 'double down': 'double',
   split: 'split', splits: 'split', spit: 'split',
   surrender: 'surrender', surrenders: 'surrender',

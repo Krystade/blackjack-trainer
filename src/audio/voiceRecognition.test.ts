@@ -27,6 +27,10 @@ describe('matchVoiceAction', () => {
     expect(matchVoiceAction('stan')).toBe('stand');
     expect(matchVoiceAction('dubble')).toBe('double');
     expect(matchVoiceAction('spit')).toBe('split');
+    // Observed in real use: "stand" came back as "Stant" and was rejected.
+    // It passes the rule that keeps this table safe -- it is a garbled
+    // non-word, not something anyone says in conversation.
+    expect(matchVoiceAction('stant')).toBe('stand');
   });
 
   /**

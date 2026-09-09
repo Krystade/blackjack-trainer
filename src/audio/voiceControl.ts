@@ -52,7 +52,7 @@ export interface RecognitionLike {
 }
 
 /** What the microphone did with one utterance, for the operator to read. */
-export type HeardVerdict = VoiceAction | 'rejected' | 'suppressed';
+export type HeardVerdict = VoiceAction | 'rejected' | 'suppressed' | (string & {});
 
 export interface VoiceControllerDeps {
   /** Returns null when the browser has no recognition API. */
@@ -68,6 +68,23 @@ export interface VoiceControllerDeps {
    * otherwise, and the operator cannot debug either while driving.
    */
   onHeard?: (heard: string, verdict: HeardVerdict) => void;
+  /**
+   * First refusal on every transcript, before the command vocabulary sees it.
+   *
+   * A modal owns the microphone while it is up. A count check asks for a
+   * NUMBER, which is not in the command vocabulary at all and would otherwise
+   * be rejected as noise -- and while it is open, "hit" must not play a hand
+   * behind it either. Returning a label consumes the transcript and reports
+   * that label; returning null passes it on to the ordinary matcher.
+   */
+  onTranscript?: (heard: string) => string | null;
+  /**
+   * Words to bias the engine toward. Chrome accepts a phrase list with a
+   * boost per phrase, which is the single largest accuracy lever available
+   * for a closed vocabulary heard over road noise -- the engine is otherwise
+   * choosing from all of English for a one-syllable word.
+   */
+  biasPhrases?: string[];
 }
 
 /**
@@ -101,6 +118,35 @@ export const RESTART_DELAY_MS = 250;
  * can fix by talking louder.
  */
 export const START_TIMEOUT_MS = 5000;
+
+/**
+ * How hard to bias the engine toward the vocabulary. Chrome accepts 0 to 10
+ * and rejects anything outside that with a SyntaxError. Deliberately short of
+ * the maximum: the point is to make "stand" beat "stan" and "sand", not to
+ * make every noise in the car resolve to a command.
+ */
+export const PHRASE_BOOST = 3;
+
+/**
+ * Bias the engine toward the words we actually expect, where the browser
+ * supports it. Silently skipped everywhere else -- this is an accuracy
+ * improvement, never a requirement.
+ */
+function applyBias(recognition: RecognitionLike, phrases: string[] | undefined): void {
+  if (!phrases || phrases.length === 0) return;
+  const g = globalThis as unknown as {
+    SpeechRecognitionPhrase?: new (phrase: string, boost: number) => unknown;
+  };
+  const Phrase = g.SpeechRecognitionPhrase;
+  if (typeof Phrase !== 'function') return;
+  try {
+    (recognition as unknown as { phrases: unknown[] }).phrases = phrases.map(
+      (phrase) => new Phrase(phrase, PHRASE_BOOST),
+    );
+  } catch {
+    /* an engine that will not be biased still works unbiased */
+  }
+}
 
 /**
  * Whether a session has run long enough to be worth cycling at a quiet moment
@@ -216,6 +262,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     fresh.continuous = true;
     fresh.interimResults = false;
     fresh.lang = 'en-US';
+    applyBias(fresh, deps.biasPhrases);
 
     fresh.onstart = () => {
       clearWatchdog();
@@ -255,6 +302,13 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       // The app's own voice, arriving back through the microphone.
       if (isSuppressed(deps.now(), suppressedUntil)) {
         deps.onHeard?.(heard, 'suppressed');
+        return;
+      }
+
+      // A modal that owns the microphone answers first, or not at all.
+      const claimed = deps.onTranscript?.(heard);
+      if (claimed) {
+        deps.onHeard?.(heard, claimed);
         return;
       }
 

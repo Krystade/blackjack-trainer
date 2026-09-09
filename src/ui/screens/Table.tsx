@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
@@ -11,7 +11,8 @@ import { useGame } from '../useGame';
 import type { SessionReport } from '../useGame';
 import { useAudio } from '../../audio/useAudio';
 import { useVoiceControl } from '../useVoiceControl';
-import { detectVoiceSupport, VOICE_ACTIONS } from '../../audio/voiceRecognition';
+import { detectVoiceSupport, VOICE_ACTIONS, matchVoiceAction } from '../../audio/voiceRecognition';
+import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../audio/voiceNumber';
 import type { VoiceAction } from '../../audio/voiceRecognition';
 import type { ListenState, HeardVerdict } from '../../audio/voiceControl';
 import { actionUnavailable } from '../../drills/answerGate';
@@ -255,6 +256,11 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   // opened by a page load -- only by someone asking for it.
   const [voiceOn, setVoiceOn] = useState(false);
   const [voiceSupported] = useState(() => detectVoiceSupport().api);
+  // A spoken count is a PROPOSAL until it is read back and confirmed. Holding
+  // it here rather than submitting on hearing it is the whole reason numbers
+  // are safe to say out loud: a misheard digit costs one "no", not a
+  // corrupted session.
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
   const {
     game,
     deal,
@@ -354,8 +360,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       return;
     }
 
-    // The count check wants a number, and numbers are deliberately not in the
-    // vocabulary: a misheard count is a silently corrupted session.
+    // The count check owns the microphone while it is open -- see
+    // interpretCountSpeech, which claims every transcript before this runs.
+    // Reaching here with it open would mean a stray word playing a hand
+    // behind the prompt.
     if (game.countCheckDue) return;
 
     if (game.phase === 'insurance') {
@@ -385,7 +393,72 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     }
   };
 
-  const voice = useVoiceControl({ enabled: voiceOn, onAction: handleVoiceCommand });
+  /**
+   * The count check, answered out loud.
+   *
+   * It claims EVERY transcript while it is open, for two reasons: a number is
+   * not in the command vocabulary and would otherwise be discarded as noise,
+   * and a stray "hit" must not play the hand waiting behind the prompt.
+   *
+   * Nothing is submitted on hearing it. A value is read back and has to be
+   * confirmed, which is what makes speaking a count safe at all -- the cost
+   * of a misheard digit is one "no" rather than a session scored against an
+   * answer nobody gave.
+   *
+   * Parsing runs BEFORE the yes/no vocabulary on purpose: "no, minus three"
+   * is a correction, and matching "no" first would clear the value the
+   * operator was in the middle of giving.
+   */
+  const interpretCountSpeech = (heard: string): string | null => {
+    if (!game.countCheckDue) return null;
+
+    const parsed = parseCountSpeech(heard);
+    if (parsed) {
+      const next =
+        parsed.kind === 'value' ? parsed.value : (pendingCount ?? 0) + parsed.delta;
+      setPendingCount(next);
+      audio.say(`${speakableCount(next)}. Correct?`);
+      return `count ${speakableCount(next)}`;
+    }
+
+    switch (matchVoiceAction(heard)) {
+      case 'yes': {
+        if (pendingCount === null) {
+          audio.say('I have no count yet. What is it?');
+          return 'nothing to confirm';
+        }
+        const confirmed = pendingCount;
+        setPendingCount(null);
+        handleCountSubmit(confirmed);
+        return `submitted ${speakableCount(confirmed)}`;
+      }
+      case 'no':
+        // A rejection clears the proposal outright rather than trying to
+        // salvage it: the operator said it was wrong, not nearly right.
+        setPendingCount(null);
+        audio.say(countPromptText());
+        return 'cleared, say it again';
+      case 'repeat':
+        audio.say(
+          pendingCount === null
+            ? countPromptText()
+            : `${speakableCount(pendingCount)}. Correct?`,
+        );
+        return 'repeated';
+      default:
+        return 'not a count';
+    }
+  };
+
+  const voice = useVoiceControl({
+    enabled: voiceOn,
+    onAction: handleVoiceCommand,
+    onTranscript: interpretCountSpeech,
+    // Biased toward the commands AND the count words at once. The phrase list
+    // is fixed for the life of a session, and rebuilding the recogniser as
+    // the prompt opens would cost a deaf gap exactly when an answer is due.
+    biasPhrases: [...Object.keys(VOICE_ACTIONS), ...COUNT_BIAS_PHRASES],
+  });
 
   const handleDeal = () => {
     if (playerHandsCount > 1) {
@@ -403,6 +476,25 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     sitOut();
     setCountStage('rc');
   };
+
+  const countPromptText = (): string =>
+    countStage === 'rc' ? 'Running count?' : 'True count?';
+
+  // Ask out loud when the prompt appears, and again if it moves on to the
+  // true count. Without this the app simply goes quiet mid-drive and the
+  // round looks frozen: the modal is the only thing saying an answer is due.
+  const countDue = game.countCheckDue;
+  useEffect(() => {
+    if (!voiceOn || !countDue) return;
+    audio.say(countPromptText());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceOn, countDue, countStage]);
+
+  // A proposal belongs to one prompt. Carrying it across would offer the
+  // running count back as an answer to the true-count question.
+  useEffect(() => {
+    setPendingCount(null);
+  }, [countDue, countStage]);
 
   const handleCountSubmit = (n: number) => {
     if (game.askTcToo && countStage === 'rc') {
@@ -715,6 +807,31 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
 
       {game.countCheckDue && (
         <Modal title={countStage === 'rc' ? 'Running Count?' : 'True Count?'}>
+          {/* The spoken proposal, shown as well as said. A driver glancing
+              at the screen at a light should be able to see what the app
+              thinks it heard, and a passenger should be able to correct it
+              by tapping instead of talking. */}
+          {voiceOn && (
+            <div className="count-voice" data-pending={pendingCount !== null}>
+              {pendingCount === null ? (
+                <span className="count-voice-hint">
+                  Say the count &mdash; &ldquo;minus three&rdquo;. Then &ldquo;plus&rdquo; or
+                  &ldquo;minus&rdquo; to nudge it by one, &ldquo;yes&rdquo; to submit.
+                </span>
+              ) : (
+                <>
+                  <span className="count-voice-value">{formatSigned(pendingCount)}</span>
+                  <span className="count-voice-hint">
+                    &ldquo;yes&rdquo; to submit &middot; &ldquo;no&rdquo; to start over &middot;
+                    &ldquo;plus&rdquo;/&ldquo;minus&rdquo; to nudge
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+          {/* The keypad stays. Voice is an addition, not a replacement: it
+              has to survive a refused microphone, a passenger, and a browser
+              that cannot listen at all. */}
           <NumPad
             key={countStage}
             label={countStage === 'rc' ? 'Enter running count' : 'Enter true count'}

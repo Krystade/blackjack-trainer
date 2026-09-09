@@ -34,6 +34,7 @@ import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
 import { narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt } from '../../audio/narrate';
 import { useVoiceControl } from '../useVoiceControl';
+import { autoAdvanceDelayMs, spokenPauseFor } from '../../drills/answerPause';
 import type { ListenState, HeardVerdict } from '../../audio/voiceControl';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../audio/voiceRecognition';
 import type { VoiceAction } from '../../audio/voiceRecognition';
@@ -263,10 +264,13 @@ function FlashcardsView({
   // it IS the primary output channel in this mode, not decoration (same
   // precedent as CountDrillView's flashing-card narration).
   useEffect(() => {
-    if (!eyesFree) return;
+    // Voice counts as eyes-free whether or not the ZonePad is up: someone
+    // answering out loud is not watching the screen, and an unspoken prompt
+    // would leave them waiting for a question that never comes.
+    if (!eyesFree && !voiceOn) return;
     speak(narrateFlashcardPrompt(card.cards, card.up, settings.audio.handStyle), speechOptsFrom(settings.audio, { interrupt: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card, eyesFree]);
+  }, [card, eyesFree, voiceOn]);
 
   const next = (category: Settings['drill']['flashCategory'] = settings.drill.flashCategory) => {
     runIdRef.current += 1;
@@ -310,14 +314,17 @@ function FlashcardsView({
     speak(narrateFlashcardPrompt(card.cards, card.up, settings.audio.handStyle), speechOptsFrom(settings.audio, { interrupt: true }));
   };
 
-  const scheduleAutoAdvance = () => {
+  // `spokenMs` is how long the correction will occupy the speaker. The next
+  // prompt speaks with `interrupt: true`, so advancing on the configured
+  // pause alone cut the explanation off mid-sentence -- see answerPause.ts.
+  const scheduleAutoAdvance = (spokenMs = 0) => {
     clearAdvanceTimer();
     const runId = runIdRef.current;
     advanceTimerRef.current = window.setTimeout(() => {
       advanceTimerRef.current = null;
       if (runIdRef.current !== runId) return;
       next();
-    }, settings.audio.answerPauseMs);
+    }, autoAdvanceDelayMs(settings.audio.answerPauseMs, spokenMs));
   };
 
   // Shared grading core (R4): the SAME gradeFlashcard function backs the
@@ -338,10 +345,18 @@ function FlashcardsView({
   // correct answer speaks in full and flips the ref; every correct answer
   // after that skips `doSpeak` entirely so only the chime plays. Shared by
   // both handlers below so the visual and eyes-free paths can't drift.
-  const speakCorrectionOnceGated = (event: GradedEvent, doSpeak: (text: string) => void) => {
-    if (event.correct && spokenCorrectOnceRef.current) return;
-    doSpeak(narrateCorrection(event));
+  // Returns how long it will be talking, so the caller can hold the answer on
+  // screen until it has finished. A gated-out "Correct." returns 0 and the
+  // configured pause is used unchanged.
+  const speakCorrectionOnceGated = (
+    event: GradedEvent,
+    doSpeak: (text: string) => void,
+  ): number => {
+    if (event.correct && spokenCorrectOnceRef.current) return 0;
+    const text = narrateCorrection(event);
+    doSpeak(text);
     if (event.correct) spokenCorrectOnceRef.current = true;
+    return spokenPauseFor(text, settings.audio.rate);
   };
 
   const handleAction = (taken: Action) => {
@@ -376,13 +391,13 @@ function FlashcardsView({
 
     const { event, correctAction } = gradeFlashcardAnswer(zone);
 
-    speakCorrectionOnceGated(event, (text) =>
+    const spokenMs = speakCorrectionOnceGated(event, (text) =>
       speak(text, speechOptsFrom(settings.audio)),
     );
     audio.ding(event.correct ? 'good' : 'bad');
 
     setFeedback({ correct: event.correct, correctAction, event });
-    scheduleAutoAdvance();
+    scheduleAutoAdvance(spokenMs);
   };
 
   /**
@@ -418,7 +433,14 @@ function FlashcardsView({
     voice.cycleIfStale();
   };
 
-  const voice = useVoiceControl({ enabled: voiceOn, onAction: handleVoiceAction });
+  const voice = useVoiceControl({
+    enabled: voiceOn,
+    onAction: handleVoiceAction,
+    // Bias the engine toward the words it should be hearing. Reported from
+    // real use: "stand" came back as "Stant" and was rejected -- unbiased,
+    // the engine is choosing a one-syllable word out of all of English.
+    biasPhrases: Object.keys(VOICE_ACTIONS),
+  });
 
   // Desktop keyboard input (operator request): while an answer is awaited,
   // number keys 1-5 feed the SAME handler a tap on that action would use --
@@ -826,14 +848,17 @@ function DeviationQuizView({
     speak(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle), speechOptsFrom(settings.audio, { interrupt: true }));
   };
 
-  const scheduleAutoAdvance = () => {
+  // `spokenMs` is how long the correction will occupy the speaker. The next
+  // prompt speaks with `interrupt: true`, so advancing on the configured
+  // pause alone cut the explanation off mid-sentence -- see answerPause.ts.
+  const scheduleAutoAdvance = (spokenMs = 0) => {
     clearAdvanceTimer();
     const runId = runIdRef.current;
     advanceTimerRef.current = window.setTimeout(() => {
       advanceTimerRef.current = null;
       if (runIdRef.current !== runId) return;
       next();
-    }, settings.audio.answerPauseMs);
+    }, autoAdvanceDelayMs(settings.audio.answerPauseMs, spokenMs));
   };
 
   // Shared grading core (R4): the SAME gradeQuiz function backs the visual
@@ -853,10 +878,18 @@ function DeviationQuizView({
   // correct answer speaks in full and flips the ref; every correct answer
   // after that skips `doSpeak` entirely so only the chime plays. Shared by
   // both handlers below so the visual and eyes-free paths can't drift.
-  const speakCorrectionOnceGated = (event: GradedEvent, doSpeak: (text: string) => void) => {
-    if (event.correct && spokenCorrectOnceRef.current) return;
-    doSpeak(narrateCorrection(event));
+  // Returns how long it will be talking, so the caller can hold the answer on
+  // screen until it has finished. A gated-out "Correct." returns 0 and the
+  // configured pause is used unchanged.
+  const speakCorrectionOnceGated = (
+    event: GradedEvent,
+    doSpeak: (text: string) => void,
+  ): number => {
+    if (event.correct && spokenCorrectOnceRef.current) return 0;
+    const text = narrateCorrection(event);
+    doSpeak(text);
     if (event.correct) spokenCorrectOnceRef.current = true;
+    return spokenPauseFor(text, settings.audio.rate);
   };
 
   const handleAnswer = (taken: string) => {
@@ -895,13 +928,13 @@ function DeviationQuizView({
 
     const event = gradeQuizAnswer(taken);
 
-    speakCorrectionOnceGated(event, (text) =>
+    const spokenMs = speakCorrectionOnceGated(event, (text) =>
       speak(text, speechOptsFrom(settings.audio)),
     );
     audio.ding(event.correct ? 'good' : 'bad');
 
     setFeedback({ correct: event.correct, event });
-    scheduleAutoAdvance();
+    scheduleAutoAdvance(spokenMs);
   };
 
   // Desktop keyboard input (operator request): while an answer is awaited,
@@ -1289,14 +1322,17 @@ function MixedSessionView({
     speak(promptFor(current), speechOptsFrom(settings.audio, { interrupt: true }));
   };
 
-  const scheduleAutoAdvance = () => {
+  // `spokenMs` is how long the correction will occupy the speaker. The next
+  // prompt speaks with `interrupt: true`, so advancing on the configured
+  // pause alone cut the explanation off mid-sentence -- see answerPause.ts.
+  const scheduleAutoAdvance = (spokenMs = 0) => {
     clearAdvanceTimer();
     const runId = runIdRef.current;
     advanceTimerRef.current = window.setTimeout(() => {
       advanceTimerRef.current = null;
       if (runIdRef.current !== runId) return;
       next();
-    }, settings.audio.answerPauseMs);
+    }, autoAdvanceDelayMs(settings.audio.answerPauseMs, spokenMs));
   };
 
   // THE shared grade path (R4): dispatch to gradeFlashcard or gradeQuiz by the
@@ -1314,10 +1350,18 @@ function MixedSessionView({
     return { correct: result.event.correct, event: result.event };
   };
 
-  const speakCorrectionOnceGated = (event: GradedEvent, doSpeak: (text: string) => void) => {
-    if (event.correct && spokenCorrectOnceRef.current) return;
-    doSpeak(narrateCorrection(event));
+  // Returns how long it will be talking, so the caller can hold the answer on
+  // screen until it has finished. A gated-out "Correct." returns 0 and the
+  // configured pause is used unchanged.
+  const speakCorrectionOnceGated = (
+    event: GradedEvent,
+    doSpeak: (text: string) => void,
+  ): number => {
+    if (event.correct && spokenCorrectOnceRef.current) return 0;
+    const text = narrateCorrection(event);
+    doSpeak(text);
     if (event.correct) spokenCorrectOnceRef.current = true;
+    return spokenPauseFor(text, settings.audio.rate);
   };
 
   const handleAnswer = (taken: string) => {
@@ -1347,10 +1391,12 @@ function MixedSessionView({
     speak(`${zoneLabel(zone)}…`, speechOptsFrom(settings.audio, { interrupt: true }));
 
     const { correct, correctAction, event } = gradeCurrent(taken);
-    speakCorrectionOnceGated(event, (text) => speak(text, speechOptsFrom(settings.audio)));
+    const spokenMs = speakCorrectionOnceGated(event, (text) =>
+      speak(text, speechOptsFrom(settings.audio)),
+    );
     audio.ding(correct ? 'good' : 'bad');
     setFeedback({ correct, correctAction, event });
-    scheduleAutoAdvance();
+    scheduleAutoAdvance(spokenMs);
   };
 
   // Keyboard: identical mapping to the standalone views -- 1-5 action keys for

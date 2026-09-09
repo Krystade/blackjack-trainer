@@ -31,9 +31,17 @@ const IDLE: VoiceStatus = { state: 'off', heard: null, verdict: null };
 export function useVoiceControl({
   enabled,
   onAction,
+  onTranscript,
+  biasPhrases,
 }: {
   enabled: boolean;
   onAction: (action: VoiceAction) => void;
+  /** First refusal on every transcript, for a modal that owns the
+   * microphone -- a count check asking for a number the command vocabulary
+   * does not contain. Return a label to consume it, null to pass it on. */
+  onTranscript?: (heard: string) => string | null;
+  /** Words to bias the engine toward, where the browser supports it. */
+  biasPhrases?: string[];
 }): { status: VoiceStatus; cycleIfStale: () => void } {
   const [status, setStatus] = useState<VoiceStatus>(IDLE);
 
@@ -43,6 +51,12 @@ export function useVoiceControl({
   // listening, and would land in the middle of an answer.
   const actionRef = useRef(onAction);
   actionRef.current = onAction;
+
+  // Same reasoning: this closes over the prompt's own state, and rebuilding
+  // the recogniser whenever that changes would cost a deaf gap at exactly the
+  // moment an answer is due.
+  const transcriptRef = useRef(onTranscript);
+  transcriptRef.current = onTranscript;
 
   const controllerRef = useRef<VoiceController | null>(null);
 
@@ -55,6 +69,8 @@ export function useVoiceControl({
       schedule: (fn, ms) => window.setTimeout(fn, ms),
       cancel: (handle) => window.clearTimeout(handle),
       onAction: (action) => actionRef.current(action),
+      onTranscript: (heard) => transcriptRef.current?.(heard) ?? null,
+      biasPhrases,
       onState: (state) => setStatus((prev) => ({ ...prev, state })),
       onHeard: (heard, verdict) => setStatus((prev) => ({ ...prev, heard, verdict })),
     });
@@ -71,6 +87,10 @@ export function useVoiceControl({
       controllerRef.current = null;
       setStatus(IDLE);
     };
+    // `biasPhrases` is intentionally absent: callers build the list inline, so
+    // a fresh array every render would tear the recogniser down and rebuild it
+    // continuously. The vocabulary is fixed for a session's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
   return {
