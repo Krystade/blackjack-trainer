@@ -440,6 +440,7 @@ function FlashcardsView({
     // real use: "stand" came back as "Stant" and was rejected -- unbiased,
     // the engine is choosing a one-syllable word out of all of English.
     biasPhrases: Object.keys(VOICE_ACTIONS),
+    context: 'flashcards',
   });
 
   // Desktop keyboard input (operator request): while an answer is awaited,

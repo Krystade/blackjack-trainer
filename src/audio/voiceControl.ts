@@ -85,6 +85,15 @@ export interface VoiceControllerDeps {
    * choosing from all of English for a one-syllable word.
    */
   biasPhrases?: string[];
+  /**
+   * Run recognition on an installed local model instead of over the network.
+   *
+   * Only ever set when a model is confirmed INSTALLED -- see
+   * onDeviceSpeech.ts. Switching to local processing without one risks a
+   * recogniser that starts and then hears nothing, and failing silently in a
+   * car is worse than using the network path that already works.
+   */
+  processLocally?: boolean;
 }
 
 /**
@@ -263,6 +272,13 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     fresh.interimResults = false;
     fresh.lang = 'en-US';
     applyBias(fresh, deps.biasPhrases);
+    if (deps.processLocally) {
+      try {
+        (fresh as unknown as { processLocally: boolean }).processLocally = true;
+      } catch {
+        /* an engine that will not go local still works over the network */
+      }
+    }
 
     fresh.onstart = () => {
       clearWatchdog();

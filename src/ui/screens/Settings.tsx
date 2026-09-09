@@ -8,6 +8,23 @@ import { setClipsEnabled, setClipVoice, loadClipIndex, type ClipVoiceInfo } from
 import { readLog, clearLog, formatLog } from '../../audio/mediaSessionLog';
 import { MAX_VOLUME } from '../../audio/volume';
 import { detectVoiceSupport } from '../../audio/voiceRecognition';
+import {
+  readVoiceHistory,
+  clearVoiceHistory,
+  summariseHistory,
+  formatVoiceHistory,
+  type HeardEntry,
+} from '../../audio/voiceHistory';
+import {
+  clearOnDeviceProbeGuard,
+  onDeviceProbeCrashed,
+  onDeviceStatus,
+  installOnDevice,
+  prefersOnDevice,
+  setPrefersOnDevice,
+  describeOnDeviceStatus,
+  type OnDeviceStatus,
+} from '../../audio/onDeviceSpeech';
 import { startVoiceProbe, readProbeLog, clearProbeLog, formatProbeLog } from '../../audio/voiceProbe';
 import type { ProbeEntry, ProbeHandle } from '../../audio/voiceProbe';
 import type { LogEntry } from '../../audio/mediaSessionLog';
@@ -472,6 +489,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
       <CarDiagnostics />
 
       <VoiceProbePanel />
+      <VoiceHistoryPanel />
     </div>
   );
 }
@@ -571,6 +589,260 @@ function CarDiagnostics() {
  * backgrounded Chrome tab -- and to record what happened for reading
  * afterwards, since in both cases they cannot watch a screen while it runs.
  */
+/**
+ * The offline speech model.
+ *
+ * Recognition normally streams audio to Google's servers, which is why it is
+ * accurate and also why it has the two failures that hurt in a car: a
+ * server-side session limit that kills listening roughly every ninety seconds
+ * -- each restart deaf, and each one re-opening the microphone, which is the
+ * crackle heard on every cycle -- and a hard dependency on signal, so a
+ * tunnel stops it.
+ *
+ * A local model has no server and so, in principle, neither problem. It has
+ * to be downloaded first, which is a decision for the operator and their data
+ * plan, not something to start behind their back.
+ *
+ * Nothing here claims success on its own say-so. `install()` was measured
+ * resolving FALSE immediately, with a real user gesture, without throwing and
+ * without a reason -- so what gets reported is what `available()` says
+ * afterwards, and a refusal is described as a refusal.
+ *
+ * AND NOTHING HERE ASKS UNTIL ASKED. The capability query kills the renderer
+ * outright on some builds of Chrome -- measured, and with an identical API
+ * surface to the builds where it works, so there is nothing to feature-detect.
+ * Opening Settings must not be able to close the app, so the query sits
+ * behind a button. Someone who never presses it is never exposed to it.
+ */
+function OnDeviceModelPanel() {
+  const [status, setStatus] = useState<OnDeviceStatus | null>(null);
+  const [preferred, setPreferred] = useState(() => prefersOnDevice());
+  const [busy, setBusy] = useState(false);
+  const [refused, setRefused] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const crashedBefore = onDeviceProbeCrashed();
+
+  const refresh = () => {
+    setChecking(true);
+    void onDeviceStatus().then((next) => {
+      setStatus(next);
+      setChecking(false);
+    });
+  };
+
+  // A download continues in the background and reports no progress, so the
+  // only way to notice it finishing is to keep asking. Safe to poll: getting
+  // here at all means the query already returned once on this browser.
+  useEffect(() => {
+    if (status !== 'downloading') return;
+    const timer = window.setInterval(refresh, 5000);
+    return () => window.clearInterval(timer);
+  }, [status]);
+
+  const download = () => {
+    setBusy(true);
+    setRefused(false);
+    // Called straight from the click: this needs the user gesture, and
+    // awaiting anything before it would spend it.
+    void installOnDevice().then((outcome) => {
+      setStatus(outcome.status);
+      // Refused AND still not installed. Either alone is not a failure: a
+      // browser that already holds the model declines and is ready anyway.
+      setRefused(!outcome.accepted && outcome.status !== 'available');
+      setBusy(false);
+    });
+  };
+
+  // Not asked yet. The query is the dangerous part, so it waits to be asked
+  // for by name rather than happening because a screen was opened.
+  if (status === null) {
+    return (
+      <>
+        <div className="settings-row">
+          <button
+            type="button"
+            className="settings-mini-btn"
+            onClick={refresh}
+            disabled={checking || crashedBefore}
+          >
+            {checking ? 'Checking…' : 'Check for an offline model'}
+          </button>
+        </div>
+        <div className="settings-note-row u-note">
+          {crashedBefore ? (
+            <>
+              This browser closed the app the last time it was asked whether an
+              offline model exists, so it will not be asked again here. Voice keeps
+              working over the network. A browser update may fix it &mdash; use
+              &ldquo;Ask this browser again&rdquo; below to retry.
+            </>
+          ) : (
+            <>
+              Recognition normally needs a signal. Checking asks whether this browser
+              can install a speech model that runs on the device instead &mdash; worth
+              having in a tunnel.
+            </>
+          )}
+        </div>
+        {crashedBefore && (
+          <div className="settings-row">
+            <button
+              type="button"
+              className="settings-mini-btn"
+              onClick={() => {
+                clearOnDeviceProbeGuard();
+                refresh();
+              }}
+            >
+              Ask this browser again
+            </button>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="settings-row">
+        <span className="settings-label">Offline model</span>
+        <span className="settings-value">{status}</span>
+      </div>
+
+      <div className="settings-note-row u-note">{describeOnDeviceStatus(status)}</div>
+
+      {(status === 'downloadable' || status === 'downloading') && (
+        <div className="settings-row">
+          <button
+            type="button"
+            className="settings-mini-btn"
+            onClick={download}
+            disabled={busy || status === 'downloading'}
+          >
+            {busy ? 'Asking…' : 'Download offline model'}
+          </button>
+        </div>
+      )}
+
+      {refused && (
+        <div className="settings-note-row u-note">
+          The browser declined to install it, without saying why. That is what this
+          build does when it cannot fetch the model &mdash; on a phone it usually
+          means Wi-Fi, storage or a battery-saver restriction. Voice keeps working
+          over the network either way.
+        </div>
+      )}
+
+      {status === 'available' && (
+        <Toggle
+          label="Use the offline model"
+          checked={preferred}
+          onChange={(on) => {
+            setPrefersOnDevice(on);
+            setPreferred(on);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Everything the microphone heard, read back.
+ *
+ * The alias table only improves when a real mishearing is caught, and the
+ * one that has been caught so far -- "Stant" for "stand" -- was found because
+ * the operator happened to glance at the screen mid-drill. That does not work
+ * in a car, which is exactly where road noise and a phone microphone produce
+ * substitutions nobody would think to invent. So the app writes them all down
+ * and this reads them back, commonest rejection first: a substitution the
+ * engine keeps making is worth adding to the table, a one-off usually is not.
+ *
+ * It is also, plainly, a record of what an open microphone heard. Text only,
+ * on this device only, capped, and clearable right here.
+ */
+function VoiceHistoryPanel() {
+  const [entries, setEntries] = useState<HeardEntry[]>(() => readVoiceHistory());
+  const [shown, setShown] = useState(false);
+
+  const summary = summariseHistory(entries);
+
+  return (
+    <section className="settings-section">
+      <h2 className="settings-section-title">What the microphone heard</h2>
+
+      <div className="settings-note-row u-note">
+        Every phrase heard while voice is on, with what the app made of it. Kept so
+        misheard words like &ldquo;Stant&rdquo; can be found and taught, instead of
+        waiting to catch one by eye. <strong>Text only, stored on this device,
+        never uploaded</strong> &mdash; and clearable below.
+      </div>
+
+      <div className="settings-row">
+        <span className="settings-label">Phrases recorded</span>
+        <span className="settings-value">
+          {summary.total === 0
+            ? 'none yet'
+            : `${summary.matched} understood, ${summary.rejected} not`}
+        </span>
+      </div>
+
+      {/* The ranked rejections are the actionable part, so they get a row of
+          their own rather than being buried in the timeline. */}
+      {summary.candidates.length > 0 && (
+        <div className="settings-row">
+          <span className="settings-label">Commonest miss</span>
+          <span className="settings-value">
+            &ldquo;{summary.candidates[0]!.heard}&rdquo; &times;{summary.candidates[0]!.count}
+          </span>
+        </div>
+      )}
+
+      <div className="settings-row">
+        <button
+          type="button"
+          className="settings-mini-btn"
+          onClick={() => setEntries(readVoiceHistory())}
+        >
+          Refresh
+        </button>
+        <button
+          type="button"
+          className="settings-mini-btn"
+          onClick={() => setShown((v) => !v)}
+          disabled={summary.total === 0}
+        >
+          {shown ? 'Hide' : 'Show'}
+        </button>
+        <button
+          type="button"
+          className="settings-mini-btn"
+          onClick={() => {
+            void navigator.clipboard?.writeText(formatVoiceHistory(entries)).catch(() => {});
+          }}
+          disabled={summary.total === 0}
+        >
+          Copy
+        </button>
+        <button
+          type="button"
+          className="settings-mini-btn"
+          onClick={() => {
+            clearVoiceHistory();
+            setEntries([]);
+            setShown(false);
+          }}
+          disabled={summary.total === 0}
+        >
+          Delete recording
+        </button>
+      </div>
+
+      {shown && <pre className="car-log">{formatVoiceHistory(entries)}</pre>}
+    </section>
+  );
+}
+
 function VoiceProbePanel() {
   const [entries, setEntries] = useState<ProbeEntry[]>(() => readProbeLog());
   const [running, setRunning] = useState(false);
@@ -630,6 +902,8 @@ function VoiceProbePanel() {
           {support.media ? '' : ' · no microphone'}
         </span>
       </div>
+
+      <OnDeviceModelPanel />
 
       <Toggle
         label="Keep restarting when it stops"

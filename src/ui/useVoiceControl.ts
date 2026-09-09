@@ -7,6 +7,8 @@ import {
   type VoiceController,
 } from '../audio/voiceControl';
 import { setSpeechActivityListener } from '../audio/speech';
+import { onDeviceStatus, prefersOnDevice, shouldProcessLocally } from '../audio/onDeviceSpeech';
+import { recordHeard } from '../audio/voiceHistory';
 import type { VoiceAction } from '../audio/voiceRecognition';
 
 /**
@@ -33,6 +35,7 @@ export function useVoiceControl({
   onAction,
   onTranscript,
   biasPhrases,
+  context,
 }: {
   enabled: boolean;
   onAction: (action: VoiceAction) => void;
@@ -42,7 +45,34 @@ export function useVoiceControl({
   onTranscript?: (heard: string) => string | null;
   /** Words to bias the engine toward, where the browser supports it. */
   biasPhrases?: string[];
+  /**
+   * Which screen is listening, recorded with every utterance. A word means
+   * different things in each -- "yes" deals a hand at the table and confirms
+   * a count in the prompt -- so a log without it cannot be read back.
+   */
+  context: string;
 }): { status: VoiceStatus; cycleIfStale: () => void } {
+  // Resolved once, asynchronously, then applied to every session this hook
+  // starts. Both halves are required: the operator asked for it AND a model
+  // is actually installed.
+  const [processLocally, setProcessLocally] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    // Nobody who has not opted in is worth asking about. The query kills the
+    // renderer on some builds (see onDeviceSpeech), and for someone who never
+    // turned this on the answer could only ever have been "stay on the
+    // network" -- which is what not asking already does.
+    if (!prefersOnDevice()) return;
+
+    let cancelled = false;
+    void onDeviceStatus().then((status) => {
+      if (!cancelled) setProcessLocally(shouldProcessLocally(status, true));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled]);
+
   const [status, setStatus] = useState<VoiceStatus>(IDLE);
 
   // The handler closes over drill state that changes every render. Holding
@@ -71,8 +101,15 @@ export function useVoiceControl({
       onAction: (action) => actionRef.current(action),
       onTranscript: (heard) => transcriptRef.current?.(heard) ?? null,
       biasPhrases,
+      processLocally,
       onState: (state) => setStatus((prev) => ({ ...prev, state })),
-      onHeard: (heard, verdict) => setStatus((prev) => ({ ...prev, heard, verdict })),
+      onHeard: (heard, verdict) => {
+        setStatus((prev) => ({ ...prev, heard, verdict }));
+        // Kept so the vocabulary can grow from evidence rather than from a
+        // lucky glance at the screen mid-drill, which is how "stant" was
+        // found and is not a method that works while driving.
+        recordHeard(heard, verdict, context);
+      },
     });
     controllerRef.current = controller;
 
@@ -91,7 +128,7 @@ export function useVoiceControl({
     // a fresh array every render would tear the recogniser down and rebuild it
     // continuously. The vocabulary is fixed for a session's lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled]);
+  }, [enabled, processLocally]);
 
   return {
     status,

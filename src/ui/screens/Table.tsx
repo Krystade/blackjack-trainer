@@ -458,6 +458,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // is fixed for the life of a session, and rebuilding the recogniser as
     // the prompt opens would cost a deaf gap exactly when an answer is due.
     biasPhrases: [...Object.keys(VOICE_ACTIONS), ...COUNT_BIAS_PHRASES],
+    context: 'table',
   });
 
   const handleDeal = () => {
