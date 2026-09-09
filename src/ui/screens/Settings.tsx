@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
 import { THEMES, normalizeTheme } from '../theme';
@@ -7,6 +7,9 @@ import { chime, isSpeechSupported, listVoices, speak } from '../../audio';
 import { setClipsEnabled, setClipVoice, loadClipIndex, type ClipVoiceInfo } from '../../audio/clips';
 import { readLog, clearLog, formatLog } from '../../audio/mediaSessionLog';
 import { MAX_VOLUME } from '../../audio/volume';
+import { detectVoiceSupport } from '../../audio/voiceRecognition';
+import { startVoiceProbe, readProbeLog, clearProbeLog, formatProbeLog } from '../../audio/voiceProbe';
+import type { ProbeEntry, ProbeHandle } from '../../audio/voiceProbe';
 import type { LogEntry } from '../../audio/mediaSessionLog';
 
 interface SettingsProps {
@@ -467,6 +470,8 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
       </section>
 
       <CarDiagnostics />
+
+      <VoiceProbePanel />
     </div>
   );
 }
@@ -549,6 +554,140 @@ function CarDiagnostics() {
             </button>
           </div>
           <pre className="car-log">{formatLog(entries)}</pre>
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The voice-recognition spike.
+ *
+ * Whether voice input is buildable at all cannot be settled from a
+ * development machine: Playwright's Chromium exposes the whole
+ * SpeechRecognition surface and then fires no events, because there is no
+ * microphone and no speech backend behind it. So this panel exists to be RUN
+ * BY THE OPERATOR on the devices that matter -- an iPhone in a car, and a
+ * backgrounded Chrome tab -- and to record what happened for reading
+ * afterwards, since in both cases they cannot watch a screen while it runs.
+ */
+function VoiceProbePanel() {
+  const [entries, setEntries] = useState<ProbeEntry[]>(() => readProbeLog());
+  const [running, setRunning] = useState(false);
+  const [shown, setShown] = useState(false);
+  const [autoRestart, setAutoRestart] = useState(true);
+  const handleRef = useRef<ProbeHandle | null>(null);
+
+  const support = detectVoiceSupport();
+
+  // Tearing the session down on unmount matters more than usual here: a live
+  // recognition session holds the microphone, and leaving one running after
+  // the operator navigates away is both a battery cost and a privacy one.
+  useEffect(() => {
+    return () => {
+      handleRef.current?.stop();
+      handleRef.current = null;
+    };
+  }, []);
+
+  const start = () => {
+    handleRef.current?.stop();
+    clearProbeLog();
+    handleRef.current = startVoiceProbe({ autoRestart });
+    setRunning(true);
+    setEntries(readProbeLog());
+  };
+
+  const stop = () => {
+    handleRef.current?.stop();
+    handleRef.current = null;
+    setRunning(false);
+    setEntries(readProbeLog());
+  };
+
+  const heard = entries.filter((e) => e.kind === 'result');
+  const matched = heard.filter((e) => !e.detail.includes('REJECTED')).length;
+  const hiddenEnds = entries.filter(
+    (e) => e.kind === 'end' && e.detail.includes('visibility=hidden'),
+  ).length;
+
+  return (
+    <section className="settings-section">
+      <h2 className="settings-section-title">Voice control (experiment)</h2>
+
+      <div className="settings-note-row u-note">
+        Say <strong>hit</strong>, <strong>stand</strong>, <strong>double</strong>,{' '}
+        <strong>split</strong>, <strong>surrender</strong>, <strong>yes</strong>,{' '}
+        <strong>no</strong> or <strong>repeat</strong>. Start it, talk, then come back and
+        read what it heard. Works while this tab is in the background &mdash; that is
+        one of the things being measured.
+      </div>
+
+      <div className="settings-row">
+        <span className="settings-label">This browser</span>
+        <span className="settings-value">
+          {support.api ? `supported (${support.flavour})` : 'not supported'}
+          {support.media ? '' : ' · no microphone'}
+        </span>
+      </div>
+
+      <Toggle
+        label="Keep restarting when it stops"
+        checked={autoRestart}
+        onChange={setAutoRestart}
+        disabled={running}
+      />
+
+      <div className="settings-row">
+        <span className="settings-label">Heard</span>
+        <span className="settings-value">
+          {heard.length === 0 ? 'nothing yet' : `${matched} matched of ${heard.length}`}
+        </span>
+      </div>
+      {hiddenEnds > 0 && (
+        <div className="settings-row">
+          <span className="settings-label">Stopped while backgrounded</span>
+          <span className="settings-value">{hiddenEnds}&times;</span>
+        </div>
+      )}
+
+      <div className="settings-row">
+        {running ? (
+          <button type="button" className="settings-mini-btn" onClick={stop}>
+            Stop listening
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="settings-mini-btn"
+            onClick={start}
+            disabled={!support.api}
+          >
+            Start listening
+          </button>
+        )}
+        <button type="button" className="settings-mini-btn" onClick={() => setEntries(readProbeLog())}>
+          Refresh
+        </button>
+        <button type="button" className="settings-mini-btn" onClick={() => setShown((v) => !v)}>
+          {shown ? 'Hide log' : 'Show log'}
+        </button>
+      </div>
+
+      {shown && (
+        <>
+          <div className="settings-row">
+            <button
+              type="button"
+              className="settings-mini-btn"
+              onClick={() => {
+                void navigator.clipboard?.writeText(formatProbeLog(entries)).catch(() => {});
+              }}
+            >
+              Copy report
+            </button>
+          </div>
+          <pre className="car-log">{formatProbeLog(entries)}</pre>
         </>
       )}
     </section>
