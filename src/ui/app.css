@@ -903,6 +903,74 @@ button {
   height: 22px;
 }
 
+/* Voice input status.
+   A microphone that has stopped listening looks exactly like one that has
+   heard nothing, so this strip always says which -- and shows the last thing
+   it heard, matched or not, because that is the only way to tell a misheard
+   word from a dead microphone without looking at a console. */
+.voice-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.7rem;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ink-faint);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  font-size: 0.85rem;
+  color: var(--ink-dim);
+}
+
+.voice-status-state {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Live and deaf are the two states worth spotting at a glance. */
+.voice-status[data-voice-state='listening'] {
+  border-left-color: var(--good);
+}
+
+.voice-status[data-voice-state='listening'] .voice-status-state {
+  color: var(--good);
+}
+
+.voice-status[data-voice-state='restarting'],
+.voice-status[data-voice-state='starting'] {
+  border-left-color: var(--accent);
+}
+
+.voice-status[data-voice-state='restarting'] .voice-status-state,
+.voice-status[data-voice-state='starting'] .voice-status-state {
+  color: var(--accent);
+}
+
+.voice-status[data-voice-state='denied'],
+.voice-status[data-voice-state='error'],
+.voice-status[data-voice-state='unsupported'] {
+  border-left-color: var(--bad);
+}
+
+.voice-status[data-voice-state='denied'] .voice-status-state,
+.voice-status[data-voice-state='error'] .voice-status-state,
+.voice-status[data-voice-state='unsupported'] .voice-status-state {
+  color: var(--bad);
+}
+
+.voice-status-heard {
+  font-variant-numeric: tabular-nums;
+  /* A long stray transcript must not push the strip wider than the screen. */
+  overflow-wrap: anywhere;
+}
+
+.voice-status-words {
+  width: 100%;
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+}
+
 .count-config {
   display: flex;
   flex-direction: column;

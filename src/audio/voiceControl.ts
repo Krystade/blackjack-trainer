@@ -1,0 +1,337 @@
+import { matchVoiceAction, type VoiceAction } from './voiceRecognition';
+
+/**
+ * A speech-recognition session that survives being left running.
+ *
+ * The device probe settled three facts that this module is built around, all
+ * measured rather than assumed:
+ *
+ *   1. A backgrounded Chrome tab KEEPS delivering transcripts. The feature is
+ *      viable while the operator does something else, which is what it was
+ *      asked for.
+ *   2. A session dies on its own roughly every ninety seconds -- in the probe
+ *      it died while the tab was still visible, so this is the engine's own
+ *      timer, not a backgrounding penalty. Without a restart the feature
+ *      appears to work and then silently stops, which is worse than not
+ *      working at all.
+ *   3. Two recognisers cannot cover for each other. Starting a second one
+ *      ended the first 11ms later, against a control where a lone recogniser
+ *      left alone for 3s did not end at all: there is one microphone session
+ *      per page. So the restart gap cannot be overlapped away. It can only be
+ *      MOVED, which is what `cycleIfStale` is for.
+ *
+ * The hazard that outranks all of them: THE APPLICATION TALKS. It speaks the
+ * prompt and it speaks the correction -- "Correct. Stand." -- and over a car
+ * speaker the microphone hears every word of it. An ungated recogniser would
+ * transcribe the app's own voice and grade an answer the operator never gave:
+ * the same class of failure as the "it" alias, but continuous and
+ * self-sustaining. Hence the suppression window.
+ */
+
+export type ListenState =
+  | 'off'
+  | 'starting'
+  | 'listening'
+  /** Between a session ending and its replacement starting: the deaf window. */
+  | 'restarting'
+  /** Microphone permission refused. Terminal -- retrying would loop. */
+  | 'denied'
+  | 'unsupported'
+  | 'error';
+
+export interface RecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  abort: () => void;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((e: { error?: string }) => void) | null;
+  onresult: ((e: { results?: ArrayLike<ArrayLike<{ transcript?: string }>> }) => void) | null;
+}
+
+/** What the microphone did with one utterance, for the operator to read. */
+export type HeardVerdict = VoiceAction | 'rejected' | 'suppressed';
+
+export interface VoiceControllerDeps {
+  /** Returns null when the browser has no recognition API. */
+  createRecognition: () => RecognitionLike | null;
+  now: () => number;
+  schedule: (fn: () => void, ms: number) => number;
+  cancel: (handle: number) => void;
+  onAction: (action: VoiceAction) => void;
+  onState: (state: ListenState) => void;
+  /**
+   * Everything heard, matched or not. The UI shows this so a silent screen
+   * has a reason on it: a misheard word and a dead microphone look identical
+   * otherwise, and the operator cannot debug either while driving.
+   */
+  onHeard?: (heard: string, verdict: HeardVerdict) => void;
+}
+
+/**
+ * How long a session may run before we prefer to cycle it at a moment of our
+ * choosing. Comfortably under the ~87s the probe measured, so the engine's
+ * own timer is rarely the one that fires.
+ */
+export const CYCLE_AFTER_MS = 45_000;
+
+/**
+ * Silence after the app stops speaking, before the microphone is trusted
+ * again. Recognition results arrive well behind the audio that produced them,
+ * so a tail is required; too short and the app grades its own voice.
+ */
+export const SPEECH_TAIL_MS = 700;
+
+/**
+ * Delay before re-starting. Restarting synchronously inside `onend` throws on
+ * some engines and busy-loops on others when the microphone is unavailable.
+ */
+export const RESTART_DELAY_MS = 250;
+
+/**
+ * How long to wait for a started session to confirm itself.
+ *
+ * The probe found an environment where the API is fully present -- every
+ * constructor, every method -- and then fires NO events whatsoever: no start,
+ * no error, nothing. Without a watchdog that case shows "Starting..." forever
+ * and looks identical to a microphone that simply has not heard anything yet.
+ * Saying so is the whole value: an inert engine is not something the operator
+ * can fix by talking louder.
+ */
+export const START_TIMEOUT_MS = 5000;
+
+/**
+ * Whether a session has run long enough to be worth cycling at a quiet moment
+ * instead of waiting for the engine to kill it mid-answer.
+ */
+export function shouldCycle(startedAt: number, now: number, after = CYCLE_AFTER_MS): boolean {
+  if (startedAt <= 0) return false;
+  return now - startedAt >= after;
+}
+
+/** Whether the microphone is currently hearing the app rather than the operator. */
+export function isSuppressed(now: number, suppressedUntil: number): boolean {
+  return now < suppressedUntil;
+}
+
+/**
+ * Errors that mean stop: retrying them either loops forever or re-prompts the
+ * operator for permission. Everything else -- `no-speech`, `network`,
+ * `aborted` -- is a normal interruption of a long-running session and is
+ * simply restarted.
+ */
+function isTerminal(error: string | undefined): boolean {
+  return error === 'not-allowed' || error === 'service-not-allowed';
+}
+
+export interface VoiceController {
+  start: () => void;
+  stop: () => void;
+  /**
+   * Called by the app as it begins speaking, with how long it expects to
+   * talk. Results are discarded until then, plus a tail.
+   */
+  suppressFor: (ms: number) => void;
+  /**
+   * Cycle the session now if it is old, so its deaf window lands here --
+   * during answer feedback, say -- instead of in the middle of the next
+   * answer. This is the only mitigation available, since a second recogniser
+   * would kill this one rather than cover for it.
+   */
+  cycleIfStale: () => void;
+  state: () => ListenState;
+}
+
+export function createVoiceController(deps: VoiceControllerDeps): VoiceController {
+  let recognition: RecognitionLike | null = null;
+  let running = false;
+  let sessionStartedAt = 0;
+  let suppressedUntil = 0;
+  let restartHandle: number | null = null;
+  let watchdogHandle: number | null = null;
+  let state: ListenState = 'off';
+
+  const setState = (next: ListenState): void => {
+    if (state === next) return;
+    state = next;
+    try {
+      deps.onState(next);
+    } catch {
+      /* a status callback must never take the microphone down with it */
+    }
+  };
+
+  const clearRestart = (): void => {
+    if (restartHandle !== null) {
+      deps.cancel(restartHandle);
+      restartHandle = null;
+    }
+  };
+
+  const clearWatchdog = (): void => {
+    if (watchdogHandle !== null) {
+      deps.cancel(watchdogHandle);
+      watchdogHandle = null;
+    }
+  };
+
+  const teardown = (): void => {
+    const dying = recognition;
+    recognition = null;
+    if (!dying) return;
+    // Detach BEFORE aborting: an abort fires `onend`, and a live handler
+    // would read it as an unexpected death and schedule a restart of a
+    // session we are deliberately ending.
+    dying.onstart = null;
+    dying.onend = null;
+    dying.onerror = null;
+    dying.onresult = null;
+    try {
+      dying.abort();
+    } catch {
+      /* tearing down must never throw into a driver */
+    }
+  };
+
+  const begin = (): void => {
+    if (!running) return;
+    clearRestart();
+    teardown();
+
+    let fresh: RecognitionLike | null = null;
+    try {
+      fresh = deps.createRecognition();
+    } catch {
+      fresh = null;
+    }
+    if (!fresh) {
+      running = false;
+      setState('unsupported');
+      return;
+    }
+
+    recognition = fresh;
+    fresh.continuous = true;
+    fresh.interimResults = false;
+    fresh.lang = 'en-US';
+
+    fresh.onstart = () => {
+      clearWatchdog();
+      sessionStartedAt = deps.now();
+      setState('listening');
+    };
+
+    fresh.onerror = (e) => {
+      clearWatchdog();
+      if (isTerminal(e?.error)) {
+        running = false;
+        setState('denied');
+        teardown();
+        return;
+      }
+      // Everything else is left to `onend`, which always follows it, so one
+      // failure produces exactly one restart rather than two.
+    };
+
+    fresh.onend = () => {
+      clearWatchdog();
+      if (!running) {
+        setState('off');
+        return;
+      }
+      setState('restarting');
+      restartHandle = deps.schedule(begin, RESTART_DELAY_MS);
+    };
+
+    fresh.onresult = (e) => {
+      const results = e?.results;
+      if (!results) return;
+      const last = results[results.length - 1];
+      const heard = (last?.[0]?.transcript ?? '').trim();
+      if (!heard) return;
+
+      // The app's own voice, arriving back through the microphone.
+      if (isSuppressed(deps.now(), suppressedUntil)) {
+        deps.onHeard?.(heard, 'suppressed');
+        return;
+      }
+
+      const action = matchVoiceAction(heard);
+      deps.onHeard?.(heard, action ?? 'rejected');
+      if (!action) return;
+      try {
+        deps.onAction(action);
+      } catch {
+        /* a consumer throwing must not end the session */
+      }
+    };
+
+    setState('starting');
+    // The session is left running: an engine that confirms late still works,
+    // and `onstart` will correct the state when it arrives. Only the REPORT
+    // changes, because a silent engine and a silent room must not look alike.
+    clearWatchdog();
+    watchdogHandle = deps.schedule(() => {
+      watchdogHandle = null;
+      if (state === 'starting') setState('error');
+    }, START_TIMEOUT_MS);
+
+    try {
+      fresh.start();
+    } catch {
+      // Already-started is the usual cause and resolves itself; anything
+      // else surfaces through onerror/onend.
+      clearWatchdog();
+      setState('error');
+    }
+  };
+
+  return {
+    start: () => {
+      if (running) return;
+      running = true;
+      begin();
+    },
+    stop: () => {
+      running = false;
+      clearRestart();
+      clearWatchdog();
+      teardown();
+      sessionStartedAt = 0;
+      setState('off');
+    },
+    suppressFor: (ms: number) => {
+      const until = deps.now() + Math.max(0, ms) + SPEECH_TAIL_MS;
+      // Never shorten an existing window: back-to-back utterances would
+      // otherwise unmute the microphone while the app is still talking.
+      if (until > suppressedUntil) suppressedUntil = until;
+    },
+    cycleIfStale: () => {
+      if (!running) return;
+      if (!shouldCycle(sessionStartedAt, deps.now())) return;
+      begin();
+    },
+    state: () => state,
+  };
+}
+
+/**
+ * The browser's recognition constructor, or null. Kept out of the controller
+ * so that stays free of globals and testable in plain node.
+ */
+export function browserRecognition(): RecognitionLike | null {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as {
+    SpeechRecognition?: new () => RecognitionLike;
+    webkitSpeechRecognition?: new () => RecognitionLike;
+  };
+  const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+  if (!Ctor) return null;
+  try {
+    return new Ctor();
+  } catch {
+    return null;
+  }
+}

@@ -284,6 +284,66 @@ export function getLastSpoken(): string | null {
   return lastSpoken;
 }
 
+/* ------------------------------------------------------------------ */
+/* Speech activity, for the microphone                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Voice input and voice output share a room.
+ *
+ * When speech recognition is listening and the app says "Correct. Stand.",
+ * the microphone hears it -- especially over a car speaker -- and would grade
+ * a Stand the driver never said. Every utterance the app produces is a live
+ * command unless the listener is told to ignore that stretch of audio.
+ *
+ * `speak()` is the single funnel for everything the app says, clips and live
+ * TTS alike, so this is the one place that can promise the microphone knows
+ * about all of it. The listener is a single slot rather than a set: exactly
+ * one recogniser can run per page (a second ends the first), so exactly one
+ * thing ever needs telling.
+ */
+let speechActivityListener: ((estimatedMs: number) => void) | null = null;
+
+export function setSpeechActivityListener(fn: ((estimatedMs: number) => void) | null): void {
+  speechActivityListener = fn;
+}
+
+/** Average characters per second of speech at rate 1.0, from ~150wpm. */
+const SPEECH_CHARS_PER_SEC = 16;
+/** Even one word occupies the microphone for a moment. */
+const MIN_SPEECH_MS = 400;
+/** A ceiling, so a freak input cannot deafen the microphone indefinitely. */
+const MAX_SPEECH_MS = 10_000;
+
+/**
+ * Roughly how long `text` will take to say.
+ *
+ * An estimate is the honest tool here: clips and live TTS have different real
+ * durations, `speechSynthesis` reports nothing useful up front, and the value
+ * only has to be good enough to bracket the audio. Erring long costs a little
+ * deafness; erring short lets the app grade its own voice, so the floor and
+ * the tail that follows are both deliberate.
+ */
+export function estimateSpeechMs(text: string, rate = 1): number {
+  const chars = text.trim().length;
+  if (chars === 0) return 0;
+  const safeRate = rate > 0 ? rate : 1;
+  const ms = (chars / SPEECH_CHARS_PER_SEC) * 1000 / safeRate;
+  return Math.round(Math.min(MAX_SPEECH_MS, Math.max(MIN_SPEECH_MS, ms)));
+}
+
+function notifySpeechActivity(text: string, rate?: number): void {
+  const listener = speechActivityListener;
+  if (!listener) return;
+  const ms = estimateSpeechMs(text, rate);
+  if (ms <= 0) return;
+  try {
+    listener(ms);
+  } catch {
+    /* the microphone's bookkeeping must never break speaking */
+  }
+}
+
 /**
  * Re-speaks the last utterance, returning whether there was anything to say.
  *
@@ -319,6 +379,10 @@ export function speak(
   opts?: SpeechOpts,
 ): void {
   rememberSpoken(text);
+  // BEFORE the e2e short-circuit: the microphone has to know about every
+  // utterance the app decides to make, including the ones the test harness
+  // swallows, or suppression is untestable.
+  notifySpeechActivity(text, opts?.rate);
   if (isE2eAudioMode()) {
     pushSpeechLog(text);
     return;

@@ -33,6 +33,10 @@ import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
 import { narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt } from '../../audio/narrate';
+import { useVoiceControl } from '../useVoiceControl';
+import type { ListenState, HeardVerdict } from '../../audio/voiceControl';
+import { detectVoiceSupport, VOICE_ACTIONS } from '../../audio/voiceRecognition';
+import type { VoiceAction } from '../../audio/voiceRecognition';
 import { cancelSpeech, speak } from '../../audio/speech';
 import { speechOptsFrom } from '../../audio/speechOpts';
 import { requestWakeLock, releaseWakeLock } from '../../audio/wakeLock';
@@ -67,6 +71,34 @@ export const KEY_TO_ACTION: Record<string, Action> = {
   '3': 'double',
   '4': 'split',
   '5': 'surrender' };
+
+// What the microphone is doing, in words the operator can act on. A bare
+// "error" tells a driver nothing; each of these says what to do about it.
+const VOICE_STATE_LABEL: Record<ListenState, string> = {
+  off: 'Voice off',
+  starting: 'Starting…',
+  listening: 'Listening',
+  // Named honestly rather than hidden. The recogniser dies about every ninety
+  // seconds and this gap is genuinely deaf, so a word said here is lost --
+  // better to show it than to let the answer vanish silently.
+  restarting: 'Reconnecting…',
+  denied: 'Microphone blocked — allow it in your browser',
+  unsupported: 'This browser cannot listen',
+  error: 'No response from the microphone — switch it off and on',
+};
+
+/** The whole vocabulary, so there is nothing to guess at while driving. */
+const VOICE_WORDS = Object.keys(VOICE_ACTIONS).join(' · ');
+
+function describeVerdict(verdict: HeardVerdict | null): string {
+  if (verdict === null) return '';
+  if (verdict === 'rejected') return 'not a command';
+  // Distinguishing this from "not a command" matters: it means the microphone
+  // heard the APP, not the operator, and the right response is to wait rather
+  // than to repeat themselves louder.
+  if (verdict === 'suppressed') return 'ignored (the app was speaking)';
+  return verdict;
+}
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -158,6 +190,14 @@ function FlashcardsView({
   // Eyes-free audio (Task 9): local UI state, not persisted, per the
   // CountDrillView precedent (a per-session choice scoped to this screen).
   const [eyesFree, setEyesFree] = useState(false);
+  // Voice input. Per-session like eyes-free, and deliberately NOT persisted:
+  // a setting that survives a reload would open the microphone on load, which
+  // browsers refuse without a gesture anyway and which nobody should have to
+  // discover after the fact.
+  const [voiceOn, setVoiceOn] = useState(false);
+  // Detected once. The toggle is hidden rather than disabled where there is
+  // no API at all: an inert control invites the operator to keep tapping it.
+  const [voiceSupported] = useState(() => detectVoiceSupport().api);
   // Bumped every time a new card is drawn so a stale auto-advance timer
   // from a previous card can recognize itself as stale and no-op, even
   // though its own effect cleanup already clears it on unmount/early exit.
@@ -345,6 +385,41 @@ function FlashcardsView({
     scheduleAutoAdvance();
   };
 
+  /**
+   * A spoken answer.
+   *
+   * Routed through handleZoneAnswer rather than handleAction, because voice
+   * IS an eyes-free channel and needs everything that path provides: the
+   * legality gate refuses OUT LOUD (an illegal Split cannot be indicated by
+   * a dark button to someone who is driving), the zone name is echoed back so
+   * the speaker knows they were understood, and the answer auto-advances
+   * without a tap. Sharing the path also means the spoken and tapped answers
+   * cannot drift apart.
+   */
+  const handleVoiceAction = (action: VoiceAction) => {
+    if (action === 'repeat') {
+      handleRepeat();
+      return;
+    }
+    // Yes/no belong to insurance prompts, which flashcards never ask.
+    if (action === 'yes' || action === 'no') return;
+    // The chart overlay is modal over a frozen correction, exactly as for the
+    // keyboard: answering behind it would draw a card nobody can see.
+    if (showChart) return;
+    // Already answered. The auto-advance is running and a second answer would
+    // grade the next card against a word said about the previous one.
+    if (feedback) return;
+
+    handleZoneAnswer(action);
+    // The recogniser dies on its own roughly every ninety seconds, and the
+    // gap while it restarts is deaf. It cannot be overlapped away -- a second
+    // recogniser ends the first -- so it is moved HERE, into the pause where
+    // the answer is being read back and nobody is talking.
+    voice.cycleIfStale();
+  };
+
+  const voice = useVoiceControl({ enabled: voiceOn, onAction: handleVoiceAction });
+
   // Desktop keyboard input (operator request): while an answer is awaited,
   // number keys 1-5 feed the SAME handler a tap on that action would use --
   // handleAction in visual mode, handleZoneAnswer in eyes-free mode (so the
@@ -465,6 +540,38 @@ function FlashcardsView({
           />
           Dim screen
         </label>
+        {voiceSupported && (
+          <label className="count-toggle">
+            <input
+              type="checkbox"
+              checked={voiceOn}
+              onChange={(e) => {
+                // Answering out loud is worthless without hearing the reply,
+                // so this turns audio on the way Eyes-free does rather than
+                // sitting dead when audio happens to be off.
+                if (e.target.checked && !settings.audio.enabled) {
+                  enableAudioNow(settings, onSettingsChange);
+                }
+                setVoiceOn(e.target.checked);
+              }}
+            />
+            Voice answers
+          </label>
+        )}
+        {voiceOn && (
+          <div className="voice-status" data-voice-state={voice.status.state}>
+            <span className="voice-status-state">{VOICE_STATE_LABEL[voice.status.state]}</span>
+            {/* What the microphone last heard, whether or not it meant
+                anything. Without it a misheard word and a dead microphone
+                look identical, and neither can be diagnosed while driving. */}
+            {voice.status.heard && (
+              <span className="voice-status-heard">
+                &ldquo;{voice.status.heard}&rdquo; &rarr; {describeVerdict(voice.status.verdict)}
+              </span>
+            )}
+            <span className="voice-status-words">Say: {VOICE_WORDS}</span>
+          </div>
+        )}
       </div>
 
       <div className="dealer-area">
