@@ -118,6 +118,7 @@ function App() {
             key={`${activeProfile.id}:${JSON.stringify(activeProfile)}`}
             settings={settings}
             onNavigate={navigate}
+            onSettingsChange={setSettings}
             activeProfile={activeProfile}
           />
         );

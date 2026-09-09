@@ -10,6 +10,12 @@ import { isBust } from '../../engine/hand';
 import { useGame } from '../useGame';
 import type { SessionReport } from '../useGame';
 import { useAudio } from '../../audio/useAudio';
+import { useVoiceControl } from '../useVoiceControl';
+import { detectVoiceSupport, VOICE_ACTIONS } from '../../audio/voiceRecognition';
+import type { VoiceAction } from '../../audio/voiceRecognition';
+import type { ListenState, HeardVerdict } from '../../audio/voiceControl';
+import { actionUnavailable } from '../../drills/answerGate';
+import { enableAudioNow } from '../audioGate';
 import { PlayingCard, formatCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import type { ActionBarMode } from '../components/ActionBar';
@@ -123,6 +129,36 @@ interface TableProps {
   settings: Settings;
   activeProfile: Profile;
   onNavigate: (screen: Screen) => void;
+  /** Present so switching voice on can switch audio on with it, the way the
+   * drills' eyes-free toggle does -- answering out loud is worthless without
+   * hearing the reply, and a control that sits dead until you visit another
+   * screen is the bug that made eyes-free unusable once already. */
+  onSettingsChange: (settings: Settings) => void;
+}
+
+// What the microphone is doing, in words that say what to do about it. Kept
+// identical to the drills' strip: the same failure must not read two ways.
+const VOICE_STATE_LABEL: Record<ListenState, string> = {
+  off: 'Voice off',
+  starting: 'Starting…',
+  listening: 'Listening',
+  // Named rather than hidden: a word spoken during a restart is genuinely
+  // lost, and claiming to be listening throughout would be a lie.
+  restarting: 'Reconnecting…',
+  denied: 'Microphone blocked — allow it in your browser',
+  unsupported: 'This browser cannot listen',
+  error: 'No response from the microphone — switch it off and on',
+};
+
+const VOICE_WORDS = Object.keys(VOICE_ACTIONS).join(' · ');
+
+function describeVerdict(verdict: HeardVerdict | null): string {
+  if (verdict === null) return '';
+  if (verdict === 'rejected') return 'not a command';
+  // Distinct from "not a command": it means the microphone heard the APP, so
+  // the answer is to wait rather than to repeat yourself louder.
+  if (verdict === 'suppressed') return 'ignored (the app was speaking)';
+  return verdict;
 }
 
 function isE2E(): boolean {
@@ -205,7 +241,7 @@ function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () =>
   );
 }
 
-export function Table({ settings, activeProfile, onNavigate }: TableProps) {
+export function Table({ settings, activeProfile, onNavigate, onSettingsChange }: TableProps) {
   // Cycle-3 Task 4: constructed once here (Table owns `settings`) and
   // threaded into useGame, which wraps every engine call (deal/act/insure/
   // submitCount) and the existing bot-narration pacing timer -- that's
@@ -214,6 +250,11 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
   // re-renders or re-fires of useGame's effects beyond audio settings
   // actually changing.
   const audio = useAudio(settings.audio);
+
+  // Voice input. Per-session and never persisted, so the microphone is never
+  // opened by a page load -- only by someone asking for it.
+  const [voiceOn, setVoiceOn] = useState(false);
+  const [voiceSupported] = useState(() => detectVoiceSupport().api);
   const {
     game,
     deal,
@@ -284,6 +325,67 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
     if (!peeking) setPeeks((n) => n + 1);
     setPeeking((on) => !on);
   };
+
+  /**
+   * A spoken command at the table.
+   *
+   * Every branch is guarded by what is actually on screen, in the order the
+   * screen stacks: a word said while a modal is up must act on the modal, not
+   * on the round behind it. Legality comes from the ENGINE rather than from
+   * the card list -- only it knows about split depth, doubling after a split,
+   * and how many cards the hand already holds -- and an illegal call is
+   * refused OUT LOUD, since a greyed-out button means nothing to a driver.
+   */
+  const handleVoiceCommand = (command: VoiceAction) => {
+    if (command === 'repeat') {
+      audio.replay();
+      return;
+    }
+
+    // The chart is modal over a correction that is itself modal over the
+    // round. Nothing below it may be reached by voice.
+    if (showChart) return;
+
+    // A correction is waiting to be acknowledged. "Yes" is the way past it
+    // without a tap; an action word here would otherwise be applied to the
+    // round underneath, which is not what was being answered.
+    if (overlay) {
+      if (command === 'yes') dismissOverlay();
+      return;
+    }
+
+    // The count check wants a number, and numbers are deliberately not in the
+    // vocabulary: a misheard count is a silently corrupted session.
+    if (game.countCheckDue) return;
+
+    if (game.phase === 'insurance') {
+      if (command === 'yes') insure(true);
+      else if (command === 'no') insure(false);
+      return;
+    }
+
+    if (game.phase === 'player') {
+      if (command === 'yes' || command === 'no') return;
+      if (!legal.includes(command)) {
+        audio.say(actionUnavailable(command));
+        return;
+      }
+      act(command);
+      // Move the recogniser's restart gap into the pause after the action,
+      // while the correction is being spoken, rather than leaving it to fall
+      // in the middle of the next decision.
+      voice.cycleIfStale();
+      return;
+    }
+
+    // Between rounds. "Yes" deals the next hand, so a whole shoe can be
+    // played without touching the screen.
+    if ((game.phase === 'idle' || game.phase === 'settled') && command === 'yes') {
+      handleDeal();
+    }
+  };
+
+  const voice = useVoiceControl({ enabled: voiceOn, onAction: handleVoiceCommand });
 
   const handleDeal = () => {
     if (playerHandsCount > 1) {
@@ -415,10 +517,39 @@ export function Table({ settings, activeProfile, onNavigate }: TableProps) {
             Repeat
           </button>
         )}
+        {voiceSupported && (
+          <button
+            type="button"
+            className="voice-btn"
+            aria-pressed={voiceOn}
+            onClick={() => {
+              if (!voiceOn && !settings.audio.enabled) {
+                enableAudioNow(settings, onSettingsChange);
+              }
+              setVoiceOn(!voiceOn);
+            }}
+          >
+            Voice
+          </button>
+        )}
         <button type="button" className="end-btn" onClick={handleEnd}>
           End
         </button>
       </div>
+
+      {voiceOn && (
+        <div className="voice-status" data-voice-state={voice.status.state}>
+          <span className="voice-status-state">{VOICE_STATE_LABEL[voice.status.state]}</span>
+          {voice.status.heard && (
+            <span className="voice-status-heard">
+              &ldquo;{voice.status.heard}&rdquo; &rarr; {describeVerdict(voice.status.verdict)}
+            </span>
+          )}
+          <span className="voice-status-words">
+            Say: {VOICE_WORDS} &mdash; &ldquo;yes&rdquo; deals the next hand and answers insurance
+          </span>
+        </div>
+      )}
 
       {/* R6 (docs/BACKLOG.md, RT#3): a live discard-tray depth cue. Real tables
           have a visible tray; without one, the table's TC checks give no

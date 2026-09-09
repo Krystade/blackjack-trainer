@@ -54,8 +54,18 @@ export function gateDrillAnswer(
   const action = taken as Action;
   if (drillLegalActions(cards, rules).includes(action)) return ACCEPTED;
 
-  return {
-    accepted: false,
-    announcement: `${ACTION_SPOKEN[action]} isn't available on this hand.`,
-  };
+  return { accepted: false, announcement: actionUnavailable(action) };
+}
+
+/**
+ * The sentence spoken when an action cannot be played.
+ *
+ * Exported so LIVE TABLE play refuses in the same words the drills use. The
+ * table cannot share `gateDrillAnswer` itself -- legality there comes from the
+ * engine, which knows about split depth, doubling after split, and how many
+ * cards the hand already holds, none of which a bare card list can answer --
+ * but the refusal a driver hears must not depend on which screen they are on.
+ */
+export function actionUnavailable(action: Action): string {
+  return `${ACTION_SPOKEN[action]} isn't available on this hand.`;
 }

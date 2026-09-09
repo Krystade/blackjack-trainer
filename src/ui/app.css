@@ -2756,6 +2756,29 @@ button {
   background: rgb(183 211 194 / 15%);
 }
 
+/* The table's voice switch. Sits with Repeat and End rather than in a menu:
+   the microphone must be one tap from off, including while driving. */
+.voice-btn {
+  min-height: 2.2rem;
+  padding: 0 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* On is a state worth seeing at a glance -- an open microphone should never
+   be a surprise. */
+.voice-btn[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
 /* ---------- Theme picker (C2) ---------- */
 
 .theme-picker {
