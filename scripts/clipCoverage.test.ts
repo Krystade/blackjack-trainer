@@ -5,6 +5,8 @@ import { segmentForClips } from '../src/audio/clips';
 import type { ClipManifest } from '../src/audio/clips';
 import {
   narrateBotAction,
+  narrateCard,
+  narrateCards,
   narrateCorrection,
   narrateCountAnswer,
   narrateCountPrompt,
@@ -16,7 +18,7 @@ import {
   narrateSitOut,
 } from '../src/audio/narrate';
 import type { GradedEvent } from '../src/engine/grade';
-import type { Rank, Suit } from '../src/engine/cards';
+import type { Card, Rank, Suit } from '../src/engine/cards';
 import type { Action } from '../src/engine/deviations';
 import { DEFAULT_RULES } from '../src/engine/ruleset';
 import { drawFlashcard } from '../src/drills/flashcards';
@@ -121,6 +123,29 @@ function everyPromptAndCommentary(): string[] {
   return [...texts];
 }
 
+/**
+ * What the TABLE and the count drill say about a card, at every detail level.
+ *
+ * These are the only utterances with no terminal punctuation, which puts them
+ * on the cascade's comma-item path -- a different lookup with its own clips
+ * (`-item`), so covering the sentence forms says nothing about them.
+ */
+function everyCardUtterance(): string[] {
+  const texts = new Set<string>();
+  const deck: Card[] = [];
+  for (const rank of RANKS) for (const suit of SUITS) deck.push({ rank, suit });
+
+  for (const detail of ['full', 'rank', 'face'] as const) {
+    // useGame.ts speaks one card alone, as it is dealt.
+    for (const card of deck) texts.add(narrateCard(card, detail));
+    // CountDrillView speaks a flashed group as one comma list.
+    for (let i = 0; i + 3 < deck.length; i += 3) {
+      texts.add(narrateCards(deck.slice(i, i + 4), detail));
+    }
+  }
+  return [...texts];
+}
+
 describe('shipped clip coverage', () => {
   const voices = voiceIds();
 
@@ -151,6 +176,14 @@ describe('shipped clip coverage', () => {
       const present = new Set(readdirSync(`${CLIPS_DIR}/${voice}`));
       const missing = Object.values(manifest).filter((file) => !present.has(file));
       expect(missing).toEqual([]);
+    });
+
+    it(`resolves every dealt card and flashed group, at every detail (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      const unresolved = everyCardUtterance().filter(
+        (text) => segmentForClips(text, manifest) === null,
+      );
+      expect(unresolved).toEqual([]);
     });
 
     /**

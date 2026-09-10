@@ -83,8 +83,12 @@ ship.
   drill views rather than in `narrate.ts`, so deriving them means importing a `.tsx` into
   build tooling. Low urgency: a read-back only happens with the microphone open, which in
   a car already means the hands-free route.
-- Token-level clip concatenation for multi-card groups at `full` card detail (currently
-  falls back to live TTS; rank/face detail already fully clipped).
+- ~~Token-level clip concatenation for multi-card groups at `full` card detail~~ — ✅ NOT
+  a gap, and now proven rather than assumed. Card utterances are the only ones with no
+  terminal punctuation, which puts them on the cascade's comma-item path with their own
+  `-item` clips; `clipCoverage.test.ts` walks every dealt card and every flashed group at
+  all three detail levels against the shipped manifests. All resolve. The item clips had
+  in fact existed all along — nothing had ever checked, which is why the entry sat here.
 
 ## Candidates — from the adversarial/research loop
 
