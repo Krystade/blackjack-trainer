@@ -474,8 +474,31 @@ a real finger hit the same overlay).
   intercepts taps meant for the pad's TOP quadrants (Hit/Stand), breaking the
   quiz-action-ZonePad test. NOT used.
 
-**T0 remaining deliverable · Full-journey smoke spec** (matrix gap #2, spec in
-`docs/research/2026-07-26-test-coverage-matrix.md` § "SPEC — Single full-journey smoke test").
-One `e2e/smoke.spec.ts` walking Home→Profiles→Settings→Table→each of the 5 Drills→Stats in one
-session, asserting each screen mounts + a session/drill history wrote through. Held (5h sleep
-threshold); dispatch next full window. THEN R7.
+**T0 · Full-journey smoke spec — ✅ SHIPPED.** `e2e/smoke.spec.ts` is one continuous session
+walking Home → Profiles → Settings → Charts → Table → **all eleven drill modes** → Stats,
+asserting each screen mounts, one primary control answers, and — the actual point — that the
+walk wrote through to persistence: a Table session, plus countDrill / trueCount /
+deckEstimation / produceTc histories and latency entries from the graded play drills. Deep
+assertions stay in the per-feature specs. Runs in ~8s.
+
+## Voice (2026-09-10)
+Every surface that can work EYES-FREE now listens; the rest are visual by design and
+deliberately do not.
+
+- ✅ Flashcards + Deviation Quiz (`Drills.tsx`), ✅ table play (`Table.tsx`), ✅ Count Drill,
+  ✅ True Count Drill. Phase-shaped in the drills: "yes" starts a run, a spoken number is a
+  PROPOSAL read back before submission, "yes" confirms, "yes" claims the self-check, "yes"
+  goes again. Nothing spoken ever navigates.
+- ✅ The true-count drill's eyes-free path now produces a VERDICT (it used to end on
+  "self-check, no grade recorded"). A self-report writes no `guess` — the operator says
+  whether they had it, never what they had — and `signedErrorBreakdown` skips guessless rows.
+- ⛔ NOT wired, and this is a decision rather than a gap: Deck Estimation and Pair
+  Cancellation are judged BY EYE, Produce-the-True-Count needs a discard tray read off the
+  screen, and Countdown's tag guess is a three-way graded choice with no read-back. None of
+  them can be done without looking, so a microphone would only be half a loop.
+- 🚗 Car controls: `src/audio/carControls.ts` + the Settings panel now state the two
+  preconditions the wheel needs — the recorded voice ON (live TTS opens no media element, so
+  the head unit never sees the app) and the microphone OFF (an open mic switches Bluetooth to
+  its hands-free CALL route, which takes every wheel button with it). Both were unmet on the
+  first drive. OPEN, and only a drive can close it: whether the wheel works with voice off and
+  the recorded voice on.

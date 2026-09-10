@@ -18,10 +18,10 @@ import { shot, withProfile, withSettings, readStats, playRoundByAdvice, statsTab
  * settings/profile state set before the single goto stays intact for the
  * whole walk, and nothing gets silently re-seeded mid-journey.
  */
-test('full journey: Home -> Profiles -> Settings -> Table -> every Drill mode -> Stats, one continuous session', async ({
+test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleven Drill modes -> Stats, one continuous session', async ({
   page,
 }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(180_000);
 
   // Deterministic profile (default rules from withProfile()) + settings that
   // keep the Table leg from stalling on an unrelated modal (countCheckEvery)
@@ -85,6 +85,15 @@ test('full journey: Home -> Profiles -> Settings -> Table -> every Drill mode ->
   await shot(page, 'smoke-03-settings');
 
   await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
+  await expect(page.locator('.home-title')).toBeVisible();
+
+  // ---------------------------------------------------------------
+  // 3b. Charts: the reference screen, reachable from the tab bar
+  // ---------------------------------------------------------------
+  await page.locator('.tab-bar').getByRole('button', { name: 'Charts', exact: true }).click();
+  await expect(page.locator('.charts-screen')).toBeVisible();
+  await shot(page, 'smoke-03b-charts');
+  await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
   await expect(page.locator('.home-title')).toBeVisible();
 
   // ---------------------------------------------------------------
@@ -192,6 +201,78 @@ test('full journey: Home -> Profiles -> Settings -> Table -> every Drill mode ->
 
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();
+
+  // ---------------------------------------------------------------
+  // 9b. Pair Cancellation: answer the net, assert feedback, Next
+  // ---------------------------------------------------------------
+  await page.getByRole('button', { name: 'Pair Cancellation', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Pair Cancellation');
+  await page.locator('.pair-cancel-answers .action-btn').first().click();
+  await expect(page.locator('.drill-next-btn')).toBeVisible();
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.locator('.pair-cancel-answers')).toBeVisible();
+  await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
+  await expect(page.locator('.drills-picker')).toBeVisible();
+
+  // ---------------------------------------------------------------
+  // 9c. Produce the True Count: flash through, then submit on the keypad
+  // ---------------------------------------------------------------
+  await page.getByRole('button', { name: 'Produce the True Count', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Produce the True Count');
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await shot(page, 'smoke-09c-produce-tc');
+  // Exact: the result screen also carries a "Back to Drills", and both match
+  // a substring filter.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.locator('.drills-picker')).toBeVisible();
+
+  // ---------------------------------------------------------------
+  // 9d. Mixed: one interleaved item, answered on the action bar
+  // ---------------------------------------------------------------
+  await page.getByRole('button', { name: 'Mixed', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Mixed');
+  await page.locator('.action-bar button.action-btn').first().click();
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
+  await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
+  await expect(page.locator('.drills-picker')).toBeVisible();
+
+  // ---------------------------------------------------------------
+  // 9e. Mastery Challenge: one cell answered, progress readout present
+  // ---------------------------------------------------------------
+  await page.getByRole('button', { name: 'Mastery Challenge', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Mastery Challenge');
+  await expect(page.getByTestId('mastery-progress')).toContainText('cleared');
+  await page.locator('.action-bar button.action-btn').first().click();
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
+  await shot(page, 'smoke-09e-mastery');
+  await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
+  await expect(page.locator('.drills-picker')).toBeVisible();
+
+  // ---------------------------------------------------------------
+  // 9f. Bet / Sit / Leave: one scenario answered
+  // ---------------------------------------------------------------
+  await page.getByRole('button', { name: 'Bet / Sit / Leave', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Bet / Sit / Leave');
+  await page.locator('.bsl-answers .action-btn').first().click();
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
+  await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
+  await expect(page.locator('.drills-picker')).toBeVisible();
+
+  // ---------------------------------------------------------------
+  // 9g. Downswing: bet, deal, stand, settle one hand of the session
+  // ---------------------------------------------------------------
+  await page.getByRole('button', { name: 'Downswing', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Downswing');
+  await page.locator('.chip-btn').first().click();
+  await page.locator('.deal-btn').click();
+  await page.locator('.action-bar .action-btn', { hasText: 'Stand' }).click();
+  await expect(page.locator('.drill-next-btn')).toBeVisible();
+  await shot(page, 'smoke-09g-downswing');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.locator('.drills-picker')).toBeVisible();
+
   await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
   await expect(page.locator('.home-title')).toBeVisible();
 
@@ -228,6 +309,9 @@ test('full journey: Home -> Profiles -> Settings -> Table -> every Drill mode ->
 
   const deckEstimationHistory = (stats?.deckEstimation as { history: unknown[] } | undefined)?.history ?? [];
   expect(deckEstimationHistory.length).toBeGreaterThanOrEqual(1);
+
+  const produceTcHistory = (stats?.produceTc as { history: unknown[] } | undefined)?.history ?? [];
+  expect(produceTcHistory.length).toBeGreaterThanOrEqual(1);
 
   const latencyHistory = (stats?.latencyHistory as unknown[] | undefined) ?? [];
   // Flashcards + the Deviation Quiz both grade through the shared latency
