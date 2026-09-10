@@ -51,11 +51,14 @@ async function openFlashcardsWithVoice(page: Page): Promise<void> {
 }
 
 /** Feed the app a transcript, as the engine would. */
-async function say(page: Page, transcript: string): Promise<void> {
-  await page.evaluate((text) => {
+async function say(page: Page, transcript: string, alternatives: string[] = []): Promise<void> {
+  await page.evaluate(({ text, alts }) => {
     const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
-    rec?.onresult?.({ results: [[{ transcript: text }]] });
-  }, transcript);
+    // A real engine hands back its winner plus the readings it ranked below
+    // it, in one result. The runners-up are the whole point of some of these.
+    const readings = [{ transcript: text }, ...alts.map((a) => ({ transcript: a }))];
+    rec?.onresult?.({ results: [readings] });
+  }, { text: transcript, alts: alternatives });
 }
 
 test('a spoken answer grades the card', async ({ page }) => {
@@ -160,4 +163,42 @@ test('the whole vocabulary is on screen, so nothing has to be remembered', async
   for (const word of ['hit', 'stand', 'double', 'split', 'surrender', 'repeat']) {
     await expect(words).toContainText(word);
   }
+});
+
+/**
+ * The near-miss rule, end to end.
+ *
+ * From the drive of 2026-09-10: the engine kept landing one sound away from
+ * the command -- "send" for stand, "read it" for repeat -- and the app
+ * rejected every one. These are verbatim transcripts from that log.
+ */
+test('a word one sound off still answers the card', async ({ page }) => {
+  await openFlashcardsWithVoice(page);
+  await say(page, 'send');
+
+  // Understood as stand, and marked as the approximation it was.
+  await expect(page.locator('.voice-status-heard')).toContainText('stand');
+  await expect(page.locator('.voice-status-heard')).not.toContainText('not a command');
+});
+
+test('a runner-up the engine ranked second is still heard', async ({ page }) => {
+  await openFlashcardsWithVoice(page);
+  // Verbatim from the probe: heard="Band" conf=0.13 alts=["Send", "Stand"].
+  await say(page, 'Band', ['Send', 'Stand']);
+
+  await expect(page.locator('.voice-status-heard')).toContainText('stand');
+});
+
+/**
+ * And the guard. This is the operator narrating a steering-wheel test
+ * mid-drill, verbatim, and it must never play a hand however it is sliced.
+ */
+test('narration during a drill never plays a hand', async ({ page }) => {
+  await openFlashcardsWithVoice(page);
+  await say(page, "I'm pressing button for a lot of buttons now bud is being great", [
+    'send',
+    'stand',
+  ]);
+
+  await expect(page.locator('.voice-status-heard')).toContainText('not a command');
 });

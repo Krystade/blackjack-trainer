@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { matchSpokenAlternatives, matchVoiceAction, detectVoiceSupport, VOICE_ACTIONS } from './voiceRecognition';
+import { matchSpokenAlternatives, matchVoiceAction, nearestVoiceAction, resolveSpoken, detectVoiceSupport, VOICE_ACTIONS } from './voiceRecognition';
 
 /**
  * Matching is the half of voice input that can be tested without a
@@ -242,5 +242,99 @@ describe('an action outranks a word about an action', () => {
     expect(matchVoiceAction('Another hit that')).toBe('hit');
     expect(matchVoiceAction('Repeat it')).toBe('repeat');
     expect(matchVoiceAction('No no')).toBe('no');
+  });
+});
+
+/**
+ * The near-miss rule, measured against the drive that motivated it.
+ *
+ * 22 rejections, most of them the engine landing on an ordinary English word
+ * one sound away from the command. Listing each as an alias would never end
+ * and would put real English into the vocabulary, which is forbidden.
+ */
+describe('near-miss matching', () => {
+  it('recovers the words the drive actually lost', () => {
+    // Verbatim rejections, with the count each came back.
+    expect(nearestVoiceAction('read it')).toBe('repeat'); // x3
+    expect(nearestVoiceAction('send')).toBe('stand'); // x3
+    expect(nearestVoiceAction('selit')).toBe('split'); // x2
+    expect(nearestVoiceAction('sand')).toBe('stand'); // x1
+  });
+
+  /**
+   * THE RULE THAT MAKES THIS SAFE. Dropping vowels reduces "hit", "hat",
+   * "hot", "heat" and "height" all to HT, so the three short commands are
+   * excluded from near-miss matching entirely: they match exactly or not at
+   * all. Without this the vocabulary would swallow half of English.
+   */
+  it('never approximates its way to a short command', () => {
+    for (const word of ['hat', 'hot', 'heat', 'height', 'hut', 'yeast', 'knee', 'gnaw', 'now']) {
+      expect(nearestVoiceAction(word), `"${word}" must not become a command`).toBe(null);
+    }
+  });
+
+  it('leaves ordinary words that are not close enough alone', () => {
+    for (const word of [
+      'and', 'end', 'hand', 'land', 'brand', 'grand', 'sad', 'said',
+      'around', 'about', 'ready', 'right', 'wait', 'great', 'button',
+      'buttons', 'good', 'should', 'would', 'could', 'render', 'sender',
+    ]) {
+      expect(nearestVoiceAction(word), `"${word}" must not become a command`).toBe(null);
+    }
+  });
+
+  /**
+   * The length floor, tested with words that WOULD match without it.
+   * "apt" and "opt" reduce to PT, one edit from repeat's RPT -- so a
+   * three-letter word would otherwise answer a flashcard.
+   */
+  it('refuses anything too short to be evidence', () => {
+    expect(nearestVoiceAction('apt')).toBe(null);
+    expect(nearestVoiceAction('opt')).toBe(null);
+    for (const word of ['sad', 'no', 'a', 'the', 'up']) {
+      expect(nearestVoiceAction(word)).toBe(null);
+    }
+  });
+
+  /**
+   * A transcript equally close to two commands is not evidence for either,
+   * and guessing between them at 70mph is the exact mistake this module
+   * exists to avoid.
+   */
+  it('refuses to choose between two equally close commands', () => {
+    // "spot" reduces to SPT, which is exactly one edit from both split (SPLT)
+    // and repeat (RPT). Picking either would be a coin toss at 70mph.
+    expect(nearestVoiceAction('spot')).toBe(null);
+  });
+});
+
+/**
+ * Provenance. The three ways a word can be understood are different facts
+ * about the engine, and flattening them would make the log unable to answer
+ * whether the near-miss rule is earning its place.
+ */
+describe('resolveSpoken', () => {
+  it('prefers what was actually said over what was nearly said', () => {
+    // "send" is one sound from stand, but a runner-up says "stand" outright.
+    expect(resolveSpoken(['send', 'stand'])).toEqual({ action: 'stand', via: 'alternative' });
+  });
+
+  it('prefers the winner over any runner-up', () => {
+    expect(resolveSpoken(['no', 'stand'])).toEqual({ action: 'no', via: 'direct' });
+  });
+
+  it('falls back to a near miss only when nothing said it', () => {
+    expect(resolveSpoken(['send', 'sending'])).toEqual({ action: 'stand', via: 'approximate' });
+  });
+
+  it('will not approximate out of a sentence', () => {
+    const narration = "I'm pressing button for a lot of buttons now bud is being great";
+    expect(resolveSpoken([narration])).toBe(null);
+    expect(resolveSpoken([narration, 'send'])).toBe(null);
+  });
+
+  it('reports a plain match as plain', () => {
+    expect(resolveSpoken(['stand'])).toEqual({ action: 'stand', via: 'direct' });
+    expect(resolveSpoken(['I would hit that'])).toEqual({ action: 'hit', via: 'direct' });
   });
 });

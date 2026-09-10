@@ -82,14 +82,15 @@ test('nothing is recorded until the microphone is actually on', async ({ page })
 
 test('a misheard word is kept, so it can be taught later', async ({ page }) => {
   await drillWithVoice(page);
-  // A word the table does not know. "Stant" itself was taught after being
-  // caught this way, and it also appears in the panel's own copy -- asserting
-  // on it would pass whether or not anything was recorded.
-  await say(page, 'stend');
+  // A word nothing can reach: not an alias, and far enough from every command
+  // that the near-miss rule will not claim it either. "Stant" was the original
+  // real example and has since been taught, and "stend" now resolves to stand
+  // by consonant skeleton -- both would test the opposite of what this claims.
+  await say(page, 'wombat');
 
   const section = await openHistory(page);
   await expect(section).toContainText('1 not');
-  await expect(section).toContainText('stend');
+  await expect(section).toContainText('wombat');
 });
 
 test('understood speech is recorded too, not only the misses', async ({ page }) => {
@@ -107,18 +108,18 @@ test('understood speech is recorded too, not only the misses', async ({ page }) 
  */
 test('a repeated miss outranks a one-off', async ({ page }) => {
   await drillWithVoice(page);
-  await say(page, 'stend');
-  await say(page, 'stend');
+  await say(page, 'wombat');
+  await say(page, 'wombat');
   await say(page, 'what time is it');
 
   const section = await openHistory(page);
   await expect(section).toContainText('Commonest miss');
-  await expect(section).toContainText('“stend” ×2');
+  await expect(section).toContainText('“wombat” ×2');
 });
 
 test('the full log can be read on screen', async ({ page }) => {
   await drillWithVoice(page);
-  await say(page, 'stend');
+  await say(page, 'wombat');
 
   const section = await openHistory(page);
   await section.getByRole('button', { name: 'Show' }).click();
@@ -132,10 +133,10 @@ test('the full log can be read on screen', async ({ page }) => {
  */
 test('the recording can be deleted outright', async ({ page }) => {
   await drillWithVoice(page);
-  await say(page, 'stend');
+  await say(page, 'wombat');
 
   let section = await openHistory(page);
-  await expect(section).toContainText('stend');
+  await expect(section).toContainText('wombat');
 
   await section.getByRole('button', { name: 'Delete recording' }).click();
   await expect(section).toContainText('none yet');

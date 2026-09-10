@@ -2,7 +2,7 @@ import type { Screen } from '../App';
 import type { Profile } from '../../store/types';
 import { loadStats } from '../../store/persist';
 import { readiness, weakestCategories } from './readiness';
-import { buildLabel, runningBuildId } from '../../updateCheck';
+import { buildLabel, formatBuiltAt, runningBuildId, runningBuiltAt } from '../../updateCheck';
 
 interface HomeProps {
   onNavigate: (screen: Screen) => void;
@@ -101,8 +101,9 @@ export function Home({ onNavigate, activeProfile }: HomeProps) {
       {/* The installed app can sit on a cached bundle without saying so. This
           is the one place to check that a deploy actually landed: it is the
           same string version.json carries. */}
-      <p className="home-build" data-build={runningBuildId() ?? ''}>
+      <p className="home-build" data-build={runningBuildId() ?? ''} data-built-at={runningBuiltAt() ?? ''}>
         build {buildLabel()}
+        {formatBuiltAt() && <span className="home-build-at">{formatBuiltAt()}</span>}
       </p>
     </div>
   );

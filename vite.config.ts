@@ -13,9 +13,21 @@ import react from '@vitejs/plugin-react';
 const BUILD_ID =
   process.env.GITHUB_SHA?.slice(0, 12) ?? `dev-${Date.now().toString(36)}`;
 
+/**
+ * When this build was made, frozen at the same moment as the id above.
+ *
+ * The id alone answers "is this the same build as before?", which needs
+ * something to compare against. A date answers "how old is what I am running?"
+ * on its own, which is the question actually being asked after a deploy.
+ */
+const BUILT_AT = new Date().toISOString();
+
 export default defineConfig({
   base: './',
-  define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
+  define: {
+    __BUILD_ID__: JSON.stringify(BUILD_ID),
+    __BUILT_AT__: JSON.stringify(BUILT_AT),
+  },
   plugins: [
     react(),
     {
@@ -30,14 +42,14 @@ export default defineConfig({
         server.middlewares.use((req, res, next) => {
           if (!req.url || !req.url.split('?')[0]?.endsWith('/version.json')) return next();
           res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ buildId: BUILD_ID }));
+          res.end(JSON.stringify({ buildId: BUILD_ID, builtAt: BUILT_AT }));
         });
       },
       generateBundle() {
         this.emitFile({
           type: 'asset',
           fileName: 'version.json',
-          source: JSON.stringify({ buildId: BUILD_ID }),
+          source: JSON.stringify({ buildId: BUILD_ID, builtAt: BUILT_AT }),
         });
       },
     },

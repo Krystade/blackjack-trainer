@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLabel, isStale, parseVersion, versionUrl, reloadUrl } from './updateCheck';
+import { buildLabel, formatBuiltAt, isStale, parseVersion, versionUrl, reloadUrl } from './updateCheck';
 
 describe('parseVersion', () => {
   it('reads a buildId out of the served version document', () => {
@@ -96,5 +96,40 @@ describe('buildLabel', () => {
 
   it('says so rather than rendering nothing when there is no stamp', () => {
     expect(buildLabel(null)).toBe('unknown build');
+  });
+});
+
+/**
+ * The build date.
+ *
+ * The id answers "is this the same build as before?", which needs something
+ * to compare against. The date answers "how old is what I am running?" with
+ * nothing to hand, which is the question actually asked after a deploy.
+ */
+describe('formatBuiltAt', () => {
+  it('renders a real stamp as a readable date', () => {
+    const out = formatBuiltAt('2026-09-10T08:05:00.000Z');
+    expect(out).toBeTruthy();
+    // Locale-dependent, so assert the facts every locale must carry.
+    expect(out).toMatch(/2026/);
+    expect(out).toMatch(/\d/);
+  });
+
+  /**
+   * A bad stamp must drop the date, not print "Invalid Date" on the home
+   * screen -- the line exists to be trusted at a glance.
+   */
+  it('drops an unparseable stamp rather than showing garbage', () => {
+    expect(formatBuiltAt('not a date')).toBe(null);
+    expect(formatBuiltAt('')).toBe(null);
+    expect(formatBuiltAt(null)).toBe(null);
+  });
+
+  it('never returns the string Invalid Date', () => {
+    for (const bad of ['x', '2026-13-45T99:99:99Z', 'undefined']) {
+      // Dropping it entirely (null) is the correct outcome; what must never
+      // happen is the browser's failure string reaching the screen.
+      expect(formatBuiltAt(bad) ?? '').not.toContain('Invalid');
+    }
   });
 });

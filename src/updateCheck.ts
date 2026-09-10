@@ -22,10 +22,44 @@
  */
 
 declare const __BUILD_ID__: string;
+declare const __BUILT_AT__: string;
 
 /** The build this tab is actually running. */
 export function runningBuildId(): string | null {
   return typeof __BUILD_ID__ === 'string' && __BUILD_ID__ ? __BUILD_ID__ : null;
+}
+
+/** When this build was made, as an ISO string, or null if it was not stamped. */
+export function runningBuiltAt(): string | null {
+  return typeof __BUILT_AT__ === 'string' && __BUILT_AT__ ? __BUILT_AT__ : null;
+}
+
+/**
+ * The build date, in the reader's own locale and timezone.
+ *
+ * Shown local rather than UTC because the question it answers is "did this
+ * update before or after I last drove", which is a question about the
+ * operator's day, not about the deploy server's clock.
+ *
+ * Returns null for anything unparseable, so a bad stamp drops the date rather
+ * than printing "Invalid Date" on the home screen.
+ */
+export function formatBuiltAt(iso: string | null = runningBuiltAt()): string | null {
+  if (!iso) return null;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  try {
+    return at.toLocaleString(undefined, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    // A runtime without Intl data still gets something true.
+    return at.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+  }
 }
 
 /**

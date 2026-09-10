@@ -121,6 +121,97 @@ export function matchVoiceAction(transcript: string): VoiceAction | null {
 }
 
 /**
+ * A near-miss match, for the long words only.
+ *
+ * The car drive of 2026-09-10 produced 22 rejections, and most were the same
+ * shape: the engine heard the right consonants and landed on an ordinary
+ * English word one sound away from the command.
+ *
+ *   "send" / "sand" / "band"   for  stand
+ *   "selit" / "gaslit"         for  split
+ *   "read it" / "read that"    for  repeat
+ *
+ * Listing each of those as an alias is the wrong fix twice over: it never
+ * ends, and most of them are ordinary English, which the alias table is
+ * forbidden from containing for good reason. Comparing consonant skeletons
+ * generalises instead -- "send" and "stand" reduce to SND and STND, one edit
+ * apart -- and does it without ever adding a real word to the vocabulary.
+ *
+ * ONLY THE LONG WORDS. Reducing "hit" to HT also reduces "hat", "hot", "heat"
+ * and "height" to HT, so the short commands would swallow half of English.
+ * They are excluded outright: hit, yes and no match exactly or not at all.
+ * That is the whole reason this is safe.
+ */
+const FUZZY_TARGETS: readonly VoiceAction[] = ['stand', 'split', 'double', 'surrender', 'repeat'];
+
+/** The shortest transcript worth comparing. Below this, everything is close to everything. */
+const MIN_FUZZY_LETTERS = 4;
+
+/** How far apart two skeletons may be. One edit: a dropped or swapped sound. */
+export const MAX_FUZZY_DISTANCE = 1;
+
+function skeleton(text: string): string {
+  // Vowels carry least across a bad microphone, and doubled letters are noise.
+  return text
+    .toLowerCase()
+    .replace(/[^a-z]/g, '')
+    .replace(/[aeiou]/g, '')
+    .replace(/(.)+/g, '$1');
+}
+
+/** Levenshtein, bailing out as soon as it cannot come in under the cap. */
+function distanceWithin(a: string, b: string, cap: number): number {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const v = Math.min(prev[j]! + 1, row[j - 1]! + 1, prev[j - 1]! + cost);
+      row.push(v);
+      if (v < best) best = v;
+    }
+    if (best > cap) return cap + 1;
+    prev = row;
+  }
+  return prev[b.length]!;
+}
+
+/**
+ * The command this transcript is nearly, or null.
+ *
+ * Deliberately refuses to choose: a transcript equally close to two commands
+ * is not evidence for either, and guessing between them at 70mph is exactly
+ * the mistake this whole module is built to avoid.
+ */
+export function nearestVoiceAction(transcript: string): VoiceAction | null {
+  const bare = transcript.toLowerCase().replace(/[^a-z]/g, '');
+  if (bare.length < MIN_FUZZY_LETTERS) return null;
+
+  const heard = skeleton(transcript);
+  if (!heard) return null;
+
+  let best: VoiceAction | null = null;
+  let bestAt = MAX_FUZZY_DISTANCE + 1;
+  let tied = false;
+
+  for (const target of FUZZY_TARGETS) {
+    const d = distanceWithin(heard, skeleton(target), MAX_FUZZY_DISTANCE);
+    if (d > MAX_FUZZY_DISTANCE) continue;
+    if (d < bestAt) {
+      best = target;
+      bestAt = d;
+      tied = false;
+    } else if (d === bestAt && target !== best) {
+      tied = true;
+    }
+  }
+
+  return tied ? null : best;
+}
+
+/**
  * How many guesses to ask the engine for.
  *
  * Speech engines rank several readings of the same audio and hand back only
@@ -167,24 +258,69 @@ function tokenCount(cleaned: string): number {
  * Rank order is respected: the engine's own confidence ordering decides which
  * rescue wins, so this can only ever promote a guess the engine already made.
  */
-export function matchSpokenAlternatives(transcripts: readonly string[]): VoiceAction | null {
+/** How a transcript came to be understood. The log distinguishes them. */
+export type SpokenMatch = {
+  action: VoiceAction;
+  /**
+   * 'direct' -- the winner said it. 'alternative' -- a runner-up did.
+   * 'approximate' -- nothing said it, but something was one sound away.
+   */
+  via: 'direct' | 'alternative' | 'approximate';
+};
+
+function isShort(cleaned: string): boolean {
+  const n = tokenCount(cleaned);
+  return n > 0 && n <= MAX_RESCUE_TOKENS;
+}
+
+/**
+ * Resolve one utterance against everything the engine offered.
+ *
+ * Four passes, in descending order of evidence, so a weaker kind of match can
+ * never displace a stronger one:
+ *
+ *   1. the winner says a command outright, at any length
+ *   2. a runner-up says one outright
+ *   3. the winner is one sound away from one
+ *   4. a runner-up is
+ *
+ * Passes 2 to 4 require the WINNER to be short. Someone whose top transcript
+ * is a sentence was talking, not answering, and neither their runners-up nor
+ * their consonants are evidence of anything. "I'm pressing button for a lot
+ * of buttons now bud is being great" -- the operator narrating a steering
+ * wheel test mid-drill -- stays rejected however it is sliced.
+ */
+export function resolveSpoken(transcripts: readonly string[]): SpokenMatch | null {
   const [top, ...rest] = transcripts;
   if (top === undefined) return null;
 
-  // The winner is matched exactly as a lone transcript always was, at any
-  // length: "I would hit that" is someone answering, and it still counts.
   const direct = matchVoiceAction(top);
-  if (direct) return direct;
+  if (direct) return { action: direct, via: 'direct' };
 
-  if (tokenCount(normalise(top)) > MAX_RESCUE_TOKENS) return null;
+  const cleanedTop = normalise(top);
+  if (!isShort(cleanedTop)) return null;
 
-  for (const alt of rest) {
-    const cleaned = normalise(alt);
-    if (!cleaned || tokenCount(cleaned) > MAX_RESCUE_TOKENS) continue;
-    const rescued = matchVoiceAction(cleaned);
-    if (rescued) return rescued;
+  const shortRest = rest.map(normalise).filter(isShort);
+
+  for (const alt of shortRest) {
+    const exact = matchVoiceAction(alt);
+    if (exact) return { action: exact, via: 'alternative' };
   }
+
+  const near = nearestVoiceAction(cleanedTop);
+  if (near) return { action: near, via: 'approximate' };
+
+  for (const alt of shortRest) {
+    const alsoNear = nearestVoiceAction(alt);
+    if (alsoNear) return { action: alsoNear, via: 'approximate' };
+  }
+
   return null;
+}
+
+/** The action alone, for callers that do not care how it was reached. */
+export function matchSpokenAlternatives(transcripts: readonly string[]): VoiceAction | null {
+  return resolveSpoken(transcripts)?.action ?? null;
 }
 
 export interface VoiceSupport {

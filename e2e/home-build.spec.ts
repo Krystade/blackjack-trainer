@@ -39,6 +39,31 @@ test('the shown build matches the one served beside the app', async ({ page }) =
   expect(shown).toBe(served);
 });
 
+test('Home shows when the build was made, not only which one it is', async ({ page }) => {
+  await page.goto('/?e2e=1');
+
+  const build = page.locator('.home-build');
+  const iso = await build.getAttribute('data-built-at');
+  expect(iso).toBeTruthy();
+  expect(Number.isNaN(Date.parse(iso!))).toBe(false);
+
+  // Rendered, readable, and never the browser's failure string.
+  const at = build.locator('.home-build-at');
+  await expect(at).toBeVisible();
+  await expect(at).toContainText(String(new Date(iso!).getFullYear()));
+  await expect(at).not.toContainText('Invalid');
+});
+
+test('the served version document carries the build date too', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  const served = await page.evaluate(async () => {
+    const res = await fetch('version.json', { cache: 'no-store' });
+    return (await res.json()) as { buildId?: string; builtAt?: string };
+  });
+  expect(served.builtAt).toBeTruthy();
+  expect(Number.isNaN(Date.parse(served.builtAt!))).toBe(false);
+});
+
 test('it stays out of the way of the primary action', async ({ page }) => {
   await page.goto('/?e2e=1');
 

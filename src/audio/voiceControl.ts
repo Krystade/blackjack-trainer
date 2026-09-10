@@ -1,7 +1,7 @@
 import {
-  matchSpokenAlternatives,
-  matchVoiceAction,
+  resolveSpoken,
   SPOKEN_ALTERNATIVES,
+  type SpokenMatch,
   type VoiceAction,
 } from './voiceRecognition';
 
@@ -180,6 +180,25 @@ export function shouldCycle(startedAt: number, now: number, after = CYCLE_AFTER_
   return now - startedAt >= after;
 }
 
+/**
+ * How one match reads in the microphone log.
+ *
+ * Marked rather than flattened, because the three kinds carry different news:
+ * a rescue means the engine had the word and ranked it wrong, an approximate
+ * match means it never produced the word at all, and the tally of the second
+ * kind is what would justify tightening or loosening the near-miss rule.
+ */
+export function verdictFor(match: SpokenMatch): string {
+  switch (match.via) {
+    case 'direct':
+      return match.action;
+    case 'alternative':
+      return `${match.action} (rescued)`;
+    case 'approximate':
+      return `${match.action} (approximate)`;
+  }
+}
+
 /** Whether the microphone is currently hearing the app rather than the operator. */
 export function isSuppressed(now: number, suppressedUntil: number): boolean {
   return now < suppressedUntil;
@@ -355,11 +374,12 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
         return;
       }
 
-      const action = matchSpokenAlternatives(offered);
-      // A rescue is worth seeing in the log: it is the difference between an
-      // engine that cannot hear the word and one that merely ranked it second.
-      const rescued = action !== null && matchVoiceAction(heard) === null;
-      deps.onHeard?.(heard, action === null ? 'rejected' : rescued ? `${action} (rescued)` : action);
+      const match = resolveSpoken(offered);
+      // How it matched is worth keeping. An engine that ranked the word
+      // second, and one that never produced it at all, are different problems
+      // -- and only the log can tell them apart after the drive.
+      const action = match?.action ?? null;
+      deps.onHeard?.(heard, match === null ? 'rejected' : verdictFor(match));
       if (!action) return;
       try {
         deps.onAction(action);
