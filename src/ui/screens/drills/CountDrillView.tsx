@@ -1204,6 +1204,14 @@ export function CountDrillView({
                   onChange={(v) => updateDrill({ distractionFreq: v })}
                 />
               </div>
+              {/* R2: an interruption you cannot yet absorb does not train
+                  robustness, it just makes the count wrong. Soft, matching
+                  pace pressure below and the picker's pressure drills. */}
+              {!countFluent && settings.drill.distractionFreq !== 'off' && (
+                <div className="settings-row settings-note-row">
+                  Advanced — build your count fluency first (it stays available).
+                </div>
+              )}
               {settings.drill.distractionFreq !== 'off' && (
                 <>
                   <div className="settings-row settings-note-row">

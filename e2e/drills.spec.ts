@@ -1626,17 +1626,23 @@ test('produce the true count: flash then produce a TC, graded within tolerance a
   expect(row.correct).toBe((Math.abs(0 - (row.correctTc as number)) <= 1) as unknown as number);
 });
 
-/* V3-4: SOFT competence gating. The advanced pressure modes (Bet/Sit/Leave,     */
-/* Downswing) show a "build fluency first" nudge until the learner has enough    */
-/* count-drill history — but stay CLICKABLE (soft, not a lock). Gone once fluent. */
+/* V3-4 + R2: SOFT competence gating. The advanced modes -- the two pressure     */
+/* drills AND Mixed, whose interleaving is a desirable difficulty that costs      */
+/* accuracy before the base skill is there -- show a "build fluency first" nudge  */
+/* until the learner has enough count-drill history, but stay CLICKABLE (soft,    */
+/* not a lock). Gone once fluent.                                                */
 test('drills picker: advanced modes show a soft fluency nudge until fluent, but stay clickable', async ({
   page,
 }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await expect(page.locator('.drills-title')).toHaveText('Drills');
-  // Fresh profile: not fluent -> advisory on the two advanced modes.
-  await expect(page.locator('.drills-nav-note')).toHaveCount(2);
+  // Fresh profile: not fluent -> advisory on Mixed, Bet/Sit/Leave, Downswing.
+  await expect(page.locator('.drills-nav-note')).toHaveCount(3);
+  // Mixed carries it too, and is still reachable.
+  await expect(
+    page.getByRole('button', { name: 'Mixed', exact: true }),
+  ).toHaveClass(/drills-nav-btn-advanced/);
   await shot(page, '99-soft-gate');
   // Soft, not locked: the mode still opens.
   await page.getByRole('button', { name: 'Downswing', exact: true }).click();
@@ -1655,4 +1661,44 @@ test('drills picker: no fluency nudge once the learner is fluent', async ({ page
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await expect(page.locator('.drills-title')).toHaveText('Drills');
   await expect(page.locator('.drills-nav-note')).toHaveCount(0);
+});
+
+/* R2's other half: an interruption you cannot yet absorb does not train        */
+/* robustness, it makes the count wrong. Same soft nudge, on the count drill's  */
+/* own Distractions control.                                                    */
+test('count drill: turning distractions on before fluency says so, and still turns them on', async ({
+  page,
+}) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+
+  const distractions = page.locator('.settings-row', { hasText: 'Distractions' });
+  await expect(page.locator('.count-setup')).not.toContainText('build your count fluency first');
+
+  await distractions.getByRole('button', { name: 'Occasional', exact: true }).click();
+  await expect(page.locator('.count-setup')).toContainText('build your count fluency first');
+  // Soft: the setting took effect regardless.
+  await expect(distractions.getByRole('button', { name: 'Occasional', exact: true })).toHaveClass(
+    /segmented-btn-active/,
+  );
+});
+
+test('count drill: a fluent learner gets no distraction nudge', async ({ page }) => {
+  const history = Array.from({ length: 10 }, () => ({
+    date: '2026-08-03T00:00:00.000Z',
+    cards: 20,
+    intervalMs: 800,
+    correct: true,
+  }));
+  await withStats(page, { countDrill: { history } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+
+  await page
+    .locator('.settings-row', { hasText: 'Distractions' })
+    .getByRole('button', { name: 'Occasional', exact: true })
+    .click();
+  await expect(page.locator('.count-setup')).not.toContainText('build your count fluency first');
 });

@@ -80,7 +80,11 @@ measurement layer that makes almost everything below provable — including D1 (
 must be scored as "count kept AND how much slower"). Add `elapsedMs` to graded events +
 surface per-drill; the shot clock is a cheap follow-on. Highest leverage in the file.
 
-### R2 · Accuracy-gate the hard modes (fix the timed ramp; gate distraction/speed/interleave) — S — **HIGH** — **✅ SHIPPED (timed-drill half; distraction/interleave gating still open for D1/R4)**
+### R2 · Accuracy-gate the hard modes (fix the timed ramp; gate distraction/speed/interleave) — S — **HIGH** — **✅ SHIPPED (all three halves)**
+Distraction + interleave gating closed 2026-09-10: the count drill's Distractions control and
+the picker's **Mixed** button now carry the same soft "build your count fluency first" nudge
+the pressure drills already had (`isCountFluent`), and like those, both stay fully usable --
+soft was the operator's explicit choice for V3-4 and there is no reason to be stricter here.
 Convergence: TS#2+TS#3 (three independent literatures — stress-inoculation,
 desirable-difficulties, speed-accuracy — converge on "unlock harder only after a measured
 competence floor"; a controlled npj Science of Learning study read in full shows

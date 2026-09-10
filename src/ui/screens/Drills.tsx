@@ -1700,9 +1700,18 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         <button type="button" className="drills-nav-btn" onClick={() => setMode('quiz')}>
           Deviation Quiz
         </button>
-        <button type="button" className="drills-nav-btn" onClick={() => setMode('mixed')}>
+        {/* R2/R4: interleaving is a DESIRABLE difficulty -- it helps once the
+            base skill is there and costs accuracy before it. Soft, like every
+            other gate here (V3-4, operator's explicit choice): the mode still
+            works, it just says what it is. */}
+        <button
+          type="button"
+          className={`drills-nav-btn${fluent ? '' : ' drills-nav-btn-advanced'}`}
+          onClick={() => setMode('mixed')}
+        >
           Mixed
         </button>
+        {advancedNote}
         <button type="button" className="drills-nav-btn" onClick={() => setMode('mastery')}>
           Mastery Challenge
         </button>
