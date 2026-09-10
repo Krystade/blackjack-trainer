@@ -98,6 +98,21 @@ export interface HistorySummary {
   total: number;
   matched: number;
   rejected: number;
+  /**
+   * Of the matched: how many needed help, and of what kind.
+   *
+   * `rescued` -- the engine produced the command but ranked it below an
+   * ordinary word. `approximate` -- the engine never produced the command at
+   * all and it was reached by consonant skeleton.
+   *
+   * These are the numbers that judge the near-miss rule. A drive full of
+   * rescues says the engine hears fine and the ranking is the problem; a
+   * drive full of approximations says the rule is carrying real weight and
+   * deserves scrutiny for false positives; none of either says both are
+   * dead weight.
+   */
+  rescued: number;
+  approximate: number;
   /** Rejected transcripts by how often each came back, commonest first. */
   candidates: Array<{ heard: string; count: number }>;
 }
@@ -128,6 +143,8 @@ export function summariseHistory(entries: HeardEntry[] = readVoiceHistory()): Hi
     total: entries.length,
     matched: entries.length - rejected.length,
     rejected: rejected.length,
+    rescued: entries.filter((e) => e.verdict.endsWith('(rescued)')).length,
+    approximate: entries.filter((e) => e.verdict.endsWith('(approximate)')).length,
     candidates,
   };
 }
@@ -142,6 +159,8 @@ export function formatVoiceHistory(entries: HeardEntry[] = readVoiceHistory()): 
     '',
     `utterances: ${summary.total}`,
     `understood: ${summary.matched}`,
+    `  of those, ranked second by the engine: ${summary.rescued}`,
+    `  of those, reached by near miss:        ${summary.approximate}`,
     `not understood: ${summary.rejected}`,
     '',
     '--- not understood, commonest first (candidate aliases) ---',

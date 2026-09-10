@@ -44,11 +44,35 @@ async function withFakeEngine(page: Page): Promise<void> {
   });
 }
 
-async function say(page: Page, transcript: string): Promise<void> {
-  await page.evaluate((text) => {
+async function say(page: Page, transcript: string, alternatives: string[] = []): Promise<void> {
+  await page.evaluate(({ text, alts }) => {
     const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
-    rec?.onresult?.({ results: [[{ transcript: text }]] });
-  }, transcript);
+    const readings = [{ transcript: text }, ...alts.map((a) => ({ transcript: a }))];
+    rec?.onresult?.({ results: [readings] });
+  }, { text: transcript, alts: alternatives });
+}
+
+/**
+ * Speak once the microphone is actually trusting what it hears.
+ *
+ * Grading an answer makes the app talk, and while it talks the microphone
+ * discards everything as its own voice. A test that fires straight afterwards
+ * is testing suppression, not what it claims to test.
+ */
+async function sayWhenListening(
+  page: Page,
+  transcript: string,
+  alternatives: string[] = [],
+): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        await say(page, transcript, alternatives);
+        return page.locator('.voice-status-heard').textContent();
+      },
+      { timeout: 15_000, intervals: [400] },
+    )
+    .not.toContain('the app was speaking');
 }
 
 async function drillWithVoice(page: Page): Promise<void> {
@@ -152,4 +176,38 @@ test('the panel says plainly that nothing leaves the device', async ({ page }) =
   await page.goto('/?e2e=1');
   const section = await openHistory(page);
   await expect(section).toContainText('never uploaded');
+});
+
+/**
+ * How much help the engine needed, broken out by kind.
+ *
+ * A word the engine ranked second and a word it never produced at all are
+ * different facts about the microphone. Counting them together would leave
+ * the log unable to say whether near-miss matching is earning its place or
+ * quietly guessing, which is the question the next drive has to answer.
+ */
+test('the log separates a word ranked second from one never said at all', async ({ page }) => {
+  await drillWithVoice(page);
+
+  // Verbatim from the drive: the engine had "Stand" and ranked it third.
+  await sayWhenListening(page, 'Band', ['Send', 'Stand']);
+  // And here it never produced the word at all -- reached by consonant
+  // skeleton. Said only once the app has stopped talking about the last
+  // answer, or it would be swallowed as the app hearing itself.
+  await sayWhenListening(page, 'send');
+
+  const section = await openHistory(page);
+  await expect(section).toContainText('Needed help');
+  await expect(section).toContainText('1 ranked second');
+  await expect(section).toContainText('1 near miss');
+});
+
+// A row of zeroes is noise on a screen read while driving.
+test('no help needed means no row about help', async ({ page }) => {
+  await drillWithVoice(page);
+  await say(page, 'stand');
+
+  const section = await openHistory(page);
+  await expect(section).toContainText('1 understood');
+  await expect(section).not.toContainText('Needed help');
 });

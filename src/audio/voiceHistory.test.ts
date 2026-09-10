@@ -130,6 +130,40 @@ describe('summarising', () => {
     expect(summariseHistory().candidates).toEqual([{ heard: 'banana', count: 1 }]);
   });
 
+  /**
+   * The numbers that judge the near-miss rule.
+   *
+   * A word the engine ranked second, and a word it never produced at all, are
+   * different facts. Counting them together would make the log unable to say
+   * whether skeleton matching is earning its place or quietly guessing.
+   */
+  it('counts help given, and of which kind', () => {
+    recordHeard('stand', 'stand', 'flashcards');
+    recordHeard('Band', 'stand (rescued)', 'flashcards');
+    recordHeard('Split send', 'split (rescued)', 'table');
+    recordHeard('send', 'stand (approximate)', 'flashcards');
+    recordHeard('banana', 'rejected', 'table');
+
+    const summary = summariseHistory();
+    expect(summary.matched).toBe(4);
+    expect(summary.rescued).toBe(2);
+    expect(summary.approximate).toBe(1);
+    expect(summary.rejected).toBe(1);
+  });
+
+  it('counts a plain match as needing no help at all', () => {
+    recordHeard('stand', 'stand', 'flashcards');
+    const summary = summariseHistory();
+    expect(summary.rescued).toBe(0);
+    expect(summary.approximate).toBe(0);
+  });
+
+  // A rescued word is understood, not a candidate alias: the engine had it.
+  it('does not offer a rescued word as a candidate alias', () => {
+    recordHeard('Band', 'stand (rescued)', 'flashcards');
+    expect(summariseHistory().candidates).toEqual([]);
+  });
+
   it('does not offer understood speech as a candidate alias', () => {
     recordHeard('stand', 'stand', 'flashcards');
     const summary = summariseHistory();
@@ -155,6 +189,14 @@ describe('the pasteable report', () => {
   it('says so plainly when nothing was rejected', () => {
     recordHeard('stand', 'stand', 'flashcards');
     expect(formatVoiceHistory()).toContain('(nothing was rejected)');
+  });
+
+  it('breaks out how much help was needed', () => {
+    recordHeard('Band', 'stand (rescued)', 'flashcards');
+    recordHeard('send', 'stand (approximate)', 'flashcards');
+    const out = formatVoiceHistory();
+    expect(out).toContain('ranked second by the engine: 1');
+    expect(out).toContain('reached by near miss:        1');
   });
 
   it('names the screen each utterance was heard on', () => {

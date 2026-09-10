@@ -787,6 +787,20 @@ function VoiceHistoryPanel() {
         </span>
       </div>
 
+      {/* How many needed help, and of what kind. A drive full of rescues says
+          the engine hears fine and only ranks badly; a drive full of near
+          misses says that rule is carrying real weight and is worth checking
+          for false positives. Hidden when neither happened, because a row of
+          zeroes is noise. */}
+      {summary.rescued + summary.approximate > 0 && (
+        <div className="settings-row">
+          <span className="settings-label">Needed help</span>
+          <span className="settings-value">
+            {summary.rescued} ranked second, {summary.approximate} near miss
+          </span>
+        </div>
+      )}
+
       {/* The ranked rejections are the actionable part, so they get a row of
           their own rather than being buried in the timeline. */}
       {summary.candidates.length > 0 && (
