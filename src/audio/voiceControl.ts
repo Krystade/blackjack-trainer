@@ -1,4 +1,9 @@
-import { matchVoiceAction, type VoiceAction } from './voiceRecognition';
+import {
+  matchSpokenAlternatives,
+  matchVoiceAction,
+  SPOKEN_ALTERNATIVES,
+  type VoiceAction,
+} from './voiceRecognition';
 
 /**
  * A speech-recognition session that survives being left running.
@@ -43,12 +48,21 @@ export interface RecognitionLike {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
+  /**
+   * How many readings of the same audio to hand back. Optional because not
+   * every engine offers it, and one guess is still workable.
+   */
+  maxAlternatives?: number;
   start: () => void;
   abort: () => void;
   onstart: (() => void) | null;
   onend: (() => void) | null;
   onerror: ((e: { error?: string }) => void) | null;
-  onresult: ((e: { results?: ArrayLike<ArrayLike<{ transcript?: string }>> }) => void) | null;
+  onresult:
+    | ((e: {
+        results?: ArrayLike<ArrayLike<{ transcript?: string }> & { length?: number }>;
+      }) => void)
+    | null;
 }
 
 /** What the microphone did with one utterance, for the operator to read. */
@@ -271,6 +285,9 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     fresh.continuous = true;
     fresh.interimResults = false;
     fresh.lang = 'en-US';
+    // Ask for runners-up. Harmless where unsupported: the list simply
+    // arrives with one entry, which is what it was before.
+    fresh.maxAlternatives = SPOKEN_ALTERNATIVES;
     applyBias(fresh, deps.biasPhrases);
     if (deps.processLocally) {
       try {
@@ -312,7 +329,17 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       const results = e?.results;
       if (!results) return;
       const last = results[results.length - 1];
-      const heard = (last?.[0]?.transcript ?? '').trim();
+      if (!last) return;
+
+      // Every reading the engine offered, best first. On a car microphone the
+      // winner is often an ordinary word with the command ranked behind it.
+      const offered: string[] = [];
+      const count = last.length ?? 1;
+      for (let i = 0; i < count; i++) {
+        const text = (last[i]?.transcript ?? '').trim();
+        if (text) offered.push(text);
+      }
+      const heard = offered[0] ?? '';
       if (!heard) return;
 
       // The app's own voice, arriving back through the microphone.
@@ -328,8 +355,11 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
         return;
       }
 
-      const action = matchVoiceAction(heard);
-      deps.onHeard?.(heard, action ?? 'rejected');
+      const action = matchSpokenAlternatives(offered);
+      // A rescue is worth seeing in the log: it is the difference between an
+      // engine that cannot hear the word and one that merely ranked it second.
+      const rescued = action !== null && matchVoiceAction(heard) === null;
+      deps.onHeard?.(heard, action === null ? 'rejected' : rescued ? `${action} (rescued)` : action);
       if (!action) return;
       try {
         deps.onAction(action);
