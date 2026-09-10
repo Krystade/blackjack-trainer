@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   createVoiceController,
+  restartDelayFor,
+  RESTART_DELAY_MS,
+  MAX_RESTART_DELAY_MS,
+  PRODUCTIVE_SESSION_MS,
   shouldCycle,
   isSuppressed,
   CYCLE_AFTER_MS,
@@ -473,5 +477,120 @@ describe('an engine that is present but inert', () => {
     h.controller.stop();
     h.advance(START_TIMEOUT_MS * 2);
     expect(h.controller.state()).toBe('off');
+  });
+});
+
+/**
+ * Backing off a microphone that keeps dying.
+ *
+ * From the drive of 2026-09-10, one probe run over 194 seconds: 6 sessions
+ * ended, repeated `audio-capture` errors, the last two lasting 9s and 0.5s.
+ * On an iPhone in a car that is the Bluetooth route flipping to hands-free,
+ * or iOS taking the input. Retrying every 250ms forever neither fixes it nor
+ * lets it settle -- it just re-opens the microphone four times a second.
+ */
+describe('restartDelayFor', () => {
+  /**
+   * The cloud recogniser ends a session roughly every ninety seconds BY
+   * DESIGN. A single drop is routine and must not introduce a pause, or every
+   * drill gains one for no reason.
+   */
+  it('does not slow down the routine single drop', () => {
+    expect(restartDelayFor(0)).toBe(RESTART_DELAY_MS);
+  });
+
+  it('backs off as failures run together', () => {
+    expect(restartDelayFor(1)).toBeGreaterThan(restartDelayFor(0));
+    expect(restartDelayFor(2)).toBeGreaterThan(restartDelayFor(1));
+    expect(restartDelayFor(3)).toBeGreaterThan(restartDelayFor(2));
+  });
+
+  // It has to keep trying: the operator is driving and cannot intervene.
+  it('never backs off past the ceiling, however long the run', () => {
+    for (const n of [6, 10, 50, 1000]) {
+      expect(restartDelayFor(n)).toBe(MAX_RESTART_DELAY_MS);
+    }
+    expect(MAX_RESTART_DELAY_MS).toBeLessThanOrEqual(10_000);
+  });
+});
+
+describe('a microphone that keeps dying', () => {
+  function die(h: ReturnType<typeof harness>): void {
+    h.current().onerror?.({ error: 'audio-capture' });
+    h.current().onend?.();
+  }
+
+  it('waits longer each time a dead session dies again', () => {
+    const h = harness();
+    h.controller.start();
+    h.current().onstart?.();
+
+    die(h);
+    const first = h.made.length;
+    // Nothing yet at a shorter delay than the first backoff step.
+    h.advance(RESTART_DELAY_MS);
+    expect(h.made.length).toBeGreaterThan(first - 1);
+
+    // Drive a run of instant failures and watch the gap grow.
+    const gaps: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      h.current().onstart?.();
+      die(h);
+      let waited = 0;
+      while (waited < MAX_RESTART_DELAY_MS * 2) {
+        const before = h.made.length;
+        h.advance(50);
+        waited += 50;
+        if (h.made.length > before) break;
+      }
+      gaps.push(waited);
+    }
+    expect(gaps[gaps.length - 1]!).toBeGreaterThan(gaps[0]!);
+  });
+
+  /**
+   * The reset. A session that heard something proves the microphone is fine,
+   * whatever ended it -- so the next drop must be treated as the routine one
+   * it is, not as the tail of an old run.
+   */
+  it('forgets the run as soon as one session hears anything', () => {
+    const h = harness();
+    h.controller.start();
+
+    for (let i = 0; i < 5; i++) {
+      h.current().onstart?.();
+      die(h);
+      h.advance(MAX_RESTART_DELAY_MS);
+    }
+
+    h.current().onstart?.();
+    h.current().onresult?.({ results: [[{ transcript: 'stand' }]] });
+    die(h);
+
+    // Back to the routine delay, because the microphone demonstrably works.
+    const before = h.made.length;
+    h.advance(RESTART_DELAY_MS);
+    expect(h.made.length).toBe(before + 1);
+  });
+
+  // Staying up is its own proof, even in silence: the operator may simply
+  // not have spoken yet.
+  it('treats a session that simply lasted as a working one', () => {
+    const h = harness();
+    h.controller.start();
+
+    for (let i = 0; i < 5; i++) {
+      h.current().onstart?.();
+      die(h);
+      h.advance(MAX_RESTART_DELAY_MS);
+    }
+
+    h.current().onstart?.();
+    h.advance(PRODUCTIVE_SESSION_MS);
+    die(h);
+
+    const before = h.made.length;
+    h.advance(RESTART_DELAY_MS);
+    expect(h.made.length).toBe(before + 1);
   });
 });

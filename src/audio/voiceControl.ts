@@ -131,6 +131,40 @@ export const SPEECH_TAIL_MS = 700;
 export const RESTART_DELAY_MS = 250;
 
 /**
+ * The ceiling on backing off, and what counts as a session that worked.
+ *
+ * From the drive of 2026-09-10, one probe run over 194 seconds:
+ *
+ *   6 sessions ended, 5 auto-restarts, repeated `audio-capture` errors,
+ *   the last two sessions lasting 9s and 0.5s before dying again.
+ *
+ * `audio-capture` means the microphone became unavailable -- on an iPhone in
+ * a car that is the Bluetooth route flipping to hands-free, or iOS taking the
+ * input for something else. Restarting 250ms later, forever, neither fixes it
+ * nor gives it a chance to settle; it just re-opens the microphone every
+ * quarter second, which costs battery and re-triggers the route-change
+ * crackle each time.
+ *
+ * So a run of failures backs off, and one working session clears it. A
+ * session that produced a result, or simply lasted, was working.
+ */
+export const MAX_RESTART_DELAY_MS = 8000;
+export const PRODUCTIVE_SESSION_MS = 10_000;
+
+/**
+ * How long to wait before the next attempt, given how many have just failed.
+ *
+ * The first retry is immediate in human terms: a single dropped session is
+ * routine -- the cloud recogniser ends one roughly every ninety seconds by
+ * design -- and must not introduce a pause. Only a RUN of them backs off.
+ */
+export function restartDelayFor(consecutiveFailures: number): number {
+  if (consecutiveFailures <= 0) return RESTART_DELAY_MS;
+  const backedOff = RESTART_DELAY_MS * 2 ** Math.min(consecutiveFailures, 10);
+  return Math.min(backedOff, MAX_RESTART_DELAY_MS);
+}
+
+/**
  * How long to wait for a started session to confirm itself.
  *
  * The probe found an environment where the API is fully present -- every
@@ -238,6 +272,10 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
   let sessionStartedAt = 0;
   let suppressedUntil = 0;
   let restartHandle: number | null = null;
+  /** Sessions that have died in a row without doing any work. */
+  let failedStreak = 0;
+  /** Whether the CURRENT session ever heard anything. */
+  let heardThisSession = false;
   let watchdogHandle: number | null = null;
   let state: ListenState = 'off';
 
@@ -319,6 +357,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     fresh.onstart = () => {
       clearWatchdog();
       sessionStartedAt = deps.now();
+      heardThisSession = false;
       setState('listening');
     };
 
@@ -340,8 +379,16 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
         setState('off');
         return;
       }
+
+      // A session that heard something, or simply stayed up, was working --
+      // whatever ended it, the microphone is fine. Only a session that did
+      // neither counts against the streak.
+      const lasted = sessionStartedAt > 0 ? deps.now() - sessionStartedAt : 0;
+      if (heardThisSession || lasted >= PRODUCTIVE_SESSION_MS) failedStreak = 0;
+      else failedStreak++;
+
       setState('restarting');
-      restartHandle = deps.schedule(begin, RESTART_DELAY_MS);
+      restartHandle = deps.schedule(begin, restartDelayFor(failedStreak));
     };
 
     fresh.onresult = (e) => {
@@ -360,6 +407,8 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       }
       const heard = offered[0] ?? '';
       if (!heard) return;
+      // Proof the microphone is alive, whatever is made of the words below.
+      heardThisSession = true;
 
       // The app's own voice, arriving back through the microphone.
       if (isSuppressed(deps.now(), suppressedUntil)) {
