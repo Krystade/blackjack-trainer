@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isStale, parseVersion, versionUrl, reloadUrl } from './updateCheck';
+import { buildLabel, isStale, parseVersion, versionUrl, reloadUrl } from './updateCheck';
 
 describe('parseVersion', () => {
   it('reads a buildId out of the served version document', () => {
@@ -74,5 +74,27 @@ describe('reloadUrl', () => {
     expect(out).toContain('e2e=1');
     expect(out).toContain('v=newid');
     expect(out).toContain('#drills');
+  });
+});
+
+/**
+ * The build line on Home.
+ *
+ * It exists because an installed home-screen app can sit on a cached bundle
+ * without saying so, and the reload that is supposed to prevent that is not
+ * something the operator can verify from the driveway.
+ */
+describe('buildLabel', () => {
+  it('shows a CI build as the bare id, so it compares to version.json', () => {
+    expect(buildLabel('2d6a5b851925')).toBe('2d6a5b851925');
+  });
+
+  // A local build must not be mistakable for something that was deployed.
+  it('marks a local build as local', () => {
+    expect(buildLabel('dev-m8x2k1')).toContain('local');
+  });
+
+  it('says so rather than rendering nothing when there is no stamp', () => {
+    expect(buildLabel(null)).toBe('unknown build');
   });
 });

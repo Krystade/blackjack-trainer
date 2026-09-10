@@ -23,6 +23,16 @@ export default defineConfig({
       // drift from the `__BUILD_ID__` compiled into the same bundle -- both
       // come from the constant above, in one build.
       name: 'emit-version-json',
+      // Served in dev from the same constant, so the update check and the
+      // build line on Home behave here exactly as they do deployed --
+      // otherwise both are only ever exercised in production.
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (!req.url || !req.url.split('?')[0]?.endsWith('/version.json')) return next();
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ buildId: BUILD_ID }));
+        });
+      },
       generateBundle() {
         this.emitFile({
           type: 'asset',

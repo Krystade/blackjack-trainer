@@ -2993,6 +2993,20 @@ button {
   font-size: 1.05rem;
 }
 
+/* Deliberately quiet: it is a thing to go and look at, never a thing to
+   read past the play button. */
+.home-build {
+  margin: var(--space-3) 0 0;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint, var(--ink-dim));
+  opacity: 0.75;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 /* ---------- Small-screen drill layout (iPhone 13 mini, 375x812) ---------- */
 
 /* The card area used `flex: 1`, so on a tall screen it absorbed every spare

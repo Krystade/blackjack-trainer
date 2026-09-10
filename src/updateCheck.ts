@@ -28,6 +28,24 @@ export function runningBuildId(): string | null {
   return typeof __BUILD_ID__ === 'string' && __BUILD_ID__ ? __BUILD_ID__ : null;
 }
 
+/**
+ * The running build, as a line to put on screen.
+ *
+ * The operator runs this as an installed home-screen app, where iOS can serve
+ * a cached document and quietly keep them on an old bundle. The reload below
+ * is meant to prevent that, but "meant to" is not something you can see from
+ * the driveway -- so the id is shown, and a deploy either changes it or the
+ * update never arrived.
+ *
+ * A CI build stamps the commit SHA, which is the same string `version.json`
+ * carries and therefore directly comparable. A local build stamps a
+ * timestamp, and says so rather than looking like a release.
+ */
+export function buildLabel(id: string | null = runningBuildId()): string {
+  if (!id) return 'unknown build';
+  return id.startsWith('dev-') ? `${id} · local build` : id;
+}
+
 /** Pull the build id out of a fetched version document, or null if it isn't one. */
 export function parseVersion(doc: unknown): string | null {
   if (!doc || typeof doc !== 'object') return null;
