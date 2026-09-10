@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { matchSpokenAlternatives, matchVoiceAction, nearestVoiceAction, resolveSpoken, detectVoiceSupport, VOICE_ACTIONS } from './voiceRecognition';
+import { looksLikeAnAttempt, matchSpokenAlternatives, matchVoiceAction, nearestVoiceAction, resolveSpoken, detectVoiceSupport, VOICE_ACTIONS } from './voiceRecognition';
 
 /**
  * Matching is the half of voice input that can be tested without a
@@ -336,5 +336,39 @@ describe('resolveSpoken', () => {
   it('reports a plain match as plain', () => {
     expect(resolveSpoken(['stand'])).toEqual({ action: 'stand', via: 'direct' });
     expect(resolveSpoken(['I would hit that'])).toEqual({ action: 'hit', via: 'direct' });
+  });
+});
+
+/**
+ * Telling an attempt from a conversation.
+ *
+ * Eyes-free, a rejection is silence, and silence cannot be told apart from a
+ * dead microphone -- the drive of 2026-09-10 produced 22 of them. A cue fixes
+ * that only if it stays quiet while people talk; length is the signal,
+ * because every command is one or two words.
+ */
+describe('looksLikeAnAttempt', () => {
+  it('treats the drive’s failed answers as attempts', () => {
+    for (const heard of ['send', 'band', 'sand', 'selit', 'read it', 'read that', 'bad']) {
+      expect(looksLikeAnAttempt(heard), `"${heard}" was someone answering`).toBe(true);
+    }
+  });
+
+  // Verbatim from the same drive, and none of it aimed at the app.
+  it('stays silent for conversation', () => {
+    for (const heard of [
+      'how was your dad',
+      "that's on her head",
+      "that's another head",
+      'how did that',
+      "I'm pressing button for a lot of buttons now bud is being great",
+    ]) {
+      expect(looksLikeAnAttempt(heard), `"${heard}" was conversation`).toBe(false);
+    }
+  });
+
+  it('says nothing about an empty transcript', () => {
+    expect(looksLikeAnAttempt('')).toBe(false);
+    expect(looksLikeAnAttempt('   ')).toBe(false);
   });
 });

@@ -468,6 +468,11 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     enabled: voiceOn,
     onAction: handleVoiceCommand,
     onTranscript: interpretCountSpeech,
+    // Eyes-free, a rejection is silence, and silence looks the same as a dead
+    // microphone. A short cue says "say it again" without costing a sentence
+    // of narration mid-drill; it respects the chimes setting like every other
+    // tone, so it can be turned off.
+    onNotUnderstood: () => audio.ding('attention'),
     // Biased toward the commands AND the count words at once. The phrase list
     // is fixed for the life of a session, and rebuilding the recogniser as
     // the prompt opens would cost a deaf gap exactly when an answer is due.

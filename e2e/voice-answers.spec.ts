@@ -202,3 +202,43 @@ test('narration during a drill never plays a hand', async ({ page }) => {
 
   await expect(page.locator('.voice-status-heard')).toContainText('not a command');
 });
+
+/**
+ * The cue for a word that was not understood.
+ *
+ * Eyes-free, a rejection is silence, and silence looks exactly like a dead
+ * microphone -- the drive of 2026-09-10 produced 22 of them, each one the
+ * operator saying something into a void and waiting on a card that was never
+ * going to turn.
+ */
+test('an attempt that is not understood says so out loud', async ({ page }) => {
+  await openFlashcardsWithVoice(page);
+  await say(page, 'wombat');
+
+  await expect(page.locator('.voice-status-heard')).toContainText('not a command');
+  const log = await page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
+  expect(log).toContain('chime:attention');
+});
+
+/**
+ * And the guard that makes it bearable. A chime on every stray sentence in a
+ * moving car would be worse than the silence it replaces, so conversation
+ * gets nothing. Verbatim from the same drive.
+ */
+test('conversation that is not understood stays silent', async ({ page }) => {
+  await openFlashcardsWithVoice(page);
+  await say(page, 'how was your dad');
+
+  await expect(page.locator('.voice-status-heard')).toContainText('not a command');
+  const log = await page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
+  expect(log).not.toContain('chime:attention');
+});
+
+// A word that WAS understood is answered by the card turning, not by a cue.
+test('an understood word gets no say-again cue', async ({ page }) => {
+  await openFlashcardsWithVoice(page);
+  await say(page, 'stand');
+
+  const log = await page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
+  expect(log).not.toContain('chime:attention');
+});

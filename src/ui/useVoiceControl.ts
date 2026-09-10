@@ -9,7 +9,7 @@ import {
 import { setSpeechActivityListener } from '../audio/speech';
 import { onDeviceStatus, prefersOnDevice, shouldProcessLocally } from '../audio/onDeviceSpeech';
 import { recordHeard } from '../audio/voiceHistory';
-import type { VoiceAction } from '../audio/voiceRecognition';
+import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition';
 
 /**
  * Speech recognition, wired to a screen.
@@ -34,6 +34,7 @@ export function useVoiceControl({
   enabled,
   onAction,
   onTranscript,
+  onNotUnderstood,
   biasPhrases,
   context,
 }: {
@@ -43,6 +44,14 @@ export function useVoiceControl({
    * microphone -- a count check asking for a number the command vocabulary
    * does not contain. Return a label to consume it, null to pass it on. */
   onTranscript?: (heard: string, offered: readonly string[]) => string | null;
+  /**
+   * Called when something that looked like an answer was not understood.
+   *
+   * Eyes-free, a rejection is silence, and silence cannot be told apart from
+   * a dead microphone. Screens wire this to a chime so the operator knows to
+   * say it again instead of waiting on a card that will never turn.
+   */
+  onNotUnderstood?: () => void;
   /** Words to bias the engine toward, where the browser supports it. */
   biasPhrases?: string[];
   /**
@@ -88,6 +97,9 @@ export function useVoiceControl({
   const transcriptRef = useRef(onTranscript);
   transcriptRef.current = onTranscript;
 
+  const unheardRef = useRef(onNotUnderstood);
+  unheardRef.current = onNotUnderstood;
+
   const controllerRef = useRef<VoiceController | null>(null);
 
   useEffect(() => {
@@ -109,6 +121,11 @@ export function useVoiceControl({
         // lucky glance at the screen mid-drill, which is how "stant" was
         // found and is not a method that works while driving.
         recordHeard(heard, verdict, context);
+
+        // Only a short utterance earns a cue. A rejected sentence was someone
+        // talking, and chiming at every one of those in a moving car would be
+        // worse than the silence it replaces.
+        if (verdict === 'rejected' && looksLikeAnAttempt(heard)) unheardRef.current?.();
       },
     });
     controllerRef.current = controller;

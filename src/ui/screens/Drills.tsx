@@ -436,6 +436,11 @@ function FlashcardsView({
   const voice = useVoiceControl({
     enabled: voiceOn,
     onAction: handleVoiceAction,
+    // Eyes-free, a rejection is silence, and silence looks the same as a dead
+    // microphone. A short cue says "say it again" without costing a sentence
+    // of narration mid-drill; it respects the chimes setting like every other
+    // tone, so it can be turned off.
+    onNotUnderstood: () => audio.ding('attention'),
     // Bias the engine toward the words it should be hearing. Reported from
     // real use: "stand" came back as "Stant" and was rejected -- unbiased,
     // the engine is choosing a one-syllable word out of all of English.

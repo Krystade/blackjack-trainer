@@ -318,6 +318,29 @@ export function resolveSpoken(transcripts: readonly string[]): SpokenMatch | nul
   return null;
 }
 
+/**
+ * Whether a rejected transcript looks like someone TRYING to answer.
+ *
+ * Eyes-free, a rejection is silence, and silence is ambiguous: the operator
+ * cannot tell a misheard word from a dead microphone from their own timing
+ * being wrong. The drive of 2026-09-10 produced 22 of them, each one a moment
+ * of saying something into a void.
+ *
+ * A cue fixes that, but only if it stays quiet during conversation -- a chime
+ * on every stray sentence in a moving car would be unbearable. Length is the
+ * same signal used everywhere else here: the commands are one or two words,
+ * so a short utterance during a drill was probably aimed at the app, and a
+ * sentence was probably aimed at a passenger.
+ *
+ *   "send", "band", "selit", "read it"          -> an attempt, worth a cue
+ *   "how was your dad", "that's on her head"    -> conversation, stay silent
+ *
+ * All four of those are verbatim from that drive.
+ */
+export function looksLikeAnAttempt(transcript: string): boolean {
+  return isShort(normalise(transcript));
+}
+
 /** The action alone, for callers that do not care how it was reached. */
 export function matchSpokenAlternatives(transcripts: readonly string[]): VoiceAction | null {
   return resolveSpoken(transcripts)?.action ?? null;
