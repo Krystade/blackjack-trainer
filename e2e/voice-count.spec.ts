@@ -84,14 +84,21 @@ async function openCountCheck(page: Page): Promise<void> {
  * talks, so a transcript fired immediately would be discarded and the spec
  * would be testing suppression rather than the count loop.
  */
-async function sayWhenListening(page: Page, transcript: string): Promise<void> {
+async function sayWhenListening(
+  page: Page,
+  transcript: string,
+  alternatives: string[] = [],
+): Promise<void> {
   await expect
     .poll(
       async () => {
-        await page.evaluate((text) => {
+        await page.evaluate(({ text, alts }) => {
           const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
-          rec?.onresult?.({ results: [[{ transcript: text }]] });
-        }, transcript);
+          // The winner plus the readings ranked below it, as a real engine
+          // hands them over in one result.
+          const readings = [{ transcript: text }, ...alts.map((a) => ({ transcript: a }))];
+          rec?.onresult?.({ results: [readings] });
+        }, { text: transcript, alts: alternatives });
         return page.locator('.voice-status-heard').textContent();
       },
       { timeout: 15_000, intervals: [400] },
@@ -185,4 +192,31 @@ test('a play command does not reach the table behind the prompt', async ({ page 
 test('the keypad stays, so a refused microphone is never a dead end', async ({ page }) => {
   await openCountCheck(page);
   await expect(page.getByRole('button', { name: '1', exact: true })).toBeVisible();
+});
+
+/**
+ * A number gets ranked the same way a word does.
+ *
+ * The drive of 2026-09-10 showed the engine putting the right command behind
+ * an ordinary English word ("Band" winning over "Stand"). A running count is
+ * worse to lose than a hand: it is harder to say again, and getting it wrong
+ * is the whole thing the drill is training.
+ */
+test('a count ranked second is still heard', async ({ page }) => {
+  await openCountCheck(page);
+  // The winner is not a number at all -- the parser already forgives "tree"
+  // and "free" for three, so a near-miss there would prove nothing. This one
+  // is only reachable through the runner-up.
+  await sayWhenListening(page, 'my nurse tea', ['minus three']);
+
+  await expect(page.locator('.count-voice-value')).toHaveText('-3');
+});
+
+test('a confirmation ranked second still confirms', async ({ page }) => {
+  await openCountCheck(page);
+  await sayWhenListening(page, 'minus three');
+  await expect(page.locator('.count-voice-value')).toHaveText('-3');
+
+  await sayWhenListening(page, 'yeh', ['yes']);
+  await expect(page.locator('.count-voice')).toBeHidden();
 });

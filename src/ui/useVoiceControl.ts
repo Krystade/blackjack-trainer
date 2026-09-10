@@ -42,7 +42,7 @@ export function useVoiceControl({
   /** First refusal on every transcript, for a modal that owns the
    * microphone -- a count check asking for a number the command vocabulary
    * does not contain. Return a label to consume it, null to pass it on. */
-  onTranscript?: (heard: string) => string | null;
+  onTranscript?: (heard: string, offered: readonly string[]) => string | null;
   /** Words to bias the engine toward, where the browser supports it. */
   biasPhrases?: string[];
   /**
@@ -99,7 +99,7 @@ export function useVoiceControl({
       schedule: (fn, ms) => window.setTimeout(fn, ms),
       cancel: (handle) => window.clearTimeout(handle),
       onAction: (action) => actionRef.current(action),
-      onTranscript: (heard) => transcriptRef.current?.(heard) ?? null,
+      onTranscript: (heard, offered) => transcriptRef.current?.(heard, offered) ?? null,
       biasPhrases,
       processLocally,
       onState: (state) => setStatus((prev) => ({ ...prev, state })),

@@ -11,7 +11,11 @@ import { useGame } from '../useGame';
 import type { SessionReport } from '../useGame';
 import { useAudio } from '../../audio/useAudio';
 import { useVoiceControl } from '../useVoiceControl';
-import { detectVoiceSupport, VOICE_ACTIONS, matchVoiceAction } from '../../audio/voiceRecognition';
+import {
+  detectVoiceSupport,
+  VOICE_ACTIONS,
+  matchSpokenAlternatives,
+} from '../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../audio/voiceNumber';
 import type { VoiceAction } from '../../audio/voiceRecognition';
 import type { ListenState, HeardVerdict } from '../../audio/voiceControl';
@@ -409,10 +413,19 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
    * is a correction, and matching "no" first would clear the value the
    * operator was in the middle of giving.
    */
-  const interpretCountSpeech = (heard: string): string | null => {
+  const interpretCountSpeech = (heard: string, offered: readonly string[] = [heard]): string | null => {
     if (!game.countCheckDue) return null;
 
-    const parsed = parseCountSpeech(heard);
+    // A spoken number is ranked over a car microphone exactly as a spoken
+    // word is, and "minus three" behind "minus tree" is the same failure with
+    // a worse consequence: a running count is harder to say twice than a hand
+    // is to play twice. So every reading is tried, best first, and the first
+    // one that is actually a number wins.
+    let parsed: ReturnType<typeof parseCountSpeech> = null;
+    for (const reading of offered.length > 0 ? offered : [heard]) {
+      parsed = parseCountSpeech(reading);
+      if (parsed) break;
+    }
     if (parsed) {
       const next =
         parsed.kind === 'value' ? parsed.value : (pendingCount ?? 0) + parsed.delta;
@@ -421,7 +434,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       return `count ${speakableCount(next)}`;
     }
 
-    switch (matchVoiceAction(heard)) {
+    // Yes/no is a command like any other, so it gets the runners-up too.
+    switch (matchSpokenAlternatives(offered.length > 0 ? offered : [heard])) {
       case 'yes': {
         if (pendingCount === null) {
           audio.say('I have no count yet. What is it?');

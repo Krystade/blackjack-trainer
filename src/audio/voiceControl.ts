@@ -90,8 +90,14 @@ export interface VoiceControllerDeps {
    * be rejected as noise -- and while it is open, "hit" must not play a hand
    * behind it either. Returning a label consumes the transcript and reports
    * that label; returning null passes it on to the ordinary matcher.
+   *
+   * Given every reading the engine offered, not just its winner, for exactly
+   * the reason the command matcher is: a spoken number over a car microphone
+   * is ranked the same way a spoken word is, and "minus three" sitting behind
+   * "minus tree" is the same failure with a worse consequence -- a running
+   * count is harder to say twice than a hand is to play twice.
    */
-  onTranscript?: (heard: string) => string | null;
+  onTranscript?: (heard: string, offered: readonly string[]) => string | null;
   /**
    * Words to bias the engine toward. Chrome accepts a phrase list with a
    * boost per phrase, which is the single largest accuracy lever available
@@ -417,7 +423,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       }
 
       // A modal that owns the microphone answers first, or not at all.
-      const claimed = deps.onTranscript?.(heard);
+      const claimed = deps.onTranscript?.(heard, offered);
       if (claimed) {
         deps.onHeard?.(heard, claimed);
         return;
