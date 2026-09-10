@@ -332,17 +332,31 @@ export function estimateSpeechMs(text: string, rate = 1): number {
   return Math.round(Math.min(MAX_SPEECH_MS, Math.max(MIN_SPEECH_MS, ms)));
 }
 
-function notifySpeechActivity(text: string, rate?: number): void {
+function notifyActivityMs(ms: number): void {
   const listener = speechActivityListener;
-  if (!listener) return;
-  const ms = estimateSpeechMs(text, rate);
-  if (ms <= 0) return;
+  if (!listener || ms <= 0) return;
   try {
     listener(ms);
   } catch {
-    /* the microphone's bookkeeping must never break speaking */
+    /* the microphone's bookkeeping must never break making a sound */
   }
 }
+
+function notifySpeechActivity(text: string, rate?: number): void {
+  notifyActivityMs(estimateSpeechMs(text, rate));
+}
+
+/**
+ * How long a chime occupies the speaker.
+ *
+ * The tone itself is 120ms; this is what the microphone is told, and it is
+ * deliberately longer. A chime is played while the microphone is open, and
+ * the cue that says "I did not understand you" is played in response to
+ * something not understood -- so a chime the microphone treats as speech
+ * could be rejected in turn and cue another one. Deafening the microphone
+ * for the sound it just made is what stops that being possible at all.
+ */
+export const CHIME_ACTIVITY_MS = 260;
 
 /**
  * Re-speaks the last utterance, returning whether there was anything to say.
@@ -589,6 +603,10 @@ const CHIME_FREQUENCY_HZ: Record<'good' | 'bad' | 'attention', number> = {
  * `chime:<kind>` into `window.__speechLog` instead. Never throws.
  */
 export function chime(kind: 'good' | 'bad' | 'attention', opts?: { volume?: number }): void {
+  // Before the e2e short-circuit, exactly as speak() does: the microphone's
+  // bookkeeping is part of the behaviour under test, not part of the sound.
+  notifyActivityMs(CHIME_ACTIVITY_MS);
+
   if (isE2eAudioMode()) {
     pushSpeechLog(`chime:${kind}`);
     return;

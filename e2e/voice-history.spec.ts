@@ -132,9 +132,12 @@ test('understood speech is recorded too, not only the misses', async ({ page }) 
  */
 test('a repeated miss outranks a one-off', async ({ page }) => {
   await drillWithVoice(page);
-  await say(page, 'wombat');
-  await say(page, 'wombat');
-  await say(page, 'what time is it');
+  // Each miss now plays a "say it again" cue, and the microphone is deafened
+  // for the length of it -- so a repeat fired instantly would be swallowed as
+  // the app hearing its own chime.
+  await sayWhenListening(page, 'wombat');
+  await sayWhenListening(page, 'wombat');
+  await sayWhenListening(page, 'what time is it');
 
   const section = await openHistory(page);
   await expect(section).toContainText('Commonest miss');

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   speak, speakAsync, chime, isSpeechSupported, listVoices, cancelSpeech, pickBestVoice,
   getLastSpoken, repeatLast, _resetLastSpokenForTest, _resetSharedAudioContextForTest,
+  setSpeechActivityListener,
 } from './speech';
 
 describe('speech wrapper — absence guards (no browser APIs in jsdom/node)', () => {
@@ -488,5 +489,70 @@ describe('last-utterance tracking', () => {
     repeatLast();
     chime('good');
     expect(getLastSpoken()).toBe('You have sixteen.');
+  });
+});
+
+/**
+ * A chime deafens the microphone for its own duration.
+ *
+ * The cue that says "I did not understand you" plays in response to something
+ * not understood, while the microphone is open. If the microphone could hear
+ * that tone and reject it in turn, the cue would answer itself -- so the
+ * speaker tells the microphone about every sound it makes, not just words.
+ */
+describe('chime and the microphone', () => {
+  it('tells the microphone how long it will be making a noise', () => {
+    const seen: number[] = [];
+    setSpeechActivityListener((ms) => seen.push(ms));
+    chime('attention');
+    setSpeechActivityListener(null);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBeGreaterThan(0);
+  });
+
+  it('does so for every kind of chime, not only the cue', () => {
+    const seen: number[] = [];
+    setSpeechActivityListener((ms) => seen.push(ms));
+    chime('good');
+    chime('bad');
+    chime('attention');
+    setSpeechActivityListener(null);
+    expect(seen).toHaveLength(3);
+  });
+
+  /**
+   * IN E2E MODE TOO, which is the case that actually needs pinning.
+   *
+   * Under `?e2e=1` the tone is never synthesised -- it is written to a log
+   * instead -- but the microphone's bookkeeping is behaviour under test, not
+   * part of the sound. Notifying after that short-circuit would leave every
+   * end-to-end run exercising a chime that does not deafen anything, which is
+   * precisely the arrangement the real app must not ship.
+   */
+  it('deafens the microphone even where the tone is only logged', () => {
+    (globalThis as unknown as { window: unknown }).window = {
+      location: { search: '?e2e=1' },
+    };
+    const seen: number[] = [];
+    setSpeechActivityListener((ms) => seen.push(ms));
+    chime('attention');
+    setSpeechActivityListener(null);
+    const logged = (globalThis as unknown as { window: { __speechLog?: string[] } }).window
+      .__speechLog;
+    delete (globalThis as unknown as { window?: unknown }).window;
+
+    expect(logged).toEqual(['chime:attention']);
+    expect(seen, 'the microphone must be told even in e2e mode').toHaveLength(1);
+  });
+
+  // A listener that throws is a bug in the microphone's bookkeeping, and must
+  // never stop the app making a sound.
+  it('still chimes when the listener throws', () => {
+    setSpeechActivityListener(() => {
+      throw new Error('bookkeeping broke');
+    });
+    expect(() => chime('attention')).not.toThrow();
+    setSpeechActivityListener(null);
   });
 });
