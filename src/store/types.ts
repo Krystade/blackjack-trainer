@@ -257,7 +257,13 @@ export interface Stats {
       date: string;
       runningCount: number;
       decksRemaining: number;
-      guess: number;
+      /**
+       * What was typed. ABSENT for an eyes-free self-report, where the
+       * operator says whether they had it and never states a number --
+       * writing the right answer in here instead would report every
+       * admitted miss as an exact hit in the too-high/too-low breakdown.
+       */
+      guess?: number;
       correctTc: number;
       correct: boolean;
     }[];

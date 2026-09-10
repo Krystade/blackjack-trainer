@@ -1156,12 +1156,17 @@ test('count drill: group size 2 and 3 flash multiple cards per flash step', asyn
 });
 
 /* ==================================================================== */
-/* T0 gap #19: True Count drill eyes-free honor self-check + strict mode  */
-/* -- mirrors CountDrillView's precedent (audio.spec Case 4 / gap #16     */
-/* above) but for TrueCountDrillView, which had zero eyes-free coverage.  */
+/* T0 gap #19: True Count drill eyes-free self-check + strict mode --     */
+/* mirrors CountDrillView's precedent (audio.spec Case 4 / gap #16 above) */
+/* but for TrueCountDrillView, which had zero eyes-free coverage.         */
+/*                                                                       */
+/* The eyes-free path used to end on "self-check, no grade recorded": it  */
+/* spoke a true count into the car and recorded nothing, so the one mode  */
+/* built for driving was the one mode that never said whether you were    */
+/* right. It now asks, and takes the answer.                              */
 /* ==================================================================== */
 
-test('true count drill: eyes-free honor self-check speaks without grading; strict mode grades via NumPad', async ({
+test('true count drill: eyes-free self-check asks and records; strict mode grades via NumPad', async ({
   page,
 }) => {
   test.setTimeout(30_000);
@@ -1175,14 +1180,27 @@ test('true count drill: eyes-free honor self-check speaks without grading; stric
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   await expect(page.locator('.count-flash-progress')).toContainText('Listen for the running count');
-  await expect(page.locator('.drill-result')).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator('.result-detail')).toContainText('self-check, no grade recorded');
+  await expect(page.getByRole('button', { name: 'I had it' })).toBeVisible({ timeout: 10_000 });
 
   const selfCheckLog = await readSpeechLog(page);
   expect(selfCheckLog.some((l) => l.startsWith('Running count'))).toBe(true);
   expect(selfCheckLog.some((l) => l.startsWith('True count'))).toBe(true);
-  // Honor-system self-check never writes telemetry -- nothing to grade.
+  expect(selfCheckLog.some((l) => l.includes('Did you have it?'))).toBe(true);
+  // Nothing is recorded until the question is answered.
   expect(await readStats(page)).toBeNull();
+
+  await page.getByRole('button', { name: 'I missed it' }).click();
+  await expect(page.locator('.drill-result .result-wrong')).toHaveText('Wrong');
+  await expect(page.locator('.result-detail')).toContainText('self-reported, and recorded');
+
+  const reported = await readStats(page);
+  const reportedHistory =
+    ((reported?.trueCount as { history: Record<string, unknown>[] } | undefined)?.history ?? []);
+  expect(reportedHistory).toHaveLength(1);
+  expect(reportedHistory[0]!.correct).toBe(false);
+  // An admitted miss states no number, so it must not claim one: a `guess`
+  // equal to the right answer would show up as an exact hit in Stats.
+  expect(reportedHistory[0]!.guess).toBeUndefined();
 
   // Fresh setup (component remount resets the local eyesFree/strictMode
   // state) -- this time with Strict mode on too.
@@ -1201,8 +1219,11 @@ test('true count drill: eyes-free honor self-check speaks without grading; stric
   await expect(page.locator('.result-detail')).not.toContainText('self-check');
 
   const stats = await readStats(page);
-  const history = (stats?.trueCount as { history: unknown[] } | undefined)?.history ?? [];
-  expect(history).toHaveLength(1);
+  const history =
+    ((stats?.trueCount as { history: Record<string, unknown>[] } | undefined)?.history ?? []);
+  expect(history).toHaveLength(2);
+  // The graded run DOES state a number, and keeps it.
+  expect(history[1]!.guess).toBe(0);
 });
 
 /* ==================================================================== */

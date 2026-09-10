@@ -902,7 +902,9 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
                 <span>
                   RC {formatSigned(run.runningCount)} / {run.decksRemaining} decks
                 </span>
-                <span>guess {formatSigned(run.guess)}</span>
+                <span>
+                  {run.guess === undefined ? 'self-reported' : `guess ${formatSigned(run.guess)}`}
+                </span>
                 <span className={run.correct ? 'result-correct' : 'result-wrong'}>
                   {run.correct ? 'correct' : 'wrong'}
                 </span>

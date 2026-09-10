@@ -11,6 +11,11 @@ import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import { narrateTc } from '../../../audio/narrate';
 import { loadStats, saveStats } from '../../../store/persist';
 import { enableAudioNow } from '../../audioGate';
+import { useVoiceControl } from '../../useVoiceControl';
+import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
+import type { VoiceAction } from '../../../audio/voiceRecognition';
+import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
+import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -66,7 +71,21 @@ function narrateTcAnswer(correctTc: number): string {
 // pause, then the answer spoken -- no keypad, no grading (mirrors
 // CountDrillView's precedent). 'answering' still shows the NumPad (visual
 // flow AND eyes-free "strict mode").
-type TcPhase = 'setup' | 'answering' | 'selfcheck' | 'result';
+type TcPhase =
+  | 'setup'
+  | 'answering'
+  | 'selfcheck'
+  /**
+   * The answer has been spoken and the drill is asking whether you had it.
+   *
+   * Without this the eyes-free path ended on "self-check, no grade
+   * recorded": it spoke a true count into the car and then recorded
+   * nothing, so the one mode built for driving was the one mode that never
+   * told you whether you were right. Same gap, and same fix, as the count
+   * drill.
+   */
+  | 'selfreport'
+  | 'result';
 
 export function TrueCountDrillView({
   settings,
@@ -98,6 +117,20 @@ export function TrueCountDrillView({
   // cleanup already clears its timer on teardown -- belt-and-suspenders
   // per the timer-discipline lesson (CountDrillView precedent).
   const runIdRef = useRef(0);
+
+  // VOICE. Off until asked for: a toggle that survived a reload would open a
+  // microphone on page load.
+  const [voiceSupported] = useState(() => detectVoiceSupport().api);
+  const [voiceOn, setVoiceOn] = useState(false);
+  /**
+   * A spoken true count, heard but not yet submitted.
+   *
+   * Nothing spoken is submitted directly. A misheard digit here would score
+   * the attempt against an answer nobody gave, so a number is a PROPOSAL,
+   * read back and confirmed -- the same contract the table's count check and
+   * the count drill both run on.
+   */
+  const [pendingTc, setPendingTc] = useState<number | null>(null);
 
   // Eyes-free requires audio to be enabled; if the user disables audio
   // (e.g. via Settings) while it's checked, drop it rather than leave a
@@ -132,8 +165,9 @@ export function TrueCountDrillView({
     const t = setTimeout(() => {
       if (runIdRef.current !== runId) return;
       speak(narrateTcAnswer(question.correctTc), speechOptsFrom(settings.audio));
+      speak('Did you have it?', speechOptsFrom(settings.audio));
       setHonorCheck(true);
-      setPhase('result');
+      setPhase('selfreport');
     }, settings.audio.answerPauseMs);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -208,6 +242,158 @@ export function TrueCountDrillView({
     }
   };
 
+  /**
+   * The eyes-free verdict, recorded like a keypad run -- with one deliberate
+   * difference: no `guess` is written. The operator said whether they had
+   * it, never what they had, and putting the right answer in that field
+   * would report every admitted miss as an exact hit in Stats.
+   */
+  const handleSelfReport = (correct: boolean) => {
+    if (!question) return;
+    speak(correct ? 'Correct.' : 'Wrong.', speechOptsFrom(settings.audio, { interrupt: true }));
+    setWasCorrect(correct);
+    setPhase('result');
+
+    const stats = loadStats();
+    saveStats({
+      ...stats,
+      trueCount: {
+        history: [
+          ...stats.trueCount.history,
+          {
+            date: new Date().toISOString(),
+            runningCount: question.runningCount,
+            decksRemaining: question.decksRemaining,
+            correctTc: question.correctTc,
+            correct,
+          },
+        ],
+      },
+    });
+  };
+
+  /** Say something, unconditionally -- a voice reply IS the output channel. */
+  const sayBack = (text: string, interrupt = false) => {
+    speak(text, speechOptsFrom(settings.audio, interrupt ? { interrupt: true } : {}));
+  };
+
+  /** The result, said again on request -- the screen is not being looked at. */
+  const resultSpeech = (): string =>
+    question === null
+      ? ''
+      : `${wasCorrect ? 'Correct.' : 'Wrong.'} ${narrateTcAnswer(question.correctTc)} Say yes for the next one.`;
+
+  /**
+   * First refusal on every transcript, for the thing the command vocabulary
+   * deliberately does not contain: a number. Only while an answer is due --
+   * outside 'answering' a number is someone reading a road sign.
+   */
+  const interpretTcSpeech = (heard: string, offered: readonly string[] = [heard]): string | null => {
+    if (phase !== 'answering') return null;
+    const readings = offered.length > 0 ? offered : [heard];
+
+    // Every reading is tried, best first: over a car microphone the count
+    // often ranks second, and this is a question that is tedious to repeat.
+    let parsed: ReturnType<typeof parseCountSpeech> = null;
+    for (const reading of readings) {
+      parsed = parseCountSpeech(reading);
+      if (parsed) break;
+    }
+    if (!parsed) return null;
+
+    const next = parsed.kind === 'value' ? parsed.value : (pendingTc ?? 0) + parsed.delta;
+    setPendingTc(next);
+    sayBack(`${speakableCount(next)}. Correct?`, true);
+    return `true count ${speakableCount(next)}`;
+  };
+
+  /**
+   * Phase-shaped, like the count drill's: the same "yes" starts a question,
+   * confirms a proposal, and claims the self-check. Nothing here navigates
+   * -- a misheard word costs one "no", never the run.
+   */
+  const handleVoiceCommand = (action: VoiceAction) => {
+    switch (phase) {
+      case 'setup':
+        if (action === 'yes') start();
+        return;
+
+      case 'answering': {
+        if (action === 'yes') {
+          if (pendingTc === null) {
+            sayBack('I have no true count yet. What is it?', true);
+            return;
+          }
+          const confirmed = pendingTc;
+          setPendingTc(null);
+          handleSubmit(confirmed);
+          return;
+        }
+        if (action === 'no') {
+          setPendingTc(null);
+          if (question) sayBack(narrateTcQuestion(question), true);
+          return;
+        }
+        if (action === 'repeat') {
+          sayBack(
+            pendingTc === null
+              ? question
+                ? narrateTcQuestion(question)
+                : ''
+              : `${speakableCount(pendingTc)}. Correct?`,
+            true,
+          );
+        }
+        return;
+      }
+
+      case 'selfreport':
+        if (action === 'yes') handleSelfReport(true);
+        else if (action === 'no') handleSelfReport(false);
+        else if (action === 'repeat') {
+          if (question) sayBack(narrateTcAnswer(question.correctTc), true);
+          sayBack('Did you have it?');
+        }
+        return;
+
+      case 'result':
+        if (action === 'yes') start();
+        else if (action === 'repeat') sayBack(resultSpeech(), true);
+        else if (action === 'no') sayBack('Okay. Say yes when you want the next one.', true);
+        return;
+
+      // 'selfcheck' is the app's turn to talk: the question has been asked
+      // and the answer is still coming.
+      default:
+        return;
+    }
+  };
+
+  const voice = useVoiceControl({
+    enabled: voiceOn,
+    onAction: handleVoiceCommand,
+    onTranscript: interpretTcSpeech,
+    // Eyes-free, a rejection is silence, and silence looks the same as a dead
+    // microphone. A short cue says "say it again".
+    onNotUnderstood: () => audio.ding('attention'),
+    biasPhrases: [...Object.keys(VOICE_ACTIONS), ...COUNT_BIAS_PHRASES],
+    context: 'true-count-drill',
+  });
+
+  // A proposal belongs to one question.
+  useEffect(() => {
+    setPendingTc(null);
+  }, [phase]);
+
+  // Offer the next question out loud, and take the restart gap here -- the
+  // result screen is the only reliably quiet moment in this drill.
+  useEffect(() => {
+    if (!voiceOn || phase !== 'result') return;
+    voice.cycleIfStale();
+    sayBack('Say yes for the next one.');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceOn, phase]);
+
   return (
     <div className="drill-screen">
       <div className="drill-topbar">
@@ -216,6 +402,21 @@ export function TrueCountDrillView({
         </button>
         <div className="drill-heading">True Count Drill</div>
       </div>
+
+      {/* Deliberately NOT the full command vocabulary: the play words do
+          nothing here, and listing them would invite a driver to say
+          something the screen has just promised will work. */}
+      {voiceOn && (
+        <VoiceStatusBar
+          status={voice.status}
+          hint={
+            <>
+              Say: yes &middot; no &middot; repeat &mdash; and the true count itself,
+              &ldquo;minus two&rdquo;
+            </>
+          }
+        />
+      )}
 
       {phase === 'setup' && (
         <div className="count-setup">
@@ -258,6 +459,24 @@ export function TrueCountDrillView({
             </label>
           )}
 
+          {voiceSupported && (
+            <label className="count-toggle">
+              <input
+                type="checkbox"
+                checked={voiceOn}
+                onChange={(e) => {
+                  // Answering out loud is worthless without hearing the
+                  // reply, so this turns audio on the way Eyes-free does.
+                  if (e.target.checked && !settings.audio.enabled) {
+                    enableAudioNow(settings, onSettingsChange);
+                  }
+                  setVoiceOn(e.target.checked);
+                }}
+              />
+              Voice answers (say the true count, and &ldquo;yes&rdquo; to start)
+            </label>
+          )}
+
           <button type="button" className="drill-start-btn" onClick={start}>
             Start
           </button>
@@ -276,19 +495,71 @@ export function TrueCountDrillView({
             <div className="quiz-tc">Running count {formatSigned(question.runningCount)}</div>
             <div className="tag-guess-label">Decks remaining {formatDecks(question.decksRemaining)}</div>
           </div>
+          {/* The spoken proposal, shown as well as said. The keypad stays:
+              voice is an addition, not a replacement, and has to survive a
+              refused microphone and a passenger. */}
+          {voiceOn && (
+            <div className="count-voice" data-pending={pendingTc !== null}>
+              {pendingTc === null ? (
+                <span className="count-voice-hint">
+                  Say the true count &mdash; &ldquo;minus two&rdquo;. Then &ldquo;plus&rdquo; or
+                  &ldquo;minus&rdquo; to nudge it, &ldquo;yes&rdquo; to submit.
+                </span>
+              ) : (
+                <>
+                  <span className="count-voice-value">{formatSigned(pendingTc)}</span>
+                  <span className="count-voice-hint">
+                    &ldquo;yes&rdquo; to submit &middot; &ldquo;no&rdquo; to start over
+                  </span>
+                </>
+              )}
+            </div>
+          )}
           <NumPad label="Enter the true count" onSubmit={handleSubmit} />
         </>
       )}
 
+      {/*
+        Eyes-free verdict. Two zones splitting the whole area so either can
+        be hit without looking -- the same reasoning as the count drill's,
+        and the reason these are not a pair of ordinary buttons.
+      */}
+      {phase === 'selfreport' && question && (
+        <div className="selfreport-area">
+          <div className="selfreport-question">
+            The true count was {formatSigned(question.correctTc)}. Did you have it?
+          </div>
+          {voiceOn && (
+            <div className="selfreport-voice-hint">or say &ldquo;yes&rdquo; / &ldquo;no&rdquo;</div>
+          )}
+          <button
+            type="button"
+            className="selfreport-zone selfreport-yes"
+            onClick={() => handleSelfReport(true)}
+          >
+            I had it
+          </button>
+          <button
+            type="button"
+            className="selfreport-zone selfreport-no"
+            onClick={() => handleSelfReport(false)}
+          >
+            I missed it
+          </button>
+        </div>
+      )}
+
       {phase === 'result' && honorCheck && question && (
         <div className="drill-result">
-          <div className="result-correct">True count announced</div>
+          <div className={wasCorrect ? 'result-correct' : 'result-wrong'}>
+            {wasCorrect ? 'Correct!' : 'Wrong'}
+          </div>
           <div className="result-question">
             Running count {formatSigned(question.runningCount)} &middot;{' '}
             {question.decksRemaining} {question.decksRemaining === 1 ? 'deck' : 'decks'} remaining
           </div>
           <div className="result-detail">
-            The true count was {formatSigned(question.correctTc)} &mdash; self-check, no grade recorded
+            The true count was {formatSigned(question.correctTc)} &mdash; self-reported, and recorded
           </div>
           <button type="button" className="drill-replay-btn" onClick={start}>
             Next

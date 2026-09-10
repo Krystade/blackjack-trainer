@@ -64,12 +64,18 @@ export interface SignedErrorBreakdown {
  * one of the three buckets.
  */
 export function signedErrorBreakdown(
-  history: { guess: number; correctTc: number }[],
+  history: { guess?: number; correctTc: number }[],
 ): SignedErrorBreakdown {
   let tooHigh = 0;
   let tooLow = 0;
   let exact = 0;
   for (const h of history) {
+    // An entry with no guess is an eyes-free self-report: the operator said
+    // whether they had it, never what they had. Counting it as `exact`
+    // because nothing differs from the right answer would turn every
+    // admitted miss into a perfect hit -- which is the opposite of what
+    // this breakdown is for.
+    if (h.guess === undefined) continue;
     if (h.guess > h.correctTc) tooHigh += 1;
     else if (h.guess < h.correctTc) tooLow += 1;
     else exact += 1;

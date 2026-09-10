@@ -79,6 +79,18 @@ describe('signedErrorBreakdown', () => {
     expect(signedErrorBreakdown(history)).toEqual({ tooHigh: 0, tooLow: 1, exact: 0 });
   });
 
+  /**
+   * The eyes-free self-report has no guess at all. Counting it as `exact`
+   * -- which is what a missing field compared numerically would do -- would
+   * report every admitted miss as a perfect hit.
+   */
+  it('ignores an entry with no guess, in either direction', () => {
+    expect(signedErrorBreakdown([{ correctTc: 4 }])).toEqual({ tooHigh: 0, tooLow: 0, exact: 0 });
+    expect(
+      signedErrorBreakdown([{ correctTc: 4 }, { guess: 9, correctTc: 4 }, { correctTc: -2 }]),
+    ).toEqual({ tooHigh: 1, tooLow: 0, exact: 0 });
+  });
+
   it('classifies a matching guess as exact', () => {
     const history = [{ guess: 4, correctTc: 4 }];
     expect(signedErrorBreakdown(history)).toEqual({ tooHigh: 0, tooLow: 0, exact: 1 });
