@@ -3197,6 +3197,18 @@ button {
   word-break: break-word;
 }
 
+/* The one settings readout that is a verdict rather than a fact: it says
+   whether the wheel can reach the app, and the "no" is the actionable half. */
+.settings-value[data-car-ready='false'] {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.settings-value[data-car-ready='true'] {
+  color: var(--good);
+  font-weight: 600;
+}
+
 /* Car-controls diagnostic readout (Settings). Monospace because it is a log
    being read back, and scrollable in its own box so a long report never makes
    the page scroll sideways. */

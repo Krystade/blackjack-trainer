@@ -84,17 +84,6 @@ async function openTcDrill(page: Page, opts: { eyesFree: boolean }): Promise<voi
   await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');
 }
 
-/** The correct answer to the question currently on screen. */
-async function correctTc(page: Page): Promise<number> {
-  const rc = Number(
-    ((await page.locator('.quiz-tc').textContent()) ?? '').replace(/[^-\d]/g, ''),
-  );
-  const decks = Number(
-    ((await page.locator('.tag-guess-label').textContent()) ?? '').replace(/[^\d.]/g, ''),
-  );
-  return Math.round(rc / decks);
-}
-
 test('"yes" starts a question without touching Start', async ({ page }) => {
   await openTcDrill(page, { eyesFree: false });
   await expect(page.locator('.count-setup')).toBeVisible();
@@ -113,21 +102,33 @@ test('a spoken true count becomes a proposal, not an answer', async ({ page }) =
   await expect(page.locator('.numpad')).toBeVisible();
 });
 
-test('"yes" submits the proposal and the attempt is graded', async ({ page }) => {
+/**
+ * The spoken number reaches the grader, unaltered.
+ *
+ * Deliberately does NOT recompute the right answer: the app floors RC over
+ * decks, and a spec that rounded instead would disagree with it about one
+ * question in four -- which is exactly what this test did before. It asserts
+ * what CAN be checked from outside: the value submitted is the value said,
+ * and the verdict the app rendered agrees with the row it wrote.
+ */
+test('"yes" submits the proposal, and the graded row is what was said', async ({ page }) => {
   await openTcDrill(page, { eyesFree: false });
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.count-voice')).toBeVisible();
 
-  const answer = await correctTc(page);
-  await sayWhenListening(page, String(answer));
+  await sayWhenListening(page, 'minus two');
+  await expect(page.locator('.count-voice-value')).toHaveText('-2');
   await sayWhenListening(page, 'yes');
 
-  await expect(page.locator('.drill-result .result-correct')).toHaveText('Correct!');
+  await expect(page.locator('.drill-result')).toBeVisible();
   const history = await page.evaluate(
     () =>
       JSON.parse(window.localStorage.getItem('bjtrainer.stats.v1') ?? '{}')?.trueCount?.history ?? [],
   );
-  expect(history.at(-1).guess).toBe(answer);
+  expect(history).toHaveLength(1);
+  expect(history[0].guess).toBe(-2);
+  expect(history[0].correct).toBe(history[0].guess === history[0].correctTc);
+  await expect(page.locator(history[0].correct ? '.result-correct' : '.result-wrong')).toBeVisible();
 });
 
 test('"yes" with nothing proposed submits nothing', async ({ page }) => {

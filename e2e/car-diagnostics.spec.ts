@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { withSettings } from './helpers';
 
 /**
  * The car-controls readout in Settings.
@@ -73,4 +74,58 @@ test('the log survives a reload', async ({ page }) => {
   await expect(page.locator('.settings-section', { hasText: 'Car controls' })).toContainText(
     'nexttrack',
   );
+});
+
+/* ==================================================================== */
+/* The two preconditions, which no readout could otherwise explain.      */
+/*                                                                       */
+/* The first drive met neither: the wheel did nothing and the car showed */
+/* the app as a phone call. Live speech opens no media element, so the   */
+/* head unit never sees the app at all; and an open microphone switches  */
+/* the Bluetooth link to its hands-free CALL route, which takes every    */
+/* wheel button with it. Both are invisible from the driver's seat.      */
+/* ==================================================================== */
+
+async function openCarSection(page: import('@playwright/test').Page) {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  return page.locator('.settings-section', { hasText: 'Car controls' });
+}
+
+test('with live speech, the panel says the wheel cannot reach the app, and why', async ({
+  page,
+}) => {
+  await withSettings(page, { audio: { enabled: true, useClips: false } });
+  const section = await openCarSection(page);
+
+  await expect(section.locator('[data-car-ready]')).toHaveAttribute('data-car-ready', 'false');
+  await expect(section).toContainText('Use recorded voice');
+});
+
+test('with the recorded voice on, the settings side reports ready', async ({ page }) => {
+  await withSettings(page, { audio: { enabled: true, useClips: true } });
+  const section = await openCarSection(page);
+
+  await expect(section.locator('[data-car-ready]')).toHaveAttribute('data-car-ready', 'true');
+  await expect(section).not.toContainText('Use recorded voice');
+});
+
+test('audio being off is named before anything else', async ({ page }) => {
+  await withSettings(page, { audio: { enabled: false, useClips: false } });
+  const section = await openCarSection(page);
+
+  await expect(section).toContainText('Audio enabled');
+  await expect(section).toContainText('Use recorded voice');
+});
+
+/**
+ * The answer to "I pressed every button including hang up and nothing
+ * happened" -- stated in the app, next to the readout it explains.
+ */
+test('the microphone conflict is stated, whatever the settings say', async ({ page }) => {
+  await withSettings(page, { audio: { enabled: true, useClips: true } });
+  const section = await openCarSection(page);
+
+  await expect(section).toContainText('hands-free');
+  await expect(section).toContainText('phone call');
 });

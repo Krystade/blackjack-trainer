@@ -5,6 +5,7 @@ import { THEMES, normalizeTheme } from '../theme';
 import { saveSettings } from '../../store/persist';
 import { chime, isSpeechSupported, listVoices, speak } from '../../audio';
 import { setClipsEnabled, setClipVoice, loadClipIndex, type ClipVoiceInfo } from '../../audio/clips';
+import { carControlsBlockers, describeCarControlsBlocker } from '../../audio/carControls';
 import { readLog, clearLog, formatLog } from '../../audio/mediaSessionLog';
 import { MAX_VOLUME } from '../../audio/volume';
 import { detectVoiceSupport } from '../../audio/voiceRecognition';
@@ -486,7 +487,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         </div>
       </section>
 
-      <CarDiagnostics />
+      <CarDiagnostics audio={settings.audio} />
 
       <VoiceProbePanel />
       <VoiceHistoryPanel />
@@ -505,9 +506,10 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
  * Deliberately last in Settings and empty-by-default: it is diagnostic, not
  * a control, and it says nothing at all until there is something to report.
  */
-function CarDiagnostics() {
+function CarDiagnostics({ audio }: { audio: AudioSettings }) {
   const [entries, setEntries] = useState<LogEntry[]>(() => readLog());
   const [shown, setShown] = useState(false);
+  const blockers = carControlsBlockers(audio);
 
   const invoked = [...new Set(entries.filter((e) => e.kind === 'invoke').map((e) => e.action))];
   const accepted = [...new Set(entries.filter((e) => e.kind === 'register' && e.ok).map((e) => e.action))];
@@ -520,6 +522,27 @@ function CarDiagnostics() {
       <div className="settings-note-row u-note">
         Records which steering-wheel buttons your car sends, so the mapping can be
         matched to it. Fills in by itself while you drive.
+      </div>
+
+      {/* Why the readout below can stay empty forever. Both conditions are
+          invisible from the driver's seat, and the first drive met neither:
+          the wheel did nothing, and the car showed the app as a phone call. */}
+      <div className="settings-row">
+        <span className="settings-label">Can the wheel reach this app?</span>
+        <span className="settings-value" data-car-ready={blockers.length === 0}>
+          {blockers.length === 0 ? 'Yes — settings are right' : 'Not yet'}
+        </span>
+      </div>
+      {blockers.map((b) => (
+        <div key={b} className="settings-note-row u-note">
+          {describeCarControlsBlocker(b)}
+        </div>
+      ))}
+      <div className="settings-note-row u-note">
+        And leave the microphone off while you test it. Turning voice on switches the
+        car to its hands-free CALL route — which is why the app showed up as a phone
+        call — and the wheel&rsquo;s buttons then go to that call, not to this app.
+        Talking to it and steering-wheel control cannot both work at once.
       </div>
 
       <div className="settings-row">
