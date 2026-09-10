@@ -18,7 +18,6 @@ import {
 } from '../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../audio/voiceNumber';
 import type { VoiceAction } from '../../audio/voiceRecognition';
-import type { ListenState, HeardVerdict } from '../../audio/voiceControl';
 import { actionUnavailable } from '../../drills/answerGate';
 import { enableAudioNow } from '../audioGate';
 import { PlayingCard, formatCard } from '../components/PlayingCard';
@@ -28,6 +27,8 @@ import { Modal } from '../components/Modal';
 import { MistakeCard } from '../components/MistakeCard';
 import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { NumPad } from '../components/NumPad';
+import { VoiceStatusBar } from '../components/VoiceStatusBar';
+import { VOICE_WORDS } from '../voiceLabels';
 import { assistedFlag } from '../peekFlag';
 
 type BotActionLogEntry = Game['botActionLog'][number];
@@ -143,29 +144,6 @@ interface TableProps {
 
 // What the microphone is doing, in words that say what to do about it. Kept
 // identical to the drills' strip: the same failure must not read two ways.
-const VOICE_STATE_LABEL: Record<ListenState, string> = {
-  off: 'Voice off',
-  starting: 'Starting…',
-  listening: 'Listening',
-  // Named rather than hidden: a word spoken during a restart is genuinely
-  // lost, and claiming to be listening throughout would be a lie.
-  restarting: 'Reconnecting…',
-  denied: 'Microphone blocked — allow it in your browser',
-  unsupported: 'This browser cannot listen',
-  error: 'No response from the microphone — switch it off and on',
-};
-
-const VOICE_WORDS = Object.keys(VOICE_ACTIONS).join(' · ');
-
-function describeVerdict(verdict: HeardVerdict | null): string {
-  if (verdict === null) return '';
-  if (verdict === 'rejected') return 'not a command';
-  // Distinct from "not a command": it means the microphone heard the APP, so
-  // the answer is to wait rather than to repeat yourself louder.
-  if (verdict === 'suppressed') return 'ignored (the app was speaking)';
-  return verdict;
-}
-
 function isE2E(): boolean {
   if (typeof window === 'undefined') return false;
   return new URLSearchParams(window.location.search).get('e2e') === '1';
@@ -650,17 +628,14 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       </div>
 
       {voiceOn && (
-        <div className="voice-status" data-voice-state={voice.status.state}>
-          <span className="voice-status-state">{VOICE_STATE_LABEL[voice.status.state]}</span>
-          {voice.status.heard && (
-            <span className="voice-status-heard">
-              &ldquo;{voice.status.heard}&rdquo; &rarr; {describeVerdict(voice.status.verdict)}
-            </span>
-          )}
-          <span className="voice-status-words">
-            Say: {VOICE_WORDS} &mdash; &ldquo;yes&rdquo; deals the next hand and answers insurance
-          </span>
-        </div>
+        <VoiceStatusBar
+          status={voice.status}
+          hint={
+            <>
+              Say: {VOICE_WORDS} &mdash; &ldquo;yes&rdquo; deals the next hand and answers insurance
+            </>
+          }
+        />
       )}
 
       {/* R6 (docs/BACKLOG.md, RT#3): a live discard-tray depth cue. Real tables

@@ -35,8 +35,8 @@ import { useAudio } from '../../audio/useAudio';
 import { narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt } from '../../audio/narrate';
 import { useVoiceControl } from '../useVoiceControl';
 import { autoAdvanceDelayMs, spokenPauseFor } from '../../drills/answerPause';
-import type { ListenState, HeardVerdict } from '../../audio/voiceControl';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../audio/voiceRecognition';
+import { VoiceStatusBar } from '../components/VoiceStatusBar';
 import type { VoiceAction } from '../../audio/voiceRecognition';
 import { cancelSpeech, speak } from '../../audio/speech';
 import { speechOptsFrom } from '../../audio/speechOpts';
@@ -72,34 +72,6 @@ export const KEY_TO_ACTION: Record<string, Action> = {
   '3': 'double',
   '4': 'split',
   '5': 'surrender' };
-
-// What the microphone is doing, in words the operator can act on. A bare
-// "error" tells a driver nothing; each of these says what to do about it.
-const VOICE_STATE_LABEL: Record<ListenState, string> = {
-  off: 'Voice off',
-  starting: 'Starting…',
-  listening: 'Listening',
-  // Named honestly rather than hidden. The recogniser dies about every ninety
-  // seconds and this gap is genuinely deaf, so a word said here is lost --
-  // better to show it than to let the answer vanish silently.
-  restarting: 'Reconnecting…',
-  denied: 'Microphone blocked — allow it in your browser',
-  unsupported: 'This browser cannot listen',
-  error: 'No response from the microphone — switch it off and on',
-};
-
-/** The whole vocabulary, so there is nothing to guess at while driving. */
-const VOICE_WORDS = Object.keys(VOICE_ACTIONS).join(' · ');
-
-function describeVerdict(verdict: HeardVerdict | null): string {
-  if (verdict === null) return '';
-  if (verdict === 'rejected') return 'not a command';
-  // Distinguishing this from "not a command" matters: it means the microphone
-  // heard the APP, not the operator, and the right response is to wait rather
-  // than to repeat themselves louder.
-  if (verdict === 'suppressed') return 'ignored (the app was speaking)';
-  return verdict;
-}
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -586,20 +558,10 @@ function FlashcardsView({
             Voice answers
           </label>
         )}
-        {voiceOn && (
-          <div className="voice-status" data-voice-state={voice.status.state}>
-            <span className="voice-status-state">{VOICE_STATE_LABEL[voice.status.state]}</span>
-            {/* What the microphone last heard, whether or not it meant
-                anything. Without it a misheard word and a dead microphone
-                look identical, and neither can be diagnosed while driving. */}
-            {voice.status.heard && (
-              <span className="voice-status-heard">
-                &ldquo;{voice.status.heard}&rdquo; &rarr; {describeVerdict(voice.status.verdict)}
-              </span>
-            )}
-            <span className="voice-status-words">Say: {VOICE_WORDS}</span>
-          </div>
-        )}
+        {/* What the microphone last heard, whether or not it meant anything.
+            Without it a misheard word and a dead microphone look identical,
+            and neither can be diagnosed while driving. */}
+        {voiceOn && <VoiceStatusBar status={voice.status} />}
       </div>
 
       <div className="dealer-area">

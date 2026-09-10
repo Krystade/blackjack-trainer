@@ -30,6 +30,11 @@ import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import { narrateCards, narrateCountAnswer, narrateCountPrompt } from '../../../audio/narrate';
 import { focusSwallowsKey } from '../../keyboardFocus';
 import { enableAudioNow } from '../../audioGate';
+import { useVoiceControl } from '../../useVoiceControl';
+import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
+import type { VoiceAction } from '../../../audio/voiceRecognition';
+import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
+import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -130,6 +135,20 @@ export function CountDrillView({
   // correctness. Only offered for the main count drill, not Countdown mode
   // (see the `!countdownMode` guard in the setup JSX below).
   const [timedChallenge, setTimedChallenge] = useState(false);
+
+  // VOICE. Off until asked for, like every other microphone in the app: a
+  // toggle that survived a reload would open one on page load.
+  const [voiceSupported] = useState(() => detectVoiceSupport().api);
+  const [voiceOn, setVoiceOn] = useState(false);
+  /**
+   * A spoken count, heard but not yet submitted.
+   *
+   * Nothing spoken is ever submitted directly. A misheard "hit" costs one
+   * hand; a misheard count silently corrupts a graded run, reporting a score
+   * against an answer nobody gave. So a number is a PROPOSAL, read back and
+   * confirmed -- the same contract the table's count check already runs on.
+   */
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
   // Set (via performance.now(), never Date.now() at module scope -- this is
   // a live UI concern, the pure math in countSpeed.ts never touches the
   // clock) at the start of a timed run; read once the ramp finishes to
@@ -846,6 +865,143 @@ export function CountDrillView({
     finishRun(guess === actual, actual, guess);
   };
 
+  /** Say something, unconditionally -- a voice reply IS the output channel. */
+  const sayBack = (text: string, interrupt = false) => {
+    speak(text, speechOptsFrom(settings.audio, interrupt ? { interrupt: true } : {}));
+  };
+
+  /** The result, said again on request -- the screen is not being looked at. */
+  const resultSpeech = (): string =>
+    honorCheck
+      ? `${wasCorrect ? 'Correct.' : 'Wrong.'} The count was ${actualValue}. Say yes to go again.`
+      : `${wasCorrect ? 'Correct.' : 'Wrong.'} ${narrateCountAnswer(actualValue)} Say yes to go again.`;
+
+  /**
+   * First refusal on every transcript, for the one thing the command
+   * vocabulary deliberately does not contain: a number.
+   *
+   * Only while an answer is actually due. Outside 'answering' a number is
+   * someone reading a road sign, and proposing it would make the read-back a
+   * trap rather than a check.
+   */
+  const interpretCountSpeech = (heard: string, offered: readonly string[] = [heard]): string | null => {
+    if (phase !== 'answering' || countdownMode) return null;
+    const readings = offered.length > 0 ? offered : [heard];
+
+    // Every reading is tried, best first. Over a car microphone "minus three"
+    // ranks behind "minus tree" often enough to matter, and a running count
+    // is harder to say twice than a hand is to play twice.
+    let parsed: ReturnType<typeof parseCountSpeech> = null;
+    for (const reading of readings) {
+      parsed = parseCountSpeech(reading);
+      if (parsed) break;
+    }
+    if (!parsed) return null;
+
+    const next = parsed.kind === 'value' ? parsed.value : (pendingCount ?? 0) + parsed.delta;
+    setPendingCount(next);
+    sayBack(`${speakableCount(next)}. Correct?`, true);
+    return `count ${speakableCount(next)}`;
+  };
+
+  /**
+   * The spoken half of the drill, which is phase-shaped: the same "yes" that
+   * starts a run at setup confirms a count while answering and claims the
+   * self-check afterwards.
+   *
+   * Nothing here navigates. A misheard word inside the drill costs one "no";
+   * a misheard word that left the screen would cost the run, and pressing
+   * Back is a tap you can afford at the moment you have stopped driving
+   * anyway.
+   */
+  const handleVoiceCommand = (action: VoiceAction) => {
+    switch (phase) {
+      case 'setup':
+        if (action === 'yes') start();
+        return;
+
+      case 'answering': {
+        // The countdown tag guess is graded on a three-way choice with no
+        // read-back, so it stays a tap. Reaching it by voice would be one
+        // mishearing away from a false verdict.
+        if (countdownMode) return;
+        if (action === 'yes') {
+          if (pendingCount === null) {
+            sayBack('I have no count yet. What is it?', true);
+            return;
+          }
+          const confirmed = pendingCount;
+          setPendingCount(null);
+          handleRcSubmit(confirmed);
+          return;
+        }
+        if (action === 'no') {
+          // A rejection clears the proposal outright rather than trying to
+          // salvage it: the operator said it was wrong, not nearly right.
+          setPendingCount(null);
+          sayBack(narrateCountPrompt(), true);
+          return;
+        }
+        if (action === 'repeat') {
+          sayBack(
+            pendingCount === null ? narrateCountPrompt() : `${speakableCount(pendingCount)}. Correct?`,
+            true,
+          );
+        }
+        return;
+      }
+
+      case 'selfreport':
+        if (action === 'yes') handleSelfReport(true);
+        else if (action === 'no') handleSelfReport(false);
+        else if (action === 'repeat') {
+          sayBack(narrateCountAnswer(actualValue), true);
+          sayBack('Did you have it?');
+        }
+        return;
+
+      case 'result':
+        if (action === 'yes') start();
+        else if (action === 'repeat') sayBack(resultSpeech(), true);
+        else if (action === 'no') sayBack('Okay. Say yes when you want another.', true);
+        return;
+
+      // 'flashing', 'selfcheck' and 'distraction' are the app's turn to talk.
+      // A command there has nothing to act on, and answering one would talk
+      // over the cards being counted.
+      default:
+        return;
+    }
+  };
+
+  const voice = useVoiceControl({
+    enabled: voiceOn,
+    onAction: handleVoiceCommand,
+    onTranscript: interpretCountSpeech,
+    // Eyes-free, a rejection is silence, and silence looks the same as a dead
+    // microphone. A short cue says "say it again" without costing a sentence
+    // of narration mid-drill.
+    onNotUnderstood: () => audio.ding('attention'),
+    biasPhrases: [...Object.keys(VOICE_ACTIONS), ...COUNT_BIAS_PHRASES],
+    context: 'count-drill',
+  });
+
+  // A proposal belongs to one answer. Carrying it into the next run would
+  // offer the last count back as an answer to a different question.
+  useEffect(() => {
+    setPendingCount(null);
+  }, [phase]);
+
+  // Offer the next run out loud, and take the restart gap here -- the result
+  // screen is the only moment in this drill that is reliably quiet, so a
+  // recogniser cycled anywhere else would be deaf over an answer.
+  useEffect(() => {
+    if (!voiceOn || phase !== 'result') return;
+    voice.cycleIfStale();
+    sayBack('Say yes to go again.');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceOn, phase]);
+
   const currentGroup = shownIndex < groups.length ? groups[shownIndex] : null;
 
   // R9 / red-team #7: render a flashed card, optionally with a small seeded
@@ -870,6 +1026,22 @@ export function CountDrillView({
         </button>
         <div className="drill-heading">Count Drill</div>
       </div>
+
+      {/* Deliberately NOT the full command vocabulary. The play words --
+          hit, stand, double -- do nothing in a count drill, and listing
+          them would invite a driver to say something the screen has just
+          promised will work. */}
+      {voiceOn && (
+        <VoiceStatusBar
+          status={voice.status}
+          hint={
+            <>
+              Say: yes &middot; no &middot; repeat &mdash; and the count itself,
+              &ldquo;minus three&rdquo;
+            </>
+          }
+        />
+      )}
 
       {phase === 'setup' && (
         <div className="count-setup">
@@ -1127,6 +1299,28 @@ export function CountDrillView({
             </div>
           )}
 
+          {/* Voice. Offered next to Start because that is where it has to be
+              turned on: the microphone needs a tap, and the whole point is
+              that it is the LAST tap of the session. */}
+          {voiceSupported && (
+            <label className="count-toggle">
+              <input
+                type="checkbox"
+                checked={voiceOn}
+                onChange={(e) => {
+                  // Answering out loud is worthless without hearing the
+                  // reply, so this turns audio on the way Eyes-free does
+                  // rather than sitting dead when audio happens to be off.
+                  if (e.target.checked && !settings.audio.enabled) {
+                    enableAudioNow(settings, onSettingsChange);
+                  }
+                  setVoiceOn(e.target.checked);
+                }}
+              />
+              Voice answers (say the count, and &ldquo;yes&rdquo; to start)
+            </label>
+          )}
+
           <button type="button" className="drill-start-btn" onClick={start}>
             Start
           </button>
@@ -1170,6 +1364,11 @@ export function CountDrillView({
       {phase === 'selfreport' && (
         <div className="selfreport-area">
           <div className="selfreport-question">The count was {actualValue}. Did you have it?</div>
+          {voiceOn && (
+            <div className="selfreport-voice-hint">
+              or say &ldquo;yes&rdquo; / &ldquo;no&rdquo;
+            </div>
+          )}
           <button
             type="button"
             className="selfreport-zone selfreport-yes"
@@ -1192,6 +1391,30 @@ export function CountDrillView({
           <div className="distraction-label">Quick -- what&apos;s this?</div>
           <div className="distraction-prompt">{distraction.prompt}</div>
           <NumPad label="Answer" onSubmit={handleDistractionSubmit} />
+        </div>
+      )}
+
+      {/* The spoken proposal, shown as well as said. A passenger should be
+          able to correct it by tapping instead of talking, and the keypad
+          stays for a refused microphone or a browser that cannot listen. */}
+      {phase === 'answering' && !countdownMode && voiceOn && (
+        <div className="count-voice" data-pending={pendingCount !== null}>
+          {pendingCount === null ? (
+            <span className="count-voice-hint">
+              Say the count &mdash; &ldquo;minus three&rdquo;. Then &ldquo;plus&rdquo; or
+              &ldquo;minus&rdquo; to nudge it by one, &ldquo;yes&rdquo; to submit.
+            </span>
+          ) : (
+            <>
+              <span className="count-voice-value">
+                {pendingCount >= 0 ? `+${pendingCount}` : pendingCount}
+              </span>
+              <span className="count-voice-hint">
+                &ldquo;yes&rdquo; to submit &middot; &ldquo;no&rdquo; to start over &middot;
+                &ldquo;plus&rdquo;/&ldquo;minus&rdquo; to nudge
+              </span>
+            </>
+          )}
         </div>
       )}
 

@@ -3234,6 +3234,13 @@ button {
   color: var(--ink-dim);
 }
 
+.selfreport-voice-hint {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--ink-dim);
+  opacity: 0.8;
+}
+
 .selfreport-zone {
   flex: 1;
   min-height: 96px;
