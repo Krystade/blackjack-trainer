@@ -58,8 +58,17 @@ ship.
 ### D2 · Ideas raised earlier and still open
 - Countdown/tag-guess submode has no eyes-free support (excluded twice, deliberately —
   needs an explicit keep/kill decision).
-- Corrections are not clipped (symbol-heavy index labels fall back to live TTS) — a
-  wording cleanup of `reason` strings would make them clippable AND better-spoken.
+- ~~Corrections are not clipped (symbol-heavy index labels fall back to live TTS)~~ —
+  ✅ SHIPPED 2026-09-10, and NOT by cleaning up the wording. The reason text comes out of
+  the strategy engine and the deviation set through `narrateReason`'s nine-step rewrite, so
+  no hand-written Python mirror of it could stay correct. `scripts/correctionPhrases.ts`
+  DERIVES the sentence set from the real modules into `scripts/correction-phrases.json`,
+  which the generator reads; 153 sentences, 445 clips per voice. Two tests hold it:
+  `correctionPhrases.test.ts` fails when the app's wording drifts from the committed list,
+  and `clipsCorrection.test.ts` checks every correction the app can speak against the
+  SHIPPED manifests and files. The second caught a rank spelled `'T'` where the engine
+  spells it `'10'` — every ten-up correction was missing, silently. `scripts/` is now
+  typechecked (`tsconfig.scripts.json`), which is what would have caught it first.
 - Token-level clip concatenation for multi-card groups at `full` card detail (currently
   falls back to live TTS; rank/face detail already fully clipped).
 

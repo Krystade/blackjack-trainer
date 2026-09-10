@@ -24,9 +24,20 @@ src/ui/screens/drills/TrueCountDrillView.tsx. If that wording ever drifts,
 re-run this; if a key ever drifts out of sync, the runtime simply falls back
 to live speech for that segment — never a hard failure.
 
-OUT OF SCOPE (left to the live-TTS runtime fallback, NOT generated here):
-table result lines, bot actions, correction reasons — these are composed/
-dynamic strings, not fixed high-frequency vocabulary.
+CORRECTIONS ARE NO LONGER OUT OF SCOPE. Their wording cannot be mirrored here
+by hand — the reason text comes out of the strategy engine and the deviation
+set, through narrateReason's nine-step rewrite — so it is DERIVED from the real
+TypeScript modules by scripts/correctionPhrases.ts and read from
+scripts/correction-phrases.json. Regenerate that file (and re-run this) with:
+
+    UPDATE_CORRECTION_PHRASES=1 npx vitest run scripts/
+
+scripts/correctionPhrases.test.ts fails if the app's wording drifts away from
+the committed list, which is the alarm this file never had — see the soft-hand
+note in build_vocabulary() for what silent drift costs.
+
+STILL OUT OF SCOPE (left to the live-TTS runtime fallback): table result lines
+with amounts, and bot actions — genuinely dynamic, not fixed vocabulary.
 
 Usage:
     pip install edge-tts                          # --engine edge (default)
@@ -126,6 +137,32 @@ def narrate_decks_remaining(decks: float) -> str:
     return f"{whole_word} {'deck' if whole == 1 else 'decks'} remaining"
 
 
+CORRECTION_PHRASES_PATH = Path(__file__).with_name("correction-phrases.json")
+
+
+def load_correction_phrases() -> list[str]:
+    """Every sentence a spoken correction can consist of.
+
+    Generated from the app's own modules (scripts/correctionPhrases.ts), never
+    written by hand: the reason half is produced by the strategy engine and the
+    deviation set, and no Python mirror of that could stay correct.
+    """
+    try:
+        with CORRECTION_PHRASES_PATH.open(encoding="utf-8") as fh:
+            phrases = json.load(fh)
+    except FileNotFoundError:
+        print(f"warning: {CORRECTION_PHRASES_PATH} missing — corrections will "
+              f"fall back to live TTS. Regenerate with "
+              f"`UPDATE_CORRECTION_PHRASES=1 npx vitest run scripts/`.",
+              file=sys.stderr)
+        return []
+    if not isinstance(phrases, list) or not all(isinstance(p, str) for p in phrases):
+        print(f"error: {CORRECTION_PHRASES_PATH} is not a list of strings",
+              file=sys.stderr)
+        sys.exit(2)
+    return phrases
+
+
 def build_vocabulary() -> list[str]:
     """Every fixed, concatenation-ready segment the eyes-free drills can speak.
 
@@ -204,6 +241,12 @@ def build_vocabulary() -> list[str]:
     # narrateCorrection() opens with a bare "Wrong." sentence; only "Correct."
     # was covered, so every miss dropped to live TTS on its first word.
     phrases.append("Wrong.")
+
+    # ...and the rest of that same utterance, which the "Wrong." clip alone
+    # could never rescue: segmentation is ALL-OR-NOTHING, so one unmatched
+    # sentence sent the whole correction to live TTS anyway. Derived from the
+    # real modules rather than mirrored here — see the header.
+    phrases.extend(load_correction_phrases())
 
     # De-dupe while preserving order (e.g. "True count <tc>." appears once
     # from the quiz section and once from the true-count drill's own helper —
