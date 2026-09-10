@@ -24,20 +24,21 @@ src/ui/screens/drills/TrueCountDrillView.tsx. If that wording ever drifts,
 re-run this; if a key ever drifts out of sync, the runtime simply falls back
 to live speech for that segment — never a hard failure.
 
-CORRECTIONS ARE NO LONGER OUT OF SCOPE. Their wording cannot be mirrored here
-by hand — the reason text comes out of the strategy engine and the deviation
-set, through narrateReason's nine-step rewrite — so it is DERIVED from the real
-TypeScript modules by scripts/correctionPhrases.ts and read from
-scripts/correction-phrases.json. Regenerate that file (and re-run this) with:
+CORRECTIONS AND BOT TURNS ARE NO LONGER OUT OF SCOPE. Neither can be mirrored
+here by hand — a correction's reason text comes out of the strategy engine and
+the deviation set, through narrateReason's nine-step rewrite — so both are
+DERIVED from the real TypeScript modules by scripts/spokenPhrases.ts and read
+from scripts/spoken-phrases.json. Regenerate that file (and re-run this) with:
 
-    UPDATE_CORRECTION_PHRASES=1 npx vitest run scripts/
+    UPDATE_SPOKEN_PHRASES=1 npx vitest run scripts/
 
-scripts/correctionPhrases.test.ts fails if the app's wording drifts away from
-the committed list, which is the alarm this file never had — see the soft-hand
+scripts/spokenPhrases.test.ts fails if the app's wording drifts away from the
+committed list, which is the alarm this file never had — see the soft-hand
 note in build_vocabulary() for what silent drift costs.
 
-STILL OUT OF SCOPE (left to the live-TTS runtime fallback): table result lines
-with amounts, and bot actions — genuinely dynamic, not fixed vocabulary.
+STILL OUT OF SCOPE, and permanently: table settlement lines with amounts. The
+amount is a bankroll figure with no upper bound, so that sentence set cannot be
+enumerated at all — those stay on the live-TTS runtime fallback.
 
 Usage:
     pip install edge-tts                          # --engine edge (default)
@@ -137,27 +138,28 @@ def narrate_decks_remaining(decks: float) -> str:
     return f"{whole_word} {'deck' if whole == 1 else 'decks'} remaining"
 
 
-CORRECTION_PHRASES_PATH = Path(__file__).with_name("correction-phrases.json")
+SPOKEN_PHRASES_PATH = Path(__file__).with_name("spoken-phrases.json")
 
 
-def load_correction_phrases() -> list[str]:
-    """Every sentence a spoken correction can consist of.
+def load_spoken_phrases() -> list[str]:
+    """Every sentence a correction or a bot turn can consist of.
 
-    Generated from the app's own modules (scripts/correctionPhrases.ts), never
-    written by hand: the reason half is produced by the strategy engine and the
-    deviation set, and no Python mirror of that could stay correct.
+    Generated from the app's own modules (scripts/spokenPhrases.ts), never
+    written by hand: the reason half of a correction is produced by the strategy
+    engine and the deviation set, and no Python mirror of that could stay
+    correct.
     """
     try:
-        with CORRECTION_PHRASES_PATH.open(encoding="utf-8") as fh:
+        with SPOKEN_PHRASES_PATH.open(encoding="utf-8") as fh:
             phrases = json.load(fh)
     except FileNotFoundError:
-        print(f"warning: {CORRECTION_PHRASES_PATH} missing — corrections will "
-              f"fall back to live TTS. Regenerate with "
-              f"`UPDATE_CORRECTION_PHRASES=1 npx vitest run scripts/`.",
+        print(f"warning: {SPOKEN_PHRASES_PATH} missing — corrections and bot "
+              f"turns will fall back to live TTS. Regenerate with "
+              f"`UPDATE_SPOKEN_PHRASES=1 npx vitest run scripts/`.",
               file=sys.stderr)
         return []
     if not isinstance(phrases, list) or not all(isinstance(p, str) for p in phrases):
-        print(f"error: {CORRECTION_PHRASES_PATH} is not a list of strings",
+        print(f"error: {SPOKEN_PHRASES_PATH} is not a list of strings",
               file=sys.stderr)
         sys.exit(2)
     return phrases
@@ -244,9 +246,11 @@ def build_vocabulary() -> list[str]:
 
     # ...and the rest of that same utterance, which the "Wrong." clip alone
     # could never rescue: segmentation is ALL-OR-NOTHING, so one unmatched
-    # sentence sent the whole correction to live TTS anyway. Derived from the
+    # sentence sent the whole correction to live TTS anyway. The same list now
+    # carries every bot turn ("Player two hits." / "Ten of clubs."), the table's
+    # most frequent utterance and previously unclipped in full. Derived from the
     # real modules rather than mirrored here — see the header.
-    phrases.extend(load_correction_phrases())
+    phrases.extend(load_spoken_phrases())
 
     # De-dupe while preserving order (e.g. "True count <tc>." appears once
     # from the quiz section and once from the true-count drill's own helper —
@@ -260,12 +264,27 @@ def build_vocabulary() -> list[str]:
     return unique
 
 
+# Terminal punctuation, encoded into the slug rather than thrown away.
+#
+# The slug lowercases and strips punctuation, so "ace of clubs" (a comma item
+# inside a flashed card group) and "Ace of clubs." (the second sentence of a bot
+# turn) reduced to the same filename and tripped the collision guard. They are
+# NOT the same utterance to a synthesiser: a list item runs on, a sentence falls
+# at the end, and giving a bot turn the list-item recording would leave every
+# card sounding like it expects another one. Same story for "Correct." against a
+# spoken read-back's "Correct?".
+#
+# "." keeps the bare slug so the clips already generated for it stay valid.
+TERMINAL_SUFFIX = {".": "", "?": "-q", "!": "-ex"}
+ITEM_SUFFIX = "-item"
+
+
 def slug(text: str) -> str:
     """Deterministic, filesystem-safe id for an utterance."""
     s = text.lower().strip()
     s = s.replace("'", "")
     s = re.sub(r"[^a-z0-9]+", "-", s)
-    return s.strip("-")
+    return s.strip("-") + TERMINAL_SUFFIX.get(text.strip()[-1:], ITEM_SUFFIX)
 
 
 def build_manifest(vocab: list[str]) -> dict[str, str]:

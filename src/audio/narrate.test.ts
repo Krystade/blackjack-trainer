@@ -139,9 +139,9 @@ describe('narrateCorrection', () => {
 
 describe('narrateBotAction', () => {
   it('speaks the seat, the action, and any drawn card', () => {
-    expect(narrateBotAction('P2', 'hit', c('10', 'c'))).toBe('Player two hits, ten of clubs.');
+    expect(narrateBotAction('P2', 'hit', c('10', 'c'))).toBe('Player two hits. Ten of clubs.');
     expect(narrateBotAction('P1', 'stand')).toBe('Player one stands.');
-    expect(narrateBotAction('P3', 'double', c('9', 'h'))).toBe('Player three doubles, nine of hearts.');
+    expect(narrateBotAction('P3', 'double', c('9', 'h'))).toBe('Player three doubles. Nine of hearts.');
     expect(narrateBotAction('P5', 'split')).toBe('Player five splits.');
   });
 });

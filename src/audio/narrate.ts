@@ -134,11 +134,23 @@ const ACTION_VERB: Record<Action, string> = {
   surrender: 'surrenders',
 };
 
+/**
+ * TWO sentences, not one clause with a comma -- and that is a clip decision,
+ * not a stylistic one.
+ *
+ * A clip is a sentence: clips.ts splits on terminal punctuation and looks each
+ * piece up exactly. "Player two hits, ten of clubs." is ONE sentence, so
+ * covering it would take a clip for every seat x action x card -- thirteen
+ * hundred files a voice. Split, it takes twenty-five plus fifty-two, and the
+ * table's most frequent utterance keeps the recorded voice instead of dropping
+ * to live TTS on every bot turn (which, in a car, also drops the head unit:
+ * live speech opens no media element -- see audio/mediaSession.ts).
+ */
 export function narrateBotAction(seatLabel: string, action: Action, card?: Card): string {
   const seat = narrateSeat(seatLabel);
   const verb = ACTION_VERB[action];
   if (card) {
-    return `${seat} ${verb}, ${narrateCard(card)}.`;
+    return `${seat} ${verb}. ${capitalize(narrateCard(card))}.`;
   }
   return `${seat} ${verb}.`;
 }

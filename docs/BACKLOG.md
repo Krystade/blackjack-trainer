@@ -61,14 +61,28 @@ ship.
 - ~~Corrections are not clipped (symbol-heavy index labels fall back to live TTS)~~ —
   ✅ SHIPPED 2026-09-10, and NOT by cleaning up the wording. The reason text comes out of
   the strategy engine and the deviation set through `narrateReason`'s nine-step rewrite, so
-  no hand-written Python mirror of it could stay correct. `scripts/correctionPhrases.ts`
-  DERIVES the sentence set from the real modules into `scripts/correction-phrases.json`,
-  which the generator reads; 153 sentences, 445 clips per voice. Two tests hold it:
-  `correctionPhrases.test.ts` fails when the app's wording drifts from the committed list,
-  and `clipsCorrection.test.ts` checks every correction the app can speak against the
-  SHIPPED manifests and files. The second caught a rank spelled `'T'` where the engine
-  spells it `'10'` — every ten-up correction was missing, silently. `scripts/` is now
-  typechecked (`tsconfig.scripts.json`), which is what would have caught it first.
+  no hand-written Python mirror of it could stay correct. `scripts/spokenPhrases.ts`
+  DERIVES the sentence set from the real modules into `scripts/spoken-phrases.json`,
+  which the generator reads. Two tests hold it: `spokenPhrases.test.ts` fails when the
+  app's wording drifts from the committed list, and `clipCoverage.test.ts` checks every
+  correction the app can speak against the SHIPPED manifests and files. The second caught
+  a rank spelled `'T'` where the engine spells it `'10'` — every ten-up correction was
+  missing, silently. `scripts/` is now typechecked (`tsconfig.scripts.json`), which is what
+  would have caught it first.
+- ~~Bot turns fall back to live TTS on every hand~~ — ✅ SHIPPED 2026-09-10. The table's
+  most frequent utterance was entirely unclipped, and could not be clipped as written: a
+  clip is a SENTENCE, and `"Player two hits, ten of clubs."` is one — a file per seat ×
+  action × card, thirteen hundred a voice. `narrateBotAction` now speaks two sentences,
+  `"Player two hits. Ten of clubs."`, which costs 25 + 52 clips and covers the whole set.
+  The same pass caught what that exposed: the slug dropped punctuation, so the comma item
+  `"ace of clubs"` and the sentence `"Ace of clubs."` wanted one file. They are different
+  recordings — a list item runs on, a sentence falls — so `slug()` now encodes terminal
+  punctuation and the item form gets its own `-item` clip. 231 derived sentences, 523
+  clips per voice.
+- Voice read-backs (`"Minus three. Correct?"`) are still live TTS. They are composed in the
+  drill views rather than in `narrate.ts`, so deriving them means importing a `.tsx` into
+  build tooling. Low urgency: a read-back only happens with the microphone open, which in
+  a car already means the hands-free route.
 - Token-level clip concatenation for multi-card groups at `full` card detail (currently
   falls back to live TTS; rank/face detail already fully clipped).
 
