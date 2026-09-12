@@ -592,7 +592,9 @@ operator, still open.)
 ### From the 2026-09-12 red-team v4 (post V3-5/6/7 + RT#11/12 + RV7) — run in-session, no research agents
 The v3 queue emptied, so the standing workflow's adversarial leg was run against the CURRENT app.
 Only the adversarial leg: the training-science and community legs need web research and are still
-owed. Three findings, all read off the code rather than recalled, all cited. Notably the deviation
+owed (leg 2 was subsequently run — see the training-science section below; leg 3, the
+community deep-hunt, is still outstanding). Three findings, all read off the code rather
+than recalled, all cited. Notably the deviation
 quiz came out CLEAN on the axis it was attacked on — `tcNearThreshold`/`tcWrongSide` already sample
 either side of every index boundary and re-derive the answer from the engine, which is the thing
 most trainers get wrong.
@@ -697,6 +699,91 @@ most trainers get wrong.
     fails slow machines instead. Several clip-coverage tests already run 1.1–1.9s under parallel
     load and were one slow runner from the same fate. **Standing lesson: a green local suite is
     not a deploy — check `gh run list` after any push that adds a slow test.**
+
+### From the 2026-09-12 TRAINING-SCIENCE leg (standing workflow leg 2) — run in-session
+The v4 adversarial leg emptied into V4-1/2/3, so this is the second of the three legs the
+standing workflow owes. Evidence hunt against the axes it names. Every claim below was read
+from the PRIMARY source, not a search snippet — the one moderator finding I could only get
+from a snippet is marked as such and was then confirmed verbatim out of the accepted
+manuscript. `[VERIFIED]` = read in the source; `[INFERENCE]` = my mapping onto this app.
+
+- **V5-1 · The flashcard draw ignores what the learner just answered — S — the strongest
+  evidence-backed change available.**
+  `[VERIFIED]` Brunmair & Richter's meta-analysis of interleaving (59 studies, 238 effect
+  sizes, 158 samples; *Psychological Bulletin* 2019) finds a moderate overall effect
+  (Hedges' g = 0.42) — but the abstract's own headline is the moderators: *"stronger
+  interleaving effects for learning material more similar BETWEEN categories, for learning
+  material LESS similar WITHIN categories, and for more complex learning material."* The
+  discussion is blunter still: interleaving is *"effective only when items are presented in
+  immediate succession without spacing"*, and blocking WINS *"for categories with high
+  discriminability but low similarity of exemplars belonging to the same category"*.
+  `[INFERENCE]` The chart is a category-learning task whose categories are maximally
+  confusable — hard 16 v 10 against hard 15 v 10, soft 18 v 9 against hard 18 v 9 — which is
+  precisely the high-between-category-similarity condition where the effect is largest. But
+  `drawFlashcard` weights by SR due-ness and (V4-1, opt-in) frequency, and BOTH are
+  independent of what came before. The draw is random with respect to confusability, so the
+  confusable pair landing back to back is a coincidence, and "immediate succession" — the
+  condition the meta-analysis says the effect *requires* — happens only by luck.
+  The change: bias the NEXT draw toward the cells most confusable with the one just answered
+  (same upcard ± adjacent total; same total ± adjacent upcard), as a third multiplicative
+  term alongside SR and frequency. Opt-in and compressed like V4-1, for the same reason.
+  Note this composes with V4-2 rather than colliding: varying the hard compositions LOWERED
+  within-category similarity, which the same meta-regression says *increases* the effect.
+  Caveat to carry: the mathematical-tasks subgroup was the weak one (g = 0.34, and
+  b = −0.43 against paintings as reference), and the chart is closer to that than to
+  paintings.
+
+- **V5-2 · Speed tiers may be measuring expression, not competence — S — a measurement bug,
+  not a feature gap.**
+  `[VERIFIED]` Vékony, Plèche & Németh (*npj Science of Learning* 2022, PMC9588023; N = 48,
+  22 speed-instructed vs 26 accuracy-instructed on a cued ASRT task) instructed one group for
+  speed and one for accuracy through 20 blocks, then put BOTH on a neutral instruction for 5
+  more. Under instruction the speed group looked better on probability-based learning
+  (M = 0.08 ± 0.01 vs 0.04 ± 0.01, F(1,46) = 7.64, p = 0.008). Once the instruction was
+  removed the two groups were indistinguishable — probability-based U = 221, p = 0.18;
+  serial-order U = 295, p = 0.86. The authors: *"only the expression of knowledge was
+  affected by the instructions"*, and *"competence and performance can differ."*
+  `[INFERENCE]` This is direct evidence for a worry already in this file (R2's note that
+  schedule-driven speed pressure inflates in-drill scores without improving retained
+  accuracy) — and it sharpens it from a worry into a specific defect. The app reads
+  competence OFF the timed run: the tier gate and the "Unlocked: Pro" banner are computed
+  from performance recorded while the learner is under speed pressure. If speed instruction
+  moves expression and not knowledge, that number is partly measuring the instruction. The
+  change is cheap and does not touch the tiers: periodically re-ask a handful of cells at a
+  NEUTRAL pace and report that separately, so there is one number that means "what I know"
+  next to the one that means "what I can do at speed". V3-5's dated latency rows already
+  provide the plumbing.
+
+- **V5-3 · Feedback timing — evidence too thin to act on; RT#12's rationale stands on other
+  ground. NOT a candidate, recorded so it is not re-opened.**
+  `[VERIFIED]` The literature genuinely conflicts. A meta-analysis of reduced relative
+  feedback frequency in motor learning (61 papers) reports *"no significant effect ... at any
+  time point"* with substantial heterogeneity and no significant moderators; the
+  guidance hypothesis predicts immediate feedback should HURT error-detection; and the
+  academic-testing literature splits, with immediate feedback ahead in some studies and
+  delayed ahead in others, complexity-dependent.
+  `[INFERENCE]` So the silent mid-run checkpoint shipped in RT#12 cannot claim literature
+  support, and should not try. Its actual justification is a measurement one and survives
+  untouched: a mid-run verdict hands the learner a corrected count, which destroys the rest
+  of the measurement. That is an argument about what the instrument can measure, not about
+  what feedback timing teaches best. Worth keeping the two apart.
+
+Sources, primary-verified:
+- Brunmair & Richter (2019), *Similarity matters: A meta-analysis of interleaved learning and
+  its moderators*, Psychological Bulletin. Accepted manuscript:
+  https://www.psychologie.uni-wuerzburg.de/fileadmin/06020400/2019/Brunmair_Richter_in_press__2019_META-ANALYSIS_OF_INTERLEAVED_LEARNING.pdf
+- Vékony, Plèche & Németh (2022), *Speed and accuracy instructions affect two aspects of
+  skill learning differently*, npj Science of Learning:
+  https://pmc.ncbi.nlm.nih.gov/articles/PMC9588023/
+- Contextual-interference meta-analysis (54 studies, 2,068 participants; retention SMD = 0.63,
+  0.43 after outlier removal) — note its own moderator, that the effect is large in the lab
+  (SMD = 0.92) and NOT significant in applied settings (SMD = 0.23, p = 0.24), which is a
+  standing caution against reading lab interleaving results straight onto a real table:
+  https://pmc.ncbi.nlm.nih.gov/articles/PMC11237090/
+- Reduced-relative-feedback-frequency meta-analysis (61 papers, no significant effect):
+  https://www.sciencedirect.com/science/article/abs/pii/S1469029222000334
+
+Still owed by the standing workflow: leg 3, the COMMUNITY deep-hunt.
 
 ### T0 · Complete functional test coverage (operator request 2026-07-26) — M — **✅ COMPLETE 2026-09-11**
 All 46 `❌ GAP` rows of `docs/research/2026-07-26-test-coverage-matrix.md` are closed; that document
