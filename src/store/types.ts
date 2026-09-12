@@ -329,7 +329,11 @@ export interface Stats {
   // filtered by `category` powers the per-category figure on the Stats
   // screen, right next to that category's existing accuracy -- flashcards
   // and the deviation quiz already share the same Category taxonomy there.
-  latencyHistory: { category: Category; elapsedMs: number }[];
+  // V3-5: `date` is the event's `at`, an ISO timestamp stamped by the calling
+  // component. Optional and absent on every row written before V3-5, which is
+  // exactly what filterByRange's undated rule already handles: kept on "all
+  // time", dropped from a bounded range rather than silently counted inside it.
+  latencyHistory: { category: Category; elapsedMs: number; date?: string }[];
   // D1 part 1 (docs/BACKLOG.md, distraction training): telemetry for the
   // mid-drill interruption generator (drills/distraction.ts). This part is
   // additive-only -- nothing writes to this history yet; part 2 wires the
@@ -438,6 +442,12 @@ export interface Stats {
       expected: string;
       /** Units of the original bet, >= 0. */
       units: number;
+      /** V3-5: the event's `at`, an ISO timestamp stamped by the calling
+       * component. Optional and absent on every row written before V3-5 --
+       * filterByRange keeps those on "all time" and drops them from a bounded
+       * range, rather than counting an undated cost inside a window it may not
+       * belong to. */
+      date?: string;
     }[];
   };
 }

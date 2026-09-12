@@ -303,7 +303,12 @@ export function gradeFlashcardAnswer(
   now: number,
   channel: AnswerChannel = SCREEN_CHANNEL,
 ): FlashGradeResult {
-  const { event, correctAction, correct } = buildFlashcardEvent(card, taken, rules, elapsedMs);
+  const built = buildFlashcardEvent(card, taken, rules, elapsedMs);
+  const { correctAction, correct } = built;
+  // V3-5: the grader already holds the wall clock the SR schedule runs on, so
+  // the event is dated from the same `now` its retention row is. One clock per
+  // answer, so a row can never disagree with the review that produced it.
+  const event: GradedEvent = { ...built.event, at: new Date(now).toISOString() };
 
   // RV4: classify the gap review against the cell's PRE-review state, then
   // advance its Leitner schedule.
@@ -331,10 +336,16 @@ export function gradeMasteryAnswer(
   taken: DrillAnswer,
   rules: RuleSet,
   elapsedMs: number,
+  now: number,
 ): { event: GradedEvent; correctAction: Action; correct: boolean } {
-  const result = buildFlashcardEvent(cell, taken, rules, elapsedMs, 'mastery');
-  persistGrade(result.event, null);
-  return result;
+  const built = buildFlashcardEvent(cell, taken, rules, elapsedMs, 'mastery');
+  // V3-5: dated like every other graded answer. A mastery run is exactly the
+  // kind of long unbroken sitting the session analysis exists to look at, so
+  // leaving it undated would blind the drift readout to the drill most likely
+  // to show one.
+  const event: GradedEvent = { ...built.event, at: new Date(now).toISOString() };
+  persistGrade(event, null);
+  return { ...built, event };
 }
 
 export interface QuizGradeResult {
@@ -360,7 +371,10 @@ export function gradeQuizAnswer(
   now: number,
   channel: AnswerChannel = SCREEN_CHANNEL,
 ): QuizGradeResult {
-  const event = buildQuizEvent(item, taken, rules, elapsedMs);
+  const event: GradedEvent = {
+    ...buildQuizEvent(item, taken, rules, elapsedMs),
+    at: new Date(now).toISOString(),
+  };
 
   let nextDeck = deck;
   let retention: RetentionRow | null = null;

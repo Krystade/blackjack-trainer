@@ -698,6 +698,36 @@ describe('store/stats', () => {
     expect(result.latencyHistory).toEqual([{ category: 'hard', elapsedMs: 1234 }]);
   });
 
+  /**
+   * V3-5: the date comes from the CALLER, never from a clock inside this pure
+   * function -- which is exactly why these rows had no date and could not be
+   * range-filtered or grouped into sessions. An event without `at` must stay
+   * undated rather than being stamped with "now", or every legacy row would
+   * suddenly claim to have happened today.
+   */
+  test('applyEvents carries GradedEvent.at onto the latency and EV-cost rows, and leaves an undated event undated', () => {
+    const at = '2026-08-01T12:00:00.000Z';
+    const base = {
+      kind: 'action' as const,
+      category: 'hard' as const,
+      correct: false,
+      classification: 'basic-error' as const,
+      taken: 'hit',
+      expected: 'stand',
+      reason: 'Basic strategy',
+      tc: 0,
+      elapsedMs: 900,
+      evCost: 0.25,
+    };
+    const dated = applyEvents(EMPTY_STATS, [{ ...base, at }]);
+    expect(dated.latencyHistory[0]!.date).toBe(at);
+    expect(dated.evCost.history[0]!.date).toBe(at);
+
+    const undated = applyEvents(EMPTY_STATS, [base]);
+    expect(undated.latencyHistory[0]).not.toHaveProperty('date');
+    expect(undated.evCost.history[0]).not.toHaveProperty('date');
+  });
+
   test('applyEvents does not mutate the input stats latencyHistory (purity)', () => {
     const stats = { ...EMPTY_STATS };
     const originalJson = JSON.stringify(stats);

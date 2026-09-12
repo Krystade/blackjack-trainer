@@ -93,6 +93,24 @@ export interface GradedEvent {
    * same contract as `elapsedMs` and `source` above.
    */
   evCost?: number;
+
+  /**
+   * V3-5: WHEN this decision was graded, as an ISO timestamp.
+   *
+   * OPTIONAL and purely additive, the same contract as `elapsedMs`, `source`
+   * and `evCost` above: a producer that predates it omits it, and a consumer
+   * must treat a missing value as "undated", never as now.
+   *
+   * Supplied by the CALLING COMPONENT from its wall clock, never read inside
+   * this engine module and never inside `applyEvents` -- which is pure and has
+   * no clock, which is precisely why the two histories it writes
+   * (`latencyHistory`, `evCost.history`) carried no date and could not be
+   * filtered by the Stats time range or grouped into practice sessions.
+   *
+   * This is `Date.now()`, not `performance.now()`: `elapsedMs` is a DURATION
+   * and needs a monotonic clock, this is a POINT IN TIME and needs a wall one.
+   */
+  at?: string;
 }
 
 /**

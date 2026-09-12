@@ -191,7 +191,7 @@ describe('gradeAnswer shared grade path (R4 anti-drift)', () => {
     it('gradeMasteryAnswer tags the event source as "mastery" and does NOT touch the flashcard SR deck', () => {
       freshStorage();
       const card = drawFlashcard('all', {}, 0, 55555, DEFAULT_RULES); // reused as the cell shape
-      const result = gradeMasteryAnswer(card, 'hit', DEFAULT_RULES, 200);
+      const result = gradeMasteryAnswer(card, 'hit', DEFAULT_RULES, 200, NOW);
       expect(result.event.source).toBe('mastery');
 
       const stats = loadStats();
@@ -653,5 +653,44 @@ describe('the grade path carries pace and channel into the SR deck', () => {
     expect(entry.box).toBe(CHANNEL_BASE_CAP + 1);
     expect(entry.channels).toBe(channelBit(BLIND_TAP_CHANNEL));
     expect(entry.paceMs).toBe(200);
+  });
+});
+
+/**
+ * V3-5: every graded answer is dated from the same wall clock its SR review
+ * runs on. Without this the two histories applyEvents writes carried no date,
+ * so the Stats range picker silently did not apply to them and the pace-drift
+ * analysis had nothing to group.
+ */
+describe('graded answers are dated (V3-5)', () => {
+  const stamp = new Date(NOW).toISOString();
+
+  it('a flashcard answer stamps the event and the persisted latency row', () => {
+    freshStorage();
+    const card = drawFlashcard('all', {}, 0, 4242, DEFAULT_RULES);
+    const { event } = gradeFlashcardAnswer(card, 'stand', DEFAULT_RULES, 800, {}, NOW);
+    expect(event.at).toBe(stamp);
+    const row = loadStats().latencyHistory.at(-1)!;
+    expect(row.date).toBe(stamp);
+    // The retention row and the latency row agree, because they share `now`.
+    expect(row.elapsedMs).toBe(800);
+  });
+
+  it('a deviation-quiz answer stamps the event and the persisted latency row', () => {
+    freshStorage();
+    const item = drawQuizItem(55555, undefined, DEFAULT_RULES);
+    const { event } = gradeQuizAnswer(item, 'stand', DEFAULT_RULES, 300, {}, NOW);
+    expect(event.at).toBe(stamp);
+    expect(loadStats().latencyHistory.at(-1)!.date).toBe(stamp);
+  });
+
+  it('a mastery answer is dated too, from the clock its caller passes', () => {
+    freshStorage();
+    const cell = drawFlashcard('all', {}, 0, 909, DEFAULT_RULES);
+    const { event } = gradeMasteryAnswer(cell, 'hit', DEFAULT_RULES, 300, NOW);
+    expect(event.at).toBe(stamp);
+    expect(loadStats().latencyHistory.at(-1)!.date).toBe(stamp);
+    // ...and the mastery source survives being spread over.
+    expect(event.source).toBe('mastery');
   });
 });

@@ -117,7 +117,13 @@ export function MasteryChallengeView({
 
     const elapsedMs = performance.now() - promptShownAtRef.current;
     const flashcardShapedCell = { cards: cell.cards, up: cell.up, correct: cellCorrectAction, cellId: cell.id };
-    const { event, correct } = gradeMasteryAnswer(flashcardShapedCell, taken, activeProfile.rules, elapsedMs);
+    const { event, correct } = gradeMasteryAnswer(
+      flashcardShapedCell,
+      taken,
+      activeProfile.rules,
+      elapsedMs,
+      Date.now(),
+    );
 
     const nextRun = advanceMasteryRun(run, correct, randomSeed());
     setFeedback({ correct, event, reset: !correct });

@@ -18,7 +18,12 @@ import { indexSetFor } from '../../engine/deviations';
 import { useAudio } from '../../audio/useAudio';
 import { narrateStatsSummary } from '../../audio/narrate';
 import { assistedFlag } from '../peekFlag';
-import { fatigueDrift, type DatedResult } from '../../drills/fatigueDrift';
+import {
+  fatigueDrift,
+  latencyDrift,
+  type DatedLatency,
+  type DatedResult,
+} from '../../drills/fatigueDrift';
 import { generateAllCells } from '../../drills/flashcards';
 import { loadFlashSr, loadQuizSr } from '../../drills/gradeAnswer';
 import { summarizeSrDeck, boxBarPercents, type SrDeckSummary } from '../../drills/srStatus';
@@ -321,6 +326,11 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   const now = Date.now();
   const inRange = <T extends { date?: string }>(xs: readonly T[]): T[] =>
     filterByRange(xs, range, now);
+  // V3-5: latency rows carry a date now, so they answer the range picker like
+  // everything else. One filtered view, shared by the per-category median and
+  // the pace-drift readout -- two separate filters here could disagree about
+  // which answers are in the window.
+  const latencyRows = inRange(stats.latencyHistory);
   // ET5: the session-gap for the fatigue-drift analysis is configurable (a gap
   // longer than this splits practice sessions). Local to this screen.
   const [fatigueGapMin, setFatigueGapMin] = useState(30);
@@ -413,13 +423,21 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   // spectacular each one was -- see evCostSummary's own header for why that
   // ranking is the useful one.
   //
-  // NOT filtered by the selected time range, and the section says so: these rows
-  // carry no date, for the same reason latencyHistory's don't -- they are written
-  // by applyEvents, which is pure and has no clock. `unpricedMistakes` is stated
-  // alongside so the list never reads as the whole picture: a missed deviation is
-  // a real mistake with no honest price (the EV engine is count-blind), and it is
-  // counted under Mistake types above but cannot appear here.
-  const evCost = evCostSummary(stats.evCost.history);
+  // V3-5: these rows now carry a date (GradedEvent.at, stamped by the calling
+  // component -- applyEvents is pure and still has no clock of its own), so the
+  // section finally answers the range picker like the rest of the screen.
+  // Rows written before V3-5 have no date; filterByRange keeps them on "all
+  // time" and drops them from a bounded range, and `evCostUndated` below says
+  // how many were dropped so a narrowed window cannot look like a cheap month.
+  //
+  // `unpricedMistakes` is stated alongside so the list never reads as the whole
+  // picture: a missed deviation is a real mistake with no honest price (the EV
+  // engine is count-blind), and it is counted under Mistake types above but
+  // cannot appear here.
+  const evCostRows = inRange(stats.evCost.history);
+  const evCostUndated =
+    range.id === 'all' ? 0 : stats.evCost.history.filter((r) => !r.date).length;
+  const evCost = evCostSummary(evCostRows);
   const totalMistakes = MISTAKE_ORDER.reduce((sum, cls) => sum + stats.mistakes[cls], 0);
   const unpricedMistakes = Math.max(0, totalMistakes - evCost.priced);
 
@@ -493,7 +511,25 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
     ...stats.countDrill.history.map((h) => ({ date: h.date, correct: h.correct })),
     ...stats.timedCount.history.map((h) => ({ date: h.date, correct: h.correct })),
   ];
-  const fatigue = fatigueDrift(countingResults, { gapMs: fatigueGapMin * 60 * 1000, minPerSession: 6 });
+  const fatigueOpts = { gapMs: fatigueGapMin * 60 * 1000, minPerSession: 6 };
+  const fatigue = fatigueDrift(countingResults, fatigueOpts);
+  // V3-5: the other half of the vigilance decrement. Accuracy is the LATE
+  // signal -- what goes first is pace, and a session you finished perfectly but
+  // two seconds slower was already costing you. Only dated latency rows can be
+  // grouped into sessions, so this reads empty until V3-5 answers accumulate,
+  // which is the honest state rather than a drift computed from nothing.
+  const datedLatency: DatedLatency[] = latencyRows.flatMap((r) =>
+    r.date === undefined ? [] : [{ date: r.date, elapsedMs: r.elapsedMs }],
+  );
+  const pace = latencyDrift(datedLatency, fatigueOpts);
+  const paceVerdict =
+    pace.driftMs === null
+      ? null
+      : pace.driftMs >= 500
+        ? 'slower late'
+        : pace.driftMs <= -500
+          ? 'faster late'
+          : 'holds pace';
   const fatigueVerdict =
     fatigue.drift === null
       ? null
@@ -618,9 +654,12 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
             // R1: median decision time for this category, sourced from
             // whichever drills currently capture elapsedMs (flashcards +
             // deviation quiz) -- entries lacking it (e.g. table play) never
-            // reach latencyHistory at all (see stats.ts applyEvents), so no
-            // extra filtering is needed here beyond matching the category.
-            const latencyMs = medianLatency(stats.latencyHistory.filter((e) => e.category === cat));
+            // reach latencyHistory at all (see stats.ts applyEvents), so the
+            // only filtering needed is the category and, since V3-5, the
+            // selected range. Undated rows predate V3-5 and are kept on "all
+            // time" only, so this figure no longer disagrees with the accuracy
+            // printed on the same line.
+            const latencyMs = medianLatency(latencyRows.filter((e) => e.category === cat));
             return (
               <div className="category-row" key={cat}>
                 <div className="category-row-top">
@@ -765,7 +804,9 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
               {unpricedMistakes > 0
                 ? ` ${unpricedMistakes} further ${unpricedMistakes === 1 ? 'mistake is' : 'mistakes are'} counted above but unpriced: a missed or mistimed index has no honest number here, because this arithmetic cannot see the count.`
                 : ''}{' '}
-              All time — these rows carry no date, so the range picker does not narrow them.
+              {evCostUndated > 0
+                ? ` ${evCostUndated} priced ${evCostUndated === 1 ? 'mistake predates' : 'mistakes predate'} decision dating and cannot be placed in this range; widen it to "All time" to include ${evCostUndated === 1 ? 'it' : 'them'}.`
+                : ''}
             </p>
           </>
         )}
@@ -1032,6 +1073,47 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
                 <span>
                   {(fatigue.drift > 0 ? '+' : '') + Math.round(fatigue.drift * 100)}%{' '}
                   {fatigueVerdict ? `(${fatigueVerdict})` : ''}
+                </span>
+              </li>
+            </ul>
+          </>
+        )}
+
+        {/*
+          V3-5: PACE, over the same sessions.
+          Accuracy is the late signal. What goes first as you tire is how long
+          each answer takes, so a session finished at the same accuracy and two
+          seconds slower is a decrement the block above cannot see. This reads
+          from the timed drills (flashcards, deviation quiz), which is a
+          different population from the counting runs above -- so it gets its
+          own sample counts rather than borrowing that block's.
+        */}
+        {pace.driftMs === null ? (
+          <p className="stats-detail">
+            No dated answer times in this range yet — pace drift needs several timed flashcard or
+            quiz answers in one sitting.
+          </p>
+        ) : (
+          <>
+            <p className="stats-detail">
+              Early vs late ANSWER TIME within a session — the decrement that shows up before
+              accuracy does. ({pace.sessions} session{pace.sessions === 1 ? '' : 's'},{' '}
+              {pace.samples} answers)
+            </p>
+            <ul className="mistake-list">
+              <li className="mistake-row">
+                <span>Early-session pace</span>
+                <span>{formatLatency(pace.frontMedianMs)}</span>
+              </li>
+              <li className="mistake-row">
+                <span>Late-session pace</span>
+                <span>{formatLatency(pace.backMedianMs)}</span>
+              </li>
+              <li className="mistake-row">
+                <span>Pace drift</span>
+                <span className="mistake-value">
+                  {(pace.driftMs > 0 ? '+' : '') + (pace.driftMs / 1000).toFixed(1)}s{' '}
+                  {paceVerdict ? `(${paceVerdict})` : ''}
                 </span>
               </li>
             </ul>

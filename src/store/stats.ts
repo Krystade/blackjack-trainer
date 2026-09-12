@@ -102,7 +102,15 @@ export function applyEvents(stats: Stats, events: GradedEvent[]): Stats {
         result.latencyHistory = [...stats.latencyHistory];
         latencyCopied = true;
       }
-      result.latencyHistory.push({ category: event.category, elapsedMs: event.elapsedMs });
+      // V3-5: carry the caller's timestamp through when there is one. Absent
+      // stays absent -- an undated row is honest about being undated, and
+      // inventing a date here would need a clock this pure function must not
+      // have.
+      result.latencyHistory.push({
+        category: event.category,
+        elapsedMs: event.elapsedMs,
+        ...(event.at === undefined ? {} : { date: event.at }),
+      });
     }
 
     // V3-8 (docs/BACKLOG.md): append to the EV-cost history only when the
@@ -122,6 +130,7 @@ export function applyEvents(stats: Stats, events: GradedEvent[]): Stats {
         taken: event.taken,
         expected: event.expected,
         units: event.evCost,
+        ...(event.at === undefined ? {} : { date: event.at }),
       });
     }
   }
