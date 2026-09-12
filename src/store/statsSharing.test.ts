@@ -111,3 +111,78 @@ describe('applyEvents structural sharing', () => {
     expect(after.latencyHistory).toBe(before.latencyHistory);
   });
 });
+
+/**
+ * V3-8 (docs/BACKLOG.md): the EV-cost history follows latencyHistory's rule
+ * exactly -- appended only when the grader actually priced the mistake, shared
+ * untouched when it did not. An unpriced mistake coerced to a 0-unit row would
+ * be worse than no row: it would report a missed deviation as a free one and
+ * drag the average cost per mistake toward nothing.
+ */
+describe('applyEvents evCost history', () => {
+  const priced = {
+    ...event,
+    hand: 'hard-19-v-6',
+    taken: 'hit',
+    expected: 'stand',
+    evCost: 0.45,
+  } as GradedEvent;
+
+  it('appends a row for a priced mistake, with what it cost', () => {
+    const before = seededStats();
+    const after = applyEvents(before, [priced]);
+
+    expect(after.evCost.history).toHaveLength(1);
+    expect(after.evCost.history[0]).toEqual({
+      category: 'hard',
+      hand: 'hard-19-v-6',
+      taken: 'hit',
+      expected: 'stand',
+      units: 0.45,
+    });
+  });
+
+  it('shares the history untouched when nothing was priced', () => {
+    const before = seededStats();
+    const after = applyEvents(before, [event]);
+    expect(after.evCost).toBe(before.evCost);
+    expect(after.evCost.history).toHaveLength(0);
+  });
+
+  it('does not write a row for an unpriced mistake, not even a zero one', () => {
+    const before = seededStats();
+    // A missed deviation: graded wrong, deliberately unpriced.
+    const missed = { ...event, classification: 'missed-deviation' } as GradedEvent;
+    const after = applyEvents(before, [missed]);
+
+    expect(after.mistakes['missed-deviation']).toBe(1);
+    expect(after.evCost.history).toHaveLength(0);
+  });
+
+  /** A mistake that genuinely cost nothing is a row, and 0 is its honest price. */
+  it('writes a row for a mistake priced at exactly zero', () => {
+    const before = seededStats();
+    const free = { ...priced, evCost: 0 } as GradedEvent;
+    const after = applyEvents(before, [free]);
+
+    expect(after.evCost.history).toHaveLength(1);
+    expect(after.evCost.history[0]!.units).toBe(0);
+  });
+
+  it('omits `hand` rather than inventing one when the event carried none', () => {
+    const before = seededStats();
+    const anonymous = { ...priced, hand: undefined } as GradedEvent;
+    const after = applyEvents(before, [anonymous]);
+
+    expect(after.evCost.history[0]).not.toHaveProperty('hand');
+  });
+
+  it('leaves the input history untouched across several priced events', () => {
+    const before = seededStats();
+    const after = applyEvents(before, [priced, priced, priced]);
+
+    expect(before.evCost.history).toHaveLength(0);
+    expect(after.evCost.history).toHaveLength(3);
+    expect(after.evCost.history).not.toBe(before.evCost.history);
+  });
+});

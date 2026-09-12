@@ -5,6 +5,7 @@ import {
   signedErrorBreakdown,
   medianLatency,
   distractionSummary,
+  evCostSummary,
 } from './drillStats';
 
 describe('summarize', () => {
@@ -205,5 +206,117 @@ describe('distractionSummary', () => {
       answerAccuracyPct: 100,
       countKeptPct: 100,
     });
+  });
+});
+
+describe('evCostSummary (V3-8: where the units went)', () => {
+  const row = (hand: string, expected: string, taken: string, units: number) => ({
+    hand,
+    expected,
+    taken,
+    units,
+  });
+
+  it('reports nothing rather than zero when no mistake was ever priced', () => {
+    const summary = evCostSummary([]);
+    expect(summary.priced).toBe(0);
+    expect(summary.unitsTotal).toBe(0);
+    // null, not 0: a zero mean would read as "my mistakes are free".
+    expect(summary.meanUnits).toBeNull();
+    expect(summary.worst).toEqual([]);
+  });
+
+  it('groups the same mistake on the same hand and counts the repeats', () => {
+    const summary = evCostSummary([
+      row('soft-18-v-2', 'double', 'stand', 0.004),
+      row('soft-18-v-2', 'double', 'stand', 0.004),
+      row('soft-18-v-2', 'double', 'stand', 0.004),
+    ]);
+
+    expect(summary.priced).toBe(3);
+    expect(summary.worst).toHaveLength(1);
+    expect(summary.worst[0]!.times).toBe(3);
+    expect(summary.worst[0]!.unitsEach).toBeCloseTo(0.004, 10);
+    expect(summary.worst[0]!.unitsTotal).toBeCloseTo(0.012, 10);
+  });
+
+  it('keeps two different wrong answers on one hand apart', () => {
+    // Hitting a 19 and doubling it are not the same habit and must not merge.
+    const summary = evCostSummary([
+      row('hard-19-v-6', 'stand', 'hit', 0.45),
+      row('hard-19-v-6', 'stand', 'double', 0.9),
+    ]);
+
+    expect(summary.worst).toHaveLength(2);
+    expect(summary.worst[0]!.taken).toBe('double');
+  });
+
+  /**
+   * The ranking decision this helper exists to make. A cheap habit repeated is
+   * worth more than a dear mistake made once, and a per-occurrence ranking --
+   * the obvious implementation -- would print them in exactly the wrong order.
+   */
+  it('ranks a cheap habit above a spectacular one-off when it costs more in total', () => {
+    const history = [
+      ...Array.from({ length: 40 }, () => row('soft-18-v-2', 'double', 'stand', 0.0044)),
+      row('pair-10-v-8', 'stand', 'double', 0.1),
+    ];
+    const summary = evCostSummary(history);
+
+    expect(summary.worst[0]!.hand).toBe('soft-18-v-2');
+    expect(summary.worst[0]!.unitsTotal).toBeCloseTo(0.176, 10);
+    // ...even though each individual instance is worth a twentieth as much.
+    expect(summary.worst[0]!.unitsEach).toBeLessThan(summary.worst[1]!.unitsEach);
+  });
+
+  it('totals and averages over every priced mistake, grouped or not', () => {
+    const summary = evCostSummary([
+      row('hard-19-v-6', 'stand', 'hit', 0.4),
+      row('hard-19-v-6', 'stand', 'hit', 0.4),
+      row('hard-14-v-6', 'stand', 'hit', 0.2),
+    ]);
+
+    expect(summary.unitsTotal).toBeCloseTo(1.0, 10);
+    expect(summary.meanUnits).toBeCloseTo(1 / 3, 10);
+  });
+
+  it('caps the list and keeps the order stable across equal totals', () => {
+    const history = [
+      row('a', 'stand', 'hit', 0.5),
+      row('b', 'stand', 'hit', 0.5),
+      row('c', 'stand', 'hit', 0.5),
+      row('d', 'stand', 'hit', 0.1),
+    ];
+    const first = evCostSummary(history, 2);
+    const second = evCostSummary([...history].reverse(), 2);
+
+    expect(first.worst.map((r) => r.hand)).toEqual(['a', 'b']);
+    // Reversing the input must not reshuffle a tie: a list that reorders
+    // between renders reads as noise rather than as a ranking.
+    expect(second.worst.map((r) => r.hand)).toEqual(['a', 'b']);
+  });
+
+  /**
+   * A mistake that genuinely cost nothing (the chart and the arithmetic disagree
+   * by a rounding error on two or three cells -- see engine/handEv.test.ts) is a
+   * real, priced row worth 0. It must survive into the summary and sort last,
+   * not be mistaken for an unpriced one and dropped.
+   */
+  it('keeps a priced-at-zero mistake as a row, ranked last', () => {
+    const summary = evCostSummary([
+      row('soft-13-v-5', 'double', 'hit', 0),
+      row('hard-19-v-6', 'stand', 'hit', 0.45),
+    ]);
+
+    expect(summary.priced).toBe(2);
+    expect(summary.worst).toHaveLength(2);
+    expect(summary.worst[1]!.hand).toBe('soft-13-v-5');
+    expect(summary.worst[1]!.unitsTotal).toBe(0);
+  });
+
+  it('carries a row with no hand identity rather than inventing one', () => {
+    const summary = evCostSummary([{ expected: 'stand', taken: 'hit', units: 0.3 }]);
+    expect(summary.worst[0]!.hand).toBeUndefined();
+    expect(summary.worst[0]!.unitsTotal).toBe(0.3);
   });
 });

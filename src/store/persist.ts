@@ -174,6 +174,11 @@ function mergeStats(parsed: Record<string, unknown>): Stats {
       typeof p.produceTc === 'object' && p.produceTc !== null
         ? { ...base.produceTc, ...p.produceTc }
         : base.produceTc,
+    // V3-8 (docs/BACKLOG.md, what the mistake cost): same backfill idiom.
+    evCost:
+      typeof p.evCost === 'object' && p.evCost !== null
+        ? { ...base.evCost, ...p.evCost }
+        : base.evCost,
   });
 }
 

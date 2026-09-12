@@ -37,6 +37,18 @@ describe('mergeStats — nested array hardening', () => {
     expect(loadStats().pairCancel.history).toEqual([]);
   });
 
+  /**
+   * V3-8's evCost section is shaped as `{ history: [...] }` specifically so
+   * repairStats and capHistories, which both walk every section with a
+   * `history` key, cover it without either one naming it. This pins that: if the
+   * section is ever reshaped into a bare array, the generic repair stops
+   * reaching it and a corrupt blob crashes the Stats screen again.
+   */
+  it('repairs the EV-cost history through the same generic sweep', () => {
+    store.map.set('bjtrainer.stats.v1', JSON.stringify({ version: 1, evCost: { history: null } }));
+    expect(loadStats().evCost.history).toEqual([]);
+  });
+
   it('keeps a valid history intact', () => {
     const entry = { date: '1', cards: 52, intervalMs: 800, correct: true };
     store.map.set('bjtrainer.stats.v1', JSON.stringify({ version: 1, countDrill: { history: [entry] } }));

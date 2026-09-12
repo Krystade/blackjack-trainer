@@ -63,11 +63,20 @@ test('S17 profile: the dealer stands on a two-card soft 17 (seed-hunt for an A,6
   // regardless of the profile's rules.decks — see report concerns), so a
   // seed-hunt over 1..60 (as used elsewhere in this suite for a much-more-
   // common ten-value pair) is not reliable here: it can come up empty ~50%
-  // of the time. Widened to 1..250 (offline-verified via a standalone replay
-  // of the exact mulberry32+Fisher-Yates algorithm in cards.ts: the first
-  // hit is deterministically at seed=244, dealer up=6/hole=A, no earlier
-  // seed matches) so this test is reliable rather than merely probable.
-  test.setTimeout(120_000);
+  // of the time. Offline-verified via a standalone replay of the exact
+  // mulberry32+Fisher-Yates algorithm in cards.ts: the first hit is
+  // deterministically at seed=244 (dealer up=6, hole=A), no earlier seed
+  // matches.
+  //
+  // The hunt therefore STARTS at the known hit rather than walking up to it.
+  // Playing 243 losing rounds to reach it took ~60s alone and blew the 120s
+  // budget under a full-suite run — a flake with no diagnostic value, since the
+  // seed is deterministic. The window is kept a few seeds wide so a genuine
+  // engine change fails loudly here ("no A,6 dealer hand"), which is the signal
+  // to re-derive the seed offline and widen this range again.
+  const FIRST_SEED = 244;
+  const LAST_SEED = 250;
+  test.setTimeout(60_000);
   // feedbackMode 'test' (not the default 'training') so a deliberately
   // sub-optimal Stand doesn't pop the training wrong-play overlay — this
   // test only cares about the dealer's own hit/stand behavior.
@@ -75,7 +84,7 @@ test('S17 profile: the dealer stands on a two-card soft 17 (seed-hunt for an A,6
   await withProfile(page, { name: 'S17 Test Profile', rules: { s17: true } });
 
   let foundSeed: number | null = null;
-  for (let seed = 1; seed <= 250 && foundSeed === null; seed++) {
+  for (let seed = FIRST_SEED; seed <= LAST_SEED && foundSeed === null; seed++) {
     await page.goto(`/?seed=${seed}&e2e=1`);
     await page.getByRole('button', { name: 'Play', exact: true }).click();
     await page.getByRole('button', { name: 'Deal', exact: true }).click();
@@ -100,7 +109,10 @@ test('S17 profile: the dealer stands on a two-card soft 17 (seed-hunt for an A,6
     }
   }
 
-  expect(foundSeed, 'expected at least one of seeds 1..250 to deal the dealer an A,6 two-card hand').not.toBeNull();
+  expect(
+    foundSeed,
+    `expected a dealer A,6 two-card hand in seeds ${FIRST_SEED}..${LAST_SEED} — if the shoe algorithm changed, re-derive the first hitting seed offline and move this window`,
+  ).not.toBeNull();
   console.log(`[s17-seed-hunt] found dealer A,6 at seed=${foundSeed}`);
 
   // S17 is on: the dealer must stand on this soft 17 rather than hitting a third card.

@@ -14,8 +14,12 @@
  * top of the returned GradedEvent.
  */
 
-import type { GradedEvent, EventSource } from '../engine/grade';
+import type { GradedEvent, EventSource, MistakeClass } from '../engine/grade';
 import { classifyAction, actionCategory, classifyInsurance } from '../engine/grade';
+import { actionEvs, evCostBetween } from '../engine/handEv';
+import type { Card, Rank } from '../engine/cards';
+import type { Advice } from '../engine/strategy';
+import type { EvAction } from '../engine/handEv';
 import type { PlayContext } from '../engine/strategy';
 import { correctPlay, basicPlay } from '../engine/strategy';
 import type { RuleSet } from '../engine/ruleset';
@@ -109,6 +113,39 @@ export function cellCategory(cellId: string, correct: Action): 'hard' | 'soft' |
   return 'pairs';
 }
 
+
+/**
+ * What a wrong hand decision cost, in units -- or `undefined` when pricing it
+ * would be dishonest.
+ *
+ * Shared by both builders below so flashcards and the quiz cannot disagree about
+ * when a cost exists. The abstentions are listed in `GradedEvent.evCost`'s own
+ * doc; the gate here is simply that ONLY a `basic-error` gets a number, which is
+ * exactly the set of wrong answers where no index is involved on either side.
+ *
+ * That single check covers all of them. `correct` is not a basic-error, so a
+ * correct answer is unpriced. `missed-deviation` and `wrong-anyway` mean the
+ * count called for an index, and the EV engine is count-blind by construction --
+ * it would price the index play as the worse one and report a missed deviation as
+ * free. `phantom-deviation` is the mirror: the player deviated below the
+ * threshold, and a count-blind engine prices that at neutral-count weights, which
+ * overstates what it actually cost at the count they were at.
+ */
+function priceMistake(
+  cards: Card[],
+  up: Rank,
+  ctx: PlayContext,
+  rules: RuleSet,
+  expected: Advice,
+  taken: string,
+  classification: MistakeClass,
+): number | undefined {
+  if (classification !== 'basic-error') return undefined;
+  const evs = actionEvs(cards, up, ctx, rules);
+  const cost = evCostBetween(evs, expected.action as EvAction, taken as EvAction);
+  return cost ?? undefined;
+}
+
 /**
  * Build the GradedEvent + correct action for a flashcard answer. Pure: no
  * weight/stats writes, no audio. `elapsedMs` (R1) is captured by the caller
@@ -144,6 +181,7 @@ export function buildFlashcardEvent(
     tc: 0,
     hand: card.cellId,
     elapsedMs,
+    evCost: priceMistake(card.cards, card.up, ctx, rules, withCount, taken, classification),
   };
 
   return { event, correctAction: withCount.action, correct };
@@ -194,6 +232,7 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet, el
     tc: item.tc,
     hand: item.label,
     elapsedMs,
+    evCost: priceMistake(item.cards, item.up, ctx, rules, withCount, taken, classification),
   };
 }
 

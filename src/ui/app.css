@@ -1536,6 +1536,16 @@ button {
   font-size: 0.85rem;
 }
 
+/* V3-8 "Cost of mistakes": the price column must not wrap. Left to the plain
+   space-between above, a long description squeezes "0.435 u" onto two lines and
+   the column of figures stops reading as a column. */
+.mistake-value {
+  flex: 0 0 auto;
+  margin-left: 0.75rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Stats: count-drill history & sessions ---------- */
 
 .count-history-list,

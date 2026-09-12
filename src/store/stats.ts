@@ -35,6 +35,7 @@ export function applyEvents(stats: Stats, events: GradedEvent[]): Stats {
   let perIndexCopied = false;
   let latencyCopied = false;
   let bySourceCopied = false;
+  let evCostCopied = false;
 
   for (const event of events) {
     // Update category tallies. The tally object itself is copied, not
@@ -102,6 +103,26 @@ export function applyEvents(stats: Stats, events: GradedEvent[]): Stats {
         latencyCopied = true;
       }
       result.latencyHistory.push({ category: event.category, elapsedMs: event.elapsedMs });
+    }
+
+    // V3-8 (docs/BACKLOG.md): append to the EV-cost history only when the
+    // grader actually priced the mistake. Exactly the latencyHistory rule and
+    // for exactly the same reason -- `evCost` is absent for a correct answer,
+    // for anything a deviation touches, and for an action the hand could not
+    // take (see engine/grade.ts), and coercing any of those to 0 would report
+    // an unpriced mistake as a free one and drag every average toward nothing.
+    if (event.evCost !== undefined) {
+      if (!evCostCopied) {
+        result.evCost = { history: [...stats.evCost.history] };
+        evCostCopied = true;
+      }
+      result.evCost.history.push({
+        category: event.category,
+        ...(event.hand === undefined ? {} : { hand: event.hand }),
+        taken: event.taken,
+        expected: event.expected,
+        units: event.evCost,
+      });
     }
   }
 

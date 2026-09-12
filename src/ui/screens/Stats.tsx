@@ -11,7 +11,8 @@ import {
   bestSecondsPerDeck,
   signedErrorBreakdown,
   medianLatency,
-  distractionSummary } from '../../store/drillStats';
+  distractionSummary,
+  evCostSummary } from '../../store/drillStats';
 import type { Category, MistakeClass } from '../../engine/grade';
 import { indexSetFor } from '../../engine/deviations';
 import { useAudio } from '../../audio/useAudio';
@@ -222,6 +223,7 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Accuracy by category': 'play',
   'Illustrious 18': 'play',
   'Mistake types': 'play',
+  'Cost of mistakes': 'play',
   'Bet / sit / leave': 'play',
   'Flashcards': 'drills',
   'Count drill': 'drills',
@@ -236,6 +238,27 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Downswing (tilt inoculation)': 'progress',
   'Endurance / fatigue': 'progress',
   'Sessions': 'progress' };
+
+/**
+ * Turn whatever a GradedEvent carried as `hand` into something readable.
+ *
+ * The flashcard drill passes a cell id ("hard-19-v-6"); the deviation quiz
+ * passes its own prose label, which is already readable and is left alone. A
+ * shape this function does not recognise is printed verbatim rather than
+ * mangled -- an unfamiliar id is better read raw than reformatted wrongly.
+ */
+function handLabel(hand: string | undefined): string {
+  if (!hand) return 'Unidentified hand';
+  const m = /^(hard|soft|pair)-([0-9]+|A)-v-([0-9]+|A)$/.exec(hand);
+  if (!m) return hand;
+  const kind = m[1];
+  const value = m[2];
+  const up = m[3];
+  // "8,8 v 10" is how a pair is written everywhere else in the app, and it
+  // sidesteps pluralising "a pair of As".
+  if (kind === 'pair') return `${value},${value} v ${up}`;
+  return `${kind === 'hard' ? 'Hard' : 'Soft'} ${value} v ${up}`;
+}
 
 export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProps) {
   const [stats, setStats] = useState<StatsData>(() => loadStats());
@@ -337,6 +360,21 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   const timedCountSummary = summarize(stats.timedCount.history);
   const timedCountBest = bestSecondsPerDeck(stats.timedCount.history);
   const timedCountRecent = stats.timedCount.history.slice(-5).reverse();
+
+  // V3-8 (docs/BACKLOG.md, "decision drills grade strictly binary"): what the
+  // mistakes actually COST, ranked by total units lost rather than by how
+  // spectacular each one was -- see evCostSummary's own header for why that
+  // ranking is the useful one.
+  //
+  // NOT filtered by the selected time range, and the section says so: these rows
+  // carry no date, for the same reason latencyHistory's don't -- they are written
+  // by applyEvents, which is pure and has no clock. `unpricedMistakes` is stated
+  // alongside so the list never reads as the whole picture: a missed deviation is
+  // a real mistake with no honest price (the EV engine is count-blind), and it is
+  // counted under Mistake types above but cannot appear here.
+  const evCost = evCostSummary(stats.evCost.history);
+  const totalMistakes = MISTAKE_ORDER.reduce((sum, cls) => sum + stats.mistakes[cls], 0);
+  const unpricedMistakes = Math.max(0, totalMistakes - evCost.priced);
 
   // D1 part 2 (docs/BACKLOG.md, distraction training): answer accuracy and
   // count-survival are reported separately -- see distractionSummary's own
@@ -640,6 +678,44 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className="stats-section" data-tab={SECTION_TAB['Cost of mistakes']}>
+        <h2 className="stats-section-title">Cost of mistakes</h2>
+        {evCost.priced === 0 ? (
+          <p className="stats-detail">
+            No priced mistakes yet. Basic-strategy errors in the flashcard and deviation drills get
+            a price in units of your base bet; keep drilling and the expensive habits will show up
+            here.
+          </p>
+        ) : (
+          <>
+            <p className="stats-detail">
+              {evCost.priced} priced {evCost.priced === 1 ? 'mistake' : 'mistakes'}, costing{' '}
+              <strong>{evCost.unitsTotal.toFixed(2)} units</strong> in total —{' '}
+              {evCost.meanUnits!.toFixed(3)} each on average.
+            </p>
+            <ul className="mistake-list">
+              {evCost.worst.map((row) => (
+                <li className="mistake-row" key={row.key}>
+                  <span>
+                    {handLabel(row.hand)}: {row.taken} instead of {row.expected}
+                    {row.times > 1 ? ` (×${row.times})` : ''}
+                  </span>
+                  <span className="mistake-value">{row.unitsTotal.toFixed(3)} u</span>
+                </li>
+              ))}
+            </ul>
+            <p className="stats-detail">
+              Ranked by total cost, so a cheap habit repeated outranks one spectacular slip. Prices
+              are exact for an infinite deck at a neutral count.
+              {unpricedMistakes > 0
+                ? ` ${unpricedMistakes} further ${unpricedMistakes === 1 ? 'mistake is' : 'mistakes are'} counted above but unpriced: a missed or mistimed index has no honest number here, because this arithmetic cannot see the count.`
+                : ''}{' '}
+              All time — these rows carry no date, so the range picker does not narrow them.
+            </p>
+          </>
+        )}
       </section>
 
       <section className="stats-section" data-tab={SECTION_TAB['Count drill']}>

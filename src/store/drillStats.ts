@@ -142,3 +142,89 @@ export function distractionSummary(
     countKeptPct: (countKeptCount / attempts) * 100,
   };
 }
+
+/**
+ * V3-8 (docs/BACKLOG.md): where the units are actually going.
+ *
+ * Binary grading can only say which cells were missed. This ranks them by what
+ * they COST -- and by total cost, not cost per occurrence, because that is the
+ * question a learner is really asking. Standing on soft 18 v 2 is worth four
+ * thousandths of a bet; doing it forty times a week costs more than the one
+ * spectacular double on a pair of tens that everybody remembers. A per-hand
+ * ranking would put the memorable mistake first and the expensive habit nowhere.
+ *
+ * Only PRICED mistakes appear (see types.ts's `evCost` history): a missed
+ * deviation has no honest number, so it is absent here and must be read from the
+ * `mistakes` tally instead. `priced` is stated alongside so a caller can say how
+ * much of the picture this is rather than implying it is all of it.
+ */
+export interface EvCostRow {
+  /** Group identity: the same hand answered the same wrong way. */
+  key: string;
+  hand?: string;
+  taken: string;
+  expected: string;
+  /** How many times this exact mistake was made. */
+  times: number;
+  /** Units of the original bet, per occurrence. */
+  unitsEach: number;
+  /** times x unitsEach -- what this habit has cost in total. */
+  unitsTotal: number;
+}
+
+export interface EvCostSummary {
+  /** Priced mistakes counted. NOT the total number of mistakes made. */
+  priced: number;
+  /** Units lost across every priced mistake. */
+  unitsTotal: number;
+  /** Mean units per priced mistake, or null when none were priced. */
+  meanUnits: number | null;
+  /** Most expensive habits first, by total units lost. */
+  worst: EvCostRow[];
+}
+
+export function evCostSummary(
+  history: { hand?: string; taken: string; expected: string; units: number }[],
+  limit = 5,
+): EvCostSummary {
+  const groups = new Map<string, EvCostRow>();
+  let unitsTotal = 0;
+
+  for (const entry of history) {
+    unitsTotal += entry.units;
+    const key = `${entry.hand ?? ''}|${entry.expected}|${entry.taken}`;
+    const row = groups.get(key);
+    if (row) {
+      row.times += 1;
+      row.unitsTotal += entry.units;
+      // Averaged rather than overwritten: two entries under one key should
+      // always carry the same price, and if a rules change ever makes them
+      // differ, the mean is the honest summary of what actually happened.
+      row.unitsEach = row.unitsTotal / row.times;
+      continue;
+    }
+    groups.set(key, {
+      key,
+      ...(entry.hand === undefined ? {} : { hand: entry.hand }),
+      taken: entry.taken,
+      expected: entry.expected,
+      times: 1,
+      unitsEach: entry.units,
+      unitsTotal: entry.units,
+    });
+  }
+
+  const worst = [...groups.values()].sort(
+    // Ties broken by frequency then key, so the order is stable rather than
+    // dependent on insertion -- a list that reshuffles between renders reads
+    // as noise.
+    (a, b) => b.unitsTotal - a.unitsTotal || b.times - a.times || a.key.localeCompare(b.key),
+  );
+
+  return {
+    priced: history.length,
+    unitsTotal,
+    meanUnits: history.length === 0 ? null : unitsTotal / history.length,
+    worst: worst.slice(0, limit),
+  };
+}

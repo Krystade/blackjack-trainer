@@ -45,6 +45,39 @@ export interface GradedEvent {
    * tallies without disturbing the pooled `categories` view.
    */
   source?: EventSource;
+
+  /**
+   * What this mistake cost, in units of the original bet, or absent when the
+   * question does not have an honest answer. V3-8 in docs/BACKLOG.md: grading is
+   * otherwise binary, so standing on 16 against a ten (worth about six
+   * ten-thousandths of a bet) scores exactly like hitting a hard 20 (worth about
+   * half of one), and a learner cannot tell which of their mistakes is actually
+   * costing them anything.
+   *
+   * ABSENT, DELIBERATELY, in three cases, because a number here would be worse
+   * than no number:
+   *
+   *   - correct answers. Zero cost and no cost are different things, and a zero
+   *     would land in every average.
+   *   - anything involving a deviation (`missed-deviation`, `phantom-deviation`,
+   *     or a correct play that came from the index set). The EV engine is
+   *     count-blind by construction -- infinite deck, no composition -- so at a
+   *     count where the index applies it would price the index play as the WORSE
+   *     one, and report a missed deviation as free.
+   *   - insurance, bets, count checks and wongs, which are not hand decisions at
+   *     all.
+   *   - an action the hand could not legally take (splitting a non-pair, which
+   *     the drills' five-zone pad makes pressable on every hand). That is a real
+   *     mistake, counted as one, but "you cannot do that" is not a quantity.
+   *
+   * In code this is one line in gradeAnswer.ts's `priceMistake`: only a
+   * `basic-error` classification is priced, which is exactly the set above,
+   * inverted.
+   *
+   * Consumers must treat a missing value as "unpriced", never as zero -- the
+   * same contract as `elapsedMs` and `source` above.
+   */
+  evCost?: number;
 }
 
 /**

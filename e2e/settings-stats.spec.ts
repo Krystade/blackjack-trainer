@@ -317,3 +317,69 @@ test('settings: the Drills copies of flashcard category and count group reach th
     .poll(() => page.locator('.count-flash-cards .card').count(), { timeout: 10_000 })
     .toBe(3);
 });
+
+/**
+ * V3-8 (docs/BACKLOG.md, "decision drills grade strictly binary"): the Cost of
+ * mistakes section. Driven end-to-end rather than unit-tested alone, because the
+ * three things that can go wrong here are all integration: the section could be
+ * filed under the wrong tab and never render, the cell ids could reach the page
+ * raw ("hard-19-v-6"), and the unpriced remainder could go unmentioned so the
+ * list silently reads as the complete account of the learner's mistakes.
+ */
+test('the cost of mistakes is ranked by total units, not by how bad each one looked', async ({ page }) => {
+  const row = (hand: string, expected: string, taken: string, units: number, times: number) =>
+    Array.from({ length: times }, () => ({ category: 'hard', hand, expected, taken, units }));
+
+  await withStats(page, {
+    mistakes: {
+      correct: 300,
+      'basic-error': 21,
+      'missed-deviation': 9,
+      'phantom-deviation': 0,
+      'wrong-anyway': 0,
+    },
+    evCost: {
+      history: [
+        // A cheap habit, twenty times over: 0.088 units in total.
+        ...row('soft-18-v-2', 'double', 'stand', 0.0044, 20),
+        // One memorable disaster, worth less than the habit.
+        ...row('hard-19-v-6', 'stand', 'hit', 0.045, 1),
+      ],
+    },
+  });
+
+  await page.goto('/?e2e=1');
+  await page.locator('.home-stats-link').click();
+  await statsTab(page, 'Play');
+
+  const section = page.locator('.stats-section', { hasText: 'Cost of mistakes' });
+  await expect(section).toBeVisible();
+  await expect(section).toContainText('21 priced mistakes');
+
+  const rows = section.locator('.mistake-row');
+  await expect(rows).toHaveCount(2);
+  // The ranking claim: the repeated cheap error is first, above the dear one.
+  await expect(rows.first()).toContainText('Soft 18 v 2');
+  await expect(rows.first()).toContainText('×20');
+  await expect(rows.first()).toContainText('0.088 u');
+  await expect(rows.nth(1)).toContainText('Hard 19 v 6');
+
+  // Cell ids must be humanised, never printed raw.
+  await expect(section).not.toContainText('soft-18-v-2');
+
+  // And the list must not pass itself off as the whole account: nine missed
+  // deviations were graded and cannot honestly be priced.
+  await expect(section).toContainText('9 further mistakes are counted above but unpriced');
+
+  await shot(page, '29-stats-cost-of-mistakes');
+});
+
+test('the cost of mistakes says so plainly when nothing has been priced', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.locator('.home-stats-link').click();
+  await statsTab(page, 'Play');
+
+  const section = page.locator('.stats-section', { hasText: 'Cost of mistakes' });
+  await expect(section).toContainText('No priced mistakes yet');
+  await expect(section.locator('.mistake-row')).toHaveCount(0);
+});

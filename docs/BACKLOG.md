@@ -431,8 +431,24 @@ Fresh re-attack after the ETs shipped; 8 cited findings. Several are flaws in th
   caller; ET1/ET7 present identically to onboarding drills, contradicting the app's own competence-gate
   principle. Soft-gating/sequencing = a DESIGN CALL (the operator is an expert; gating adds friction).
 - **V3-5..8 (secondary):** ET5 ignores latency drift + spans discrete short runs; RV4 retention "due today" list ❌ DECLINED (operator 2026-08-03); retention is a single pooled number (can't accrue for ~4 calendar days); ET1's arc is a
-  100%-loss wall with a Stand-only button; decision drills grade strictly binary (a cheap error scores
-  like a catastrophe).
+  100%-loss wall with a Stand-only button; ~~decision drills grade strictly binary (a cheap error scores
+  like a catastrophe)~~ **✅ V3-8 DONE 2026-09-11**.
+  - **V3-8 · What the mistake cost.** A from-scratch EV engine prices every plain basic-strategy error
+    in units of the base bet: `src/engine/dealerOdds.ts` (exact infinite-deck dealer distribution,
+    peek-aware, validated against an independent 300k-trial Monte Carlo that shares no code with it)
+    and `src/engine/handEv.ts` (stand/hit/double/split/surrender EVs, optimal continuation on the hit
+    line). `GradedEvent.evCost` carries the number, `Stats.evCost.history` persists it, and a new
+    Stats **Cost of mistakes** section ranks the worst habits by TOTAL units lost — a cheap error made
+    forty times outranks one spectacular slip, which is the ranking a learner can act on.
+  - Three deliberate abstentions, all pinned by tests: a correct answer, anything a deviation touches
+    (the EV engine is count-blind by construction, so it would price a missed index as free), and an
+    action the hand could not legally take. Unpriced is never coerced to zero, and the section states
+    how many mistakes it could not price so the list never reads as the whole account.
+  - The cost is **visual only and stays that way**. Speaking an unbounded number would break clip
+    coverage, for the same reason settlement lines are still live TTS.
+  - Free cross-check that fell out of it: the hand-entered basic-strategy chart now has an independent
+    oracle. 330 cells x 2 rulesets, and the chart and the arithmetic disagree on only two or three
+    borderline soft-double cells, each worth under 0.008 units.
 **Top-3 (red-team):** fix the flagship ET1 (V3-1), integrated "produce a TC" drill (V3-2), picker
 sequencing/soft-gating (V3-4). Verified RV4 is genuinely wired (not a stub) before critiquing.
 

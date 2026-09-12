@@ -398,6 +398,33 @@ export interface Stats {
       correct: boolean;
     }[];
   };
+  // V3-8 (docs/BACKLOG.md, "decision drills grade strictly binary"): what each
+  // PRICED mistake cost, in units of the original bet.
+  //
+  // One row per GradedEvent carrying an `evCost` -- which engine/grade.ts
+  // deliberately restricts to a plain `basic-error` on a hand decision. So this
+  // history is NOT one row per mistake, and its length must never be read as a
+  // mistake count: `mistakes` above is the count, this is the price of the
+  // subset that can honestly be priced. Same reasoning as latencyHistory, where
+  // an untimed event is absent rather than coerced to zero.
+  //
+  // `units` is always >= 0 (see handEv.ts's evCostBetween clamp) and may be
+  // exactly 0 on the two or three cells where the hand-entered chart and the
+  // infinite-deck arithmetic disagree by a rounding error -- a wrong answer that
+  // genuinely cost nothing. Migration-safe.
+  evCost: {
+    history: {
+      category: Category;
+      /** The cell id or index label the event carried as `hand`. Optional for
+       * the same reason GradedEvent.hand is: a producer that did not identify
+       * the hand leaves it out rather than having one invented for it. */
+      hand?: string;
+      taken: string;
+      expected: string;
+      /** Units of the original bet, >= 0. */
+      units: number;
+    }[];
+  };
 }
 
 export const EMPTY_STATS: Stats = {
@@ -450,6 +477,9 @@ export const EMPTY_STATS: Stats = {
     history: [],
   },
   produceTc: {
+    history: [],
+  },
+  evCost: {
     history: [],
   },
 };
