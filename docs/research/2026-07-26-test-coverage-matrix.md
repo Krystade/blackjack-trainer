@@ -1,5 +1,36 @@
 # Functional Test-Coverage Matrix + Gap List (T0 audit)
 
+> ## ✅ CLOSED 2026-09-11 — every gap in this document is covered
+>
+> The table below is the ORIGINAL 2026-07-26 audit, kept verbatim as the record of what
+> was missing and why each row mattered. It is no longer the state of the repo: all 46
+> `❌ GAP` rows have since been closed, and re-reading the table as current will send you
+> to write tests that already exist. The audit is history; this box is the status.
+>
+> Where the last of them were closed:
+>
+> | Gap | Closed by |
+> |---|---|
+> | Real clip audio PLAYBACK (the headline gap) | `e2e/clip-playback.spec.ts` + the `chromium-audio` Playwright project. Runs without `?e2e=1` so mp3s are really fetched and played; `--mute-audio` plus an element-level `muted` guard keep it silent, which is what made it runnable at all. |
+> | Full-journey smoke run | `e2e/smoke.spec.ts` — Home → Profiles → Settings → Charts → Table → all 11 drill modes → Stats, in ~8s. |
+> | Table: surrender, insurance Take, RC+TC two-stage count check, TC peek | `e2e/game.spec.ts`, `e2e/peek-and-dealer.spec.ts` |
+> | Table: shuffle message | `e2e/game.spec.ts` — a single deck cut a tenth in reaches the cut card in one round. |
+> | Count drill: keyboard advance, Countdown mode, strict mode, distraction cadences + types, group size 2/3 | `e2e/drills.spec.ts` |
+> | True-count drill: eyes-free self-check + strict | `e2e/drills.spec.ts`, `e2e/voice-tc-drill.spec.ts` |
+> | Deck estimation: typed entry | `e2e/drills.spec.ts` |
+> | Flashcards/quiz: keyboard, inline category, dim screen (both copies), action ZonePad | `e2e/drills.spec.ts` |
+> | Eyes-free repeat (ZonePad long press) | `e2e/audio.spec.ts` — and it asserts the hold does NOT also grade an answer, which is the real risk. |
+> | Settings: every audio control (useClips, clip voice, rate → 3.0, pause → 0, card detail, voice preview) | `e2e/audio.spec.ts` |
+> | Settings: the Drills copies of flashcard category + count group | `e2e/settings-stats.spec.ts` — asserted through to the drills that read them, since two controls writing one setting is how they drift. |
+> | Stats: import success, reset, speak summary, CVCX header | `e2e/settings-stats.spec.ts` |
+> | ProfileEditor: every rule toggle, decks, penetration, bet ramp, CVCX, duplicate, delete, cancel | `e2e/profiles.spec.ts` |
+> | ProfileEditor: seats (incl. "Your seat" clamped to the bot count, bot mistakes), bankroll trio | `e2e/profiles.spec.ts`, `e2e/table-seats.spec.ts` |
+>
+> Two things this document's method could not have found, both from driving rather than
+> reading, are recorded in `docs/BACKLOG.md` under "Car / steering wheel": the head unit
+> sends `play` unprompted, and the first utterance of a session used to miss the clip
+> cache. A matrix built from source cannot see either.
+
 **Date:** 2026-07-26
 **Scope:** Every user-facing screen / drill mode / sub-mode / setting / toggle in the blackjack
 trainer, mapped to the automated test(s) that exercise it. This is the **audit/matrix phase** of
@@ -449,7 +480,10 @@ persistence in one continuous session. Sizing: **M** (long but shallow).
   list above (plus the headline clip-playback + full-journey items).
 - **✅ e2e-covered:** ~55 rows. **🟡 partial:** ~30 rows. **🔬 unit-only:** ~7 rows.
 - **Answer to the operator's question ("do we have a complete test run through every
-  functionality?"):** **No.** Coverage is strong and honest on the core play/drill/grade/telemetry
-  paths, but four whole classes are unexercised end-to-end: (1) real clip audio playback, (2) most
-  Settings audio controls, (3) most ProfileEditor rule/ramp controls, and (4) keyboard input outside
-  two drills — and there is **no single full-journey smoke run**.
+  functionality?"), as of this audit:** **No.** Coverage is strong and honest on the core
+  play/drill/grade/telemetry paths, but four whole classes are unexercised end-to-end: (1) real clip
+  audio playback, (2) most Settings audio controls, (3) most ProfileEditor rule/ramp controls, and
+  (4) keyboard input outside two drills — and there is **no single full-journey smoke run**.
+- **Answer as of 2026-09-11:** **Yes**, for every row in this document — see the status box at the
+  top for where each was closed. What a source-read matrix cannot answer stays open: whether the app
+  works in a moving car. Two real defects found only by driving are in `docs/BACKLOG.md`.

@@ -253,3 +253,67 @@ test('stats: Endurance/fatigue shows the empty state before enough back-to-back 
   await expect(section).toBeVisible();
   await expect(section).toContainText('Not enough back-to-back counting runs yet');
 });
+
+/* ------------------------------------------------------------------------ */
+/* The Settings copies of two drill controls (coverage matrix 2026-07-26)    */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Both of these controls exist TWICE: inline in the drill, and here in Settings.
+ * The inline copies are covered (drills.spec.ts), and that is exactly why these
+ * need their own test rather than being waved through as duplicates -- two
+ * controls writing one setting is how they drift, and the one nobody drives is
+ * the one that drifts. Each is asserted through to the drill that reads it.
+ */
+test('settings: the Drills copies of flashcard category and count group reach the drills that read them', async ({
+  page,
+}) => {
+  await withProfile(page, { name: 'Settings Drill Controls Profile' });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.locator('.settings-heading')).toHaveText('Settings');
+
+  const category = page.locator('.settings-row', { hasText: 'Flashcard category' });
+  await category.getByRole('button', { name: 'Pairs', exact: true }).click();
+  await expect(category.getByRole('button', { name: 'Pairs', exact: true })).toHaveClass(
+    /segmented-btn-active/,
+  );
+
+  const group = page.locator('.settings-row', { hasText: 'Count group size' });
+  await group.getByRole('button', { name: '3', exact: true }).click();
+  await expect(group.getByRole('button', { name: '3', exact: true })).toHaveClass(/segmented-btn-active/);
+
+  const saved = await page.evaluate(() => {
+    const json = window.localStorage.getItem('bjtrainer.settings.v1');
+    return json ? (JSON.parse(json) as { drill?: { flashCategory?: string; countGroup?: number } }) : null;
+  });
+  expect(saved?.drill?.flashCategory).toBe('pairs');
+  expect(saved?.drill?.countGroup).toBe(3);
+
+  // Flashcards must now DEAL pairs only -- the setting is not merely persisted,
+  // it is what the drill draws from. The graded cell id says which chart cell
+  // the hand came out of (drills/flashcards.ts: "pair-<rank>-v-<up>").
+  await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  const inline = page.locator('.settings-row', { hasText: 'Category' });
+  await expect(inline.getByRole('button', { name: 'Pairs', exact: true })).toHaveClass(
+    /segmented-btn-active/,
+  );
+  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
+  const cellId = await page.locator('.feedback-cell').innerText();
+  expect(cellId.startsWith('pair-'), `expected a pair cell, got "${cellId}"`).toBe(true);
+
+  // ...and the count drill flashes three cards at a time.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await expect(page.locator('.settings-row', { hasText: 'Group size' }).getByRole('button', { name: '3', exact: true })).toHaveClass(
+    /segmented-btn-active/,
+  );
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  // Polled, not asserted once: the flash empties between groups, so the count
+  // is 3 only while a group is up.
+  await expect
+    .poll(() => page.locator('.count-flash-cards .card').count(), { timeout: 10_000 })
+    .toBe(3);
+});

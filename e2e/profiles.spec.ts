@@ -351,3 +351,108 @@ test('profile editor Cancel discards edits (name + rule change do not persist)',
   await expect(page.locator('.profile-row-name', { hasText: 'Cancel Me' })).toBeVisible();
   await expect(page.locator('.profile-row-name', { hasText: 'CHANGED NAME' })).toHaveCount(0);
 });
+
+/* ------------------------------------------------------------------------ */
+/* The last uncovered rows of the ProfileEditor (coverage matrix 2026-07-26) */
+/* ------------------------------------------------------------------------ */
+
+/** A Stepper renders as a labelled row with -/+ buttons around its value. */
+function stepper(page: Page, label: string) {
+  return page.locator('.settings-row', { hasText: label }).locator('.stepper');
+}
+
+async function bump(page: Page, label: string, times: number): Promise<void> {
+  const s = stepper(page, label);
+  for (let i = 0; i < times; i += 1) {
+    await s.getByRole('button', { name: '+' }).click();
+  }
+}
+
+/**
+ * "Your seat" is the only stepper in the editor whose RANGE depends on another
+ * control: you cannot sit in a seat that does not exist, so its max follows the
+ * bot count. That coupling is the reason to test it -- a stepper with a fixed
+ * max needs no test, and one clamped to a sibling can silently let you save a
+ * seat the table cannot deal.
+ */
+test('profile editor seats: "Your seat" is clamped to the bot count and persists', async ({ page }) => {
+  await withProfile(page, { name: 'Seat Position Profile' });
+  await page.goto('/?e2e=1');
+  await openEditorForFirstProfile(page);
+
+  // With no bots there is one seat, so the stepper cannot move at all.
+  const seat = stepper(page, 'Your seat');
+  await expect(seat.locator('.stepper-value')).toHaveText('Seat 1 of 1');
+  await expect(seat.getByRole('button', { name: '+' })).toBeDisabled();
+
+  await bump(page, 'Bot players', 2);
+  await expect(stepper(page, 'Bot players').locator('.stepper-value')).toHaveText('2');
+
+  // Bot mistakes reads as a word at zero and a percentage above it, which is
+  // the difference between "these bots are a reference" and "these bots will
+  // mislead you if you copy them".
+  const mistakes = stepper(page, 'Bot mistakes');
+  await expect(mistakes.locator('.stepper-value')).toHaveText('Perfect');
+  await bump(page, 'Bot mistakes', 3);
+  await expect(mistakes.locator('.stepper-value')).toHaveText('3%');
+
+  // Now three seats exist, and the third is reachable.
+  await bump(page, 'Your seat', 2);
+  await expect(seat.locator('.stepper-value')).toHaveText('Seat 3 of 3');
+  await expect(seat.getByRole('button', { name: '+' })).toBeDisabled();
+
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('.settings-heading')).toHaveText('Profiles');
+
+  const saved = (await readPersistedProfiles(page))[0]!;
+  expect(saved.seats).toMatchObject({ bots: 2, playerPosition: 2, botMistakePct: 3 });
+});
+
+/**
+ * The bankroll block, which the matrix lists as never driven through its own
+ * UI. `$ per unit` is the interesting one: it is OPTIONAL, so it has an empty
+ * state that must persist as absent rather than as zero -- a zero would make
+ * every dollar figure in Stats read $0.
+ */
+test('profile editor bankroll: starting bankroll, $ per unit and count-check cadence all persist', async ({
+  page,
+}) => {
+  await withProfile(page, { name: 'Bankroll Profile' });
+  await page.goto('/?e2e=1');
+  await openEditorForFirstProfile(page);
+
+  await bump(page, 'Starting bankroll', 2); // 100 -> 150, in 25s
+  await expect(stepper(page, 'Starting bankroll').locator('.stepper-value')).toHaveText('150');
+
+  const perUnit = page.locator('.settings-row', { hasText: '$ per unit' }).locator('.profile-number-input');
+  await expect(perUnit).toHaveValue('');
+  await perUnit.fill('25');
+
+  await bump(page, 'Count check every', 3);
+  await expect(stepper(page, 'Count check every').locator('.stepper-value')).toHaveText('3 rounds');
+
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('.settings-heading')).toHaveText('Profiles');
+
+  const saved = (await readPersistedProfiles(page))[0]!;
+  expect(saved.bankrollStart).toBe(150);
+  expect(saved.unitDollars).toBe(25);
+  expect(saved.countCheckEvery).toBe(3);
+});
+
+/** And the empty state of the same field, which is a different value. */
+test('profile editor bankroll: clearing $ per unit saves no value, not zero', async ({ page }) => {
+  await withProfile(page, { name: 'Per Unit Clear Profile', unitDollars: 10 });
+  await page.goto('/?e2e=1');
+  await openEditorForFirstProfile(page);
+
+  const perUnit = page.locator('.settings-row', { hasText: '$ per unit' }).locator('.profile-number-input');
+  await expect(perUnit).toHaveValue('10');
+  await perUnit.fill('');
+
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('.settings-heading')).toHaveText('Profiles');
+
+  const saved = (await readPersistedProfiles(page))[0]!;
+  expect(saved.unitDollars).toBeUndefined();
+});

@@ -444,7 +444,14 @@ wonging → **R8** community mechanics → **R9** spot-reading → then the rest
 follow-ons). (Supersedes the original convergence order below; R6 deprioritized by the
 operator, still open.)
 
-### T0 · Complete functional test coverage (operator request 2026-07-26) — M — **NEXT**
+### T0 · Complete functional test coverage (operator request 2026-07-26) — M — **✅ COMPLETE 2026-09-11**
+All 46 `❌ GAP` rows of `docs/research/2026-07-26-test-coverage-matrix.md` are closed; that document
+now carries a status box naming the spec that closed each. The last four were the shuffle message,
+the eyes-free ZonePad long-press repeat (which also asserts a hold does not grade an answer), the
+Settings copies of two drill controls, and the ProfileEditor's seats/bankroll rows. The matrix's own
+limit is worth keeping in mind: it was built by reading source, and the two defects that actually
+mattered this month — the car's unprompted `play`, and the first utterance of a session missing the
+clip cache — were found by driving. A coverage matrix cannot contain those.
 Not "more tests" — a *coverage guarantee*: every screen, drill mode, setting/toggle, and
 shipped feature is exercised by an automated test, plus one full-journey smoke run. Known
 gaps to close: (1) **clip audio PLAYBACK is e2e-bypassed** (`?e2e=1` short-circuits it) — a

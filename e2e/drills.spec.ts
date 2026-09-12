@@ -1702,3 +1702,37 @@ test('count drill: a fluent learner gets no distraction nudge', async ({ page })
     .click();
   await expect(page.locator('.count-setup')).not.toContainText('build your count fluency first');
 });
+
+/* ==================================================================== */
+/* The last row of the 2026-07-26 coverage matrix: the Deviation Quiz's  */
+/* OWN Dim screen toggle. Its flashcards twin is covered above, and two  */
+/* controls writing one setting is exactly how they drift -- the quiz    */
+/* renders its own ZonePad, so nothing about the flashcards test proves  */
+/* the quiz's pad obeys the flag.                                       */
+/* ==================================================================== */
+
+test('deviation quiz: Dim screen hides its own ZonePad while leaving it tappable', async ({ page }) => {
+  await withSettings(page, { audio: { enabled: true } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation Quiz');
+
+  await page.getByLabel('Eyes-free audio').check();
+  const zonePad = page.locator('.zone-pad');
+  await expect(zonePad).toBeAttached();
+  await expect(zonePad).not.toHaveClass(/zone-pad-hidden/);
+
+  await page.getByLabel('Dim screen').check();
+  await expect(zonePad).toHaveClass(/zone-pad-hidden/);
+
+  // Dimmed, not gone: a tap still answers, which is the whole point of the
+  // setting -- the screen is dark in a car, the pad is not disabled.
+  const box = await zonePad.boundingBox();
+  if (!box) throw new Error('ZonePad has no bounding box');
+  await page.mouse.click(box.x + box.width * 0.25, box.y + box.height * 0.25);
+  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+
+  const settings = await readSettings(page);
+  expect((settings?.audio as { dimZones?: boolean } | undefined)?.dimZones).toBe(true);
+});

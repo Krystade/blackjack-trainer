@@ -431,3 +431,37 @@ test('R6: the discard tray fills as the shoe burns through a round', async ({ pa
   // A dealt round burns several cards, so the tray fill widens.
   await expect.poll(widthOf).toBeGreaterThan(before);
 });
+
+/**
+ * The last gap on the table row of the coverage matrix (2026-07-26, "Shuffle
+ * message"): `.message-shuffle` was never asserted anywhere.
+ *
+ * It matters more than its size suggests, because a shuffle is the one event
+ * that silently invalidates a count. A counter who misses it keeps counting a
+ * shoe that no longer exists, and the app's only tell is this strip.
+ */
+test('the shuffle message appears on the round after the cut card is reached', async ({ page }) => {
+  // A single deck cut a tenth of the way in reaches the cut card in one round,
+  // where the shipped 6-deck/0.75 profile would take dozens.
+  await withProfile(page, { name: 'Shuffle E2E Profile', rules: { decks: 1 }, penetration: 0.1 });
+  await page.goto('/?seed=3&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+
+  const shuffle = page.locator('.message-shuffle');
+  await expect(shuffle).toHaveCount(0);
+
+  // Play rounds until one announces the shuffle. Each deal that follows a
+  // shallow shoe sets it, so this lands on the second round at the latest --
+  // the loop is only for rounds that end instantly on a natural.
+  let announced = false;
+  for (let round = 0; round < 6 && !announced; round += 1) {
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await resolveInsurance(page, false);
+    if (await page.locator('.action-bar[data-advice]').isVisible().catch(() => false)) {
+      await playRoundByAdvice(page);
+    }
+    announced = await shuffle.isVisible().catch(() => false);
+  }
+  expect(announced, 'expected a shuffle to be announced within six single-deck rounds').toBe(true);
+  await expect(shuffle).toHaveText('Shuffling…');
+});

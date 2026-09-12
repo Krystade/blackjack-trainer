@@ -603,3 +603,59 @@ test('settings: Test-audio button speaks a preview and chimes good', async ({ pa
   ).toBe(true);
   expect(log).toContain('chime:good');
 });
+
+/* ---------------------------------------------------------------- */
+/* Eyes-free repeat: a long press, which must not also answer        */
+/* ---------------------------------------------------------------- */
+
+/**
+ * The last uncovered eyes-free control (coverage matrix 2026-07-26, "Repeat
+ * (eyes-free)"): holding anywhere on the ZonePad re-speaks the prompt.
+ *
+ * The risk this covers is not that repeat fails to speak -- it is that a HOLD
+ * also counts as a TAP. Every point on the pad is an answer, so a driver who
+ * holds to hear the hand again would otherwise play it, blind, with whatever
+ * zone their thumb happened to be resting on. The two assertions are therefore
+ * "the prompt was said again" AND "nothing was graded".
+ */
+test('eyes-free flashcards: a long press repeats the prompt without answering', async ({ page }) => {
+  test.setTimeout(30_000);
+  await withSettings(page, { audio: { enabled: true, verbosity: 'results' } });
+  await withProfile(page, { name: 'Audio Repeat Profile' });
+
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+
+  await page.getByLabel('Eyes-free audio').check();
+  await waitForSpeechLogMatch(page, /^You have /);
+
+  const zonePad = page.locator('.zone-pad');
+  const box = await zonePad.boundingBox();
+  if (!box) throw new Error('ZonePad has no bounding box');
+  const spoken = await readSpeechLog(page);
+  const promptsBefore = spoken.filter((l) => l.startsWith('You have ')).length;
+
+  // Hold past the 600ms long-press threshold, in the same top-left quadrant the
+  // tap test uses -- so a hold that leaked through as a tap would answer 'hit'
+  // and be unmistakable below.
+  await page.mouse.move(box.x + box.width * 0.25, box.y + box.height * 0.25);
+  await page.mouse.down();
+  await page.waitForTimeout(900);
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => (await readSpeechLog(page)).filter((l) => l.startsWith('You have ')).length, {
+      timeout: 10_000,
+      message: 'expected the hand to be spoken again',
+    })
+    .toBeGreaterThan(promptsBefore);
+
+  const after = await readSpeechLog(page);
+  expect(
+    after.filter((l) => l.startsWith('Hit') || l === 'Correct.' || l.startsWith('Wrong. ')),
+    `a hold must not grade an answer; log was ${JSON.stringify(after)}`,
+  ).toEqual([]);
+  // And the card is still the one being asked about, not a fresh one.
+  await expect(page.locator('.message-strip')).not.toContainText('Correct');
+});
