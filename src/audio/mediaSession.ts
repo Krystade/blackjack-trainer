@@ -53,11 +53,24 @@ let registered = false;
  * The mapping is deliberate rather than literal. A driver's hands are on the
  * wheel and their eyes are on the road, so the control that matters is "say
  * that again" -- not a track skip, which would be meaningless here since
- * there is no playlist. `play` and `previoustrack` therefore BOTH repeat:
- * whichever button the head unit exposes, the useful thing happens.
- * `nexttrack` and the seek actions ARE registered, but only as diagnostic
- * probes: their handlers record the event and do nothing else, so they stay
- * inert at speed while still revealing which actions this car emits.
+ * there is no playlist.
+ *
+ * `play` IS NOT A BUTTON PRESS, and this is the hard-won part. A head unit
+ * sends `play` to mean "resume", and it sends it on its own whenever it
+ * believes playback has stopped -- which is every time a clip ends, because a
+ * finished clip is a finished track as far as the car can tell. Mapped to
+ * repeat, as it was, that closed a loop: repeat spoke a clip, the clip ended,
+ * the car asked to resume, repeat spoke it again. The drive of 2026-09-11
+ * logged exactly that -- nine `play` invokes at five-second intervals with
+ * nobody touching anything, and a question that would not stop repeating long
+ * enough to be answered. So `play` is registered (refusing it would hand the
+ * slot back to whatever was playing before) and deliberately does nothing.
+ *
+ * The discrete buttons carry the actions instead: `previoustrack` and
+ * `nexttrack` both repeat -- a car sends neither of its own accord, so either
+ * one arriving is a real press -- and `pause`/`stop` stop the speech. The
+ * same drive confirmed this car emits `nexttrack` and `pause`, which is why
+ * they are no longer inert probes.
  */
 export function initMediaSession(handlers: MediaSessionHandlers): void {
   const ms = session();
@@ -88,17 +101,21 @@ export function initMediaSession(handlers: MediaSessionHandlers): void {
     }
   };
 
-  set('play', handlers.repeat);
+  // Registered, and intentionally empty: see the note above. The log entry
+  // still gets written, so a future drive can still show how often the car
+  // asks to resume.
+  set('play', () => {});
+
   set('previoustrack', handlers.repeat);
+  set('nexttrack', handlers.repeat);
   set('pause', handlers.stop);
   set('stop', handlers.stop);
 
-  // PROBES. These are registered purely to find out what this car actually
-  // sends; each only writes a log entry and deliberately does nothing else,
-  // so behaviour is unchanged -- `nexttrack` in particular stays inert rather
-  // than doing something surprising at speed. Once the log says which of
-  // these a real head unit emits, the useful ones can be given real handlers.
-  for (const probe of ['nexttrack', 'seekforward', 'seekbackward', 'seekto']) {
+  // PROBES. Registered purely to find out what this car actually sends; each
+  // only writes a log entry and does nothing else, so behaviour is unchanged.
+  // Once the log says a real head unit emits one of these, it can be given a
+  // real handler -- which is how `nexttrack` earned its way out of this list.
+  for (const probe of ['seekforward', 'seekbackward', 'seekto']) {
     set(probe, () => {});
   }
 }

@@ -5,6 +5,7 @@ import {
   loadClipIndex,
   loadVoiceManifest,
   hasClips,
+  prewarmClips,
   playClipsAsync,
   stopClips,
   setClipsEnabled,
@@ -363,6 +364,48 @@ describe('hasClips', () => {
       hasClips('queen'); // each call may kick off the next hop
     }
     expect(hasClips('queen')).toBe(true);
+  });
+
+  /**
+   * The whole reason prewarmClips exists: without it the FIRST utterance after
+   * a cold load reads an empty cache, answers false, and goes to live TTS --
+   * and in a car live speech opens no media element, so the opening line of a
+   * session is the one the head unit cannot see.
+   */
+  it('is already true on the first call after a prewarm, with no load hop', async () => {
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url.includes('index.json')) {
+        return { ok: true, json: async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }) };
+      }
+      return { ok: true, json: async () => ({ clips: { queen: 'queen.mp3' } }) };
+    });
+    await prewarmClips();
+    expect(hasClips('queen')).toBe(true);
+  });
+
+  it('prewarms the explicitly set voice rather than the index default', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('index.json')) {
+        return { ok: true, json: async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }) };
+      }
+      return { ok: true, json: async () => ({ clips: { queen: 'queen.mp3' } }) };
+    });
+    (globalThis as any).fetch = fetchMock;
+    setClipVoice('guy');
+    await prewarmClips();
+    expect(hasClips('queen')).toBe(true);
+    // A pinned voice needs no index at all -- fetching one would be a wasted
+    // request on every app start.
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('index.json'))).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('guy/manifest.json'))).toBe(true);
+  });
+
+  /** Prewarming is fire-and-forget: a failure must leave live TTS working, not
+   * reject into whatever effect called it. */
+  it('resolves quietly when there is nothing to prewarm', async () => {
+    delete (globalThis as any).fetch;
+    await expect(prewarmClips()).resolves.toBeUndefined();
+    expect(hasClips('queen')).toBe(false);
   });
 
   it('reflects segmentForClips, not just a raw exact hit (e.g. a comma list)', async () => {

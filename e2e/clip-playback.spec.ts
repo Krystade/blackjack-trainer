@@ -1,5 +1,10 @@
 import { test, expect, type Page, type Response as PWResponse } from '@playwright/test';
-import { withSettings, withProfile, answerSelfReportIfPresent } from './helpers';
+import {
+  withSettings,
+  withProfile,
+  answerSelfReportIfPresent,
+  resolveInsurance,
+} from './helpers';
 
 /**
  * T0 gap 1 (the headline gap, docs/research/2026-07-26-test-coverage-matrix.md
@@ -18,6 +23,25 @@ import { withSettings, withProfile, answerSelfReportIfPresent } from './helpers'
  * promise would hang the loop and time out), and a clean console (catches
  * decode/MIME/`playbackRate` exceptions).
  */
+
+/**
+ * Guard two of two against this harness being audible, independent of the
+ * project's `--mute-audio` launch flag (playwright.config.ts): every media
+ * element reports itself muted and ignores attempts to unmute.
+ *
+ * Nothing in src/ reads `.muted` -- volume is set through `volume` and, above
+ * 100%, through a Web Audio gain node -- so this changes no value the spec
+ * asserts on, and playback still progresses and still fires `ended`.
+ */
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, 'muted', {
+      configurable: true,
+      get: () => true,
+      set: () => {},
+    });
+  });
+});
 
 const MP3_RE = /\/clips\/af_bella\/.*\.mp3(\?.*)?$/;
 const INDEX_RE = /\/clips\/index\.json(\?.*)?$/;
@@ -321,4 +345,178 @@ test('volume 100%: clips never touch Web Audio', async ({ page }) => {
   // Proof this test could have failed: clips really did play.
   expect(seen.elVolumes.length).toBeGreaterThan(0);
   expect(harness.pageErrors).toEqual([]);
+});
+
+/* ------------------------------------------------------------------------ */
+/* The table: bot turns and corrections, the two surfaces clipped 2026-09-10 */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Records every utterance that MISSED the clip cascade, and speaks none of them.
+ *
+ * speech.ts tries clips first and only reaches `speechSynthesis` when
+ * segmentation returns null, so this list is exactly the set of things that
+ * fell back to live TTS -- the only direct instrument for the property the
+ * clip work turns on. Segmentation is all-or-nothing: one uncovered sentence
+ * sends the WHOLE utterance live, so "no live speech matching X" is a much
+ * stronger claim than "some clip was fetched".
+ *
+ * It also fires `end` so sequencing still works (speakAsync awaits it), and
+ * never calls through -- the platform speech engine is outside Chromium and
+ * outside `--mute-audio`, so stubbing it is the only way a fallback can be
+ * exercised without being heard.
+ */
+async function recordLiveSpeech(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __liveSpeech: string[] };
+    w.__liveSpeech = [];
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    synth.speak = (utterance: SpeechSynthesisUtterance) => {
+      w.__liveSpeech.push(utterance.text);
+      setTimeout(() => utterance.dispatchEvent(new Event('end')), 0);
+    };
+  });
+}
+
+function liveSpeech(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as { __liveSpeech: string[] }).__liveSpeech ?? []);
+}
+
+const BOT_CLIP_RE = /\/player-(one|two|three|four|five)-(hits|stands|doubles|splits|surrenders)\.mp3/;
+/** Matches a bot line whether it ends there or runs on into a comma clause --
+ * the comma form is what this used to be, and the whole point is that no bot
+ * line reaches live TTS in EITHER shape. */
+const BOT_LINE_RE = /^Player (one|two|three|four|five) (hits|stands|doubles|splits|surrenders)[.,]/;
+/** A card as a SENTENCE ("Ten of clubs.") -- the `-item` suffix is the
+ * comma-list form, which is a different recording and a different clip. */
+const CARD_SENTENCE_CLIP_RE = /\/(ace|two|three|four|five|six|seven|eight|nine|ten|jack|queen|king)-of-(spades|hearts|diamonds|clubs)\.mp3/;
+
+test('a bot turn plays from clips, both halves of it', async ({ page }) => {
+  test.setTimeout(120_000);
+  // One withSettings call, not two: each writes the whole settings blob from
+  // an init script, so a second would silently drop the first's audio patch.
+  await withSettings(page, {
+    dealSpeedMs: 0,
+    audio: {
+      enabled: true,
+      useClips: true,
+      verbosity: 'full',
+      cardDetail: 'full',
+      clipVoice: 'af_bella',
+      answerPauseMs: 500,
+    },
+  });
+  await withProfile(page, {
+    name: 'Clip Bot Turn Profile',
+    seats: { playerHands: 1, bots: 1, botMistakePct: 0, playerPosition: 0 },
+  });
+  await recordLiveSpeech(page);
+
+  const harness = attachClipHarness(page);
+
+  // `data-advice` is an ?e2e=1-only affordance (Table.tsx guards it with
+  // isE2E), and this project deliberately runs without it -- so this plays by
+  // standing rather than by advice. Standing is always legal on a fresh hand
+  // and always ends the player's turn, which is all this needs: the bots act
+  // after the player does, and their turns are what is under test.
+  const stand = page.getByRole('button', { name: 'Stand', exact: true });
+  let dealt = false;
+  for (let seed = 1; seed <= 12 && !dealt; seed += 1) {
+    await page.goto(`/?seed=${seed}`);
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await resolveInsurance(page, false);
+    // Dealing here is paced and animated (no ?e2e=1 to make it instant), so
+    // the action bar arrives a beat after Deal rather than synchronously.
+    dealt = await stand
+      .waitFor({ state: 'visible', timeout: 3000 })
+      .then(() => true)
+      .catch(() => false);
+  }
+  expect(dealt, 'expected one of seeds 1..12 to reach a live player decision').toBe(true);
+
+  // One click per player hand; the bar goes away once the round leaves the
+  // player phase.
+  for (let i = 0; i < 4; i += 1) {
+    if (!(await stand.isVisible().catch(() => false))) break;
+    if (!(await stand.isEnabled().catch(() => false))) break;
+    await stand.click();
+    await page.waitForTimeout(200);
+  }
+
+  await expect
+    .poll(() => harness.mp3Responses.filter((r) => BOT_CLIP_RE.test(r.url())).length, {
+      timeout: 20_000,
+      message: 'expected a bot-turn clip to be fetched',
+    })
+    .toBeGreaterThan(0);
+
+  // The card half arrives only once the first clip has finished playing (the
+  // chain is sequential), so this polls rather than snapshotting.
+  await expect
+    .poll(() => harness.mp3Responses.filter((r) => CARD_SENTENCE_CLIP_RE.test(r.url())).length, {
+      timeout: 20_000,
+      message: 'expected the card half of a bot turn as a sentence clip',
+    })
+    .toBeGreaterThan(0);
+
+  for (const res of harness.mp3Responses) expectServedOk(res);
+
+  // The point of splitting narrateBotAction into two sentences: before it, a
+  // bot turn was one comma clause that no clip could cover, so every one of
+  // them went live.
+  const live = await liveSpeech(page);
+  expect(
+    live.filter((l) => BOT_LINE_RE.test(l)),
+    `expected no bot turn to fall back to live TTS, got ${JSON.stringify(live)}`,
+  ).toEqual([]);
+
+  expect(harness.pageErrors, `expected zero page errors, got ${JSON.stringify(harness.pageErrors)}`).toEqual([]);
+});
+
+test('a correction plays from clips, whole', async ({ page }) => {
+  test.setTimeout(60_000);
+  await seedClipDrillSettings(page, { verbosity: 'full' });
+  await withProfile(page, { name: 'Clip Correction Profile' });
+  await recordLiveSpeech(page);
+
+  const harness = attachClipHarness(page);
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+
+  // Answer until one is graded wrong -- always the first action button, which
+  // is wrong often enough to land inside a dozen cards.
+  const showTable = page.getByRole('button', { name: 'Show me the table' });
+  for (let i = 0; i < 16; i += 1) {
+    if (await showTable.isVisible().catch(() => false)) break;
+    await page.locator('.action-bar button').first().click();
+    await page.waitForTimeout(150);
+    if (await showTable.isVisible().catch(() => false)) break;
+    const next = page.getByRole('button', { name: 'Next', exact: true });
+    if (await next.isVisible().catch(() => false)) await next.click();
+  }
+  await expect(showTable).toBeVisible();
+
+  await expect
+    .poll(() => harness.mp3Responses.filter((r) => /\/wrong\.mp3/.test(r.url())).length, {
+      timeout: 20_000,
+      message: 'expected the "Wrong." clip to be fetched',
+    })
+    .toBeGreaterThan(0);
+
+  // ...and the rest of the same utterance. A correction that resolves only its
+  // first word does not exist: the cascade is all-or-nothing, so reaching the
+  // clip at all means every sentence in it resolved.
+  const live = await liveSpeech(page);
+  expect(
+    live.filter((l) => l.startsWith('Wrong.')),
+    `expected the correction to play from clips, not live TTS, got ${JSON.stringify(live)}`,
+  ).toEqual([]);
+
+  for (const res of harness.mp3Responses) expectServedOk(res);
+  expect(harness.pageErrors, `expected zero page errors, got ${JSON.stringify(harness.pageErrors)}`).toEqual([]);
 });

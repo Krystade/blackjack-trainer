@@ -4,7 +4,13 @@ import type { AudioSettings, Settings as SettingsData } from '../../store/types'
 import { THEMES, normalizeTheme } from '../theme';
 import { saveSettings } from '../../store/persist';
 import { chime, isSpeechSupported, listVoices, speak } from '../../audio';
-import { setClipsEnabled, setClipVoice, loadClipIndex, type ClipVoiceInfo } from '../../audio/clips';
+import {
+  setClipsEnabled,
+  setClipVoice,
+  loadClipIndex,
+  prewarmClips,
+  type ClipVoiceInfo,
+} from '../../audio/clips';
 import { carControlsBlockers, describeCarControlsBlocker } from '../../audio/carControls';
 import { readLog, clearLog, formatLog } from '../../audio/mediaSessionLog';
 import { MAX_VOLUME } from '../../audio/volume';
@@ -158,6 +164,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
   // comment for the full wiring picture.
   const updateUseClips = (v: boolean) => {
     setClipsEnabled(v);
+    if (v) void prewarmClips();
     updateAudio({ useClips: v });
   };
 
@@ -166,6 +173,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
   // voice directly on change too.
   const updateClipVoice = (v: string) => {
     setClipVoice(v);
+    void prewarmClips();
     updateAudio({ clipVoice: v });
   };
 
@@ -548,6 +556,14 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
       <div className="settings-row">
         <span className="settings-label">Buttons your car sent</span>
         <span className="settings-value">{invoked.length ? invoked.join(', ') : 'none yet'}</span>
+      </div>
+      {/* What those buttons now do, stated because the mapping is no longer a
+          guess: the 2026-09-11 drive showed this car sends skip and pause on a
+          press, and sends `play` on its own every time a clip ends. */}
+      <div className="settings-note-row u-note">
+        Skip forward or back repeats the last thing said; pause stops it. Play is
+        ignored on purpose — your car sends it by itself every time a clip finishes,
+        and acting on it made the question repeat without end.
       </div>
       <div className="settings-row">
         <span className="settings-label">Accepted by this phone</span>

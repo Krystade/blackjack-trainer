@@ -284,6 +284,26 @@ async function resolveDefaultVoiceId(): Promise<string | null> {
   return idx?.default || null;
 }
 
+/**
+ * Loads the current voice's manifest BEFORE anything asks to speak.
+ *
+ * `hasClips` is a cache read and has to be (speech.ts needs a synchronous
+ * gate to decide between clips and live TTS), so without this the very first
+ * utterance after a cold load always missed and went live -- see hasClips's
+ * own note. That is worse than one line in the wrong voice: live speech opens
+ * no media element, so in a car the OPENING line of a session is precisely
+ * the one the head unit cannot see, and it is usually the one that says what
+ * the drill is.
+ *
+ * Fire-and-forget by design. Every failure inside resolves to `{}`, which
+ * leaves the live-TTS fallback exactly as it was.
+ */
+export async function prewarmClips(): Promise<void> {
+  const voiceId = currentClipVoice || (await resolveDefaultVoiceId());
+  if (!voiceId) return;
+  await loadVoiceManifest(voiceId);
+}
+
 /** Sync (cache-only) resolution of "which voice manifest applies right now",
  * kicking off background loads as needed. Used by `hasClips`, which must
  * answer synchronously. */

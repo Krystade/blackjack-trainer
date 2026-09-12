@@ -55,7 +55,7 @@ afterEach(() => {
 });
 
 describe('initMediaSession', () => {
-  it('registers repeat on both the play and previous-track buttons', () => {
+  it('repeats on the discrete skip buttons, which a car only sends when pressed', () => {
     const actions = new Map<string, () => void>();
     withMediaSession({
       metadata: null,
@@ -65,10 +65,40 @@ describe('initMediaSession', () => {
     let repeated = 0;
     initMediaSession({ repeat: () => (repeated += 1), stop: () => {} });
 
-    // Whichever button the head unit exposes, the driver gets "say it again".
-    actions.get('play')!();
+    // Whichever of the two this head unit exposes, the driver gets "say it
+    // again" -- and neither is ever sent by a car of its own accord.
     actions.get('previoustrack')!();
+    actions.get('nexttrack')!();
     expect(repeated).toBe(2);
+  });
+
+  /**
+   * The regression that made the recorded voice unusable in a car.
+   *
+   * `play` means "resume", and a head unit sends it by itself every time it
+   * thinks playback stopped -- which is every time a clip ends. Mapped to
+   * repeat, that looped: repeat spoke, the clip ended, the car asked to
+   * resume, repeat spoke again. The 2026-09-11 drive logged nine of them at
+   * five-second intervals with nobody touching anything.
+   */
+  it('never acts on play, which the car sends itself whenever a clip ends', () => {
+    const actions = new Map<string, () => void>();
+    withMediaSession({
+      metadata: null,
+      setActionHandler: (a: string, h: () => void) => actions.set(a, h),
+    });
+
+    let repeated = 0;
+    let stopped = 0;
+    initMediaSession({ repeat: () => (repeated += 1), stop: () => (stopped += 1) });
+
+    // Registered, so the slot is not handed back to whatever was playing
+    // before -- and inert, so an unattended resume cannot speak.
+    expect(actions.has('play')).toBe(true);
+    actions.get('play')!();
+    actions.get('play')!();
+    actions.get('play')!();
+    expect([repeated, stopped]).toEqual([0, 0]);
   });
 
   it('maps pause and stop onto stopping', () => {
@@ -85,10 +115,9 @@ describe('initMediaSession', () => {
     expect(stopped).toBe(2);
   });
 
-  // nexttrack would be meaningless -- there is no playlist -- so it is
-  // registered ONLY as a diagnostic probe: firing it must record the event
-  // and change nothing, so it stays inert at 70mph.
-  it('registers next-track as an inert probe', () => {
+  // The seek actions stay diagnostic probes: no drive has yet shown a car
+  // sending one, so firing them must record the event and change nothing.
+  it('registers the seek actions as inert probes', () => {
     const actions = new Map<string, () => void>();
     withMediaSession({
       metadata: null,
@@ -99,8 +128,10 @@ describe('initMediaSession', () => {
     let stopped = 0;
     initMediaSession({ repeat: () => (repeated += 1), stop: () => (stopped += 1) });
 
-    expect(actions.has('nexttrack')).toBe(true);
-    actions.get('nexttrack')!();
+    for (const probe of ['seekforward', 'seekbackward', 'seekto']) {
+      expect(actions.has(probe)).toBe(true);
+      actions.get(probe)!();
+    }
     expect([repeated, stopped]).toEqual([0, 0]);
   });
 

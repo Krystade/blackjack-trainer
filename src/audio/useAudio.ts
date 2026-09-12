@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import type { AudioSettings } from '../store/types';
 import { speak, chime, repeatLast } from './speech';
-import { setClipsEnabled, setClipVoice } from './clips';
+import { prewarmClips, setClipsEnabled, setClipVoice } from './clips';
 
 /**
  * Stable narration/chime handle bound to the current `AudioSettings`.
@@ -38,12 +38,18 @@ export function useAudio(audio: AudioSettings): AudioApi {
   // useAudio itself.
   useEffect(() => {
     setClipsEnabled(useClips);
+    // Warm the manifest now rather than on the first thing said: the gate in
+    // speech.ts is synchronous, so an unwarmed manifest costs the opening
+    // utterance of the session (see prewarmClips).
+    if (useClips) void prewarmClips();
   }, [useClips]);
 
-  // Same pattern for the selected clip voice.
+  // Same pattern for the selected clip voice, warmed for the same reason --
+  // switching voice empties the cache for the one now selected.
   useEffect(() => {
     setClipVoice(clipVoice);
-  }, [clipVoice]);
+    if (useClips) void prewarmClips();
+  }, [clipVoice, useClips]);
 
   return useMemo<AudioApi>(() => {
     const say: AudioApi['say'] = (text, opts) => {
