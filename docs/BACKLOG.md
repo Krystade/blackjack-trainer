@@ -77,8 +77,15 @@ ship.
   has never shown one).
 
 ### D2 · Ideas raised earlier and still open
-- Countdown/tag-guess submode has no eyes-free support (excluded twice, deliberately —
-  needs an explicit keep/kill decision).
+- ~~Countdown/tag-guess submode has no eyes-free support (excluded twice, deliberately —
+  needs an explicit keep/kill decision)~~ — ✅ KEEP, and SHIPPED 2026-09-12. The operator made
+  the call and specified the shape: "countdown would just be the voice listing on card values
+  and me having to keep track, that could work." So the prompt is the tag question itself
+  (`"Plus one, zero, or minus one?"`) rather than a spoken card name — the card is on screen for
+  eyes, and reading it aloud would answer the question it is asking. A spoken tag becomes a
+  PROPOSAL confirmed by "yes", the same two-step every other voice drill uses, so a
+  misrecognition costs a word and not a graded answer. Out-of-range numbers are refused out
+  loud instead of being clamped into a wrong tag.
 - ~~Corrections are not clipped (symbol-heavy index labels fall back to live TTS)~~ —
   ✅ SHIPPED 2026-09-10, and NOT by cleaning up the wording. The reason text comes out of
   the strategy engine and the deviation set through `narrateReason`'s nine-step rewrite, so
@@ -250,7 +257,7 @@ existing `bet` events); event-order-sensitive tests (game.test.ts:286/303/325/79
 be audited first. Also possible: a standalone back-counting *drill* mode (watch a shoe, tap
 enter/sit) as the fuller unstaked version RT#2 references.
 
-### R6 · Discard-tray depth cue on the live table — S — MEDIUM (cheap realism repair) — 🟡 VISUAL CUE SHIPPED 2026-07-28
+### R6 · Discard-tray depth cue on the live table — S — MEDIUM (cheap realism repair) — ✅ COMPLETE 2026-09-12
 RT#3: table TC checks grade against the shoe's *exact* depth with no visual tray, actively
 mistraining estimation and stranding the deck-estimation drill as an island. The tray-fill
 visual already exists in `DeckEstimationView` — reuse it on `Table.tsx` so table count-checks
@@ -259,9 +266,17 @@ require real estimation. Cheap, and it connects a drill to its point of use.
 fills as the shoe burns (`game.shoe.cardsDealt / decks*52`), giving a live by-eye referent to
 estimate decks-remaining from during count checks — deliberately shows ONLY the fill (no exact
 number) so estimation is still required, connecting the deck-estimation drill to its point of
-use. e2e asserts the fill widens across a dealt round. REMAINING (deferred, operator-
-deprioritized): make the count-check TC grading tolerant of a reasonable by-eye estimate band
-rather than exact depth — the fuller RT#3 fix, but it touches the tested count-check grading.
+use. e2e asserts the fill widens across a dealt round.
+✅ THE GRADING HALF SHIPPED 2026-09-12 (operator: "oh ew, no we definitely want by eye count").
+The tray shows a fill and no number, so the app was asking for an estimate and then grading the
+answer against a depth no player could read off it. `tcWithinEye` accepts any true count the
+shown tray could honestly support: ±0.5 decks of depth error (`EYE_DECK_ERROR`, one half-deck —
+the resolution `Shoe.decksRemaining` itself snaps to), floored the way a real player floors,
+which on a thin shoe is a wide band and on a full one is nearly none. The RUNNING count stays
+exact — there is nothing to estimate about it, and blurring it would train the wrong slack.
+Both the table count-check and the produce-a-TC drill grade through the same helper, and the
+result says which reading was accepted so a near-miss reads as an accepted estimate rather than
+a mystery pass.
 
 ### R7 · Count-peek accountability — XS — MEDIUM (quick integrity fix) — ✅ SHIPPED 2026-07-27
 RT#5: the RC/TC peek button works even in test mode and is never logged, making "actual
@@ -369,6 +384,21 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
   interval) writes a `Stats.retention` row; a new Stats **Retention** section shows retained accuracy
   DISTINCT from in-drill accuracy — the honest table-readiness read. Shared R4 grade path + DRY
   preserved (anti-drift test extended). 2974 unit + e2e; dead R3 weight fns removed.
+  ✅ FOLLOW-ON (operator audit 2026-09-12): "double check and ensure the flashcards are properly
+  weighing how quickly i answer for which ones, how often im right, and if its eyes free, hands
+  free, both, or neither." Two of those three were NOT being weighed. Correctness was (the Leitner
+  box). Speed was not: a card answered correctly after nine seconds of visible arithmetic promoted
+  exactly like one answered instantly, so recall and reconstruction were indistinguishable to the
+  scheduler. It now tracks an EWMA of response time (`paceMs`, `PACE_ALPHA` 0.4 — fast enough that
+  a genuine speed-up shows within a handful of reviews, slow enough that one distracted answer does
+  not undo a box) and a correct-but-slow answer holds its box instead of promoting: under
+  `FLUENT_MS` (4s) is recall, over it is working it out, and the schedule should not stretch on
+  something you are still computing. Channel was not weighed either — a card only ever answered by
+  tapping is unproven by voice, and the app's whole point is the eyes-free case. Each card now
+  records which CHANNELS it has been answered through, and `channelBoxCap` caps a single-channel
+  card at box `CHANNEL_BASE_CAP` (3): it can be scheduled out to a few days on taps alone, but the
+  long intervals require having proved it hands-free too. Stats reports both, so the weighting is
+  legible rather than asserted.
 - **RV5 · Distraction cadence is fixed/predictable — XS — [SCI], cheapest win.** ✅ SHIPPED 2026-07-29.
   `isDistractionPoint` fired every 7th/3rd card; learners could pre-buffer the count. Now JITTERED:
   exactly one distraction per window of `interval` cards, on a window-index-seeded pseudo-random
