@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Card, Rank } from './cards';
-import { hiLoTag } from './count';
+import { hiLoTag, tcBand, trueCount } from './count';
 import { Game, DEFAULT_SPREAD } from './game';
 import type { GameConfig, SeatConfig } from './game';
 import { basicPlay } from './strategy';
@@ -831,7 +831,76 @@ describe('count check', () => {
     expect(result2.tcCorrect).toBe(true);
     expect(result2.actualTc).toBe(tc2);
   });
+
+  /**
+   * THE TRUE COUNT IS GRADED BY EYE, THE RUNNING COUNT IS NOT.
+   *
+   * The running count is a fact: the player either kept it or did not, and a
+   * miss by one is a miss. The depth is a read off a discard tray, so the true
+   * count that follows from it carries real slack, and marking a perfect count
+   * wrong because the tray read as two decks instead of two and a half grades
+   * eyesight rather than counting. The two halves of the same prompt therefore
+   * hold deliberately different standards.
+   */
+  it('grades the true count by eye and the running count exactly', () => {
+    const fresh = () => atTcPrompt(cfg({ countCheckEvery: 1, seed: 42 }));
+
+    const probe = fresh();
+    const band = tcBand(probe.runningCount, probe.shoe.decksRemaining);
+    // A degenerate band would make every assertion below trivially true --
+    // early in a six-deck shoe a half-deck misread moves nothing, which is
+    // exactly why `atTcPrompt` deals on until it does. If this ever fails, the
+    // fixture stopped producing slack and the rest of the test means nothing.
+    expect(band.max).toBeGreaterThan(band.min);
+
+    // Every count an honest tray read could give is accepted...
+    for (let guess = band.min; guess <= band.max; guess++) {
+      const g = fresh();
+      expect(g.submitCountCheck(g.runningCount, guess).tcCorrect).toBe(true);
+    }
+    // ...and one step outside it is not, so this is a band and not a shrug.
+    const outside = fresh();
+    expect(outside.submitCountCheck(outside.runningCount, band.max + 1).tcCorrect).toBe(false);
+    const below = fresh();
+    expect(below.submitCountCheck(below.runningCount, band.min - 1).tcCorrect).toBe(false);
+
+    // The running count keeps its exact standard on the very same prompt.
+    const offByOne = fresh();
+    const submitted = offByOne.submitCountCheck(offByOne.runningCount + 1, band.min);
+    expect(submitted.rcCorrect).toBe(false);
+    expect(submitted.tcCorrect).toBe(true);
+
+    // And the correction still reports the EXACT figure. The band decides the
+    // verdict; it must never become the thing the app claims the answer was.
+    const exact = fresh();
+    expect(exact.submitCountCheck(exact.runningCount, band.min).actualTc).toBe(
+      trueCount(probe.runningCount, probe.shoe.decksRemaining),
+    );
+  });
 });
+
+/**
+ * Deal until a true-count prompt is due AND the shoe is deep enough for a
+ * half-deck misread to actually change the answer.
+ *
+ * Deterministic for a given config: the same seed plays the same rounds and
+ * resolves the same intervening prompts, so every call returns a game in an
+ * identical state. Early prompts are answered CORRECTLY on the way past, so
+ * the events they leave behind cannot be mistaken for the one under test.
+ */
+function atTcPrompt(config: GameConfig): Game {
+  const game = new Game(config);
+  for (let round = 0; round < 60; round++) {
+    game.startRound();
+    if (game.phase === 'insurance') game.insuranceDecision(false);
+    while (game.phase === 'player') game.act('stand');
+    if (!game.countCheckDue) continue;
+    const band = tcBand(game.runningCount, game.shoe.decksRemaining);
+    if (game.askTcToo && band.max > band.min) return game;
+    game.submitCountCheck(game.runningCount, game.trueCountNow);
+  }
+  throw new Error('no true-count prompt with a non-degenerate band in 60 rounds');
+}
 
 describe('rules.decks wired into the shoe (Cycle-1 closing fix)', () => {
   it('1D rules: shoe starts with 52 cards, not the 6-deck default', () => {

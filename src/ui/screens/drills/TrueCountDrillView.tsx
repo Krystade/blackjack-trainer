@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Settings } from '../../../store/types';
 import { makeTrueCountQuestion } from '../../../drills/trueCountDrill';
+import { tcConversionAccepted } from '../../../engine/count';
 import type { TrueCountQuestion } from '../../../drills/trueCountDrill';
 import { NumPad } from '../../components/NumPad';
 import { Stepper } from '../Settings';
@@ -207,7 +208,11 @@ export function TrueCountDrillView({
 
   const handleSubmit = (value: number) => {
     if (!question) return;
-    const correct = value === question.correctTc;
+    // The depth is STATED here, so there is no estimation slack to forgive --
+    // but the leftover still has no single right convention, and marking "+3"
+    // wrong on a quotient of 2.8 grades a preference rather than the division
+    // (engine/count.ts's `tcConversionAccepted`).
+    const correct = tcConversionAccepted(value, question.runningCount, question.decksRemaining);
     setWasCorrect(correct);
     setEnteredValue(value);
     setHonorCheck(false);

@@ -1622,8 +1622,26 @@ test('produce the true count: flash then produce a TC, graded within tolerance a
   expect(history).toHaveLength(1);
   const row = history[0]!;
   expect(row.produced).toBe(0);
-  // Correctness is consistent with the tolerance (±1) around the shown correctTc.
-  expect(row.correct).toBe((Math.abs(0 - (row.correctTc as number)) <= 1) as unknown as number);
+
+  // Correctness is consistent with what the RESULT SCREEN said, and with the
+  // accepted range that screen names. Deliberately not recomputed from a
+  // tolerance rule here: the rule is the depth band (engine/count.ts's
+  // `tcBand`), it is unit-tested there, and a second copy of it in an e2e
+  // would only ever agree with itself. This asserts the three things the
+  // spec can actually see are the same thing.
+  const shownCorrect = (await page.locator('.result-correct').count()) > 0;
+  expect(row.correct).toBe(shownCorrect as unknown as number);
+
+  const detail = await page.locator('.result-detail').innerText();
+  const range = /between ([+-]?\d+) and ([+-]?\d+)/.exec(detail);
+  if (range) {
+    const lo = Number(range[1]);
+    const hi = Number(range[2]);
+    expect(shownCorrect).toBe(0 >= lo && 0 <= hi);
+  } else {
+    // A degenerate band prints no range, and then only the exact answer counts.
+    expect(shownCorrect).toBe(0 === (row.correctTc as number));
+  }
 });
 
 /* V3-4 + R2: SOFT competence gating. The advanced modes -- the two pressure     */

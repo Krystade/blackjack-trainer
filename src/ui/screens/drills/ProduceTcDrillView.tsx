@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Settings } from '../../../store/types';
-import { makeProduceTcRound, gradeProducedTc } from '../../../drills/produceTcDrill';
+import {
+  makeProduceTcRound,
+  gradeProducedTc,
+  producedTcBand,
+} from '../../../drills/produceTcDrill';
 import type { ProduceTcRound } from '../../../drills/produceTcDrill';
 import { PlayingCard } from '../../components/PlayingCard';
 import { NumPad } from '../../components/NumPad';
@@ -57,7 +61,7 @@ export function ProduceTcDrillView({ settings, onBack }: { settings: Settings; o
   }, [phase, shownIndex, groups.length, settings.drill.countIntervalMs]);
 
   const submit = (produced: number) => {
-    const correct = gradeProducedTc(produced, round.correctTc);
+    const correct = gradeProducedTc(produced, round);
     setAnswer({ produced, correct });
     setPhase('result');
     audio.ding(correct ? 'good' : 'bad');
@@ -132,6 +136,19 @@ export function ProduceTcDrillView({ settings, onBack }: { settings: Settings; o
           <div className="result-detail">
             You produced {formatSigned(answer.produced)}; true count was {formatSigned(round.correctTc)}{' '}
             (running count {formatSigned(round.round.finalRc)} ÷ {formatDecks(round.decksRemaining)} decks).
+            {(() => {
+              // Say what was actually accepted, or the grade looks arbitrary:
+              // the range comes from reading the tray half a deck either way,
+              // and it is far wider late in the shoe than early.
+              const band = producedTcBand(round);
+              return band.min === band.max ? null : (
+                <>
+                  {' '}
+                  A half-deck either way puts it between {formatSigned(band.min)} and{' '}
+                  {formatSigned(band.max)}, so anything in that range counts.
+                </>
+              );
+            })()}
           </div>
           <button type="button" className="drill-replay-btn" onClick={next}>
             Next

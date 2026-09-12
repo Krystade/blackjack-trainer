@@ -1,7 +1,7 @@
 import { Shoe, rankValue, mulberry32 } from './cards';
 import type { Card, Rank } from './cards';
 import { handValue, isBust, isBlackjack, isPair } from './hand';
-import { hiLoTag, trueCount } from './count';
+import { hiLoTag, trueCount, tcWithinEye } from './count';
 import { correctPlay, basicPlay, insuranceCorrect } from './strategy';
 import type { PlayContext, Advice } from './strategy';
 import { classifyAction, actionCategory, classifyInsurance } from './grade';
@@ -643,7 +643,13 @@ export class Game {
     let actualTc: number | undefined;
     if (this.askTcToo) {
       actualTc = tc;
-      tcCorrect = tcGuess === actualTc;
+      // BY EYE, not to the digit. The running count is a fact the player
+      // either kept or did not; the depth is a read off a tray, and a
+      // half-deck misread is not a counting mistake (engine/count.ts's
+      // `tcBand`). `expected` still carries the exact figure, so the
+      // correction says what the shoe actually held.
+      tcCorrect =
+        tcGuess !== undefined && tcWithinEye(tcGuess, this.runningCount, this.shoe.decksRemaining);
       this.events.push({
         source: 'table',
         kind: 'countCheck',

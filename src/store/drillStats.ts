@@ -46,14 +46,26 @@ export function bestSecondsPerDeck(
   return correctRuns.reduce((best, cur) => Math.min(best, cur.secondsPerDeck), Infinity);
 }
 
-/** Signed-error distribution for the true-count conversion drill: which way
- * a wrong (or right) guess missed, not just how often it missed. */
+/**
+ * Signed-error distribution for the true-count conversion drill: which way a
+ * guess missed, not just how often it missed.
+ *
+ * MEASURED AGAINST THE FLOORED FIGURE, WHICH IS NOT THE SAME AS THE GRADE.
+ * The drill accepts any standard rounding of the quotient
+ * (engine/count.ts's `tcConversionAccepted`), because which convention you use
+ * for the leftover is a preference and not an error. This breakdown keeps
+ * comparing against the floor anyway, deliberately: "I consistently come in
+ * one above" is precisely the pattern it exists to surface, and folding the
+ * accepted conventions into `exact` would erase it. So a run can be graded
+ * correct and still land in `tooHigh` -- these three numbers describe a lean,
+ * not a scoreline.
+ */
 export interface SignedErrorBreakdown {
-  /** guess > correctTc */
+  /** guess > the floored true count */
   tooHigh: number;
-  /** guess < correctTc */
+  /** guess < the floored true count */
   tooLow: number;
-  /** guess === correctTc */
+  /** guess === the floored true count */
   exact: number;
 }
 

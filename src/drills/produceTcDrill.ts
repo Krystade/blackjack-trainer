@@ -1,6 +1,6 @@
 import { makeCountDrill } from './countDrill';
 import type { CountDrillRound } from './countDrill';
-import { trueCount } from '../engine/count';
+import { trueCount, tcBand, tcWithinEye } from '../engine/count';
 import { mulberry32 } from '../engine/cards';
 
 /**
@@ -26,9 +26,18 @@ export interface ProduceTcRound {
 
 const TOTAL_DECKS = 6;
 
-/** How far a produced TC may be off and still count as correct — one true count,
- * absorbing a reasonable ±half-deck error in the by-eye depth estimate. */
-export const PRODUCE_TC_TOLERANCE = 1;
+/**
+ * The slack is no longer a flat number, and that is the point.
+ *
+ * This used to accept anything within one true count, which is the right idea
+ * with the wrong shape: the same half-deck misread is worth several true
+ * counts with a deck left in the shoe and almost nothing with five, so a
+ * constant is far too tight where it matters and a free pass where it does
+ * not. Grading now runs the real division at both ends of a plausible depth
+ * read (`tcBand` in engine/count.ts) and accepts anything in between --
+ * looser than one true count late in the shoe, tighter than it early, and for
+ * the same reason in both directions.
+ */
 
 /**
  * Build a produce-a-TC round: `cards` flashed cards in `groupSize` groups (the
@@ -48,8 +57,18 @@ export function makeProduceTcRound(cards: number, groupSize: 1 | 2 | 3, seed?: n
   };
 }
 
-/** True when a produced true count is close enough to correct (within the
- * by-eye tolerance). */
-export function gradeProducedTc(produced: number, correctTc: number): boolean {
-  return Math.abs(produced - correctTc) <= PRODUCE_TC_TOLERANCE;
+/**
+ * True when a produced true count is one the round's depth could honestly give.
+ *
+ * Takes the whole round rather than just `correctTc`: the acceptable range
+ * depends on the running count and the depth, which the single graded integer
+ * has already thrown away.
+ */
+export function gradeProducedTc(produced: number, round: ProduceTcRound): boolean {
+  return tcWithinEye(produced, round.round.finalRc, round.decksRemaining);
+}
+
+/** The accepted range, for a result screen that has to explain itself. */
+export function producedTcBand(round: ProduceTcRound) {
+  return tcBand(round.round.finalRc, round.decksRemaining);
 }
