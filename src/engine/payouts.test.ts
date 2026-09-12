@@ -120,6 +120,45 @@ describe('payout audit — table-driven settlement paths', () => {
       expectedDelta: -1,
       rules: { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false },
     },
+    // The fourth quadrant of take/decline x dealer-BJ/no-BJ, which the audit
+    // was missing. Deliberately a WIN rather than another loss: a quadrant that
+    // settles to the same number as the row above it proves nothing about the
+    // side bet being correctly left out of the hand.
+    {
+      description: 'insurance declined + dealer no BJ: the side bet costs nothing (delta +1)',
+      shoe: ['10', 'A', 'K', '5', '2'],
+      actions: ['insurance:decline', 'stand'], // P: 10,K=20; D: A,5=soft 16, hits 2 = 18; 20 beats 18
+      expectedDelta: 1,
+      rules: { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false },
+    },
+    // A NATURAL against an ace up is where insurance settlement actually gets
+    // hard: the hand and the side bet resolve on different rules and in
+    // different directions, and both of these come out to exactly +1 by two
+    // completely different routes. A bug that paid the natural or the side bet
+    // wrongly would move only one of them.
+    {
+      description: 'insurance taken + player natural + dealer natural: push + 2:1 (delta +1)',
+      shoe: ['A', 'A', 'K', 'K'],
+      actions: ['insurance:take'], // P: A,K=BJ; D: A(up), K(hole)=BJ. Hand pushes 0; insurance stakes 0.5 and pays 2:1 = +1
+      expectedDelta: 1,
+      rules: { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false },
+    },
+    {
+      description: 'insurance taken + player natural + dealer no BJ: 3:2 less the side bet (delta +1)',
+      shoe: ['A', 'A', 'K', '5'],
+      actions: ['insurance:take'], // P: A,K=BJ pays 1.5; D: A,5 = no BJ, and a resolved natural suppresses the draw. Insurance loses its 0.5
+      expectedDelta: 1,
+      rules: { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false },
+    },
+    // Same hand at 6:5, so the two payouts are not silently entangled: the
+    // natural drops to 1.2 and the lost side bet is still exactly 0.5.
+    {
+      description: 'insurance taken + player natural + dealer no BJ at 6:5 (delta +0.7)',
+      shoe: ['A', 'A', 'K', '5'],
+      actions: ['insurance:take'],
+      expectedDelta: 0.7,
+      rules: { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: true },
+    },
     // Cycle-2 Task 4: multi-hand player -- mixed win/lose/push settle independently, bankroll delta = sum
     {
       description: 'multi-hand (3 hands, distinct bets): win + lose + push sums to -1',

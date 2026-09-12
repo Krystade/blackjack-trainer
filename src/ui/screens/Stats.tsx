@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import type { Screen } from '../App';
-import type { AudioSettings, Profile, Settings, Stats as StatsData } from '../../store/types';
+import type { Profile, Settings, Stats as StatsData } from '../../store/types';
 import { EMPTY_STATS } from '../../store/types';
 import { filterByRange, RANGE_LABEL } from '../../store/timeRange';
 import type { RangeId, TimeRange } from '../../store/timeRange';
@@ -34,6 +34,16 @@ import './sr.css';
 
 interface StatsProps {
   activeProfile: Profile;
+  /**
+   * The app's live settings, the same object every other screen is handed.
+   *
+   * Stats used to be the one screen that reached around App into persistence
+   * for this (`loadSettings().audio` on mount), which made it the one screen
+   * whose audio could disagree with the rest of the app: App holds settings in
+   * state, and a screen reading storage instead is reading a different copy.
+   * It also meant Stats could only notice a change by re-mounting.
+   */
+  settings: Settings;
   onNavigate: (screen: Screen) => void;
   onSettingsChange: (settings: Settings) => void;
 }
@@ -312,7 +322,7 @@ function handLabel(hand: string | undefined): string {
   return `${kind === 'hard' ? 'Hard' : 'Soft'} ${value} v ${up}`;
 }
 
-export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProps) {
+export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }: StatsProps) {
   const [stats, setStats] = useState<StatsData>(() => loadStats());
   const [message, setMessage] = useState<string | null>(null);
 
@@ -335,11 +345,7 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   // longer than this splits practice sessions). Local to this screen.
   const [fatigueGapMin, setFatigueGapMin] = useState(30);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Stats isn't handed `settings` as a prop, so it reads audio settings
-  // directly from persistence (same pattern as loadStats() above). Refreshed
-  // on import in case the imported blob changed audio settings.
-  const [audioSettings, setAudioSettings] = useState<AudioSettings>(() => loadSettings().audio);
-  const audio = useAudio(audioSettings);
+  const audio = useAudio(settings.audio);
 
   const refresh = () => setStats(loadStats());
 
@@ -377,8 +383,10 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
       const result = importAll(text);
       if (result.ok) {
         refresh();
+        // One hop now: this lifts the imported settings into App, which hands
+        // them straight back down as the `settings` prop. The old second call
+        // existed only because this screen kept its own copy.
         onSettingsChange(loadSettings());
-        setAudioSettings(loadSettings().audio);
         setMessage('Import successful.');
       } else {
         setMessage(`Import failed: ${result.error ?? 'unknown error'}`);

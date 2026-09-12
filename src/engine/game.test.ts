@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { Card, Rank } from './cards';
 import { hiLoTag, tcBand, trueCount } from './count';
-import { Game, DEFAULT_SPREAD } from './game';
+import { Game, DEFAULT_SPREAD, botRngSeed } from './game';
 import type { GameConfig, SeatConfig } from './game';
 import { basicPlay } from './strategy';
+import { DEFAULT_RULES } from './ruleset';
 import type { PlayContext } from './strategy';
 import type { Action } from './deviations';
 import type { RuleSet } from './ruleset';
@@ -1688,5 +1689,109 @@ describe('dealOrder (Table Realism, Request B groundwork: presentation-only deal
     game.startRound();
     expect(game.dealOrder).not.toBe(firstOrder);
     expect(game.dealOrder).toHaveLength(4);
+  });
+});
+
+/**
+ * M6: the bot-mistake stream is not the shoe's stream.
+ *
+ * `Game` looked like it held two independent generators. It did not: the Shoe
+ * was `mulberry32(cfg.seed)` and the bot rng was `mulberry32(cfg.seed)` — the
+ * same algorithm on the same number, which is one stream drawn twice. The Nth
+ * bot-mistake roll was the Nth number Fisher-Yates used to arrange the deck, so
+ * WHO misplays and WHEN was a deterministic function of HOW THE CARDS FELL, and
+ * there was no seed that varied one while holding the other.
+ */
+describe('bot-mistake RNG is decorrelated from the shoe (M6)', () => {
+  it('does not run the bot stream on the shoe\'s own seed', () => {
+    for (const seed of [0, 1, 2, 7, 12345, 0x7fffffff]) {
+      expect(botRngSeed(seed)).not.toBe(seed);
+    }
+  });
+
+  it('scatters neighbouring seeds instead of shifting them', () => {
+    // Adjacent game seeds must not give adjacent bot seeds, or "try seed+1"
+    // would walk the bot stream one step alongside the shoe's.
+    expect(Math.abs(botRngSeed(1) - botRngSeed(2))).toBeGreaterThan(1);
+  });
+
+  it('stays a uint32, so mulberry32 gets the state it expects', () => {
+    for (const seed of [0, 1, 0xffffffff, 0x9e3779b9]) {
+      const out = botRngSeed(seed);
+      expect(Number.isInteger(out)).toBe(true);
+      expect(out).toBeGreaterThanOrEqual(0);
+      expect(out).toBeLessThanOrEqual(0xffffffff);
+    }
+  });
+
+  it('is a pure constant offset, so the same seed still replays the same session', () => {
+    expect(botRngSeed(4242)).toBe(botRngSeed(4242));
+
+    const play = (): string => {
+      const game = new Game({
+        penetration: 0.75,
+        betSpreadOn: false,
+        spread: [],
+        bankrollStart: 1000,
+        countCheckEvery: 0,
+        rules: DEFAULT_RULES,
+        seed: 4242,
+        seats: { bots: 3, playerHands: 1, playerPosition: 1, botMistakePct: 50 },
+      });
+      const log: string[] = [];
+      for (let r = 0; r < 12; r++) {
+        game.startRound(1);
+        if (game.phase === 'insurance') game.insuranceDecision(false);
+        while (game.phase === 'player') game.act('stand');
+        log.push(game.botActionLog.map((e) => `${e.seat}:${e.action}`).join('|'));
+      }
+      return log.join(' / ');
+    };
+
+    const a = play();
+    const b = play();
+    expect(b).toBe(a);
+    // Vacuity guard: the bots actually did something to be deterministic about.
+    expect(a.length).toBeGreaterThan(20);
+  });
+
+  /**
+   * The property the salt buys. Two games dealt the SAME cards (a rigged shoe
+   * ignores the seed entirely) must still be able to differ in how the bots
+   * play, because bot behaviour is now driven by its own stream.
+   */
+  it('lets bot behaviour vary while the cards stay fixed', () => {
+    const cards = Array.from({ length: 400 }, (_, i) => ({
+      rank: (['2', '7', '10', 'A', '5', '9', '3', '8'] as const)[i % 8],
+      suit: 's' as const,
+    }));
+    const logFor = (seed: number): string => {
+      const game = Game.withRiggedShoe(
+        {
+          penetration: 0.99,
+          betSpreadOn: false,
+          spread: [],
+          bankrollStart: 1000,
+          countCheckEvery: 0,
+          rules: DEFAULT_RULES,
+          seed,
+          seats: { bots: 3, playerHands: 1, playerPosition: 1, botMistakePct: 50 },
+        },
+        cards,
+      );
+      const log: string[] = [];
+      for (let r = 0; r < 8; r++) {
+        game.startRound(1);
+        if (game.phase === 'insurance') game.insuranceDecision(false);
+        while (game.phase === 'player') game.act('stand');
+        log.push(game.botActionLog.map((e) => `${e.seat}:${e.action}`).join('|'));
+      }
+      return log.join(' / ');
+    };
+
+    const seeds = [1, 2, 3, 4, 5, 11, 99, 12345];
+    const logs = new Set(seeds.map(logFor));
+    // Same cards every time, so any difference here is the bot stream alone.
+    expect(logs.size).toBeGreaterThan(1);
   });
 });

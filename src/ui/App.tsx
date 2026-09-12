@@ -132,7 +132,14 @@ function App() {
           />
         );
       case 'stats':
-        return <Stats onNavigate={navigate} onSettingsChange={setSettings} activeProfile={activeProfile} />;
+        return (
+          <Stats
+            settings={settings}
+            onNavigate={navigate}
+            onSettingsChange={setSettings}
+            activeProfile={activeProfile}
+          />
+        );
       case 'settings':
         return <Settings settings={settings} onNavigate={navigate} onSettingsChange={setSettings} />;
       case 'profiles':

@@ -194,6 +194,27 @@ function makeRiggedShoe(cards: Card[], penetration: number): Shoe & RiggedShoe {
   return rigged as unknown as Shoe & RiggedShoe;
 }
 
+/**
+ * M6: what the bot-mistake stream is offset by, so it is not the shoe's stream.
+ *
+ * 0x9E3779B9 is the 32-bit golden-ratio constant used for exactly this in
+ * hashing: XORing with it scatters the bits of adjacent seeds instead of
+ * shifting them, so seeds 1 and 2 give unrelated bot behaviour rather than
+ * neighbouring streams. The value itself is arbitrary; that it is CONSTANT is
+ * the part that matters -- the same seed must still replay the same session.
+ */
+const BOT_RNG_SALT = 0x9e3779b9;
+
+/**
+ * The seed the bot-mistake stream runs on, given the game's seed. Exported so
+ * the separation itself can be asserted rather than assumed -- the old bug was
+ * invisible precisely because both streams looked like independent generators
+ * at the call site while being seeded identically.
+ */
+export function botRngSeed(gameSeed: number): number {
+  return (gameSeed ^ BOT_RNG_SALT) >>> 0;
+}
+
 export class Game {
   readonly cfg: GameConfig;
   readonly rules: RuleSet;
@@ -221,10 +242,17 @@ export class Game {
   insuranceNet: number | null = null;
 
   /** Seeded deterministic stream for bot-mistake substitution (Cycle-2 Task
-   * 3). Same mulberry32 generator the Shoe itself is seeded with (see
-   * Shoe's constructor in cards.ts) -- a single instance, held for the
-   * Game's whole lifetime, so replaying the same seed + SeatConfig always
-   * substitutes the same mistakes at the same decisions. Never Math.random. */
+   * 3). A single instance, held for the Game's whole lifetime, so replaying
+   * the same seed + SeatConfig always substitutes the same mistakes at the
+   * same decisions. Never Math.random.
+   *
+   * M6: DECORRELATED from the shoe. This used to be `mulberry32(cfg.seed)`,
+   * the very same generator seeded with the very same number the Shoe was --
+   * which is not "two streams from one seed", it is ONE stream drawn twice.
+   * The Nth bot-mistake roll was literally the Nth number Fisher-Yates used to
+   * arrange the deck, so who misplays and when was a deterministic function of
+   * how the cards fell, and no seed existed that could vary one while holding
+   * the other. See BOT_RNG_SALT. */
   private rng: () => number;
 
   /** UI pacing feed (Cycle-2 Task 3/6): one entry per bot decision, in the
@@ -276,7 +304,7 @@ export class Game {
     this.rules = cfg.rules ?? DEFAULT_RULES;
     this.shoe = new Shoe({ decks: this.rules.decks, penetration: cfg.penetration, seed: cfg.seed });
     this.bankroll = cfg.bankrollStart;
-    this.rng = mulberry32(cfg.seed ?? Date.now());
+    this.rng = mulberry32(botRngSeed(cfg.seed ?? Date.now()));
   }
 
   /** SeatConfig for this game (falls back to DEFAULT_SEATS, v1 solo parity). */
