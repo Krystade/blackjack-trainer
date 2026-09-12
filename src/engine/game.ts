@@ -4,6 +4,7 @@ import { betWithinStep } from './coverBets';
 import type { Card, Rank } from './cards';
 import { handValue, isBust, isBlackjack, isPair } from './hand';
 import { hiLoTag, trueCount, tcWithinEye } from './count';
+import type { TcRounding } from './count';
 import { correctPlay, basicPlay, insuranceCorrect } from './strategy';
 import type { PlayContext, Advice } from './strategy';
 import { classifyAction, actionCategory, classifyInsurance } from './grade';
@@ -55,6 +56,8 @@ export interface GameConfig {
   betSpreadOn: boolean;
   /** RT#11: accept a bet one spread rung either side of the expected size. */
   coverBets?: boolean;
+  /** V5-4: the counter's true-count rounding convention; defaults to floor. */
+  tcRounding?: TcRounding;
   spread: SpreadRow[];
   bankrollStart: number; // units
   countCheckEvery: number; // rounds; 0 = off
@@ -275,7 +278,11 @@ export class Game {
   }
 
   get trueCountNow(): number {
-    return trueCount(this.runningCount, this.shoe.decksRemaining);
+    // V5-4: the profile's convention, not a hardcoded floor. Every grading
+    // surface at the table reads this -- insurance, deviations, the bet ramp
+    // and the wong decision -- so a counter whose system truncates was being
+    // marked wrong on every negative-count index play.
+    return trueCount(this.runningCount, this.shoe.decksRemaining, this.cfg.tcRounding);
   }
 
   /** How many hands in `hands` share `originIndex` -- i.e. how many of the

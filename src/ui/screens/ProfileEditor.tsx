@@ -13,6 +13,7 @@ import {
 } from '../../store/profiles';
 import { parseCvcxRamp } from '../../store/cvcxParse';
 import { Segmented, Stepper } from './Settings';
+import type { TcRounding } from '../../engine/count';
 
 interface ProfileEditorProps {
   onNavigate: (screen: Screen) => void;
@@ -440,6 +441,32 @@ function ProfileEditForm({
           checked={draft.betSpreadOn}
           onChange={(v) => update({ betSpreadOn: v })}
         />
+
+        {/* V5-4 (docs/BACKLOG.md): a property of the COUNTER'S system, not the
+            casino's table, so it lives here and not under Rules. Deliberately
+            OUTSIDE the `betSpreadOn &&` ramp section: the convention governs
+            index plays and insurance as well as the ramp, so a flat-betting
+            player drilling deviations still has to be able to set it. It was
+            in the ramp section first, where exactly those players could not
+            reach it. */}
+        <div className="settings-row">
+          <span className="settings-label">True count rounding</span>
+          <Segmented
+            options={[
+              { value: 'floor', label: 'Floor' },
+              { value: 'truncate', label: 'Truncate' },
+              { value: 'round', label: 'Round' },
+            ]}
+            value={draft.tcRounding ?? 'floor'}
+            onChange={(v) => update({ tcRounding: v as TcRounding })}
+          />
+        </div>
+        <p className="stats-detail">
+          How your system resolves the leftover when you divide. Floor and truncate agree on
+          every positive count and differ on every negative one &mdash; &minus;1.5 floors to
+          &minus;2 and truncates to &minus;1 &mdash; which straddles real indices like 12 v 4
+          and 13 v 2. Set it to match your book, or the table will mark those deviations wrong.
+        </p>
         <Stepper
           label="Starting bankroll"
           value={draft.bankrollStart}

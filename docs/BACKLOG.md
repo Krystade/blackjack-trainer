@@ -919,9 +919,48 @@ Sources:
 
 **All three legs of the standing workflow are now run.** Open candidates from this round, in
 the order I would take them: ~~V5-1 (confusable-neighbour interleaving, best evidence)~~
-**✅ SHIPPED 2026-09-12** — see the entry above the community section; then V5-4 (division
-rule, correctness), V5-2 (competence vs expression, measurement), V5-5 (depth resolution).
-V5-3 is closed as not-actionable.
+**✅ SHIPPED 2026-09-12** — see the entry above the community section; then ~~V5-4 (division
+rule, correctness)~~ **✅ SHIPPED 2026-09-12**; then V5-2 (competence vs expression,
+measurement) and V5-5 (depth resolution). V5-3 is closed as not-actionable.
+
+- **V5-4 · The true-count division rule was hardcoded to floor — S — ✅ SHIPPED 2026-09-12,
+  default unchanged.** Filed off the community leg with a warning not to change the default
+  without a source. That warning still stands and is why this shipped the way it did: a source
+  was only ever needed to CHANGE the default, never to keep it. `floor` remains the default
+  everywhere, so no existing profile grades differently; the other two conventions are now
+  reachable for anyone whose book specifies them.
+  - **The filed finding was broader than the real one, and narrowing it mattered.** The
+    candidate said "every grading surface runs through `trueCount`", which is true but
+    misleading: the TC DRILLS were already convention-agnostic, because `tcConversionAccepted`
+    accepts all three roundings and `gradeProducedTc` grades against a depth band wide enough
+    to span them. The hardcoded floor only ever bit at the TABLE, where `trueCountNow` feeds
+    insurance grading, deviation grading, the bet ramp and the wong decision with a single
+    integer and no forgiveness. Worth recording that the drills got this right first.
+  - `TcRounding = 'floor' | 'truncate' | 'round'` on the PROFILE, not the ruleset — it
+    describes the counter's system, not the casino's table. Optional, so profiles stored before
+    the field load untouched.
+  - `tcBand` had to take the convention too. A forgiveness band computed under floor while the
+    stated answer follows truncate would forgive the wrong integers; the two now move together
+    and a mutant proves it.
+  - **Two things the tests found that the design missed.** First, `Math.round` breaks ties
+    toward +∞, so −1.5 rounds to −1, NOT −2 — meaning 'round' agrees with truncate on exact
+    half-counts rather than with floor. Surprising enough that it broke the test before it
+    broke anything else; pinned deliberately so swapping in round-half-away-from-zero has to be
+    a visible decision. Second, `Math.trunc(-0.4)` returns `-0`, which prints as "0" and
+    compares equal with `==` but is a different value to `Object.is` — so it would have
+    survived into snapshots and Map keys as a phantom distinction. Normalised at the source,
+    asserted across the domain.
+  - **The control shipped in the wrong place first, and the e2e caught it.** It went into the
+    Bet ramp section next to the cover-bet tolerance, which is gated behind `betSpreadOn`. That
+    hid it from exactly the people who most need it: the convention governs index plays and
+    insurance as well as the ramp, so a flat-betting player drilling deviations was being
+    graded under a rule they could neither see nor change. Moved to the ungated "Bankroll &
+    count" section, with a regression e2e that opens the editor with the spread OFF and asserts
+    both that the control is there and that the ramp section really is absent.
+  - Nine mutants, all killed: six unit (each convention falling through to floor, the game
+    ignoring the profile, the default flipped, the −0 normalisation removed, `tcBand` ignoring
+    the convention) and three e2e (useGame dropping the field, the control back behind the ramp
+    gate, the editor writing nothing).
 
 ### T0 · Complete functional test coverage (operator request 2026-07-26) — M — **✅ COMPLETE 2026-09-11**
 All 46 `❌ GAP` rows of `docs/research/2026-07-26-test-coverage-matrix.md` are closed; that document

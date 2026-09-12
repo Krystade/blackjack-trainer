@@ -1,6 +1,7 @@
 import { makeCountDrill } from './countDrill';
 import type { CountDrillRound } from './countDrill';
 import { trueCount, tcBand, tcWithinEye } from '../engine/count';
+import type { TcRounding } from '../engine/count';
 import { mulberry32 } from '../engine/cards';
 
 /**
@@ -58,6 +59,7 @@ export function makeProduceTcRound(
   groupSize: 1 | 2 | 3,
   seed?: number,
   totalDecks: number = DEFAULT_TOTAL_DECKS,
+  rounding?: TcRounding,
 ): ProduceTcRound {
   const round = makeCountDrill(cards, groupSize, seed);
   // A second draw for the tray depth (0.5 .. totalDecks), seeded off a
@@ -67,7 +69,8 @@ export function makeProduceTcRound(
   return {
     round,
     decksRemaining,
-    correctTc: trueCount(round.finalRc, decksRemaining),
+    // V5-4: stated in the player's own convention; see trueCountDrill.ts.
+    correctTc: trueCount(round.finalRc, decksRemaining, rounding),
   };
 }
 

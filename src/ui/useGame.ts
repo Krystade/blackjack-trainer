@@ -254,6 +254,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       penetration: profile.penetration,
       betSpreadOn: profile.betSpreadOn,
       ...(profile.coverBets === undefined ? {} : { coverBets: profile.coverBets }),
+      ...(profile.tcRounding === undefined ? {} : { tcRounding: profile.tcRounding }),
       spread: profile.spread,
       bankrollStart: profile.bankrollStart,
       countCheckEvery: profile.countCheckEvery,

@@ -17,13 +17,56 @@ export function hiLoTag(rank: Rank): -1 | 0 | 1 {
 }
 
 /**
+ * How the leftover in a true-count division is resolved (V5-4).
+ *
+ * This is a property of the COUNTER'S SYSTEM, not of the casino's rules, which
+ * is why it lives on the profile rather than the ruleset. Different systems and
+ * different authors specify different rules, and the reference training tool
+ * (Casino Vérité) makes it a per-strategy setting for exactly that reason.
+ *
+ * It matters more than it looks. Floor and truncate agree on every POSITIVE
+ * quotient and disagree on every negative one -- `floor(-1.5) = -2` against
+ * `trunc(-1.5) = -1` -- and a good part of the Hi-Lo index set lives at or
+ * below zero (12 v 4, 13 v 2, 12 v 6). Straddling an index of -1 is the
+ * difference between taking a deviation and not, so a learner whose book says
+ * truncate was being marked wrong at the table on precisely the deviations
+ * that are hardest to get right.
+ */
+export type TcRounding = 'floor' | 'truncate' | 'round';
+
+/** The app's historical behaviour, and still the default everywhere. */
+export const DEFAULT_TC_ROUNDING: TcRounding = 'floor';
+
+/**
  * Converts a running count to a true count by dividing by decks remaining.
  * Clamps decksRemaining to minimum 0.5.
- * Always floors toward -∞ (Math.floor).
+ *
+ * Defaults to flooring toward -∞, which is what this function did
+ * unconditionally before V5-4 -- so every caller that does not pass a rounding
+ * is byte-identical to before.
  */
-export function trueCount(runningCount: number, decksRemaining: number): number {
+export function trueCount(
+  runningCount: number,
+  decksRemaining: number,
+  rounding: TcRounding = DEFAULT_TC_ROUNDING,
+): number {
   const clampedDecks = Math.max(0.5, decksRemaining);
-  return Math.floor(runningCount / clampedDecks);
+  const exact = runningCount / clampedDecks;
+  // Normalise -0 to 0. Math.trunc(-0.4) and Math.round(-0.4) both give -0,
+  // which prints as "0" and compares equal with ==, but is a DIFFERENT value
+  // to Object.is -- so it survives into snapshots, Map keys and toBe()
+  // assertions as a phantom distinction. Found by a test that asserted
+  // truncate === floor + 1 and got "expected -0 to be +0".
+  const norm = (n: number) => (n === 0 ? 0 : n);
+  if (rounding === 'truncate') return norm(Math.trunc(exact));
+  // NOTE: Math.round breaks ties toward +Infinity, so -1.5 becomes -1, not -2.
+  // On exact half-counts 'round' therefore agrees with 'truncate' rather than
+  // with 'floor'. Left as the platform rule rather than silently swapped for
+  // round-half-away-from-zero, because which one a counter's book means is
+  // the same open question as the convention itself -- pinned in count.test.ts
+  // so changing it has to be deliberate.
+  if (rounding === 'round') return norm(Math.round(exact));
+  return norm(Math.floor(exact));
 }
 
 /* ---------------------------------------------------------------- */
@@ -68,13 +111,14 @@ export function tcBand(
   runningCount: number,
   decksRemaining: number,
   eyeError: number = EYE_DECK_ERROR,
+  rounding: TcRounding = DEFAULT_TC_ROUNDING,
 ): TcBand {
   // trueCount() clamps depth up to half a deck, so a shallow shoe cannot
   // produce a divide-by-zero here however small the estimate goes.
   const candidates = [
-    trueCount(runningCount, decksRemaining - eyeError),
-    trueCount(runningCount, decksRemaining),
-    trueCount(runningCount, decksRemaining + eyeError),
+    trueCount(runningCount, decksRemaining - eyeError, rounding),
+    trueCount(runningCount, decksRemaining, rounding),
+    trueCount(runningCount, decksRemaining + eyeError, rounding),
   ];
   return { min: Math.min(...candidates), max: Math.max(...candidates) };
 }
@@ -85,8 +129,9 @@ export function tcWithinEye(
   runningCount: number,
   decksRemaining: number,
   eyeError: number = EYE_DECK_ERROR,
+  rounding: TcRounding = DEFAULT_TC_ROUNDING,
 ): boolean {
-  const { min, max } = tcBand(runningCount, decksRemaining, eyeError);
+  const { min, max } = tcBand(runningCount, decksRemaining, eyeError, rounding);
   return guess >= min && guess <= max;
 }
 

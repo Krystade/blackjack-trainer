@@ -58,6 +58,7 @@ export function ProduceTcDrillView({
       settings.drill.countGroup,
       randomSeed(),
       totalDecks,
+      activeProfile.tcRounding,
     ),
   );
   const [phase, setPhase] = useState<Phase>('flashing');
@@ -106,6 +107,7 @@ export function ProduceTcDrillView({
         settings.drill.countGroup,
         randomSeed(),
         totalDecks,
+        activeProfile.tcRounding,
       ),
     );
     setShownIndex(0);

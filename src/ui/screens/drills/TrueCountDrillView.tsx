@@ -201,7 +201,7 @@ export function TrueCountDrillView({
 
   const start = () => {
     runIdRef.current += 1;
-    const q = makeTrueCountQuestion(randomSeed(), { maxDecks });
+    const q = makeTrueCountQuestion(randomSeed(), { maxDecks, rounding: activeProfile.tcRounding });
     setQuestion(q);
     setHonorCheck(false);
     setPhase(eyesFree && !strictMode ? 'selfcheck' : 'answering');

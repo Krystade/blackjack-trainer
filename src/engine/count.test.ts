@@ -180,3 +180,99 @@ describe('tcRoundings (the depth is known; only the leftover is in dispute)', ()
     }
   });
 });
+
+describe('V5-4: the true-count rounding convention', () => {
+  it('defaults to floor, so every pre-V5-4 caller is unchanged', () => {
+    for (let rc = -20; rc <= 20; rc++) {
+      for (const decks of [0.5, 1, 1.5, 2, 3, 4.5, 6, 8]) {
+        expect(trueCount(rc, decks), `rc ${rc} / ${decks}`).toBe(trueCount(rc, decks, 'floor'));
+      }
+    }
+  });
+
+  it('floor and truncate agree on every POSITIVE quotient', () => {
+    // The whole reason this went unnoticed: half the domain is identical.
+    for (let rc = 0; rc <= 30; rc++) {
+      for (const decks of [0.5, 1, 1.5, 2, 3, 4.5, 6, 8]) {
+        expect(trueCount(rc, decks, 'floor'), `rc ${rc} / ${decks}`).toBe(
+          trueCount(rc, decks, 'truncate'),
+        );
+      }
+    }
+  });
+
+  it('and disagree on the negative ones, which is the bug', () => {
+    // -3 / 2 = -1.5. Floor goes to -2, truncate toward zero to -1. An index
+    // of -1 sits between them, so this is a deviation taken or not taken.
+    expect(trueCount(-3, 2, 'floor')).toBe(-2);
+    expect(trueCount(-3, 2, 'truncate')).toBe(-1);
+    // JS Math.round breaks ties toward +Infinity, so -1.5 rounds to -1 and
+    // NOT to -2. That surprises people (it surprised this test first time),
+    // and it means 'round' agrees with truncate on exact half-counts rather
+    // than with floor. Pinned deliberately so a future switch to a
+    // round-half-away-from-zero helper is a visible decision, not a silent
+    // change to how negative indices grade.
+    expect(trueCount(-3, 2, 'round')).toBe(-1);
+    // Away from the tie, round parts company with truncate as expected.
+    expect(trueCount(-7, 4, 'truncate')).toBe(-1); // -1.75
+    expect(trueCount(-7, 4, 'round')).toBe(-2);
+    expect(trueCount(-7, 4, 'floor')).toBe(-2);
+
+    // At least one disagreement must exist across the realistic domain, or
+    // the setting would be decorative.
+    const disagreements: string[] = [];
+    for (let rc = -20; rc < 0; rc++) {
+      for (const decks of [0.5, 1, 1.5, 2, 3, 4.5, 6, 8]) {
+        if (trueCount(rc, decks, 'floor') !== trueCount(rc, decks, 'truncate')) {
+          disagreements.push(`${rc}/${decks}`);
+        }
+      }
+    }
+    expect(disagreements.length).toBeGreaterThan(20);
+  });
+
+  it('round differs from both where the fraction is over a half', () => {
+    expect(trueCount(7, 2.5, 'floor')).toBe(2); // 2.8
+    expect(trueCount(7, 2.5, 'truncate')).toBe(2);
+    expect(trueCount(7, 2.5, 'round')).toBe(3);
+  });
+
+  it('the three conventions never span more than two adjacent integers', () => {
+    // The claim tcRoundings already makes; asserted directly on trueCount so
+    // the two cannot drift apart.
+    for (let rc = -20; rc <= 20; rc++) {
+      for (const decks of [0.5, 1, 1.5, 2, 2.5, 3, 4.5, 6, 8]) {
+        const all = (['floor', 'truncate', 'round'] as const).map((r) => trueCount(rc, decks, r));
+        expect(Math.max(...all) - Math.min(...all), `rc ${rc} / ${decks}`).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it('never returns -0, which prints as 0 but is a different value to Object.is', () => {
+    // -0 survives into snapshots, Map keys and toBe() as a phantom distinction.
+    for (const r of ['floor', 'truncate', 'round'] as const) {
+      for (let rc = -5; rc <= 5; rc++) {
+        for (const decks of [0.5, 1, 1.5, 2, 6, 8]) {
+          expect(Object.is(trueCount(rc, decks, r), -0), `${r} ${rc}/${decks}`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('still clamps a shallow shoe, whatever the convention', () => {
+    for (const r of ['floor', 'truncate', 'round'] as const) {
+      expect(trueCount(6, 0, r), r).toBe(trueCount(6, 0.5, r));
+      expect(Number.isFinite(trueCount(6, 0, r)), r).toBe(true);
+    }
+  });
+
+  it('tcBand follows the same convention as the answer it forgives', () => {
+    // A band computed under floor while the answer is stated under truncate
+    // would forgive the wrong integers -- the two must move together.
+    const floorBand = tcBand(-3, 2, 0.5, 'floor');
+    const truncBand = tcBand(-3, 2, 0.5, 'truncate');
+    expect(truncBand).not.toEqual(floorBand);
+    expect(truncBand.max).toBeGreaterThanOrEqual(trueCount(-3, 2, 'truncate'));
+    expect(floorBand.min).toBeLessThanOrEqual(trueCount(-3, 2, 'floor'));
+  });
+});

@@ -1883,3 +1883,64 @@ describe('bot-mistake RNG is decorrelated from the shoe (M6)', () => {
     expect(logs.size).toBeGreaterThan(1);
   });
 });
+
+describe('V5-4: the table grades against the profile rounding convention', () => {
+  /** Deal rounds on a seeded shoe until the exact quotient is negative and fractional. */
+  function seekNegativeFraction(tcRounding?: 'floor' | 'truncate' | 'round') {
+    for (let seed = 1; seed <= 400; seed++) {
+      const game = new Game(cfg({ seed, ...(tcRounding ? { tcRounding } : {}) }));
+      for (let round = 0; round < 25; round++) {
+        game.startRound();
+        const exact = game.runningCount / Math.max(0.5, game.shoe.decksRemaining);
+        if (exact < 0 && !Number.isInteger(exact)) {
+          return { game, seed, round, exact };
+        }
+        if (game.phase === 'insurance') game.insuranceDecision(false);
+        while (game.phase === 'player') game.act('stand');
+      }
+    }
+    return null;
+  }
+
+  it('reaches a negative fractional quotient at all -- the case the rule decides', () => {
+    // Vacuity guard: if a real shoe never produced one, everything below would
+    // pass under any implementation.
+    const found = seekNegativeFraction();
+    expect(found, 'no negative fractional true count in 400 seeds').not.toBeNull();
+  });
+
+  it('floor and truncate give different table true counts there', () => {
+    const found = seekNegativeFraction();
+    expect(found).not.toBeNull();
+    const { seed, round } = found!;
+
+    const run = (tcRounding: 'floor' | 'truncate') => {
+      const game = new Game(cfg({ seed, tcRounding }));
+      for (let r = 0; r <= round; r++) {
+        game.startRound();
+        if (r === round) return game.trueCountNow;
+        if (game.phase === 'insurance') game.insuranceDecision(false);
+        while (game.phase === 'player') game.act('stand');
+      }
+      throw new Error('unreachable');
+    };
+
+    expect(run('truncate')).toBe(run('floor') + 1);
+  });
+
+  it('omitting the setting is byte-identical to the old hardcoded floor', () => {
+    const found = seekNegativeFraction();
+    const { seed, round } = found!;
+    const run = (overrides: Partial<GameConfig>) => {
+      const game = new Game(cfg({ seed, ...overrides }));
+      for (let r = 0; r <= round; r++) {
+        game.startRound();
+        if (r === round) return game.trueCountNow;
+        if (game.phase === 'insurance') game.insuranceDecision(false);
+        while (game.phase === 'player') game.act('stand');
+      }
+      throw new Error('unreachable');
+    };
+    expect(run({})).toBe(run({ tcRounding: 'floor' }));
+  });
+});

@@ -1,5 +1,6 @@
 import { mulberry32 } from '../engine/cards';
 import { trueCount } from '../engine/count';
+import type { TcRounding } from '../engine/count';
 
 export interface TrueCountQuestion {
   runningCount: number; // -6 .. +20
@@ -24,7 +25,10 @@ const DEFAULT_MAX_DECKS = 6;
  * @param seed - Optional seed for reproducibility
  * @param opts.maxDecks - Upper bound (inclusive) for decksRemaining, default 6
  */
-export function makeTrueCountQuestion(seed?: number, opts?: { maxDecks?: number }): TrueCountQuestion {
+export function makeTrueCountQuestion(
+  seed?: number,
+  opts?: { maxDecks?: number; rounding?: TcRounding },
+): TrueCountQuestion {
   const rng = mulberry32(seed ?? Date.now());
   const maxDecks = opts?.maxDecks ?? DEFAULT_MAX_DECKS;
 
@@ -36,7 +40,10 @@ export function makeTrueCountQuestion(seed?: number, opts?: { maxDecks?: number 
   const stepIndex = Math.floor(rng() * halfDeckSteps);
   const decksRemaining = (stepIndex + 1) * 0.5;
 
-  const correctTc = trueCount(runningCount, decksRemaining);
+  // V5-4: the stated answer follows the PLAYER'S convention. Grading is
+  // already convention-agnostic (tcConversionAccepted accepts all three), but
+  // the result screen was printing floor's answer at everyone.
+  const correctTc = trueCount(runningCount, decksRemaining, opts?.rounding);
 
   return { runningCount, decksRemaining, correctTc };
 }

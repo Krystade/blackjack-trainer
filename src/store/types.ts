@@ -3,6 +3,7 @@ import { DEFAULT_SPREAD } from '../engine/game';
 import type { EventSource, Category, MistakeClass } from '../engine/grade';
 import type { DeviationId } from '../engine/deviations';
 import type { RuleSet } from '../engine/ruleset';
+import type { TcRounding } from '../engine/count';
 import type { SpeedTier } from '../drills/countSpeed';
 import type { DistractionMode, DistractionFreq } from '../drills/distraction';
 import type { CheckpointFreq } from '../drills/countCheckpoints';
@@ -270,6 +271,17 @@ export interface Profile {
    * it is a tolerance on.
    */
   coverBets?: boolean;
+  /**
+   * V5-4: how this counter's system resolves the leftover in a true-count
+   * division. OPTIONAL so profiles stored before this field load untouched,
+   * and absent means 'floor' -- the app's historical behaviour.
+   *
+   * On the profile and not the ruleset because it describes the PLAYER'S
+   * system, not the casino's table. Floor and truncate agree on every
+   * positive quotient and differ on every negative one, which is where a
+   * good part of the Hi-Lo index set lives -- see engine/count.ts.
+   */
+  tcRounding?: TcRounding;
   /**
    * Reveal the dealer's hole card even when no hand still needs a dealer
    * total. OPTIONAL so profiles stored before this field load untouched.
