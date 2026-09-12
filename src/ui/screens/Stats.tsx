@@ -502,6 +502,12 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   const downswingSessions = downswingHistory.length;
   const downswingConformCorrect = downswingHistory.reduce((s, h) => s + h.correct, 0);
   const downswingConformTotal = downswingHistory.reduce((s, h) => s + h.total, 0);
+  // V3-7: the play half. Sessions recorded before V3-7 have no play fields at
+  // all -- the drill was a stand-only wall then, with no decision to grade --
+  // so they are excluded from BOTH sides of this fraction rather than counted
+  // as a perfect or a failed session they never played.
+  const downswingPlayCorrect = downswingHistory.reduce((s, h) => s + (h.playCorrect ?? 0), 0);
+  const downswingPlayTotal = downswingHistory.reduce((s, h) => s + (h.playTotal ?? 0), 0);
 
   // ET5: fatigue drift over the COUNTING runs you've logged (count drill + timed
   // challenge — both dated per-run accuracy), grouped into sessions by the
@@ -1033,6 +1039,22 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
               <span>Spread-conformity (bets held to the ramp)</span>
               <span>{pct(downswingConformCorrect, downswingConformTotal)}</span>
             </li>
+            {/*
+              Reported apart from the bet, because chasing with your money and
+              chasing with your play are different failures with different
+              fixes. Hidden entirely when no session has graded a decision --
+              a 0% there would read as having played every stiff wrong, when
+              in fact none was ever dealt.
+            */}
+            {downswingPlayTotal > 0 && (
+              <li className="mistake-row">
+                <span>Correct play (stiff hands under pressure)</span>
+                <span>
+                  {pct(downswingPlayCorrect, downswingPlayTotal)} ({downswingPlayCorrect}/
+                  {downswingPlayTotal})
+                </span>
+              </li>
+            )}
           </ul>
         )}
       </section>

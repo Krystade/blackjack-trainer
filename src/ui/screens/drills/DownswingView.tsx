@@ -3,7 +3,9 @@ import type { Profile, Settings } from '../../../store/types';
 import { Game } from '../../../engine/game';
 import type { GameConfig, SeatConfig } from '../../../engine/game';
 import type { PlayerHand } from '../../../engine/game';
-import { makeDownswingShoe } from '../../../drills/downswingShoe';
+import { buildDownswingScript } from '../../../drills/downswingShoe';
+import type { Action } from '../../../engine/deviations';
+import { handValue } from '../../../engine/hand';
 import { PlayingCard } from '../../components/PlayingCard';
 import { useAudio } from '../../../audio/useAudio';
 import { loadStats, saveStats } from '../../../store/persist';
@@ -20,6 +22,14 @@ function betChipsFor(spread: { units: number }[]): number[] {
 
 type Phase = 'bet' | 'play' | 'settled' | 'done';
 
+const ACTION_LABEL: Record<Action, string> = {
+  hit: 'Hit',
+  stand: 'Stand',
+  double: 'Double',
+  split: 'Split',
+  surrender: 'Surrender',
+};
+
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
@@ -32,6 +42,13 @@ function randomSeed(): number {
  * is holding that minimum and NOT chasing the losses. At the end it reports
  * spread-conformity: did you keep to your ramp through the drawdown? (Operator:
  * rigged real hands + spread-conformity grading only — no temptations/self-report.)
+ *
+ * V3-7: the PLAY is graded too now. It used to be a stand-only wall — every
+ * hand was a made 17-19, so the only button was Stand and tilt had nothing to
+ * corrupt but the bet. Chasing is not only a betting behaviour; it is hitting a
+ * stiff you should stand and doubling to get it all back in one hand. The rig's
+ * decision hands (downswingShoe.ts's DECISION_LOSSES) lose down every line, so
+ * playing them correctly is rewarded with a loss — which is the point.
  */
 export function DownswingView({
   settings,
@@ -45,6 +62,10 @@ export function DownswingView({
   const audio = useAudio(settings.audio);
 
   const gameRef = useRef<Game | null>(null);
+  // Where each scripted round ends, in cards dealt. See the realignment in
+  // `next()` -- without it one off-script line turns every later hand into the
+  // previous hand's leftovers.
+  const scriptRef = useRef<number[]>([]);
   if (gameRef.current === null) {
     const cfg: GameConfig = {
       // High penetration on purpose: the rigged shoe is a fixed losing sequence
@@ -60,7 +81,9 @@ export function DownswingView({
       rules: activeProfile.rules,
       seats: SOLO_SEATS,
     };
-    gameRef.current = Game.withRiggedShoe(cfg, makeDownswingShoe(ROUNDS, randomSeed()));
+    const built = buildDownswingScript(ROUNDS, randomSeed());
+    scriptRef.current = built.boundaries;
+    gameRef.current = Game.withRiggedShoe(cfg, built.cards);
   }
   const game = gameRef.current;
 
@@ -73,9 +96,16 @@ export function DownswingView({
   const [selectedBet, setSelectedBet] = useState(betChips[0]);
   // Spread-conformity tally: how many of your bets matched the ramp for the count.
   const conformRef = useRef({ correct: 0, total: 0 });
+  // V3-7: the same tally for the PLAY. Only hands that offered a real decision
+  // count -- a made 17 where Stand is the only sane button is not evidence of
+  // discipline, and padding the denominator with them would let a session look
+  // composed because most of its hands could not be got wrong.
+  const playRef = useRef({ correct: 0, total: 0 });
+  const [lastPlay, setLastPlay] = useState<{ taken: string; expected: string } | null>(null);
   const startBankrollRef = useRef(game.bankroll);
 
   const deal = () => {
+    setLastPlay(null);
     const before = game.events.length;
     game.startRound(selectedBet);
     // The engine emits one 'bet' GradedEvent per staked hand when betSpreadOn.
@@ -89,8 +119,43 @@ export function DownswingView({
     bump();
   };
 
-  const stand = () => {
+  /**
+   * Play the hand out with `action`, then read the engine's own verdict on it.
+   *
+   * Grading is not re-derived here. The engine already emits a GradedEvent per
+   * action carrying `correct` and what it expected -- the same verdict table
+   * play is scored against, deviations and all -- and a second opinion computed
+   * in a drill view is a second thing to keep in sync with the charts.
+   */
+  const play = (action: Action) => {
+    // Measured BEFORE the action, because afterwards the hand has an extra
+    // card and a different total.
+    //
+    // A STIFF is what counts as a decision here, not "more than one legal
+    // button" -- hit, stand, double and surrender are all legal on any two-card
+    // hand, so that test is true even on a made 19 and would mark the whole
+    // session as decisions. It is the 12-16 range where the answer is genuinely
+    // uncomfortable and where tilt actually shows up; grading the pat hands
+    // alongside them would let a wall of forced Stands read as discipline.
+    const cards = game.hands[0]?.cards ?? [];
+    const wasDecision = cards.length > 0 && handValue(cards).total < 17;
+    const before = game.events.length;
+
+    game.act(action);
+    // Anything still live rides on stand: the rig's decision hands are one card
+    // from resolved down every line, and this drill grades the DECISION rather
+    // than a multi-card play-out.
     while (game.phase === 'player') game.act('stand');
+
+    if (wasDecision) {
+      const graded = game.events.slice(before).find((e) => e.kind === 'action');
+      if (graded) {
+        playRef.current.total += 1;
+        if (graded.correct) playRef.current.correct += 1;
+        else setLastPlay({ taken: graded.taken, expected: graded.expected });
+      }
+    }
+
     audio.ding('bad'); // it's a rigged loss
     setPhase('settled');
     bump();
@@ -112,6 +177,12 @@ export function DownswingView({
               correct: c.correct,
               total: c.total,
               drawdown: startBankrollRef.current - game.bankroll,
+              // Omitted rather than zeroed when the rig dealt no decisions, so
+              // Stats can tell "played nothing wrong" from "had nothing to get
+              // wrong" -- see the field's own note in store/types.ts.
+              ...(playRef.current.total === 0
+                ? {}
+                : { playCorrect: playRef.current.correct, playTotal: playRef.current.total }),
             },
           ],
         },
@@ -119,8 +190,22 @@ export function DownswingView({
       setPhase('done');
       return;
     }
+    // V3-7: REALIGN THE SCRIPT.
+    // Each scripted round costs a fixed number of cards down every line basic
+    // strategy can take, but a player is free to take another one (surrender
+    // ends a decision hand a card early). Skip forward to the next round
+    // boundary at or after what was actually dealt, binning the difference
+    // unseen, so the next hand starts on its own first card instead of on the
+    // tail of this one.
+    const dealt = game.shoe.cardsDealt;
+    const nextBoundary = scriptRef.current.find((b) => b >= dealt);
+    if (nextBoundary !== undefined && nextBoundary > dealt) {
+      game.discardRiggedCards(nextBoundary - dealt);
+    }
+
     setRound((r) => r + 1);
     setPhase('bet');
+    setLastPlay(null);
     bump();
   };
 
@@ -128,6 +213,9 @@ export function DownswingView({
   const drawdown = startBankrollRef.current - game.bankroll;
   const conform = conformRef.current;
   const conformPct = conform.total > 0 ? Math.round((conform.correct / conform.total) * 100) : 100;
+  const playTally = playRef.current;
+  const playPct =
+    playTally.total > 0 ? Math.round((playTally.correct / playTally.total) * 100) : null;
 
   if (phase === 'done') {
     return (
@@ -139,12 +227,39 @@ export function DownswingView({
           <div className="drill-heading">Downswing</div>
         </div>
         <div className="drill-result">
-          <div className={conformPct >= 90 ? 'result-correct' : 'result-wrong'}>
-            {conformPct >= 90 ? 'You held your discipline.' : 'You broke from your ramp.'}
+          <div
+            className={
+              conformPct >= 90 && (playPct === null || playPct >= 90)
+                ? 'result-correct'
+                : 'result-wrong'
+            }
+          >
+            {conformPct < 90
+              ? 'You broke from your ramp.'
+              : playPct !== null && playPct < 90
+                ? 'You held your ramp, but not your play.'
+                : 'You held your discipline.'}
           </div>
           <div className="result-detail">
             Spread-conformity through the drawdown: <strong>{conformPct}%</strong> ({conform.correct}/
             {conform.total} bets matched your ramp).
+          </div>
+          {/*
+            V3-7: the two halves of tilt, reported apart. Chasing with the bet
+            and chasing with the play are different failures with different
+            fixes, and one blended score would let a player who kept their ramp
+            perfectly while hitting every stiff read as disciplined.
+          */}
+          <div className="result-detail downswing-play-score">
+            Correct play under pressure:{' '}
+            {playPct === null ? (
+              <strong>no decisions dealt</strong>
+            ) : (
+              <>
+                <strong>{playPct}%</strong> ({playTally.correct}/{playTally.total} stiff hands
+                played correctly)
+              </>
+            )}
           </div>
           <div className="result-detail">
             You rode out a {drawdown}-unit downswing over {ROUNDS} hands — through negative counts
@@ -198,6 +313,16 @@ export function DownswingView({
       )}
 
       <div className="message-strip">
+        {/*
+          Named on the hand it happened on. A play score revealed only at the
+          end would tell a player they tilted without telling them where, and
+          the whole value of a rigged run is that the hand is still on screen.
+        */}
+        {lastPlay && (
+          <div className="result-wrong">
+            You played {lastPlay.taken} — the correct play was {lastPlay.expected}.
+          </div>
+        )}
         {phase === 'settled' && activeHand && (
           <div className="result-wrong">
             {activeHand.result === 'lose' ? `Lost ${Math.abs(activeHand.net ?? 0)}u` : String(activeHand.result)}
@@ -231,9 +356,22 @@ export function DownswingView({
 
       {phase === 'play' && (
         <div className="action-bar">
-          <button type="button" className="action-btn" onClick={stand}>
-            Stand
-          </button>
+          {/*
+            Every action the hand legally offers, not just Stand. The drill used
+            to render one button because every hand was a made 17-19; a stiff
+            hand with only a Stand button would be telling the player what to do
+            on the exact decision the session exists to test.
+          */}
+          {game.legalActions().map((action) => (
+            <button
+              key={action}
+              type="button"
+              className="action-btn"
+              onClick={() => play(action)}
+            >
+              {ACTION_LABEL[action]}
+            </button>
+          ))}
         </div>
       )}
 

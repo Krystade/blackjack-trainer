@@ -402,9 +402,19 @@ export interface Stats {
   downswing: {
     history: {
       date: string;
+      /** Bets that matched the ramp for the count, and bets graded. */
       correct: number;
       total: number;
       drawdown: number;
+      /**
+       * V3-7: the PLAY half of the same session -- decisions played correctly,
+       * out of the decisions the rig actually dealt. Optional, because every
+       * session recorded before V3-7 was a stand-only wall with no decisions in
+       * it: a zero there would report perfect discipline as total failure, and a
+       * hundred would invent a score nobody earned. Absent means "not measured".
+       */
+      playCorrect?: number;
+      playTotal?: number;
     }[];
   };
   // V3-2 (docs/BACKLOG.md, produce-a-true-count drill): one row per graded round

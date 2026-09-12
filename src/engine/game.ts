@@ -135,12 +135,28 @@ function freshHand(bet: number, originIndex: number): PlayerHand {
   };
 }
 
+/** The extra surface a rigged shoe has beyond `Shoe`. */
+interface RiggedShoe {
+  /**
+   * Bin the next `n` cards WITHOUT dealing them: they leave the shoe unseen and
+   * uncounted, exactly like a burn.
+   *
+   * V3-7 needs this. A rigged shoe is a script, and a script only survives while
+   * every round costs the number of cards it was written to cost. The moment a
+   * drill offers a real decision, a player can take a line the script did not
+   * budget for -- and then every later round is that round's leftovers glued to
+   * the next round's opening, which is noise rather than the designed hand. The
+   * caller realigns to its next round boundary with this instead.
+   */
+  discard(n: number): void;
+}
+
 /**
  * A minimal Shoe-surface object that deals a pre-stacked list of cards in
  * order, for deterministic tests. Cast to Shoe at the boundary (test-only;
  * see Game.withRiggedShoe).
  */
-function makeRiggedShoe(cards: Card[], penetration: number): Shoe {
+function makeRiggedShoe(cards: Card[], penetration: number): Shoe & RiggedShoe {
   const queue = [...cards];
   const cutCardPosition = Math.floor(cards.length * penetration);
   let dealt = 0;
@@ -149,6 +165,14 @@ function makeRiggedShoe(cards: Card[], penetration: number): Shoe {
       if (queue.length === 0) throw new Error('Rigged shoe exhausted');
       dealt++;
       return queue.shift()!;
+    },
+    discard(n: number): void {
+      // Counted as dealt, because they are gone from the shoe: `cardsDealt` is
+      // the caller's own alignment yardstick, and a discard that did not move
+      // it would leave the caller unable to reach the boundary it is aiming at.
+      const take = Math.min(Math.max(0, Math.floor(n)), queue.length);
+      queue.splice(0, take);
+      dealt += take;
     },
     get cardsRemaining(): number {
       return queue.length;
@@ -167,7 +191,7 @@ function makeRiggedShoe(cards: Card[], penetration: number): Shoe {
       dealt = 0;
     },
   };
-  return rigged as unknown as Shoe;
+  return rigged as unknown as Shoe & RiggedShoe;
 }
 
 export class Game {
@@ -277,6 +301,23 @@ export class Game {
     game.shoe = makeRiggedShoe(cards, cfg.penetration);
     game.shoeIsRigged = true;
     return game;
+  }
+
+  /**
+   * Bin the next `n` cards of a RIGGED shoe without dealing them -- see
+   * `RiggedShoe.discard`. They are never seen and never counted, so the running
+   * count stays exactly what an honest player watching the table would have.
+   *
+   * Throws on a real shoe rather than silently doing nothing: burning cards out
+   * of a live game would corrupt the count that everything else is graded
+   * against, and a caller reaching for this on one has made a mistake worth
+   * hearing about.
+   */
+  discardRiggedCards(n: number): void {
+    if (!this.shoeIsRigged) {
+      throw new Error('discardRiggedCards is only valid on a rigged shoe');
+    }
+    (this.shoe as unknown as RiggedShoe).discard(n);
   }
 
   get trueCountNow(): number {

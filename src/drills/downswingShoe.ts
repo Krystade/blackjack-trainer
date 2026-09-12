@@ -8,14 +8,19 @@ import { mulberry32 } from '../engine/cards';
  * graded on spread-conformity — the one thing CVCX can't rehearse: keeping to
  * your ramp (here, not CHASING with bigger bets) through a bad run.
  *
- * Robustness: every round is a PAT-HAND loss — the player is dealt a made hard
- * 17–19 and the dealer a higher made 18–20, both from two cards. Basic strategy
- * STANDS on hard 17+, so a competent player takes no hits and the dealer (17+)
- * doesn't draw either: exactly 4 cards are consumed per round in a fixed order
- * (player1, dealer-up, player2, dealer-hole), so the rig can't desync. No Ace
- * up-cards, so no insurance/peek detours. The high-card-heavy composition drives
- * the running count negative, so the ramp correctly calls for the MINIMUM bet —
- * the discipline the session tests is holding that minimum, not chasing.
+ * Robustness: every round consumes a KNOWN number of cards whatever the player
+ * does, in a fixed order (player1, dealer-up, player2, dealer-hole, then any
+ * draws), so the rig can't desync. No Ace up-cards anywhere, so no
+ * insurance/peek detours, and no pairs, so no split branch.
+ *
+ * V3-7: it used to be a STAND-ONLY WALL. Every hand was a made hard 17-19, so
+ * basic strategy stood on all of them and the play phase was one button pressed
+ * twenty-five times -- which meant tilt, the entire subject of the drill, had
+ * nothing to corrupt except the bet. Chasing a loss is not only a betting
+ * behaviour: it is hitting a stiff you should stand, standing on one you should
+ * hit, doubling to get it back in one hand, and giving up. `DECISION_LOSSES`
+ * puts real, uncomfortable, CORRECT-but-losing decisions in front of the player
+ * so the drill can grade the play too.
  */
 
 const card = (rank: Rank): Card => ({ rank, suit: 's' });
@@ -50,14 +55,71 @@ const DRAW_OUT_LOSSES: readonly Rank[][] = [
 ];
 
 /**
- * Build a rigged shoe (Card[]) of `rounds` reliably-losing solo rounds, seeded.
- * A small tail of high cards is appended as a buffer so the underlying Shoe
- * never underflows if a round consumes an unexpected extra card.
+ * V3-7: STIFF HANDS THAT LOSE WHATEVER YOU DO — the family that gives tilt
+ * something to corrupt.
+ *
+ * Every round here is five cards, `[P1, Dup, P2, Dhole, X]`, built to one shape:
+ *
+ *   - the player holds a hard 12-16 from two unpaired, ace-free cards;
+ *   - the dealer's two cards total 7-11, so the dealer MUST draw exactly once;
+ *   - the up-card is 2-8, so there is no peek, no insurance, and no hand on
+ *     which basic strategy would surrender;
+ *   - `X`, the fifth card, is a ten.
+ *
+ * That shape makes the round cost exactly five cards down EVERY line the player
+ * can take, which is what keeps the rig from desyncing now that there is a real
+ * decision to get wrong:
+ *
+ *   - STAND: the dealer draws X and makes 17-21, which beats a 12-16.
+ *   - HIT: the player draws X and busts, so the dealer never draws (see
+ *     game.ts's playDealerAndSettle -- with no live hand it takes no cards).
+ *   - DOUBLE: exactly one card, the same X, the same bust.
+ *
+ * And every line LOSES, which is the drill's whole premise. Surrender is the one
+ * exception at four cards; it is never the correct play against a 2-8 up-card,
+ * so it is graded as the mistake it is, and the view realigns the shoe to the
+ * next round boundary afterwards.
+ *
+ * The correct plays are deliberately mixed. Two of these six are STANDS that
+ * lose to a dealer drawing out to 21 -- doing everything right and being
+ * punished for it is the tilt trigger, and a family where the answer was always
+ * "hit" would just be a different wall.
  */
-export function makeDownswingShoe(rounds: number, seed?: number): Card[] {
+export const DECISION_LOSSES: readonly Rank[][] = [
+  ['10', '7', '6', '4', '10'], // P16 v 7  — HIT is correct;   D 11 -> 21
+  ['10', '6', '5', '5', '10'], // P15 v 6  — STAND is correct; D 11 -> 21
+  ['10', '2', '2', '5', '10'], // P12 v 2  — HIT is correct;   D 7  -> 17
+  ['9', '8', '4', '3', '10'], //  P13 v 8  — HIT is correct;   D 11 -> 21
+  ['10', '5', '3', '6', '10'], // P13 v 5  — STAND is correct; D 11 -> 21
+  ['8', '7', '6', '4', '10'], //  P14 v 7  — HIT is correct;   D 11 -> 21
+];
+
+/** A built session: the cards, and where each round's script ends. */
+export interface DownswingScript {
+  cards: Card[];
+  /**
+   * Cumulative card count at the end of each scripted round, so the view can
+   * realign the shoe when a player's line cost a different number of cards than
+   * the script assumed (a surrender, or a hit on a hand the script had them
+   * standing). Without this the whole remaining script shifts by a card and
+   * every later round becomes noise instead of a designed loss.
+   */
+  boundaries: number[];
+}
+
+/**
+ * Build a rigged session, seeded. `rounds` is how many hands the player will be
+ * dealt; the script holds SLACK_ROUNDS more, because realigning past a
+ * misplayed round consumes a scripted round without dealing it, and running out
+ * of script mid-session would end the drill early.
+ */
+export const SLACK_ROUNDS = 8;
+
+export function buildDownswingScript(rounds: number, seed?: number): DownswingScript {
   const rng = mulberry32(seed ?? Date.now());
   const cards: Card[] = [];
-  for (let r = 0; r < rounds; r++) {
+  const boundaries: number[] = [];
+  for (let r = 0; r < rounds + SLACK_ROUNDS; r++) {
     // A deliberate two-phase ARC so every session visits BOTH count regimes:
     //   1st half — mostly PAT (high-card) losses -> the count grinds NEGATIVE,
     //     so the ramp calls for the minimum bet and you lose small, over and over.
@@ -66,12 +128,30 @@ export function makeDownswingShoe(rounds: number, seed?: number): Card[] {
     // That "you did everything right, bet big at a good count, and lost anyway"
     // hand is the real tilt trigger. The 20% off-family mix + seeded pattern
     // choice keep it from feeling scripted.
+    // V3-7: roughly a third of the session is a DECISION hand, spread evenly
+    // across the arc rather than clustered, so the play is live throughout
+    // instead of being a wall of Stand with a quiz bolted on one end.
     const drawOutProb = r < rounds / 2 ? 0.35 : 0.85;
-    const pool = rng() < drawOutProb ? DRAW_OUT_LOSSES : PAT_LOSSES;
-    const ranks = pool[Math.floor(rng() * pool.length)];
+    const pool =
+      rng() < 0.35
+        ? DECISION_LOSSES
+        : rng() < drawOutProb
+          ? DRAW_OUT_LOSSES
+          : PAT_LOSSES;
+    const ranks = pool[Math.floor(rng() * pool.length)]!;
     for (const rank of ranks) cards.push(card(rank));
+    boundaries.push(cards.length);
   }
-  // Buffer (uncounted-by-design tail) so nothing throws on a misplay's stray hit.
+  // Buffer (uncounted-by-design tail) so nothing throws even if realignment is
+  // somehow outrun -- the drill degrades to dull hands rather than throwing.
   for (let i = 0; i < 8; i++) cards.push(card('10'));
-  return cards;
+  return { cards, boundaries };
+}
+
+/**
+ * The cards alone. Retained because the shoe is also built directly in tests
+ * that do not care where the round boundaries fall.
+ */
+export function makeDownswingShoe(rounds: number, seed?: number): Card[] {
+  return buildDownswingScript(rounds, seed).cards;
 }
