@@ -3,6 +3,9 @@ import {
   initMediaSession,
   setNowPlaying,
   setPlaybackState,
+  setMediaSessionProbe,
+  MEDIA_SESSION_ACTIONS,
+  MEDIA_SESSION_LABEL,
   _resetMediaSessionForTest,
 } from './mediaSession';
 
@@ -123,9 +126,13 @@ describe('initMediaSession', () => {
     expect(stopped).toBe(2);
   });
 
-  // The seek actions stay diagnostic probes: no drive has yet shown a car
-  // sending one, so firing them must record the event and change nothing.
-  it('registers the seek actions as inert probes', () => {
+  /**
+   * The seeks used to be bare probes -- registered to see whether any car sends
+   * one, doing nothing if it did. A probe that stays a probe is a button that
+   * reads as broken to whoever presses it, so each now does what its short press
+   * does (a long-press of skip is the usual source of a seek on a head unit).
+   */
+  it('makes the seek actions do what their short presses do', () => {
     const actions = new Map<string, () => void>();
     withMediaSession({
       metadata: null,
@@ -136,11 +143,91 @@ describe('initMediaSession', () => {
     let stopped = 0;
     initMediaSession({ repeat: () => (repeated += 1), stop: () => (stopped += 1), advance: () => (advanced += 1) });
 
-    for (const probe of ['seekforward', 'seekbackward', 'seekto']) {
-      expect(actions.has(probe)).toBe(true);
-      actions.get(probe)!();
-    }
+    actions.get('seekbackward')!();
+    expect(repeated).toBe(1);
+    actions.get('seekforward')!();
+    expect(advanced).toBe(1);
+    expect(stopped).toBe(0);
+  });
+
+  /**
+   * `seekto` is the one exception, and not for want of a spare action: it
+   * carries an absolute position into a track, and there is no track here to
+   * have a position in.
+   */
+  it('leaves seekto inert, because a position means nothing here', () => {
+    const actions = new Map<string, () => void>();
+    withMediaSession({
+      metadata: null,
+      setActionHandler: (a: string, h: () => void) => actions.set(a, h),
+    });
+
+    let repeated = 0;
+    let stopped = 0;
+    initMediaSession({ repeat: () => (repeated += 1), stop: () => (stopped += 1), advance: () => (advanced += 1) });
+
+    expect(actions.has('seekto')).toBe(true);
+    actions.get('seekto')!();
     expect([repeated, stopped, advanced]).toEqual([0, 0, 0]);
+  });
+
+  /**
+   * The button tester (audio/buttonTester.ts). Its whole value rests on a press
+   * being REPORTED and going no further: learning what the ring's left click is
+   * called must not also repeat a prompt or answer a drill question.
+   */
+  describe('under the button-test probe', () => {
+    it('reports every action by name and runs none of them', () => {
+      const actions = new Map<string, () => void>();
+      withMediaSession({
+        metadata: null,
+        setActionHandler: (a: string, h: () => void) => actions.set(a, h),
+      });
+
+      let repeated = 0;
+      let stopped = 0;
+      initMediaSession({
+        repeat: () => (repeated += 1),
+        stop: () => (stopped += 1),
+        advance: () => (advanced += 1),
+      });
+
+      const seen: string[] = [];
+      setMediaSessionProbe((action) => seen.push(action));
+
+      for (const action of MEDIA_SESSION_ACTIONS) actions.get(action)!();
+
+      expect(seen).toEqual([...MEDIA_SESSION_ACTIONS]);
+      // Not one real handler ran.
+      expect([repeated, stopped, advanced]).toEqual([0, 0, 0]);
+    });
+
+    it('gives the buttons back when the test stops', () => {
+      const actions = new Map<string, () => void>();
+      withMediaSession({
+        metadata: null,
+        setActionHandler: (a: string, h: () => void) => actions.set(a, h),
+      });
+
+      let repeated = 0;
+      initMediaSession({ repeat: () => (repeated += 1), stop: () => {}, advance: () => (advanced += 1) });
+
+      setMediaSessionProbe(() => {});
+      actions.get('previoustrack')!();
+      expect(repeated).toBe(0);
+
+      // Leaving the test armed would strand every wheel button dead -- which is
+      // exactly what happens if the panel forgets to stop on unmount.
+      setMediaSessionProbe(null);
+      actions.get('previoustrack')!();
+      expect(repeated).toBe(1);
+    });
+
+    it('names a label for every action it can report, so none prints raw', () => {
+      for (const action of MEDIA_SESSION_ACTIONS) {
+        expect(MEDIA_SESSION_LABEL[action], action).toBeTruthy();
+      }
+    });
   });
 
   /**

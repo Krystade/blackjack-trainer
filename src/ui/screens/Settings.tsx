@@ -3,7 +3,13 @@ import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
 import { THEMES, normalizeTheme } from '../theme';
 import { saveSettings } from '../../store/persist';
-import { chime, isSpeechSupported, listVoices, speak } from '../../audio';
+import {
+  chime,
+  ensureMediaSessionHandlers,
+  isSpeechSupported,
+  listVoices,
+  speak,
+} from '../../audio';
 import {
   setClipsEnabled,
   setClipVoice,
@@ -13,6 +19,10 @@ import {
 } from '../../audio/clips';
 import { carControlsBlockers, describeCarControlsBlocker } from '../../audio/carControls';
 import { readLog, clearLog, formatLog } from '../../audio/mediaSessionLog';
+import { startButtonTest, unheardActions } from '../../audio/buttonTester';
+import type { ButtonPress, ButtonTesterHandle } from '../../audio/buttonTester';
+import { MEDIA_SESSION_LABEL } from '../../audio/mediaSession';
+import type { MediaSessionAction } from '../../audio/mediaSession';
 import { MAX_VOLUME } from '../../audio/volume';
 import { detectVoiceSupport } from '../../audio/voiceRecognition';
 import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
@@ -522,6 +532,119 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
 }
 
 /**
+ * Press a wheel button; be told what it is called.
+ *
+ * The one question a drive cannot otherwise answer. A ring selector with five
+ * directions plus volume and call keys is nine physical controls, the browser
+ * can hear at most eight Media Session names, and which physical button emits
+ * which name is decided inside the head unit. Guessing produced a mapping that
+ * looped for five minutes on the last drive.
+ *
+ * WHILE THE TEST RUNS, EVERY BUTTON IS INERT. A press reports its name and does
+ * nothing else -- learning that the ring's left click is `previoustrack` must
+ * not simultaneously repeat a prompt or answer a drill question. Normal
+ * behaviour comes back on Stop, and on unmount, so leaving Settings mid-test
+ * cannot strand the app with dead controls.
+ *
+ * The silent loop that keeps the car listening is audio/buttonTester.ts's, and
+ * its header says why it has to be there.
+ */
+function ButtonTester({ onPressed }: { onPressed: () => void }) {
+  const [running, setRunning] = useState(false);
+  const [presses, setPresses] = useState<ButtonPress[]>([]);
+  const handleRef = useRef<ButtonTesterHandle | null>(null);
+
+  // Stop on unmount. Without this, navigating away mid-test leaves the probe
+  // armed and every wheel button silently dead for the rest of the session.
+  useEffect(() => {
+    return () => {
+      handleRef.current?.stop();
+      handleRef.current = null;
+    };
+  }, []);
+
+  const start = () => {
+    setPresses([]);
+    // Claim the transport controls first. They are normally registered by the
+    // first clip that plays, and a driver can easily reach this panel before
+    // the app has said anything -- in which case there is nothing listening,
+    // and every button would report as dead.
+    ensureMediaSessionHandlers();
+    handleRef.current = startButtonTest((press) => {
+      setPresses((prev) => [press, ...prev].slice(0, 40));
+      // Spoken, because the whole point is to work from the driver's seat.
+      // Live speech deliberately: the clip library has no recording of
+      // "Skip forward. Answers yes." and never should -- this is a diagnostic
+      // sentence, not something a drill says.
+      const label = MEDIA_SESSION_LABEL[press.action as MediaSessionAction];
+      speak(label ?? press.action, { interrupt: true });
+      onPressed();
+    });
+    setRunning(true);
+  };
+
+  const stop = () => {
+    handleRef.current?.stop();
+    handleRef.current = null;
+    setRunning(false);
+  };
+
+  const heard = [...new Set(presses.map((p) => p.action))];
+  const unheard = unheardActions(heard);
+
+  return (
+    <>
+      <div className="settings-row">
+        <span className="settings-label">Test the wheel buttons</span>
+        <button type="button" className="settings-mini-btn" onClick={running ? stop : start}>
+          {running ? 'Stop test' : 'Start test'}
+        </button>
+      </div>
+
+      {!running && presses.length === 0 && (
+        <div className="settings-note-row u-note">
+          Start this, then press every button on the wheel one at a time — the ring in all
+          four directions and its centre, volume up and down, and the call keys. Each one
+          that reaches the app says its own name out loud, so you can do this parked without
+          looking. Nothing you press during the test does anything else. Your car will only
+          send some of these; the ones it never sends are worth knowing too.
+        </div>
+      )}
+
+      {running && (
+        <div className="settings-note-row u-note">
+          Listening. A silent track is playing to keep the car pointed at this app — that is
+          what makes the buttons reach it at all. Press one.
+        </div>
+      )}
+
+      {presses.length > 0 && (
+        <>
+          <div className="settings-row">
+            <span className="settings-label">Heard so far</span>
+            <span className="settings-value">{heard.join(', ')}</span>
+          </div>
+          <div className="settings-row">
+            <span className="settings-label">Never arrived</span>
+            <span className="settings-value">{unheard.length ? unheard.join(', ') : 'none — all eight reached the app'}</span>
+          </div>
+          <ul className="car-press-list">
+            {presses.map((press, i) => (
+              <li className="car-press-row" key={`${press.at}-${i}`}>
+                <span className="car-press-action">{press.action}</span>
+                <span className="car-press-label">
+                  {MEDIA_SESSION_LABEL[press.action as MediaSessionAction] ?? 'Unknown action'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </>
+  );
+}
+
+/**
  * What the car actually did, read back after the drive.
  *
  * Media Session is the one feature here that cannot be verified from a desk,
@@ -571,6 +694,8 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
         steering-wheel control cannot both work at once, which is why skip forward
         answers for you: with the microphone off, the wheel is the whole loop.
       </div>
+
+      <ButtonTester onPressed={() => setEntries(readLog())} />
 
       <div className="settings-row">
         <span className="settings-label">Buttons your car sent</span>

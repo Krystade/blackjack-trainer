@@ -3381,3 +3381,39 @@ button {
    place is not what it is protecting against -- removing it would also remove
    the only indication of how much time is left, which is the whole feature. It
    is kept, and kept linear (no easing, no pulse). */
+
+/* ---------- Car controls: the button tester ---------- */
+
+.car-press-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  /* Long tests scroll rather than pushing the Stop button off screen -- which
+     would strand the probe armed and every wheel button dead. */
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.car-press-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+}
+
+.car-press-action {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--accent);
+}
+
+.car-press-label {
+  font-size: 0.8rem;
+  color: var(--ink-dim);
+}

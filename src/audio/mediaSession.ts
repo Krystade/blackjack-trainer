@@ -54,6 +54,61 @@ function metadataCtor(): (new (init: Record<string, unknown>) => unknown) | null
 let registered = false;
 
 /**
+ * Every transport action this app registers, in the order the panel shows them.
+ *
+ * Named here rather than inline so the button tester and the registration below
+ * cannot disagree about the set -- a probe that armed a different list from the
+ * real one would report a button as dead when it merely was not being listened
+ * for.
+ */
+export const MEDIA_SESSION_ACTIONS = [
+  'play',
+  'pause',
+  'stop',
+  'previoustrack',
+  'nexttrack',
+  'seekbackward',
+  'seekforward',
+  'seekto',
+] as const;
+
+export type MediaSessionAction = (typeof MEDIA_SESSION_ACTIONS)[number];
+
+/**
+ * What each action does, in words a driver would use.
+ *
+ * The tester speaks these, and the Settings panel prints them, so "what is this
+ * button called and what will it do" has exactly one answer in the codebase.
+ */
+export const MEDIA_SESSION_LABEL: Record<MediaSessionAction, string> = {
+  play: 'Play. Ignored on purpose.',
+  pause: 'Pause. Stops the talking.',
+  stop: 'Stop. Stops the talking.',
+  previoustrack: 'Skip back. Repeats.',
+  nexttrack: 'Skip forward. Answers yes.',
+  seekbackward: 'Seek back. Repeats.',
+  seekforward: 'Seek forward. Answers yes.',
+  seekto: 'Seek to. Ignored — it carries a position, which means nothing here.',
+};
+
+/**
+ * When set, EVERY action reports its name here instead of doing its job.
+ *
+ * This is the button tester (audio/buttonTester.ts). The point of it is that a
+ * car's physical buttons and the Media Session names are related by a mapping
+ * only the head unit knows: a ring selector with five directions plus volume
+ * and call keys emits some unknown subset of eight action names, and the only
+ * way to learn which is which is to press one and be told. Redirecting rather
+ * than adding is deliberate -- a test press must not also answer a drill
+ * question, repeat a prompt, or stop speech mid-sentence.
+ */
+let probe: ((action: string) => void) | null = null;
+
+export function setMediaSessionProbe(fn: ((action: string) => void) | null): void {
+  probe = fn;
+}
+
+/**
  * Register the transport controls once.
  *
  * The mapping is deliberate rather than literal. A driver's hands are on the
@@ -92,6 +147,13 @@ export function initMediaSession(handlers: MediaSessionHandlers): void {
         // half that cannot be discovered from a desk, and the driver cannot
         // watch a console, so the evidence has to collect itself.
         appendLog({ kind: 'invoke', action, ok: true });
+        // Under test, the press is REPORTED and goes no further. Doing both
+        // would mean learning what the ring's left click is called by having it
+        // answer a drill question at the same time.
+        if (probe) {
+          probe(action);
+          return;
+        }
         handler();
       });
       appendLog({ kind: 'register', action, ok: true });
@@ -119,13 +181,21 @@ export function initMediaSession(handlers: MediaSessionHandlers): void {
   set('pause', handlers.stop);
   set('stop', handlers.stop);
 
-  // PROBES. Registered purely to find out what this car actually sends; each
-  // only writes a log entry and does nothing else, so behaviour is unchanged.
-  // Once the log says a real head unit emits one of these, it can be given a
-  // real handler -- which is how `nexttrack` earned its way out of this list.
-  for (const probe of ['seekforward', 'seekbackward', 'seekto']) {
-    set(probe, () => {});
-  }
+  // EVERY REMAINING ACTION DOES SOMETHING. These were bare probes -- registered
+  // to see whether any car emits them, doing nothing if one did -- and a probe
+  // that stays a probe is a button that reads as broken to whoever presses it.
+  // A long-press of skip is the usual source of a seek on a head unit, so each
+  // one does what its short press does. There is nothing to lose: if this car
+  // never sends them the mapping is inert, and if it does, the driver gets the
+  // action they were reaching for instead of silence.
+  set('seekbackward', handlers.repeat);
+  set('seekforward', handlers.advance);
+
+  // `seekto` is the one exception, and not for want of a spare action: it
+  // carries an absolute position into a track, and there is no track here to
+  // have a position in. Registered so the log can still say whether this car
+  // emits it.
+  set('seekto', () => {});
 }
 
 /**
@@ -162,7 +232,8 @@ export function setPlaybackState(state: 'playing' | 'paused' | 'none'): void {
   }
 }
 
-/** Test-only: clear the one-shot registration guard. */
+/** Test-only: clear the one-shot registration guard and any armed probe. */
 export function _resetMediaSessionForTest(): void {
   registered = false;
+  probe = null;
 }

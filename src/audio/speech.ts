@@ -435,6 +435,25 @@ export function speak(
  * from whatever the driver actually had going.
  */
 function announceToMediaSession(text: string): void {
+  ensureMediaSessionHandlers();
+  setNowPlaying(text, (import.meta.env.BASE_URL as string | undefined) ?? '');
+  setPlaybackState('playing');
+}
+
+/**
+ * Claim the transport controls, without saying anything.
+ *
+ * Registration normally rides along with the first clip, which is the right
+ * moment for a drill. THE BUTTON TESTER NEEDS IT WITHOUT ONE: it holds its own
+ * silent element to keep audio focus, and a driver can reach that panel before
+ * the app has ever spoken. Without this the tester would arm its probe over an
+ * unregistered session, hear nothing, and report every button on the wheel as
+ * dead -- the exact false negative the panel exists to rule out.
+ *
+ * Safe to call repeatedly: `initMediaSession` registers once and ignores the
+ * rest.
+ */
+export function ensureMediaSessionHandlers(): void {
   initMediaSession({
     repeat: () => {
       repeatLast();
@@ -448,8 +467,6 @@ function announceToMediaSession(text: string): void {
       invokeWheelCommand('advance');
     },
   });
-  setNowPlaying(text, (import.meta.env.BASE_URL as string | undefined) ?? '');
-  setPlaybackState('playing');
 }
 
 /* ---------------------------------------------------------------------- */

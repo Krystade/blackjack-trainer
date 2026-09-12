@@ -129,3 +129,171 @@ test('the microphone conflict is stated, whatever the settings say', async ({ pa
   await expect(section).toContainText('hands-free');
   await expect(section).toContainText('phone call');
 });
+
+/* ---------------------------------------------------------------- */
+/* The button tester (audio/buttonTester.ts).                        */
+/* ---------------------------------------------------------------- */
+
+/**
+ * The panel that answers "which physical button is this?" from the driver's
+ * seat. A ring selector with five directions plus volume and call keys is nine
+ * controls; the browser can hear at most eight Media Session names; which maps
+ * to which is decided inside the head unit and is not documented anywhere.
+ *
+ * Driven by capturing the real registered handlers and invoking them the way a
+ * car would. That is the only honest simulation available here -- Playwright
+ * cannot press a steering wheel -- and it exercises the whole path: the probe
+ * redirect, the press list, the "never arrived" set, and the restore on stop.
+ */
+async function captureHandlers(page: import('@playwright/test').Page): Promise<void> {
+  await page.addInitScript(() => {
+    const handlers = new Map<string, () => void>();
+    (window as unknown as { __ms: Map<string, () => void> }).__ms = handlers;
+    const ms = navigator.mediaSession as unknown as {
+      setActionHandler: (a: string, h: (() => void) | null) => void;
+    };
+    const original = ms.setActionHandler.bind(ms);
+    ms.setActionHandler = (action: string, handler: (() => void) | null) => {
+      if (handler) handlers.set(action, handler);
+      else handlers.delete(action);
+      original(action, handler);
+    };
+  });
+}
+
+async function pressWheel(page: import('@playwright/test').Page, action: string): Promise<void> {
+  await page.evaluate((a) => {
+    (window as unknown as { __ms: Map<string, () => void> }).__ms.get(a)?.();
+  }, action);
+}
+
+/** The clips path is the only one that opens a media element to attach to. */
+const CAR_READY = { audio: { enabled: true, useClips: true } };
+
+test('the button tester names each press and lists what never arrived', async ({ page }) => {
+  await withSettings(page, CAR_READY);
+  await captureHandlers(page);
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+
+  const section = page.locator('.settings-section', { hasText: 'Car controls' });
+  await section.getByRole('button', { name: 'Start test', exact: true }).click();
+  await expect(section).toContainText('Listening');
+
+  // Three presses, as this car was observed to send on the 2026-09-11 drive.
+  await pressWheel(page, 'nexttrack');
+  await pressWheel(page, 'pause');
+  await pressWheel(page, 'play');
+
+  // Each one is named, in plain words rather than as a raw action string.
+  await expect(section.locator('.car-press-row')).toHaveCount(3);
+  await expect(section).toContainText('Skip forward. Answers yes.');
+  await expect(section).toContainText('Pause. Stops the talking.');
+  await expect(section).toContainText('Play. Ignored on purpose.');
+
+  // And the more useful half: what this wheel never emitted.
+  const unheard = section.locator('.settings-row', { hasText: 'Never arrived' });
+  await expect(unheard).toContainText('previoustrack');
+  await expect(unheard).toContainText('seekforward');
+  await expect(unheard).not.toContainText('nexttrack');
+});
+
+/**
+ * The safety property. A press during the test must report and go no further:
+ * learning that the ring's left click is `previoustrack` must not simultaneously
+ * repeat a prompt, and `nexttrack` must not answer a drill question.
+ */
+test('a press during the test does nothing but report itself', async ({ page }) => {
+  await withSettings(page, CAR_READY);
+  await captureHandlers(page);
+  await page.addInitScript(() => {
+    (window as unknown as { __wheel: string[] }).__wheel = [];
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+
+  const section = page.locator('.settings-section', { hasText: 'Car controls' });
+  await section.getByRole('button', { name: 'Start test', exact: true }).click();
+
+  await pressWheel(page, 'nexttrack');
+  await pressWheel(page, 'previoustrack');
+  await expect(section.locator('.car-press-row')).toHaveCount(2);
+
+  // `previoustrack` is the discriminating press: its real handler is
+  // `repeatLast`, which SPEAKS. Under ?e2e=1 every utterance lands in
+  // __speechLog, so the log is exactly the two names the tester said -- a third
+  // entry would be the repeat firing behind the report. (`nexttrack` alone
+  // could not show this: its real handler only routes a wheel command, and
+  // Settings registers none, so it would look identical either way.)
+  const spoken = await page.evaluate(
+    () => (window as unknown as { __speechLog?: string[] }).__speechLog ?? [],
+  );
+  expect(spoken).toEqual(['Skip forward. Answers yes.', 'Skip back. Repeats.']);
+});
+
+/**
+ * Stopping must give the buttons back. Left armed, every wheel control is
+ * silently dead for the rest of the session -- the worst possible outcome for a
+ * panel whose whole purpose is making the wheel work.
+ */
+test('stopping the test restores the real mapping', async ({ page }) => {
+  await withSettings(page, CAR_READY);
+  await captureHandlers(page);
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+
+  const section = page.locator('.settings-section', { hasText: 'Car controls' });
+  await section.getByRole('button', { name: 'Start test', exact: true }).click();
+  await pressWheel(page, 'previoustrack');
+  await expect(section.locator('.car-press-row')).toHaveCount(1);
+
+  await section.getByRole('button', { name: 'Stop test', exact: true }).click();
+  await expect(section).not.toContainText('Listening');
+
+  // Armed again. Proven through speech rather than the press list, because the
+  // tester speaks SYNCHRONOUSLY inside the handler while a new row is an async
+  // React render -- a row-count assertion would pass on the old count before
+  // the stray row ever appeared. `nexttrack` is the press that separates the
+  // two worlds: its real handler only routes a wheel command, which Settings
+  // does not register, so it says nothing; the tester would announce it.
+  await pressWheel(page, 'nexttrack');
+  const spoken = await page.evaluate(
+    () => (window as unknown as { __speechLog?: string[] }).__speechLog ?? [],
+  );
+  expect(spoken).toEqual(['Skip back. Repeats.']);
+  await expect(section.locator('.car-press-row')).toHaveCount(1);
+});
+
+/** Navigating away mid-test must not strand the probe. */
+test('leaving Settings mid-test releases the buttons', async ({ page }) => {
+  await withSettings(page, CAR_READY);
+  await captureHandlers(page);
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+
+  const section = page.locator('.settings-section', { hasText: 'Car controls' });
+  await section.getByRole('button', { name: 'Start test', exact: true }).click();
+  await expect(section).toContainText('Listening');
+  await pressWheel(page, 'previoustrack');
+  await expect(section.locator('.car-press-row')).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(page.locator('.home-title')).toBeVisible();
+
+  // THE ASSERTION THAT MATTERS. Unmounting the panel does not by itself
+  // disarm the probe -- only the cleanup does -- and a stranded probe leaves
+  // every wheel button dead for the rest of the session while looking fine.
+  // A press from Home must now reach nobody the tester owns: the tester would
+  // announce it (synchronously), so the log staying at one entry is the proof.
+  await pressWheel(page, 'nexttrack');
+  const spoken = await page.evaluate(
+    () => (window as unknown as { __speechLog?: string[] }).__speechLog ?? [],
+  );
+  expect(spoken).toEqual(['Skip back. Repeats.']);
+
+  // And back in Settings the panel is idle again rather than half-running.
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const again = page.locator('.settings-section', { hasText: 'Car controls' });
+  await expect(again.getByRole('button', { name: 'Start test', exact: true })).toBeVisible();
+  await expect(again).not.toContainText('Listening');
+});
