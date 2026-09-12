@@ -690,6 +690,42 @@ describe('bet grading', () => {
     expect(ev.expected).toBe('1');
     expect(ev.taken).toBe('1');
   });
+
+  // RT#11: exact-conformity grading rewards the one behaviour surveillance
+  // looks for. Cover mode accepts a bet one RUNG of the ramp either side.
+  it('RT#11: cover off -- a bet one rung above the ramp is still wrong', () => {
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('2', '5', '3', '4'));
+    game.startRound(2); // expected 1, next rung up
+    expect(game.events[0].correct).toBe(false);
+  });
+
+  it('RT#11: cover on -- that same bet is correct, and the reason says why', () => {
+    const game = Game.withRiggedShoe(
+      cfg({ betSpreadOn: true, coverBets: true }),
+      rig('2', '5', '3', '4'),
+    );
+    game.startRound(2);
+    expect(game.events[0].correct).toBe(true);
+    expect(game.events[0].reason).toContain('cover');
+  });
+
+  it('RT#11: cover is one rung, not a blank cheque', () => {
+    const game = Game.withRiggedShoe(
+      cfg({ betSpreadOn: true, coverBets: true }),
+      rig('2', '5', '3', '4'),
+    );
+    game.startRound(4); // expected 1; 4 is two rungs up
+    expect(game.events[0].correct).toBe(false);
+  });
+
+  it('RT#11: cover never turns an exact bet wrong', () => {
+    const game = Game.withRiggedShoe(
+      cfg({ betSpreadOn: true, coverBets: true }),
+      rig('2', '5', '3', '4'),
+    );
+    game.startRound(1);
+    expect(game.events[0].correct).toBe(true);
+  });
 });
 
 describe('wong-out / sit-out (R5)', () => {

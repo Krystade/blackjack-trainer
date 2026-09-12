@@ -495,3 +495,110 @@ test('RV7: dealing in at a should-wong count is graded, not just the min bet', a
     page.locator('.report-categories tr', { hasText: /^bet/ }).locator('td'),
   ).toHaveText(['bet', '1', '0', '100%']);
 });
+
+/**
+ * RT#11: the app graded `bet === expected` every round, which is hundreds of
+ * reps of the exact pattern that gets counters noticed. Cover mode makes room
+ * for a deliberate over- or under-bet, and the report says how mechanical the
+ * session was whether or not it is on.
+ */
+test('RT#11: cover mode accepts one rung either side of the ramp', async ({ page }) => {
+  await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
+  await withProfile(page, { name: 'Cover Profile', betSpreadOn: true, coverBets: true });
+  await page.goto('/?seed=6&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+
+  // At the top of the shoe the ramp wants 1 unit. Bet the next rung up.
+  await expect(page.locator('.bet-chips')).toBeVisible();
+  await page.locator('.chip-btn', { hasText: /^2$/ }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await playRoundByAdvice(page);
+
+  await page.locator('.end-btn').click();
+  await expect(page.locator('.report-screen')).toBeVisible();
+  await expect(page.locator('.report-categories tr', { hasText: /^bet/ }).locator('td')).toHaveText([
+    'bet',
+    '1',
+    '0',
+    '100%',
+  ]);
+});
+
+test('RT#11: the cover toggle round-trips from the profile editor', async ({ page }) => {
+  await withSettings(page, { dealSpeedMs: 0 });
+  await withProfile(page, { name: 'Cover RT', betSpreadOn: true });
+
+  await page.goto('/?e2e=1');
+  await page.locator('.home-profile-chip').click();
+  await page
+    .locator('.profile-row', { hasText: 'Cover RT' })
+    .getByRole('button', { name: 'Edit', exact: true })
+    .click();
+
+  const row = page.locator('.settings-toggle-row', {
+    hasText: 'Cover: accept one rung either side',
+  });
+  await expect(row).toBeVisible();
+  const box = row.locator('input[type="checkbox"]');
+  await expect(box).not.toBeChecked();
+  await box.check();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  await page
+    .locator('.profile-row', { hasText: 'Cover RT' })
+    .getByRole('button', { name: 'Edit', exact: true })
+    .click();
+  await expect(
+    page
+      .locator('.settings-toggle-row', { hasText: 'Cover: accept one rung either side' })
+      .locator('input[type="checkbox"]'),
+  ).toBeChecked();
+});
+
+test('RT#11: the report stays quiet below the sample floor, where a ratio is noise', async ({
+  page,
+}) => {
+  await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
+  await withProfile(page, { name: 'Short Session', betSpreadOn: true });
+  await page.goto('/?seed=6&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await playRoundByAdvice(page);
+
+  await page.locator('.end-btn').click();
+  await expect(page.locator('.report-screen')).toBeVisible();
+  // One round is not a pattern.
+  await expect(page.locator('.report-cover, .report-tell')).toHaveCount(0);
+});
+
+test('RT#11: eight rounds of exact ramp conformity are named as the tell', async ({ page }) => {
+  await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
+  await withProfile(page, { name: 'Mechanical', betSpreadOn: true });
+  await page.goto('/?seed=6&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+
+  // Bet whatever the ramp asks for, every round, which is precisely the habit.
+  for (let i = 0; i < 8; i++) {
+    const advised = page.locator('.chip-btn.chip-advised');
+    if (await advised.isVisible().catch(() => false)) await advised.click();
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await playRoundByAdvice(page);
+  }
+
+  await page.locator('.end-btn').click();
+  await expect(page.locator('.report-screen')).toBeVisible();
+  await expect(page.locator('.report-tell')).toBeVisible();
+  await expect(page.locator('.report-tell')).toContainText('8 of 8 rounds bet the ramp exactly');
+
+  // A per-round grade repeats by nature: eight rounds into a dead count are
+  // one habit, not eight problems, and listing them separately pushed every
+  // other mistake off the screen. Grouped, with the repeat count kept.
+  const rows = page.locator('.report-mistakes li');
+  const wongMistakes = 8; // every round above dealt in at a should-wong count
+  expect(await rows.count()).toBeLessThan(wongMistakes);
+  const counts = await page.locator('.report-mistake-count').allInnerTexts();
+  const summed = counts.reduce((n, t) => n + Number(t.replace(/\D/g, '')), 0);
+  // Vacuity guard: the collapse must account for every round, not hide some.
+  expect(summed).toBe(wongMistakes);
+  await shot(page, '54-report-bet-tell');
+});

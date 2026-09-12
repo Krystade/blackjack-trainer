@@ -1,5 +1,6 @@
 import { Shoe, rankValue, mulberry32 } from './cards';
 import { makeRiggedShoe, botRngSeed, type RiggedShoe } from './riggedShoe';
+import { betWithinStep } from './coverBets';
 import type { Card, Rank } from './cards';
 import { handValue, isBust, isBlackjack, isPair } from './hand';
 import { hiLoTag, trueCount, tcWithinEye } from './count';
@@ -52,6 +53,8 @@ export const DEFAULT_SPREAD: SpreadRow[] = [
 export interface GameConfig {
   penetration: number; // 0.5..0.9
   betSpreadOn: boolean;
+  /** RT#11: accept a bet one spread rung either side of the expected size. */
+  coverBets?: boolean;
   spread: SpreadRow[];
   bankrollStart: number; // units
   countCheckEvery: number; // rounds; 0 = off
@@ -402,7 +405,12 @@ export class Game {
       // One bet GradedEvent PER HAND, left to right -- each hand's own bet is
       // graded against the same pre-deal true count (Cycle-2 Task 4).
       for (const bet of betArray) {
-        const correct = bet === expectedUnits;
+        // RT#11: with cover on, a bet one rung either side of the spread's
+        // number is not an error -- see engine/coverBets.ts for why the
+        // tolerance is a RUNG rather than a unit.
+        const correct = this.cfg.coverBets
+          ? betWithinStep(bet, expectedUnits, this.cfg.spread)
+          : bet === expectedUnits;
         this.events.push({
           source: 'table',
           kind: 'bet',
@@ -411,7 +419,9 @@ export class Game {
           classification: correct ? 'correct' : 'basic-error',
           taken: String(bet),
           expected: String(expectedUnits),
-          reason: `Spread bet at tc ${preDealTc}`,
+          reason: this.cfg.coverBets
+            ? `Spread bet at tc ${preDealTc} (cover: one rung either side)`
+            : `Spread bet at tc ${preDealTc}`,
           tc: preDealTc,
         });
       }

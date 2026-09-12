@@ -234,6 +234,23 @@ export interface Profile {
   countCheckEvery: number;
   betSpreadOn: boolean;
   /**
+   * RT#11 (docs/BACKLOG.md): grade a bet correct when it lands on the
+   * expected rung of the spread OR either neighbouring rung, instead of
+   * demanding the exact number every round.
+   *
+   * Exact-conformity grading rewards, one green tick at a time, the single
+   * behaviour surveillance is looking for -- a bet that is a visible function
+   * of the count. This makes room for deliberate cover without the app
+   * calling it an error. OPTIONAL, so profiles stored before this field load
+   * untouched, and off by default: the tolerance is a judgment about how you
+   * want to be graded, not a rule of the game.
+   *
+   * Lives on the profile rather than Settings because it is read through the
+   * SPREAD, which lives here -- a tolerance means nothing apart from the ramp
+   * it is a tolerance on.
+   */
+  coverBets?: boolean;
+  /**
    * Reveal the dealer's hole card even when no hand still needs a dealer
    * total. OPTIONAL so profiles stored before this field load untouched.
    *

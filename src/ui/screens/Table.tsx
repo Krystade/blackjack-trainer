@@ -3,6 +3,8 @@ import type { CSSProperties } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
 import type { Card } from '../../engine/cards';
+import { TELL_MIN_ROUNDS } from '../../engine/coverBets';
+import type { GradedEvent } from '../../engine/grade';
 import type { DealSlot, Game, PlayerHand, Seat } from '../../engine/game';
 import type { Action } from '../../engine/deviations';
 import type { PlayContext } from '../../engine/strategy';
@@ -173,6 +175,34 @@ function formatSigned(n: number): string {
   return n >= 0 ? `+${n}` : String(n);
 }
 
+/**
+ * Collapse mistakes that are the same mistake.
+ *
+ * A per-ROUND grade repeats by nature: eight rounds dealt into a dead count
+ * produce eight identical "took play, correct sit-out" lines, which push
+ * every other mistake off the screen and read as eight different problems
+ * rather than one habit. Grouped on everything the row actually renders --
+ * two entries that display identically ARE the same finding -- and the first
+ * occurrence keeps its place in the list, so the ordering still tells you
+ * when things went wrong.
+ */
+function groupMistakes(mistakes: readonly GradedEvent[]): { mistake: GradedEvent; count: number }[] {
+  const out: { mistake: GradedEvent; count: number }[] = [];
+  const seen = new Map<string, { mistake: GradedEvent; count: number }>();
+  for (const m of mistakes) {
+    const key = [m.hand ?? m.kind, m.tc, m.taken, m.expected, m.reason].join('|');
+    const hit = seen.get(key);
+    if (hit) {
+      hit.count += 1;
+      continue;
+    }
+    const row = { mistake: m, count: 1 };
+    seen.set(key, row);
+    out.push(row);
+  }
+  return out;
+}
+
 function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () => void }) {
   // R7 (docs/BACKLOG.md): this screen only shows in TEST mode (see handleEnd),
   // so a peek-assisted session's accuracy is flagged right under the headline
@@ -185,6 +215,20 @@ function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () =>
         {report.correct} / {report.graded} correct &middot; bankroll {formatSigned(report.bankrollDelta)}
       </p>
       {assisted && <p className="report-assisted">{assisted}</p>}
+      {/* RT#11 (docs/BACKLOG.md): perfect conformity to the ramp IS the tell,
+          so a session that had it is told so. Shown whether or not cover
+          grading is on -- the tolerance makes room for cover, but only this
+          says whether any was taken. Silent below the sample floor, where the
+          ratio would be noise rather than a pattern. */}
+      {report.cover.rounds >= TELL_MIN_ROUNDS && (
+        <p className={report.cover.isTell ? 'report-tell' : 'report-cover'}>
+          Bet cover: {report.cover.exact} of {report.cover.rounds} rounds bet the ramp
+          exactly ({Math.round(report.cover.ratio * 100)}%)
+          {report.cover.isTell
+            ? ' — a bet that tracks the count that closely is the pattern that gets counters noticed.'
+            : '.'}
+        </p>
+      )}
       <table className="report-categories">
         <thead>
           <tr>
@@ -210,11 +254,12 @@ function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () =>
         <p>No mistakes this session.</p>
       ) : (
         <ul className="report-mistakes">
-          {report.mistakes.map((m, i) => (
+          {groupMistakes(report.mistakes).map(({ mistake: m, count }, i) => (
             <li key={i}>
               {m.hand ?? m.kind} &middot; TC {formatSigned(m.tc)} &middot; took {m.taken} &middot; correct {m.expected}
               {' — '}
               {m.reason}
+              {count > 1 && <span className="report-mistake-count"> &times;{count}</span>}
             </li>
           ))}
         </ul>

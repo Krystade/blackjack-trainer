@@ -9,6 +9,7 @@ import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
 import type { AudioApi } from '../audio/useAudio';
 import type { CardDetail } from '../audio/narrate';
+import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverBets';
 import {
   narrateBotAction,
   narrateCard,
@@ -77,6 +78,12 @@ export interface SessionReport {
   // R7 (docs/BACKLOG.md): number of RC/TC peek-button activations this
   // session, so the report can flag a peek-assisted accuracy.
   peeks: number;
+  /**
+   * RT#11: how mechanically this session's bets tracked the count. Reported
+   * whether or not cover grading is on -- the tolerance makes room for cover,
+   * but only this says whether any was taken.
+   */
+  cover: LockstepTell;
 }
 
 /**
@@ -114,6 +121,14 @@ function readSeed(): number | undefined {
 }
 
 function buildReport(events: GradedEvent[], bankrollDelta: number, peeks: number): SessionReport {
+  // RT#11: read the bets back off the graded events. `taken`/`expected` are
+  // strings on the event, and a bet event always carries both as numbers, so
+  // an unparseable pair means something upstream changed shape -- dropped
+  // rather than counted as a match, which would quietly deflate the ratio.
+  const betRounds: BetRound[] = events
+    .filter((e) => e.kind === 'bet')
+    .map((e) => ({ taken: Number(e.taken), expected: Number(e.expected) }))
+    .filter((r) => Number.isFinite(r.taken) && Number.isFinite(r.expected));
   const byCategory = new Map<Category, { right: number; wrong: number }>();
   for (const ev of events) {
     const tally = byCategory.get(ev.category) ?? { right: 0, wrong: 0 };
@@ -135,6 +150,7 @@ function buildReport(events: GradedEvent[], bankrollDelta: number, peeks: number
     correct: events.filter((e) => e.correct).length,
     bankrollDelta,
     peeks,
+    cover: lockstepTell(betRounds),
   };
 }
 
@@ -237,6 +253,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     const cfg: GameConfig = {
       penetration: profile.penetration,
       betSpreadOn: profile.betSpreadOn,
+      ...(profile.coverBets === undefined ? {} : { coverBets: profile.coverBets }),
       spread: profile.spread,
       bankrollStart: profile.bankrollStart,
       countCheckEvery: profile.countCheckEvery,

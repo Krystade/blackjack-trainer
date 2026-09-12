@@ -3482,3 +3482,22 @@ button {
 .checkpoint-miss {
   color: var(--bad);
 }
+
+/* ---------- RT#11 bet-cover readout on the session report ---------- */
+.report-cover {
+  color: var(--ink-dim);
+  font-size: 0.9rem;
+}
+
+/* The tell is a finding, not a footnote. */
+.report-tell {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+/* A repeated mistake is one habit, not N problems (see groupMistakes). */
+.report-mistake-count {
+  color: var(--ink-dim);
+  font-weight: 700;
+}

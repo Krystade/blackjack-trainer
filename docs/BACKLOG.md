@@ -430,9 +430,27 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
   since the goal is to get every skill to 100% anyway. Keep skills scored separately.
 - **RV7–9 · known-deferred items re-confirmed as live mistrainings:** ~~R5 rewards min-betting a
   should-wong count (the symmetric-grading follow-on already logged under R5)~~ **✅ RV7 DONE
-  2026-09-12 — see the R5 follow-on above**; bet grading demands
-  exact ramp conformity with zero cover concept (RT#11); ~~count drill grades final RC only, so
+  2026-09-12 — see the R5 follow-on above**; ~~bet grading demands
+  exact ramp conformity with zero cover concept (RT#11)~~ **✅ RT#11 DONE 2026-09-12**; ~~count drill grades final RC only, so
   offsetting mid-count errors pass silently (RT#12)~~ **✅ RT#12 DONE 2026-09-12**.
+  - **RT#11 · Cover, and naming the tell.** `bet === expectedUnits` every round is not a
+    neutral measurement — it is hundreds of reps of the one behaviour surveillance is looking
+    for, each rewarded with a green tick. Two independent pieces now. `coverBets` (profile,
+    off by default) grades a bet correct on the expected RUNG of the ramp or either
+    neighbour: a rung, not plus-or-minus one unit, because one unit means something
+    different at the bottom of a 1-12 spread than at the top, and the rungs are what a real
+    ramp moves in. And `lockstepTell` reports how mechanical the session's bets actually
+    were, shown whether or not cover grading is on — the tolerance makes ROOM for cover, but
+    only this says whether any was taken. Silent under eight rounds, where the ratio is noise
+    rather than a pattern. Neither piece asserts a count threshold or a correct amount of
+    cover; both read the profile's own spread, in the same spirit as the wong grading.
+    - It lives on the profile rather than Settings because it is read THROUGH the spread,
+      which lives there: a tolerance means nothing apart from the ramp it is a tolerance on.
+    - Caught by looking at the screenshot rather than the suite: RV7's per-round wong grade
+      made the session report's Mistakes list eight identical lines deep, which pushed every
+      other mistake off the screen and read as eight problems instead of one habit. Repeats
+      are now collapsed with a ×N count, keyed on everything the row renders — two entries
+      that display identically ARE the same finding.
   - **RT#12 · Mid-run count checkpoints.** Filed twice (2026-07-23, again 2026-07-28) and both
     times prescribed the same fix, which is what shipped: the run stops at one or two seeded,
     unpredictable points, asks for the running count SO FAR, and resumes. `countCheckpoints`

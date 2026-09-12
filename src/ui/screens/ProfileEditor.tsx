@@ -536,6 +536,21 @@ function ProfileEditForm({
           </div>
           <p className="stats-detail">Ramp is sorted by TC when you save.</p>
 
+          {/* RT#11 (docs/BACKLOG.md): exact-conformity grading rewards the one
+              thing surveillance looks for. Off by default -- how you want to
+              be graded is a judgment, not a rule of the game. */}
+          <Toggle
+            label="Cover: accept one rung either side"
+            checked={draft.coverBets ?? false}
+            onChange={(v) => update({ coverBets: v })}
+          />
+          <p className="stats-detail">
+            Grades a bet correct on the ramp&apos;s expected rung or either neighbour, so a
+            deliberate over- or under-bet isn&apos;t scored as an error. A bet that tracks the
+            count exactly, every round, is the pattern that gets counters noticed &mdash; the
+            session report says how mechanical yours was either way.
+          </p>
+
           {cvcxImport.kind !== 'closed' && (
             <div className="cvcx-import-panel">
               {cvcxImport.kind === 'input' && (
