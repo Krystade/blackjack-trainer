@@ -150,7 +150,7 @@ test('a number that is not a tag is refused rather than proposed', async ({ page
 
   await sayWhenListening(page, 'plus four');
   await expect
-    .poll(async () => (await spoken(page)).some((l) => l.includes('is not a tag')))
+    .poll(async () => (await spoken(page)).some((l) => l.includes('Not a tag')))
     .toBe(true);
 
   // And "yes" now has nothing to confirm, rather than confirming the four.

@@ -3,6 +3,7 @@ import type { Action } from '../engine/deviations';
 import type { GradedEvent, MistakeClass } from '../engine/grade';
 import { handValue, isPair, pairRank } from '../engine/hand';
 import type { Stats } from '../store/types';
+import { speakableCount } from './voiceNumber';
 
 const SUIT_NAMES: Record<Suit, string> = {
   s: 'spades',
@@ -238,6 +239,86 @@ export function narrateCountPrompt(): string {
 export function narrateCountAnswer(rc: number): string {
   return `The count is ${narrateTc(rc)}.`;
 }
+
+/* ---------------------------------------------------------------- */
+/* VOICE CONVERSATION (D2, docs/BACKLOG.md)                          */
+/*                                                                   */
+/* Every line the app says WHILE LISTENING -- the read-back it asks  */
+/* you to confirm, the refusals, the "did you have it?" -- used to   */
+/* be composed inline in CountDrillView, TrueCountDrillView and      */
+/* Table, and so reached no clip. Clip segmentation is all-or-       */
+/* nothing per utterance, so each of those fell to live TTS, and in  */
+/* a car live speech opens no media element (see audio/clips.ts and  */
+/* audio/mediaSession.ts) -- losing the head unit at exactly the     */
+/* moment the app is asking a question and waiting for an answer.    */
+/*                                                                   */
+/* The backlog entry said deriving these meant importing a `.tsx`    */
+/* into build tooling. That was true only because the SENTENCES      */
+/* lived in the views; the one moving part, `speakableCount`, was    */
+/* already in audio/voiceNumber.ts. Moving the sentences here is the */
+/* whole fix -- scripts/spokenPhrases.ts derives them from this      */
+/* module like everything else, and clipCoverage.test.ts holds them  */
+/* against the shipped files.                                        */
+/* ---------------------------------------------------------------- */
+
+/** The count read back for confirmation: "minus 3. Correct?" */
+export function narrateReadback(value: number): string {
+  return `${speakableCount(value)}. Correct?`;
+}
+
+/**
+ * Countdown mode asks for a Hi-Lo TAG, so a number outside -1..1 is refused.
+ *
+ * THREE SENTENCES, not one, and for the reason `narrateBotAction` is two: the
+ * number is the only moving part, and as one sentence ("plus 3 is not a tag.")
+ * it would need its own clip at every value the parser can return -- forty-odd
+ * files a voice, for a line that only plays when you misspeak. Split at the
+ * number, the first sentence is the SAME segment the read-back already needs
+ * and the refusal costs exactly one new clip.
+ */
+export function narrateNotATag(value: number): string {
+  return `${speakableCount(value)}. Not a tag. ${COUNTDOWN_TAG_PROMPT}`;
+}
+
+/** The refusal's middle sentence, as its own segment for the clip derivation. */
+export const NOT_A_TAG = 'Not a tag.';
+
+/**
+ * The fixed conversational lines, as constants rather than inline literals.
+ *
+ * Not because a literal is unclear where it sits, but because a clip library
+ * cannot be derived from strings scattered across three view files -- and a
+ * line that drifts here without the clips being regenerated silently drops to
+ * live TTS with no error anywhere. `scripts/spokenPhrases.test.ts` fails when
+ * that happens, and it can only see what this module exports.
+ */
+export const COUNTDOWN_TAG_PROMPT = 'Plus one, zero, or minus one?';
+export const CHECKPOINT_PROMPT = 'Running count so far?';
+export const NO_TAG_YET = `I have no tag yet. ${COUNTDOWN_TAG_PROMPT}`;
+export const NO_COUNT_YET = 'I have no count yet. What is it?';
+export const NO_COUNT_YET_CHECKPOINT = `I have no count yet. ${CHECKPOINT_PROMPT}`;
+export const NO_TRUE_COUNT_YET = 'I have no true count yet. What is it?';
+export const DID_YOU_HAVE_IT = 'Did you have it?';
+export const DECLINED_ANOTHER = 'Okay. Say yes when you want another.';
+export const DECLINED_NEXT = 'Okay. Say yes when you want the next one.';
+export const SAY_YES_AGAIN = 'Say yes to go again.';
+export const SAY_YES_NEXT = 'Say yes for the next one.';
+
+/** Every fixed conversational line, for the clip derivation to walk. */
+export const VOICE_CONVERSATION_LINES: readonly string[] = [
+  COUNTDOWN_TAG_PROMPT,
+  NOT_A_TAG,
+  CHECKPOINT_PROMPT,
+  NO_TAG_YET,
+  NO_COUNT_YET,
+  NO_COUNT_YET_CHECKPOINT,
+  NO_TRUE_COUNT_YET,
+  DID_YOU_HAVE_IT,
+  DECLINED_ANOTHER,
+  DECLINED_NEXT,
+  SAY_YES_AGAIN,
+  SAY_YES_NEXT,
+];
 
 export function narrateInsuranceOffer(): string {
   return 'Insurance offered.';

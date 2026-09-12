@@ -107,10 +107,36 @@ ship.
   recordings — a list item runs on, a sentence falls — so `slug()` now encodes terminal
   punctuation and the item form gets its own `-item` clip. 231 derived sentences, 523
   clips per voice.
-- Voice read-backs (`"Minus three. Correct?"`) are still live TTS. They are composed in the
-  drill views rather than in `narrate.ts`, so deriving them means importing a `.tsx` into
-  build tooling. Low urgency: a read-back only happens with the microphone open, which in
-  a car already means the hands-free route.
+- ~~Voice read-backs (`"Minus three. Correct?"`) are still live TTS~~ — ✅ SHIPPED
+  2026-09-12, and the entry understated it in two ways worth recording.
+  - **It was not just the read-backs.** Probing the shipped manifests before building
+    anything: EVERY line the app says while listening was unclipped — the read-back, the
+    countdown refusal, "I have no count yet. What is it?", "Did you have it?", and all four
+    "say yes" lines. Only `"What's the running count?"` resolved, because it happens to be a
+    prompt rather than a reply. So the whole conversational half of eyes-free mode ran on
+    live TTS, which in a car also means no media element and therefore no head unit (see
+    `audio/clips.ts` and `audio/mediaSession.ts`) — the voice dropped out at exactly the
+    moment the app had asked a question and was waiting.
+  - **And the stated blocker was wrong.** "Deriving them means importing a `.tsx` into build
+    tooling" was true only because the SENTENCES lived in the views; the one moving part,
+    `speakableCount`, was already in `audio/voiceNumber.ts`. Moving the sentences into
+    `narrate.ts` is the entire fix — `scripts/spokenPhrases.ts` then derives them like
+    everything else. Worth remembering that the entry sat here for weeks behind a blocker
+    that dissolved on the first look, the same way the token-concatenation item above turned
+    out to be a non-gap once something actually checked.
+  - **The refusal is three sentences now, not one, and that is what made it cheap.** Same
+    move `narrateBotAction` made: the number is the only moving part, and as one sentence
+    (`"plus 3 is not a tag."`) it would have needed a clip at every value the parser can
+    return. Split at the number, its first sentence IS the segment the read-back already
+    needs and the refusal costs one new clip instead of forty-one. Total vocabulary went
+    524 → 578 segments a voice, not the ~600 the naive shape would have cost.
+  - `clipCoverage.test.ts` gained the assertion, watched fail before the clips existed and
+    pass after — the whole utterance, not the segments, because that is what the runtime
+    resolves and one unmatched sentence drops the entire line.
+  - Clips regenerated with the local Kokoro ONNX engine, which is how the shipped library was
+    made (`af_bella`/`bf_emma`/`bm_george` are Kokoro voices, not edge-tts ones) — no network,
+    nothing played, generation is incremental so only the 54 new segments a voice were
+    synthesised.
 - ~~Token-level clip concatenation for multi-card groups at `full` card detail~~ — ✅ NOT
   a gap, and now proven rather than assumed. Card utterances are the only ones with no
   terminal punctuation, which puts them on the cascade's comma-item path with their own

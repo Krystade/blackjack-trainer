@@ -33,7 +33,21 @@ import { useAudio } from '../../../audio/useAudio';
 import { cancelSpeech, speak, speakAsync } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
-import { narrateCards, narrateCountAnswer, narrateCountPrompt } from '../../../audio/narrate';
+import {
+  narrateCards,
+  narrateCountAnswer,
+  narrateCountPrompt,
+  narrateNotATag,
+  narrateReadback,
+  COUNTDOWN_TAG_PROMPT,
+  CHECKPOINT_PROMPT,
+  NO_TAG_YET,
+  NO_COUNT_YET,
+  NO_COUNT_YET_CHECKPOINT,
+  DID_YOU_HAVE_IT,
+  DECLINED_ANOTHER,
+  SAY_YES_AGAIN,
+} from '../../../audio/narrate';
 import { focusSwallowsKey } from '../../keyboardFocus';
 import { enableAudioNow } from '../../audioGate';
 import { useVoiceControl } from '../../useVoiceControl';
@@ -113,14 +127,12 @@ type CountPhase =
  * at, and "what is the tag" is not a question you can answer if nobody has
  * told you the shape of the answer.
  */
-const COUNTDOWN_TAG_PROMPT = 'Plus one, zero, or minus one?';
 
 /**
  * RT#12: what a checkpoint asks. Deliberately the same question the end of
  * the run asks, because it is the same question -- "so far" is implied by the
  * cards having stopped.
  */
-const CHECKPOINT_PROMPT = 'Running count so far?';
 
 export function CountDrillView({
   settings,
@@ -1094,11 +1106,11 @@ export function CountDrillView({
     // error, and proposing it would put a number on screen that the confirm
     // step could never accept.
     if (countdownMode && phase === 'answering' && (next < -1 || next > 1)) {
-      sayBack(`${speakableCount(next)} is not a tag. ${COUNTDOWN_TAG_PROMPT}`, true);
+      sayBack(narrateNotATag(next), true);
       return `not a tag: ${speakableCount(next)}`;
     }
     setPendingCount(next);
-    sayBack(`${speakableCount(next)}. Correct?`, true);
+    sayBack(narrateReadback(next), true);
     return `count ${speakableCount(next)}`;
   };
 
@@ -1128,7 +1140,7 @@ export function CountDrillView({
         if (countdownMode) {
           if (action === 'yes') {
             if (pendingCount === null) {
-              sayBack(`I have no tag yet. ${COUNTDOWN_TAG_PROMPT}`, true);
+              sayBack(NO_TAG_YET, true);
               return;
             }
             const tag = pendingCount as -1 | 0 | 1;
@@ -1145,7 +1157,7 @@ export function CountDrillView({
             sayBack(
               pendingCount === null
                 ? COUNTDOWN_TAG_PROMPT
-                : `${speakableCount(pendingCount)}. Correct?`,
+                : narrateReadback(pendingCount),
               true,
             );
           }
@@ -1153,7 +1165,7 @@ export function CountDrillView({
         }
         if (action === 'yes') {
           if (pendingCount === null) {
-            sayBack('I have no count yet. What is it?', true);
+            sayBack(NO_COUNT_YET, true);
             return;
           }
           const confirmed = pendingCount;
@@ -1170,7 +1182,7 @@ export function CountDrillView({
         }
         if (action === 'repeat') {
           sayBack(
-            pendingCount === null ? narrateCountPrompt() : `${speakableCount(pendingCount)}. Correct?`,
+            pendingCount === null ? narrateCountPrompt() : narrateReadback(pendingCount),
             true,
           );
         }
@@ -1183,7 +1195,7 @@ export function CountDrillView({
       case 'checkpoint':
         if (action === 'yes') {
           if (pendingCount === null) {
-            sayBack(`I have no count yet. ${CHECKPOINT_PROMPT}`, true);
+            sayBack(NO_COUNT_YET_CHECKPOINT, true);
             return;
           }
           const confirmed = pendingCount;
@@ -1198,7 +1210,7 @@ export function CountDrillView({
         }
         if (action === 'repeat') {
           sayBack(
-            pendingCount === null ? CHECKPOINT_PROMPT : `${speakableCount(pendingCount)}. Correct?`,
+            pendingCount === null ? CHECKPOINT_PROMPT : narrateReadback(pendingCount),
             true,
           );
         }
@@ -1209,14 +1221,14 @@ export function CountDrillView({
         else if (action === 'no') handleSelfReport(false);
         else if (action === 'repeat') {
           sayBack(narrateCountAnswer(actualValue), true);
-          sayBack('Did you have it?');
+          sayBack(DID_YOU_HAVE_IT);
         }
         return;
 
       case 'result':
         if (action === 'yes') start();
         else if (action === 'repeat') sayBack(resultSpeech(), true);
-        else if (action === 'no') sayBack('Okay. Say yes when you want another.', true);
+        else if (action === 'no') sayBack(DECLINED_ANOTHER, true);
         return;
 
       // 'flashing', 'selfcheck' and 'distraction' are the app's turn to talk.
@@ -1259,7 +1271,7 @@ export function CountDrillView({
   useEffect(() => {
     if (!voiceOn || phase !== 'result') return;
     voice.cycleIfStale();
-    sayBack('Say yes to go again.');
+    sayBack(SAY_YES_AGAIN);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceOn, phase]);
 

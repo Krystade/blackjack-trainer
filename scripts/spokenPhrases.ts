@@ -29,7 +29,14 @@ import type { Card, Rank, Suit } from '../src/engine/cards';
 import { indexSetFor } from '../src/engine/deviations';
 import type { Action } from '../src/engine/deviations';
 import { drawQuizItem } from '../src/drills/deviationQuiz';
-import { narrateBotAction, narrateCorrection, narrateSitOut } from '../src/audio/narrate';
+import {
+  narrateBotAction,
+  narrateCorrection,
+  narrateSitOut,
+  narrateNotATag,
+  narrateReadback,
+  VOICE_CONVERSATION_LINES,
+} from '../src/audio/narrate';
 import type { GradedEvent } from '../src/engine/grade';
 
 const RANKS: Rank[] = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
@@ -177,7 +184,39 @@ export function tableSentences(): string[] {
   return [...sentences];
 }
 
+/**
+ * What the app says WHILE LISTENING (D2, docs/BACKLOG.md).
+ *
+ * The whole conversational half of eyes-free mode was unclipped -- the count
+ * read-back it asks you to confirm, the refusals, "Did you have it?", every
+ * "say yes" -- because those sentences were composed inline in three view
+ * files where no derivation could see them. They are in narrate.ts now, and
+ * this walks them.
+ *
+ * It matters more than the count suggests: clip segmentation is all-or-nothing
+ * per utterance, and in a car live speech opens no media element, so each of
+ * these dropped the head unit at the exact moment the app was asking a
+ * question and waiting for an answer.
+ *
+ * The read-back's number is the only moving part, and it runs over the same
+ * TC_MIN..TC_MAX band as everything else here. Outside it -- a genuinely wild
+ * misrecognition -- the utterance falls back to live TTS, which is the
+ * documented behaviour for anything unenumerable.
+ */
+export function voiceSentences(): string[] {
+  const sentences = new Set<string>(VOICE_CONVERSATION_LINES);
+  for (let value = TC_MIN; value <= TC_MAX; value++) {
+    for (const part of splitIntoSentences(narrateReadback(value))) sentences.add(part);
+    // Shares its first sentence with the read-back by construction; walked
+    // anyway, so that splitting it differently one day cannot go unnoticed.
+    for (const part of splitIntoSentences(narrateNotATag(value))) sentences.add(part);
+  }
+  return [...sentences];
+}
+
 /** The sorted, de-duplicated list the generator turns into clips. */
 export function spokenSentences(): string[] {
-  return [...new Set([...correctionSentences(), ...tableSentences()])].sort();
+  return [
+    ...new Set([...correctionSentences(), ...tableSentences(), ...voiceSentences()]),
+  ].sort();
 }

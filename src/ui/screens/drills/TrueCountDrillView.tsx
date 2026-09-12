@@ -9,7 +9,14 @@ import { useAudio } from '../../../audio/useAudio';
 import { speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
-import { narrateTc } from '../../../audio/narrate';
+import {
+  narrateTc,
+  narrateReadback,
+  NO_TRUE_COUNT_YET,
+  DID_YOU_HAVE_IT,
+  DECLINED_NEXT,
+  SAY_YES_NEXT,
+} from '../../../audio/narrate';
 import { loadStats, saveStats } from '../../../store/persist';
 import { enableAudioNow } from '../../audioGate';
 import { useVoiceControl } from '../../useVoiceControl';
@@ -296,7 +303,7 @@ export function TrueCountDrillView({
   const resultSpeech = (): string =>
     question === null
       ? ''
-      : `${wasCorrect ? 'Correct.' : 'Wrong.'} ${narrateTcAnswer(question.correctTc)} Say yes for the next one.`;
+      : `${wasCorrect ? 'Correct.' : 'Wrong.'} ${narrateTcAnswer(question.correctTc)} ${SAY_YES_NEXT}`;
 
   /**
    * First refusal on every transcript, for the thing the command vocabulary
@@ -318,7 +325,7 @@ export function TrueCountDrillView({
 
     const next = parsed.kind === 'value' ? parsed.value : (pendingTc ?? 0) + parsed.delta;
     setPendingTc(next);
-    sayBack(`${speakableCount(next)}. Correct?`, true);
+    sayBack(narrateReadback(next), true);
     return `true count ${speakableCount(next)}`;
   };
 
@@ -336,7 +343,7 @@ export function TrueCountDrillView({
       case 'answering': {
         if (action === 'yes') {
           if (pendingTc === null) {
-            sayBack('I have no true count yet. What is it?', true);
+            sayBack(NO_TRUE_COUNT_YET, true);
             return;
           }
           const confirmed = pendingTc;
@@ -355,7 +362,7 @@ export function TrueCountDrillView({
               ? question
                 ? narrateTcQuestion(question)
                 : ''
-              : `${speakableCount(pendingTc)}. Correct?`,
+              : narrateReadback(pendingTc),
             true,
           );
         }
@@ -367,14 +374,14 @@ export function TrueCountDrillView({
         else if (action === 'no') handleSelfReport(false);
         else if (action === 'repeat') {
           if (question) sayBack(narrateTcAnswer(question.correctTc), true);
-          sayBack('Did you have it?');
+          sayBack(DID_YOU_HAVE_IT);
         }
         return;
 
       case 'result':
         if (action === 'yes') start();
         else if (action === 'repeat') sayBack(resultSpeech(), true);
-        else if (action === 'no') sayBack('Okay. Say yes when you want the next one.', true);
+        else if (action === 'no') sayBack(DECLINED_NEXT, true);
         return;
 
       // 'selfcheck' is the app's turn to talk: the question has been asked
@@ -413,7 +420,7 @@ export function TrueCountDrillView({
   useEffect(() => {
     if (!voiceOn || phase !== 'result') return;
     voice.cycleIfStale();
-    sayBack('Say yes for the next one.');
+    sayBack(SAY_YES_NEXT);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceOn, phase]);
 

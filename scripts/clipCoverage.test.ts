@@ -24,6 +24,11 @@ import { DEFAULT_RULES } from '../src/engine/ruleset';
 import { drawFlashcard } from '../src/drills/flashcards';
 import { drawQuizItem } from '../src/drills/deviationQuiz';
 import { reachableReasons } from './spokenPhrases';
+import {
+  narrateNotATag,
+  narrateReadback,
+  VOICE_CONVERSATION_LINES,
+} from '../src/audio/narrate';
 
 /**
  * The end of the chain, asserted against the SHIPPED assets.
@@ -199,6 +204,25 @@ describe('shipped clip coverage', () => {
         .filter((f) => f.endsWith('.mp3'))
         .filter((f) => !named.has(f));
       expect(orphans).toEqual([]);
+    });
+
+    /**
+     * The conversational half, which was entirely uncovered (D2).
+     *
+     * Asserted on the WHOLE utterance, not the segments, because that is what
+     * the runtime resolves: one unmatched sentence sends the whole line to
+     * live TTS, and in a car live speech opens no media element -- so the head
+     * unit goes quiet at the moment the app is waiting for an answer.
+     */
+    it(`resolves everything the app says while listening (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      const texts = new Set<string>(VOICE_CONVERSATION_LINES);
+      for (let value = -20; value <= 20; value++) {
+        texts.add(narrateReadback(value));
+        texts.add(narrateNotATag(value));
+      }
+      const unresolved = [...texts].filter((t) => segmentForClips(t, manifest) === null);
+      expect(unresolved).toEqual([]);
     });
 
     /** "Correct." was covered and "Wrong." was not, for a long time. */

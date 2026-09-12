@@ -21,6 +21,7 @@ import {
   matchSpokenAlternatives,
 } from '../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../audio/voiceNumber';
+import { narrateReadback } from '../../audio/narrate';
 import type { VoiceAction } from '../../audio/voiceRecognition';
 import { actionUnavailable } from '../../drills/answerGate';
 import { enableAudioNow } from '../audioGate';
@@ -455,7 +456,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       const next =
         parsed.kind === 'value' ? parsed.value : (pendingCount ?? 0) + parsed.delta;
       setPendingCount(next);
-      audio.say(`${speakableCount(next)}. Correct?`);
+      audio.say(narrateReadback(next));
       return `count ${speakableCount(next)}`;
     }
 
@@ -481,7 +482,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         audio.say(
           pendingCount === null
             ? countPromptText()
-            : `${speakableCount(pendingCount)}. Correct?`,
+            : narrateReadback(pendingCount),
         );
         return 'repeated';
       default:
