@@ -62,6 +62,26 @@ export interface GradedEvent {
   source?: EventSource;
 
   /**
+   * V5-2 (docs/BACKLOG.md): was this answer given under the shot clock?
+   *
+   * OPTIONAL and purely additive like `elapsedMs` and `source` above --
+   * producers that predate it omit it, and a missing value means "not known
+   * to be timed", never `false`.
+   *
+   * Recorded because accuracy under a deadline and accuracy without one are
+   * measuring different things. Vékony, Plèche & Németh (npj Science of
+   * Learning 2022) split 48 subjects by speed-vs-accuracy instruction: the
+   * speed group looked better while instructed (p = 0.008) and identical once
+   * the instruction was removed (p = 0.18 / p = 0.86) -- "only the expression
+   * of knowledge was affected by the instructions". Pooling the two into one
+   * accuracy figure therefore reports a number that moves with the shot-clock
+   * setting rather than with what the learner knows. `shotClockMs`'s own
+   * comment in store/types.ts already worried about this; this is the
+   * measurement that makes the worry checkable.
+   */
+  underShotClock?: boolean;
+
+  /**
    * What this mistake cost, in units of the original bet, or absent when the
    * question does not have an honest answer. V3-8 in docs/BACKLOG.md: grading is
    * otherwise binary, so standing on 16 against a ten (worth about six

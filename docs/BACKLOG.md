@@ -920,8 +920,45 @@ Sources:
 **All three legs of the standing workflow are now run.** Open candidates from this round, in
 the order I would take them: ~~V5-1 (confusable-neighbour interleaving, best evidence)~~
 **✅ SHIPPED 2026-09-12** — see the entry above the community section; then ~~V5-4 (division
-rule, correctness)~~ **✅ SHIPPED 2026-09-12**; then V5-2 (competence vs expression,
-measurement) and V5-5 (depth resolution). V5-3 is closed as not-actionable.
+rule, correctness)~~ **✅ SHIPPED 2026-09-12**; then ~~V5-2 (competence vs expression,
+measurement)~~ **✅ SHIPPED 2026-09-12** — narrower than filed, see the entry below; leaving
+V5-5 (depth resolution). V5-3 is closed as not-actionable.
+
+- **V5-2 · Timed and untimed drill accuracy were pooled into one number — S — ✅ SHIPPED
+  2026-09-12, no setting, no gate change.** Filed off the training-science leg as a measurement
+  bug, and it shipped as one: nothing about the tiers, the schedule or the shot clock changed.
+  The only change is that the app now knows which of its answers were given under a deadline.
+  - **What shipped is narrower than what was filed, deliberately.** The candidate proposed
+    periodically re-asking a handful of cells at a NEUTRAL pace and reporting that separately.
+    That is a second drill: a new scheduler, a new interruption to the session, and a new way
+    for the learner to be asked something they did not choose. The same question is already
+    answerable from data the app throws away — the learner turns the shot clock on and off
+    themselves, so both conditions are already being sampled. Stamping the condition on the
+    answer buys the entire comparison for one boolean and no new UI surface. If the split ever
+    shows a persistent gap that the learner wants to attack, the neutral-pace re-ask is still
+    there to build; it is a worse first move, not a wrong idea.
+  - `underShotClock?: boolean` on `GradedEvent` is OPTIONAL and stays optional. An event that
+    never said lands in NEITHER bucket — table play, every drill answer recorded before the
+    field existed, and any future grading surface that has no clock. Defaulting the unknowns
+    into `untimed` would have been the easy read and would have quietly poisoned the exact
+    number the split exists to protect; there is a unit test whose whole job is that
+    distinction.
+  - **The stamp went in the wrong place first and the e2e caught it.** I set the flag on the
+    event AFTER `gradeFlashcardAnswer` returned — but `persistGrade` runs INSIDE the grader, so
+    the stats blob had already been written and the flag reached nothing. Every unit test still
+    passed, because they build the event by hand. This is the same shape as V5-1's threading
+    bug and it is worth naming as a pattern: when a helper both grades AND persists, anything
+    the caller adds afterwards is decoration. The flag is now an argument to the grader.
+  - Stats gets a "Clock vs no clock" section that stays QUIET until both buckets have answers,
+    and says why. One bucket alone says nothing about the gap, and "100%" off two cards invites
+    precisely the wrong conclusion. When both are populated it shows the two rates and names
+    the difference in points: *"that gap is the part of your score the deadline is taking, not
+    the part you have yet to learn."*
+  - Five mutants, all killed: the split never written; unknown treated as untimed; the
+    aggregation mutating the input blob rather than copy-on-write; the grader ignoring the
+    flag; the view always reporting untimed.
+  - Verified visually as well as green — both the populated comparison and the reversed-gap
+    wording were rendered and read, per the standing rule.
 
 - **V5-4 · The true-count division rule was hardcoded to floor — S — ✅ SHIPPED 2026-09-12,
   default unchanged.** Filed off the community leg with a warning not to change the default

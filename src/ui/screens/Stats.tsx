@@ -763,6 +763,73 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
         })()}
       </section>
 
+      {/*
+        V5-2 (docs/BACKLOG.md): under-the-clock accuracy and no-clock accuracy
+        are DIFFERENT MEASUREMENTS, so they get two numbers rather than one.
+        Vékony et al. found speed instruction moves what a learner can express
+        without moving what they know; pooling the two would make the headline
+        figure drift with the shotClockMs setting instead of with progress.
+
+        Only rendered once BOTH buckets have answers -- one alone says nothing
+        about the gap, and a spurious "100% untimed" off two cards would invite
+        exactly the wrong conclusion.
+      */}
+      <section className="stats-section" data-tab={SECTION_TAB['Flashcards']}>
+        <h2 className="stats-section-title">Clock vs no clock</h2>
+        {(() => {
+          const split = stats.shotClockSplit;
+          const t = split?.timed ?? { right: 0, wrong: 0 };
+          const u = split?.untimed ?? { right: 0, wrong: 0 };
+          const tn = t.right + t.wrong;
+          const un = u.right + u.wrong;
+          if (tn === 0 || un === 0) {
+            return (
+              <p className="stats-detail">
+                Answer some hand drills both with the shot clock on and with it off, and this
+                compares them. What you can produce under a deadline and what you know are
+                different things, and only the second one keeps.
+              </p>
+            );
+          }
+          const gap = Math.round((u.right / un - t.right / tn) * 100);
+          return (
+            <>
+              <div className="category-list">
+                {[
+                  { label: 'Under the clock', tally: t, total: tn },
+                  { label: 'No clock', tally: u, total: un },
+                ].map((row) => (
+                  <div className="category-row" key={row.label}>
+                    <div className="category-row-top">
+                      <span className="category-label">{row.label}</span>
+                      <span className="category-fraction">
+                        {row.tally.right}/{row.total} ({pct(row.tally.right, row.total)})
+                      </span>
+                    </div>
+                    <div className="category-bar-track">
+                      <div
+                        className="category-bar-fill"
+                        style={{ width: `${(row.tally.right / row.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="stats-detail">
+                {gap > 0
+                  ? `You are ${gap} points better without the clock. That gap is the part of your
+                     score the deadline is taking, not the part you have yet to learn.`
+                  : gap < 0
+                    ? `You are ${-gap} points better WITH the clock — unusual, and usually a
+                       sign the untimed sample is small or came from a different stretch of
+                       practice.`
+                    : 'The clock is costing you nothing measurable.'}
+              </p>
+            </>
+          );
+        })()}
+      </section>
+
       <section className="stats-section" data-tab={SECTION_TAB['Illustrious 18']}>
         <h2 className="stats-section-title">Illustrious 18</h2>
         <table className="index-table">

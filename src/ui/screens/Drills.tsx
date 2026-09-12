@@ -365,6 +365,11 @@ function FlashcardsView({
       srDeckRef.current,
       Date.now(),
       channel,
+      // V5-2: accuracy under the shot clock and accuracy without it measure
+      // different things (see engine/grade.ts), so the grader records which
+      // this was. Passed IN rather than stamped on the way out -- the grader
+      // is what persists the event.
+      settings.drill.shotClockMs > 0,
     );
     srDeckRef.current = result.nextDeck;
     return { event: result.event, correctAction: result.correctAction };
@@ -1048,6 +1053,7 @@ function DeviationQuizView({
       srDeckRef.current,
       Date.now(),
       channel,
+      settings.drill.shotClockMs > 0, // V5-2: see the flashcard grader above.
     );
     srDeckRef.current = result.nextDeck;
     return result.event;

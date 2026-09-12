@@ -319,6 +319,18 @@ export interface Stats {
    * stays the pooled total so the existing sections are untouched.
    */
   bySource?: Partial<Record<EventSource, Record<Category, TallyRW>>>;
+  /**
+   * V5-2 (docs/BACKLOG.md): hand-drill accuracy split by whether a shot clock
+   * was running. OPTIONAL, so a blob written before this field loads
+   * untouched, and events that never said (table play, older drill answers)
+   * land in NEITHER bucket rather than being guessed into one.
+   *
+   * Two numbers because they answer different questions: `timed` is what you
+   * can produce under pressure, `untimed` is what you know. Speed instruction
+   * moves the first without moving the second (engine/grade.ts cites the
+   * study), so a single pooled figure silently tracks the shotClockMs setting.
+   */
+  shotClockSplit?: { timed: TallyRW; untimed: TallyRW };
   mistakes: Record<MistakeClass, number>;
   countDrill: {
     history: {

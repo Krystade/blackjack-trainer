@@ -36,6 +36,7 @@ export function applyEvents(stats: Stats, events: GradedEvent[]): Stats {
   let latencyCopied = false;
   let bySourceCopied = false;
   let evCostCopied = false;
+  let shotClockCopied = false;
 
   for (const event of events) {
     // Update category tallies. The tally object itself is copied, not
@@ -87,6 +88,24 @@ export function applyEvents(stats: Stats, events: GradedEvent[]): Stats {
       else tally.wrong += 1;
       bucket[event.category] = tally;
       result.bySource![event.source] = bucket;
+    }
+
+    // V5-2: split by whether a deadline was running. `undefined` means the
+    // producer never said, which is NOT the same as "untimed" -- table play
+    // and every drill answer predating the field land in neither bucket
+    // rather than being guessed into the untimed one and diluting it.
+    if (event.underShotClock !== undefined) {
+      if (!shotClockCopied) {
+        result.shotClockSplit = stats.shotClockSplit
+          ? { timed: { ...stats.shotClockSplit.timed }, untimed: { ...stats.shotClockSplit.untimed } }
+          : { timed: { right: 0, wrong: 0 }, untimed: { right: 0, wrong: 0 } };
+        shotClockCopied = true;
+      }
+      const bucket = event.underShotClock
+        ? result.shotClockSplit!.timed
+        : result.shotClockSplit!.untimed;
+      if (event.correct) bucket.right += 1;
+      else bucket.wrong += 1;
     }
 
     // Update mistakes tally by classification

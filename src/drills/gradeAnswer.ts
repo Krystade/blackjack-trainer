@@ -302,13 +302,25 @@ export function gradeFlashcardAnswer(
   deck: SrDeck,
   now: number,
   channel: AnswerChannel = SCREEN_CHANNEL,
+  underShotClock?: boolean,
 ): FlashGradeResult {
   const built = buildFlashcardEvent(card, taken, rules, elapsedMs);
   const { correctAction, correct } = built;
   // V3-5: the grader already holds the wall clock the SR schedule runs on, so
   // the event is dated from the same `now` its retention row is. One clock per
   // answer, so a row can never disagree with the review that produced it.
-  const event: GradedEvent = { ...built.event, at: new Date(now).toISOString() };
+  //
+  // V5-2: `underShotClock` is stamped HERE and not by the caller, because this
+  // function is what calls persistGrade -- a caller decorating the returned
+  // event would only be decorating its own copy, and the stats blob would
+  // never see the flag. (That is exactly what the first version did, and the
+  // e2e caught it.) Left undefined when the caller does not say, so "unknown"
+  // stays distinguishable from "untimed".
+  const event: GradedEvent = {
+    ...built.event,
+    at: new Date(now).toISOString(),
+    ...(underShotClock === undefined ? {} : { underShotClock }),
+  };
 
   // RV4: classify the gap review against the cell's PRE-review state, then
   // advance its Leitner schedule.
@@ -370,10 +382,13 @@ export function gradeQuizAnswer(
   deck: SrDeck,
   now: number,
   channel: AnswerChannel = SCREEN_CHANNEL,
+  underShotClock?: boolean,
 ): QuizGradeResult {
+  // V5-2: stamped here, not by the caller -- see gradeFlashcardAnswer.
   const event: GradedEvent = {
     ...buildQuizEvent(item, taken, rules, elapsedMs),
     at: new Date(now).toISOString(),
+    ...(underShotClock === undefined ? {} : { underShotClock }),
   };
 
   let nextDeck = deck;
