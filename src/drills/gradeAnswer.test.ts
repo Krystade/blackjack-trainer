@@ -13,6 +13,15 @@ import {
   TIMEOUT_ANSWER,
 } from './gradeAnswer';
 import type { SrDeck } from './spacedRepetition';
+import {
+  BLIND_TAP_CHANNEL,
+  CHANNEL_BASE_CAP,
+  FLUENT_MS,
+  MAX_BOX,
+  SCREEN_CHANNEL,
+  VOICE_CHANNEL,
+  channelBit,
+} from './spacedRepetition';
 import { _setStorage, loadStats } from '../store/persist';
 import { EMPTY_STATS } from '../store/types';
 import { applyEvents } from '../store/stats';
@@ -559,5 +568,90 @@ describe('shot-clock timeout (R1)', () => {
     expect(stats.categories.hard.wrong).toBe(1);
     // Unpriced, so nothing lands in the EV-cost history.
     expect(stats.evCost.history).toHaveLength(0);
+  });
+});
+
+/* ================================================================== */
+/* The wiring, not the arithmetic.                                    */
+/*                                                                    */
+/* spacedRepetition.test.ts already pins what a hesitant answer and a */
+/* screen-only channel DO. These pin that the grade path actually     */
+/* hands them over -- the failure mode being a scheduler that weighs  */
+/* pace and channel perfectly while every real answer arrives         */
+/* unmeasured and unattributed.                                       */
+/* ================================================================== */
+
+describe('the grade path carries pace and channel into the SR deck', () => {
+  const NOW2 = 1_700_000_000_000;
+
+  it('flashcards: the elapsed time it was given is the one the scheduler judges', () => {
+    const card = drawFlashcard('all', {}, 0, 4242, DEFAULT_RULES);
+
+    const fast = gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 200, {}, NOW2);
+    expect(fast.nextDeck[card.cellId]!.box).toBe(1);
+    expect(fast.nextDeck[card.cellId]!.paceMs).toBe(200);
+
+    // Same answer, same card, same deck -- only slower. It must not promote.
+    const slow = gradeFlashcardAnswer(
+      card,
+      card.correct,
+      DEFAULT_RULES,
+      FLUENT_MS + 1,
+      fast.nextDeck,
+      NOW2,
+    );
+    expect(slow.nextDeck[card.cellId]!.box).toBe(1); // held, not promoted to 2
+  });
+
+  it('flashcards: the channel it was given is the one that sets the ceiling', () => {
+    const card = drawFlashcard('all', {}, 0, 4242, DEFAULT_RULES);
+
+    const grind = (channel: { eyesFree: boolean; handsFree: boolean }) => {
+      let deck: SrDeck = {};
+      for (let i = 0; i < 10; i++) {
+        deck = gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 200, deck, NOW2, channel)
+          .nextDeck;
+      }
+      return deck[card.cellId]!;
+    };
+
+    expect(grind(SCREEN_CHANNEL).box).toBe(CHANNEL_BASE_CAP);
+    expect(grind(VOICE_CHANNEL).box).toBe(MAX_BOX);
+    expect(grind(BLIND_TAP_CHANNEL).channels).toBe(channelBit(BLIND_TAP_CHANNEL));
+  });
+
+  it('flashcards: an omitted channel defaults to the screen, not to unlimited', () => {
+    const card = drawFlashcard('all', {}, 0, 4242, DEFAULT_RULES);
+    let deck: SrDeck = {};
+    for (let i = 0; i < 10; i++) {
+      deck = gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 200, deck, NOW2).nextDeck;
+    }
+    // The wrappers are the app's boundary: a caller that forgot to say how the
+    // answer arrived gets the conservative reading, never a free pass to the
+    // top of the ladder.
+    expect(deck[card.cellId]!.box).toBe(CHANNEL_BASE_CAP);
+    expect(deck[card.cellId]!.channels).toBe(channelBit(SCREEN_CHANNEL));
+  });
+
+  it('the deviation quiz carries them too, so the two drills cannot drift', () => {
+    const item = drawQuizItem(1234, undefined, DEFAULT_RULES);
+    expect(item.deviationId).toBeTruthy();
+
+    let deck: SrDeck = {};
+    for (let i = 0; i < 10; i++) {
+      deck = gradeQuizAnswer(
+        item,
+        item.correct,
+        DEFAULT_RULES,
+        200,
+        deck,
+        NOW2,
+        BLIND_TAP_CHANNEL,
+      ).nextDeck;
+    }
+    const entry = deck[item.deviationId!]!;
+    expect(entry.box).toBe(CHANNEL_BASE_CAP + 1);
+    expect(entry.channels).toBe(channelBit(BLIND_TAP_CHANNEL));
+    expect(entry.paceMs).toBe(200);
   });
 });

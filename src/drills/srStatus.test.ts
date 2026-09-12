@@ -244,3 +244,71 @@ describe('summarizeSrDeck: actually uses its now parameter', () => {
     expect(before.dueNow).not.toBe(after.dueNow);
   });
 });
+
+/* ================================================================== */
+/* The channel / pace readout.                                        */
+/*                                                                    */
+/* The scheduler refuses to push a screen-and-tap cell to the top of  */
+/* the ladder. Unexplained, that reads as a stuck histogram, so the   */
+/* panel needs numbers for it -- and they have to be honest about a   */
+/* deck that predates the tracking rather than reporting it as a wall */
+/* of failures.                                                       */
+/* ================================================================== */
+
+describe('summarizeSrDeck: channels and pace', () => {
+  it('counts each half of the channel independently', () => {
+    const deck = {
+      tapped: card({ channels: 0 }),
+      blind: card({ channels: 1 }), // eyes-free, hands on
+      spoken: card({ channels: 3 }), // both
+    };
+    const sum = summarizeSrDeck(deck, 10, T0);
+    expect(sum.channelKnown).toBe(3);
+    expect(sum.provenEyesFree).toBe(2); // blind + spoken
+    expect(sum.provenHandsFree).toBe(1); // spoken only
+    expect(sum.screenOnly).toBe(1); // tapped only
+  });
+
+  /**
+   * A card carrying a mask of 0 is a REAL screen-only result; a card carrying
+   * no mask at all is a deck written before channels existed. Collapsing the
+   * two would tell a long-time user that every cell they have ever learned is
+   * unproven, which is not something the app knows.
+   */
+  it('a deck with no channel data is reported as no data, not as all-screen', () => {
+    const deck = { legacyA: card({}), legacyB: card({}) };
+    const sum = summarizeSrDeck(deck, 10, T0);
+    expect(sum.channelKnown).toBe(0);
+    expect(sum.screenOnly).toBe(0);
+    expect(sum.provenEyesFree).toBe(0);
+  });
+
+  it('mixes old and new: only the cards that carry a mask are counted', () => {
+    const deck = { legacy: card({}), spoken: card({ channels: 3 }) };
+    const sum = summarizeSrDeck(deck, 10, T0);
+    expect(sum.channelKnown).toBe(1);
+    expect(sum.provenHandsFree).toBe(1);
+  });
+
+  it('the pace figure is the median, so one abandoned card cannot move it', () => {
+    const deck = {
+      a: card({ paceMs: 1000 }),
+      b: card({ paceMs: 1200 }),
+      c: card({ paceMs: 90_000 }), // the phone rang
+    };
+    const sum = summarizeSrDeck(deck, 10, T0);
+    expect(sum.medianPaceMs).toBe(1200);
+    // A mean would be over 30 seconds and would say the operator is hopeless.
+    expect(sum.medianPaceMs).toBeLessThan(2000);
+  });
+
+  it('an even number of timings takes the midpoint of the middle two', () => {
+    const deck = { a: card({ paceMs: 1000 }), b: card({ paceMs: 2000 }) };
+    expect(summarizeSrDeck(deck, 10, T0).medianPaceMs).toBe(1500);
+  });
+
+  it('nothing timed yet reads as null rather than zero', () => {
+    expect(summarizeSrDeck({ a: card({}) }, 10, T0).medianPaceMs).toBeNull();
+    expect(summarizeSrDeck({}, 10, T0).medianPaceMs).toBeNull();
+  });
+});

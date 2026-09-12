@@ -22,6 +22,7 @@ import { fatigueDrift, type DatedResult } from '../../drills/fatigueDrift';
 import { generateAllCells } from '../../drills/flashcards';
 import { loadFlashSr, loadQuizSr } from '../../drills/gradeAnswer';
 import { summarizeSrDeck, boxBarPercents, type SrDeckSummary } from '../../drills/srStatus';
+import { CHANNEL_BASE_CAP, FLUENT_MS } from '../../drills/spacedRepetition';
 import { Stepper } from './Settings';
 import './sr.css';
 
@@ -177,6 +178,49 @@ function SrStatusPanel({ deckLabel, summary, labelForKey }: SrStatusPanelProps) 
             <li className="mistake-row">
               <span>Due soon (24h)</span>
               <span>{summary.dueSoon}</span>
+            </li>
+          )}
+        </ul>
+      )}
+
+      {/*
+        WHY THE BOXES STOP WHERE THEY DO.
+        The scheduler will not push a cell to the top of the ladder on the
+        strength of answers read off the screen and tapped in
+        (drills/spacedRepetition.ts, CHANNEL_BASE_CAP). Without this readout
+        that ceiling is invisible and looks like a stuck histogram, so the
+        panel says out loud how much of the deck has been proven the hard
+        way -- and how fast, since a correct-but-slow answer holds its box
+        too. Hidden entirely on a deck written before channels were tracked:
+        a wall of zeroes there would be a lie, not a status.
+      */}
+      {summary.channelKnown > 0 && (
+        <ul className="mistake-list">
+          <li className="mistake-row">
+            <span>Answered without looking</span>
+            <span>
+              {summary.provenEyesFree} of {summary.channelKnown}
+            </span>
+          </li>
+          <li className="mistake-row">
+            <span>Answered without touching</span>
+            <span>
+              {summary.provenHandsFree} of {summary.channelKnown}
+            </span>
+          </li>
+          {summary.screenOnly > 0 && (
+            <li className="mistake-row">
+              <span>On-screen only — capped at box {CHANNEL_BASE_CAP}</span>
+              <span>{summary.screenOnly}</span>
+            </li>
+          )}
+          {summary.medianPaceMs !== null && (
+            <li className="mistake-row">
+              <span>Typical answer time</span>
+              <span className="mistake-value">
+                {(summary.medianPaceMs / 1000).toFixed(1)}s
+                {summary.medianPaceMs >= FLUENT_MS ? ' — hesitant' : ''}
+              </span>
             </li>
           )}
         </ul>

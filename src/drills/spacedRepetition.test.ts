@@ -10,6 +10,15 @@ import {
   SR_NEW_WEIGHT,
   SR_NOT_DUE_FLOOR,
   OVERDUE_CAP_DAYS,
+  FLUENT_MS,
+  PACE_ALPHA,
+  CHANNEL_BASE_CAP,
+  SCREEN_CHANNEL,
+  BLIND_TAP_CHANNEL,
+  VOICE_CHANNEL,
+  channelBit,
+  channelBoxCap,
+  type AnswerChannel,
   type SrCard,
 } from './spacedRepetition';
 
@@ -160,5 +169,204 @@ describe('a full review journey with an advancing clock', () => {
     // Now mastered (box MAX_BOX); after LEARNED it counts gap reviews.
     expect(isGapReview(c, now)).toBe(true);
     expect(c!.lapses).toBe(0); // never missed across the whole journey
+  });
+});
+
+/* ================================================================== */
+/* RIGHT IS NOT THE WHOLE STORY.                                      */
+/*                                                                    */
+/* Two things the operator asked to be weighed alongside correctness: */
+/* how fast the answer came, and which channel it came through. Both  */
+/* only ever SLOW promotion -- neither demotes, neither counts a      */
+/* lapse -- so the worst either can do is bring an item round again.  */
+/* ================================================================== */
+
+describe('reviewCard: how fast the answer came', () => {
+  it('a fluent correct answer promotes; a hesitant one holds its box', () => {
+    const start: SrCard = { box: 2, dueAt: T0, lastSeenAt: T0, lapses: 0, reviews: 4 };
+
+    const fluent = reviewCard(start, true, T0, { elapsedMs: FLUENT_MS - 1 });
+    expect(fluent.box).toBe(3);
+
+    const hesitant = reviewCard(start, true, T0, { elapsedMs: FLUENT_MS });
+    expect(hesitant.box).toBe(2);
+    // Held at box 2 means due after the BOX-2 interval -- the gap it already
+    // earned, not the longer one it did not.
+    expect(hesitant.dueAt).toBe(T0 + BOX_INTERVALS_MS[2]);
+  });
+
+  it('the boundary is inclusive on the slow side, so FLUENT_MS exactly is hesitant', () => {
+    const start: SrCard = { box: 1, dueAt: T0, lastSeenAt: T0, lapses: 0, reviews: 1 };
+    expect(reviewCard(start, true, T0, { elapsedMs: FLUENT_MS - 1 }).box).toBe(2);
+    expect(reviewCard(start, true, T0, { elapsedMs: FLUENT_MS }).box).toBe(1);
+  });
+
+  it('hesitating is not forgetting: no demotion, no lapse', () => {
+    const learned: SrCard = { box: 4, dueAt: T0, lastSeenAt: T0, lapses: 1, reviews: 9 };
+    const slow = reviewCard(learned, true, T0, { elapsedMs: 30_000 });
+    expect(slow.box).toBe(4); // exactly where it was
+    expect(slow.lapses).toBe(1); // unchanged -- a lapse is for a MISS
+  });
+
+  it('an unmeasured answer promotes: absence of a clock is not evidence of hesitation', () => {
+    const start: SrCard = { box: 1, dueAt: T0, lastSeenAt: T0, lapses: 0, reviews: 1 };
+    expect(reviewCard(start, true, T0, {}).box).toBe(2);
+    expect(reviewCard(start, true, T0).box).toBe(2);
+  });
+
+  it('paceMs starts at the first measured answer and eases toward later ones', () => {
+    const first = reviewCard(undefined, true, T0, { elapsedMs: 1000 });
+    expect(first.paceMs).toBe(1000);
+
+    // EWMA, not a mean: the newest answer moves it by PACE_ALPHA of the gap.
+    const second = reviewCard(first, true, T0 + DAY, { elapsedMs: 2000 });
+    expect(second.paceMs).toBeCloseTo(1000 + PACE_ALPHA * 1000, 6);
+
+    // Which is NOT the arithmetic mean of the two samples -- that would be
+    // 1500, and would drag a long-since-fluent cell back for ever.
+    expect(second.paceMs).not.toBeCloseTo(1500, 6);
+  });
+
+  it('a miss leaves paceMs alone -- a timeout measures staring, not recall', () => {
+    const fast = reviewCard(undefined, true, T0, { elapsedMs: 800 });
+    const missed = reviewCard(fast, false, T0 + DAY, { elapsedMs: 60_000 });
+    expect(missed.box).toBe(0);
+    expect(missed.paceMs).toBe(800);
+  });
+
+  it('an item answered slowly for ever never leaves box 0', () => {
+    let c: SrCard | undefined;
+    let now = T0;
+    for (let i = 0; i < 10; i++) {
+      c = reviewCard(c, true, now, { elapsedMs: 9000 });
+      now += DAY;
+    }
+    expect(c!.box).toBe(0);
+    expect(c!.reviews).toBe(10); // it was RIGHT ten times -- just never fluent
+    expect(c!.lapses).toBe(0);
+  });
+});
+
+describe('reviewCard: which channel the answer came through', () => {
+  /** Grind an item with the same channel until it stops moving. */
+  const grind = (channel: AnswerChannel, elapsedMs = 500): SrCard => {
+    let c: SrCard | undefined;
+    let now = T0;
+    for (let i = 0; i < 12; i++) {
+      c = reviewCard(c, true, now, { elapsedMs, channel });
+      now += 30 * DAY;
+    }
+    return c!;
+  };
+
+  it('channelBit is one stable bit per half, so the mask is one small number', () => {
+    expect(channelBit(SCREEN_CHANNEL)).toBe(0);
+    expect(channelBit(BLIND_TAP_CHANNEL)).toBe(1);
+    expect(channelBit({ eyesFree: false, handsFree: true })).toBe(2);
+    expect(channelBit(VOICE_CHANNEL)).toBe(3);
+  });
+
+  it('each channel done without raises the ceiling by one, never past MAX_BOX', () => {
+    expect(channelBoxCap(SCREEN_CHANNEL)).toBe(CHANNEL_BASE_CAP);
+    expect(channelBoxCap(BLIND_TAP_CHANNEL)).toBe(CHANNEL_BASE_CAP + 1);
+    expect(channelBoxCap({ eyesFree: false, handsFree: true })).toBe(CHANNEL_BASE_CAP + 1);
+    expect(channelBoxCap(VOICE_CHANNEL)).toBe(MAX_BOX);
+  });
+
+  /**
+   * THE POINT OF THE WHOLE MECHANISM. A cell only ever answered by reading the
+   * screen and tapping a button is real knowledge, and it earns a real
+   * interval -- but not the month at the top of the ladder, which claims you
+   * can produce it with neither the screen nor the pause.
+   */
+  it('screen-and-tap tops out at CHANNEL_BASE_CAP however often it is right', () => {
+    expect(grind(SCREEN_CHANNEL).box).toBe(CHANNEL_BASE_CAP);
+    expect(CHANNEL_BASE_CAP).toBeLessThan(MAX_BOX); // there is a ceiling to hit
+  });
+
+  it('blind tapping reaches one box higher; speaking reaches the top', () => {
+    expect(grind(BLIND_TAP_CHANNEL).box).toBe(CHANNEL_BASE_CAP + 1);
+    expect(grind(VOICE_CHANNEL).box).toBe(MAX_BOX);
+    expect(grind(SCREEN_CHANNEL).box).toBeLessThan(grind(BLIND_TAP_CHANNEL).box);
+  });
+
+  it('the ceiling never demotes an item that is already above it', () => {
+    const mastered: SrCard = { box: MAX_BOX, dueAt: T0, lastSeenAt: T0, lapses: 0, reviews: 20 };
+    const tapped = reviewCard(mastered, true, T0, { elapsedMs: 500, channel: SCREEN_CHANNEL });
+    expect(tapped.box).toBe(MAX_BOX);
+    expect(tapped.dueAt).toBe(T0 + BOX_INTERVALS_MS[MAX_BOX]);
+  });
+
+  it('an omitted channel is uncapped: unknown provenance is not held against you', () => {
+    let c: SrCard | undefined;
+    let now = T0;
+    for (let i = 0; i < 12; i++) {
+      c = reviewCard(c, true, now, { elapsedMs: 500 });
+      now += 30 * DAY;
+    }
+    expect(c!.box).toBe(MAX_BOX);
+    expect(c!.channels).toBeUndefined();
+  });
+
+  it('the mask accumulates every channel passed, and a miss adds none', () => {
+    const tapped = reviewCard(undefined, true, T0, { channel: SCREEN_CHANNEL });
+    expect(tapped.channels).toBe(0);
+
+    // Deliberately the HARD channel first and the easy one second: the other
+    // order cannot tell accumulation from overwriting, because voice's bits
+    // are a superset of every other channel's.
+    const spoken = reviewCard(tapped, true, T0 + DAY, { channel: VOICE_CHANNEL });
+    expect(spoken.channels).toBe(channelBit(VOICE_CHANNEL));
+
+    const thenBlind = reviewCard(spoken, true, T0 + 2 * DAY, { channel: BLIND_TAP_CHANNEL });
+    expect(thenBlind.channels).toBe(channelBit(VOICE_CHANNEL) | channelBit(BLIND_TAP_CHANNEL));
+  });
+
+  it('a miss proves nothing, so it adds no channel to the mask', () => {
+    // From a screen-only pass (mask 0), so a mistakenly-credited voice miss
+    // would show up as bits appearing out of nowhere.
+    const tapped = reviewCard(undefined, true, T0, { channel: SCREEN_CHANNEL });
+    expect(tapped.channels).toBe(0);
+
+    const spokenMiss = reviewCard(tapped, false, T0 + DAY, { channel: VOICE_CHANNEL });
+    expect(spokenMiss.channels).toBe(0);
+  });
+
+  /**
+   * The capped item is not merely stuck -- it comes ROUND AGAIN. `srWeight`
+   * already leans on (MAX_BOX - box), so holding an item below the ceiling
+   * automatically keeps it heavier in the draw than one proven blind. That is
+   * the whole reason no separate draw-side weighting was added.
+   */
+  it('a screen-only item outweighs a spoken-proof one in the draw', () => {
+    const screenOnly = grind(SCREEN_CHANNEL);
+    const spokenProof = grind(VOICE_CHANNEL);
+    // Compared at the same point in each one's cycle: the moment it comes due.
+    expect(srWeight(screenOnly, screenOnly.dueAt)).toBeGreaterThan(
+      srWeight(spokenProof, spokenProof.dueAt),
+    );
+  });
+});
+
+describe('the two brakes together', () => {
+  it('a slow blind answer holds where a fast one promoted', () => {
+    let c: SrCard | undefined;
+    let now = T0;
+    for (let i = 0; i < 8; i++) {
+      c = reviewCard(c, true, now, { elapsedMs: 900, channel: BLIND_TAP_CHANNEL });
+      now += 30 * DAY;
+    }
+    expect(c!.box).toBe(CHANNEL_BASE_CAP + 1);
+
+    const slow = reviewCard(c, true, now, { elapsedMs: 12_000, channel: BLIND_TAP_CHANNEL });
+    expect(slow.box).toBe(CHANNEL_BASE_CAP + 1);
+    expect(slow.lapses).toBe(0);
+  });
+
+  it('a miss beats both brakes to the punch: box 0, lapse counted', () => {
+    const learned: SrCard = { box: 4, dueAt: T0, lastSeenAt: T0, lapses: 0, reviews: 8 };
+    const missed = reviewCard(learned, false, T0, { elapsedMs: 100, channel: VOICE_CHANNEL });
+    expect(missed.box).toBe(0);
+    expect(missed.lapses).toBe(1);
   });
 });

@@ -90,6 +90,30 @@ export interface SrDeckSummary {
    * feeds a "+N more" suffix. 0 when mostLapsed already contains every
    * lapsed item. */
   moreLapsedCount: number;
+  /**
+   * CAN YOU ACTUALLY USE THIS DECK, or only recognise it?
+   *
+   * Counted over reviewed items whose channel mask is known: how many have
+   * ever been answered correctly without looking, and how many without
+   * touching. `screenOnly` is the complement worth naming on its own — items
+   * proven exclusively the easy way, which the scheduler holds below the top
+   * of the Leitner ladder (see `CHANNEL_BASE_CAP`) and which this panel
+   * therefore has to explain, or the ceiling looks like a bug.
+   *
+   * Items written before channels were tracked carry no mask and are counted
+   * in NONE of the three — `channelKnown` is their denominator, so a legacy
+   * deck reads as "no channel data" rather than as a wall of failures.
+   */
+  channelKnown: number;
+  provenEyesFree: number;
+  provenHandsFree: number;
+  screenOnly: number;
+  /**
+   * Median smoothed answer time over items that have one, in ms; null when
+   * nothing has been timed yet. The median rather than the mean: one cell
+   * left open while the phone rang would drag an average anywhere.
+   */
+  medianPaceMs: number | null;
 }
 
 /**
@@ -106,9 +130,24 @@ export function summarizeSrDeck(deck: SrDeck, universeSize: number, now: number)
   let dueSoon = 0;
   let maxOverdueDays: number | null = null;
   const lapsed: LapsedEntry[] = [];
+  let channelKnown = 0;
+  let provenEyesFree = 0;
+  let provenHandsFree = 0;
+  let screenOnly = 0;
+  const paces: number[] = [];
 
   for (const [key, card] of entries) {
     byBox[card.box] = (byBox[card.box] ?? 0) + 1;
+
+    if (card.channels !== undefined) {
+      channelKnown += 1;
+      const eyes = (card.channels & 1) !== 0;
+      const hands = (card.channels & 2) !== 0;
+      if (eyes) provenEyesFree += 1;
+      if (hands) provenHandsFree += 1;
+      if (!eyes && !hands) screenOnly += 1;
+    }
+    if (card.paceMs !== undefined) paces.push(card.paceMs);
 
     if (isDue(card, now)) {
       dueNow += 1;
@@ -134,7 +173,25 @@ export function summarizeSrDeck(deck: SrDeck, universeSize: number, now: number)
     maxOverdueDays,
     mostLapsed: lapsed.slice(0, MOST_LAPSED_LIMIT),
     moreLapsedCount: Math.max(0, lapsed.length - MOST_LAPSED_LIMIT),
+    channelKnown,
+    provenEyesFree,
+    provenHandsFree,
+    screenOnly,
+    medianPaceMs: median(paces),
   };
+}
+
+/**
+ * Median of an unsorted list, or null when it is empty.
+ *
+ * Even lengths take the mean of the two middle values, the ordinary
+ * convention. Sorts a copy — the caller's array is its own.
+ */
+function median(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
 /**

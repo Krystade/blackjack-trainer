@@ -39,6 +39,8 @@ import { narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt } from '..
 import { useVoiceControl } from '../useVoiceControl';
 import { autoAdvanceDelayMs, spokenPauseFor } from '../../drills/answerPause';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../audio/voiceRecognition';
+import { BLIND_TAP_CHANNEL, SCREEN_CHANNEL, VOICE_CHANNEL } from '../../drills/spacedRepetition';
+import type { AnswerChannel } from '../../drills/spacedRepetition';
 import { VoiceStatusBar } from '../components/VoiceStatusBar';
 import type { VoiceAction } from '../../audio/voiceRecognition';
 import { cancelSpeech, speak } from '../../audio/speech';
@@ -324,9 +326,20 @@ function FlashcardsView({
   // classification work) and passed in; R3 weights + the Stats write happen
   // inside gradeFlashcard. No audio, no setState -- callers layer their own
   // feedback on top.
-  const gradeFlashcardAnswer = (taken: Action): { event: GradedEvent; correctAction: Action } => {
+  const gradeFlashcardAnswer = (
+    taken: Action,
+    channel: AnswerChannel,
+  ): { event: GradedEvent; correctAction: Action } => {
     const elapsedMs = performance.now() - promptShownAtRef.current;
-    const result = gradeFlashcard(card, taken, activeProfile.rules, elapsedMs, srDeckRef.current, Date.now());
+    const result = gradeFlashcard(
+      card,
+      taken,
+      activeProfile.rules,
+      elapsedMs,
+      srDeckRef.current,
+      Date.now(),
+      channel,
+    );
     srDeckRef.current = result.nextDeck;
     return { event: result.event, correctAction: result.correctAction };
   };
@@ -351,7 +364,8 @@ function FlashcardsView({
   };
 
   const handleAction = (taken: Action) => {
-    const { event, correctAction } = gradeFlashcardAnswer(taken);
+    // An ActionBar click: the hand is on screen and a finger is on the button.
+    const { event, correctAction } = gradeFlashcardAnswer(taken, SCREEN_CHANNEL);
 
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
@@ -365,7 +379,13 @@ function FlashcardsView({
   // translation layer to drift out of sync. ZonePad's onAnswer type also
   // covers the insurance 'take'/'decline' variant it never produces in
   // 'action' mode -- narrow it away rather than widening this handler.
-  const handleZoneAnswer = (zone: ZoneId | 'take' | 'decline') => {
+  const handleZoneAnswer = (
+    zone: ZoneId | 'take' | 'decline',
+    // A blind zone tap by default. Voice overrides it: same path, but the
+    // hands never left the wheel, and the SR schedule is told the difference
+    // (drills/spacedRepetition.ts's channel ceiling).
+    channel: AnswerChannel = BLIND_TAP_CHANNEL,
+  ) => {
     if (zone === 'take' || zone === 'decline') return;
 
     // A1: the ZonePad has no disabled state, so an unavailable action must be
@@ -380,7 +400,7 @@ function FlashcardsView({
 
     speak(`${zoneLabel(zone)}…`, speechOptsFrom(settings.audio, { interrupt: true }));
 
-    const { event, correctAction } = gradeFlashcardAnswer(zone);
+    const { event, correctAction } = gradeFlashcardAnswer(zone, channel);
 
     const spokenMs = speakCorrectionOnceGated(event, (text) =>
       speak(text, speechOptsFrom(settings.audio)),
@@ -480,7 +500,7 @@ function FlashcardsView({
     // grade the next card against a word said about the previous one.
     if (feedback) return;
 
-    handleZoneAnswer(action);
+    handleZoneAnswer(action, VOICE_CHANNEL);
     // The recogniser dies on its own roughly every ninety seconds, and the
     // gap while it restarts is deaf. It cannot be overlapped away -- a second
     // recogniser ends the first -- so it is moved HERE, into the pause where
@@ -952,9 +972,17 @@ function DeviationQuizView({
   // mixed-session view. R1 latency is captured here; R3 index weights
   // (real items only) + the Stats write happen inside gradeQuiz. No audio,
   // no setState -- callers layer their own feedback on top.
-  const gradeQuizAnswer = (taken: string): GradedEvent => {
+  const gradeQuizAnswer = (taken: string, channel: AnswerChannel = SCREEN_CHANNEL): GradedEvent => {
     const elapsedMs = performance.now() - promptShownAtRef.current;
-    const result = gradeQuiz(item, taken, activeProfile.rules, elapsedMs, srDeckRef.current, Date.now());
+    const result = gradeQuiz(
+      item,
+      taken,
+      activeProfile.rules,
+      elapsedMs,
+      srDeckRef.current,
+      Date.now(),
+      channel,
+    );
     srDeckRef.current = result.nextDeck;
     return result.event;
   };
@@ -1047,7 +1075,9 @@ function DeviationQuizView({
 
     speak(`${zoneLabel(zone)}…`, speechOptsFrom(settings.audio, { interrupt: true }));
 
-    const event = gradeQuizAnswer(taken);
+    // The quiz has no voice input, so a zone tap here is always the blind
+    // pad: eyes off the screen, hand on the glass.
+    const event = gradeQuizAnswer(taken, BLIND_TAP_CHANNEL);
 
     const spokenMs = speakCorrectionOnceGated(event, (text) =>
       speak(text, speechOptsFrom(settings.audio)),

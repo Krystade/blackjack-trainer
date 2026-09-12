@@ -26,7 +26,8 @@ import type { RuleSet } from '../engine/ruleset';
 import type { Action } from '../engine/deviations';
 import type { Flashcard } from './flashcards';
 import type { QuizItem } from './deviationQuiz';
-import { reviewCard, isGapReview } from './spacedRepetition';
+import { reviewCard, isGapReview, SCREEN_CHANNEL } from './spacedRepetition';
+import type { AnswerChannel } from './spacedRepetition';
 import type { SrCard, SrDeck } from './spacedRepetition';
 import { loadStats, saveStats } from '../store/persist';
 import type { Stats } from '../store/types';
@@ -300,6 +301,7 @@ export function gradeFlashcardAnswer(
   elapsedMs: number,
   deck: SrDeck,
   now: number,
+  channel: AnswerChannel = SCREEN_CHANNEL,
 ): FlashGradeResult {
   const { event, correctAction, correct } = buildFlashcardEvent(card, taken, rules, elapsedMs);
 
@@ -307,7 +309,7 @@ export function gradeFlashcardAnswer(
   // advance its Leitner schedule.
   const prev = deck[card.cellId];
   const retention = prev && isGapReview(prev, now) ? retentionRow(card.cellId, prev, correct, now) : null;
-  const nextDeck = { ...deck, [card.cellId]: reviewCard(prev, correct, now) };
+  const nextDeck = { ...deck, [card.cellId]: reviewCard(prev, correct, now, { elapsedMs, channel }) };
   saveFlashSr(nextDeck);
 
   persistGrade(event, retention);
@@ -356,6 +358,7 @@ export function gradeQuizAnswer(
   elapsedMs: number,
   deck: SrDeck,
   now: number,
+  channel: AnswerChannel = SCREEN_CHANNEL,
 ): QuizGradeResult {
   const event = buildQuizEvent(item, taken, rules, elapsedMs);
 
@@ -364,7 +367,10 @@ export function gradeQuizAnswer(
   if (item.deviationId) {
     const prev = deck[item.deviationId];
     retention = prev && isGapReview(prev, now) ? retentionRow(item.deviationId, prev, event.correct, now) : null;
-    nextDeck = { ...deck, [item.deviationId]: reviewCard(prev, event.correct, now) };
+    nextDeck = {
+      ...deck,
+      [item.deviationId]: reviewCard(prev, event.correct, now, { elapsedMs, channel }),
+    };
     saveQuizSr(nextDeck);
   }
 
