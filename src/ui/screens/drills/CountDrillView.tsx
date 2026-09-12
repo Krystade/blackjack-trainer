@@ -93,6 +93,15 @@ type CountPhase =
   | 'distraction'
   | 'result';
 
+/**
+ * D2: what Countdown asks for once the deck has been read out.
+ *
+ * The three answers are named because eyes-free there is no keypad to look
+ * at, and "what is the tag" is not a question you can answer if nobody has
+ * told you the shape of the answer.
+ */
+const COUNTDOWN_TAG_PROMPT = 'Plus one, zero, or minus one?';
+
 export function CountDrillView({
   settings,
   onBack,
@@ -395,7 +404,6 @@ export function CountDrillView({
       groups.length === 0 ||
       !eyesFree ||
       settings.drill.countManual ||
-      countdownMode ||
       timedChallenge
     ) {
       return undefined;
@@ -482,7 +490,10 @@ export function CountDrillView({
   // own, so a fresh start() naturally re-triggers it -- nothing here can go
   // stale.
   useEffect(() => {
-    if (phase !== 'flashing' || countdownMode) return;
+    // D2: Countdown is no longer excluded. It was the one mode whose cards
+    // were never spoken, which made it the one mode you could not run without
+    // looking -- and reading fifty-one cards out is the entire drill.
+    if (phase !== 'flashing') return;
     if (eyesFree && !settings.drill.countManual && !timedChallenge) return;
     const g = groups[shownIndex];
     if (!g) return;
@@ -561,6 +572,20 @@ export function CountDrillView({
     } else {
       audio.sayFull(narrateCountPrompt());
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, countdownMode, eyesFree]);
+
+  /**
+   * D2: the Countdown prompt, eyes-free.
+   *
+   * The running-count prompt above skips this mode because the question is a
+   * different one -- not "what is the count" but "what is the one card that
+   * never came out". Saying the three answers is not padding: it is how a
+   * driver learns the vocabulary this prompt accepts without reading it.
+   */
+  useEffect(() => {
+    if (phase !== 'answering' || !countdownMode || !eyesFree) return;
+    speak(COUNTDOWN_TAG_PROMPT, speechOptsFrom(settings.audio));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, countdownMode, eyesFree]);
 
@@ -860,10 +885,24 @@ export function CountDrillView({
     }
   };
 
+  /** What the run comes to, said out loud. */
+  const countdownVerdict = (correct: boolean, hidden: Card): string =>
+    `${correct ? 'Correct.' : 'Wrong.'} The card left over was ` +
+    `${narrateCards([hidden], settings.audio.cardDetail)}, ` +
+    `${speakableCount(hiLoTag(hidden.rank))}.`;
+
   const handleTagGuess = (guess: -1 | 0 | 1) => {
     if (!countdownRound) return;
     const actual = hiLoTag(countdownRound.hidden.rank);
-    finishRun(guess === actual, actual, guess);
+    const correct = guess === actual;
+    finishRun(correct, actual, guess);
+
+    // D2: eyes-free, the verdict IS the output. Naming the card as well as
+    // its tag is the part that teaches -- "minus one" tells you nothing about
+    // which card you lost track of, and the whole run was fifty-one cards.
+    if (eyesFree) {
+      speak(countdownVerdict(correct, countdownRound.hidden), speechOptsFrom(settings.audio));
+    }
   };
 
   /** Say something, unconditionally -- a voice reply IS the output channel. */
@@ -872,10 +911,14 @@ export function CountDrillView({
   };
 
   /** The result, said again on request -- the screen is not being looked at. */
-  const resultSpeech = (): string =>
-    honorCheck
+  const resultSpeech = (): string => {
+    if (countdownMode && countdownRound) {
+      return `${countdownVerdict(wasCorrect, countdownRound.hidden)} Say yes to go again.`;
+    }
+    return honorCheck
       ? `${wasCorrect ? 'Correct.' : 'Wrong.'} The count was ${actualValue}. Say yes to go again.`
       : `${wasCorrect ? 'Correct.' : 'Wrong.'} ${narrateCountAnswer(actualValue)} Say yes to go again.`;
+  };
 
   /**
    * First refusal on every transcript, for the one thing the command
@@ -886,7 +929,7 @@ export function CountDrillView({
    * trap rather than a check.
    */
   const interpretCountSpeech = (heard: string, offered: readonly string[] = [heard]): string | null => {
-    if (phase !== 'answering' || countdownMode) return null;
+    if (phase !== 'answering') return null;
     const readings = offered.length > 0 ? offered : [heard];
 
     // Every reading is tried, best first. Over a car microphone "minus three"
@@ -900,6 +943,14 @@ export function CountDrillView({
     if (!parsed) return null;
 
     const next = parsed.kind === 'value' ? parsed.value : (pendingCount ?? 0) + parsed.delta;
+    // Countdown asks for a Hi-Lo TAG, which is one of three numbers. A
+    // perfectly-heard "plus four" is not a near miss there, it is a category
+    // error, and proposing it would put a number on screen that the confirm
+    // step could never accept.
+    if (countdownMode && (next < -1 || next > 1)) {
+      sayBack(`${speakableCount(next)} is not a tag. ${COUNTDOWN_TAG_PROMPT}`, true);
+      return `not a tag: ${speakableCount(next)}`;
+    }
     setPendingCount(next);
     sayBack(`${speakableCount(next)}. Correct?`, true);
     return `count ${speakableCount(next)}`;
@@ -922,10 +973,38 @@ export function CountDrillView({
         return;
 
       case 'answering': {
-        // The countdown tag guess is graded on a three-way choice with no
-        // read-back, so it stays a tap. Reaching it by voice would be one
-        // mishearing away from a false verdict.
-        if (countdownMode) return;
+        // D2: the tag can be spoken now. It used to be a tap on the grounds
+        // that a three-way choice with no read-back is one mishearing away
+        // from a false verdict -- which was true of a bare guess, and is not
+        // true of this: the tag goes through the same propose-and-confirm
+        // gate the running count does, so nothing is graded until it has been
+        // said back and agreed to.
+        if (countdownMode) {
+          if (action === 'yes') {
+            if (pendingCount === null) {
+              sayBack(`I have no tag yet. ${COUNTDOWN_TAG_PROMPT}`, true);
+              return;
+            }
+            const tag = pendingCount as -1 | 0 | 1;
+            setPendingCount(null);
+            handleTagGuess(tag);
+            return;
+          }
+          if (action === 'no') {
+            setPendingCount(null);
+            sayBack(COUNTDOWN_TAG_PROMPT, true);
+            return;
+          }
+          if (action === 'repeat') {
+            sayBack(
+              pendingCount === null
+                ? COUNTDOWN_TAG_PROMPT
+                : `${speakableCount(pendingCount)}. Correct?`,
+              true,
+            );
+          }
+          return;
+        }
         if (action === 'yes') {
           if (pendingCount === null) {
             sayBack('I have no count yet. What is it?', true);
@@ -1159,37 +1238,38 @@ export function CountDrillView({
             </>
           )}
 
-          {!countdownMode && (
-            <>
-              <label className="count-toggle">
-                <input
-                  type="checkbox"
-                  checked={eyesFree}
-                  onChange={(e) => {
-                    // Tapping this IS a request for audio, so honour it rather
-                    // than refusing. The control used to sit disabled whenever
-                    // `audio.enabled` was false -- the shipped default -- which
-                    // made the app's driving mode a dead checkbox curable only
-                    // from another screen. See ui/audioGate.ts.
-                    if (e.target.checked && !settings.audio.enabled) {
-                      enableAudioNow(settings, onSettingsChange);
-                    }
-                    setEyesFree(e.target.checked);
-                  }}
-                />
-                Eyes-free audio
-              </label>
-              {eyesFree && settings.audio.enabled && (
-                <label className="count-toggle">
-                  <input
-                    type="checkbox"
-                    checked={strictMode}
-                    onChange={(e) => setStrictMode(e.target.checked)}
-                  />
-                  Strict mode (keypad entry, graded)
-                </label>
-              )}
-            </>
+          {/* D2: offered in Countdown as well now. That mode is fifty-one
+              cards read out one at a time with the count kept in your head,
+              which is the whole drill and the one shape of it that works from
+              a driver's seat. Strict mode stays out of it: it swaps in a
+              keypad, and Countdown's answer is three words. */}
+          <label className="count-toggle">
+            <input
+              type="checkbox"
+              checked={eyesFree}
+              onChange={(e) => {
+                // Tapping this IS a request for audio, so honour it rather
+                // than refusing. The control used to sit disabled whenever
+                // `audio.enabled` was false -- the shipped default -- which
+                // made the app's driving mode a dead checkbox curable only
+                // from another screen. See ui/audioGate.ts.
+                if (e.target.checked && !settings.audio.enabled) {
+                  enableAudioNow(settings, onSettingsChange);
+                }
+                setEyesFree(e.target.checked);
+              }}
+            />
+            Eyes-free audio
+          </label>
+          {!countdownMode && eyesFree && settings.audio.enabled && (
+            <label className="count-toggle">
+              <input
+                type="checkbox"
+                checked={strictMode}
+                onChange={(e) => setStrictMode(e.target.checked)}
+              />
+              Strict mode (keypad entry, graded)
+            </label>
           )}
 
           {/* D1 part 2 (docs/BACKLOG.md, distraction training): only meaningful
