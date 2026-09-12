@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { shot, withSettings, withStats, withProfile, playRoundByAdvice, readStats, statsTab } from './helpers';
 
 test('a changed setting persists across reload', async ({ page }) => {
@@ -210,6 +210,93 @@ test('stats: Retention section renders retained accuracy from seeded gap reviews
   await expect(retention.locator('.mistake-row', { hasText: 'Spaced reviews' })).toContainText('3');
   await expect(retention.locator('.mistake-row', { hasText: 'Retained accuracy' })).toContainText('67%');
   await shot(page, 'stats-retention');
+});
+
+/* V3-6: the pooled retention figure hid two things -- the DECAY CURVE (gapMs   */
+/* has been recorded on every row since RV4 and never read) and its own          */
+/* precision. Both are now on the screen. These seed a deck that is perfect at a */
+/* short gap and gone at a long one, which pools to a merely-mediocre 50%.       */
+function gapRows(
+  gapDays: number,
+  count: number,
+  correct: boolean,
+): { date: string; key: string; box: number; gapMs: number; correct: boolean }[] {
+  return Array.from({ length: count }, (_, i) => ({
+    date: `2026-07-30T00:${String(i).padStart(2, '0')}:00.000Z`,
+    key: `k${gapDays}-${i}`,
+    box: 3,
+    gapMs: gapDays * 86400000,
+    correct,
+  }));
+}
+
+async function openRetention(page: Page) {
+  await page.goto('/?e2e=1');
+  await page.locator('.home-stats-link').click();
+  await statsTab(page, 'Progress');
+  return page.locator('.stats-section', { hasText: 'Retention' });
+}
+
+test('stats: retention is broken out by gap length, so a decay the pooled figure hides is visible', async ({
+  page,
+}) => {
+  await withStats(page, {
+    retention: { history: [...gapRows(4, 10, true), ...gapRows(60, 10, false)] },
+  });
+  const retention = await openRetention(page);
+
+  // The pooled number on its own reads as a middling deck.
+  await expect(retention.locator('.mistake-row', { hasText: 'Retained accuracy' })).toContainText(
+    '50%',
+  );
+  // The curve says what actually happened: intact at a week, gone at a month.
+  await expect(retention.locator('.mistake-row', { hasText: '3-7 days' })).toContainText('100%');
+  await expect(retention.locator('.mistake-row', { hasText: 'over a month' })).toContainText('0%');
+  // And bands with nothing in them are not drawn as zeroes, which would read
+  // as failures rather than as absent data.
+  await expect(retention.locator('.mistake-row', { hasText: '1-2 weeks' })).toHaveCount(0);
+  // Tall enough that the whole curve is in the frame -- this shot is the
+  // record of what the section actually looks like, not just that it exists.
+  await page.setViewportSize({ width: 420, height: 1400 });
+  await retention.screenshot({ path: 'e2e/screenshots/stats-retention-curve.png' });
+});
+
+test('stats: the retention figure states how far off it could be, and the width tracks the sample', async ({
+  page,
+}) => {
+  await withStats(page, { retention: { history: gapRows(4, 3, true) } });
+  let retention = await openRetention(page);
+  const few = await retention
+    .locator('.mistake-row', { hasText: 'Could honestly be' })
+    .locator('.mistake-value')
+    .textContent();
+  // Three-for-three is 100% on the row above; the interval is what stops that
+  // being read as a result.
+  await expect(retention.locator('.mistake-row', { hasText: 'Retained accuracy' })).toContainText(
+    '100%',
+  );
+  const fewLow = Number(/^(\d+)%/.exec(few ?? '')?.[1]);
+  expect(fewLow).toBeLessThan(60);
+
+  // A second seed registers after the first, so it wins on the next load.
+  await withStats(page, { retention: { history: gapRows(4, 300, true) } });
+  retention = await openRetention(page);
+  const many = await retention
+    .locator('.mistake-row', { hasText: 'Could honestly be' })
+    .locator('.mistake-value')
+    .textContent();
+  const manyLow = Number(/^(\d+)%/.exec(many ?? '')?.[1]);
+  expect(manyLow).toBeGreaterThan(fewLow);
+  expect(manyLow).toBeGreaterThan(95);
+});
+
+test('stats: with every review at one gap length it says there is no curve, rather than drawing one', async ({
+  page,
+}) => {
+  await withStats(page, { retention: { history: gapRows(4, 6, true) } });
+  const retention = await openRetention(page);
+  await expect(retention).toContainText('one gap length');
+  await expect(retention.locator('.mistake-row', { hasText: '3-7 days' })).toHaveCount(0);
 });
 
 test('stats: Retention section shows the empty state before any spaced reviews', async ({ page }) => {

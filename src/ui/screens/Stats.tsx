@@ -23,6 +23,7 @@ import { generateAllCells } from '../../drills/flashcards';
 import { loadFlashSr, loadQuizSr } from '../../drills/gradeAnswer';
 import { summarizeSrDeck, boxBarPercents, type SrDeckSummary } from '../../drills/srStatus';
 import { CHANNEL_BASE_CAP, FLUENT_MS } from '../../drills/spacedRepetition';
+import { formatInterval, hasCurve, retentionByGap, wilson } from '../../store/retentionCurve';
 import { Stepper } from './Settings';
 import './sr.css';
 
@@ -446,6 +447,12 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
   const retentionHistory = inRange(stats.retention.history);
   const retentionReviews = retentionHistory.length;
   const retentionCorrect = retentionHistory.filter((h) => h.correct).length;
+  // V3-6: one pooled percentage cannot show a decay curve, and cannot show its
+  // own precision either. `gapMs` has been on every row since RV4 and was
+  // never read; these two turn it into the shape and the error bar.
+  const retentionPooled = wilson(retentionCorrect, retentionReviews);
+  const retentionBands = retentionByGap(retentionHistory);
+  const retentionHasCurve = hasCurve(retentionBands);
 
   // Spaced-repetition status (operator request: "the ability to view the
   // status of my spaced repetition somehow visualized"). Unlike every other
@@ -903,7 +910,48 @@ export function Stats({ activeProfile, onNavigate, onSettingsChange }: StatsProp
                 <span>Retained accuracy</span>
                 <span>{pct(retentionCorrect, retentionReviews)}</span>
               </li>
+              {/*
+                HOW FAR OFF THAT FIGURE IS.
+                A percentage off nine reviews and one off nine hundred print
+                identically, and the first is noise. The 95% interval is the
+                only thing on the row that distinguishes them, so it sits
+                directly under the number it qualifies rather than in a
+                footnote nobody reads.
+              */}
+              <li className="mistake-row">
+                <span>Could honestly be</span>
+                <span className="mistake-value">{formatInterval(retentionPooled)}</span>
+              </li>
             </ul>
+            {retentionHasCurve ? (
+              <>
+                <h3 className="sr-lapses-title">By how long the gap was</h3>
+                <p className="stats-detail">
+                  Retention is a decay curve. Pooling every gap length into one figure averages a
+                  three-day recall together with a five-week one, which is the one shape a single
+                  number cannot show.
+                </p>
+                <ul className="mistake-list">
+                  {retentionBands
+                    .filter((band) => band.reviews > 0)
+                    .map((band) => (
+                      <li className="mistake-row" key={band.label}>
+                        <span>
+                          {band.label} — {band.reviews} {band.reviews === 1 ? 'review' : 'reviews'}
+                        </span>
+                        <span className="mistake-value">
+                          {pct(band.correct, band.reviews)} ({formatInterval(band)})
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+              </>
+            ) : (
+              <p className="stats-detail">
+                Every spaced review so far sits at one gap length, so there is no curve to draw
+                yet — it appears once items start coming due at longer intervals.
+              </p>
+            )}
           </>
         )}
       </section>
