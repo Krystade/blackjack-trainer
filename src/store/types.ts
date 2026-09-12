@@ -5,6 +5,7 @@ import type { DeviationId } from '../engine/deviations';
 import type { RuleSet } from '../engine/ruleset';
 import type { SpeedTier } from '../drills/countSpeed';
 import type { DistractionMode, DistractionFreq } from '../drills/distraction';
+import type { CheckpointFreq } from '../drills/countCheckpoints';
 import type { CountDrillBias } from '../drills/countDrill';
 
 export interface Settings {
@@ -74,6 +75,16 @@ export interface Settings {
     // and Timed Challenge runs force 'none' so a biased shoe can't contaminate
     // the speed-tier grading (see CountDrillView).
     countBias: CountDrillBias;
+    // RT#12 / RV9 (docs/BACKLOG.md): mid-run running-count checkpoints. The
+    // drill graded ONE number at the end, so a +1 slip and a -1 slip in the
+    // same run scored as a perfect count -- and a wrong run could not say
+    // where the count was lost. A checkpoint pauses the flash, asks for the
+    // count so far, records it silently and resumes; the result screen reads
+    // the checkpoints back. 'off' by default (it is an interruption, and the
+    // ordinary drill should stay the ordinary drill). Same scope as
+    // distractions: the standard count drill only, never Countdown or a
+    // Timed Challenge run.
+    countCheckpoints: CheckpointFreq;
     // R9 / red-team #7 (docs/BACKLOG.md): "messy" card presentation — a small
     // seeded rotation/offset per card (drills/cardJitter.ts) so the visual-
     // recognition half of counting is trained, not just a robotically-aligned
@@ -202,6 +213,7 @@ export const DEFAULT_SETTINGS: Settings = {
     distractionFreq: 'off',
     distractionMode: 'near-count',
     countBias: 'none',
+    countCheckpoints: 'off',
     messyCards: false,
     pacePressure: false,
     masteryDistractionFreq: 'off',
@@ -260,7 +272,18 @@ export interface Stats {
   bySource?: Partial<Record<EventSource, Record<Category, TallyRW>>>;
   mistakes: Record<MistakeClass, number>;
   countDrill: {
-    history: { date: string; cards: number; intervalMs: number; correct: boolean }[];
+    history: {
+      date: string;
+      cards: number;
+      intervalMs: number;
+      correct: boolean;
+      // RT#12: how many mid-run checkpoints this run answered correctly, and
+      // how many it was asked. Both absent on a run with checkpoints off,
+      // which is every run before the feature shipped -- so a missing pair
+      // means "not measured", never "zero right".
+      checkpointsCorrect?: number;
+      checkpointsTotal?: number;
+    }[];
   };
   // Cycle-4 (docs/research/2026-07-21-priority-list.md item 8): per-drill
   // speed & accuracy telemetry for the three drills that previously

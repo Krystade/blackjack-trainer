@@ -421,8 +421,32 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
   since the goal is to get every skill to 100% anyway. Keep skills scored separately.
 - **RV7–9 · known-deferred items re-confirmed as live mistrainings:** R5 rewards min-betting a
   should-wong count (the symmetric-grading follow-on already logged under R5); bet grading demands
-  exact ramp conformity with zero cover concept (RT#11); count drill grades final RC only, so
-  offsetting mid-count errors pass silently (RT#12).
+  exact ramp conformity with zero cover concept (RT#11); ~~count drill grades final RC only, so
+  offsetting mid-count errors pass silently (RT#12)~~ **✅ RT#12 DONE 2026-09-12**.
+  - **RT#12 · Mid-run count checkpoints.** Filed twice (2026-07-23, again 2026-07-28) and both
+    times prescribed the same fix, which is what shipped: the run stops at one or two seeded,
+    unpredictable points, asks for the running count SO FAR, and resumes. `countCheckpoints`
+    ('off' default / 'one' / 'few', shown as Off/One/Two), same scope as distractions — the ordinary count drill only,
+    never Countdown (which asks for a tag) or a Timed Challenge (whose measurement an answered
+    interruption would corrupt).
+  - The checkpoint says NOTHING about the answer until the run is over. That silence is the design,
+    not an omission: a verdict mid-run hands back a corrected count for free, and every card after
+    it would then be graded from a number the drill supplied. The read-back waits for the result
+    screen, where it can afford to be specific.
+  - What it buys is the two things a single final number could never say. First, the cancellation
+    case — a run that ends on the right count after drifting is called out as exactly that, and it
+    is the run the old grading reported as perfect. Second, localization: the report names the
+    stretch of CARDS the count first went wrong in, rather than an unactionable "off by 3". Stats
+    carries both across runs, and a run with checkpoints off is left out of those figures rather
+    than counted as clean — "not measured" is not "nothing went wrong".
+  - Eyes-free from the start: the prompt is spoken and a spoken count goes through the same
+    propose-and-confirm gate the final answer uses, so a mishearing cannot invent a drift that
+    never happened. A checkpoint answerable only by typing would have made the feature unavailable
+    in the car, which is the case it matters most in.
+  - Nine mutants, all killed. One survived the first pass — grading the checkpoint against a
+    hardcoded 0 — because the shoe the oracle test happened to draw sat at zero at its checkpoint,
+    so the test agreed with the mutant. It now searches pinned shoes for one whose count there is
+    non-zero and fails loudly if none is.
 
 **Red-team's top-3 to build next:** RV1 bankroll/RoR pillar · RV2 rounding honesty + tolerance ·
 RV4 time-based spacing + retention measurement. (RV5 is the cheapest standalone win.)
@@ -657,10 +681,13 @@ deliberately do not.
 - ✅ The true-count drill's eyes-free path now produces a VERDICT (it used to end on
   "self-check, no grade recorded"). A self-report writes no `guess` — the operator says
   whether they had it, never what they had — and `signedErrorBreakdown` skips guessless rows.
+- ✅ Countdown (2026-09-12) — it used to be on the list below, on the grounds that a three-way
+  tag guess has no read-back. It does now: the voice reads the card, asks "Plus one, zero, or
+  minus one?", and a spoken tag becomes a proposal confirmed by "yes", which is the same
+  two-step every other voice drill uses. The operator specified the shape.
 - ⛔ NOT wired, and this is a decision rather than a gap: Deck Estimation and Pair
-  Cancellation are judged BY EYE, Produce-the-True-Count needs a discard tray read off the
-  screen, and Countdown's tag guess is a three-way graded choice with no read-back. None of
-  them can be done without looking, so a microphone would only be half a loop.
+  Cancellation are judged BY EYE, and Produce-the-True-Count needs a discard tray read off the
+  screen. Neither can be done without looking, so a microphone would only be half a loop.
 - 🚗 Car controls: `src/audio/carControls.ts` + the Settings panel now state the two
   preconditions the wheel needs — the recorded voice ON (live TTS opens no media element, so
   the head unit never sees the app) and the microphone OFF (an open mic switches Bluetooth to

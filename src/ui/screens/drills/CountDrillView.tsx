@@ -7,6 +7,12 @@ import type { CountDrillRound, CountdownRound } from '../../../drills/countDrill
 import { makeDistraction, isDistractionPoint } from '../../../drills/distraction';
 import type { Distraction } from '../../../drills/distraction';
 import {
+  checkpointIndices,
+  summarizeCheckpoints,
+  type CheckpointResult,
+  type CheckpointReport,
+} from '../../../drills/countCheckpoints';
+import {
   classifySpeed,
   formatDuration,
   rampIntervalMs,
@@ -91,6 +97,13 @@ type CountPhase =
   // result -- previously it produced neither.
   | 'selfreport'
   | 'distraction'
+  // RT#12 (docs/BACKLOG.md): a mid-run running-count checkpoint. Shaped
+  // exactly like 'distraction' -- the stream pauses, a number is taken, the
+  // stream resumes where it stopped -- but the number asked for is the count
+  // itself, and NOTHING is said about whether it was right. Feedback here
+  // would hand back a corrected count and destroy the rest of the run's
+  // measurement; the verdict waits for the result screen.
+  | 'checkpoint'
   | 'result';
 
 /**
@@ -101,6 +114,13 @@ type CountPhase =
  * told you the shape of the answer.
  */
 const COUNTDOWN_TAG_PROMPT = 'Plus one, zero, or minus one?';
+
+/**
+ * RT#12: what a checkpoint asks. Deliberately the same question the end of
+ * the run asks, because it is the same question -- "so far" is implied by the
+ * cards having stopped.
+ */
+const CHECKPOINT_PROMPT = 'Running count so far?';
 
 export function CountDrillView({
   settings,
@@ -199,6 +219,22 @@ export function CountDrillView({
   // D1 part 2 (docs/BACKLOG.md, distraction training): the currently-posed
   // distraction challenge, or null when not in the 'distraction' phase.
   const [distraction, setDistraction] = useState<Distraction | null>(null);
+  // RT#12: the group indices THIS run stops at, chosen once by start(). A
+  // ref rather than state because nothing renders from it -- reading it
+  // during an advance must never depend on a re-render having landed.
+  const checkpointStopsRef = useRef<number[]>([]);
+  // Answered checkpoints for this run, in order. Cleared by start() for the
+  // same reason the distraction rows are: run N's data must never bleed into
+  // run N+1.
+  const checkpointRowsRef = useRef<CheckpointResult[]>([]);
+  // Which group the pending checkpoint was posed at, and where to resume --
+  // the same two questions triggerDistraction answers, kept separate so a
+  // checkpoint and a distraction can never overwrite each other's resume.
+  const checkpointAtRef = useRef<number | null>(null);
+  const checkpointResumeRef = useRef<'finish' | number | null>(null);
+  // The read-back shown on the result screen. null when the run had no
+  // checkpoints, which is not the same as a run that got them all right.
+  const [checkpointReport, setCheckpointReport] = useState<CheckpointReport | null>(null);
   // The seed passed to makeCountDrill/makeCountdown for the CURRENT run, set
   // once by start() -- reused (offset by the triggering card's shownIndex)
   // to seed each distraction's own makeDistraction() call, so a run is fully
@@ -326,6 +362,30 @@ export function CountDrillView({
     }
   };
 
+  /**
+   * RT#12: pause the stream and ask for the running count so far.
+   *
+   * Called from the same three advance mechanisms as triggerDistraction and
+   * given precedence over it at a shared index: two interruptions cannot be
+   * posed at once, and between a measurement and a distraction the
+   * measurement wins.
+   *
+   * The true count is captured HERE, at the moment the stream stopped, rather
+   * than recomputed on submit -- the answer must be graded against the cards
+   * that had actually been shown, not against wherever the run got to.
+   */
+  const triggerCheckpoint = (idxAtTrigger: number, isLast: boolean) => {
+    checkpointAtRef.current = idxAtTrigger;
+    checkpointResumeRef.current = isLast ? 'finish' : idxAtTrigger + 1;
+    setPhase('checkpoint');
+    if (eyesFree) {
+      speak(CHECKPOINT_PROMPT, speechOptsFrom(settings.audio, { interrupt: true }));
+    }
+  };
+
+  /** Is `idx` one of this run's checkpoint stops? */
+  const isCheckpoint = (idx: number) => checkpointStopsRef.current.includes(idx);
+
   // Visual-mode (non-eyes-free) fixed-interval advance -- UNCHANGED behavior
   // apart from the D1 distraction check below. Eyes-free auto mode is driven
   // by speech instead (see the effect below), so it's explicitly excluded
@@ -348,6 +408,12 @@ export function CountDrillView({
       // needs no separate check here. `distractionFreq: 'off'` (the
       // shipped default) makes isDistractionPoint always false, so this is
       // a pure no-op until a user opts in.
+      // RT#12 first: a checkpoint and a distraction can land on the same
+      // card, and only one interruption can be posed.
+      if (isCheckpoint(shownIndex)) {
+        triggerCheckpoint(shownIndex, isLast);
+        return;
+      }
       if (!countdownMode && isDistractionPoint(shownIndex, settings.drill.distractionFreq)) {
         triggerDistraction(shownIndex, isLast);
         return;
@@ -436,6 +502,14 @@ export function CountDrillView({
         // guarantee for free: the next card's speakAsync literally cannot
         // start running until the distraction is answered, without needing
         // an in-closure await spanning the interruption itself.
+        // RT#12 rides the same teardown-and-remount trick described above:
+        // flipping phase away from 'flashing' kills this loop, and answering
+        // the checkpoint remounts it at the resumed index.
+        if (isCheckpoint(i)) {
+          triggerCheckpoint(i, isLast);
+          return;
+        }
+
         if (isDistractionPoint(i, settings.drill.distractionFreq)) {
           triggerDistraction(i, isLast);
           return;
@@ -635,6 +709,10 @@ export function CountDrillView({
     // D1 part 2: this tap zone is shared with Countdown mode's manual
     // advance (see the JSX below), which is out of scope for distractions --
     // guard it out explicitly rather than relying on distractionFreq alone.
+    if (isCheckpoint(shownIndex)) {
+      triggerCheckpoint(shownIndex, isLast);
+      return;
+    }
     if (!countdownMode && isDistractionPoint(shownIndex, settings.drill.distractionFreq)) {
       triggerDistraction(shownIndex, isLast);
       return;
@@ -685,6 +763,14 @@ export function CountDrillView({
     setDistraction(null);
     distractionShownAtRef.current = null;
     pendingResumeRef.current = null;
+    // RT#12: clear last run's checkpoints before the new round is built --
+    // the stops themselves are chosen below, once the round exists and its
+    // group count is known.
+    checkpointRowsRef.current = [];
+    checkpointStopsRef.current = [];
+    checkpointAtRef.current = null;
+    checkpointResumeRef.current = null;
+    setCheckpointReport(null);
     if (countdownMode) {
       setCountdownRound(makeCountdown(seed));
       setDrillRound(null);
@@ -694,8 +780,20 @@ export function CountDrillView({
       // the sign-traversal dimension, which would contaminate the speed-tier
       // grading the Timed Challenge feeds into R2's competence gate.
       const bias = timedChallenge ? 'none' : settings.drill.countBias;
-      setDrillRound(makeCountDrill(settings.drill.countLengthCards, settings.drill.countGroup, seed, bias));
+      const round = makeCountDrill(settings.drill.countLengthCards, settings.drill.countGroup, seed, bias);
+      setDrillRound(round);
       setCountdownRound(null);
+      // RT#12: same scope as distractions -- the ordinary count drill only.
+      // Countdown asks for a tag rather than a running count, and a Timed
+      // Challenge run is measuring elapsed time, which an interruption you
+      // have to answer would corrupt.
+      if (!timedChallenge) {
+        checkpointStopsRef.current = checkpointIndices(
+          round.groups.length,
+          settings.drill.countCheckpoints,
+          seed,
+        );
+      }
     }
     setShownIndex(0);
     setHonorCheck(false);
@@ -743,6 +841,12 @@ export function CountDrillView({
   };
 
   const finishRun = (correct: boolean, actual: number, entered: number) => {
+    // RT#12: read the checkpoints back now that the final verdict exists --
+    // "cancelled" is only meaningful against it. Empty on a run with
+    // checkpoints off, which reports as null rather than as a clean sweep.
+    const checkpointRows = checkpointRowsRef.current;
+    const report = checkpointRows.length > 0 ? summarizeCheckpoints(checkpointRows, correct) : null;
+    setCheckpointReport(report);
     setWasCorrect(correct);
     setActualValue(actual);
     setEnteredValue(entered);
@@ -817,6 +921,9 @@ export function CountDrillView({
             cards: cardsInRun,
             intervalMs: settings.drill.countIntervalMs,
             correct,
+            // RT#12: omitted entirely when the run had no checkpoints, so a
+            // reader can tell "not measured" from "got none right".
+            ...(report ? { checkpointsCorrect: report.correct, checkpointsTotal: report.total } : {}),
           },
         ],
       },
@@ -853,6 +960,42 @@ export function CountDrillView({
     pendingResumeRef.current = null;
     setDistraction(null);
     distractionShownAtRef.current = null;
+
+    if (resume === 'finish') {
+      enterAnswerPhase();
+    } else if (typeof resume === 'number') {
+      setShownIndex(resume);
+      setPhase('flashing');
+    }
+  };
+
+  /**
+   * RT#12: record the checkpoint and resume, saying nothing about it.
+   *
+   * The silence is the design. A verdict here would tell the operator the
+   * true count mid-run, which resets the very thing being measured -- the
+   * rest of the run would then be graded from a number the drill handed
+   * over. The read-back waits for the result screen, where it can say which
+   * SEGMENT the drift entered in.
+   */
+  const handleCheckpointSubmit = (value: number) => {
+    const at = checkpointAtRef.current;
+    if (at === null) return;
+    checkpointRowsRef.current = [
+      ...checkpointRowsRef.current,
+      {
+        atGroup: at,
+        // Cards through this group inclusive -- what the result screen counts
+        // in, since a learner remembers cards seen and not group indices.
+        cardsShown: groups.slice(0, at + 1).reduce((n, g) => n + g.length, 0),
+        actual: runningCountThrough(groups, at),
+        answer: value,
+      },
+    ];
+
+    const resume = checkpointResumeRef.current;
+    checkpointAtRef.current = null;
+    checkpointResumeRef.current = null;
 
     if (resume === 'finish') {
       enterAnswerPhase();
@@ -929,7 +1072,10 @@ export function CountDrillView({
    * trap rather than a check.
    */
   const interpretCountSpeech = (heard: string, offered: readonly string[] = [heard]): string | null => {
-    if (phase !== 'answering') return null;
+    // RT#12: a checkpoint takes a running count too, and eyes-free it must be
+    // sayable -- a checkpoint you can only answer by typing would make the
+    // whole feature unavailable in the car, which is the case it matters in.
+    if (phase !== 'answering' && phase !== 'checkpoint') return null;
     const readings = offered.length > 0 ? offered : [heard];
 
     // Every reading is tried, best first. Over a car microphone "minus three"
@@ -947,7 +1093,7 @@ export function CountDrillView({
     // perfectly-heard "plus four" is not a near miss there, it is a category
     // error, and proposing it would put a number on screen that the confirm
     // step could never accept.
-    if (countdownMode && (next < -1 || next > 1)) {
+    if (countdownMode && phase === 'answering' && (next < -1 || next > 1)) {
       sayBack(`${speakableCount(next)} is not a tag. ${COUNTDOWN_TAG_PROMPT}`, true);
       return `not a tag: ${speakableCount(next)}`;
     }
@@ -1031,6 +1177,33 @@ export function CountDrillView({
         return;
       }
 
+      // RT#12: the same propose-and-confirm gate the final count uses. A
+      // misheard checkpoint would otherwise record a drift that never
+      // happened and send the operator back to re-count a clean segment.
+      case 'checkpoint':
+        if (action === 'yes') {
+          if (pendingCount === null) {
+            sayBack(`I have no count yet. ${CHECKPOINT_PROMPT}`, true);
+            return;
+          }
+          const confirmed = pendingCount;
+          setPendingCount(null);
+          handleCheckpointSubmit(confirmed);
+          return;
+        }
+        if (action === 'no') {
+          setPendingCount(null);
+          sayBack(CHECKPOINT_PROMPT, true);
+          return;
+        }
+        if (action === 'repeat') {
+          sayBack(
+            pendingCount === null ? CHECKPOINT_PROMPT : `${speakableCount(pendingCount)}. Correct?`,
+            true,
+          );
+        }
+        return;
+
       case 'selfreport':
         if (action === 'yes') handleSelfReport(true);
         else if (action === 'no') handleSelfReport(false);
@@ -1105,6 +1278,47 @@ export function CountDrillView({
       </span>
     );
   };
+
+  /**
+   * RT#12's whole point, rendered.
+   *
+   * The headline is the cancellation case: a run that ended on the right
+   * number after drifting is the one the old grading called perfect, and it
+   * is the one worth saying out loud. Everything else is localization --
+   * which stretch of cards the count went wrong in, counted in cards seen
+   * rather than group indices, because that is the unit a run is replayed in.
+   *
+   * null on a run with no checkpoints. An empty block would read as a clean
+   * sweep of nothing.
+   */
+  const checkpointBlock = checkpointReport && (
+    <div className="checkpoint-result">
+      <div className="checkpoint-result-score">
+        Checkpoints: {checkpointReport.correct}/{checkpointReport.total}
+      </div>
+      {checkpointReport.cancelled && (
+        <div className="checkpoint-result-cancelled">
+          Right at the end, but not all the way through &mdash; two errors cancelled out.
+        </div>
+      )}
+      {checkpointReport.firstDriftSegment && (
+        <div className="checkpoint-result-segment">
+          The count first went wrong between cards {checkpointReport.firstDriftSegment.fromCard} and{' '}
+          {checkpointReport.firstDriftSegment.toCard}.
+        </div>
+      )}
+      <ul className="checkpoint-result-list">
+        {checkpointReport.results.map((r) => (
+          <li
+            key={r.atGroup}
+            className={r.answer === r.actual ? 'checkpoint-hit' : 'checkpoint-miss'}
+          >
+            After {r.cardsShown} cards: you said {r.answer}, it was {r.actual}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 
   return (
     <div className="drill-screen">
@@ -1329,6 +1543,37 @@ export function CountDrillView({
             </div>
           )}
 
+          {/* RT#12 (docs/BACKLOG.md): mid-run count checkpoints. Same scope as
+              distractions above -- the ordinary count drill only. */}
+          {!countdownMode && !timedChallenge && (
+            <>
+              <div className="settings-row">
+                <span className="settings-label">Checkpoints</span>
+                <Segmented
+                  options={[
+                    { value: 'off', label: 'Off' },
+                    { value: 'one', label: 'One' },
+                    { value: 'few', label: 'Two' },
+                  ]}
+                  value={settings.drill.countCheckpoints}
+                  onChange={(v) => updateDrill({ countCheckpoints: v })}
+                />
+              </div>
+              {settings.drill.countCheckpoints !== 'off' && (
+                <div className="settings-row settings-note-row">
+                  Stops mid-run to ask the count so far, and says nothing about it until
+                  the end &mdash; so a right final count can&apos;t hide two errors that
+                  cancelled, and a wrong one tells you where it went.
+                </div>
+              )}
+            </>
+          )}
+          {!countdownMode && timedChallenge && settings.drill.countCheckpoints !== 'off' && (
+            <div className="settings-row settings-note-row">
+              Checkpoints don&apos;t apply to Timed Challenge runs.
+            </div>
+          )}
+
           {/* R8/CM#1 (docs/BACKLOG.md): adversarial same-sign shoe bias. Same
               scope as distractions -- the ordinary count drill only; Countdown
               builds its own shoe and Timed Challenge forces 'none' so a harder
@@ -1483,6 +1728,27 @@ export function CountDrillView({
         </div>
       )}
 
+      {/* RT#12. No verdict, no running tally, nothing about the previous
+          checkpoint -- the screen must not leak the count it is asking for. */}
+      {phase === 'checkpoint' && (
+        <div className="checkpoint-area">
+          <div className="checkpoint-label">Checkpoint</div>
+          <div className="checkpoint-prompt">Running count so far?</div>
+          <NumPad label="Count" onSubmit={handleCheckpointSubmit} />
+          {voiceOn && (
+            <div className="count-voice" data-pending={pendingCount !== null}>
+              {pendingCount === null ? (
+                <span className="count-voice-hint">Say the count</span>
+              ) : (
+                <span className="count-voice-pending">
+                  {speakableCount(pendingCount)} &mdash; say &ldquo;yes&rdquo; to confirm
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {phase === 'distraction' && distraction && (
         <div className="distraction-area">
           <div className="distraction-label">Quick -- what&apos;s this?</div>
@@ -1544,6 +1810,7 @@ export function CountDrillView({
           <div className="result-detail">
             The count was {actualValue} &mdash; self-reported, and recorded
           </div>
+          {checkpointBlock}
           <button type="button" className="drill-replay-btn" onClick={start}>
             Replay
           </button>
@@ -1561,6 +1828,7 @@ export function CountDrillView({
           <div className="result-detail">
             You entered {enteredValue}, actual was {actualValue}
           </div>
+          {checkpointBlock}
           {timedResult &&
             (() => {
               const spd = secondsPerDeck(timedResult.elapsedMs, timedResult.cardsShown);

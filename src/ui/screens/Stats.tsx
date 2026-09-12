@@ -410,6 +410,17 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       ? null
       : correctHistory.reduce((best, cur) => (cur.intervalMs < best.intervalMs ? cur : best));
   const recentRuns = countHistory.slice(-5).reverse();
+  // RT#12: runs that were actually MEASURED mid-count. A run with checkpoints
+  // off carries neither field, and is left out rather than counted as clean --
+  // "not measured" is not the same as "nothing went wrong".
+  const checkpointRuns = countHistory.filter((h) => h.checkpointsTotal !== undefined);
+  const checkpointsAsked = checkpointRuns.reduce((n, h) => n + (h.checkpointsTotal ?? 0), 0);
+  const checkpointsHeld = checkpointRuns.reduce((n, h) => n + (h.checkpointsCorrect ?? 0), 0);
+  // The RT#12 case itself: the final count was right and a checkpoint was not.
+  // These are the runs the old final-count-only grading called perfect.
+  const cancelledRuns = checkpointRuns.filter(
+    (h) => h.correct && (h.checkpointsCorrect ?? 0) < (h.checkpointsTotal ?? 0),
+  ).length;
   const sessions = [...inRange(stats.sessions)].reverse();
 
   // Cycle-4 per-drill telemetry (docs/research/2026-07-21-priority-list.md
@@ -832,6 +843,20 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
           Best clean run:{' '}
           {bestCleanRun === null ? '—' : `${bestCleanRun.cards} cards @ ${bestCleanRun.intervalMs}ms`}
         </p>
+        {checkpointsAsked > 0 && (
+          <>
+            <p className="stats-detail">
+              Checkpoints held: {checkpointsHeld}/{checkpointsAsked} (
+              {pct(checkpointsHeld, checkpointsAsked)}) over {checkpointRuns.length}{' '}
+              {checkpointRuns.length === 1 ? 'run' : 'runs'}
+            </p>
+            <p className="stats-detail">
+              {cancelledRuns === 0
+                ? 'No run has ended on the right count after drifting.'
+                : `${cancelledRuns} ${cancelledRuns === 1 ? 'run' : 'runs'} ended on the RIGHT count after drifting — errors that cancelled out, which a final-count-only score would call perfect.`}
+            </p>
+          </>
+        )}
         {recentRuns.length === 0 ? (
           <p className="stats-detail">No count-drill runs yet.</p>
         ) : (

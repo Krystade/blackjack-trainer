@@ -3417,3 +3417,68 @@ button {
   font-size: 0.8rem;
   color: var(--ink-dim);
 }
+
+/* ---------- RT#12 mid-run count checkpoints ---------- */
+/* Shaped like the distraction area above -- it is the same interruption
+   grammar (the stream stops, one number is taken, the stream resumes) and
+   should not read as a different kind of event. */
+.checkpoint-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+.checkpoint-label {
+  font-size: 0.9rem;
+  color: var(--ink-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.checkpoint-prompt {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.checkpoint-result {
+  margin: 0.75rem 0;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.checkpoint-result-score {
+  font-weight: 700;
+}
+
+/* The cancellation case is the finding, not a footnote: this is the run the
+   old final-count-only grading called perfect. */
+.checkpoint-result-cancelled {
+  margin-top: 0.35rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.checkpoint-result-segment {
+  margin-top: 0.35rem;
+  color: var(--ink-dim);
+}
+
+.checkpoint-result-list {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--ink-dim);
+}
+
+.checkpoint-hit {
+  color: var(--good);
+}
+
+.checkpoint-miss {
+  color: var(--bad);
+}

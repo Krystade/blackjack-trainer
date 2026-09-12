@@ -470,3 +470,46 @@ test('the cost of mistakes says so plainly when nothing has been priced', async 
   await expect(section).toContainText('No priced mistakes yet');
   await expect(section.locator('.mistake-row')).toHaveCount(0);
 });
+
+/**
+ * RT#12 in Stats: a run that ended on the right count after drifting is the
+ * one a final-count-only score calls perfect, so the section has to name it.
+ */
+test('Stats reports checkpoints held, and the runs that only looked clean', async ({ page }) => {
+  const day = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+  await withStats(page, {
+    countDrill: {
+      history: [
+        // Right at the end, wrong in the middle: the cancellation case.
+        { date: day(1), cards: 52, intervalMs: 800, correct: true, checkpointsCorrect: 0, checkpointsTotal: 2 },
+        // Clean all the way through.
+        { date: day(2), cards: 52, intervalMs: 800, correct: true, checkpointsCorrect: 2, checkpointsTotal: 2 },
+        // Not measured -- must not be counted as either.
+        { date: day(3), cards: 52, intervalMs: 800, correct: true },
+      ],
+    },
+  });
+  await page.goto('/?e2e=1');
+  await page.locator('.home-stats-link').click();
+  await statsTab(page, 'Drills');
+
+  await expect(page.getByText(/Checkpoints held: 2\/4/)).toBeVisible();
+  await expect(page.getByText(/over 2 runs/)).toBeVisible();
+  await expect(page.getByText(/1 run ended on the RIGHT count after drifting/)).toBeVisible();
+});
+
+test('a history with no checkpoints says nothing about them, rather than claiming a clean sweep', async ({
+  page,
+}) => {
+  await withStats(page, {
+    countDrill: {
+      history: [{ date: new Date().toISOString(), cards: 52, intervalMs: 800, correct: true }],
+    },
+  });
+  await page.goto('/?e2e=1');
+  await page.locator('.home-stats-link').click();
+  await statsTab(page, 'Drills');
+
+  await expect(page.getByText(/Checkpoints held/)).toHaveCount(0);
+  await expect(page.getByText(/after drifting/)).toHaveCount(0);
+});
