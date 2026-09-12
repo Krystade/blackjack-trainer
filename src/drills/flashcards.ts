@@ -129,7 +129,17 @@ export function drawFlashcard(
   const weights = cells.map((c) => srWeight(srDeck[c.id], now));
 
   const selectedIndex = weightedIndex(rng, weights);
-  const cell = cells[selectedIndex];
+  const baseCell = cells[selectedIndex];
+
+  // V4-2 (docs/BACKLOG.md): the cell fixes the TOTAL; the cards that make it
+  // up are drawn fresh. Hard 16 used to be 6+10 every time it was ever shown,
+  // which lets a learner memorise a card pair that does not transfer to the
+  // 9+7 they get dealt. The cellId is deliberately untouched -- it keys the
+  // SR deck, and varying the composition must not reset anyone's schedule.
+  const varied = baseCell.id.startsWith('hard-')
+    ? makeHardHand(Number(baseCell.id.split('-')[1]), rng)
+    : null;
+  const cell: Cell = varied ? { ...baseCell, cards: varied } : baseCell;
 
   // Get correct action
   const advice = correctPlay(

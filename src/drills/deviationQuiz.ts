@@ -121,18 +121,18 @@ type Candidate = { cards: [Card, Card]; up: Rank; tc: number };
 function buildCloseHardCandidate(entry: Deviation, rng: () => number, rules: RuleSet): Candidate | null {
   const attempts: Array<() => Candidate | null> = [
     () => {
-      const cards = makeHardHand(entry.total!);
+      const cards = makeHardHand(entry.total!, rng);
       return cards ? { cards, up: entry.up!, tc: tcWrongSide(entry, rng) } : null;
     },
     ...adjacentUps(entry.up!).map(
       (up) => () => {
-        const cards = makeHardHand(entry.total!);
+        const cards = makeHardHand(entry.total!, rng);
         return cards ? { cards, up, tc: tcNearThreshold(entry.threshold, rng) } : null;
       },
     ),
     ...adjacentTotals(entry.total!).map(
       (total) => () => {
-        const cards = makeHardHand(total);
+        const cards = makeHardHand(total, rng);
         return cards ? { cards, up: entry.up!, tc: tcNearThreshold(entry.threshold, rng) } : null;
       },
     ),
@@ -189,7 +189,7 @@ function buildRandomCandidate(rng: () => number, rules: RuleSet): Candidate | nu
     const total = RANDOM_HARD_TOTALS[Math.floor(rng() * RANDOM_HARD_TOTALS.length)]!;
     const up = UP_SPACE[Math.floor(rng() * UP_SPACE.length)]!;
     const tc = RANDOM_TC_MIN + Math.floor(rng() * (RANDOM_TC_MAX - RANDOM_TC_MIN + 1));
-    const cards = makeHardHand(total);
+    const cards = makeHardHand(total, rng);
     if (!cards) continue;
     if (isBasicOnly(cards, up, tc, rules).ok) {
       return { cards, up, tc };
@@ -268,7 +268,7 @@ function buildDistractorItem(
       // pushed to the wrong side of its threshold. No two Illustrious 18
       // entries share a (total, up) pair, so no OTHER active deviation can
       // apply here either.
-      cards: baseEntry.kind === 'pair10' ? makePair10Cards() : makeHardHand(baseEntry.total!)!,
+      cards: baseEntry.kind === 'pair10' ? makePair10Cards() : makeHardHand(baseEntry.total!, rng)!,
       up: baseEntry.up!,
       tc: tcWrongSide(baseEntry, rng) };
 
@@ -373,7 +373,9 @@ export function drawQuizItem(
     correct = advice.action;
   } else {
     // hard: construct a truly hard (non-pair, non-ace) hand with the specified total
-    const totalCards = makeHardHand(entry.total!);
+    // V4-2: vary the composition. The index is on the TOTAL, so the cards
+    // may change freely -- and must, or "16 v 10" is learned as one card pair.
+    const totalCards = makeHardHand(entry.total!, rng);
     if (!totalCards) {
       // Fallback: should not happen for valid entries
       throw new Error(`Cannot construct hard total ${entry.total}`);

@@ -589,6 +589,48 @@ wonging → **R8** community mechanics → **R9** spot-reading → then the rest
 follow-ons). (Supersedes the original convergence order below; R6 deprioritized by the
 operator, still open.)
 
+### From the 2026-09-12 red-team v4 (post V3-5/6/7 + RT#11/12 + RV7) — run in-session, no research agents
+The v3 queue emptied, so the standing workflow's adversarial leg was run against the CURRENT app.
+Only the adversarial leg: the training-science and community legs need web research and are still
+owed. Two findings, both read off the code rather than recalled, both cited. Notably the deviation
+quiz came out CLEAN on the axis it was attacked on — `tcNearThreshold`/`tcWrongSide` already sample
+either side of every index boundary and re-derive the answer from the engine, which is the thing
+most trainers get wrong.
+
+- **V4-2 · One fixed card pair per hard total — XS — ✅ SHIPPED 2026-09-12.** `makeHardHand`
+  returned the FIRST match from a fixed `RANKS` scan, so hard 16 was 6+10 every single time it was
+  ever drawn, in the flashcards AND the deviation quiz. Two mistrainings for the price of one: a
+  learner can memorise the card PAIR rather than the total — a lookup that does not transfer to the
+  9+7 they actually get dealt — and recognising "this is a hard 16" from an unfamiliar composition
+  is itself a skill the drill then never touches. Adjacent to R9's messy cards, which fixed how a
+  card LOOKS but not which cards arrive.
+  - `hardCompositions(total)` lists every two-card hard composition, face cards included rather
+    than collapsed to '10' (a jack has to read as a ten at speed, and the ten-family being four of
+    thirteen ranks already leans the uniform pick ten-heavy, the way a shoe does). `makeHardHand`
+    takes an optional rng: without it, byte-identical to before, so every existing caller and test
+    is untouched.
+  - The cellId is deliberately NOT varied. It keys the SR deck, and changing it would have silently
+    reset every learner's schedule; the cell fixes the total, the cards under it are drawn fresh.
+  - The safety property the whole change rests on — that no two-card hard play in either chart is
+    composition-dependent, so swapping the cards cannot change the right answer — is asserted
+    across both rulesets × 10 upcards × 4 true counts rather than assumed. If a
+    composition-dependent rule is ever added, that test fails loudly instead of the drill quietly
+    marking a correct answer wrong.
+  - `tsc` caught what vitest could not: the property test's second ruleset was an import of a
+    non-existent `S17_RULES`, which at runtime made it run DEFAULT_RULES twice and prove half as
+    much. Worth remembering that a green suite does not mean a test is doing what it says.
+- **V4-1 · The flashcard draw ignores how often a hand actually happens — S — OPEN.**
+  `drawFlashcard` weights the 330 cells by SR due-ness alone (`srWeight`); nothing anywhere in
+  `src/` weights by FREQUENCY (grep confirms: no such term outside a comment in
+  pairCancellation.ts). So a cell faced most shoes and a cell faced once a month get the same
+  share of reps once their schedules line up. Practice allocation should follow frequency × cost
+  of error, and the app already computes the cost half exactly — `engine/handEv.ts`, built for
+  V3-8. The missing half is closed-form: P(two-card hand) × P(upcard) off the shoe composition,
+  which an infinite-deck approximation gets close enough for a weighting. Composes with the SR
+  scheduler as another factor rather than replacing it. NOT built yet — it changes how every
+  learner's reps are allocated, which is a bigger judgment call than V4-2 and worth the operator
+  seeing first.
+
 ### T0 · Complete functional test coverage (operator request 2026-07-26) — M — **✅ COMPLETE 2026-09-11**
 All 46 `❌ GAP` rows of `docs/research/2026-07-26-test-coverage-matrix.md` are closed; that document
 now carries a status box naming the spec that closed each. The last four were the shuffle message,
