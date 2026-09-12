@@ -592,8 +592,8 @@ operator, still open.)
 ### From the 2026-09-12 red-team v4 (post V3-5/6/7 + RT#11/12 + RV7) — run in-session, no research agents
 The v3 queue emptied, so the standing workflow's adversarial leg was run against the CURRENT app.
 Only the adversarial leg: the training-science and community legs need web research and are still
-owed (leg 2 was subsequently run — see the training-science section below; leg 3, the
-community deep-hunt, is still outstanding). Three findings, all read off the code rather
+owed at the time — legs 2 and 3 were both run immediately after, so all three are now
+done; see the two sections below. Three findings, all read off the code rather
 than recalled, all cited. Notably the deviation
 quiz came out CLEAN on the axis it was attacked on — `tcNearThreshold`/`tcWrongSide` already sample
 either side of every index boundary and re-derive the answer from the engine, which is the thing
@@ -783,7 +783,103 @@ Sources, primary-verified:
 - Reduced-relative-feedback-frequency meta-analysis (61 papers, no significant effect):
   https://www.sciencedirect.com/science/article/abs/pii/S1469029222000334
 
-Still owed by the standing workflow: leg 3, the COMMUNITY deep-hunt.
+Leg 3, the community deep-hunt, was run immediately after — see the section below.
+
+### From the 2026-09-12 COMMUNITY deep-hunt (standing workflow leg 3) — run in-session
+The third and last leg the workflow owed; all three are now run. Method differed from the
+previous hunts: rather than collecting forum anecdote, this diffed THIS app's drill inventory
+against the reference tool's complete one — Casino Vérité Blackjack / Blackjack Vérité, which
+the vendor notes is "mentioned in 25 books" and which is the thing serious players actually
+train on. Its full drill manual is public and machine-readable, so every row below is read
+from the primary document rather than from a forum summary.
+
+Blackjack Apprenticeship and CasinoCityTimes both returned HTTP 403 to automated fetches, so
+their drill advice is **snippet-only and therefore quarantined** — one item that looked
+promising (stating the divisor aloud, "12, 4, 3", to drill the divisor in) is recorded at the
+bottom as UNVERIFIED and must not be built on until a human can read the page.
+
+**The good news first, because a diff is only useful if it says what is already fine.**
+Checked and genuinely covered: pair/triple-card counting (`countGroup`), count bias by shoe
+half (R8), removed-card deduction (Countdown ≈ their end-of-deck pause), card orientation and
+offset (R9's messy cards ≈ their Orientation/Positions randomisers, and their stated reason —
+*"the dealer does not face all the cards on the table in nice lines pointing towards you"* —
+is R9's reason too), error-targeted re-testing (SR miss-weighting, strictly stronger than
+their "Drill Errors" replay), progressive speed (speed tiers), and BOTH true-count drill
+shapes — theirs splits "TC Conversion" (RC and decks given) from "TC Conv & Decks" (tray only,
+decks must be read), which is exactly this app's True Count Drill vs Produce-the-True-Count.
+
+- **V5-4 · The true-count DIVISION RULE is hardcoded to floor — S — a grading-correctness bug
+  of the same species as V4-3.**
+  `[VERIFIED]` The reference tool exposes three: *"Round — After the True Count division, the
+  result is rounded to the nearest integer. Truncate — For positive numbers, round down and
+  for negative numbers round up. Floor — Fractions are always removed."* It is a per-strategy
+  setting because different systems and different books specify different rules.
+  `[VERIFIED, in this repo]` `engine/count.ts` says so in its own docstring: *"Always floors
+  toward -∞ (Math.floor)"*, and every grading surface in the app runs through it.
+  `[INFERENCE]` Floor and truncate differ ONLY on negative quotients, and negative true counts
+  are where a good part of the Hi-Lo index set lives (12 v 4, 13 v 2, 12 v 6 all sit at or
+  below zero). `floor(-1.5) = -2` and `truncate(-1.5) = -1` straddle an index of -1, so a
+  learner whose book says truncate is being graded wrong on exactly the deviations that are
+  hardest to get right. This is V4-3's shape again — a convention hardcoded in the engine
+  while the app ships user-configurable profiles — and the fix is the same shape too: a
+  profile field defaulting to the current `floor`, so nothing changes for anyone who does not
+  set it.
+  **Do not pick a default other than floor without a source.** Which rule is correct is
+  system- and author-specific, and this repo's standing rule against guessing index
+  conventions (no per-deck indices without Wong's Table A4) applies to the rounding rule for
+  the same reason. Ship the option; leave the default alone.
+
+- **V5-5 · Depth resolution is fixed at half a deck, in both directions — S.**
+  `[VERIFIED]` The reference tool makes resolution a difficulty axis: *"Full Deck ... Half Deck
+  ... Quarter Deck — This is quite difficult with many decks remaining ... Exact Calculation —
+  The True Count is calculated to the card."* And separately, a genuinely sharp idea this app
+  does not have: *"Last Deck Resolution — It is easier and more important to estimate the
+  remaining decks when you are in the last deck of a shoe ... This option allows you to force
+  a better estimate during the last deck."*
+  `[INFERENCE]` This app snaps to half decks everywhere and treats that as a constant — the
+  Deck Estimation drill's options, the produce-TC tray band, and `EYE_DECK_ERROR = 0.5` in
+  `count.ts`. Half a deck is the right DEFAULT (the docstring's argument for it is sound:
+  nobody looks at a stack of plastic and thinks "2.3 decks"). But it is wrong as a fixed
+  ceiling in the last deck, where the same half-deck slack spans a far wider true-count range
+  and where precision pays most — a half-deck misread at 0.5 decks remaining moves the TC by
+  the whole count, while at 5 decks it barely moves it. The change: let resolution tighten
+  with depth rather than sit constant, and let the learner opt into quarter-deck. Note the
+  band machinery already in `count.ts` takes `eyeError` as a parameter, so the plumbing for a
+  depth-varying tolerance is already there — this is mostly a policy decision plus UI.
+  Adjacent to R6 (by-eye TC tolerance), which the operator deprioritized; this is the
+  difficulty-axis half of that idea rather than the grading-tolerance half.
+
+- **Ace/ten side counts — explicitly OUT OF SCOPE, recorded so the gap is not re-found.**
+  `[VERIFIED]` The reference tool carries six drills this app has no analogue for: Aces Left,
+  Aces Dealt, Ace Bet Count, Ace Play Count, Ace Insure Delta, Ten Side Count — plus a "Two
+  Counts" mode that tests a side count and the true count simultaneously.
+  `[INFERENCE]` Every one of them is conditional on running a side-counting system, and this
+  app is Hi-Lo throughout. This is a scope boundary, not a hole; it becomes a real gap only if
+  the app ever adds a level-2 or ace-neutral system, at which point the whole list arrives at
+  once. Worth knowing that the "Two Counts" dual-task idea is a DIFFERENT axis from D1's
+  distraction training — D1 interrupts the count from outside, this splits attention between
+  two internal counts — and would be the interesting part if a side count ever landed.
+
+UNVERIFIED (403, snippet-only, do not build on): Blackjack Apprenticeship's practice guide is
+reported to advise stating the divisor aloud during conversion — "a running +12 with four
+decks remaining would be '12, 4, 3' in your head, to drill the correct divisor in". If true it
+is cheap and it maps onto this app's eyes-free voice path almost directly. Needs a human to
+open the page and confirm before it becomes a candidate.
+
+Sources:
+- Blackjack Vérité Drills manual (Norm Wattenberger / QFIT), full drill inventory, primary:
+  https://www.qfit.com/apphelp/BJVD.pdf
+- Modern Blackjack (Wattenberger), practice-drills page:
+  https://www.qfit.com/book/ModernBlackjackPage92.htm
+- Blackjack Apprenticeship practice guide — HTTP 403 to automated fetch, quarantined:
+  https://www.blackjackapprenticeship.com/how-to-practice-blackjack/
+- CasinoCityTimes "Card counting drills" — HTTP 403, quarantined:
+  http://www.casinocitytimes.com/article/card-counting-drills-66148
+
+**All three legs of the standing workflow are now run.** Open candidates from this round, in
+the order I would take them: V5-1 (confusable-neighbour interleaving, best evidence),
+V5-4 (division rule, correctness), V5-2 (competence vs expression, measurement), V5-5 (depth
+resolution). V5-3 is closed as not-actionable.
 
 ### T0 · Complete functional test coverage (operator request 2026-07-26) — M — **✅ COMPLETE 2026-09-11**
 All 46 `❌ GAP` rows of `docs/research/2026-07-26-test-coverage-matrix.md` are closed; that document
