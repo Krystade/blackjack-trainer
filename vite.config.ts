@@ -54,5 +54,16 @@ export default defineConfig({
       },
     },
   ],
-  test: { environment: 'node', include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'] },
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
+    // vitest's default is 5s per test, and this suite has property tests that
+    // legitimately run 1-2s locally -- the clip-coverage walks and the
+    // flashcard draw distributions, which rebuild all 330 cells per call. On
+    // a CI runner roughly twice as slow that margin is gone: the V4-1 deploy
+    // failed outright on two of them timing out, with nothing actually wrong.
+    // A timeout is a safety net against a hang, not an assertion, so it is
+    // set where it catches hangs rather than where it fails slow machines.
+    testTimeout: 30_000,
+  },
 });
