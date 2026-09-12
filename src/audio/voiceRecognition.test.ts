@@ -367,6 +367,38 @@ describe('looksLikeAnAttempt', () => {
     }
   });
 
+  /**
+   * Reported 2026-09-11: a spoken count that missed earned no cue, because the
+   * only test was length and an answer is often three words.
+   */
+  it('treats a longer try at a count as an attempt', () => {
+    for (const heard of [
+      "it's minus three",
+      'minus three please',
+      'uh plus fourteen',
+      'i think minus two',
+      'negative six yeah',
+    ]) {
+      expect(looksLikeAnAttempt(heard), `"${heard}" was someone answering`).toBe(true);
+    }
+  });
+
+  /**
+   * The reason the widening is on content and not on length. Both of these are
+   * verbatim conversation from the 2026-09-10 drive and sit inside the longer
+   * limit -- only the absence of a count keeps them quiet.
+   */
+  it('still stays silent for conversation of the same length', () => {
+    for (const heard of ['how did that', 'how was your dad', "that's on her head"]) {
+      expect(looksLikeAnAttempt(heard), `"${heard}" was conversation`).toBe(false);
+    }
+  });
+
+  /** A count mentioned in a whole sentence is someone talking, not answering. */
+  it('does not chime at a sentence that merely contains a number', () => {
+    expect(looksLikeAnAttempt('we are about five minutes away from the exit')).toBe(false);
+  });
+
   it('says nothing about an empty transcript', () => {
     expect(looksLikeAnAttempt('')).toBe(false);
     expect(looksLikeAnAttempt('   ')).toBe(false);

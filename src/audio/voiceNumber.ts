@@ -169,6 +169,31 @@ export function parseCountSpeech(transcript: string): CountSpeech | null {
  * handling, which reads "-3" inconsistently and sometimes not at all -- and a
  * dropped minus turns a confirmation into a trap.
  */
+/**
+ * Does this transcript mention a count at all, however badly?
+ *
+ * Not "does it parse" -- `parseCountSpeech` answers that, and a transcript
+ * reaching here has already failed it. This is the weaker question the
+ * not-understood cue needs: was the operator TRYING to state a count? "it's
+ * minus three" does not parse (the engine ran the words together, or the tail
+ * was lost) but it is unmistakably an answer, and answering it with silence is
+ * the one thing the cue exists to prevent.
+ */
+export function mentionsACount(transcript: string): boolean {
+  const tokens = transcript
+    .toLowerCase()
+    .replace(/[^a-z0-9- ]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+  return tokens.some(
+    (t) =>
+      NUMBER_WORDS[t] !== undefined ||
+      NEGATIVE_WORDS.has(t) ||
+      POSITIVE_WORDS.has(t) ||
+      /^-?\d+$/.test(t),
+  );
+}
+
 export function speakableCount(value: number): string {
   if (value === 0) return 'zero';
   return value < 0 ? `minus ${Math.abs(value)}` : `plus ${value}`;

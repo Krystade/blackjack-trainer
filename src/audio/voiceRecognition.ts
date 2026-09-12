@@ -27,6 +27,8 @@
  * this file may ever throw into that.
  */
 
+import { mentionsACount } from './voiceNumber';
+
 /** The whole vocabulary. Deliberately tiny -- a closed set is far more
  * reliably recognised than open dictation, and these are every answer the
  * drills actually accept. */
@@ -228,6 +230,23 @@ export const SPOKEN_ALTERNATIVES = 3;
  */
 export const MAX_RESCUE_TOKENS = 2;
 
+/**
+ * The longest a COUNT-SHAPED utterance may be and still earn a cue.
+ *
+ * Length alone was the whole test, borrowed from MAX_RESCUE_TOKENS, and it
+ * left a three-word try -- "it's minus three", "minus three please" -- with no
+ * cue at all. That is the exact failure the cue exists to prevent: saying an
+ * answer into a void with no way to tell a misheard word from a dead
+ * microphone. Reported from the drive of 2026-09-11.
+ *
+ * Raising the length limit alone would not do, because the evidence forbids it:
+ * "how did that" is three words of passenger conversation and "how was your
+ * dad" is four, both verbatim from the 2026-09-10 drive. So the widening is on
+ * CONTENT -- a slightly longer utterance earns a cue only when it mentions a
+ * count, which conversation of this length does not.
+ */
+export const MAX_ATTEMPT_TOKENS = 4;
+
 function tokenCount(cleaned: string): number {
   return cleaned ? cleaned.split(/\s+/).length : 0;
 }
@@ -338,7 +357,12 @@ export function resolveSpoken(transcripts: readonly string[]): SpokenMatch | nul
  * All four of those are verbatim from that drive.
  */
 export function looksLikeAnAttempt(transcript: string): boolean {
-  return isShort(normalise(transcript));
+  const cleaned = normalise(transcript);
+  const n = tokenCount(cleaned);
+  if (n === 0) return false;
+  if (n <= MAX_RESCUE_TOKENS) return true;
+  // Longer only if it was reaching for a count -- see MAX_ATTEMPT_TOKENS.
+  return n <= MAX_ATTEMPT_TOKENS && mentionsACount(transcript);
 }
 
 /** The action alone, for callers that do not care how it was reached. */
