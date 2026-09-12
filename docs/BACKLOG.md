@@ -686,6 +686,17 @@ most trainers get wrong.
     that outcome.
   - Five mutants, all killed, including "the setting does nothing" and "frequency applies even
     when off".
+  - **The deploy failed and said so nowhere the app could see.** Two of these property tests ran
+    ~2.4s and ~2.9s locally and blew vitest's default 5s per-test limit on the CI runner, so the
+    push went green here and RED there: `main` never deployed, the live site sat a commit behind,
+    and the backlog said SHIPPED. Nothing was wrong with the code or the assertions — only with
+    the clock. Fixed twice over, since either alone leaves the trap set: the samples came down to
+    what the conclusion actually needs (1500/2000 rather than 3000/6000 — delta 132 against a
+    >100 bar, 325 cells against a >300 bar, all three mutants still dying), and the global
+    `testTimeout` went to 30s, because a timeout is a safety net against a hang and at 5s it
+    fails slow machines instead. Several clip-coverage tests already run 1.1–1.9s under parallel
+    load and were one slow runner from the same fate. **Standing lesson: a green local suite is
+    not a deploy — check `gh run list` after any push that adds a slow test.**
 
 ### T0 · Complete functional test coverage (operator request 2026-07-26) — M — **✅ COMPLETE 2026-09-11**
 All 46 `❌ GAP` rows of `docs/research/2026-07-26-test-coverage-matrix.md` are closed; that document
