@@ -142,7 +142,10 @@ test('A1 eyes-free: an unavailable action is refused out loud, not graded', asyn
   await openFlashcards(page);
 
   // Hard category never deals a pair, so Split can never be legal here.
-  await page.locator('.count-toggle input').first().check();
+  // Named, not `.first()`: this used to be the first .count-toggle on the
+  // screen, and a later feature adding its own toggle above it silently
+  // pointed this line at the wrong checkbox.
+  await page.locator('.count-toggle', { hasText: 'Eyes-free audio' }).locator('input').check();
   await expect(page.locator('.zone-pad')).toBeVisible();
 
   await page.evaluate(() => { window.__speechLog = []; });

@@ -85,6 +85,15 @@ export interface Settings {
     // distractions: the standard count drill only, never Countdown or a
     // Timed Challenge run.
     countCheckpoints: CheckpointFreq;
+    // V4-1 (docs/BACKLOG.md): weight the flashcard draw by how often each
+    // chart cell actually comes up at a table, not by schedule alone. The 16
+    // v 10 you face most shoes and the hard 5 v 7 you face once a month were
+    // getting the same share of reps once their schedules lined up.
+    // Multiplies into the spaced-repetition weight rather than replacing it,
+    // and is compressed (see handFrequency.ts) so no cell effectively leaves
+    // the deck. Off by default: it reallocates practice time, which is the
+    // user's call to make.
+    flashByFrequency: boolean;
     // R9 / red-team #7 (docs/BACKLOG.md): "messy" card presentation — a small
     // seeded rotation/offset per card (drills/cardJitter.ts) so the visual-
     // recognition half of counting is trained, not just a robotically-aligned
@@ -214,6 +223,7 @@ export const DEFAULT_SETTINGS: Settings = {
     distractionMode: 'near-count',
     countBias: 'none',
     countCheckpoints: 'off',
+    flashByFrequency: false,
     messyCards: false,
     pacePressure: false,
     masteryDistractionFreq: 'off',

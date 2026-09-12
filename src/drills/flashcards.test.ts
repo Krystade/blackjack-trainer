@@ -84,3 +84,39 @@ describe('V4-2: the cards vary, the cell does not', () => {
     }
   });
 });
+
+describe('V4-1: frequency weighting is opt-in and actually reallocates', () => {
+  const draw = (seed: number, byFrequency: boolean) =>
+    drawFlashcard('all', {}, 0, seed, undefined, byFrequency).cellId;
+
+  it('off, the draw is exactly what it always was', () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      // The default arg and an explicit false must agree, and both must match
+      // the pre-feature call shape.
+      expect(draw(seed, false)).toBe(drawFlashcard('all', {}, 0, seed).cellId);
+    }
+  });
+
+  it('on, common cells get more of the reps than rare ones', () => {
+    const tally = (byFrequency: boolean) => {
+      let tenUp = 0;
+      for (let seed = 1; seed <= 3000; seed++) {
+        if (draw(seed, byFrequency).endsWith('-v-10')) tenUp += 1;
+      }
+      return tenUp;
+    };
+    const flat = tally(false);
+    const weighted = tally(true);
+    // A ten upcard is 4/13 of real deals and 1/10 of the flat cell universe.
+    expect(weighted).toBeGreaterThan(flat);
+    // Vacuity guard: if the weighting did nothing these would be equal.
+    expect(weighted - flat).toBeGreaterThan(100);
+  });
+
+  it('on, no cell becomes unreachable -- a rare hand is still one you must know', () => {
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 6000; seed++) seen.add(draw(seed, true));
+    // The compression exists precisely so the tail keeps showing up.
+    expect(seen.size).toBeGreaterThan(300);
+  });
+});

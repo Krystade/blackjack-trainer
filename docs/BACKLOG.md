@@ -619,7 +619,10 @@ most trainers get wrong.
   - `tsc` caught what vitest could not: the property test's second ruleset was an import of a
     non-existent `S17_RULES`, which at runtime made it run DEFAULT_RULES twice and prove half as
     much. Worth remembering that a green suite does not mean a test is doing what it says.
-- **V4-1 · The flashcard draw ignores how often a hand actually happens — S — OPEN.**
+- **V4-1 · The flashcard draw ignores how often a hand actually happens — S — ✅ SHIPPED
+  2026-09-12, opt-in.** Filed as OPEN on the grounds that reallocating everyone's reps is the
+  operator's call — which shipping it OFF BY DEFAULT dissolves, the same way the checkpoints and
+  the cover tolerance shipped. Nothing changes until it is switched on.
   `drawFlashcard` weights the 330 cells by SR due-ness alone (`srWeight`); nothing anywhere in
   `src/` weights by FREQUENCY (grep confirms: no such term outside a comment in
   pairCancellation.ts). So a cell faced most shoes and a cell faced once a month get the same
@@ -630,6 +633,23 @@ most trainers get wrong.
   scheduler as another factor rather than replacing it. NOT built yet — it changes how every
   learner's reps are allocated, which is a bigger judgment call than V4-2 and worth the operator
   seeing first.
+  - `handFrequency.ts` prices every cell on the standard infinite-deck model: each rank 1/13, the
+    ten-family 4/13. Deliberately NOT shoe-aware — a depth- and count-conditioned frequency would
+    be more precise and would also mean the draw shifted under the learner for reasons they could
+    not see. The job is only to tell a common hand from a rare one.
+  - The weight is the SQUARE ROOT of the frequency, not the frequency. Raw, the spread is nearly
+    two orders of magnitude and the tail cells effectively leave the deck — but a hand you meet
+    once a month is still one you have to know, and a complete chart is the point. Compressed, the
+    commonest cell is drawn a few times as often as the rarest rather than a hundred times.
+  - Multiplies into the SR weight rather than replacing it: how often you meet a hand and how well
+    you know it are different questions, and the second is still spacedRepetition.ts's answer.
+  - The model is pinned by a real invariant rather than spot checks — the 330 cells plus the
+    naturals must sum to exactly 1. That test failed first time at 0.9527, and the missing 0.0473
+    turned out to be precisely P(A+ten): the chart has no natural cell because a natural has no
+    decision. The model was right and the test premise was wrong, which is the good version of
+    that outcome.
+  - Five mutants, all killed, including "the setting does nothing" and "frequency applies even
+    when off".
 
 ### T0 · Complete functional test coverage (operator request 2026-07-26) — M — **✅ COMPLETE 2026-09-11**
 All 46 `❌ GAP` rows of `docs/research/2026-07-26-test-coverage-matrix.md` are closed; that document

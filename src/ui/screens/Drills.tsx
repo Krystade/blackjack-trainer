@@ -158,7 +158,7 @@ function FlashcardsView({
 }) {
   const srDeckRef = useRef<SrDeck>(loadFlashSr());
   const [card, setCard] = useState<Flashcard>(() =>
-    drawFlashcard(settings.drill.flashCategory, srDeckRef.current, Date.now(), randomSeed(), activeProfile.rules),
+    drawFlashcard(settings.drill.flashCategory, srDeckRef.current, Date.now(), randomSeed(), activeProfile.rules, settings.drill.flashByFrequency),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action; event: GradedEvent } | null>(null);
   // #7: the chart opened over this correction, closed back onto the same card.
@@ -272,7 +272,7 @@ function FlashcardsView({
     // (its cards/dealerUp are live props), and the learner closed it onto a
     // hand they had never been asked about.
     setShowChart(false);
-    setCard(drawFlashcard(category, srDeckRef.current, Date.now(), randomSeed(), activeProfile.rules));
+    setCard(drawFlashcard(category, srDeckRef.current, Date.now(), randomSeed(), activeProfile.rules, settings.drill.flashByFrequency));
     setFeedback(null);
     promptShownAtRef.current = performance.now();
   };
@@ -623,6 +623,26 @@ function FlashcardsView({
             onChange={changeCategory}
           />
         </div>
+
+        {/* V4-1 (docs/BACKLOG.md): the draw weighted cells by schedule alone,
+            so the 16 v 10 you face most shoes and the hard 5 v 7 you face once
+            a month got the same reps. Off by default -- reallocating practice
+            time is the user's call. */}
+        <label className="count-toggle">
+          <input
+            type="checkbox"
+            checked={settings.drill.flashByFrequency}
+            onChange={(e) => {
+              const nextSettings: Settings = {
+                ...settings,
+                drill: { ...settings.drill, flashByFrequency: e.target.checked },
+              };
+              saveSettings(nextSettings);
+              onSettingsChange(nextSettings);
+            }}
+          />
+          <span>Favour hands you&apos;ll actually see</span>
+        </label>
 
         <label className="count-toggle">
           <input
@@ -1371,7 +1391,7 @@ function MixedSessionView({
     if (type === 'flash') {
       return {
         type,
-        card: drawFlashcard(settings.drill.flashCategory, flashSrRef.current, Date.now(), randomSeed(), activeProfile.rules) };
+        card: drawFlashcard(settings.drill.flashCategory, flashSrRef.current, Date.now(), randomSeed(), activeProfile.rules, settings.drill.flashByFrequency) };
     }
     const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
     return {

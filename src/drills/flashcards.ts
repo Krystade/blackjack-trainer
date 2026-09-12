@@ -7,6 +7,7 @@ import type { RuleSet } from '../engine/ruleset';
 import { makeHardHand } from './buildHand';
 import { weightedIndex } from './weightedDraw';
 import { srWeight } from './spacedRepetition';
+import { frequencyWeight } from './handFrequency';
 import type { SrDeck } from './spacedRepetition';
 
 export interface Flashcard {
@@ -103,6 +104,9 @@ export function filterCellsByCategory<T extends { id: string }>(
  * @param srDeck - RV4 spaced-repetition deck (cellId -> SrCard); draw prefers DUE cells
  * @param now - wall-clock epoch ms, used to weight cells by SR due-ness
  * @param seed - Optional seed for reproducibility
+ * @param byFrequency - V4-1: also weight by how often the cell actually comes
+ *   up at a table (drills/handFrequency.ts). Off by default, so the draw is
+ *   byte-identical to before unless the user asks for it.
  * @param rules - Optional ruleset (defaults to DEFAULT_RULES); selects the
  *   chart/deviations the correct action is graded against — additive param,
  *   omitting it preserves v1 (H17 6-deck) behavior exactly. Note: which cell
@@ -115,6 +119,7 @@ export function drawFlashcard(
   now: number,
   seed?: number,
   rules: RuleSet = DEFAULT_RULES,
+  byFrequency = false,
 ): Flashcard {
   const rng = mulberry32(seed ?? Date.now());
 
@@ -126,7 +131,13 @@ export function drawFlashcard(
 
   // RV4 (docs/BACKLOG.md, spaced-repetition): weight each cell by its SR due-ness
   // (unseen/overdue-low-box heaviest), shared with the deviation quiz via srWeight.
-  const weights = cells.map((c) => srWeight(srDeck[c.id], now));
+  // V4-1: frequency is a SEPARATE axis and multiplies in rather than
+  // replacing the schedule -- how often you meet a hand and how well you know
+  // it are different questions. Off, the term is a flat 1 and the draw is
+  // exactly what it always was.
+  const weights = cells.map(
+    (c) => srWeight(srDeck[c.id], now) * (byFrequency ? frequencyWeight(c.id) : 1),
+  );
 
   const selectedIndex = weightedIndex(rng, weights);
   const baseCell = cells[selectedIndex];
