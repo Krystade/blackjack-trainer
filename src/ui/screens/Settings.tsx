@@ -332,6 +332,27 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           onChange={(v) => updateDrill({ countLengthCards: v })}
         />
         <div className="settings-row">
+          <span className="settings-label">Depth resolution</span>
+          <Segmented
+            options={[
+              { value: 'half', label: 'Half' },
+              { value: 'last-deck', label: 'Last deck' },
+              { value: 'quarter', label: 'Quarter' },
+            ]}
+            value={settings.drill.depthResolution}
+            onChange={(v) => updateDrill({ depthResolution: v })}
+          />
+        </div>
+        <p className="settings-note">
+          How finely you read the discard tray &mdash; the Deck Estimation answer grid and its
+          tolerance, and what the produce-a-true-count drill forgives. Half a deck is the
+          default and the honest one: nobody looks at a stack of plastic and thinks &ldquo;2.3
+          decks&rdquo;. It is worth less as a ceiling near the end of a shoe, though &mdash;
+          with half a deck left, reading the tray half a deck wrong moves the true count by
+          your whole running count. &ldquo;Last deck&rdquo; keeps halves everywhere except the
+          last deck and asks for quarters there, which is where the precision pays.
+        </p>
+        <div className="settings-row">
           <span className="settings-label">Shot clock</span>
           <Segmented
             options={SHOT_CLOCK_OPTIONS.map((ms) => ({

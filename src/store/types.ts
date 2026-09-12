@@ -8,6 +8,7 @@ import type { SpeedTier } from '../drills/countSpeed';
 import type { DistractionMode, DistractionFreq } from '../drills/distraction';
 import type { CheckpointFreq } from '../drills/countCheckpoints';
 import type { CountDrillBias } from '../drills/countDrill';
+import type { DepthResolution } from '../drills/depthResolution';
 
 export interface Settings {
   version: 1;
@@ -104,6 +105,15 @@ export interface Settings {
     // both existing terms rather than replacing them. Off by default: like
     // V4-1 it reallocates practice, which is the user's call.
     flashByConfusability: boolean;
+    // V5-5 (docs/BACKLOG.md): how finely the discard tray is read, in the Deck
+    // Estimation drill's answer grid and tolerance AND in the produce-TC band.
+    // Half a deck everywhere ('half', the default and the app's historical
+    // behaviour); half a deck except inside the last deck, where it tightens to
+    // a quarter ('last-deck'); or a quarter everywhere ('quarter'). One setting
+    // rather than a resolution plus a tighten-in-the-last-deck toggle, because
+    // at quarter resolution that toggle has nothing left to tighten -- see
+    // drills/depthResolution.ts.
+    depthResolution: DepthResolution;
     // R9 / red-team #7 (docs/BACKLOG.md): "messy" card presentation — a small
     // seeded rotation/offset per card (drills/cardJitter.ts) so the visual-
     // recognition half of counting is trained, not just a robotically-aligned
@@ -235,6 +245,7 @@ export const DEFAULT_SETTINGS: Settings = {
     countCheckpoints: 'off',
     flashByFrequency: false,
     flashByConfusability: false,
+    depthResolution: 'half',
     messyCards: false,
     pacePressure: false,
     masteryDistractionFreq: 'off',
@@ -368,7 +379,19 @@ export interface Stats {
     }[];
   };
   deckEstimation: {
-    history: { date: string; actualDecks: number; guess: number; errorDecks: number; correct: boolean }[];
+    // V5-5: `toleranceDecks` records the slack the answer was graded against,
+    // because that is now a setting and not a constant. Optional -- rows written
+    // before V5-5 were all graded at half a deck, but saying so retroactively
+    // would be inventing data. Same discipline as V5-2's shot-clock split: a
+    // measurement whose rule changed is not the same measurement.
+    history: {
+      date: string;
+      actualDecks: number;
+      guess: number;
+      errorDecks: number;
+      correct: boolean;
+      toleranceDecks?: number;
+    }[];
   };
   timedCount: {
     history: {

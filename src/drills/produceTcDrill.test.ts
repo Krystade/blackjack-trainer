@@ -146,3 +146,59 @@ describe('the shoe size is the profile\'s (V4-3)', () => {
     expect(b.correctTc).toBe(trueCount(b.round.finalRc, b.decksRemaining));
   });
 });
+
+describe('V5-5: the forgiveness band takes the depth resolution', () => {
+  it('omitting the slack is byte-identical to the hardcoded half deck', () => {
+    for (let seed = 0; seed < 200; seed++) {
+      const round = makeProduceTcRound(20, 1, seed, 6);
+      expect(producedTcBand(round)).toEqual(producedTcBand(round, 0.5));
+      for (let tc = -8; tc <= 8; tc++) {
+        expect(gradeProducedTc(tc, round)).toBe(gradeProducedTc(tc, round, 0.5));
+      }
+    }
+  });
+
+  it('a quarter-deck slack never widens the band, and narrows it somewhere', () => {
+    let narrowed = 0;
+    for (let seed = 0; seed < 400; seed++) {
+      const round = makeProduceTcRound(20, 1, seed, 6);
+      const half = producedTcBand(round, 0.5);
+      const quarter = producedTcBand(round, 0.25);
+      expect(quarter.min).toBeGreaterThanOrEqual(half.min);
+      expect(quarter.max).toBeLessThanOrEqual(half.max);
+      if (quarter.max - quarter.min < half.max - half.min) narrowed++;
+    }
+    // Vacuity guard: a `producedTcBand` that ignored the argument would pass
+    // every inequality above and fail this.
+    expect(narrowed).toBeGreaterThan(50);
+  });
+
+  it('and the grade follows the band, not just the reported range', () => {
+    // The band could narrow while grading still ran on the old half deck --
+    // that is exactly the split-brain the view is at risk of, so pin it here.
+    let flipped = 0;
+    for (let seed = 0; seed < 400; seed++) {
+      const round = makeProduceTcRound(20, 1, seed, 6);
+      for (let tc = -12; tc <= 12; tc++) {
+        const wide = gradeProducedTc(tc, round, 0.5);
+        const tight = gradeProducedTc(tc, round, 0.25);
+        // Tightening can only ever take an answer away, never add one.
+        if (tight) expect(wide).toBe(true);
+        if (wide && !tight) flipped++;
+      }
+    }
+    expect(flipped).toBeGreaterThan(50);
+  });
+
+  it('every accepted answer is inside the reported band, at either slack', () => {
+    for (const slack of [0.5, 0.25]) {
+      for (let seed = 0; seed < 200; seed++) {
+        const round = makeProduceTcRound(20, 1, seed, 6);
+        const band = producedTcBand(round, slack);
+        for (let tc = -12; tc <= 12; tc++) {
+          expect(gradeProducedTc(tc, round, slack)).toBe(tc >= band.min && tc <= band.max);
+        }
+      }
+    }
+  });
+});

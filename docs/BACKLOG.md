@@ -921,8 +921,64 @@ Sources:
 the order I would take them: ~~V5-1 (confusable-neighbour interleaving, best evidence)~~
 **✅ SHIPPED 2026-09-12** — see the entry above the community section; then ~~V5-4 (division
 rule, correctness)~~ **✅ SHIPPED 2026-09-12**; then ~~V5-2 (competence vs expression,
-measurement)~~ **✅ SHIPPED 2026-09-12** — narrower than filed, see the entry below; leaving
-V5-5 (depth resolution). V5-3 is closed as not-actionable.
+measurement)~~ **✅ SHIPPED 2026-09-12** — narrower than filed, see the entry below; then
+~~V5-5 (depth resolution)~~ **✅ SHIPPED 2026-09-12**. V5-3 is closed as not-actionable, so
+**this round is fully worked through** — every candidate from all three workflow legs is
+either shipped or closed with a reason.
+
+- **V5-5 · Depth resolution was a constant in three places — S — ✅ SHIPPED 2026-09-12,
+  default unchanged.** Half a deck was hardcoded in the Deck Estimation grid, in its grading
+  tolerance, and in `EYE_DECK_ERROR` behind the produce-TC band. It is now one three-way
+  setting, `settings.drill.depthResolution`, and `'half'` is still the default, so nothing
+  grades differently for anyone who does not touch it.
+  - **One three-way setting, not a resolution plus a toggle.** The obvious shape is
+    half/quarter next to a "tighten in the last deck" switch, and it has a dead cell: at
+    quarter resolution the tightening has nothing left to tighten. `'half'` / `'last-deck'` /
+    `'quarter'` has no dead cell and needs no note explaining when the switch does nothing.
+    A unit test asserts the equivalence that makes the third state redundant.
+  - **THE TOLERANCE IS THE GRID STEP, and that is what makes the drill answerable.** The
+    nearest option to any real depth is at most half a step away, so a tolerance of one full
+    step always admits at least one answer, at every depth, in every shoe size. Tighten the
+    tolerance without refining the grid and there are depths where every button on screen is
+    graded wrong — which is exactly what "last deck resolution" built the obvious way does to
+    a 1-deck shoe: the grid starts at 0.5, the shallowest questions sit near 0.15, and a 0.25
+    tolerance admits nothing at all. Caught by writing the property first and running it over
+    every integer card count in every shoe, before any of the UI existed.
+  - So 'last-deck' refines the GRID as well as the tolerance: quarters up to one deck, halves
+    above it. 14 buttons in a 6-deck shoe rather than the 24 a flat quarter grid gives. And
+    the grid is a function of the SETTING, never of the question — a grid that grew quarter
+    options only when the question happened to land in the last deck would announce the answer
+    before the player looked at the tray.
+  - **A test that looked like it had found a defect, and had not.** The vacuity guard sampled
+    depths that were themselves grid options, and on the 1-deck half grid — [0.5, 1] with a
+    0.5 tolerance — every option is within tolerance of both. It read as proof that the drill
+    could not mark anything wrong in a single-deck shoe, and I wrote that up as a finding
+    before checking it: at 0.48 decks left the 1.0 button is 0.52 out and IS rejected. The
+    grid points are the least discriminating depths there are, which is the wrong place to
+    sample. The guard now sweeps real card counts and the false finding is recorded in its
+    comment.
+  - Both e2e pins are load-bearing and say so in their own comments. `randomSeed()` runs
+    `Math.random` through `mulberry32`, so a pinned constant bears no resemblance to what the
+    drill sees; each was found by searching for one that puts the question where the verdict
+    has to flip. 0.00009 puts a 1-deck estimate at 0.6731 decks — 0.33 from the 1.0 button,
+    inside a half-deck tolerance and outside a quarter-deck one. 0.000023 puts the produce-TC
+    round at RC +5 with 1.5 decks left, where half accepts +2..+5 and quarter accepts +2..+4.
+  - **Two mutants survived the first e2e pass, and both were real gaps.** A produce-TC grader
+    that dropped the slack while the result copy still narrowed — the copy-vs-grade split
+    brain, and the worse of the two bugs, because it tells the player a range the grader did
+    not use. And a keyboard path that built its own options list at the old resolution, so a
+    grid offering 0.75 sat next to a keyboard that refused to submit it. Both now have
+    assertions on the verdict rather than on the prose.
+  - The stats row records `toleranceDecks` beside the verdict. Optional, so rows written
+    before this are not retroactively claimed to have been graded at half a deck. Same
+    discipline as V5-2: a measurement whose rule changed is not the same measurement.
+  - Fourteen mutants, all killed: eight unit (tolerance halved, the legality filter dropped,
+    the last-deck boundary made exclusive, last-deck never tightening, the boundary moved to
+    two decks, quarter silently a half, and both explanation helpers neutered) and six e2e
+    (grid, grading, the control skipping `saveSettings`, produce-TC dropping the slack,
+    produce-TC copy hardcoding the half deck, keyboard options ignoring the setting).
+  - Verified visually: the 24-button quarter grid on a 6-deck shoe, the last-deck grid, both
+    result screens and the Settings row were rendered and read.
 
 - **V5-2 · Timed and untimed drill accuracy were pooled into one number — S — ✅ SHIPPED
   2026-09-12, no setting, no gate change.** Filed off the training-science leg as a measurement

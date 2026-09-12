@@ -2,8 +2,15 @@ import { useEffect, useState } from 'react';
 import type { Profile, Settings } from '../../../store/types';
 import { makeDeckEstimationQuestion, gradeDeckEstimate } from '../../../drills/deckEstimation';
 import type { DeckEstimationQuestion } from '../../../drills/deckEstimation';
-import { Stepper } from '../Settings';
-import { loadStats, saveStats } from '../../../store/persist';
+import { Stepper, Segmented } from '../Settings';
+import {
+  depthOptions,
+  depthTolerance,
+  isLastDeckTightened,
+  formatDepthSlack,
+} from '../../../drills/depthResolution';
+import type { DepthResolution } from '../../../drills/depthResolution';
+import { loadStats, saveStats, saveSettings } from '../../../store/persist';
 import { focusSwallowsKey } from '../../keyboardFocus';
 
 // This drill is deliberately visual-only (judging a physical card stack) --
@@ -21,48 +28,50 @@ function formatExact(n: number): string {
   return n.toFixed(2);
 }
 
-// Guesses only ever come from the half-deck button grid, so they're always
-// an exact multiple of 0.5 -- one decimal place is enough and never shows
-// float noise.
+// Guesses only ever come from the grid, so they are always an exact multiple
+// of a quarter (V5-5) -- two decimals at most, and never float noise. Trailing
+// zeroes are trimmed so the half-deck grid still reads "2.5" and not "2.50",
+// which is what it looked like before quarter resolution existed.
 function formatGuess(n: number): string {
-  return n.toFixed(1);
+  return Number.isInteger(n) ? n.toFixed(1) : String(n);
 }
 
-/**
- * Half-deck-stepped guess options from 0.5 up to totalDecks inclusive.
- *
+/*
  * WHY a button grid instead of NumPad: NumPad (src/ui/components/NumPad.tsx)
  * is integer-only -- it has no decimal key -- and the whole point of this
- * drill is training half-deck granularity (that's the real-world precision
- * a counter needs for true-count conversion; see gradeDeckEstimate's default
- * tolerance). A fixed grid of the actual legal half-deck answers is also
- * faster to tap than typing "3.5" digit by digit, and it matches the
- * existing button-grid idiom already used for bounded-choice answers in
- * this app (NumPad's own digit grid, and the tag-guess-btn row in the count
- * drill) rather than inventing a new numeric-entry pattern.
+ * drill is training sub-deck granularity (that's the real-world precision
+ * a counter needs for true-count conversion; see gradeDeckEstimate's
+ * tolerance). A fixed grid of the actual legal answers is also faster to tap
+ * than typing "3.5" digit by digit, and it matches the existing button-grid
+ * idiom already used for bounded-choice answers in this app (NumPad's own
+ * digit grid, and the tag-guess-btn row in the count drill) rather than
+ * inventing a new numeric-entry pattern.
+ *
+ * V5-5: the step is no longer hardcoded to half a deck. `depthOptions` in
+ * drills/depthResolution.ts builds the grid from the chosen resolution, and
+ * the grading tolerance is the step at that depth -- the two have to move
+ * together or there are depths no button on screen can answer.
  */
-function halfDeckOptions(totalDecks: number): number[] {
-  const steps = Math.round(totalDecks * 2);
-  const out: number[] = [];
-  for (let i = 1; i <= steps; i++) out.push(i * 0.5);
-  return out;
-}
 
 /**
  * Desktop keyboard input (operator request): typed-digit entry for this
  * button-grid drill. Chose the "type the value" approach over arrow-key
  * grid navigation (the spec's offered alternative) because it's the most
  * direct match for "pressing numbers" -- digits build the whole-deck part,
- * '.' starts the half, and '5' completes it, mirroring how the values are
- * actually labeled ("2", "2.5", ...). Only a COMPLETE typed string (a bare
- * integer, or integer + ".5") resolves to a value; "2." is deliberately
- * mid-entry and resolves to null so the grid doesn't highlight a
- * non-existent option while the user is still typing the half.
+ * '.' starts the fraction, mirroring how the values are actually labeled
+ * ("2", "2.5", ...). Only a COMPLETE typed string resolves to a value; "2."
+ * is deliberately mid-entry and resolves to null so the grid doesn't
+ * highlight a non-existent option while the user is still typing.
+ *
+ * V5-5 widened this from the old integer-or-".5" grammar to any one- or
+ * two-digit fraction. It does NOT need to know which fractions are legal:
+ * the caller already checks membership in the live options list, so ".75"
+ * simply finds nothing to submit at half resolution. Encoding the legal set
+ * here as well would be a second copy of the grid, free to drift from it.
  */
 function typedToValue(typed: string): number | null {
-  if (/^\d+$/.test(typed)) return Number(typed);
-  if (/^\d+\.5$/.test(typed)) return Number(typed);
-  return null;
+  if (!/^\d+(\.\d{1,2})?$/.test(typed)) return null;
+  return Number(typed);
 }
 
 type Phase = 'setup' | 'answering' | 'result';
@@ -76,14 +85,25 @@ type Phase = 'setup' | 'answering' | 'result';
  * double-deck player's default rep was a tray they never see.
  */
 export function DeckEstimationView({
-  settings: _settings,
+  settings,
   activeProfile,
   onBack,
+  onSettingsChange,
 }: {
   settings: Settings;
   activeProfile: Profile;
   onBack: () => void;
+  onSettingsChange: (settings: Settings) => void;
 }) {
+  const resolution = settings.drill.depthResolution;
+  // CountDrillView's precedent: a drill-local control edits the same persisted
+  // setting the Settings screen does, and has to write BOTH -- onSettingsChange
+  // is App's React state only.
+  const setResolution = (depthResolution: DepthResolution) => {
+    const next: Settings = { ...settings, drill: { ...settings.drill, depthResolution } };
+    saveSettings(next);
+    onSettingsChange(next);
+  };
   const [phase, setPhase] = useState<Phase>('setup');
   const [totalDecks, setTotalDecks] = useState<number>(activeProfile.rules.decks);
   const [question, setQuestion] = useState<DeckEstimationQuestion | null>(null);
@@ -104,7 +124,12 @@ export function DeckEstimationView({
 
   const handleGuess = (value: number) => {
     if (!question) return;
-    const { correct, errorDecks: err } = gradeDeckEstimate(value, question.decksRemaining);
+    const tolerance = depthTolerance(question.decksRemaining, resolution);
+    const { correct, errorDecks: err } = gradeDeckEstimate(
+      value,
+      question.decksRemaining,
+      tolerance,
+    );
     setGuessValue(value);
     setWasCorrect(correct);
     setErrorDecks(err);
@@ -127,6 +152,7 @@ export function DeckEstimationView({
             guess: value,
             errorDecks: err,
             correct,
+            toleranceDecks: tolerance,
           },
         ],
       },
@@ -145,7 +171,7 @@ export function DeckEstimationView({
   // native input/select/textarea has focus.
   useEffect(() => {
     if (phase !== 'answering' || !question) return undefined;
-    const options = halfDeckOptions(question.totalDecks);
+    const options = depthOptions(question.totalDecks, resolution);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (focusSwallowsKey(e.key)) return;
@@ -153,11 +179,11 @@ export function DeckEstimationView({
       if (/^[0-9]$/.test(e.key)) {
         e.preventDefault();
         setTyped((t) => {
-          if (t.includes('.')) {
-            // Only '5' immediately after the dot completes a half; anything
-            // else once the half slot is already filled is a no-op.
-            return t.endsWith('.') && e.key === '5' ? t + '5' : t;
-          }
+          // Two fraction digits at most -- "0.25" and "0.75" are the longest
+          // legal answers, and letting a third through would only ever build a
+          // value no button carries.
+          const dot = t.indexOf('.');
+          if (dot !== -1 && t.length - dot > 2) return t;
           return t + e.key;
         });
       } else if (e.key === '.') {
@@ -178,7 +204,7 @@ export function DeckEstimationView({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, question, typed]);
+  }, [phase, question, typed, resolution]);
 
   const typedValue = typedToValue(typed);
 
@@ -208,9 +234,25 @@ export function DeckEstimationView({
             format={(v) => `${v} decks`}
             onChange={setTotalDecks}
           />
+          <div className="settings-row">
+            <span className="settings-label">Resolution</span>
+            <Segmented
+              options={[
+                { value: 'half', label: 'Half' },
+                { value: 'last-deck', label: 'Last deck' },
+                { value: 'quarter', label: 'Quarter' },
+              ]}
+              value={resolution}
+              onChange={setResolution}
+            />
+          </div>
           <div className="settings-row settings-note-row">
             Judge the discard tray by eye and estimate how many decks remain in the shoe. This
             drill is visual only -- no audio mode.
+            {resolution === 'last-deck' && (
+              <> Halves through the shoe, quarters once you are inside the last deck.</>
+            )}
+            {resolution === 'quarter' && <> Quarters throughout &mdash; hard mode.</>}
           </div>
           <button type="button" className="drill-start-btn" onClick={start}>
             Start
@@ -234,7 +276,7 @@ export function DeckEstimationView({
             )}
           </div>
           <div className="deck-guess-grid">
-            {halfDeckOptions(question.totalDecks).map((v) => (
+            {depthOptions(question.totalDecks, resolution).map((v) => (
               <button
                 key={v}
                 type="button"
@@ -256,6 +298,17 @@ export function DeckEstimationView({
           <div className="result-detail">
             You guessed {formatGuess(guessValue)} decks &mdash; actual was{' '}
             {formatExact(question.decksRemaining)} decks (off by {formatExact(errorDecks)})
+          </div>
+          {/* V5-5: the tolerance is a setting now, so a grade that does not
+              state it looks arbitrary -- and the last-deck rule tightens it
+              without the player having touched anything since the question
+              appeared. */}
+          <div className="result-detail">
+            Anything within{' '}
+            {formatDepthSlack(depthTolerance(question.decksRemaining, resolution))} counts.
+            {isLastDeckTightened(question.decksRemaining, resolution) && (
+              <> Tighter than usual: you were inside the last deck.</>
+            )}
           </div>
           <div className="result-detail">
             {question.cardsDealt} cards were dealt from the {question.totalDecks}-deck (

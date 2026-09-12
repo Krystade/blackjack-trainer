@@ -10,6 +10,11 @@ import { PlayingCard } from '../../components/PlayingCard';
 import { NumPad } from '../../components/NumPad';
 import { useAudio } from '../../../audio/useAudio';
 import { loadStats, saveStats } from '../../../store/persist';
+import {
+  depthTolerance,
+  formatDepthSlack,
+  isLastDeckTightened,
+} from '../../../drills/depthResolution';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -52,6 +57,7 @@ export function ProduceTcDrillView({
 }) {
   const totalDecks = activeProfile.rules.decks;
   const audio = useAudio(settings.audio);
+  const resolution = settings.drill.depthResolution;
   const [round, setRound] = useState<ProduceTcRound>(() =>
     makeProduceTcRound(
       settings.drill.countLengthCards,
@@ -82,7 +88,14 @@ export function ProduceTcDrillView({
   }, [phase, shownIndex, groups.length, settings.drill.countIntervalMs]);
 
   const submit = (produced: number) => {
-    const correct = gradeProducedTc(produced, round);
+    // V5-5: the forgiveness band is the depth slack the player has signed up
+    // for, not a fixed half deck. Grading and the explanation below read the
+    // SAME value, or the result screen states a range the grader did not use.
+    const correct = gradeProducedTc(
+      produced,
+      round,
+      depthTolerance(round.decksRemaining, resolution),
+    );
     setAnswer({ produced, correct });
     setPhase('result');
     audio.ding(correct ? 'good' : 'bad');
@@ -171,14 +184,19 @@ export function ProduceTcDrillView({
             (running count {formatSigned(round.round.finalRc)} ÷ {formatDecks(round.decksRemaining)} decks).
             {(() => {
               // Say what was actually accepted, or the grade looks arbitrary:
-              // the range comes from reading the tray half a deck either way,
-              // and it is far wider late in the shoe than early.
-              const band = producedTcBand(round);
+              // the range comes from reading the tray a resolution's worth
+              // either way, and it is far wider late in the shoe than early.
+              const slack = depthTolerance(round.decksRemaining, resolution);
+              const band = producedTcBand(round, slack);
               return band.min === band.max ? null : (
                 <>
                   {' '}
-                  A half-deck either way puts it between {formatSigned(band.min)} and{' '}
-                  {formatSigned(band.max)}, so anything in that range counts.
+                  Reading the tray {formatDepthSlack(slack)} either way puts it between{' '}
+                  {formatSigned(band.min)} and {formatSigned(band.max)}, so anything in that
+                  range counts.
+                  {isLastDeckTightened(round.decksRemaining, resolution) && (
+                    <> A tighter range than usual &mdash; this is the last deck.</>
+                  )}
                 </>
               );
             })()}

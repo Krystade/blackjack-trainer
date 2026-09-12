@@ -1,6 +1,6 @@
 import { makeCountDrill } from './countDrill';
 import type { CountDrillRound } from './countDrill';
-import { trueCount, tcBand, tcWithinEye } from '../engine/count';
+import { trueCount, tcBand, tcWithinEye, EYE_DECK_ERROR } from '../engine/count';
 import type { TcRounding } from '../engine/count';
 import { mulberry32 } from '../engine/cards';
 
@@ -81,11 +81,23 @@ export function makeProduceTcRound(
  * depends on the running count and the depth, which the single graded integer
  * has already thrown away.
  */
-export function gradeProducedTc(produced: number, round: ProduceTcRound): boolean {
-  return tcWithinEye(produced, round.round.finalRc, round.decksRemaining);
+export function gradeProducedTc(
+  produced: number,
+  round: ProduceTcRound,
+  eyeError: number = EYE_DECK_ERROR,
+): boolean {
+  return tcWithinEye(produced, round.round.finalRc, round.decksRemaining, eyeError);
 }
 
-/** The accepted range, for a result screen that has to explain itself. */
-export function producedTcBand(round: ProduceTcRound) {
-  return tcBand(round.round.finalRc, round.decksRemaining);
+/**
+ * The accepted range, for a result screen that has to explain itself.
+ *
+ * V5-5: `eyeError` defaults to half a deck, which is what this was hardcoded to
+ * -- so every existing caller and test is unchanged -- but the view now passes
+ * the resolution the player chose. The band and the grade MUST be computed from
+ * the same slack; a result screen that states a wider range than the grader used
+ * is worse than one that says nothing.
+ */
+export function producedTcBand(round: ProduceTcRound, eyeError: number = EYE_DECK_ERROR) {
+  return tcBand(round.round.finalRc, round.decksRemaining, eyeError);
 }
