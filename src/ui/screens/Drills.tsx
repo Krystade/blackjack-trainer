@@ -1808,16 +1808,29 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     return (
       <TrueCountDrillView
         settings={settings}
+        activeProfile={activeProfile}
         onBack={() => setMode('picker')}
         onSettingsChange={onSettingsChange}
       />
     );
   }
   if (mode === 'producetc') {
-    return <ProduceTcDrillView settings={settings} onBack={() => setMode('picker')} />;
+    return (
+      <ProduceTcDrillView
+        settings={settings}
+        activeProfile={activeProfile}
+        onBack={() => setMode('picker')}
+      />
+    );
   }
   if (mode === 'deckest') {
-    return <DeckEstimationView settings={settings} onBack={() => setMode('picker')} />;
+    return (
+      <DeckEstimationView
+        settings={settings}
+        activeProfile={activeProfile}
+        onBack={() => setMode('picker')}
+      />
+    );
   }
   if (mode === 'flash') {
     return (
@@ -1863,7 +1876,13 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     return <PairCancelView settings={settings} onBack={() => setMode('picker')} />;
   }
   if (mode === 'betsitleave') {
-    return <BetSitLeaveView settings={settings} onBack={() => setMode('picker')} />;
+    return (
+      <BetSitLeaveView
+        settings={settings}
+        activeProfile={activeProfile}
+        onBack={() => setMode('picker')}
+      />
+    );
   }
   if (mode === 'downswing') {
     return (

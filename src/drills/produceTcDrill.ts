@@ -24,7 +24,16 @@ export interface ProduceTcRound {
   correctTc: number;
 }
 
-const TOTAL_DECKS = 6;
+/**
+ * V4-3 (docs/BACKLOG.md): the shoe size comes from the ACTIVE PROFILE.
+ *
+ * This was a hardcoded 6, in the module AND separately in its view, while the
+ * app happily runs 1-, 2-, 6- and 8-deck profiles. A double-deck player was
+ * being drilled on 6-deck conversions: the divisor range they actually face is
+ * 0.5-2, and every question they ever saw ran to 6. Defaulted rather than
+ * required, so existing callers and tests are unchanged.
+ */
+const DEFAULT_TOTAL_DECKS = 6;
 
 /**
  * The slack is no longer a flat number, and that is the point.
@@ -44,12 +53,17 @@ const TOTAL_DECKS = 6;
  * RC to maintain) plus a seeded decks-remaining depth, and the floored true
  * count they combine to.
  */
-export function makeProduceTcRound(cards: number, groupSize: 1 | 2 | 3, seed?: number): ProduceTcRound {
+export function makeProduceTcRound(
+  cards: number,
+  groupSize: 1 | 2 | 3,
+  seed?: number,
+  totalDecks: number = DEFAULT_TOTAL_DECKS,
+): ProduceTcRound {
   const round = makeCountDrill(cards, groupSize, seed);
-  // A second draw for the tray depth (0.5 .. TOTAL_DECKS), seeded off a
+  // A second draw for the tray depth (0.5 .. totalDecks), seeded off a
   // transformed value so the depth doesn't track the card sequence.
   const rng = mulberry32(((seed ?? Date.now()) ^ 0x9e3779b9) >>> 0);
-  const decksRemaining = 0.5 * (1 + Math.floor(rng() * (TOTAL_DECKS * 2)));
+  const decksRemaining = 0.5 * (1 + Math.floor(rng() * (totalDecks * 2)));
   return {
     round,
     decksRemaining,

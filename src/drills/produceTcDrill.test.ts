@@ -84,3 +84,65 @@ describe('gradeProducedTc (the tolerance is the depth, not a constant)', () => {
     expect(gradeProducedTc(band.max + 1, r)).toBe(false);
   });
 });
+
+describe('the shoe size is the profile\'s (V4-3)', () => {
+  const SHOES = [1, 2, 6, 8];
+
+  it('a round never claims more decks remain than the shoe holds', () => {
+    for (const totalDecks of SHOES) {
+      for (let seed = 0; seed < 200; seed++) {
+        const r = makeProduceTcRound(20, 1, seed, totalDecks);
+        expect(r.decksRemaining, `${totalDecks}-deck seed ${seed}`).toBeGreaterThanOrEqual(0.5);
+        expect(r.decksRemaining, `${totalDecks}-deck seed ${seed}`).toBeLessThanOrEqual(totalDecks);
+        expect((r.decksRemaining * 2) % 1).toBe(0);
+      }
+    }
+  });
+
+  it('a small shoe actually reaches its own top end, so the range is not just clipped', () => {
+    // Vacuity guard on the test above: passing it by only ever emitting 0.5
+    // would be useless. Each shoe must span its whole depth range.
+    for (const totalDecks of SHOES) {
+      const seen = new Set<number>();
+      for (let seed = 0; seed < 400; seed++) seen.add(makeProduceTcRound(20, 1, seed, totalDecks).decksRemaining);
+      expect(seen.has(0.5), `${totalDecks}-deck floor`).toBe(true);
+      expect(seen.has(totalDecks), `${totalDecks}-deck ceiling`).toBe(true);
+      expect(seen.size, `${totalDecks}-deck spread`).toBe(totalDecks * 2);
+    }
+  });
+
+  it('a double-deck player is never asked to divide by more than two decks', () => {
+    // The whole point of V4-3: the divisor range a 2-deck player faces is
+    // 0.5-2, and every question they used to see ran to 6.
+    const deep = [];
+    for (let seed = 0; seed < 400; seed++) {
+      const r = makeProduceTcRound(20, 1, seed, 2);
+      if (r.decksRemaining > 2) deep.push(seed);
+    }
+    expect(deep).toEqual([]);
+  });
+
+  it('omitting the shoe size is byte-identical to the old hardcoded six', () => {
+    for (let seed = 0; seed < 100; seed++) {
+      expect(makeProduceTcRound(20, 1, seed)).toEqual(makeProduceTcRound(20, 1, seed, 6));
+    }
+    // ...and the parameter is genuinely read, not ignored.
+    const differs = [];
+    for (let seed = 0; seed < 100; seed++) {
+      if (makeProduceTcRound(20, 1, seed).decksRemaining !== makeProduceTcRound(20, 1, seed, 2).decksRemaining) {
+        differs.push(seed);
+      }
+    }
+    expect(differs.length).toBeGreaterThan(50);
+  });
+
+  it('the cards dealt are the same whatever the shoe; only the depth moves', () => {
+    // Depth is a separate draw from the card sequence, and stays that way.
+    const a = makeProduceTcRound(20, 1, 7, 2);
+    const b = makeProduceTcRound(20, 1, 7, 8);
+    expect(a.round.groups).toEqual(b.round.groups);
+    expect(a.round.finalRc).toBe(b.round.finalRc);
+    expect(a.correctTc).toBe(trueCount(a.round.finalRc, a.decksRemaining));
+    expect(b.correctTc).toBe(trueCount(b.round.finalRc, b.decksRemaining));
+  });
+});

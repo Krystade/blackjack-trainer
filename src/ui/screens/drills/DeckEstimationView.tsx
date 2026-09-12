@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Settings } from '../../../store/types';
+import type { Profile, Settings } from '../../../store/types';
 import { makeDeckEstimationQuestion, gradeDeckEstimate } from '../../../drills/deckEstimation';
 import type { DeckEstimationQuestion } from '../../../drills/deckEstimation';
 import { Stepper } from '../Settings';
@@ -67,15 +67,25 @@ function typedToValue(typed: string): number | null {
 
 type Phase = 'setup' | 'answering' | 'result';
 
+/**
+ * V4-3 (docs/BACKLOG.md): the shoe size OPENS on the ACTIVE PROFILE's shoe.
+ *
+ * The Stepper stays -- estimating a shoe you do not normally play is worth
+ * practising, and this drill is about eyeballing a physical stack rather than
+ * about your own game. But it used to open on 6 for everyone, so a
+ * double-deck player's default rep was a tray they never see.
+ */
 export function DeckEstimationView({
   settings: _settings,
+  activeProfile,
   onBack,
 }: {
   settings: Settings;
+  activeProfile: Profile;
   onBack: () => void;
 }) {
   const [phase, setPhase] = useState<Phase>('setup');
-  const [totalDecks, setTotalDecks] = useState(6);
+  const [totalDecks, setTotalDecks] = useState<number>(activeProfile.rules.decks);
   const [question, setQuestion] = useState<DeckEstimationQuestion | null>(null);
   const [guessValue, setGuessValue] = useState(0);
   const [wasCorrect, setWasCorrect] = useState(false);

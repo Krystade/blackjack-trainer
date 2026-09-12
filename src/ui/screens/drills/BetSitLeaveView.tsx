@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Settings } from '../../../store/types';
+import type { Profile, Settings } from '../../../store/types';
 import {
   makeBetSitLeaveScenario,
   correctAction,
@@ -23,7 +23,6 @@ const ACTIONS: { key: TableAction; label: string }[] = [
   { key: 'sit', label: 'Sit Out' },
   { key: 'leave', label: 'Leave' },
 ];
-const TOTAL_DECKS = 6;
 
 /**
  * ET3 (docs/BACKLOG.md): the bet / sit-out / leave decision drill. A snapshot
@@ -32,9 +31,21 @@ const TOTAL_DECKS = 6;
  * express. Grading = drills/betSitLeave.ts (the researched consensus rule).
  * Continuous flow like the other decision drills; keyboard 1/2/3.
  */
-export function BetSitLeaveView({ settings, onBack }: { settings: Settings; onBack: () => void }) {
+export function BetSitLeaveView({
+  settings,
+  activeProfile,
+  onBack,
+}: {
+  settings: Settings;
+  activeProfile: Profile;
+  onBack: () => void;
+}) {
+  // V4-3: the shoe is the profile's, not a hardcoded 6. See ProduceTcDrillView.
+  const totalDecks = activeProfile.rules.decks;
   const audio = useAudio(settings.audio);
-  const [scenario, setScenario] = useState<BetSitLeaveScenario>(() => makeBetSitLeaveScenario(randomSeed()));
+  const [scenario, setScenario] = useState<BetSitLeaveScenario>(() =>
+    makeBetSitLeaveScenario(randomSeed(), totalDecks),
+  );
   const [feedback, setFeedback] = useState<{ correct: boolean; taken: TableAction } | null>(null);
   const shownAtRef = useRef(performance.now());
 
@@ -57,7 +68,7 @@ export function BetSitLeaveView({ settings, onBack }: { settings: Settings; onBa
   };
 
   const next = () => {
-    setScenario(makeBetSitLeaveScenario(randomSeed()));
+    setScenario(makeBetSitLeaveScenario(randomSeed(), totalDecks));
     setFeedback(null);
     shownAtRef.current = performance.now();
   };
@@ -84,7 +95,7 @@ export function BetSitLeaveView({ settings, onBack }: { settings: Settings; onBa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedback, scenario]);
 
-  const dealtFraction = (TOTAL_DECKS - scenario.decksRemaining) / TOTAL_DECKS;
+  const dealtFraction = (totalDecks - scenario.decksRemaining) / totalDecks;
   const fillPct = Math.min(98, Math.max(2, dealtFraction * 100));
   const correct = correctAction(scenario);
 
@@ -109,6 +120,10 @@ export function BetSitLeaveView({ settings, onBack }: { settings: Settings; onBa
             <div className="table-discard-fill" style={{ width: `${fillPct}%` }} />
           </div>
         </div>
+        {/* V4-3: the shoe size is the profile's now, so the tray alone is
+            ambiguous -- a half-full tray is 1 deck left in a 2-deck shoe
+            and 3 in a 6-deck one. Same line DeckEstimationView carries. */}
+        <div className="deck-tray-context">{totalDecks}-deck shoe</div>
         <div className={`bsl-freshshoe ${scenario.freshShoe ? 'bsl-fresh-yes' : 'bsl-fresh-no'}`}>
           {scenario.freshShoe ? 'Another table is open' : 'No other table open'}
         </div>

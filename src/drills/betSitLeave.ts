@@ -58,7 +58,16 @@ export function explainAction(s: BetSitLeaveScenario): string {
   return 'Early, mild negative — sit out; the shoe can still turn positive.';
 }
 
-const TOTAL_DECKS = 6;
+/**
+ * V4-3 (docs/BACKLOG.md): the shoe size comes from the ACTIVE PROFILE.
+ *
+ * This was a hardcoded 6, in the module AND separately in its view, while the
+ * app happily runs 1-, 2-, 6- and 8-deck profiles. A double-deck player was
+ * being drilled on 6-deck conversions: the divisor range they actually face is
+ * 0.5-2, and every question they ever saw ran to 6. Defaulted rather than
+ * required, so existing callers and tests are unchanged.
+ */
+const DEFAULT_TOTAL_DECKS = 6;
 const TC_CLAMP = 6; // realistic true-count bound
 
 /**
@@ -66,14 +75,21 @@ const TC_CLAMP = 6; // realistic true-count bound
  * true count is derived from a plausible running count bounded by how much of
  * the shoe has been dealt, so a big |TC| only occurs deep in the shoe — never
  * an impossible "TC -4 with a near-full shoe". Decks-remaining in 0.5-deck steps
- * over a 6-deck shoe; a fresh table 50/50. This naturally puts the sit/leave
+ * over the profile's own shoe; a fresh table 50/50. This naturally puts the sit/leave
  * decisions where they really happen (deeper, negative shoes) and keeps early
  * shoes near neutral (bet), while still surfacing all three correct actions.
  */
-export function makeBetSitLeaveScenario(seed?: number): BetSitLeaveScenario {
+export function makeBetSitLeaveScenario(
+  seed?: number,
+  totalDecks: number = DEFAULT_TOTAL_DECKS,
+): BetSitLeaveScenario {
   const rng = mulberry32(seed ?? Date.now());
-  const decksRemaining = 0.5 * (1 + Math.floor(rng() * 12)); // 0.5..6.0
-  const decksDealt = TOTAL_DECKS - decksRemaining;
+  // Half-deck steps across the whole shoe: 0.5 .. totalDecks. This 12 was
+  // also a hardcoded 6 (as totalDecks * 2); left alone it would have produced
+  // a 6-deck depth inside a 2-deck shoe, i.e. a NEGATIVE dealt count feeding
+  // the running-count bound below.
+  const decksRemaining = 0.5 * (1 + Math.floor(rng() * (totalDecks * 2)));
+  const decksDealt = totalDecks - decksRemaining;
   // Running count can only have swung as far as the dealt cards allow; ~±2 per
   // dealt deck is already an extreme, so it bounds the plausible spread.
   const rcMax = Math.round(2 * decksDealt) + 1;

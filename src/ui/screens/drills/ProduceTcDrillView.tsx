@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Settings } from '../../../store/types';
+import type { Profile, Settings } from '../../../store/types';
 import {
   makeProduceTcRound,
   gradeProducedTc,
@@ -10,8 +10,6 @@ import { PlayingCard } from '../../components/PlayingCard';
 import { NumPad } from '../../components/NumPad';
 import { useAudio } from '../../../audio/useAudio';
 import { loadStats, saveStats } from '../../../store/persist';
-
-const TOTAL_DECKS = 6;
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -35,10 +33,32 @@ type Phase = 'flashing' | 'answering' | 'result';
  * graded with the by-eye depth tolerance (drills/produceTcDrill.ts). Reuses the
  * count-drill length/pace settings.
  */
-export function ProduceTcDrillView({ settings, onBack }: { settings: Settings; onBack: () => void }) {
+/**
+ * V4-3 (docs/BACKLOG.md): the shoe size comes from the ACTIVE PROFILE.
+ *
+ * It used to be a hardcoded 6 here AND separately in the drill module, while
+ * the app happily runs 1-, 2-, 6- and 8-deck profiles. A double-deck player
+ * was being drilled on 6-deck conversions: the divisor range they actually
+ * face is 0.5-2, and every question they ever saw ran to 6.
+ */
+export function ProduceTcDrillView({
+  settings,
+  activeProfile,
+  onBack,
+}: {
+  settings: Settings;
+  activeProfile: Profile;
+  onBack: () => void;
+}) {
+  const totalDecks = activeProfile.rules.decks;
   const audio = useAudio(settings.audio);
   const [round, setRound] = useState<ProduceTcRound>(() =>
-    makeProduceTcRound(settings.drill.countLengthCards, settings.drill.countGroup, randomSeed()),
+    makeProduceTcRound(
+      settings.drill.countLengthCards,
+      settings.drill.countGroup,
+      randomSeed(),
+      totalDecks,
+    ),
   );
   const [phase, setPhase] = useState<Phase>('flashing');
   const [shownIndex, setShownIndex] = useState(0);
@@ -80,14 +100,21 @@ export function ProduceTcDrillView({ settings, onBack }: { settings: Settings; o
 
   const next = () => {
     runIdRef.current += 1;
-    setRound(makeProduceTcRound(settings.drill.countLengthCards, settings.drill.countGroup, randomSeed()));
+    setRound(
+      makeProduceTcRound(
+        settings.drill.countLengthCards,
+        settings.drill.countGroup,
+        randomSeed(),
+        totalDecks,
+      ),
+    );
     setShownIndex(0);
     setAnswer(null);
     setPhase('flashing');
   };
 
   const currentGroup = shownIndex < groups.length ? groups[shownIndex] : null;
-  const dealtFraction = (TOTAL_DECKS - round.decksRemaining) / TOTAL_DECKS;
+  const dealtFraction = (totalDecks - round.decksRemaining) / totalDecks;
   const fillPct = Math.min(98, Math.max(2, dealtFraction * 100));
 
   return (
@@ -123,6 +150,10 @@ export function ProduceTcDrillView({ settings, onBack }: { settings: Settings; o
               <div className="table-discard-fill" style={{ width: `${fillPct}%` }} />
             </div>
           </div>
+          {/* V4-3: the shoe size is the profile's now, so the tray alone is
+              ambiguous -- a half-full tray is 1 deck left in a 2-deck shoe and
+              3 in a 6-deck one. Same line DeckEstimationView carries. */}
+          <div className="deck-tray-context deck-tray-context-flow">{totalDecks}-deck shoe</div>
         </>
       )}
 

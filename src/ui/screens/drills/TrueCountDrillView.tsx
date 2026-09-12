@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Settings } from '../../../store/types';
+import type { Profile, Settings } from '../../../store/types';
 import { makeTrueCountQuestion } from '../../../drills/trueCountDrill';
 import { tcConversionAccepted } from '../../../engine/count';
 import type { TrueCountQuestion } from '../../../drills/trueCountDrill';
@@ -89,12 +89,21 @@ type TcPhase =
   | 'selfreport'
   | 'result';
 
+/**
+ * V4-3 (docs/BACKLOG.md): the deck range opens on the ACTIVE PROFILE's shoe.
+ *
+ * The Stepper stays a deliberate override -- practising a range wider than
+ * your own shoe is useful -- but it used to open on 6 for everyone, so a
+ * double-deck player's default rep was a divisor they never meet.
+ */
 export function TrueCountDrillView({
   settings,
+  activeProfile,
   onBack,
   onSettingsChange,
 }: {
   settings: Settings;
+  activeProfile: Profile;
   onBack: () => void;
   // Needed so the eyes-free toggle can enable audio itself rather than
   // sitting disabled and pointing at another screen -- see ui/audioGate.ts.
@@ -104,7 +113,7 @@ export function TrueCountDrillView({
   const [question, setQuestion] = useState<TrueCountQuestion | null>(null);
   const [wasCorrect, setWasCorrect] = useState(false);
   const [enteredValue, setEnteredValue] = useState(0);
-  const [maxDecks, setMaxDecks] = useState(6);
+  const [maxDecks, setMaxDecks] = useState<number>(activeProfile.rules.decks);
   const audio = useAudio(settings.audio);
 
   // Eyes-free audio: local UI state, not persisted -- per-session choices

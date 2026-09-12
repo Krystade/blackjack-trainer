@@ -97,3 +97,87 @@ describe('makeBetSitLeaveScenario', () => {
     expect(seen.has('leave')).toBe(true);
   });
 });
+
+describe('makeBetSitLeaveScenario across shoe sizes (V4-3)', () => {
+  const SHOES = [1, 2, 6, 8];
+
+  it('depth stays inside the profile\'s own shoe', () => {
+    for (const totalDecks of SHOES) {
+      for (let seed = 0; seed < 300; seed++) {
+        const s = makeBetSitLeaveScenario(seed, totalDecks);
+        expect(s.decksRemaining, `${totalDecks}-deck seed ${seed}`).toBeGreaterThanOrEqual(0.5);
+        expect(s.decksRemaining, `${totalDecks}-deck seed ${seed}`).toBeLessThanOrEqual(totalDecks);
+        expect((s.decksRemaining * 2) % 1).toBe(0);
+      }
+    }
+  });
+
+  it('the count stays sane in a small shoe — the dealt count can never go negative', () => {
+    // Regression guard: the depth draw was a SECOND hardcoded six (as a
+    // literal 12 half-deck steps). Parameterising only `decksDealt` would have
+    // left a 1-deck shoe dealing up to 6 decks, i.e. decksDealt of -5, which
+    // feeds rcMax = round(2 * decksDealt) + 1 = -9 and inverts the whole
+    // running-count draw.
+    for (const totalDecks of [1, 2]) {
+      for (let seed = 0; seed < 400; seed++) {
+        const s = makeBetSitLeaveScenario(seed, totalDecks);
+        const decksDealt = totalDecks - s.decksRemaining;
+        expect(decksDealt, `${totalDecks}-deck seed ${seed}`).toBeGreaterThanOrEqual(0);
+        expect(Number.isInteger(s.trueCount)).toBe(true);
+        expect(Math.abs(s.trueCount)).toBeLessThanOrEqual(6);
+      }
+    }
+  });
+
+  it('physical plausibility scales with the shoe, not with six', () => {
+    // The V3-3 property, restated relative to the shoe instead of to 6.
+    for (const totalDecks of SHOES) {
+      for (let seed = 0; seed < 800; seed++) {
+        const s = makeBetSitLeaveScenario(seed, totalDecks);
+        // An untouched shoe cannot have swung: no cards are dealt yet.
+        if (s.decksRemaining === totalDecks) {
+          expect(Math.abs(s.trueCount), `${totalDecks}-deck seed ${seed}`).toBeLessThanOrEqual(1);
+        }
+        // An extreme count needs at least half the shoe behind it, whatever
+        // the shoe is -- the same shape as the 6-deck assertion above.
+        if (Math.abs(s.trueCount) >= 4) {
+          expect(totalDecks - s.decksRemaining, `${totalDecks}-deck seed ${seed}`).toBeGreaterThanOrEqual(
+            totalDecks / 2,
+          );
+        }
+      }
+    }
+  });
+
+  it('each shoe spans its own full depth range', () => {
+    for (const totalDecks of SHOES) {
+      const seen = new Set<number>();
+      for (let seed = 0; seed < 600; seed++) seen.add(makeBetSitLeaveScenario(seed, totalDecks).decksRemaining);
+      expect(seen.size, `${totalDecks}-deck spread`).toBe(totalDecks * 2);
+      expect(seen.has(totalDecks), `${totalDecks}-deck ceiling`).toBe(true);
+    }
+  });
+
+  it('omitting the shoe size is byte-identical to the old hardcoded six', () => {
+    for (let seed = 0; seed < 100; seed++) {
+      expect(makeBetSitLeaveScenario(seed)).toEqual(makeBetSitLeaveScenario(seed, 6));
+    }
+    const differs = [];
+    for (let seed = 0; seed < 100; seed++) {
+      if (makeBetSitLeaveScenario(seed).decksRemaining !== makeBetSitLeaveScenario(seed, 2).decksRemaining) {
+        differs.push(seed);
+      }
+    }
+    expect(differs.length).toBeGreaterThan(50);
+  });
+
+  it('a small shoe still trains all three actions', () => {
+    for (const totalDecks of [1, 2]) {
+      const seen = new Set();
+      for (let seed = 0; seed < 600; seed++) seen.add(correctAction(makeBetSitLeaveScenario(seed, totalDecks)));
+      expect(seen.has('bet'), `${totalDecks}-deck bet`).toBe(true);
+      expect(seen.has('sit'), `${totalDecks}-deck sit`).toBe(true);
+      expect(seen.has('leave'), `${totalDecks}-deck leave`).toBe(true);
+    }
+  });
+});

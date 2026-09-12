@@ -592,10 +592,46 @@ operator, still open.)
 ### From the 2026-09-12 red-team v4 (post V3-5/6/7 + RT#11/12 + RV7) — run in-session, no research agents
 The v3 queue emptied, so the standing workflow's adversarial leg was run against the CURRENT app.
 Only the adversarial leg: the training-science and community legs need web research and are still
-owed. Two findings, both read off the code rather than recalled, both cited. Notably the deviation
+owed. Three findings, all read off the code rather than recalled, all cited. Notably the deviation
 quiz came out CLEAN on the axis it was attacked on — `tcNearThreshold`/`tcWrongSide` already sample
 either side of every index boundary and re-derive the answer from the engine, which is the thing
 most trainers get wrong.
+
+- **V4-3 · Five drills hardcode a 6-deck shoe while the app runs 1/2/6/8 — S — ✅ SHIPPED
+  2026-09-12.** The app has supported 1-, 2-, 6- and 8-deck profiles since Cycle 1, and
+  `useGame.ts`'s own header states the principle: *every grading/payout/dealer-behavior surface
+  reads the active profile, not Settings*. The count-conversion drills did not. A double-deck
+  player was drilled exclusively on 6-deck conversions — the divisor range they actually face is
+  0.5–2, and every question they had ever seen ran to 6. That is not a cosmetic mismatch: true-count
+  conversion IS division by decks remaining, so drilling the wrong divisor range trains the wrong
+  reflex, and the sit/leave depth thresholds move with the shoe too.
+  - The evidence was eight hardcoded sixes across six files, and the duplication was the tell:
+    `TOTAL_DECKS = 6` appeared in the drill MODULE and again, separately, in its VIEW
+    (`produceTcDrill.ts` + `ProduceTcDrillView.tsx`; `betSitLeave.ts` + `BetSitLeaveView.tsx`),
+    with `useState(6)` a third time in the two views that have a picker. Nothing tied them
+    together, so they could have drifted apart silently.
+  - Both modules take a DEFAULTED `totalDecks`, so every existing caller and test is unchanged and
+    the default-equivalence is asserted rather than assumed. `deckEstimation.ts` already had the
+    parameter and `trueCountDrill.ts` already had `opts.maxDecks`; only the views were ignoring
+    them.
+  - The near-miss worth recording: `betSitLeave.ts` held a SECOND hardcoded 6, disguised as a
+    literal `12` half-deck steps. Parameterising the obvious `decksDealt = TOTAL_DECKS - remaining`
+    alone would have left a 1-deck shoe drawing up to 6 decks remaining — `decksDealt` of −5,
+    feeding `rcMax = round(2 * decksDealt) + 1 = −9` and inverting the entire running-count draw.
+    Grepping for the constant found one of the two; reading the function found the other.
+  - The two pickers (True Count's deck range, Deck Estimation's shoe size) stay as deliberate
+    OVERRIDES — practising a shoe you do not normally play is worth doing — but they now OPEN on
+    the profile's shoe, so the default rep is the one the learner will actually face.
+  - Once the shoe varies, a bare discard tray is unreadable: a half-full tray is 1 deck left in a
+    2-deck shoe and 3 in a 6-deck one. `DeckEstimationView` already printed a `{n}-deck shoe`
+    line for exactly that reason; `ProduceTcDrillView` and `BetSitLeaveView` now carry the same
+    one. Not scope creep — the change is what made the ambiguity possible.
+  - Ten mutants, all killed. Five unit (each module ignoring the shoe, each default flipped) and
+    five e2e, because the wiring is the part unit tests cannot see: the modules DEFAULT to 6, so a
+    view that forgets to pass `activeProfile.rules.decks` still compiles, still passes every unit
+    test, and silently reintroduces the exact bug. Every e2e assertion therefore uses a non-default
+    shoe, and the produce-TC test reads the divisor off the result screen rather than trusting the
+    label.
 
 - **V4-2 · One fixed card pair per hard total — XS — ✅ SHIPPED 2026-09-12.** `makeHardHand`
   returned the FIRST match from a fixed `RANKS` scan, so hard 16 was 6+10 every single time it was
