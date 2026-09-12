@@ -456,9 +456,30 @@ Fresh re-attack after the ETs shipped; 8 cited findings. Several are flaws in th
 - **V3-4 · Soft competence gating of pressure modes — ✅ SHIPPED 2026-08-03 (operator: soft).** `computeUnlockedTier` has one
   caller; ET1/ET7 present identically to onboarding drills, contradicting the app's own competence-gate
   principle. Soft-gating/sequencing = a DESIGN CALL (the operator is an expert; gating adds friction).
-- **V3-5..8 (secondary):** ET5 ignores latency drift + spans discrete short runs; RV4 retention "due today" list ❌ DECLINED (operator 2026-08-03); retention is a single pooled number (can't accrue for ~4 calendar days); ET1's arc is a
-  100%-loss wall with a Stand-only button; ~~decision drills grade strictly binary (a cheap error scores
+- **V3-5..8 (secondary):** ~~ET5 ignores latency drift + spans discrete short runs~~ **✅ V3-5 DONE 2026-09-12**; RV4 retention "due today" list ❌ DECLINED (operator 2026-08-03); ~~retention is a single pooled number (can't accrue for ~4 calendar days)~~ **✅ V3-6 DONE 2026-09-12**; ~~ET1's arc is a
+  100%-loss wall with a Stand-only button~~ **✅ V3-7 DONE 2026-09-12**; ~~decision drills grade strictly binary (a cheap error scores
   like a catastrophe)~~ **✅ V3-8 DONE 2026-09-11**.
+  - **V3-5 · Pace drift, and a range that reaches the cost list.** Graded decisions are now DATED at
+    the call site (`GradedEvent.at`, stamped by the component, so `applyEvents` stays pure), which
+    makes both `latencyHistory` and `evCost.history` range-filterable for the first time — the Stats
+    range picker used to silently not apply to either. On top of the dates, `latencyDrift` reports
+    median response time in the FRONT half of each session against the BACK half (`driftMs` positive
+    = slower late), sharing `sessionHalves` with the existing accuracy `fatigueDrift` so the two
+    endurance readouts cannot disagree about where a session ends.
+  - **V3-6 · Retention is a decay CURVE, not one number.** `retentionCurve.ts` buckets each review by
+    the gap since the previous one, on bands edged to the Leitner schedule (under 3 days / 3-7 /
+    1-2 weeks / 2-4 weeks / over a month), and puts a 95% Wilson interval on every figure. Wilson,
+    not the normal interval, because the normal one produces out-of-range bounds and — worse — zero
+    width at a perfect score, which is exactly where a learner with four reviews would read it as
+    certainty. The curve only renders once more than one band has data, so it never implies a shape
+    from a single point.
+  - **V3-7 · Downswing is a hand you PLAY.** The Stand-only wall is gone: the drill deals real
+    decisions under a losing streak and grades them. `DECISION_LOSSES` are five-card scripts shaped
+    so that stand/hit/double all cost exactly five cards and all lose (player hard 12-16, dealer
+    7-11 two-card, fifth card a ten) — the rigged shoe survives only while every round costs a known
+    number of cards. Surrender's four-card path is handled by `Game.discardRiggedCards`, which also
+    retires the old eight-card-buffer fragility. Stats gains a "correct play under pressure" rate,
+    which is the number the drill was always supposed to be measuring.
   - **V3-8 · What the mistake cost.** A from-scratch EV engine prices every plain basic-strategy error
     in units of the base bet: `src/engine/dealerOdds.ts` (exact infinite-deck dealer distribution,
     peek-aware, validated against an independent 300k-trial Monte Carlo that shares no code with it)
@@ -508,13 +529,26 @@ full-journey smoke spec touching every screen+mode, and the clip-playback harnes
 **Original convergence order (superseded, kept for rationale):** R1 → R2 → R3 → D1 →
 R5/R6 → R4 → R8. R1 first was non-negotiable: it's the instrument the rest are measured with.
 
-## Parked (unchanged)
-M6 bot-mistake RNG correlated with shoe seed · M8 bot cards render instantly while
-narration paces · `dealSpeedMs` stale in-flight timer · ~~`cvcxParse` single-space
-decorated negative TC~~ ✅ FIXED 2026-07-29 (parseColumns now joins a ≤/<= decoration
-like it already did for "TC"; `≤ -1 1` single-space pastes parse) · payout audit's 2
-trivial insurance quadrants · `game.ts` ~949 lines · `Stats.tsx` reads
-`loadSettings().audio` directly.
+## Parked — all cleared 2026-09-12 except one, which is unreachable
+~~M6 bot-mistake RNG correlated with shoe seed~~ ✅ the shoe and the bot stream were
+`mulberry32(cfg.seed)` TWICE — one stream drawn twice, so who misplayed was a function of
+how the cards fell; now offset through `botRngSeed` (XOR with the golden-ratio constant),
+which is a pure constant so replay is untouched · ~~M8 bot cards render instantly while
+narration paces~~ ✅ bots resolve to completion inside `act()`, so the felt showed a
+finished hand while the commentary was still on its first line; cards now arrive with the
+line that dealt them, and the result marker waits for the hand it is a verdict on ·
+**`dealSpeedMs` stale in-flight timer — UNREACHABLE, not fixed.** Settings is a separate
+screen, and the only in-Table settings mutation (`enableAudioNow`) touches `audio.enabled`;
+there is no shipped path that changes the speed with a timer in flight. Left alone rather
+than fixed blind · ~~`cvcxParse` single-space decorated negative TC~~ ✅ FIXED 2026-07-29
+(parseColumns now joins a ≤/<= decoration like it already did for "TC"; `≤ -1 1`
+single-space pastes parse) · ~~payout audit's 2 trivial insurance quadrants~~ ✅ and they
+were not trivial: with the added player-natural-vs-ace rows removed, mutating
+`settleDealerBlackjack` to treat a player natural as a LOSS instead of a push survives the
+ENTIRE existing audit · ~~`game.ts` ~949 lines~~ ✅ the rigged-shoe adapter and bot seed
+moved to `src/engine/riggedShoe.ts`; the class itself deliberately stays in one file, since
+its methods all mutate round state through `this` · ~~`Stats.tsx` reads
+`loadSettings().audio` directly~~ ✅ takes `settings` as a prop like every other screen.
 
 ---
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
+import type { Card } from '../../engine/cards';
 import type { DealSlot, Game, PlayerHand, Seat } from '../../engine/game';
 import type { Action } from '../../engine/deviations';
 import type { PlayContext } from '../../engine/strategy';
@@ -579,6 +580,43 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const botLabels = botSeatLabels(game.seats);
   const botNarrationLines = buildBotNarration(game, botNarrationRevealed);
   const pacingPending = botNarrationRevealed < game.botActionLog.length;
+  /**
+   * M8: HOW MANY CARDS EACH BOT HAND HAS EARNED ON SCREEN.
+   *
+   * Bots resolve to completion inside `act()`, so by the time React renders, a
+   * bot that hit three times already has five cards laid out -- while the
+   * narration is still reading "P2 hits" as its first line. The screen was a
+   * round ahead of the commentary describing it, which is the one thing pacing
+   * exists to prevent.
+   *
+   * A hand is keyed by seat AND hand index because a bot can split, and the two
+   * halves draw independently. Only entries that actually took a card count: a
+   * stand or a surrender narrates without changing what is on the felt.
+   */
+  const revealedBotDraws = new Map<string, number>();
+  for (const entry of game.botActionLog.slice(0, botNarrationRevealed)) {
+    if (!entry.card) continue;
+    const key = `${entry.seat}:${entry.handIndex}`;
+    revealedBotDraws.set(key, (revealedBotDraws.get(key) ?? 0) + 1);
+  }
+  /**
+   * The cards to draw for one bot hand right now.
+   *
+   * The bypass is pacing being finished -- including a fast-forward, which
+   * jumps `botNarrationRevealed` to the end. NOT settlement: with the player at
+   * first base every bot acts in `resolveBotsAfter`, so the round is already
+   * settled by the time their narration starts, and exempting a settled round
+   * would switch this off in exactly the common case.
+   *
+   * So the only thing this can do is delay a card, never lose one, and the
+   * final frame never depends on the arithmetic above being exactly right
+   * about a split.
+   */
+  const visibleBotCards = (hand: { cards: Card[] }, seatIndex: number, handIndex: number): Card[] => {
+    if (!pacingPending) return hand.cards;
+    const shown = 2 + (revealedBotDraws.get(`${seatIndex}:${handIndex}`) ?? 0);
+    return hand.cards.slice(0, Math.min(hand.cards.length, shown));
+  };
   // Skips BOTH pacing mechanisms together: a tap/click must never leave one
   // mechanism caught up while the other is still pending, which would keep
   // the fast-forward button rendered after being clicked (see
@@ -693,7 +731,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
                 {seat.hands.map((hand, handIndex) => (
                   <div key={handIndex} className="bot-hand">
                     <div className="bot-hand-cards">
-                      {hand.cards.map((c, j) => (
+                      {visibleBotCards(hand, seatIndex, handIndex).map((c, j) => (
                         <PlayingCard
                           key={j}
                           card={c}
@@ -711,7 +749,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
                         />
                       ))}
                     </div>
-                    {game.phase === 'settled' && resultLetter(hand.result) && (
+                    {game.phase === 'settled' && !pacingPending && resultLetter(hand.result) && (
                       <div className={`bot-result-marker bot-result-${resultLetter(hand.result)}`}>
                         {resultLetter(hand.result)}
                       </div>
