@@ -1736,3 +1736,107 @@ test('deviation quiz: Dim screen hides its own ZonePad while leaving it tappable
   const settings = await readSettings(page);
   expect((settings?.audio as { dimZones?: boolean } | undefined)?.dimZones).toBe(true);
 });
+
+/* ---------------------------------------------------------------- */
+/* R1: the optional shot clock (drills/shotClock.ts).                */
+/* ---------------------------------------------------------------- */
+
+/**
+ * The half of the shot clock that can only be proved in a browser: a real
+ * `setTimeout` firing against a real component, grading a card nobody answered.
+ *
+ * Driven with the shortest offered limit and a real wait, rather than by
+ * simulating a clock. What can go wrong here is timing plumbing -- an effect
+ * that never arms, a timer cleared by the wrong dep, a stale run-id guard
+ * swallowing the expiry -- and none of that shows up if the clock is faked.
+ */
+test('flashcards: the shot clock grades an unanswered card as a timeout', async ({ page }) => {
+  await withSettings(page, { drill: { shotClockMs: 3000 } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+
+  // The countdown is visible while the answer is awaited.
+  await expect(page.getByTestId('shot-clock')).toBeVisible();
+  expect(await readStats(page)).toBeNull();
+
+  // Say nothing. The clock should grade it on its own -- no tap, no key.
+  await expect(page.locator('.message-strip .mistake-card')).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('.message-strip')).toContainText('Out of time');
+
+  const stats = await readStats(page);
+  expect(stats, 'the timeout must have persisted a stats blob').not.toBeNull();
+  const mistakes = stats!.mistakes as Record<string, number>;
+  expect(mistakes.timeout).toBe(1);
+  // Filed apart from the wrong-play taxonomy, which is the whole point of the
+  // separate class -- freezing on a cell and misplaying it need different work.
+  expect(mistakes['basic-error']).toBe(0);
+  expect(mistakes['missed-deviation']).toBe(0);
+
+  // The MEASURED time, not the nominal 3000 -- see the handler's comment.
+  const latency = (stats!.latencyHistory as { elapsedMs: number }[]) ?? [];
+  expect(latency).toHaveLength(1);
+  expect(latency[0]!.elapsedMs).toBeGreaterThanOrEqual(2900);
+
+  // Unpriced: there is no second action for the EV engine to price against.
+  expect((stats!.evCost as { history: unknown[] }).history).toHaveLength(0);
+});
+
+/**
+ * The complement, and the one that would catch the worst failure: a card
+ * answered in time must never also be graded as a timeout. A timer left running
+ * behind a correction would fire a few seconds later and score the learner
+ * twice for one card -- once as they answered it, once as a freeze.
+ */
+test('flashcards: answering in time cancels the clock, and it never fires behind the correction', async ({ page }) => {
+  await withSettings(page, { drill: { shotClockMs: 3000 } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+
+  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
+  await expect(page.locator('.message-strip .result-correct, .message-strip .mistake-card')).toBeVisible();
+
+  // Sit on the correction for longer than the limit. Nothing more may be graded.
+  await page.waitForTimeout(4000);
+
+  const stats = await readStats(page);
+  expect(stats, 'the answered card must have persisted a stats blob').not.toBeNull();
+  const mistakes = stats!.mistakes as Record<string, number>;
+  expect(mistakes.timeout).toBe(0);
+  const latency = (stats!.latencyHistory as { elapsedMs: number }[]) ?? [];
+  expect(latency).toHaveLength(1);
+});
+
+/** Off is the default, and off must mean no bar and no deadline at all. */
+test('flashcards: no shot clock is shown or enforced by default', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+
+  await expect(page.getByTestId('shot-clock')).toHaveCount(0);
+
+  // Longer than the longest limit on offer, and still awaiting an answer.
+  await page.waitForTimeout(4000);
+  await expect(page.locator('.message-strip .mistake-card')).toHaveCount(0);
+  expect(await readStats(page)).toBeNull();
+});
+
+/** The deviation quiz runs the same clock through the same shared grade path. */
+test('deviation quiz: the shot clock grades an unanswered item as a timeout', async ({ page }) => {
+  await withSettings(page, { drill: { shotClockMs: 3000 } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation Quiz');
+
+  await expect(page.getByTestId('shot-clock')).toBeVisible();
+  await expect(page.locator('.message-strip .mistake-card')).toBeVisible({ timeout: 8000 });
+
+  const stats = await readStats(page);
+  expect(stats).not.toBeNull();
+  expect((stats!.mistakes as Record<string, number>).timeout).toBe(1);
+});

@@ -66,6 +66,10 @@ const CLASS_COPY: Record<Exclude<MistakeClass, 'correct'>, { label: string; note
     label: 'Wrong anyway',
     note: 'Neither basic strategy nor the index play — worth a slow look at this hand.',
   },
+  timeout: {
+    label: 'Out of time',
+    note: 'No answer inside the shot clock. Knowing this one slowly is not the same as knowing it.',
+  },
 };
 
 /** Actions the drills can grade that are not table plays. */
@@ -73,6 +77,10 @@ function labelFor(value: string): string {
   if (value in ACTION_LABEL) return ACTION_LABEL[value as Action];
   if (value === 'take-insurance') return 'Take insurance';
   if (value === 'decline-insurance') return 'Decline insurance';
+  // R1's shot clock puts the literal string "timeout" in `taken`, which is the
+  // right thing to persist and exactly the wrong thing to print: a panel
+  // reading "You played: timeout" describes a play nobody made.
+  if (value === 'timeout') return 'Nothing — time ran out';
   return value;
 }
 
@@ -126,6 +134,7 @@ export function MistakeCard({
   const expectedLetter = letterFor(expected);
   const copy =
     classification && classification !== 'correct' ? CLASS_COPY[classification] : undefined;
+  const timedOut = classification === 'timeout';
 
   // The drills populate `hand`, `reason` and the cell-id footnote from the
   // SAME source: gradeAnswer.ts sets reason and hand to `card.cellId` for a
@@ -148,7 +157,7 @@ export function MistakeCard({
   if (eyesFree) {
     return (
       <div className="mistake-card mistake-card-eyes-free" role="alert">
-        <div className="mistake-verdict result-wrong">Wrong</div>
+        <div className="mistake-verdict result-wrong">{timedOut ? 'Too slow' : 'Wrong'}</div>
         <div className="mistake-eyes-free-answer">{labelFor(expected)}</div>
         {onNext && (
           <button type="button" className="drill-next-btn" onClick={onNext}>
@@ -168,7 +177,11 @@ export function MistakeCard({
             would make the panel a second, silent vocabulary for the same
             event. `.mistake-verdict` is defined later in app.css, so it wins
             on the styling the two rules share. */}
-        <span className="mistake-verdict result-wrong">Wrong</span>
+        {/* "Wrong" is the wrong word for a timeout -- nothing was answered, so
+            nothing was answered wrongly -- but `result-wrong` stays either way:
+            it is the app-wide marker for a graded miss and the e2e specs' one
+            stable hook for it. Only the word changes. */}
+        <span className="mistake-verdict result-wrong">{timedOut ? 'Too slow' : 'Wrong'}</span>
         {copy && <span className="mistake-class">{copy.label}</span>}
       </div>
 

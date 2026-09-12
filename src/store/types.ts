@@ -94,6 +94,20 @@ export interface Settings {
     // on one screen silently changes the other. Defaults to 'off' ("none"),
     // matching the operator's explicit ask.
     masteryDistractionFreq: DistractionFreq;
+    // R1 (docs/BACKLOG.md, decision-latency telemetry + optional shot clock):
+    // how long you get to answer a hand drill, in ms; 0 is off, which is the
+    // default. Running out grades the card as a `timeout` mistake (its own
+    // class -- see engine/grade.ts), not as a wrong play.
+    //
+    // Scoped to the two HAND drills (flashcards + deviation quiz) and nothing
+    // else. The count drills already own their own pacing (countIntervalMs, the
+    // Timed Challenge ramp), and layering a second clock over those would mean
+    // two timers disagreeing about the same run.
+    //
+    // Defaults to 0 for the reason drills/shotClock.ts's header gives: speed
+    // pressure applied before accuracy exists inflates in-drill scores without
+    // improving retained skill.
+    shotClockMs: number;
   };
   audio: AudioSettings;
 }
@@ -191,6 +205,7 @@ export const DEFAULT_SETTINGS: Settings = {
     messyCards: false,
     pacePressure: false,
     masteryDistractionFreq: 'off',
+    shotClockMs: 0,
   },
   audio: { ...DEFAULT_AUDIO },
 };
@@ -446,6 +461,7 @@ export const EMPTY_STATS: Stats = {
     'missed-deviation': 0,
     'phantom-deviation': 0,
     'wrong-anyway': 0,
+    timeout: 0,
   },
   countDrill: {
     history: [],

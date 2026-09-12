@@ -118,15 +118,27 @@ export function reachableReasons(): Set<string> {
   return reasons;
 }
 
-/** Every sentence a spoken correction can consist of. */
+/**
+ * Every sentence a spoken correction can consist of.
+ *
+ * Both openers are walked, not just the wrong-play one: R1's shot clock makes
+ * `classification: 'timeout'` say "Out of time." where a wrong play says
+ * "Wrong.", and an opener with no clip sends the ENTIRE correction to live TTS
+ * (clips.ts is all-or-nothing per utterance). The rest of the sentence is
+ * identical between the two, so this costs exactly one extra clip per voice.
+ */
+const CORRECTION_CLASSES = ['basic-error', 'timeout'] as const;
+
 export function correctionSentences(): string[] {
   const sentences = new Set<string>();
   for (const reason of reachableReasons()) {
     for (const expected of EXPECTED_ACTIONS) {
       for (let tc = TC_MIN; tc <= TC_MAX; tc++) {
-        const event = { correct: false, reason, expected, tc } as unknown as GradedEvent;
-        for (const sentence of splitIntoSentences(narrateCorrection(event))) {
-          sentences.add(sentence);
+        for (const classification of CORRECTION_CLASSES) {
+          const event = { correct: false, classification, reason, expected, tc } as unknown as GradedEvent;
+          for (const sentence of splitIntoSentences(narrateCorrection(event))) {
+            sentences.add(sentence);
+          }
         }
       }
     }

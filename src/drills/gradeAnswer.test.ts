@@ -10,6 +10,7 @@ import {
   gradeQuizAnswer,
   gradeMasteryAnswer,
   loadFlashSr,
+  TIMEOUT_ANSWER,
 } from './gradeAnswer';
 import type { SrDeck } from './spacedRepetition';
 import { _setStorage, loadStats } from '../store/persist';
@@ -438,5 +439,125 @@ describe('evCost (V3-8: what the mistake cost)', () => {
 
     // Guard against a vacuous pass: 330 cells x 5 answers, most of them wrong.
     expect(priced).toBeGreaterThan(800);
+  });
+});
+
+/* ---------------------------------------------------------------- */
+/* R1: the shot clock's timeout, through the shared grade path.      */
+/* ---------------------------------------------------------------- */
+
+/**
+ * A timeout is a graded miss with its own classification, and every one of
+ * those words is load-bearing:
+ *
+ *  - GRADED, so the card counts against the learner and returns to the review
+ *    deck. A drill that quietly skips the cards you freeze on would let you
+ *    grind the ones you already know.
+ *  - a MISS, never a correct answer, whatever the hand was.
+ *  - its OWN classification, so it never lands in the wrong-play taxonomy, is
+ *    never priced by the EV engine (there is no second action to price against),
+ *    and can be read separately from "I chose badly" -- freezing on a cell and
+ *    misplaying it need different work.
+ */
+describe('shot-clock timeout (R1)', () => {
+  const card: Flashcard = flash([H('10'), H('9')], '6', 'hard-19-v-6', 'stand');
+
+  it('grades as a miss under its own classification, never as a wrong play', () => {
+    const { event, correct } = buildFlashcardEvent(card, TIMEOUT_ANSWER, DEFAULT_RULES, 3000);
+
+    expect(correct).toBe(false);
+    expect(event.correct).toBe(false);
+    expect(event.classification).toBe('timeout');
+    expect(event.taken).toBe('timeout');
+  });
+
+  /**
+   * The correct play still has to be reported: the whole value of a timeout is
+   * being told what you could not produce.
+   */
+  it('still names the play that was wanted', () => {
+    const { event, correctAction } = buildFlashcardEvent(card, TIMEOUT_ANSWER, DEFAULT_RULES, 3000);
+    expect(event.expected).toBe('stand');
+    expect(correctAction).toBe('stand');
+    expect(event.reason).not.toBe('');
+  });
+
+  /**
+   * Guarded twice over, and worth saying which is which: `priceMistake`'s gate
+   * refuses anything that is not a `basic-error`, and independently of that the
+   * EV engine has no price for an action called "timeout" and returns null.
+   * Removing either one alone leaves this passing -- so this test pins the
+   * CONTRACT, not the mechanism, and the mechanism's two halves are pinned in
+   * gradeAnswer.ts's own gate tests and handEv.test.ts respectively.
+   */
+  it('is never priced: there is no second action to price against', () => {
+    const { event } = buildFlashcardEvent(card, TIMEOUT_ANSWER, DEFAULT_RULES, 3000);
+    expect(event.evCost).toBeUndefined();
+  });
+
+  /** The measured time, not the nominal limit -- see the drill views' handlers. */
+  it('carries the elapsed time it was given', () => {
+    const { event } = buildFlashcardEvent(card, TIMEOUT_ANSWER, DEFAULT_RULES, 31_412);
+    expect(event.elapsedMs).toBe(31_412);
+  });
+
+  it('does the same thing on the quiz path, on a deviation cell', () => {
+    const item: QuizItem = {
+      cards: [H('10'), H('6')],
+      up: '10',
+      tc: 3,
+      deviationId: '16v10',
+      isDeviationSide: true,
+      correct: 'stand',
+      label: '16 v 10: stand at TC >= 0',
+      isDistractor: false,
+    };
+    const event = buildQuizEvent(item, TIMEOUT_ANSWER, DEFAULT_RULES, 5000);
+
+    // A deviation cell would otherwise classify as missed-deviation. It does
+    // not: no play was chosen, so no play can be the one that was missed.
+    expect(event.classification).toBe('timeout');
+    expect(event.correct).toBe(false);
+    expect(event.expected).toBe('stand');
+  });
+
+  it('does the same thing on an insurance item', () => {
+    const item: QuizItem = {
+      cards: null,
+      up: 'A',
+      tc: 5,
+      deviationId: 'ins',
+      isDeviationSide: true,
+      correct: 'take-insurance',
+      label: 'Insurance: take at TC >= +3',
+      isDistractor: false,
+    };
+    const event = buildQuizEvent(item, TIMEOUT_ANSWER, DEFAULT_RULES, 5000);
+
+    expect(event.kind).toBe('insurance');
+    expect(event.correct).toBe(false);
+    // NOT missed-deviation, which is what this was before the timeout branch
+    // was added ahead of classifyInsurance: that function takes a boolean, so
+    // "no answer" collapsed into "declined", and at TC +5 a decline is a missed
+    // index -- crediting the learner with a decision they never made.
+    expect(event.classification).toBe('timeout');
+    expect(event.taken).toBe('timeout');
+  });
+
+  it('sends the card back into the review deck as a miss, and records it in Stats', () => {
+    const deck: SrDeck = {};
+    const result = gradeFlashcardAnswer(card, TIMEOUT_ANSWER, DEFAULT_RULES, 3000, deck, NOW);
+
+    // Reviewed as a miss: a freshly-missed card sits in the bottom box.
+    expect(result.nextDeck['hard-19-v-6']).toBeDefined();
+    // Box 0 is the bottom of the Leitner ladder -- where any miss lands.
+    expect(result.nextDeck['hard-19-v-6']!.box).toBe(0);
+
+    const stats = loadStats();
+    expect(stats.mistakes.timeout).toBe(1);
+    expect(stats.mistakes['basic-error']).toBe(0);
+    expect(stats.categories.hard.wrong).toBe(1);
+    // Unpriced, so nothing lands in the EV-cost history.
+    expect(stats.evCost.history).toHaveLength(0);
   });
 });

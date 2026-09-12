@@ -15,6 +15,7 @@ import { carControlsBlockers, describeCarControlsBlocker } from '../../audio/car
 import { readLog, clearLog, formatLog } from '../../audio/mediaSessionLog';
 import { MAX_VOLUME } from '../../audio/volume';
 import { detectVoiceSupport } from '../../audio/voiceRecognition';
+import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
 import {
   readVoiceHistory,
   clearVoiceHistory,
@@ -320,6 +321,23 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           format={(v) => `${v} cards`}
           onChange={(v) => updateDrill({ countLengthCards: v })}
         />
+        <div className="settings-row">
+          <span className="settings-label">Shot clock</span>
+          <Segmented
+            options={SHOT_CLOCK_OPTIONS.map((ms) => ({
+              value: String(ms),
+              label: shotClockLabel(ms),
+            }))}
+            value={String(settings.drill.shotClockMs)}
+            onChange={(v) => updateDrill({ shotClockMs: Number(v) })}
+          />
+        </div>
+        <p className="settings-note">
+          A time limit on flashcard and deviation-quiz answers. Running out counts the card as
+          missed — under "Ran out of time" on Stats, kept apart from wrong plays — and puts it back
+          in the review deck. Off by default: pressure before accuracy inflates the score without
+          building the recall.
+        </p>
       </section>
 
       <section className="settings-section">

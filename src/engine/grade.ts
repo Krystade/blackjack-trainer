@@ -7,7 +7,22 @@ import { upIndex } from './basicStrategy';
 import { DEFAULT_RULES } from './ruleset';
 import type { RuleSet } from './ruleset';
 
-export type MistakeClass = 'correct' | 'basic-error' | 'missed-deviation' | 'phantom-deviation' | 'wrong-anyway';
+/**
+ * `timeout` (R1's shot clock, drills/shotClock.ts) is the odd one out and is
+ * deliberately its own member rather than being folded into `basic-error`. The
+ * other four say WHICH wrong play was chosen; a timeout says none was. Filed as
+ * a basic error it would corrupt three things at once: the mistake taxonomy on
+ * Stats, the EV-cost history (which prices the gap between two chosen actions,
+ * and there is no second action here), and any future read of "which cells do I
+ * get wrong" -- a cell you freeze on and a cell you misplay need different work.
+ */
+export type MistakeClass =
+  | 'correct'
+  | 'basic-error'
+  | 'missed-deviation'
+  | 'phantom-deviation'
+  | 'wrong-anyway'
+  | 'timeout';
 export type EventKind = 'action' | 'insurance' | 'bet' | 'countCheck' | 'wong';
 
 /**

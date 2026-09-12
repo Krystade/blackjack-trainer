@@ -3315,3 +3315,69 @@ button {
   color: var(--accent);
   margin-bottom: 0.25rem;
 }
+
+/* ---------- R1: the shot clock (drills/shotClock.ts) ---------- */
+
+/* A CSS animation, not a JS ticker -- the drills must not re-render every frame
+   to draw something the compositor draws for free. The colour steps ride the
+   same keyframes as the width, so urgency has one definition and no threshold
+   is repeated in TypeScript. */
+.shot-clock {
+  height: 4px;
+  border-radius: 2px;
+  /* The track has to be faintly visible or the bar reads as a line of unknown
+     length rather than a countdown -- but it must be NEUTRAL. `--line` was
+     tried and is a green in the default theme, so a nearly-run-down clock read
+     as a nearly-full green bar with a small orange smudge at the end: exactly
+     backwards. A low-alpha wash of the ink colour is recessive in every theme
+     and can never be mistaken for the fill. Mixed in OKLab, where a partial
+     blend keeps its chroma instead of greying out. The `--bg-sunken` line above
+     it is the fallback for anything without color-mix. */
+  background: var(--bg-sunken);
+  background: color-mix(in oklab, var(--ink) 14%, transparent);
+  overflow: hidden;
+  /* Full-bleed within the drill's content column, sitting directly under the
+     prompt where the eye already is between reading the hand and answering. */
+  margin: 0 0 0.6rem;
+}
+
+.shot-clock-fill {
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  background: var(--good);
+  animation-name: shot-clock-drain;
+  animation-timing-function: linear;
+  /* `forwards` matters: without it an expired bar snaps back to full for the
+     moment between the timer firing and the correction rendering. */
+  animation-fill-mode: forwards;
+  /* animation-duration is set inline, from the configured limit. */
+}
+
+/* Answered, or a modal is over the card: hold the bar exactly where it is
+   rather than letting it run down behind a correction nobody is racing. */
+.shot-clock-fill[data-paused='true'] {
+  animation-play-state: paused;
+}
+
+@keyframes shot-clock-drain {
+  0% {
+    transform: scaleX(1);
+    background: var(--good);
+  }
+  50% {
+    background: var(--good);
+  }
+  80% {
+    background: var(--accent);
+  }
+  100% {
+    transform: scaleX(0);
+    background: var(--bad);
+  }
+}
+
+/* prefers-reduced-motion is a vestibular signal, and a 4px bar shrinking in
+   place is not what it is protecting against -- removing it would also remove
+   the only indication of how much time is left, which is the whole feature. It
+   is kept, and kept linear (no easing, no pulse). */

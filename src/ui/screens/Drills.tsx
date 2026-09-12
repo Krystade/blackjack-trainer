@@ -19,7 +19,9 @@ import {
   gradeFlashcardAnswer as gradeFlashcard,
   gradeQuizAnswer as gradeQuiz,
   loadFlashSr,
-  loadQuizSr } from '../../drills/gradeAnswer';
+  loadQuizSr,
+  TIMEOUT_ANSWER } from '../../drills/gradeAnswer';
+import { shotClockExpired, shotClockOn } from '../../drills/shotClock';
 import type { SrDeck } from '../../drills/spacedRepetition';
 import { pickMixedType } from '../../drills/mixedSession';
 import type { MixedItemType } from '../../drills/mixedSession';
@@ -29,6 +31,7 @@ import { PlayingCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import { ZonePad } from '../components/ZonePad';
 import { MistakeCard } from '../components/MistakeCard';
+import { ShotClockBar } from '../components/ShotClockBar';
 import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
@@ -197,6 +200,21 @@ function FlashcardsView({
   // start BELOW it (keeping its Dim-screen/Eyes-free toggles tappable).
   const [controlsRef, padTop] = useControlStripBottom();
 
+  // R1's shot clock. The timer is a plain setTimeout rather than anything
+  // derived from the countdown bar: the bar is a CSS animation with no callback
+  // and no JS state, so the deadline has to be kept separately. Both are keyed
+  // to the same runId, which is what stops a timer from a previous card grading
+  // the one now on screen.
+  const shotClockMs = settings.drill.shotClockMs;
+  const shotClockTimerRef = useRef<number | null>(null);
+
+  const clearShotClock = () => {
+    if (shotClockTimerRef.current !== null) {
+      window.clearTimeout(shotClockTimerRef.current);
+      shotClockTimerRef.current = null;
+    }
+  };
+
   const clearAdvanceTimer = () => {
     if (advanceTimerRef.current !== null) {
       window.clearTimeout(advanceTimerRef.current);
@@ -278,6 +296,7 @@ function FlashcardsView({
     // Without it, a correction being spoken carried on over the drill picker.
     cancelSpeech();
     clearAdvanceTimer();
+    clearShotClock();
     void releaseWakeLock();
     onBack();
   };
@@ -371,6 +390,70 @@ function FlashcardsView({
     setFeedback({ correct: event.correct, correctAction, event });
     scheduleAutoAdvance(spokenMs);
   };
+
+  /**
+   * The shot clock ran out (R1, drills/shotClock.ts).
+   *
+   * Graded, not skipped: the card counts as missed, the SR deck takes it as a
+   * miss, and Stats files it under `timeout` rather than as a wrong play --
+   * `TIMEOUT_ANSWER` carries that all the way through the shared grade path, so
+   * the flashcard and quiz drills cannot disagree about what a timeout is.
+   *
+   * The elapsed time recorded is MEASURED, never the nominal limit: a
+   * backgrounded tab throttles timers hard, and writing "3000ms" into the
+   * latency history for a card that actually sat there for half a minute would
+   * quietly poison the median this whole feature is built on.
+   *
+   * Auto-advances in every mode, not just eyes-free. Someone who let the clock
+   * run out is not looking at the screen (or has walked away), and leaving a
+   * dead card up waiting for a tap is the one outcome that makes a timed drill
+   * feel broken.
+   */
+  const handleShotClockExpiry = () => {
+    const elapsedMs = performance.now() - promptShownAtRef.current;
+    if (!shotClockExpired(elapsedMs, shotClockMs)) return;
+
+    const result = gradeFlashcard(
+      card,
+      TIMEOUT_ANSWER,
+      activeProfile.rules,
+      elapsedMs,
+      srDeckRef.current,
+      Date.now(),
+    );
+    srDeckRef.current = result.nextDeck;
+
+    const spokenMs = speakCorrectionOnceGated(result.event, (text) =>
+      eyesFree || voiceOn
+        ? speak(text, speechOptsFrom(settings.audio))
+        : audio.say(text, { interrupt: true }),
+    );
+    audio.ding('bad');
+    setFeedback({ correct: false, correctAction: result.correctAction, event: result.event });
+    scheduleAutoAdvance(spokenMs);
+  };
+
+  // Arm the clock for the card on screen. Re-armed whenever the card changes,
+  // and cleared the moment an answer lands (`feedback`), the chart overlay goes
+  // up over a frozen correction, or the limit is switched off in Settings
+  // mid-drill. `runIdRef` is not a dep: it is a ref, and `card` changes in the
+  // same render that bumps it.
+  useEffect(() => {
+    clearShotClock();
+    if (!shotClockOn(shotClockMs)) return;
+    if (feedback || showChart) return;
+    const runId = runIdRef.current;
+    shotClockTimerRef.current = window.setTimeout(() => {
+      shotClockTimerRef.current = null;
+      // The card moved on while this timer was queued -- grading now would
+      // score the hand on screen against a clock that belonged to a previous
+      // one. Same guard, same reason, as the auto-advance timer's.
+      if (runIdRef.current !== runId) return;
+      handleShotClockExpiry();
+    }, shotClockMs);
+    return clearShotClock;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card, feedback, showChart, shotClockMs]);
 
   /**
    * A spoken answer.
@@ -590,6 +673,15 @@ function FlashcardsView({
         </div>
       </div>
 
+      {/* Between the hand and the answer, which is where the eye already is.
+          Paused rather than hidden once an answer is in, so the bar does not
+          vanish out from under a glance at the correction. */}
+      <ShotClockBar
+        limitMs={shotClockMs}
+        restartKey={runIdRef.current}
+        paused={feedback !== null || showChart}
+      />
+
       <div className="message-strip">
         {feedback && (
           <>
@@ -727,6 +819,19 @@ function DeviationQuizView({
   // start BELOW it (keeping its Dim-screen/Eyes-free toggles tappable).
   const [controlsRef, padTop] = useControlStripBottom();
 
+  // R1's shot clock -- identical plumbing to FlashcardsView's, deliberately:
+  // both drills ask the same question of the same limit, and the shared
+  // TIMEOUT_ANSWER means neither can invent its own idea of what a timeout is.
+  const shotClockMs = settings.drill.shotClockMs;
+  const shotClockTimerRef = useRef<number | null>(null);
+
+  const clearShotClock = () => {
+    if (shotClockTimerRef.current !== null) {
+      window.clearTimeout(shotClockTimerRef.current);
+      shotClockTimerRef.current = null;
+    }
+  };
+
   const clearAdvanceTimer = () => {
     if (advanceTimerRef.current !== null) {
       window.clearTimeout(advanceTimerRef.current);
@@ -820,6 +925,7 @@ function DeviationQuizView({
     // Without it, a correction being spoken carried on over the drill picker.
     cancelSpeech();
     clearAdvanceTimer();
+    clearShotClock();
     void releaseWakeLock();
     onBack();
   };
@@ -880,6 +986,41 @@ function DeviationQuizView({
 
     setFeedback({ correct: event.correct, event });
   };
+
+  /**
+   * The shot clock ran out. See FlashcardsView's handler for the reasoning --
+   * the same one applies here, including insurance items: "take or decline?" is
+   * a decision with a deadline at a real table too, and letting it sit
+   * unanswered is not a third option.
+   */
+  const handleShotClockExpiry = () => {
+    const elapsedMs = performance.now() - promptShownAtRef.current;
+    if (!shotClockExpired(elapsedMs, shotClockMs)) return;
+
+    const event = gradeQuizAnswer(TIMEOUT_ANSWER);
+    const spokenMs = speakCorrectionOnceGated(event, (text) =>
+      eyesFree ? speak(text, speechOptsFrom(settings.audio)) : audio.say(text, { interrupt: true }),
+    );
+    audio.ding('bad');
+    setFeedback({ correct: false, event });
+    scheduleAutoAdvance(spokenMs);
+  };
+
+  // Arm the clock for the item on screen; see FlashcardsView's copy for why
+  // each dep is here and why runIdRef is not.
+  useEffect(() => {
+    clearShotClock();
+    if (!shotClockOn(shotClockMs)) return;
+    if (feedback || showChart) return;
+    const runId = runIdRef.current;
+    shotClockTimerRef.current = window.setTimeout(() => {
+      shotClockTimerRef.current = null;
+      if (runIdRef.current !== runId) return;
+      handleShotClockExpiry();
+    }, shotClockMs);
+    return clearShotClock;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item, feedback, showChart, shotClockMs]);
 
   // Eyes-free zone tap. Non-insurance items: ZoneId and Action are the
   // identical five-member literal union, so the tapped zone maps straight
@@ -1082,6 +1223,14 @@ function DeviationQuizView({
       ) : (
         <div className="quiz-insurance-prompt">Dealer shows an Ace. Insurance?</div>
       )}
+
+      {/* Below the hand (or the insurance prompt) and above the answer, the
+          same place FlashcardsView puts it. */}
+      <ShotClockBar
+        limitMs={shotClockMs}
+        restartKey={runIdRef.current}
+        paused={feedback !== null || showChart}
+      />
 
       <div className="message-strip">
         {feedback && (

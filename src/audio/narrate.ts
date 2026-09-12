@@ -211,11 +211,24 @@ export function narrateHandResult(
   return `Hand ${numberWord(handIndex + 1)}: ${narrateResult(result, net)}`;
 }
 
+/**
+ * The opener alone distinguishes a shot-clock timeout from a wrong play, and
+ * that is a deliberate minimum: it is ONE extra sentence, so the clip cascade
+ * (audio/clips.ts splits on terminal punctuation and looks each piece up) covers
+ * the whole timeout correction with a single new file per voice. Everything
+ * after it is the same reason/expected/count the wrong-play correction already
+ * says, and already has clips for.
+ *
+ * "Wrong." would not be false here, but it is the wrong lesson: the learner did
+ * not pick the wrong play, they did not pick one, and eyes-free that distinction
+ * is only available in the words.
+ */
 export function narrateCorrection(event: GradedEvent): string {
   if (event.correct) {
     return 'Correct.';
   }
-  return `Wrong. ${narrateReason(event.reason)} Correct play was ${narrateAction(event.expected as Action)}. True count was ${narrateTc(event.tc)}.`;
+  const opener = event.classification === 'timeout' ? 'Out of time.' : 'Wrong.';
+  return `${opener} ${narrateReason(event.reason)} Correct play was ${narrateAction(event.expected as Action)}. True count was ${narrateTc(event.tc)}.`;
 }
 
 export function narrateCountPrompt(): string {
@@ -395,6 +408,7 @@ const MISTAKE_SUMMARY_ORDER: Exclude<MistakeClass, 'correct'>[] = [
   'missed-deviation',
   'phantom-deviation',
   'wrong-anyway',
+  'timeout',
 ];
 
 const MISTAKE_SUMMARY_LABELS: Record<Exclude<MistakeClass, 'correct'>, { singular: string; plural: string }> = {
@@ -402,6 +416,7 @@ const MISTAKE_SUMMARY_LABELS: Record<Exclude<MistakeClass, 'correct'>, { singula
   'missed-deviation': { singular: 'missed deviation', plural: 'missed deviations' },
   'phantom-deviation': { singular: 'phantom deviation', plural: 'phantom deviations' },
   'wrong-anyway': { singular: 'wrong-anyway play', plural: 'wrong-anyway plays' },
+  timeout: { singular: 'time-out', plural: 'time-outs' },
 };
 
 /**

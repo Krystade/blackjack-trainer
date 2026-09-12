@@ -48,13 +48,15 @@ const MISTAKE_ORDER: Exclude<MistakeClass, 'correct'>[] = [
   'missed-deviation',
   'phantom-deviation',
   'wrong-anyway',
+  'timeout',
 ];
 
 const MISTAKE_LABELS: Record<Exclude<MistakeClass, 'correct'>, string> = {
   'basic-error': 'Basic-strategy errors',
   'missed-deviation': 'Missed deviations',
   'phantom-deviation': 'Phantom deviations',
-  'wrong-anyway': 'Wrong either way' };
+  'wrong-anyway': 'Wrong either way',
+  timeout: 'Ran out of time' };
 
 function pct(right: number, total: number): string {
   if (total === 0) return '—';

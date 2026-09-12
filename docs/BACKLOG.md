@@ -119,7 +119,7 @@ CONVERGENCE first** — where independent legs (code attack / learning science /
 practitioner community) point at the same gap, confidence is high regardless of any one
 leg's opinion.
 
-### R1 · Decision-latency telemetry + optional shot clock — S — **✅ SHIPPED 5b617ba (telemetry half; shot clock still open)**
+### R1 · Decision-latency telemetry + optional shot clock — S — **✅ COMPLETE 2026-09-11 (telemetry 5b617ba; shot clock 2026-09-11)**
 Convergence: RT#1 (no latency field on `GradedEvent`; the app can't detect absence of
 automaticity — the variable that most predicts table survival) **meets** TS (speed-accuracy
 literature: you can't gate on speed you don't measure) **meets** CM#3 (dealer-training
@@ -127,6 +127,32 @@ frames the target as instant *recognition*, not fast calculation). This is the
 measurement layer that makes almost everything below provable — including D1 (distraction
 must be scored as "count kept AND how much slower"). Add `elapsedMs` to graded events +
 surface per-drill; the shot clock is a cheap follow-on. Highest leverage in the file.
+
+**Shot clock, 2026-09-11.** `drill.shotClockMs` (Off / 3s / 5s / 8s, off by default) puts a
+deadline on the two HAND drills — flashcards and the deviation quiz. Not on the count drills:
+those already own their pacing, and a second clock over them would be two timers disagreeing
+about one run.
+
+- Running out is a GRADED MISS with its own `timeout` mistake class, not a nudge and not a
+  wrong play. Folded into `basic-error` it would corrupt the mistake taxonomy, the EV-cost
+  history (V3-8 prices the gap between two CHOSEN actions, and there is no second action
+  here), and any read of "which cells do I get wrong" — freezing on a cell and misplaying it
+  need different work. The card goes back into the SR deck as a miss.
+- The recorded `elapsedMs` is MEASURED, never the nominal limit: a backgrounded tab throttles
+  timers hard, and writing "3000" for a card that sat for half a minute would poison the very
+  median this feature is built on.
+- Two things it caught on the way in. Insurance timeouts were being graded as deliberate
+  DECLINES (`classifyInsurance` takes a boolean, so "no answer" collapsed into "said no" — at
+  a count above the index that reads as a missed deviation, crediting a decision nobody made).
+  And the correction panel printed "You played: timeout" verbatim.
+- The countdown is a CSS animation keyed to the card, not a JS ticker — the drill must not
+  re-render every frame to draw what the compositor draws free, and a ticker keeps running in
+  a backgrounded tab. The track is a low-alpha OKLab wash of the ink colour: `--line` was
+  tried first and is a green in the default theme, which made a nearly-expired clock read as
+  a nearly-full green bar.
+- Spoken corrections open "Out of time." instead of "Wrong." — one extra sentence, so the
+  clip cascade covers the whole timeout correction with a single new file per voice (524 now).
+  Eyes-free, the words are the only place that distinction exists.
 
 ### R2 · Accuracy-gate the hard modes (fix the timed ramp; gate distraction/speed/interleave) — S — **HIGH** — **✅ SHIPPED (all three halves)**
 Distraction + interleave gating closed 2026-09-10: the count drill's Distractions control and

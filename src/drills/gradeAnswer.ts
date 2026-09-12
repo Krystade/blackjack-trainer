@@ -106,6 +106,22 @@ export function persistGrade(event: GradedEvent, retention: RetentionRow | null)
 /* Pure event builders (deterministic given their inputs).           */
 /* ---------------------------------------------------------------- */
 
+/**
+ * What the shot clock submits when nobody answered (R1, drills/shotClock.ts).
+ *
+ * A sentinel rather than a sixth `Action`, and deliberately: `Action` is the set
+ * of plays that exist at a table, and every chart lookup, legality gate and
+ * deviation entry in the engine is typed by it. Widening it to carry "no answer"
+ * would push a non-play through all of that and make every exhaustive switch a
+ * lie. It rides in the `taken` field, which `GradedEvent` already types as a
+ * plain string for exactly this kind of non-action ("take-insurance" is the
+ * other).
+ */
+export const TIMEOUT_ANSWER = 'timeout';
+
+/** An answer a hand drill can grade: a real play, or the clock running out. */
+export type DrillAnswer = Action | typeof TIMEOUT_ANSWER;
+
 export function cellCategory(cellId: string, correct: Action): 'hard' | 'soft' | 'pairs' | 'surrender' {
   if (correct === 'surrender') return 'surrender';
   if (cellId.startsWith('hard-')) return 'hard';
@@ -154,7 +170,7 @@ function priceMistake(
  */
 export function buildFlashcardEvent(
   card: Flashcard,
-  taken: Action,
+  taken: DrillAnswer,
   rules: RuleSet,
   elapsedMs: number,
   source: EventSource = 'flashcard',
@@ -162,7 +178,14 @@ export function buildFlashcardEvent(
   const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: true };
   const withCount = correctPlay(card.cards, card.up, 0, ctx, rules);
   const basicOnly = basicPlay(card.cards, card.up, ctx, rules);
-  const { classification, correct } = classifyAction(taken, withCount, basicOnly, card.cards, card.up, 0, rules);
+  // A timeout never reaches classifyAction: that function asks which of the
+  // five plays was chosen, and the answer here is none of them. Routed through
+  // it with any stand-in action it would come back as that action's mistake
+  // class -- so the taxonomy would record a play the learner never made.
+  const { classification, correct } =
+    taken === TIMEOUT_ANSWER
+      ? ({ classification: 'timeout', correct: false } as const)
+      : classifyAction(taken, withCount, basicOnly, card.cards, card.up, 0, rules);
 
   const event: GradedEvent = {
     kind: 'action',
@@ -195,14 +218,22 @@ export function buildFlashcardEvent(
 export function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet, elapsedMs?: number): GradedEvent {
   if (item.cards === null) {
     const take = taken === 'take-insurance';
-    const { classification, correct } = classifyInsurance(take, item.tc, rules);
+    // A timeout is not a decline, and classifyInsurance cannot tell them apart:
+    // it takes a boolean, so "no answer" collapses into "said no" -- which at a
+    // count above the index reads as a MISSED DEVIATION, crediting the learner
+    // with a decision they never made. The timeout branch therefore comes first
+    // here, exactly as it does on the action path below.
+    const timedOut = taken === TIMEOUT_ANSWER;
+    const { classification, correct } = timedOut
+      ? ({ classification: 'timeout', correct: false } as const)
+      : classifyInsurance(take, item.tc, rules);
     return {
       kind: 'insurance',
       source: 'quiz',
       category: 'insurance',
       correct,
       classification,
-      taken: take ? 'take' : 'decline',
+      taken: timedOut ? TIMEOUT_ANSWER : take ? 'take' : 'decline',
       expected: item.correct === 'take-insurance' ? 'take' : 'decline',
       reason: item.label,
       deviationId: item.deviationId,
@@ -217,7 +248,11 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet, el
   const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: false };
   const withCount = correctPlay(item.cards, item.up, item.tc, ctx, rules);
   const basicOnly = basicPlay(item.cards, item.up, ctx, rules);
-  const { classification, correct } = classifyAction(taken as Action, withCount, basicOnly, item.cards, item.up, item.tc, rules);
+  // See buildFlashcardEvent: a shot-clock timeout is not one of the five plays.
+  const { classification, correct } =
+    taken === TIMEOUT_ANSWER
+      ? ({ classification: 'timeout', correct: false } as const)
+      : classifyAction(taken as Action, withCount, basicOnly, item.cards, item.up, item.tc, rules);
 
   return {
     kind: 'action',
@@ -260,7 +295,7 @@ export interface FlashGradeResult {
  */
 export function gradeFlashcardAnswer(
   card: Flashcard,
-  taken: Action,
+  taken: DrillAnswer,
   rules: RuleSet,
   elapsedMs: number,
   deck: SrDeck,
@@ -291,7 +326,7 @@ export function gradeFlashcardAnswer(
  */
 export function gradeMasteryAnswer(
   cell: Flashcard,
-  taken: Action,
+  taken: DrillAnswer,
   rules: RuleSet,
   elapsedMs: number,
 ): { event: GradedEvent; correctAction: Action; correct: boolean } {
