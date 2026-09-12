@@ -465,3 +465,33 @@ test('the shuffle message appears on the round after the cut card is reached', a
   expect(announced, 'expected a shuffle to be announced within six single-deck rounds').toBe(true);
   await expect(shuffle).toHaveText('Shuffling…');
 });
+
+/**
+ * RV7: the other half of R5's wong decision.
+ *
+ * Dealing in at a count the spread says to leave used to produce exactly one
+ * grade — a CORRECT bet, because the table minimum is what the spread asked
+ * for. The round the drill exists to discourage was the round it praised.
+ */
+test('RV7: dealing in at a should-wong count is graded, not just the min bet', async ({ page }) => {
+  await withSettings(page, { feedbackMode: 'test', betSpreadOn: true, countCheckEvery: 0 });
+  await page.goto('/?seed=6&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+
+  // Deal at the top of the shoe: TC 0, where the spread wants only the floor.
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await playRoundByAdvice(page);
+
+  await page.locator('.end-btn').click();
+  await expect(page.locator('.report-screen')).toBeVisible();
+
+  // Both grades are there, and they disagree — which is the point. The bet
+  // matched the spread; being in the hand at all did not.
+  const wongRow = page.locator('.report-categories tr', { hasText: 'wong' });
+  await expect(wongRow).toBeVisible();
+  // Columns are right / wrong / percent, so the row reads "wong 0 1 0%".
+  await expect(wongRow.locator('td')).toHaveText(['wong', '0', '1', '0%']);
+  await expect(
+    page.locator('.report-categories tr', { hasText: /^bet/ }).locator('td'),
+  ).toHaveText(['bet', '1', '0', '100%']);
+});

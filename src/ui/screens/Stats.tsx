@@ -58,7 +58,10 @@ const CATEGORY_LABELS: Record<Category, string> = {
   insurance: 'Insurance',
   bet: 'Bet sizing',
   countCheck: 'Count checks',
-  wong: 'Wong-outs' };
+  // RV7: this covers the play-or-sit decision on EVERY round with a spread
+  // on, not only the rounds actually sat out -- so 'Wong-outs' would now name
+  // a subset of what it counts.
+  wong: 'Play or sit out' };
 
 const MISTAKE_ORDER: Exclude<MistakeClass, 'correct'>[] = [
   'basic-error',

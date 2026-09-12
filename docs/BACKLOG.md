@@ -249,12 +249,21 @@ naturally: sit through negative counts, Deal when the count rises. Engineering: 
 `beginRound()` (shared bookkeeping/reshuffle), `buildSeats` keys player-hand count off
 `bets.length` ([] ⇒ empty player seat, byte-identical for staked rounds); `wong` category is
 migration-safe. 2935 unit (+8 sit-out) + 92 e2e (+1 wong-out) green.
-FOLLOW-ON (deliberately deferred to keep stage 1 additive/zero-risk to the money-math
-suite): grade the *play* path symmetrically — dealing in at a should-wong count should
-register a wong error too, not just be silently rewarded by a "correct" min-bet grade.
-Requires touching the heavily-tested deal path's event stream (push a `wong` event after the
-existing `bet` events); event-order-sensitive tests (game.test.ts:286/303/325/796/1298) must
-be audited first. Also possible: a standalone back-counting *drill* mode (watch a shoe, tap
+FOLLOW-ON — ✅ SHIPPED 2026-09-12 (RV7). Dealing in at a should-wong count now registers a
+wong error instead of being silently rewarded by a "correct" min-bet grade. It was the one
+round the drill existed to discourage and the only grade it produced said "correct": the
+table minimum is exactly what the spread asked for, so the bet was right and nothing else
+was measured. Playing is the same decision as sitting out made the other way, so it emits
+the same event against the same criterion — `sitOutIsCorrect`, the profile's own spread, no
+hard-coded count threshold. Every round with a spread on now contributes one play-or-sit
+decision rather than only the rounds the player chose to leave, which is what makes the
+accuracy figure mean anything; the Stats category is relabelled "Play or sit out", since
+"Wong-outs" would name a subset of what it counts. The bet and the wong on such a round
+disagree on purpose: right size, wrong to be in the hand. Pushed AFTER the bet events, so
+`events[0]` is still the first hand's bet; the event-order-sensitive tests
+(game.test.ts:286/303/325/796/1298) were audited first and all read either the LAST event
+after a later decision or a filtered subset, so none were affected. Three mutants, all
+killed — including the one that restores the old behaviour exactly. Also possible: a standalone back-counting *drill* mode (watch a shoe, tap
 enter/sit) as the fuller unstaked version RT#2 references.
 
 ### R6 · Discard-tray depth cue on the live table — S — MEDIUM (cheap realism repair) — ✅ COMPLETE 2026-09-12
@@ -419,8 +428,9 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
     thresholds.
   ❌ DECLINED 2026-07-29 (operator): no composite score — individual per-skill grades are plenty,
   since the goal is to get every skill to 100% anyway. Keep skills scored separately.
-- **RV7–9 · known-deferred items re-confirmed as live mistrainings:** R5 rewards min-betting a
-  should-wong count (the symmetric-grading follow-on already logged under R5); bet grading demands
+- **RV7–9 · known-deferred items re-confirmed as live mistrainings:** ~~R5 rewards min-betting a
+  should-wong count (the symmetric-grading follow-on already logged under R5)~~ **✅ RV7 DONE
+  2026-09-12 — see the R5 follow-on above**; bet grading demands
   exact ramp conformity with zero cover concept (RT#11); ~~count drill grades final RC only, so
   offsetting mid-count errors pass silently (RT#12)~~ **✅ RT#12 DONE 2026-09-12**.
   - **RT#12 · Mid-run count checkpoints.** Filed twice (2026-07-23, again 2026-07-28) and both

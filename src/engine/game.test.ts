@@ -794,6 +794,58 @@ describe('wong-out / sit-out (R5)', () => {
     game.sitOut();
     expect(game.events.filter((e) => e.kind === 'wong')).toHaveLength(0);
   });
+
+  // RV7: the other half of the same decision. Before this, playing a count the
+  // spread said to leave was scored as a CORRECT bet and nothing else.
+  it('RV7: dealing in at a should-wong count grades the wong decision WRONG', () => {
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('2', '5', '3', '4'));
+    game.startRound(1); // the table minimum, which is what the spread asks for
+    const wong = game.events.filter((e) => e.kind === 'wong');
+    expect(wong).toHaveLength(1);
+    expect(wong[0].correct).toBe(false);
+    expect(wong[0].taken).toBe('play');
+    expect(wong[0].expected).toBe('sit-out');
+  });
+
+  it('RV7: the bet is still CORRECT on that round -- right size, wrong to be in the hand', () => {
+    // The asymmetry this fixes: a min bet at a should-wong count matched the
+    // spread exactly, so the only grade the round produced said "correct".
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('2', '5', '3', '4'));
+    game.startRound(1);
+    const bet = game.events.filter((e) => e.kind === 'bet');
+    expect(bet).toHaveLength(1);
+    expect(bet[0].correct).toBe(true);
+    expect(game.events.filter((e) => e.kind === 'wong')[0]!.correct).toBe(false);
+  });
+
+  it('RV7: dealing in at a count the spread wants a real bet at grades CORRECT', () => {
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('5', 'K', '3', '4'));
+    game.runningCount = 6; // tc well into "bet up" territory, as in the sit-out test above
+    game.startRound(4);
+    const wong = game.events.filter((e) => e.kind === 'wong');
+    expect(wong).toHaveLength(1);
+    expect(wong[0].correct).toBe(true);
+    expect(wong[0].expected).toBe('play');
+  });
+
+  it('RV7: betSpreadOn OFF grades no wong on a dealt round either', () => {
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: false }), rig('2', '5', '3', '4'));
+    game.startRound(1);
+    expect(game.events.filter((e) => e.kind === 'wong')).toHaveLength(0);
+  });
+
+  it('RV7: one wong event per ROUND, after the bet event of every hand', () => {
+    // Positional: events[0] is the first hand's bet, which existing callers
+    // read directly. The wong lands last, once, however many hands were bet.
+    const seats: SeatConfig = { bots: 0, playerHands: 2, playerPosition: 0, botMistakePct: 0 };
+    const game = Game.withRiggedShoe(
+      cfg({ betSpreadOn: true, seats }),
+      rig('2', '5', '3', '4', '6', '7'),
+    );
+    game.startRound([1, 1]);
+    const kinds = game.events.map((e) => e.kind);
+    expect(kinds).toEqual(['bet', 'bet', 'wong']);
+  });
 });
 
 describe('count check', () => {

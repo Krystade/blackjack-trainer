@@ -415,6 +415,39 @@ export class Game {
           tc: preDealTc,
         });
       }
+
+      /**
+       * RV7 / RT#2 (docs/BACKLOG.md): the wong decision is graded on BOTH
+       * sides now.
+       *
+       * Sitting out has always been graded. Dealing in was not -- so playing
+       * a count the spread says to leave scored as a CORRECT bet (the table
+       * minimum is what the spread asked for) and nothing else. The app was
+       * rewarding, one round at a time, the exact habit R5 exists to break:
+       * playing all counts at the floor.
+       *
+       * Playing is the same decision as sitting out, made the other way, so
+       * it emits the same event against the same criterion -- correct unless
+       * the spread calls only for the table minimum at this true count. That
+       * makes the two sides complementary and the accuracy figure honest:
+       * every round with a spread on now contributes one play-or-sit
+       * decision, rather than only the rounds the player chose to leave.
+       *
+       * Pushed AFTER the bet events on purpose: `events[0]` is the first
+       * hand's bet, which existing callers and tests read positionally.
+       */
+      const shouldWong = this.sitOutIsCorrect(preDealTc);
+      this.events.push({
+        source: 'table',
+        kind: 'wong',
+        category: 'wong',
+        correct: !shouldWong,
+        classification: shouldWong ? 'basic-error' : 'correct',
+        taken: 'play',
+        expected: shouldWong ? 'sit-out' : 'play',
+        reason: `Wong decision at tc ${preDealTc}`,
+        tc: preDealTc,
+      });
     }
 
     this.dealerCards = [];
