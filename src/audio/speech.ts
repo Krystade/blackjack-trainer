@@ -29,6 +29,7 @@ import { getSharedAudioContext, _resetSharedAudioContextForTest } from './audioC
 // Re-exported: existing specs import this reset helper from speech.ts.
 export { _resetSharedAudioContextForTest };
 import { initMediaSession, setNowPlaying, setPlaybackState } from './mediaSession';
+import { invokeWheelCommand } from './wheelCommands';
 
 declare global {
   interface Window {
@@ -440,6 +441,11 @@ function announceToMediaSession(text: string): void {
     },
     stop: () => {
       cancelSpeech();
+    },
+    // Routed rather than handled here: only the screen that is up knows what
+    // "yes" means to it, and speech.ts must not import React or the store.
+    advance: () => {
+      invokeWheelCommand('advance');
     },
   });
   setNowPlaying(text, (import.meta.env.BASE_URL as string | undefined) ?? '');

@@ -11,6 +11,7 @@ import { useGame } from '../useGame';
 import type { SessionReport } from '../useGame';
 import { useAudio } from '../../audio/useAudio';
 import { useVoiceControl } from '../useVoiceControl';
+import { useWheelCommand } from '../useWheelCommand';
 import {
   detectVoiceSupport,
   VOICE_ACTIONS,
@@ -441,6 +442,14 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         return 'not a count';
     }
   };
+
+
+  // The steering wheel, mapped onto the same affirmative the microphone uses.
+  // Deliberately NOT gated on `voiceOn`: the wheel only reaches this app when
+  // the microphone is OFF (an open mic switches the car to its hands-free call
+  // route and the wheel's buttons go to that call), so gating it on voice would
+  // arm it in exactly the state where it cannot work. See audio/wheelCommands.ts.
+  useWheelCommand(() => handleVoiceCommand('yes'));
 
   const voice = useVoiceControl({
     enabled: voiceOn,

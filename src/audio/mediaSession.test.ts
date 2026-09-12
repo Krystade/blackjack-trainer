@@ -55,7 +55,12 @@ afterEach(() => {
 });
 
 describe('initMediaSession', () => {
-  it('repeats on the discrete skip buttons, which a car only sends when pressed', () => {
+  let advanced = 0;
+  beforeEach(() => {
+    advanced = 0;
+  });
+
+  it('repeats on skip-back and advances on skip-forward', () => {
     const actions = new Map<string, () => void>();
     withMediaSession({
       metadata: null,
@@ -63,13 +68,14 @@ describe('initMediaSession', () => {
     });
 
     let repeated = 0;
-    initMediaSession({ repeat: () => (repeated += 1), stop: () => {} });
+    initMediaSession({ repeat: () => (repeated += 1), stop: () => {}, advance: () => (advanced += 1) });
 
-    // Whichever of the two this head unit exposes, the driver gets "say it
-    // again" -- and neither is ever sent by a car of its own accord.
+    // Neither is ever sent by a car of its own accord, so both are real
+    // presses -- and they must not mean the same thing: skip-forward is the
+    // only way to ANSWER a drill without the microphone that kills the wheel.
     actions.get('previoustrack')!();
     actions.get('nexttrack')!();
-    expect(repeated).toBe(2);
+    expect([repeated, advanced]).toEqual([1, 1]);
   });
 
   /**
@@ -90,7 +96,7 @@ describe('initMediaSession', () => {
 
     let repeated = 0;
     let stopped = 0;
-    initMediaSession({ repeat: () => (repeated += 1), stop: () => (stopped += 1) });
+    initMediaSession({ repeat: () => (repeated += 1), stop: () => (stopped += 1), advance: () => (advanced += 1) });
 
     // Registered, so the slot is not handed back to whatever was playing
     // before -- and inert, so an unattended resume cannot speak.
@@ -98,7 +104,9 @@ describe('initMediaSession', () => {
     actions.get('play')!();
     actions.get('play')!();
     actions.get('play')!();
-    expect([repeated, stopped]).toEqual([0, 0]);
+    // Advancing on an unattended resume would be worse than repeating: it
+    // would submit answers to a drill nobody was touching.
+    expect([repeated, stopped, advanced]).toEqual([0, 0, 0]);
   });
 
   it('maps pause and stop onto stopping', () => {
@@ -109,7 +117,7 @@ describe('initMediaSession', () => {
     });
 
     let stopped = 0;
-    initMediaSession({ repeat: () => {}, stop: () => (stopped += 1) });
+    initMediaSession({ repeat: () => {}, stop: () => (stopped += 1), advance: () => (advanced += 1) });
     actions.get('pause')!();
     actions.get('stop')!();
     expect(stopped).toBe(2);
@@ -126,13 +134,13 @@ describe('initMediaSession', () => {
 
     let repeated = 0;
     let stopped = 0;
-    initMediaSession({ repeat: () => (repeated += 1), stop: () => (stopped += 1) });
+    initMediaSession({ repeat: () => (repeated += 1), stop: () => (stopped += 1), advance: () => (advanced += 1) });
 
     for (const probe of ['seekforward', 'seekbackward', 'seekto']) {
       expect(actions.has(probe)).toBe(true);
       actions.get(probe)!();
     }
-    expect([repeated, stopped]).toEqual([0, 0]);
+    expect([repeated, stopped, advanced]).toEqual([0, 0, 0]);
   });
 
   /**
@@ -150,14 +158,14 @@ describe('initMediaSession', () => {
       },
     });
 
-    expect(() => initMediaSession({ repeat: () => {}, stop: () => {} })).not.toThrow();
+    expect(() => initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => (advanced += 1) })).not.toThrow();
     expect(actions.has('previoustrack')).toBe(true);
     expect(actions.has('pause')).toBe(true);
   });
 
   it('does nothing at all when mediaSession is absent', () => {
     setNavigator({});
-    expect(() => initMediaSession({ repeat: () => {}, stop: () => {} })).not.toThrow();
+    expect(() => initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => (advanced += 1) })).not.toThrow();
   });
 
   it('only registers once', () => {
@@ -168,9 +176,9 @@ describe('initMediaSession', () => {
         calls += 1;
       },
     });
-    initMediaSession({ repeat: () => {}, stop: () => {} });
+    initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => (advanced += 1) });
     const afterFirst = calls;
-    initMediaSession({ repeat: () => {}, stop: () => {} });
+    initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => (advanced += 1) });
     expect(calls).toBe(afterFirst);
   });
 });

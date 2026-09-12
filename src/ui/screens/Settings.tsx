@@ -547,10 +547,11 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
         </div>
       ))}
       <div className="settings-note-row u-note">
-        And leave the microphone off while you test it. Turning voice on switches the
-        car to its hands-free CALL route — which is why the app showed up as a phone
-        call — and the wheel&rsquo;s buttons then go to that call, not to this app.
-        Talking to it and steering-wheel control cannot both work at once.
+        Leave the microphone off. Turning voice on switches the car to its hands-free
+        CALL route — which is why the app showed up as a phone call — and the
+        wheel&rsquo;s buttons then go to that call, not to this app. Talking to it and
+        steering-wheel control cannot both work at once, which is why skip forward
+        answers for you: with the microphone off, the wheel is the whole loop.
       </div>
 
       <div className="settings-row">
@@ -561,9 +562,11 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
           guess: the 2026-09-11 drive showed this car sends skip and pause on a
           press, and sends `play` on its own every time a clip ends. */}
       <div className="settings-note-row u-note">
-        Skip forward or back repeats the last thing said; pause stops it. Play is
-        ignored on purpose — your car sends it by itself every time a clip finishes,
-        and acting on it made the question repeat without end.
+        Skip forward answers &ldquo;yes&rdquo; — it submits, confirms, and deals the next
+        hand, so a drill can be run from the wheel with the microphone off. Skip back
+        repeats the last thing said, and pause stops it. Play is ignored on purpose:
+        your car sends it by itself every time a clip finishes, and acting on it made
+        the question repeat without end.
       </div>
       <div className="settings-row">
         <span className="settings-label">Accepted by this phone</span>

@@ -24,6 +24,12 @@ export interface MediaSessionHandlers {
   repeat: () => void;
   /** Stop speaking now. */
   stop: () => void;
+  /**
+   * Answer "yes" to whatever is on screen -- submit, confirm, deal the next
+   * hand. This is what lets a drill run with the microphone OFF, which is the
+   * only state in which the wheel works at all (see audio/wheelCommands.ts).
+   */
+  advance: () => void;
 }
 
 interface MediaSessionLike {
@@ -66,11 +72,13 @@ let registered = false;
  * enough to be answered. So `play` is registered (refusing it would hand the
  * slot back to whatever was playing before) and deliberately does nothing.
  *
- * The discrete buttons carry the actions instead: `previoustrack` and
- * `nexttrack` both repeat -- a car sends neither of its own accord, so either
- * one arriving is a real press -- and `pause`/`stop` stop the speech. The
- * same drive confirmed this car emits `nexttrack` and `pause`, which is why
- * they are no longer inert probes.
+ * The discrete buttons carry the actions instead -- a car sends none of these
+ * of its own accord, so one arriving is a real press. `previoustrack` repeats,
+ * `pause`/`stop` stop the speech, and `nexttrack` ADVANCES: it answers "yes"
+ * to whatever is on screen. That last one is what makes a drill playable with
+ * the microphone off, which is the only state in which the wheel works at all
+ * (audio/wheelCommands.ts has the whole argument). The same drive confirmed
+ * this car emits `nexttrack` and `pause`, which is why neither is a probe now.
  */
 export function initMediaSession(handlers: MediaSessionHandlers): void {
   const ms = session();
@@ -107,7 +115,7 @@ export function initMediaSession(handlers: MediaSessionHandlers): void {
   set('play', () => {});
 
   set('previoustrack', handlers.repeat);
-  set('nexttrack', handlers.repeat);
+  set('nexttrack', handlers.advance);
   set('pause', handlers.stop);
   set('stop', handlers.stop);
 

@@ -405,6 +405,18 @@ function FlashcardsView({
     voice.cycleIfStale();
   };
 
+
+  // NO STEERING-WHEEL CLAIM HERE, and twice deliberately.
+  //
+  // A wheel press means "yes" (audio/wheelCommands.ts), and a flashcard or quiz
+  // answer is a five-way decision -- one button cannot say which. `yes` is
+  // already a no-op above for the same reason.
+  //
+  // And this screen RENDERS the count and true-count drills as children, both
+  // of which do claim the wheel. Child effects run before the parent's, so a
+  // claim here would win the slot and hand every press to flashcards while a
+  // count drill was on screen.
+
   const voice = useVoiceControl({
     enabled: voiceOn,
     onAction: handleVoiceAction,

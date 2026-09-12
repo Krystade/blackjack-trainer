@@ -55,6 +55,27 @@ ship.
   interruption's own answer is graded too (both wrong-count and wrong-answer are
   failures); telemetry should record counts-kept-through-distraction separately.
 
+### Car / steering wheel (2026-09-11, from a real drive)
+- ~~Does the wheel reach the app at all?~~ — ✅ ANSWERED, and it does. The drive's Media
+  Session log shows the car sending `play`, `nexttrack` and `pause`. This had been open
+  since the first drive and could not be answered from a desk.
+- ~~The recorded voice repeats forever and cannot be answered~~ — ✅ FIXED 2026-09-11.
+  `play` is not a button press: a head unit sends it to mean "resume" and sends it
+  unprompted every time it thinks playback stopped, which is every time a clip ends. Mapped
+  to repeat, that closed a loop — nine `play` invokes at five-second intervals in the log
+  with nobody touching anything. `play` is now registered and inert.
+- ~~Eyes-free driving needs the microphone, which kills the wheel~~ — ✅ SOLVED 2026-09-11,
+  by giving up the microphone rather than fighting it. An open mic switches the car to its
+  hands-free CALL route, so the wheel's buttons go to the "call" — the two can never both
+  work. But a drill the WHEEL can advance needs no mic: `nexttrack` now means "yes"
+  (`audio/wheelCommands.ts` routes it to whichever screen is up, mapped onto the same
+  affirmative the voice path uses). Count drill, true-count drill and the table are wired.
+  Flashcards and the quiz are not, and cannot be: their answer is a five-way decision and
+  one button cannot say which.
+- OPEN, and only a drive can close it: whether this car's skip-forward is reachable without
+  taking eyes off the road, and whether `previoustrack` exists on that wheel at all (the log
+  has never shown one).
+
 ### D2 · Ideas raised earlier and still open
 - Countdown/tag-guess submode has no eyes-free support (excluded twice, deliberately —
   needs an explicit keep/kill decision).

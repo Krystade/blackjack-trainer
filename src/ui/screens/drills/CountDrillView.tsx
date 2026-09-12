@@ -31,6 +31,7 @@ import { narrateCards, narrateCountAnswer, narrateCountPrompt } from '../../../a
 import { focusSwallowsKey } from '../../keyboardFocus';
 import { enableAudioNow } from '../../audioGate';
 import { useVoiceControl } from '../../useVoiceControl';
+import { useWheelCommand } from '../../useWheelCommand';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
@@ -973,6 +974,14 @@ export function CountDrillView({
         return;
     }
   };
+
+
+  // The steering wheel, mapped onto the same affirmative the microphone uses.
+  // Deliberately NOT gated on `voiceOn`: the wheel only reaches this app when
+  // the microphone is OFF (an open mic switches the car to its hands-free call
+  // route and the wheel's buttons go to that call), so gating it on voice would
+  // arm it in exactly the state where it cannot work. See audio/wheelCommands.ts.
+  useWheelCommand(() => handleVoiceCommand('yes'));
 
   const voice = useVoiceControl({
     enabled: voiceOn,

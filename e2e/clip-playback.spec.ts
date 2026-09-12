@@ -520,3 +520,118 @@ test('a correction plays from clips, whole', async ({ page }) => {
   for (const res of harness.mp3Responses) expectServedOk(res);
   expect(harness.pageErrors, `expected zero page errors, got ${JSON.stringify(harness.pageErrors)}`).toEqual([]);
 });
+
+/* ------------------------------------------------------------------------ */
+/* The steering wheel: the only control that works with the mic off          */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Captures the Media Session handlers the app registers, so a test can press a
+ * button the way a car does.
+ *
+ * This is the closest a browser can get to the real thing: Playwright cannot
+ * make a head unit send `nexttrack`, but the handler the car would invoke is
+ * the same function, reached through the same registration. Everything below
+ * the capture -- registration timing, the routing in wheelCommands, the drill's
+ * own `yes` -- is the real code.
+ */
+async function captureWheelButtons(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __wheel: Record<string, () => void> };
+    w.__wheel = {};
+    const ms = (navigator as unknown as { mediaSession?: { setActionHandler: (a: string, h: () => void) => void } })
+      .mediaSession;
+    if (!ms) return;
+    const original = ms.setActionHandler.bind(ms);
+    ms.setActionHandler = (action: string, handler: () => void) => {
+      w.__wheel[action] = handler;
+      try {
+        original(action, handler);
+      } catch {
+        /* a browser may refuse an individual action; the app handles that */
+      }
+    };
+  });
+}
+
+function pressWheel(page: Page, action: string): Promise<boolean> {
+  return page.evaluate((a) => {
+    const w = window as unknown as { __wheel: Record<string, () => void> };
+    const handler = w.__wheel?.[a];
+    if (!handler) return false;
+    handler();
+    return true;
+  }, action);
+}
+
+test('the wheel runs the count drill with the microphone off', async ({ page }) => {
+  test.setTimeout(60_000);
+  await seedClipDrillSettings(page);
+  await withProfile(page, { name: 'Clip Wheel Profile' });
+  await captureWheelButtons(page);
+
+  await page.goto('/');
+  await startEyesFreeCountDrill(page);
+
+  // Registration happens on the first clip played, not at startup, so the
+  // buttons only exist once the drill has spoken -- which is also the only
+  // state in which a driver could press one.
+  await answerSelfReportIfPresent(page);
+  await expect(page.locator('.drill-result')).toBeVisible({ timeout: 20_000 });
+  expect(await pressWheel(page, 'nexttrack'), 'expected the app to have claimed skip-forward').toBe(true);
+
+  // "yes" on the result screen asks the next question. No microphone was ever
+  // opened here -- which is the entire point, since an open one would have
+  // taken the wheel away.
+  await expect(page.locator('.drill-result')).toBeHidden({ timeout: 20_000 });
+
+  // ...and skip-back is a repeat, not an advance: it must not start anything.
+  await answerSelfReportIfPresent(page);
+  await expect(page.locator('.drill-result')).toBeVisible({ timeout: 20_000 });
+  expect(await pressWheel(page, 'previoustrack')).toBe(true);
+  await page.waitForTimeout(1000);
+  await expect(page.locator('.drill-result')).toBeVisible();
+});
+
+/**
+ * The loop from the 2026-09-11 drive, at the level the car actually caused it.
+ *
+ * A head unit sends `play` by itself whenever it thinks playback stopped, which
+ * is every time a clip ends. While `play` meant "repeat", that spoke a clip,
+ * which ended, which brought another `play`.
+ */
+test('play, which the car sends on its own, does not start or repeat anything', async ({ page }) => {
+  test.setTimeout(60_000);
+  await seedClipDrillSettings(page);
+  await withProfile(page, { name: 'Clip Play Loop Profile' });
+  await captureWheelButtons(page);
+
+  await page.goto('/');
+  await startEyesFreeCountDrill(page);
+  await answerSelfReportIfPresent(page);
+  await expect(page.locator('.drill-result')).toBeVisible({ timeout: 20_000 });
+
+  const harness = attachClipHarness(page);
+
+  // Wait for the result utterance to finish before measuring: its own clips are
+  // still arriving when the result screen appears, and counting those would
+  // blame the car for the app's own speech.
+  let settled = -1;
+  while (settled !== harness.mp3Responses.length) {
+    settled = harness.mp3Responses.length;
+    await page.waitForTimeout(1000);
+  }
+
+  for (let i = 0; i < 5; i += 1) {
+    expect(await pressWheel(page, 'play')).toBe(true);
+    await page.waitForTimeout(100);
+  }
+  await page.waitForTimeout(1500);
+
+  // Nothing said, and nothing started.
+  expect(
+    harness.mp3Responses.slice(settled).map((r) => r.url()),
+    'expected five unattended resumes to speak nothing at all',
+  ).toEqual([]);
+  await expect(page.locator('.drill-result')).toBeVisible();
+});
