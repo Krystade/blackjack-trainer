@@ -785,6 +785,47 @@ Sources, primary-verified:
 
 Leg 3, the community deep-hunt, was run immediately after — see the section below.
 
+- **V5-1 · The flashcard draw ignores what the learner just answered — S — ✅ SHIPPED
+  2026-09-12, opt-in.** Filed above off the training-science leg; built the same day, off by
+  default, so nothing changes until it is switched on.
+  - `confusability.ts` scores how easily a candidate cell is mixed up with the one just
+    answered, on the three axes a chart actually gets misread: SAME UPCARD, ADJACENT TOTAL
+    (the row is right, the line is one out — 16 v 10 then 15 v 10); SAME TOTAL, ADJACENT
+    UPCARD (the column slips — 12 v 2 then 12 v 3); and SAME TOTAL, DIFFERENT HAND SHAPE
+    (soft 18 against hard 18, pair 8s against hard 16 — same number in your head, three
+    different right answers). The third gets the largest boost because it is the one a
+    learner who memorised totals rather than hands gets wrong, which is also what V4-2's
+    varied compositions were built to expose.
+  - Multiplies into SR **and** frequency rather than replacing either. Three questions, three
+    terms: what you are due for, how often you meet it, and what you will mix it up with.
+  - Never returns below 1, so the term can only ever RAISE a cell's odds — the same guarantee
+    `handFrequency.ts` makes, and for the same reason: a complete chart has to stay complete.
+    Asserted across all 330 cells against four different previous cells, plus a "boosts a
+    decisive minority" test so the term cannot degenerate into a no-op that boosts everything.
+  - **The self-repeat guard is redundant and says so in its own comment.** A cell matches none
+    of the adjacency rules against itself, so it falls through to 1 anyway; deleting the early
+    return passes every test. That mutant SURVIVED, and rather than dress it up, the guard is
+    documented as defence against a future rule that would match self, and the test was
+    widened to assert the property across the whole chart instead of pretending the guard is
+    load-bearing.
+  - **The first e2e I wrote could not have failed correctly, and its own control caught it.**
+    The plan was to pin `Math.random` and assert that with the toggle OFF a fixed seed draws
+    one cell forever. It does not: the SR deck mutates on every answer, so the weights move
+    regardless. The control failed, which is exactly what a control is for. Restructured to
+    run the same pinned session twice, off and on, answering identically — card 1 must match
+    (no previous cell yet) and the sequences must then diverge, which up to the first
+    divergence is attributable to the previous-cell term and nothing else.
+  - Ten mutants, all killed: seven unit (term neutered, applied when off, each of the three
+    boosts flattened, parse always-null) and three e2e for the chain unit tests cannot see —
+    `lastCellRef` never written, the previous cell never passed, the toggle ignored in the
+    view. That chain is the real risk: every unit test passes the previous cell in by hand, so
+    a view that forgot to thread it would leave the feature silently inert and every unit test
+    green.
+  - The evidence and its caveat are both in the training-science section above: g = 0.42
+    overall, but the mathematical-tasks subgroup was the weak one (g = 0.34), and a strategy
+    chart is closer to that than to paintings. Hence opt-in, and hence compressed boosts
+    rather than winner-take-all.
+
 ### From the 2026-09-12 COMMUNITY deep-hunt (standing workflow leg 3) — run in-session
 The third and last leg the workflow owed; all three are now run. Method differed from the
 previous hunts: rather than collecting forum anecdote, this diffed THIS app's drill inventory
@@ -877,9 +918,10 @@ Sources:
   http://www.casinocitytimes.com/article/card-counting-drills-66148
 
 **All three legs of the standing workflow are now run.** Open candidates from this round, in
-the order I would take them: V5-1 (confusable-neighbour interleaving, best evidence),
-V5-4 (division rule, correctness), V5-2 (competence vs expression, measurement), V5-5 (depth
-resolution). V5-3 is closed as not-actionable.
+the order I would take them: ~~V5-1 (confusable-neighbour interleaving, best evidence)~~
+**✅ SHIPPED 2026-09-12** — see the entry above the community section; then V5-4 (division
+rule, correctness), V5-2 (competence vs expression, measurement), V5-5 (depth resolution).
+V5-3 is closed as not-actionable.
 
 ### T0 · Complete functional test coverage (operator request 2026-07-26) — M — **✅ COMPLETE 2026-09-11**
 All 46 `❌ GAP` rows of `docs/research/2026-07-26-test-coverage-matrix.md` are closed; that document

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateAllCells, filterCellsByCategory, drawFlashcard } from './flashcards';
+import { confusabilityWeight } from './confusability';
 import { handValue } from '../engine/hand';
 import { correctPlay } from '../engine/strategy';
 
@@ -123,5 +124,73 @@ describe('V4-1: frequency weighting is opt-in and actually reallocates', () => {
     for (let seed = 1; seed <= 2000; seed++) seen.add(draw(seed, true));
     // The compression exists precisely so the tail keeps showing up.
     expect(seen.size).toBeGreaterThan(300);
+  });
+});
+
+describe('V5-1: the draw follows a hand with one you would mix it up with', () => {
+  const draw = (seed: number, on: boolean, prev: string | null) =>
+    drawFlashcard('all', {}, 0, seed, undefined, false, on, prev).cellId;
+
+  it('off, the draw is exactly what it always was -- even with a previous cell', () => {
+    for (let seed = 1; seed <= 60; seed++) {
+      expect(draw(seed, false, 'hard-16-v-10')).toBe(drawFlashcard('all', {}, 0, seed).cellId);
+    }
+  });
+
+  it('on but with no previous cell, the draw is also unchanged', () => {
+    // The first card of a session has nothing to be confusable WITH, so the
+    // feature must be inert rather than doing something arbitrary.
+    for (let seed = 1; seed <= 60; seed++) {
+      expect(draw(seed, true, null)).toBe(drawFlashcard('all', {}, 0, seed).cellId);
+    }
+  });
+
+  it('on, neighbours of the last hand come up far more often', () => {
+    const prev = 'hard-16-v-10';
+    const isNeighbour = (id: string) => confusabilityWeight(id, prev) > 1;
+    const tally = (on: boolean) => {
+      let n = 0;
+      for (let seed = 1; seed <= 1500; seed++) if (isNeighbour(draw(seed, on, prev))) n += 1;
+      return n;
+    };
+    const off = tally(false);
+    const on = tally(true);
+    expect(on).toBeGreaterThan(off);
+    // Vacuity guard: if the term did nothing these would be within noise.
+    expect(on - off).toBeGreaterThan(50);
+  });
+
+  it('on, the last hand itself is not simply repeated back', () => {
+    // Massed practice is the thing being avoided; a term that boosted the
+    // previous cell would produce exactly that.
+    const prev = 'hard-16-v-10';
+    let repeats = 0;
+    let total = 0;
+    for (let seed = 1; seed <= 1500; seed++) {
+      if (draw(seed, true, prev) === prev) repeats += 1;
+      total += 1;
+    }
+    // 1/330 by chance; anything near that is fine, a boost would not be.
+    expect(repeats / total).toBeLessThan(0.02);
+  });
+
+  it('on, no cell becomes unreachable -- the chart stays complete', () => {
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 2500; seed++) seen.add(draw(seed, true, 'hard-16-v-10'));
+    expect(seen.size).toBeGreaterThan(300);
+  });
+
+  it('composes with the frequency term rather than replacing it', () => {
+    // Both on must differ from either alone, or one axis is silently winning.
+    const both = [];
+    const freqOnly = [];
+    const confOnly = [];
+    for (let seed = 1; seed <= 200; seed++) {
+      both.push(drawFlashcard('all', {}, 0, seed, undefined, true, true, 'hard-16-v-10').cellId);
+      freqOnly.push(drawFlashcard('all', {}, 0, seed, undefined, true, false, 'hard-16-v-10').cellId);
+      confOnly.push(drawFlashcard('all', {}, 0, seed, undefined, false, true, 'hard-16-v-10').cellId);
+    }
+    expect(both).not.toEqual(freqOnly);
+    expect(both).not.toEqual(confOnly);
   });
 });

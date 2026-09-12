@@ -157,8 +157,23 @@ function FlashcardsView({
   onSettingsChange: (settings: Settings) => void;
 }) {
   const srDeckRef = useRef<SrDeck>(loadFlashSr());
+  // V5-1: the cell just answered, which the next draw biases toward the cells
+  // most confusable with. A REF and not the `card` state because next() is
+  // also reachable from the auto-advance timer, where a captured `card` would
+  // be a render behind -- and a stale previous cell silently boosts the wrong
+  // neighbours, which no test would catch.
+  const lastCellRef = useRef<string | null>(null);
   const [card, setCard] = useState<Flashcard>(() =>
-    drawFlashcard(settings.drill.flashCategory, srDeckRef.current, Date.now(), randomSeed(), activeProfile.rules, settings.drill.flashByFrequency),
+    drawFlashcard(
+      settings.drill.flashCategory,
+      srDeckRef.current,
+      Date.now(),
+      randomSeed(),
+      activeProfile.rules,
+      settings.drill.flashByFrequency,
+      settings.drill.flashByConfusability,
+      null,
+    ),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action; event: GradedEvent } | null>(null);
   // #7: the chart opened over this correction, closed back onto the same card.
@@ -272,7 +287,18 @@ function FlashcardsView({
     // (its cards/dealerUp are live props), and the learner closed it onto a
     // hand they had never been asked about.
     setShowChart(false);
-    setCard(drawFlashcard(category, srDeckRef.current, Date.now(), randomSeed(), activeProfile.rules, settings.drill.flashByFrequency));
+    const drawn = drawFlashcard(
+      category,
+      srDeckRef.current,
+      Date.now(),
+      randomSeed(),
+      activeProfile.rules,
+      settings.drill.flashByFrequency,
+      settings.drill.flashByConfusability,
+      lastCellRef.current,
+    );
+    lastCellRef.current = drawn.cellId;
+    setCard(drawn);
     setFeedback(null);
     promptShownAtRef.current = performance.now();
   };
@@ -642,6 +668,26 @@ function FlashcardsView({
             }}
           />
           <span>Favour hands you&apos;ll actually see</span>
+        </label>
+
+        {/* V5-1 (docs/BACKLOG.md): interleaving pays most when confusable items
+            land back to back, and the SR/frequency draw is blind to what came
+            before -- so the 16 v 10 followed by the 15 v 10 happened only by
+            luck. Off by default, like the frequency term above. */}
+        <label className="count-toggle">
+          <input
+            type="checkbox"
+            checked={settings.drill.flashByConfusability}
+            onChange={(e) => {
+              const nextSettings: Settings = {
+                ...settings,
+                drill: { ...settings.drill, flashByConfusability: e.target.checked },
+              };
+              saveSettings(nextSettings);
+              onSettingsChange(nextSettings);
+            }}
+          />
+          <span>Follow each hand with one you&apos;d mix it up with</span>
         </label>
 
         <label className="count-toggle">
@@ -1386,12 +1432,31 @@ function MixedSessionView({
     return sessionSeedRef.current;
   };
   const itemIndexRef = useRef(0);
+  const mixedLastCellRef = useRef<string | null>(null);
+
+  // V5-1: same confusable-neighbour bias as the flashcards drill. The chain is
+  // over FLASHCARDS only -- a quiz item in between does not reset it, since the
+  // confusion being trained is between chart cells, not between drill types.
+  const drawMixedFlash = () => {
+    const drawn = drawFlashcard(
+      settings.drill.flashCategory,
+      flashSrRef.current,
+      Date.now(),
+      randomSeed(),
+      activeProfile.rules,
+      settings.drill.flashByFrequency,
+      settings.drill.flashByConfusability,
+      mixedLastCellRef.current,
+    );
+    mixedLastCellRef.current = drawn.cellId;
+    return drawn;
+  };
 
   const drawFor = (type: MixedItemType): MixedCurrent => {
     if (type === 'flash') {
       return {
         type,
-        card: drawFlashcard(settings.drill.flashCategory, flashSrRef.current, Date.now(), randomSeed(), activeProfile.rules, settings.drill.flashByFrequency) };
+        card: drawMixedFlash() };
     }
     const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
     return {

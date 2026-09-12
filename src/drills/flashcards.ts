@@ -8,6 +8,7 @@ import { makeHardHand } from './buildHand';
 import { weightedIndex } from './weightedDraw';
 import { srWeight } from './spacedRepetition';
 import { frequencyWeight } from './handFrequency';
+import { confusabilityWeight } from './confusability';
 import type { SrDeck } from './spacedRepetition';
 
 export interface Flashcard {
@@ -107,6 +108,10 @@ export function filterCellsByCategory<T extends { id: string }>(
  * @param byFrequency - V4-1: also weight by how often the cell actually comes
  *   up at a table (drills/handFrequency.ts). Off by default, so the draw is
  *   byte-identical to before unless the user asks for it.
+ * @param byConfusability - V5-1: also weight by how easily each cell is mixed
+ *   up with `previousCellId` (drills/confusability.ts). Off by default. Needs
+ *   `previousCellId` to do anything -- with no previous cell every term is 1.
+ * @param previousCellId - The cell just answered, for the term above.
  * @param rules - Optional ruleset (defaults to DEFAULT_RULES); selects the
  *   chart/deviations the correct action is graded against — additive param,
  *   omitting it preserves v1 (H17 6-deck) behavior exactly. Note: which cell
@@ -120,6 +125,8 @@ export function drawFlashcard(
   seed?: number,
   rules: RuleSet = DEFAULT_RULES,
   byFrequency = false,
+  byConfusability = false,
+  previousCellId: string | null = null,
 ): Flashcard {
   const rng = mulberry32(seed ?? Date.now());
 
@@ -135,8 +142,15 @@ export function drawFlashcard(
   // replacing the schedule -- how often you meet a hand and how well you know
   // it are different questions. Off, the term is a flat 1 and the draw is
   // exactly what it always was.
+  // V5-1: confusability with the cell just answered is a THIRD axis and
+  // multiplies in the same way -- what you are due for, how often you meet it,
+  // and what you will mix it up with are three different questions. Off, the
+  // term is a flat 1 and the draw is exactly what it always was.
   const weights = cells.map(
-    (c) => srWeight(srDeck[c.id], now) * (byFrequency ? frequencyWeight(c.id) : 1),
+    (c) =>
+      srWeight(srDeck[c.id], now) *
+      (byFrequency ? frequencyWeight(c.id) : 1) *
+      (byConfusability ? confusabilityWeight(c.id, previousCellId) : 1),
   );
 
   const selectedIndex = weightedIndex(rng, weights);

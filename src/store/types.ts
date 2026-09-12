@@ -94,6 +94,15 @@ export interface Settings {
     // the deck. Off by default: it reallocates practice time, which is the
     // user's call to make.
     flashByFrequency: boolean;
+    // V5-1 (docs/BACKLOG.md): bias the next flashcard toward the cells most
+    // easily confused with the one just answered. Brunmair & Richter's
+    // interleaving meta-analysis finds the effect strongest when categories
+    // are similar BETWEEN and dissimilar WITHIN, and only when confusable
+    // items land in immediate succession -- which the SR/frequency draw,
+    // being blind to what came before, achieves only by luck. Multiplies into
+    // both existing terms rather than replacing them. Off by default: like
+    // V4-1 it reallocates practice, which is the user's call.
+    flashByConfusability: boolean;
     // R9 / red-team #7 (docs/BACKLOG.md): "messy" card presentation — a small
     // seeded rotation/offset per card (drills/cardJitter.ts) so the visual-
     // recognition half of counting is trained, not just a robotically-aligned
@@ -224,6 +233,7 @@ export const DEFAULT_SETTINGS: Settings = {
     countBias: 'none',
     countCheckpoints: 'off',
     flashByFrequency: false,
+    flashByConfusability: false,
     messyCards: false,
     pacePressure: false,
     masteryDistractionFreq: 'off',
