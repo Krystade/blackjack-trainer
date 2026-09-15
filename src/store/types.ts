@@ -294,6 +294,23 @@ export interface Profile {
    */
   tcRounding?: TcRounding;
   /**
+   * RV3: play the Fab 4 surrender indices instead of flat basic-strategy
+   * surrender. OPTIONAL so profiles stored before this field load untouched,
+   * and absent means off -- the app's historical behaviour.
+   *
+   * On the profile rather than Settings for the reason every grading surface
+   * here lives on the profile: this changes what the app calls the CORRECT
+   * play, and correctness is a property of the game you are sitting at, not of
+   * the app's chrome. It also has to travel with the ruleset it was verified
+   * against -- the index values differ between H17 and S17, and the S17 set is
+   * four cells where H17 is six (engine/deviations.ts).
+   *
+   * Only meaningful when `rules.ls` is on: with late surrender off the dealer
+   * never offers the play, `ctx.canSurrender` is false, and every index in the
+   * set is unreachable. The Profile screen gates the control on that.
+   */
+  surrenderIndices?: boolean;
+  /**
    * Reveal the dealer's hole card even when no hand still needs a dealer
    * total. OPTIONAL so profiles stored before this field load untouched.
    *

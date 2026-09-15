@@ -20,11 +20,21 @@ export type DeviationId =
   | '12v4'
   | '12v5'
   | '12v6'
-  | '13v3';
+  | '13v3'
+  // Fab 4 surrender indices (RV3). Prefixed `sur` because the same cell can
+  // carry BOTH a surrender index and a hard-total index -- 16 v 9 is a
+  // surrender decision at 0 and a STAND decision at +4/+5, and they are not
+  // the same play. An id collision there would have silently merged them.
+  | 'sur14v10'
+  | 'sur15v9'
+  | 'sur15v10'
+  | 'sur15vA'
+  | 'sur16v8'
+  | 'sur16v9';
 
 export interface Deviation {
   id: DeviationId;
-  kind: 'insurance' | 'hard' | 'pair10';
+  kind: 'insurance' | 'hard' | 'pair10' | 'surrender';
   total?: number; // for kind 'hard'
   up?: Rank; // '2'..'10','A' ('10' covers J/Q/K via upIndex)
   action: Action | 'take-insurance';
@@ -81,9 +91,17 @@ export const ILLUSTRIOUS_18_S17: Deviation[] = ILLUSTRIOUS_18.map((dev) => {
  * @param rules - The ruleset (H17 or S17)
  * @returns true if the index is active, false otherwise
  */
-export function isIndexActive(id: DeviationId, rules: { s17: boolean }): boolean {
-  const deviationSet = rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
-  const deviation = deviationSet.find((d) => d.id === id);
+export function isIndexActive(
+  id: DeviationId,
+  rules: { s17: boolean; surrenderIndices?: boolean },
+): boolean {
+  // Goes through indexSetFor rather than the two base arrays so a surrender id
+  // answers honestly: absent when the profile has indices off, and absent under
+  // S17 for the two cells (16 v 8, 16 v 9) that set does not carry. A lookup
+  // against ILLUSTRIOUS_18 alone would have said `false` for every Fab 4 id
+  // even with the feature switched on, silently hiding them from the quiz
+  // filter that calls this.
+  const deviation = indexSetFor({ decks: 6, ...rules }).find((d) => d.id === id);
   return deviation?.active ?? false;
 }
 
@@ -108,13 +126,83 @@ export function isIndexActive(id: DeviationId, rules: { s17: boolean }): boolean
  * teaching something no book says — so a verified delta is a data addition
  * here, and nothing more.
  */
-export function indexSetFor(rules: { decks: number; s17: boolean }): Deviation[] {
+export function indexSetFor(rules: {
+  decks: number;
+  s17: boolean;
+  surrenderIndices?: boolean;
+}): Deviation[] {
   const base = rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
-  if (rules.decks > 1) return base;
+  const withSurrender = rules.surrenderIndices
+    ? [...base, ...(rules.s17 ? FAB_4_S17 : FAB_4_H17)]
+    : base;
+  if (rules.decks > 1) return withSurrender;
 
-  return base.map((dev) =>
+  return withSurrender.map((dev) =>
     dev.id === 'ins'
       ? { ...dev, threshold: 2, label: 'Insurance: take at TC ≥ +2 (single deck)' }
       : dev,
   );
 }
+
+/**
+ * Every surrender index in the app, and the ONLY place a surrender threshold is
+ * written down. Sourced in `docs/sources/verified-surrender-indices.md`; nothing
+ * here came from memory.
+ *
+ * Direction is `gte` for all of them, and that is the whole reading. The
+ * Blackjack Apprenticeship chart prints some of these cells with a trailing `-`
+ * ("the deviation happens at that true count and below"), which looks like an
+ * `lte` threshold and is not one: those cells sit on hands where basic strategy
+ * ALREADY surrenders, so the deviation below the index is to STOP. Supply the
+ * basic action and every cell resolves to the same plain sentence --
+ * **surrender when TC >= index** -- which is why one rule covers all six and
+ * why `dir` is uniform. An implementation that transcribed the `-` cells
+ * literally would have inverted them.
+ *
+ * The rule is genuinely bidirectional even so: it ADDS surrender where basic
+ * hits (16 v 8 at +4) and REMOVES it where basic surrenders (15 v 10 below 0).
+ *
+ * Cells with no index here surrender per the basic chart and are untouched:
+ * 16 v 10, 16 v A, and 17 v A under H17.
+ */
+export const FAB_4_H17: Deviation[] = [
+  // Two sources agree: BJA H17 chart `2+`, and the Fab 4 as published by both
+  // Wizard of Odds and CountingEdge.
+  { id: 'sur15v9', kind: 'surrender', total: 15, up: '9', action: 'surrender', threshold: 2, dir: 'gte', active: true, label: '15 v 9: surrender at TC ≥ +2' },
+  // Three sources: BJA chart `0-`, WoO Fab 4 (+0), CountingEdge Fab 4 (0).
+  { id: 'sur15v10', kind: 'surrender', total: 15, up: '10', action: 'surrender', threshold: 0, dir: 'gte', active: true, label: '15 v 10: surrender at TC ≥ 0' },
+  // One chart plus a structural argument (see the doc's §1a): BJA prints this
+  // cell `-1+`, and on this grid a `+` suffix marks a hand their own basic does
+  // NOT surrender. Weakest-justified row in the set.
+  { id: 'sur15vA', kind: 'surrender', total: 15, up: 'A', action: 'surrender', threshold: -1, dir: 'gte', active: true, label: '15 v A: surrender at TC ≥ −1 (H17)' },
+  // Single source (BJA chart `4+`) after a second search pass.
+  { id: 'sur16v8', kind: 'surrender', total: 16, up: '8', action: 'surrender', threshold: 4, dir: 'gte', active: true, label: '16 v 8: surrender at TC ≥ +4' },
+  // Single source (BJA chart `-1-`). NOT the same play as the Illustrious 18's
+  // 16 v 9 STAND index (+4 H17 / +5 S17) -- same cell, different decision.
+  { id: 'sur16v9', kind: 'surrender', total: 16, up: '9', action: 'surrender', threshold: 0, dir: 'gte', active: true, label: '16 v 9: surrender at TC ≥ 0' },
+  // Two sources (WoO + CountingEdge) but BOTH S17: the BJA H17 chart has no 14
+  // row at all, so no H17-specific source exists for the highest-value Fab 4
+  // play. Carried at the S17 value deliberately and flagged in the doc.
+  { id: 'sur14v10', kind: 'surrender', total: 14, up: '10', action: 'surrender', threshold: 3, dir: 'gte', active: true, label: '14 v 10: surrender at TC ≥ +3' },
+];
+
+/**
+ * The S17 set is the Fab 4 proper, two-sourced cell-for-cell (Wizard of Odds
+ * and CountingEdge, which attributes them to Schlesinger).
+ *
+ * It is FOUR entries, not six. No S17 source was found for 16 v 8 or 16 v 9, so
+ * they are absent rather than carried over from the H17 chart -- under S17 those
+ * two cells simply play basic (16 v 9 surrenders always, 16 v 8 hits always),
+ * which is the correct basic play and costs nothing. Inventing the two missing
+ * numbers to make the table look symmetrical is exactly how a trainer starts
+ * teaching something no source says.
+ *
+ * 15 v A differs from H17 by two counts (+1 vs −1), which is the expected
+ * direction: H17 makes 15 v A worse, so surrender starts sooner.
+ */
+export const FAB_4_S17: Deviation[] = [
+  { id: 'sur15v9', kind: 'surrender', total: 15, up: '9', action: 'surrender', threshold: 2, dir: 'gte', active: true, label: '15 v 9: surrender at TC ≥ +2' },
+  { id: 'sur15v10', kind: 'surrender', total: 15, up: '10', action: 'surrender', threshold: 0, dir: 'gte', active: true, label: '15 v 10: surrender at TC ≥ 0' },
+  { id: 'sur15vA', kind: 'surrender', total: 15, up: 'A', action: 'surrender', threshold: 1, dir: 'gte', active: true, label: '15 v A: surrender at TC ≥ +1 (S17)' },
+  { id: 'sur14v10', kind: 'surrender', total: 14, up: '10', action: 'surrender', threshold: 3, dir: 'gte', active: true, label: '14 v 10: surrender at TC ≥ +3' },
+];

@@ -5,7 +5,7 @@ import type { ChartAction } from './basicStrategy';
 import type { Action, Deviation, DeviationId } from './deviations';
 import { indexSetFor } from './deviations';
 import { DEFAULT_RULES } from './ruleset';
-import type { RuleSet } from './ruleset';
+import type { RuleSet, StrategyRules } from './ruleset';
 import { getChart } from './charts';
 import type { Chart } from './charts';
 
@@ -82,6 +82,30 @@ function findHardDeviation(
 }
 
 /**
+ * Find the surrender index for (total, up), if the active set carries one.
+ *
+ * Unlike `findHardDeviation` this does NOT test the count: the caller needs to
+ * distinguish "no index here, use the chart" from "indexed, but the count has
+ * not reached it" -- those two resolve differently, and folding the threshold
+ * test in here would collapse them into the same `undefined`.
+ */
+function findSurrenderDeviation(
+  deviations: Deviation[],
+  total: number,
+  dealerUp: Rank,
+): Deviation | undefined {
+  const idx = upIndex(dealerUp);
+  return deviations.find(
+    (d) =>
+      d.active &&
+      d.kind === 'surrender' &&
+      d.total === total &&
+      d.up !== undefined &&
+      upIndex(d.up) === idx,
+  );
+}
+
+/**
  * Resolve a hand as a hard/soft total (bypassing any pair-splitting), applying
  * basic surrender, then hard-total deviations, then the basic chart.
  * Used both for non-pair hands and for pairs re-looked-up because !canSplit.
@@ -96,9 +120,43 @@ function resolveAsTotal(
 ): Advice {
   const { action, total, soft } = hardSoftChartAction(cards, dealerUp, chart);
 
-  // Step 2: basic surrender beats deviations; count never overrides it.
-  if (ctx.canSurrender && (action === 'Rh' || action === 'Rs')) {
-    return basic('surrender', `Basic surrender vs dealer ${dealerUp}`);
+  // Step 2: surrender.
+  //
+  // With surrender indices OFF (the default, and every caller that passes a
+  // plain RuleSet) this is byte-identical to what it always did: basic
+  // surrender wins and the count never touches it.
+  //
+  // With them ON (RV3, opt-in per profile) an indexed cell is decided by the
+  // count INSTEAD of by the chart, in both directions -- an index can add
+  // surrender where basic hits (16 v 8 at +4) and take it away where basic
+  // surrenders (15 v 10 below 0). That is why this cannot be expressed as an
+  // extra deviation in step 3: step 3 only ever ADDS a play, and half of this
+  // feature is removing one the basic chart printed.
+  //
+  // Cells with no surrender index keep the old behaviour exactly, which is what
+  // leaves 16 v 10, 16 v A and 17 v A surrendering unconditionally.
+  if (ctx.canSurrender) {
+    const sur = soft ? undefined : findSurrenderDeviation(deviations, total, dealerUp);
+    if (sur) {
+      if (sur.dir === 'gte' ? tc >= sur.threshold : tc <= sur.threshold) {
+        return deviation(sur, 'surrender');
+      }
+      // Below the index: surrender is off for this cell. Fall through rather
+      // than returning, so Rh/Rs resolve to hit/stand in step 4 and any
+      // hard-total deviation on the same cell still gets its say.
+      //
+      // Honest note on how far that is tested: with today's data this branch
+      // is NOT observable. Every surrender-indexed cell is `Rh` or `H` in all
+      // six charts (no `Rs`), and no cell carries a hard index that outranks
+      // its surrender index -- so `fall through` and `return hit` agree
+      // everywhere, and a mutant swapping one for the other survives the suite.
+      // It is written this way because it is the correct shape, not because a
+      // test forced it. `surrenderIndices.test.ts` locks the invariant that
+      // makes it unobservable, so if an index ever lands on an `Rs` cell the
+      // suite says so instead of quietly teaching a hit.
+    } else if (action === 'Rh' || action === 'Rs') {
+      return basic('surrender', `Basic surrender vs dealer ${dealerUp}`);
+    }
   }
 
   // Step 3: hard-total deviations only apply to HARD hands.
@@ -232,12 +290,12 @@ export function play(
   return resolveAsTotal(cards, dealerUp, tc, ctx, deviations, chart);
 }
 
-export function correctPlay(cards: Card[], dealerUp: Rank, tc: number, ctx: PlayContext, rules: RuleSet = DEFAULT_RULES): Advice {
+export function correctPlay(cards: Card[], dealerUp: Rank, tc: number, ctx: PlayContext, rules: StrategyRules = DEFAULT_RULES): Advice {
   const deviations = indexSetFor(rules);
   return play(cards, dealerUp, tc, ctx, deviations, getChart(rules));
 }
 
 /** Same algorithm with deviations OFF (used by the grader). */
-export function basicPlay(cards: Card[], dealerUp: Rank, ctx: PlayContext, rules: RuleSet = DEFAULT_RULES): Advice {
+export function basicPlay(cards: Card[], dealerUp: Rank, ctx: PlayContext, rules: StrategyRules = DEFAULT_RULES): Advice {
   return play(cards, dealerUp, 0, ctx, [], getChart(rules));
 }

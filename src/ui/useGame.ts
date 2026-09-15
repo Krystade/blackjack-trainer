@@ -1,3 +1,4 @@
+import { strategyRulesFor } from '../store/profiles';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Game } from '../engine/game';
 import type { GameConfig } from '../engine/game';
@@ -258,7 +259,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       spread: profile.spread,
       bankrollStart: profile.bankrollStart,
       countCheckEvery: profile.countCheckEvery,
-      rules: profile.rules,
+      rules: strategyRulesFor(profile),
       seats: profile.seats,
       dealerAlwaysPlaysOut: profile.dealerAlwaysPlaysOut,
       seed: readSeed(),

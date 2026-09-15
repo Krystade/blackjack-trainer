@@ -11,7 +11,7 @@ import { classifyAction, actionCategory, classifyInsurance } from './grade';
 import type { GradedEvent } from './grade';
 import type { Action } from './deviations';
 import { DEFAULT_RULES } from './ruleset';
-import type { RuleSet } from './ruleset';
+import type { StrategyRules } from './ruleset';
 
 export interface SeatConfig {
   playerHands: 1 | 2 | 3;
@@ -62,7 +62,7 @@ export interface GameConfig {
   bankrollStart: number; // units
   countCheckEvery: number; // rounds; 0 = off
   seed?: number;
-  rules?: RuleSet; // defaults to DEFAULT_RULES (v1's game); C1.13 wires this to the active profile
+  rules?: StrategyRules; // defaults to DEFAULT_RULES (v1's game); C1.13 wires this to the active profile
   seats?: SeatConfig; // defaults to DEFAULT_SEATS (v1 solo parity) when absent
   /**
    * Reveal the dealer's hole card even when no hand still needs a dealer
@@ -146,7 +146,7 @@ export { botRngSeed } from './riggedShoe';
 
 export class Game {
   readonly cfg: GameConfig;
-  readonly rules: RuleSet;
+  readonly rules: StrategyRules;
   phase: Phase = 'idle';
   shoe: Shoe;
   /** True only for `Game.withRiggedShoe`. A rigged shoe is a short, exactly

@@ -5,7 +5,7 @@ import type { PlayContext } from '../engine/strategy';
 import type { Action, Deviation, DeviationId } from '../engine/deviations';
 import { indexSetFor } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
-import type { RuleSet } from '../engine/ruleset';
+import type { StrategyRules } from '../engine/ruleset';
 import { makeHardHand } from './buildHand';
 import { weightedIndex } from './weightedDraw';
 import { srWeight } from './spacedRepetition';
@@ -49,6 +49,25 @@ function makePair10Cards(): [Card, Card] {
  * one -- surrender unavailable models the standard index-play situation
  * (see the deviationQuiz surrender-masking fix note below). */
 const QUIZ_CTX: PlayContext = { canDouble: true, canSplit: true, canSurrender: false };
+
+/**
+ * ctx for a SURRENDER index (RV3), and the one place QUIZ_CTX's assumption has
+ * to be reversed.
+ *
+ * QUIZ_CTX turns surrender OFF so that basic surrender cannot mask the
+ * 16v10/15v10/16v9 STAND indices. A surrender index needs the exact opposite:
+ * with `canSurrender: false` the engine can never return 'surrender', so every
+ * Fab 4 item would be graded against a play the quiz had made unreachable --
+ * the same masking bug as the original, pointed the other way, and it would
+ * have marked a correct surrender wrong at every true count.
+ */
+const QUIZ_CTX_SURRENDER: PlayContext = { ...QUIZ_CTX, canSurrender: true };
+
+/** The ctx an entry must be asked under: surrender indices need the play to
+ *  be available, every other kind needs it unavailable. */
+function ctxFor(entry: Deviation): PlayContext {
+  return entry.kind === 'surrender' ? QUIZ_CTX_SURRENDER : QUIZ_CTX;
+}
 
 /** tc uniform in [threshold-2, threshold+2] -- the original per-entry tc spread. */
 function tcNearThreshold(threshold: number, rng: () => number): number {
@@ -98,7 +117,7 @@ function shuffled<T>(arr: T[], rng: () => number): T[] {
  * from correctPlay/basicPlay, the same engine functions the quiz grader
  * (buildQuizEvent in Drills.tsx) uses.
  */
-function isBasicOnly(cards: [Card, Card], up: Rank, tc: number, rules: RuleSet): { ok: boolean; action: Action } {
+function isBasicOnly(cards: [Card, Card], up: Rank, tc: number, rules: StrategyRules): { ok: boolean; action: Action } {
   const withCount = correctPlay(cards, up, tc, QUIZ_CTX, rules);
   const basicOnly = basicPlay(cards, up, QUIZ_CTX, rules);
   return { ok: withCount.action === basicOnly.action, action: basicOnly.action };
@@ -113,12 +132,17 @@ type Candidate = { cards: [Card, Card]; up: Rank; tc: number };
  * candidate is engine-verified (isBasicOnly) before being accepted; attempts
  * are tried in a seeded-random order so all three perturbation kinds get a
  * turn across many draws, not just the always-safe fallback. The
- * tc-wrong-side attempt (same total/up as `entry`) is analytically
- * guaranteed to pass -- no two Illustrious 18 entries share a (total, up)
- * pair -- so this can only return null if makeHardHand keeps failing, which
- * never happens for the constructible 5..19 range.
+ * The tc-wrong-side attempt (same total/up as `entry`) used to be
+ * analytically guaranteed to pass, on the grounds that no two Illustrious 18
+ * entries share a (total, up) pair. RV3 ended that: `sur16v9` sits on the same
+ * cell as the `16v9` STAND index, and `sur15v10` on the same cell as `15v10`,
+ * so a tc on the wrong side of one can still be on the trigger side of the
+ * other. It is now a strong heuristic rather than a proof -- which costs
+ * nothing, because every candidate was already engine-verified by
+ * `isBasicOnly` before acceptance and the call site already falls back. The
+ * guarantee was load-bearing for the COMMENT, never for the code.
  */
-function buildCloseHardCandidate(entry: Deviation, rng: () => number, rules: RuleSet): Candidate | null {
+function buildCloseHardCandidate(entry: Deviation, rng: () => number, rules: StrategyRules): Candidate | null {
   const attempts: Array<() => Candidate | null> = [
     () => {
       const cards = makeHardHand(entry.total!, rng);
@@ -153,7 +177,7 @@ function buildCloseHardCandidate(entry: Deviation, rng: () => number, rules: Rul
  * there's no "adjacent hand total" axis). Same engine-verified-attempts
  * shape as buildCloseHardCandidate.
  */
-function buildClosePair10Candidate(entry: Deviation, rng: () => number, rules: RuleSet): Candidate | null {
+function buildClosePair10Candidate(entry: Deviation, rng: () => number, rules: StrategyRules): Candidate | null {
   const attempts: Array<() => Candidate | null> = [
     () => ({ cards: makePair10Cards(), up: entry.up!, tc: tcWrongSide(entry, rng) }),
     ...adjacentUps(entry.up!).map(
@@ -184,7 +208,7 @@ const RANDOM_MAX_ATTEMPTS = 30;
  * the 300+-seed sweep test) falls back to a CLOSE candidate at the call
  * site.
  */
-function buildRandomCandidate(rng: () => number, rules: RuleSet): Candidate | null {
+function buildRandomCandidate(rng: () => number, rules: StrategyRules): Candidate | null {
   for (let i = 0; i < RANDOM_MAX_ATTEMPTS; i++) {
     const total = RANDOM_HARD_TOTALS[Math.floor(rng() * RANDOM_HARD_TOTALS.length)]!;
     const up = UP_SPACE[Math.floor(rng() * UP_SPACE.length)]!;
@@ -221,7 +245,7 @@ function distractorLabel(near?: Deviation): string {
 function buildDistractorItem(
   rng: () => number,
   pinnedEntry: Deviation | undefined,
-  rules: RuleSet,
+  rules: StrategyRules,
   deviationSet: readonly Deviation[],
 ): QuizItem {
   const activeEntries = deviationSet.filter((d) => d.active);
@@ -314,7 +338,7 @@ function buildDistractorItem(
 export function drawQuizItem(
   seed?: number,
   filter?: DeviationId,
-  rules: RuleSet = DEFAULT_RULES,
+  rules: StrategyRules = DEFAULT_RULES,
   distractorPct = 0,
   srDeck: SrDeck = {},
   now = 0,
@@ -369,7 +393,7 @@ export function drawQuizItem(
     // surrender-masking fix: with surrender on, basic surrender beats the
     // 16v10/15v10/16v9 deviations at every TC, making those thresholds
     // unlearnable and contradicting the displayed index label.
-    const advice = correctPlay(cards, entry.up!, tc, QUIZ_CTX, rules);
+    const advice = correctPlay(cards, entry.up!, tc, ctxFor(entry), rules);
     correct = advice.action;
   } else {
     // hard: construct a truly hard (non-pair, non-ace) hand with the specified total
@@ -381,8 +405,10 @@ export function drawQuizItem(
       throw new Error(`Cannot construct hard total ${entry.total}`);
     }
     cards = totalCards;
-    // canSurrender: false — see note above.
-    const advice = correctPlay(cards, entry.up!, tc, QUIZ_CTX, rules);
+    // canSurrender per ctxFor: false for a hard index (so basic surrender
+    // cannot mask it), true for a surrender index (so the play it teaches is
+    // reachable at all).
+    const advice = correctPlay(cards, entry.up!, tc, ctxFor(entry), rules);
     // Note: no special-casing for 11vA. Under h17 it's inactive, so the engine's
     // basic chart (HARD[11] = Dh) already yields 'double' at every tc; under
     // s17 it's active (vs A the S17 basic chart is H) so correctPlay(rules)

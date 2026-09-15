@@ -3,7 +3,7 @@ import { mulberry32 } from '../engine/cards';
 import { correctPlay } from '../engine/strategy';
 import type { Action } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
-import type { RuleSet } from '../engine/ruleset';
+import type { StrategyRules } from '../engine/ruleset';
 import { makeHardHand } from './buildHand';
 import { weightedIndex } from './weightedDraw';
 import { srWeight } from './spacedRepetition';
@@ -123,7 +123,7 @@ export function drawFlashcard(
   srDeck: SrDeck,
   now: number,
   seed?: number,
-  rules: RuleSet = DEFAULT_RULES,
+  rules: StrategyRules = DEFAULT_RULES,
   byFrequency = false,
   byConfusability = false,
   previousCellId: string | null = null,

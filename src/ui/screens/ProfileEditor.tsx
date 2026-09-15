@@ -29,18 +29,23 @@ function Toggle({
   label,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  /** Greys the row out AND stops the input firing — used where the setting is
+   *  meaningless under the profile's current rules (see surrender indices). */
+  disabled?: boolean;
 }) {
   return (
-    <label className="settings-toggle-row">
+    <label className={disabled ? 'settings-toggle-row is-disabled' : 'settings-toggle-row'}>
       <span className="settings-label">{label}</span>
       <input
         type="checkbox"
         className="settings-toggle"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
     </label>
@@ -466,6 +471,32 @@ function ProfileEditForm({
           every positive count and differ on every negative one &mdash; &minus;1.5 floors to
           &minus;2 and truncates to &minus;1 &mdash; which straddles real indices like 12 v 4
           and 13 v 2. Set it to match your book, or the table will mark those deviations wrong.
+        </p>
+
+        {/* RV3 (docs/BACKLOG.md). Sits beside true-count rounding because it is
+            the same kind of setting: a property of the system you play, not of
+            the table. Gated on late surrender — with `ls` off the dealer never
+            offers the play, so every index in the set is unreachable and a live
+            control would be a lie. */}
+        <Toggle
+          label="Surrender indices (Fab 4)"
+          checked={draft.surrenderIndices === true && draft.rules.ls}
+          disabled={!draft.rules.ls}
+          onChange={(v) => update({ surrenderIndices: v })}
+        />
+        <p className="stats-detail">
+          {draft.rules.ls ? (
+            <>
+              Vary surrender by the count instead of playing it flat. It cuts both ways: you
+              start surrendering 16 v 8 at &plus;4 where basic hits, and you stop surrendering
+              15 v 10 below 0 where basic surrenders. {draft.rules.s17 ? 'Four' : 'Six'} cells
+              under {draft.rules.s17 ? 'S17' : 'H17'}; 16 v 10, 16 v A
+              {draft.rules.s17 ? '' : ' and 17 v A'} keep surrendering at every count. Sourced in{' '}
+              <code>docs/sources/verified-surrender-indices.md</code>.
+            </>
+          ) : (
+            <>Needs late surrender, which this profile&rsquo;s rules have switched off.</>
+          )}
         </p>
         <Stepper
           label="Starting bankroll"

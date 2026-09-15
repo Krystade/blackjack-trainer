@@ -1,4 +1,5 @@
 ﻿import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { strategyRulesFor } from '../../store/profiles';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
 import type { Action, DeviationId } from '../../engine/deviations';
@@ -847,7 +848,7 @@ function quizFilterArg(quizIndex: DeviationId | 'all'): DeviationId | undefined 
  */
 function getActiveQuizFilter(quizIndex: DeviationId | 'all', activeProfile: Profile): DeviationId | 'all' {
   if (quizIndex === 'all') return 'all';
-  if (!isIndexActive(quizIndex, activeProfile.rules)) {
+  if (!isIndexActive(quizIndex, strategyRulesFor(activeProfile))) {
     return 'all';
   }
   return quizIndex;
@@ -874,7 +875,7 @@ function DeviationQuizView({
     drawQuizItem(
       randomSeed(),
       quizFilterArg(activeFilter),
-      activeProfile.rules,
+      strategyRulesFor(activeProfile),
       settings.drill.quizDistractorPct,
       srDeckRef.current,
       Date.now(),
@@ -979,7 +980,7 @@ function DeviationQuizView({
     // hand they had never been asked about.
     setShowChart(false);
     setItem(
-      drawQuizItem(randomSeed(), quizFilterArg(filter), activeProfile.rules, distractorPct, srDeckRef.current, Date.now()),
+      drawQuizItem(randomSeed(), quizFilterArg(filter), strategyRulesFor(activeProfile), distractorPct, srDeckRef.current, Date.now()),
     );
     setFeedback(null);
     promptShownAtRef.current = performance.now();
@@ -1048,7 +1049,7 @@ function DeviationQuizView({
     const result = gradeQuiz(
       item,
       taken,
-      activeProfile.rules,
+      strategyRulesFor(activeProfile),
       elapsedMs,
       srDeckRef.current,
       Date.now(),
@@ -1217,7 +1218,7 @@ function DeviationQuizView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedback, eyesFree, item, showChart]);
 
-  const indexList = indexSetFor(activeProfile.rules);
+  const indexList = indexSetFor(strategyRulesFor(activeProfile));
 
   return (
     <div className="drill-screen" style={drillScreenStyle(padTop)}>

@@ -5,7 +5,7 @@ import { indexSetFor } from './deviations';
 import { handValue, isPair, pairRank } from './hand';
 import { upIndex } from './basicStrategy';
 import { DEFAULT_RULES } from './ruleset';
-import type { RuleSet } from './ruleset';
+import type { StrategyRules } from './ruleset';
 
 /**
  * `timeout` (R1's shot clock, drills/shotClock.ts) is the odd one out and is
@@ -153,7 +153,7 @@ export function classifyAction(
   up: Rank,
   // Unused: the tc is already baked into withCount/basicOnly by the caller.
   _tc: number,
-  rules: RuleSet = DEFAULT_RULES,
+  rules: StrategyRules = DEFAULT_RULES,
 ): { classification: MistakeClass; correct: boolean } {
   // Step 1: taken === withCount.action -> correct
   if (taken === withCount.action) {
@@ -191,7 +191,7 @@ export function classifyAction(
  * @param up The dealer's up-card
  * @param rules The ruleset to determine which deviation set to use (H17 vs S17)
  */
-function isPhantomDeviation(taken: Action, cards: Card[], up: Rank, rules: RuleSet = DEFAULT_RULES): boolean {
+function isPhantomDeviation(taken: Action, cards: Card[], up: Rank, rules: StrategyRules = DEFAULT_RULES): boolean {
   const hv = handValue(cards);
   const upIdx = upIndex(up);
   const isTenPair = pairRank(cards) === '10'; // pairRank normalizes 10/J/Q/K to '10'
@@ -242,7 +242,7 @@ function isPhantomDeviation(taken: Action, cards: Card[], up: Rank, rules: RuleS
 export function classifyInsurance(
   take: boolean,
   tc: number,
-  rules: RuleSet = DEFAULT_RULES,
+  rules: StrategyRules = DEFAULT_RULES,
 ): { classification: MistakeClass; correct: boolean } {
   const insIndex = indexSetFor(rules).find((d) => d.id === 'ins')?.threshold ?? 3;
   const shouldTake = tc >= insIndex;

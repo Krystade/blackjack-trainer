@@ -22,7 +22,7 @@ import type { Advice } from '../engine/strategy';
 import type { EvAction } from '../engine/handEv';
 import type { PlayContext } from '../engine/strategy';
 import { correctPlay, basicPlay } from '../engine/strategy';
-import type { RuleSet } from '../engine/ruleset';
+import type { StrategyRules } from '../engine/ruleset';
 import type { Action } from '../engine/deviations';
 import type { Flashcard } from './flashcards';
 import type { QuizItem } from './deviationQuiz';
@@ -152,7 +152,7 @@ function priceMistake(
   cards: Card[],
   up: Rank,
   ctx: PlayContext,
-  rules: RuleSet,
+  rules: StrategyRules,
   expected: Advice,
   taken: string,
   classification: MistakeClass,
@@ -172,7 +172,7 @@ function priceMistake(
 export function buildFlashcardEvent(
   card: Flashcard,
   taken: DrillAnswer,
-  rules: RuleSet,
+  rules: StrategyRules,
   elapsedMs: number,
   source: EventSource = 'flashcard',
 ): { event: GradedEvent; correctAction: Action; correct: boolean } {
@@ -216,7 +216,7 @@ export function buildFlashcardEvent(
  * Pure, deterministic given its inputs. `elapsedMs` is optional and purely
  * additive -- omitting it produces an untimed event, exactly as before R1.
  */
-export function buildQuizEvent(item: QuizItem, taken: string, rules: RuleSet, elapsedMs?: number): GradedEvent {
+export function buildQuizEvent(item: QuizItem, taken: string, rules: StrategyRules, elapsedMs?: number): GradedEvent {
   if (item.cards === null) {
     const take = taken === 'take-insurance';
     // A timeout is not a decline, and classifyInsurance cannot tell them apart:
@@ -297,7 +297,7 @@ export interface FlashGradeResult {
 export function gradeFlashcardAnswer(
   card: Flashcard,
   taken: DrillAnswer,
-  rules: RuleSet,
+  rules: StrategyRules,
   elapsedMs: number,
   deck: SrDeck,
   now: number,
@@ -346,7 +346,7 @@ export function gradeFlashcardAnswer(
 export function gradeMasteryAnswer(
   cell: Flashcard,
   taken: DrillAnswer,
-  rules: RuleSet,
+  rules: StrategyRules,
   elapsedMs: number,
   now: number,
 ): { event: GradedEvent; correctAction: Action; correct: boolean } {
@@ -377,7 +377,7 @@ export interface QuizGradeResult {
 export function gradeQuizAnswer(
   item: QuizItem,
   taken: string,
-  rules: RuleSet,
+  rules: StrategyRules,
   elapsedMs: number,
   deck: SrDeck,
   now: number,

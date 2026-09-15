@@ -1,3 +1,4 @@
+import { strategyRulesFor } from '../../store/profiles';
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Screen } from '../App';
@@ -592,7 +593,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       canSplit: legal.includes('split'),
       canSurrender: legal.includes('surrender'),
     };
-    advice = correctPlay(activeHand.cards, game.dealerCards[0].rank, game.trueCountNow, ctx, activeProfile.rules).action;
+    advice = correctPlay(activeHand.cards, game.dealerCards[0].rank, game.trueCountNow, ctx, strategyRulesFor(activeProfile)).action;
   }
 
   let barMode: ActionBarMode;

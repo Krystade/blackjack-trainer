@@ -1,3 +1,4 @@
+import type { StrategyRules } from '../engine/ruleset';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import { DEFAULT_SPREAD, DEFAULT_SEATS } from '../engine/game';
 import type { SpreadRow, SeatConfig } from '../engine/game';
@@ -249,4 +250,19 @@ export function getActiveProfile(): Profile {
 export function setActiveProfile(id: string): void {
   const store = getStorage();
   store.setItem(ACTIVE_KEY, id);
+}
+
+/**
+ * The profile's ruleset plus the training preferences that change what the
+ * CORRECT play is — currently just RV3's surrender indices.
+ *
+ * Exists so the surfaces that grade or advise a play read one thing instead of
+ * assembling it inline, and so it is obvious which surfaces do. Passing a bare
+ * `profile.rules` is still valid everywhere (the extra field is optional) and
+ * still means "indices off" — which is correct for the screens that genuinely
+ * do not want them, like the Charts screen, which renders BASIC strategy and
+ * would be wrong to bend by the count.
+ */
+export function strategyRulesFor(profile: Profile): StrategyRules {
+  return { ...profile.rules, surrenderIndices: profile.surrenderIndices === true };
 }
