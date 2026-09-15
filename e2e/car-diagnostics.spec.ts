@@ -29,7 +29,7 @@ test('reports which buttons the car sent and which the phone refused', async ({ 
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
 
-  const section = page.locator('.settings-section', { hasText: 'Car controls' });
+  const section = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Car controls' }) });
   await expect(section).toBeVisible();
 
   // The headline: what the CAR emitted, which no desk test can produce.
@@ -43,7 +43,7 @@ test('says "none yet" before a drive rather than looking broken', async ({ page 
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
 
-  const section = page.locator('.settings-section', { hasText: 'Car controls' });
+  const section = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Car controls' }) });
   await expect(section).toContainText('none yet');
 });
 
@@ -52,7 +52,7 @@ test('the full report can be revealed and cleared', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
 
-  const section = page.locator('.settings-section', { hasText: 'Car controls' });
+  const section = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Car controls' }) });
   await section.getByRole('button', { name: 'Show detail' }).click();
 
   const log = page.locator('.car-log');
@@ -71,7 +71,7 @@ test('the log survives a reload', async ({ page }) => {
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
 
-  await expect(page.locator('.settings-section', { hasText: 'Car controls' })).toContainText(
+  await expect(page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Car controls' }) })).toContainText(
     'nexttrack',
   );
 });
@@ -89,7 +89,7 @@ test('the log survives a reload', async ({ page }) => {
 async function openCarSection(page: import('@playwright/test').Page) {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  return page.locator('.settings-section', { hasText: 'Car controls' });
+  return page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Car controls' }) });
 }
 
 test('with live speech, the panel says the wheel cannot reach the app, and why', async ({
@@ -176,7 +176,7 @@ test('the button tester names each press and lists what never arrived', async ({
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
 
-  const section = page.locator('.settings-section', { hasText: 'Car controls' });
+  const section = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Car controls' }) });
   await section.getByRole('button', { name: 'Start test', exact: true }).click();
   await expect(section).toContainText('Listening');
 
@@ -212,7 +212,7 @@ test('a press during the test does nothing but report itself', async ({ page }) 
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
 
-  const section = page.locator('.settings-section', { hasText: 'Car controls' });
+  const section = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Car controls' }) });
   await section.getByRole('button', { name: 'Start test', exact: true }).click();
 
   await pressWheel(page, 'nexttrack');
@@ -242,7 +242,7 @@ test('stopping the test restores the real mapping', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
 
-  const section = page.locator('.settings-section', { hasText: 'Car controls' });
+  const section = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Car controls' }) });
   await section.getByRole('button', { name: 'Start test', exact: true }).click();
   await pressWheel(page, 'previoustrack');
   await expect(section.locator('.car-press-row')).toHaveCount(1);
@@ -271,7 +271,7 @@ test('leaving Settings mid-test releases the buttons', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
 
-  const section = page.locator('.settings-section', { hasText: 'Car controls' });
+  const section = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Car controls' }) });
   await section.getByRole('button', { name: 'Start test', exact: true }).click();
   await expect(section).toContainText('Listening');
   await pressWheel(page, 'previoustrack');
@@ -293,7 +293,7 @@ test('leaving Settings mid-test releases the buttons', async ({ page }) => {
 
   // And back in Settings the panel is idle again rather than half-running.
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const again = page.locator('.settings-section', { hasText: 'Car controls' });
+  const again = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Car controls' }) });
   await expect(again.getByRole('button', { name: 'Start test', exact: true })).toBeVisible();
   await expect(again).not.toContainText('Listening');
 });

@@ -34,7 +34,7 @@ test('a boost with live speech explains that it will not apply', async ({ page }
   await withSettings(page, { audio: { enabled: true, volume: 1.5, useClips: false } });
   await openAudioSettings(page);
 
-  await expect(page.locator('.settings-section', { hasText: 'Audio' })).toContainText(
+  await expect(page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Audio' }) })).toContainText(
     'Live speech is capped at 100%',
   );
 });
@@ -43,7 +43,7 @@ test('the explanation disappears once the recorded voice is on', async ({ page }
   await withSettings(page, { audio: { enabled: true, volume: 1.5, useClips: true } });
   await openAudioSettings(page);
 
-  await expect(page.locator('.settings-section', { hasText: 'Audio' })).not.toContainText(
+  await expect(page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Audio' }) })).not.toContainText(
     'Live speech is capped at 100%',
   );
 });
@@ -52,7 +52,7 @@ test('no explanation at or below 100%, where nothing is being promised', async (
   await withSettings(page, { audio: { enabled: true, volume: 1, useClips: false } });
   await openAudioSettings(page);
 
-  await expect(page.locator('.settings-section', { hasText: 'Audio' })).not.toContainText(
+  await expect(page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Audio' }) })).not.toContainText(
     'Live speech is capped at 100%',
   );
 });

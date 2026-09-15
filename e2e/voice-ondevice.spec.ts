@@ -37,7 +37,7 @@ async function withModelState(
 async function openVoiceSettings(page: Page) {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const section = page.locator('.settings-section', { hasText: 'Voice control' });
+  const section = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Voice control' }) });
   await expect(section).toBeVisible();
   return section;
 }

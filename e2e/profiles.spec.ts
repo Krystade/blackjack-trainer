@@ -211,7 +211,7 @@ test('profile editor bet ramp: manual add-row / edit minTc & units / remove-row 
   await page.goto('/?e2e=1');
   await openEditorForFirstProfile(page);
 
-  const rampSection = page.locator('.settings-section', { hasText: 'Bet ramp' });
+  const rampSection = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Bet ramp' }) });
   await expect(rampSection.locator('.spread-row')).toHaveCount(2);
 
   // Add a row -> appends { minTc: 0, units: 1 } as the 3rd (last) row.
@@ -259,7 +259,7 @@ test('profile editor CVCX: score/EV/ROR/simNote entered + saved + surfaced on th
   await page.goto('/?e2e=1');
   await openEditorForFirstProfile(page);
 
-  const cvcxSection = page.locator('.settings-section', { hasText: 'CVCX' });
+  const cvcxSection = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'CVCX' }) });
   await cvcxSection.locator('.settings-row', { hasText: 'Score' }).locator('input.profile-number-input').fill('55');
   await cvcxSection.locator('.settings-row', { hasText: 'EV / hour' }).locator('input.profile-number-input').fill('12');
   await cvcxSection.locator('.settings-row', { hasText: 'Risk of ruin' }).locator('input.profile-number-input').fill('5');

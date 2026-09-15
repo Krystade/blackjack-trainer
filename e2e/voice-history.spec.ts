@@ -92,7 +92,7 @@ async function openHistory(page: Page) {
   if (await back.count()) await back.first().click();
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const section = page.locator('.settings-section', { hasText: 'What the microphone heard' });
+  const section = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'What the microphone heard' }) });
   await expect(section).toBeVisible();
   return section;
 }

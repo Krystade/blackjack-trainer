@@ -3512,3 +3512,101 @@ button {
   color: var(--ink-dim);
   font-weight: 700;
 }
+
+/* ---------- Settings: collapsible sections (iPhone 13 mini height pass) ----------
+   Settings measured 4085px at 375x812 -- five screens -- so every section is a
+   <details> now. The base .settings-section rule above is a flex column, which
+   would lay out the marker and summary as siblings of the body, so details
+   overrides it back to block and the body keeps the flex. */
+details.settings-section,
+details.stats-section {
+  display: block;
+  gap: 0;
+}
+
+details.settings-section > summary,
+details.stats-section > summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  /* Remove the native triangle in both engines; we draw our own on the right,
+     where a thumb reading down a list of headings expects it. */
+  list-style: none;
+  /* A summary is the section's tap target, so give it a real one. */
+  min-height: 2.25rem;
+}
+
+details.settings-section > summary::-webkit-details-marker,
+details.stats-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.settings-section > summary::after,
+details.stats-section > summary::after {
+  content: '\203A'; /* › */
+  color: var(--ink-dim);
+  font-size: 1.2rem;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+
+details.settings-section[open] > summary::after,
+details.stats-section[open] > summary::after {
+  transform: rotate(-90deg);
+}
+
+details.settings-section > .settings-section-body,
+details.stats-section > .stats-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.7rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  details.settings-section > summary::after,
+details.stats-section > summary::after {
+    transition: none;
+  }
+}
+
+/* ---------- Settings: has this actually been tried on hardware? ---------- */
+.settings-verified {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+
+.settings-verified-tag {
+  flex: none;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.6rem;
+  border: 1px solid currentColor;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.settings-verified.is-confirmed .settings-verified-tag {
+  color: var(--good, #6fcf97);
+}
+
+.settings-verified.is-untested .settings-verified-tag {
+  color: var(--warn, #e0b25e);
+}
+
+.settings-verified.is-partly .settings-verified-tag {
+  color: var(--warn, #e0b25e);
+}
+
+/* A control that cannot do anything under the current rules (see the Profile
+   editor's surrender-indices toggle) reads as inert rather than merely inert. */
+.settings-toggle-row.is-disabled {
+  opacity: 0.55;
+}

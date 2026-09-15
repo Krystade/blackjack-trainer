@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { CollapsibleSection } from '../components/CollapsibleSection';
 import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
 import { THEMES, normalizeTheme } from '../theme';
@@ -111,6 +112,28 @@ function Toggle({
         disabled={disabled}
       />
     </label>
+  );
+}
+
+/**
+ * Says whether a feature has actually been confirmed to work on real hardware,
+ * as opposed to merely passing tests on a desk.
+ *
+ * Several things here can only be validated by using them — recorded clips on
+ * the operator's own phone, the wheel mapping in the operator's own car. The
+ * code cannot tell the difference between "works" and "has never been tried",
+ * and until now neither could the screen: a toggle for an untried feature
+ * looked exactly like a toggle for a proven one.
+ */
+type VerifiedState = 'confirmed' | 'untested' | 'partly';
+
+function Verified({ state, children }: { state: VerifiedState; children: React.ReactNode }) {
+  const label = state === 'confirmed' ? 'Confirmed' : state === 'partly' ? 'Partly tested' : 'Not tested yet';
+  return (
+    <div className={`settings-verified is-${state}`}>
+      <span className="settings-verified-tag">{label}</span>
+      <span className="settings-verified-text">{children}</span>
+    </div>
   );
 }
 
@@ -228,321 +251,370 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         <div className="settings-heading">Settings</div>
       </div>
 
-      <section className="settings-section">
-        <h2 className="settings-section-title">Theme</h2>
-        {/* Picked by PURPOSE, not by swatch: which one you want depends on
-            where you are using the app -- a dark car, bright daylight, or a
-            chart-study session -- so each option states its deciding factor. */}
-        <div className="theme-picker">
-          {THEMES.map((t) => {
-            const selected = normalizeTheme(settings.theme) === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                className={`theme-option${selected ? ' theme-option-selected' : ''}`}
-                aria-pressed={selected}
-                data-theme-id={t.id}
-                onClick={() => update({ theme: t.id })}
-              >
-                <span className="theme-option-head">
-                  <span className="theme-swatch" data-swatch={t.id} aria-hidden="true" />
-                  <span className="theme-option-name">{t.name}</span>
-                </span>
-                <span className="theme-option-note">{t.note}</span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
+      <CollapsibleSection
+        title={<>Theme</>}
+        defaultOpen={false}
+      >
+          {/* Picked by PURPOSE, not by swatch: which one you want depends on
+              where you are using the app -- a dark car, bright daylight, or a
+              chart-study session -- so each option states its deciding factor. */}
+          <div className="theme-picker">
+            {THEMES.map((t) => {
+              const selected = normalizeTheme(settings.theme) === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`theme-option${selected ? ' theme-option-selected' : ''}`}
+                  aria-pressed={selected}
+                  data-theme-id={t.id}
+                  onClick={() => update({ theme: t.id })}
+                >
+                  <span className="theme-option-head">
+                    <span className="theme-swatch" data-swatch={t.id} aria-hidden="true" />
+                    <span className="theme-option-name">{t.name}</span>
+                  </span>
+                  <span className="theme-option-note">{t.note}</span>
+                </button>
+              );
+            })}
+          </div>
+      </CollapsibleSection>
 
-      <section className="settings-section">
-        <h2 className="settings-section-title">Feedback mode</h2>
-        <Segmented
-          options={[
-            { value: 'training', label: 'Training' },
-            { value: 'test', label: 'Test' },
-          ]}
-          value={settings.feedbackMode}
-          onChange={(v) => update({ feedbackMode: v })}
-        />
-      </section>
-
-      <section className="settings-section">
-        <h2 className="settings-section-title">Play</h2>
-        <Toggle
-          label="Count peek"
-          checked={settings.countPeek}
-          onChange={(v) => update({ countPeek: v })}
-        />
-        <Stepper
-          label="Deal speed"
-          value={settings.dealSpeedMs}
-          min={0}
-          max={1000}
-          step={100}
-          format={(v) => `${v}ms`}
-          onChange={(v) => update({ dealSpeedMs: v })}
-        />
-      </section>
-
-      <section className="settings-section">
-        <h2 className="settings-section-title">Drills</h2>
-        <div className="settings-row">
-          <span className="settings-label">Flashcard category</span>
+      <CollapsibleSection
+        title={<>Feedback mode</>}
+        defaultOpen={true}
+      >
           <Segmented
             options={[
-              { value: 'all', label: 'All' },
-              { value: 'hard', label: 'Hard' },
-              { value: 'soft', label: 'Soft' },
-              { value: 'pairs', label: 'Pairs' },
+              { value: 'training', label: 'Training' },
+              { value: 'test', label: 'Test' },
             ]}
-            value={settings.drill.flashCategory}
-            onChange={(v) => updateDrill({ flashCategory: v })}
+            value={settings.feedbackMode}
+            onChange={(v) => update({ feedbackMode: v })}
           />
-        </div>
-        <div className="settings-row">
-          <span className="settings-label">Count group size</span>
-          <Segmented
-            options={[
-              { value: '1', label: '1' },
-              { value: '2', label: '2' },
-              { value: '3', label: '3' },
-            ]}
-            value={String(settings.drill.countGroup)}
-            onChange={(v) => updateDrill({ countGroup: Number(v) as 1 | 2 | 3 })}
-          />
-        </div>
-        <Stepper
-          label="Count interval"
-          value={settings.drill.countIntervalMs}
-          min={300}
-          max={3000}
-          step={100}
-          format={(v) => `${v}ms`}
-          onChange={(v) => updateDrill({ countIntervalMs: v })}
-        />
-        <Stepper
-          label="Count length"
-          value={settings.drill.countLengthCards}
-          min={13}
-          max={312}
-          step={13}
-          format={(v) => `${v} cards`}
-          onChange={(v) => updateDrill({ countLengthCards: v })}
-        />
-        <div className="settings-row">
-          <span className="settings-label">Depth resolution</span>
-          <Segmented
-            options={[
-              { value: 'half', label: 'Half' },
-              { value: 'last-deck', label: 'Last deck' },
-              { value: 'quarter', label: 'Quarter' },
-            ]}
-            value={settings.drill.depthResolution}
-            onChange={(v) => updateDrill({ depthResolution: v })}
-          />
-        </div>
-        <p className="settings-note">
-          How finely you read the discard tray &mdash; the Deck Estimation answer grid and its
-          tolerance, and what the produce-a-true-count drill forgives. Half a deck is the
-          default and the honest one: nobody looks at a stack of plastic and thinks &ldquo;2.3
-          decks&rdquo;. It is worth less as a ceiling near the end of a shoe, though &mdash;
-          with half a deck left, reading the tray half a deck wrong moves the true count by
-          your whole running count. &ldquo;Last deck&rdquo; keeps halves everywhere except the
-          last deck and asks for quarters there, which is where the precision pays.
-        </p>
-        <div className="settings-row">
-          <span className="settings-label">Shot clock</span>
-          <Segmented
-            options={SHOT_CLOCK_OPTIONS.map((ms) => ({
-              value: String(ms),
-              label: shotClockLabel(ms),
-            }))}
-            value={String(settings.drill.shotClockMs)}
-            onChange={(v) => updateDrill({ shotClockMs: Number(v) })}
-          />
-        </div>
-        <p className="settings-note">
-          A time limit on flashcard and deviation-quiz answers. Running out counts the card as
-          missed — under "Ran out of time" on Stats, kept apart from wrong plays — and puts it back
-          in the review deck. Off by default: pressure before accuracy inflates the score without
-          building the recall.
-        </p>
-      </section>
+      </CollapsibleSection>
 
-      <section className="settings-section">
-        <h2 className="settings-section-title">Audio</h2>
-        <Toggle
-          label="Audio enabled"
-          checked={settings.audio.enabled}
-          onChange={(v) => updateAudio({ enabled: v })}
-        />
-        <Toggle
-          label="Use recorded voice (higher quality)"
-          checked={settings.audio.useClips}
-          onChange={updateUseClips}
-          disabled={audioDisabled}
-        />
-        <div className="settings-note-row u-note">
-          Recorded clips cover any card/count/prompt phrase by concatenating per-sentence and
-          per-item clips; anything not covered falls back to live speech. Speech rate applies to
-          both -- clip playback speeds up without changing pitch.
-        </div>
-        {settings.audio.useClips && clipVoices.length > 0 && (
+      <CollapsibleSection
+        title={<>Play</>}
+        defaultOpen={false}
+      >
+          <Toggle
+            label="Count peek"
+            checked={settings.countPeek}
+            onChange={(v) => update({ countPeek: v })}
+          />
+          <Stepper
+            label="Deal speed"
+            value={settings.dealSpeedMs}
+            min={0}
+            max={1000}
+            step={100}
+            format={(v) => `${v}ms`}
+            onChange={(v) => update({ dealSpeedMs: v })}
+          />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Drills</>}
+        defaultOpen={false}
+      >
           <div className="settings-row">
-            <span className="settings-label">Clip voice</span>
-            <select
-              className="settings-select"
-              value={settings.audio.clipVoice}
-              onChange={(e) => updateClipVoice(e.target.value)}
-              disabled={audioDisabled}
-            >
-              <option value="">Automatic (default)</option>
-              {clipVoices.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
+            <span className="settings-label">Flashcard category</span>
+            <Segmented
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'hard', label: 'Hard' },
+                { value: 'soft', label: 'Soft' },
+                { value: 'pairs', label: 'Pairs' },
+              ]}
+              value={settings.drill.flashCategory}
+              onChange={(v) => updateDrill({ flashCategory: v })}
+            />
           </div>
-        )}
-        <div className="settings-row">
-          <span className="settings-label">Verbosity</span>
-          <Segmented
-            options={[
-              { value: 'off', label: 'Off' },
-              { value: 'results', label: 'Results' },
-              { value: 'full', label: 'Full' },
-            ]}
-            value={settings.audio.verbosity}
-            onChange={(v) => updateAudio({ verbosity: v })}
+          <div className="settings-row">
+            <span className="settings-label">Count group size</span>
+            <Segmented
+              options={[
+                { value: '1', label: '1' },
+                { value: '2', label: '2' },
+                { value: '3', label: '3' },
+              ]}
+              value={String(settings.drill.countGroup)}
+              onChange={(v) => updateDrill({ countGroup: Number(v) as 1 | 2 | 3 })}
+            />
+          </div>
+          <Stepper
+            label="Count interval"
+            value={settings.drill.countIntervalMs}
+            min={300}
+            max={3000}
+            step={100}
+            format={(v) => `${v}ms`}
+            onChange={(v) => updateDrill({ countIntervalMs: v })}
+          />
+          <Stepper
+            label="Count length"
+            value={settings.drill.countLengthCards}
+            min={13}
+            max={312}
+            step={13}
+            format={(v) => `${v} cards`}
+            onChange={(v) => updateDrill({ countLengthCards: v })}
+          />
+          <div className="settings-row">
+            <span className="settings-label">Depth resolution</span>
+            <Segmented
+              options={[
+                { value: 'half', label: 'Half' },
+                { value: 'last-deck', label: 'Last deck' },
+                { value: 'quarter', label: 'Quarter' },
+              ]}
+              value={settings.drill.depthResolution}
+              onChange={(v) => updateDrill({ depthResolution: v })}
+            />
+          </div>
+          <p className="settings-note">
+            How finely you read the discard tray &mdash; the Deck Estimation answer grid and its
+            tolerance, and what the produce-a-true-count drill forgives. Half a deck is the
+            default and the honest one: nobody looks at a stack of plastic and thinks &ldquo;2.3
+            decks&rdquo;. It is worth less as a ceiling near the end of a shoe, though &mdash;
+            with half a deck left, reading the tray half a deck wrong moves the true count by
+            your whole running count. &ldquo;Last deck&rdquo; keeps halves everywhere except the
+            last deck and asks for quarters there, which is where the precision pays.
+          </p>
+          <div className="settings-row">
+            <span className="settings-label">Shot clock</span>
+            <Segmented
+              options={SHOT_CLOCK_OPTIONS.map((ms) => ({
+                value: String(ms),
+                label: shotClockLabel(ms),
+              }))}
+              value={String(settings.drill.shotClockMs)}
+              onChange={(v) => updateDrill({ shotClockMs: Number(v) })}
+            />
+          </div>
+          <p className="settings-note">
+            A time limit on flashcard and deviation-quiz answers. Running out counts the card as
+            missed — under "Ran out of time" on Stats, kept apart from wrong plays — and puts it back
+            in the review deck. Off by default: pressure before accuracy inflates the score without
+            building the recall.
+          </p>
+      </CollapsibleSection>
+
+      {/* The four sections below all look like "audio" and are constantly
+          confused for one another. This one exists to say, once, which is
+          which and that two of them are mutually exclusive — a fact that was
+          previously buried three paragraphs into Car controls. */}
+      <CollapsibleSection
+        title={<>Voice &amp; eyes-free &mdash; how it fits together</>}
+        defaultOpen={true}
+      >
+        <div className="settings-note-row u-note">
+          <strong>Eyes-free</strong> is the goal: drill without looking at the screen. It needs
+          two halves &mdash; the app <em>speaking</em> to you, and <em>you answering</em>. The
+          speaking half is <strong>Audio</strong>, below, and it is the same for everyone.
+        </div>
+        <div className="settings-note-row u-note">
+          The answering half has two routes, and{' '}
+          <strong>you have to pick one &mdash; they cannot both work</strong>:
+        </div>
+        <div className="settings-note-row u-note">
+          &bull; <strong>Steering wheel</strong> (set up under <em>Car controls</em>). Skip
+          forward means &ldquo;yes&rdquo;. Works in the car, needs no microphone. This is the
+          one to use while driving. It answers yes/no questions only, so the Count drill, True
+          Count drill and the table work; Flashcards and the Deviation Quiz cannot, because
+          their answer is a five-way choice and one button cannot say which.
+        </div>
+        <div className="settings-note-row u-note">
+          &bull; <strong>Your voice</strong> (set up under <em>Voice control</em>). Say
+          &ldquo;hit&rdquo;, &ldquo;stand&rdquo;, &ldquo;yes&rdquo; and so on, so it can answer
+          every drill. But an open microphone switches a car to its hands-free{' '}
+          <em>call</em> route, which hands the wheel&rsquo;s buttons to that call instead of to
+          this app. Fine at a desk; it takes the wheel away in the car.
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Audio &mdash; the app speaking</>}
+        defaultOpen={false}
+      >
+          <Toggle
+            label="Audio enabled"
+            checked={settings.audio.enabled}
+            onChange={(v) => updateAudio({ enabled: v })}
+          />
+          <Toggle
+            label="Use recorded voice (higher quality)"
+            checked={settings.audio.useClips}
+            onChange={updateUseClips}
             disabled={audioDisabled}
           />
-        </div>
-        <div className="settings-row">
-          <span className="settings-label">Card detail</span>
-          <Segmented
-            options={[
-              { value: 'full', label: 'Full' },
-              { value: 'rank', label: 'Rank' },
-              { value: 'face', label: 'Face' },
-            ]}
-            value={settings.audio.cardDetail}
-            onChange={(v) => updateAudio({ cardDetail: v })}
-            disabled={audioDisabled}
-          />
-        </div>
-        <div className="settings-row">
-          <span className="settings-label">Hand announcement</span>
-          <Segmented
-            options={[
-              { value: 'cards', label: 'Cards' },
-              { value: 'total', label: 'Total' },
-            ]}
-            value={settings.audio.handStyle}
-            onChange={(v) => updateAudio({ handStyle: v })}
-            disabled={audioDisabled}
-          />
-        </div>
-        <Stepper
-          label="Speech rate"
-          value={settings.audio.rate}
-          min={0.5}
-          max={3.0}
-          step={0.1}
-          format={(v) => `${v.toFixed(1)}×`}
-          onChange={(v) => updateAudio({ rate: v })}
-          disabled={audioDisabled}
-        />
-        {/* A Stepper rather than a range input, matching Speech rate: the
-            eyes-free use case is a phone in a car mount, where a discrete
-            +/- target is hittable without looking and a thin slider thumb
-            is not. 0% is reachable on purpose -- see AudioSettings.volume. */}
-        <Stepper
-          label="Volume"
-          value={settings.audio.volume}
-          min={0}
-          max={MAX_VOLUME}
-          step={0.05}
-          format={(v) => `${Math.round(v * 100)}%`}
-          onChange={(v) => updateAudio({ volume: v })}
-          disabled={audioDisabled}
-        />
-        {settings.audio.volume > 1 && !settings.audio.useClips && (
+          <Verified state="untested">
+            Recorded clips have never been played on your phone &mdash; only in the test
+            harness, which checks that every phrase RESOLVES to a clip, not that the audio
+            sounds right or that iOS lets it play unprompted. That is why this ships off.
+            Turn it on, run a drill on the phone you will actually use, and listen.
+          </Verified>
           <div className="settings-note-row u-note">
-            Above 100% only applies to the recorded voice. Live speech is capped at 100% by
-            the browser and cannot be amplified — turn on the recorded voice to use the boost.
+            Recorded clips cover any card/count/prompt phrase by concatenating per-sentence and
+            per-item clips; anything not covered falls back to live speech. Speech rate applies to
+            both -- clip playback speeds up without changing pitch.
           </div>
-        )}
-        <div className="settings-row">
-          <span className="settings-label">Voice</span>
-          {speechSupported ? (
-            <select
-              className="settings-select"
-              value={settings.audio.voiceURI}
-              onChange={(e) => {
-                const voiceURI = e.target.value;
-                updateAudio({ voiceURI });
-                speak('Queen. True count plus three.', {
+          {settings.audio.useClips && clipVoices.length > 0 && (
+            <div className="settings-row">
+              <span className="settings-label">Clip voice</span>
+              <select
+                className="settings-select"
+                value={settings.audio.clipVoice}
+                onChange={(e) => updateClipVoice(e.target.value)}
+                disabled={audioDisabled}
+              >
+                <option value="">Automatic (default)</option>
+                {clipVoices.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="settings-row">
+            <span className="settings-label">Verbosity</span>
+            <Segmented
+              options={[
+                { value: 'off', label: 'Off' },
+                { value: 'results', label: 'Results' },
+                { value: 'full', label: 'Full' },
+              ]}
+              value={settings.audio.verbosity}
+              onChange={(v) => updateAudio({ verbosity: v })}
+              disabled={audioDisabled}
+            />
+          </div>
+          <div className="settings-row">
+            <span className="settings-label">Card detail</span>
+            <Segmented
+              options={[
+                { value: 'full', label: 'Full' },
+                { value: 'rank', label: 'Rank' },
+                { value: 'face', label: 'Face' },
+              ]}
+              value={settings.audio.cardDetail}
+              onChange={(v) => updateAudio({ cardDetail: v })}
+              disabled={audioDisabled}
+            />
+          </div>
+          <div className="settings-row">
+            <span className="settings-label">Hand announcement</span>
+            <Segmented
+              options={[
+                { value: 'cards', label: 'Cards' },
+                { value: 'total', label: 'Total' },
+              ]}
+              value={settings.audio.handStyle}
+              onChange={(v) => updateAudio({ handStyle: v })}
+              disabled={audioDisabled}
+            />
+          </div>
+          <Stepper
+            label="Speech rate"
+            value={settings.audio.rate}
+            min={0.5}
+            max={3.0}
+            step={0.1}
+            format={(v) => `${v.toFixed(1)}×`}
+            onChange={(v) => updateAudio({ rate: v })}
+            disabled={audioDisabled}
+          />
+          {/* A Stepper rather than a range input, matching Speech rate: the
+              eyes-free use case is a phone in a car mount, where a discrete
+              +/- target is hittable without looking and a thin slider thumb
+              is not. 0% is reachable on purpose -- see AudioSettings.volume. */}
+          <Stepper
+            label="Volume"
+            value={settings.audio.volume}
+            min={0}
+            max={MAX_VOLUME}
+            step={0.05}
+            format={(v) => `${Math.round(v * 100)}%`}
+            onChange={(v) => updateAudio({ volume: v })}
+            disabled={audioDisabled}
+          />
+          {settings.audio.volume > 1 && !settings.audio.useClips && (
+            <div className="settings-note-row u-note">
+              Above 100% only applies to the recorded voice. Live speech is capped at 100% by
+              the browser and cannot be amplified — turn on the recorded voice to use the boost.
+            </div>
+          )}
+          <div className="settings-row">
+            <span className="settings-label">Voice</span>
+            {speechSupported ? (
+              <select
+                className="settings-select"
+                value={settings.audio.voiceURI}
+                onChange={(e) => {
+                  const voiceURI = e.target.value;
+                  updateAudio({ voiceURI });
+                  speak('Queen. True count plus three.', {
+                    interrupt: true,
+                    rate: settings.audio.rate,
+                    voiceURI,
+                    volume: settings.audio.volume,
+                  });
+                }}
+                disabled={audioDisabled}
+              >
+                <option value="default">Automatic (best available)</option>
+                {voices.map((v) => (
+                  <option key={v.voiceURI} value={v.voiceURI}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <select className="settings-select" disabled>
+                <option>Speech not supported on this device</option>
+              </select>
+            )}
+          </div>
+          <Toggle
+            label="Chimes"
+            checked={settings.audio.chimes}
+            onChange={(v) => updateAudio({ chimes: v })}
+            disabled={audioDisabled}
+          />
+          <Stepper
+            label="Answer pause"
+            value={settings.audio.answerPauseMs}
+            min={0}
+            max={5000}
+            step={500}
+            format={(v) => `${(v / 1000).toFixed(1)} s`}
+            onChange={(v) => updateAudio({ answerPauseMs: v })}
+            disabled={audioDisabled}
+          />
+          <div className="settings-row">
+            <button
+              type="button"
+              className="settings-test-audio-btn"
+              disabled={audioDisabled}
+              onClick={() => {
+                speak('Audio is working. True count plus three.', {
                   interrupt: true,
                   rate: settings.audio.rate,
-                  voiceURI,
+                  voiceURI: settings.audio.voiceURI,
                   volume: settings.audio.volume,
                 });
+                if (settings.audio.chimes) {
+                  chime('good', { volume: settings.audio.volume });
+                }
               }}
-              disabled={audioDisabled}
             >
-              <option value="default">Automatic (best available)</option>
-              {voices.map((v) => (
-                <option key={v.voiceURI} value={v.voiceURI}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <select className="settings-select" disabled>
-              <option>Speech not supported on this device</option>
-            </select>
-          )}
-        </div>
-        <Toggle
-          label="Chimes"
-          checked={settings.audio.chimes}
-          onChange={(v) => updateAudio({ chimes: v })}
-          disabled={audioDisabled}
-        />
-        <Stepper
-          label="Answer pause"
-          value={settings.audio.answerPauseMs}
-          min={0}
-          max={5000}
-          step={500}
-          format={(v) => `${(v / 1000).toFixed(1)} s`}
-          onChange={(v) => updateAudio({ answerPauseMs: v })}
-          disabled={audioDisabled}
-        />
-        <div className="settings-row">
-          <button
-            type="button"
-            className="settings-test-audio-btn"
-            disabled={audioDisabled}
-            onClick={() => {
-              speak('Audio is working. True count plus three.', {
-                interrupt: true,
-                rate: settings.audio.rate,
-                voiceURI: settings.audio.voiceURI,
-                volume: settings.audio.volume,
-              });
-              if (settings.audio.chimes) {
-                chime('good', { volume: settings.audio.volume });
-              }
-            }}
-          >
-            Test audio
-          </button>
-        </div>
-      </section>
+              Test audio
+            </button>
+          </div>
+      </CollapsibleSection>
 
       <CarDiagnostics audio={settings.audio} />
 
@@ -686,101 +758,110 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
   const refused = [...new Set(entries.filter((e) => e.kind === 'register' && !e.ok).map((e) => e.action))];
 
   return (
-    <section className="settings-section">
-      <h2 className="settings-section-title">Car controls</h2>
+    <CollapsibleSection
+      title={<>Car controls</>}
+      defaultOpen={false}
+    >
 
-      <div className="settings-note-row u-note">
-        Records which steering-wheel buttons your car sends, so the mapping can be
-        matched to it. Fills in by itself while you drive.
-      </div>
-
-      {/* Why the readout below can stay empty forever. Both conditions are
-          invisible from the driver's seat, and the first drive met neither:
-          the wheel did nothing, and the car showed the app as a phone call. */}
-      <div className="settings-row">
-        <span className="settings-label">Can the wheel reach this app?</span>
-        <span className="settings-value" data-car-ready={blockers.length === 0}>
-          {blockers.length === 0 ? 'Yes — settings are right' : 'Not yet'}
-        </span>
-      </div>
-      {blockers.map((b) => (
-        <div key={b} className="settings-note-row u-note">
-          {describeCarControlsBlocker(b)}
+        <div className="settings-note-row u-note">
+          Records which steering-wheel buttons your car sends, so the mapping can be
+          matched to it. Fills in by itself while you drive.
         </div>
-      ))}
-      <div className="settings-note-row u-note">
-        Leave the microphone off. Turning voice on switches the car to its hands-free
-        CALL route — which is why the app showed up as a phone call — and the
-        wheel&rsquo;s buttons then go to that call, not to this app. Talking to it and
-        steering-wheel control cannot both work at once, which is why skip forward
-        answers for you: with the microphone off, the wheel is the whole loop.
-      </div>
 
-      <ButtonTester onPressed={() => setEntries(readLog())} />
+        <Verified state="partly">
+          Confirmed on a real drive: the wheel does reach the app, the repeat-forever loop is
+          fixed, and skip forward/back are both reachable without looking. Not yet confirmed in
+          any car but that one &mdash; a different head unit may name its buttons differently,
+          which is what the button test below is for.
+        </Verified>
 
-      <div className="settings-row">
-        <span className="settings-label">Buttons your car sent</span>
-        <span className="settings-value">{invoked.length ? invoked.join(', ') : 'none yet'}</span>
-      </div>
-      {/* What those buttons now do, stated because the mapping is no longer a
-          guess: the 2026-09-11 drive showed this car sends skip and pause on a
-          press, and sends `play` on its own every time a clip ends. */}
-      <div className="settings-note-row u-note">
-        Skip forward answers &ldquo;yes&rdquo; — it submits, confirms, and deals the next
-        hand, so a drill can be run from the wheel with the microphone off. Skip back
-        repeats the last thing said, and pause stops it. Play is ignored on purpose:
-        your car sends it by itself every time a clip finishes, and acting on it made
-        the question repeat without end.
-      </div>
-      <div className="settings-row">
-        <span className="settings-label">Accepted by this phone</span>
-        <span className="settings-value">{accepted.length ? accepted.join(', ') : 'none yet'}</span>
-      </div>
-      {refused.length > 0 && (
+        {/* Why the readout below can stay empty forever. Both conditions are
+            invisible from the driver's seat, and the first drive met neither:
+            the wheel did nothing, and the car showed the app as a phone call. */}
         <div className="settings-row">
-          <span className="settings-label">Refused</span>
-          <span className="settings-value">{refused.join(', ')}</span>
+          <span className="settings-label">Can the wheel reach this app?</span>
+          <span className="settings-value" data-car-ready={blockers.length === 0}>
+            {blockers.length === 0 ? 'Yes — settings are right' : 'Not yet'}
+          </span>
         </div>
-      )}
-
-      <div className="settings-row">
-        <button type="button" className="settings-mini-btn" onClick={() => setEntries(readLog())}>
-          Refresh
-        </button>
-        <button type="button" className="settings-mini-btn" onClick={() => setShown((v) => !v)}>
-          {shown ? 'Hide detail' : 'Show detail'}
-        </button>
-        <button
-          type="button"
-          className="settings-mini-btn"
-          onClick={() => {
-            clearLog();
-            setEntries([]);
-          }}
-        >
-          Clear
-        </button>
-      </div>
-
-      {shown && (
-        <>
-          <div className="settings-row">
-            <button
-              type="button"
-              className="settings-mini-btn"
-              onClick={() => {
-                // Clipboard can be unavailable or denied; the text is on
-                // screen regardless, so a failure needs no alarm.
-                void navigator.clipboard?.writeText(formatLog(entries)).catch(() => {});
-              }}
-            >
-              Copy report
-            </button>
+        {blockers.map((b) => (
+          <div key={b} className="settings-note-row u-note">
+            {describeCarControlsBlocker(b)}
           </div>
-          <pre className="car-log">{formatLog(entries)}</pre>
-        </>
-      )}
-    </section>
+        ))}
+        <div className="settings-note-row u-note">
+          Leave the microphone off. Turning voice on switches the car to its hands-free
+          CALL route — which is why the app showed up as a phone call — and the
+          wheel&rsquo;s buttons then go to that call, not to this app. Talking to it and
+          steering-wheel control cannot both work at once, which is why skip forward
+          answers for you: with the microphone off, the wheel is the whole loop.
+        </div>
+
+        <ButtonTester onPressed={() => setEntries(readLog())} />
+
+        <div className="settings-row">
+          <span className="settings-label">Buttons your car sent</span>
+          <span className="settings-value">{invoked.length ? invoked.join(', ') : 'none yet'}</span>
+        </div>
+        {/* What those buttons now do, stated because the mapping is no longer a
+            guess: the 2026-09-11 drive showed this car sends skip and pause on a
+            press, and sends `play` on its own every time a clip ends. */}
+        <div className="settings-note-row u-note">
+          Skip forward answers &ldquo;yes&rdquo; — it submits, confirms, and deals the next
+          hand, so a drill can be run from the wheel with the microphone off. Skip back
+          repeats the last thing said, and pause stops it. Play is ignored on purpose:
+          your car sends it by itself every time a clip finishes, and acting on it made
+          the question repeat without end.
+        </div>
+        <div className="settings-row">
+          <span className="settings-label">Accepted by this phone</span>
+          <span className="settings-value">{accepted.length ? accepted.join(', ') : 'none yet'}</span>
+        </div>
+        {refused.length > 0 && (
+          <div className="settings-row">
+            <span className="settings-label">Refused</span>
+            <span className="settings-value">{refused.join(', ')}</span>
+          </div>
+        )}
+
+        <div className="settings-row">
+          <button type="button" className="settings-mini-btn" onClick={() => setEntries(readLog())}>
+            Refresh
+          </button>
+          <button type="button" className="settings-mini-btn" onClick={() => setShown((v) => !v)}>
+            {shown ? 'Hide detail' : 'Show detail'}
+          </button>
+          <button
+            type="button"
+            className="settings-mini-btn"
+            onClick={() => {
+              clearLog();
+              setEntries([]);
+            }}
+          >
+            Clear
+          </button>
+        </div>
+
+        {shown && (
+          <>
+            <div className="settings-row">
+              <button
+                type="button"
+                className="settings-mini-btn"
+                onClick={() => {
+                  // Clipboard can be unavailable or denied; the text is on
+                  // screen regardless, so a failure needs no alarm.
+                  void navigator.clipboard?.writeText(formatLog(entries)).catch(() => {});
+                }}
+              >
+                Copy report
+              </button>
+            </div>
+            <pre className="car-log">{formatLog(entries)}</pre>
+          </>
+        )}
+    </CollapsibleSection>
   );
 }
 
@@ -974,92 +1055,94 @@ function VoiceHistoryPanel() {
   const summary = summariseHistory(entries);
 
   return (
-    <section className="settings-section">
-      <h2 className="settings-section-title">What the microphone heard</h2>
+    <CollapsibleSection
+      title={<>What the microphone heard</>}
+      defaultOpen={false}
+    >
 
-      <div className="settings-note-row u-note">
-        Every phrase heard while voice is on, with what the app made of it. Kept so
-        misheard words like &ldquo;Stant&rdquo; can be found and taught, instead of
-        waiting to catch one by eye. <strong>Text only, stored on this device,
-        never uploaded</strong> &mdash; and clearable below.
-      </div>
+        <div className="settings-note-row u-note">
+          Every phrase heard while voice is on, with what the app made of it. Kept so
+          misheard words like &ldquo;Stant&rdquo; can be found and taught, instead of
+          waiting to catch one by eye. <strong>Text only, stored on this device,
+          never uploaded</strong> &mdash; and clearable below.
+        </div>
 
-      <div className="settings-row">
-        <span className="settings-label">Phrases recorded</span>
-        <span className="settings-value">
-          {summary.total === 0
-            ? 'none yet'
-            : `${summary.matched} understood, ${summary.rejected} not`}
-        </span>
-      </div>
-
-      {/* How many needed help, and of what kind. A drive full of rescues says
-          the engine hears fine and only ranks badly; a drive full of near
-          misses says that rule is carrying real weight and is worth checking
-          for false positives. Hidden when neither happened, because a row of
-          zeroes is noise. */}
-      {summary.rescued + summary.approximate > 0 && (
         <div className="settings-row">
-          <span className="settings-label">Needed help</span>
+          <span className="settings-label">Phrases recorded</span>
           <span className="settings-value">
-            {summary.rescued} ranked second, {summary.approximate} near miss
+            {summary.total === 0
+              ? 'none yet'
+              : `${summary.matched} understood, ${summary.rejected} not`}
           </span>
         </div>
-      )}
 
-      {/* The ranked rejections are the actionable part, so they get a row of
-          their own rather than being buried in the timeline. */}
-      {summary.candidates.length > 0 && (
+        {/* How many needed help, and of what kind. A drive full of rescues says
+            the engine hears fine and only ranks badly; a drive full of near
+            misses says that rule is carrying real weight and is worth checking
+            for false positives. Hidden when neither happened, because a row of
+            zeroes is noise. */}
+        {summary.rescued + summary.approximate > 0 && (
+          <div className="settings-row">
+            <span className="settings-label">Needed help</span>
+            <span className="settings-value">
+              {summary.rescued} ranked second, {summary.approximate} near miss
+            </span>
+          </div>
+        )}
+
+        {/* The ranked rejections are the actionable part, so they get a row of
+            their own rather than being buried in the timeline. */}
+        {summary.candidates.length > 0 && (
+          <div className="settings-row">
+            <span className="settings-label">Commonest miss</span>
+            <span className="settings-value">
+              &ldquo;{summary.candidates[0]!.heard}&rdquo; &times;{summary.candidates[0]!.count}
+            </span>
+          </div>
+        )}
+
         <div className="settings-row">
-          <span className="settings-label">Commonest miss</span>
-          <span className="settings-value">
-            &ldquo;{summary.candidates[0]!.heard}&rdquo; &times;{summary.candidates[0]!.count}
-          </span>
+          <button
+            type="button"
+            className="settings-mini-btn"
+            onClick={() => setEntries(readVoiceHistory())}
+          >
+            Refresh
+          </button>
+          <button
+            type="button"
+            className="settings-mini-btn"
+            onClick={() => setShown((v) => !v)}
+            disabled={summary.total === 0}
+          >
+            {shown ? 'Hide' : 'Show'}
+          </button>
+          <button
+            type="button"
+            className="settings-mini-btn"
+            onClick={() => {
+              void navigator.clipboard?.writeText(formatVoiceHistory(entries)).catch(() => {});
+            }}
+            disabled={summary.total === 0}
+          >
+            Copy
+          </button>
+          <button
+            type="button"
+            className="settings-mini-btn"
+            onClick={() => {
+              clearVoiceHistory();
+              setEntries([]);
+              setShown(false);
+            }}
+            disabled={summary.total === 0}
+          >
+            Delete recording
+          </button>
         </div>
-      )}
 
-      <div className="settings-row">
-        <button
-          type="button"
-          className="settings-mini-btn"
-          onClick={() => setEntries(readVoiceHistory())}
-        >
-          Refresh
-        </button>
-        <button
-          type="button"
-          className="settings-mini-btn"
-          onClick={() => setShown((v) => !v)}
-          disabled={summary.total === 0}
-        >
-          {shown ? 'Hide' : 'Show'}
-        </button>
-        <button
-          type="button"
-          className="settings-mini-btn"
-          onClick={() => {
-            void navigator.clipboard?.writeText(formatVoiceHistory(entries)).catch(() => {});
-          }}
-          disabled={summary.total === 0}
-        >
-          Copy
-        </button>
-        <button
-          type="button"
-          className="settings-mini-btn"
-          onClick={() => {
-            clearVoiceHistory();
-            setEntries([]);
-            setShown(false);
-          }}
-          disabled={summary.total === 0}
-        >
-          Delete recording
-        </button>
-      </div>
-
-      {shown && <pre className="car-log">{formatVoiceHistory(entries)}</pre>}
-    </section>
+        {shown && <pre className="car-log">{formatVoiceHistory(entries)}</pre>}
+    </CollapsibleSection>
   );
 }
 
@@ -1104,86 +1187,95 @@ function VoiceProbePanel() {
   ).length;
 
   return (
-    <section className="settings-section">
-      <h2 className="settings-section-title">Voice control (experiment)</h2>
+    <CollapsibleSection
+      title={<>Voice control (experiment)</>}
+      defaultOpen={false}
+    >
 
-      <div className="settings-note-row u-note">
-        Say <strong>hit</strong>, <strong>stand</strong>, <strong>double</strong>,{' '}
-        <strong>split</strong>, <strong>surrender</strong>, <strong>yes</strong>,{' '}
-        <strong>no</strong> or <strong>repeat</strong>. Start it, talk, then come back and
-        read what it heard. Works while this tab is in the background &mdash; that is
-        one of the things being measured.
-      </div>
+        <Verified state="untested">
+          An experiment, and the least proven thing here. Recognition quality depends on the
+          browser and the device, it has not been used in a real session, and in a car it takes
+          the steering wheel away (see &ldquo;Voice &amp; eyes-free&rdquo; at the top). Use it
+          at a desk first, then read the transcript below to see what it actually heard.
+        </Verified>
 
-      <div className="settings-row">
-        <span className="settings-label">This browser</span>
-        <span className="settings-value">
-          {support.api ? `supported (${support.flavour})` : 'not supported'}
-          {support.media ? '' : ' · no microphone'}
-        </span>
-      </div>
-
-      <OnDeviceModelPanel />
-
-      <Toggle
-        label="Keep restarting when it stops"
-        checked={autoRestart}
-        onChange={setAutoRestart}
-        disabled={running}
-      />
-
-      <div className="settings-row">
-        <span className="settings-label">Heard</span>
-        <span className="settings-value">
-          {heard.length === 0 ? 'nothing yet' : `${matched} matched of ${heard.length}`}
-        </span>
-      </div>
-      {hiddenEnds > 0 && (
-        <div className="settings-row">
-          <span className="settings-label">Stopped while backgrounded</span>
-          <span className="settings-value">{hiddenEnds}&times;</span>
+        <div className="settings-note-row u-note">
+          Say <strong>hit</strong>, <strong>stand</strong>, <strong>double</strong>,{' '}
+          <strong>split</strong>, <strong>surrender</strong>, <strong>yes</strong>,{' '}
+          <strong>no</strong> or <strong>repeat</strong>. Start it, talk, then come back and
+          read what it heard. Works while this tab is in the background &mdash; that is
+          one of the things being measured.
         </div>
-      )}
 
-      <div className="settings-row">
-        {running ? (
-          <button type="button" className="settings-mini-btn" onClick={stop}>
-            Stop listening
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="settings-mini-btn"
-            onClick={start}
-            disabled={!support.api}
-          >
-            Start listening
-          </button>
-        )}
-        <button type="button" className="settings-mini-btn" onClick={() => setEntries(readProbeLog())}>
-          Refresh
-        </button>
-        <button type="button" className="settings-mini-btn" onClick={() => setShown((v) => !v)}>
-          {shown ? 'Hide log' : 'Show log'}
-        </button>
-      </div>
+        <div className="settings-row">
+          <span className="settings-label">This browser</span>
+          <span className="settings-value">
+            {support.api ? `supported (${support.flavour})` : 'not supported'}
+            {support.media ? '' : ' · no microphone'}
+          </span>
+        </div>
 
-      {shown && (
-        <>
+        <OnDeviceModelPanel />
+
+        <Toggle
+          label="Keep restarting when it stops"
+          checked={autoRestart}
+          onChange={setAutoRestart}
+          disabled={running}
+        />
+
+        <div className="settings-row">
+          <span className="settings-label">Heard</span>
+          <span className="settings-value">
+            {heard.length === 0 ? 'nothing yet' : `${matched} matched of ${heard.length}`}
+          </span>
+        </div>
+        {hiddenEnds > 0 && (
           <div className="settings-row">
+            <span className="settings-label">Stopped while backgrounded</span>
+            <span className="settings-value">{hiddenEnds}&times;</span>
+          </div>
+        )}
+
+        <div className="settings-row">
+          {running ? (
+            <button type="button" className="settings-mini-btn" onClick={stop}>
+              Stop listening
+            </button>
+          ) : (
             <button
               type="button"
               className="settings-mini-btn"
-              onClick={() => {
-                void navigator.clipboard?.writeText(formatProbeLog(entries)).catch(() => {});
-              }}
+              onClick={start}
+              disabled={!support.api}
             >
-              Copy report
+              Start listening
             </button>
-          </div>
-          <pre className="car-log">{formatProbeLog(entries)}</pre>
-        </>
-      )}
-    </section>
+          )}
+          <button type="button" className="settings-mini-btn" onClick={() => setEntries(readProbeLog())}>
+            Refresh
+          </button>
+          <button type="button" className="settings-mini-btn" onClick={() => setShown((v) => !v)}>
+            {shown ? 'Hide log' : 'Show log'}
+          </button>
+        </div>
+
+        {shown && (
+          <>
+            <div className="settings-row">
+              <button
+                type="button"
+                className="settings-mini-btn"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(formatProbeLog(entries)).catch(() => {});
+                }}
+              >
+                Copy report
+              </button>
+            </div>
+            <pre className="car-log">{formatProbeLog(entries)}</pre>
+          </>
+        )}
+    </CollapsibleSection>
   );
 }

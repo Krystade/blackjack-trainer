@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { CollapsibleSection } from '../components/CollapsibleSection';
 import type { ChangeEvent } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings, Stats as StatsData } from '../../store/types';
@@ -642,69 +643,76 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
         </p>
       </div>
 
-      <section className="stats-section">
-        <h2 className="stats-section-title">Profile: {activeProfile.name}</h2>
-        <ul className="mistake-list">
-          <li className="mistake-row">
-            <span>CVCX score</span>
-            <span>{cvcx?.score !== undefined ? cvcx.score : dash()}</span>
-          </li>
-          <li className="mistake-row">
-            <span>CVCX EV/hr</span>
-            <span>{cvcx?.evPerHour !== undefined ? formatSigned(cvcx.evPerHour) : dash()}</span>
-          </li>
-          <li className="mistake-row">
-            <span>CVCX risk of ruin</span>
-            <span>{cvcx?.riskOfRuin !== undefined ? `${cvcx.riskOfRuin}%` : dash()}</span>
-          </li>
-          <li className="mistake-row">
-            <span>CVCX sim note</span>
-            <span>{cvcx?.simNote ? cvcx.simNote : dash()}</span>
-          </li>
-          <li className="mistake-row">
-            <span>Actual play accuracy{actualAccuracyAssisted ? ` (${actualAccuracyAssisted})` : ''}</span>
-            <span>{actualAccuracyPct === null ? dash() : `${Math.round(actualAccuracyPct)}%`}</span>
-          </li>
-          <li className="mistake-row">
-            <span>Actual units/hr (assumes 80 rounds/hr)</span>
-            <span>{unitsPerHourProxy === null ? dash() : formatSigned(Math.round(unitsPerHourProxy * 10) / 10)}</span>
-          </li>
-        </ul>
-      </section>
+      <CollapsibleSection
+        title={<>Profile: {activeProfile.name}</>}
+        className="stats-section"
+        defaultOpen={true}
+      >
+          <ul className="mistake-list">
+            <li className="mistake-row">
+              <span>CVCX score</span>
+              <span>{cvcx?.score !== undefined ? cvcx.score : dash()}</span>
+            </li>
+            <li className="mistake-row">
+              <span>CVCX EV/hr</span>
+              <span>{cvcx?.evPerHour !== undefined ? formatSigned(cvcx.evPerHour) : dash()}</span>
+            </li>
+            <li className="mistake-row">
+              <span>CVCX risk of ruin</span>
+              <span>{cvcx?.riskOfRuin !== undefined ? `${cvcx.riskOfRuin}%` : dash()}</span>
+            </li>
+            <li className="mistake-row">
+              <span>CVCX sim note</span>
+              <span>{cvcx?.simNote ? cvcx.simNote : dash()}</span>
+            </li>
+            <li className="mistake-row">
+              <span>Actual play accuracy{actualAccuracyAssisted ? ` (${actualAccuracyAssisted})` : ''}</span>
+              <span>{actualAccuracyPct === null ? dash() : `${Math.round(actualAccuracyPct)}%`}</span>
+            </li>
+            <li className="mistake-row">
+              <span>Actual units/hr (assumes 80 rounds/hr)</span>
+              <span>{unitsPerHourProxy === null ? dash() : formatSigned(Math.round(unitsPerHourProxy * 10) / 10)}</span>
+            </li>
+          </ul>
+      </CollapsibleSection>
 
-      <section className="stats-section" data-tab={SECTION_TAB['Accuracy by category']}>
-        <h2 className="stats-section-title">Accuracy by category</h2>
-        <div className="category-list">
-          {CATEGORY_ORDER.map((cat) => {
-            const tally = stats.categories[cat];
-            const total = tally.right + tally.wrong;
-            const pctNum = total === 0 ? 0 : (tally.right / total) * 100;
-            // R1: median decision time for this category, sourced from
-            // whichever drills currently capture elapsedMs (flashcards +
-            // deviation quiz) -- entries lacking it (e.g. table play) never
-            // reach latencyHistory at all (see stats.ts applyEvents), so the
-            // only filtering needed is the category and, since V3-5, the
-            // selected range. Undated rows predate V3-5 and are kept on "all
-            // time" only, so this figure no longer disagrees with the accuracy
-            // printed on the same line.
-            const latencyMs = medianLatency(latencyRows.filter((e) => e.category === cat));
-            return (
-              <div className="category-row" key={cat}>
-                <div className="category-row-top">
-                  <span className="category-label">{CATEGORY_LABELS[cat]}</span>
-                  <span className="category-fraction">
-                    {tally.right}/{total} ({pct(tally.right, total)})
-                  </span>
+      <CollapsibleSection
+        title={<>Accuracy by category</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Accuracy by category']}
+        defaultOpen={false}
+      >
+          <div className="category-list">
+            {CATEGORY_ORDER.map((cat) => {
+              const tally = stats.categories[cat];
+              const total = tally.right + tally.wrong;
+              const pctNum = total === 0 ? 0 : (tally.right / total) * 100;
+              // R1: median decision time for this category, sourced from
+              // whichever drills currently capture elapsedMs (flashcards +
+              // deviation quiz) -- entries lacking it (e.g. table play) never
+              // reach latencyHistory at all (see stats.ts applyEvents), so the
+              // only filtering needed is the category and, since V3-5, the
+              // selected range. Undated rows predate V3-5 and are kept on "all
+              // time" only, so this figure no longer disagrees with the accuracy
+              // printed on the same line.
+              const latencyMs = medianLatency(latencyRows.filter((e) => e.category === cat));
+              return (
+                <div className="category-row" key={cat}>
+                  <div className="category-row-top">
+                    <span className="category-label">{CATEGORY_LABELS[cat]}</span>
+                    <span className="category-fraction">
+                      {tally.right}/{total} ({pct(tally.right, total)})
+                    </span>
+                  </div>
+                  <div className="category-bar-track">
+                    <div className="category-bar-fill" style={{ width: `${pctNum}%` }} />
+                  </div>
+                  <div className="category-latency">Median decision: {formatLatency(latencyMs)}</div>
                 </div>
-                <div className="category-bar-track">
-                  <div className="category-bar-fill" style={{ width: `${pctNum}%` }} />
-                </div>
-                <div className="category-latency">Median decision: {formatLatency(latencyMs)}</div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+              );
+            })}
+          </div>
+      </CollapsibleSection>
 
       {/*
         Flashcards had NO section at all, and worse, no way to have one: every
@@ -716,52 +724,56 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
         `bySource` is optional (blobs written before it exists lack it), so an
         absent branch renders the empty state rather than throwing.
       */}
-      <section className="stats-section" data-tab={SECTION_TAB['Flashcards']}>
-        <h2 className="stats-section-title">Flashcards</h2>
-        {(() => {
-          const bucket = stats.bySource?.flashcard;
-          const rows = CATEGORY_ORDER.map((cat) => ({ cat, tally: bucket?.[cat] ?? { right: 0, wrong: 0 } }))
-            .filter((r) => r.tally.right + r.tally.wrong > 0);
-          const answered = rows.reduce((n, r) => n + r.tally.right + r.tally.wrong, 0);
-          const right = rows.reduce((n, r) => n + r.tally.right, 0);
+      <CollapsibleSection
+        title={<>Flashcards</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Flashcards']}
+        defaultOpen={false}
+      >
+          {(() => {
+            const bucket = stats.bySource?.flashcard;
+            const rows = CATEGORY_ORDER.map((cat) => ({ cat, tally: bucket?.[cat] ?? { right: 0, wrong: 0 } }))
+              .filter((r) => r.tally.right + r.tally.wrong > 0);
+            const answered = rows.reduce((n, r) => n + r.tally.right + r.tally.wrong, 0);
+            const right = rows.reduce((n, r) => n + r.tally.right, 0);
 
-          if (answered === 0) {
+            if (answered === 0) {
+              return (
+                <p className="stats-detail">No flashcards answered yet.</p>
+              );
+            }
+
             return (
-              <p className="stats-detail">No flashcards answered yet.</p>
+              <>
+                <div className="stats-headline">
+                  <span className="stats-headline-value">{pct(right, answered)}</span>
+                  <span className="stats-headline-label">
+                    {right}/{answered} correct
+                  </span>
+                </div>
+                <div className="category-list">
+                  {rows.map(({ cat, tally }) => {
+                    const total = tally.right + tally.wrong;
+                    const pctNum = (tally.right / total) * 100;
+                    return (
+                      <div className="category-row" key={cat}>
+                        <div className="category-row-top">
+                          <span className="category-label">{CATEGORY_LABELS[cat]}</span>
+                          <span className="category-fraction">
+                            {tally.right}/{total} ({pct(tally.right, total)})
+                          </span>
+                        </div>
+                        <div className="category-bar-track">
+                          <div className="category-bar-fill" style={{ width: `${pctNum}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             );
-          }
-
-          return (
-            <>
-              <div className="stats-headline">
-                <span className="stats-headline-value">{pct(right, answered)}</span>
-                <span className="stats-headline-label">
-                  {right}/{answered} correct
-                </span>
-              </div>
-              <div className="category-list">
-                {rows.map(({ cat, tally }) => {
-                  const total = tally.right + tally.wrong;
-                  const pctNum = (tally.right / total) * 100;
-                  return (
-                    <div className="category-row" key={cat}>
-                      <div className="category-row-top">
-                        <span className="category-label">{CATEGORY_LABELS[cat]}</span>
-                        <span className="category-fraction">
-                          {tally.right}/{total} ({pct(tally.right, total)})
-                        </span>
-                      </div>
-                      <div className="category-bar-track">
-                        <div className="category-bar-fill" style={{ width: `${pctNum}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          );
-        })()}
-      </section>
+          })()}
+      </CollapsibleSection>
 
       {/*
         V5-2 (docs/BACKLOG.md): under-the-clock accuracy and no-clock accuracy
@@ -774,577 +786,645 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
         about the gap, and a spurious "100% untimed" off two cards would invite
         exactly the wrong conclusion.
       */}
-      <section className="stats-section" data-tab={SECTION_TAB['Flashcards']}>
-        <h2 className="stats-section-title">Clock vs no clock</h2>
-        {(() => {
-          const split = stats.shotClockSplit;
-          const t = split?.timed ?? { right: 0, wrong: 0 };
-          const u = split?.untimed ?? { right: 0, wrong: 0 };
-          const tn = t.right + t.wrong;
-          const un = u.right + u.wrong;
-          if (tn === 0 || un === 0) {
+      <CollapsibleSection
+        title={<>Clock vs no clock</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Flashcards']}
+        defaultOpen={false}
+      >
+          {(() => {
+            const split = stats.shotClockSplit;
+            const t = split?.timed ?? { right: 0, wrong: 0 };
+            const u = split?.untimed ?? { right: 0, wrong: 0 };
+            const tn = t.right + t.wrong;
+            const un = u.right + u.wrong;
+            if (tn === 0 || un === 0) {
+              return (
+                <p className="stats-detail">
+                  Answer some hand drills both with the shot clock on and with it off, and this
+                  compares them. What you can produce under a deadline and what you know are
+                  different things, and only the second one keeps.
+                </p>
+              );
+            }
+            const gap = Math.round((u.right / un - t.right / tn) * 100);
             return (
-              <p className="stats-detail">
-                Answer some hand drills both with the shot clock on and with it off, and this
-                compares them. What you can produce under a deadline and what you know are
-                different things, and only the second one keeps.
-              </p>
+              <>
+                <div className="category-list">
+                  {[
+                    { label: 'Under the clock', tally: t, total: tn },
+                    { label: 'No clock', tally: u, total: un },
+                  ].map((row) => (
+                    <div className="category-row" key={row.label}>
+                      <div className="category-row-top">
+                        <span className="category-label">{row.label}</span>
+                        <span className="category-fraction">
+                          {row.tally.right}/{row.total} ({pct(row.tally.right, row.total)})
+                        </span>
+                      </div>
+                      <div className="category-bar-track">
+                        <div
+                          className="category-bar-fill"
+                          style={{ width: `${(row.tally.right / row.total) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="stats-detail">
+                  {gap > 0
+                    ? `You are ${gap} points better without the clock. That gap is the part of your
+                       score the deadline is taking, not the part you have yet to learn.`
+                    : gap < 0
+                      ? `You are ${-gap} points better WITH the clock — unusual, and usually a
+                         sign the untimed sample is small or came from a different stretch of
+                         practice.`
+                      : 'The clock is costing you nothing measurable.'}
+                </p>
+              </>
             );
-          }
-          const gap = Math.round((u.right / un - t.right / tn) * 100);
-          return (
+          })()}
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Illustrious 18</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Illustrious 18']}
+        defaultOpen={false}
+      >
+          <table className="index-table">
+            <thead>
+              <tr>
+                <th>Index</th>
+                <th>Right</th>
+                <th>Wrong</th>
+              </tr>
+            </thead>
+            <tbody>
+              {indexSetFor(activeProfile.rules).map((dev) => {
+                const tally = stats.perIndex[dev.id];
+                return (
+                  <tr key={dev.id}>
+                    <td>{dev.label}</td>
+                    <td>{tally ? tally.right : '—'}</td>
+                    <td>{tally ? tally.wrong : '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Mistake types</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Mistake types']}
+        defaultOpen={false}
+      >
+          <ul className="mistake-list">
+            {MISTAKE_ORDER.map((cls) => (
+              <li className="mistake-row" key={cls}>
+                <span>{MISTAKE_LABELS[cls]}</span>
+                <span>{stats.mistakes[cls]}</span>
+              </li>
+            ))}
+          </ul>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Cost of mistakes</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Cost of mistakes']}
+        defaultOpen={false}
+      >
+          {evCost.priced === 0 ? (
+            <p className="stats-detail">
+              No priced mistakes yet. Basic-strategy errors in the flashcard and deviation drills get
+              a price in units of your base bet; keep drilling and the expensive habits will show up
+              here.
+            </p>
+          ) : (
             <>
-              <div className="category-list">
-                {[
-                  { label: 'Under the clock', tally: t, total: tn },
-                  { label: 'No clock', tally: u, total: un },
-                ].map((row) => (
-                  <div className="category-row" key={row.label}>
-                    <div className="category-row-top">
-                      <span className="category-label">{row.label}</span>
-                      <span className="category-fraction">
-                        {row.tally.right}/{row.total} ({pct(row.tally.right, row.total)})
-                      </span>
-                    </div>
-                    <div className="category-bar-track">
-                      <div
-                        className="category-bar-fill"
-                        style={{ width: `${(row.tally.right / row.total) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
               <p className="stats-detail">
-                {gap > 0
-                  ? `You are ${gap} points better without the clock. That gap is the part of your
-                     score the deadline is taking, not the part you have yet to learn.`
-                  : gap < 0
-                    ? `You are ${-gap} points better WITH the clock — unusual, and usually a
-                       sign the untimed sample is small or came from a different stretch of
-                       practice.`
-                    : 'The clock is costing you nothing measurable.'}
+                {evCost.priced} priced {evCost.priced === 1 ? 'mistake' : 'mistakes'}, costing{' '}
+                <strong>{evCost.unitsTotal.toFixed(2)} units</strong> in total —{' '}
+                {evCost.meanUnits!.toFixed(3)} each on average.
+              </p>
+              <ul className="mistake-list">
+                {evCost.worst.map((row) => (
+                  <li className="mistake-row" key={row.key}>
+                    <span>
+                      {handLabel(row.hand)}: {row.taken} instead of {row.expected}
+                      {row.times > 1 ? ` (×${row.times})` : ''}
+                    </span>
+                    <span className="mistake-value">{row.unitsTotal.toFixed(3)} u</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="stats-detail">
+                Ranked by total cost, so a cheap habit repeated outranks one spectacular slip. Prices
+                are exact for an infinite deck at a neutral count.
+                {unpricedMistakes > 0
+                  ? ` ${unpricedMistakes} further ${unpricedMistakes === 1 ? 'mistake is' : 'mistakes are'} counted above but unpriced: a missed or mistimed index has no honest number here, because this arithmetic cannot see the count.`
+                  : ''}{' '}
+                {evCostUndated > 0
+                  ? ` ${evCostUndated} priced ${evCostUndated === 1 ? 'mistake predates' : 'mistakes predate'} decision dating and cannot be placed in this range; widen it to "All time" to include ${evCostUndated === 1 ? 'it' : 'them'}.`
+                  : ''}
               </p>
             </>
-          );
-        })()}
-      </section>
+          )}
+      </CollapsibleSection>
 
-      <section className="stats-section" data-tab={SECTION_TAB['Illustrious 18']}>
-        <h2 className="stats-section-title">Illustrious 18</h2>
-        <table className="index-table">
-          <thead>
-            <tr>
-              <th>Index</th>
-              <th>Right</th>
-              <th>Wrong</th>
-            </tr>
-          </thead>
-          <tbody>
-            {indexSetFor(activeProfile.rules).map((dev) => {
-              const tally = stats.perIndex[dev.id];
-              return (
-                <tr key={dev.id}>
-                  <td>{dev.label}</td>
-                  <td>{tally ? tally.right : '—'}</td>
-                  <td>{tally ? tally.wrong : '—'}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </section>
-
-      <section className="stats-section" data-tab={SECTION_TAB['Mistake types']}>
-        <h2 className="stats-section-title">Mistake types</h2>
-        <ul className="mistake-list">
-          {MISTAKE_ORDER.map((cls) => (
-            <li className="mistake-row" key={cls}>
-              <span>{MISTAKE_LABELS[cls]}</span>
-              <span>{stats.mistakes[cls]}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="stats-section" data-tab={SECTION_TAB['Cost of mistakes']}>
-        <h2 className="stats-section-title">Cost of mistakes</h2>
-        {evCost.priced === 0 ? (
+      <CollapsibleSection
+        title={<>Count drill</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Count drill']}
+        defaultOpen={false}
+      >
           <p className="stats-detail">
-            No priced mistakes yet. Basic-strategy errors in the flashcard and deviation drills get
-            a price in units of your base bet; keep drilling and the expensive habits will show up
-            here.
+            Best clean run:{' '}
+            {bestCleanRun === null ? '—' : `${bestCleanRun.cards} cards @ ${bestCleanRun.intervalMs}ms`}
           </p>
-        ) : (
-          <>
-            <p className="stats-detail">
-              {evCost.priced} priced {evCost.priced === 1 ? 'mistake' : 'mistakes'}, costing{' '}
-              <strong>{evCost.unitsTotal.toFixed(2)} units</strong> in total —{' '}
-              {evCost.meanUnits!.toFixed(3)} each on average.
-            </p>
-            <ul className="mistake-list">
-              {evCost.worst.map((row) => (
-                <li className="mistake-row" key={row.key}>
-                  <span>
-                    {handLabel(row.hand)}: {row.taken} instead of {row.expected}
-                    {row.times > 1 ? ` (×${row.times})` : ''}
+          {checkpointsAsked > 0 && (
+            <>
+              <p className="stats-detail">
+                Checkpoints held: {checkpointsHeld}/{checkpointsAsked} (
+                {pct(checkpointsHeld, checkpointsAsked)}) over {checkpointRuns.length}{' '}
+                {checkpointRuns.length === 1 ? 'run' : 'runs'}
+              </p>
+              <p className="stats-detail">
+                {cancelledRuns === 0
+                  ? 'No run has ended on the right count after drifting.'
+                  : `${cancelledRuns} ${cancelledRuns === 1 ? 'run' : 'runs'} ended on the RIGHT count after drifting — errors that cancelled out, which a final-count-only score would call perfect.`}
+              </p>
+            </>
+          )}
+          {recentRuns.length === 0 ? (
+            <p className="stats-detail">No count-drill runs yet.</p>
+          ) : (
+            <ul className="count-history-list">
+              {recentRuns.map((run, i) => (
+                <li className="count-history-row" key={i}>
+                  <span>{formatDate(run.date)}</span>
+                  <span>{run.cards} cards</span>
+                  <span>{run.intervalMs}ms</span>
+                  <span className={run.correct ? 'result-correct' : 'result-wrong'}>
+                    {run.correct ? 'correct' : 'wrong'}
                   </span>
-                  <span className="mistake-value">{row.unitsTotal.toFixed(3)} u</span>
                 </li>
               ))}
             </ul>
-            <p className="stats-detail">
-              Ranked by total cost, so a cheap habit repeated outranks one spectacular slip. Prices
-              are exact for an infinite deck at a neutral count.
-              {unpricedMistakes > 0
-                ? ` ${unpricedMistakes} further ${unpricedMistakes === 1 ? 'mistake is' : 'mistakes are'} counted above but unpriced: a missed or mistimed index has no honest number here, because this arithmetic cannot see the count.`
-                : ''}{' '}
-              {evCostUndated > 0
-                ? ` ${evCostUndated} priced ${evCostUndated === 1 ? 'mistake predates' : 'mistakes predate'} decision dating and cannot be placed in this range; widen it to "All time" to include ${evCostUndated === 1 ? 'it' : 'them'}.`
-                : ''}
-            </p>
-          </>
-        )}
-      </section>
+          )}
+      </CollapsibleSection>
 
-      <section className="stats-section" data-tab={SECTION_TAB['Count drill']}>
-        <h2 className="stats-section-title">Count drill</h2>
-        <p className="stats-detail">
-          Best clean run:{' '}
-          {bestCleanRun === null ? '—' : `${bestCleanRun.cards} cards @ ${bestCleanRun.intervalMs}ms`}
-        </p>
-        {checkpointsAsked > 0 && (
-          <>
-            <p className="stats-detail">
-              Checkpoints held: {checkpointsHeld}/{checkpointsAsked} (
-              {pct(checkpointsHeld, checkpointsAsked)}) over {checkpointRuns.length}{' '}
-              {checkpointRuns.length === 1 ? 'run' : 'runs'}
-            </p>
-            <p className="stats-detail">
-              {cancelledRuns === 0
-                ? 'No run has ended on the right count after drifting.'
-                : `${cancelledRuns} ${cancelledRuns === 1 ? 'run' : 'runs'} ended on the RIGHT count after drifting — errors that cancelled out, which a final-count-only score would call perfect.`}
-            </p>
-          </>
-        )}
-        {recentRuns.length === 0 ? (
-          <p className="stats-detail">No count-drill runs yet.</p>
-        ) : (
-          <ul className="count-history-list">
-            {recentRuns.map((run, i) => (
-              <li className="count-history-row" key={i}>
-                <span>{formatDate(run.date)}</span>
-                <span>{run.cards} cards</span>
-                <span>{run.intervalMs}ms</span>
-                <span className={run.correct ? 'result-correct' : 'result-wrong'}>
-                  {run.correct ? 'correct' : 'wrong'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="stats-section" data-tab={SECTION_TAB['Timed count challenge']}>
-        <h2 className="stats-section-title">Timed count challenge</h2>
-        <p className="stats-detail">
-          {timedCountSummary.attempts === 0
-            ? 'No timed runs yet.'
-            : `${timedCountSummary.correct}/${timedCountSummary.attempts} correct (${pct(timedCountSummary.correct, timedCountSummary.attempts)})`}
-        </p>
-        <p className="stats-detail">
-          Best clean speed: {timedCountBest === null ? '—' : `${timedCountBest.toFixed(1)}s / deck`}
-        </p>
-        {timedCountRecent.length === 0 ? (
-          <p className="stats-detail">No timed runs yet.</p>
-        ) : (
-          <ul className="count-history-list">
-            {timedCountRecent.map((run, i) => (
-              <li className="count-history-row" key={i}>
-                <span>{formatDate(run.date)}</span>
-                <span>{run.cards} cards</span>
-                <span>{run.secondsPerDeck.toFixed(1)}s/deck</span>
-                <span>{run.tier}</span>
-                <span className={run.correct ? 'result-correct' : 'result-wrong'}>
-                  {run.correct ? 'correct' : 'wrong'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="stats-section" data-tab={SECTION_TAB['Distraction']}>
-        <h2 className="stats-section-title">Distraction</h2>
-        {distractionSum.attempts === 0 ? (
-          <p className="stats-detail">No distraction interruptions yet.</p>
-        ) : (
-          <ul className="mistake-list">
-            <li className="mistake-row">
-              <span>Attempts</span>
-              <span>{distractionSum.attempts}</span>
-            </li>
-            <li className="mistake-row">
-              <span>Answer accuracy</span>
-              <span>
-                {distractionSum.answerAccuracyPct === null
-                  ? dash()
-                  : `${Math.round(distractionSum.answerAccuracyPct)}%`}
-              </span>
-            </li>
-            <li className="mistake-row">
-              <span>Count kept</span>
-              <span>
-                {distractionSum.countKeptPct === null ? dash() : `${Math.round(distractionSum.countKeptPct)}%`}
-              </span>
-            </li>
-          </ul>
-        )}
-      </section>
-
-      <section className="stats-section" data-tab={SECTION_TAB['Pair cancellation']}>
-        <h2 className="stats-section-title">Pair cancellation</h2>
-        {pairCancelAttempts === 0 ? (
-          <p className="stats-detail">No pair-cancellation attempts yet.</p>
-        ) : (
-          <ul className="mistake-list">
-            <li className="mistake-row">
-              <span>Attempts</span>
-              <span>{pairCancelAttempts}</span>
-            </li>
-            <li className="mistake-row">
-              <span>Accuracy</span>
-              <span>{pct(pairCancelCorrect, pairCancelAttempts)}</span>
-            </li>
-            <li className="mistake-row">
-              <span>Cancelling pairs</span>
-              <span>
-                {pairCancelCancelling.length === 0
-                  ? dash()
-                  : pct(pairCancelCancelCorrect, pairCancelCancelling.length)}
-              </span>
-            </li>
-          </ul>
-        )}
-      </section>
-
-      <section className="stats-section" data-tab={SECTION_TAB['Spaced repetition — Flashcards']}>
-        <h2 className="stats-section-title">Spaced repetition — Flashcards</h2>
-        <SrStatusPanel deckLabel="flashcards" summary={flashSrSummary} labelForKey={(k) => k} />
-      </section>
-
-      <section className="stats-section" data-tab={SECTION_TAB['Spaced repetition — Deviation quiz']}>
-        <h2 className="stats-section-title">Spaced repetition — Deviation quiz</h2>
-        <SrStatusPanel deckLabel="deviation-quiz items" summary={quizSrSummary} labelForKey={quizLabelFor} />
-      </section>
-
-      <section className="stats-section" data-tab={SECTION_TAB['Retention']}>
-        <h2 className="stats-section-title">Retention</h2>
-        {retentionReviews === 0 ? (
+      <CollapsibleSection
+        title={<>Timed count challenge</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Timed count challenge']}
+        defaultOpen={false}
+      >
           <p className="stats-detail">
-            No spaced reviews yet — retention accrues as items come due again after a real gap
-            (come back tomorrow).
+            {timedCountSummary.attempts === 0
+              ? 'No timed runs yet.'
+              : `${timedCountSummary.correct}/${timedCountSummary.attempts} correct (${pct(timedCountSummary.correct, timedCountSummary.attempts)})`}
           </p>
-        ) : (
-          <>
-            <p className="stats-detail">
-              Accuracy on items recalled after a spaced gap — the honest read on what will still be
-              there at the table, distinct from in-drill accuracy.
-            </p>
+          <p className="stats-detail">
+            Best clean speed: {timedCountBest === null ? '—' : `${timedCountBest.toFixed(1)}s / deck`}
+          </p>
+          {timedCountRecent.length === 0 ? (
+            <p className="stats-detail">No timed runs yet.</p>
+          ) : (
+            <ul className="count-history-list">
+              {timedCountRecent.map((run, i) => (
+                <li className="count-history-row" key={i}>
+                  <span>{formatDate(run.date)}</span>
+                  <span>{run.cards} cards</span>
+                  <span>{run.secondsPerDeck.toFixed(1)}s/deck</span>
+                  <span>{run.tier}</span>
+                  <span className={run.correct ? 'result-correct' : 'result-wrong'}>
+                    {run.correct ? 'correct' : 'wrong'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Distraction</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Distraction']}
+        defaultOpen={false}
+      >
+          {distractionSum.attempts === 0 ? (
+            <p className="stats-detail">No distraction interruptions yet.</p>
+          ) : (
             <ul className="mistake-list">
               <li className="mistake-row">
-                <span>Spaced reviews</span>
-                <span>{retentionReviews}</span>
+                <span>Attempts</span>
+                <span>{distractionSum.attempts}</span>
               </li>
               <li className="mistake-row">
-                <span>Retained accuracy</span>
-                <span>{pct(retentionCorrect, retentionReviews)}</span>
+                <span>Answer accuracy</span>
+                <span>
+                  {distractionSum.answerAccuracyPct === null
+                    ? dash()
+                    : `${Math.round(distractionSum.answerAccuracyPct)}%`}
+                </span>
+              </li>
+              <li className="mistake-row">
+                <span>Count kept</span>
+                <span>
+                  {distractionSum.countKeptPct === null ? dash() : `${Math.round(distractionSum.countKeptPct)}%`}
+                </span>
+              </li>
+            </ul>
+          )}
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Pair cancellation</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Pair cancellation']}
+        defaultOpen={false}
+      >
+          {pairCancelAttempts === 0 ? (
+            <p className="stats-detail">No pair-cancellation attempts yet.</p>
+          ) : (
+            <ul className="mistake-list">
+              <li className="mistake-row">
+                <span>Attempts</span>
+                <span>{pairCancelAttempts}</span>
+              </li>
+              <li className="mistake-row">
+                <span>Accuracy</span>
+                <span>{pct(pairCancelCorrect, pairCancelAttempts)}</span>
+              </li>
+              <li className="mistake-row">
+                <span>Cancelling pairs</span>
+                <span>
+                  {pairCancelCancelling.length === 0
+                    ? dash()
+                    : pct(pairCancelCancelCorrect, pairCancelCancelling.length)}
+                </span>
+              </li>
+            </ul>
+          )}
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Spaced repetition — Flashcards</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Spaced repetition — Flashcards']}
+        defaultOpen={false}
+      >
+          <SrStatusPanel deckLabel="flashcards" summary={flashSrSummary} labelForKey={(k) => k} />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Spaced repetition — Deviation quiz</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Spaced repetition — Deviation quiz']}
+        defaultOpen={false}
+      >
+          <SrStatusPanel deckLabel="deviation-quiz items" summary={quizSrSummary} labelForKey={quizLabelFor} />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Retention</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Retention']}
+        defaultOpen={false}
+      >
+          {retentionReviews === 0 ? (
+            <p className="stats-detail">
+              No spaced reviews yet — retention accrues as items come due again after a real gap
+              (come back tomorrow).
+            </p>
+          ) : (
+            <>
+              <p className="stats-detail">
+                Accuracy on items recalled after a spaced gap — the honest read on what will still be
+                there at the table, distinct from in-drill accuracy.
+              </p>
+              <ul className="mistake-list">
+                <li className="mistake-row">
+                  <span>Spaced reviews</span>
+                  <span>{retentionReviews}</span>
+                </li>
+                <li className="mistake-row">
+                  <span>Retained accuracy</span>
+                  <span>{pct(retentionCorrect, retentionReviews)}</span>
+                </li>
+                {/*
+                  HOW FAR OFF THAT FIGURE IS.
+                  A percentage off nine reviews and one off nine hundred print
+                  identically, and the first is noise. The 95% interval is the
+                  only thing on the row that distinguishes them, so it sits
+                  directly under the number it qualifies rather than in a
+                  footnote nobody reads.
+                */}
+                <li className="mistake-row">
+                  <span>Could honestly be</span>
+                  <span className="mistake-value">{formatInterval(retentionPooled)}</span>
+                </li>
+              </ul>
+              {retentionHasCurve ? (
+                <>
+                  <h3 className="sr-lapses-title">By how long the gap was</h3>
+                  <p className="stats-detail">
+                    Retention is a decay curve. Pooling every gap length into one figure averages a
+                    three-day recall together with a five-week one, which is the one shape a single
+                    number cannot show.
+                  </p>
+                  <ul className="mistake-list">
+                    {retentionBands
+                      .filter((band) => band.reviews > 0)
+                      .map((band) => (
+                        <li className="mistake-row" key={band.label}>
+                          <span>
+                            {band.label} — {band.reviews} {band.reviews === 1 ? 'review' : 'reviews'}
+                          </span>
+                          <span className="mistake-value">
+                            {pct(band.correct, band.reviews)} ({formatInterval(band)})
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="stats-detail">
+                  Every spaced review so far sits at one gap length, so there is no curve to draw
+                  yet — it appears once items start coming due at longer intervals.
+                </p>
+              )}
+            </>
+          )}
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Bet / sit / leave</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Bet / sit / leave']}
+        defaultOpen={false}
+      >
+          {bslAttempts === 0 ? (
+            <p className="stats-detail">No bet/sit/leave decisions yet.</p>
+          ) : (
+            <ul className="mistake-list">
+              <li className="mistake-row">
+                <span>Decisions</span>
+                <span>{bslAttempts}</span>
+              </li>
+              <li className="mistake-row">
+                <span>Accuracy</span>
+                <span>{pct(bslCorrect, bslAttempts)}</span>
+              </li>
+              <li className="mistake-row">
+                <span>Leave calls</span>
+                <span>{bslLeaveRows.length === 0 ? dash() : pct(bslLeaveCorrect, bslLeaveRows.length)}</span>
+              </li>
+            </ul>
+          )}
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Downswing (tilt inoculation)</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Downswing (tilt inoculation)']}
+        defaultOpen={false}
+      >
+          {downswingSessions === 0 ? (
+            <p className="stats-detail">No downswing sessions yet.</p>
+          ) : (
+            <ul className="mistake-list">
+              <li className="mistake-row">
+                <span>Sessions ridden out</span>
+                <span>{downswingSessions}</span>
+              </li>
+              <li className="mistake-row">
+                <span>Spread-conformity (bets held to the ramp)</span>
+                <span>{pct(downswingConformCorrect, downswingConformTotal)}</span>
               </li>
               {/*
-                HOW FAR OFF THAT FIGURE IS.
-                A percentage off nine reviews and one off nine hundred print
-                identically, and the first is noise. The 95% interval is the
-                only thing on the row that distinguishes them, so it sits
-                directly under the number it qualifies rather than in a
-                footnote nobody reads.
+                Reported apart from the bet, because chasing with your money and
+                chasing with your play are different failures with different
+                fixes. Hidden entirely when no session has graded a decision --
+                a 0% there would read as having played every stiff wrong, when
+                in fact none was ever dealt.
               */}
-              <li className="mistake-row">
-                <span>Could honestly be</span>
-                <span className="mistake-value">{formatInterval(retentionPooled)}</span>
-              </li>
+              {downswingPlayTotal > 0 && (
+                <li className="mistake-row">
+                  <span>Correct play (stiff hands under pressure)</span>
+                  <span>
+                    {pct(downswingPlayCorrect, downswingPlayTotal)} ({downswingPlayCorrect}/
+                    {downswingPlayTotal})
+                  </span>
+                </li>
+              )}
             </ul>
-            {retentionHasCurve ? (
-              <>
-                <h3 className="sr-lapses-title">By how long the gap was</h3>
-                <p className="stats-detail">
-                  Retention is a decay curve. Pooling every gap length into one figure averages a
-                  three-day recall together with a five-week one, which is the one shape a single
-                  number cannot show.
-                </p>
-                <ul className="mistake-list">
-                  {retentionBands
-                    .filter((band) => band.reviews > 0)
-                    .map((band) => (
-                      <li className="mistake-row" key={band.label}>
-                        <span>
-                          {band.label} — {band.reviews} {band.reviews === 1 ? 'review' : 'reviews'}
-                        </span>
-                        <span className="mistake-value">
-                          {pct(band.correct, band.reviews)} ({formatInterval(band)})
-                        </span>
-                      </li>
-                    ))}
-                </ul>
-              </>
-            ) : (
+          )}
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Endurance / fatigue</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Endurance / fatigue']}
+        defaultOpen={false}
+      >
+          <Stepper
+            label="Session gap"
+            value={fatigueGapMin}
+            min={5}
+            max={120}
+            step={5}
+            format={(v) => `${v} min`}
+            onChange={setFatigueGapMin}
+          />
+          {fatigue.drift === null ? (
+            <p className="stats-detail">
+              Not enough back-to-back counting runs yet — do several count / timed runs in one sitting
+              and this compares your early-session vs late-session accuracy.
+            </p>
+          ) : (
+            <>
               <p className="stats-detail">
-                Every spaced review so far sits at one gap length, so there is no curve to draw
-                yet — it appears once items start coming due at longer intervals.
+                Front-half vs back-half accuracy within a session — does your count hold up late, or
+                slip? ({fatigue.sessions} session{fatigue.sessions === 1 ? '' : 's'}, {fatigue.samples} runs)
               </p>
-            )}
-          </>
-        )}
-      </section>
+              <ul className="mistake-list">
+                <li className="mistake-row">
+                  <span>Early-session</span>
+                  <span>{pct(Math.round((fatigue.frontAccuracy ?? 0) * 1000), 1000)}</span>
+                </li>
+                <li className="mistake-row">
+                  <span>Late-session</span>
+                  <span>{pct(Math.round((fatigue.backAccuracy ?? 0) * 1000), 1000)}</span>
+                </li>
+                <li className="mistake-row">
+                  <span>Drift</span>
+                  <span>
+                    {(fatigue.drift > 0 ? '+' : '') + Math.round(fatigue.drift * 100)}%{' '}
+                    {fatigueVerdict ? `(${fatigueVerdict})` : ''}
+                  </span>
+                </li>
+              </ul>
+            </>
+          )}
 
-      <section className="stats-section" data-tab={SECTION_TAB['Bet / sit / leave']}>
-        <h2 className="stats-section-title">Bet / sit / leave</h2>
-        {bslAttempts === 0 ? (
-          <p className="stats-detail">No bet/sit/leave decisions yet.</p>
-        ) : (
-          <ul className="mistake-list">
-            <li className="mistake-row">
-              <span>Decisions</span>
-              <span>{bslAttempts}</span>
-            </li>
-            <li className="mistake-row">
-              <span>Accuracy</span>
-              <span>{pct(bslCorrect, bslAttempts)}</span>
-            </li>
-            <li className="mistake-row">
-              <span>Leave calls</span>
-              <span>{bslLeaveRows.length === 0 ? dash() : pct(bslLeaveCorrect, bslLeaveRows.length)}</span>
-            </li>
-          </ul>
-        )}
-      </section>
-
-      <section className="stats-section" data-tab={SECTION_TAB['Downswing (tilt inoculation)']}>
-        <h2 className="stats-section-title">Downswing (tilt inoculation)</h2>
-        {downswingSessions === 0 ? (
-          <p className="stats-detail">No downswing sessions yet.</p>
-        ) : (
-          <ul className="mistake-list">
-            <li className="mistake-row">
-              <span>Sessions ridden out</span>
-              <span>{downswingSessions}</span>
-            </li>
-            <li className="mistake-row">
-              <span>Spread-conformity (bets held to the ramp)</span>
-              <span>{pct(downswingConformCorrect, downswingConformTotal)}</span>
-            </li>
-            {/*
-              Reported apart from the bet, because chasing with your money and
-              chasing with your play are different failures with different
-              fixes. Hidden entirely when no session has graded a decision --
-              a 0% there would read as having played every stiff wrong, when
-              in fact none was ever dealt.
-            */}
-            {downswingPlayTotal > 0 && (
-              <li className="mistake-row">
-                <span>Correct play (stiff hands under pressure)</span>
-                <span>
-                  {pct(downswingPlayCorrect, downswingPlayTotal)} ({downswingPlayCorrect}/
-                  {downswingPlayTotal})
-                </span>
-              </li>
-            )}
-          </ul>
-        )}
-      </section>
-
-      <section className="stats-section" data-tab={SECTION_TAB['Endurance / fatigue']}>
-        <h2 className="stats-section-title">Endurance / fatigue</h2>
-        <Stepper
-          label="Session gap"
-          value={fatigueGapMin}
-          min={5}
-          max={120}
-          step={5}
-          format={(v) => `${v} min`}
-          onChange={setFatigueGapMin}
-        />
-        {fatigue.drift === null ? (
-          <p className="stats-detail">
-            Not enough back-to-back counting runs yet — do several count / timed runs in one sitting
-            and this compares your early-session vs late-session accuracy.
-          </p>
-        ) : (
-          <>
+          {/*
+            V3-5: PACE, over the same sessions.
+            Accuracy is the late signal. What goes first as you tire is how long
+            each answer takes, so a session finished at the same accuracy and two
+            seconds slower is a decrement the block above cannot see. This reads
+            from the timed drills (flashcards, deviation quiz), which is a
+            different population from the counting runs above -- so it gets its
+            own sample counts rather than borrowing that block's.
+          */}
+          {pace.driftMs === null ? (
             <p className="stats-detail">
-              Front-half vs back-half accuracy within a session — does your count hold up late, or
-              slip? ({fatigue.sessions} session{fatigue.sessions === 1 ? '' : 's'}, {fatigue.samples} runs)
+              No dated answer times in this range yet — pace drift needs several timed flashcard or
+              quiz answers in one sitting.
             </p>
+          ) : (
+            <>
+              <p className="stats-detail">
+                Early vs late ANSWER TIME within a session — the decrement that shows up before
+                accuracy does. ({pace.sessions} session{pace.sessions === 1 ? '' : 's'},{' '}
+                {pace.samples} answers)
+              </p>
+              <ul className="mistake-list">
+                <li className="mistake-row">
+                  <span>Early-session pace</span>
+                  <span>{formatLatency(pace.frontMedianMs)}</span>
+                </li>
+                <li className="mistake-row">
+                  <span>Late-session pace</span>
+                  <span>{formatLatency(pace.backMedianMs)}</span>
+                </li>
+                <li className="mistake-row">
+                  <span>Pace drift</span>
+                  <span className="mistake-value">
+                    {(pace.driftMs > 0 ? '+' : '') + (pace.driftMs / 1000).toFixed(1)}s{' '}
+                    {paceVerdict ? `(${paceVerdict})` : ''}
+                  </span>
+                </li>
+              </ul>
+            </>
+          )}
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>True count drill</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['True count drill']}
+        defaultOpen={false}
+      >
+          <p className="stats-detail">
+            {trueCountSummary.attempts === 0
+              ? 'No true-count attempts yet.'
+              : `${trueCountSummary.correct}/${trueCountSummary.attempts} correct (${pct(trueCountSummary.correct, trueCountSummary.attempts)})`}
+          </p>
+          {trueCountSummary.attempts > 0 && (
             <ul className="mistake-list">
               <li className="mistake-row">
-                <span>Early-session</span>
-                <span>{pct(Math.round((fatigue.frontAccuracy ?? 0) * 1000), 1000)}</span>
+                <span>Guessed too high</span>
+                <span>{trueCountBreakdown.tooHigh}</span>
               </li>
               <li className="mistake-row">
-                <span>Late-session</span>
-                <span>{pct(Math.round((fatigue.backAccuracy ?? 0) * 1000), 1000)}</span>
+                <span>Guessed too low</span>
+                <span>{trueCountBreakdown.tooLow}</span>
               </li>
               <li className="mistake-row">
-                <span>Drift</span>
-                <span>
-                  {(fatigue.drift > 0 ? '+' : '') + Math.round(fatigue.drift * 100)}%{' '}
-                  {fatigueVerdict ? `(${fatigueVerdict})` : ''}
-                </span>
+                <span>Exact</span>
+                <span>{trueCountBreakdown.exact}</span>
               </li>
             </ul>
-          </>
-        )}
+          )}
+          {trueCountRecent.length === 0 ? (
+            <p className="stats-detail">No true-count attempts yet.</p>
+          ) : (
+            <ul className="count-history-list">
+              {trueCountRecent.map((run, i) => (
+                <li className="count-history-row" key={i}>
+                  <span>{formatDate(run.date)}</span>
+                  <span>
+                    RC {formatSigned(run.runningCount)} / {run.decksRemaining} decks
+                  </span>
+                  <span>
+                    {run.guess === undefined ? 'self-reported' : `guess ${formatSigned(run.guess)}`}
+                  </span>
+                  <span className={run.correct ? 'result-correct' : 'result-wrong'}>
+                    {run.correct ? 'correct' : 'wrong'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+      </CollapsibleSection>
 
-        {/*
-          V3-5: PACE, over the same sessions.
-          Accuracy is the late signal. What goes first as you tire is how long
-          each answer takes, so a session finished at the same accuracy and two
-          seconds slower is a decrement the block above cannot see. This reads
-          from the timed drills (flashcards, deviation quiz), which is a
-          different population from the counting runs above -- so it gets its
-          own sample counts rather than borrowing that block's.
-        */}
-        {pace.driftMs === null ? (
+      <CollapsibleSection
+        title={<>Deck estimation drill</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Deck estimation drill']}
+        defaultOpen={false}
+      >
           <p className="stats-detail">
-            No dated answer times in this range yet — pace drift needs several timed flashcard or
-            quiz answers in one sitting.
+            {deckEstSummary.attempts === 0
+              ? 'No deck-estimation attempts yet.'
+              : `${deckEstSummary.correct}/${deckEstSummary.attempts} correct (${pct(deckEstSummary.correct, deckEstSummary.attempts)})`}
           </p>
-        ) : (
-          <>
-            <p className="stats-detail">
-              Early vs late ANSWER TIME within a session — the decrement that shows up before
-              accuracy does. ({pace.sessions} session{pace.sessions === 1 ? '' : 's'},{' '}
-              {pace.samples} answers)
-            </p>
-            <ul className="mistake-list">
-              <li className="mistake-row">
-                <span>Early-session pace</span>
-                <span>{formatLatency(pace.frontMedianMs)}</span>
-              </li>
-              <li className="mistake-row">
-                <span>Late-session pace</span>
-                <span>{formatLatency(pace.backMedianMs)}</span>
-              </li>
-              <li className="mistake-row">
-                <span>Pace drift</span>
-                <span className="mistake-value">
-                  {(pace.driftMs > 0 ? '+' : '') + (pace.driftMs / 1000).toFixed(1)}s{' '}
-                  {paceVerdict ? `(${paceVerdict})` : ''}
-                </span>
-              </li>
+          {deckEstRecent.length === 0 ? (
+            <p className="stats-detail">No deck-estimation attempts yet.</p>
+          ) : (
+            <ul className="count-history-list">
+              {deckEstRecent.map((run, i) => (
+                <li className="count-history-row" key={i}>
+                  <span>{formatDate(run.date)}</span>
+                  <span>guessed {run.guess}</span>
+                  <span>actual {run.actualDecks.toFixed(2)}</span>
+                  <span>off by {run.errorDecks.toFixed(2)}</span>
+                  <span className={run.correct ? 'result-correct' : 'result-wrong'}>
+                    {run.correct ? 'correct' : 'wrong'}
+                  </span>
+                </li>
+              ))}
             </ul>
-          </>
-        )}
-      </section>
+          )}
+      </CollapsibleSection>
 
-      <section className="stats-section" data-tab={SECTION_TAB['True count drill']}>
-        <h2 className="stats-section-title">True count drill</h2>
-        <p className="stats-detail">
-          {trueCountSummary.attempts === 0
-            ? 'No true-count attempts yet.'
-            : `${trueCountSummary.correct}/${trueCountSummary.attempts} correct (${pct(trueCountSummary.correct, trueCountSummary.attempts)})`}
-        </p>
-        {trueCountSummary.attempts > 0 && (
-          <ul className="mistake-list">
-            <li className="mistake-row">
-              <span>Guessed too high</span>
-              <span>{trueCountBreakdown.tooHigh}</span>
-            </li>
-            <li className="mistake-row">
-              <span>Guessed too low</span>
-              <span>{trueCountBreakdown.tooLow}</span>
-            </li>
-            <li className="mistake-row">
-              <span>Exact</span>
-              <span>{trueCountBreakdown.exact}</span>
-            </li>
-          </ul>
-        )}
-        {trueCountRecent.length === 0 ? (
-          <p className="stats-detail">No true-count attempts yet.</p>
-        ) : (
-          <ul className="count-history-list">
-            {trueCountRecent.map((run, i) => (
-              <li className="count-history-row" key={i}>
-                <span>{formatDate(run.date)}</span>
-                <span>
-                  RC {formatSigned(run.runningCount)} / {run.decksRemaining} decks
-                </span>
-                <span>
-                  {run.guess === undefined ? 'self-reported' : `guess ${formatSigned(run.guess)}`}
-                </span>
-                <span className={run.correct ? 'result-correct' : 'result-wrong'}>
-                  {run.correct ? 'correct' : 'wrong'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="stats-section" data-tab={SECTION_TAB['Deck estimation drill']}>
-        <h2 className="stats-section-title">Deck estimation drill</h2>
-        <p className="stats-detail">
-          {deckEstSummary.attempts === 0
-            ? 'No deck-estimation attempts yet.'
-            : `${deckEstSummary.correct}/${deckEstSummary.attempts} correct (${pct(deckEstSummary.correct, deckEstSummary.attempts)})`}
-        </p>
-        {deckEstRecent.length === 0 ? (
-          <p className="stats-detail">No deck-estimation attempts yet.</p>
-        ) : (
-          <ul className="count-history-list">
-            {deckEstRecent.map((run, i) => (
-              <li className="count-history-row" key={i}>
-                <span>{formatDate(run.date)}</span>
-                <span>guessed {run.guess}</span>
-                <span>actual {run.actualDecks.toFixed(2)}</span>
-                <span>off by {run.errorDecks.toFixed(2)}</span>
-                <span className={run.correct ? 'result-correct' : 'result-wrong'}>
-                  {run.correct ? 'correct' : 'wrong'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="stats-section" data-tab={SECTION_TAB['Sessions']}>
-        <h2 className="stats-section-title">Sessions</h2>
-        {sessions.length === 0 ? (
-          <p className="stats-detail">No sessions yet.</p>
-        ) : (
-          <ul className="session-list">
-            {sessions.map((s, i) => (
-              <li className="session-row" key={i}>
-                <span>{formatDate(s.date)}</span>
-                <span>{s.profileName ?? dash()}</span>
-                <span>{s.rounds} rounds</span>
-                <span>
-                  {pct(s.correct, s.graded)}
-                  {/* R7: a peek-assisted session's accuracy is labelled so it
-                      can't be read as unassisted (RT#5). Omitted for the common
-                      0-peek session to keep the row uncluttered. */}
-                  {assistedFlag(s.peeks) && (
-                    <span className="session-assisted"> · {assistedFlag(s.peeks)}</span>
-                  )}
-                </span>
-                <span className={s.bankrollDelta >= 0 ? 'result-correct' : 'result-wrong'}>
-                  {formatSigned(s.bankrollDelta)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <CollapsibleSection
+        title={<>Sessions</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Sessions']}
+        defaultOpen={false}
+      >
+          {sessions.length === 0 ? (
+            <p className="stats-detail">No sessions yet.</p>
+          ) : (
+            <ul className="session-list">
+              {sessions.map((s, i) => (
+                <li className="session-row" key={i}>
+                  <span>{formatDate(s.date)}</span>
+                  <span>{s.profileName ?? dash()}</span>
+                  <span>{s.rounds} rounds</span>
+                  <span>
+                    {pct(s.correct, s.graded)}
+                    {/* R7: a peek-assisted session's accuracy is labelled so it
+                        can't be read as unassisted (RT#5). Omitted for the common
+                        0-peek session to keep the row uncluttered. */}
+                    {assistedFlag(s.peeks) && (
+                      <span className="session-assisted"> · {assistedFlag(s.peeks)}</span>
+                    )}
+                  </span>
+                  <span className={s.bankrollDelta >= 0 ? 'result-correct' : 'result-wrong'}>
+                    {formatSigned(s.bankrollDelta)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+      </CollapsibleSection>
 
       <section className="stats-section stats-actions">
         <div className="stats-action-row">

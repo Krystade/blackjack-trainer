@@ -11,6 +11,32 @@ shipped as a third choice unless the operator asks to drop it.
 
 ---
 
+## Status — 2026-09-14
+
+**Nothing is open and actionable.** Everything on this page is shipped, declined by the
+operator, or parked behind something outside the repo. The last genuinely-open item, RV3
+(Fab 4 surrender deviations), shipped 2026-09-14.
+
+What remains, and why none of it is work waiting to be picked up:
+
+| Item | State | Why it is not actionable |
+| ---- | ----- | ------------------------ |
+| RV1 · Bankroll / variance / risk-of-ruin | ⏸️ Parked | Operator has CVCX; the app would be duplicating a better tool |
+| RV6 · Integrated competence score | ❌ Declined | Operator: per-skill grades are plenty |
+| RV2 · TC rounding convention | ❌ Not a gap | Verified 2026-07-29; behaviour is correct as-is |
+| ET2 / ET4 / ET6 | ❌ Dropped | Operator, 2026-07-31 |
+| V5-3 · Feedback timing | ❌ Not a candidate | The literature genuinely conflicts; recorded so it is not re-opened |
+| R9 · Spot-reading | 🟡 Slice shipped | The valuable half (messy cards) is in; the rest is niche — park until demand |
+| Car controls | ✅ Closed | Every question the 2026-09-11 drive opened has been answered |
+| Per-deck index tables | 🚫 Blocked by a standing rule | Needs Wong's *Professional Blackjack* Table A4, which this project does not have. Do NOT approximate from memory |
+
+The one standing constraint worth re-reading before touching strategy data: **never add index
+values from memory, and never attempt per-deck indices without Table A4.** The 2026-09-13/14
+surrender pass is the model — every value traced to a named source, disagreements recorded
+rather than averaged, and the weakest rows marked as weak in the data file itself.
+
+---
+
 ## Candidates — operator-sourced
 
 ### D1 · Distraction training (operator idea 2026-07-23) — HIGH interest — **✅ SHIPPED (parts 1+2)**
@@ -72,9 +98,18 @@ ship.
   affirmative the voice path uses). Count drill, true-count drill and the table are wired.
   Flashcards and the quiz are not, and cannot be: their answer is a five-way decision and
   one button cannot say which.
-- OPEN, and only a drive can close it: whether this car's skip-forward is reachable without
-  taking eyes off the road, and whether `previoustrack` exists on that wheel at all (the log
-  has never shown one).
+- ~~OPEN: whether this car's skip-forward is reachable without taking eyes off the road, and
+  whether `previoustrack` exists on that wheel at all~~ — ✅ **ANSWERED 2026-09-14 by the
+  operator, and better than hoped.** Both exist and both are easy: *"the skip forward and
+  backward are the only two buttons i can hit it seems like and theyre both accessable
+  easily."* So `previoustrack` IS on this wheel, the log simply had not recorded one yet. The
+  Car section of this backlog is now CLOSED — every question it opened on 2026-09-11 has been
+  answered from a real drive.
+  - Worth noting what this unlocks: a wheel with TWO reachable buttons is not limited to
+    yes/no. `nexttrack` = yes and `previoustrack` = no is a strictly better mapping than one
+    button plus a timeout, and a two-button wheel could in principle drive a
+    more-than-binary answer by a "cycle and confirm" idiom. Not built — recording it here
+    because the constraint that ruled it out ("one button cannot say which") no longer holds.
 
 ### D2 · Ideas raised earlier and still open
 - ~~Countdown/tag-guess submode has no eyes-free support (excluded twice, deliberately —
@@ -400,7 +435,36 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
   DIFFERENT drills — deck-*estimation* (a by-eye estimate, rightly ±0.5) vs true-count *conversion*
   (given exact inputs, one floored answer, rightly exact). No change; documented so it isn't
   re-raised.
-- **RV3 · Surrender (Fab 4) deviations — ⛔ BLOCKED on operator (spec explicitly out-of-scope).**
+- **RV3 · Surrender (Fab 4) deviations — ✅ SHIPPED 2026-09-14, opt-in per profile.** Both
+  blocking conditions were met: the operator brought Fab 4 in scope on 2026-09-13, and the
+  index values were source-verified into `docs/sources/verified-surrender-indices.md` over
+  2026-09-13/14 before any code was written.
+  - **The sources read backwards until you supply each cell's basic action.** The BJA H17
+    chart prints some surrender cells with a trailing `-`, which looks exactly like an `lte`
+    threshold. It is not one: those cells sit on hands basic strategy ALREADY surrenders, so
+    the deviation below the index is to STOP. Supply the basic action and all six resolve to
+    the same sentence — surrender when TC ≥ index. An implementation that transcribed the `-`
+    cells literally would have inverted them, and the first draft of the source doc did
+    exactly that before it was caught.
+  - **It is bidirectional, which is why it could not be another step-3 deviation.** The rule
+    ADDS surrender where basic hits (16 v 8 at +4) and REMOVES it where basic surrenders
+    (15 v 10 below 0). Step 3 only ever adds a play, so the change had to go in `strategy.ts`
+    step 2 — the line that used to read "basic surrender beats deviations; count never
+    overrides it" and short-circuited before deviations were consulted at all.
+  - **Six cells under H17, FOUR under S17.** No S17 source exists for 16 v 8 or 16 v 9, so
+    they are absent rather than carried over; those cells just play basic, which is correct.
+    Inventing the two missing numbers to make the table symmetrical is how a trainer starts
+    teaching something no source says.
+  - Two landmines, both in the quiz. `QUIZ_CTX` sets `canSurrender: false` — itself a fix for
+    basic surrender masking the stand indices — so every Fab 4 item would have been graded
+    against a play the quiz had made unreachable. And `buildCloseHardCandidate` documented its
+    tc-wrong-side attempt as analytically guaranteed because no two I18 entries share a
+    (total, up); `sur16v9` and `sur15v10` end that.
+  - One surviving mutant, recorded rather than hidden: swapping the below-index fall-through
+    for a bare `return hit` passes the suite, because every surrender-indexed cell is `Rh` or
+    `H` in all six charts. A guard test locks that invariant so the day an index lands on an
+    `Rs` cell the suite says so.
+- **RV3 (original entry, kept for the record) — was ⛔ BLOCKED on operator.**
   The deviation set (`deviations.ts:40-75`) is hit/stand/double/split only — factually true — BUT
   the spec DELIBERATELY excludes Fab 4: "Out of scope (explicitly): Fab 4 surrender deviations"
   (`specs/2026-07-13-...:33`, also `:163-164`). This is an operator scope decision, not an
@@ -440,7 +504,9 @@ first. ⚠️ Several touch STRATEGY GROUND TRUTH — do NOT decide from memory;
   position within it — same average rate, unpredictable timing, still deterministic/unit-testable
   and never the first card. Setup note reworded ("unpredictable moments"). 2958 unit + 4 distraction
   e2e (made robust to a variable per-run distraction count).
-- **RV6 · No integrated simultaneous-competence score — M — [PRO+SCI].** Bet/play/insurance/count
+- **RV6 · No integrated simultaneous-competence score — M — ❌ DECLINED 2026-07-29 (operator).**
+  (The decline is recorded in full at the end of this entry; repeated here because it was only
+  visible three options deep, and the entry read as open at a glance.) Bet/play/insurance/count
   are siloed, peek stays available, no composite "table-ready" score across all skills at once — you
   can ace each drill in isolation and still fall apart doing them together. Three design options
   (operator to pick):
@@ -527,7 +593,10 @@ frontloaded design answers below.**
   via an in-engine 100%-ramp-conformity test). 6 unit (real-engine loss + count-swing across seeds +
   ramp-conformity) + e2e (bet the ramp for the swinging count → 100% held-discipline).
 - **ET2 · Loss-of-count recovery — ❌ DROPPED (operator 2026-07-31).**
-- **ET3 · Risk-decision: bet / sit / leave — M. BUILD 2nd.** Adds the *leave* axis to R5 wong-out.
+- **ET3 · Risk-decision: bet / sit / leave — M — ✅ SHIPPED.** `drills/betSitLeave.ts` +
+  `ui/screens/drills/BetSitLeaveView.tsx`, reachable from the drill picker as "Bet / Sit /
+  Leave"; V3-3 then fixed its draw to generate a plausible RC + depth and derive the TC rather
+  than drawing TC and decks independently. Original entry: adds the *leave* axis to R5 wong-out.
   Grading rule = the RESEARCHED consensus (`docs/research/2026-08-01-bet-sit-leave-consensus.md`):
   TC≥0→BET; TC≤−1 → LEAVE if `(TC≤−2 OR decks-remaining ≤ ~2) AND freshShoe`, else SIT. Needs a
   `freshShoe` scenario flag (the only way LEAVE is ever correct). Optional per-profile risk knob ±1 TC.
@@ -550,14 +619,16 @@ Out-of-scope (in-casino/two-person): physical act-natural tells, table-talk, tea
 
 ### From the 2026-08-02 red-team v3 (post RV4 + ET7/3/5/1) — full doc: `docs/research/2026-08-02-adversarial-redteam-v3.md`
 Fresh re-attack after the ETs shipped; 8 cited findings. Several are flaws in the JUST-shipped ETs.
-- **V3-1 · ET1 flagship is near-unfailable + records nothing — S, HIGH.** It shows the live TC then
+- **V3-1 · ET1 flagship is near-unfailable + records nothing — S — ✅ COMPLETE (all three
+  fixes landed 2026-08-02/03; the entry was never re-headed).** It shows the live TC then
   grades bets by exact-match to that shown count (pass bar 90%, defaults 100%) → hard to fail; and it
   persists NO telemetry (`conformRef` is local, no load/save) so the session vanishes on Back, invisible
   to Stats/ET5/Retention. FIXES: (a) persist ET1 results to Stats [✅ DONE 2026-08-02 — new Stats "Downswing" section]; (b) ✅ DONE 2026-08-03 (operator): TC is now HIDDEN — you count through the drawdown yourself (counting-under-tilt); (c) ✅ DONE 2026-08-02 — bet chips now derive from the profile spread (betChipsFor).
 - **V3-2 · Produce-a-true-count drill — M — ✅ SHIPPED 2026-08-02.** The TC drill hands you RC + decks and asks
   only the quotient (`trueCountDrill.ts:32`); RC-maintenance + depth-estimation + division are never
   composed — the actual live-table operation. An integrated "count a shoe → produce the TC" drill.
-- **V3-3 · ET3 draws TC and decks INDEPENDENTLY — S.** `betSitLeave.ts:69-71` yields physically-
+- **V3-3 · ET3 draws TC and decks INDEPENDENTLY — S — ✅ COMPLETE 2026-08-02.**
+  `betSitLeave.ts:69-71` yielded physically-
   impossible snapshots (TC −4 with a near-full shoe); depth becomes a pure distractor on positive
   counts. FIX: [✅ DONE 2026-08-02] generate a plausible RC + depth (bounded by dealt cards), derive TC. (Also: never
   trains the back-counter's wong-IN entry — larger follow-on.)
@@ -612,7 +683,7 @@ sequencing/soft-gating (V3-4). Verified RV4 is genuinely wired (not a stub) befo
 **Build order — OPERATOR-SET 2026-07-26:** R1→R2→R3→D1 ✅ done. NEXT: **T0 complete
 functional test coverage** → **R7** peek accountability → **R4** interleave → **R5**
 wonging → **R8** community mechanics → **R9** spot-reading → then the rest (R6, D2,
-follow-ons). (Supersedes the original convergence order below; R6 deprioritized by the
+follow-ons). (Supersedes the original convergence order below; R6 was deprioritized by the
 operator, still open.)
 
 ### From the 2026-09-12 red-team v4 (post V3-5/6/7 + RT#11/12 + RV7) — run in-session, no research agents
@@ -913,7 +984,9 @@ decks must be read), which is exactly this app's True Count Drill vs Produce-the
   with depth rather than sit constant, and let the learner opt into quarter-deck. Note the
   band machinery already in `count.ts` takes `eyeError` as a parameter, so the plumbing for a
   depth-varying tolerance is already there — this is mostly a policy decision plus UI.
-  Adjacent to R6 (by-eye TC tolerance), which the operator deprioritized; this is the
+  Adjacent to R6 (by-eye TC tolerance) — note R6 itself SHIPPED 2026-09-12, both halves;
+  the "deprioritized" wording here and in the build order above predates that and is stale.
+  This is the
   difficulty-axis half of that idea rather than the grading-tolerance half.
 
 - **Ace/ten side counts — explicitly OUT OF SCOPE, recorded so the gap is not re-found.**
@@ -1125,6 +1198,44 @@ its methods all mutate round state through `this` · ~~`Stats.tsx` reads
 `loadSettings().audio` directly~~ ✅ takes `settings` as a prop like every other screen.
 
 ---
+
+### From the 2026-09-14 session — chart validation, viewport, Settings legibility
+
+- **All six basic-strategy charts re-validated cell-for-cell — ✅ CLEAN.** Every source GIF in
+  `docs/sources/` read against its module in `src/engine/charts/`. No chart was wrong. What was
+  wrong was the test suite: `d68_h17` — the app's DEFAULT chart — had no transcription section
+  and no `d68_h17.test.ts`, while the other five had both. `charts.test.ts` does import it, but
+  every assertion is `expect(chart.HARD).toEqual(HARD_D68_H17)`, the module compared against
+  itself, which verifies ROUTING and cannot fail on a wrong cell. The most-used chart in the app
+  was its least-verified. Both gaps closed; 356 cell assertions, two mutants killed.
+- **The "13 v 2 discrepancy" was not an app error — ✅ CLOSED.** Chasing 13 v 2 alone would have
+  produced the wrong conclusion. Checking all FIVE negative indices at once shows the app stores
+  the published *stand* indices as their *hit* complements, five for five; what differs is BJA's
+  boundary convention, applied uniformly to every such cell. Worth remembering as a method: a
+  single-cell discrepancy in a uniform table is usually a convention, not a bug.
+- **Viewport pass at 375×812 (iPhone 13 mini) — ✅ DONE.** Measured every screen rather than
+  eyeballing it. Settings was **4085px, five full screens**; Stats 2470px; the Profile editor
+  2084px. All three now use `ui/components/CollapsibleSection` (a `<details>`, so open/closed
+  survives re-render, the summary is keyboard- and screen-reader-operable with no ARIA of our
+  own, and find-in-page can still open a closed section). Settings 4085 → 1159px, Stats
+  2470 → 1137px, Profile editor 2084 → 1104px.
+  - One finding was a FALSE alarm worth recording so it is not re-found: the audit flagged
+    `chart-table` overflowing the viewport on the Charts screen. It is not a bug —
+    `.chart-scroller` already has `overflow-x: auto` and the page `overflow-x: hidden`, and the
+    page-level check (`scrollWidth > clientWidth`) never fired. The table scrolls inside its
+    container exactly as intended; the naive "is any element wider than the viewport" heuristic
+    cannot tell that from a real overflow.
+- **Voice vs eyes-free vs car controls, clarified — ✅ DONE (operator asked).** Four sections all
+  looked like "audio" and were constantly confused. A new top section states, once, that
+  eyes-free needs two halves (the app speaking = Audio; you answering = wheel OR voice) and that
+  **the two answering routes are mutually exclusive** — a fact that was previously buried three
+  paragraphs into Car controls. "Audio" is now titled "Audio — the app speaking".
+- **Untested-on-hardware is now visible in the UI — ✅ DONE (operator asked).** A `Verified`
+  badge marks what has actually been tried on real hardware versus what merely passes tests on a
+  desk: recorded clips **Not tested yet** (never played on the operator's phone — the harness
+  checks that phrases RESOLVE to clips, not that they sound right or that iOS lets them play),
+  voice control **Not tested yet**, car controls **Partly tested**. The code cannot tell "works"
+  from "never tried", and until now neither could the screen.
 
 ## The standing adversarial + research workflow
 

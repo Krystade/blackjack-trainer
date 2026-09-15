@@ -30,7 +30,10 @@ plus focused drills. Hosted as a plain static website; no backend.
 - **UI:** portrait phone-first, dark theme, large bottom action buttons, no mid-hand
   scrolling.
 
-Out of scope (explicitly): Fab 4 surrender deviations, multiple rule presets, rule
+Out of scope (explicitly): ~~Fab 4 surrender deviations~~ (**brought IN scope by the
+operator 2026-09-13 and shipped 2026-09-14 as an opt-in per-profile toggle — see RV3 in
+`docs/BACKLOG.md` and the verified index values in
+`docs/sources/verified-surrender-indices.md`**), multiple rule presets, rule
 configurability beyond what's listed, accounts/sync/server, sound, multiplayer,
 real-money anything.
 
@@ -163,6 +166,13 @@ deviations → split deviations (10,10) → stand/hit deviations → basic chart
 surrender available: surrender is correct regardless of count (Fab 4 refinements are out
 of scope); the 16 v 10 stand deviation governs post-split or ≥3-card 16s where surrender
 is illegal. Same logic for 15 v 10 and 16 v 9.
+
+> **Amended 2026-09-14 (RV3).** Still exactly right with surrender indices OFF, which is
+> the default. With them ON, the precedence above changes at one point: an indexed cell's
+> surrender is decided by the COUNT rather than being correct regardless of it, in both
+> directions — 16 v 8 starts surrendering at +4 where basic hits, and 15 v 10 stops
+> surrendering below 0 where basic surrenders. 16 v 10 and 16 v A carry no index and so
+> keep the behaviour described above at every count. See `engine/strategy.ts` step 2.
 
 **Multi-card hands:** deviations keyed on hand total apply to any hand with that total
 (standard index-play practice); doubles only apply when doubling is legal (2 cards).
