@@ -33,6 +33,42 @@ PAIRS
 A,A: P P P P P P P P P P
 S17-vs-H17 deltas confirmed: 11vA H-not-Dh(*as Dh column: 11 row ends H); 15vA H (no Rh); 17vA S (no Rs); soft18v2 S (no Ds); soft19v6 S (no Ds); 8,8vA P (no Rp).
 
+## 4-8D H17 (bj_4d_h17.gif) — added 2026-09-14, the app's DEFAULT chart
+HARD
+4-8: H H H H H H H H H H
+9:  H Dh Dh Dh Dh H H H H H
+10: Dh Dh Dh Dh Dh Dh Dh Dh H H
+11: Dh Dh Dh Dh Dh Dh Dh Dh Dh Dh
+12: H H S S S H H H H H
+13: S S S S S H H H H H
+14: S S S S S H H H H H
+15: S S S S S H H H Rh Rh
+16: S S S S S H H Rh Rh Rh
+17: S S S S S S S S S Rs
+18+: S S S S S S S S S S
+SOFT
+13: H H H Dh Dh H H H H H
+14: H H H Dh Dh H H H H H
+15: H H Dh Dh Dh H H H H H
+16: H H Dh Dh Dh H H H H H
+17: H Dh Dh Dh Dh H H H H H
+18: Ds Ds Ds Ds Ds S S H H H
+19: S S S S Ds S S S S S
+20+: S S S S S S S S S S
+PAIRS
+2,2: Ph Ph P P P P H H H H
+3,3: Ph Ph P P P P H H H H
+4,4: H H H Ph Ph H H H H H
+6,6: Ph P P P P H H H H H
+7,7: P P P P P P H H H H
+8,8: P P P P P P P P P Rp
+9,9: P P P P P S P P S S
+A,A: P P P P P P P P P P
+H17-vs-S17 deltas confirmed against the "## 4-8D S17" section above, all six in the H17 direction:
+11vA Dh (S17 H); 15vA Rh (S17 H); 17vA Rs (S17 S); soft18v2 Ds (S17 S); soft19v6 Ds (S17 S);
+8,8vA Rp (S17 P). Every other cell is identical between the two, which is the expected relationship
+and serves as a structural cross-check on the read.
+
 ## 2D H17 (bj_2d_h17.gif)
 HARD
 4-8: H H H H H H H H H H
@@ -166,3 +202,23 @@ PAIRS
 A,A: P P P P P P P P P P
 1D S17 notables: soft 18 vA = S (stands!); hard 15 no surrender anywhere; 17vA plain S; 7,7vA = H (vs 1D H17's Rh); 9,9vA = S (no Ps); 16v10/A still Rh.
 ALL FIVE CHARTS VERIFIED 2026-07-16 by coordinator direct image read. GIFs staged for docs/sources/.
+
+## Second pass, 2026-09-14 — all SIX modules re-validated cell-for-cell against the GIFs
+
+Re-read every source GIF and compared it against its module in `src/engine/charts/`. All six clean,
+each confirmed on that chart's distinctive cells:
+
+| Module | Source GIF | Distinctive cells confirmed |
+| ------ | ---------- | --------------------------- |
+| `d68_h17` | `bj_4d_h17.gif` | hard 15 `Rh Rh`, 16 `Rh Rh Rh`, 17vA `Rs`, 8,8vA `Rp`, soft 19v6 `Ds` |
+| `d68_s17` | `bj_4d_s17.gif` | 11vA `H`, 15vA `H`, 8,8vA `P`, soft 18v2 `S`, soft 19 all `S` |
+| `d2_h17`  | `bj_2d_h17.gif` | 9v2 `Dh`, 16v9 `H` (not surrender), 6,6v7 `Ph`, 7,7v8 `Ph`, 8,8vA `Rp` |
+| `d2_s17`  | `bj_2d_s17.gif` | 11vA `Dh`, 15vA `H`, 16v9 `H`, soft 14 `H H H Dh Dh`, 8,8 all `P` |
+| `d1_h17`  | `bj_1d_h17.gif` | hard 8v5/8v6 `Dh`, 15v10 `H` (only vA surrenders), 16v9 `H`, soft 17v2 `Dh`, 4,4 `Pd`, 7,7v10 `Rs`, 9,9vA `Ps` |
+| `d1_s17`  | `bj_1d_s17.gif` | soft 18vA `S`, hard 15 no surrender anywhere, 17vA `S`, 7,7vA `H`, 9,9vA `S`, 16v10/A `Rh` |
+
+**The one gap this pass found was in the test suite, not the charts.** The 4-8D H17 chart had no
+section in this file and no `d68_h17.test.ts`, while the other five had both. `charts.test.ts` does
+import it, but its assertions are `expect(chart.HARD).toEqual(HARD_D68_H17)` — the module compared
+against itself. That verifies routing and cannot fail on a wrong cell, so the app's DEFAULT chart
+was its least-verified one. Section added above; `d68_h17.test.ts` added alongside the other five.
