@@ -1,5 +1,7 @@
 import { DEFAULT_SETTINGS, EMPTY_STATS, type Settings, type Stats } from './types';
 import { capHistories } from './retention';
+import { diag } from '../diag/diagnosticLog';
+import { diffSettings, formatChanges } from '../diag/settingsDiff';
 
 // Storage injection for testing (guards missing localStorage in node)
 let storage: Pick<Storage, 'getItem' | 'setItem'> | null = null;
@@ -227,6 +229,20 @@ function writeKey(key: string, value: string): boolean {
 }
 
 export function saveSettings(s: Settings): boolean {
+  // Record what changed, not that something did.
+  //
+  // "It worked yesterday" is usually a setting, and several of these change
+  // the microphone's behaviour from screens nowhere near the drill --
+  // eyes-free, on-device speech, verbosity, volume boost. Reading the old
+  // value back before the write is the only place the BEFORE side is still
+  // available, so the diff has to happen here rather than at any call site.
+  try {
+    const previous = loadSettings();
+    const changes = diffSettings(previous, s);
+    if (changes.length > 0) diag('set', 'settings', { changed: formatChanges(changes) });
+  } catch {
+    /* a log must never cost a settings write */
+  }
   return writeKey('bjtrainer.settings.v1', JSON.stringify(s));
 }
 

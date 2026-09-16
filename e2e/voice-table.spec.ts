@@ -200,3 +200,63 @@ test('switching voice off closes the microphone and the strip', async ({ page })
   await expect(page.locator('.voice-btn')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('.voice-status')).toHaveCount(0);
 });
+
+/**
+ * The toggle used to be `useState(false)` inside each screen, so it was
+ * forgotten on every navigation: turn voice on in a drill, go back to the list
+ * to pick another, and the microphone was off again with nothing saying so. In
+ * a car, where the screen is not being looked at, that is indistinguishable
+ * from a microphone that failed -- and it is a fair share of "it seems like
+ * the mic doesn't stay active" (operator, 2026-09-15).
+ *
+ * The lifetime is deliberately narrower than persistence: one RUN of the app.
+ * A reload starts with voice off, because opening a microphone on launch
+ * because of something the operator did yesterday would break the standing
+ * promise that the microphone is only ever opened by an explicit toggle.
+ */
+test('voice stays on across a navigation, because forgetting it looks like a failure', async ({
+  page,
+}) => {
+  await withFakeEngine(page);
+  await page.goto('/?seed=102&e2e=1');
+  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.locator('.voice-btn').click();
+  await expect(page.locator('.voice-btn')).toHaveAttribute('aria-pressed', 'true');
+
+  // Away and back. The tab bar is stood down at the table -- it is an
+  // immersive screen that owns its own bottom edge -- so leaving is End,
+  // which is exactly what the operator does between shoes.
+  await page.locator('.end-btn').click();
+  await page.getByRole('button', { name: 'Play a shoe' }).click();
+
+  await expect(page.locator('.voice-btn')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.voice-status')).toBeVisible();
+});
+
+test('turning it off stays off across a navigation too', async ({ page }) => {
+  await withFakeEngine(page);
+  await page.goto('/?seed=102&e2e=1');
+  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.locator('.voice-btn').click();
+  await page.locator('.voice-btn').click();
+
+  await page.locator('.end-btn').click();
+  await page.getByRole('button', { name: 'Play a shoe' }).click();
+
+  // Vacuity guard for the test above: if the toggle simply reported "on"
+  // whatever happened, this would fail.
+  await expect(page.locator('.voice-btn')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.voice-status')).toHaveCount(0);
+});
+
+test('a reload starts with the microphone closed, whatever the last run did', async ({ page }) => {
+  await withFakeEngine(page);
+  await page.goto('/?seed=102&e2e=1');
+  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.locator('.voice-btn').click();
+  await expect(page.locator('.voice-btn')).toHaveAttribute('aria-pressed', 'true');
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await expect(page.locator('.voice-btn')).toHaveAttribute('aria-pressed', 'false');
+});

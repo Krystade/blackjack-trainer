@@ -3,6 +3,8 @@ import { DEFAULT_RULES } from '../engine/ruleset';
 import { DEFAULT_SPREAD, DEFAULT_SEATS } from '../engine/game';
 import type { SpreadRow, SeatConfig } from '../engine/game';
 import type { Profile } from './types';
+import { diag } from '../diag/diagnosticLog';
+import { diffSettings, formatChanges } from '../diag/settingsDiff';
 
 // Storage injection for testing (guards missing localStorage in node).
 // Deliberately local to this module (not shared with persist.ts) per the
@@ -225,6 +227,21 @@ export function loadProfiles(): Profile[] {
 
 export function saveProfiles(profiles: Profile[]): void {
   const store = getStorage();
+  // The profile is where the rules live, and the repo principle is that every
+  // grading, payout and dealer-behaviour surface reads the ACTIVE PROFILE
+  // rather than Settings. So a profile edit changes what "correct" means, and
+  // a log that recorded settings but not profiles would explain half of what
+  // it was asked to.
+  try {
+    const before = store.getItem(PROFILES_KEY);
+    const after = JSON.stringify(profiles);
+    if (before !== after) {
+      const changes = diffSettings(before ? (JSON.parse(before) as unknown) : [], profiles);
+      diag('set', 'profiles', { changed: formatChanges(changes) });
+    }
+  } catch {
+    /* a log must never cost a profile write */
+  }
   store.setItem(PROFILES_KEY, JSON.stringify(profiles));
 }
 
@@ -249,6 +266,12 @@ export function getActiveProfile(): Profile {
 
 export function setActiveProfile(id: string): void {
   const store = getStorage();
+  try {
+    const before = store.getItem(ACTIVE_KEY);
+    if (before !== id) diag('set', 'active-profile', { from: before ?? '(none)', to: id });
+  } catch {
+    /* never cost the write */
+  }
   store.setItem(ACTIVE_KEY, id);
 }
 

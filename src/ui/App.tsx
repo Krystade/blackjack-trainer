@@ -14,6 +14,8 @@ import { getActiveProfile } from '../store/profiles';
 import { subscribeToExternalWrites, OWNED_KEYS } from '../store/crossTab';
 import type { Settings as SettingsData, Profile } from '../store/types';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { startDiagnostics } from '../diag/environment';
+import { diag } from '../diag/diagnosticLog';
 
 export type Screen = 'home' | 'table' | 'drills' | 'stats' | 'settings' | 'profiles' | 'charts';
 
@@ -62,6 +64,17 @@ function App() {
     applyTheme(normalizeTheme(settings.theme));
   }, [settings.theme]);
 
+  // The page-level watchers, installed once and left running.
+  //
+  // Deliberately here rather than in the voice hook: the events that explain a
+  // dead microphone -- the page being hidden, frozen or unloaded, the audio
+  // route flipping, permission changing -- happen precisely when the voice
+  // hook is NOT mounted to see them, and a log that starts when listening
+  // starts cannot record why listening stopped.
+  useEffect(() => {
+    startDiagnostics();
+  }, []);
+
   // Cross-tab safety. Every store here writes a WHOLE blob, and each tab keeps
   // its own copy in React state -- so a second tab drilling against a snapshot
   // taken before this tab's write would later save that stale snapshot back
@@ -85,6 +98,10 @@ function App() {
     // Remember the origin of a Charts visit, but never Charts itself -- a
     // second tap on the Charts tab must not make "back" a no-op loop.
     if (next === 'charts' && screen !== 'charts') setChartsReturn(screen);
+    // Which screen was open bounds every other question about a session: the
+    // voice vocabulary, the wake lock and the suppression behaviour all differ
+    // between the table and a drill.
+    diag('nav', 'screen', { from: screen, to: next });
     setScreen(next);
   };
 

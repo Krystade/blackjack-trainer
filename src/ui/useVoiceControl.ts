@@ -10,6 +10,10 @@ import { setSpeechActivityListener } from '../audio/speech';
 import { onDeviceStatus, prefersOnDevice, shouldProcessLocally } from '../audio/onDeviceSpeech';
 import { recordHeard } from '../audio/voiceHistory';
 import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition';
+import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
+import { diag } from '../diag/diagnosticLog';
+import { logAudioInputs, logMicPermission } from '../diag/environment';
+import { micHasWorked, markMicWorked } from './voiceSession';
 
 /**
  * Speech recognition, wired to a screen.
@@ -29,6 +33,18 @@ export interface VoiceStatus {
 }
 
 const IDLE: VoiceStatus = { state: 'off', heard: null, verdict: null };
+
+/**
+ * How often to write a line saying nothing happened.
+ *
+ * Thirty seconds is chosen against the failure being chased: a session dies
+ * roughly every ninety, so a heartbeat this size puts two or three lines
+ * inside every session and makes a gap in them obvious at a glance. Cheap --
+ * the log is capped and buffered -- and it is the only thing that can
+ * distinguish "the microphone was listening and the operator said nothing"
+ * from "the app was not running at all".
+ */
+export const HEARTBEAT_MS = 30_000;
 
 export function useVoiceControl({
   enabled,
@@ -105,6 +121,21 @@ export function useVoiceControl({
   useEffect(() => {
     if (!enabled) return;
 
+    diag('mic', 'listen-on', { context });
+    void logMicPermission('listen-on');
+    void logAudioInputs('listen-on');
+
+    // The screen must stay awake for as long as the microphone is open, not
+    // merely for as long as EYES-FREE is on.
+    //
+    // The wake lock was wired to the eyes-free toggle, which is a different
+    // switch: voice can be on with eyes-free off (it is, at the table), and in
+    // that combination the display slept on its usual timer, the page went
+    // hidden, and recognition stopped -- with nothing on screen to say so,
+    // because the screen was off. That is precisely "the mic doesn't stay
+    // active", and it is the most mundane explanation available for it.
+    void requestWakeLock();
+
     const controller = createVoiceController({
       createRecognition: browserRecognition,
       now: () => Date.now(),
@@ -114,6 +145,9 @@ export function useVoiceControl({
       onTranscript: (heard, offered) => transcriptRef.current?.(heard, offered) ?? null,
       biasPhrases,
       processLocally,
+      log: (event, detail) => diag('mic', event, { ...detail, context }),
+      hasWorked: micHasWorked,
+      onWorked: markMicWorked,
       onState: (state) => setStatus((prev) => ({ ...prev, state })),
       onHeard: (heard, verdict) => {
         setStatus((prev) => ({ ...prev, heard, verdict }));
@@ -121,6 +155,7 @@ export function useVoiceControl({
         // lucky glance at the screen mid-drill, which is how "stant" was
         // found and is not a method that works while driving.
         recordHeard(heard, verdict, context);
+        diag('heard', 'utterance', { heard, verdict, context });
 
         // Only a short utterance earns a cue. A rejected sentence was someone
         // talking, and chiming at every one of those in a moving car would be
@@ -132,13 +167,64 @@ export function useVoiceControl({
 
     // Deafen the microphone whenever the app talks. Registered only while
     // listening, so nothing pays for this when voice is off.
-    setSpeechActivityListener((ms) => controller.suppressFor(ms));
+    setSpeechActivityListener((ms, text) => {
+      diag('speak', 'deafen', { ms, said: text, context });
+      controller.suppressFor(ms);
+    });
     controller.start();
 
+    // Everything below is a nudge from outside the controller, for the events
+    // it cannot see: the page coming back, the network returning, the car's
+    // Bluetooth route settling. Each one leaves a session dead or backed off
+    // while the operator is already talking, and each is cheap to recover from
+    // the moment it is noticed -- but only if something is watching.
+    const wake = (reason: string) => () => {
+      if (document.visibilityState === 'hidden') return;
+      // Re-taking the lock matters as much as restarting: the browser drops a
+      // screen wake lock whenever the page is hidden and does not give it back.
+      void requestWakeLock();
+      controller.resume(reason);
+    };
+    const onVisible = () => {
+      diag('mic', 'visibility', { state: document.visibilityState, context });
+      if (document.visibilityState === 'visible') wake('visible')();
+    };
+    const onOnline = wake('online');
+    const onDeviceChange = () => {
+      void logAudioInputs('devicechange-voice');
+      wake('devicechange')();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', onOnline);
+    const media = navigator.mediaDevices as unknown as {
+      addEventListener?: (t: string, fn: () => void) => void;
+      removeEventListener?: (t: string, fn: () => void) => void;
+    } | undefined;
+    media?.addEventListener?.('devicechange', onDeviceChange);
+
+    // A heartbeat, so the log shows dead air rather than merely failing to
+    // show anything. Silence in a log is ambiguous -- nothing happened, or
+    // nothing was recorded -- and that ambiguity is what made the last three
+    // bad drives unreadable.
+    const heartbeat = window.setInterval(() => {
+      diag('mic', 'heartbeat', {
+        state: controller.state(),
+        visibility: document.visibilityState,
+        online: navigator.onLine,
+        context,
+      });
+    }, HEARTBEAT_MS);
+
     return () => {
+      window.clearInterval(heartbeat);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onOnline);
+      media?.removeEventListener?.('devicechange', onDeviceChange);
       setSpeechActivityListener(null);
       controller.stop();
       controllerRef.current = null;
+      void releaseWakeLock();
+      diag('mic', 'listen-off', { context });
       setStatus(IDLE);
     };
     // `biasPhrases` is intentionally absent: callers build the list inline, so

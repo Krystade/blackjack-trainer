@@ -35,6 +35,16 @@ import {
   type HeardEntry,
 } from '../../audio/voiceHistory';
 import {
+  readDiagnosticLog,
+  clearDiagnosticLog,
+  formatDiagnosticLog,
+  summariseDiagnostics,
+  subscribeDiagnostics,
+  flushDiagnostics,
+  diag,
+  type DiagEntry,
+} from '../../diag/diagnosticLog';
+import {
   clearOnDeviceProbeGuard,
   onDeviceProbeCrashed,
   onDeviceStatus,
@@ -620,6 +630,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
 
       <VoiceProbePanel />
       <VoiceHistoryPanel />
+      <DiagnosticLogPanel />
     </div>
   );
 }
@@ -1142,6 +1153,148 @@ function VoiceHistoryPanel() {
         </div>
 
         {shown && <pre className="car-log">{formatVoiceHistory(entries)}</pre>}
+    </CollapsibleSection>
+  );
+}
+
+/**
+ * The whole session, written down and ready to hand over.
+ *
+ * The workflow this is built for, in the operator's own words: "let's have a
+ * global log accessible in the settings where I can attempt a session and then
+ * I can copy and paste it to you to check everything."
+ *
+ * So the panel is not a dashboard. It is a clipboard button with enough
+ * context around it to be used at the side of the road: what is in the log,
+ * how to bracket the part that matters, and how to get rid of it afterwards.
+ *
+ * MARK is the only non-obvious control and it is the important one. A log of a
+ * fifteen-minute drive is long, and "the bit where it stopped hearing me"
+ * cannot be found by timestamp after the fact. Pressing Mark before and after
+ * an attempt brackets it, and the marker lines survive the copy, so the part
+ * worth reading can be pointed at rather than described.
+ */
+function DiagnosticLogPanel() {
+  const [entries, setEntries] = useState<DiagEntry[]>(() => readDiagnosticLog());
+  const [shown, setShown] = useState(false);
+  const [copied, setCopied] = useState<'idle' | 'ok' | 'failed'>('idle');
+
+  // Live, because the operator will be watching this while toggling voice on
+  // the screen behind it, and a panel that needed a manual refresh to show
+  // anything would read as "the logging is broken too".
+  useEffect(() => subscribeDiagnostics(() => setEntries(readDiagnosticLog())), []);
+
+  const summary = summariseDiagnostics(entries);
+  const text = formatDiagnosticLog(entries);
+
+  return (
+    <CollapsibleSection title={<>Diagnostic log</>} defaultOpen={false}>
+      <div className="settings-note-row u-note">
+        Everything the app can see about a voice session: microphone sessions starting,
+        ending and failing; the page being hidden or woken; audio devices appearing and
+        disappearing as the car&rsquo;s Bluetooth connects; permission changes; the wake
+        lock; every phrase heard; and every settings change. Press <strong>Mark</strong>,
+        try a session, press <strong>Mark</strong> again, then <strong>Copy</strong>.
+        <br />
+        <strong>Text only, stored on this device, never uploaded</strong> &mdash; it does
+        contain what the microphone heard, and it is clearable below.
+      </div>
+
+      <div className="settings-row">
+        <span className="settings-label">Recorded</span>
+        <span className="settings-value">
+          {summary.total === 0 ? 'nothing yet' : `${summary.total} entries`}
+        </span>
+      </div>
+
+      {summary.total > 0 && (
+        <div className="settings-row">
+          <span className="settings-label">Microphone</span>
+          <span className="settings-value">
+            {summary.micStarts} started, {summary.micEnds} ended, {summary.micErrors} failed
+          </span>
+        </div>
+      )}
+
+      {summary.total > 0 && (
+        <div className="settings-row">
+          <span className="settings-label">Phrases heard</span>
+          <span className="settings-value">{summary.heard}</span>
+        </div>
+      )}
+
+      <div className="settings-row">
+        <button
+          type="button"
+          className="settings-mini-btn"
+          onClick={() => {
+            diag('nav', 'operator-mark');
+            setEntries(readDiagnosticLog());
+          }}
+        >
+          Mark
+        </button>
+        <button
+          type="button"
+          className="settings-mini-btn"
+          onClick={() => setShown((v) => !v)}
+          disabled={summary.total === 0}
+        >
+          {shown ? 'Hide' : 'Show'}
+        </button>
+        <button
+          type="button"
+          className="settings-mini-btn"
+          onClick={() => {
+            // Flush first: up to a second of the most recent events is still
+            // sitting in the write buffer, and the most recent second is the
+            // one the operator just went to the trouble of producing.
+            flushDiagnostics();
+            const full = formatDiagnosticLog(readDiagnosticLog());
+            const clipboard = navigator.clipboard;
+            if (!clipboard?.writeText) {
+              // No clipboard (an insecure context, or an older iOS): open the
+              // text instead so it can be selected by hand, rather than
+              // reporting a success that did not happen.
+              setShown(true);
+              setCopied('failed');
+              return;
+            }
+            void clipboard
+              .writeText(full)
+              .then(() => setCopied('ok'))
+              .catch(() => {
+                setShown(true);
+                setCopied('failed');
+              });
+          }}
+          disabled={summary.total === 0}
+        >
+          {copied === 'ok' ? 'Copied' : 'Copy'}
+        </button>
+        <button
+          type="button"
+          className="settings-mini-btn"
+          onClick={() => {
+            clearDiagnosticLog();
+            setEntries([]);
+            setShown(false);
+            setCopied('idle');
+          }}
+          disabled={summary.total === 0}
+        >
+          Clear
+        </button>
+      </div>
+
+      {copied === 'failed' && (
+        <div className="settings-note-row u-note">
+          This browser would not take the clipboard. The log is shown below &mdash; select
+          it and copy by hand.
+        </div>
+      )}
+
+      {shown && <pre className="car-log">{text}</pre>}
     </CollapsibleSection>
   );
 }

@@ -10,6 +10,7 @@ import {
   CYCLE_AFTER_MS,
   SPEECH_TAIL_MS,
   START_TIMEOUT_MS,
+  MAX_PERMISSION_RETRIES,
   type ListenState,
   type HeardVerdict,
   type RecognitionLike,
@@ -60,10 +61,16 @@ class FakeRecognition implements RecognitionLike {
   }
 }
 
+interface LogLine {
+  event: string;
+  detail?: Record<string, unknown>;
+}
+
 interface Harness {
   actions: VoiceAction[];
   states: ListenState[];
   heard: Array<[string, HeardVerdict]>;
+  logs: LogLine[];
   made: FakeRecognition[];
   current: () => FakeRecognition;
   advance: (ms: number) => void;
@@ -74,6 +81,7 @@ function harness(opts: { create?: () => RecognitionLike | null } = {}): Harness 
   const actions: VoiceAction[] = [];
   const states: ListenState[] = [];
   const heard: Array<[string, HeardVerdict]> = [];
+  const logs: LogLine[] = [];
   const made: FakeRecognition[] = [];
   let clock = 1000;
   let nextHandle = 1;
@@ -99,6 +107,7 @@ function harness(opts: { create?: () => RecognitionLike | null } = {}): Harness 
     onAction: (a) => actions.push(a),
     onState: (s) => states.push(s),
     onHeard: (h, v) => heard.push([h, v]),
+    log: (event, detail) => logs.push({ event, detail }),
   });
 
   const advance = (ms: number): void => {
@@ -115,6 +124,7 @@ function harness(opts: { create?: () => RecognitionLike | null } = {}): Harness 
     actions,
     states,
     heard,
+    logs,
     made,
     current: () => made[made.length - 1]!,
     advance,
@@ -415,25 +425,41 @@ describe('when the microphone is refused or missing', () => {
  * same on screen, and only one of them is worth talking louder at.
  */
 describe('an engine that is present but inert', () => {
-  it('stops claiming to be starting once the engine has had its chance', () => {
+  // Reporting the inertia was the first fix and it was not enough. An engine
+  // that fires nothing used to leave the controller parked in 'error' with
+  // nothing scheduled, for the rest of the drive -- and on an iPhone whose
+  // audio route has just flipped, a start() that returns quietly and fires
+  // nothing is a routine outcome, not an exotic one. So the state the
+  // operator reached most often was the one with no way out of it.
+  //
+  // The watchdog now treats it as the failed session it is: torn down,
+  // counted against the backoff, and retried.
+  it('tears the dead session down and retries instead of parking in error', () => {
     // A recogniser whose start() does nothing: no events, ever.
-    const silent: RecognitionLike = {
-      continuous: false,
-      interimResults: false,
-      lang: '',
-      start: () => {},
-      abort: () => {},
-      onstart: null,
-      onend: null,
-      onerror: null,
-      onresult: null,
+    let built = 0;
+    let aborted = 0;
+    const silent = (): RecognitionLike => {
+      built++;
+      return {
+        continuous: false,
+        interimResults: false,
+        lang: '',
+        start: () => {},
+        abort: () => {
+          aborted++;
+        },
+        onstart: null,
+        onend: null,
+        onerror: null,
+        onresult: null,
+      };
     };
     const states: ListenState[] = [];
     let clock = 0;
     let handle = 0;
     const timers = new Map<number, { at: number; fn: () => void }>();
     const controller = createVoiceController({
-      createRecognition: () => silent,
+      createRecognition: silent,
       now: () => clock,
       schedule: (fn, ms) => {
         timers.set(++handle, { at: clock + ms, fn });
@@ -446,22 +472,48 @@ describe('an engine that is present but inert', () => {
       onState: (s) => states.push(s),
     });
 
+    // Fires due timers repeatedly, because a timer's callback schedules the
+    // next one: a single pass would stop after the watchdog and never reach
+    // the restart it just queued.
+    const run = (ms: number) => {
+      clock += ms;
+      for (let guard = 0; guard < 50; guard++) {
+        const due = [...timers].filter(([, t]) => t.at <= clock);
+        if (due.length === 0) return;
+        for (const [id, t] of due) {
+          timers.delete(id);
+          t.fn();
+        }
+      }
+    };
+
     controller.start();
     expect(controller.state()).toBe('starting');
+    expect(built).toBe(1);
 
-    clock += START_TIMEOUT_MS;
-    for (const [id, t] of [...timers]) {
-      if (t.at <= clock) {
-        timers.delete(id);
-        t.fn();
-      }
-    }
-    expect(controller.state()).toBe('error');
-    expect(states).toContain('error');
+    run(START_TIMEOUT_MS);
+    // No longer claiming to be starting -- that was the original point --
+    // and now also scheduled to try again rather than stuck.
+    expect(controller.state()).toBe('restarting');
+    expect(aborted).toBe(1);
+
+    // The retry actually happens. Without this the assertion above would pass
+    // on a controller that merely renamed its dead end.
+    run(RESTART_DELAY_MS * 4);
+    expect(built).toBeGreaterThan(1);
+
+    // And it keeps trying rather than giving up, because an inert engine is
+    // usually a route that will come back. Two runs, not one: the watchdog
+    // schedules the restart, so the clock has to move again for it to land.
+    run(START_TIMEOUT_MS);
+    run(MAX_RESTART_DELAY_MS);
+    expect(built).toBeGreaterThan(2);
+    expect(controller.state()).not.toBe('error');
   });
 
-  // A slow-but-working engine must not be condemned: the watchdog only
-  // changes what is REPORTED, and a late confirmation still wins.
+  // A slow-but-working engine must not be condemned. The watchdog only fires
+  // while the state is still 'starting', so an engine that confirms at all --
+  // however late, as long as it beats the timeout -- keeps its session.
   it('goes back to listening if a slow engine confirms late', () => {
     const h = harness();
     h.controller.start();
@@ -592,5 +644,227 @@ describe('a microphone that keeps dying', () => {
     const before = h.made.length;
     h.advance(RESTART_DELAY_MS);
     expect(h.made.length).toBe(before + 1);
+  });
+});
+
+/**
+ * The operator's report, 2026-09-15: "I get the request to allow the mic and
+ * always accept it but it seems like the mic doesn't stay active."
+ *
+ * `not-allowed` was terminal outright. That is right exactly once -- someone
+ * who declines the prompt must not be asked again in a loop -- and wrong every
+ * time afterwards, because on iOS a `start()` with no user gesture behind it
+ * can come back `not-allowed` with permission perfectly well granted, and an
+ * automatic restart is by definition not a gesture. One of those and the
+ * microphone was off for the rest of the drive.
+ */
+describe('a permission refusal after the microphone has demonstrably worked', () => {
+  it('still stops for good when nothing has ever worked', () => {
+    const h = harness();
+    h.controller.start();
+    h.current().fail('not-allowed');
+    h.advance(10_000);
+    expect(h.controller.state()).toBe('denied');
+    expect(h.made).toHaveLength(1);
+  });
+
+  it('retries when a session has produced a transcript', () => {
+    const h = harness();
+    h.controller.start();
+    // Proof the microphone was genuinely open: it returned words.
+    h.current().say('stand');
+    h.current().fail('not-allowed');
+    h.advance(MAX_RESTART_DELAY_MS);
+
+    expect(h.controller.state()).not.toBe('denied');
+    // Vacuity guard: a state that merely is not 'denied' proves nothing
+    // unless something was actually re-opened.
+    expect(h.made.length).toBeGreaterThan(1);
+  });
+
+  it('retries when a session simply stayed up long enough to be real', () => {
+    const h = harness();
+    h.controller.start();
+    h.advance(PRODUCTIVE_SESSION_MS);
+    h.current().die(); // a long session ending is normal, and counts as working
+    h.advance(RESTART_DELAY_MS);
+    const before = h.made.length;
+
+    h.current().fail('not-allowed');
+    h.advance(MAX_RESTART_DELAY_MS);
+    expect(h.controller.state()).not.toBe('denied');
+    expect(h.made.length).toBeGreaterThan(before);
+  });
+
+  it('comes to rest if the refusals keep coming, rather than re-asking forever', () => {
+    const h = harness();
+    h.controller.start();
+    h.current().say('stand');
+
+    for (let i = 0; i < MAX_PERMISSION_RETRIES + 2; i++) {
+      h.current().fail('not-allowed');
+      h.advance(MAX_RESTART_DELAY_MS);
+    }
+    expect(h.controller.state()).toBe('denied');
+  });
+
+  it('a working session in between clears the streak, so a long drive never accumulates', () => {
+    const h = harness();
+    h.controller.start();
+    h.current().say('stand');
+
+    for (let i = 0; i < 20; i++) {
+      h.current().fail('not-allowed');
+      h.advance(MAX_RESTART_DELAY_MS);
+      // ...and the operator keeps talking, which is what a real drive looks
+      // like: an occasional refusal between sessions that work.
+      h.current().say('hit');
+    }
+    expect(h.controller.state()).not.toBe('denied');
+  });
+});
+
+/**
+ * The events the controller cannot see and must not have to: the page coming
+ * back from hidden or frozen, the network returning, a Bluetooth route
+ * settling. Each leaves a session that is dead or backed off while the
+ * operator is already talking into it.
+ */
+describe('resume', () => {
+  it('does nothing while a session is confirmed, because restarting costs a deaf window', () => {
+    const h = harness();
+    h.controller.start();
+    expect(h.controller.state()).toBe('listening');
+    const before = h.made.length;
+
+    h.controller.resume('visibility');
+    expect(h.made).toHaveLength(before);
+  });
+
+  it('restarts immediately when the session is backed off', () => {
+    const h = harness();
+    h.controller.start();
+    // Four dead sessions in a row: the backoff is now seconds long.
+    for (let i = 0; i < 4; i++) {
+      h.current().die();
+      h.advance(MAX_RESTART_DELAY_MS);
+    }
+    // ...and a fifth, left un-advanced, so the controller is genuinely
+    // waiting out its delay -- which is the state a returning page finds.
+    h.current().die();
+    expect(h.controller.state()).toBe('restarting');
+    const before = h.made.length;
+
+    h.controller.resume('devicechange');
+    expect(h.made.length).toBeGreaterThan(before);
+    expect(h.controller.state()).toBe('listening');
+  });
+
+  it('clears the backoff, so the next failure starts from the short delay again', () => {
+    const h = harness();
+    h.controller.start();
+    for (let i = 0; i < 4; i++) {
+      h.current().die();
+      h.advance(MAX_RESTART_DELAY_MS);
+    }
+    h.current().die();
+    h.controller.resume('online');
+
+    // The condition that caused the backoff has changed, so the next dead
+    // session must be treated as the first one, not the fifth.
+    h.current().die();
+    const end = h.logs.filter((l) => l.event === 'session-end').pop();
+    expect(end?.detail?.restartInMs).toBe(restartDelayFor(1));
+  });
+
+  it('stays off when voice is off', () => {
+    const h = harness();
+    h.controller.resume('visibility');
+    expect(h.made).toHaveLength(0);
+    expect(h.controller.state()).toBe('off');
+  });
+});
+
+/**
+ * The log is the deliverable here, not a side effect: the operator drives,
+ * comes back, and pastes it. A session whose life is not written down is a
+ * session that cannot be diagnosed, and this feature has already burned
+ * several drives on exactly that.
+ */
+describe('the diagnostic log', () => {
+  it('records a session from start to end, with how long it lasted', () => {
+    const h = harness();
+    h.controller.start();
+    h.advance(30_000);
+    h.current().die();
+
+    const events = h.logs.map((l) => l.event);
+    expect(events).toContain('start');
+    expect(events).toContain('attempt');
+    expect(events).toContain('session-start');
+    expect(events).toContain('session-end');
+
+    const end = h.logs.find((l) => l.event === 'session-end');
+    expect(end?.detail?.sessionMs).toBe(30_000);
+    expect(end?.detail?.heard).toBe(false);
+  });
+
+  it('records what was heard and what was made of it', () => {
+    const h = harness();
+    h.controller.start();
+    h.current().say('stand');
+
+    const verdict = h.logs.find((l) => l.event === 'verdict');
+    expect(verdict?.detail?.heard).toBe('stand');
+    expect(verdict?.detail?.verdict).toBe('stand');
+  });
+
+  it('records a rejection, which is the case the operator cannot see', () => {
+    const h = harness();
+    h.controller.start();
+    h.current().say('how was your dad');
+
+    const verdict = h.logs.find((l) => l.event === 'verdict');
+    expect(verdict?.detail?.verdict).toBe('rejected');
+  });
+
+  it('records the error that killed a session', () => {
+    const h = harness();
+    h.controller.start();
+    h.current().fail('audio-capture');
+
+    const err = h.logs.find((l) => l.event === 'session-error');
+    expect(err?.detail?.error).toBe('audio-capture');
+  });
+
+  it('never lets a throwing logger reach the microphone', () => {
+    const made: FakeRecognition[] = [];
+    let clock = 0;
+    const timers = new Map<number, { at: number; fn: () => void }>();
+    let handle = 0;
+    const controller = createVoiceController({
+      createRecognition: () => {
+        const r = new FakeRecognition();
+        made.push(r);
+        return r;
+      },
+      now: () => clock,
+      schedule: (fn, ms) => {
+        timers.set(++handle, { at: clock + ms, fn });
+        return handle;
+      },
+      cancel: (id) => {
+        timers.delete(id);
+      },
+      onAction: () => {},
+      onState: () => {},
+      log: () => {
+        throw new Error('the notebook caught fire');
+      },
+    });
+
+    expect(() => controller.start()).not.toThrow();
+    expect(controller.state()).toBe('listening');
+    expect(() => made[0]!.say('stand')).not.toThrow();
   });
 });

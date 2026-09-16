@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { shot, withSettings, withStats, readStats, goHomeAndNavigate } from './helpers';
+import { tcConversionAccepted } from '../src/engine/count';
 
 const SPEED_TIERS = ['Learning', 'Table-ready', 'Pro', 'Expert'];
 
@@ -285,7 +286,23 @@ test('true count drill: answering a question persists a trueCount history entry'
   expect(typeof entry.decksRemaining).toBe('number');
   expect(typeof entry.correctTc).toBe('number');
   expect(typeof entry.correct).toBe('boolean');
-  expect(entry.correct).toBe(entry.guess === entry.correctTc);
+  // Graded against the rule the engine actually uses, not against equality.
+  //
+  // This asserted `correct === (guess === correctTc)`, which is a rule the app
+  // deliberately does not follow: from a STATED depth there is still no single
+  // right integer, because flooring, rounding to nearest and truncating toward
+  // zero are all conventions real counters use, and marking two of them wrong
+  // teaches only which one the author preferred (see tcRoundings). So a guess
+  // of 0 is graded correct whenever 0 is any of those quotients.
+  //
+  // The question is drawn at random and unseeded, so for most draws the two
+  // rules agree and the old assertion passed -- until a draw where 0 was an
+  // accepted alternative rather than the canonical value, and then it failed
+  // for being wrong rather than for anything regressing. Flaky by
+  // construction: it encoded a stricter contract than the code has.
+  expect(entry.correct).toBe(
+    tcConversionAccepted(entry.guess, entry.runningCount, entry.decksRemaining),
+  );
   expect(new Date(entry.date).toString()).not.toBe('Invalid Date');
 });
 

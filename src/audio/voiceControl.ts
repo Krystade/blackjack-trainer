@@ -114,6 +114,28 @@ export interface VoiceControllerDeps {
    * car is worse than using the network path that already works.
    */
   processLocally?: boolean;
+  /**
+   * Where the session's life story goes.
+   *
+   * A sink rather than a direct import, for the same reason every other side
+   * effect here is injected: this module is the one piece of the voice stack
+   * that can be tested in plain node, and it stays that way only while it
+   * knows nothing about localStorage. The app wires this to diag('mic', ...).
+   */
+  log?: (event: string, detail?: Record<string, unknown>) => void;
+  /**
+   * Whether a microphone session has demonstrably worked earlier in this PAGE
+   * LOAD, outside this controller's own life.
+   *
+   * The controller is rebuilt on every navigation, so its own evidence resets
+   * with it -- and the first `not-allowed` after a screen change, which iOS
+   * produces for a `start()` with no user gesture behind it, would then be
+   * read as a fresh refusal and stop voice for the rest of the drive. The page
+   * knows better than the controller does; this is how it says so.
+   */
+  hasWorked?: () => boolean;
+  /** Told the first time a session demonstrably works, so the page can remember. */
+  onWorked?: () => void;
 }
 
 /**
@@ -250,9 +272,33 @@ export function isSuppressed(now: number, suppressedUntil: number): boolean {
  * `aborted` -- is a normal interruption of a long-running session and is
  * simply restarted.
  */
-function isTerminal(error: string | undefined): boolean {
+function isPermissionError(error: string | undefined): boolean {
   return error === 'not-allowed' || error === 'service-not-allowed';
 }
+
+/**
+ * How many permission errors in a row are tolerated AFTER a session has
+ * already worked.
+ *
+ * `not-allowed` was treated as terminal outright, which is right the first
+ * time -- someone who declines the prompt must not be asked again in a loop.
+ * It is wrong every time after that, and the operator's report is exactly
+ * that case: "I get the request to allow the mic and always accept it but it
+ * seems like the mic doesn't stay active."
+ *
+ * On iOS a `start()` that is not tied to a user gesture can come back
+ * `not-allowed` even with permission granted, and an auto-restart is by
+ * definition not tied to a gesture. So the FIRST successful session is the
+ * evidence that permission exists; after that, a permission error is treated
+ * as one more transient failure and backed off like any other, and only a run
+ * of them is accepted as a real revocation.
+ *
+ * The asymmetry is deliberate. Before any session has worked, one refusal is
+ * conclusive and retrying would nag. After one has, a refusal is more likely
+ * to be the platform being particular about gestures than the operator having
+ * changed their mind mid-drive.
+ */
+export const MAX_PERMISSION_RETRIES = 4;
 
 export interface VoiceController {
   start: () => void;
@@ -269,6 +315,17 @@ export interface VoiceController {
    * would kill this one rather than cover for it.
    */
   cycleIfStale: () => void;
+  /**
+   * Start listening again now, from the outside.
+   *
+   * For the events the controller cannot see and must not have to: the page
+   * coming back from hidden or frozen, the network returning, an audio route
+   * settling after a Bluetooth flip. Each of those leaves a dead or backed-off
+   * session that would otherwise wait out its timer while the operator talks
+   * into nothing. Resets the backoff, because the condition that caused it has
+   * just changed.
+   */
+  resume: (reason: string) => void;
   state: () => ListenState;
 }
 
@@ -284,10 +341,51 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
   let heardThisSession = false;
   let watchdogHandle: number | null = null;
   let state: ListenState = 'off';
+  /**
+   * Whether the microphone has demonstrably been OPEN since start().
+   *
+   * This is the permission evidence, and it is deliberately not "a session
+   * reached `listening`". Engines differ on whether `onstart` fires before a
+   * permission refusal, so `listening` can be reached by a session that never
+   * had a microphone at all -- and licensing retries off that would mean
+   * re-asking someone who has just declined the prompt.
+   *
+   * What cannot be faked is a session that produced a transcript, or one that
+   * simply stayed up: both require a live input. That is the same test
+   * `onend` already uses to decide whether a session was working, so there is
+   * one definition of "worked" here rather than two.
+   */
+  let everWorked = false;
+  const worksProven = (): boolean => everWorked || (deps.hasWorked?.() ?? false);
+  const markWorked = (): void => {
+    if (everWorked) return;
+    everWorked = true;
+    try {
+      deps.onWorked?.();
+    } catch {
+      /* remembering must never break listening */
+    }
+  };
+  /** Permission errors in a row. Cleared by any session that reaches listening. */
+  let permissionStreak = 0;
+  /** Attempts since start(), for reading the log back. */
+  let attempt = 0;
+  /** When the current attempt called start(), to measure how long it took to confirm. */
+  let beganAt = 0;
+
+  const log = (event: string, detail?: Record<string, unknown>): void => {
+    try {
+      deps.log?.(event, detail);
+    } catch {
+      /* a logger must never take the microphone down with it */
+    }
+  };
 
   const setState = (next: ListenState): void => {
     if (state === next) return;
+    const previous = state;
     state = next;
+    log('state', { from: previous, to: next });
     try {
       deps.onState(next);
     } catch {
@@ -331,6 +429,9 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     if (!running) return;
     clearRestart();
     teardown();
+    attempt++;
+    beganAt = deps.now();
+    log('attempt', { n: attempt, failedStreak, permissionStreak });
 
     let fresh: RecognitionLike | null = null;
     try {
@@ -340,6 +441,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     }
     if (!fresh) {
       running = false;
+      log('unsupported');
       setState('unsupported');
       return;
     }
@@ -364,17 +466,38 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       clearWatchdog();
       sessionStartedAt = deps.now();
       heardThisSession = false;
+      log('session-start', { n: attempt, confirmedInMs: sessionStartedAt - beganAt });
       setState('listening');
     };
 
     fresh.onerror = (e) => {
       clearWatchdog();
-      if (isTerminal(e?.error)) {
-        running = false;
-        setState('denied');
-        teardown();
+      const error = e?.error ?? 'unknown';
+      if (isPermissionError(error)) {
+        permissionStreak++;
+        // A refusal before anything ever worked is the operator declining the
+        // prompt, and asking again would nag. A refusal after a session has
+        // worked is usually iOS objecting to a restart with no user gesture
+        // behind it, so it is retried like any other failure -- but only a few
+        // times, because a genuine revocation must still come to rest.
+        const proven = worksProven();
+        const giveUp = !proven || permissionStreak > MAX_PERMISSION_RETRIES;
+        log('session-error', {
+          error,
+          permissionStreak,
+          everWorked: proven,
+          giveUp,
+        });
+        if (giveUp) {
+          running = false;
+          setState('denied');
+          teardown();
+          return;
+        }
+        // Fall through to `onend`, which backs off and retries.
         return;
       }
+      log('session-error', { error, sessionMs: sessionStartedAt > 0 ? deps.now() - sessionStartedAt : 0 });
       // Everything else is left to `onend`, which always follows it, so one
       // failure produces exactly one restart rather than two.
     };
@@ -390,11 +513,28 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       // whatever ended it, the microphone is fine. Only a session that did
       // neither counts against the streak.
       const lasted = sessionStartedAt > 0 ? deps.now() - sessionStartedAt : 0;
-      if (heardThisSession || lasted >= PRODUCTIVE_SESSION_MS) failedStreak = 0;
-      else failedStreak++;
+      const worked = heardThisSession || lasted >= PRODUCTIVE_SESSION_MS;
+      if (worked) {
+        failedStreak = 0;
+        markWorked();
+        // Cleared HERE and not in `onstart`: some engines fire onstart and
+        // then refuse, so clearing on start would mean the retry cap could
+        // never be reached and a real revocation would retry forever.
+        permissionStreak = 0;
+      } else {
+        failedStreak++;
+      }
 
+      const delay = restartDelayFor(failedStreak);
+      log('session-end', {
+        n: attempt,
+        sessionMs: lasted,
+        heard: heardThisSession,
+        failedStreak,
+        restartInMs: delay,
+      });
       setState('restarting');
-      restartHandle = deps.schedule(begin, restartDelayFor(failedStreak));
+      restartHandle = deps.schedule(begin, delay);
     };
 
     fresh.onresult = (e) => {
@@ -413,11 +553,20 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       }
       const heard = offered[0] ?? '';
       if (!heard) return;
-      // Proof the microphone is alive, whatever is made of the words below.
+      // Proof the microphone is alive, whatever is made of the words below --
+      // and the standing evidence that permission was really granted.
       heardThisSession = true;
+      markWorked();
+      permissionStreak = 0;
+      log('result', {
+        heard,
+        alternatives: offered.length - 1,
+        sessionMs: sessionStartedAt > 0 ? deps.now() - sessionStartedAt : 0,
+      });
 
       // The app's own voice, arriving back through the microphone.
       if (isSuppressed(deps.now(), suppressedUntil)) {
+        log('suppressed', { heard, forMs: suppressedUntil - deps.now() });
         deps.onHeard?.(heard, 'suppressed');
         return;
       }
@@ -434,7 +583,9 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       // second, and one that never produced it at all, are different problems
       // -- and only the log can tell them apart after the drive.
       const action = match?.action ?? null;
-      deps.onHeard?.(heard, match === null ? 'rejected' : verdictFor(match));
+      const verdict = match === null ? 'rejected' : verdictFor(match);
+      log('verdict', { heard, verdict });
+      deps.onHeard?.(heard, verdict);
       if (!action) return;
       try {
         deps.onAction(action);
@@ -444,21 +595,41 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     };
 
     setState('starting');
-    // The session is left running: an engine that confirms late still works,
-    // and `onstart` will correct the state when it arrives. Only the REPORT
-    // changes, because a silent engine and a silent room must not look alike.
+    // An engine that never confirms is not merely a reporting problem.
+    //
+    // This used to set 'error' and stop there, on the reasoning that a session
+    // which confirms late still works. That is true, and it left the other
+    // case -- a session that never confirms at all -- parked in 'error' for
+    // the rest of the drive with nothing scheduled to rescue it. On an iPhone
+    // whose audio route has just flipped, `start()` returning quietly and
+    // firing nothing is a routine outcome, so the state the operator ends up
+    // in most often was the one with no way out.
+    //
+    // Now it is treated as the failed session it is: torn down, counted, and
+    // retried on the same backoff as any other failure. A late `onstart` is
+    // still handled -- it belongs to a recogniser that has already been
+    // detached, so it cannot correct a state it no longer owns.
     clearWatchdog();
     watchdogHandle = deps.schedule(() => {
       watchdogHandle = null;
-      if (state === 'starting') setState('error');
+      if (state !== 'starting') return;
+      failedStreak++;
+      const delay = restartDelayFor(failedStreak);
+      log('start-timeout', { n: attempt, afterMs: START_TIMEOUT_MS, failedStreak, restartInMs: delay });
+      teardown();
+      if (!running) return;
+      setState('restarting');
+      clearRestart();
+      restartHandle = deps.schedule(begin, delay);
     }, START_TIMEOUT_MS);
 
     try {
       fresh.start();
-    } catch {
+    } catch (e) {
       // Already-started is the usual cause and resolves itself; anything
       // else surfaces through onerror/onend.
       clearWatchdog();
+      log('start-threw', { error: String(e) });
       setState('error');
     }
   };
@@ -467,6 +638,11 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     start: () => {
       if (running) return;
       running = true;
+      attempt = 0;
+      failedStreak = 0;
+      permissionStreak = 0;
+      everWorked = false;
+      log('start');
       begin();
     },
     stop: () => {
@@ -475,6 +651,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       clearWatchdog();
       teardown();
       sessionStartedAt = 0;
+      log('stop');
       setState('off');
     },
     suppressFor: (ms: number) => {
@@ -486,6 +663,25 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     cycleIfStale: () => {
       if (!running) return;
       if (!shouldCycle(sessionStartedAt, deps.now())) return;
+      log('cycle', { ageMs: deps.now() - sessionStartedAt });
+      begin();
+    },
+    resume: (reason: string) => {
+      if (!running) {
+        log('resume-ignored', { reason, state });
+        return;
+      }
+      // A confirmed session is doing its job; restarting it would cost a real
+      // deaf window for nothing. Anything else -- backing off, stuck starting,
+      // parked in error -- is a session the operator is currently talking into
+      // for no result, and the condition that broke it has just changed.
+      if (state === 'listening') {
+        log('resume-ignored', { reason, state });
+        return;
+      }
+      log('resume', { reason, state, failedStreak });
+      failedStreak = 0;
+      permissionStreak = 0;
       begin();
     },
     state: () => state,

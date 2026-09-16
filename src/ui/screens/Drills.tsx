@@ -59,6 +59,7 @@ import { DeckEstimationView } from './drills/DeckEstimationView';
 import { MasteryChallengeView } from './drills/MasteryChallengeView';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
 import { enableAudioNow } from '../audioGate';
+import { useVoiceToggle } from '../voiceSession';
 
 interface DrillsProps {
   settings: Settings;
@@ -188,7 +189,10 @@ function FlashcardsView({
   // a setting that survives a reload would open the microphone on load, which
   // browsers refuse without a gesture anyway and which nobody should have to
   // discover after the fact.
-  const [voiceOn, setVoiceOn] = useState(false);
+  // Remembered for the life of the page load, not the life of this screen:
+  // a toggle forgotten on every navigation is indistinguishable, in a car,
+  // from a microphone that failed. See ui/voiceSession.ts.
+  const [voiceOn, setVoiceOn] = useVoiceToggle('flashcards');
   // Detected once. The toggle is hidden rather than disabled where there is
   // no API at all: an inert control invites the operator to keep tapping it.
   const [voiceSupported] = useState(() => detectVoiceSupport().api);

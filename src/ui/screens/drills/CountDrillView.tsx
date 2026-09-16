@@ -56,6 +56,7 @@ import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecogniti
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
+import { useVoiceToggle } from '../../voiceSession';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -181,7 +182,10 @@ export function CountDrillView({
   // VOICE. Off until asked for, like every other microphone in the app: a
   // toggle that survived a reload would open one on page load.
   const [voiceSupported] = useState(() => detectVoiceSupport().api);
-  const [voiceOn, setVoiceOn] = useState(false);
+  // Remembered for the life of the page load, not the life of this screen:
+  // a toggle forgotten on every navigation is indistinguishable, in a car,
+  // from a microphone that failed. See ui/voiceSession.ts.
+  const [voiceOn, setVoiceOn] = useVoiceToggle('count-drill');
   /**
    * A spoken count, heard but not yet submitted.
    *

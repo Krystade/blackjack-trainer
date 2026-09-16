@@ -36,6 +36,7 @@ import { NumPad } from '../components/NumPad';
 import { VoiceStatusBar } from '../components/VoiceStatusBar';
 import { VOICE_WORDS } from '../voiceLabels';
 import { assistedFlag } from '../peekFlag';
+import { useVoiceToggle } from '../voiceSession';
 
 type BotActionLogEntry = Game['botActionLog'][number];
 
@@ -285,7 +286,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
 
   // Voice input. Per-session and never persisted, so the microphone is never
   // opened by a page load -- only by someone asking for it.
-  const [voiceOn, setVoiceOn] = useState(false);
+  // Remembered for the life of the page load, not the life of this screen:
+  // a toggle forgotten on every navigation is indistinguishable, in a car,
+  // from a microphone that failed. See ui/voiceSession.ts.
+  const [voiceOn, setVoiceOn] = useVoiceToggle('table');
   const [voiceSupported] = useState(() => detectVoiceSupport().api);
   // A spoken count is a PROPOSAL until it is read back and confirmed. Holding
   // it here rather than submitting on hearing it is the whole reason numbers

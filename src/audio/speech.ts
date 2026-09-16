@@ -303,9 +303,20 @@ export function getLastSpoken(): string | null {
  * one recogniser can run per page (a second ends the first), so exactly one
  * thing ever needs telling.
  */
-let speechActivityListener: ((estimatedMs: number) => void) | null = null;
+type SpeechActivityListener = (estimatedMs: number, text?: string) => void;
 
-export function setSpeechActivityListener(fn: ((estimatedMs: number) => void) | null): void {
+let speechActivityListener: SpeechActivityListener | null = null;
+
+/**
+ * `text` is optional and carried only for the diagnostic log.
+ *
+ * What the app said is the other half of "it didn't hear me": every utterance
+ * deafens the microphone for its own duration plus a tail, so a verbose
+ * setting can leave the operator answering into a window that was never open.
+ * The suppression window alone does not show that; the sentence that caused it
+ * does.
+ */
+export function setSpeechActivityListener(fn: SpeechActivityListener | null): void {
   speechActivityListener = fn;
 }
 
@@ -333,18 +344,18 @@ export function estimateSpeechMs(text: string, rate = 1): number {
   return Math.round(Math.min(MAX_SPEECH_MS, Math.max(MIN_SPEECH_MS, ms)));
 }
 
-function notifyActivityMs(ms: number): void {
+function notifyActivityMs(ms: number, text?: string): void {
   const listener = speechActivityListener;
   if (!listener || ms <= 0) return;
   try {
-    listener(ms);
+    listener(ms, text);
   } catch {
     /* the microphone's bookkeeping must never break making a sound */
   }
 }
 
 function notifySpeechActivity(text: string, rate?: number): void {
-  notifyActivityMs(estimateSpeechMs(text, rate));
+  notifyActivityMs(estimateSpeechMs(text, rate), text);
 }
 
 /**
