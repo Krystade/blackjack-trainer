@@ -172,3 +172,31 @@ test('the panel counts what is in the log rather than guessing', async ({ page }
   await section.getByRole('button', { name: 'Mark' }).click();
   expect(await readCount()).toBeGreaterThan(before);
 });
+
+/**
+ * A profile edit changes what "correct" means -- every grading, payout and
+ * dealer-behaviour surface reads the ACTIVE PROFILE rather than Settings -- so
+ * a log that recorded settings but not profiles would explain half of what it
+ * was asked to.
+ */
+test('a profile edit is logged by name, with the rule that changed', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.locator('.home-profile-chip').click();
+  await page.getByRole('button', { name: 'Edit' }).first().click();
+
+  // Any rule toggle will do; DAS is the one every other profile spec uses.
+  await page
+    .locator('.settings-toggle-row', { hasText: 'Double after split (DAS)' })
+    .locator('input.settings-toggle')
+    .click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  await openSettings(page);
+  const text = await logText(page);
+  expect(text).toContain('profiles');
+  // The profile NAME and the rule PATH, which is the whole point of keying the
+  // diff rather than comparing the raw array -- that reported a change with
+  // nothing in it.
+  expect(text).toMatch(/profiles .*\.rules\.das: (true|false) -> (true|false)/);
+  expect(text).not.toContain('changed="(no change)"');
+});

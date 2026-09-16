@@ -225,6 +225,13 @@ export function loadProfiles(): Profile[] {
   return [cloneProfile(migrated)];
 }
 
+/** Profiles keyed by name, so a diff names the profile that changed. */
+function byName(profiles: readonly Profile[]): Record<string, Profile> {
+  const out: Record<string, Profile> = {};
+  for (const p of profiles) out[p.name || p.id] = p;
+  return out;
+}
+
 export function saveProfiles(profiles: Profile[]): void {
   const store = getStorage();
   // The profile is where the rules live, and the repo principle is that every
@@ -236,8 +243,14 @@ export function saveProfiles(profiles: Profile[]): void {
     const before = store.getItem(PROFILES_KEY);
     const after = JSON.stringify(profiles);
     if (before !== after) {
-      const changes = diffSettings(before ? (JSON.parse(before) as unknown) : [], profiles);
-      diag('set', 'profiles', { changed: formatChanges(changes) });
+      // Keyed by name before diffing, because the stored value is an ARRAY and
+      // diffSettings treats arrays as atomic on purpose (a bet spread is one
+      // decision, not four). Diffing the raw arrays therefore reported a change
+      // with nothing in it -- `changed="(no change)"` -- which was worse than
+      // not logging: it said something happened and then refused to say what.
+      // By name, an edit reads as `Default (6D H17).rules.s17: true -> false`.
+      const changes = diffSettings(byName(before ? (JSON.parse(before) as Profile[]) : []), byName(profiles));
+      if (changes.length > 0) diag('set', 'profiles', { changed: formatChanges(changes) });
     }
   } catch {
     /* a log must never cost a profile write */
