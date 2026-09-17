@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { playLabel } from '../playLabel';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import type { ChangeEvent } from 'react';
 import type { Screen } from '../App';
@@ -916,7 +917,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                 {evCost.worst.map((row) => (
                   <li className="mistake-row" key={row.key}>
                     <span>
-                      {handLabel(row.hand)}: {row.taken} instead of {row.expected}
+                      {handLabel(row.hand)}: {playLabel(row.taken)} instead of {playLabel(row.expected)}
                       {row.times > 1 ? ` (×${row.times})` : ''}
                     </span>
                     <span className="mistake-value">{row.unitsTotal.toFixed(3)} u</span>

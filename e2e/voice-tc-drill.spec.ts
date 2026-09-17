@@ -191,6 +191,12 @@ test('a spoken self-report is recorded, and states no guess', async ({ page }) =
 
 test('"yes" on the result screen asks the next question', async ({ page }) => {
   await openTcDrill(page, { eyesFree: true });
+  // Keep-going OFF, deliberately. With it on the drill asks the next question
+  // by itself and deliberately does NOT offer "say yes for the next one" --
+  // an offer followed a second later by the question arriving anyway is the
+  // app talking over its own instruction. This test is about the offer, so it
+  // has to be in the mode that makes one.
+  await page.locator('label', { hasText: 'Keep going' }).locator('input').uncheck();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.getByRole('button', { name: 'I had it' })).toBeVisible({ timeout: 15_000 });
   await sayWhenListening(page, 'yes');
