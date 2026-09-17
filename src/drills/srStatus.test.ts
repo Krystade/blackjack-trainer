@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { summarizeSrDeck, boxBarPercents, DUE_SOON_MS, MOST_LAPSED_LIMIT, MIN_NONZERO_BAR_PCT } from './srStatus';
+import { summarizeSrDeck, boxBarPercents, DUE_SOON_MS, MOST_LAPSED_LIMIT, MIN_NONZERO_BAR_PCT, formatSrCard } from './srStatus';
 import type { SrCard, SrDeck } from './spacedRepetition';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -310,5 +310,50 @@ describe('summarizeSrDeck: channels and pace', () => {
   it('nothing timed yet reads as null rather than zero', () => {
     expect(summarizeSrDeck({ a: card({}) }, 10, T0).medianPaceMs).toBeNull();
     expect(summarizeSrDeck({}, 10, T0).medianPaceMs).toBeNull();
+  });
+});
+
+describe('formatSrCard', () => {
+  const NOW = 1_700_000_000_000;
+  const DAY = 24 * 60 * 60 * 1000;
+  const card = (over: Partial<SrCard>): SrCard => ({
+    box: 1,
+    dueAt: NOW + DAY,
+    lastSeenAt: NOW,
+    lapses: 0,
+    reviews: 1,
+    ...over,
+  });
+
+  it('says nothing for a card the scheduler has never seen', () => {
+    // A row of dashes would suggest the scheduler had an opinion about it.
+    expect(formatSrCard(undefined, NOW)).toBeNull();
+    expect(formatSrCard(card({ reviews: 0 }), NOW)).toBeNull();
+  });
+
+  it('names the box against the ceiling, so progress has a scale', () => {
+    expect(formatSrCard(card({ box: 3 }), NOW)).toContain('Box 3/5');
+  });
+
+  it('counts days ahead, and says "due now" once it is', () => {
+    expect(formatSrCard(card({ dueAt: NOW + 7 * DAY }), NOW)).toContain('due in 7 days');
+    expect(formatSrCard(card({ dueAt: NOW + DAY }), NOW)).toContain('due in 1 day');
+    expect(formatSrCard(card({ dueAt: NOW }), NOW)).toContain('due now');
+    // Overdue is still "due now" rather than a negative countdown.
+    expect(formatSrCard(card({ dueAt: NOW - 5 * DAY }), NOW)).toContain('due now');
+  });
+
+  it('drops to hours inside a day, rather than rounding away to zero', () => {
+    expect(formatSrCard(card({ dueAt: NOW + 3 * 60 * 60 * 1000 }), NOW)).toContain('due in 3h');
+    // Never "due in 0h": something not yet due must not read as due.
+    expect(formatSrCard(card({ dueAt: NOW + 60_000 }), NOW)).toContain('due in 1h');
+  });
+
+  it('shows lapses, which the box alone hides', () => {
+    // Box 2 never having slipped and box 2 having fallen out of box 4 twice
+    // are not the same card, and the box cannot tell them apart.
+    expect(formatSrCard(card({ box: 2, lapses: 2 }), NOW)).toContain('2 lapses');
+    expect(formatSrCard(card({ box: 2, lapses: 1 }), NOW)).toContain('1 lapse');
+    expect(formatSrCard(card({ box: 2, lapses: 0 }), NOW)).not.toContain('lapse');
   });
 });

@@ -22,7 +22,21 @@ export type MistakeClass =
   | 'missed-deviation'
   | 'phantom-deviation'
   | 'wrong-anyway'
-  | 'timeout';
+  | 'timeout'
+  /**
+   * An admitted miss on an eyes-free self-check: the operator heard the hand,
+   * heard the correct play, and said they did not have it.
+   *
+   * Its own class rather than a `basic-error`, for the reason `timeout` is its
+   * own class: no play was chosen. Recording it as a basic error would invent
+   * a specific wrong action the learner never took, price an EV gap between
+   * two actions when there is only one, and make "which cells do I misplay"
+   * include cells that were never played at all. What it DOES mean is a
+   * genuine retention failure, which is exactly what the spaced-repetition
+   * deck should hear about -- so it counts as wrong, and is scheduled as
+   * wrong.
+   */
+  | 'self-report';
 export type EventKind = 'action' | 'insurance' | 'bet' | 'countCheck' | 'wong';
 
 /**

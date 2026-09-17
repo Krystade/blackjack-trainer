@@ -651,6 +651,7 @@ export const EMPTY_STATS: Stats = {
     'phantom-deviation': 0,
     'wrong-anyway': 0,
     timeout: 0,
+    'self-report': 0,
   },
   countDrill: {
     history: [],

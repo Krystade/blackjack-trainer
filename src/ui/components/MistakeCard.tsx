@@ -70,6 +70,10 @@ const CLASS_COPY: Record<Exclude<MistakeClass, 'correct'>, { label: string; note
     label: 'Out of time',
     note: 'No answer inside the shot clock. Knowing this one slowly is not the same as knowing it.',
   },
+  'self-report': {
+    label: 'Admitted miss',
+    note: 'You heard the hand and said you did not have it — no play was made, so there is nothing to price. This one is straight retention: it goes back to the bottom of the box.',
+  },
 };
 
 /** Actions the drills can grade that are not table plays. */

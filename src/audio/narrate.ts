@@ -528,6 +528,7 @@ const MISTAKE_SUMMARY_ORDER: Exclude<MistakeClass, 'correct'>[] = [
   'phantom-deviation',
   'wrong-anyway',
   'timeout',
+  'self-report',
 ];
 
 const MISTAKE_SUMMARY_LABELS: Record<Exclude<MistakeClass, 'correct'>, { singular: string; plural: string }> = {
@@ -536,6 +537,7 @@ const MISTAKE_SUMMARY_LABELS: Record<Exclude<MistakeClass, 'correct'>, { singula
   'phantom-deviation': { singular: 'phantom deviation', plural: 'phantom deviations' },
   'wrong-anyway': { singular: 'wrong-anyway play', plural: 'wrong-anyway plays' },
   timeout: { singular: 'time-out', plural: 'time-outs' },
+  'self-report': { singular: 'admitted miss', plural: 'admitted misses' },
 };
 
 /**

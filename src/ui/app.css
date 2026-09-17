@@ -3660,3 +3660,41 @@ details.stats-section > summary::after {
 .mute-btn:active {
   transform: scale(0.94);
 }
+
+/* The schedule line under a flashcard's chart-row name.
+
+   Quieter than the cell id above it on purpose: the row you just drilled is
+   the thing being looked for, and the schedule is context that should not
+   compete with it. Same weight and colour as the other secondary readouts on
+   a feedback panel. */
+.feedback-sr {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted, #8a8a8a);
+  letter-spacing: 0.01em;
+}
+
+/* The wheel self-check banner: the right play, revealed and waiting to be
+   reported on. Sized like a correction rather than like a hint -- it IS the
+   answer, and on a phone propped in a cradle it has to be readable at a
+   glance, in the same strip the correction will occupy a moment later. */
+.selfcheck-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--panel, #1b1b1e);
+  border: 1px solid var(--accent, #5b8def);
+}
+
+.selfcheck-banner strong {
+  font-size: 22px;
+  letter-spacing: 0.02em;
+}
+
+.selfcheck-banner span {
+  font-size: 12px;
+  color: var(--muted, #8a8a8a);
+}

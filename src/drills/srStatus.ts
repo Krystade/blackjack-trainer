@@ -228,3 +228,46 @@ export function boxBarPercents(byBox: readonly number[]): number[] {
 /** Re-exported so callers building an SrCard-shaped test fixture or display
  * row don't need a second import from spacedRepetition.ts just for the type. */
 export type { SrCard, SrDeck };
+
+/**
+ * One card's schedule, in words, for showing on the card itself.
+ *
+ * The spaced-repetition state existed only in aggregate -- the Drills picker's
+ * "N due" and the Stats box histogram -- so the one place it was invisible was
+ * the place you are actually answering: the card. The operator asked to see it
+ * there (2026-09-16), and it is the right ask: "box 4, due in a fortnight"
+ * turns a right answer from a tick into progress you can watch, and a lapse
+ * from a wrong answer into a visible cost.
+ *
+ * Returns null for a card with no history at all. A row of dashes would
+ * suggest the scheduler had nothing to say about it; nothing is more honest,
+ * and the very next answer creates the card.
+ */
+export function formatSrCard(card: SrCard | undefined, now: number): string | null {
+  if (!card || card.reviews === 0) return null;
+
+  const parts = [`Box ${card.box}/${MAX_BOX}`];
+
+  const ms = card.dueAt - now;
+  if (ms <= 0) {
+    parts.push('due now');
+  } else {
+    const days = ms / DAY_MS;
+    if (days < 1) {
+      const hours = Math.max(1, Math.round(ms / (60 * 60 * 1000)));
+      parts.push(`due in ${hours}h`);
+    } else {
+      // Rounded, not floored: "due in 1 day" for something 29 hours out is
+      // less wrong than "due in 1 day" for something 47 hours out.
+      const d = Math.round(days);
+      parts.push(`due in ${d} day${d === 1 ? '' : 's'}`);
+    }
+  }
+
+  // Lapses are the number worth showing beside the box, because they are what
+  // the box alone hides: a card at box 2 that has never slipped and a card at
+  // box 2 that has fallen out of box 4 twice are not the same card.
+  if (card.lapses > 0) parts.push(`${card.lapses} lapse${card.lapses === 1 ? '' : 's'}`);
+
+  return parts.join(' · ');
+}

@@ -120,8 +120,31 @@ export function persistGrade(event: GradedEvent, retention: RetentionRow | null)
  */
 export const TIMEOUT_ANSWER = 'timeout';
 
-/** An answer a hand drill can grade: a real play, or the clock running out. */
-export type DrillAnswer = Action | typeof TIMEOUT_ANSWER;
+/**
+ * What an eyes-free self-check submits.
+ *
+ * Same argument as `TIMEOUT_ANSWER`, one step further: in a car a flashcard
+ * answer cannot be one of five buttons, because there are two wheel buttons
+ * and no screen being looked at. So the drill says the hand, says the right
+ * play, and asks whether you had it -- and the answer to that is not a play.
+ *
+ * "I had it" is the honest word for a correct answer with no action attached;
+ * "I missed it" is a retention failure with no action attached. Both ride in
+ * `taken`, which `GradedEvent` already types as a plain string for exactly
+ * this.
+ */
+export const SELF_REPORT_HAD = 'self-report-had';
+export const SELF_REPORT_MISSED = 'self-report-missed';
+
+/**
+ * An answer a hand drill can grade: a real play, the clock running out, or a
+ * self-report from a channel that cannot name a play.
+ */
+export type DrillAnswer =
+  | Action
+  | typeof TIMEOUT_ANSWER
+  | typeof SELF_REPORT_HAD
+  | typeof SELF_REPORT_MISSED;
 
 export function cellCategory(cellId: string, correct: Action): 'hard' | 'soft' | 'pairs' | 'surrender' {
   if (correct === 'surrender') return 'surrender';
@@ -179,14 +202,18 @@ export function buildFlashcardEvent(
   const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: true };
   const withCount = correctPlay(card.cards, card.up, 0, ctx, rules);
   const basicOnly = basicPlay(card.cards, card.up, ctx, rules);
-  // A timeout never reaches classifyAction: that function asks which of the
-  // five plays was chosen, and the answer here is none of them. Routed through
-  // it with any stand-in action it would come back as that action's mistake
-  // class -- so the taxonomy would record a play the learner never made.
+  // A timeout never reaches classifyAction, and neither does a self-report:
+  // that function asks which of the five plays was chosen, and the answer in
+  // both cases is none of them. Routed through it with any stand-in action,
+  // the taxonomy would record a play the learner never made.
   const { classification, correct } =
     taken === TIMEOUT_ANSWER
       ? ({ classification: 'timeout', correct: false } as const)
-      : classifyAction(taken, withCount, basicOnly, card.cards, card.up, 0, rules);
+      : taken === SELF_REPORT_HAD
+        ? ({ classification: 'correct', correct: true } as const)
+        : taken === SELF_REPORT_MISSED
+          ? ({ classification: 'self-report', correct: false } as const)
+          : classifyAction(taken, withCount, basicOnly, card.cards, card.up, 0, rules);
 
   const event: GradedEvent = {
     kind: 'action',

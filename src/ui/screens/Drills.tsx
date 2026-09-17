@@ -6,6 +6,7 @@ import type { Action, DeviationId } from '../../engine/deviations';
 import { isIndexActive, indexSetFor } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
 import { drawFlashcard } from '../../drills/flashcards';
+import { formatSrCard } from '../../drills/srStatus';
 import { drillLegalActions } from '../../drills/legalActions';
 import { gateDrillAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
@@ -21,7 +22,10 @@ import {
   gradeQuizAnswer as gradeQuiz,
   loadFlashSr,
   loadQuizSr,
-  TIMEOUT_ANSWER } from '../../drills/gradeAnswer';
+  TIMEOUT_ANSWER,
+  SELF_REPORT_HAD,
+  SELF_REPORT_MISSED } from '../../drills/gradeAnswer';
+import type { DrillAnswer } from '../../drills/gradeAnswer';
 import { shotClockExpired, shotClockOn } from '../../drills/shotClock';
 import type { SrDeck } from '../../drills/spacedRepetition';
 import { pickMixedType } from '../../drills/mixedSession';
@@ -36,7 +40,7 @@ import { ShotClockBar } from '../components/ShotClockBar';
 import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
-import { narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt } from '../../audio/narrate';
+import { narrateAction, narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt } from '../../audio/narrate';
 import { useVoiceControl } from '../useVoiceControl';
 import { autoAdvanceDelayMs, spokenPauseFor } from '../../drills/answerPause';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../audio/voiceRecognition';
@@ -59,7 +63,8 @@ import { DeckEstimationView } from './drills/DeckEstimationView';
 import { MasteryChallengeView } from './drills/MasteryChallengeView';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
 import { enableAudioNow } from '../audioGate';
-import { useVoiceToggle } from '../voiceSession';
+import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
+import { useWheelCommand } from '../useWheelCommand';
 
 interface DrillsProps {
   settings: Settings;
@@ -193,6 +198,11 @@ function FlashcardsView({
   // a toggle forgotten on every navigation is indistinguishable, in a car,
   // from a microphone that failed. See ui/voiceSession.ts.
   const [voiceOn, setVoiceOn] = useVoiceToggle('flashcards');
+  // The wheel's open-mic window (ui/voiceSession.ts). While it is open the
+  // recogniser runs even with the Voice answers toggle off, which is the whole
+  // point of push-to-talk: no permanently-open microphone, and therefore a
+  // wheel that still reaches the app the rest of the time.
+  const pushToTalkOpen = usePushToTalk();
   // Detected once. The toggle is hidden rather than disabled where there is
   // no API at all: an inert control invites the operator to keep tapping it.
   const [voiceSupported] = useState(() => detectVoiceSupport().api);
@@ -218,6 +228,16 @@ function FlashcardsView({
   // it's (re)entered from the picker (see the Drills switch below), so a
   // new session always starts with this false; no extra reset effect needed.
   const spokenCorrectOnceRef = useRef(false);
+  // The wheel self-check: is the right play currently revealed and waiting to
+  // be reported on? State for the banner, a REF for the handler, because two
+  // wheel presses can land in the same tick and the second would otherwise be
+  // handled by the closure from the render BEFORE the first -- the same bug
+  // the count drills' `phaseRef` exists for.
+  const [selfCheckOpen, setSelfCheckOpen] = useState(false);
+  const wheelPhaseRef = useRef<'asking' | 'reporting' | 'feedback'>('asking');
+  // The correction on screen, for the same reason: the second of two presses
+  // in one tick arrives before React has re-rendered with it.
+  const feedbackRef = useRef<{ correct: boolean; correctAction: Action; event: GradedEvent } | null>(null);
   // T0-BUG1: measure the control strip so the eyes-free ZonePad overlay can
   // start BELOW it (keeping its Dim-screen/Eyes-free toggles tappable).
   const [controlsRef, padTop] = useControlStripBottom();
@@ -235,6 +255,19 @@ function FlashcardsView({
       window.clearTimeout(shotClockTimerRef.current);
       shotClockTimerRef.current = null;
     }
+  };
+
+  /**
+   * Show a graded answer. The ONE place `feedback` is set to a result, so the
+   * wheel's phase ref cannot fall out of step with what is on screen -- there
+   * are four grade sites (button, zone, shot clock, self-report) and a missed
+   * one would leave the wheel still offering "I had it" over a correction.
+   */
+  const showFeedback = (result: { correct: boolean; correctAction: Action; event: GradedEvent }) => {
+    wheelPhaseRef.current = 'feedback';
+    feedbackRef.current = result;
+    setSelfCheckOpen(false);
+    setFeedback(result);
   };
 
   const clearAdvanceTimer = () => {
@@ -305,6 +338,9 @@ function FlashcardsView({
     lastCellRef.current = drawn.cellId;
     setCard(drawn);
     setFeedback(null);
+    wheelPhaseRef.current = 'asking';
+    feedbackRef.current = null;
+    setSelfCheckOpen(false);
     promptShownAtRef.current = performance.now();
   };
 
@@ -358,7 +394,7 @@ function FlashcardsView({
   // inside gradeFlashcard. No audio, no setState -- callers layer their own
   // feedback on top.
   const gradeFlashcardAnswer = (
-    taken: Action,
+    taken: DrillAnswer,
     channel: AnswerChannel,
   ): { event: GradedEvent; correctAction: Action } => {
     const elapsedMs = performance.now() - promptShownAtRef.current;
@@ -406,7 +442,7 @@ function FlashcardsView({
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
 
-    setFeedback({ correct: event.correct, correctAction, event });
+    showFeedback({ correct: event.correct, correctAction, event });
   };
 
   // Eyes-free zone tap: ZoneId and Action are the identical five-member
@@ -443,7 +479,7 @@ function FlashcardsView({
     );
     audio.ding(event.correct ? 'good' : 'bad');
 
-    setFeedback({ correct: event.correct, correctAction, event });
+    showFeedback({ correct: event.correct, correctAction, event });
     scheduleAutoAdvance(spokenMs);
   };
 
@@ -485,7 +521,7 @@ function FlashcardsView({
         : audio.say(text, { interrupt: true }),
     );
     audio.ding('bad');
-    setFeedback({ correct: false, correctAction: result.correctAction, event: result.event });
+    showFeedback({ correct: false, correctAction: result.correctAction, event: result.event });
     scheduleAutoAdvance(spokenMs);
   };
 
@@ -545,19 +581,88 @@ function FlashcardsView({
   };
 
 
-  // NO STEERING-WHEEL CLAIM HERE, and twice deliberately.
-  //
-  // A wheel press means "yes" (audio/wheelCommands.ts), and a flashcard or quiz
-  // answer is a five-way decision -- one button cannot say which. `yes` is
-  // already a no-op above for the same reason.
-  //
-  // And this screen RENDERS the count and true-count drills as children, both
-  // of which do claim the wheel. Child effects run before the parent's, so a
-  // claim here would win the slot and hand every press to flashcards while a
-  // count drill was on screen.
+  /**
+   * The eyes-free self-check: what the two wheel buttons do on a flashcard.
+   *
+   * A flashcard answer is a five-way choice and the wheel has two buttons, so
+   * the wheel cannot state a play. It can run the shape the count drills
+   * already use instead -- say the right play, then ask whether you had it --
+   * and that answer IS binary. `SELF_REPORT_HAD`/`SELF_REPORT_MISSED` carry it
+   * through the shared grade path (drills/gradeAnswer.ts).
+   *
+   * (An earlier comment here refused the wheel on the grounds that this screen
+   * renders the count drills as children, so a claim here would steal their
+   * presses. It does not: `Drills` renders them itself, as siblings, and only
+   * one is ever mounted. The other half of that refusal -- one button cannot
+   * pick one of five plays -- was right, and is why this is a self-check
+   * rather than an answer.)
+   */
+  const revealForSelfCheck = () => {
+    wheelPhaseRef.current = 'reporting';
+    setSelfCheckOpen(true);
+    speak(
+      `${narrateAction(card.correct)}. Had it?`,
+      speechOptsFrom(settings.audio, { interrupt: true }),
+    );
+  };
+
+  const submitSelfReport = (had: boolean) => {
+    const { event, correctAction } = gradeFlashcardAnswer(
+      had ? SELF_REPORT_HAD : SELF_REPORT_MISSED,
+      // SCREEN_CHANNEL, and not the eyes-free/hands-free channel the press
+      // physically was. The channel ceiling exists to stop an easy answer
+      // promoting a card as far as a hard one, and a self-report is the
+      // easiest of all: the app checked nothing. Graded on its delivery it
+      // would earn the HIGHEST cap for the weakest evidence. A miss still
+      // demotes in full -- admitting one is worth taking at face value.
+      SCREEN_CHANNEL,
+    );
+    const spokenMs = speakCorrectionOnceGated(event, (text) =>
+      speak(text, speechOptsFrom(settings.audio)),
+    );
+    audio.ding(event.correct ? 'good' : 'bad');
+    showFeedback({ correct: event.correct, correctAction, event });
+    scheduleAutoAdvance(spokenMs);
+  };
+
+  useWheelCommand((command) => {
+    // Push-to-talk mode borrows both buttons: forward opens the microphone for
+    // a few seconds, back still repeats. See ui/voiceSession.ts.
+    if (settings.drill.wheelMode === 'talk') {
+      if (command === 'forward') {
+        startPushToTalk('flashcards');
+        audio.ding('attention');
+      } else {
+        handleRepeat();
+      }
+      return;
+    }
+    // The chart overlay is modal over a frozen correction, exactly as for the
+    // keyboard and for voice.
+    if (showChart) return;
+
+    if (wheelPhaseRef.current === 'reporting') {
+      submitSelfReport(command === 'forward');
+      return;
+    }
+    if (wheelPhaseRef.current === 'feedback') {
+      if (command === 'forward') {
+        next();
+      } else if (feedbackRef.current) {
+        speak(narrateCorrection(feedbackRef.current.event), speechOptsFrom(settings.audio, { interrupt: true }));
+      }
+      return;
+    }
+    // Asking. Forward reveals the play; back repeats the hand, which is the
+    // one thing the operator asked for by name ("repeat is useful").
+    if (command === 'forward') revealForSelfCheck();
+    else handleRepeat();
+  });
 
   const voice = useVoiceControl({
-    enabled: voiceOn,
+    // Push-to-talk opens the recogniser for its window even with the toggle
+    // off; without this the wheel would open a microphone nothing listens to.
+    enabled: voiceOn || pushToTalkOpen,
     onAction: handleVoiceAction,
     // Eyes-free, a rejection is silence, and silence looks the same as a dead
     // microphone. A short cue says "say it again" without costing a sentence
@@ -779,6 +884,16 @@ function FlashcardsView({
       />
 
       <div className="message-strip">
+        {/* The revealed play, while the wheel waits to be told whether it was
+            had. On screen as well as spoken so the wheel can be checked at a
+            desk -- the operator asked for uses they could verify in
+            flashcards, and an audio-only affordance is unverifiable. */}
+        {selfCheckOpen && !feedback && (
+          <div className="selfcheck-banner" data-testid="flash-selfcheck">
+            <strong>{zoneLabel(card.correct)}</strong>
+            <span>Wheel: next = I had it &middot; prev = I missed it</span>
+          </div>
+        )}
         {feedback && (
           <>
             {feedback.correct ? (
@@ -799,6 +914,15 @@ function FlashcardsView({
                 the feedback state rather than to either outcome — it is
                 equally worth seeing after a hit or a miss. */}
             <div className="feedback-cell">{card.cellId}</div>
+            {/* The schedule for the row just answered. It existed only in
+                aggregate -- the picker's "N due", the Stats histogram -- so
+                the one place it was invisible was the card you are actually
+                answering. Read AFTER grading, so a right answer visibly
+                pushes the next review out and a miss visibly collapses it. */}
+            {(() => {
+              const sr = formatSrCard(srDeckRef.current[card.cellId], Date.now());
+              return sr ? <div className="feedback-sr">{sr}</div> : null;
+            })()}
           </>
         )}
       </div>
