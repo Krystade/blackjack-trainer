@@ -63,22 +63,23 @@ describe('initMediaSession', () => {
     advanced = 0;
   });
 
-  it('repeats on skip-back and advances on skip-forward', () => {
+  it('sends the two real buttons in opposite directions', () => {
     const actions = new Map<string, () => void>();
     withMediaSession({
       metadata: null,
       setActionHandler: (a: string, h: () => void) => actions.set(a, h),
     });
 
-    let repeated = 0;
-    initMediaSession({ repeat: () => (repeated += 1), stop: () => {}, advance: () => (advanced += 1) });
+    let back = 0;
+    initMediaSession({ back: () => (back += 1), forward: () => (advanced += 1) });
 
-    // Neither is ever sent by a car of its own accord, so both are real
-    // presses -- and they must not mean the same thing: skip-forward is the
-    // only way to ANSWER a drill without the microphone that kills the wheel.
+    // The only two the driver can press (operator, 2026-09-16), and they must
+    // not collapse into one meaning: with the microphone off -- the only state
+    // in which the wheel reaches the app at all -- these two directions are
+    // the entire input vocabulary the drill has.
     actions.get('previoustrack')!();
     actions.get('nexttrack')!();
-    expect([repeated, advanced]).toEqual([1, 1]);
+    expect([back, advanced]).toEqual([1, 1]);
   });
 
   /**
@@ -98,8 +99,7 @@ describe('initMediaSession', () => {
     });
 
     let repeated = 0;
-    let stopped = 0;
-    initMediaSession({ repeat: () => (repeated += 1), stop: () => (stopped += 1), advance: () => (advanced += 1) });
+    initMediaSession({ back: () => (repeated += 1), forward: () => (advanced += 1) });
 
     // Registered, so the slot is not handed back to whatever was playing
     // before -- and inert, so an unattended resume cannot speak.
@@ -109,21 +109,36 @@ describe('initMediaSession', () => {
     actions.get('play')!();
     // Advancing on an unattended resume would be worse than repeating: it
     // would submit answers to a drill nobody was touching.
-    expect([repeated, stopped, advanced]).toEqual([0, 0, 0]);
+    expect([repeated, advanced]).toEqual([0, 0]);
   });
 
-  it('maps pause and stop onto stopping', () => {
+  /**
+   * The same failure as `play`, one drive later.
+   *
+   * `pause` and `stop` were wired to cancel speech, and survived the `play`
+   * fix only because nothing had yet established that the car sends them too.
+   * The 2026-09-11 log has `pause` arriving unprompted twice with nobody
+   * touching anything -- so the car could cut a prompt off mid-sentence at a
+   * moment of its own choosing, which from the driver's seat looks exactly
+   * like the app having died.
+   */
+  it('never acts on pause or stop, which the car also sends by itself', () => {
     const actions = new Map<string, () => void>();
     withMediaSession({
       metadata: null,
       setActionHandler: (a: string, h: () => void) => actions.set(a, h),
     });
 
-    let stopped = 0;
-    initMediaSession({ repeat: () => {}, stop: () => (stopped += 1), advance: () => (advanced += 1) });
+    let back = 0;
+    initMediaSession({ back: () => (back += 1), forward: () => (advanced += 1) });
+
+    // Registered, so the slot is not handed back to whatever was playing
+    // before; inert, so an unattended transport event cannot move the drill.
+    expect(actions.has('pause')).toBe(true);
+    expect(actions.has('stop')).toBe(true);
     actions.get('pause')!();
     actions.get('stop')!();
-    expect(stopped).toBe(2);
+    expect([back, advanced]).toEqual([0, 0]);
   });
 
   /**
@@ -140,14 +155,12 @@ describe('initMediaSession', () => {
     });
 
     let repeated = 0;
-    let stopped = 0;
-    initMediaSession({ repeat: () => (repeated += 1), stop: () => (stopped += 1), advance: () => (advanced += 1) });
+    initMediaSession({ back: () => (repeated += 1), forward: () => (advanced += 1) });
 
     actions.get('seekbackward')!();
     expect(repeated).toBe(1);
     actions.get('seekforward')!();
     expect(advanced).toBe(1);
-    expect(stopped).toBe(0);
   });
 
   /**
@@ -163,12 +176,11 @@ describe('initMediaSession', () => {
     });
 
     let repeated = 0;
-    let stopped = 0;
-    initMediaSession({ repeat: () => (repeated += 1), stop: () => (stopped += 1), advance: () => (advanced += 1) });
+    initMediaSession({ back: () => (repeated += 1), forward: () => (advanced += 1) });
 
     expect(actions.has('seekto')).toBe(true);
     actions.get('seekto')!();
-    expect([repeated, stopped, advanced]).toEqual([0, 0, 0]);
+    expect([repeated, advanced]).toEqual([0, 0]);
   });
 
   /**
@@ -185,11 +197,9 @@ describe('initMediaSession', () => {
       });
 
       let repeated = 0;
-      let stopped = 0;
       initMediaSession({
-        repeat: () => (repeated += 1),
-        stop: () => (stopped += 1),
-        advance: () => (advanced += 1),
+        back: () => (repeated += 1),
+        forward: () => (advanced += 1),
       });
 
       const seen: string[] = [];
@@ -199,7 +209,7 @@ describe('initMediaSession', () => {
 
       expect(seen).toEqual([...MEDIA_SESSION_ACTIONS]);
       // Not one real handler ran.
-      expect([repeated, stopped, advanced]).toEqual([0, 0, 0]);
+      expect([repeated, advanced]).toEqual([0, 0]);
     });
 
     it('gives the buttons back when the test stops', () => {
@@ -210,7 +220,7 @@ describe('initMediaSession', () => {
       });
 
       let repeated = 0;
-      initMediaSession({ repeat: () => (repeated += 1), stop: () => {}, advance: () => (advanced += 1) });
+      initMediaSession({ back: () => (repeated += 1), forward: () => (advanced += 1) });
 
       setMediaSessionProbe(() => {});
       actions.get('previoustrack')!();
@@ -245,14 +255,14 @@ describe('initMediaSession', () => {
       },
     });
 
-    expect(() => initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => (advanced += 1) })).not.toThrow();
+    expect(() => initMediaSession({ back: () => {}, forward: () => (advanced += 1) })).not.toThrow();
     expect(actions.has('previoustrack')).toBe(true);
     expect(actions.has('pause')).toBe(true);
   });
 
   it('does nothing at all when mediaSession is absent', () => {
     setNavigator({});
-    expect(() => initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => (advanced += 1) })).not.toThrow();
+    expect(() => initMediaSession({ back: () => {}, forward: () => (advanced += 1) })).not.toThrow();
   });
 
   it('only registers once', () => {
@@ -263,9 +273,9 @@ describe('initMediaSession', () => {
         calls += 1;
       },
     });
-    initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => (advanced += 1) });
+    initMediaSession({ back: () => {}, forward: () => (advanced += 1) });
     const afterFirst = calls;
-    initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => (advanced += 1) });
+    initMediaSession({ back: () => {}, forward: () => (advanced += 1) });
     expect(calls).toBe(afterFirst);
   });
 });

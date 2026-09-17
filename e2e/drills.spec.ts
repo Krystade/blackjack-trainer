@@ -1622,6 +1622,7 @@ test('produce the true count: flash then produce a TC, graded within tolerance a
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Produce the True Count', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Produce the True Count');
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.count-flash-area')).toBeVisible();
 
   // After the flash, the discard tray + numpad appear for the TC answer.
@@ -1900,4 +1901,53 @@ test('flashcards: the frequency toggle is off by default and persists when set',
     page.locator('.count-toggle', { hasText: "Favour hands you'll actually see" })
       .locator('input[type="checkbox"]'),
   ).toBeChecked();
+});
+
+/**
+ * The true-count drill's two usability faults, reported 2026-09-16 as
+ * "especially the pausing, just not usable".
+ */
+test('true count drill: the answer pause starts when the question stops, not when it starts', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  // A long pause and a slow voice, so the two clocks are far apart: the
+  // question alone takes seconds, and the old code would have answered
+  // almost immediately after asking.
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'results', answerPauseMs: 2000, rate: 1 },
+  });
+
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+  await page.getByLabel('Eyes-free audio').check();
+
+  const started = Date.now();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'I had it' })).toBeVisible({ timeout: 15_000 });
+  const elapsed = Date.now() - started;
+
+  // The question is ~45 characters, about 2.8s of speech at rate 1, so the
+  // answer must not arrive before roughly speech + pause. The old behaviour
+  // answered at the bare 2000ms and would fail this outright.
+  expect(elapsed).toBeGreaterThan(4000);
+});
+
+test('true count drill: it asks the next question on its own', async ({ page }) => {
+  test.setTimeout(60_000);
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'results', answerPauseMs: 300 },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+  await page.getByLabel('Eyes-free audio').check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  await page.getByRole('button', { name: 'I missed it' }).click({ timeout: 10_000 });
+  await expect(page.getByRole('button', { name: 'I missed it' })).toBeVisible({ timeout: 20_000 });
+
+  const log = await page.evaluate(() => window.__speechLog ?? []);
+  expect(log.filter((l) => l.startsWith('Running count')).length).toBeGreaterThan(1);
 });

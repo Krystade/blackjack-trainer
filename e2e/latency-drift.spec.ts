@@ -159,7 +159,7 @@ test('a bounded range says how many priced mistakes predate dating rather than d
   // The LIST narrows, not just the caveat -- this section used to sit at
   // lifetime values next to a range-filtered accuracy on the same screen.
   await expect(cost.locator('.mistake-row')).toHaveCount(1);
-  await expect(cost.locator('.mistake-row')).toContainText('hit instead of stand');
+  await expect(cost.locator('.mistake-row')).toContainText('Hit instead of Stand');
   await expect(cost).toContainText('2 priced mistakes predate decision dating');
 });
 

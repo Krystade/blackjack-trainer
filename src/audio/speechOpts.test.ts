@@ -27,3 +27,21 @@ describe('speechOptsFrom', () => {
     expect(speechOptsFrom(DEFAULT_AUDIO).interrupt).toBeUndefined();
   });
 });
+
+describe('mute', () => {
+  /**
+   * The drill screens speak through `speechOptsFrom` and nothing else, so if
+   * mute did not reach here it would not reach the eyes-free drills at all --
+   * the same shape as the original volume bug this module was written to fix.
+   */
+  it('silences everything without touching the stored level', () => {
+    const audio = { ...DEFAULT_AUDIO, volume: 1.4, muted: true };
+    expect(speechOptsFrom(audio).volume).toBe(0);
+    // The level survives, which is the entire point of a mute over a slider.
+    expect(audio.volume).toBe(1.4);
+  });
+
+  it('gives the level straight back when unmuted', () => {
+    expect(speechOptsFrom({ ...DEFAULT_AUDIO, volume: 0.4, muted: false }).volume).toBe(0.4);
+  });
+});

@@ -52,8 +52,8 @@ test('produce the true count: a one-deck profile never divides by more than one 
   await withProfile(page, { rules: { decks: 1 } });
   await withSettings(page, { drill: { countLengthCards: 4, countIntervalMs: 10, countGroup: 1 } });
   await openDrill(page, 'Produce the True Count');
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
 
-  // This drill has no setup screen -- it starts flashing on entry.
   const seen: number[] = [];
   for (let round = 0; round < 6; round++) {
     await expect(page.locator('.numpad')).toBeVisible();

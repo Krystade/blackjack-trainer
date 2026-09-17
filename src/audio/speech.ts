@@ -34,6 +34,17 @@ import { invokeWheelCommand } from './wheelCommands';
 declare global {
   interface Window {
     __speechLog?: string[];
+    /**
+     * The same utterances, with the options they were spoken WITH.
+     *
+     * A parallel array rather than a richer `__speechLog`, because every
+     * existing spec reads that one as plain strings and rewriting them all to
+     * prove one new thing would be a bad trade. This exists for assertions
+     * about HOW something was said -- mute, in particular, is implemented as
+     * a volume of zero, so "was it silent" is a question about the options
+     * and is invisible in the text.
+     */
+    __speechOptsLog?: { text: string; volume?: number; rate?: number }[];
   }
 }
 
@@ -51,12 +62,16 @@ export function isE2eAudioMode(): boolean {
   );
 }
 
-function pushSpeechLog(entry: string): void {
+function pushSpeechLog(entry: string, opts?: SpeechOpts): void {
   if (!hasWindow()) return;
   if (!window.__speechLog) {
     window.__speechLog = [];
   }
   window.__speechLog.push(entry);
+  if (!window.__speechOptsLog) {
+    window.__speechOptsLog = [];
+  }
+  window.__speechOptsLog.push({ text: entry, volume: opts?.volume, rate: opts?.rate });
 }
 
 /** True when this environment can actually speak (real speechSynthesis present). */
@@ -410,7 +425,7 @@ export function speak(
   // swallows, or suppression is untestable.
   notifySpeechActivity(text, opts?.rate);
   if (isE2eAudioMode()) {
-    pushSpeechLog(text);
+    pushSpeechLog(text, opts);
     return;
   }
 
@@ -466,16 +481,21 @@ function announceToMediaSession(text: string): void {
  */
 export function ensureMediaSessionHandlers(): void {
   initMediaSession({
-    repeat: () => {
-      repeatLast();
-    },
-    stop: () => {
-      cancelSpeech();
-    },
     // Routed rather than handled here: only the screen that is up knows what
-    // "yes" means to it, and speech.ts must not import React or the store.
-    advance: () => {
-      invokeWheelCommand('advance');
+    // a direction means to it, and speech.ts must not import React or the
+    // store.
+    forward: () => {
+      invokeWheelCommand('forward');
+    },
+    back: () => {
+      // Repeat is the FALLBACK, not the meaning. A screen that claims the
+      // wheel decides what back does there -- minus one while a count is
+      // being entered, "I missed it" on a self-check. But a press that
+      // reaches no screen at all should still do the most useful thing a
+      // driver could want from it rather than nothing, and that is "say that
+      // again": the app is talking, the driver missed a word, and there is
+      // no drill in the way.
+      if (!invokeWheelCommand('back')) repeatLast();
     },
   });
 }
@@ -603,7 +623,7 @@ export function speakAsync(
 ): Promise<void> {
   rememberSpoken(text);
   if (isE2eAudioMode()) {
-    pushSpeechLog(text);
+    pushSpeechLog(text, opts);
     return Promise.resolve();
   }
 
@@ -642,7 +662,9 @@ export function chime(kind: 'good' | 'bad' | 'attention', opts?: { volume?: numb
   notifyActivityMs(CHIME_ACTIVITY_MS);
 
   if (isE2eAudioMode()) {
-    pushSpeechLog(`chime:${kind}`);
+    // Volume carried too: a chime that still sounds while the app is
+    // muted is exactly the noise mute is for.
+    pushSpeechLog(`chime:${kind}`, { volume: opts?.volume });
     return;
   }
 

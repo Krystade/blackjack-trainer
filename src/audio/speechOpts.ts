@@ -18,6 +18,7 @@
 
 import type { AudioSettings } from '../store/types';
 import type { SpeechOpts } from './speech';
+import { effectiveVolume } from './volume';
 
 export function speechOptsFrom(
   audio: AudioSettings,
@@ -26,7 +27,7 @@ export function speechOptsFrom(
   const opts: SpeechOpts = {
     rate: audio.rate,
     voiceURI: audio.voiceURI,
-    volume: audio.volume,
+    volume: effectiveVolume(audio),
   };
   // Spread-with-undefined would put an explicit `interrupt: undefined` on the
   // object, which `toEqual` and any future exact-shape check would see.

@@ -1,3 +1,4 @@
+import { playLabel } from '../playLabel';
 import type { Action } from '../../engine/deviations';
 import type { MistakeClass } from '../../engine/grade';
 
@@ -36,14 +37,6 @@ const ACTION_CHART_LETTER: Record<Action, string> = {
   surrender: 'R',
 };
 
-const ACTION_LABEL: Record<Action, string> = {
-  hit: 'Hit',
-  stand: 'Stand',
-  double: 'Double',
-  split: 'Split',
-  surrender: 'Surrender',
-};
-
 /**
  * What each classification actually means, in the second person. These are
  * the sentences that turn a verdict into a lesson, so they name the fix
@@ -70,19 +63,11 @@ const CLASS_COPY: Record<Exclude<MistakeClass, 'correct'>, { label: string; note
     label: 'Out of time',
     note: 'No answer inside the shot clock. Knowing this one slowly is not the same as knowing it.',
   },
+  'self-report': {
+    label: 'Admitted miss',
+    note: 'You heard the hand and said you did not have it — no play was made, so there is nothing to price. This one is straight retention: it goes back to the bottom of the box.',
+  },
 };
-
-/** Actions the drills can grade that are not table plays. */
-function labelFor(value: string): string {
-  if (value in ACTION_LABEL) return ACTION_LABEL[value as Action];
-  if (value === 'take-insurance') return 'Take insurance';
-  if (value === 'decline-insurance') return 'Decline insurance';
-  // R1's shot clock puts the literal string "timeout" in `taken`, which is the
-  // right thing to persist and exactly the wrong thing to print: a panel
-  // reading "You played: timeout" describes a play nobody made.
-  if (value === 'timeout') return 'Nothing — time ran out';
-  return value;
-}
 
 function letterFor(value: string): string | null {
   if (value in ACTION_CHART_LETTER) return ACTION_CHART_LETTER[value as Action];
@@ -158,7 +143,7 @@ export function MistakeCard({
     return (
       <div className="mistake-card mistake-card-eyes-free" role="alert">
         <div className="mistake-verdict result-wrong">{timedOut ? 'Too slow' : 'Wrong'}</div>
-        <div className="mistake-eyes-free-answer">{labelFor(expected)}</div>
+        <div className="mistake-eyes-free-answer">{playLabel(expected)}</div>
         {onNext && (
           <button type="button" className="drill-next-btn" onClick={onNext}>
             Next
@@ -188,13 +173,13 @@ export function MistakeCard({
       <div className="mistake-plays">
         <div className="mistake-play mistake-play-taken">
           <span className="mistake-play-role">You played</span>
-          <span className="mistake-play-value">{labelFor(taken)}</span>
+          <span className="mistake-play-value">{playLabel(taken)}</span>
         </div>
         <div className="mistake-play mistake-play-expected">
           <span className="mistake-play-role">Correct</span>
           <span className="mistake-play-value">
             {expectedLetter && <span className="mistake-cell">{expectedLetter}</span>}
-            {labelFor(expected)}
+            {playLabel(expected)}
           </span>
         </div>
       </div>

@@ -20,16 +20,13 @@
 import { appendLog } from './mediaSessionLog';
 
 export interface MediaSessionHandlers {
-  /** Repeat the last thing said. The most useful control to a driver. */
-  repeat: () => void;
-  /** Stop speaking now. */
-  stop: () => void;
   /**
-   * Answer "yes" to whatever is on screen -- submit, confirm, deal the next
-   * hand. This is what lets a drill run with the microphone OFF, which is the
-   * only state in which the wheel works at all (see audio/wheelCommands.ts).
+   * Go on: start, answer, reveal, next, "I had it", plus one. What it means
+   * is the screen's business -- see audio/wheelCommands.ts.
    */
-  advance: () => void;
+  forward: () => void;
+  /** Go back: repeat, "I missed it", minus one. */
+  back: () => void;
 }
 
 interface MediaSessionLike {
@@ -81,13 +78,13 @@ export type MediaSessionAction = (typeof MEDIA_SESSION_ACTIONS)[number];
  * button called and what will it do" has exactly one answer in the codebase.
  */
 export const MEDIA_SESSION_LABEL: Record<MediaSessionAction, string> = {
-  play: 'Play. Ignored on purpose.',
-  pause: 'Pause. Stops the talking.',
-  stop: 'Stop. Stops the talking.',
-  previoustrack: 'Skip back. Repeats.',
-  nexttrack: 'Skip forward. Answers yes.',
-  seekbackward: 'Seek back. Repeats.',
-  seekforward: 'Seek forward. Answers yes.',
+  play: 'Play. Ignored — the car sends this by itself.',
+  pause: 'Pause. Ignored — the car sends this by itself.',
+  stop: 'Stop. Ignored — the car sends this by itself.',
+  previoustrack: 'Skip back. Goes BACK: repeat, minus one, “I missed it”.',
+  nexttrack: 'Skip forward. Goes FORWARD: start, answer, plus one, “I had it”.',
+  seekbackward: 'Seek back. Same as Skip back.',
+  seekforward: 'Seek forward. Same as Skip forward.',
   seekto: 'Seek to. Ignored — it carries a position, which means nothing here.',
 };
 
@@ -116,24 +113,42 @@ export function setMediaSessionProbe(fn: ((action: string) => void) | null): voi
  * that again" -- not a track skip, which would be meaningless here since
  * there is no playlist.
  *
- * `play` IS NOT A BUTTON PRESS, and this is the hard-won part. A head unit
- * sends `play` to mean "resume", and it sends it on its own whenever it
- * believes playback has stopped -- which is every time a clip ends, because a
- * finished clip is a finished track as far as the car can tell. Mapped to
- * repeat, as it was, that closed a loop: repeat spoke a clip, the clip ended,
- * the car asked to resume, repeat spoke it again. The drive of 2026-09-11
- * logged exactly that -- nine `play` invokes at five-second intervals with
- * nobody touching anything, and a question that would not stop repeating long
- * enough to be answered. So `play` is registered (refusing it would hand the
- * slot back to whatever was playing before) and deliberately does nothing.
+ * THE CAR SENDS THREE OF THESE BY ITSELF, and only two are real presses.
+ * Settled by the operator, 2026-09-16: "nexttrack/seekforward and
+ * previoustrack/seekbackward are the only two buttons i can hit and are
+ * caught. play and stop are automatic and i dont control them."
  *
- * The discrete buttons carry the actions instead -- a car sends none of these
- * of its own accord, so one arriving is a real press. `previoustrack` repeats,
- * `pause`/`stop` stop the speech, and `nexttrack` ADVANCES: it answers "yes"
- * to whatever is on screen. That last one is what makes a drill playable with
- * the microphone off, which is the only state in which the wheel works at all
- * (audio/wheelCommands.ts has the whole argument). The same drive confirmed
- * this car emits `nexttrack` and `pause`, which is why neither is a probe now.
+ * `play` was the first one caught. A head unit sends it to mean "resume", on
+ * its own, whenever it believes playback has stopped -- which is every time a
+ * clip ends, because a finished clip is a finished track as far as the car can
+ * tell. Mapped to repeat, as it once was, that closed a loop: repeat spoke a
+ * clip, the clip ended, the car asked to resume, repeat spoke it again. The
+ * drive of 2026-09-11 logged exactly that -- nine `play` invokes at
+ * five-second intervals with nobody touching anything, and a question that
+ * would not stop repeating long enough to be answered.
+ *
+ * `pause` and `stop` are the same problem wearing the opposite face, and they
+ * survived that fix because nothing had yet said they were automatic. That
+ * same 2026-09-11 log has `pause` arriving unprompted twice -- once 0.2s
+ * after a `play`, once minutes later -- and they were wired to CANCEL SPEECH.
+ * So the car has been able to cut a prompt off mid-sentence at a moment of
+ * its own choosing, which from the driver's seat is indistinguishable from
+ * the app having gone deaf or died. All three are now registered and inert:
+ * registered, because refusing the slot hands it back to whatever was playing
+ * before; inert, because a command the driver did not give should not move
+ * the drill.
+ *
+ * That leaves the two real buttons, and they carry the whole vocabulary.
+ * `nexttrack`/`seekforward` go FORWARD and `previoustrack`/`seekbackward` go
+ * BACK -- one direction each, meaning whatever the screen that is up decides
+ * (audio/wheelCommands.ts). Seek is included because a long-press of skip is
+ * the usual source of one on a head unit, and a button that reads as broken
+ * is worse than a button that does the obvious thing twice.
+ *
+ * `seekto` is the one exception, and not for want of a spare action: it
+ * carries an absolute position into a track, and there is no track here to
+ * have a position in. Registered so the log can still say whether this car
+ * emits it.
  */
 export function initMediaSession(handlers: MediaSessionHandlers): void {
   const ms = session();
@@ -171,31 +186,20 @@ export function initMediaSession(handlers: MediaSessionHandlers): void {
     }
   };
 
-  // Registered, and intentionally empty: see the note above. The log entry
-  // still gets written, so a future drive can still show how often the car
-  // asks to resume.
+  // Registered and intentionally inert -- all three. See the note above: the
+  // car sends these of its own accord, so acting on one moves the drill for a
+  // press nobody made. The log entries are still written, which is how the
+  // next drive can show how often the car asks.
   set('play', () => {});
-
-  set('previoustrack', handlers.repeat);
-  set('nexttrack', handlers.advance);
-  set('pause', handlers.stop);
-  set('stop', handlers.stop);
-
-  // EVERY REMAINING ACTION DOES SOMETHING. These were bare probes -- registered
-  // to see whether any car emits them, doing nothing if one did -- and a probe
-  // that stays a probe is a button that reads as broken to whoever presses it.
-  // A long-press of skip is the usual source of a seek on a head unit, so each
-  // one does what its short press does. There is nothing to lose: if this car
-  // never sends them the mapping is inert, and if it does, the driver gets the
-  // action they were reaching for instead of silence.
-  set('seekbackward', handlers.repeat);
-  set('seekforward', handlers.advance);
-
-  // `seekto` is the one exception, and not for want of a spare action: it
-  // carries an absolute position into a track, and there is no track here to
-  // have a position in. Registered so the log can still say whether this car
-  // emits it.
+  set('pause', () => {});
+  set('stop', () => {});
   set('seekto', () => {});
+
+  // The two the driver can actually reach.
+  set('nexttrack', handlers.forward);
+  set('seekforward', handlers.forward);
+  set('previoustrack', handlers.back);
+  set('seekbackward', handlers.back);
 }
 
 /**

@@ -890,12 +890,18 @@ button {
   text-align: center;
 }
 
+/* The label text is an anonymous flex item, so it inherits the setup panel's
+   `text-align: center` and a two-line label centres itself inside its own box
+   -- leaving the checkbox stranded at the far left with nothing beside it.
+   Align the text to its own start instead, so a wrapped label still reads as
+   belonging to the box next to it. */
 .count-toggle {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   font-size: 0.95rem;
   min-height: 48px;
+  text-align: left;
 }
 
 .count-toggle input {
@@ -3609,4 +3615,141 @@ details.stats-section > summary::after {
    editor's surrender-indices toggle) reads as inert rather than merely inert. */
 .settings-toggle-row.is-disabled {
   opacity: 0.55;
+}
+
+/* The global mute button (ui/components/MuteButton.tsx).
+
+   Fixed to the top-right rather than placed in a layout: it is rendered by
+   the app shell for every screen, including the immersive ones that own
+   their whole viewport, so it cannot take part in any screen's flow. Top
+   RIGHT because the drill screens all put Back at the top left.
+
+   `env(safe-area-inset-*)` keeps it clear of the notch on an iPhone in a
+   car mount, which is the device this is for. */
+.mute-btn {
+  position: fixed;
+  /* BOTTOM LEFT, and arrived at by rendering it rather than by reasoning:
+     top-right put it straight on top of the drill screens' Repeat button and
+     the table's End button, which the e2e suite caught as an unclickable
+     Repeat. Every bar in this app -- drill top bar, table HUD, ActionBar,
+     TabBar -- owns a full-width edge, and controls inside them are pinned to
+     the corners. The one region consistently free of controls is the left
+     side above the bottom bar, and it is thumb-reachable on a phone in a
+     mount, which the top corners are not.
+
+     Flush to the edge, not inset: at 8px in, the disc landed on the first
+     characters of the correction panel's "you played" value, which is the
+     one thing on that screen you have to be able to read. The screen's own
+     content gutter is wider than the disc, so a button hard against the edge
+     clears it. */
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
+  left: env(safe-area-inset-left, 0px);
+  z-index: 60;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.55;
+  padding: 0;
+}
+
+/* Legible at a glance and from the corner of the eye: muted is the state
+   worth noticing, so it is the state that stops being faded out. */
+.mute-btn-on {
+  opacity: 1;
+  border-color: var(--danger, #c0392b);
+  color: var(--danger, #c0392b);
+}
+
+.mute-btn:active {
+  transform: scale(0.94);
+}
+
+/* The schedule line under a flashcard's chart-row name.
+
+   Quieter than the cell id above it on purpose: the row you just drilled is
+   the thing being looked for, and the schedule is context that should not
+   compete with it. Same weight and colour as the other secondary readouts on
+   a feedback panel. */
+.feedback-sr {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted, #8a8a8a);
+  letter-spacing: 0.01em;
+}
+
+/* The wheel self-check banner: the right play, revealed and waiting to be
+   reported on. Sized like a correction rather than like a hint -- it IS the
+   answer, and on a phone propped in a cradle it has to be readable at a
+   glance, in the same strip the correction will occupy a moment later. */
+.selfcheck-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--panel, #1b1b1e);
+  border: 1px solid var(--accent, #5b8def);
+}
+
+.selfcheck-banner strong {
+  font-size: 22px;
+  letter-spacing: 0.02em;
+}
+
+.selfcheck-banner span {
+  font-size: 12px;
+  color: var(--muted, #8a8a8a);
+}
+
+/* The field-test protocol (diag/fieldTest.ts). Each step is read once, in a
+   car, and then acted on -- so the instruction is the loud part, what to look
+   for in the log is the quiet part, and the stamp button is large enough to
+   hit without aiming. */
+.fieldtest-steps {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fieldtest-step {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldtest-instruction {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.fieldtest-expect {
+  font-size: 12px;
+}
+
+.fieldtest-stamp {
+  align-self: flex-start;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  max-width: 100%;
+  text-align: left;
 }

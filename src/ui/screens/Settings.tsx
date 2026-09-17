@@ -24,7 +24,13 @@ import { startButtonTest, unheardActions } from '../../audio/buttonTester';
 import type { ButtonPress, ButtonTesterHandle } from '../../audio/buttonTester';
 import { MEDIA_SESSION_LABEL } from '../../audio/mediaSession';
 import type { MediaSessionAction } from '../../audio/mediaSession';
-import { MAX_VOLUME } from '../../audio/volume';
+import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
+import {
+  FIELD_TEST_CONDITIONS,
+  FIELD_TEST_STEPS,
+  DEFAULT_FIELD_TEST_CONDITION,
+  stampFieldTest } from '../../diag/fieldTest';
+import { PUSH_TO_TALK_MS } from '../voiceSession';
 import { detectVoiceSupport } from '../../audio/voiceRecognition';
 import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
 import {
@@ -551,6 +557,22 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             onChange={(v) => updateAudio({ volume: v })}
             disabled={audioDisabled}
           />
+          {/* Under Volume on purpose: they are the same control to the
+              operator, and mute is the one of the two that has to be findable
+              without reading. It does NOT touch `volume` -- see
+              AudioSettings.muted. */}
+          <Toggle
+            label="Mute"
+            checked={settings.audio.muted}
+            onChange={(v) => updateAudio({ muted: v })}
+            disabled={audioDisabled}
+          />
+          {settings.audio.muted && (
+            <div className="settings-note-row u-note">
+              Everything is silent, including the test button. Your volume is still{' '}
+              {Math.round(settings.audio.volume * 100)}% and comes back when you unmute.
+            </div>
+          )}
           {settings.audio.volume > 1 && !settings.audio.useClips && (
             <div className="settings-note-row u-note">
               Above 100% only applies to the recorded voice. Live speech is capped at 100% by
@@ -570,7 +592,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
                     interrupt: true,
                     rate: settings.audio.rate,
                     voiceURI,
-                    volume: settings.audio.volume,
+                    volume: effectiveVolume(settings.audio),
                   });
                 }}
                 disabled={audioDisabled}
@@ -614,10 +636,10 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
                   interrupt: true,
                   rate: settings.audio.rate,
                   voiceURI: settings.audio.voiceURI,
-                  volume: settings.audio.volume,
+                  volume: effectiveVolume(settings.audio),
                 });
                 if (settings.audio.chimes) {
-                  chime('good', { volume: settings.audio.volume });
+                  chime('good', { volume: effectiveVolume(settings.audio) });
                 }
               }}
             >
@@ -626,12 +648,85 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           </div>
       </CollapsibleSection>
 
-      <CarDiagnostics audio={settings.audio} />
+      <CarDiagnostics
+        audio={settings.audio}
+        wheelMode={settings.drill.wheelMode}
+        onWheelMode={(wheelMode) => updateDrill({ wheelMode })}
+      />
+
+      <FieldTestPanel />
 
       <VoiceProbePanel />
       <VoiceHistoryPanel />
       <DiagnosticLogPanel />
     </div>
+  );
+}
+
+/**
+ * The field-test protocol, with a button per step that stamps the log.
+ *
+ * The missing half of every diagnostic in this app: what the operator was
+ * TRYING to do. See diag/fieldTest.ts for why that is what makes the rest of
+ * the log readable, and why the protocol is explicitly a parked one.
+ *
+ * Stateless beyond the chosen condition and a per-step tick. The tick is not
+ * a record -- the log is the record -- it is there so a step done at a red
+ * light is visibly done when you look back at the screen.
+ */
+function FieldTestPanel() {
+  const [condition, setCondition] = useState(DEFAULT_FIELD_TEST_CONDITION);
+  const [stamped, setStamped] = useState<Record<string, number>>({});
+  const active = FIELD_TEST_CONDITIONS.find((c) => c.id === condition) ?? FIELD_TEST_CONDITIONS[0];
+
+  return (
+    <CollapsibleSection title={<>Field test</>} defaultOpen={false}>
+      <div className="settings-note-row u-note">
+        Run this parked, with the engine on and the phone connected exactly as it would be on a
+        drive. Each step has a button that writes what you MEANT into the diagnostic log, so the
+        log can be read against your intent instead of guessed at. Then send the log.
+      </div>
+
+      <div className="settings-row">
+        <span className="settings-label">Condition</span>
+        <Segmented
+          value={condition}
+          options={FIELD_TEST_CONDITIONS.map((c) => ({ value: c.id, label: c.label }))}
+          onChange={(value) => {
+            setCondition(value);
+            // Clear the ticks: the same step under a new condition is a new
+            // measurement, and a tick carried over reads as already done.
+            setStamped({});
+          }}
+        />
+      </div>
+      <div className="settings-note-row u-note">
+        <strong>Set up:</strong> {active.setup}
+        <br />
+        <strong>Proves:</strong> {active.proves}
+      </div>
+
+      <ol className="fieldtest-steps">
+        {FIELD_TEST_STEPS.map((step, i) => (
+          <li className="fieldtest-step" key={step.id}>
+            <div className="fieldtest-instruction">{step.instruction}</div>
+            <div className="fieldtest-expect u-note">Look for: {step.expect}</div>
+            <button
+              type="button"
+              className="fieldtest-stamp"
+              data-testid={`fieldtest-stamp-${step.id}`}
+              onClick={() => {
+                stampFieldTest(step.id, condition);
+                setStamped((prev) => ({ ...prev, [step.id]: (prev[step.id] ?? 0) + 1 }));
+              }}
+            >
+              {i + 1}. {step.stamp}
+              {stamped[step.id] ? (stamped[step.id] > 1 ? ` ✓ ×${stamped[step.id]}` : ' ✓') : ''}
+            </button>
+          </li>
+        ))}
+      </ol>
+    </CollapsibleSection>
   );
 }
 
@@ -759,7 +854,15 @@ function ButtonTester({ onPressed }: { onPressed: () => void }) {
  * Deliberately last in Settings and empty-by-default: it is diagnostic, not
  * a control, and it says nothing at all until there is something to report.
  */
-function CarDiagnostics({ audio }: { audio: AudioSettings }) {
+function CarDiagnostics({
+  audio,
+  wheelMode,
+  onWheelMode,
+}: {
+  audio: AudioSettings;
+  wheelMode: 'answer' | 'talk';
+  onWheelMode: (mode: 'answer' | 'talk') => void;
+}) {
   const [entries, setEntries] = useState<LogEntry[]>(() => readLog());
   const [shown, setShown] = useState(false);
   const blockers = carControlsBlockers(audio);
@@ -802,11 +905,55 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
         ))}
         <div className="settings-note-row u-note">
           Leave the microphone off. Turning voice on switches the car to its hands-free
-          CALL route — which is why the app showed up as a phone call — and the
+          CALL route &mdash; which is why the app showed up as a phone call &mdash; and the
           wheel&rsquo;s buttons then go to that call, not to this app. Talking to it and
-          steering-wheel control cannot both work at once, which is why skip forward
-          answers for you: with the microphone off, the wheel is the whole loop.
+          steering-wheel control cannot both work at once, which is why the two buttons
+          can answer for you: with the microphone off, the wheel is the whole loop.
         </div>
+
+        {/* Asked directly (2026-09-16): "can we use my phone mic". The answer
+            is no, and it is a platform fact rather than a missing feature, so
+            it belongs here next to the route explanation rather than in a
+            backlog nobody reads from the driver's seat. */}
+        <div className="settings-note-row u-note">
+          <strong>Can it use the phone&rsquo;s own microphone instead?</strong> No &mdash; not
+          from a web app. Speech recognition in the browser takes no device to listen on:
+          it uses whatever the phone is currently routing audio through, and while the car
+          is connected that is the car. Nothing in this app can override it. The two things
+          that can are turning Bluetooth off (see the Field test&rsquo;s speakerphone
+          condition, which is the same room and the same road noise without the car in the
+          way) and push-to-talk, which at least keeps the route flipped for seconds at a
+          time instead of permanently.
+        </div>
+
+        {/* The one real choice the wheel offers, and it is a choice because
+            there are two buttons and three things worth doing with them. */}
+        <div className="settings-row">
+          <span className="settings-label">The two wheel buttons</span>
+          <Segmented
+            options={[
+              { value: 'answer', label: 'Answer' },
+              { value: 'talk', label: 'Open mic' },
+            ]}
+            value={wheelMode}
+            onChange={onWheelMode}
+          />
+        </div>
+        {wheelMode === 'answer' ? (
+          <div className="settings-note-row u-note">
+            Forward and back drive the drill with no microphone at all — which is the
+            only state the wheel works in, so nothing can take it away mid-session.
+          </div>
+        ) : (
+          <div className="settings-note-row u-note">
+            Forward opens the microphone for {Math.round(PUSH_TO_TALK_MS / 1000)} seconds and
+            then closes it again; back still repeats. Saying &ldquo;plus four&rdquo; is one
+            gesture where pressing it is four — but every window costs a round trip through
+            the car&rsquo;s hands-free route, the first moment of it is deaf while the link
+            flips, and the buttons cannot be reached at all until it closes. A chime marks
+            the window opening. Worth a drive to find out which you prefer.
+          </div>
+        )}
 
         <ButtonTester onPressed={() => setEntries(readLog())} />
 
@@ -818,11 +965,16 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
             guess: the 2026-09-11 drive showed this car sends skip and pause on a
             press, and sends `play` on its own every time a clip ends. */}
         <div className="settings-note-row u-note">
-          Skip forward answers &ldquo;yes&rdquo; — it submits, confirms, and deals the next
-          hand, so a drill can be run from the wheel with the microphone off. Skip back
-          repeats the last thing said, and pause stops it. Play is ignored on purpose:
-          your car sends it by itself every time a clip finishes, and acting on it made
-          the question repeat without end.
+          <strong>Skip forward goes forward</strong> — start, answer, plus one, &ldquo;I had
+          it&rdquo;. <strong>Skip back goes back</strong> — say it again, minus one, &ldquo;I
+          missed it&rdquo;. Where a drill wants a number the two buttons walk it: press up
+          or down, wait, and it reads the count back and submits it. That is the whole
+          input method with the microphone off, which is the only state the wheel works in.
+        </div>
+        <div className="settings-note-row u-note">
+          Play, pause and stop do nothing on purpose. Your car sends all three by itself —
+          play every time a clip finishes, and pause unprompted — and acting on them made
+          the question repeat without end and cut prompts off mid-sentence.
         </div>
         <div className="settings-row">
           <span className="settings-label">Accepted by this phone</span>

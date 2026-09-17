@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { playLabel } from '../playLabel';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import type { ChangeEvent } from 'react';
 import type { Screen } from '../App';
@@ -70,6 +71,7 @@ const MISTAKE_ORDER: Exclude<MistakeClass, 'correct'>[] = [
   'phantom-deviation',
   'wrong-anyway',
   'timeout',
+  'self-report',
 ];
 
 const MISTAKE_LABELS: Record<Exclude<MistakeClass, 'correct'>, string> = {
@@ -77,7 +79,8 @@ const MISTAKE_LABELS: Record<Exclude<MistakeClass, 'correct'>, string> = {
   'missed-deviation': 'Missed deviations',
   'phantom-deviation': 'Phantom deviations',
   'wrong-anyway': 'Wrong either way',
-  timeout: 'Ran out of time' };
+  timeout: 'Ran out of time',
+  'self-report': 'Admitted misses (eyes-free)' };
 
 function pct(right: number, total: number): string {
   if (total === 0) return '—';
@@ -914,7 +917,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                 {evCost.worst.map((row) => (
                   <li className="mistake-row" key={row.key}>
                     <span>
-                      {handLabel(row.hand)}: {row.taken} instead of {row.expected}
+                      {handLabel(row.hand)}: {playLabel(row.taken)} instead of {playLabel(row.expected)}
                       {row.times > 1 ? ` (×${row.times})` : ''}
                     </span>
                     <span className="mistake-value">{row.unitsTotal.toFixed(3)} u</span>

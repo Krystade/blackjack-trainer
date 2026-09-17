@@ -32,6 +32,7 @@ import { Segmented, Stepper } from '../Settings';
 import { useAudio } from '../../../audio/useAudio';
 import { cancelSpeech, speak, speakAsync } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
+import { answerPauseDelayMs, nextQuestionDelayMs } from '../../../audio/answerPause';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import {
   narrateCards,
@@ -52,11 +53,12 @@ import { focusSwallowsKey } from '../../keyboardFocus';
 import { enableAudioNow } from '../../audioGate';
 import { useVoiceControl } from '../../useVoiceControl';
 import { useWheelCommand } from '../../useWheelCommand';
+import { useWheelNumber } from '../../useWheelNumber';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
-import { useVoiceToggle } from '../../voiceSession';
+import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -111,6 +113,20 @@ type CountPhase =
   // had it. Exists so the driving path can produce a VERDICT and a recorded
   // result -- previously it produced neither.
   | 'selfreport'
+  /**
+   * Practice only: flash, ask, pause, say the answer, flash the next run.
+   * No report, no grade, no history row.
+   *
+   * Asked for on 2026-09-16: "a no interaction mode where it just gives some
+   * time to say the counts but then will [sovereignly] continue without
+   * detecting an answer and state the correct answer after a pause just for
+   * practice". Every other eyes-free path needs something back -- a word, a
+   * zone, a wheel press -- and each of those can fail in a car, leaving the
+   * drill stopped dead in a silence indistinguishable from a dead
+   * microphone. This mode asks for nothing, so nothing can fail. It records
+   * nothing, which is the honest name for a rep with no answer taken.
+   */
+  | 'practice'
   | 'distraction'
   // RT#12 (docs/BACKLOG.md): a mid-run running-count checkpoint. Shaped
   // exactly like 'distraction' -- the stream pauses, a number is taken, the
@@ -147,7 +163,39 @@ export function CountDrillView({
   const [countdownMode, setCountdownMode] = useState(false);
   // V3-4 soft gate: computed once at mount (fluency doesn't change mid-session).
   const [countFluent] = useState(() => isCountFluent(loadStats().countDrill.history));
-  const [phase, setPhase] = useState<CountPhase>('setup');
+  const [phase, setPhaseState] = useState<CountPhase>('setup');
+  /**
+   * The phase, readable SYNCHRONOUSLY.
+   *
+   * The steering wheel needs this and React's render state cannot give it.
+   * A press arrives from `navigator.mediaSession`, outside React, and two
+   * presses can land in the same tick -- a double-press on the wheel, which
+   * is an ordinary human thing to do. The second one would then be handled
+   * by the closure from the render BEFORE the first press changed anything,
+   * so a press meant as "plus one" was read against the setup screen and
+   * silently restarted the drill with a new question. Eyes-free that is
+   * invisible: the count you were entering is gone and the question you are
+   * answering is not the one you heard.
+   *
+   * Writing the ref in the setter rather than in an effect is the whole
+   * point -- an effect does not run between two presses in the same tick.
+   */
+  const phaseRef = useRef<CountPhase>('setup');
+  /**
+   * Abandon a standing proposal, synchronously, whenever the phase moves.
+   *
+   * Called from `setPhase` rather than from an effect on `phase`, which is
+   * where it was and which the wheel exposed as wrong: an effect runs after
+   * React commits, so presses made in the NEW phase in the meantime were
+   * wiped by a reset belonging to the old one.
+   */
+  const wheelResetRef = useRef<() => void>(() => {});
+  const setPhase = (next: CountPhase): void => {
+    phaseRef.current = next;
+    wheelResetRef.current();
+    setPendingCount(null);
+    setPhaseState(next);
+  };
   const [drillRound, setDrillRound] = useState<CountDrillRound | null>(null);
   const [countdownRound, setCountdownRound] = useState<CountdownRound | null>(null);
   const [shownIndex, setShownIndex] = useState(0);
@@ -178,6 +226,9 @@ export function CountDrillView({
   // correctness. Only offered for the main count drill, not Countdown mode
   // (see the `!countdownMode` guard in the setup JSX below).
   const [timedChallenge, setTimedChallenge] = useState(false);
+  /** Practice only -- see the 'practice' phase. Off by default: a mode that
+   * records nothing should never be entered by accident. */
+  const [practice, setPractice] = useState(false);
 
   // VOICE. Off until asked for, like every other microphone in the app: a
   // toggle that survived a reload would open one on page load.
@@ -186,6 +237,7 @@ export function CountDrillView({
   // a toggle forgotten on every navigation is indistinguishable, in a car,
   // from a microphone that failed. See ui/voiceSession.ts.
   const [voiceOn, setVoiceOn] = useVoiceToggle('count-drill');
+  const pushToTalkOpen = usePushToTalk();
   /**
    * A spoken count, heard but not yet submitted.
    *
@@ -301,7 +353,11 @@ export function CountDrillView({
     // Timed Challenge always grades (never the honor-system self-check) --
     // the whole point is a scored count + a scored speed, per the "a fast
     // wrong answer is still wrong" requirement.
-    setPhase(eyesFree && !strictMode && !countdownMode && !timedChallenge ? 'selfcheck' : 'answering');
+    if (eyesFree && !strictMode && !countdownMode && !timedChallenge) {
+      setPhase(practice ? 'practice' : 'selfcheck');
+      return;
+    }
+    setPhase('answering');
   };
 
   // Completes the honor-system self-check: no keypad entry was ever taken,
@@ -688,14 +744,49 @@ export function CountDrillView({
   useEffect(() => {
     if (phase !== 'selfcheck') return undefined;
     const runId = runIdRef.current;
-    speak(narrateCountPrompt(), speechOptsFrom(settings.audio));
+    const asked = narrateCountPrompt();
+    speak(asked, speechOptsFrom(settings.audio));
     const t = setTimeout(() => {
       if (runIdRef.current !== runId || !drillRound) return;
       speak(narrateCountAnswer(drillRound.finalRc), speechOptsFrom(settings.audio));
       speak('Did you have it?', speechOptsFrom(settings.audio));
       finishSelfCheck(drillRound.finalRc);
-    }, settings.audio.answerPauseMs);
+    // The pause starts when the QUESTION STOPS, not when it starts -- see
+      // audio/answerPause.ts.
+    }, answerPauseDelayMs(asked, settings.audio));
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  /**
+   * The practice loop: ask, pause, answer, gap, next run.
+   *
+   * One effect and two timers rather than a phase per beat -- the whole loop
+   * is one stretch of the app talking and the operator thinking, with no
+   * state in between that anything else needs to see. Guarded by runId AND
+   * by the effect's own cleanup, like every other timer in this file.
+   */
+  useEffect(() => {
+    if (phase !== 'practice') return undefined;
+    const runId = runIdRef.current;
+    const asked = narrateCountPrompt();
+    speak(asked, speechOptsFrom(settings.audio));
+
+    let nextTimer: number | undefined;
+    const answerTimer = window.setTimeout(() => {
+      if (runIdRef.current !== runId || !drillRound) return;
+      const answer = narrateCountAnswer(drillRound.finalRc);
+      speak(answer, speechOptsFrom(settings.audio));
+      nextTimer = window.setTimeout(() => {
+        if (runIdRef.current !== runId) return;
+        start();
+      }, nextQuestionDelayMs(answer, settings.audio));
+    }, answerPauseDelayMs(asked, settings.audio));
+
+    return () => {
+      clearTimeout(answerTimer);
+      if (nextTimer !== undefined) clearTimeout(nextTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
@@ -1220,6 +1311,13 @@ export function CountDrillView({
         }
         return;
 
+      // Practice: nothing is being graded, so the only two useful things to
+      // say are "get on with it" and "say that again".
+      case 'practice':
+        if (action === 'yes') start();
+        else if (action === 'repeat') sayBack(narrateCountPrompt(), true);
+        return;
+
       case 'selfreport':
         if (action === 'yes') handleSelfReport(true);
         else if (action === 'no') handleSelfReport(false);
@@ -1249,10 +1347,72 @@ export function CountDrillView({
   // the microphone is OFF (an open mic switches the car to its hands-free call
   // route and the wheel's buttons go to that call), so gating it on voice would
   // arm it in exactly the state where it cannot work. See audio/wheelCommands.ts.
-  useWheelCommand(() => handleVoiceCommand('yes'));
+  /**
+   * Entering the count from the wheel: forward is plus one, back is minus
+   * one, quiet submits. See audio/wheelNumber.ts for why silence stands in
+   * for the confirmation the voice path gets from the word "yes".
+   *
+   * It writes through to `pendingCount` so the SCREEN shows what is standing
+   * too -- the wheel is for driving, but the drill is also used at a desk, and
+   * a proposal that existed only inside a timer would be invisible there.
+   */
+  const wheelNumber = useWheelNumber({
+    readback: (value) => sayBack(narrateReadback(value), true),
+    commit: (value) => {
+      setPendingCount(null);
+      if (phaseRef.current === 'checkpoint') handleCheckpointSubmit(value);
+      else if (countdownMode) handleTagGuess(Math.max(-1, Math.min(1, value)) as -1 | 0 | 1);
+      else handleRcSubmit(value);
+    },
+    // A countdown answer is a tag, not a count: three legal values and no
+    // others, so the readback must never offer a fourth.
+    ...(countdownMode ? { clamp: (v: number) => Math.max(-1, Math.min(1, v)) } : {}),
+  });
+
+  /**
+   * The wheel, in the only vocabulary it has: two directions.
+   *
+   * Each phase decides what a direction means, rather than every press meaning
+   * the same word. Where the drill wants a NUMBER the buttons walk one; where
+   * it wants a verdict they are the two verdicts; everywhere else forward goes
+   * on and back says it again.
+   */
+  useWheelCommand((command) => {
+    // Push-to-talk mode: forward OPENS THE MICROPHONE instead of answering.
+    // A mode rather than an extra gesture -- there are two buttons and three
+    // things to say with them (see DrillSettings.wheelMode). Back still
+    // repeats, which is the one meaning worth keeping in every mode.
+    if (settings.drill.wheelMode === 'talk') {
+      if (command === 'forward') {
+        startPushToTalk('count-drill');
+        // A cue, because the window is invisible and the Bluetooth route
+        // takes a moment to flip: without it there is no way to tell
+        // "listening now" from "pressed nothing".
+        audio.ding('attention');
+      } else {
+        handleVoiceCommand('repeat');
+      }
+      return;
+    }
+    switch (phaseRef.current) {
+      case 'answering':
+      case 'checkpoint':
+        setPendingCount(wheelNumber.press(command));
+        return;
+      // "Did you have it?" -- two outcomes, two buttons, and no ambiguity
+      // about which is which.
+      case 'selfreport':
+        handleVoiceCommand(command === 'forward' ? 'yes' : 'no');
+        return;
+      default:
+        handleVoiceCommand(command === 'forward' ? 'yes' : 'repeat');
+    }
+  });
 
   const voice = useVoiceControl({
-    enabled: voiceOn,
+    // The push-to-talk window opens the microphone exactly as the toggle
+    // does; the only difference is that something closes it again.
+    enabled: voiceOn || pushToTalkOpen,
     onAction: handleVoiceCommand,
     onTranscript: interpretCountSpeech,
     // Eyes-free, a rejection is silence, and silence looks the same as a dead
@@ -1263,11 +1423,10 @@ export function CountDrillView({
     context: 'count-drill',
   });
 
-  // A proposal belongs to one answer. Carrying it into the next run would
-  // offer the last count back as an answer to a different question.
-  useEffect(() => {
-    setPendingCount(null);
-  }, [phase]);
+  // A proposal belongs to one answer: carrying it into the next run would
+  // offer the last count back as an answer to a different question. Done in
+  // `setPhase` above rather than in an effect -- see `wheelResetRef`.
+  wheelResetRef.current = wheelNumber.reset;
 
   // Offer the next run out loud, and take the restart gap here -- the result
   // screen is the only moment in this drill that is reliably quiet, so a
@@ -1501,6 +1660,16 @@ export function CountDrillView({
               Strict mode (keypad entry, graded)
             </label>
           )}
+          {!countdownMode && !timedChallenge && eyesFree && settings.audio.enabled && !strictMode && (
+            <label className="count-toggle">
+              <input
+                type="checkbox"
+                checked={practice}
+                onChange={(e) => setPractice(e.target.checked)}
+              />
+              Practice only (no answer needed, nothing recorded)
+            </label>
+          )}
 
           {/* D1 part 2 (docs/BACKLOG.md, distraction training): only meaningful
               for the standard count drill's flashing phase -- excluded for
@@ -1719,6 +1888,17 @@ export function CountDrillView({
         hit without looking -- the same reasoning as the ZonePad, and the
         reason this is not a pair of ordinary buttons.
       */}
+      {/* Practice: said out loud, and on screen too -- "nothing is being
+          recorded" is worth confirming with a glance before setting off. */}
+      {phase === 'practice' && (
+        <div className="selfreport-area" data-testid="count-practice">
+          <div className="selfreport-question">What&apos;s the running count?</div>
+          <div className="selfreport-voice-hint">
+            Practice only &mdash; say it out loud; nothing is recorded.
+          </div>
+        </div>
+      )}
+
       {phase === 'selfreport' && (
         <div className="selfreport-area">
           <div className="selfreport-question">The count was {actualValue}. Did you have it?</div>

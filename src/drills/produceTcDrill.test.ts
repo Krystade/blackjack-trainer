@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { hiLoTag } from '../engine/count';
 import { trueCount } from '../engine/count';
-import { makeProduceTcRound, gradeProducedTc, producedTcBand } from './produceTcDrill';
+import { makeProduceTcRound, gradeProducedTc, producedTcBand, produceTcSlack } from './produceTcDrill';
+import { depthTolerance } from './depthResolution';
 import type { ProduceTcRound } from './produceTcDrill';
 
 describe('makeProduceTcRound (V3-2 produce-a-true-count)', () => {
@@ -198,6 +199,40 @@ describe('V5-5: the forgiveness band takes the depth resolution', () => {
         for (let tc = -12; tc <= 12; tc++) {
           expect(gradeProducedTc(tc, round, slack)).toBe(tc >= band.min && tc <= band.max);
         }
+      }
+    }
+  });
+});
+
+describe('produceTcSlack', () => {
+  /**
+   * The rule the eyes-free mode turns on, tested here because neither caller
+   * can be asked the question: one is a React view and the other is the
+   * sentence it prints.
+   */
+  it('forgives a tray misread when the depth had to be judged', () => {
+    // Late in a shoe is where it matters -- half a deck out of half a deck
+    // left moves the quotient enormously.
+    expect(produceTcSlack(false, 0.5, 'half')).toBeGreaterThan(0);
+    expect(produceTcSlack(false, 2, 'quarter')).toBeGreaterThan(0);
+  });
+
+  it('forgives nothing when the depth was stated out loud', () => {
+    // Eyes-free the depth is spoken, because a tray cannot be heard. Nothing
+    // was estimated, so nothing needs forgiving -- and a range here would
+    // quietly mark a wrong conversion right.
+    expect(produceTcSlack(true, 0.5, 'half')).toBe(0);
+    expect(produceTcSlack(true, 2, 'quarter')).toBe(0);
+    expect(produceTcSlack(true, 6, 'last-deck')).toBe(0);
+  });
+
+  it('matches the eyes-on tolerance exactly when it applies', () => {
+    // Not merely "greater than zero": the eyes-on path must be unchanged by
+    // this function existing, or the band the result screen prints and the
+    // band the grader used would disagree.
+    for (const decks of [0.5, 1, 2.5, 6]) {
+      for (const res of ['half', 'last-deck', 'quarter'] as const) {
+        expect(produceTcSlack(false, decks, res)).toBe(depthTolerance(decks, res));
       }
     }
   });

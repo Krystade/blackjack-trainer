@@ -148,6 +148,26 @@ export interface Settings {
     // pressure applied before accuracy exists inflates in-drill scores without
     // improving retained skill.
     shotClockMs: number;
+    /**
+     * What the two steering-wheel buttons do in the car.
+     *
+     * 'answer' (default): forward and back drive the drill directly -- start,
+     * plus one, minus one, "I had it". No microphone is involved, which is
+     * the only reason the wheel works at all: opening the mic flips the car
+     * to its hands-free CALL route and every button goes to that call
+     * instead of to this app (audio/carControls.ts).
+     *
+     * 'talk': forward OPENS THE MICROPHONE for a few seconds and then closes
+     * it again -- push to talk. Requested on the grounds that saying "plus
+     * four" is one gesture where pressing it is four, which is true. The
+     * catch is the same route flip: each window costs a round trip through
+     * HFP and back, the first moment of it is deaf while the link
+     * re-negotiates, and the car's audio ducks each time. So it is a MODE
+     * rather than an addition -- with two buttons there is no third gesture
+     * to hold both meanings, and which trade is right is a thing only
+     * driving can settle.
+     */
+    wheelMode: 'answer' | 'talk';
   };
   audio: AudioSettings;
 }
@@ -166,6 +186,23 @@ export interface AudioSettings {
   // committed to something else. 0 is a legitimate value (silence) -- every
   // consumer must presence-check it rather than testing truthiness.
   volume: number;
+  /**
+   * Silence everything WITHOUT touching `volume` or `enabled`.
+   *
+   * `enabled: false` already silences the app, but it is not a mute: the
+   * drills treat it as "audio is not available" and drop out of eyes-free
+   * mode when it goes off, so using it as one changes the mode you are in.
+   * And turning `volume` to 0 by hand loses the level you had chosen, which
+   * then has to be found again by ear.
+   *
+   * The actual requirement (operator, 2026-09-16) is narrower than either:
+   * "be able to use it in public without turning my sound all the way down
+   * and being forced to have noise playing". So this is one flag, one
+   * button, reversible, and it forgets nothing -- every audio path reads
+   * `effectiveVolume()` rather than `volume`, and at 0 the whole app is
+   * silent while every other setting stays exactly where it was.
+   */
+  muted: boolean;
   voiceURI: string; // 'default' or a SpeechSynthesisVoice.voiceURI
   chimes: boolean;
   answerPauseMs: number; // 0..5000, the eyes-free self-check pause
@@ -208,6 +245,7 @@ export const DEFAULT_AUDIO: AudioSettings = {
   verbosity: 'results',
   rate: 1,
   volume: 1,
+  muted: false,
   voiceURI: 'default',
   chimes: true,
   answerPauseMs: 3000,
@@ -250,6 +288,7 @@ export const DEFAULT_SETTINGS: Settings = {
     pacePressure: false,
     masteryDistractionFreq: 'off',
     shotClockMs: 0,
+    wheelMode: 'answer',
   },
   audio: { ...DEFAULT_AUDIO },
 };
@@ -546,7 +585,13 @@ export interface Stats {
   produceTc: {
     history: {
       date: string;
-      produced: number;
+      /**
+       * What was produced. ABSENT for an eyes-free self-report, where the
+       * operator says whether they had it and never states a number --
+       * writing the right answer here instead would report every admitted
+       * miss as an exact hit. Same rule, same reason, as `trueCount.guess`.
+       */
+      produced?: number;
       correctTc: number;
       correct: boolean;
     }[];
@@ -606,6 +651,7 @@ export const EMPTY_STATS: Stats = {
     'phantom-deviation': 0,
     'wrong-anyway': 0,
     timeout: 0,
+    'self-report': 0,
   },
   countDrill: {
     history: [],

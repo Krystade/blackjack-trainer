@@ -6,12 +6,15 @@ import type { TrueCountQuestion } from '../../../drills/trueCountDrill';
 import { NumPad } from '../../components/NumPad';
 import { Stepper } from '../Settings';
 import { useAudio } from '../../../audio/useAudio';
-import { speak } from '../../../audio/speech';
+import { speak, getLastSpoken } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
+import { answerPauseDelayMs, nextQuestionDelayMs } from '../../../audio/answerPause';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import {
   narrateTc,
   narrateReadback,
+  narrateDecksRemaining,
+  capitalizeSpoken,
   NO_TRUE_COUNT_YET,
   DID_YOU_HAVE_IT,
   DECLINED_NEXT,
@@ -21,11 +24,12 @@ import { loadStats, saveStats } from '../../../store/persist';
 import { enableAudioNow } from '../../audioGate';
 import { useVoiceControl } from '../../useVoiceControl';
 import { useWheelCommand } from '../../useWheelCommand';
+import { useWheelNumber } from '../../useWheelNumber';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
-import { useVoiceToggle } from '../../voiceSession';
+import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -39,38 +43,8 @@ function formatDecks(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
-const DECK_WORDS: Record<number, string> = {
-  0: 'zero',
-  1: 'one',
-  2: 'two',
-  3: 'three',
-  4: 'four',
-  5: 'five',
-  6: 'six',
-  7: 'seven',
-  8: 'eight',
-};
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/**
- * Speak decks-remaining: "half a deck remaining" / "two decks remaining" /
- * "two and a half decks remaining". Local to this view -- narrate.ts is
- * owned by another agent right now, so this doesn't touch it.
- */
-function narrateDecksRemaining(decks: number): string {
-  const whole = Math.floor(decks);
-  const isHalf = decks % 1 !== 0;
-  const wholeWord = DECK_WORDS[whole] ?? String(whole);
-  if (whole === 0 && isHalf) return 'half a deck remaining';
-  if (isHalf) return `${wholeWord} and a half decks remaining`;
-  return `${wholeWord} ${whole === 1 ? 'deck' : 'decks'} remaining`;
-}
-
 function narrateTcQuestion(q: TrueCountQuestion): string {
-  return `Running count ${narrateTc(q.runningCount)}. ${capitalize(narrateDecksRemaining(q.decksRemaining))}`;
+  return `Running count ${narrateTc(q.runningCount)}. ${capitalizeSpoken(narrateDecksRemaining(q.decksRemaining))}`;
 }
 
 function narrateTcAnswer(correctTc: number): string {
@@ -95,6 +69,24 @@ type TcPhase =
    * drill.
    */
   | 'selfreport'
+  /**
+   * Practice only: ask, pause, say the answer, ask the next one. No report,
+   * no grade, no history row.
+   *
+   * Asked for on 2026-09-16: "a no interaction mode where it just gives some
+   * time to say the counts but then will [sovereignly] continue without
+   * detecting an answer and state the correct answer after a pause just for
+   * practice". Every other eyes-free path in this app still needs SOMETHING
+   * back -- a word, a zone, a wheel press -- and each of those is a thing
+   * that can fail in a car, at which point the drill stops dead and the
+   * silence is indistinguishable from a dead microphone. This mode asks for
+   * nothing, so nothing can fail.
+   *
+   * It records nothing, and that is the point rather than a shortcut: a
+   * self-report nobody gave would be a fabricated result, and the honest
+   * name for a rep with no answer taken is practice.
+   */
+  | 'practice'
   | 'result';
 
 /**
@@ -117,7 +109,40 @@ export function TrueCountDrillView({
   // sitting disabled and pointing at another screen -- see ui/audioGate.ts.
   onSettingsChange: (settings: Settings) => void;
 }) {
-  const [phase, setPhase] = useState<TcPhase>('setup');
+  const [phase, setPhaseState] = useState<TcPhase>('setup');
+  /**
+   * The phase, readable SYNCHRONOUSLY.
+   *
+   * The steering wheel needs this and React's render state cannot give it.
+   * A press arrives from `navigator.mediaSession`, outside React, and two
+   * presses can land in the same tick -- a double-press on the wheel, which
+   * is an ordinary human thing to do. The second one would then be handled
+   * by the closure from the render BEFORE the first press changed anything,
+   * so a press meant as "plus one" was read against the setup screen and
+   * silently restarted the drill with a new question. Eyes-free that is
+   * invisible: the count you were entering is gone and the question you are
+   * answering is not the one you heard.
+   *
+   * Writing the ref in the setter rather than in an effect is the whole
+   * point -- an effect does not run between two presses in the same tick.
+   */
+  const phaseRef = useRef<TcPhase>('setup');
+  /**
+   * Abandon a standing wheel proposal, synchronously.
+   *
+   * Held in a ref because the entry is created below this point, and called
+   * from `setPhase` rather than from an effect on `phase` -- which is where
+   * it was, and which was wrong in a way only the wheel could expose: the
+   * effect runs after React commits, so presses made in the NEW phase in the
+   * meantime were wiped by a reset belonging to the old one. Entering "plus
+   * four" immediately after the question lost all four presses.
+   */
+  const wheelResetRef = useRef<() => void>(() => {});
+  const setPhase = (next: TcPhase): void => {
+    phaseRef.current = next;
+    wheelResetRef.current();
+    setPhaseState(next);
+  };
   const [question, setQuestion] = useState<TrueCountQuestion | null>(null);
   const [wasCorrect, setWasCorrect] = useState(false);
   const [enteredValue, setEnteredValue] = useState(0);
@@ -128,6 +153,24 @@ export function TrueCountDrillView({
   // scoped to this drill screen, matching CountDrillView's precedent.
   const [eyesFree, setEyesFree] = useState(false);
   const [strictMode, setStrictMode] = useState(false);
+  /**
+   * Keep asking without being asked to.
+   *
+   * The drill used to stop dead after every question and wait to be told to
+   * go again. Eyes-on that is one tap; eyes-free in a car it is the whole
+   * problem -- the app falls silent, and silence is indistinguishable from
+   * the microphone having died, which is the exact confusion the diagnostic
+   * log exists to resolve. A drill you have to restart by hand between
+   * questions is not a drill you can practise with while driving.
+   *
+   * On by default, and only offered eyes-free: on screen the Next button is
+   * right there and taking the choice away would be worse than leaving it.
+   */
+  const [keepGoing, setKeepGoing] = useState(true);
+  /** Practice only -- see the 'practice' phase. Off by default: a mode that
+   * records nothing should never be entered by accident. */
+  const [practice, setPractice] = useState(false);
+
   // True when the just-finished 'result' came from the honor-system
   // self-check path (spoken answer, no keypad) rather than a graded entry.
   const [honorCheck, setHonorCheck] = useState(false);
@@ -144,6 +187,7 @@ export function TrueCountDrillView({
   // a toggle forgotten on every navigation is indistinguishable, in a car,
   // from a microphone that failed. See ui/voiceSession.ts.
   const [voiceOn, setVoiceOn] = useVoiceToggle('true-count-drill');
+  const pushToTalkOpen = usePushToTalk();
   /**
    * A spoken true count, heard but not yet submitted.
    *
@@ -183,21 +227,78 @@ export function TrueCountDrillView({
   useEffect(() => {
     if (phase !== 'selfcheck' || !question) return undefined;
     const runId = runIdRef.current;
-    speak(narrateTcQuestion(question), speechOptsFrom(settings.audio));
+    const asked = narrateTcQuestion(question);
+    speak(asked, speechOptsFrom(settings.audio));
     const t = setTimeout(() => {
       if (runIdRef.current !== runId) return;
       speak(narrateTcAnswer(question.correctTc), speechOptsFrom(settings.audio));
       speak('Did you have it?', speechOptsFrom(settings.audio));
       setHonorCheck(true);
       setPhase('selfreport');
-    }, settings.audio.answerPauseMs);
+      // The pause starts when the QUESTION STOPS, not when it starts -- see
+      // audio/answerPause.ts. Passing the raw setting here gave two tenths of
+      // a second to convert a count.
+    }, answerPauseDelayMs(asked, settings.audio));
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  /**
+   * The practice loop: question, pause, answer, gap, next question.
+   *
+   * One effect and two timers rather than a phase per beat, because the whole
+   * loop is one uninterrupted stretch of the app talking and the operator
+   * thinking -- there is no state in between that anything else needs to see.
+   * Both timers are guarded by runId AND cleaned up by the effect, like every
+   * other timer in this file: `start()` bumps runId, so the question a
+   * cancelled loop was about to ask can recognise itself as stale.
+   */
+  useEffect(() => {
+    if (phase !== 'practice' || !question) return undefined;
+    const runId = runIdRef.current;
+    const asked = narrateTcQuestion(question);
+    speak(asked, speechOptsFrom(settings.audio));
+
+    let nextTimer: number | undefined;
+    const answerTimer = window.setTimeout(() => {
+      if (runIdRef.current !== runId) return;
+      const answer = narrateTcAnswer(question.correctTc);
+      speak(answer, speechOptsFrom(settings.audio));
+      nextTimer = window.setTimeout(() => {
+        if (runIdRef.current !== runId) return;
+        start();
+      }, nextQuestionDelayMs(answer, settings.audio));
+    }, answerPauseDelayMs(asked, settings.audio));
+
+    return () => {
+      clearTimeout(answerTimer);
+      if (nextTimer !== undefined) clearTimeout(nextTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, question]);
+
   // Release the wake lock as soon as the drill ends (result reached), and
   // unconditionally on unmount -- releaseWakeLock() is a safe no-op when no
   // lock is held.
+
+  // Ask the next one on its own. Timed from the END of the verdict just
+  // spoken (audio/answerPause.ts) so the question never lands on top of it,
+  // and guarded by runId like every other timer here so a fast Back or a
+  // manual Next cannot be followed by a ghost question.
+  useEffect(() => {
+    if (phase !== 'result' || !eyesFree || !keepGoing) return undefined;
+    const runId = runIdRef.current;
+    const t = setTimeout(
+      () => {
+        if (runIdRef.current !== runId) return;
+        start();
+      },
+      nextQuestionDelayMs(getLastSpoken() ?? '', settings.audio),
+    );
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, eyesFree, keepGoing]);
+
   useEffect(() => {
     if (phase === 'result') {
       void releaseWakeLock();
@@ -215,7 +316,9 @@ export function TrueCountDrillView({
     const q = makeTrueCountQuestion(randomSeed(), { maxDecks, rounding: activeProfile.tcRounding });
     setQuestion(q);
     setHonorCheck(false);
-    setPhase(eyesFree && !strictMode ? 'selfcheck' : 'answering');
+    setPhase(
+      eyesFree && !strictMode ? (practice ? 'practice' : 'selfcheck') : 'answering',
+    );
     if (eyesFree) {
       void requestWakeLock();
     }
@@ -388,6 +491,15 @@ export function TrueCountDrillView({
         else if (action === 'no') sayBack(DECLINED_NEXT, true);
         return;
 
+      // Practice: nothing is being graded, so the only two useful things to
+      // say are "get on with it" and "say that again".
+      case 'practice':
+        if (action === 'yes') start();
+        else if (action === 'repeat' && question) {
+          sayBack(narrateTcQuestion(question), true);
+        }
+        return;
+
       // 'selfcheck' is the app's turn to talk: the question has been asked
       // and the answer is still coming.
       default:
@@ -396,15 +508,67 @@ export function TrueCountDrillView({
   };
 
 
-  // The steering wheel, mapped onto the same affirmative the microphone uses.
-  // Deliberately NOT gated on `voiceOn`: the wheel only reaches this app when
-  // the microphone is OFF (an open mic switches the car to its hands-free call
-  // route and the wheel's buttons go to that call), so gating it on voice would
-  // arm it in exactly the state where it cannot work. See audio/wheelCommands.ts.
-  useWheelCommand(() => handleVoiceCommand('yes'));
+  /**
+   * Entering the true count from the wheel: forward is plus one, back is
+   * minus one, quiet submits (audio/wheelNumber.ts). This is the drill the
+   * wheel matters most in -- the whole answer is a small signed number, which
+   * is exactly what two buttons can say and what one affirmative cannot.
+   */
+  const wheelNumber = useWheelNumber({
+    readback: (value) => sayBack(narrateReadback(value), true),
+    commit: (value) => {
+      setPendingTc(null);
+      handleSubmit(value);
+    },
+  });
+
+  // The steering wheel. Deliberately NOT gated on `voiceOn`: the wheel only
+  // reaches this app when the microphone is OFF (an open mic switches the car
+  // to its hands-free call route and the wheel's buttons go to that call), so
+  // gating it on voice would arm it in exactly the state where it cannot work.
+  // See audio/wheelCommands.ts.
+  //
+  // Each phase decides what a direction means. Where an answer is due the
+  // buttons walk the number; on the self-check they are the two verdicts;
+  // elsewhere forward goes on and back says it again.
+  useWheelCommand((command) => {
+    // Push-to-talk mode: forward OPENS THE MICROPHONE instead of answering.
+    // A mode rather than an extra gesture -- there are two buttons and three
+    // things to say with them (see DrillSettings.wheelMode). Back still
+    // repeats, which is the one meaning worth keeping in every mode.
+    if (settings.drill.wheelMode === 'talk') {
+      if (command === 'forward') {
+        startPushToTalk('true-count-drill');
+        // A cue, because the window is invisible and the Bluetooth route
+        // takes a moment to flip: without it there is no way to tell
+        // "listening now" from "pressed nothing".
+        audio.ding('attention');
+      } else {
+        handleVoiceCommand('repeat');
+      }
+      return;
+    }
+    switch (phaseRef.current) {
+      case 'answering':
+        setPendingTc(wheelNumber.press(command));
+        return;
+      case 'selfreport':
+        handleVoiceCommand(command === 'forward' ? 'yes' : 'no');
+        return;
+      default:
+        handleVoiceCommand(command === 'forward' ? 'yes' : 'repeat');
+    }
+  });
+
+  // A proposal belongs to one question: a timer armed under the last one must
+  // not submit into this one. Registered rather than run from an effect --
+  // see `wheelResetRef`.
+  wheelResetRef.current = wheelNumber.reset;
 
   const voice = useVoiceControl({
-    enabled: voiceOn,
+    // The push-to-talk window opens the microphone exactly as the toggle
+    // does; the only difference is that something closes it again.
+    enabled: voiceOn || pushToTalkOpen,
     onAction: handleVoiceCommand,
     onTranscript: interpretTcSpeech,
     // Eyes-free, a rejection is silence, and silence looks the same as a dead
@@ -424,7 +588,10 @@ export function TrueCountDrillView({
   useEffect(() => {
     if (!voiceOn || phase !== 'result') return;
     voice.cycleIfStale();
-    sayBack(SAY_YES_NEXT);
+    // Only OFFER the next one when nobody is going to ask it automatically.
+    // "Say yes for the next one" followed a second later by the next one
+    // arriving anyway is the app talking over its own instruction.
+    if (!(eyesFree && keepGoing)) sayBack(SAY_YES_NEXT);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceOn, phase]);
 
@@ -492,6 +659,27 @@ export function TrueCountDrillView({
               Strict mode (keypad entry, graded)
             </label>
           )}
+          {eyesFree && settings.audio.enabled && !strictMode && (
+            <label className="count-toggle">
+              <input
+                type="checkbox"
+                checked={practice}
+                onChange={(e) => setPractice(e.target.checked)}
+              />
+              Practice only (no answer needed, nothing recorded)
+            </label>
+          )}
+          {eyesFree && settings.audio.enabled && !practice && (
+            <label className="count-toggle">
+              <input
+                type="checkbox"
+                checked={keepGoing}
+                onChange={(e) => setKeepGoing(e.target.checked)}
+              />
+              Keep going (next question on its own)
+            </label>
+          )}
+
 
           {voiceSupported && (
             <label className="count-toggle">
@@ -558,6 +746,18 @@ export function TrueCountDrillView({
         be hit without looking -- the same reasoning as the count drill's,
         and the reason these are not a pair of ordinary buttons.
       */}
+      {/* Practice: the question is on screen too, because "nothing is being
+          recorded" is exactly the sort of thing you want confirmed with a
+          glance before you set off. */}
+      {phase === 'practice' && question && (
+        <div className="selfreport-area" data-testid="tc-practice">
+          <div className="selfreport-question">{narrateTcQuestion(question)}</div>
+          <div className="selfreport-voice-hint">
+            Practice only &mdash; say it out loud; nothing is recorded.
+          </div>
+        </div>
+      )}
+
       {phase === 'selfreport' && question && (
         <div className="selfreport-area">
           <div className="selfreport-question">

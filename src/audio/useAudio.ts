@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import type { AudioSettings } from '../store/types';
 import { speak, chime, repeatLast } from './speech';
+import { effectiveVolume } from './volume';
 import { prewarmClips, setClipsEnabled, setClipVoice } from './clips';
 
 /**
@@ -29,7 +30,11 @@ export interface AudioApi {
  * re-fire loop.
  */
 export function useAudio(audio: AudioSettings): AudioApi {
-  const { enabled, verbosity, rate, voiceURI, chimes, useClips, clipVoice, volume } = audio;
+  const { enabled, verbosity, rate, voiceURI, chimes, useClips, clipVoice } = audio;
+  // Mute is folded in HERE, once, rather than at the four call sites below:
+  // a path that forgot it would be a path that still makes noise in a
+  // quiet room, which is the one failure this control exists to prevent.
+  const volume = effectiveVolume(audio);
 
   // Keep speech.ts's module-level clip flag (clips.ts) in sync with the
   // current setting. This is the "useAudio side" of the wiring described in
@@ -87,5 +92,8 @@ export function useAudio(audio: AudioSettings): AudioApi {
     // bound closure above at the volume in force when the memo last ran, so
     // dragging the slider would appear to do nothing until some other audio
     // setting happened to change.
+    // Mute needs no entry of its own: it is already folded into `volume`
+    // above, so pressing the button changes this value and re-binds every
+    // closure -- which is what stops a half-spoken drill from carrying on.
   }, [enabled, verbosity, rate, voiceURI, chimes, volume]);
 }

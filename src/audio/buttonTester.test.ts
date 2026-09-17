@@ -117,7 +117,7 @@ describe('startButtonTest', () => {
   it('reports the name of every action the car sends, and runs none of them', () => {
     const actions = actionMap();
     let advanced = 0;
-    initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => (advanced += 1) });
+    initMediaSession({ back: () => {}, forward: () => (advanced += 1) });
 
     const seen: string[] = [];
     const handle = startButtonTest((press) => seen.push(press.action));
@@ -132,7 +132,7 @@ describe('startButtonTest', () => {
 
   it('timestamps each press, so two presses a second apart read as two', () => {
     const actions = actionMap();
-    initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => {} });
+    initMediaSession({ back: () => {}, forward: () => {} });
 
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-12T01:00:00Z'));
@@ -156,7 +156,7 @@ describe('startButtonTest', () => {
    */
   it('keeps a looping element playing for as long as it runs', () => {
     actionMap();
-    initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => {} });
+    initMediaSession({ back: () => {}, forward: () => {} });
 
     const handle = startButtonTest(() => {});
 
@@ -180,7 +180,7 @@ describe('startButtonTest', () => {
    */
   it('generates real silence, not a DC offset', () => {
     actionMap();
-    initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => {} });
+    initMediaSession({ back: () => {}, forward: () => {} });
     const handle = startButtonTest(() => {});
 
     const bytes = base64Decode(created[0]!.src.split(',')[1]!);
@@ -197,7 +197,7 @@ describe('startButtonTest', () => {
   it('gives the buttons back on stop, so leaving the panel cannot strand them', () => {
     const actions = actionMap();
     let advanced = 0;
-    initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => (advanced += 1) });
+    initMediaSession({ back: () => {}, forward: () => (advanced += 1) });
 
     const handle = startButtonTest(() => {});
     handle.stop();
@@ -210,7 +210,7 @@ describe('startButtonTest', () => {
   it('runs without an Audio constructor rather than throwing', () => {
     (globalThis as unknown as { window: unknown }).window = {};
     actionMap();
-    initMediaSession({ repeat: () => {}, stop: () => {}, advance: () => {} });
+    initMediaSession({ back: () => {}, forward: () => {} });
 
     expect(() => startButtonTest(() => {}).stop()).not.toThrow();
     expect(created).toHaveLength(0);

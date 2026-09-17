@@ -248,7 +248,7 @@ export function DeckEstimationView({
           </div>
           <div className="settings-row settings-note-row">
             Judge the discard tray by eye and estimate how many decks remain in the shoe. This
-            drill is visual only -- no audio mode.
+            drill is visual only &mdash; no audio mode.
             {resolution === 'last-deck' && (
               <> Halves through the shoe, quarters once you are inside the last deck.</>
             )}
