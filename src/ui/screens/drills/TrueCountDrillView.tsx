@@ -69,6 +69,24 @@ type TcPhase =
    * drill.
    */
   | 'selfreport'
+  /**
+   * Practice only: ask, pause, say the answer, ask the next one. No report,
+   * no grade, no history row.
+   *
+   * Asked for on 2026-09-16: "a no interaction mode where it just gives some
+   * time to say the counts but then will [sovereignly] continue without
+   * detecting an answer and state the correct answer after a pause just for
+   * practice". Every other eyes-free path in this app still needs SOMETHING
+   * back -- a word, a zone, a wheel press -- and each of those is a thing
+   * that can fail in a car, at which point the drill stops dead and the
+   * silence is indistinguishable from a dead microphone. This mode asks for
+   * nothing, so nothing can fail.
+   *
+   * It records nothing, and that is the point rather than a shortcut: a
+   * self-report nobody gave would be a fabricated result, and the honest
+   * name for a rep with no answer taken is practice.
+   */
+  | 'practice'
   | 'result';
 
 /**
@@ -149,6 +167,9 @@ export function TrueCountDrillView({
    * right there and taking the choice away would be worse than leaving it.
    */
   const [keepGoing, setKeepGoing] = useState(true);
+  /** Practice only -- see the 'practice' phase. Off by default: a mode that
+   * records nothing should never be entered by accident. */
+  const [practice, setPractice] = useState(false);
 
   // True when the just-finished 'result' came from the honor-system
   // self-check path (spoken answer, no keypad) rather than a graded entry.
@@ -222,6 +243,40 @@ export function TrueCountDrillView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  /**
+   * The practice loop: question, pause, answer, gap, next question.
+   *
+   * One effect and two timers rather than a phase per beat, because the whole
+   * loop is one uninterrupted stretch of the app talking and the operator
+   * thinking -- there is no state in between that anything else needs to see.
+   * Both timers are guarded by runId AND cleaned up by the effect, like every
+   * other timer in this file: `start()` bumps runId, so the question a
+   * cancelled loop was about to ask can recognise itself as stale.
+   */
+  useEffect(() => {
+    if (phase !== 'practice' || !question) return undefined;
+    const runId = runIdRef.current;
+    const asked = narrateTcQuestion(question);
+    speak(asked, speechOptsFrom(settings.audio));
+
+    let nextTimer: number | undefined;
+    const answerTimer = window.setTimeout(() => {
+      if (runIdRef.current !== runId) return;
+      const answer = narrateTcAnswer(question.correctTc);
+      speak(answer, speechOptsFrom(settings.audio));
+      nextTimer = window.setTimeout(() => {
+        if (runIdRef.current !== runId) return;
+        start();
+      }, nextQuestionDelayMs(answer, settings.audio));
+    }, answerPauseDelayMs(asked, settings.audio));
+
+    return () => {
+      clearTimeout(answerTimer);
+      if (nextTimer !== undefined) clearTimeout(nextTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, question]);
+
   // Release the wake lock as soon as the drill ends (result reached), and
   // unconditionally on unmount -- releaseWakeLock() is a safe no-op when no
   // lock is held.
@@ -261,7 +316,9 @@ export function TrueCountDrillView({
     const q = makeTrueCountQuestion(randomSeed(), { maxDecks, rounding: activeProfile.tcRounding });
     setQuestion(q);
     setHonorCheck(false);
-    setPhase(eyesFree && !strictMode ? 'selfcheck' : 'answering');
+    setPhase(
+      eyesFree && !strictMode ? (practice ? 'practice' : 'selfcheck') : 'answering',
+    );
     if (eyesFree) {
       void requestWakeLock();
     }
@@ -434,6 +491,15 @@ export function TrueCountDrillView({
         else if (action === 'no') sayBack(DECLINED_NEXT, true);
         return;
 
+      // Practice: nothing is being graded, so the only two useful things to
+      // say are "get on with it" and "say that again".
+      case 'practice':
+        if (action === 'yes') start();
+        else if (action === 'repeat' && question) {
+          sayBack(narrateTcQuestion(question), true);
+        }
+        return;
+
       // 'selfcheck' is the app's turn to talk: the question has been asked
       // and the answer is still coming.
       default:
@@ -593,7 +659,17 @@ export function TrueCountDrillView({
               Strict mode (keypad entry, graded)
             </label>
           )}
-          {eyesFree && settings.audio.enabled && (
+          {eyesFree && settings.audio.enabled && !strictMode && (
+            <label className="count-toggle">
+              <input
+                type="checkbox"
+                checked={practice}
+                onChange={(e) => setPractice(e.target.checked)}
+              />
+              Practice only (no answer needed, nothing recorded)
+            </label>
+          )}
+          {eyesFree && settings.audio.enabled && !practice && (
             <label className="count-toggle">
               <input
                 type="checkbox"
@@ -670,6 +746,18 @@ export function TrueCountDrillView({
         be hit without looking -- the same reasoning as the count drill's,
         and the reason these are not a pair of ordinary buttons.
       */}
+      {/* Practice: the question is on screen too, because "nothing is being
+          recorded" is exactly the sort of thing you want confirmed with a
+          glance before you set off. */}
+      {phase === 'practice' && question && (
+        <div className="selfreport-area" data-testid="tc-practice">
+          <div className="selfreport-question">{narrateTcQuestion(question)}</div>
+          <div className="selfreport-voice-hint">
+            Practice only &mdash; say it out loud; nothing is recorded.
+          </div>
+        </div>
+      )}
+
       {phase === 'selfreport' && question && (
         <div className="selfreport-area">
           <div className="selfreport-question">

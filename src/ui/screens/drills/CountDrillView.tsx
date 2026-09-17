@@ -32,7 +32,7 @@ import { Segmented, Stepper } from '../Settings';
 import { useAudio } from '../../../audio/useAudio';
 import { cancelSpeech, speak, speakAsync } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
-import { answerPauseDelayMs } from '../../../audio/answerPause';
+import { answerPauseDelayMs, nextQuestionDelayMs } from '../../../audio/answerPause';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import {
   narrateCards,
@@ -113,6 +113,20 @@ type CountPhase =
   // had it. Exists so the driving path can produce a VERDICT and a recorded
   // result -- previously it produced neither.
   | 'selfreport'
+  /**
+   * Practice only: flash, ask, pause, say the answer, flash the next run.
+   * No report, no grade, no history row.
+   *
+   * Asked for on 2026-09-16: "a no interaction mode where it just gives some
+   * time to say the counts but then will [sovereignly] continue without
+   * detecting an answer and state the correct answer after a pause just for
+   * practice". Every other eyes-free path needs something back -- a word, a
+   * zone, a wheel press -- and each of those can fail in a car, leaving the
+   * drill stopped dead in a silence indistinguishable from a dead
+   * microphone. This mode asks for nothing, so nothing can fail. It records
+   * nothing, which is the honest name for a rep with no answer taken.
+   */
+  | 'practice'
   | 'distraction'
   // RT#12 (docs/BACKLOG.md): a mid-run running-count checkpoint. Shaped
   // exactly like 'distraction' -- the stream pauses, a number is taken, the
@@ -212,6 +226,9 @@ export function CountDrillView({
   // correctness. Only offered for the main count drill, not Countdown mode
   // (see the `!countdownMode` guard in the setup JSX below).
   const [timedChallenge, setTimedChallenge] = useState(false);
+  /** Practice only -- see the 'practice' phase. Off by default: a mode that
+   * records nothing should never be entered by accident. */
+  const [practice, setPractice] = useState(false);
 
   // VOICE. Off until asked for, like every other microphone in the app: a
   // toggle that survived a reload would open one on page load.
@@ -336,7 +353,11 @@ export function CountDrillView({
     // Timed Challenge always grades (never the honor-system self-check) --
     // the whole point is a scored count + a scored speed, per the "a fast
     // wrong answer is still wrong" requirement.
-    setPhase(eyesFree && !strictMode && !countdownMode && !timedChallenge ? 'selfcheck' : 'answering');
+    if (eyesFree && !strictMode && !countdownMode && !timedChallenge) {
+      setPhase(practice ? 'practice' : 'selfcheck');
+      return;
+    }
+    setPhase('answering');
   };
 
   // Completes the honor-system self-check: no keypad entry was ever taken,
@@ -734,6 +755,38 @@ export function CountDrillView({
       // audio/answerPause.ts.
     }, answerPauseDelayMs(asked, settings.audio));
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  /**
+   * The practice loop: ask, pause, answer, gap, next run.
+   *
+   * One effect and two timers rather than a phase per beat -- the whole loop
+   * is one stretch of the app talking and the operator thinking, with no
+   * state in between that anything else needs to see. Guarded by runId AND
+   * by the effect's own cleanup, like every other timer in this file.
+   */
+  useEffect(() => {
+    if (phase !== 'practice') return undefined;
+    const runId = runIdRef.current;
+    const asked = narrateCountPrompt();
+    speak(asked, speechOptsFrom(settings.audio));
+
+    let nextTimer: number | undefined;
+    const answerTimer = window.setTimeout(() => {
+      if (runIdRef.current !== runId || !drillRound) return;
+      const answer = narrateCountAnswer(drillRound.finalRc);
+      speak(answer, speechOptsFrom(settings.audio));
+      nextTimer = window.setTimeout(() => {
+        if (runIdRef.current !== runId) return;
+        start();
+      }, nextQuestionDelayMs(answer, settings.audio));
+    }, answerPauseDelayMs(asked, settings.audio));
+
+    return () => {
+      clearTimeout(answerTimer);
+      if (nextTimer !== undefined) clearTimeout(nextTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
@@ -1258,6 +1311,13 @@ export function CountDrillView({
         }
         return;
 
+      // Practice: nothing is being graded, so the only two useful things to
+      // say are "get on with it" and "say that again".
+      case 'practice':
+        if (action === 'yes') start();
+        else if (action === 'repeat') sayBack(narrateCountPrompt(), true);
+        return;
+
       case 'selfreport':
         if (action === 'yes') handleSelfReport(true);
         else if (action === 'no') handleSelfReport(false);
@@ -1600,6 +1660,16 @@ export function CountDrillView({
               Strict mode (keypad entry, graded)
             </label>
           )}
+          {!countdownMode && !timedChallenge && eyesFree && settings.audio.enabled && !strictMode && (
+            <label className="count-toggle">
+              <input
+                type="checkbox"
+                checked={practice}
+                onChange={(e) => setPractice(e.target.checked)}
+              />
+              Practice only (no answer needed, nothing recorded)
+            </label>
+          )}
 
           {/* D1 part 2 (docs/BACKLOG.md, distraction training): only meaningful
               for the standard count drill's flashing phase -- excluded for
@@ -1818,6 +1888,17 @@ export function CountDrillView({
         hit without looking -- the same reasoning as the ZonePad, and the
         reason this is not a pair of ordinary buttons.
       */}
+      {/* Practice: said out loud, and on screen too -- "nothing is being
+          recorded" is worth confirming with a glance before setting off. */}
+      {phase === 'practice' && (
+        <div className="selfreport-area" data-testid="count-practice">
+          <div className="selfreport-question">What&apos;s the running count?</div>
+          <div className="selfreport-voice-hint">
+            Practice only &mdash; say it out loud; nothing is recorded.
+          </div>
+        </div>
+      )}
+
       {phase === 'selfreport' && (
         <div className="selfreport-area">
           <div className="selfreport-question">The count was {actualValue}. Did you have it?</div>
