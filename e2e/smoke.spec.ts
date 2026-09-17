@@ -219,6 +219,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   // ---------------------------------------------------------------
   await page.getByRole('button', { name: 'Produce the True Count', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Produce the True Count');
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.numpad')).toBeVisible({ timeout: 20_000 });
   await page.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(page.locator('.drill-result')).toBeVisible();

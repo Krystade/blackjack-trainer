@@ -176,6 +176,7 @@ test('the produce-TC band tightens with the resolution too', async ({ browser })
       drill: { countLengthCards: 13, countIntervalMs: 10, countGroup: 1, depthResolution },
     });
     await openDrill(page, 'Produce the True Count');
+    await page.getByRole('button', { name: 'Start', exact: true }).click();
     await expect(page.locator('.numpad')).toBeVisible();
     // +5 is the top of the half-deck band and one above the quarter-deck one.
     await page.getByRole('button', { name: '5', exact: true }).click();

@@ -12,6 +12,8 @@ import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import {
   narrateTc,
   narrateReadback,
+  narrateDecksRemaining,
+  capitalizeSpoken,
   NO_TRUE_COUNT_YET,
   DID_YOU_HAVE_IT,
   DECLINED_NEXT,
@@ -40,38 +42,8 @@ function formatDecks(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
-const DECK_WORDS: Record<number, string> = {
-  0: 'zero',
-  1: 'one',
-  2: 'two',
-  3: 'three',
-  4: 'four',
-  5: 'five',
-  6: 'six',
-  7: 'seven',
-  8: 'eight',
-};
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/**
- * Speak decks-remaining: "half a deck remaining" / "two decks remaining" /
- * "two and a half decks remaining". Local to this view -- narrate.ts is
- * owned by another agent right now, so this doesn't touch it.
- */
-function narrateDecksRemaining(decks: number): string {
-  const whole = Math.floor(decks);
-  const isHalf = decks % 1 !== 0;
-  const wholeWord = DECK_WORDS[whole] ?? String(whole);
-  if (whole === 0 && isHalf) return 'half a deck remaining';
-  if (isHalf) return `${wholeWord} and a half decks remaining`;
-  return `${wholeWord} ${whole === 1 ? 'deck' : 'decks'} remaining`;
-}
-
 function narrateTcQuestion(q: TrueCountQuestion): string {
-  return `Running count ${narrateTc(q.runningCount)}. ${capitalize(narrateDecksRemaining(q.decksRemaining))}`;
+  return `Running count ${narrateTc(q.runningCount)}. ${capitalizeSpoken(narrateDecksRemaining(q.decksRemaining))}`;
 }
 
 function narrateTcAnswer(correctTc: number): string {

@@ -1622,6 +1622,7 @@ test('produce the true count: flash then produce a TC, graded within tolerance a
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Produce the True Count', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Produce the True Count');
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.count-flash-area')).toBeVisible();
 
   // After the flash, the discard tray + numpad appear for the TC answer.

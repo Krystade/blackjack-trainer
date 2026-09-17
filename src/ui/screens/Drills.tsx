@@ -1896,6 +1896,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         settings={settings}
         activeProfile={activeProfile}
         onBack={() => setMode('picker')}
+      onSettingsChange={onSettingsChange}
       />
     );
   }

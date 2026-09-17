@@ -585,7 +585,13 @@ export interface Stats {
   produceTc: {
     history: {
       date: string;
-      produced: number;
+      /**
+       * What was produced. ABSENT for an eyes-free self-report, where the
+       * operator says whether they had it and never states a number --
+       * writing the right answer here instead would report every admitted
+       * miss as an exact hit. Same rule, same reason, as `trueCount.guess`.
+       */
+      produced?: number;
       correctTc: number;
       correct: boolean;
     }[];

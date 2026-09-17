@@ -99,6 +99,44 @@ export function narrateCards(cards: Card[], detail: CardDetail = 'full'): string
   return cards.map((card) => narrateCard(card, detail)).join(', ');
 }
 
+const DECK_WORDS: Record<number, string> = {
+  0: 'zero',
+  1: 'one',
+  2: 'two',
+  3: 'three',
+  4: 'four',
+  5: 'five',
+  6: 'six',
+  7: 'seven',
+  8: 'eight',
+};
+
+/**
+ * Decks remaining, spoken: "half a deck remaining", "two decks remaining",
+ * "two and a half decks remaining".
+ *
+ * Words rather than digits because a shoe depth is always a small number with
+ * at most a half on it, and "2.5" read by a synthesiser lands as "two point
+ * five" -- which nobody says at a table.
+ *
+ * Lived in TrueCountDrillView until the produce-the-true-count drill needed
+ * the same sentence for its eyes-free mode. Two copies of a spoken phrase is
+ * two clip vocabularies that can drift.
+ */
+export function narrateDecksRemaining(decks: number): string {
+  const whole = Math.floor(decks);
+  const isHalf = decks % 1 !== 0;
+  const wholeWord = DECK_WORDS[whole] ?? String(whole);
+  if (whole === 0 && isHalf) return 'half a deck remaining';
+  if (isHalf) return `${wholeWord} and a half decks remaining`;
+  return `${wholeWord} ${whole === 1 ? 'deck' : 'decks'} remaining`;
+}
+
+/** Sentence-case a spoken fragment, so two of them can be joined. */
+export function capitalizeSpoken(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 export function narrateTc(tc: number): string {
   if (tc === 0) return 'zero';
   if (tc > 0) return `plus ${numberWord(tc)}`;

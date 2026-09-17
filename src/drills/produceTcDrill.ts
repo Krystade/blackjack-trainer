@@ -3,6 +3,8 @@ import type { CountDrillRound } from './countDrill';
 import { trueCount, tcBand, tcWithinEye, EYE_DECK_ERROR } from '../engine/count';
 import type { TcRounding } from '../engine/count';
 import { mulberry32 } from '../engine/cards';
+import { depthTolerance } from './depthResolution';
+import type { DepthResolution } from './depthResolution';
 
 /**
  * V3-2 (docs/BACKLOG.md, red-team v3): the "produce a true count" drill. The
@@ -100,4 +102,31 @@ export function gradeProducedTc(
  */
 export function producedTcBand(round: ProduceTcRound, eyeError: number = EYE_DECK_ERROR) {
   return tcBand(round.round.finalRc, round.decksRemaining, eyeError);
+}
+
+/**
+ * How much depth misreading to forgive on a produced true count.
+ *
+ * The tolerance exists because judging a discard tray is an ESTIMATE: you
+ * could be a resolution's worth out either way, and grading the quotient as
+ * if the depth were exact would mark a correct conversion wrong for a reason
+ * that has nothing to do with counting.
+ *
+ * Eyes-free there is no estimate to forgive. The depth is spoken -- "two and
+ * a half decks remaining" -- because a tray cannot be heard, so the only
+ * thing left under test is the division, and the division has a right answer.
+ * Forgiving a range there would quietly mark a wrong conversion right, which
+ * is the more expensive mistake: the whole point of the drill is that the
+ * number you produce at a table is the number you bet on.
+ *
+ * Its own function, and tested as one, because the two callers that must
+ * agree about it are a React view and a result screen -- neither of which can
+ * be asked the question directly.
+ */
+export function produceTcSlack(
+  depthWasStated: boolean,
+  decksRemaining: number,
+  resolution: DepthResolution,
+): number {
+  return depthWasStated ? 0 : depthTolerance(decksRemaining, resolution);
 }
