@@ -6,8 +6,9 @@ import type { TrueCountQuestion } from '../../../drills/trueCountDrill';
 import { NumPad } from '../../components/NumPad';
 import { Stepper } from '../Settings';
 import { useAudio } from '../../../audio/useAudio';
-import { speak } from '../../../audio/speech';
+import { speak, getLastSpoken } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
+import { answerPauseDelayMs, nextQuestionDelayMs } from '../../../audio/answerPause';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import {
   narrateTc,
@@ -134,6 +135,21 @@ export function TrueCountDrillView({
   // scoped to this drill screen, matching CountDrillView's precedent.
   const [eyesFree, setEyesFree] = useState(false);
   const [strictMode, setStrictMode] = useState(false);
+  /**
+   * Keep asking without being asked to.
+   *
+   * The drill used to stop dead after every question and wait to be told to
+   * go again. Eyes-on that is one tap; eyes-free in a car it is the whole
+   * problem -- the app falls silent, and silence is indistinguishable from
+   * the microphone having died, which is the exact confusion the diagnostic
+   * log exists to resolve. A drill you have to restart by hand between
+   * questions is not a drill you can practise with while driving.
+   *
+   * On by default, and only offered eyes-free: on screen the Next button is
+   * right there and taking the choice away would be worse than leaving it.
+   */
+  const [keepGoing, setKeepGoing] = useState(true);
+
   // True when the just-finished 'result' came from the honor-system
   // self-check path (spoken answer, no keypad) rather than a graded entry.
   const [honorCheck, setHonorCheck] = useState(false);
@@ -190,14 +206,18 @@ export function TrueCountDrillView({
   useEffect(() => {
     if (phase !== 'selfcheck' || !question) return undefined;
     const runId = runIdRef.current;
-    speak(narrateTcQuestion(question), speechOptsFrom(settings.audio));
+    const asked = narrateTcQuestion(question);
+    speak(asked, speechOptsFrom(settings.audio));
     const t = setTimeout(() => {
       if (runIdRef.current !== runId) return;
       speak(narrateTcAnswer(question.correctTc), speechOptsFrom(settings.audio));
       speak('Did you have it?', speechOptsFrom(settings.audio));
       setHonorCheck(true);
       setPhase('selfreport');
-    }, settings.audio.answerPauseMs);
+      // The pause starts when the QUESTION STOPS, not when it starts -- see
+      // audio/answerPause.ts. Passing the raw setting here gave two tenths of
+      // a second to convert a count.
+    }, answerPauseDelayMs(asked, settings.audio));
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
@@ -205,6 +225,25 @@ export function TrueCountDrillView({
   // Release the wake lock as soon as the drill ends (result reached), and
   // unconditionally on unmount -- releaseWakeLock() is a safe no-op when no
   // lock is held.
+
+  // Ask the next one on its own. Timed from the END of the verdict just
+  // spoken (audio/answerPause.ts) so the question never lands on top of it,
+  // and guarded by runId like every other timer here so a fast Back or a
+  // manual Next cannot be followed by a ghost question.
+  useEffect(() => {
+    if (phase !== 'result' || !eyesFree || !keepGoing) return undefined;
+    const runId = runIdRef.current;
+    const t = setTimeout(
+      () => {
+        if (runIdRef.current !== runId) return;
+        start();
+      },
+      nextQuestionDelayMs(getLastSpoken() ?? '', settings.audio),
+    );
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, eyesFree, keepGoing]);
+
   useEffect(() => {
     if (phase === 'result') {
       void releaseWakeLock();
@@ -483,7 +522,10 @@ export function TrueCountDrillView({
   useEffect(() => {
     if (!voiceOn || phase !== 'result') return;
     voice.cycleIfStale();
-    sayBack(SAY_YES_NEXT);
+    // Only OFFER the next one when nobody is going to ask it automatically.
+    // "Say yes for the next one" followed a second later by the next one
+    // arriving anyway is the app talking over its own instruction.
+    if (!(eyesFree && keepGoing)) sayBack(SAY_YES_NEXT);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceOn, phase]);
 
@@ -551,6 +593,17 @@ export function TrueCountDrillView({
               Strict mode (keypad entry, graded)
             </label>
           )}
+          {eyesFree && settings.audio.enabled && (
+            <label className="count-toggle">
+              <input
+                type="checkbox"
+                checked={keepGoing}
+                onChange={(e) => setKeepGoing(e.target.checked)}
+              />
+              Keep going (next question on its own)
+            </label>
+          )}
+
 
           {voiceSupported && (
             <label className="count-toggle">

@@ -32,6 +32,7 @@ import { Segmented, Stepper } from '../Settings';
 import { useAudio } from '../../../audio/useAudio';
 import { cancelSpeech, speak, speakAsync } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
+import { answerPauseDelayMs } from '../../../audio/answerPause';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import {
   narrateCards,
@@ -722,13 +723,16 @@ export function CountDrillView({
   useEffect(() => {
     if (phase !== 'selfcheck') return undefined;
     const runId = runIdRef.current;
-    speak(narrateCountPrompt(), speechOptsFrom(settings.audio));
+    const asked = narrateCountPrompt();
+    speak(asked, speechOptsFrom(settings.audio));
     const t = setTimeout(() => {
       if (runIdRef.current !== runId || !drillRound) return;
       speak(narrateCountAnswer(drillRound.finalRc), speechOptsFrom(settings.audio));
       speak('Did you have it?', speechOptsFrom(settings.audio));
       finishSelfCheck(drillRound.finalRc);
-    }, settings.audio.answerPauseMs);
+    // The pause starts when the QUESTION STOPS, not when it starts -- see
+      // audio/answerPause.ts.
+    }, answerPauseDelayMs(asked, settings.audio));
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);

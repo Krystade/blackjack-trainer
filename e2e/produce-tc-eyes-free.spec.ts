@@ -153,3 +153,50 @@ test('the wheel runs the whole thing, which is the point of it being eyes-free',
   await press('back'); // "I missed it"
   await expect(page.locator('.drill-result .result-wrong')).toBeVisible();
 });
+
+/**
+ * The complaint that started this: "true count drill sucks currently, pretty
+ * much the whole thing, especially the pausing, just not usable."
+ *
+ * Two separate faults were behind it, and this covers the second. The first
+ * was the pause running concurrently with the question (audio/answerPause.ts).
+ * This one is that the drill STOPPED after every question and waited to be
+ * restarted -- one tap on screen, but in a car an indefinite silence that
+ * looks exactly like the microphone having died.
+ */
+test('it keeps asking without being asked to', async ({ page }) => {
+  test.setTimeout(60_000);
+  await withSettings(page, SETTINGS);
+  await open(page);
+  await page.getByLabel('Eyes-free audio').check();
+  await expect(page.getByLabel('Keep going (next question on its own)')).toBeChecked();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  await page.getByRole('button', { name: 'I had it' }).click({ timeout: 10_000 });
+
+  // No tap, no word, no wheel press: a second question arrives on its own.
+  await expect(page.getByRole('button', { name: 'I had it' })).toBeVisible({ timeout: 20_000 });
+  const log = await spoken(page);
+  const asks = log.filter((l) => /Produce the true count/i.test(l)).length;
+  expect(asks).toBeGreaterThan(1);
+  // And it never told the operator to ask for what it was about to do anyway.
+  expect(log.some((l) => /say yes/i.test(l))).toBe(false);
+});
+
+test('turning it off leaves the drill where it was', async ({ page }) => {
+  test.setTimeout(60_000);
+  await withSettings(page, SETTINGS);
+  await open(page);
+  await page.getByLabel('Eyes-free audio').check();
+  await page.getByLabel('Keep going (next question on its own)').uncheck();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  await page.getByRole('button', { name: 'I had it' }).click({ timeout: 10_000 });
+  await expect(page.locator('.drill-result')).toBeVisible();
+
+  // Vacuity guard for the test above: with the toggle off, the same wait
+  // produces no second question.
+  await page.waitForTimeout(6000);
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
+});

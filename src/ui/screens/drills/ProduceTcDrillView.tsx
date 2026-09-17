@@ -10,8 +10,9 @@ import type { ProduceTcRound } from '../../../drills/produceTcDrill';
 import { PlayingCard } from '../../components/PlayingCard';
 import { NumPad } from '../../components/NumPad';
 import { useAudio } from '../../../audio/useAudio';
-import { speak } from '../../../audio/speech';
+import { speak, getLastSpoken } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
+import { answerPauseDelayMs, nextQuestionDelayMs } from '../../../audio/answerPause';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import {
   narrateCards,
@@ -129,6 +130,21 @@ export function ProduceTcDrillView({
 
   const [eyesFree, setEyesFree] = useState(false);
   const [strictMode, setStrictMode] = useState(false);
+  /**
+   * Keep asking without being asked to.
+   *
+   * The drill used to stop dead after every question and wait to be told to
+   * go again. Eyes-on that is one tap; eyes-free in a car it is the whole
+   * problem -- the app falls silent, and silence is indistinguishable from
+   * the microphone having died, which is the exact confusion the diagnostic
+   * log exists to resolve. A drill you have to restart by hand between
+   * questions is not a drill you can practise with while driving.
+   *
+   * On by default, and only offered eyes-free: on screen the Next button is
+   * right there and taking the choice away would be worse than leaving it.
+   */
+  const [keepGoing, setKeepGoing] = useState(true);
+
   const [voiceOn, setVoiceOn] = useVoiceToggle('produce-tc-drill');
   const pushToTalkOpen = usePushToTalk();
   const voiceSupport = detectVoiceSupport();
@@ -202,17 +218,38 @@ export function ProduceTcDrillView({
   useEffect(() => {
     if (phase !== 'selfcheck') return undefined;
     const runId = runIdRef.current;
-    sayBack(`${decksSentence}. Produce the true count.`, true);
+    const asked = `${decksSentence}. Produce the true count.`;
+    sayBack(asked, true);
     const t = setTimeout(() => {
       if (runIdRef.current !== runId) return;
       sayBack(narrateAnswer());
       sayBack(DID_YOU_HAVE_IT);
       setHonorCheck(true);
       setPhase('selfreport');
-    }, settings.audio.answerPauseMs);
+      // The pause starts when the question STOPS -- audio/answerPause.ts.
+    }, answerPauseDelayMs(asked, settings.audio));
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
+
+
+  // Ask the next one on its own. Timed from the END of the verdict just
+  // spoken (audio/answerPause.ts) so the question never lands on top of it,
+  // and guarded by runId like every other timer here so a fast Back or a
+  // manual Next cannot be followed by a ghost question.
+  useEffect(() => {
+    if (phase !== 'result' || !eyesFree || !keepGoing) return undefined;
+    const runId = runIdRef.current;
+    const t = setTimeout(
+      () => {
+        if (runIdRef.current !== runId) return;
+        start();
+      },
+      nextQuestionDelayMs(getLastSpoken() ?? '', settings.audio),
+    );
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, eyesFree, keepGoing]);
 
   useEffect(() => {
     if (phase === 'result') void releaseWakeLock();
@@ -413,7 +450,10 @@ export function ProduceTcDrillView({
   useEffect(() => {
     if (!voiceOn || phase !== 'result') return;
     voice.cycleIfStale();
-    sayBack(SAY_YES_NEXT);
+    // Only OFFER the next one when nobody is going to ask it automatically.
+    // "Say yes for the next one" followed a second later by the next one
+    // arriving anyway is the app talking over its own instruction.
+    if (!(eyesFree && keepGoing)) sayBack(SAY_YES_NEXT);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceOn, phase]);
 
@@ -456,6 +496,14 @@ export function ProduceTcDrillView({
                   onChange={(e) => setStrictMode(e.target.checked)}
                 />
                 Strict mode (entry, graded)
+              </label>
+              <label className="count-toggle">
+                <input
+                  type="checkbox"
+                  checked={keepGoing}
+                  onChange={(e) => setKeepGoing(e.target.checked)}
+                />
+                Keep going (next question on its own)
               </label>
               {/* Stated rather than left to be discovered: the tray is the one
                   third of this drill that cannot survive the eyes shutting. */}
