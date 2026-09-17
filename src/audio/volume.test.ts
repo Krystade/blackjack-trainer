@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   MAX_VOLUME,
   clampVolume,
+  effectiveVolume,
   elementVolume,
   utteranceVolume,
   needsAmplification,
@@ -110,5 +111,23 @@ describe('chimePeak', () => {
   it('never exceeds full scale', () => {
     expect(chimePeak(2)).toBeLessThanOrEqual(1);
     expect(chimePeak(99)).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('effectiveVolume', () => {
+  it('is zero when muted, whatever the level says', () => {
+    expect(effectiveVolume({ volume: 2, muted: true })).toBe(0);
+    expect(effectiveVolume({ volume: 0.3, muted: true })).toBe(0);
+  });
+
+  it('is the clamped level when not muted', () => {
+    expect(effectiveVolume({ volume: 0.3, muted: false })).toBe(0.3);
+    // Still clamped: mute must not become the only thing keeping a bad value
+    // out of an HTMLMediaElement, whose setter throws above 1.
+    expect(effectiveVolume({ volume: 99, muted: false })).toBe(MAX_VOLUME);
+  });
+
+  it('treats a missing flag as unmuted, so older stored settings still speak', () => {
+    expect(effectiveVolume({ volume: 1 })).toBe(1);
   });
 });

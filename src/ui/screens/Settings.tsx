@@ -24,7 +24,7 @@ import { startButtonTest, unheardActions } from '../../audio/buttonTester';
 import type { ButtonPress, ButtonTesterHandle } from '../../audio/buttonTester';
 import { MEDIA_SESSION_LABEL } from '../../audio/mediaSession';
 import type { MediaSessionAction } from '../../audio/mediaSession';
-import { MAX_VOLUME } from '../../audio/volume';
+import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
 import { detectVoiceSupport } from '../../audio/voiceRecognition';
 import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
 import {
@@ -551,6 +551,22 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             onChange={(v) => updateAudio({ volume: v })}
             disabled={audioDisabled}
           />
+          {/* Under Volume on purpose: they are the same control to the
+              operator, and mute is the one of the two that has to be findable
+              without reading. It does NOT touch `volume` -- see
+              AudioSettings.muted. */}
+          <Toggle
+            label="Mute"
+            checked={settings.audio.muted}
+            onChange={(v) => updateAudio({ muted: v })}
+            disabled={audioDisabled}
+          />
+          {settings.audio.muted && (
+            <div className="settings-note-row u-note">
+              Everything is silent, including the test button. Your volume is still{' '}
+              {Math.round(settings.audio.volume * 100)}% and comes back when you unmute.
+            </div>
+          )}
           {settings.audio.volume > 1 && !settings.audio.useClips && (
             <div className="settings-note-row u-note">
               Above 100% only applies to the recorded voice. Live speech is capped at 100% by
@@ -570,7 +586,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
                     interrupt: true,
                     rate: settings.audio.rate,
                     voiceURI,
-                    volume: settings.audio.volume,
+                    volume: effectiveVolume(settings.audio),
                   });
                 }}
                 disabled={audioDisabled}
@@ -614,10 +630,10 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
                   interrupt: true,
                   rate: settings.audio.rate,
                   voiceURI: settings.audio.voiceURI,
-                  volume: settings.audio.volume,
+                  volume: effectiveVolume(settings.audio),
                 });
                 if (settings.audio.chimes) {
-                  chime('good', { volume: settings.audio.volume });
+                  chime('good', { volume: effectiveVolume(settings.audio) });
                 }
               }}
             >

@@ -8,6 +8,7 @@ import { Settings } from './screens/Settings';
 import { ProfileEditor } from './screens/ProfileEditor';
 import { Charts } from './screens/Charts';
 import { TabBar } from './components/TabBar';
+import { MuteButton } from './components/MuteButton';
 import { loadSettings } from '../store/persist';
 import { applyTheme, normalizeTheme } from './theme';
 import { getActiveProfile } from '../store/profiles';
@@ -192,6 +193,10 @@ function App() {
       {/* Rendered for every screen; app.css stands it down in the
           immersive modes, which own the bottom edge with their own
           ActionBar/ZonePad. */}
+      {/* Outside the ErrorBoundary and outside every screen: silencing the
+          app has to work on the immersive screens that stand the tab bar
+          down, and on a screen that has just crashed. */}
+      <MuteButton settings={settings} onSettingsChange={setSettings} />
       <TabBar current={screen} onNavigate={navigate} />
     </>
   );

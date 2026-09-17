@@ -29,6 +29,21 @@ export const MAX_VOLUME = 2;
 /** The chime's full-scale peak at volume 1.0 (a bare oscillator, so 1.0 is full scale). */
 export const CHIME_PEAK_GAIN = 0.5;
 
+/**
+ * The volume every audio path should actually use.
+ *
+ * Mute is deliberately NOT a volume of 0 stored in `volume`: the operator
+ * wants their level back when they unmute, and a mute that eats the setting
+ * is a mute nobody uses twice. So the level is kept and this is the only
+ * place the two are combined -- which is the whole safety of it. Every
+ * consumer already funnels through `speechOptsFrom()` or `useAudio()`, so
+ * putting the combination here means a new audio path cannot be silently
+ * born un-mutable.
+ */
+export function effectiveVolume(audio: { volume: number; muted?: boolean }): number {
+  return audio.muted ? 0 : clampVolume(audio.volume);
+}
+
 export function clampVolume(v: number): number {
   if (!Number.isFinite(v)) return 1;
   return Math.min(MAX_VOLUME, Math.max(0, v));

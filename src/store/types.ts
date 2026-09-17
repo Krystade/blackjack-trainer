@@ -166,6 +166,23 @@ export interface AudioSettings {
   // committed to something else. 0 is a legitimate value (silence) -- every
   // consumer must presence-check it rather than testing truthiness.
   volume: number;
+  /**
+   * Silence everything WITHOUT touching `volume` or `enabled`.
+   *
+   * `enabled: false` already silences the app, but it is not a mute: the
+   * drills treat it as "audio is not available" and drop out of eyes-free
+   * mode when it goes off, so using it as one changes the mode you are in.
+   * And turning `volume` to 0 by hand loses the level you had chosen, which
+   * then has to be found again by ear.
+   *
+   * The actual requirement (operator, 2026-09-16) is narrower than either:
+   * "be able to use it in public without turning my sound all the way down
+   * and being forced to have noise playing". So this is one flag, one
+   * button, reversible, and it forgets nothing -- every audio path reads
+   * `effectiveVolume()` rather than `volume`, and at 0 the whole app is
+   * silent while every other setting stays exactly where it was.
+   */
+  muted: boolean;
   voiceURI: string; // 'default' or a SpeechSynthesisVoice.voiceURI
   chimes: boolean;
   answerPauseMs: number; // 0..5000, the eyes-free self-check pause
@@ -208,6 +225,7 @@ export const DEFAULT_AUDIO: AudioSettings = {
   verbosity: 'results',
   rate: 1,
   volume: 1,
+  muted: false,
   voiceURI: 'default',
   chimes: true,
   answerPauseMs: 3000,
