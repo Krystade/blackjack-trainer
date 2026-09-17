@@ -10,6 +10,7 @@ import { setSpeechActivityListener } from '../audio/speech';
 import { onDeviceStatus, prefersOnDevice, shouldProcessLocally } from '../audio/onDeviceSpeech';
 import { recordHeard } from '../audio/voiceHistory';
 import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition';
+import { looksLikeSelfEcho } from '../audio/selfEcho';
 import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
 import { logAudioInputs, logMicPermission } from '../diag/environment';
@@ -115,6 +116,20 @@ export function useVoiceControl({
 
   const unheardRef = useRef(onNotUnderstood);
   unheardRef.current = onNotUnderstood;
+  // What the app is currently saying, so a suppressed utterance can be told
+  // apart from the app hearing its own voice. See audio/selfEcho.ts.
+  const saidRef = useRef<string | null | undefined>(null);
+  // Which utterance the "I was still talking" cue has already been given for.
+  //
+  // At most one cue per thing the app says, and this is load-bearing rather
+  // than tidy: the cue is a CHIME, a chime is a sound, and a sound deafens the
+  // microphone for its own duration (CHIME_ACTIVITY_MS). Cue every suppressed
+  // utterance and each one extends the deaf window that caused it -- a
+  // self-sustaining deafness where talking to the app keeps it from ever
+  // hearing you. Caught by the count drill's voice suite, which polls an
+  // utterance every 400ms and never got back out of suppression.
+  const speechGenRef = useRef(0);
+  const cuedGenRef = useRef(-1);
 
   const controllerRef = useRef<VoiceController | null>(null);
 
@@ -160,7 +175,23 @@ export function useVoiceControl({
         // Only a short utterance earns a cue. A rejected sentence was someone
         // talking, and chiming at every one of those in a moving car would be
         // worse than the silence it replaces.
-        if (verdict === 'rejected' && looksLikeAnAttempt(heard)) unheardRef.current?.();
+        //
+        // SUPPRESSED counts too, and did not used to. Reported from the car:
+        // an answer given over the tail of a prompt is thrown away with no
+        // sound at all, which is exactly what a dead microphone does. The one
+        // suppressed utterance that must stay silent is the app hearing
+        // itself -- hence the echo check rather than a blanket cue.
+        const attempt = looksLikeAnAttempt(heard);
+        if (verdict === 'rejected' && attempt) unheardRef.current?.();
+        else if (
+          verdict === 'suppressed' &&
+          attempt &&
+          !looksLikeSelfEcho(heard, saidRef.current) &&
+          cuedGenRef.current !== speechGenRef.current
+        ) {
+          cuedGenRef.current = speechGenRef.current;
+          unheardRef.current?.();
+        }
       },
     });
     controllerRef.current = controller;
@@ -169,6 +200,14 @@ export function useVoiceControl({
     // listening, so nothing pays for this when voice is off.
     setSpeechActivityListener((ms, text) => {
       diag('speak', 'deafen', { ms, said: text, context });
+      // A chime reports no text, and must not count as a new utterance: the
+      // cue below IS a chime, so counting it would start the next generation
+      // and re-arm the cue it just gave -- the same self-sustaining deafness
+      // the generation counter exists to stop, one level up.
+      if (text !== undefined) {
+        saidRef.current = text;
+        speechGenRef.current += 1;
+      }
       controller.suppressFor(ms);
     });
     controller.start();
