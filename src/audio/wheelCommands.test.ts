@@ -17,13 +17,13 @@ describe('wheelCommands', () => {
   it('delivers a press to the screen that claimed it', () => {
     const seen: string[] = [];
     setWheelCommandHandler((c) => seen.push(c));
-    expect(invokeWheelCommand('advance')).toBe(true);
-    expect(seen).toEqual(['advance']);
+    expect(invokeWheelCommand('forward')).toBe(true);
+    expect(seen).toEqual(['forward']);
   });
 
   /** A car can press a button at any time, including before anything is up. */
   it('reports an unclaimed press rather than throwing', () => {
-    expect(invokeWheelCommand('advance')).toBe(false);
+    expect(invokeWheelCommand('forward')).toBe(false);
   });
 
   /**
@@ -35,7 +35,7 @@ describe('wheelCommands', () => {
     let calls = 0;
     setWheelCommandHandler(() => (calls += 1));
     setWheelCommandHandler(null);
-    expect(invokeWheelCommand('advance')).toBe(false);
+    expect(invokeWheelCommand('forward')).toBe(false);
     expect(calls).toBe(0);
   });
 
@@ -48,7 +48,7 @@ describe('wheelCommands', () => {
     const seen: string[] = [];
     setWheelCommandHandler(() => seen.push('first'));
     setWheelCommandHandler(() => seen.push('second'));
-    invokeWheelCommand('advance');
+    invokeWheelCommand('forward');
     expect(seen).toEqual(['second']);
   });
 
@@ -61,7 +61,7 @@ describe('wheelCommands', () => {
     setWheelCommandHandler(() => {
       throw new Error('a drill blew up');
     });
-    expect(() => invokeWheelCommand('advance')).not.toThrow();
-    expect(invokeWheelCommand('advance')).toBe(false);
+    expect(() => invokeWheelCommand('forward')).not.toThrow();
+    expect(invokeWheelCommand('forward')).toBe(false);
   });
 });

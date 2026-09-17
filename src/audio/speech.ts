@@ -481,16 +481,21 @@ function announceToMediaSession(text: string): void {
  */
 export function ensureMediaSessionHandlers(): void {
   initMediaSession({
-    repeat: () => {
-      repeatLast();
-    },
-    stop: () => {
-      cancelSpeech();
-    },
     // Routed rather than handled here: only the screen that is up knows what
-    // "yes" means to it, and speech.ts must not import React or the store.
-    advance: () => {
-      invokeWheelCommand('advance');
+    // a direction means to it, and speech.ts must not import React or the
+    // store.
+    forward: () => {
+      invokeWheelCommand('forward');
+    },
+    back: () => {
+      // Repeat is the FALLBACK, not the meaning. A screen that claims the
+      // wheel decides what back does there -- minus one while a count is
+      // being entered, "I missed it" on a self-check. But a press that
+      // reaches no screen at all should still do the most useful thing a
+      // driver could want from it rather than nothing, and that is "say that
+      // again": the app is talking, the driver missed a word, and there is
+      // no drill in the way.
+      if (!invokeWheelCommand('back')) repeatLast();
     },
   });
 }

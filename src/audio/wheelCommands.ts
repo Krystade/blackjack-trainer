@@ -17,19 +17,41 @@
  * route, which means the wheel keeps working. Both halves at once, by giving up
  * the thing that was breaking them.
  *
- * A wheel press is deliberately NOT its own vocabulary. It maps onto the
- * affirmative the voice path already has -- "yes" -- so every screen that can
- * be driven by voice can be driven by the wheel with one line, and the two can
- * never drift into meaning different things.
+ * A wheel press is deliberately not tied to the voice vocabulary. The two
+ * channels have different shapes -- speech can name any of five actions or
+ * any number outright, a button can only say "further this way" -- so a
+ * screen translates each on its own terms rather than pretending a press is
+ * a spoken word. What they share is the handler underneath.
  *
  * Module-level rather than context, for the same reason speech.ts is: the
  * Media Session handler is registered once, deep inside the audio layer, and
  * has no React tree to read from when the car calls it.
  */
 
-/** What a press means. One entry today; the shape is here so a second button
- * (a real "no", if a car turns out to send one) does not need a refactor. */
-export type WheelCommand = 'advance';
+/**
+ * What a press means.
+ *
+ * TWO commands, because the driver has two buttons. The 2026-09-16 report
+ * settled the hardware question that had been guessed at until then:
+ * "nexttrack/seekforward and previoustrack/seekbackward are the only two
+ * buttons i can hit and are caught. play and stop are automatic and i dont
+ * control them."
+ *
+ * So the whole vocabulary is FORWARD and BACK, and every screen means the
+ * same two things by them:
+ *
+ *   forward -- go on. Start, answer, reveal, next, "I had it", plus one.
+ *   back    -- go back. Repeat, "I missed it", minus one.
+ *
+ * The previous vocabulary was one command meaning "yes", which the same
+ * report rejected outright -- "repeat is useful but yes is not". It was also
+ * unusable in the two places it was most wanted: a flashcard answer is a
+ * five-way choice, and a count is a number, and neither is reachable from a
+ * button that can only agree. A direction is: forward and back can walk a
+ * number to any value and can pick between two self-reported outcomes, which
+ * covers every drill this app has.
+ */
+export type WheelCommand = 'forward' | 'back';
 
 type WheelHandler = (command: WheelCommand) => void;
 
