@@ -95,7 +95,19 @@ export type DiagCategory =
   /** One-off environment facts, written once per page load. */
   | 'env'
   /** Something threw where it should not have. */
-  | 'err';
+  | 'err'
+  /**
+   * What the operator MEANT, stamped by hand.
+   *
+   * Every other category records what the app saw. This one records what was
+   * intended, and it is the only thing that makes the rest readable: a log
+   * with no `nexttrack` in it is either a car that never sent one or an
+   * operator who never pressed the button, and those are opposite diagnoses
+   * with identical evidence. Asked for in exactly those words (2026-09-16):
+   * "I need a set of instructions in the app to properly follow so you know
+   * what the intent is vs what shows up in the log."
+   */
+  | 'test';
 
 export interface DiagEntry {
   /** Wall clock, ISO. What the operator correlates against their memory. */

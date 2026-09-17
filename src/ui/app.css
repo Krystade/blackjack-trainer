@@ -3698,3 +3698,41 @@ details.stats-section > summary::after {
   font-size: 12px;
   color: var(--muted, #8a8a8a);
 }
+
+/* The field-test protocol (diag/fieldTest.ts). Each step is read once, in a
+   car, and then acted on -- so the instruction is the loud part, what to look
+   for in the log is the quiet part, and the stamp button is large enough to
+   hit without aiming. */
+.fieldtest-steps {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fieldtest-step {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldtest-instruction {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.fieldtest-expect {
+  font-size: 12px;
+}
+
+.fieldtest-stamp {
+  align-self: flex-start;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  max-width: 100%;
+  text-align: left;
+}

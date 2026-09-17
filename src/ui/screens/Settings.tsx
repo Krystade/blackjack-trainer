@@ -25,6 +25,11 @@ import type { ButtonPress, ButtonTesterHandle } from '../../audio/buttonTester';
 import { MEDIA_SESSION_LABEL } from '../../audio/mediaSession';
 import type { MediaSessionAction } from '../../audio/mediaSession';
 import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
+import {
+  FIELD_TEST_CONDITIONS,
+  FIELD_TEST_STEPS,
+  DEFAULT_FIELD_TEST_CONDITION,
+  stampFieldTest } from '../../diag/fieldTest';
 import { PUSH_TO_TALK_MS } from '../voiceSession';
 import { detectVoiceSupport } from '../../audio/voiceRecognition';
 import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
@@ -649,10 +654,79 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         onWheelMode={(wheelMode) => updateDrill({ wheelMode })}
       />
 
+      <FieldTestPanel />
+
       <VoiceProbePanel />
       <VoiceHistoryPanel />
       <DiagnosticLogPanel />
     </div>
+  );
+}
+
+/**
+ * The field-test protocol, with a button per step that stamps the log.
+ *
+ * The missing half of every diagnostic in this app: what the operator was
+ * TRYING to do. See diag/fieldTest.ts for why that is what makes the rest of
+ * the log readable, and why the protocol is explicitly a parked one.
+ *
+ * Stateless beyond the chosen condition and a per-step tick. The tick is not
+ * a record -- the log is the record -- it is there so a step done at a red
+ * light is visibly done when you look back at the screen.
+ */
+function FieldTestPanel() {
+  const [condition, setCondition] = useState(DEFAULT_FIELD_TEST_CONDITION);
+  const [stamped, setStamped] = useState<Record<string, number>>({});
+  const active = FIELD_TEST_CONDITIONS.find((c) => c.id === condition) ?? FIELD_TEST_CONDITIONS[0];
+
+  return (
+    <CollapsibleSection title={<>Field test</>} defaultOpen={false}>
+      <div className="settings-note-row u-note">
+        Run this parked, with the engine on and the phone connected exactly as it would be on a
+        drive. Each step has a button that writes what you MEANT into the diagnostic log, so the
+        log can be read against your intent instead of guessed at. Then send the log.
+      </div>
+
+      <div className="settings-row">
+        <span className="settings-label">Condition</span>
+        <Segmented
+          value={condition}
+          options={FIELD_TEST_CONDITIONS.map((c) => ({ value: c.id, label: c.label }))}
+          onChange={(value) => {
+            setCondition(value);
+            // Clear the ticks: the same step under a new condition is a new
+            // measurement, and a tick carried over reads as already done.
+            setStamped({});
+          }}
+        />
+      </div>
+      <div className="settings-note-row u-note">
+        <strong>Set up:</strong> {active.setup}
+        <br />
+        <strong>Proves:</strong> {active.proves}
+      </div>
+
+      <ol className="fieldtest-steps">
+        {FIELD_TEST_STEPS.map((step, i) => (
+          <li className="fieldtest-step" key={step.id}>
+            <div className="fieldtest-instruction">{step.instruction}</div>
+            <div className="fieldtest-expect u-note">Look for: {step.expect}</div>
+            <button
+              type="button"
+              className="fieldtest-stamp"
+              data-testid={`fieldtest-stamp-${step.id}`}
+              onClick={() => {
+                stampFieldTest(step.id, condition);
+                setStamped((prev) => ({ ...prev, [step.id]: (prev[step.id] ?? 0) + 1 }));
+              }}
+            >
+              {i + 1}. {step.stamp}
+              {stamped[step.id] ? (stamped[step.id] > 1 ? ` ✓ ×${stamped[step.id]}` : ' ✓') : ''}
+            </button>
+          </li>
+        ))}
+      </ol>
+    </CollapsibleSection>
   );
 }
 
