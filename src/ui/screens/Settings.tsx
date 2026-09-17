@@ -911,6 +911,21 @@ function CarDiagnostics({
           can answer for you: with the microphone off, the wheel is the whole loop.
         </div>
 
+        {/* Asked directly (2026-09-16): "can we use my phone mic". The answer
+            is no, and it is a platform fact rather than a missing feature, so
+            it belongs here next to the route explanation rather than in a
+            backlog nobody reads from the driver's seat. */}
+        <div className="settings-note-row u-note">
+          <strong>Can it use the phone&rsquo;s own microphone instead?</strong> No &mdash; not
+          from a web app. Speech recognition in the browser takes no device to listen on:
+          it uses whatever the phone is currently routing audio through, and while the car
+          is connected that is the car. Nothing in this app can override it. The two things
+          that can are turning Bluetooth off (see the Field test&rsquo;s speakerphone
+          condition, which is the same room and the same road noise without the car in the
+          way) and push-to-talk, which at least keeps the route flipped for seconds at a
+          time instead of permanently.
+        </div>
+
         {/* The one real choice the wheel offers, and it is a choice because
             there are two buttons and three things worth doing with them. */}
         <div className="settings-row">
