@@ -52,6 +52,7 @@ import { focusSwallowsKey } from '../../keyboardFocus';
 import { enableAudioNow } from '../../audioGate';
 import { useVoiceControl } from '../../useVoiceControl';
 import { useWheelCommand } from '../../useWheelCommand';
+import { useWheelNumber } from '../../useWheelNumber';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
@@ -147,7 +148,39 @@ export function CountDrillView({
   const [countdownMode, setCountdownMode] = useState(false);
   // V3-4 soft gate: computed once at mount (fluency doesn't change mid-session).
   const [countFluent] = useState(() => isCountFluent(loadStats().countDrill.history));
-  const [phase, setPhase] = useState<CountPhase>('setup');
+  const [phase, setPhaseState] = useState<CountPhase>('setup');
+  /**
+   * The phase, readable SYNCHRONOUSLY.
+   *
+   * The steering wheel needs this and React's render state cannot give it.
+   * A press arrives from `navigator.mediaSession`, outside React, and two
+   * presses can land in the same tick -- a double-press on the wheel, which
+   * is an ordinary human thing to do. The second one would then be handled
+   * by the closure from the render BEFORE the first press changed anything,
+   * so a press meant as "plus one" was read against the setup screen and
+   * silently restarted the drill with a new question. Eyes-free that is
+   * invisible: the count you were entering is gone and the question you are
+   * answering is not the one you heard.
+   *
+   * Writing the ref in the setter rather than in an effect is the whole
+   * point -- an effect does not run between two presses in the same tick.
+   */
+  const phaseRef = useRef<CountPhase>('setup');
+  /**
+   * Abandon a standing proposal, synchronously, whenever the phase moves.
+   *
+   * Called from `setPhase` rather than from an effect on `phase`, which is
+   * where it was and which the wheel exposed as wrong: an effect runs after
+   * React commits, so presses made in the NEW phase in the meantime were
+   * wiped by a reset belonging to the old one.
+   */
+  const wheelResetRef = useRef<() => void>(() => {});
+  const setPhase = (next: CountPhase): void => {
+    phaseRef.current = next;
+    wheelResetRef.current();
+    setPendingCount(null);
+    setPhaseState(next);
+  };
   const [drillRound, setDrillRound] = useState<CountDrillRound | null>(null);
   const [countdownRound, setCountdownRound] = useState<CountdownRound | null>(null);
   const [shownIndex, setShownIndex] = useState(0);
@@ -1249,13 +1282,51 @@ export function CountDrillView({
   // the microphone is OFF (an open mic switches the car to its hands-free call
   // route and the wheel's buttons go to that call), so gating it on voice would
   // arm it in exactly the state where it cannot work. See audio/wheelCommands.ts.
-  // The wheel, in the only vocabulary it has: two directions.
-  //
-  // Mapped onto the spoken words rather than onto new handlers, so a press and
-  // the equivalent utterance cannot drift apart. `back` is `repeat` here
-  // because there is nothing on this screen to step backwards THROUGH -- see
-  // the count drills, where it walks a number down instead.
-  useWheelCommand((command) => handleVoiceCommand(command === 'forward' ? 'yes' : 'repeat'));
+  /**
+   * Entering the count from the wheel: forward is plus one, back is minus
+   * one, quiet submits. See audio/wheelNumber.ts for why silence stands in
+   * for the confirmation the voice path gets from the word "yes".
+   *
+   * It writes through to `pendingCount` so the SCREEN shows what is standing
+   * too -- the wheel is for driving, but the drill is also used at a desk, and
+   * a proposal that existed only inside a timer would be invisible there.
+   */
+  const wheelNumber = useWheelNumber({
+    readback: (value) => sayBack(narrateReadback(value), true),
+    commit: (value) => {
+      setPendingCount(null);
+      if (phaseRef.current === 'checkpoint') handleCheckpointSubmit(value);
+      else if (countdownMode) handleTagGuess(Math.max(-1, Math.min(1, value)) as -1 | 0 | 1);
+      else handleRcSubmit(value);
+    },
+    // A countdown answer is a tag, not a count: three legal values and no
+    // others, so the readback must never offer a fourth.
+    ...(countdownMode ? { clamp: (v: number) => Math.max(-1, Math.min(1, v)) } : {}),
+  });
+
+  /**
+   * The wheel, in the only vocabulary it has: two directions.
+   *
+   * Each phase decides what a direction means, rather than every press meaning
+   * the same word. Where the drill wants a NUMBER the buttons walk one; where
+   * it wants a verdict they are the two verdicts; everywhere else forward goes
+   * on and back says it again.
+   */
+  useWheelCommand((command) => {
+    switch (phaseRef.current) {
+      case 'answering':
+      case 'checkpoint':
+        setPendingCount(wheelNumber.press(command));
+        return;
+      // "Did you have it?" -- two outcomes, two buttons, and no ambiguity
+      // about which is which.
+      case 'selfreport':
+        handleVoiceCommand(command === 'forward' ? 'yes' : 'no');
+        return;
+      default:
+        handleVoiceCommand(command === 'forward' ? 'yes' : 'repeat');
+    }
+  });
 
   const voice = useVoiceControl({
     enabled: voiceOn,
@@ -1269,11 +1340,10 @@ export function CountDrillView({
     context: 'count-drill',
   });
 
-  // A proposal belongs to one answer. Carrying it into the next run would
-  // offer the last count back as an answer to a different question.
-  useEffect(() => {
-    setPendingCount(null);
-  }, [phase]);
+  // A proposal belongs to one answer: carrying it into the next run would
+  // offer the last count back as an answer to a different question. Done in
+  // `setPhase` above rather than in an effect -- see `wheelResetRef`.
+  wheelResetRef.current = wheelNumber.reset;
 
   // Offer the next run out loud, and take the restart gap here -- the result
   // screen is the only moment in this drill that is reliably quiet, so a

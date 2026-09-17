@@ -21,6 +21,7 @@ import { loadStats, saveStats } from '../../../store/persist';
 import { enableAudioNow } from '../../audioGate';
 import { useVoiceControl } from '../../useVoiceControl';
 import { useWheelCommand } from '../../useWheelCommand';
+import { useWheelNumber } from '../../useWheelNumber';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
@@ -117,7 +118,40 @@ export function TrueCountDrillView({
   // sitting disabled and pointing at another screen -- see ui/audioGate.ts.
   onSettingsChange: (settings: Settings) => void;
 }) {
-  const [phase, setPhase] = useState<TcPhase>('setup');
+  const [phase, setPhaseState] = useState<TcPhase>('setup');
+  /**
+   * The phase, readable SYNCHRONOUSLY.
+   *
+   * The steering wheel needs this and React's render state cannot give it.
+   * A press arrives from `navigator.mediaSession`, outside React, and two
+   * presses can land in the same tick -- a double-press on the wheel, which
+   * is an ordinary human thing to do. The second one would then be handled
+   * by the closure from the render BEFORE the first press changed anything,
+   * so a press meant as "plus one" was read against the setup screen and
+   * silently restarted the drill with a new question. Eyes-free that is
+   * invisible: the count you were entering is gone and the question you are
+   * answering is not the one you heard.
+   *
+   * Writing the ref in the setter rather than in an effect is the whole
+   * point -- an effect does not run between two presses in the same tick.
+   */
+  const phaseRef = useRef<TcPhase>('setup');
+  /**
+   * Abandon a standing wheel proposal, synchronously.
+   *
+   * Held in a ref because the entry is created below this point, and called
+   * from `setPhase` rather than from an effect on `phase` -- which is where
+   * it was, and which was wrong in a way only the wheel could expose: the
+   * effect runs after React commits, so presses made in the NEW phase in the
+   * meantime were wiped by a reset belonging to the old one. Entering "plus
+   * four" immediately after the question lost all four presses.
+   */
+  const wheelResetRef = useRef<() => void>(() => {});
+  const setPhase = (next: TcPhase): void => {
+    phaseRef.current = next;
+    wheelResetRef.current();
+    setPhaseState(next);
+  };
   const [question, setQuestion] = useState<TrueCountQuestion | null>(null);
   const [wasCorrect, setWasCorrect] = useState(false);
   const [enteredValue, setEnteredValue] = useState(0);
@@ -396,18 +430,46 @@ export function TrueCountDrillView({
   };
 
 
-  // The steering wheel, mapped onto the same affirmative the microphone uses.
-  // Deliberately NOT gated on `voiceOn`: the wheel only reaches this app when
-  // the microphone is OFF (an open mic switches the car to its hands-free call
-  // route and the wheel's buttons go to that call), so gating it on voice would
-  // arm it in exactly the state where it cannot work. See audio/wheelCommands.ts.
-  // The wheel, in the only vocabulary it has: two directions.
+  /**
+   * Entering the true count from the wheel: forward is plus one, back is
+   * minus one, quiet submits (audio/wheelNumber.ts). This is the drill the
+   * wheel matters most in -- the whole answer is a small signed number, which
+   * is exactly what two buttons can say and what one affirmative cannot.
+   */
+  const wheelNumber = useWheelNumber({
+    readback: (value) => sayBack(narrateReadback(value), true),
+    commit: (value) => {
+      setPendingTc(null);
+      handleSubmit(value);
+    },
+  });
+
+  // The steering wheel. Deliberately NOT gated on `voiceOn`: the wheel only
+  // reaches this app when the microphone is OFF (an open mic switches the car
+  // to its hands-free call route and the wheel's buttons go to that call), so
+  // gating it on voice would arm it in exactly the state where it cannot work.
+  // See audio/wheelCommands.ts.
   //
-  // Mapped onto the spoken words rather than onto new handlers, so a press and
-  // the equivalent utterance cannot drift apart. `back` is `repeat` here
-  // because there is nothing on this screen to step backwards THROUGH -- see
-  // the count drills, where it walks a number down instead.
-  useWheelCommand((command) => handleVoiceCommand(command === 'forward' ? 'yes' : 'repeat'));
+  // Each phase decides what a direction means. Where an answer is due the
+  // buttons walk the number; on the self-check they are the two verdicts;
+  // elsewhere forward goes on and back says it again.
+  useWheelCommand((command) => {
+    switch (phaseRef.current) {
+      case 'answering':
+        setPendingTc(wheelNumber.press(command));
+        return;
+      case 'selfreport':
+        handleVoiceCommand(command === 'forward' ? 'yes' : 'no');
+        return;
+      default:
+        handleVoiceCommand(command === 'forward' ? 'yes' : 'repeat');
+    }
+  });
+
+  // A proposal belongs to one question: a timer armed under the last one must
+  // not submit into this one. Registered rather than run from an effect --
+  // see `wheelResetRef`.
+  wheelResetRef.current = wheelNumber.reset;
 
   const voice = useVoiceControl({
     enabled: voiceOn,

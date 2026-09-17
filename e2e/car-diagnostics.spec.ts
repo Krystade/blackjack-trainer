@@ -187,9 +187,9 @@ test('the button tester names each press and lists what never arrived', async ({
 
   // Each one is named, in plain words rather than as a raw action string.
   await expect(section.locator('.car-press-row')).toHaveCount(3);
-  await expect(section).toContainText('Skip forward. Answers yes.');
-  await expect(section).toContainText('Pause. Stops the talking.');
-  await expect(section).toContainText('Play. Ignored on purpose.');
+  await expect(section).toContainText('Skip forward. Goes FORWARD: start, answer, plus one, “I had it”.');
+  await expect(section).toContainText('Pause. Ignored — the car sends this by itself.');
+  await expect(section).toContainText('Play. Ignored — the car sends this by itself.');
 
   // And the more useful half: what this wheel never emitted.
   const unheard = section.locator('.settings-row', { hasText: 'Never arrived' });
@@ -228,7 +228,7 @@ test('a press during the test does nothing but report itself', async ({ page }) 
   const spoken = await page.evaluate(
     () => (window as unknown as { __speechLog?: string[] }).__speechLog ?? [],
   );
-  expect(spoken).toEqual(['Skip forward. Answers yes.', 'Skip back. Repeats.']);
+  expect(spoken).toEqual(['Skip forward. Goes FORWARD: start, answer, plus one, “I had it”.', 'Skip back. Goes BACK: repeat, minus one, “I missed it”.']);
 });
 
 /**
@@ -260,7 +260,7 @@ test('stopping the test restores the real mapping', async ({ page }) => {
   const spoken = await page.evaluate(
     () => (window as unknown as { __speechLog?: string[] }).__speechLog ?? [],
   );
-  expect(spoken).toEqual(['Skip back. Repeats.']);
+  expect(spoken).toEqual(['Skip back. Goes BACK: repeat, minus one, “I missed it”.']);
   await expect(section.locator('.car-press-row')).toHaveCount(1);
 });
 
@@ -289,7 +289,7 @@ test('leaving Settings mid-test releases the buttons', async ({ page }) => {
   const spoken = await page.evaluate(
     () => (window as unknown as { __speechLog?: string[] }).__speechLog ?? [],
   );
-  expect(spoken).toEqual(['Skip back. Repeats.']);
+  expect(spoken).toEqual(['Skip back. Goes BACK: repeat, minus one, “I missed it”.']);
 
   // And back in Settings the panel is idle again rather than half-running.
   await page.getByRole('button', { name: 'Settings', exact: true }).click();

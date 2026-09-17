@@ -3622,8 +3622,16 @@ details.stats-section > summary::after {
    car mount, which is the device this is for. */
 .mute-btn {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 8px);
-  right: calc(env(safe-area-inset-right, 0px) + 8px);
+  /* BOTTOM LEFT, and arrived at by rendering it rather than by reasoning:
+     top-right put it straight on top of the drill screens' Repeat button and
+     the table's End button, which the e2e suite caught as an unclickable
+     Repeat. Every bar in this app -- drill top bar, table HUD, ActionBar,
+     TabBar -- owns a full-width edge, and controls inside them are pinned to
+     the corners. The one region consistently free of controls is the left
+     side above the bottom bar, and it is thumb-reachable on a phone in a
+     mount, which the top corners are not. */
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
+  left: calc(env(safe-area-inset-left, 0px) + 8px);
   z-index: 60;
   width: 44px;
   height: 44px;

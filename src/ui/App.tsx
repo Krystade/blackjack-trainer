@@ -17,6 +17,22 @@ import type { Settings as SettingsData, Profile } from '../store/types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { startDiagnostics } from '../diag/environment';
 import { diag } from '../diag/diagnosticLog';
+import { invokeWheelCommand, type WheelCommand } from '../audio/wheelCommands';
+
+declare global {
+  interface Window {
+    /**
+     * Deliver a steering-wheel press from a test. Present only under `?e2e=1`.
+     *
+     * A real press arrives through `navigator.mediaSession`, which a page
+     * cannot trigger and Playwright cannot reach -- the car is the only thing
+     * that can send one. Without a seam the entire wheel path would be
+     * untestable end to end, which is unacceptable for the one input method
+     * that has to work with the screen unwatched.
+     */
+    __wheelPress?: (command: WheelCommand) => boolean;
+  }
+}
 
 export type Screen = 'home' | 'table' | 'drills' | 'stats' | 'settings' | 'profiles' | 'charts';
 
@@ -72,6 +88,13 @@ function App() {
   // route flipping, permission changing -- happen precisely when the voice
   // hook is NOT mounted to see them, and a log that starts when listening
   // starts cannot record why listening stopped.
+  // Test seam for the steering wheel; see Window.__wheelPress above.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!window.location.search.includes('e2e=1')) return;
+    window.__wheelPress = (command) => invokeWheelCommand(command);
+  }, []);
+
   useEffect(() => {
     startDiagnostics();
   }, []);

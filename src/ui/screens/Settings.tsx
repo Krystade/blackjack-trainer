@@ -818,10 +818,10 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
         ))}
         <div className="settings-note-row u-note">
           Leave the microphone off. Turning voice on switches the car to its hands-free
-          CALL route — which is why the app showed up as a phone call — and the
+          CALL route &mdash; which is why the app showed up as a phone call &mdash; and the
           wheel&rsquo;s buttons then go to that call, not to this app. Talking to it and
-          steering-wheel control cannot both work at once, which is why skip forward
-          answers for you: with the microphone off, the wheel is the whole loop.
+          steering-wheel control cannot both work at once, which is why the two buttons
+          can answer for you: with the microphone off, the wheel is the whole loop.
         </div>
 
         <ButtonTester onPressed={() => setEntries(readLog())} />
@@ -834,11 +834,16 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
             guess: the 2026-09-11 drive showed this car sends skip and pause on a
             press, and sends `play` on its own every time a clip ends. */}
         <div className="settings-note-row u-note">
-          Skip forward answers &ldquo;yes&rdquo; — it submits, confirms, and deals the next
-          hand, so a drill can be run from the wheel with the microphone off. Skip back
-          repeats the last thing said, and pause stops it. Play is ignored on purpose:
-          your car sends it by itself every time a clip finishes, and acting on it made
-          the question repeat without end.
+          <strong>Skip forward goes forward</strong> — start, answer, plus one, &ldquo;I had
+          it&rdquo;. <strong>Skip back goes back</strong> — say it again, minus one, &ldquo;I
+          missed it&rdquo;. Where a drill wants a number the two buttons walk it: press up
+          or down, wait, and it reads the count back and submits it. That is the whole
+          input method with the microphone off, which is the only state the wheel works in.
+        </div>
+        <div className="settings-note-row u-note">
+          Play, pause and stop do nothing on purpose. Your car sends all three by itself —
+          play every time a clip finishes, and pause unprompted — and acting on them made
+          the question repeat without end and cut prompts off mid-sentence.
         </div>
         <div className="settings-row">
           <span className="settings-label">Accepted by this phone</span>
