@@ -57,7 +57,7 @@ import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecogniti
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
-import { useVoiceToggle } from '../../voiceSession';
+import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -219,6 +219,7 @@ export function CountDrillView({
   // a toggle forgotten on every navigation is indistinguishable, in a car,
   // from a microphone that failed. See ui/voiceSession.ts.
   const [voiceOn, setVoiceOn] = useVoiceToggle('count-drill');
+  const pushToTalkOpen = usePushToTalk();
   /**
    * A spoken count, heard but not yet submitted.
    *
@@ -1313,6 +1314,22 @@ export function CountDrillView({
    * on and back says it again.
    */
   useWheelCommand((command) => {
+    // Push-to-talk mode: forward OPENS THE MICROPHONE instead of answering.
+    // A mode rather than an extra gesture -- there are two buttons and three
+    // things to say with them (see DrillSettings.wheelMode). Back still
+    // repeats, which is the one meaning worth keeping in every mode.
+    if (settings.drill.wheelMode === 'talk') {
+      if (command === 'forward') {
+        startPushToTalk('count-drill');
+        // A cue, because the window is invisible and the Bluetooth route
+        // takes a moment to flip: without it there is no way to tell
+        // "listening now" from "pressed nothing".
+        audio.ding('attention');
+      } else {
+        handleVoiceCommand('repeat');
+      }
+      return;
+    }
     switch (phaseRef.current) {
       case 'answering':
       case 'checkpoint':
@@ -1329,7 +1346,9 @@ export function CountDrillView({
   });
 
   const voice = useVoiceControl({
-    enabled: voiceOn,
+    // The push-to-talk window opens the microphone exactly as the toggle
+    // does; the only difference is that something closes it again.
+    enabled: voiceOn || pushToTalkOpen,
     onAction: handleVoiceCommand,
     onTranscript: interpretCountSpeech,
     // Eyes-free, a rejection is silence, and silence looks the same as a dead

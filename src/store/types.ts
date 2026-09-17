@@ -148,6 +148,26 @@ export interface Settings {
     // pressure applied before accuracy exists inflates in-drill scores without
     // improving retained skill.
     shotClockMs: number;
+    /**
+     * What the two steering-wheel buttons do in the car.
+     *
+     * 'answer' (default): forward and back drive the drill directly -- start,
+     * plus one, minus one, "I had it". No microphone is involved, which is
+     * the only reason the wheel works at all: opening the mic flips the car
+     * to its hands-free CALL route and every button goes to that call
+     * instead of to this app (audio/carControls.ts).
+     *
+     * 'talk': forward OPENS THE MICROPHONE for a few seconds and then closes
+     * it again -- push to talk. Requested on the grounds that saying "plus
+     * four" is one gesture where pressing it is four, which is true. The
+     * catch is the same route flip: each window costs a round trip through
+     * HFP and back, the first moment of it is deaf while the link
+     * re-negotiates, and the car's audio ducks each time. So it is a MODE
+     * rather than an addition -- with two buttons there is no third gesture
+     * to hold both meanings, and which trade is right is a thing only
+     * driving can settle.
+     */
+    wheelMode: 'answer' | 'talk';
   };
   audio: AudioSettings;
 }
@@ -268,6 +288,7 @@ export const DEFAULT_SETTINGS: Settings = {
     pacePressure: false,
     masteryDistractionFreq: 'off',
     shotClockMs: 0,
+    wheelMode: 'answer',
   },
   audio: { ...DEFAULT_AUDIO },
 };

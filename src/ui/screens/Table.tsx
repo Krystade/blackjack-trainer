@@ -36,7 +36,7 @@ import { NumPad } from '../components/NumPad';
 import { VoiceStatusBar } from '../components/VoiceStatusBar';
 import { VOICE_WORDS } from '../voiceLabels';
 import { assistedFlag } from '../peekFlag';
-import { useVoiceToggle } from '../voiceSession';
+import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
 
 type BotActionLogEntry = Game['botActionLog'][number];
 
@@ -290,6 +290,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   // a toggle forgotten on every navigation is indistinguishable, in a car,
   // from a microphone that failed. See ui/voiceSession.ts.
   const [voiceOn, setVoiceOn] = useVoiceToggle('table');
+  const pushToTalkOpen = usePushToTalk();
   const [voiceSupported] = useState(() => detectVoiceSupport().api);
   // A spoken count is a PROPOSAL until it is read back and confirmed. Holding
   // it here rather than submitting on hearing it is the whole reason numbers
@@ -507,10 +508,30 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   // the equivalent utterance cannot drift apart. `back` is `repeat` here
   // because there is nothing on this screen to step backwards THROUGH -- see
   // the count drills, where it walks a number down instead.
-  useWheelCommand((command) => handleVoiceCommand(command === 'forward' ? 'yes' : 'repeat'));
+  useWheelCommand((command) => {
+    // Push-to-talk mode: forward OPENS THE MICROPHONE instead of answering.
+    // A mode rather than an extra gesture -- there are two buttons and three
+    // things to say with them (see DrillSettings.wheelMode). Back still
+    // repeats, which is the one meaning worth keeping in every mode.
+    if (settings.drill.wheelMode === 'talk') {
+      if (command === 'forward') {
+        startPushToTalk('table');
+        // A cue, because the window is invisible and the Bluetooth route
+        // takes a moment to flip: without it there is no way to tell
+        // "listening now" from "pressed nothing".
+        audio.ding('attention');
+      } else {
+        handleVoiceCommand('repeat');
+      }
+      return;
+    }
+    handleVoiceCommand(command === 'forward' ? 'yes' : 'repeat');
+  });
 
   const voice = useVoiceControl({
-    enabled: voiceOn,
+    // The push-to-talk window opens the microphone exactly as the toggle
+    // does; the only difference is that something closes it again.
+    enabled: voiceOn || pushToTalkOpen,
     onAction: handleVoiceCommand,
     onTranscript: interpretCountSpeech,
     // Eyes-free, a rejection is silence, and silence looks the same as a dead

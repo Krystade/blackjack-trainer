@@ -166,3 +166,57 @@ test('the count drill takes a running count from the wheel too', async ({ page }
     .toContain('minus 2. Correct?');
   await expect(page.locator('.drill-result')).toBeVisible({ timeout: 6000 });
 });
+
+/* ---------------------------------------------------------------------- */
+/* Push to talk                                                            */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * The other thing two buttons can do: open the microphone instead of
+ * answering. It is a MODE, because there is no third gesture -- a fast double
+ * press cannot mean "talk" when two quick forwards already mean "plus two".
+ */
+test('in talk mode, forward opens the microphone and closes it again', async ({ page }) => {
+  await withSettings(page, {
+    audio: { enabled: true },
+    drill: { wheelMode: 'talk' },
+  });
+  await openTrueCountDrill(page);
+
+  await press(page, 'forward');
+  // The window is open and the drill did NOT advance -- that is the whole
+  // difference between the two modes, and the failure worth catching is a
+  // press that does both.
+  await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeVisible();
+  // The diagnostic log buffers for a second before it writes, so this polls
+  // rather than reads once.
+  await expect
+    .poll(
+      async () =>
+        await page.evaluate(() =>
+          (
+            JSON.parse(
+              localStorage.getItem('bjtrainer.diagnostics.v1') ?? '[]',
+            ) as { event: string }[]
+          ).some((e) => e.event === 'ptt-open'),
+        ),
+      { timeout: 4000 },
+    )
+    .toBe(true);
+});
+
+test('in answer mode, forward answers and never opens the microphone', async ({ page }) => {
+  await withSettings(page, { audio: { enabled: true }, drill: { wheelMode: 'answer' } });
+  await openTrueCountDrill(page);
+
+  await press(page, 'forward');
+  await expect(page.getByText('Enter the true count')).toBeVisible();
+  // Waited past the log's flush delay, so this is an absence rather than a
+  // race: the test above proves the same read SEES the event when it happens.
+  await page.waitForTimeout(1500);
+  const opened = await page.evaluate(() =>
+    (JSON.parse(localStorage.getItem('bjtrainer.diagnostics.v1') ?? '[]') as { event: string }[])
+      .some((e) => e.event === 'ptt-open'),
+  );
+  expect(opened).toBe(false);
+});

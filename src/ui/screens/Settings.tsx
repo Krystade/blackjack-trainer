@@ -25,6 +25,7 @@ import type { ButtonPress, ButtonTesterHandle } from '../../audio/buttonTester';
 import { MEDIA_SESSION_LABEL } from '../../audio/mediaSession';
 import type { MediaSessionAction } from '../../audio/mediaSession';
 import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
+import { PUSH_TO_TALK_MS } from '../voiceSession';
 import { detectVoiceSupport } from '../../audio/voiceRecognition';
 import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
 import {
@@ -642,7 +643,11 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           </div>
       </CollapsibleSection>
 
-      <CarDiagnostics audio={settings.audio} />
+      <CarDiagnostics
+        audio={settings.audio}
+        wheelMode={settings.drill.wheelMode}
+        onWheelMode={(wheelMode) => updateDrill({ wheelMode })}
+      />
 
       <VoiceProbePanel />
       <VoiceHistoryPanel />
@@ -775,7 +780,15 @@ function ButtonTester({ onPressed }: { onPressed: () => void }) {
  * Deliberately last in Settings and empty-by-default: it is diagnostic, not
  * a control, and it says nothing at all until there is something to report.
  */
-function CarDiagnostics({ audio }: { audio: AudioSettings }) {
+function CarDiagnostics({
+  audio,
+  wheelMode,
+  onWheelMode,
+}: {
+  audio: AudioSettings;
+  wheelMode: 'answer' | 'talk';
+  onWheelMode: (mode: 'answer' | 'talk') => void;
+}) {
   const [entries, setEntries] = useState<LogEntry[]>(() => readLog());
   const [shown, setShown] = useState(false);
   const blockers = carControlsBlockers(audio);
@@ -823,6 +836,35 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
           steering-wheel control cannot both work at once, which is why the two buttons
           can answer for you: with the microphone off, the wheel is the whole loop.
         </div>
+
+        {/* The one real choice the wheel offers, and it is a choice because
+            there are two buttons and three things worth doing with them. */}
+        <div className="settings-row">
+          <span className="settings-label">The two wheel buttons</span>
+          <Segmented
+            options={[
+              { value: 'answer', label: 'Answer' },
+              { value: 'talk', label: 'Open mic' },
+            ]}
+            value={wheelMode}
+            onChange={onWheelMode}
+          />
+        </div>
+        {wheelMode === 'answer' ? (
+          <div className="settings-note-row u-note">
+            Forward and back drive the drill with no microphone at all — which is the
+            only state the wheel works in, so nothing can take it away mid-session.
+          </div>
+        ) : (
+          <div className="settings-note-row u-note">
+            Forward opens the microphone for {Math.round(PUSH_TO_TALK_MS / 1000)} seconds and
+            then closes it again; back still repeats. Saying &ldquo;plus four&rdquo; is one
+            gesture where pressing it is four — but every window costs a round trip through
+            the car&rsquo;s hands-free route, the first moment of it is deaf while the link
+            flips, and the buttons cannot be reached at all until it closes. A chime marks
+            the window opening. Worth a drive to find out which you prefer.
+          </div>
+        )}
 
         <ButtonTester onPressed={() => setEntries(readLog())} />
 

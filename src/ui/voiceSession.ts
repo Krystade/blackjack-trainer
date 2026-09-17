@@ -97,5 +97,91 @@ export function useVoiceToggle(context: string): [boolean, (on: boolean) => void
 export function _resetVoiceSessionForTest(): void {
   voiceOn = false;
   micWorked = false;
+  endPushToTalk();
   listeners.clear();
+}
+
+/* ---------------------------------------------------------------------- */
+/* Push to talk                                                            */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * How long the microphone stays open for one wheel press.
+ *
+ * NOT the two seconds the request guessed at, and the difference is the
+ * Bluetooth link rather than the speaking. Opening the microphone flips the
+ * car from A2DP to HFP, and that re-negotiation is not instant -- the first
+ * stretch of the window is deaf while the route settles, and a two-second
+ * window would spend most of itself on the handshake and close again before
+ * the count arrived. Five gives a real second or two of listening after the
+ * link is up, which is all "plus four" needs.
+ *
+ * It is a window rather than a toggle for the reason the wheel exists at all:
+ * while the microphone is open the car owns the buttons, so a second press
+ * cannot reach the app to close it. The only thing that can end the window is
+ * the app itself.
+ */
+export const PUSH_TO_TALK_MS = 5000;
+
+let talkingUntil: number | null = null;
+let talkHandle: ReturnType<typeof setTimeout> | null = null;
+
+/** Whether the push-to-talk window is currently open. */
+export function isPushToTalkOpen(): boolean {
+  return talkingUntil !== null;
+}
+
+/**
+ * Open the microphone for one window, restarting it if one is already open.
+ *
+ * Restarting rather than ignoring: pressing again while it is listening is
+ * someone asking for more time, and the alternative -- the window closing
+ * under a sentence because it began before the press -- is the failure this
+ * whole feature exists to avoid.
+ */
+export function startPushToTalk(context: string): void {
+  const restarted = talkingUntil !== null;
+  talkingUntil = Date.now() + PUSH_TO_TALK_MS;
+  diag('mic', restarted ? 'ptt-extend' : 'ptt-open', { context, forMs: PUSH_TO_TALK_MS });
+  if (talkHandle !== null) clearTimeout(talkHandle);
+  talkHandle = setTimeout(() => {
+    talkHandle = null;
+    talkingUntil = null;
+    diag('mic', 'ptt-close', { context });
+    notify();
+  }, PUSH_TO_TALK_MS);
+  notify();
+}
+
+/** Close it now -- a screen being left, or an answer already heard. */
+export function endPushToTalk(): void {
+  if (talkHandle !== null) {
+    clearTimeout(talkHandle);
+    talkHandle = null;
+  }
+  if (talkingUntil === null) return;
+  talkingUntil = null;
+  diag('mic', 'ptt-close', { reason: 'done' });
+  notify();
+}
+
+/**
+ * The push-to-talk window as a screen sees it.
+ *
+ * Shares `listeners` with the voice toggle deliberately: both answer the same
+ * question -- should this screen's microphone be open right now -- and a
+ * screen that subscribed to one and not the other would hold the microphone
+ * open after the window closed.
+ */
+export function usePushToTalk(): boolean {
+  const [open, setOpen] = useState(isPushToTalkOpen());
+  useEffect(() => {
+    const sync = () => setOpen(isPushToTalkOpen());
+    listeners.add(sync);
+    sync();
+    return () => {
+      listeners.delete(sync);
+    };
+  }, []);
+  return open;
 }
