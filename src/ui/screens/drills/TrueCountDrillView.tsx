@@ -30,6 +30,7 @@ import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
+import { useEyesFreeToggle } from '../../eyesFreeSession';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -151,7 +152,7 @@ export function TrueCountDrillView({
 
   // Eyes-free audio: local UI state, not persisted -- per-session choices
   // scoped to this drill screen, matching CountDrillView's precedent.
-  const [eyesFree, setEyesFree] = useState(false);
+  const [eyesFree, setEyesFree] = useEyesFreeToggle('true-count-drill');
   const [strictMode, setStrictMode] = useState(false);
   /**
    * Keep asking without being asked to.

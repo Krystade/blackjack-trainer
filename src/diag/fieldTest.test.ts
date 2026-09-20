@@ -4,7 +4,10 @@ import {
   FIELD_TEST_STEPS,
   DEFAULT_FIELD_TEST_CONDITION,
   stampFieldTest,
+  applyFieldTestSetup,
+  describeFieldTestSetup,
 } from './fieldTest';
+import type { Settings } from '../store/types';
 import { readDiagnosticLog, clearDiagnosticLog } from './diagnosticLog';
 
 describe('the protocol itself', () => {
@@ -73,5 +76,124 @@ describe('stamping an intent', () => {
       .filter((e) => e.category === 'test')
       .map((e) => e.detail?.condition);
     expect(conditions).toEqual(['car', 'speakerphone']);
+  });
+});
+
+describe('a step that sets itself up', () => {
+  /**
+   * The complaint this answers, in full: "I need it to set the settings"
+   * (2026-09-19). A step whose preconditions are only DESCRIBED gets run
+   * under the wrong ones, and a run under the wrong preconditions is
+   * indistinguishable in the log from a correct one.
+   */
+  it('turns on everything the wheel needs, which is the point of the protocol', () => {
+    const step = FIELD_TEST_STEPS.find((s) => s.id === 'press-forward')!;
+    expect(step.setup).toBeDefined();
+    expect(step.setup?.audioEnabled).toBe(true);
+    // Without clips there is no media element, so no wheel button can reach
+    // the app at all -- see audio/carControls.ts. A wheel step run with live
+    // TTS proves nothing.
+    expect(step.setup?.useClips).toBe(true);
+    // And the microphone flips the car to its hands-free route, which takes
+    // the wheel away.
+    expect(step.setup?.voice).toBe(false);
+  });
+
+  /**
+   * Eyes-free is the switch that decides whether the app speaks at all, and
+   * it used to live inside each drill's own React state -- unreachable from
+   * here. A step-one that turned audio on and left this off would be a silent
+   * step one, and every step below it would be measuring nothing.
+   */
+  it('turns on the toggle that actually makes a drill speak', () => {
+    const step = FIELD_TEST_STEPS.find((s) => s.id === 'audio-out')!;
+    expect(step.setup?.eyesFree).toBe(true);
+  });
+
+  it('opens the microphone only for the steps that are about the microphone', () => {
+    const wantsMic = FIELD_TEST_STEPS.filter((s) => s.setup?.voice === true).map((s) => s.id);
+    expect(wantsMic).toEqual(['spoke', 'spoke-over', 'wheel-after-mic']);
+  });
+
+  it('applies exactly what a step asked for and nothing else', () => {
+    const base = {
+      theme: 'dark',
+      drill: { wheelMode: 'talk', shotClockMs: 4000 },
+      audio: { enabled: false, useClips: false, muted: true, volume: 0.7 },
+    } as unknown as Settings;
+
+    const next = applyFieldTestSetup(base, {
+      audioEnabled: true,
+      useClips: true,
+      muted: false,
+      wheelMode: 'answer',
+    });
+
+    expect(next.audio.enabled).toBe(true);
+    expect(next.audio.useClips).toBe(true);
+    expect(next.audio.muted).toBe(false);
+    expect(next.drill.wheelMode).toBe('answer');
+    // Untouched settings survive: this runs mid-session over whatever the
+    // operator had, and a protocol that reset their volume would be its own
+    // little disaster in a moving car.
+    expect(next.audio.volume).toBe(0.7);
+    expect(next.drill.shotClockMs).toBe(4000);
+    expect(next.theme).toBe('dark');
+  });
+
+  it('leaves a setting alone when the step did not name it', () => {
+    const base = {
+      drill: { wheelMode: 'talk' },
+      audio: { enabled: false, useClips: true, muted: true },
+    } as unknown as Settings;
+
+    const next = applyFieldTestSetup(base, { audioEnabled: true });
+
+    expect(next.audio.enabled).toBe(true);
+    expect(next.audio.muted).toBe(true);
+    expect(next.audio.useClips).toBe(true);
+    expect(next.drill.wheelMode).toBe('talk');
+  });
+
+  it('changes nothing at all for a step with no setup', () => {
+    const base = { audio: { enabled: false } } as unknown as Settings;
+    expect(applyFieldTestSetup(base, undefined)).toBe(base);
+  });
+
+  /**
+   * The operator has to be able to tell "the app set this" from "the app
+   * assumed this", or a run under the wrong settings looks exactly like a
+   * correct one.
+   */
+  it('says out loud what it changed', () => {
+    const text = describeFieldTestSetup({ audioEnabled: true, useClips: true, voice: false });
+    expect(text).toContain('audio on');
+    expect(text).toContain('recorded voice on');
+    expect(text).toContain('microphone OFF');
+  });
+
+  it('distinguishes a microphone it opened from one it shut', () => {
+    expect(describeFieldTestSetup({ voice: true })).toContain('microphone ON');
+    expect(describeFieldTestSetup({ voice: false })).toContain('microphone OFF');
+  });
+
+  it('says so plainly when a step changes nothing', () => {
+    expect(describeFieldTestSetup(undefined)).toMatch(/Nothing changed/);
+  });
+});
+
+describe('the gap the 2026-09-19 drive found', () => {
+  /**
+   * "Buttons worked only when the bot was talking." That is the app losing
+   * the phone's now-playing slot the moment a clip ends (audio/audioFocus.ts).
+   * A protocol that only ever presses the wheel DURING speech cannot tell the
+   * difference between fixed and still broken, so the silent press is its own
+   * step, and it comes after the two that press during speech.
+   */
+  it('presses the wheel in silence as well as during speech', () => {
+    const order = FIELD_TEST_STEPS.map((s) => s.id);
+    expect(order).toContain('wheel-gap');
+    expect(order.indexOf('wheel-gap')).toBeGreaterThan(order.indexOf('press-forward'));
+    expect(order.indexOf('wheel-gap')).toBeLessThan(order.indexOf('spoke'));
   });
 });

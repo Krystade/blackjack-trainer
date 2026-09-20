@@ -59,6 +59,7 @@ import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
+import { useEyesFreeToggle } from '../../eyesFreeSession';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -206,7 +207,7 @@ export function CountDrillView({
 
   // Eyes-free audio (Task 7): toggles are local UI state, not persisted
   // settings -- they're per-session choices scoped to this drill screen.
-  const [eyesFree, setEyesFree] = useState(false);
+  const [eyesFree, setEyesFree] = useEyesFreeToggle('count-drill');
   const [strictMode, setStrictMode] = useState(false);
   // True when the just-finished 'result' came from the honor-system
   // self-check path (spoken answer, no keypad) rather than a graded entry --

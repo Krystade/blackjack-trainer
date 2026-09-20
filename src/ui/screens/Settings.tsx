@@ -25,11 +25,14 @@ import type { ButtonPress, ButtonTesterHandle } from '../../audio/buttonTester';
 import { MEDIA_SESSION_LABEL } from '../../audio/mediaSession';
 import type { MediaSessionAction } from '../../audio/mediaSession';
 import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
+import { FIELD_TEST_CONDITIONS, FIELD_TEST_STEPS } from '../../diag/fieldTest';
 import {
-  FIELD_TEST_CONDITIONS,
-  FIELD_TEST_STEPS,
-  DEFAULT_FIELD_TEST_CONDITION,
-  stampFieldTest } from '../../diag/fieldTest';
+  readFieldTestRun,
+  subscribeFieldTestRun,
+  startFieldTestRun,
+  stopFieldTestRun,
+  setFieldTestCondition,
+} from '../../diag/fieldTestRun';
 import { PUSH_TO_TALK_MS } from '../voiceSession';
 import { detectVoiceSupport } from '../../audio/voiceRecognition';
 import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
@@ -664,40 +667,41 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
 }
 
 /**
- * The field-test protocol, with a button per step that stamps the log.
+ * The field-test protocol's starting gate.
  *
- * The missing half of every diagnostic in this app: what the operator was
- * TRYING to do. See diag/fieldTest.ts for why that is what makes the rest of
- * the log readable, and why the protocol is explicitly a parked one.
+ * THE STEPS ARE NOT HERE ANY MORE, and that is the fix. They were, and
+ * following them meant walking back to this screen after every one -- because
+ * every step has to be performed somewhere this screen is not -- which threw
+ * the run away each time. The first real run stopped after four steps
+ * (2026-09-19): "I need it to set the settings and maybe have a pop up that
+ * follows me into the testing. Can’t have to go back and forth and have it
+ * reset all progress."
  *
- * Stateless beyond the chosen condition and a per-step tick. The tick is not
- * a record -- the log is the record -- it is there so a step done at a red
- * light is visibly done when you look back at the screen.
+ * So this picks the route and starts the run; ui/components/FieldTestHud.tsx
+ * is what you actually follow, floating over whatever screen the step needs,
+ * and diag/fieldTestRun.ts is where the progress lives so that navigating --
+ * or being reloaded mid-run -- costs nothing.
  */
 function FieldTestPanel() {
-  const [condition, setCondition] = useState(DEFAULT_FIELD_TEST_CONDITION);
-  const [stamped, setStamped] = useState<Record<string, number>>({});
-  const active = FIELD_TEST_CONDITIONS.find((c) => c.id === condition) ?? FIELD_TEST_CONDITIONS[0];
+  const [run, setRun] = useState(() => readFieldTestRun());
+  useEffect(() => subscribeFieldTestRun(() => setRun(readFieldTestRun())), []);
+  const active = FIELD_TEST_CONDITIONS.find((c) => c.id === run.condition) ?? FIELD_TEST_CONDITIONS[0];
 
   return (
     <CollapsibleSection title={<>Field test</>} defaultOpen={false}>
       <div className="settings-note-row u-note">
         Run this parked, with the engine on and the phone connected exactly as it would be on a
-        drive. Each step has a button that writes what you MEANT into the diagnostic log, so the
-        log can be read against your intent instead of guessed at. Then send the log.
+        drive. Pick the route, press start, and the panel follows you from screen to screen — it
+        sets each step up for you and writes what you MEANT into the diagnostic log, so the log can
+        be read against your intent instead of guessed at. Then send the log.
       </div>
 
       <div className="settings-row">
         <span className="settings-label">Condition</span>
         <Segmented
-          value={condition}
+          value={run.condition}
           options={FIELD_TEST_CONDITIONS.map((c) => ({ value: c.id, label: c.label }))}
-          onChange={(value) => {
-            setCondition(value);
-            // Clear the ticks: the same step under a new condition is a new
-            // measurement, and a tick carried over reads as already done.
-            setStamped({});
-          }}
+          onChange={(value) => setFieldTestCondition(value)}
         />
       </div>
       <div className="settings-note-row u-note">
@@ -706,23 +710,34 @@ function FieldTestPanel() {
         <strong>Proves:</strong> {active.proves}
       </div>
 
+      {run.active ? (
+        <button
+          type="button"
+          className="fieldtest-stamp"
+          data-testid="fieldtest-stop"
+          onClick={() => stopFieldTestRun()}
+        >
+          Stop the field test (step {run.stepIndex + 1} of {FIELD_TEST_STEPS.length})
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="fieldtest-stamp"
+          data-testid="fieldtest-start"
+          onClick={() => startFieldTestRun(run.condition)}
+        >
+          Start the field test — {FIELD_TEST_STEPS.length} steps
+        </button>
+      )}
+
       <ol className="fieldtest-steps">
         {FIELD_TEST_STEPS.map((step, i) => (
           <li className="fieldtest-step" key={step.id}>
-            <div className="fieldtest-instruction">{step.instruction}</div>
+            <div className="fieldtest-instruction">
+              {i + 1}. {step.instruction}
+              {run.stamps[step.id] ? ' ✓' : ''}
+            </div>
             <div className="fieldtest-expect u-note">Look for: {step.expect}</div>
-            <button
-              type="button"
-              className="fieldtest-stamp"
-              data-testid={`fieldtest-stamp-${step.id}`}
-              onClick={() => {
-                stampFieldTest(step.id, condition);
-                setStamped((prev) => ({ ...prev, [step.id]: (prev[step.id] ?? 0) + 1 }));
-              }}
-            >
-              {i + 1}. {step.stamp}
-              {stamped[step.id] ? (stamped[step.id] > 1 ? ` ✓ ×${stamped[step.id]}` : ' ✓') : ''}
-            </button>
           </li>
         ))}
       </ol>

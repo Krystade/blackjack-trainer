@@ -9,6 +9,7 @@ import { ProfileEditor } from './screens/ProfileEditor';
 import { Charts } from './screens/Charts';
 import { TabBar } from './components/TabBar';
 import { MuteButton } from './components/MuteButton';
+import { FieldTestHud } from './components/FieldTestHud';
 import { loadSettings } from '../store/persist';
 import { applyTheme, normalizeTheme } from './theme';
 import { getActiveProfile } from '../store/profiles';
@@ -18,6 +19,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { startDiagnostics } from '../diag/environment';
 import { diag } from '../diag/diagnosticLog';
 import { invokeWheelCommand, type WheelCommand } from '../audio/wheelCommands';
+import { releaseAudioFocus } from '../audio/audioFocus';
 
 declare global {
   interface Window {
@@ -98,6 +100,19 @@ function App() {
   useEffect(() => {
     startDiagnostics();
   }, []);
+
+  // Give the car's media slot back when there is nothing here to control.
+  //
+  // The drills hold it for as long as they might speak, so a wheel press in
+  // the SILENCE between prompts still reaches the app (audio/audioFocus.ts --
+  // that gap is where the 2026-09-19 drive found the buttons dead). But a
+  // silent loop that ran forever would keep the wheel pointed at a trainer
+  // the operator left twenty minutes ago, so the moment there is no screen
+  // here that speaks, the hold goes back.
+  useEffect(() => {
+    const speaks = screen === 'drills' || screen === 'table';
+    if (!speaks || !settings.audio.enabled) releaseAudioFocus('speech');
+  }, [screen, settings.audio.enabled]);
 
   // Cross-tab safety. Every store here writes a WHOLE blob, and each tab keeps
   // its own copy in React state -- so a second tab drilling against a snapshot
@@ -220,6 +235,16 @@ function App() {
           app has to work on the immersive screens that stand the tab bar
           down, and on a screen that has just crashed. */}
       <MuteButton settings={settings} onSettingsChange={setSettings} />
+      {/* Same placement argument as the mute button, and a stronger one: every
+          step of the field-test protocol has to be performed on a screen the
+          protocol is not, so a panel that lived on one screen could not be
+          followed at all. See components/FieldTestHud.tsx. */}
+      <FieldTestHud
+        settings={settings}
+        onSettingsChange={setSettings}
+        screen={screen}
+        onNavigate={navigate}
+      />
       <TabBar current={screen} onNavigate={navigate} />
     </>
   );

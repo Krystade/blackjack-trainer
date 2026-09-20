@@ -29,6 +29,7 @@ import { getSharedAudioContext, _resetSharedAudioContextForTest } from './audioC
 // Re-exported: existing specs import this reset helper from speech.ts.
 export { _resetSharedAudioContextForTest };
 import { initMediaSession, setNowPlaying, setPlaybackState } from './mediaSession';
+import { holdAudioFocus } from './audioFocus';
 import { invokeWheelCommand } from './wheelCommands';
 
 declare global {
@@ -462,6 +463,20 @@ export function speak(
  */
 function announceToMediaSession(text: string): void {
   ensureMediaSessionHandlers();
+  // Hold the media slot BETWEEN clips, not merely during one.
+  //
+  // Registering handlers is not what makes the wheel work: a phone routes a
+  // transport button to whoever it currently considers the active media app,
+  // and that status comes from an element that is actually playing. A clip
+  // ends, the element goes idle, and the next press goes to the radio. The
+  // drive of 2026-09-19 reported exactly that -- "buttons worked only when
+  // the bot was talking" -- which was not a mapping problem at all.
+  //
+  // Placed here because this is the one point in the app that is guaranteed
+  // to be inside a real media context: a clip is playing, so the engine is
+  // unlocked and `play()` on the silent element will be allowed. Called for
+  // every utterance and idempotent after the first (audio/audioFocus.ts).
+  holdAudioFocus('speech');
   setNowPlaying(text, (import.meta.env.BASE_URL as string | undefined) ?? '');
   setPlaybackState('playing');
 }

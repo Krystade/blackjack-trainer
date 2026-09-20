@@ -5,6 +5,7 @@ import {
   MEDIA_SESSION_ACTIONS,
   _resetMediaSessionForTest,
 } from './mediaSession';
+import { _resetAudioFocusForTest } from './audioFocus';
 
 /**
  * The tester's two jobs, and neither is obvious from its size.
@@ -103,12 +104,17 @@ function actionMap(): Map<string, () => void> {
 beforeEach(() => {
   created.length = 0;
   _resetMediaSessionForTest();
+  // The hold now lives in a module that caches its element across callers
+  // (audio/audioFocus.ts), so a test that did not clear it would inherit the
+  // previous test's element and count zero new ones.
+  _resetAudioFocusForTest();
   installFakeAudio();
   (globalThis as unknown as { localStorage?: unknown }).localStorage = undefined;
 });
 
 afterEach(() => {
   _resetMediaSessionForTest();
+  _resetAudioFocusForTest();
   delete (globalThis as unknown as { window?: unknown }).window;
   setNavigator(undefined);
 });

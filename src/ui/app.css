@@ -3753,3 +3753,149 @@ details.stats-section > summary::after {
   max-width: 100%;
   text-align: left;
 }
+
+/* The floating field-test panel (ui/components/FieldTestHud.tsx).
+
+   TOP, not bottom, and that is the one placement decision here. The bottom
+   edge is already three-deep on the drill screens -- TabBar, ActionBar/ZonePad,
+   and the mute button at bottom-left -- and a step that says "press skip-back
+   now" cannot also be covering the control you would otherwise reach for. The
+   top edge carries a drill's own title bar, which this does cover; that is
+   what the collapse is for, and why collapsed it is a single line.
+
+   Above everything (z-index 70, one over the mute button) because it is the
+   thing being followed. A protocol you have to hunt for behind a drill is the
+   protocol that got abandoned four steps in. */
+.fieldtest-hud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 70;
+  background: var(--raised, #1c1c1e);
+  border-bottom: 2px solid var(--accent, #4a90d9);
+  padding: calc(env(safe-area-inset-top, 0px) + 6px) 10px 8px;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 35%);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.fieldtest-hud-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fieldtest-hud-toggle {
+  flex: 1;
+  min-height: 32px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.fieldtest-hud-condition {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.fieldtest-hud-end {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fieldtest-hud-body {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldtest-hud-instruction {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.fieldtest-hud-setup {
+  margin: 0;
+  font-size: 12px;
+  color: var(--accent, #4a90d9);
+}
+
+.fieldtest-hud-expect {
+  margin: 0;
+  font-size: 12px;
+}
+
+.fieldtest-hud-go {
+  margin-top: 4px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--accent, #4a90d9);
+  background: transparent;
+  color: var(--accent, #4a90d9);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* The stamp is the only control here that gets pressed without being read, so
+   it takes the width and the other two take the corners. */
+.fieldtest-hud-actions {
+  margin-top: 8px;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.fieldtest-hud-stamp {
+  flex: 1;
+  min-height: 48px;
+  border-radius: 10px;
+  border: 1px solid var(--accent, #4a90d9);
+  background: var(--accent, #4a90d9);
+  color: var(--accent-ink, #fff);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  padding: 8px 10px;
+}
+
+.fieldtest-hud-nav {
+  min-width: 64px;
+  min-height: 48px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fieldtest-hud-nav:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* While a field test is running, the page starts below the panel rather than
+   under it. The height is measured and published by FieldTestHud (it depends
+   on the step's text, whether it is collapsed, and the safe-area inset), and
+   only fixed furniture -- tab bar, mute button -- ignores it, which is right:
+   those own the bottom edge. */
+:root[data-fieldtest='on'] #root {
+  padding-top: var(--fieldtest-h, 0px);
+}

@@ -35,6 +35,7 @@ import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
+import { useEyesFreeToggle } from '../../eyesFreeSession';
 import {
   depthTolerance,
   formatDepthSlack,
@@ -128,7 +129,7 @@ export function ProduceTcDrillView({
   const [honorCheck, setHonorCheck] = useState(false);
   const runIdRef = useRef(0);
 
-  const [eyesFree, setEyesFree] = useState(false);
+  const [eyesFree, setEyesFree] = useEyesFreeToggle('produce-tc-drill');
   const [strictMode, setStrictMode] = useState(false);
   /**
    * Keep asking without being asked to.

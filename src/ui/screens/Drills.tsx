@@ -64,6 +64,7 @@ import { MasteryChallengeView } from './drills/MasteryChallengeView';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
 import { enableAudioNow } from '../audioGate';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
+import { useEyesFreeToggle } from '../eyesFreeSession';
 import { useWheelCommand } from '../useWheelCommand';
 
 interface DrillsProps {
@@ -187,9 +188,11 @@ function FlashcardsView({
   const [showChart, setShowChart] = useState(false);
   const audio = useAudio(settings.audio);
 
-  // Eyes-free audio (Task 9): local UI state, not persisted, per the
-  // CountDrillView precedent (a per-session choice scoped to this screen).
-  const [eyesFree, setEyesFree] = useState(false);
+  // Eyes-free audio (Task 9): a per-session choice, shared across screens for
+  // the life of this page load (ui/eyesFreeSession.ts) rather than owned by
+  // each drill -- it used to reset on every navigation, which in a car reads
+  // as the app having gone silent for no reason.
+  const [eyesFree, setEyesFree] = useEyesFreeToggle('flashcards');
   // Voice input. Per-session like eyes-free, and deliberately NOT persisted:
   // a setting that survives a reload would open the microphone on load, which
   // browsers refuse without a gesture anyway and which nobody should have to
@@ -1014,9 +1017,11 @@ function DeviationQuizView({
   const [showChart, setShowChart] = useState(false);
   const audio = useAudio(settings.audio);
 
-  // Eyes-free audio (Task 9): local UI state, not persisted, per the
-  // CountDrillView precedent (a per-session choice scoped to this screen).
-  const [eyesFree, setEyesFree] = useState(false);
+  // Eyes-free audio (Task 9): a per-session choice, shared across screens for
+  // the life of this page load (ui/eyesFreeSession.ts) rather than owned by
+  // each drill -- it used to reset on every navigation, which in a car reads
+  // as the app having gone silent for no reason.
+  const [eyesFree, setEyesFree] = useEyesFreeToggle('deviation-quiz');
   // Bumped every time a new item is drawn so a stale auto-advance timer
   // from a previous item can recognize itself as stale and no-op, even
   // though its own effect cleanup already clears it on unmount/early exit.
@@ -1612,7 +1617,7 @@ function MixedSessionView({
   const [showChart, setShowChart] = useState(false);
   const audio = useAudio(settings.audio);
 
-  const [eyesFree, setEyesFree] = useState(false);
+  const [eyesFree, setEyesFree] = useEyesFreeToggle('mixed-session');
   const runIdRef = useRef(0);
   const advanceTimerRef = useRef<number | null>(null);
   const promptShownAtRef = useRef(performance.now());
