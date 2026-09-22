@@ -25,7 +25,7 @@ import type { ButtonPress, ButtonTesterHandle } from '../../audio/buttonTester';
 import { MEDIA_SESSION_LABEL } from '../../audio/mediaSession';
 import type { MediaSessionAction } from '../../audio/mediaSession';
 import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
-import { FIELD_TEST_CONDITIONS, FIELD_TEST_STEPS } from '../../diag/fieldTest';
+import { FIELD_TEST_CONDITIONS, stepsForCondition } from '../../diag/fieldTest';
 import {
   readFieldTestRun,
   subscribeFieldTestRun,
@@ -686,14 +686,19 @@ function FieldTestPanel() {
   const [run, setRun] = useState(() => readFieldTestRun());
   useEffect(() => subscribeFieldTestRun(() => setRun(readFieldTestRun())), []);
   const active = FIELD_TEST_CONDITIONS.find((c) => c.id === run.condition) ?? FIELD_TEST_CONDITIONS[0];
+  const steps = stepsForCondition(active.id);
 
   return (
     <CollapsibleSection title={<>Field test</>} defaultOpen={false}>
       <div className="settings-note-row u-note">
-        Run this parked, with the engine on and the phone connected exactly as it would be on a
-        drive. Pick the route, press start, and the panel follows you from screen to screen — it
-        sets each step up for you and writes what you MEANT into the diagnostic log, so the log can
-        be read against your intent instead of guessed at. Then send the log.
+        Two runs, and they answer different questions. The <strong>parked</strong> ones carry the
+        wheel steps: which button reaches the app, and whether it still reaches it in the gaps
+        between prompts. None of that depends on road noise, and all of it needs both hands. The{' '}
+        <strong>driving</strong> ones carry only what a driveway cannot produce — whether you can
+        hear the app over the road, and whether it can hear you — and are kept short on purpose,
+        because every step ends in tapping this screen. Pick the route, press start, and the panel
+        follows you from screen to screen, setting each step up and writing what you MEANT into the
+        diagnostic log. Then send the log.
       </div>
 
       <div className="settings-row">
@@ -717,7 +722,7 @@ function FieldTestPanel() {
           data-testid="fieldtest-stop"
           onClick={() => stopFieldTestRun()}
         >
-          Stop the field test (step {run.stepIndex + 1} of {FIELD_TEST_STEPS.length})
+          Stop the field test (step {run.stepIndex + 1} of {steps.length})
         </button>
       ) : (
         <button
@@ -726,12 +731,12 @@ function FieldTestPanel() {
           data-testid="fieldtest-start"
           onClick={() => startFieldTestRun(run.condition)}
         >
-          Start the field test — {FIELD_TEST_STEPS.length} steps
+          Start the field test — {steps.length} steps, {active.motion}
         </button>
       )}
 
       <ol className="fieldtest-steps">
-        {FIELD_TEST_STEPS.map((step, i) => (
+        {steps.map((step, i) => (
           <li className="fieldtest-step" key={step.id}>
             <div className="fieldtest-instruction">
               {i + 1}. {step.instruction}

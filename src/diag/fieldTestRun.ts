@@ -21,7 +21,7 @@
  * here opens a microphone -- the panel does that, per step, from a tap.
  */
 
-import { DEFAULT_FIELD_TEST_CONDITION, FIELD_TEST_STEPS } from './fieldTest';
+import { DEFAULT_FIELD_TEST_CONDITION, stepsForCondition } from './fieldTest';
 
 const STORAGE_KEY = 'bjtrainer.fieldTestRun.v1';
 
@@ -59,6 +59,11 @@ function storage(): Storage | null {
  * 9 and rendering nothing at all, which from the car is the panel having
  * vanished.
  */
+/** Hold an index inside the step list the given condition actually has. */
+function clampToRun(index: number, condition: string): number {
+  return Math.min(Math.max(index, 0), stepsForCondition(condition).length - 1);
+}
+
 function coerce(raw: unknown): FieldTestRun {
   if (typeof raw !== 'object' || raw === null) return { ...IDLE_RUN };
   const r = raw as Partial<FieldTestRun>;
@@ -70,10 +75,14 @@ function coerce(raw: unknown): FieldTestRun {
   }
   const index =
     typeof r.stepIndex === 'number' && Number.isFinite(r.stepIndex) ? Math.floor(r.stepIndex) : 0;
+  // Resolve the condition BEFORE clamping: the two runs are different lengths,
+  // so the ceiling depends on which one this is. Clamping against the full
+  // list would leave a reloaded driving run pointing at a parked step.
+  const condition = typeof r.condition === 'string' ? r.condition : DEFAULT_FIELD_TEST_CONDITION;
   return {
     active: r.active === true,
-    condition: typeof r.condition === 'string' ? r.condition : DEFAULT_FIELD_TEST_CONDITION,
-    stepIndex: Math.min(Math.max(index, 0), FIELD_TEST_STEPS.length - 1),
+    condition,
+    stepIndex: clampToRun(index, condition),
     stamps,
   };
 }
@@ -150,8 +159,8 @@ export function setFieldTestCondition(condition: string): void {
 }
 
 export function goToFieldTestStep(index: number): void {
-  const clamped = Math.min(Math.max(index, 0), FIELD_TEST_STEPS.length - 1);
-  write({ ...readFieldTestRun(), stepIndex: clamped });
+  const current = readFieldTestRun();
+  write({ ...current, stepIndex: clampToRun(index, current.condition) });
 }
 
 /**

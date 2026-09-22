@@ -59,7 +59,7 @@ test('a stamped step reaches the log with the condition it was run under', async
 test('switching condition changes what is recorded, not just what is shown', async ({ page }) => {
   await withSettings(page, {});
   // The control condition, which is the comparison the whole protocol is for.
-  await startRun(page, 'Speakerphone');
+  await startRun(page, 'Speakerphone, moving');
 
   await page.getByTestId('fieldtest-stamp-audio-out').click();
 
@@ -68,6 +68,52 @@ test('switching condition changes what is recorded, not just what is shown', asy
   // ...and not the one it defaulted to, which a stamp that ignored the
   // selector would have written instead.
   expect(text).not.toContain('condition=car');
+});
+
+/**
+ * The split's whole point, from the seat: a run picked for the road must not
+ * hand the driver the steps that were deliberately kept off it. Asserted over
+ * every step REACHABLE by paging to the end, not on the first screen, because
+ * a filter that only hid the first wheel step would still look right there.
+ */
+const WHEEL_STEPS = ['press-forward', 'press-back', 'wheel-gap', 'wheel-dead', 'wheel-after-mic'];
+const MIC_STEPS = ['spoke', 'spoke-over'];
+
+/** Page through the whole run, collecting which of `ids` it ever offers. */
+async function stepsOffered(page: Page, ids: string[]): Promise<string[]> {
+  const seen: string[] = [];
+  for (let i = 0; i < 20; i++) {
+    for (const id of ids) {
+      if ((await page.getByTestId(`fieldtest-stamp-${id}`).count()) > 0 && !seen.includes(id)) {
+        seen.push(id);
+      }
+    }
+    const next = page.getByTestId('fieldtest-next');
+    if (await next.isDisabled()) break;
+    await next.click();
+  }
+  return seen;
+}
+
+test('a driving run never offers a wheel step', async ({ page }) => {
+  await withSettings(page, {});
+  await startRun(page, 'Freeway');
+
+  const seen = await stepsOffered(page, [...WHEEL_STEPS, ...MIC_STEPS]);
+  expect(seen.filter((id) => WHEEL_STEPS.includes(id))).toEqual([]);
+  // ...and it DOES offer the steps it exists for, or the line above would
+  // pass just as well against a run that contained nothing at all.
+  expect(seen).toContain('spoke-over');
+});
+
+/** ...and the converse, so neither half can quietly become the whole list. */
+test('a parked run never offers the microphone-in-traffic steps', async ({ page }) => {
+  await withSettings(page, {});
+  await startRun(page, 'Car, parked');
+
+  const seen = await stepsOffered(page, [...WHEEL_STEPS, ...MIC_STEPS]);
+  expect(seen.filter((id) => MIC_STEPS.includes(id))).toEqual([]);
+  expect(seen).toContain('wheel-gap');
 });
 
 test('the panel says what to look for, not just what to do', async ({ page }) => {

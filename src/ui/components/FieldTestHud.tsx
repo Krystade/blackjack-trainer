@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   FIELD_TEST_CONDITIONS,
-  FIELD_TEST_STEPS,
   applyFieldTestSetup,
   describeFieldTestSetup,
   stampFieldTest,
+  stepsForCondition,
 } from '../../diag/fieldTest';
 import {
   goToFieldTestStep,
@@ -102,7 +102,11 @@ export function FieldTestHud({
     };
   }, [run.active, run.stepIndex, open]);
 
-  const step = FIELD_TEST_STEPS[run.stepIndex] ?? FIELD_TEST_STEPS[0]!;
+  // The run's own steps, not all of them: a parked run and a driving run are
+  // different lists (diag/fieldTest.ts), and the panel must count, index and
+  // bound itself against the one actually being followed.
+  const steps = stepsForCondition(run.condition);
+  const step = steps[run.stepIndex] ?? steps[0]!;
   const condition = FIELD_TEST_CONDITIONS.find((c) => c.id === run.condition);
 
   /**
@@ -166,7 +170,7 @@ export function FieldTestHud({
           data-testid="fieldtest-hud-toggle"
         >
           <span aria-hidden="true">{open ? '▾' : '▸'}</span> Field test {run.stepIndex + 1}/
-          {FIELD_TEST_STEPS.length}
+          {steps.length}
         </button>
         <span className="fieldtest-hud-condition u-note">{condition?.label ?? run.condition}</span>
         <button type="button" className="fieldtest-hud-end" onClick={finish} data-testid="fieldtest-end">
@@ -220,7 +224,7 @@ export function FieldTestHud({
           type="button"
           className="fieldtest-hud-nav"
           onClick={() => goToFieldTestStep(run.stepIndex + 1)}
-          disabled={run.stepIndex === FIELD_TEST_STEPS.length - 1}
+          disabled={run.stepIndex === steps.length - 1}
           data-testid="fieldtest-next"
         >
           Next

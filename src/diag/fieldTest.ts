@@ -41,9 +41,35 @@ import type { Settings } from '../store/types';
  * "it didn't work" into "it didn't work on THIS route".
  */
 
+/**
+ * Stationary or at speed, and it decides which steps the run contains.
+ *
+ * THE SPLIT, and why it is not arbitrary. The protocol's two halves have
+ * opposite sensitivity to noise:
+ *
+ *   - **The wheel half is noise-independent.** Whether a skip-forward press
+ *     lands on this app or on the radio is decided by the Bluetooth session
+ *     and which element the phone thinks is playing -- not by how loud the
+ *     cabin is. 70mph changes nothing about it, so it is fully answerable on
+ *     a driveway, which is the only place you can safely read a panel and tap
+ *     a stamp ten times.
+ *   - **The hearing half is noise-decisive.** What you can hear over the road
+ *     and what the microphone can hear over it are both meaningless parked,
+ *     because a quiet cabin does not reproduce the failure.
+ *
+ * Before this split there was one `car` condition meaning "engine running",
+ * which collapsed the driveway and the commute into a single id -- and since
+ * the condition rides on every stamp, the log could not express "worked
+ * parked, failed at speed". That is the distinction this type exists to make
+ * recordable.
+ */
+export type FieldTestMotion = 'parked' | 'driving';
+
 export interface FieldTestCondition {
   id: string;
   label: string;
+  /** Stationary or at speed. Selects the step list for the run. */
+  motion: FieldTestMotion;
   /** How to physically set the phone and car up before the steps. */
   setup: string;
   /** What this condition is here to rule in or out. */
@@ -53,23 +79,36 @@ export interface FieldTestCondition {
 export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
   {
     id: 'car',
-    label: 'Car stereo',
-    setup: 'Phone paired to the car over Bluetooth, app audio coming out of the car speakers, engine running.',
+    label: 'Car, parked',
+    motion: 'parked',
+    setup:
+      'Phone paired to the car over Bluetooth, app audio coming out of the car speakers, engine running, handbrake on.',
     proves:
-      'The real thing. The wheel can only reach the app on this route, and only while the microphone is shut.',
-  },
-  {
-    id: 'speakerphone',
-    label: 'Speakerphone',
-    setup: 'Phone in the cradle on its own loudspeaker, Bluetooth OFF, engine running.',
-    proves:
-      'The control. Same road noise, same distance, no Bluetooth — so anything that fails here is the app or the room, not the car.',
+      'Whether the wheel reaches the app at all, and whether it still reaches it in the gaps. Button routing is a Bluetooth-session question, not an acoustic one, so driving would add nothing to it — and this is the only condition where following ten steps and tapping a stamp is safe.',
   },
   {
     id: 'phone',
     label: 'Phone, quiet',
+    motion: 'parked',
     setup: 'Phone in your hand, engine off, windows up.',
     proves: 'The baseline. If a step fails here it has nothing to do with driving at all.',
+  },
+  {
+    id: 'freeway',
+    label: 'Freeway',
+    motion: 'driving',
+    setup:
+      'Paired to the car exactly as the parked run, at your normal road speed, windows up. A passenger holding the phone if you have one.',
+    proves:
+      'The real noise floor, which is the one thing a driveway cannot produce: what you can HEAR over the road, and what the microphone can hear over it. Note that only the recorded clips can be boosted past device volume — live speech synthesis is capped by the browser (audio/volume.ts) — so a line that vanishes at speed is more likely an unclipped line than a broken app.',
+  },
+  {
+    id: 'speakerphone',
+    label: 'Speakerphone, moving',
+    motion: 'driving',
+    setup: 'Phone in the cradle on its own loudspeaker, Bluetooth OFF, at the same road speed.',
+    proves:
+      'The control for the freeway run: same noise, same distance, no Bluetooth. Anything that fails here too is the app or the road, not the car.',
   },
 ] as const;
 
@@ -103,6 +142,16 @@ export interface FieldTestSetup {
 
 export interface FieldTestStep {
   id: string;
+  /**
+   * Which run this step belongs to: the parked one, the driving one, or both.
+   *
+   * REQUIRED, with no default, and that is the point. A step added later
+   * without a considered answer here would silently join whichever run the
+   * default named -- most likely the driving one, where an extra step is a
+   * thing being read and tapped at speed. Making the compiler ask is cheaper
+   * than finding out on the road.
+   */
+  motion: FieldTestMotion | 'either';
   /** What to do. */
   instruction: string;
   /** The button that stamps the log when you have done it. */
@@ -119,16 +168,34 @@ export interface FieldTestStep {
 }
 
 /**
- * The steps, in order.
+ * The steps, in order, for both runs.
  *
  * Ordered so each one only depends on what is already known to work: audio
  * before the wheel (a wheel press is pointless if nothing is playing), the
  * wheel before the microphone (opening the microphone is what takes the wheel
- * away), and the microphone last.
+ * away), and the microphone last. That ordering has to hold WITHIN each run,
+ * not just across the list, because `stepsForMotion` is a filter -- it
+ * preserves order but drops members, and a precondition dropped out of a run
+ * is a precondition nobody establishes.
+ *
+ * WHICH RUN EACH ONE IS IN, and the two that are worth arguing about:
+ *
+ *   - `wheel-after-mic` is PARKED even though it opens the microphone. It is
+ *     not testing recognition, which would need road noise; it is testing
+ *     whether the car takes the wheel away when the mic opens, which is a
+ *     routing question and answerable in a driveway.
+ *   - `wheel-gap` is PARKED and cannot sensibly be anything else. It asks you
+ *     to wait for silence and press into it, and at speed you can neither
+ *     reliably hear where the silence starts nor safely tap afterwards -- and
+ *     it is the step that discriminates the 2026-09-19 fix from the bug.
+ *
+ * The driving run is deliberately short. Every step ends in tapping a stamp
+ * on the screen, so each one added to it is one more thing done at speed.
  */
 export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   {
     id: 'audio-out',
+    motion: 'either',
     instruction:
       'Audio and the recorded voice are now on. Start any drill and listen for the first question.',
     stamp: 'I heard it speak',
@@ -138,6 +205,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     id: 'no-audio-out',
+    motion: 'either',
     instruction: 'If nothing was said, stamp this instead and stop — nothing below can work.',
     stamp: 'It never spoke',
     expect: 'speak lines with no sound: the route took them, not the app.',
@@ -145,6 +213,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     id: 'press-forward',
+    motion: 'parked',
     instruction:
       'The microphone is off and the wheel is in answer mode. Press skip-forward on the wheel once, while it is still talking.',
     stamp: 'I pressed skip-forward',
@@ -154,6 +223,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     id: 'press-back',
+    motion: 'parked',
     instruction: 'Still talking: press skip-back on the wheel once.',
     stamp: 'I pressed skip-back',
     expect: 'a previoustrack or seekbackward invoke within a second of this stamp.',
@@ -162,6 +232,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     id: 'wheel-gap',
+    motion: 'parked',
     instruction:
       'Now wait until it has finished speaking and gone properly quiet — several seconds — then press skip-forward.',
     stamp: 'I pressed it in the silence',
@@ -172,6 +243,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     id: 'wheel-dead',
+    motion: 'parked',
     instruction: 'If a press did nothing at all, stamp this right after pressing it.',
     stamp: 'The wheel did nothing',
     expect: 'no invoke near this stamp: the car never sent it, so the mapping is not the problem.',
@@ -179,6 +251,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     id: 'spoke',
+    motion: 'driving',
     instruction: 'The microphone is now on. Wait for the question to finish, then say one answer.',
     stamp: 'I said an answer',
     expect: 'a heard line within a second or two. No line at all means the microphone never got it.',
@@ -187,6 +260,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     id: 'spoke-over',
+    motion: 'driving',
     instruction: 'Now say an answer WHILE it is still talking, on purpose.',
     stamp: 'I talked over it',
     expect: 'a heard line marked suppressed, and a chime — silence here is the bug.',
@@ -195,7 +269,9 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     id: 'wheel-after-mic',
-    instruction: 'Leaving the microphone on, press skip-forward on the wheel again.',
+    motion: 'parked',
+    instruction:
+      'This step has just opened the microphone. With it open, press skip-forward on the wheel again.',
     stamp: 'I pressed the wheel with the mic open',
     expect:
       'nothing. The car routes the wheel to its own call once the microphone opens; this step is here to prove that, not to work.',
@@ -204,6 +280,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     id: 'good',
+    motion: 'either',
     instruction: 'Anything that worked exactly as it should.',
     stamp: 'That one worked',
     expect: 'a marker to read the rest of the run against.',
@@ -211,12 +288,40 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     id: 'bad',
+    motion: 'either',
     instruction: 'Anything that did not, when no step above names it.',
     stamp: 'That was wrong',
     expect: 'a marker at the moment it went wrong, which is the hardest thing to find afterwards.',
     where: 'anywhere',
   },
 ] as const;
+
+/**
+ * The steps for one kind of run.
+ *
+ * A filter over FIELD_TEST_STEPS rather than two hand-written lists, so the
+ * `either` steps -- the audio check the whole protocol rests on, and the two
+ * catch-alls -- cannot drift apart between runs.
+ */
+export function stepsForMotion(motion: FieldTestMotion): readonly FieldTestStep[] {
+  return FIELD_TEST_STEPS.filter((s) => s.motion === motion || s.motion === 'either');
+}
+
+/**
+ * Whether a condition id means parked or driving.
+ *
+ * Falls back to 'parked' for an unknown id, which is the safe direction: a
+ * corrupt or superseded condition in storage puts the operator in the
+ * stationary run, never in one that asks them to do things at speed.
+ */
+export function motionForCondition(conditionId: string): FieldTestMotion {
+  return FIELD_TEST_CONDITIONS.find((c) => c.id === conditionId)?.motion ?? 'parked';
+}
+
+/** The steps for the run a condition selects. */
+export function stepsForCondition(conditionId: string): readonly FieldTestStep[] {
+  return stepsForMotion(motionForCondition(conditionId));
+}
 
 /**
  * Apply a step's required settings, returning the settings to save.

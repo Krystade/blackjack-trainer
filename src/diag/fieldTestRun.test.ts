@@ -9,7 +9,7 @@ import {
   subscribeFieldTestRun,
   _resetFieldTestRunForTest,
 } from './fieldTestRun';
-import { FIELD_TEST_STEPS } from './fieldTest';
+import { stepsForMotion } from './fieldTest';
 
 /**
  * The one thing this module exists to guarantee: a run survives leaving the
@@ -112,7 +112,22 @@ describe('a run', () => {
     goToFieldTestStep(-3);
     expect(readFieldTestRun().stepIndex).toBe(0);
     goToFieldTestStep(999);
-    expect(readFieldTestRun().stepIndex).toBe(FIELD_TEST_STEPS.length - 1);
+    expect(readFieldTestRun().stepIndex).toBe(stepsForMotion('parked').length - 1);
+  });
+
+  /**
+   * The end of the protocol is not one number. A driving run is the shorter
+   * list (diag/fieldTest.ts), so a ceiling taken from the full set would let
+   * a moving driver page past the last step they have into blank steps --
+   * or, before this, into the parked wheel steps the split exists to keep
+   * off the road.
+   */
+  it('stops at the end of the run it is actually in, not the longest one', () => {
+    startFieldTestRun('freeway');
+    goToFieldTestStep(999);
+    const driving = stepsForMotion('driving').length;
+    expect(readFieldTestRun().stepIndex).toBe(driving - 1);
+    expect(driving).toBeLessThan(stepsForMotion('parked').length);
   });
 
   it('stops without forgetting where it got to', () => {
@@ -158,7 +173,22 @@ describe('a stored run that no longer fits', () => {
 
     const run = readFieldTestRun();
     expect(run.active).toBe(true);
-    expect(run.stepIndex).toBe(FIELD_TEST_STEPS.length - 1);
+    expect(run.stepIndex).toBe(stepsForMotion('parked').length - 1);
+  });
+
+  /**
+   * Same rescue, for a stored DRIVING run -- which is the case that needs the
+   * condition resolved before the index is clamped, not after.
+   */
+  it('pulls a stored driving run back to its own last step', () => {
+    const store = installStorage();
+    store.set(
+      'bjtrainer.fieldTestRun.v1',
+      JSON.stringify({ active: true, condition: 'freeway', stepIndex: 99, stamps: {} }),
+    );
+    forgetInMemoryOnly();
+
+    expect(readFieldTestRun().stepIndex).toBe(stepsForMotion('driving').length - 1);
   });
 
   it('survives outright garbage without taking the app down', () => {

@@ -3,6 +3,9 @@ import {
   FIELD_TEST_CONDITIONS,
   FIELD_TEST_STEPS,
   DEFAULT_FIELD_TEST_CONDITION,
+  stepsForMotion,
+  stepsForCondition,
+  motionForCondition,
   stampFieldTest,
   applyFieldTestSetup,
   describeFieldTestSetup,
@@ -41,17 +44,120 @@ describe('the protocol itself', () => {
   /**
    * Order is load-bearing: opening the microphone is what takes the wheel
    * away, so every wheel step that is supposed to WORK has to come first.
+   *
+   * Asserted WITHIN the parked run rather than across the whole list, because
+   * that is where these steps now meet -- `spoke` is in the driving run, and
+   * an ordering assertion over a list nobody follows end to end would be
+   * checking a sequence that never happens.
    */
-  it('tests the wheel before it opens the microphone', () => {
-    const order = FIELD_TEST_STEPS.map((s) => s.id);
-    expect(order.indexOf('press-forward')).toBeLessThan(order.indexOf('spoke'));
-    expect(order.indexOf('press-back')).toBeLessThan(order.indexOf('spoke'));
-    // ...and the one that is expected to fail comes after, on purpose.
-    expect(order.indexOf('wheel-after-mic')).toBeGreaterThan(order.indexOf('spoke'));
+  it('tests the wheel before it opens the microphone, inside the parked run', () => {
+    const order = stepsForMotion('parked').map((s) => s.id);
+    expect(order).toContain('wheel-after-mic');
+    for (const worksWithMicShut of ['press-forward', 'press-back', 'wheel-gap']) {
+      expect(order.indexOf(worksWithMicShut), worksWithMicShut).toBeGreaterThanOrEqual(0);
+      // ...and the one that is expected to FAIL comes after, on purpose.
+      expect(order.indexOf(worksWithMicShut), worksWithMicShut).toBeLessThan(
+        order.indexOf('wheel-after-mic'),
+      );
+    }
+  });
+
+  /**
+   * The audio check is the precondition for everything below it in EITHER
+   * run: a wheel press is pointless if nothing is playing, and so is a spoken
+   * answer. A filter that dropped it from one run would leave that run's
+   * first real step resting on something nobody established.
+   */
+  it('opens both runs with the audio check', () => {
+    for (const motion of ['parked', 'driving'] as const) {
+      expect(stepsForMotion(motion)[0]?.id, motion).toBe('audio-out');
+    }
   });
 
   it('keeps the speakerphone control condition, which is the whole comparison', () => {
     expect(FIELD_TEST_CONDITIONS.map((c) => c.id)).toContain('speakerphone');
+  });
+});
+
+describe('the parked/driving split', () => {
+  it('gives every step a run, so none is added without a decision', () => {
+    for (const step of FIELD_TEST_STEPS) {
+      expect(['parked', 'driving', 'either'], step.id).toContain(step.motion);
+    }
+  });
+
+  it('puts every step in at least one run', () => {
+    const covered = new Set([
+      ...stepsForMotion('parked').map((s) => s.id),
+      ...stepsForMotion('driving').map((s) => s.id),
+    ]);
+    for (const step of FIELD_TEST_STEPS) expect(covered, step.id).toContain(step.id);
+  });
+
+  /**
+   * The load-bearing assignment. `wheel-gap` is what separates the shipped
+   * fix from the 2026-09-19 bug, and it asks for a press into a silence you
+   * have to HEAR arrive -- which at 70mph you cannot reliably locate, and
+   * cannot safely stamp. If it ever migrates to the driving run the protocol
+   * still looks complete and stops being able to answer its own question.
+   */
+  it('keeps the step that discriminates the fix in the parked run', () => {
+    expect(stepsForMotion('parked').map((s) => s.id)).toContain('wheel-gap');
+    expect(stepsForMotion('driving').map((s) => s.id)).not.toContain('wheel-gap');
+  });
+
+  /**
+   * No wheel step belongs at speed. Button routing is decided by the
+   * Bluetooth session, not by cabin noise, so driving buys nothing -- and
+   * every one of these ends in tapping the screen.
+   */
+  it('keeps every wheel step out of the driving run', () => {
+    const driving = stepsForMotion('driving').map((s) => s.id);
+    for (const id of ['press-forward', 'press-back', 'wheel-gap', 'wheel-dead', 'wheel-after-mic']) {
+      expect(driving, id).not.toContain(id);
+    }
+  });
+
+  /** ...and conversely, the two that a driveway genuinely cannot answer. */
+  it('keeps the microphone steps out of the parked run', () => {
+    const parked = stepsForMotion('parked').map((s) => s.id);
+    expect(parked).not.toContain('spoke');
+    expect(parked).not.toContain('spoke-over');
+  });
+
+  /**
+   * The safety property, stated as an inequality rather than a count so it
+   * survives steps being added: whatever the protocol grows into, the run
+   * performed at speed stays the smaller one.
+   */
+  it('asks for less at speed than it does parked', () => {
+    expect(stepsForMotion('driving').length).toBeLessThan(stepsForMotion('parked').length);
+    expect(stepsForMotion('driving').length).toBeGreaterThan(0);
+  });
+
+  it('offers a run of each kind to pick', () => {
+    const motions = FIELD_TEST_CONDITIONS.map((c) => c.motion);
+    expect(motions).toContain('parked');
+    expect(motions).toContain('driving');
+  });
+
+  it('routes a condition to its own run', () => {
+    expect(stepsForCondition('car')).toEqual(stepsForMotion('parked'));
+    expect(stepsForCondition('freeway')).toEqual(stepsForMotion('driving'));
+  });
+
+  /**
+   * An unknown condition -- a run saved under an id a later release dropped
+   * -- must land in the stationary run. The failure direction matters: the
+   * wrong guess here either shows a parked driver some extra steps, or asks
+   * a moving one to do things the protocol deliberately keeps off the road.
+   */
+  it('falls back to parked for a condition it does not recognise', () => {
+    expect(motionForCondition('a-condition-from-a-later-release')).toBe('parked');
+  });
+
+  it('keeps the speakerphone control on the same side as the route it controls', () => {
+    expect(motionForCondition('speakerphone')).toBe(motionForCondition('freeway'));
   });
 });
 
