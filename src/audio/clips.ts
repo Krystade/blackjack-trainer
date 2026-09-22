@@ -72,6 +72,20 @@ let currentClipVoice = '';
 /** Sets the voice used to resolve manifests going forward. Pass `''` to fall
  * back to `index.json`'s `default`. Never throws/validates against the
  * index -- an unknown id simply resolves no manifest, degrading to live TTS. */
+/**
+ * Which voice the clip path would actually use right now.
+ *
+ * Resolves the index default when no voice has been chosen yet, exactly as
+ * `prewarmClips` and the speech path do. The raw `currentClipVoice` is empty
+ * until the audio settings are applied, so a diagnostic that read it directly
+ * would look up a manifest for the empty string, find nothing, and report
+ * that every line is unclipped -- which is what the car check did on its
+ * first render.
+ */
+export async function activeClipVoice(): Promise<string | null> {
+  return currentClipVoice || (await resolveDefaultVoiceId());
+}
+
 export function setClipVoice(voiceId: string): void {
   currentClipVoice = voiceId;
 }

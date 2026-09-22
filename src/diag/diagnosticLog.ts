@@ -88,6 +88,18 @@ export type DiagCategory =
   | 'perm'
   /** Screen wake lock taken, lost, re-taken. */
   | 'wake'
+  /**
+   * The silent hold that keeps the app the car's "now playing" app.
+   *
+   * Its own category because it is the direct evidence for the wheel: the
+   * head unit sends buttons to whatever is PLAYING, so a press that reached
+   * nothing and a press into a gap where the hold had lapsed are opposite
+   * diagnoses. The hold shipped 2026-09-21 writing only to the probe, which
+   * the operator's exported log does not contain -- so the 2026-09-20 drive
+   * produced five wheel stamps and no way to tell whether the fix was even
+   * running. Never again without a line here.
+   */
+  | 'focus'
   /** Settings and profile changes, with what actually changed. */
   | 'set'
   /** Which screen the operator is on. */

@@ -29,10 +29,11 @@
  * element plays while any name is outstanding.
  */
 
+import { diag } from '../diag/diagnosticLog';
 import { appendLog } from './mediaSessionLog';
 
 /** Who wants the app to stay the active media app. */
-export type AudioFocusKey = 'speech' | 'button-test';
+export type AudioFocusKey = 'speech' | 'button-test' | 'car-check';
 
 /**
  * A silent WAV as a data URI.
@@ -110,10 +111,23 @@ export function holdAudioFocus(key: AudioFocusKey): void {
     element ??= new Ctor(silentWavDataUri());
     element.loop = true;
     element.volume = 1;
-    void element.play().catch(() => {
-      appendLog({ kind: 'note', action: 'audio-focus-refused', ok: false });
-    });
+    const el = element;
+    void el
+      .play()
+      .then(() => {
+        // `play()` resolving is not the element PLAYING -- report what it
+        // actually is, because that is what the head unit reads.
+        diag('focus', 'holding', { key, paused: el.paused, holders: held.size });
+      })
+      .catch((e: unknown) => {
+        appendLog({ kind: 'note', action: 'audio-focus-refused', ok: false });
+        // The silent failure that makes every wheel button dead. iOS refuses
+        // `play()` with no gesture behind it, and before this line the only
+        // symptom was a car that ignored the app.
+        diag('focus', 'refused', { key, why: e instanceof Error ? e.name : String(e) });
+      });
     appendLog({ kind: 'note', action: `audio-focus-hold:${key}`, ok: true });
+    diag('focus', 'hold', { key, holders: held.size });
   } catch {
     element = null;
   }
@@ -130,6 +144,7 @@ export function releaseAudioFocus(key: AudioFocusKey): void {
   if (!held.delete(key)) return;
   if (held.size > 0) return;
   appendLog({ kind: 'note', action: `audio-focus-release:${key}`, ok: true });
+  diag('focus', 'release', { key, holders: held.size });
   if (!element) return;
   try {
     element.pause();
@@ -142,6 +157,18 @@ export function releaseAudioFocus(key: AudioFocusKey): void {
 /** Release every hold, whoever placed it. Used when audio is switched off. */
 export function releaseAllAudioFocus(): void {
   for (const key of [...held]) releaseAudioFocus(key);
+}
+
+/**
+ * Whether the hold is genuinely PLAYING, not merely requested.
+ *
+ * The distinction the car check turns on: `play()` resolving means the
+ * browser accepted the request, while `paused === false` means the element is
+ * actually the thing producing media. iOS pulls those apart routinely, and
+ * the wheel follows the second one.
+ */
+export function audioFocusElementIsPlaying(): boolean {
+  return element !== null && element.paused === false;
 }
 
 /** Whether anything currently holds the slot. Exposed for tests and the panel. */

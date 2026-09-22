@@ -35,6 +35,8 @@ import {
   narrateSitOut,
   narrateNotATag,
   narrateReadback,
+  narrateAnswerEcho,
+  ANSWER_ECHO_LABELS,
   VOICE_CONVERSATION_LINES,
 } from '../src/audio/narrate';
 import type { GradedEvent } from '../src/engine/grade';
@@ -214,9 +216,31 @@ export function voiceSentences(): string[] {
   return [...sentences];
 }
 
+/**
+ * The echo the drill speaks back the instant an answer lands.
+ *
+ * Its own group because it is neither a correction nor a table line nor part
+ * of the listening conversation -- it is the drill confirming what it thinks
+ * you said, and it fires on EVERY answer, which made it the most frequent
+ * unclipped utterance in the app. It was unclipped because it was assembled
+ * in ui/screens/Drills.tsx and this file only walks src/audio/narrate.ts.
+ */
+export function answerEchoSentences(): string[] {
+  const sentences = new Set<string>();
+  for (const label of ANSWER_ECHO_LABELS) {
+    for (const part of splitIntoSentences(narrateAnswerEcho(label))) sentences.add(part);
+  }
+  return [...sentences];
+}
+
 /** The sorted, de-duplicated list the generator turns into clips. */
 export function spokenSentences(): string[] {
   return [
-    ...new Set([...correctionSentences(), ...tableSentences(), ...voiceSentences()]),
+    ...new Set([
+      ...correctionSentences(),
+      ...tableSentences(),
+      ...voiceSentences(),
+      ...answerEchoSentences(),
+    ]),
   ].sort();
 }

@@ -26,6 +26,7 @@ import { MEDIA_SESSION_LABEL } from '../../audio/mediaSession';
 import type { MediaSessionAction } from '../../audio/mediaSession';
 import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
 import { FIELD_TEST_CONDITIONS, stepsForCondition } from '../../diag/fieldTest';
+import { CarCheckPanel } from '../components/CarCheckPanel';
 import {
   readFieldTestRun,
   subscribeFieldTestRun,
@@ -657,6 +658,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         onWheelMode={(wheelMode) => updateDrill({ wheelMode })}
       />
 
+      <CarCheckSection />
       <FieldTestPanel />
 
       <VoiceProbePanel />
@@ -682,6 +684,14 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
  * and diag/fieldTestRun.ts is where the progress lives so that navigating --
  * or being reloaded mid-run -- costs nothing.
  */
+function CarCheckSection() {
+  return (
+    <CollapsibleSection title={<>Car check</>} defaultOpen={false}>
+      <CarCheckPanel />
+    </CollapsibleSection>
+  );
+}
+
 function FieldTestPanel() {
   const [run, setRun] = useState(() => readFieldTestRun());
   useEffect(() => subscribeFieldTestRun(() => setRun(readFieldTestRun())), []);

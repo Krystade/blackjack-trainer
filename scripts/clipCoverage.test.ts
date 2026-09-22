@@ -16,6 +16,8 @@ import {
   narrateQuizPrompt,
   narrateShuffle,
   narrateSitOut,
+  narrateAnswerEcho,
+  ANSWER_ECHO_LABELS,
 } from '../src/audio/narrate';
 import type { GradedEvent } from '../src/engine/grade';
 import type { Card, Rank, Suit } from '../src/engine/cards';
@@ -222,6 +224,28 @@ describe('shipped clip coverage', () => {
         texts.add(narrateNotATag(value));
       }
       const unresolved = [...texts].filter((t) => segmentForClips(t, manifest) === null);
+      expect(unresolved).toEqual([]);
+    });
+
+    /**
+     * The echo the drill speaks the instant an answer lands -- the app's most
+     * frequent utterance, and unclipped until 2026-09-21.
+     *
+     * It was built inline in ui/screens/Drills.tsx, which `spokenPhrases.ts`
+     * does not walk, so it never entered the phrase list, never got a clip,
+     * and fell to live `speechSynthesis` on EVERY answer. From the seat that
+     * is the voice changing mid-drill, which is how the operator found it:
+     * "that previous audio was actually a different voice than the one before
+     * it" (2026-09-20 log, 7:16).
+     *
+     * Asserted over every label rather than a sample, because the failure was
+     * never in one zone -- it was in where the sentence was composed.
+     */
+    it(`resolves the answer echo for every zone (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      const unresolved = ANSWER_ECHO_LABELS.filter(
+        (label) => segmentForClips(narrateAnswerEcho(label), manifest) === null,
+      );
       expect(unresolved).toEqual([]);
     });
 

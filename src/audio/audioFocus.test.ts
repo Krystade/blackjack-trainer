@@ -7,6 +7,7 @@ import {
   silentWavDataUri,
   _resetAudioFocusForTest,
 } from './audioFocus';
+import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 
 /**
  * What this module is actually for.
@@ -88,6 +89,27 @@ function installFakeAudio(): void {
   }
   (globalThis as unknown as { window: unknown }).window = { Audio: Fake };
   (globalThis as unknown as { btoa: (s: string) => string }).btoa = base64Encode;
+}
+
+/** iOS refusing `play()` for want of a gesture, which is the dead-wheel case. */
+function installRefusingAudio(): void {
+  class Refusing {
+    src: string;
+    loop = false;
+    volume = 1;
+    paused = true;
+    currentTime = 0;
+    constructor(src?: string) {
+      this.src = src ?? '';
+    }
+    play(): Promise<void> {
+      return Promise.reject(new DOMException('gesture required', 'NotAllowedError'));
+    }
+    pause(): void {
+      this.paused = true;
+    }
+  }
+  (globalThis as unknown as { window: unknown }).window = { Audio: Refusing };
 }
 
 beforeEach(() => {
@@ -210,5 +232,48 @@ describe('the silence it plays', () => {
 
   it('is a WAV the browser will accept', () => {
     expect(silentWavDataUri().startsWith('data:audio/wav;base64,')).toBe(true);
+  });
+});
+
+/**
+ * The hold has to be visible in the log the operator actually exports.
+ *
+ * It shipped writing only to `mediaSessionLog`, which the pasteable
+ * diagnostic log does not include -- so the 2026-09-20 drive produced five
+ * wheel stamps in total silence and no way to tell whether the hold was even
+ * running. Two opposite diagnoses (the fix is broken / the fix never started)
+ * had identical evidence, which is the exact failure the diagnostic log
+ * exists to prevent.
+ */
+describe('the hold is visible in the exported log', () => {
+  beforeEach(() => {
+    clearDiagnosticLog();
+  });
+
+  it('records taking and dropping the slot, with who holds it', () => {
+    holdAudioFocus('speech');
+    const taken = readDiagnosticLog().filter((e) => e.category === 'focus');
+    expect(taken.map((e) => e.event)).toContain('hold');
+    expect(taken.find((e) => e.event === 'hold')?.detail?.key).toBe('speech');
+
+    releaseAudioFocus('speech');
+    const after = readDiagnosticLog().filter((e) => e.category === 'focus');
+    expect(after.map((e) => e.event)).toContain('release');
+  });
+
+  /**
+   * The refusal is the one that matters most: iOS rejects `play()` with no
+   * gesture behind it, and before this line the only symptom was every wheel
+   * button silently doing nothing.
+   */
+  it('records a refused play, which is what a dead wheel looks like', async () => {
+    installRefusingAudio();
+    holdAudioFocus('speech');
+    await Promise.resolve();
+    await Promise.resolve();
+    const events = readDiagnosticLog()
+      .filter((e) => e.category === 'focus')
+      .map((e) => e.event);
+    expect(events).toContain('refused');
   });
 });

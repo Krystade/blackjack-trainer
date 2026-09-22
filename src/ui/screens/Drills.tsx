@@ -40,7 +40,9 @@ import { ShotClockBar } from '../components/ShotClockBar';
 import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
-import { narrateAction, narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt } from '../../audio/narrate';
+import { narrateAction, narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt,
+  narrateAnswerEcho,
+} from '../../audio/narrate';
 import { useVoiceControl } from '../useVoiceControl';
 import { autoAdvanceDelayMs, spokenPauseFor } from '../../drills/answerPause';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../audio/voiceRecognition';
@@ -473,7 +475,7 @@ function FlashcardsView({
       return;
     }
 
-    speak(`${zoneLabel(zone)}…`, speechOptsFrom(settings.audio, { interrupt: true }));
+    speak(narrateAnswerEcho(zoneLabel(zone)), speechOptsFrom(settings.audio, { interrupt: true }));
 
     const { event, correctAction } = gradeFlashcardAnswer(zone, channel);
 
@@ -1279,7 +1281,7 @@ function DeviationQuizView({
       return;
     }
 
-    speak(`${zoneLabel(zone)}…`, speechOptsFrom(settings.audio, { interrupt: true }));
+    speak(narrateAnswerEcho(zoneLabel(zone)), speechOptsFrom(settings.audio, { interrupt: true }));
 
     // The quiz has no voice input, so a zone tap here is always the blind
     // pad: eyes off the screen, hand on the glass.
@@ -1772,7 +1774,7 @@ function MixedSessionView({
       return;
     }
 
-    speak(`${zoneLabel(zone)}…`, speechOptsFrom(settings.audio, { interrupt: true }));
+    speak(narrateAnswerEcho(zoneLabel(zone)), speechOptsFrom(settings.audio, { interrupt: true }));
 
     const { correct, correctAction, event } = gradeCurrent(taken);
     const spokenMs = speakCorrectionOnceGated(event, (text) =>

@@ -152,6 +152,54 @@ export function narrateAction(action: Action): string {
   return action;
 }
 
+/**
+ * Every label the answer echo can speak, and the echo itself.
+ *
+ * WHY THIS LIVES HERE rather than in the drill screen that says it. It used
+ * to be built inline in ui/screens/Drills.tsx as `${zoneLabel(zone)}…`,
+ * which put a spoken sentence somewhere `scripts/spokenPhrases.ts` cannot
+ * see. The derivation only walks this module, so the echo was never in
+ * `spoken-phrases.json`, never got a clip generated, and fell through the
+ * cascade to live `speechSynthesis` -- a different voice, mid-drill, on every
+ * single answer.
+ *
+ * The operator heard it and said so into the microphone (2026-09-20 log,
+ * 7:16): "that previous audio was actually a different voice than the one
+ * before it." The manifest confirms it: 578 clips, and no `Hit…`, no
+ * `Hit.`, no bare `Hit`.
+ *
+ * This is the THIRD time a sentence living in a view has cost the recorded
+ * voice -- the corrections and the read-backs were the first two, both
+ * recorded in docs/BACKLOG.md. The rule that falls out of it: if the app can
+ * SAY it, it is composed in this module, and the compiler is not what
+ * enforces that -- `clipCoverage.test.ts` is.
+ *
+ * IT ENDS IN A FULL STOP, where the inline version trailed an ellipsis. The
+ * ellipsis was prosody for live `speechSynthesis` -- a hint to trail off into
+ * the verdict rather than land. A clip does not need the hint, because the
+ * trailing is recorded into the audio itself; and the ellipsis actively cost
+ * something, since this app's rule is that a clip IS a sentence. `…` is
+ * not terminal punctuation to `splitIntoSentences`, so an echo ending in one
+ * is not a sentence, and `spokenPhrases` rejects it for exactly that reason.
+ * Widening the splitter to accept it would change segmentation for every
+ * utterance in the app to buy back a hint nothing reads any more.
+ */
+export const ANSWER_ECHO_LABELS = [
+  'Hit',
+  'Stand',
+  'Double',
+  'Split',
+  'Surrender',
+  'Take',
+  'Decline',
+] as const;
+
+export type AnswerEchoLabel = (typeof ANSWER_ECHO_LABELS)[number];
+
+export function narrateAnswerEcho(label: string): string {
+  return `${label}.`;
+}
+
 const SEAT_ORDINALS: Record<string, string> = {
   P1: 'one',
   P2: 'two',

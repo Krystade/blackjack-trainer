@@ -254,8 +254,36 @@ export function useVoiceControl({
       });
     }, HEARTBEAT_MS);
 
+    /**
+     * Close the microphone when the PAGE goes away, not merely when this
+     * screen unmounts.
+     *
+     * The stop below runs from React's cleanup, and React cleanup does not
+     * run when the app is swiped out of the switcher -- so the recognition
+     * session outlived the app. The operator saw exactly that (2026-09-21):
+     * "I swiped up and closed the app after activating the mic and my iPhone
+     * showed the time with an orange bubble around it", which is iOS saying
+     * the microphone is still live. The 2026-09-20 log has it too: session
+     * [6dl] reaches `session-start n=2`, then `visibility hidden`, then
+     * `pagehide`, and never a `stop` or a `listen-off`.
+     *
+     * `pagehide` and NOT `visibilitychange`, deliberately. Hidden fires for
+     * every transient glance away -- the notification shade, the switcher --
+     * and tearing the microphone down on those would re-create the complaint
+     * this whole subsystem exists to answer ("it seems like the mic doesn't
+     * stay active"). `pagehide` means the page is actually going.
+     */
+    const onPageHide = () => {
+      if (controllerRef.current) {
+        diag('mic', 'stop-pagehide', { context });
+        controller.stop();
+      }
+    };
+    window.addEventListener('pagehide', onPageHide);
+
     return () => {
       window.clearInterval(heartbeat);
+      window.removeEventListener('pagehide', onPageHide);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('online', onOnline);
       media?.removeEventListener?.('devicechange', onDeviceChange);

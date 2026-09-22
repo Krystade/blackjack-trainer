@@ -3899,3 +3899,55 @@ details.stats-section > summary::after {
 :root[data-fieldtest='on'] #root {
   padding-top: var(--fieldtest-h, 0px);
 }
+
+/* --- Car check -------------------------------------------------------- */
+/* Results are read at a roadside, often in sunlight, so the verdict mark   */
+/* carries colour AND a glyph: colour alone fails in glare and fails for    */
+/* anyone who cannot separate the reds from the greens.                    */
+.carcheck-ask {
+  margin: 0.6rem 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.5rem;
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+  border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  font-weight: 600;
+}
+.carcheck-results {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.carcheck-results li {
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.45rem;
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  line-height: 1.35;
+}
+.carcheck-mark {
+  display: inline-block;
+  min-width: 1.1em;
+  font-weight: 700;
+}
+[data-testid~='carcheck-pass'] .carcheck-mark {
+  color: var(--good, #2e7d32);
+}
+[data-testid~='carcheck-fail'] .carcheck-mark {
+  color: var(--bad, #c62828);
+}
+[data-testid~='carcheck-warn'] .carcheck-mark {
+  color: var(--warn, #ef6c00);
+}
+.carcheck-next {
+  margin-top: 0.8rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+}
+.carcheck-next ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.35rem;
+}

@@ -28,10 +28,14 @@ async function withFakeEngine(page: Page): Promise<void> {
       }
 
       start(): void {
+        this.aborted = false;
         setTimeout(() => this.onstart?.(), 0);
       }
 
+      aborted = false;
+
       abort(): void {
+        this.aborted = true;
         this.onend?.();
       }
     }
@@ -241,4 +245,36 @@ test('an understood word gets no say-again cue', async ({ page }) => {
 
   const log = await page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
   expect(log).not.toContain('chime:attention');
+});
+
+/**
+ * Closing the app must close the microphone.
+ *
+ * React's cleanup -- which is what normally calls `controller.stop()` -- does
+ * not run when the app is swiped out of the switcher, so the recognition
+ * session outlived the page. The operator saw iOS's orange indicator still lit
+ * on the home screen afterwards (2026-09-21), and the 2026-09-20 log has the
+ * same shape: `session-start`, `visibility hidden`, `pagehide`, and no stop.
+ *
+ * Asserted on the ENGINE being aborted rather than on the log line alone: a
+ * log entry saying the microphone was closed is not the microphone being
+ * closed, and it is the latter iOS puts a dot on the screen for.
+ */
+test('swiping the app away closes the microphone', async ({ page }) => {
+  await openFlashcardsWithVoice(page);
+
+  const abortedBefore = await page.evaluate(
+    () => (window as unknown as { __rec?: { aborted?: boolean } }).__rec?.aborted ?? false,
+  );
+  expect(abortedBefore).toBe(false);
+
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
+
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        () => (window as unknown as { __rec?: { aborted?: boolean } }).__rec?.aborted ?? false,
+      ),
+    )
+    .toBe(true);
 });
