@@ -100,6 +100,17 @@ export type DiagCategory =
    * running. Never again without a line here.
    */
   | 'focus'
+  /**
+   * What the CAR sent, and what the app did with it.
+   *
+   * Previously written only to `mediaSessionLog`, which the exported log does
+   * not contain -- so every wheel press the operator ever made was recorded
+   * somewhere they never saw, and four drives produced "the buttons did
+   * nothing" with no way to tell a car that sent nothing from an app that
+   * ignored it. The single most expensive instrumentation gap in this
+   * project.
+   */
+  | 'wheel'
   /** Settings and profile changes, with what actually changed. */
   | 'set'
   /** Which screen the operator is on. */

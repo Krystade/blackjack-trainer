@@ -18,6 +18,7 @@
  */
 
 import { appendLog } from './mediaSessionLog';
+import { diag } from '../diag/diagnosticLog';
 
 export interface MediaSessionHandlers {
   /**
@@ -162,6 +163,9 @@ export function initMediaSession(handlers: MediaSessionHandlers): void {
         // half that cannot be discovered from a desk, and the driver cannot
         // watch a console, so the evidence has to collect itself.
         appendLog({ kind: 'invoke', action, ok: true });
+        // ...and into the log the operator actually exports. Without this
+        // line a press is invisible to every diagnosis made from a drive.
+        diag('wheel', 'invoke', { action, probed: probe !== null });
         // Under test, the press is REPORTED and goes no further. Doing both
         // would mean learning what the ring's left click is called by having it
         // answer a drill question at the same time.
@@ -172,17 +176,17 @@ export function initMediaSession(handlers: MediaSessionHandlers): void {
         handler();
       });
       appendLog({ kind: 'register', action, ok: true });
+      diag('wheel', 'register', { action, ok: true });
     } catch (e) {
       // This browser knows the action name but refuses it, or does not know
       // it at all. Either way the others must still be registered -- and a
       // refusal is itself worth recording, since it means that button can
       // never work here however the car behaves.
-      appendLog({
-        kind: 'register',
-        action,
-        ok: false,
-        detail: e instanceof Error ? e.name : 'refused',
-      });
+      const why = e instanceof Error ? e.name : 'refused';
+      appendLog({ kind: 'register', action, ok: false, detail: why });
+      // A refusal means that button can never work here, whatever the car
+      // does -- which is a different diagnosis from one that never arrives.
+      diag('wheel', 'register', { action, ok: false, why });
     }
   };
 

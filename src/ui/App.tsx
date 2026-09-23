@@ -9,7 +9,7 @@ import { ProfileEditor } from './screens/ProfileEditor';
 import { Charts } from './screens/Charts';
 import { TabBar } from './components/TabBar';
 import { MuteButton } from './components/MuteButton';
-import { FieldTestHud } from './components/FieldTestHud';
+import { FieldTest } from './screens/FieldTest';
 import { loadSettings } from '../store/persist';
 import { applyTheme, normalizeTheme } from './theme';
 import { getActiveProfile } from '../store/profiles';
@@ -36,7 +36,15 @@ declare global {
   }
 }
 
-export type Screen = 'home' | 'table' | 'drills' | 'stats' | 'settings' | 'profiles' | 'charts';
+export type Screen =
+  | 'home'
+  | 'table'
+  | 'drills'
+  | 'stats'
+  | 'settings'
+  | 'profiles'
+  | 'charts'
+  | 'fieldtest';
 
 /** Human names for the "Back to ..." affordance. */
 const SCREEN_LABEL: Record<Screen, string> = {
@@ -47,6 +55,7 @@ const SCREEN_LABEL: Record<Screen, string> = {
   settings: 'Settings',
   profiles: 'Profiles',
   charts: 'Charts',
+  fieldtest: 'the field test',
 };
 
 /**
@@ -200,6 +209,13 @@ function App() {
         return <Settings settings={settings} onNavigate={navigate} onSettingsChange={setSettings} />;
       case 'profiles':
         return <ProfileEditor onNavigate={navigate} />;
+      // Its own screen rather than a panel floating over a drill. The
+      // protocol speaks its own lines now, so there is nothing for it to
+      // float over -- see screens/FieldTest.tsx.
+      case 'fieldtest':
+        return (
+          <FieldTest settings={settings} onSettingsChange={setSettings} onNavigate={navigate} />
+        );
       case 'charts':
         // Charts reads getChart(activeProfile.rules) at render time, so unlike
         // Table it needs no remount key -- there is no long-lived Game instance
@@ -235,16 +251,6 @@ function App() {
           app has to work on the immersive screens that stand the tab bar
           down, and on a screen that has just crashed. */}
       <MuteButton settings={settings} onSettingsChange={setSettings} />
-      {/* Same placement argument as the mute button, and a stronger one: every
-          step of the field-test protocol has to be performed on a screen the
-          protocol is not, so a panel that lived on one screen could not be
-          followed at all. See components/FieldTestHud.tsx. */}
-      <FieldTestHud
-        settings={settings}
-        onSettingsChange={setSettings}
-        screen={screen}
-        onNavigate={navigate}
-      />
       <TabBar current={screen} onNavigate={navigate} />
     </>
   );

@@ -25,15 +25,9 @@ import type { ButtonPress, ButtonTesterHandle } from '../../audio/buttonTester';
 import { MEDIA_SESSION_LABEL } from '../../audio/mediaSession';
 import type { MediaSessionAction } from '../../audio/mediaSession';
 import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
-import { FIELD_TEST_CONDITIONS, stepsForCondition } from '../../diag/fieldTest';
+import { FIELD_TEST_CONDITIONS, FIELD_TEST_STEPS } from '../../diag/fieldTest';
 import { CarCheckPanel } from '../components/CarCheckPanel';
-import {
-  readFieldTestRun,
-  subscribeFieldTestRun,
-  startFieldTestRun,
-  stopFieldTestRun,
-  setFieldTestCondition,
-} from '../../diag/fieldTestRun';
+import { readFieldTestRun, subscribeFieldTestRun } from '../../diag/fieldTestRun';
 import { PUSH_TO_TALK_MS } from '../voiceSession';
 import { detectVoiceSupport } from '../../audio/voiceRecognition';
 import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
@@ -659,7 +653,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
       />
 
       <CarCheckSection />
-      <FieldTestPanel />
+      <FieldTestPanel onNavigate={onNavigate} />
 
       <VoiceProbePanel />
       <VoiceHistoryPanel />
@@ -668,22 +662,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
   );
 }
 
-/**
- * The field-test protocol's starting gate.
- *
- * THE STEPS ARE NOT HERE ANY MORE, and that is the fix. They were, and
- * following them meant walking back to this screen after every one -- because
- * every step has to be performed somewhere this screen is not -- which threw
- * the run away each time. The first real run stopped after four steps
- * (2026-09-19): "I need it to set the settings and maybe have a pop up that
- * follows me into the testing. Can’t have to go back and forth and have it
- * reset all progress."
- *
- * So this picks the route and starts the run; ui/components/FieldTestHud.tsx
- * is what you actually follow, floating over whatever screen the step needs,
- * and diag/fieldTestRun.ts is where the progress lives so that navigating --
- * or being reloaded mid-run -- costs nothing.
- */
 function CarCheckSection() {
   return (
     <CollapsibleSection title={<>Car check</>} defaultOpen={false}>
@@ -692,70 +670,42 @@ function CarCheckSection() {
   );
 }
 
-function FieldTestPanel() {
+/**
+ * The field test's door, and nothing more.
+ *
+ * THE STEPS ARE NOT HERE, and neither is the run. They were here once, and
+ * following them meant walking back to this screen after every step -- which
+ * threw the run away each time and stopped the first real run after four
+ * (2026-09-19). Then they floated over a drill, which kept the run but left
+ * the operator running a drill and a test at once (2026-09-22: "I don't know
+ * why we have to go to a drill in the first place"). Now the protocol has its
+ * own screen and its own voice; this is only the way in.
+ */
+function FieldTestPanel({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const [run, setRun] = useState(() => readFieldTestRun());
   useEffect(() => subscribeFieldTestRun(() => setRun(readFieldTestRun())), []);
-  const active = FIELD_TEST_CONDITIONS.find((c) => c.id === run.condition) ?? FIELD_TEST_CONDITIONS[0];
-  const steps = stepsForCondition(active.id);
+  const condition =
+    FIELD_TEST_CONDITIONS.find((c) => c.id === run.condition) ?? FIELD_TEST_CONDITIONS[0]!;
 
   return (
     <CollapsibleSection title={<>Field test</>} defaultOpen={false}>
       <div className="settings-note-row u-note">
-        Two runs, and they answer different questions. The <strong>parked</strong> ones carry the
-        wheel steps: which button reaches the app, and whether it still reaches it in the gaps
-        between prompts. None of that depends on road noise, and all of it needs both hands. The{' '}
-        <strong>driving</strong> ones carry only what a driveway cannot produce — whether you can
-        hear the app over the road, and whether it can hear you — and are kept short on purpose,
-        because every step ends in tapping this screen. Pick the route, press start, and the panel
-        follows you from screen to screen, setting each step up and writing what you MEANT into the
-        diagnostic log. Then send the log.
+        {FIELD_TEST_STEPS.length} steps that run themselves: it speaks its own lines through the
+        real audio path, captures whatever the wheel sends, listens to the cabin, and writes all of
+        it to the diagnostic log as it happens. Every condition runs every step, buttons included.
+        Nothing else needs to be running.
       </div>
 
-      <div className="settings-row">
-        <span className="settings-label">Condition</span>
-        <Segmented
-          value={run.condition}
-          options={FIELD_TEST_CONDITIONS.map((c) => ({ value: c.id, label: c.label }))}
-          onChange={(value) => setFieldTestCondition(value)}
-        />
-      </div>
-      <div className="settings-note-row u-note">
-        <strong>Set up:</strong> {active.setup}
-        <br />
-        <strong>Proves:</strong> {active.proves}
-      </div>
-
-      {run.active ? (
-        <button
-          type="button"
-          className="fieldtest-stamp"
-          data-testid="fieldtest-stop"
-          onClick={() => stopFieldTestRun()}
-        >
-          Stop the field test (step {run.stepIndex + 1} of {steps.length})
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="fieldtest-stamp"
-          data-testid="fieldtest-start"
-          onClick={() => startFieldTestRun(run.condition)}
-        >
-          Start the field test — {steps.length} steps, {active.motion}
-        </button>
-      )}
-
-      <ol className="fieldtest-steps">
-        {steps.map((step, i) => (
-          <li className="fieldtest-step" key={step.id}>
-            <div className="fieldtest-instruction">
-              {i + 1}. {step.instruction}
-              {run.stamps[step.id] ? ' ✓' : ''}
-            </div>
-            <div className="fieldtest-expect u-note">Look for: {step.expect}</div>
-          </li>
-        ))}
-      </ol>
+      <button
+        type="button"
+        className="fieldtest-stamp"
+        data-testid="fieldtest-open"
+        onClick={() => onNavigate('fieldtest')}
+      >
+        {run.active
+          ? `Back to the field test — step ${run.stepIndex + 1} of ${FIELD_TEST_STEPS.length}`
+          : `Open the field test — ${condition.label}`}
+      </button>
     </CollapsibleSection>
   );
 }

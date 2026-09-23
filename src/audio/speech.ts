@@ -31,6 +31,7 @@ export { _resetSharedAudioContextForTest };
 import { initMediaSession, setNowPlaying, setPlaybackState } from './mediaSession';
 import { holdAudioFocus } from './audioFocus';
 import { invokeWheelCommand } from './wheelCommands';
+import { diag } from '../diag/diagnosticLog';
 
 declare global {
   interface Window {
@@ -431,6 +432,16 @@ export function speak(
   }
 
   if (isClipsEnabled() && hasClips(text)) {
+    // WHICH PATH SPOKE IT, recorded before it speaks.
+    //
+    // The log said what was said and never how, so a voice that changed
+    // mid-drill was invisible in it -- the operator had to hear the change
+    // and report it out loud into the microphone (2026-09-20, 7:16). The two
+    // paths are not interchangeable: a clip is an element the head unit can
+    // see and the volume boost can reach, while live speechSynthesis is
+    // neither, so which one spoke decides whether a line survives road noise
+    // and whether the car even knows the app is talking.
+    diag('speak', 'path', { path: 'clip', said: text });
     announceToMediaSession(text);
     void playClipsResumable(text, {
       interrupt: opts?.interrupt,
@@ -438,6 +449,13 @@ export function speak(
       volume: opts?.volume,
     }).then(({ played, remainder }) => {
       if (played) return;
+      // A clip chain that broke is the app switching voices MID-UTTERANCE,
+      // which is the worst case for the operator and the hardest to notice.
+      diag('speak', 'path', {
+        path: 'clip-failed-to-tts',
+        said: remainder ?? text,
+        partial: remainder !== undefined && remainder !== text,
+      });
       // A chain that broke PART WAY through reports what is still unsaid.
       // Speaking `text` there would repeat the half the clips already
       // delivered -- the user heard the opening twice and the good audio was
@@ -448,6 +466,13 @@ export function speak(
     return;
   }
 
+  diag('speak', 'path', {
+    path: 'tts',
+    said: text,
+    // The reason it is on the fallback path at all, which is the actionable
+    // half: clips off is a setting, no clip is a missing recording.
+    why: isClipsEnabled() ? 'no-clip' : 'clips-off',
+  });
   speakLive(text, opts);
 }
 

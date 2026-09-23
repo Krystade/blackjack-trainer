@@ -3,25 +3,29 @@ import {
   FIELD_TEST_CONDITIONS,
   FIELD_TEST_STEPS,
   DEFAULT_FIELD_TEST_CONDITION,
-  stepsForMotion,
-  stepsForCondition,
+  ROUTE_ANSWERS,
   motionForCondition,
   stampFieldTest,
+  logFieldTestStep,
+  logFieldTestRunStart,
+  logFieldTestRunEnd,
   applyFieldTestSetup,
   describeFieldTestSetup,
 } from './fieldTest';
 import type { Settings } from '../store/types';
 import { readDiagnosticLog, clearDiagnosticLog } from './diagnosticLog';
+import spokenPhrases from '../../scripts/spoken-phrases.json';
+
+const ids = () => FIELD_TEST_STEPS.map((s) => s.id);
 
 describe('the protocol itself', () => {
   it('has unique step ids, because the log is keyed on them', () => {
-    const ids = FIELD_TEST_STEPS.map((s) => s.id);
-    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set(ids()).size).toBe(ids().length);
   });
 
   it('has unique condition ids for the same reason', () => {
-    const ids = FIELD_TEST_CONDITIONS.map((c) => c.id);
-    expect(new Set(ids).size).toBe(ids.length);
+    const c = FIELD_TEST_CONDITIONS.map((x) => x.id);
+    expect(new Set(c).size).toBe(c.length);
   });
 
   it('opens on a condition that exists', () => {
@@ -29,129 +33,35 @@ describe('the protocol itself', () => {
   });
 
   /**
-   * Every step is an instruction, a stamp and an expectation. A step missing
-   * the third is the failure this whole panel exists to prevent: something
-   * done in the car that nobody can check against the log afterwards.
+   * Every step must be answerable. A step with no responses is a dead end in
+   * a moving car: the operator reaches it, has nothing to tap, and the run
+   * stops there -- which is how the 2026-09-19 run ended.
    */
-  it('tells you what to do, what to press, and what should show up', () => {
+  it('gives every step something to say and something to tap', () => {
     for (const step of FIELD_TEST_STEPS) {
+      expect(step.title.length, step.id).toBeGreaterThan(0);
       expect(step.instruction.length, step.id).toBeGreaterThan(0);
-      expect(step.stamp.length, step.id).toBeGreaterThan(0);
-      expect(step.expect.length, step.id).toBeGreaterThan(0);
+      expect(step.responses.length, step.id).toBeGreaterThan(0);
     }
   });
 
-  /**
-   * Order is load-bearing: opening the microphone is what takes the wheel
-   * away, so every wheel step that is supposed to WORK has to come first.
-   *
-   * Asserted WITHIN the parked run rather than across the whole list, because
-   * that is where these steps now meet -- `spoke` is in the driving run, and
-   * an ordering assertion over a list nobody follows end to end would be
-   * checking a sequence that never happens.
-   */
-  it('tests the wheel before it opens the microphone, inside the parked run', () => {
-    const order = stepsForMotion('parked').map((s) => s.id);
-    expect(order).toContain('wheel-after-mic');
-    for (const worksWithMicShut of ['press-forward', 'press-back', 'wheel-gap']) {
-      expect(order.indexOf(worksWithMicShut), worksWithMicShut).toBeGreaterThanOrEqual(0);
-      // ...and the one that is expected to FAIL comes after, on purpose.
-      expect(order.indexOf(worksWithMicShut), worksWithMicShut).toBeLessThan(
-        order.indexOf('wheel-after-mic'),
-      );
-    }
-  });
-
-  /**
-   * The audio check is the precondition for everything below it in EITHER
-   * run: a wheel press is pointless if nothing is playing, and so is a spoken
-   * answer. A filter that dropped it from one run would leave that run's
-   * first real step resting on something nobody established.
-   */
-  it('opens both runs with the audio check', () => {
-    for (const motion of ['parked', 'driving'] as const) {
-      expect(stepsForMotion(motion)[0]?.id, motion).toBe('audio-out');
+  it('keeps every response id unique within its step, since the id is the record', () => {
+    for (const step of FIELD_TEST_STEPS) {
+      const r = step.responses.map((x) => x.id);
+      expect(new Set(r).size, step.id).toBe(r.length);
     }
   });
 
   it('keeps the speakerphone control condition, which is the whole comparison', () => {
     expect(FIELD_TEST_CONDITIONS.map((c) => c.id)).toContain('speakerphone');
   });
-});
 
-describe('the parked/driving split', () => {
-  it('gives every step a run, so none is added without a decision', () => {
-    for (const step of FIELD_TEST_STEPS) {
-      expect(['parked', 'driving', 'either'], step.id).toContain(step.motion);
-    }
-  });
-
-  it('puts every step in at least one run', () => {
-    const covered = new Set([
-      ...stepsForMotion('parked').map((s) => s.id),
-      ...stepsForMotion('driving').map((s) => s.id),
-    ]);
-    for (const step of FIELD_TEST_STEPS) expect(covered, step.id).toContain(step.id);
-  });
-
-  /**
-   * The load-bearing assignment. `wheel-gap` is what separates the shipped
-   * fix from the 2026-09-19 bug, and it asks for a press into a silence you
-   * have to HEAR arrive -- which at 70mph you cannot reliably locate, and
-   * cannot safely stamp. If it ever migrates to the driving run the protocol
-   * still looks complete and stops being able to answer its own question.
-   */
-  it('keeps the step that discriminates the fix in the parked run', () => {
-    expect(stepsForMotion('parked').map((s) => s.id)).toContain('wheel-gap');
-    expect(stepsForMotion('driving').map((s) => s.id)).not.toContain('wheel-gap');
-  });
-
-  /**
-   * No wheel step belongs at speed. Button routing is decided by the
-   * Bluetooth session, not by cabin noise, so driving buys nothing -- and
-   * every one of these ends in tapping the screen.
-   */
-  it('keeps every wheel step out of the driving run', () => {
-    const driving = stepsForMotion('driving').map((s) => s.id);
-    for (const id of ['press-forward', 'press-back', 'wheel-gap', 'wheel-dead', 'wheel-after-mic']) {
-      expect(driving, id).not.toContain(id);
-    }
-  });
-
-  /** ...and conversely, the two that a driveway genuinely cannot answer. */
-  it('keeps the microphone steps out of the parked run', () => {
-    const parked = stepsForMotion('parked').map((s) => s.id);
-    expect(parked).not.toContain('spoke');
-    expect(parked).not.toContain('spoke-over');
-  });
-
-  /**
-   * The safety property, stated as an inequality rather than a count so it
-   * survives steps being added: whatever the protocol grows into, the run
-   * performed at speed stays the smaller one.
-   */
-  it('asks for less at speed than it does parked', () => {
-    expect(stepsForMotion('driving').length).toBeLessThan(stepsForMotion('parked').length);
-    expect(stepsForMotion('driving').length).toBeGreaterThan(0);
-  });
-
-  it('offers a run of each kind to pick', () => {
+  it('offers both a stationary and a moving condition', () => {
     const motions = FIELD_TEST_CONDITIONS.map((c) => c.motion);
     expect(motions).toContain('parked');
     expect(motions).toContain('driving');
   });
 
-  it('routes a condition to its own run', () => {
-    expect(stepsForCondition('car')).toEqual(stepsForMotion('parked'));
-    expect(stepsForCondition('freeway')).toEqual(stepsForMotion('driving'));
-  });
-
-  /**
-   * An unknown condition -- a run saved under an id a later release dropped
-   * -- must land in the stationary run. The failure direction matters: the
-   * wrong guess here either shows a parked driver some extra steps, or asks
-   * a moving one to do things the protocol deliberately keeps off the road.
-   */
   it('falls back to parked for a condition it does not recognise', () => {
     expect(motionForCondition('a-condition-from-a-later-release')).toBe('parked');
   });
@@ -161,64 +71,276 @@ describe('the parked/driving split', () => {
   });
 });
 
-describe('stamping an intent', () => {
-  beforeEach(() => {
-    clearDiagnosticLog();
+describe('the test speaks for itself', () => {
+  /**
+   * The rewrite's whole premise, and the operator's complaint in one line:
+   * "I don't know why we have to go to a drill in the first place." A step
+   * that asks about the sound has to PRODUCE the sound, or following it means
+   * running a drill alongside the test -- which is what happened twice, and
+   * what filled both logs with flashcard grading instead of evidence.
+   */
+  it('produces its own audio for every step that asks a question about audio', () => {
+    for (const step of FIELD_TEST_STEPS) {
+      const asksAboutSound = step.responses.some((r) => r.kind === 'route');
+      if (asksAboutSound) {
+        expect(step.say, `${step.id} asks where the sound came from`).toBeTruthy();
+      }
+    }
   });
 
-  it('writes the step and the condition it was run under', () => {
-    stampFieldTest('press-forward', 'car');
+  /**
+   * Every spoken line must be a whole sentence, because a clip IS a sentence:
+   * clips.ts splits on terminal punctuation and looks each piece up exactly.
+   * A line without it can never match a clip, so it would drop to the phone's
+   * own voice -- and a route/voice question asked about an utterance that
+   * could only ever be live TTS answers a question nobody asked.
+   */
+  it('ends every spoken line in terminal punctuation, so a clip can match it', () => {
+    for (const step of FIELD_TEST_STEPS) {
+      for (const line of step.say ?? []) expect(line.trim(), step.id).toMatch(/[.?!]$/);
+    }
+  });
+
+  /**
+   * THE TEST THAT CATCHES THE MISTAKE THIS FILE WAS WRITTEN WITH.
+   *
+   * The first draft of the rewrite used lines I made up -- "You have eight.
+   * Dealer shows nine." and so on. Every one of them typechecked, rendered,
+   * and passed every other assertion here; and not one of them was in the
+   * phrase manifest, so not one of them had a recorded clip. The whole
+   * protocol would have run on live TTS: every "where did that come from"
+   * asked about an utterance that could only take the fallback path, and
+   * "was that the recorded voice?" asked about an utterance that never could
+   * have been. Two more drives, and no more answers than the first two.
+   *
+   * scripts/spoken-phrases.json is the list the clips are GENERATED from, so
+   * membership in it is the real precondition, not a proxy for one.
+   */
+  it('speaks only lines that actually have a recorded clip', () => {
+    const haveClips = new Set(spokenPhrases as string[]);
+    for (const step of FIELD_TEST_STEPS) {
+      for (const line of step.say ?? []) {
+        expect(
+          haveClips.has(line),
+          `${step.id} says a line with no clip, so it can only ever use the phone voice: ${line}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  /**
+   * ...and its mirror. The calibration step's second line must NOT have a
+   * clip, because its entire job is to demonstrate the fallback: give it one
+   * and the step plays the recorded voice twice and teaches the operator that
+   * the two sound identical, which is worse than not asking.
+   */
+  it('keeps the calibration line unclipped, which is what it is for', () => {
+    const haveClips = new Set(spokenPhrases as string[]);
+    const withFallback = FIELD_TEST_STEPS.filter((s) => s.sayUnclipped);
+    expect(withFallback.length).toBe(1);
+    for (const step of withFallback) {
+      expect(haveClips.has(step.sayUnclipped!), step.id).toBe(false);
+      expect(step.sayUnclipped!.trim(), step.id).toMatch(/[.?!]$/);
+      // And it is paired with a clipped line, or there is nothing to compare.
+      expect(step.say?.length, step.id).toBeGreaterThan(0);
+    }
+  });
+
+  it('offers a repeat for every line it speaks, since a line missed in traffic is a step wasted', () => {
+    for (const step of FIELD_TEST_STEPS) {
+      if (step.say || step.sayUnclipped) expect(step.sayAgain, step.id).toBe(true);
+    }
+  });
+});
+
+describe('the buttons are back in every condition', () => {
+  /**
+   * THE REGRESSION GUARD FOR THE MISTAKE THIS REWRITE UNDOES. The previous
+   * protocol filtered steps by motion and I put every wheel step in the
+   * parked run, reasoning that button routing is noise-independent. The
+   * operator drove a freeway with nothing to press: "I never said I wanted to
+   * completely drop using the buttons so I don't know why they were removed."
+   *
+   * There is no filter any more, so this asserts the property that filter
+   * violated: the wheel steps exist, and they are reachable from wherever the
+   * operator is. If a `stepsFor…` filter is ever reintroduced this test has
+   * to be reckoned with first.
+   */
+  it('carries wheel steps, and carries them for every condition alike', () => {
+    const wheelSteps = FIELD_TEST_STEPS.filter((s) => s.wheel);
+    expect(wheelSteps.length).toBeGreaterThanOrEqual(4);
+    // One list, no per-condition subsetting: what a driving operator is
+    // offered is exactly what a parked one is.
+    for (const condition of FIELD_TEST_CONDITIONS) {
+      expect(ids(), condition.id).toContain('wheel-gap');
+      expect(ids(), condition.id).toContain('wheel-talking');
+    }
+  });
+
+  /**
+   * "Buttons worked only when the bot was talking" (2026-09-19). That is the
+   * app losing the now-playing slot when a clip ends. A protocol that only
+   * ever presses during speech cannot tell fixed from still-broken, so the
+   * silent press is its own step and comes after the speaking one.
+   */
+  it('presses the wheel in silence as well as during speech, in that order', () => {
+    expect(ids().indexOf('wheel-gap')).toBeGreaterThan(ids().indexOf('wheel-talking'));
+  });
+
+  /**
+   * Order is load-bearing: opening the microphone flips the car to its
+   * hands-free profile and takes the wheel with it. Every wheel step expected
+   * to WORK has to come before the microphone opens, or it fails for a reason
+   * that has nothing to do with the wheel.
+   */
+  it('tests the wheel before it opens the microphone', () => {
+    const firstMic = FIELD_TEST_STEPS.findIndex((s) => s.setup?.voice === true);
+    expect(firstMic).toBeGreaterThan(-1);
+    for (const id of ['wheel-talking', 'wheel-gap', 'wheel-back', 'wheel-other']) {
+      expect(ids().indexOf(id), id).toBeLessThan(firstMic);
+    }
+    // ...and the one expected to FAIL is deliberately after it.
+    expect(ids().indexOf('wheel-with-mic')).toBeGreaterThan(firstMic);
+  });
+});
+
+describe('the route question', () => {
+  /**
+   * The point of the rewrite. iOS exposes no output route to a web page, so
+   * the only way to know whether an utterance landed on the car, the phone's
+   * loudspeaker or the earpiece is to ask -- and the earpiece has to be its
+   * own answer, because that is the failure: audible enough to seem fine on a
+   * driveway, inaudible at 70mph. "If it's on the phone call speaker it's
+   * just not audible at all and completely worthless."
+   */
+  it('lets the operator name the earpiece specifically, not just "quiet"', () => {
+    const answers = ROUTE_ANSWERS.map((r) => r.id);
+    expect(answers).toContain('route-car');
+    expect(answers).toContain('route-loudspeaker');
+    expect(answers).toContain('route-earpiece');
+    expect(answers).toContain('route-silent');
+  });
+
+  /**
+   * One sample cannot distinguish "it went to the earpiece" from "it ALWAYS
+   * goes to the earpiece" from "it alternates" -- and alternation is what the
+   * operator reported: "in the car then speaker then in the car then
+   * speaker." Consecutive samples are the only instrument that separates
+   * those, so the protocol has to carry several.
+   */
+  it('asks where the sound came from several times over, since one sample proves nothing', () => {
+    const routeSteps = FIELD_TEST_STEPS.filter((s) =>
+      s.responses.some((r) => r.kind === 'route'),
+    );
+    expect(routeSteps.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('asks it about back-to-back utterances, which is where alternation shows', () => {
+    const order = ids();
+    expect(order.indexOf('route-2')).toBe(order.indexOf('route-1') + 1);
+    expect(order.indexOf('route-3')).toBe(order.indexOf('route-2') + 1);
+  });
+});
+
+describe('what the log gets', () => {
+  beforeEach(() => clearDiagnosticLog());
+
+  it('writes the step, the condition and the answer that was tapped', () => {
+    stampFieldTest('route-1', 'freeway', 'route-earpiece');
     const entry = readDiagnosticLog().find((e) => e.category === 'test');
-    expect(entry?.event).toBe('press-forward');
-    expect(entry?.detail?.condition).toBe('car');
+    expect(entry?.event).toBe('route-1');
+    expect(entry?.detail?.condition).toBe('freeway');
+    expect(entry?.detail?.answer).toBe('route-earpiece');
+  });
+
+  /**
+   * The answer is what the operator MEANT; the wheel actions and transcripts
+   * are what the app SAW. Carried on the same entry because reading them
+   * apart means correlating by timestamp across a 3000-entry file, which is
+   * exactly the work that made the last two logs unusable.
+   */
+  it('carries the evidence the app gathered alongside the answer', () => {
+    stampFieldTest('wheel-gap', 'car', 'wheel-nothing', { wheel: 'nexttrack, previoustrack' });
+    const entry = readDiagnosticLog().find((e) => e.category === 'test');
+    expect(entry?.detail?.wheel).toBe('nexttrack, previoustrack');
   });
 
   it('carries the condition on every stamp, not once per run', () => {
-    // A run gets abandoned and restarted and the log survives reloads, so a
+    // Runs get abandoned and restarted and the log survives reloads, so a
     // condition written once would be read against the wrong half of the file.
-    stampFieldTest('press-forward', 'car');
-    stampFieldTest('press-back', 'speakerphone');
+    stampFieldTest('route-1', 'car', 'route-car');
+    stampFieldTest('route-2', 'speakerphone', 'route-loudspeaker');
     const conditions = readDiagnosticLog()
       .filter((e) => e.category === 'test')
       .map((e) => e.detail?.condition);
     expect(conditions).toEqual(['car', 'speakerphone']);
   });
+
+  /**
+   * "I need it to record in the logs everything about the test as it
+   * happens." Until now the log recorded only the stamps, so a run read back
+   * as a list of opinions with no record of what the app did between them --
+   * two drives produced no diagnosis for exactly this reason.
+   */
+  it('brackets the run and every step, so the stamps have something to sit between', () => {
+    logFieldTestRunStart('freeway');
+    logFieldTestStep('route-1', 'freeway', 0);
+    stampFieldTest('route-1', 'freeway', 'route-car');
+    logFieldTestRunEnd('freeway', 1);
+
+    const events = readDiagnosticLog()
+      .filter((e) => e.category === 'test')
+      .map((e) => e.event);
+    expect(events).toEqual(['run-start', 'step-open', 'route-1', 'run-end']);
+  });
+
+  it('records which step was opened and where in the run it was', () => {
+    logFieldTestStep('wheel-gap', 'car', 6);
+    const entry = readDiagnosticLog().find((e) => e.event === 'step-open');
+    expect(entry?.detail?.step).toBe('wheel-gap');
+    expect(entry?.detail?.index).toBe(6);
+  });
 });
 
 describe('a step that sets itself up', () => {
   /**
-   * The complaint this answers, in full: "I need it to set the settings"
-   * (2026-09-19). A step whose preconditions are only DESCRIBED gets run
-   * under the wrong ones, and a run under the wrong preconditions is
-   * indistinguishable in the log from a correct one.
+   * "I need it to set the settings" (2026-09-19). A step whose preconditions
+   * are only DESCRIBED gets run under the wrong ones, and a run under the
+   * wrong preconditions is indistinguishable in the log from a correct one.
    */
   it('turns on everything the wheel needs, which is the point of the protocol', () => {
-    const step = FIELD_TEST_STEPS.find((s) => s.id === 'press-forward')!;
-    expect(step.setup).toBeDefined();
+    const step = FIELD_TEST_STEPS.find((s) => s.id === 'wheel-talking')!;
     expect(step.setup?.audioEnabled).toBe(true);
     // Without clips there is no media element, so no wheel button can reach
-    // the app at all -- see audio/carControls.ts. A wheel step run with live
-    // TTS proves nothing.
+    // the app at all. A wheel step run on live TTS proves nothing.
     expect(step.setup?.useClips).toBe(true);
-    // And the microphone flips the car to its hands-free route, which takes
-    // the wheel away.
+    // And an open microphone flips the car to hands-free, taking the wheel.
     expect(step.setup?.voice).toBe(false);
   });
 
   /**
-   * Eyes-free is the switch that decides whether the app speaks at all, and
-   * it used to live inside each drill's own React state -- unreachable from
-   * here. A step-one that turned audio on and left this off would be a silent
-   * step one, and every step below it would be measuring nothing.
+   * Eyes-free is the switch that decides whether the app speaks at all. A
+   * first step that turned audio on and left this off would be a silent first
+   * step, and every step below it would be measuring nothing.
    */
-  it('turns on the toggle that actually makes a drill speak', () => {
-    const step = FIELD_TEST_STEPS.find((s) => s.id === 'audio-out')!;
-    expect(step.setup?.eyesFree).toBe(true);
+  it('turns on the toggle that actually makes the app speak', () => {
+    expect(FIELD_TEST_STEPS[0]!.setup?.eyesFree).toBe(true);
+    expect(FIELD_TEST_STEPS[0]!.setup?.audioEnabled).toBe(true);
   });
 
+  /**
+   * The microphone is what moves playback to the earpiece and takes the
+   * wheel, so it must be open for exactly the steps that are about it and
+   * shut again afterwards -- an open microphone left running would poison
+   * every step that followed.
+   */
   it('opens the microphone only for the steps that are about the microphone', () => {
     const wantsMic = FIELD_TEST_STEPS.filter((s) => s.setup?.voice === true).map((s) => s.id);
-    expect(wantsMic).toEqual(['spoke', 'spoke-over', 'wheel-after-mic']);
+    expect(wantsMic).toEqual(['mic-route']);
+    // ...and it is explicitly shut again before the run ends.
+    const shutsMic = FIELD_TEST_STEPS.filter((s) => s.setup?.voice === false).map((s) => s.id);
+    expect(shutsMic).toContain('ambient');
+    expect(ids().indexOf('ambient')).toBeGreaterThan(ids().indexOf('mic-route'));
   });
 
   it('applies exactly what a step asked for and nothing else', () => {
@@ -285,21 +407,5 @@ describe('a step that sets itself up', () => {
 
   it('says so plainly when a step changes nothing', () => {
     expect(describeFieldTestSetup(undefined)).toMatch(/Nothing changed/);
-  });
-});
-
-describe('the gap the 2026-09-19 drive found', () => {
-  /**
-   * "Buttons worked only when the bot was talking." That is the app losing
-   * the phone's now-playing slot the moment a clip ends (audio/audioFocus.ts).
-   * A protocol that only ever presses the wheel DURING speech cannot tell the
-   * difference between fixed and still broken, so the silent press is its own
-   * step, and it comes after the two that press during speech.
-   */
-  it('presses the wheel in silence as well as during speech', () => {
-    const order = FIELD_TEST_STEPS.map((s) => s.id);
-    expect(order).toContain('wheel-gap');
-    expect(order.indexOf('wheel-gap')).toBeGreaterThan(order.indexOf('press-forward'));
-    expect(order.indexOf('wheel-gap')).toBeLessThan(order.indexOf('spoke'));
   });
 });

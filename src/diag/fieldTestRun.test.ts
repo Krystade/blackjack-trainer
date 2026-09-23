@@ -9,7 +9,7 @@ import {
   subscribeFieldTestRun,
   _resetFieldTestRunForTest,
 } from './fieldTestRun';
-import { stepsForMotion } from './fieldTest';
+import { FIELD_TEST_STEPS } from './fieldTest';
 
 /**
  * The one thing this module exists to guarantee: a run survives leaving the
@@ -66,8 +66,8 @@ describe('a run', () => {
   it('survives the module losing its in-memory copy, which is what navigation costs', () => {
     startFieldTestRun('car');
     goToFieldTestStep(4);
-    markFieldTestStamped('press-forward');
-    markFieldTestStamped('press-forward');
+    markFieldTestStamped('wheel-gap');
+    markFieldTestStamped('wheel-gap');
     const before = readFieldTestRun();
 
     // Drop the cached copy and keep the bytes -- a remount, or a mid-drive
@@ -77,7 +77,7 @@ describe('a run', () => {
     const after = readFieldTestRun();
     expect(after).toEqual(before);
     expect(after.stepIndex).toBe(4);
-    expect(after.stamps['press-forward']).toBe(2);
+    expect(after.stamps['wheel-gap']).toBe(2);
     expect(after.active).toBe(true);
   });
 
@@ -96,7 +96,7 @@ describe('a run', () => {
    */
   it('clears the ticks when the route changes', () => {
     startFieldTestRun('car');
-    markFieldTestStamped('press-forward');
+    markFieldTestStamped('wheel-gap');
     goToFieldTestStep(3);
 
     setFieldTestCondition('speakerphone');
@@ -112,28 +112,29 @@ describe('a run', () => {
     goToFieldTestStep(-3);
     expect(readFieldTestRun().stepIndex).toBe(0);
     goToFieldTestStep(999);
-    expect(readFieldTestRun().stepIndex).toBe(stepsForMotion('parked').length - 1);
+    expect(readFieldTestRun().stepIndex).toBe(FIELD_TEST_STEPS.length - 1);
   });
 
   /**
-   * The end of the protocol is not one number. A driving run is the shorter
-   * list (diag/fieldTest.ts), so a ceiling taken from the full set would let
-   * a moving driver page past the last step they have into blank steps --
-   * or, before this, into the parked wheel steps the split exists to keep
-   * off the road.
+   * Every condition runs the same steps now, so the ceiling is one number.
+   * It was two: the driving run was a filtered subset, which is precisely
+   * what left a moving operator with no wheel steps ("I never said I wanted
+   * to completely drop using the buttons"). Asserted for a driving condition
+   * specifically, so that reintroducing a per-condition filter fails here.
    */
-  it('stops at the end of the run it is actually in, not the longest one', () => {
+  it('stops at the same last step whichever condition it is in', () => {
     startFieldTestRun('freeway');
     goToFieldTestStep(999);
-    const driving = stepsForMotion('driving').length;
-    expect(readFieldTestRun().stepIndex).toBe(driving - 1);
-    expect(driving).toBeLessThan(stepsForMotion('parked').length);
+    expect(readFieldTestRun().stepIndex).toBe(FIELD_TEST_STEPS.length - 1);
+    startFieldTestRun('car');
+    goToFieldTestStep(999);
+    expect(readFieldTestRun().stepIndex).toBe(FIELD_TEST_STEPS.length - 1);
   });
 
   it('stops without forgetting where it got to', () => {
     startFieldTestRun('car');
     goToFieldTestStep(2);
-    markFieldTestStamped('press-forward');
+    markFieldTestStamped('wheel-gap');
 
     stopFieldTestRun();
 
@@ -142,7 +143,7 @@ describe('a run', () => {
     // Stopping is "put the panel away", not "throw the evidence out" -- the
     // Settings list still ticks what was done.
     expect(run.stepIndex).toBe(2);
-    expect(run.stamps['press-forward']).toBe(1);
+    expect(run.stamps['wheel-gap']).toBe(1);
   });
 
   it('tells whoever is rendering it that something changed', () => {
@@ -173,14 +174,11 @@ describe('a stored run that no longer fits', () => {
 
     const run = readFieldTestRun();
     expect(run.active).toBe(true);
-    expect(run.stepIndex).toBe(stepsForMotion('parked').length - 1);
+    expect(run.stepIndex).toBe(FIELD_TEST_STEPS.length - 1);
   });
 
-  /**
-   * Same rescue, for a stored DRIVING run -- which is the case that needs the
-   * condition resolved before the index is clamped, not after.
-   */
-  it('pulls a stored driving run back to its own last step', () => {
+  /** Same rescue, for a stored DRIVING run. */
+  it('pulls a stored driving run back to the last step', () => {
     const store = installStorage();
     store.set(
       'bjtrainer.fieldTestRun.v1',
@@ -188,7 +186,7 @@ describe('a stored run that no longer fits', () => {
     );
     forgetInMemoryOnly();
 
-    expect(readFieldTestRun().stepIndex).toBe(stepsForMotion('driving').length - 1);
+    expect(readFieldTestRun().stepIndex).toBe(FIELD_TEST_STEPS.length - 1);
   });
 
   it('survives outright garbage without taking the app down', () => {

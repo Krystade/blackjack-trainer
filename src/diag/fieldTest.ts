@@ -1,385 +1,460 @@
+/**
+ * The field test: a protocol that speaks for itself.
+ *
+ * WHAT WAS WRONG WITH THE LAST ONE, in the operator's words after the
+ * 2026-09-22 drive: "the field test just sucked ... I didn't even test any
+ * buttons ... I don't know why you haven't made the field test its own thing
+ * or why we have to go to a drill in the first place."
+ *
+ * All three were my doing and all three are fixed here:
+ *
+ *   1. IT NEEDED A DRILL. Every step said "start a drill and listen", because
+ *      the protocol had no voice of its own. So following it meant running a
+ *      drill and a test at once, and the log filled with flashcard grading
+ *      that had nothing to do with what was being measured. Now each step
+ *      declares what to SAY, and the screen says it through the real speech
+ *      path -- same clips, same cascade, same media session, same everything
+ *      a drill would use. Nothing else is running.
+ *   2. THE WHEEL WAS REMOVED FROM THE DRIVING RUN. I cut it when the runs
+ *      were split, reasoning that button routing is noise-independent so
+ *      driving adds nothing. That was not what was asked and it was wrong in
+ *      practice: whether the wheel reaches the app AT SPEED, with the car
+ *      doing everything else a moving car does, is exactly the open question.
+ *      Every condition now carries every wheel step.
+ *   3. IT RECORDED ALMOST NOTHING. A stamp said which step the operator was
+ *      on and nothing about what the app did. Now every step entry, every
+ *      line spoken and which path spoke it, every wheel arrival, every route
+ *      change and every answer is written as it happens.
+ *
+ * THE ROUTE QUESTION, which is the point of the rewrite.
+ *
+ * The operator's actual complaint is that output moves around underneath
+ * them: "it's often switching between my Bluetooth speaker and my phone's
+ * loudspeaker and my phone's phone-call speaker -- if it's on the phone call
+ * speaker it's just not audible at all and completely worthless." iOS does
+ * not expose the output route to a web page: there is no sinkId, and
+ * enumerateDevices does not name the receiver. So the app cannot read it.
+ *
+ * What it CAN do is ask, per utterance, in one tap -- and pair the answer
+ * with the path that spoke it, which the app does know. Three or four
+ * consecutive samples of "where did that come from" against "clip or live
+ * TTS" is enough to tell whether the routes are alternating at random or
+ * tracking the path, and those are different bugs with different fixes.
+ * That pairing is what this protocol exists to collect.
+ */
+
 import { diag } from './diagnosticLog';
 import type { Settings } from '../store/types';
 
-/**
- * The field-test protocol: what to do, in what order, and a way to say so.
- *
- * WHY. Every other diagnostic in this app records what the APP saw. None of
- * them record what the operator was trying to do, and without that half the
- * log cannot be read. A log with no `nexttrack` line in it is either a car
- * that never sent one or a button that was never pressed -- opposite
- * diagnoses, identical evidence. Asked for on 2026-09-16: "I think I need a
- * set of instructions in the app to properly follow so you know what the
- * intent is vs what shows up in the log."
- *
- * IT SETS ITSELF UP, and that is not a convenience. The first run of this
- * protocol (2026-09-19) got four steps in and stopped: "the field test feels
- * so unfinished and poorly designed. I need it to set the settings and maybe
- * have a pop up that follows me into the testing. Can't have to go back and
- * forth and have it reset all progress." All three complaints are the same
- * defect wearing three faces -- a protocol that states preconditions in prose
- * makes the operator satisfy them by hand, from a different screen, while
- * parked in a car, and every trip back to Settings threw the run away. A step
- * that names a precondition it could simply establish is a step that will be
- * run under the wrong one. So each step below carries the settings it needs
- * as DATA (`setup`), the panel applies them when the step is opened, and the
- * run itself lives in diag/fieldTestRun.ts where navigation cannot touch it.
- *
- * PARKED, DELIBERATELY. Stamping an intent means tapping a screen, which is
- * the one thing this app exists to avoid while moving. So the protocol is a
- * stationary shakedown -- engine running, phone connected exactly as it would
- * be on a drive -- and the drive itself is left to the automatic log. Saying
- * that plainly is part of the protocol: a step that cannot be followed safely
- * will be followed badly, and a badly-followed step poisons the evidence it
- * was meant to produce.
- *
- * THREE CONDITIONS, because the interesting failures are all about the audio
- * route. The car's hands-free profile is what takes the wheel away when the
- * microphone opens; speakerphone is the control that has the same acoustics
- * and none of the Bluetooth; the bare phone is the baseline where nothing can
- * be blamed on a route at all. Running the same steps in each is what turns
- * "it didn't work" into "it didn't work on THIS route".
- */
-
-/**
- * Stationary or at speed, and it decides which steps the run contains.
- *
- * THE SPLIT, and why it is not arbitrary. The protocol's two halves have
- * opposite sensitivity to noise:
- *
- *   - **The wheel half is noise-independent.** Whether a skip-forward press
- *     lands on this app or on the radio is decided by the Bluetooth session
- *     and which element the phone thinks is playing -- not by how loud the
- *     cabin is. 70mph changes nothing about it, so it is fully answerable on
- *     a driveway, which is the only place you can safely read a panel and tap
- *     a stamp ten times.
- *   - **The hearing half is noise-decisive.** What you can hear over the road
- *     and what the microphone can hear over it are both meaningless parked,
- *     because a quiet cabin does not reproduce the failure.
- *
- * Before this split there was one `car` condition meaning "engine running",
- * which collapsed the driveway and the commute into a single id -- and since
- * the condition rides on every stamp, the log could not express "worked
- * parked, failed at speed". That is the distinction this type exists to make
- * recordable.
- */
 export type FieldTestMotion = 'parked' | 'driving';
 
 export interface FieldTestCondition {
   id: string;
   label: string;
-  /** Stationary or at speed. Selects the step list for the run. */
   motion: FieldTestMotion;
-  /** How to physically set the phone and car up before the steps. */
   setup: string;
-  /** What this condition is here to rule in or out. */
   proves: string;
 }
+
+/**
+ * The routes, as a person in the driver's seat can tell them apart.
+ *
+ * Not a technical taxonomy -- these are the four things the operator can
+ * actually distinguish by ear without looking at anything, which is the only
+ * kind of answer a protocol may ask for while driving. `earpiece` is called
+ * out separately from `loudspeaker` because it is the failure: the receiver
+ * at the top of the phone is inaudible in a moving car, so an utterance that
+ * lands there is lost even though nothing errored.
+ */
+export const ROUTE_ANSWERS = [
+  { id: 'route-car', label: 'Car speakers' },
+  { id: 'route-loudspeaker', label: 'Phone, loud' },
+  { id: 'route-earpiece', label: 'Phone earpiece (barely audible)' },
+  { id: 'route-silent', label: 'Heard nothing' },
+] as const;
+
+export interface StepResponse {
+  id: string;
+  label: string;
+  /** Colours the button and, more importantly, the reading of the log. */
+  kind: 'route' | 'good' | 'bad' | 'note';
+}
+
+/** The state a step needs, as data the screen applies. */
+export interface FieldTestSetup {
+  audioEnabled?: boolean;
+  useClips?: boolean;
+  muted?: boolean;
+  wheelMode?: 'answer' | 'talk';
+  voice?: boolean;
+  eyesFree?: boolean;
+}
+
+export interface FieldTestStep {
+  id: string;
+  title: string;
+  instruction: string;
+  /**
+   * What the app says when this step opens, through the real speech path.
+   *
+   * This is what makes the protocol self-contained. It is also the payload of
+   * the measurement: the route and the voice are properties OF an utterance,
+   * so a step that asks about either has to produce one.
+   *
+   * EVERY LINE HERE ALREADY HAS A RECORDED CLIP, and that is not a detail.
+   * The first draft of this rewrite used lines I invented, none of which were
+   * in the phrase manifest -- so every one of them would have fallen back to
+   * the phone's own voice, and a protocol asking "was that the recorded
+   * voice?" would have been asking about an utterance that could only ever
+   * have been live TTS. fieldTest.test.ts pins every line against
+   * scripts/spoken-phrases.json so that cannot happen again.
+   */
+  say?: readonly string[];
+  /**
+   * A line deliberately chosen to have NO clip, spoken straight after `say`.
+   *
+   * The one exception to the rule above, and it exists to calibrate the ear.
+   * The operator's report is that "the voice that's being used switches often
+   * between the recorded and the other option" -- which can only be acted on
+   * if they can reliably tell the two apart. So one step plays a clipped line
+   * and an unclipped one back to back, on purpose, and says which is which.
+   */
+  sayUnclipped?: string;
+  /** Repeat `say` on demand -- a line missed in traffic is a step wasted. */
+  sayAgain?: boolean;
+  /** Arm wheel capture and show, live, whatever the car sends. */
+  wheel?: boolean;
+  /** Measure the cabin with the microphone for a few seconds. */
+  ambient?: boolean;
+  responses: readonly StepResponse[];
+  setup?: FieldTestSetup;
+}
+
+const ROUTE_RESPONSES: readonly StepResponse[] = ROUTE_ANSWERS.map((r) => ({
+  ...r,
+  kind: 'route' as const,
+}));
+
+const WHEEL_RESPONSES: readonly StepResponse[] = [
+  { id: 'wheel-app-responded', label: 'The app reacted', kind: 'good' },
+  { id: 'wheel-radio', label: 'The radio changed track instead', kind: 'bad' },
+  { id: 'wheel-nothing', label: 'Nothing happened at all', kind: 'bad' },
+];
+
+const FREE_RESPONSES: readonly StepResponse[] = [
+  { id: 'good', label: 'That worked', kind: 'good' },
+  { id: 'bad', label: 'That was wrong', kind: 'bad' },
+];
 
 export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
   {
     id: 'car',
     label: 'Car, parked',
     motion: 'parked',
-    setup:
-      'Phone paired to the car over Bluetooth, app audio coming out of the car speakers, engine running, handbrake on.',
+    setup: 'Paired to the car over Bluetooth, engine running, handbrake on.',
     proves:
-      'Whether the wheel reaches the app at all, and whether it still reaches it in the gaps. Button routing is a Bluetooth-session question, not an acoustic one, so driving would add nothing to it — and this is the only condition where following ten steps and tapping a stamp is safe.',
+      'The baseline for everything else. Same audio route as a drive, without the road — so anything that fails here fails for reasons that have nothing to do with speed.',
+  },
+  {
+    id: 'freeway',
+    label: 'Freeway',
+    motion: 'driving',
+    setup: 'Paired exactly as above, at your normal road speed, windows up.',
+    proves:
+      'The real thing, including the wheel. Whether the buttons reach the app at speed is the open question this protocol exists for, and it cannot be answered stationary.',
+  },
+  {
+    id: 'speakerphone',
+    label: 'Speakerphone',
+    motion: 'driving',
+    setup: 'Phone in the cradle on its own speaker, Bluetooth OFF, at road speed.',
+    proves:
+      'The control. Same road, same distance, no Bluetooth — so anything that fails here too is the app or the road, not the car.',
   },
   {
     id: 'phone',
     label: 'Phone, quiet',
     motion: 'parked',
     setup: 'Phone in your hand, engine off, windows up.',
-    proves: 'The baseline. If a step fails here it has nothing to do with driving at all.',
+    proves: 'If a step fails here it has nothing to do with driving at all.',
   },
-  {
-    id: 'freeway',
-    label: 'Freeway',
-    motion: 'driving',
-    setup:
-      'Paired to the car exactly as the parked run, at your normal road speed, windows up. A passenger holding the phone if you have one.',
-    proves:
-      'The real noise floor, which is the one thing a driveway cannot produce: what you can HEAR over the road, and what the microphone can hear over it. Note that only the recorded clips can be boosted past device volume — live speech synthesis is capped by the browser (audio/volume.ts) — so a line that vanishes at speed is more likely an unclipped line than a broken app.',
-  },
-  {
-    id: 'speakerphone',
-    label: 'Speakerphone, moving',
-    motion: 'driving',
-    setup: 'Phone in the cradle on its own loudspeaker, Bluetooth OFF, at the same road speed.',
-    proves:
-      'The control for the freeway run: same noise, same distance, no Bluetooth. Anything that fails here too is the app or the road, not the car.',
-  },
-] as const;
+];
+
+export const DEFAULT_FIELD_TEST_CONDITION = FIELD_TEST_CONDITIONS[0]!.id;
 
 /**
- * The state a step needs the app to be in, as data the panel can apply.
+ * The steps.
  *
- * Every field here is something the operator would otherwise have had to set
- * by hand from another screen. `voice` and `eyesFree` are the odd two out and
- * deliberately so: neither is a persisted setting, both are page-scoped
- * toggles (ui/voiceSession.ts, ui/eyesFreeSession.ts), because the app's
- * standing promise is that a microphone is only ever opened by an explicit
- * per-session choice and eyes-free follows the same rule. The protocol makes
- * those choices on the operator's behalf WITHIN the run, which is still
- * explicit -- they started the run -- and still forgotten on reload.
- */
-export interface FieldTestSetup {
-  audioEnabled?: boolean;
-  useClips?: boolean;
-  muted?: boolean;
-  wheelMode?: 'answer' | 'talk';
-  /** Microphone on or off for this step. Undefined means "leave it". */
-  voice?: boolean;
-  /**
-   * Eyes-free audio on or off. Page-scoped like `voice`
-   * (ui/eyesFreeSession.ts), and the single most important thing a step can
-   * set: without it a drill never speaks at all, so step one would be a
-   * silent step one and every step below it would be measuring nothing.
-   */
-  eyesFree?: boolean;
-}
-
-export interface FieldTestStep {
-  id: string;
-  /**
-   * Which run this step belongs to: the parked one, the driving one, or both.
-   *
-   * REQUIRED, with no default, and that is the point. A step added later
-   * without a considered answer here would silently join whichever run the
-   * default named -- most likely the driving one, where an extra step is a
-   * thing being read and tapped at speed. Making the compiler ask is cheaper
-   * than finding out on the road.
-   */
-  motion: FieldTestMotion | 'either';
-  /** What to do. */
-  instruction: string;
-  /** The button that stamps the log when you have done it. */
-  stamp: string;
-  /** What the log should contain afterwards if this worked. */
-  expect: string;
-  /** What the app puts itself into before you start this step. */
-  setup?: FieldTestSetup;
-  /**
-   * Where to be. The HUD follows you, so this is a nudge rather than a gate
-   * -- some steps are only meaningful with a drill actually running.
-   */
-  where?: 'drill' | 'anywhere';
-}
-
-/**
- * The steps, in order, for both runs.
+ * EVERY condition runs EVERY step. The previous version filtered them by
+ * motion and that is precisely what left the operator on a freeway with no
+ * buttons to test. A step that is awkward at speed is a step to skip in the
+ * moment -- Next is always available -- not one to remove from the protocol
+ * on their behalf.
  *
- * Ordered so each one only depends on what is already known to work: audio
- * before the wheel (a wheel press is pointless if nothing is playing), the
- * wheel before the microphone (opening the microphone is what takes the wheel
- * away), and the microphone last. That ordering has to hold WITHIN each run,
- * not just across the list, because `stepsForMotion` is a filter -- it
- * preserves order but drops members, and a precondition dropped out of a run
- * is a precondition nobody establishes.
- *
- * WHICH RUN EACH ONE IS IN, and the two that are worth arguing about:
- *
- *   - `wheel-after-mic` is PARKED even though it opens the microphone. It is
- *     not testing recognition, which would need road noise; it is testing
- *     whether the car takes the wheel away when the mic opens, which is a
- *     routing question and answerable in a driveway.
- *   - `wheel-gap` is PARKED and cannot sensibly be anything else. It asks you
- *     to wait for silence and press into it, and at speed you can neither
- *     reliably hear where the silence starts nor safely tap afterwards -- and
- *     it is the step that discriminates the 2026-09-19 fix from the bug.
- *
- * The driving run is deliberately short. Every step ends in tapping a stamp
- * on the screen, so each one added to it is one more thing done at speed.
+ * Ordered so the route questions come first and cheap: three consecutive
+ * utterances, each asking only "where did that come from". That sequence is
+ * the one that catches alternation, and it needs no wheel, no microphone and
+ * no judgement.
  */
 export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   {
-    id: 'audio-out',
-    motion: 'either',
-    instruction:
-      'Audio and the recorded voice are now on. Start any drill and listen for the first question.',
-    stamp: 'I heard it speak',
-    expect: 'speak lines, on the route you picked.',
+    id: 'route-1',
+    title: 'Where does it come out? (1 of 3)',
+    instruction: 'Listen to the line, then say where you heard it from.',
+    say: ['Basic hit versus dealer nine.'],
+    sayAgain: true,
+    responses: ROUTE_RESPONSES,
     setup: { audioEnabled: true, useClips: true, muted: false, voice: false, eyesFree: true },
-    where: 'drill',
   },
   {
-    id: 'no-audio-out',
-    motion: 'either',
-    instruction: 'If nothing was said, stamp this instead and stop — nothing below can work.',
-    stamp: 'It never spoke',
-    expect: 'speak lines with no sound: the route took them, not the app.',
-    where: 'anywhere',
-  },
-  {
-    id: 'press-forward',
-    motion: 'parked',
+    id: 'route-2',
+    title: 'Where does it come out? (2 of 3)',
     instruction:
-      'The microphone is off and the wheel is in answer mode. Press skip-forward on the wheel once, while it is still talking.',
-    stamp: 'I pressed skip-forward',
-    expect: 'a nexttrack or seekforward invoke within a second of this stamp.',
-    setup: { audioEnabled: true, useClips: true, wheelMode: 'answer', voice: false, eyesFree: true },
-    where: 'drill',
+      'A second line, straight after the first. Same question \u2014 and if this one came from somewhere else, that is the bug.',
+    say: ['Basic stand versus dealer six.'],
+    sayAgain: true,
+    responses: ROUTE_RESPONSES,
   },
   {
-    id: 'press-back',
-    motion: 'parked',
-    instruction: 'Still talking: press skip-back on the wheel once.',
-    stamp: 'I pressed skip-back',
-    expect: 'a previoustrack or seekbackward invoke within a second of this stamp.',
+    id: 'route-3',
+    title: 'Where does it come out? (3 of 3)',
+    instruction: 'Third and last. Three in a row is enough to tell a pattern from a one-off.',
+    say: ['Basic double versus dealer five.'],
+    sayAgain: true,
+    responses: ROUTE_RESPONSES,
+  },
+  {
+    id: 'route-short',
+    title: 'A short line',
+    instruction:
+      'One word rather than a sentence. A short utterance is over before a route has settled, so it can land somewhere the long ones do not.',
+    say: ['Correct?'],
+    sayAgain: true,
+    responses: ROUTE_RESPONSES,
+  },
+  {
+    id: 'route-long',
+    title: 'A long line',
+    instruction:
+      'The opposite end: long enough for the car to change its mind halfway through. If it started in one place and finished in another, say where it ENDED.',
+    say: [
+      'Twelve versus six: hit at true count minus three or lower, when the dealer hits soft seventeen.',
+    ],
+    sayAgain: true,
+    responses: ROUTE_RESPONSES,
+  },
+  {
+    /**
+     * THE CALIBRATION STEP, and the only one that speaks an unclipped line on
+     * purpose. Everything the operator has reported about the voice depends on
+     * being able to tell the recorded voice from the phone's, so this plays
+     * one of each, back to back, and says which is which.
+     */
+    id: 'voice-compare',
+    title: 'What the fallback sounds like',
+    instruction:
+      'Two lines. The first is the recorded voice; the second is deliberately the phone\u2019s own. Listen to the difference \u2014 that is what you are listening for everywhere else.',
+    say: ['Correct play was double.'],
+    sayUnclipped:
+      'This second line has no recording behind it, so your phone is reading it aloud instead.',
+    sayAgain: true,
+    responses: [
+      { id: 'voice-told-apart', label: 'I can hear the difference', kind: 'good' },
+      { id: 'voice-alike', label: 'They sounded the same', kind: 'bad' },
+      { id: 'voice-second-missing', label: 'The second one never played', kind: 'bad' },
+    ],
+  },
+  {
+    id: 'voice-which',
+    title: 'Which voice was that?',
+    instruction:
+      'One line, and it should be the recorded voice. If it is the phone\u2019s, the clip did not play \u2014 and live speech cannot be amplified at all, so under road noise it simply vanishes.',
+    say: ['Basic split versus dealer four.'],
+    sayAgain: true,
+    responses: [
+      { id: 'voice-recorded', label: 'The recorded voice', kind: 'good' },
+      { id: 'voice-phone', label: 'The phone\u2019s own voice', kind: 'bad' },
+      ...ROUTE_RESPONSES,
+    ],
+  },
+  {
+    id: 'wheel-talking',
+    title: 'The wheel, while it is talking',
+    instruction:
+      'A long line is playing. Press skip-forward on the wheel WHILE it talks. Whatever the car sends appears below.',
+    say: [
+      'Eleven versus ace: double at true count plus one or higher, when the dealer stands soft seventeen.',
+    ],
+    sayAgain: true,
+    wheel: true,
+    responses: WHEEL_RESPONSES,
     setup: { audioEnabled: true, useClips: true, wheelMode: 'answer', voice: false, eyesFree: true },
-    where: 'drill',
   },
   {
     id: 'wheel-gap',
-    motion: 'parked',
+    title: 'The wheel, in the silence',
     instruction:
-      'Now wait until it has finished speaking and gone properly quiet — several seconds — then press skip-forward.',
-    stamp: 'I pressed it in the silence',
-    expect:
-      'an invoke, the same as during speech. This is the 2026-09-19 bug: the app used to stop being the “now playing” app the moment a clip ended, so a press in a gap went to the radio instead. A press during speech that works and a press in silence that does not is that exact fault, still there.',
-    setup: { audioEnabled: true, useClips: true, wheelMode: 'answer', voice: false, eyesFree: true },
-    where: 'drill',
+      'Now wait until it has gone properly quiet \u2014 several seconds \u2014 and press skip-forward again. This is the one that matters: a press that works during speech and fails in the gap is the exact 2026-09-19 fault.',
+    wheel: true,
+    responses: WHEEL_RESPONSES,
   },
   {
-    id: 'wheel-dead',
-    motion: 'parked',
-    instruction: 'If a press did nothing at all, stamp this right after pressing it.',
-    stamp: 'The wheel did nothing',
-    expect: 'no invoke near this stamp: the car never sent it, so the mapping is not the problem.',
-    where: 'anywhere',
+    id: 'wheel-back',
+    title: 'Skip-back',
+    instruction: 'Press skip-BACK on the wheel once, in the silence.',
+    wheel: true,
+    responses: WHEEL_RESPONSES,
   },
   {
-    id: 'spoke',
-    motion: 'driving',
-    instruction: 'The microphone is now on. Wait for the question to finish, then say one answer.',
-    stamp: 'I said an answer',
-    expect: 'a heard line within a second or two. No line at all means the microphone never got it.',
-    setup: { audioEnabled: true, voice: true, eyesFree: true },
-    where: 'drill',
-  },
-  {
-    id: 'spoke-over',
-    motion: 'driving',
-    instruction: 'Now say an answer WHILE it is still talking, on purpose.',
-    stamp: 'I talked over it',
-    expect: 'a heard line marked suppressed, and a chime — silence here is the bug.',
-    setup: { audioEnabled: true, voice: true, eyesFree: true },
-    where: 'drill',
-  },
-  {
-    id: 'wheel-after-mic',
-    motion: 'parked',
+    id: 'wheel-other',
+    title: 'Any other button',
     instruction:
-      'This step has just opened the microphone. With it open, press skip-forward on the wheel again.',
-    stamp: 'I pressed the wheel with the mic open',
-    expect:
-      'nothing. The car routes the wheel to its own call once the microphone opens; this step is here to prove that, not to work.',
-    setup: { audioEnabled: true, voice: true, eyesFree: true },
-    where: 'drill',
+      'Press anything else you can reach on the wheel \u2014 volume, the voice button, whatever. This is here to find out what the car will even send.',
+    wheel: true,
+    responses: [
+      ...WHEEL_RESPONSES,
+      { id: 'wheel-other-noted', label: 'Pressed something else', kind: 'note' },
+    ],
   },
   {
-    id: 'good',
-    motion: 'either',
-    instruction: 'Anything that worked exactly as it should.',
-    stamp: 'That one worked',
-    expect: 'a marker to read the rest of the run against.',
-    where: 'anywhere',
+    /**
+     * One press arriving and a second not is a different fault from neither
+     * arriving -- the first is the media slot lapsing after it is used, the
+     * second is the car never sending to this app at all. They have been
+     * indistinguishable in every log so far because nobody was asked to press
+     * twice.
+     */
+    id: 'wheel-repeat',
+    title: 'Press it twice',
+    instruction: 'Two presses, a couple of seconds apart.',
+    wheel: true,
+    responses: [
+      { id: 'wheel-both', label: 'Both arrived', kind: 'good' },
+      { id: 'wheel-first-only', label: 'Only the first', kind: 'bad' },
+      { id: 'wheel-neither', label: 'Neither', kind: 'bad' },
+    ],
   },
   {
-    id: 'bad',
-    motion: 'either',
-    instruction: 'Anything that did not, when no step above names it.',
-    stamp: 'That was wrong',
-    expect: 'a marker at the moment it went wrong, which is the hardest thing to find afterwards.',
-    where: 'anywhere',
+    id: 'mic-route',
+    title: 'With the microphone open',
+    instruction:
+      'The microphone is now on. Listen to the line and say where it came from \u2014 this is where output is expected to move to the earpiece.',
+    say: ['Basic stand versus dealer ten.'],
+    sayAgain: true,
+    responses: ROUTE_RESPONSES,
+    setup: { audioEnabled: true, useClips: true, voice: true, eyesFree: true },
   },
-] as const;
+  {
+    id: 'mic-heard',
+    title: 'Say an answer',
+    instruction: 'Wait for it to finish, then say one answer out loud. What it heard appears below.',
+    say: ['Did you have it?'],
+    sayAgain: true,
+    responses: [
+      { id: 'heard-right', label: 'It got it right', kind: 'good' },
+      { id: 'heard-wrong', label: 'It heard the wrong thing', kind: 'bad' },
+      { id: 'heard-nothing', label: 'It never heard me', kind: 'bad' },
+    ],
+  },
+  {
+    id: 'wheel-with-mic',
+    title: 'The wheel, with the microphone open',
+    instruction:
+      'Microphone still on: press skip-forward again. This is expected to FAIL \u2014 the car takes the wheel for its call profile \u2014 and the point is to prove it, not to work.',
+    wheel: true,
+    responses: WHEEL_RESPONSES,
+  },
+  {
+    /**
+     * After the microphone shuts, and the question nothing has ever asked:
+     * the microphone is the one event known to move the output route, so
+     * whether closing it puts the route BACK is the difference between a
+     * transient and a state the app never recovers from.
+     */
+    id: 'route-after-mic',
+    title: 'Where does it come out now?',
+    instruction:
+      'The microphone is shut again. Same question as the very first step \u2014 if the answer has changed, the microphone moved it and never moved it back.',
+    say: ['Basic hit versus dealer nine.'],
+    sayAgain: true,
+    responses: ROUTE_RESPONSES,
+    setup: { audioEnabled: true, useClips: true, voice: false, eyesFree: true },
+  },
+  {
+    id: 'ambient',
+    title: 'How loud is it in here',
+    instruction: 'Stay quiet for five seconds. This measures the cabin, not you.',
+    ambient: true,
+    responses: [{ id: 'ambient-noted', label: 'Done', kind: 'note' }],
+    setup: { voice: false },
+  },
+  {
+    id: 'free',
+    title: 'Anything else',
+    instruction:
+      'Anything that worked or went wrong that no step above names. Stamp it the moment it happens \u2014 the log can find it afterwards, you cannot.',
+    responses: FREE_RESPONSES,
+  },
+];
 
-/**
- * The steps for one kind of run.
- *
- * A filter over FIELD_TEST_STEPS rather than two hand-written lists, so the
- * `either` steps -- the audio check the whole protocol rests on, and the two
- * catch-alls -- cannot drift apart between runs.
- */
-export function stepsForMotion(motion: FieldTestMotion): readonly FieldTestStep[] {
-  return FIELD_TEST_STEPS.filter((s) => s.motion === motion || s.motion === 'either');
-}
-
-/**
- * Whether a condition id means parked or driving.
- *
- * Falls back to 'parked' for an unknown id, which is the safe direction: a
- * corrupt or superseded condition in storage puts the operator in the
- * stationary run, never in one that asks them to do things at speed.
- */
-export function motionForCondition(conditionId: string): FieldTestMotion {
-  return FIELD_TEST_CONDITIONS.find((c) => c.id === conditionId)?.motion ?? 'parked';
-}
-
-/** The steps for the run a condition selects. */
-export function stepsForCondition(conditionId: string): readonly FieldTestStep[] {
-  return stepsForMotion(motionForCondition(conditionId));
-}
-
-/**
- * Apply a step's required settings, returning the settings to save.
- *
- * Pure, and returns a NEW object even when nothing changed, so the caller has
- * one code path. `voice` is absent here on purpose -- it is not a persisted
- * setting, and the caller drives ui/voiceSession.ts for it.
- */
+/** Apply a step's required settings, returning the settings to save. */
 export function applyFieldTestSetup(settings: Settings, setup?: FieldTestSetup): Settings {
   if (!setup) return settings;
   return {
     ...settings,
     drill: {
       ...settings.drill,
-      ...(setup.wheelMode === undefined ? {} : { wheelMode: setup.wheelMode }),
+      ...(setup.wheelMode !== undefined ? { wheelMode: setup.wheelMode } : {}),
     },
     audio: {
       ...settings.audio,
-      ...(setup.audioEnabled === undefined ? {} : { enabled: setup.audioEnabled }),
-      ...(setup.useClips === undefined ? {} : { useClips: setup.useClips }),
-      ...(setup.muted === undefined ? {} : { muted: setup.muted }),
+      ...(setup.audioEnabled !== undefined ? { enabled: setup.audioEnabled } : {}),
+      ...(setup.useClips !== undefined ? { useClips: setup.useClips } : {}),
+      ...(setup.muted !== undefined ? { muted: setup.muted } : {}),
     },
   };
 }
 
-/**
- * What a step's setup did, in words, so the screen can say it out loud.
- *
- * The operator has to be able to tell the difference between "the app set
- * this for me" and "the app assumed this was already set" -- otherwise a run
- * done under the wrong settings looks identical to one done under the right
- * ones, which is the failure mode the whole protocol exists to close.
- */
+/** One line saying what the app just changed on the operator's behalf. */
 export function describeFieldTestSetup(setup?: FieldTestSetup): string {
-  if (!setup) return 'Nothing changed — stamp this whenever it applies.';
-  const parts: string[] = [];
-  if (setup.audioEnabled) parts.push('audio on');
-  if (setup.useClips) parts.push('recorded voice on');
-  if (setup.eyesFree === true) parts.push('eyes-free audio on');
-  if (setup.eyesFree === false) parts.push('eyes-free audio off');
-  if (setup.muted === false) parts.push('unmuted');
-  if (setup.wheelMode) parts.push(`wheel in ${setup.wheelMode} mode`);
-  if (setup.voice === true) parts.push('microphone ON');
-  if (setup.voice === false) parts.push('microphone OFF');
-  return parts.length === 0 ? 'Nothing changed.' : `Set for you: ${parts.join(', ')}.`;
+  if (!setup) return 'Nothing changed for this step.';
+  const bits: string[] = [];
+  if (setup.audioEnabled !== undefined) bits.push(`audio ${setup.audioEnabled ? 'on' : 'off'}`);
+  if (setup.useClips !== undefined) bits.push(`recorded voice ${setup.useClips ? 'on' : 'off'}`);
+  if (setup.muted !== undefined) bits.push(setup.muted ? 'muted' : 'unmuted');
+  if (setup.wheelMode !== undefined) bits.push(`wheel in ${setup.wheelMode} mode`);
+    // Shouted, because this is the one that changes what the car does with
+  // the wheel and where the sound comes out, and the operator is reading
+  // it at a glance at a red light.
+  if (setup.voice !== undefined) bits.push(`microphone ${setup.voice ? 'ON' : 'OFF'}`);
+  if (setup.eyesFree !== undefined) bits.push(`eyes-free ${setup.eyesFree ? 'on' : 'off'}`);
+  return bits.length > 0 ? `Set for you: ${bits.join(', ')}.` : 'Nothing changed for this step.';
 }
 
-/**
- * Write the operator's intent into the log.
- *
- * `condition` rides on every stamp rather than being written once at the top:
- * a run gets abandoned and restarted, the log survives reloads, and a
- * condition recorded once is a condition that will be read against the wrong
- * half of the file.
- */
-export function stampFieldTest(stepId: string, conditionId: string): void {
-  diag('test', stepId, { condition: conditionId });
+/** Record an answer, with the step and route that produced it. */
+export function stampFieldTest(
+  stepId: string,
+  conditionId: string,
+  responseId: string,
+  extra?: Record<string, unknown>,
+): void {
+  diag('test', stepId, { condition: conditionId, answer: responseId, ...extra });
 }
 
-/** The condition that should be selected when the panel is first opened. */
-export const DEFAULT_FIELD_TEST_CONDITION = FIELD_TEST_CONDITIONS[0].id;
+/** Record entering a step, so the log brackets what follows. */
+export function logFieldTestStep(stepId: string, conditionId: string, index: number): void {
+  diag('test', 'step-open', { step: stepId, condition: conditionId, index });
+}
+
+/** Record the run's own boundaries, which the previous protocol never did. */
+export function logFieldTestRunStart(conditionId: string): void {
+  diag('test', 'run-start', { condition: conditionId, steps: FIELD_TEST_STEPS.length });
+}
+
+export function logFieldTestRunEnd(conditionId: string, stamped: number): void {
+  diag('test', 'run-end', { condition: conditionId, stamped });
+}
+
+export function motionForCondition(conditionId: string): FieldTestMotion {
+  return FIELD_TEST_CONDITIONS.find((c) => c.id === conditionId)?.motion ?? 'parked';
+}
