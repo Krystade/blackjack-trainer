@@ -383,3 +383,106 @@ test('the wheel answer to a distraction is the answer that gets graded', async (
     intended,
   );
 });
+
+/* ---------------------------------------------------------------------- */
+/* F4: the deviation quiz, on the wheel                                    */
+/* ---------------------------------------------------------------------- */
+
+async function openQuiz(page: Page, index = '16v10'): Promise<void> {
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'results', answerPauseMs: 15000 },
+    drill: { quizIndex: index },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await expect(page.locator('.quiz-tc')).toBeVisible();
+}
+
+/**
+ * The quiz had the eyes-free toggle, narrated the hand, and then offered
+ * nothing but the glass to answer on -- no wheel, no microphone. A quiz
+ * answer is a five-way choice and the wheel has two buttons, so what it runs
+ * is the self-check the flashcards and the count drills already use: say the
+ * right play, then ask whether you had it.
+ */
+test('the quiz reveals the play and asks whether you had it', async ({ page }) => {
+  await openQuiz(page);
+  await expect(page.getByTestId('quiz-selfcheck')).toHaveCount(0);
+
+  await press(page, 'forward');
+  const banner = page.getByTestId('quiz-selfcheck');
+  await expect(banner).toBeVisible();
+  await expect(banner.locator('strong')).toHaveText(/Hit|Stand|Double|Split|Surrender/);
+  expect((await spoken(page)).join(' | ')).toContain('Did you have it?');
+});
+
+test('on a quiz self-check, forward is "I had it" and back is "I missed it"', async ({ page }) => {
+  await openQuiz(page);
+  await press(page, 'forward'); // reveal
+  await press(page, 'forward'); // I had it
+  await expect(page.locator('.message-strip .result-correct')).toBeVisible();
+
+  await openQuiz(page);
+  await press(page, 'forward');
+  await press(page, 'back'); // I missed it
+  await expect(page.locator('.message-strip .result-correct')).toHaveCount(0);
+  // The app has its own words for an admitted miss, and they are not the
+  // words for a wrong play -- no play was made.
+  await expect(page.locator('.message-strip')).toContainText(/Admitted miss|Said you missed it/);
+});
+
+/**
+ * ...and a self-report is recorded as one. Graded through `classifyAction`
+ * it would enter Stats and the review deck as a play the learner never made
+ * -- which is why the quiz could not offer the self-check until the grader
+ * learned the two markers.
+ */
+test('a quiz self-report is recorded as a self-report, not as a play', async ({ page }) => {
+  await openQuiz(page);
+  await press(page, 'forward');
+  await press(page, 'back'); // I missed it
+  await expect(page.locator('.message-strip')).toContainText(/Admitted miss|Said you missed it/);
+
+  const mistakes = await page.evaluate(() => {
+    const raw = window.localStorage.getItem('bjtrainer.stats.v1');
+    if (!raw) return null;
+    return (JSON.parse(raw) as { mistakes?: Record<string, number> }).mistakes ?? null;
+  });
+  expect(mistakes, 'nothing was written to Stats at all').not.toBeNull();
+  expect(mistakes!['self-report'], `mistake tallies were ${JSON.stringify(mistakes)}`).toBe(1);
+  // ...and NOT as one of the five plays gone wrong.
+  expect(mistakes!['basic-error'] ?? 0).toBe(0);
+});
+
+/**
+ * ...and the mixed session, which is what an operator actually runs for
+ * twenty minutes in the car: it alternates the two drills, so the wheel has
+ * to work on both kinds of item.
+ */
+test('the mixed session takes a self-check on either kind of item', async ({ page }) => {
+  test.setTimeout(45_000);
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'results', answerPauseMs: 15000 },
+    drill: { quizIndex: '16v10' },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Mixed', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Mixed');
+
+  const seen = new Set<string>();
+  for (let i = 0; i < 8 && seen.size < 2; i += 1) {
+    const kind = (await page.locator('.quiz-tc').count()) > 0 ? 'quiz' : 'flash';
+    await press(page, 'forward'); // reveal
+    await expect(page.getByTestId('mixed-selfcheck')).toBeVisible();
+    await press(page, 'forward'); // I had it
+    await expect(page.locator('.message-strip .result-correct')).toBeVisible();
+    seen.add(kind);
+    await press(page, 'forward'); // next item
+    await expect(page.locator('.message-strip .result-correct')).toHaveCount(0);
+  }
+  // The interleave is a seeded coin flip, so eight items is plenty for both
+  // kinds -- and a run that saw only one has not tested the dispatch.
+  expect([...seen].sort(), 'only one kind of item ever appeared').toEqual(['flash', 'quiz']);
+});

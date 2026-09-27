@@ -278,3 +278,54 @@ test('swiping the app away closes the microphone', async ({ page }) => {
     )
     .toBe(true);
 });
+
+/* ---------------------------------------------------------------------- */
+/* F4: the deviation quiz had an eyes-free mode and no hands-free input    */
+/* ---------------------------------------------------------------------- */
+
+async function openQuizWithVoice(page: Page, index = '16v10'): Promise<void> {
+  await withFakeEngine(page);
+  await page.addInitScript((quizIndex) => {
+    window.localStorage.setItem(
+      'bjtrainer.settings.v1',
+      JSON.stringify({ version: 1, audio: { enabled: true, verbosity: 'results' }, drill: { quizIndex } }),
+    );
+  }, index);
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Voice answers' }).check();
+  await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');
+}
+
+/**
+ * The quiz teaches the plays worth the most money and it is the drill with
+ * the most to say out loud -- and it claimed neither the microphone nor the
+ * wheel. Eyes-free, the only way to answer was a finger on the glass, which
+ * is the one thing the mode exists to avoid.
+ */
+test('a spoken answer grades a deviation quiz item', async ({ page }) => {
+  await openQuizWithVoice(page);
+  await say(page, 'stand');
+  await expect(page.locator('.message-strip .result-correct, .message-strip .mistake-card').first()).toBeVisible();
+  // The echo is what tells a driver they were understood at all.
+  await expect(page.locator('.voice-status-heard')).toContainText('stand');
+});
+
+test('ordinary conversation does not answer a quiz item', async ({ page }) => {
+  await openQuizWithVoice(page);
+  await say(page, 'what is the weather like tomorrow');
+  await expect(page.locator('.voice-status-heard')).toContainText('not a command');
+  await expect(page.locator('.message-strip .result-correct, .message-strip .mistake-card')).toHaveCount(0);
+});
+
+/**
+ * Insurance is the one quiz item that really is a yes/no question, so the
+ * two words that mean nothing on an action item are the answer here.
+ */
+test('"yes" and "no" answer an insurance item', async ({ page }) => {
+  await openQuizWithVoice(page, 'ins');
+  await expect(page.locator('.quiz-insurance-prompt')).toBeVisible();
+  await say(page, 'no');
+  await expect(page.locator('.message-strip .result-correct, .message-strip .mistake-card').first()).toBeVisible();
+});

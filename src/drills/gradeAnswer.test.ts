@@ -10,6 +10,8 @@ import {
   gradeQuizAnswer,
   gradeMasteryAnswer,
   loadFlashSr,
+  SELF_REPORT_HAD,
+  SELF_REPORT_MISSED,
   TIMEOUT_ANSWER,
 } from './gradeAnswer';
 import type { SrDeck } from './spacedRepetition';
@@ -804,5 +806,53 @@ describe('the grader asks the same question the draw asked', () => {
       wrong.slice(0, 5),
       `distractors sit on live index cells: ${wrong.slice(0, 5).join('; ')}`,
     ).toEqual([]);
+  });
+});
+
+/* ---------------------------------------------------------------------- */
+/* F4: the quiz has to be able to grade a self-check, like the flashcards  */
+/* ---------------------------------------------------------------------- */
+
+describe('a quiz item answered by self-report', () => {
+  const RULES = { ...DEFAULT_RULES, surrenderIndices: true };
+
+  /**
+   * The wheel has two buttons and a quiz answer is a five-way choice, so the
+   * wheel cannot state a play. What it can run is the shape the count drills
+   * and the flashcards already use -- say the right play, ask whether you had
+   * it -- and THAT answer is binary.
+   *
+   * `buildFlashcardEvent` has had the two self-report markers since that
+   * shape shipped. `buildQuizEvent` sent everything that is not a timeout
+   * into `classifyAction`, which asks which of the five plays was chosen:
+   * `'self-report-had'` cast to an Action, graded as a basic error, and
+   * written into Stats and the review deck as a play nobody made.
+   */
+  it('scores "I had it" as correct without inventing a play', () => {
+    const item = drawQuizItem(7, '16v10', RULES);
+    const event = buildQuizEvent(item, SELF_REPORT_HAD, RULES, 1000);
+    expect(event.correct).toBe(true);
+    expect(event.classification).toBe('correct');
+    expect(event.taken).toBe(SELF_REPORT_HAD);
+    expect(event.evCost, 'a self-report was priced as a misplay').toBeUndefined();
+  });
+
+  it('scores "I missed it" as wrong, and says which kind of answer it was', () => {
+    const item = drawQuizItem(7, '16v10', RULES);
+    const event = buildQuizEvent(item, SELF_REPORT_MISSED, RULES, 1000);
+    expect(event.correct).toBe(false);
+    // Not 'basic-error': the taxonomy is about which play was chosen, and no
+    // play was. The flashcard path has called this 'self-report' since it
+    // shipped and the two must agree -- Stats mixes them in one table.
+    expect(event.classification).toBe('self-report');
+  });
+
+  it('does the same on an insurance item, which is the one with no hand', () => {
+    const item = drawQuizItem(3, 'ins', RULES);
+    expect(item.cards, 'this seed did not draw the insurance item').toBeNull();
+    expect(buildQuizEvent(item, SELF_REPORT_HAD, RULES, 1000).correct).toBe(true);
+    const missed = buildQuizEvent(item, SELF_REPORT_MISSED, RULES, 1000);
+    expect(missed.correct).toBe(false);
+    expect(missed.classification).toBe('self-report');
   });
 });

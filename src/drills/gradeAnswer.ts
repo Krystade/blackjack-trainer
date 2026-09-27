@@ -253,16 +253,29 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: StrategyRul
     // with a decision they never made. The timeout branch therefore comes first
     // here, exactly as it does on the action path below.
     const timedOut = taken === TIMEOUT_ANSWER;
+    // A SELF-REPORT is not a decision either -- see the action path below.
+    // On an insurance item it is the same claim about the same kind of
+    // memory, and `classifyInsurance` takes a boolean, so routing one
+    // through it would record "declined" for a learner who said they had it.
     const { classification, correct } = timedOut
       ? ({ classification: 'timeout', correct: false } as const)
-      : classifyInsurance(take, item.tc, rules);
+      : taken === SELF_REPORT_HAD
+        ? ({ classification: 'correct', correct: true } as const)
+        : taken === SELF_REPORT_MISSED
+          ? ({ classification: 'self-report', correct: false } as const)
+          : classifyInsurance(take, item.tc, rules);
     return {
       kind: 'insurance',
       source: 'quiz',
       category: 'insurance',
       correct,
       classification,
-      taken: timedOut ? TIMEOUT_ANSWER : take ? 'take' : 'decline',
+      taken:
+      timedOut || taken === SELF_REPORT_HAD || taken === SELF_REPORT_MISSED
+        ? taken
+        : take
+          ? 'take'
+          : 'decline',
       expected: item.correct === 'take-insurance' ? 'take' : 'decline',
       reason: item.label,
       deviationId: item.deviationId,
@@ -288,10 +301,24 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: StrategyRul
   const withCount = correctPlay(item.cards, item.up, item.tc, ctx, rules);
   const basicOnly = basicPlay(item.cards, item.up, ctx, rules);
   // See buildFlashcardEvent: a shot-clock timeout is not one of the five plays.
+  /*
+   * ...AND A SELF-REPORT IS NOT ONE OF THE FIVE PLAYS.
+   *
+   * `buildFlashcardEvent` has said so since the wheel's self-check shipped;
+   * this function sent everything that was not a timeout into
+   * `classifyAction`, which asks WHICH play was chosen. A self-report cast
+   * to an `Action` graded as a basic error and was written into Stats and
+   * the review deck as a play nobody made -- which is also why the quiz
+   * could not offer the self-check at all, and so had no wheel.
+   */
   const { classification, correct } =
     taken === TIMEOUT_ANSWER
       ? ({ classification: 'timeout', correct: false } as const)
-      : classifyAction(taken as Action, withCount, basicOnly, item.cards, item.up, item.tc, rules);
+      : taken === SELF_REPORT_HAD
+        ? ({ classification: 'correct', correct: true } as const)
+        : taken === SELF_REPORT_MISSED
+          ? ({ classification: 'self-report', correct: false } as const)
+          : classifyAction(taken as Action, withCount, basicOnly, item.cards, item.up, item.tc, rules);
 
   return {
     kind: 'action',

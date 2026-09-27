@@ -42,6 +42,7 @@ import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
 import { narrateAction, narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt,
   narrateAnswerEcho,
+  DID_YOU_HAVE_IT,
 } from '../../audio/narrate';
 import { useVoiceControl } from '../useVoiceControl';
 import { autoAdvanceDelayMs, spokenPauseFor } from '../../drills/answerPause';
@@ -1024,6 +1025,18 @@ function DeviationQuizView({
   // each drill -- it used to reset on every navigation, which in a car reads
   // as the app having gone silent for no reason.
   const [eyesFree, setEyesFree] = useEyesFreeToggle('deviation-quiz');
+  // Voice and the wheel, on the same terms as FlashcardsView -- see its
+  // copies of these for why each is per-page-load rather than persisted.
+  const [voiceOn, setVoiceOn] = useVoiceToggle('deviation-quiz');
+  const pushToTalkOpen = usePushToTalk();
+  const [voiceSupported] = useState(() => detectVoiceSupport().api);
+  // The wheel self-check: the right play is revealed and the two buttons say
+  // whether it was had. State for the banner, a REF for the handler, because
+  // two presses can land in the same tick and the second would otherwise run
+  // against the render before the first.
+  const [selfCheckOpen, setSelfCheckOpen] = useState(false);
+  const wheelPhaseRef = useRef<'asking' | 'reporting' | 'feedback'>('asking');
+  const feedbackRef = useRef<{ correct: boolean; event: GradedEvent } | null>(null);
   // Bumped every time a new item is drawn so a stale auto-advance timer
   // from a previous item can recognize itself as stale and no-op, even
   // though its own effect cleanup already clears it on unmount/early exit.
@@ -1106,8 +1119,25 @@ function DeviationQuizView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item, eyesFree]);
 
+  /**
+   * Show a graded answer. The ONE place `feedback` is set to a result, so
+   * the wheel's phase ref cannot fall out of step with what is on screen --
+   * there are four grade sites (button, zone, shot clock, self-report) and a
+   * missed one would leave the wheel still offering "I had it" over a
+   * correction. Mirrors FlashcardsView's.
+   */
+  const showFeedback = (result: { correct: boolean; event: GradedEvent }) => {
+    wheelPhaseRef.current = 'feedback';
+    feedbackRef.current = result;
+    setSelfCheckOpen(false);
+    setFeedback(result);
+  };
+
   const next = (filter: DeviationId | 'all' = activeFilter, distractorPct: number = settings.drill.quizDistractorPct) => {
     runIdRef.current += 1;
+    wheelPhaseRef.current = 'asking';
+    feedbackRef.current = null;
+    setSelfCheckOpen(false);
     clearAdvanceTimer();
     // Advancing invalidates the correction the chart was opened for, so the
     // overlay must not survive it: left open it re-pointed at the NEW card
@@ -1220,7 +1250,7 @@ function DeviationQuizView({
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
 
-    setFeedback({ correct: event.correct, event });
+    showFeedback({ correct: event.correct, event });
   };
 
   /**
@@ -1238,7 +1268,7 @@ function DeviationQuizView({
       eyesFree ? speak(text, speechOptsFrom(settings.audio)) : audio.say(text, { interrupt: true }),
     );
     audio.ding('bad');
-    setFeedback({ correct: false, event });
+    showFeedback({ correct: false, event });
     scheduleAutoAdvance(spokenMs);
   };
 
@@ -1265,7 +1295,10 @@ function DeviationQuizView({
   // for these items -- only 'take'/'decline' can arrive, translated to the
   // 'take-insurance'/'decline-insurance' strings buildQuizEvent expects
   // (matching the existing Take/Decline Insurance buttons exactly).
-  const handleZoneAnswer = (zone: ZoneId | 'take' | 'decline') => {
+  const handleZoneAnswer = (
+    zone: ZoneId | 'take' | 'decline',
+    channel: AnswerChannel = BLIND_TAP_CHANNEL,
+  ) => {
     const isInsurance = item.cards === null;
     if (isInsurance !== (zone === 'take' || zone === 'decline')) return; // mode/zone mismatch guard
 
@@ -1286,18 +1319,130 @@ function DeviationQuizView({
 
     speak(narrateAnswerEcho(zoneLabel(zone)), speechOptsFrom(settings.audio, { interrupt: true }));
 
-    // The quiz has no voice input, so a zone tap here is always the blind
-    // pad: eyes off the screen, hand on the glass.
-    const event = gradeQuizAnswer(taken, BLIND_TAP_CHANNEL);
+    // BLIND_TAP by default -- eyes off the screen, hand on the glass -- and
+    // VOICE when the answer was spoken, which is a harder channel and caps
+    // the SR promotion differently (drills/spacedRepetition.ts).
+    const event = gradeQuizAnswer(taken, channel);
 
     const spokenMs = speakCorrectionOnceGated(event, (text) =>
       speak(text, speechOptsFrom(settings.audio)),
     );
     audio.ding(event.correct ? 'good' : 'bad');
 
-    setFeedback({ correct: event.correct, event });
+    showFeedback({ correct: event.correct, event });
     scheduleAutoAdvance(spokenMs);
   };
+
+  /**
+   * A spoken answer, routed through the zone path for the reasons
+   * FlashcardsView gives: the refusal has to be audible, the answer has to be
+   * echoed, and the two must not be able to drift apart.
+   *
+   * Insurance items are the one place "yes" and "no" mean something here --
+   * the question really is a yes/no -- so they are taken rather than ignored.
+   */
+  const handleVoiceAction = (action: VoiceAction) => {
+    if (action === 'repeat') {
+      handleRepeat();
+      return;
+    }
+    if (showChart) return;
+    // Already answered: the auto-advance is running, and a second answer
+    // would grade the next item against a word said about this one.
+    if (feedback) return;
+
+    const isInsurance = item.cards === null;
+    if (action === 'yes' || action === 'no') {
+      if (!isInsurance) return;
+      handleZoneAnswer(action === 'yes' ? 'take' : 'decline', VOICE_CHANNEL);
+      voice.cycleIfStale();
+      return;
+    }
+    if (isInsurance) return; // a play named at an insurance prompt is not an answer
+    handleZoneAnswer(action, VOICE_CHANNEL);
+    // The recogniser dies on its own roughly every ninety seconds; the pause
+    // while the answer is read back is the one moment nobody is talking.
+    voice.cycleIfStale();
+  };
+
+  /** What the self-check says the answer was. */
+  const answerLabel = (): string =>
+    item.correct === 'take-insurance'
+      ? zoneLabel('take')
+      : item.correct === 'decline-insurance'
+        ? zoneLabel('decline')
+        : zoneLabel(item.correct as ZoneId);
+
+  /**
+   * The wheel's self-check, the same shape FlashcardsView runs: a quiz answer
+   * is a five-way choice and the wheel has two buttons, so it cannot state a
+   * play -- but "did you have it" is binary. `SELF_REPORT_HAD/MISSED` carry it
+   * through the shared grade path, which learned to grade them for this.
+   */
+  const revealForSelfCheck = () => {
+    wheelPhaseRef.current = 'reporting';
+    setSelfCheckOpen(true);
+    speak(
+      `${narrateAnswerEcho(answerLabel())} ${DID_YOU_HAVE_IT}`,
+      speechOptsFrom(settings.audio, { interrupt: true }),
+    );
+  };
+
+  const submitSelfReport = (had: boolean) => {
+    // SCREEN_CHANNEL, not the channel the press physically was: the app
+    // checked nothing, so grading a self-report on its delivery would earn
+    // the highest SR cap for the weakest evidence. See FlashcardsView.
+    const event = gradeQuizAnswer(had ? SELF_REPORT_HAD : SELF_REPORT_MISSED, SCREEN_CHANNEL);
+    const spokenMs = speakCorrectionOnceGated(event, (text) =>
+      speak(text, speechOptsFrom(settings.audio)),
+    );
+    audio.ding(event.correct ? 'good' : 'bad');
+    showFeedback({ correct: event.correct, event });
+    scheduleAutoAdvance(spokenMs);
+  };
+
+  useWheelCommand((command) => {
+    // Push-to-talk borrows both buttons; back still repeats. See
+    // ui/voiceSession.ts.
+    if (settings.drill.wheelMode === 'talk') {
+      if (command === 'forward') {
+        startPushToTalk('deviation-quiz');
+        audio.ding('attention');
+      } else {
+        handleRepeat();
+      }
+      return;
+    }
+    // The chart overlay is modal over a frozen correction, as for every
+    // other input.
+    if (showChart) return;
+
+    if (wheelPhaseRef.current === 'reporting') {
+      submitSelfReport(command === 'forward');
+      return;
+    }
+    if (wheelPhaseRef.current === 'feedback') {
+      if (command === 'forward') {
+        next();
+      } else if (feedbackRef.current) {
+        speak(
+          narrateCorrection(feedbackRef.current.event),
+          speechOptsFrom(settings.audio, { interrupt: true }),
+        );
+      }
+      return;
+    }
+    if (command === 'forward') revealForSelfCheck();
+    else handleRepeat();
+  });
+
+  const voice = useVoiceControl({
+    enabled: voiceOn || pushToTalkOpen,
+    onAction: handleVoiceAction,
+    onNotUnderstood: () => audio.ding('attention'),
+    biasPhrases: Object.keys(VOICE_ACTIONS),
+    context: 'deviation-quiz',
+  });
 
   // Desktop keyboard input (operator request): while an answer is awaited,
   // number keys feed the SAME handler a tap would use -- handleAnswer in
@@ -1442,6 +1587,24 @@ function DeviationQuizView({
           />
           Dim screen
         </label>
+        {voiceSupported && (
+          <label className="count-toggle">
+            <input
+              type="checkbox"
+              checked={voiceOn}
+              onChange={(e) => {
+                if (e.target.checked && !settings.audio.enabled) {
+                  enableAudioNow(settings, onSettingsChange);
+                }
+                setVoiceOn(e.target.checked);
+              }}
+            />
+            Voice answers
+          </label>
+        )}
+        {/* What the microphone last heard, whether or not it meant anything:
+            a misheard word and a dead microphone look identical without it. */}
+        {voiceOn && <VoiceStatusBar status={voice.status} />}
       </div>
 
       <div className="quiz-tc">TC {formatSigned(item.tc)}</div>
@@ -1474,6 +1637,15 @@ function DeviationQuizView({
       />
 
       <div className="message-strip">
+        {/* The revealed answer, while the wheel waits to be told whether it
+            was had. On screen as well as spoken, so the wheel can be checked
+            at a desk. */}
+        {selfCheckOpen && !feedback && (
+          <div className="selfcheck-banner" data-testid="quiz-selfcheck">
+            <strong>{answerLabel()}</strong>
+            <span>Wheel: next = I had it &middot; prev = I missed it</span>
+          </div>
+        )}
         {feedback && (
           <>
             {feedback.correct ? (
@@ -1629,6 +1801,19 @@ function MixedSessionView({
   const audio = useAudio(settings.audio);
 
   const [eyesFree, setEyesFree] = useEyesFreeToggle('mixed-session');
+  // Voice and the wheel, on the same terms as the two standalone views. A
+  // mixed session is the one an operator runs in the car for twenty minutes,
+  // and it had neither.
+  const [voiceOn, setVoiceOn] = useVoiceToggle('mixed-session');
+  const pushToTalkOpen = usePushToTalk();
+  const [voiceSupported] = useState(() => detectVoiceSupport().api);
+  const [selfCheckOpen, setSelfCheckOpen] = useState(false);
+  const wheelPhaseRef = useRef<'asking' | 'reporting' | 'feedback'>('asking');
+  const feedbackRef = useRef<{
+    correct: boolean;
+    correctAction?: Action;
+    event: GradedEvent;
+  } | null>(null);
   const runIdRef = useRef(0);
   const advanceTimerRef = useRef<number | null>(null);
   const promptShownAtRef = useRef(performance.now());
@@ -1683,8 +1868,23 @@ function MixedSessionView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, eyesFree]);
 
+  /** The ONE place `feedback` is set to a result -- see FlashcardsView. */
+  const showFeedback = (result: {
+    correct: boolean;
+    correctAction?: Action;
+    event: GradedEvent;
+  }) => {
+    wheelPhaseRef.current = 'feedback';
+    feedbackRef.current = result;
+    setSelfCheckOpen(false);
+    setFeedback(result);
+  };
+
   const next = () => {
     runIdRef.current += 1;
+    wheelPhaseRef.current = 'asking';
+    feedbackRef.current = null;
+    setSelfCheckOpen(false);
     clearAdvanceTimer();
     // Advancing invalidates the correction the chart was opened for, so the
     // overlay must not survive it: left open it re-pointed at the NEW card
@@ -1766,7 +1966,7 @@ function MixedSessionView({
     const { correct, correctAction, event } = gradeCurrent(taken);
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(correct ? 'good' : 'bad');
-    setFeedback({ correct, correctAction, event });
+    showFeedback({ correct, correctAction, event });
   };
 
   const handleZoneAnswer = (zone: ZoneId | 'take' | 'decline') => {
@@ -1793,9 +1993,106 @@ function MixedSessionView({
       speak(text, speechOptsFrom(settings.audio)),
     );
     audio.ding(correct ? 'good' : 'bad');
-    setFeedback({ correct, correctAction, event });
+    showFeedback({ correct, correctAction, event });
     scheduleAutoAdvance(spokenMs);
   };
+
+  /**
+   * A spoken answer, through the zone path -- see FlashcardsView for why.
+   * "Yes"/"no" mean something only on an insurance item, where the question
+   * really is a yes/no.
+   */
+  const handleVoiceAction = (action: VoiceAction) => {
+    if (action === 'repeat') {
+      handleRepeat();
+      return;
+    }
+    if (showChart || feedback) return;
+    if (action === 'yes' || action === 'no') {
+      if (!isInsuranceItem) return;
+      handleZoneAnswer(action === 'yes' ? 'take' : 'decline');
+      voice.cycleIfStale();
+      return;
+    }
+    if (isInsuranceItem) return;
+    handleZoneAnswer(action);
+    voice.cycleIfStale();
+  };
+
+  /** What the self-check says the answer was, for either kind of item. */
+  const answerLabel = (): string => {
+    const correct = current.type === 'flash' ? current.card.correct : current.item.correct;
+    return correct === 'take-insurance'
+      ? zoneLabel('take')
+      : correct === 'decline-insurance'
+        ? zoneLabel('decline')
+        : zoneLabel(correct as ZoneId);
+  };
+
+  /**
+   * The wheel's self-check. Both item types grade it through their own
+   * shared path -- `gradeFlashcard` has taken the two markers since the
+   * shape shipped, and `gradeQuiz` learned them for this.
+   */
+  const revealForSelfCheck = () => {
+    wheelPhaseRef.current = 'reporting';
+    setSelfCheckOpen(true);
+    speak(
+      `${narrateAnswerEcho(answerLabel())} ${DID_YOU_HAVE_IT}`,
+      speechOptsFrom(settings.audio, { interrupt: true }),
+    );
+  };
+
+  const submitSelfReport = (had: boolean) => {
+    const { correct, correctAction, event } = gradeCurrent(
+      had ? SELF_REPORT_HAD : SELF_REPORT_MISSED,
+    );
+    const spokenMs = speakCorrectionOnceGated(event, (text) =>
+      speak(text, speechOptsFrom(settings.audio)),
+    );
+    audio.ding(correct ? 'good' : 'bad');
+    showFeedback({ correct, correctAction, event });
+    scheduleAutoAdvance(spokenMs);
+  };
+
+  useWheelCommand((command) => {
+    if (settings.drill.wheelMode === 'talk') {
+      if (command === 'forward') {
+        startPushToTalk('mixed-session');
+        audio.ding('attention');
+      } else {
+        handleRepeat();
+      }
+      return;
+    }
+    if (showChart) return;
+
+    if (wheelPhaseRef.current === 'reporting') {
+      submitSelfReport(command === 'forward');
+      return;
+    }
+    if (wheelPhaseRef.current === 'feedback') {
+      if (command === 'forward') {
+        next();
+      } else if (feedbackRef.current) {
+        speak(
+          narrateCorrection(feedbackRef.current.event),
+          speechOptsFrom(settings.audio, { interrupt: true }),
+        );
+      }
+      return;
+    }
+    if (command === 'forward') revealForSelfCheck();
+    else handleRepeat();
+  });
+
+  const voice = useVoiceControl({
+    enabled: voiceOn || pushToTalkOpen,
+    onAction: handleVoiceAction,
+    onNotUnderstood: () => audio.ding('attention'),
+    biasPhrases: Object.keys(VOICE_ACTIONS),
+    context: 'mixed-session',
+  });
 
   // Keyboard: identical mapping to the standalone views -- 1-5 action keys for
   // flashcard + quiz-action items, 1=Take/2=Decline for quiz insurance items,
@@ -1911,6 +2208,22 @@ function MixedSessionView({
           />
           Dim screen
         </label>
+        {voiceSupported && (
+          <label className="count-toggle">
+            <input
+              type="checkbox"
+              checked={voiceOn}
+              onChange={(e) => {
+                if (e.target.checked && !settings.audio.enabled) {
+                  enableAudioNow(settings, onSettingsChange);
+                }
+                setVoiceOn(e.target.checked);
+              }}
+            />
+            Voice answers
+          </label>
+        )}
+        {voiceOn && <VoiceStatusBar status={voice.status} />}
       </div>
 
       {/* A quiz item shows its true count; a flashcard item shows none -- the
@@ -1937,6 +2250,12 @@ function MixedSessionView({
       )}
 
       <div className="message-strip">
+        {selfCheckOpen && !feedback && (
+          <div className="selfcheck-banner" data-testid="mixed-selfcheck">
+            <strong>{answerLabel()}</strong>
+            <span>Wheel: next = I had it &middot; prev = I missed it</span>
+          </div>
+        )}
         {feedback && (
           <>
             {feedback.correct ? (
