@@ -3,7 +3,7 @@ import type { Profile, Settings } from '../../../store/types';
 import { Game } from '../../../engine/game';
 import type { GameConfig, SeatConfig } from '../../../engine/game';
 import type { PlayerHand } from '../../../engine/game';
-import { buildDownswingScript } from '../../../drills/downswingShoe';
+import { realignToScript, buildDownswingScript } from '../../../drills/downswingShoe';
 import type { Action } from '../../../engine/deviations';
 import { handValue } from '../../../engine/hand';
 import { PlayingCard } from '../../components/PlayingCard';
@@ -202,11 +202,7 @@ export function DownswingView({
     // boundary at or after what was actually dealt, binning the difference
     // unseen, so the next hand starts on its own first card instead of on the
     // tail of this one.
-    const dealt = game.shoe.cardsDealt;
-    const nextBoundary = scriptRef.current.find((b) => b >= dealt);
-    if (nextBoundary !== undefined && nextBoundary > dealt) {
-      game.discardRiggedCards(nextBoundary - dealt);
-    }
+    realignToScript(game.shoe, scriptRef.current, (n) => game.discardRiggedCards(n));
 
     setRound((r) => r + 1);
     setPhase('bet');

@@ -3,7 +3,14 @@ import { Game, DEFAULT_SPREAD } from '../engine/game';
 import type { GameConfig, SeatConfig } from '../engine/game';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import { handValue } from '../engine/hand';
-import { makeDownswingShoe, buildDownswingScript, DECISION_LOSSES, SLACK_ROUNDS } from './downswingShoe';
+import {
+  makeDownswingShoe,
+  buildDownswingScript,
+  realignToScript,
+  DECISION_LOSSES,
+  SLACK_ROUNDS,
+  TAIL_CARDS,
+} from './downswingShoe';
 
 /** The DEFAULT_SPREAD ramp bet for a true count (last row with minTc <= tc). */
 function rampBet(tc: number): number {
@@ -243,9 +250,9 @@ describe('buildDownswingScript (V3-7)', () => {
     // its first -- and "strictly increasing" is just as true of starts, so it
     // is the endpoints that have to be pinned.
     expect(boundaries[0]!).toBeGreaterThanOrEqual(4);
-    // The last boundary is the end of the last scripted round: everything after
-    // it is the 8-card safety buffer, which belongs to no round.
-    expect(cards.length - boundaries.at(-1)!).toBe(8);
+    // The last boundary is the end of the last scripted round: everything
+    // after it is the safety buffer, which belongs to no round.
+    expect(cards.length - boundaries.at(-1)!).toBe(TAIL_CARDS);
   });
 
   it('scripts more rounds than will be played, so realignment cannot run it dry', () => {
@@ -302,5 +309,97 @@ describe('discardRiggedCards realignment (V3-7)', () => {
   it('refuses on a real shoe rather than silently burning cards out of a live game', () => {
     const game = new Game(soloCfg());
     expect(() => game.discardRiggedCards(3)).toThrow(/rigged/);
+  });
+});
+
+/* ---------------------------------------------------------------------- */
+/* D1/D2/D3: a session cannot outrun its script, however it is played      */
+/* ---------------------------------------------------------------------- */
+
+describe('a rigged session cannot outrun its script', () => {
+  const ROUNDS = 25;
+
+  function session(seed: number) {
+    const script = buildDownswingScript(ROUNDS, seed);
+    return { game: Game.withRiggedShoe(soloCfg(), script.cards), script };
+  }
+
+  /**
+   * Swept over seeds and play styles because the failure is a CARD BUDGET,
+   * and the budget is spent by the player's line: a hit on a four-card PAT
+   * round steals a card from the next round, and the realignment then skips
+   * a whole scripted round to recover -- so one decision can cost two.
+   * `Rigged shoe exhausted` came out of a click handler, which on a phone
+   * is a dead screen mid-drill.
+   *
+   * Drives `realignToScript`, the rule the view itself calls, rather than a
+   * copy of it: a test that re-implements the thing under test cannot fail
+   * for the reason it exists.
+   */
+  for (const style of ['stand', 'hit', 'double'] as const) {
+    it(`survives ${ROUNDS} rounds of always-${style}`, () => {
+      const broke: string[] = [];
+      let skipped = 0;
+      for (let seed = 1; seed <= 400; seed += 1) {
+        const { game, script } = session(seed);
+        try {
+          for (let round = 0; round < ROUNDS; round += 1) {
+            game.startRound(1);
+            if (game.phase === 'insurance') game.insuranceDecision(false);
+            if (game.phase === 'player') {
+              const legal = game.legalActions();
+              if (style === 'hit' && legal.includes('hit')) game.act('hit');
+              else if (style === 'double' && legal.includes('double')) game.act('double');
+            }
+            while (game.phase === 'player') game.act('stand');
+            realignToScript(game.shoe, script.boundaries, (n) => game.discardRiggedCards(n));
+            // How far INTO THE SCRIPT this session now is, against how many
+            // rounds it has actually played. That gap is the slack being
+            // spent, and it is the quantity the whole test is about.
+            const ahead = script.boundaries.indexOf(game.shoe.cardsDealt) - round;
+            skipped = Math.max(skipped, ahead);
+          }
+          if (game.shoe.cardsRemaining <= 0) {
+            broke.push(`seed ${seed}: finished with an empty shoe`);
+          }
+        } catch (e) {
+          broke.push(`seed ${seed}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      expect(broke.slice(0, 4), `${broke.length} of 400 sessions died`).toEqual([]);
+      /*
+       * VACUITY GUARD, and it is not decoration: the first version of this
+       * test swept 120 seeds and passed against the broken build, because
+       * the first session that dies is seed 171 and `stand` never overruns
+       * at all. A sweep that never spends slack cannot fail for running out
+       * of it.
+       *
+       * `stand` is the control -- it plays the scripted line, so it must
+       * spend nothing. The other two must demonstrably overrun.
+       */
+      if (style === 'stand') {
+        expect(skipped, 'the scripted line should never need realigning').toBe(0);
+      } else {
+        // 8 is the slack this drill shipped with. A sweep that never pushes
+        // a session past it is a sweep that cannot see the bug.
+        expect(
+          skipped,
+          `always-${style} only ever ran ${skipped} scripted rounds ahead, which the old slack of 8 covered`,
+        ).toBeGreaterThan(8);
+      }
+    });
+  }
+
+  it('counts the ruleset\u2019s decks, not the length of the script', () => {
+    // D2: `decksRemaining` measured the ~170-card script, so `trueCountNow`
+    // divided by 3.5 at the start of a 6-deck session and by less than one
+    // at the end -- inflating the count the bet ramp is graded against by
+    // about 1.7x, rising to 4x. The drill's entire verdict is "you broke
+    // from your ramp".
+    const { game } = session(42);
+    expect(game.shoe.decksRemaining).toBeGreaterThanOrEqual(5.5);
+    game.startRound(1);
+    while (game.phase === 'player') game.act('stand');
+    expect(game.shoe.decksRemaining).toBeGreaterThanOrEqual(5);
   });
 });

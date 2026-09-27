@@ -255,7 +255,10 @@ export class Game {
 
   static withRiggedShoe(cfg: GameConfig, cards: Card[]): Game {
     const game = new Game(cfg);
-    game.shoe = makeRiggedShoe(cards, cfg.penetration);
+    // `game.rules.decks` -- the SAME source line 234 gives the real `Shoe` --
+    // so a count read off a rigged shoe is the count a player at that table
+    // would compute, not one divided by the length of the script.
+    game.shoe = makeRiggedShoe(cards, cfg.penetration, game.rules.decks);
     game.shoeIsRigged = true;
     return game;
   }

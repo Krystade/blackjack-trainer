@@ -274,7 +274,15 @@ describe('insurance grading', () => {
     // Padding keeps the rigged cut card (rig length * penetration) beyond the
     // 11 cards round 1 consumes, so round 2 does NOT reshuffle the count away.
     const padding: Rank[] = ['2', '2', '2', '2', '2'];
-    const game = Game.withRiggedShoe(cfg(), rig(...filler, ...round2, ...padding));
+    // A SINGLE-DECK table, stated in the rules rather than implied by the
+    // length of the script. `decksRemaining` reports the ruleset's shoe
+    // (riggedShoe.ts), so eleven +1 tags over a 6-deck game is a true count
+    // of 2 -- and this test is about a true count of 3, which is what a
+    // single-deck table with that running count actually gives you.
+    const game = Game.withRiggedShoe(
+      cfg({ rules: { ...DEFAULT_RULES, decks: 1 } }),
+      rig(...filler, ...round2, ...padding),
+    );
 
     game.startRound();
     game.act('stand'); // dealer plays out and settles the filler round
@@ -313,7 +321,15 @@ describe('insurance grading', () => {
     const filler: Rank[] = ['3', '2', '2', '2', '2', '2', '2', '2', '2', '2', '2'];
     const round2: Rank[] = ['2', 'A', '3', '2'];
     const padding: Rank[] = ['2', '2', '2', '2', '2'];
-    const game = Game.withRiggedShoe(cfg(), rig(...filler, ...round2, ...padding));
+    // A SINGLE-DECK table, stated in the rules rather than implied by the
+    // length of the script. `decksRemaining` reports the ruleset's shoe
+    // (riggedShoe.ts), so eleven +1 tags over a 6-deck game is a true count
+    // of 2 -- and this test is about a true count of 3, which is what a
+    // single-deck table with that running count actually gives you.
+    const game = Game.withRiggedShoe(
+      cfg({ rules: { ...DEFAULT_RULES, decks: 1 } }),
+      rig(...filler, ...round2, ...padding),
+    );
 
     game.startRound();
     game.act('stand'); // dealer plays out and settles the filler round
@@ -1031,7 +1047,12 @@ describe('reshuffle', () => {
 
     game.startRound();
     expect(game.shuffledLastRound).toBe(true);
-    expect(game.runningCount).toBe(0);
+    // A rigged shoe RESTOCKS on a shuffle (riggedShoe.ts: resetting `dealt`
+    // over an empty queue left a shoe that reported itself fresh and threw
+    // on the next draw), so round 2 deals the script from the top again:
+    // 10, 10, 6 visible = -1. The count was reset iff it reads -1 rather
+    // than -3.
+    expect(game.runningCount).toBe(-1);
   });
 
   it('shuffledLastRound is false when the cut card was not reached', () => {

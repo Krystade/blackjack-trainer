@@ -31,10 +31,26 @@ export interface RiggedShoe {
 
 /**
  * A minimal Shoe-surface object that deals a pre-stacked list of cards in
- * order, for deterministic tests. Cast to Shoe at the boundary (test-only;
- * see Game.withRiggedShoe).
+ * order. Cast to Shoe at the boundary (see Game.withRiggedShoe).
+ *
+ * NOT TEST-ONLY, whatever this comment used to say: the Downswing drill runs
+ * every session on one of these, so everything here is production behaviour
+ * on a phone in a car.
+ *
+ * `decks` is what the RULESET says the shoe holds, and it is what
+ * `decksRemaining` reports. Omitting it falls back to measuring the script,
+ * which is right for a unit test stacking eight cards and wrong for a
+ * drill: a ~170-card script measures 3.5 decks for a 6-deck game, so every
+ * true count derived from it was inflated by about 1.7x at the start of a
+ * session and about 4x by the end -- and the Downswing drill grades the bet
+ * ramp against exactly that number.
  */
-export function makeRiggedShoe(cards: Card[], penetration: number): Shoe & RiggedShoe {
+export function makeRiggedShoe(
+  cards: Card[],
+  penetration = 0.75,
+  decks?: number,
+): Shoe & RiggedShoe {
+  const original = [...cards];
   const queue = [...cards];
   const cutCardPosition = Math.floor(cards.length * penetration);
   let dealt = 0;
@@ -59,6 +75,13 @@ export function makeRiggedShoe(cards: Card[], penetration: number): Shoe & Rigge
       return dealt;
     },
     get decksRemaining(): number {
+      // THE RULESET'S SHOE, not the script's length, when the caller says
+      // what the shoe is. Same half-deck rounding as the real `Shoe`, so a
+      // count read off this one is the count a player at that table would
+      // compute.
+      if (decks !== undefined) {
+        return Math.max(0.5, Math.round((decks * 52 - dealt) / 26) / 2);
+      }
       const rounded = Math.round(queue.length / 26);
       return Math.max(0.5, rounded / 2);
     },
@@ -66,6 +89,18 @@ export function makeRiggedShoe(cards: Card[], penetration: number): Shoe & Rigge
       return dealt >= cutCardPosition;
     },
     shuffle(): void {
+      // RESTOCKED, as the real `Shoe` does. This reset `dealt` alone, so a
+      // shuffled rigged shoe reported `cardsDealt: 0` and `cutCardReached:
+      // false` -- a fresh shoe by every reading -- over an EMPTY queue, and
+      // the next draw threw `Rigged shoe exhausted` out of a click handler.
+      // `game.ts` suppresses the pre-deal depth guard for rigged shoes but
+      // leaves the cut card live, so a long session reaches this.
+      //
+      // A shuffled script is the script again from the top: the hands stop
+      // being the designed arc, which is a duller drill, and that is
+      // strictly better than a dead screen.
+      queue.length = 0;
+      queue.push(...original);
       dealt = 0;
     },
   };

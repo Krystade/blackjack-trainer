@@ -113,7 +113,51 @@ export interface DownswingScript {
  * misplayed round consumes a scripted round without dealing it, and running out
  * of script mid-session would end the drill early.
  */
-export const SLACK_ROUNDS = 8;
+/**
+ * SIZED FOR A REALIGNMENT, NOT FOR A SURRENDER.
+ *
+ * Eight covered a session where the player's line costs a card or two more
+ * than the script budgeted. It does not cover one where they hit a four-card
+ * PAT round: that steals from the next round and the realignment then skips
+ * a whole scripted round to recover, so a single decision can cost two.
+ * Swept over seeds and play styles, eight left sessions that ran the script
+ * dry and threw out of a click handler. The sweep is now a test.
+ */
+export const SLACK_ROUNDS = 14;
+
+/**
+ * The uncounted tail past the last scripted round. Exported because a test
+ * has to know where the script ends and the buffer begins, and a literal in
+ * both places is a literal that goes stale in one of them.
+ */
+export const TAIL_CARDS = 40;
+
+/**
+ * Skip the shoe forward to the next scripted round boundary.
+ *
+ * Each scripted round costs a fixed number of cards down every line basic
+ * strategy can take, and a player is free to take another one (or to
+ * surrender, which ends a decision hand a card early). Binning the
+ * difference unseen puts the next hand on its own first card instead of on
+ * the tail of this one.
+ *
+ * Lifted out of `DownswingView`'s round handler so the property that matters
+ * -- that a session cannot outrun its script however it is played -- can be
+ * asserted against the code that actually runs, rather than a copy of it in
+ * a test. Returns how many cards were binned, which is what makes it
+ * observable at all.
+ */
+export function realignToScript(
+  shoe: { cardsDealt: number },
+  boundaries: number[],
+  discard: (n: number) => void,
+): number {
+  const dealt = shoe.cardsDealt;
+  const nextBoundary = boundaries.find((b) => b >= dealt);
+  if (nextBoundary === undefined || nextBoundary <= dealt) return 0;
+  discard(nextBoundary - dealt);
+  return nextBoundary - dealt;
+}
 
 export function buildDownswingScript(rounds: number, seed?: number): DownswingScript {
   const rng = mulberry32(seed ?? Date.now());
@@ -142,9 +186,12 @@ export function buildDownswingScript(rounds: number, seed?: number): DownswingSc
     for (const rank of ranks) cards.push(card(rank));
     boundaries.push(cards.length);
   }
-  // Buffer (uncounted-by-design tail) so nothing throws even if realignment is
-  // somehow outrun -- the drill degrades to dull hands rather than throwing.
-  for (let i = 0; i < 8; i++) cards.push(card('10'));
+  // Buffer (uncounted-by-design tail) so nothing throws even if realignment
+  // is somehow outrun -- the drill degrades to dull hands rather than
+  // throwing. Eight cards is a round and a half; a session that outruns the
+  // slack above is by definition one that keeps costing extra cards, so the
+  // tail has to cover several rounds rather than one.
+  for (let i = 0; i < TAIL_CARDS; i++) cards.push(card('10'));
   return { cards, boundaries };
 }
 
