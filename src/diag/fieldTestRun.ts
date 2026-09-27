@@ -95,6 +95,23 @@ export interface FieldTestRun {
    */
   beforeHandedBack?: boolean;
   /**
+   * Whether the operator is answering out loud as well as by tapping.
+   *
+   * PERSISTED, and the privacy rule next door is the reason it can be. A
+   * flag that opens a microphone has no business surviving a relaunch --
+   * except that `coerce` never restores a run as `active`, so nothing here
+   * reaches `useVoiceControl` until somebody taps Resume. What the
+   * persistence actually buys is the case it exists for: the update check
+   * reloads the app MID-DRIVE by design, and a voice channel that quietly
+   * died there would leave the operator talking to a screen that had stopped
+   * listening -- indistinguishable, from the driver's seat, from the
+   * hands-free microphone failure the protocol is hunting.
+   *
+   * Set on the start gate, before the run begins -- see `startFieldTestRun`
+   * for why it is carried into the run rather than cleared there.
+   */
+  answerByVoice?: boolean;
+  /**
    * Whether this run was ENDED on purpose, rather than merely stepped out of.
    *
    * `stopFieldTestRun` and `pauseFieldTestRun` wrote the identical object, so
@@ -301,6 +318,8 @@ function coerce(raw: unknown): FieldTestRun {
     // reloaded after a clean pause has already been given its settings back,
     // and Resume re-takes the snapshot rather than trusting the spent one.
     beforeHandedBack: r.beforeHandedBack === true ? true : undefined,
+    // Carried through the reload -- that is the whole point of persisting it.
+    answerByVoice: r.answerByVoice === true ? true : undefined,
     runId: typeof r.runId === 'string' ? r.runId : undefined,
     // Carried through the reload for the same reason as `touchedAt`: the
     // launch screen and the update check both read it, and both of them run
@@ -493,11 +512,41 @@ export function startFieldTestRun(condition: string, before?: FieldTestBefore): 
     stepIndex: 0,
     stamps: {},
     before,
+    /*
+     * CARRIED, and the first version of this cleared it -- which broke the
+     * feature outright. The switch lives on the START GATE, because that is
+     * the screen the operator reads while parked and the decision belongs
+     * before the drive. So the value being cleared here is the one they set
+     * seconds ago on the screen they are looking at, and Start silently
+     * undid it every time.
+     *
+     * Nothing is lost by carrying it: `coerce` never restores a run as
+     * active, so a flag read back from storage cannot open a microphone
+     * until somebody taps Start or Resume -- which is exactly the deliberate
+     * act this is recording.
+     */
+    answerByVoice: readFieldTestRun().answerByVoice,
     // A fresh run owes this snapshot back, whether it was just taken from the
     // live settings or carried over from a run interrupted mid-drive.
     beforeHandedBack: undefined,
     runId: newRunId(),
   });
+}
+
+/**
+ * Turn the spoken answer channel on or off for this run.
+ *
+ * Logged rather than silently written, because it changes what the run
+ * MEASURES: on a step that does not itself ask for the microphone, answering
+ * out loud opens one, and an open microphone is what flips the phone to the
+ * car's hands-free profile. Anyone reading the export has to be able to see
+ * where in the run that started.
+ */
+export function setFieldTestAnswerByVoice(on: boolean): void {
+  const current = readFieldTestRun();
+  if ((current.answerByVoice === true) === on) return;
+  diag('test', 'answer-by-voice', { on, atStep: current.stepIndex });
+  write({ ...current, answerByVoice: on ? true : undefined });
 }
 
 /**

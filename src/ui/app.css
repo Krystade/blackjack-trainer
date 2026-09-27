@@ -4242,6 +4242,48 @@ details.stats-section > summary::after {
   gap: 8px;
 }
 
+/* The spoken-answer switch, on the START GATE only -- see FieldTest.tsx for
+   why it is not in the running panel. This screen is read while parked, so
+   it can afford a sentence; the running panel gets a status line instead. */
+.fieldtest-voice-toggle {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  /* 48px like every other target on this screen, and the checkbox itself is
+     small -- so the whole row is the hit area, which is what a <label> with
+     a block child buys. */
+  min-height: 48px;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.fieldtest-voice-toggle input {
+  /* Bigger than the platform default: this is still a control on a screen
+     whose whole subject is being used in a car, even if this half of it is
+     read at a standstill. */
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.fieldtest-voice-toggle .u-note {
+  display: block;
+  margin-top: 2px;
+}
+
+/* WHAT TO SAY, under the answer it selects. Quiet enough that the label is
+   still what the eye lands on -- the hint is for the ear's benefit, and a
+   glance at it should not cost the glance the label needs. */
+.fieldtest-say {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
 /* 48px, up from 40px: these were the smallest targets on the screen and they
    sit on the bottom edge, which is exactly where a thumb coming off the wheel
    arrives. Every other button in the app is already 48px. */

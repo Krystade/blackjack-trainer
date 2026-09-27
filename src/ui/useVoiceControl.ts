@@ -52,6 +52,7 @@ export function useVoiceControl({
   onAction,
   onTranscript,
   onNotUnderstood,
+  isAttempt,
   biasPhrases,
   context,
 }: {
@@ -68,7 +69,20 @@ export function useVoiceControl({
    * a dead microphone. Screens wire this to a chime so the operator knows to
    * say it again instead of waiting on a card that will never turn.
    */
-  onNotUnderstood?: () => void;
+  onNotUnderstood?: (why: 'rejected' | 'suppressed') => void;
+  /**
+   * What counts as an attempt worth cueing, when the default does not fit.
+   *
+   * `looksLikeAnAttempt` is tuned to the DRILL vocabulary -- short, one or
+   * two words -- and it is right there: chiming at every sentence someone
+   * says in a moving car is worse than the silence it replaces. The field
+   * test's answers are not that shape ("that one came from the car"), so
+   * under the default a real answer thrown away by the echo window makes no
+   * sound at all, which is indistinguishable from a dead microphone. A
+   * screen that can say precisely whether a transcript was one of ITS
+   * answers passes that judgement in here instead.
+   */
+  isAttempt?: (heard: string) => boolean;
   /** Words to bias the engine toward, where the browser supports it. */
   biasPhrases?: string[];
   /**
@@ -136,6 +150,11 @@ export function useVoiceControl({
 
   const unheardRef = useRef(onNotUnderstood);
   unheardRef.current = onNotUnderstood;
+  // Held in a ref for the same reason as the handlers above: the predicate
+  // closes over the screen's current step, and rebuilding the recogniser
+  // because a step changed costs a real gap in listening.
+  const attemptRef = useRef(isAttempt);
+  attemptRef.current = isAttempt;
   // What the app is currently saying, so a suppressed utterance can be told
   // apart from the app hearing its own voice. See audio/selfEcho.ts.
   const saidRef = useRef<string | null | undefined>(null);
@@ -201,8 +220,8 @@ export function useVoiceControl({
         // sound at all, which is exactly what a dead microphone does. The one
         // suppressed utterance that must stay silent is the app hearing
         // itself -- hence the echo check rather than a blanket cue.
-        const attempt = looksLikeAnAttempt(heard);
-        if (verdict === 'rejected' && attempt) unheardRef.current?.();
+        const attempt = attemptRef.current?.(heard) ?? looksLikeAnAttempt(heard);
+        if (verdict === 'rejected' && attempt) unheardRef.current?.('rejected');
         else if (
           verdict === 'suppressed' &&
           attempt &&
@@ -210,7 +229,7 @@ export function useVoiceControl({
           cuedGenRef.current !== speechGenRef.current
         ) {
           cuedGenRef.current = speechGenRef.current;
-          unheardRef.current?.();
+          unheardRef.current?.('suppressed');
         }
       },
     });

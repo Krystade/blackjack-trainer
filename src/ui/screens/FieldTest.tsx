@@ -13,11 +13,15 @@ import {
   logFieldTestStep,
   stampFieldTest,
 } from '../../diag/fieldTest';
+import { matchFieldTestAnswer, spokenHintFor } from '../../diag/fieldTestVoice';
+import { looksLikeSelfEcho } from '../../audio/selfEcho';
+import { looksLikeAnAttempt } from '../../audio/voiceRecognition';
 import {
   countStampedSteps,
   goToFieldTestStep,
   markFieldTestStamped,
   readFieldTestRun,
+  setFieldTestAnswerByVoice,
   setFieldTestCondition,
   markFieldTestBeforeHandedBack,
   markFieldTestBeforeOwed,
@@ -526,6 +530,41 @@ function StartGate({
         </p>
       )}
 
+      {/*
+        ANSWERING OUT LOUD, decided HERE rather than mid-run.
+        
+        This is the screen the operator reads while parked, before starting or
+        resuming, and it is the moment the decision belongs to: the switch
+        changes what the run measures, and the running panel is budgeted to
+        the pixel so that the exits and the answer stack sit at the same place
+        on every step. A control that moved them, one tap from a thumb coming
+        off the wheel, would cost more than it buys. Turning it off mid-drive
+        is Pause, this screen, and Resume.
+      */}
+      <label className="fieldtest-voice-toggle">
+        <input
+          type="checkbox"
+          data-testid="fieldtest-answer-by-voice"
+          checked={run.answerByVoice === true}
+          onChange={(e) => setFieldTestAnswerByVoice(e.target.checked)}
+        />
+        <span>
+          Answer out loud
+          {/* THE COST, NOT A FEATURE LIST. Most steps keep the microphone
+              shut on purpose, and opening one flips the phone to the car's
+              hands-free profile -- which is the variable half this protocol
+              exists to measure. Saying so on the switch is the difference
+              between an operator choosing to perturb the run and one
+              discovering afterwards that they did. */}
+          <span className="u-note">
+            Say the answer instead of finding the button. On steps that do not
+            already use the microphone this opens one, which moves the audio
+            route several steps are measuring — every spoken answer is
+            recorded with which of the two it was.
+          </span>
+        </span>
+      </label>
+
       <button
         type="button"
         className={
@@ -603,6 +642,17 @@ function RunningTest({
   // is "No Bluetooth" — and it sat fifth, under four answers about what
   // the car did. See `stepResponses`.
   const responses = useMemo(() => stepResponses(step, run.condition), [step, run.condition]);
+  /**
+   * What this step says, for telling the app's voice from the operator's.
+   *
+   * Derived from the step rather than captured as the last utterance,
+   * because the step is the authority on what it is about to say and the
+   * check has to work for a fragment arriving after the line has finished.
+   */
+  const stepLines = useMemo(
+    () => [...(step.say ?? []), ...(step.sayUnclipped ? [step.sayUnclipped] : [])],
+    [step],
+  );
   const [wheelSeen, setWheelSeen] = useState<string[]>([]);
   /**
    * Observations armed on this step that are true alongside its answer.
@@ -1652,8 +1702,30 @@ function RunningTest({
     return () => setMediaSessionProbe(null);
   }, [step.wheel, step.id, run.condition]);
 
+  /**
+   * The operator is answering out loud, and this run is live.
+   *
+   * `run.active` is in the condition rather than assumed: `coerce` never
+   * restores a run as active, so a reload lands on the gate -- and a flag
+   * read from storage must not be able to open a microphone before somebody
+   * has tapped Resume.
+   */
+  const answerByVoice = run.active && run.answerByVoice === true;
+
+  /**
+   * Whose microphone heard a spoken answer.
+   *
+   * `protocol` means the step declared `voice: true` and it was open anyway,
+   * so the answer cost the experiment nothing. `answer-channel` means this
+   * feature opened one on a step that had deliberately kept it shut, which
+   * moves the audio route the next samples measure. Two different rows in
+   * any honest reading of the export.
+   */
+  const micProvenance = (): 'protocol' | 'answer-channel' =>
+    resolveFieldTestSetup(run.stepIndex).voice === true ? 'protocol' : 'answer-channel';
+
   const { status: voiceStatus } = useVoiceControl({
-    enabled: voiceWanted,
+    enabled: voiceWanted || answerByVoice,
     context: `field-test:${step.id}`,
     onAction: (action) => {
       diag('test', 'heard-action', { step: step.id, action });
@@ -1662,10 +1734,69 @@ function RunningTest({
     onTranscript: (text) => {
       diag('test', 'heard-text', { step: step.id, text });
       setHeard((prev) => [...prev, text]);
-      return null;
+      /*
+       * THE SPOKEN ANSWER, resolved against the answers THIS STEP IS SHOWING.
+       *
+       * Returning a label consumes the transcript, so the drill command
+       * vocabulary never sees it -- which is right: "no" is a command
+       * elsewhere and an answer here.
+       *
+       * Three refusals, all of them deliberate:
+       *
+       *  - Not while `sampling` or `waitingForMic`. The tap path is refused
+       *    then for a reason (an answer during line 1 of `fallback-audible`
+       *    compares one line to nothing), and a channel that walked round
+       *    that guard would be a quieter version of the same bug. Routed
+       *    through `answer()` rather than checked here, so there is exactly
+       *    one place that decides, and the refusal chimes and is logged.
+       *  - Not the app's own voice. `isSuppressed` catches most echo by the
+       *    clock, but the whole reason `heard-self` exists as an answer is
+       *    that some gets through -- and "the car did nothing else" spoken
+       *    BY the app would otherwise stamp itself.
+       *  - Not an ambiguous match. `matchFieldTestAnswer` returns null when
+       *    two answers fit equally, and a wrong stamp reads in the analysis
+       *    as the opposite finding.
+       */
+      if (!answerByVoice) return null;
+      if (stepLines.some((line) => looksLikeSelfEcho(text, line))) {
+        diag('test', 'heard-own-voice', { step: step.id, text });
+        return null;
+      }
+      const match = matchFieldTestAnswer(text, responses);
+      if (!match) {
+        // NOT `onNotUnderstood`'s job: that fires for a transcript the
+        // COMMAND vocabulary rejected, and this one was claimed. Chime here
+        // or an unmatched answer is silence, which from the driver's seat is
+        // a dead microphone.
+        diag('test', 'answer-unmatched', { step: step.id, text });
+        chime('attention');
+        return 'field-test: no answer matched';
+      }
+      answer(match.id, 'voice');
+      return `field-test: ${match.id}`;
     },
-    onNotUnderstood: () => {
-      diag('test', 'heard-unclear', { step: step.id });
+    /**
+     * WHAT COUNTS AS AN ATTEMPT HERE, which is not what counts in a drill.
+     *
+     * The default (`looksLikeAnAttempt`) is built for one- and two-word
+     * commands and deliberately ignores sentences, because chiming at every
+     * sentence in a moving car is worse than silence. A field-test answer IS
+     * a sentence -- "that one came from the car" -- so under the default a
+     * real answer swallowed by the echo window made no sound at all, which
+     * from the driver's seat is exactly what a dead microphone does. Asking
+     * the matcher is a sharper test than any heuristic: it cues when, and
+     * only when, the thing thrown away was an answer this step was offering.
+     */
+    isAttempt: (heard) =>
+      answerByVoice ? matchFieldTestAnswer(heard, responses) !== null : looksLikeAnAttempt(heard),
+    onNotUnderstood: (why) => {
+      diag('test', 'heard-unclear', { step: step.id, why });
+      if (why === 'suppressed') {
+        // NAMED, because the fix is different. A rejected answer means say
+        // it again; this one means say it again A MOMENT LATER -- the app
+        // was still talking, or had been within the last half second.
+        diag('test', 'answer-too-soon', { step: step.id });
+      }
       // AUDIBLE, as it is on every other screen that listens -- the count
       // drill, the true-count drills, Drills and the table all call
       // `ding('attention')` here. This screen printed "(not understood)" and
@@ -1867,7 +1998,16 @@ function RunningTest({
     stepReadyAt.current = Date.now();
   }, [step.id]);
 
-  const answer = (responseId: string) => {
+  /**
+   * How an answer arrived.
+   *
+   * `tap` is the thumb on a 52px target; `voice` is the operator saying it.
+   * Recorded on every stamp because the two are not interchangeable
+   * evidence: a spoken answer was given with the microphone OPEN, and an
+   * open microphone is what moves the audio route this protocol exists to
+   * measure. See `micProvenance`.
+   */
+  const answer = (responseId: string, via: 'tap' | 'voice' = 'tap') => {
     /**
      * THE REFUSAL, SAID OUT LOUD. See the answer button's `aria-disabled`.
      *
@@ -1880,6 +2020,7 @@ function RunningTest({
       diag('test', 'answer-blocked', {
         step: step.id,
         answer: responseId,
+        via,
         why: waitingForMic ? 'waiting-for-the-microphone' : 'still-speaking',
       });
       chime('blocked');
@@ -1887,7 +2028,7 @@ function RunningTest({
     }
     const sinceStep = Date.now() - stepReadyAt.current;
     if (sinceStep < ANSWER_GUARD_MS) {
-      diag('test', 'answer-ignored', { step: step.id, answer: responseId, sinceStep });
+      diag('test', 'answer-ignored', { step: step.id, answer: responseId, via, sinceStep });
       // AUDIBLY REFUSED. A tap the screen throws away made no sound at all,
       // which from the driver's seat is indistinguishable from having missed
       // the button -- so the reflex is to tap again, harder, at a stack of
@@ -1910,6 +2051,7 @@ function RunningTest({
         diag('test', 'answer-marked', {
           step: step.id,
           mark: responseId,
+          via,
           on: !prev.includes(responseId),
         });
         return next;
@@ -1929,6 +2071,16 @@ function RunningTest({
     // site means the separator is chosen rather than inherited from
     // JSON.stringify, and the field stays greppable.
     stampFieldTest(step.id, run.condition, responseId, {
+      // HOW IT ARRIVED, and -- when it was spoken -- whether the microphone
+      // that heard it was one the protocol had already asked for or one the
+      // answer channel opened. On a step declaring `voice: true` the
+      // microphone is open regardless and a spoken answer perturbs nothing;
+      // anywhere else it opened one, which flips the phone to the car's
+      // hands-free profile and is exactly the variable under test. Without
+      // this the two are indistinguishable in the export, and the confound
+      // would be discovered by re-reading the code rather than the log.
+      via,
+      mic: via === 'voice' ? micProvenance() : undefined,
       // Carried WITH the answer rather than instead of it -- the whole point
       // of a modifier. A step answered "car speakers" having been marked
       // "it moved while playing" exports both, and the 2x2 can still be read
@@ -2247,6 +2399,25 @@ function RunningTest({
             {ambient}
           </p>
         )}
+        {answerByVoice && (
+          /* STATUS, NOT A CONTROL, and that is a layout decision as much as a
+             safety one. The running panel is budgeted to the pixel -- the
+             nav row and the answer stack sit at the same place on all 23
+             steps, which is what makes them reachable by feel -- so a
+             checkbox added down here would move them. It also has no
+             business being one tap from a thumb coming off the wheel. The
+             switch lives on the start gate, where it is read while parked.
+
+             What it says here is the half that changes per step: whether
+             this step asked for the microphone or the answer channel opened
+             one, which is the difference between a free answer and a
+             perturbed measurement. */
+          <p className="fieldtest-evidence-line" data-testid="fieldtest-voice-answers">
+            {micProvenance() === 'protocol'
+              ? 'Answering out loud · this step has the microphone open anyway.'
+              : 'Answering out loud · mic open for answers, which this step did not ask for.'}
+          </p>
+        )}
         {marks.length > 0 && (
           /* SAID OUT LOUD ON SCREEN, because arming a mark is the one tap on
              this screen that does not advance. Without a line saying what is
@@ -2310,6 +2481,14 @@ function RunningTest({
               onClick={() => answer(response.id)}
             >
               {response.label}
+              {/* WHAT TO SAY, not what it means. Shown only while the channel
+                  is on, because it is noise on a screen being read by thumb
+                  -- and printed rather than only documented, since a
+                  vocabulary nobody can see is one the operator has to have
+                  memorised before the drive. */}
+              {answerByVoice && spokenHintFor(response) && (
+                <span className="fieldtest-say">{`say “${spokenHintFor(response)}”`}</span>
+              )}
             </button>
           ),
         )}
