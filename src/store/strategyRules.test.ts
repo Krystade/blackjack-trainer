@@ -7,7 +7,15 @@ import type { Card } from '../engine/cards';
 
 const c = (rank: Card['rank']): Card => ({ rank, suit: 's' });
 
-function profile(patch: Partial<Profile> & { rules?: Partial<Profile['rules']> }): Profile {
+/**
+ * `Omit` first: intersecting `Partial<Profile>` with a looser `rules` leaves
+ * `rules` as `RuleSet & Partial<RuleSet>`, which is `RuleSet` -- so every
+ * caller would have to spell out all six rules to change one. (`tsc --noEmit`
+ * misses this; `tsc -b`, which the deploy runs, does not.)
+ */
+function profile(
+  patch: Omit<Partial<Profile>, 'rules'> & { rules?: Partial<Profile['rules']> },
+): Profile {
   return {
     id: 'p',
     name: 'P',
