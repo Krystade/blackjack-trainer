@@ -200,3 +200,45 @@ test('a profile edit is logged by name, with the rule that changed', async ({ pa
   expect(text).toMatch(/profiles .*\.rules\.das: (true|false) -> (true|false)/);
   expect(text).not.toContain('changed="(no change)"');
 });
+
+/**
+ * What the panel shows and what Copy produces have to be the same log.
+ *
+ * Nothing tells this tab when ANOTHER one writes an entry, and the app is
+ * deliberately usable as both an installed PWA and a Safari tab on the same
+ * phone — both flushing to the same storage key. The panel held whatever it
+ * had read when it mounted and advanced only on an event logged HERE, while
+ * Copy read storage fresh. So the operator could read the log on screen,
+ * paste it to somebody, and be sending a different and longer file than the
+ * one they checked.
+ */
+test('Show reads the log again rather than trusting what it read on mount', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await openSettings(page);
+
+  // What the other tab did. Written straight into storage because that is
+  // precisely what reaches this tab: a storage write with no notification.
+  await page.evaluate(() => {
+    const KEY = 'bjtrainer.diagnostics.v1';
+    const raw = localStorage.getItem(KEY);
+    const entries = raw ? (JSON.parse(raw) as unknown[]) : [];
+    entries.push({
+      at: new Date().toISOString(),
+      ms: 1,
+      session: 'other-tab',
+      category: 'nav',
+      event: 'written-by-the-other-tab',
+    });
+    localStorage.setItem(KEY, JSON.stringify(entries));
+  });
+
+  const section = panel(page);
+  const show = section.getByRole('button', { name: /^(Show|Hide)$/ });
+  if ((await show.innerText()) === 'Hide') await show.click();
+  await show.click();
+
+  await expect(
+    section.locator('pre.car-log'),
+    'the panel is showing a log older than the one Copy would send',
+  ).toContainText('written-by-the-other-tab');
+});

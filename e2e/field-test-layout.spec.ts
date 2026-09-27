@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { withSettings } from './helpers';
+import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
  * The field-test screen's geometry, on every step.
@@ -153,6 +154,186 @@ for (const vp of VIEWPORTS) {
         expect(i).toBeLessThan(40);
       }
       expect(misses, `evidence panel unreachable on: ${misses.join(', ')}`).toEqual([]);
+    });
+
+    /**
+     * The instruction has to be HEARABLE on every step, and the control that
+     * says it has to be a real finger target.
+     *
+     * Eyes-free is forced on from step one and every instruction is printed,
+     * so on the seventeen steps that declare a line the thing the operator is
+     * being told to do was eyes-only — the single audio control there repeats
+     * the LINE. The head scrolls rather than clipping, which is reachable in a
+     * car park and useless at speed.
+     */
+    test('every step has a control that speaks its instruction, and it is hittable', async ({
+      page,
+    }) => {
+      await openTest(page, 'Car, parked');
+      const misses: string[] = [];
+      const small: string[] = [];
+      for (let i = 0; ; i += 1) {
+        const step = await page.getByTestId('fieldtest-title').innerText();
+        // WHICH CONTROL SPEAKS THE INSTRUCTION depends on whether the step
+        // has a line of its own. With no line the repeat control reads the
+        // instruction and says so on its face; with a line it repeats the
+        // LINE, and the instruction needs a control of its own.
+        //
+        // Read from the label rather than from the presence of the second
+        // button: asking "is the second button there" and then falling back to
+        // the first one passes whether or not the second button exists, which
+        // is a test that cannot fail. A mutant deleting it survived exactly
+        // that.
+        //
+        // ASKED OF THE PROTOCOL, not of the screen. The repeat button's label
+        // was the first attempt and it is not an oracle: it also reads
+        // "Waiting for the microphone" and "Speaking", and under `?e2e=1` a
+        // gated step sits in the first of those indefinitely, so the test read
+        // a silent step as one with a line. The step list is the independent
+        // answer -- and going to the source is the point, because the
+        // alternative (does the second button exist?) is the fallback that let
+        // a mutant deleting it survive.
+        const declared = FIELD_TEST_STEPS.find((s) => s.title === step);
+        expect(declared, `the screen is showing a step the protocol does not have: ${step}`)
+          .toBeTruthy();
+        const hasLine = Boolean(declared?.say ?? declared?.sayUnclipped);
+        const id = hasLine ? 'fieldtest-read-step' : 'fieldtest-again';
+        if (hasLine && (await page.getByTestId('fieldtest-read-step').count()) === 0) {
+          misses.push(`${step} (no control speaks the instruction at all)`);
+          const skipNow = page.getByTestId('fieldtest-skip');
+          if (await skipNow.isDisabled()) break;
+          await skipNow.click();
+          continue;
+        }
+        if (!(await hitsSelf(page, id))) misses.push(step);
+        const box = await boxOf(page, id);
+        // 44px is the floor for something aimed at without looking.
+        if (box && box.height < 44) small.push(`${step} (${Math.round(box.height)}px)`);
+        const skip = page.getByTestId('fieldtest-skip');
+        if (await skip.isDisabled()) break;
+        await skip.click();
+        expect(i).toBeLessThan(40);
+      }
+      expect(misses, `no reachable way to hear the instruction on: ${misses.join(', ')}`).toEqual(
+        [],
+      );
+      expect(small, `the control is under a finger's width on: ${small.join(', ')}`).toEqual([]);
+    });
+
+    /**
+     * THE SAME PIXEL HAS TO MEAN THE SAME THING.
+     *
+     * The stack hangs from the bottom of the screen, which pins "Missed it"
+     * and nothing else. Six steps use the wheel answers and they do not all
+     * use the same ones, so bottom-anchoring moved answers under the thumb
+     * BETWEEN WHEEL STEPS: measured here at 390x763, y=477 was "The car did
+     * nothing else" on one step and "The radio changed track" on the next.
+     * Those are the two opposite readings of the fault under test, and the
+     * steps they are on are the ones done with eyes on the road.
+     *
+     * Not all collisions can go: route answers and wheel answers both fill a
+     * six-slot stack anchored to the same edge, so slot 2 is necessarily two
+     * different things on a route step and a wheel step. What CAN hold, and
+     * is asserted here, is that one answer never moves — so a position
+     * learned during the run keeps its meaning wherever that answer appears.
+     */
+    test('an answer never moves to a different position during a run', async ({ page }) => {
+      await openTest(page, 'Car, parked');
+      const seen = new Map<string, { y: number; step: string }>();
+      const moved: string[] = [];
+      let gaps = 0;
+      for (let i = 0; ; i += 1) {
+        const step = await page.getByTestId('fieldtest-title').innerText();
+        const found = await page
+          .locator('[data-testid^="fieldtest-answer-"]')
+          .evaluateAll((els) =>
+            els.map((e) => {
+              const r = e.getBoundingClientRect();
+              return {
+                id: (e.getAttribute('data-testid') ?? '').replace('fieldtest-answer-', ''),
+                y: Math.round((r.top + r.bottom) / 2),
+                h: Math.round(r.height),
+              };
+            }),
+          );
+        for (const a of found) {
+          if (a.id.startsWith('gap-')) {
+            gaps += 1;
+            // A GAP THAT IS NOT BUTTON-SIZED IS NOT A GAP. It exists to hold
+            // the position; collapsed to nothing it would move everything
+            // below it up, which is the failure itself.
+            expect(a.h, `a held-open slot on ${step} is ${a.h}px tall`).toBeGreaterThanOrEqual(44);
+            continue;
+          }
+          const was = seen.get(a.id);
+          if (!was) seen.set(a.id, { y: a.y, step });
+          // 6px, AND THE FIGURE IS MEASURED RATHER THAN CHOSEN. Buttons flex
+          // between 52px and the 44px floor depending on how many the step
+          // has, so the bottom of a five-answer stack sits 4px from where a
+          // six-answer one sits at 375x667. That is the deliberate trade made
+          // for fitting six answers on an iPhone SE; a slot pitch is 52-60px,
+          // so nothing within 6px is a different button.
+          else if (Math.abs(was.y - a.y) > 6) {
+            moved.push(`${a.id}: y=${was.y} on "${was.step}", y=${a.y} on "${step}"`);
+          }
+        }
+        const skip = page.getByTestId('fieldtest-skip');
+        if (await skip.isDisabled()) break;
+        await skip.click();
+        expect(i).toBeLessThan(40);
+      }
+      expect(gaps, 'no slot is held open anywhere, so nothing is pinned').toBeGreaterThan(0);
+      expect(moved, `an answer changed position mid-run: ${moved.join('; ')}`).toEqual([]);
+    });
+
+    test('every control on the gate is big enough to hit without looking', async ({ page }) => {
+      // The gate is where an interrupted drive comes back, so it is reached
+      // at the side of the road with the engine running — and one of its
+      // two buttons discards the run. They kept the 40px default while
+      // everything inside a run was raised to 44 and 48.
+      await withSettings(page, {});
+      await page.goto('/?e2e=1');
+      await page.getByRole('button', { name: 'Settings' }).first().click();
+      await page.getByTestId('fieldtest-open').click();
+      await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
+      const small: string[] = [];
+      const buttons = page.getByTestId('fieldtest-screen').locator('button');
+      for (let i = 0; i < (await buttons.count()); i += 1) {
+        const b = buttons.nth(i);
+        const box = await b.boundingBox();
+        if (!box) continue;
+        if (box.height < 44) small.push(`${(await b.innerText()).trim()} (${Math.round(box.height)}px)`);
+      }
+      expect(small, `under a finger's width on the gate: ${small.join(', ')}`).toEqual([]);
+    });
+
+    test('the evidence panel does not push its own first line out of reach', async ({ page }) => {
+      // It is `overflow-y: auto` and centred, and a centred flex column that
+      // overflows a scroll container puts its first children ABOVE the
+      // scroll origin — off the top, with no scroll position that brings
+      // them back. Measured on `mic-heard`, which shows the transcript and
+      // the echo caveat together: the top of the reading was cut.
+      await openTest(page, 'Car, parked');
+      const clipped = await page.evaluate(() => {
+        const panel = document.querySelector('[data-testid="fieldtest-evidence"]');
+        if (!panel) return 'no evidence panel';
+        // More lines than the panel's 220px cap, which is what the wheel
+        // count, the played-from path, the transcript and its caveat add up
+        // to on the steps that show all of them.
+        for (let i = 0; i < 14; i += 1) {
+          const p = document.createElement('p');
+          p.className = 'fieldtest-evidence-line';
+          p.textContent = `line ${i}`;
+          panel.appendChild(p);
+        }
+        panel.scrollTop = 0;
+        const first = panel.firstElementChild!.getBoundingClientRect();
+        const box = panel.getBoundingClientRect();
+        return first.top < box.top - 1
+          ? `the first line sits ${Math.round(box.top - first.top)}px above the panel it is in`
+          : '';
+      });
+      expect(clipped).toBe('');
     });
 
     test('the repeat control is hittable and does not move between steps', async ({ page }) => {

@@ -10,6 +10,7 @@ import { Charts } from './screens/Charts';
 import { TabBar } from './components/TabBar';
 import { MuteButton } from './components/MuteButton';
 import { FieldTest } from './screens/FieldTest';
+import { fieldTestRunIsResumable } from '../diag/fieldTestRun';
 import { loadSettings } from '../store/persist';
 import { applyTheme, normalizeTheme } from './theme';
 import { getActiveProfile } from '../store/profiles';
@@ -72,7 +73,24 @@ function CrashOnDemand(): never {
 }
 
 function App() {
-  const [screen, setScreen] = useState<Screen>('home');
+  /**
+   * A reload mid-protocol comes back to the protocol, not to Home.
+   *
+   * Nothing here persists which screen was open, so every reload landed on
+   * Home — and the update check reloads the app on purpose, from a visibility
+   * change, which a phone call answered and hung up is enough to trigger. The
+   * operator, driving, then met the Home screen with no line playing and the
+   * way back through a start gate they cannot read.
+   *
+   * Only the field test, and only while a run is recent: it is the one screen
+   * with state a reload can lose, and `fieldTestRunIsResumable` bounds it in
+   * time so one abandoned run does not own every future launch. The run is
+   * still restored as inactive, so this opens the start gate and Resume is
+   * still a deliberate tap — see `coerce`.
+   */
+  const [screen, setScreen] = useState<Screen>(() =>
+    fieldTestRunIsResumable() ? 'fieldtest' : 'home',
+  );
   /**
    * Where a Charts visit came FROM, so reviewing a chart mid-session can hand
    * you back to what you were doing. Charts is reachable from the tab bar at

@@ -54,6 +54,16 @@ export interface FieldTestCondition {
   motion: FieldTestMotion;
   setup: string;
   proves: string;
+  /**
+   * Whether the car is in the audio path at all.
+   *
+   * `speakerphone` runs with Bluetooth OFF, so its six wheel steps have no car
+   * to answer for: every one of them can only be `wheel-na`, and the operator
+   * met six steps asking them to press a button connected to nothing.
+   * Declared here rather than inferred from the id, so the step list can order
+   * those steps' answers for the condition actually being run.
+   */
+  bluetooth: boolean;
 }
 
 /**
@@ -69,7 +79,15 @@ export interface FieldTestCondition {
 export const ROUTE_ANSWERS = [
   { id: 'route-car', label: 'Car speakers' },
   { id: 'route-loudspeaker', label: 'Phone, loud' },
-  { id: 'route-earpiece', label: 'Phone earpiece (barely audible)' },
+  /**
+   * NAMED BY WHERE IT COMES FROM, not by how it sounded. "(barely audible)"
+   * was a judgement baked into the button, and under `phone` — the device
+   * in your hand, engine off — the earpiece is perfectly audible, so the
+   * honest observation had no honest button and the operator was pushed
+   * towards "Phone, loud". Loudness is a separate question; this one is
+   * about the route.
+   */
+  { id: 'route-earpiece', label: 'Phone earpiece (at the top)' },
   /**
    * The route moving DURING one utterance.
    *
@@ -224,6 +242,23 @@ const ROUTE_RESPONSES: readonly StepResponse[] = [
   MISSED,
 ];
 
+/**
+ * Bluetooth is off under `speakerphone`, so every wheel step there has no car
+ * to answer for.
+ *
+ * Shared rather than written inline because `wheel-repeat` needs it too: that
+ * step's answers were "pressed twice", "the radio took one" and "could not
+ * press twice", none of which is true when there is nothing to press INTO. So
+ * the one condition where the answer is certain in advance was the one
+ * condition with no button for it. `stepResponses` moves this to the front
+ * under a condition with no Bluetooth.
+ */
+const WHEEL_NA: StepResponse = {
+  id: 'wheel-na',
+  label: 'No Bluetooth \u2014 not applicable',
+  kind: 'note',
+};
+
 const WHEEL_RESPONSES: readonly StepResponse[] = [
   /**
    * 'The app reacted' USED TO BE HERE, and was unanswerable by construction.
@@ -274,8 +309,7 @@ const WHEEL_RESPONSES: readonly StepResponse[] = [
    * analysis crosses the two afterwards rather than asking the driver to do it
    * at 70mph.
    */
-  /** Bluetooth is off under `speakerphone`, so five wheel steps have no car to answer for. */
-  { id: 'wheel-na', label: 'No Bluetooth \u2014 not applicable', kind: 'note' },
+  WHEEL_NA,
   MISSED,
 ];
 
@@ -283,6 +317,17 @@ const FREE_RESPONSES: readonly StepResponse[] = [
   { id: 'good', label: 'That worked', kind: 'good' },
   { id: 'bad', label: 'That was wrong', kind: 'bad' },
   { id: 'nothing-to-report', label: 'Nothing to report', kind: 'note' },
+  /**
+   * `MISSED` HERE TOO, and it is not padding.
+   *
+   * The stack hangs from the bottom of the screen and `MISSED` is last on
+   * every other step in the protocol, which makes the bottom button the one
+   * thing an operator can tap without looking. This step was the single
+   * exception, so on the last step of the run that same thumb position
+   * silently became "Nothing to report" — a filed answer rather than a
+   * declined one.
+   */
+  MISSED,
 ];
 
 export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
@@ -290,7 +335,14 @@ export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
     id: 'car',
     label: 'Car, parked',
     motion: 'parked',
-    setup: 'Paired to the car over Bluetooth, engine running, handbrake on.',
+    bluetooth: true,
+    // WHERE THE PHONE IS, because earpiece-versus-loudspeaker is a pure
+    // function of distance from your head and it was unspecified. A phone in
+    // the cradle and a phone in your lap give different answers to the
+    // protocol's central question, and two legs run differently cannot be
+    // compared at all.
+    setup:
+      'Paired to the car over Bluetooth, engine running, handbrake on. Phone in the cradle, an arm’s length away — not in your hand or your lap.',
     proves:
       'The baseline for everything else. Same audio route as a drive, without the road — so anything that fails here fails for reasons that have nothing to do with speed.',
   },
@@ -298,7 +350,9 @@ export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
     id: 'freeway',
     label: 'Freeway',
     motion: 'driving',
-    setup: 'Paired exactly as above, at your normal road speed, windows up.',
+    bluetooth: true,
+    setup:
+      'Paired exactly as above, phone in the same cradle, at your normal road speed, windows up.',
     proves:
       'The real thing, including the wheel. Whether the buttons reach the app at speed is the open question this protocol exists for, and it cannot be answered stationary.',
   },
@@ -306,15 +360,25 @@ export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
     id: 'speakerphone',
     label: 'Speakerphone',
     motion: 'driving',
+    bluetooth: false,
     setup: 'Phone in the cradle on its own speaker, Bluetooth OFF, at road speed.',
+    // WHAT IT CAN AND CANNOT SEPARATE. This changes four things against
+    // `freeway` at once — Bluetooth off, the phone's own speaker, no wheel,
+    // and whatever the phone does with its audio session when no car is
+    // attached — so "anything that fails here too is the app or the road"
+    // read a four-variable change as a one-variable control. It is still worth
+    // running: a failure here rules the CAR out, which is the single most
+    // useful thing a control can do. It just cannot say which of the remaining
+    // three it was.
     proves:
-      'The control. Same road, same distance, no Bluetooth — so anything that fails here too is the app or the road, not the car.',
+      'Rules the car out. Anything that still fails with Bluetooth off is the app, the phone or the road — it cannot say which, because this changes several things at once, but it takes the car off the list.',
   },
   {
     id: 'phone',
     label: 'Phone, quiet',
     motion: 'parked',
-    setup: 'Phone in your hand, engine off, windows up.',
+    bluetooth: true,
+    setup: 'Phone in your hand, at your usual distance, engine off, windows up.',
     proves: 'If a step fails here it has nothing to do with driving at all.',
   },
 ];
@@ -588,10 +652,23 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     responses: WHEEL_RESPONSES,
   },
   {
+    /**
+     * TWO BUTTONS ARE EXCLUDED BY NAME, and the exclusion is the point.
+     *
+     * This asked for "volume, the voice button, whatever", upstream of the
+     * microphone block and of the entire after-microphone route block. Car
+     * volume is the one gain stage the app cannot see or record, so a leg in
+     * which it was nudged answers every later loudness question against a
+     * different baseline with nothing in the log to say so. The voice button
+     * seizes HFP outright — the exact transition the protocol is built to
+     * observe — meaning the step could hand the run the very state change
+     * it is meant to measure, ten minutes early, with `wheel-other-noted`,
+     * kind `note`, as the only trace.
+     */
     id: 'wheel-other',
     title: 'Any other button',
     instruction:
-      'Press anything else you can reach on the wheel \u2014 volume, the voice button, whatever. This is here to find out what the car will even send.',
+      'Press anything else you can reach on the wheel \u2014 but NOT volume and NOT the voice button. This is here to find out what the car will even send.',
     wheel: true,
     responses: [
       // BEFORE THE SHARED SET, not after it. `WHEEL_RESPONSES` ends with
@@ -639,6 +716,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
       // and one press never sent are the diagnosis and its opposite.
       { id: 'wheel-radio', label: 'The radio changed track', kind: 'bad', modifier: true },
       { id: 'wheel-repeat-couldnt', label: 'Could not press twice', kind: 'note' },
+      WHEEL_NA,
       MISSED,
     ],
   },
@@ -800,6 +878,18 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
       { id: 'heard-self', label: 'It heard the app, not me', kind: 'note' },
       { id: 'heard-wrong', label: 'It heard the wrong thing', kind: 'bad' },
       { id: 'heard-nothing', label: 'It never heard me', kind: 'bad' },
+      /**
+       * THE HALF ONLY THE OPERATOR HOLDS, which had no button.
+       *
+       * Everything else on this step is something the code already records:
+       * the transcript is in the log, and whether the recogniser produced
+       * anything at all is in the log. The one fact that exists nowhere but
+       * in the driver's head is whether they actually got the word out —
+       * merging, a cough, realising the line was still playing. Without this,
+       * "It never heard me" carried both "the microphone is dead" and "I
+       * never said it", and those are opposite diagnoses.
+       */
+      { id: 'heard-not-said', label: 'I never got the word out', kind: 'note' },
       MISSED,
     ],
   },
@@ -947,6 +1037,21 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     responses: ROUTE_RESPONSES,
   },
   {
+    /**
+     * LAST, AND THAT IS A COMPROMISE RATHER THAN A CHOICE.
+     *
+     * The number normalises the route block, which ran ten minutes and one
+     * microphone session earlier, and a cabin measured at the end of a leg is
+     * not the cabin those samples were taken in. It cannot move earlier: this
+     * step opens a raw `getUserMedia` stream, and opening a microphone is the
+     * one event the whole protocol exists to measure the effect of. Taken
+     * before the route block it would contaminate every "before the
+     * microphone" sample in the run, which is the comparison the 2x2 rests on.
+     *
+     * So it is a reference level for the LEG, read against the other legs'
+     * numbers, rather than a per-sample normaliser — and the log timestamps
+     * both, so how far apart they were is recoverable.
+     */
     id: 'ambient',
     title: 'How loud is it in here',
     instruction: 'Stay quiet for five seconds. This measures the cabin, not you.',
@@ -1131,6 +1236,79 @@ export function logFieldTestRunStart(conditionId: string, runId?: string): void 
 
 export function logFieldTestRunEnd(conditionId: string, stamped: number): void {
   diag('test', 'run-end', { condition: conditionId, stamped });
+}
+
+/**
+ * A step's answers, ordered for the condition actually being run.
+ *
+ * `speakerphone` has Bluetooth off, so on its six wheel steps every honest
+ * answer is `wheel-na` — and it sat fifth in a list of six, underneath four
+ * answers about what the car did. Asking a driver to read past four impossible
+ * options to reach the only possible one is how a wrong answer gets tapped at
+ * speed, and a wrong answer here reads in the analysis as the car ignoring the
+ * app.
+ *
+ * `MISSED` STAYS LAST regardless: the one escape hatch that means the same
+ * thing on every step never moves, which is what makes it reachable without
+ * looking.
+ */
+/**
+ * FIXED POSITIONS FOR THE WHEEL FAMILY, top to bottom.
+ *
+ * Six steps use these answers and they do not all use the same ones:
+ * `wheel-other` adds "Pressed something else", and `wheel-repeat` has its own
+ * set entirely -- "the radio took one" but no "the car did nothing else".
+ * Hung from the bottom of the screen, that silently moved answers under the
+ * operator's thumb BETWEEN WHEEL STEPS: measured at 390x763, y=477 was "The
+ * car did nothing else" on one step and "The radio changed track" on the
+ * next. Those are the two opposite readings of the fault under test, and the
+ * steps they are on are the steps performed with eyes on the road.
+ *
+ * Each row here is one slot, and an id may share a slot with another only
+ * when no step can show both. A step with nothing for a slot renders a GAP:
+ * a remembered position is then either the same answer or nothing at all, and
+ * a tap into nothing stamps nothing, which is the honest outcome of a tap
+ * aimed at an answer that is not there.
+ */
+const WHEEL_SLOTS: readonly (readonly string[])[] = [
+  // The step-specific "I did the thing" note. `wheel-other` and `wheel-repeat`
+  // are different steps, so these two can never appear together.
+  ['wheel-other-noted', 'wheel-repeat-done'],
+  ['wheel-car-quiet'],
+  ['wheel-radio'],
+  ['wheel-repeat-couldnt'],
+  ['wheel-na'],
+  ['missed'],
+];
+
+/** A rendered position: an answer, or a deliberate gap holding the slot. */
+export type StepSlot = StepResponse | null;
+
+/**
+ * A step's answers, in the positions they occupy for the condition being run.
+ *
+ * `speakerphone` has Bluetooth off, so on its wheel steps every honest answer
+ * is `wheel-na` -- and it sat fifth, underneath four answers about what the
+ * car did. Asking a driver to read past four impossible options to reach the
+ * only possible one is how a wrong answer gets tapped at speed, and a wrong
+ * answer here reads in the analysis as the car ignoring the app. The move is
+ * the same on every wheel step of that condition, so positions stay fixed
+ * within the run the operator is actually doing.
+ *
+ * `MISSED` STAYS LAST regardless: the one escape hatch that means the same
+ * thing on every step never moves, which is what makes it reachable without
+ * looking.
+ */
+export function stepResponses(step: FieldTestStep, conditionId: string): readonly StepSlot[] {
+  if (!step.wheel) return step.responses;
+  const slots: StepSlot[] = WHEEL_SLOTS.map(
+    (ids) => step.responses.find((r) => ids.includes(r.id)) ?? null,
+  );
+  const condition = FIELD_TEST_CONDITIONS.find((c) => c.id === conditionId);
+  if (condition?.bluetooth !== false) return slots;
+  const na = step.responses.find((r) => r.id === 'wheel-na');
+  if (!na) return slots;
+  return [na, ...slots.filter((r) => r?.id !== 'wheel-na')];
 }
 
 export function motionForCondition(conditionId: string): FieldTestMotion {

@@ -1,5 +1,13 @@
-import { describe, it, expect } from 'vitest';
-import { buildLabel, formatBuiltAt, isStale, parseVersion, versionUrl, reloadUrl } from './updateCheck';
+import { describe, it, expect, afterEach } from 'vitest';
+import {
+  buildLabel,
+  formatBuiltAt,
+  isStale,
+  parseVersion,
+  versionUrl,
+  reloadUrl,
+  startUpdateWatch,
+} from './updateCheck';
 
 describe('parseVersion', () => {
   it('reads a buildId out of the served version document', () => {
@@ -131,5 +139,98 @@ describe('formatBuiltAt', () => {
       // happen is the browser's failure string reaching the screen.
       expect(formatBuiltAt(bad) ?? '').not.toContain('Invalid');
     }
+  });
+});
+
+/**
+ * The reload is the point of this module, and it is also a hazard.
+ *
+ * It fires from `visibilitychange`, `pageshow` and `focus`, so answering a
+ * phone call mid-drive was enough to restart the app in the middle of a
+ * measured protocol — and what the operator met afterwards was the Home
+ * screen, moving, with no line playing. The new build is not abandoned: it is
+ * taken on the next foreground event after the run goes quiet.
+ */
+describe('a reload while somebody is in the middle of something', () => {
+  /** A window, a document and a network: enough for the watch to run in node. */
+  function installBrowser(deployedId: string) {
+    const session = new Map<string, string>();
+    const listeners: Record<string, (() => void)[]> = {};
+    const on = (type: string, fn: () => void) => {
+      (listeners[type] ??= []).push(fn);
+    };
+    const env = {
+      replaced: null as string | null,
+      fire(type: string) {
+        for (const fn of listeners[type] ?? []) fn();
+      },
+      settle: () => new Promise((r) => setTimeout(r, 0)),
+    };
+    const g = globalThis as unknown as Record<string, unknown>;
+    g.window = {
+      location: {
+        href: 'https://example.test/app/',
+        replace: (url: string) => {
+          env.replaced = url;
+        },
+      },
+      addEventListener: on,
+      removeEventListener: () => {},
+      // A REAL MAP, not a pair of stubs. `markTried` writes the attempted
+      // build id here and `alreadyTried` reads it back, so a harness that
+      // forgets everything cannot tell a deferral from an attempt -- which is
+      // precisely the distinction the deferral depends on.
+      sessionStorage: {
+        getItem: (k: string) => session.get(k) ?? null,
+        setItem: (k: string, v: string) => void session.set(k, v),
+      },
+    };
+    g.document = { visibilityState: 'visible', addEventListener: on, removeEventListener: () => {} };
+    g.fetch = () =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ buildId: deployedId }) });
+    return env;
+  }
+
+  afterEach(() => {
+    const g = globalThis as unknown as Record<string, unknown>;
+    delete g.window;
+    delete g.document;
+    delete g.fetch;
+  });
+
+  /** An id the running build cannot have; `isStale` needs both known and different. */
+  const OTHER = 'a-build-this-is-not';
+
+  it('still reloads when nothing is in the way, which is the whole point', async () => {
+    const env = installBrowser(OTHER);
+    const stop = startUpdateWatch({ minIntervalMs: 0 });
+    await env.settle();
+    expect(env.replaced, 'the update was never taken at all').toContain(OTHER);
+    stop();
+  });
+
+  it('waits, rather than restarting the app under them', async () => {
+    const env = installBrowser(OTHER);
+    const stop = startUpdateWatch({ minIntervalMs: 0, deferWhile: () => true });
+    await env.settle();
+    expect(env.replaced, 'the app reloaded in the middle of a run').toBeNull();
+    stop();
+  });
+
+  it('takes the update once nobody is in it', async () => {
+    const env = installBrowser(OTHER);
+    let busy = true;
+    const stop = startUpdateWatch({ minIntervalMs: 0, deferWhile: () => busy });
+    await env.settle();
+    expect(env.replaced).toBeNull();
+
+    // A DEFERRAL IS NOT AN ATTEMPT. The once-per-build mark is written when
+    // the reload is actually made, so deferring ahead of it is what leaves the
+    // next foreground event free to try again.
+    busy = false;
+    env.fire('focus');
+    await env.settle();
+    expect(env.replaced, 'the deferred update was never taken').toContain(OTHER);
+    stop();
   });
 });

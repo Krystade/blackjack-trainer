@@ -21,6 +21,8 @@
  * relaunch endlessly and never become usable.
  */
 
+import { diag } from './diag/diagnosticLog';
+
 declare const __BUILD_ID__: string;
 declare const __BUILT_AT__: string;
 
@@ -173,7 +175,22 @@ async function fetchDeployedId(href: string): Promise<string | null> {
  *
  * Returns a teardown function.
  */
-export function startUpdateWatch(options: { minIntervalMs?: number } = {}): () => void {
+export function startUpdateWatch(
+  options: {
+    minIntervalMs?: number;
+    /**
+     * Return true to hold the reload off for now.
+     *
+     * A RELOAD IS NOT FREE HERE. This app runs a measured twenty-two step
+     * protocol in a moving car, and the reload fires from `visibilitychange`,
+     * `pageshow` and `focus` — a phone call answered and hung up is enough.
+     * What the operator met afterwards was the Home screen, mid-drive, with no
+     * line playing and no idea why. The check still runs and the new build is
+     * still picked up; it waits until nobody is standing in it.
+     */
+    deferWhile?: () => boolean;
+  } = {},
+): () => void {
   // A guard against hammering the network if the app is switched to and from
   // rapidly; also bounds any pathological reload attempt.
   const minInterval = options.minIntervalMs ?? 30_000;
@@ -188,6 +205,14 @@ export function startUpdateWatch(options: { minIntervalMs?: number } = {}): () =
 
     const deployed = await fetchDeployedId(window.location.href);
     if (stopped || !isStale(runningBuildId(), deployed)) return;
+    // AFTER the staleness check and BEFORE the one-attempt mark: a deferred
+    // reload has not been attempted, and must still be attempted later.
+    if (options.deferWhile?.() === true) {
+      diag('nav', 'update-deferred', { deployed });
+      // The interval guard is what brings us back: `lastCheck` was set above,
+      // so the next foreground event after it lapses tries again.
+      return;
+    }
     if (alreadyTried(deployed!)) return;
     markTried(deployed!);
     window.location.replace(reloadUrl(window.location.href, deployed!));

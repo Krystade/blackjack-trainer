@@ -23,7 +23,11 @@
 
 import { subscribeToExternalWrites } from '../store/crossTab';
 import { diag } from './diagnosticLog';
-import { DEFAULT_FIELD_TEST_CONDITION, FIELD_TEST_STEPS } from './fieldTest';
+import {
+  DEFAULT_FIELD_TEST_CONDITION,
+  FIELD_TEST_CONDITIONS,
+  FIELD_TEST_STEPS,
+} from './fieldTest';
 
 const STORAGE_KEY = 'bjtrainer.fieldTestRun.v1';
 
@@ -90,6 +94,20 @@ export interface FieldTestRun {
    * without losing the values.
    */
   beforeHandedBack?: boolean;
+  /**
+   * When this run was last written to, as a wall clock.
+   *
+   * Two things need to know whether a run is being worked on RIGHT NOW rather
+   * than merely stored: the update check, which reloads the app from a
+   * visibility change and must not do that mid-protocol, and the app's opening
+   * screen, which should come back to the field test after a reload and must
+   * not hijack every launch for the rest of the month because a run was
+   * abandoned once.
+   *
+   * Wall clock rather than monotonic, deliberately: the question is asked
+   * across page loads, and `performance.now()` restarts at zero on each one.
+   */
+  touchedAt?: number;
 }
 
 /** The subset of settings the protocol actually writes. */
@@ -100,6 +118,18 @@ export interface FieldTestBefore {
   enabled: boolean;
   wheelMode: 'answer' | 'talk';
 }
+
+/**
+ * How recently a run must have been touched to count as being worked on.
+ *
+ * Ten minutes is longer than any gap between steps in the protocol (the
+ * longest gate waits ten seconds) and shorter than the gap between one drive
+ * and the next.
+ */
+export const RUN_LIVE_MS = 10 * 60_000;
+
+/** Two hours: long enough to survive a coffee stop, short enough to expire. */
+export const RUN_RESUMABLE_MS = 2 * 60 * 60_000;
 
 export const IDLE_RUN: FieldTestRun = {
   active: false,
@@ -210,7 +240,26 @@ function coerce(raw: unknown): FieldTestRun {
   }
   const index =
     typeof r.stepIndex === 'number' && Number.isFinite(r.stepIndex) ? Math.floor(r.stepIndex) : 0;
-  const condition = typeof r.condition === 'string' ? r.condition : DEFAULT_FIELD_TEST_CONDITION;
+  // THE CONDITION HAS TO BE ONE THIS BUILD KNOWS, and unlike `before.wheelMode`
+  // it was taken on trust. `motionForCondition` answers `parked` for anything
+  // it does not recognise, so a run carrying an id a later release renamed came
+  // back from storage with the driving warning quietly gone — and its stamps
+  // under a prefix `countStampedSteps` can never match, so the same run also
+  // read as having no steps done. Substituted rather than dropped, logged
+  // rather than silent, and the ticks are carried across by the same adoption
+  // rule that carries a pre-condition run's bare keys.
+  const declared = typeof r.condition === 'string' ? r.condition : undefined;
+  const known = declared !== undefined && FIELD_TEST_CONDITIONS.some((c) => c.id === declared);
+  const condition = known ? (declared as string) : DEFAULT_FIELD_TEST_CONDITION;
+  if (declared !== undefined && !known) {
+    diag('test', 'run-condition-unknown', { was: declared, read_as: condition });
+    const prefix = `${declared}:`;
+    for (const k of Object.keys(stamps)) {
+      if (!k.startsWith(prefix)) continue;
+      stamps[k.slice(prefix.length)] = stamps[k]!;
+      delete stamps[k];
+    }
+  }
   return {
     // NEVER RESTORED AS ACTIVE, and this is a privacy rule rather than a
     // tidiness one. `mic-route` declares `voice: true`, so a run restored
@@ -232,7 +281,47 @@ function coerce(raw: unknown): FieldTestRun {
     // and Resume re-takes the snapshot rather than trusting the spent one.
     beforeHandedBack: r.beforeHandedBack === true ? true : undefined,
     runId: typeof r.runId === 'string' ? r.runId : undefined,
+    // Carried through the reload, because the reload is exactly what it is
+    // there to be read across.
+    touchedAt:
+      typeof r.touchedAt === 'number' && Number.isFinite(r.touchedAt) ? r.touchedAt : undefined,
   };
+}
+
+/**
+ * How long ago this run was last written to, or `undefined` if never.
+ *
+ * Exported rather than inlined at the two call sites because both of them are
+ * making the same judgement -- is somebody in the middle of this -- and they
+ * must not drift apart.
+ */
+export function fieldTestRunAgeMs(now = Date.now()): number | undefined {
+  const at = readFieldTestRun().touchedAt;
+  return typeof at === 'number' ? Math.max(0, now - at) : undefined;
+}
+
+/**
+ * Is a run being worked on right now?
+ *
+ * Used by the update check, which reloads the app on a visibility change and
+ * must not do that in the middle of a measured protocol.
+ */
+export function fieldTestRunIsLive(now = Date.now()): boolean {
+  const age = fieldTestRunAgeMs(now);
+  return age !== undefined && age < RUN_LIVE_MS && readFieldTestRun().stepIndex > 0;
+}
+
+/**
+ * Is there a run recent enough that the app should open on it?
+ *
+ * A reload mid-drive used to land on Home, because nothing persists which
+ * screen was open — and the way back is the start gate, which is the screen
+ * a driver is least able to use. Bounded in time so one abandoned run does not
+ * own the app's opening screen for the rest of the month.
+ */
+export function fieldTestRunIsResumable(now = Date.now()): boolean {
+  const age = fieldTestRunAgeMs(now);
+  return age !== undefined && age < RUN_RESUMABLE_MS && readFieldTestRun().stepIndex > 0;
 }
 
 let run: FieldTestRun | null = null;
@@ -249,6 +338,9 @@ function notify(): void {
 }
 
 function write(next: FieldTestRun): void {
+  // STAMPED HERE, so no caller can forget. Every mutation of the run is a
+  // sign of life, and the two readers of this field are asking exactly that.
+  next = { ...next, touchedAt: Date.now() };
   run = next;
   const s = storage();
   if (s) {
@@ -280,11 +372,32 @@ let crossTabInstalled = false;
 
 function ensureCrossTab(): void {
   if (crossTabInstalled) return;
+  // NOT LATCHED WHEN THERE IS NOTHING TO LATCH ONTO. `subscribeToExternalWrites`
+  // hands back a no-op when there is no window, and the first read can easily
+  // happen before one exists — a module-scope import, a test, a render on a
+  // server. Latching on that read left this page with the flag set and no
+  // listener installed, so every later cross-tab write went unseen for the
+  // life of the page.
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
   crossTabInstalled = true;
   subscribeToExternalWrites([STORAGE_KEY], () => {
     const before = run;
     run = null;
-    const next = readFieldTestRun();
+    let next = readFieldTestRun();
+    // WHETHER SOMEBODY IS STANDING IN THIS RUN IS THIS TAB'S FACT, and it is
+    // the one field a write from another tab can never legitimately carry.
+    // `coerce` forces `active: false` on everything read from storage — a
+    // deliberate privacy rule, so a reload never reopens the microphone by
+    // itself — and re-reading on somebody else's write applied that rule to
+    // a tab that is mid-drive. Opening the picker in a second tab therefore
+    // dropped the driving tab back to the start gate and handed its settings
+    // back underneath the operator. The position and the stamps come from the
+    // store; being in the run does not.
+    const heldActive = before?.active === true && !next.active;
+    if (heldActive) {
+      next = { ...next, active: true };
+      run = next;
+    }
     // Logged because from inside the car this looks like the app moving on
     // its own: the panel jumps to another step, or the ticks change, with
     // nobody touching it. A line saying another tab did it is the difference
@@ -294,6 +407,9 @@ function ensureCrossTab(): void {
       to: next.stepIndex,
       condition: next.condition,
       active: next.active,
+      // Says so explicitly: the tab is still running because it refused the
+      // write's answer to that question, not because the write agreed.
+      heldActive: heldActive || undefined,
     });
     notify();
   });

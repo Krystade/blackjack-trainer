@@ -13,6 +13,7 @@ import {
   describeFieldTestSetup,
   fieldTestLegsThisSession,
   _resetFieldTestSessionForTest,
+  stepResponses,
 } from './fieldTest';
 import { DEFAULT_SETTINGS, type Settings } from '../store/types';
 import { readDiagnosticLog, clearDiagnosticLog } from './diagnosticLog';
@@ -1165,11 +1166,14 @@ describe('the escape hatch every step shares', () => {
     const without = FIELD_TEST_STEPS.filter(
       (step) => !step.responses.some((r) => r.id === OPT_OUT),
     ).map((s) => s.id);
-    // One exception, by construction: 'free' is the closing catch-all, where
-    // every answer is already a note and there is nothing specific to have
-    // missed. Every other step -- including the two Done steps, which still
-    // need a way to say the press could not be made -- offers it.
-    expect(without).toEqual(['free']);
+    // NO EXCEPTIONS ANY MORE. `free` used to be one, on the grounds that its
+    // answers are all notes already and there is nothing specific to have
+    // missed -- which was true about the step and wrong about the screen. It
+    // is the LAST step of the run, so the bottom button an eyes-free operator
+    // taps blind quietly became "Nothing to report": an answer filed rather
+    // than an answer declined, on the step whose whole purpose is free
+    // observation.
+    expect(without, 'a step has no way to decline to answer').toEqual([]);
   });
 
   it('is the last answer on every step that has it, so it never moves', () => {
@@ -1434,5 +1438,177 @@ describe('one starting line for every cell after the microphone', () => {
         `${id} does not share the starting line of the cell it is compared against`,
       ).toBe(true);
     }
+  });
+});
+
+/**
+ * Questions the protocol asks that only the operator can answer, and
+ * instructions that quietly change the thing being measured.
+ *
+ * Every finding here is one of two shapes: a step that collects an answer
+ * nobody can give honestly, or a step that moves a variable the run is
+ * supposed to hold still. Both produce a log that reads clean and means
+ * something else.
+ */
+describe('what the operator is asked to do', () => {
+  const byId = (id: string) => FIELD_TEST_STEPS.find((s) => s.id === id)!;
+
+  it('does not send the operator to the two buttons that break the run', () => {
+    // S7. Car volume is the one gain stage the app cannot see, so a leg where
+    // it moved answers every later loudness question against a different
+    // baseline. The voice button seizes hands-free outright -- the exact
+    // transition the rest of the protocol is built to observe -- nineteen
+    // steps before the block that measures it.
+    const step = byId('wheel-other');
+    expect(step.instruction, 'the step asks for the volume button').not.toMatch(
+      /\bvolume\b(?!.*NOT)/i,
+    );
+    expect(step.instruction).toMatch(/NOT volume/);
+    expect(step.instruction).toMatch(/NOT the voice button/);
+  });
+
+  it('lets the operator say they never got the word out', () => {
+    // S9. Everything else on mic-heard is already in the log: the transcript,
+    // and whether the recogniser produced anything. The one fact held only by
+    // the driver is whether they actually said it, and without a button for it
+    // "It never heard me" carried both that and a dead microphone.
+    const ids = byId('mic-heard').responses.map((r) => r.id);
+    expect(ids, 'a missed utterance can only be filed as the microphone failing').toContain(
+      'heard-not-said',
+    );
+    expect(byId('mic-heard').responses.find((r) => r.id === 'heard-not-said')?.kind).toBe('note');
+  });
+
+  it('names the route by where it comes from, not by how loud it was', () => {
+    // S11. "(barely audible)" is true in a moving car and false in the hand,
+    // and `phone` is a condition. A judgement inside the label pushes the
+    // honest answer onto the wrong button.
+    const earpiece = ROUTE_ANSWERS.find((r) => r.id === 'route-earpiece')!;
+    expect(earpiece.label).not.toMatch(/audible|loud|quiet/i);
+  });
+
+  it('says where the phone is in every condition', () => {
+    // S11. Earpiece-versus-loudspeaker is a pure function of distance from
+    // your head, so a leg run with the phone in a cradle and one run with it
+    // in a lap are not the same measurement at all.
+    for (const c of FIELD_TEST_CONDITIONS) {
+      expect(c.setup, `${c.id} does not say where the phone is`).toMatch(
+        /cradle|in your hand|lap/i,
+      );
+    }
+  });
+});
+
+/**
+ * S13: a condition with no Bluetooth still has six wheel steps.
+ */
+describe('a condition the car is not part of', () => {
+  it('knows which conditions have the car in the audio path', () => {
+    const speakerphone = FIELD_TEST_CONDITIONS.find((c) => c.id === 'speakerphone')!;
+    expect(speakerphone.bluetooth).toBe(false);
+    for (const c of FIELD_TEST_CONDITIONS.filter((x) => x.id !== 'speakerphone')) {
+      expect(c.bluetooth, `${c.id} is not marked as using the car`).toBe(true);
+    }
+  });
+
+  it('puts the only possible answer first on a wheel step', () => {
+    const wheelSteps = FIELD_TEST_STEPS.filter((s) => s.wheel);
+    expect(wheelSteps.length).toBeGreaterThan(0);
+    for (const step of wheelSteps) {
+      const ids = stepResponses(step, 'speakerphone').map((r) => r?.id);
+      expect(ids[0], `${step.id} buries the only honest answer`).toBe('wheel-na');
+    }
+  });
+
+  it('still puts the escape hatch last, which is what makes it findable', () => {
+    for (const step of FIELD_TEST_STEPS.filter((s) => s.wheel)) {
+      const ids = stepResponses(step, 'speakerphone').map((r) => r?.id);
+      expect(ids.at(-1), `${step.id} moved "Missed it"`).toBe('missed');
+    }
+  });
+
+  it('leaves the steps that are not about the wheel alone', () => {
+    for (const step of FIELD_TEST_STEPS.filter((s) => !s.wheel)) {
+      expect(stepResponses(step, 'speakerphone')).toEqual(step.responses);
+      expect(stepResponses(step, 'car')).toEqual(step.responses);
+    }
+  });
+});
+
+/**
+ * E5: the same thumb position meaning two different things.
+ *
+ * The answer stack hangs from the bottom of the screen, which pins `MISSED`
+ * and nothing else. Six steps use the wheel answers and they do not all use
+ * the same ones, so bottom-anchoring moved answers under the operator's thumb
+ * BETWEEN WHEEL STEPS: measured at 390x763, y=477 was "The car did nothing
+ * else" on one step and "The radio changed track" on the next. Those are the
+ * two opposite readings of the fault under test, on the steps performed with
+ * eyes on the road.
+ */
+describe('where an answer sits, from one step to the next', () => {
+  const wheelSteps = FIELD_TEST_STEPS.filter((s) => s.wheel);
+
+  it('keeps every wheel answer in the same position on every wheel step', () => {
+    const seen = new Map<string, number>();
+    for (const step of wheelSteps) {
+      const slots = stepResponses(step, 'car');
+      slots.forEach((r, i) => {
+        if (!r) return;
+        const was = seen.get(r.id);
+        if (was === undefined) seen.set(r.id, i);
+        else
+          expect(
+            i,
+            `"${r.label}" is slot ${was} on one wheel step and ${i} on ${step.id}`,
+          ).toBe(was);
+      });
+    }
+    expect(seen.size, 'no wheel answers were checked at all').toBeGreaterThan(3);
+  });
+
+  it('holds the empty positions open rather than closing them up', () => {
+    // A step with nothing for a slot renders a gap. Closing it would move
+    // every answer below it up by one button pitch, which is the whole
+    // failure -- so the gaps are the mechanism, not a side effect.
+    const gappy = wheelSteps.filter((s) => stepResponses(s, 'car').some((r) => r === null));
+    expect(gappy.length, 'no wheel step has a gap, so the slots are not fixed').toBeGreaterThan(0);
+    for (const step of wheelSteps) {
+      expect(stepResponses(step, 'car')).toHaveLength(6);
+    }
+  });
+
+  it('loses and invents nothing in the process, under either kind of condition', () => {
+    for (const step of FIELD_TEST_STEPS) {
+      for (const c of FIELD_TEST_CONDITIONS) {
+        const shown = stepResponses(step, c.id)
+          .filter((r): r is NonNullable<typeof r> => r !== null)
+          .map((r) => r.id);
+        expect([...shown].sort(), `${step.id} under ${c.id}`).toEqual(
+          [...step.responses.map((r) => r.id)].sort(),
+        );
+      }
+    }
+  });
+
+  it('ends every step in the protocol with the same button', () => {
+    // The bottom of the stack is the one position an operator can find
+    // without looking, and the last step had no `MISSED` at all -- so on that
+    // step the blind tap silently became "Nothing to report", which is an
+    // answer rather than a refusal to give one.
+    for (const step of FIELD_TEST_STEPS) {
+      const slots = stepResponses(step, 'car');
+      expect(slots.at(-1)?.id, `${step.id} does not end with the escape hatch`).toBe('missed');
+    }
+  });
+
+
+  it('claims only what a four-variable change can prove', () => {
+    // S13. Bluetooth off, the phone's own speaker, no wheel, and a different
+    // audio session: "so anything that fails here too is the app or the road,
+    // not the car" read that as a one-variable control.
+    const proves = FIELD_TEST_CONDITIONS.find((c) => c.id === 'speakerphone')!.proves;
+    expect(proves, 'the control claims to isolate one variable').not.toMatch(/same distance/i);
+    expect(proves).toMatch(/car/i);
   });
 });

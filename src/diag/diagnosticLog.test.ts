@@ -450,6 +450,18 @@ describe('the export as an artefact', () => {
     expect(text, 'the header does not mention the browser and OS').toMatch(/browser and OS version/i);
     expect(text, 'the header does not mention the URL').toMatch(/app URL/i);
     expect(text, 'the header does not mention profile names').toMatch(/profile names/i);
+    // NAMING THE PROFILE BUT NOT WHAT IS IN IT was the header being
+    // technically true and practically misleading: the profile line of a
+    // fresh export carries the stake sizes and the starting bankroll, and a
+    // field-test export's timestamps say when this person was in a moving car
+    // and for how long. Both are things somebody decides about BEFORE
+    // pasting, not after.
+    expect(text, 'the header does not mention stakes or bankroll').toMatch(
+      /stake sizes and starting bankroll/i,
+    );
+    expect(text, 'the header does not mention that it shows when they were driving').toMatch(
+      /when and for how long this device was being driven/i,
+    );
   });
 });
 

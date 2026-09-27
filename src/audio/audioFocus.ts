@@ -114,7 +114,14 @@ export function holdAudioFocus(key: AudioFocusKey): void {
   // existing hold, so `key=speech` was the only one an export ever showed --
   // `button-test` and `car-check` acquired and released invisibly, and the
   // `holders=` number was a lower bound presented as a count.
-  if (!first) diag('focus', 'hold', { key, holders: held.size, joined: !rehold, rehold });
+  //
+  // NAMED APART from the acquire below, which was also `focus hold`. Two
+  // different facts under one name — "another key joined the hold" and "the
+  // silent element was started for this key" — and on the retry path a
+  // single call emitted BOTH, so counting `focus hold` lines in an export
+  // over-reported acquisitions and the `joined`/`rehold` fields appeared to
+  // come and go at random.
+  if (!first) diag('focus', 'hold-joined', { key, holders: held.size, joined: !rehold, rehold });
   // RETRIED WHEN THE ELEMENT IS NOT ACTUALLY PLAYING, not skipped because an
   // element object exists.
   //
@@ -163,7 +170,10 @@ export function holdAudioFocus(key: AudioFocusKey): void {
         diag('focus', 'refused', { key, why: e instanceof Error ? e.name : String(e) });
       });
     appendLog({ kind: 'note', action: `audio-focus-hold:${key}`, ok: true });
-    diag('focus', 'hold', { key, holders: held.size });
+    // THE ELEMENT WAS STARTED, which is the fact this line reports. `restart`
+    // separates the retry after a refusal — the path that brings a dead
+    // media slot back — from the session's first acquisition.
+    diag('focus', 'hold', { key, holders: held.size, restart: !first || undefined });
   } catch (e) {
     // Was silent. `new Ctor(...)`, the data URI, or the `loop`/`volume`
     // setters throwing leaves `key` in `held` -- so `audioFocusHolders()`

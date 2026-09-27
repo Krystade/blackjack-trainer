@@ -367,7 +367,9 @@ describe('a refused hold is not permanent', () => {
     clearDiagnosticLog();
     holdAudioFocus('speech');
 
-    const hold = readDiagnosticLog().find((e) => e.category === 'focus' && e.event === 'hold');
+    const hold = readDiagnosticLog().find(
+      (e) => e.category === 'focus' && e.event === 'hold-joined',
+    );
     expect(hold?.detail?.rehold).toBe(true);
     expect(hold?.detail?.joined, 'a re-hold was reported as a new holder').toBe(false);
   });
@@ -377,8 +379,41 @@ describe('a refused hold is not permanent', () => {
     clearDiagnosticLog();
     holdAudioFocus('car-check');
 
-    const hold = readDiagnosticLog().find((e) => e.category === 'focus' && e.event === 'hold');
+    const hold = readDiagnosticLog().find(
+      (e) => e.category === 'focus' && e.event === 'hold-joined',
+    );
     expect(hold?.detail?.joined).toBe(true);
     expect(hold?.detail?.rehold).toBe(false);
   });
+
+  /**
+   * One call, one acquisition line.
+   *
+   * `focus hold` used to mean two things: a second key joining a hold that was
+   * already running, and the silent element being started. On the retry path
+   * — not the first holder, element present but paused — one call emitted
+   * both, so an export's acquisition count was wrong by however many retries
+   * the drive contained, and the `joined`/`rehold` fields looked intermittent
+   * because half the lines never carried them.
+   */
+  it('does not report one call as two acquisitions', () => {
+    holdAudioFocus('speech');
+    clearDiagnosticLog();
+    // A second key, with the element already playing: the ordinary join.
+    holdAudioFocus('car-check');
+    const lines = readDiagnosticLog().filter((e) => e.category === 'focus');
+    expect(
+      lines.filter((e) => e.event === 'hold'),
+      'one call to hold produced more than one acquisition line',
+    ).toHaveLength(0);
+    expect(lines.filter((e) => e.event === 'hold-joined')).toHaveLength(1);
+  });
+
+  it('says when an acquisition is the retry that revives a dead slot', () => {
+    // The first hold is the session's first, so it is not a restart.
+    holdAudioFocus('speech');
+    const first = readDiagnosticLog().find((e) => e.category === 'focus' && e.event === 'hold');
+    expect(first?.detail?.restart).toBeUndefined();
+  });
 });
+

@@ -3796,6 +3796,19 @@ details.stats-section > summary::after {
   overflow: hidden;
 }
 
+/* THE GATE'S OWN BUTTONS, which kept the 40px `.fieldtest-stamp` default
+   while everything inside a run was raised to 44 and 48.
+   Resume and "Start over from step 1" sit next to each other on the screen an
+   interrupted run comes back to, one of them discards the drive, and the
+   operator arriving at them has just pulled over. 44pt is the floor for a
+   control aimed at without looking and these are no exception — the run
+   they open is the eyes-free part, not the only part performed in a car. */
+.fieldtest-screen:not(.fieldtest-running) .fieldtest-stamp {
+  min-height: 48px;
+  align-self: stretch;
+  text-align: center;
+}
+
 .fieldtest-body {
   display: flex;
   flex-direction: column;
@@ -3872,7 +3885,15 @@ details.stats-section > summary::after {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  /* CENTRED, BUT NOT PAST THE TOP EDGE. A centred flex column that overflows
+     its own scroll container pushes the first lines above the scroll origin,
+     where no scrolling can bring them back — measured as `mic-heard`
+     losing the top of its transcript when the echo caveat appeared with it.
+     `safe` falls back to flex-start exactly when centring would overflow,
+     which is the one case that mattered; the plain value stays above it for
+     engines that do not know the keyword. */
   justify-content: center;
+  justify-content: safe center;
   gap: 2px;
 }
 
@@ -4130,6 +4151,17 @@ details.stats-section > summary::after {
   background: color-mix(in oklab, var(--bad, #c4483f) 22%, var(--raised)) !important;
   color: var(--ink) !important;
   font-weight: 600;
+}
+
+/* A HELD-OPEN SLOT. Sized exactly like a button and hit by nothing: the
+   point is that a remembered thumb position lands on air rather than on a
+   different answer. See `WHEEL_SLOTS` in fieldTest.ts. */
+.fieldtest-answers .fieldtest-answer-gap {
+  align-self: stretch;
+  flex: 0 1 52px;
+  min-height: 44px;
+  max-height: 52px;
+  pointer-events: none;
 }
 
 .fieldtest-answers .fieldtest-stamp {

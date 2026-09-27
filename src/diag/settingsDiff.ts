@@ -28,11 +28,36 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+/**
+ * How much of a value is worth printing before it stops being a diff.
+ *
+ * A LEAF IS USUALLY A SCALAR. A whole object reaches `render` in one case:
+ * something APPEARED where there was nothing, so `to` is the entire subtree.
+ * For a profile that is the rules, the bet spread and the starting bankroll,
+ * about seven hundred characters — and it is the first body line of every
+ * fresh export, which is where someone scanning a file before they paste it
+ * looks. The fact worth recording is that the profile appeared and what it is
+ * called; its contents are recoverable from any later edit, and the fresh
+ * value is the defaults anyway.
+ *
+ * Short objects still print in full, because there the value IS the evidence.
+ */
+const MAX_VALUE_CHARS = 80;
+
 function render(v: unknown): string {
   if (v === undefined) return '(unset)';
   if (v === null) return 'null';
-  if (Array.isArray(v)) return `[${v.join(',')}]`;
-  if (typeof v === 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) {
+    const joined = `[${v.join(',')}]`;
+    return joined.length <= MAX_VALUE_CHARS ? joined : `[${v.length} values]`;
+  }
+  if (typeof v === 'object') {
+    const json = JSON.stringify(v);
+    if (json.length <= MAX_VALUE_CHARS) return json;
+    // The keys, not the values: enough to see WHAT appeared, and the length so
+    // the omission is visible rather than silent.
+    return `{${Object.keys(v as Record<string, unknown>).join(',')}} (${json.length} chars)`;
+  }
   return String(v);
 }
 

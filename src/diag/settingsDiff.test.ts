@@ -66,3 +66,51 @@ describe('formatChanges', () => {
     expect(out).not.toContain(`k${MAX_CHANGES_LOGGED + 1}:`);
   });
 });
+
+/**
+ * A value big enough to be a document rather than a diff.
+ *
+ * `render` meets a whole object in exactly one case: something appeared where
+ * there was nothing. For a profile that is the rules, the bet spread and the
+ * starting bankroll — around seven hundred characters, and it lands as the
+ * FIRST body line of every fresh export, which is where someone scanning the
+ * file before they paste it into a chat looks first.
+ */
+describe('a value too big to print', () => {
+  const profile = {
+    id: 'p1',
+    name: 'Default (6D H17)',
+    bankrollStart: 1000,
+    bet: { spread: [1, 2, 4, 8, 12], unit: 25 },
+    rules: { decks: 6, s17: false, das: true, surrender: 'late', peek: true, resplitAces: false },
+  };
+
+  it('does not dump a profile into the log to say one appeared', () => {
+    const line = formatChanges(diffSettings({}, { 'Default (6D H17)': profile }));
+    expect(line, 'the whole profile is in the log line').not.toContain('bankrollStart":1000');
+    expect(line, "the profile's stake sizes are in the log line").not.toContain('25');
+  });
+
+  it('still says what appeared, and that something was left out', () => {
+    const line = formatChanges(diffSettings({}, { 'Default (6D H17)': profile }));
+    expect(line).toContain('Default (6D H17)');
+    expect(line, 'the omission is silent').toMatch(/\(\d+ chars\)/);
+    expect(line, 'a reader cannot see what kind of thing appeared').toContain('bankrollStart');
+  });
+
+  it('prints a small object in full, because there the value is the evidence', () => {
+    const line = formatChanges(diffSettings({ a: undefined }, { a: { x: 1, y: 2 } }));
+    expect(line).toContain('{"x":1,"y":2}');
+  });
+
+  it('prints a bet spread as itself, which is one decision and short', () => {
+    const line = formatChanges(diffSettings({ spread: [1, 1, 2, 4] }, { spread: [1, 2, 4, 8] }));
+    expect(line).toBe('spread: [1,1,2,4] -> [1,2,4,8]');
+  });
+
+  it('summarises an array only when it is too long to read', () => {
+    const long = Array.from({ length: 60 }, (_, i) => i);
+    const line = formatChanges(diffSettings({ xs: [] }, { xs: long }));
+    expect(line).toContain('[60 values]');
+  });
+});

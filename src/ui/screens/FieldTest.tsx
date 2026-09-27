@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   FIELD_TEST_CONDITIONS,
   motionForCondition,
   FIELD_TEST_STEPS,
+  stepResponses,
   applyFieldTestSetup,
   resolveFieldTestSetup,
   describeFieldTestSetup,
@@ -41,7 +42,11 @@ import {
 import { effectiveVolume } from '../../audio/volume';
 import { setMediaSessionProbe } from '../../audio/mediaSession';
 import { holdAudioFocus, releaseAudioFocus } from '../../audio/audioFocus';
-import { closeSharedAudioContext } from '../../audio/audioContext';
+import {
+  closeSharedAudioContext,
+  getSharedAudioContext,
+  resumeSharedAudioContext,
+} from '../../audio/audioContext';
 import { requestWakeLock, releaseWakeLock } from '../../audio/wakeLock';
 import { setClipsEnabled, setClipVoice, prewarmClips } from '../../audio/clips';
 import { measureWithWebAudio } from '../../diag/carCheckCatalog';
@@ -178,6 +183,23 @@ export function FieldTest({
           // LOGGED AFTER THE RUN EXISTS, so the line carries the id of the run
           // it opens. See `logFieldTestRunStart`.
           logFieldTestRunStart(run.condition, readFieldTestRun().runId);
+          // THE GRAPH EXISTS BEFORE THE FIRST SAMPLE, not partway through the
+          // first pair.
+          //
+          // The shared `AudioContext` is created lazily, by `chime()` or by
+          // `amplify()`, and route steps play at volume 1 so they never
+          // amplify. The first chime in a run is therefore the ANSWER TAP on
+          // route-1 — which means route-1 was spoken with no Web Audio
+          // graph on the device at all and route-2 with one. Those two are the
+          // protocol's first alternation pair: the comparison the reader is
+          // told to make straddles the creation of the audio graph, and
+          // creating a context is not nothing on iOS.
+          //
+          // Done here because Start is a real user gesture, which is also the
+          // only moment `resume()` is allowed to succeed.
+          const ctx = getSharedAudioContext();
+          resumeSharedAudioContext();
+          diag('test', 'audio-graph-open', { state: ctx?.state ?? 'none' });
         }}
         onResume={() => {
           // Logged distinctly from a start: a resumed run has no `run-start`
@@ -219,6 +241,13 @@ export function FieldTest({
               wheelMode: settings.drill.wheelMode,
             });
           }
+          // Same reason as a fresh start: a resumed run's next sample must
+          // not be the one that creates the graph. `closeSharedAudioContext`
+          // is deliberately NOT called here — resuming continues a leg
+          // rather than beginning one.
+          const resumedCtx = getSharedAudioContext();
+          resumeSharedAudioContext();
+          diag('test', 'audio-graph-open', { state: resumedCtx?.state ?? 'none', resumed: true });
           resumeFieldTestRun();
         }}
       />
@@ -458,6 +487,11 @@ function RunningTest({
   onNavigate: (screen: Screen) => void;
 }) {
   const step = FIELD_TEST_STEPS[Math.min(run.stepIndex, FIELD_TEST_STEPS.length - 1)]!;
+  // ORDERED FOR THE CONDITION BEING RUN. Under `speakerphone` the car is
+  // not in the audio path at all, so every wheel step's only honest answer
+  // is "No Bluetooth" — and it sat fifth, under four answers about what
+  // the car did. See `stepResponses`.
+  const responses = useMemo(() => stepResponses(step, run.condition), [step, run.condition]);
   const [wheelSeen, setWheelSeen] = useState<string[]>([]);
   /**
    * Observations armed on this step that are true alongside its answer.
@@ -1289,18 +1323,44 @@ function RunningTest({
     };
   }, []);
 
-  /** Let go of the media slot and the microphone when the screen closes. */
-  useEffect(
-    () => () => {
-      releaseAudioFocus('speech');
-      // Leaving by the tab bar is the ordinary way out -- it is the lowest,
-      // widest strip on the screen -- and it has to give the settings back
-      // too, or an abandoned run costs the operator their volume and wheel
-      // mode exactly as a completed one used to.
-      restoreSettings();
-    },
-    [restoreSettings],
-  );
+  /**
+   * Let go of the media slot and the settings when the screen closes.
+   *
+   * DEFERRED BY A TICK, AND A REMOUNT TAKES IT BACK. React destroys a commit's
+   * cleanups before running any of its create functions, and StrictMode
+   * mounts every component twice in development — so this ran DURING run
+   * start, between the two passes. The log of every dev run therefore opened
+   * with `focus release`, `settings-restored from=run`, a second `focus hold`
+   * and then `focus refused AbortError`: the run giving the operator their
+   * volume back a millisecond after taking it, and the silent element's
+   * `play()` aborted by the pause from a teardown that was never meant to
+   * happen. All three lines are false, and they are the first thing anybody
+   * reading a development export sees.
+   *
+   * The deferral is not a development-only trick. An unmount followed
+   * immediately by a mount is the same event whoever caused it, and handing
+   * the settings back only to seize them again is wrong in both: the window
+   * between them is a window in which a crash leaves the protocol's volume
+   * on the operator's phone.
+   */
+  const teardownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (teardownRef.current !== null) {
+      clearTimeout(teardownRef.current);
+      teardownRef.current = null;
+    }
+    return () => {
+      teardownRef.current = setTimeout(() => {
+        teardownRef.current = null;
+        releaseAudioFocus('speech');
+        // Leaving by the tab bar is the ordinary way out -- it is the lowest,
+        // widest strip on the screen -- and it has to give the settings back
+        // too, or an abandoned run costs the operator their volume and wheel
+        // mode exactly as a completed one used to.
+        restoreSettings();
+      }, 0);
+    };
+  }, [restoreSettings]);
 
   /**
    * Capture whatever the car sends, for as long as a wheel step is showing.
@@ -1470,7 +1530,7 @@ function RunningTest({
    * the operator to judge where THIS came from -- so it is deliberately kept
    * off the steps that do measure.
    */
-  const speakInstruction = useCallback(async () => {
+  const speakInstruction = useCallback(async (why: 'arrival' | 'asked' = 'arrival') => {
     // FENCED, HELD AND INTERRUPTING, exactly as `say()` is.
     //
     // This bumped nothing, set nothing and passed `interrupt: false`, so its
@@ -1485,7 +1545,12 @@ function RunningTest({
     // used to reach the log as nothing at all — so a wheel press could not be
     // placed inside or outside it. `say()` has carried a start/end pair since
     // the round-3 fix; this is the other half of the same requirement.
-    diag('test', 'instruction-start', { step: step.id });
+    // WHICH KIND OF READING. An arrival reading happens on the silent steps,
+    // where there is no sample to confound. An asked-for one can land at any
+    // moment, including seconds before a route sample -- so the analysis has
+    // to be able to see it and treat that sample accordingly, rather than
+    // meeting an unexplained utterance in the middle of the run.
+    diag('test', 'instruction-start', { step: step.id, why });
     try {
       await speakAsync(step.instruction, {
         interrupt: true,
@@ -1504,7 +1569,8 @@ function RunningTest({
        */
       diag('test', 'instruction-failed', {
         step: step.id,
-        why: e instanceof Error ? e.message : String(e),
+        why,
+        error: e instanceof Error ? e.message : String(e),
       });
     } finally {
       if (sayRun.current === run) setSpeaking(false);
@@ -1512,10 +1578,10 @@ function RunningTest({
     if (sayRun.current !== run) {
       // The third of the three. A step left while its instruction was still
       // reading is not a failure, and now says which it was.
-      diag('test', 'instruction-abandoned', { step: step.id });
+      diag('test', 'instruction-abandoned', { step: step.id, why });
       return;
     }
-    diag('test', 'instruction-spoken', { step: step.id });
+    diag('test', 'instruction-spoken', { step: step.id, why });
   }, [step.id, step.instruction, setSpeaking]);
 
   /**
@@ -1541,7 +1607,7 @@ function RunningTest({
       diag('test', 'answer-ignored', { step: step.id, answer: responseId, sinceStep });
       return;
     }
-    const response = step.responses.find((r) => r.id === responseId);
+    const response = responses.find((r) => r?.id === responseId);
     if (response?.modifier) {
       // ARMS A MARKER AND LEAVES THE STEP OPEN. See `StepResponse.modifier`:
       // this is an observation that is true alongside the answer rather than
@@ -1600,7 +1666,7 @@ function RunningTest({
      * audibly wrong rather than silently recorded: that is the confusion the
      * wheel answers spent four conditions manufacturing.
      */
-    const kind = step.responses.find((r) => r.id === responseId)?.kind;
+    const kind = responses.find((r) => r?.id === responseId)?.kind;
     chime(kind === 'good' ? 'good' : kind === 'bad' ? 'bad' : 'attention');
     // Answering IS finishing the step: a protocol that needs a tap to record
     // and a second tap to advance gets half as far per red light.
@@ -1716,6 +1782,34 @@ function RunningTest({
               : 'Read it to me'}
       </button>
 
+      {/*
+        THE INSTRUCTION, ON DEMAND, on the steps whose one audio control is
+        already spoken for.
+
+        Eyes-free is forced on at step one and never unset, and then every
+        step's instruction is printed — so on the seventeen steps that declare
+        a line, the thing the operator is being told to DO was eyes-only, while
+        the one control that speaks repeated the line instead. The head scrolls
+        rather than clipping, which keeps it reachable in a car park and does
+        nothing at all for a driver.
+
+        Not spoken on arrival, which was the other candidate: on a step that
+        samples the route a TTS line immediately before the sample can move the
+        audio session itself, and then the answer is about the wrong thing.
+        Asked for, it is the operator's own choice and it is in the log.
+      */}
+      {(step.say || step.sayUnclipped) && (
+        <button
+          type="button"
+          className="fieldtest-stamp"
+          data-testid="fieldtest-read-step"
+          disabled={sampling || waitingForMic}
+          onClick={() => void speakInstruction('asked')}
+        >
+          Read the step
+        </button>
+      )}
+
       {step.ambient && (
         <button
           type="button"
@@ -1829,36 +1923,49 @@ function RunningTest({
              highlight is invisible to someone watching the road. */
           <p className="fieldtest-evidence-line" data-testid="fieldtest-marks">
             {`Marked: ${marks
-              .map((id) => step.responses.find((r) => r.id === id)?.label ?? id)
+              .map((id) => responses.find((r) => r?.id === id)?.label ?? id)
               .join(', ')}. Now say what happened.`}
           </p>
         )}
       </div>
 
       <div className="fieldtest-answers" data-testid="fieldtest-answers">
-        {step.responses.map((response) => (
-          <button
-            type="button"
-            key={response.id}
-            className={`fieldtest-stamp fieldtest-${response.kind}${
-              marks.includes(response.id) ? ' fieldtest-marked' : ''
-            }`}
-            data-testid={`fieldtest-answer-${response.id}`}
-            aria-pressed={response.modifier ? marks.includes(response.id) : undefined}
-            // DISABLED WHILE IT IS STILL TALKING, as "Say it again" already
-            // was. `answer()` stamps and advances, and the step cleanup
-            // cancels the rest -- so a tap during line 1 of `fallback-audible`
-            // records a two-line loudness comparison of one line, and on
-            // `route-long`, whose entire premise is the route moving PART WAY
-            // THROUGH, an early tap makes `route-moved` unobservable. The
-            // answer is about an utterance the operator has heard, so it
-            // cannot be collected before there is one.
-            disabled={sampling || waitingForMic}
-            onClick={() => answer(response.id)}
-          >
-            {response.label}
-          </button>
-        ))}
+        {responses.map((response, slot) =>
+          // A SLOT THIS STEP HAS NO ANSWER FOR, held open rather than closed
+          // up. See `WHEEL_SLOTS`: the alternative is the answer below it
+          // moving up under a thumb that is not looking, and arriving as a
+          // different answer to a different question.
+          response === null ? (
+            <div
+              key={`gap-${slot}`}
+              className="fieldtest-answer-gap"
+              data-testid={`fieldtest-answer-gap-${slot}`}
+              aria-hidden="true"
+            />
+          ) : (
+            <button
+              type="button"
+              key={response.id}
+              className={`fieldtest-stamp fieldtest-${response.kind}${
+                marks.includes(response.id) ? ' fieldtest-marked' : ''
+              }`}
+              data-testid={`fieldtest-answer-${response.id}`}
+              aria-pressed={response.modifier ? marks.includes(response.id) : undefined}
+              // DISABLED WHILE IT IS STILL TALKING, as "Say it again" already
+              // was. `answer()` stamps and advances, and the step cleanup
+              // cancels the rest -- so a tap during line 1 of `fallback-audible`
+              // records a two-line loudness comparison of one line, and on
+              // `route-long`, whose entire premise is the route moving PART WAY
+              // THROUGH, an early tap makes `route-moved` unobservable. The
+              // answer is about an utterance the operator has heard, so it
+              // cannot be collected before there is one.
+              disabled={sampling || waitingForMic}
+              onClick={() => answer(response.id)}
+            >
+              {response.label}
+            </button>
+          ),
+        )}
       </div>
 
       <div className="fieldtest-nav">

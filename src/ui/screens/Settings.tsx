@@ -1314,6 +1314,9 @@ function DiagnosticLogPanel() {
   // Live, because the operator will be watching this while toggling voice on
   // the screen behind it, and a panel that needed a manual refresh to show
   // anything would read as "the logging is broken too".
+  // NOT ALSO ON `visibilitychange`, which was tried and removed: the app logs
+  // its own line on every visibility change, so the subscription below already
+  // re-reads there, and the extra listener could not be told from nothing.
   useEffect(() => subscribeDiagnostics(() => setEntries(readDiagnosticLog())), []);
 
   const summary = summariseDiagnostics(entries);
@@ -1324,10 +1327,12 @@ function DiagnosticLogPanel() {
   // Settings open the app rebuilt an ~800KB string per logged line. The log is
   // supposed to cost less than what it measures; formatting it for nobody is
   // the clearest way it did not.
-  const text = useMemo(
-    () => (shown || copied !== 'idle' ? formatDiagnosticLog(entries) : ''),
-    [entries, shown, copied],
-  );
+  // ON `shown` ALONE. `copied` was in this condition, and it latches: one
+  // Copy and the guard is true for the life of the panel, so the ~800KB
+  // rebuild the memo exists to prevent ran on every logged line again, with
+  // the panel collapsed and nobody reading it. The failed-clipboard path,
+  // which is why `copied` was here, sets `shown` itself.
+  const text = useMemo(() => (shown ? formatDiagnosticLog(entries) : ''), [entries, shown]);
 
   return (
     <CollapsibleSection title={<>Diagnostic log</>} defaultOpen={false}>
@@ -1379,7 +1384,16 @@ function DiagnosticLogPanel() {
         <button
           type="button"
           className="settings-mini-btn"
-          onClick={() => setShown((v) => !v)}
+          onClick={() => {
+            // RE-READ ON OPENING. Nothing notifies this tab when ANOTHER
+            // one logs — the app is deliberately usable as both an installed
+            // PWA and a Safari tab, and each flushes to the same storage —
+            // so the panel's copy can be arbitrarily old while Copy, which
+            // reads storage fresh, produces something longer. One screen
+            // giving two different answers is the log arguing with itself.
+            if (!shown) setEntries(readDiagnosticLog());
+            setShown((v) => !v);
+          }}
           disabled={summary.total === 0}
         >
           {shown ? 'Hide' : 'Show'}

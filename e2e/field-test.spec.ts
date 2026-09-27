@@ -929,10 +929,15 @@ test('nothing the thumb reaches for moves between steps', async ({ page }) => {
     const answers = page.getByTestId('fieldtest-answers');
     await expect(answers).toBeVisible();
     const box = (await answers.boundingBox())!;
-    const buttons = answers.locator('button');
+    // SLOTS, NOT BUTTONS. A wheel step with no answer for a slot renders a
+    // held-open gap there (see `WHEEL_SLOTS`), which is the mechanism that
+    // stops the answers below it moving up. Counting only buttons makes
+    // "third from the bottom" mean a different position on a step with a gap
+    // in it, and then this test fails for the reason the layout is right.
+    const buttons = answers.locator('[data-testid^="fieldtest-answer-"]');
     const n = await buttons.count();
-    // Indexed FROM THE BOTTOM, so slot 0 is the button nearest the nav row on
-    // every step regardless of how many the step offers.
+    // Indexed FROM THE BOTTOM, so slot 0 is the position nearest the nav row
+    // on every step regardless of how many answers the step offers.
     const slots: number[] = [];
     for (let k = n - 1; k >= 0; k -= 1) {
       const b = (await buttons.nth(k).boundingBox())!;
@@ -1003,15 +1008,20 @@ test('no answer button changes place under the operator between steps', async ({
   await openTest(page, 'Car, parked');
 
   /** Each answer, deepest-last, as the hit test at its own centre sees it. */
-  async function stack(): Promise<{ y: number; label: string | null }[]> {
-    const buttons = page.getByTestId('fieldtest-answers').locator('button');
+  async function stack(): Promise<{ y: number; label: string | null; gap: boolean }[]> {
+    // Slots, including the held-open gaps: see the note in the test above.
+    const buttons = page
+      .getByTestId('fieldtest-answers')
+      .locator('[data-testid^="fieldtest-answer-"]');
     const n = await buttons.count();
-    const out: { y: number; label: string | null }[] = [];
+    const out: { y: number; label: string | null; gap: boolean }[] = [];
     for (let k = n - 1; k >= 0; k -= 1) {
       const box = (await buttons.nth(k).boundingBox())!;
       const y = box.y + box.height / 2;
+      const id = (await buttons.nth(k).getAttribute('data-testid')) ?? '';
       out.push({
         y: Math.round(y),
+        gap: id.startsWith('fieldtest-answer-gap-'),
         // HIT-TESTED, not read off the locator: a button the layout has pushed
         // under another element answers here with the element on top of it,
         // which is the failure a thumb actually meets.
@@ -1024,12 +1034,15 @@ test('no answer button changes place under the operator between steps', async ({
     return out;
   }
 
-  let previous: { y: number; label: string | null }[] | null = null;
+  let previous: { y: number; label: string | null; gap: boolean }[] | null = null;
   let compared = 0;
   for (let i = 0; i < 40; i += 1) {
     await expect(page.getByTestId('fieldtest-answers')).toBeVisible();
     const current = await stack();
     for (const slot of current) {
+      // A GAP ANSWERS WITH WHATEVER IS UNDER IT, by design: it takes no
+      // pointer events precisely so a remembered position lands on nothing.
+      if (slot.gap) continue;
       expect(slot.label, `an answer at y=${slot.y} is covered by something else`).not.toBeNull();
     }
     if (previous) {
@@ -2154,4 +2167,245 @@ test('a first visit to the gate stays quiet', async ({ page }) => {
   await expect(page.getByTestId('fieldtest-start')).toBeVisible();
   const said = await page.evaluate(() => window.__speechLog ?? []);
   expect(said.filter((l) => /resume/i.test(l)), 'a fresh gate announced a resume').toEqual([]);
+});
+
+
+/**
+ * A reload mid-protocol used to land on Home.
+ *
+ * Nothing persisted which screen was open, and the update check reloads the
+ * app on purpose from a visibility change — a phone call answered and hung
+ * up is enough. The operator, driving, then met the Home screen with no line
+ * playing and no idea why, and the way back ran through the start gate.
+ */
+test('a reload in the middle of a run comes back to the run', async ({ page }) => {
+  await withSettings(page, {});
+  await openTest(page, 'Car, parked');
+  await page.getByTestId('fieldtest-skip').click();
+  await page.getByTestId('fieldtest-skip').click();
+
+  // Don't re-seed on the way back in: a reload has to find what was really
+  // left on disk.
+  await page.evaluate(() => window.localStorage.setItem('e2e.noReseed', '1'));
+  await page.reload();
+
+  await expect(
+    page.getByTestId('fieldtest-screen'),
+    'a reload mid-protocol dropped the operator somewhere else',
+  ).toBeVisible();
+  // The gate, not the running screen: a run is never restored as active,
+  // because `mic-route` would open the microphone on a navigation tap.
+  await expect(page.getByTestId('fieldtest-resume')).toBeVisible();
+  await expect(page.getByTestId('fieldtest-title')).toHaveCount(0);
+});
+
+/** ...and an ordinary launch, with no run behind it, still opens on Home. */
+test('a launch with nothing to come back to opens where it always did', async ({ page }) => {
+  await withSettings(page, {});
+  await page.goto('/?e2e=1');
+  await page.evaluate(() => {
+    window.localStorage.removeItem('bjtrainer.fieldTestRun.v1');
+    window.localStorage.setItem('e2e.noReseed', '1');
+  });
+  await page.reload();
+  await expect(
+    page.getByTestId('fieldtest-screen'),
+    'the field test hijacked a launch that had no run behind it',
+  ).toHaveCount(0);
+});
+
+
+/**
+ * "Read the step" says the instruction, and does not say the line.
+ *
+ * The distinction is the whole point. The line is the sample — speaking it
+ * again is a measurement the operator asked for, and the route answer is about
+ * it. The instruction is what they are being told to do, and on the seventeen
+ * steps with a line it had no audio path at all while eyes-free was forced on.
+ */
+test('the instruction can be heard on a step that already speaks a line', async ({ page }) => {
+  await withSettings(page, {});
+  await openTest(page, 'Car, parked');
+  await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', 'route-1');
+  await expect(page.getByTestId('fieldtest-read-step')).toBeEnabled({ timeout: 20_000 });
+  await page.evaluate(() => {
+    window.__speechLog = [];
+  });
+
+  await page.getByTestId('fieldtest-read-step').click();
+  await expect
+    .poll(() => page.evaluate(() => window.__speechLog ?? []), { timeout: 8_000 })
+    .toContain('Listen to the line. Where did it come from?');
+  // ...and NOT the measured line, which would be a second sample nobody asked
+  // for, arriving between the one they heard and the answer they give.
+  expect(
+    await page.evaluate(() => window.__speechLog ?? []),
+    'asking for the instruction re-spoke the line being measured',
+  ).not.toContain('Basic hit versus dealer nine.');
+});
+
+/**
+ * ...and the log says it happened, because it can land anywhere.
+ *
+ * An asked-for reading can arrive seconds before a route sample. It is not
+ * spoken on arrival for exactly that reason, and the analysis has to be able
+ * to see the ones the operator asked for rather than meeting an unexplained
+ * utterance in the middle of a run.
+ */
+test('an instruction the operator asked for is marked as asked for', async ({ page }) => {
+  await withSettings(page, {});
+  await openTest(page, 'Car, parked');
+  await expect(page.getByTestId('fieldtest-read-step')).toBeEnabled({ timeout: 20_000 });
+  await page.getByTestId('fieldtest-read-step').click();
+
+  await expect
+    .poll(
+      async () =>
+        (await events(page)).some(
+          (e) => e.event === 'instruction-start' && e.detail?.why === 'asked',
+        ),
+      { timeout: 8_000 },
+    )
+    .toBe(true);
+
+  // The arrival readings on the silent steps are a different thing and say so.
+  await goToStep(page, 'wheel-back');
+  await expect
+    .poll(
+      async () =>
+        (await events(page)).some(
+          (e) =>
+            e.event === 'instruction-start' &&
+            e.detail?.step === 'wheel-back' &&
+            e.detail?.why === 'arrival',
+        ),
+      { timeout: 8_000 },
+    )
+    .toBe(true);
+});
+
+/** The line is still repeatable, which is what that control is for. */
+test('the repeat control still repeats the measured line', async ({ page }) => {
+  await withSettings(page, {});
+  await openTest(page, 'Car, parked');
+  await expect(page.getByTestId('fieldtest-again')).toBeEnabled({ timeout: 20_000 });
+  await page.evaluate(() => {
+    window.__speechLog = [];
+  });
+  await page.getByTestId('fieldtest-again').click();
+  await expect
+    .poll(() => page.evaluate(() => window.__speechLog ?? []), { timeout: 8_000 })
+    .toContain('Basic hit versus dealer nine.');
+});
+
+/**
+ * S10: the Web Audio graph exists before the first sample, not partway
+ * through the first pair.
+ *
+ * The shared `AudioContext` is created lazily by `chime()` or by `amplify()`,
+ * and route steps play at volume 1 so they never amplify. The first chime in
+ * a run was therefore the ANSWER TAP on route-1 — meaning route-1 was
+ * spoken with no audio graph on the device and route-2 with one. Those two
+ * are the protocol's first alternation pair, and the instruction on route-2
+ * tells the reader that a difference between them is the bug.
+ */
+test('the audio graph is open before the first line is spoken', async ({ page }) => {
+  await openTest(page, 'Car, parked');
+  const text = await logText(page);
+  const opened = text.indexOf('audio-graph-open');
+  expect(opened, 'nothing opened the audio graph at run start').toBeGreaterThan(-1);
+  const firstLine = text.indexOf('say-start');
+  expect(firstLine, 'no line was spoken at all').toBeGreaterThan(-1);
+  expect(
+    opened,
+    'the first sample of the run was taken before the audio graph existed',
+  ).toBeLessThan(firstLine);
+});
+
+/**
+ * S13: under a condition with no Bluetooth, every wheel step's only honest
+ * answer is "No Bluetooth" — and it sat fifth of six, underneath four
+ * answers about what the car did.
+ */
+test('a condition with no Bluetooth puts the only possible answer first', async ({ page }) => {
+  await openTest(page, 'Speakerphone');
+  // Walk to the first wheel step. `fieldtest-wheel-seen` only exists on one.
+  for (let i = 0; i < 40; i += 1) {
+    const answers = page.locator('[data-testid^="fieldtest-answer-"]');
+    const first = await answers.first().getAttribute('data-testid');
+    if (first === 'fieldtest-answer-wheel-na') break;
+    const ids = await answers.evaluateAll((els) =>
+      els.map((e) => e.getAttribute('data-testid') ?? ''),
+    );
+    if (ids.some((id) => id.startsWith('fieldtest-answer-wheel-'))) {
+      expect(
+        ids[0],
+        `a wheel step under Speakerphone leads with ${ids[0]}, not the only true answer`,
+      ).toBe('fieldtest-answer-wheel-na');
+      break;
+    }
+    await page.getByTestId('fieldtest-skip').click();
+  }
+
+  // ...and the escape hatch is still the bottom button, where it is on every
+  // other step in the protocol.
+  const ids = await page
+    .locator('[data-testid^="fieldtest-answer-"]')
+    .evaluateAll((els) => els.map((e) => e.getAttribute('data-testid') ?? ''));
+  expect(ids[0]).toBe('fieldtest-answer-wheel-na');
+  expect(ids.at(-1)).toBe('fieldtest-answer-missed');
+});
+
+test('and leaves the answers alone under a condition that does use the car', async ({ page }) => {
+  await openTest(page, 'Car, parked');
+  for (let i = 0; i < 40; i += 1) {
+    const ids = await page
+      .locator('[data-testid^="fieldtest-answer-"]')
+      .evaluateAll((els) => els.map((e) => e.getAttribute('data-testid') ?? ''));
+    if (ids.some((id) => id.startsWith('fieldtest-answer-wheel-'))) {
+      expect(ids[0], 'a paired condition leads with "No Bluetooth"').not.toBe(
+        'fieldtest-answer-wheel-na',
+      );
+      return;
+    }
+    await page.getByTestId('fieldtest-skip').click();
+  }
+  throw new Error('no wheel step was reached');
+});
+
+/**
+ * A run must not hand the settings back while it is starting.
+ *
+ * React destroys a commit's cleanups before running any of its create
+ * functions, and StrictMode mounts twice in development — so the screen's
+ * unmount teardown ran DURING run start. Every development export opened with
+ * `focus release`, `settings-restored from=run`, a second hold and a
+ * `focus refused AbortError`: the run giving the volume back a millisecond
+ * after taking it, and the silent element's `play()` aborted by a pause that
+ * was never meant to happen. Three false lines at the top of the artefact the
+ * whole protocol exists to produce.
+ *
+ * Asserted against the dev server on purpose — that is where StrictMode
+ * runs, and it is the build the operator's own diagnostic exports come from
+ * while the protocol is being worked on.
+ */
+test('starting a run does not hand the settings straight back', async ({ page }) => {
+  await withSettings(page, {});
+  await openTest(page, 'Car, parked');
+  // `logText` leaves by Pause, which is a real teardown and restores once.
+  const text = await logText(page);
+  const started = text.indexOf('run-start');
+  expect(started, 'the run never started').toBeGreaterThan(-1);
+  const after = text
+    .slice(started)
+    .split('\n')
+    .filter((l) => l.includes('settings-restored'));
+  expect(
+    after.length,
+    `the settings were handed back ${after.length} times: one of those is the run starting`,
+  ).toBe(1);
+  expect(
+    text.slice(started, text.indexOf('settings-restored', started)),
+    'the audio hold was refused during run start',
+  ).not.toContain('focus refused');
 });

@@ -918,9 +918,18 @@ export function formatDiagnosticLog(entries: readonly DiagEntry[]): string {
     // the deployed URL, and then Bluetooth device labels -- which routinely
     // carry a person's own name ("AirPods Pro de Jack", a car's model) --
     // plus profile names, plus whatever a passenger said near an open mic.
+    // WHAT A READER OF THE FILE CAN LEARN, not just what is nominally in it.
+    // Two things were missing and both are the kind a person decides about
+    // before pasting: the profile line of a fresh export carries the whole
+    // profile, stake sizes and starting bankroll included, and the timestamps
+    // on a field-test export say when someone was in a moving car and for how
+    // long. Naming "profile names" while shipping the bet spread is the
+    // header being technically true and practically misleading.
     `# Contains speech captured in the vehicle, including anyone else present;`,
     `# audio device names, which often include a person's name; this device's`,
-    `# browser and OS version; the app URL; and profile names.`,
+    `# browser and OS version; the app URL; profile names, along with their`,
+    `# rules, stake sizes and starting bankroll; and timestamps showing`,
+    `# when and for how long this device was being driven.`,
     // BOTH CLOCKS NAMED. The body prints local time and these print UTC, and
     // nothing said so -- so a reader anchoring "I merged onto the 101 around
     // ten past" against the header landed hours away from the body lines. The

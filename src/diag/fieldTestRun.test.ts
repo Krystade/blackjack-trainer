@@ -15,6 +15,11 @@ import {
   setFieldTestBefore,
   unspentFieldTestBefore,
   _resetFieldTestRunForTest,
+  fieldTestRunAgeMs,
+  fieldTestRunIsLive,
+  fieldTestRunIsResumable,
+  RUN_LIVE_MS,
+  RUN_RESUMABLE_MS,
 } from './fieldTestRun';
 import { FIELD_TEST_STEPS } from './fieldTest';
 import { readDiagnosticLog } from './diagnosticLog';
@@ -454,6 +459,30 @@ describe('a run when another tab writes it', () => {
     expect(calls).toBe(1);
   });
 
+  it('does not throw the tab that is driving out of its run', () => {
+    // `coerce` refuses to restore a run as active, on purpose: a reload must
+    // never reopen the microphone by itself. Applying that rule to a re-read
+    // triggered by SOMEBODY ELSE'S write turned the other tab merely opening
+    // the picker into this tab, mid-drive, falling back to the start gate and
+    // handing the operator's settings back under them.
+    startFieldTestRun('car');
+    goToFieldTestStep(2);
+    expect(readFieldTestRun().active).toBe(true);
+
+    otherTabWrites({ active: false, condition: 'car', stepIndex: 5, stamps: {} });
+
+    expect(readFieldTestRun().active, 'a second tab ended the drive').toBe(true);
+    // ...and it still took the write's answer to everything it can answer.
+    expect(readFieldTestRun().stepIndex).toBe(5);
+  });
+
+  it('leaves a tab that is not in a run out of one', () => {
+    // The rule is "this tab keeps what only it knows", not "active is sticky".
+    stopFieldTestRun();
+    otherTabWrites({ active: true, condition: 'car', stepIndex: 5, stamps: {} });
+    expect(readFieldTestRun().active).toBe(false);
+  });
+
   it('says in the log that another tab did it', () => {
     startFieldTestRun('car');
     goToFieldTestStep(2);
@@ -723,5 +752,189 @@ describe('a snapshot that has been handed back', () => {
     startFieldTestRun('car', before);
     markFieldTestBeforeOwed();
     expect(unspentFieldTestBefore()).toEqual(before);
+  });
+});
+
+/**
+ * Is somebody standing in this run right now?
+ *
+ * Two callers ask, and they have to agree: the update check, which reloads the
+ * app from a visibility change and must not do that mid-protocol, and the
+ * app's opening screen, which should come back to the field test after a
+ * reload rather than dropping the operator on Home — but only while the run
+ * is recent, or one abandoned drive owns every launch for a month.
+ */
+describe('how long ago the run was touched', () => {
+  it('stamps every write, so no caller can forget to', () => {
+    const before = Date.now();
+    startFieldTestRun('car');
+    const at = readFieldTestRun().touchedAt;
+    expect(typeof at, 'a run was written with no sign of life on it').toBe('number');
+    expect(at as number).toBeGreaterThanOrEqual(before);
+  });
+
+  it('counts a run being worked on as live', () => {
+    startFieldTestRun('car');
+    goToFieldTestStep(3);
+    expect(fieldTestRunIsLive()).toBe(true);
+    expect(fieldTestRunIsResumable()).toBe(true);
+  });
+
+  it('stops calling it live once the drive is over', () => {
+    startFieldTestRun('car');
+    goToFieldTestStep(3);
+    const later = Date.now() + RUN_LIVE_MS + 1;
+    expect(fieldTestRunIsLive(later), 'an abandoned run blocks updates forever').toBe(false);
+    // ...but it is still worth coming back to for a while.
+    expect(fieldTestRunIsResumable(later)).toBe(true);
+  });
+
+  it('expires as something to come back to, so one drive does not own every launch', () => {
+    startFieldTestRun('car');
+    goToFieldTestStep(3);
+    expect(fieldTestRunIsResumable(Date.now() + RUN_RESUMABLE_MS + 1)).toBe(false);
+  });
+
+  it('is neither at step one, where a reload has nothing to hand back', () => {
+    startFieldTestRun('car');
+    expect(readFieldTestRun().stepIndex).toBe(0);
+    expect(fieldTestRunIsLive()).toBe(false);
+    expect(fieldTestRunIsResumable()).toBe(false);
+  });
+
+  it('is neither when no run was ever written', () => {
+    expect(fieldTestRunAgeMs()).toBeUndefined();
+    expect(fieldTestRunIsLive()).toBe(false);
+    expect(fieldTestRunIsResumable()).toBe(false);
+  });
+
+  it('survives the reload it exists to be read across', () => {
+    startFieldTestRun('car');
+    goToFieldTestStep(3);
+    const stored = JSON.parse(
+      (globalThis as unknown as { localStorage: { getItem: (k: string) => string } }).localStorage.getItem(
+        'bjtrainer.fieldTestRun.v1',
+      ),
+    ) as { touchedAt?: number };
+    expect(
+      typeof stored.touchedAt,
+      'the stamp never reached storage, so a reload cannot read it',
+    ).toBe('number');
+    // ...and it is the value the in-memory run reports, not a second clock.
+    expect(stored.touchedAt).toBe(readFieldTestRun().touchedAt);
+  });
+});
+
+/**
+ * A run read back from storage, when the build that reads it is not the build
+ * that wrote it.
+ *
+ * Releases rename things. `before.wheelMode` is validated by value; the
+ * condition was taken on trust, and it is the field the whole analysis is
+ * keyed on — the stamps, the motion warning, and which column of the log a
+ * step belongs to.
+ */
+describe('a run written by a build that called things something else', () => {
+  it('reads an unknown condition as the default rather than carrying it', () => {
+    localStorage.setItem(
+      'bjtrainer.fieldTestRun.v1',
+      JSON.stringify({ active: true, condition: 'motorway', stepIndex: 3, stamps: {} }),
+    );
+    expect(readFieldTestRun().condition).toBe('car');
+  });
+
+  it('says in the log that it did, because a relabelled run is not a detail', () => {
+    localStorage.setItem(
+      'bjtrainer.fieldTestRun.v1',
+      JSON.stringify({ active: true, condition: 'motorway', stepIndex: 3, stamps: {} }),
+    );
+    readFieldTestRun();
+    const entry = readDiagnosticLog()
+      .filter((e) => e.category === 'test' && e.event === 'run-condition-unknown')
+      .at(-1);
+    expect(entry, 'the run changed condition with nothing saying so').toBeTruthy();
+    expect(entry?.detail).toMatchObject({ was: 'motorway', read_as: 'car' });
+  });
+
+  it('carries the ticks across instead of stranding them under a dead prefix', () => {
+    // `countStampedSteps` matches on `<condition>:`, so stamps left under the
+    // old name are invisible: the operator resumes and the run says nothing
+    // has been done.
+    localStorage.setItem(
+      'bjtrainer.fieldTestRun.v1',
+      JSON.stringify({
+        active: true,
+        condition: 'motorway',
+        stepIndex: 3,
+        stamps: { 'motorway:route-1': 1, 'motorway:route-2': 2 },
+      }),
+    );
+    const restored = readFieldTestRun();
+    expect(restored.stamps).toEqual({ 'car:route-1': 1, 'car:route-2': 2 });
+    expect(countStampedSteps(restored.stamps, restored.condition)).toBe(2);
+  });
+
+  it('leaves a condition it does know alone', () => {
+    localStorage.setItem(
+      'bjtrainer.fieldTestRun.v1',
+      JSON.stringify({
+        active: true,
+        condition: 'freeway',
+        stepIndex: 3,
+        stamps: { 'freeway:route-1': 1 },
+      }),
+    );
+    const complaints = () =>
+      readDiagnosticLog().filter((e) => e.event === 'run-condition-unknown').length;
+    const before = complaints();
+    const restored = readFieldTestRun();
+    expect(restored.condition).toBe('freeway');
+    expect(restored.stamps).toEqual({ 'freeway:route-1': 1 });
+    expect(complaints() - before, 'a known condition was reported as unknown').toBe(0);
+  });
+});
+
+/**
+ * I9: the cross-tab listener, installed on a read that happened too early.
+ *
+ * The first read of the run can easily come from somewhere with no window —
+ * a module-scope import, a node test, a server render. `subscribeToExternalWrites`
+ * is inert there by design, but the flag saying "installed" was set anyway, so
+ * the page went on to its whole life with no listener and no way to get one.
+ */
+describe('the cross-tab listener when the first read is too early', () => {
+  const originalWindow = (globalThis as { window?: unknown }).window;
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'window', {
+      value: originalWindow,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it('installs once a window exists, rather than latching on the inert call', () => {
+    delete (globalThis as { window?: unknown }).window;
+    readFieldTestRun(); // the too-early read
+
+    const handlers = new Set<(e: unknown) => void>();
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        addEventListener: (type: string, h: (e: unknown) => void) => {
+          if (type === 'storage') handlers.add(h);
+        },
+        removeEventListener: () => {},
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    readFieldTestRun();
+    expect(handlers.size, 'the page can no longer see another tab at all').toBe(1);
+
+    const raw = JSON.stringify({ active: true, condition: 'car', stepIndex: 5, stamps: {} });
+    localStorage.setItem('bjtrainer.fieldTestRun.v1', raw);
+    for (const h of handlers) h({ key: 'bjtrainer.fieldTestRun.v1', oldValue: null, newValue: raw });
+    expect(readFieldTestRun().stepIndex).toBe(5);
   });
 });

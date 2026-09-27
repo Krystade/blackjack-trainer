@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './ui/App.tsx';
 import { startUpdateWatch } from './updateCheck.ts';
+import { fieldTestRunIsLive } from './diag/fieldTestRun.ts';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -14,5 +15,11 @@ createRoot(document.getElementById('root')!).render(
 // does not exist, and a navigation mid-spec would be indistinguishable from a
 // bug in whatever that spec was testing.
 if (!new URLSearchParams(window.location.search).has('e2e')) {
-  startUpdateWatch();
+  startUpdateWatch({
+    // NOT WHILE SOMEBODY IS IN THE MIDDLE OF A RUN. The reload fires from a
+    // visibility change, so answering a phone call mid-protocol was enough to
+    // restart the app and drop the operator on Home. The update is not lost:
+    // the next foreground event after the run goes quiet picks it up.
+    deferWhile: fieldTestRunIsLive,
+  });
 }
