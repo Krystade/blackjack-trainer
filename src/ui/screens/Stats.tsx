@@ -391,7 +391,17 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result ?? '');
-      if (!window.confirm('Import will overwrite current stats and settings. Continue?')) return;
+      // NAMES WHAT IT REPLACES. The blob grew to carry profiles and both
+      // spaced-repetition decks (see EXTRA_KEYS), and this sentence still
+      // said "stats and settings" -- so the one thing whose loss cannot be
+      // re-earned by drilling, the review schedule, went unmentioned in the
+      // only warning shown before it is replaced.
+      if (
+        !window.confirm(
+          'Import replaces your stats, settings, profiles and both review schedules. Continue?',
+        )
+      )
+        return;
       const result = importAll(text);
       if (result.ok) {
         refresh();

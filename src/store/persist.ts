@@ -184,6 +184,32 @@ function mergeStats(parsed: Record<string, unknown>): Stats {
   });
 }
 
+/**
+ * Keep the bytes we could not read, once, before anything overwrites them.
+ *
+ * "Corrupt" and "absent" returned the same value from every reader here, and
+ * every caller is read-modify-write -- `loadStats()` then `saveStats({...})`
+ * on every graded answer. So a blob truncated by an interrupted write (or a
+ * version this build does not know) read as empty, and the next answer
+ * committed that emptiness over the only copy of months of history.
+ *
+ * The quarantine is written ONCE and never overwritten: the first failure is
+ * the one closest to the original, and a second pass must not replace it
+ * with the damage done since. It costs one extra key's worth of space in the
+ * one case where the ordinary key is about to be thrown away anyway.
+ */
+function quarantine(key: string, raw: string): void {
+  const graveKey = `${key}.corrupt`;
+  try {
+    const store = getStorage();
+    if (store.getItem(graveKey) !== null) return;
+    store.setItem(graveKey, raw);
+  } catch {
+    // A full quota is exactly when this matters and exactly when it cannot
+    // be done. Nothing else in the load path may fail because of it.
+  }
+}
+
 export function loadSettings(): Settings {
   const store = getStorage();
   const json = store.getItem('bjtrainer.settings.v1');
@@ -197,9 +223,11 @@ export function loadSettings(): Settings {
     if (isVersion1Object(parsed)) {
       return mergeSettings(parsed);
     }
+    quarantine('bjtrainer.settings.v1', json);
     return structuredClone(DEFAULT_SETTINGS);
   } catch {
     // JSON parse error
+    quarantine('bjtrainer.settings.v1', json);
     return structuredClone(DEFAULT_SETTINGS);
   }
 }
@@ -222,6 +250,18 @@ export function loadSettings(): Settings {
 function writeKey(key: string, value: string): boolean {
   try {
     getStorage().setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Delete a key, reporting failure instead of throwing. See `writeKey`. */
+function removeKey(key: string): boolean {
+  try {
+    const store = getStorage() as { removeItem?: (k: string) => void; setItem: (k: string, v: string) => void };
+    if (typeof store.removeItem === 'function') store.removeItem(key);
+    else store.setItem(key, '');
     return true;
   } catch {
     return false;
@@ -259,9 +299,11 @@ export function loadStats(): Stats {
     if (isVersion1Object(parsed)) {
       return mergeStats(parsed);
     }
+    quarantine('bjtrainer.stats.v1', json);
     return structuredClone(EMPTY_STATS);
   } catch {
     // JSON parse error
+    quarantine('bjtrainer.stats.v1', json);
     return structuredClone(EMPTY_STATS);
   }
 }
@@ -298,6 +340,19 @@ const EXTRA_KEYS: { key: string; field: string }[] = [
 export function exportAll(): string {
   const store = getStorage();
   const blob: Record<string, unknown> = { settings: loadSettings(), stats: loadStats() };
+
+  // THE BYTES, when they could not be read.
+  //
+  // Both fields above go through readers that answer "empty" for a blob they
+  // cannot parse, and this function is offered on the crash screen as
+  // "Download backup" -- reached precisely when something is corrupt. The
+  // user got a file that looked complete, believed they were safe, and
+  // reset. Whatever could not be read rides along verbatim so a human (or a
+  // later build) can still get at it.
+  for (const key of ['bjtrainer.settings.v1', 'bjtrainer.stats.v1']) {
+    const grave = store.getItem(`${key}.corrupt`);
+    if (grave !== null) blob[`${key}.corrupt`] = grave;
+  }
 
   for (const { key, field } of EXTRA_KEYS) {
     const raw = store.getItem(key);
@@ -338,19 +393,66 @@ export function importAll(json: string): { ok: boolean; error?: string } {
       return { ok: false, error: 'Invalid stats version' };
     }
 
-    // All validations passed: merge over defaults so a partial blob never
-    // persists an incomplete shape, then save.
-    saveSettings(mergeSettings(obj.settings));
-    saveStats(mergeStats(obj.stats));
-
-    // Restore the rest of the user's state when the blob carries it. Each is
-    // OPTIONAL: exports taken before these were included must keep importing
-    // cleanly, or the backups people already hold become worthless.
+    /*
+     * STAGED, THEN COMMITTED, AND THE RESULT REPORTED.
+     *
+     * This used to write each key as it went and `return { ok: true }`
+     * whatever happened: the three booleans were discarded, so a storage
+     * that refused every write reported a successful import having written
+     * nothing. Worse, the order put the destructive write first and the SR
+     * decks -- the part this file's own comment calls "the unrecoverable
+     * one" -- last, so a quota failure part way through left stats
+     * replaced, profiles unchanged and a deck missing, under "Import
+     * successful." on screen.
+     *
+     * Every value is prepared first, the previous contents are snapshotted,
+     * and a failure rolls back to them. Rollback is best-effort by nature --
+     * it is writing to the storage that just refused a write -- so it is
+     * reported rather than assumed.
+     */
     const extras = parsed as Record<string, unknown>;
+    const pending: { key: string; value: string }[] = [
+      { key: 'bjtrainer.settings.v1', value: JSON.stringify(mergeSettings(obj.settings)) },
+      { key: 'bjtrainer.stats.v1', value: JSON.stringify(capHistories(mergeStats(obj.stats))) },
+    ];
     for (const { key, field } of EXTRA_KEYS) {
       const value = extras[field];
       if (value === undefined) continue;
-      writeKey(key, typeof value === 'string' ? value : JSON.stringify(value));
+      pending.push({ key, value: typeof value === 'string' ? value : JSON.stringify(value) });
+    }
+
+    // Quarantined bytes ride back in too. `exportAll` carries them so a
+    // backup taken while something was unreadable still holds the only copy
+    // of it; dropping them here would mean the round trip -- the exact
+    // sequence the crash screen tells people to perform -- destroyed it.
+    for (const key of ['bjtrainer.settings.v1', 'bjtrainer.stats.v1']) {
+      const grave = extras[`${key}.corrupt`];
+      if (typeof grave === 'string') pending.push({ key: `${key}.corrupt`, value: grave });
+    }
+
+    const store = getStorage();
+    const before = new Map<string, string | null>();
+    for (const { key } of pending) before.set(key, store.getItem(key));
+
+    const written: string[] = [];
+    for (const { key, value } of pending) {
+      if (writeKey(key, value)) {
+        written.push(key);
+        continue;
+      }
+      // Put back what we replaced, then say what happened.
+      let restored = true;
+      for (const key2 of written) {
+        const prior = before.get(key2);
+        const ok = prior === null ? removeKey(key2) : writeKey(key2, prior ?? '');
+        if (!ok) restored = false;
+      }
+      return {
+        ok: false,
+        error: restored
+          ? `Could not write ${key} — nothing was changed`
+          : `Could not write ${key}, and the previous data could not be put back`,
+      };
     }
 
     return { ok: true };

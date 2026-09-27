@@ -182,6 +182,27 @@ function buildDefaultFromSettingsBlob(json: string | null): Profile {
   }
 }
 
+/**
+ * Write a key here the way `persist.ts` writes one: reporting failure
+ * instead of throwing.
+ *
+ * Every write in this module was a bare `setItem`, and two of them are on a
+ * READ path -- `loadProfiles` persists a migration and a reset, and
+ * `getActiveProfile` heals a dangling pointer. `App.tsx` calls
+ * `getActiveProfile()` in the root component's `useState` initialiser, so a
+ * throw there is not caught by the ErrorBoundary mounted inside App's own
+ * tree: the whole app renders nothing at all. A quota that is full or a
+ * Safari private window must cost the write, not the session.
+ */
+function writeKey(key: string, value: string): boolean {
+  try {
+    getStorage().setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function persistFreshDefault(profile: Profile): void {
   saveProfiles([profile]);
   setActiveProfile(profile.id);
@@ -208,6 +229,29 @@ export function loadProfiles(): Profile[] {
       const parsed = JSON.parse(json) as unknown;
       if (isValidProfilesArray(parsed) && parsed.length > 0) {
         return parsed.map((p) => backfillSeats(cloneProfile(p)));
+      }
+      /*
+       * ONE BAD PROFILE IS NOT FIVE BAD PROFILES.
+       *
+       * `isValidProfilesArray` is `.every(isValidProfile)`, so a single
+       * entry missing a field sent the whole array to the reset below --
+       * which writes a fresh default over it immediately, before the
+       * operator is told anything. Four intact profiles (rules, bet ramp,
+       * bankroll, count cadence, CVCX figures) were destroyed by a defect
+       * in a fifth.
+       *
+       * Whatever is still readable is kept, in its original order. The
+       * reset below now runs only when NOTHING is readable.
+       */
+      if (Array.isArray(parsed)) {
+        const survivors = parsed.filter(isValidProfile);
+        if (survivors.length > 0) {
+          diag('set', 'profiles-partly-unreadable', {
+            kept: survivors.length,
+            discarded: parsed.length - survivors.length,
+          });
+          return survivors.map((p) => backfillSeats(cloneProfile(p)));
+        }
       }
     } catch {
       // corrupt JSON: fall through to the plain-default reset below
@@ -255,7 +299,7 @@ export function saveProfiles(profiles: Profile[]): void {
   } catch {
     /* a log must never cost a profile write */
   }
-  store.setItem(PROFILES_KEY, JSON.stringify(profiles));
+  writeKey(PROFILES_KEY, JSON.stringify(profiles));
 }
 
 /**
@@ -273,7 +317,7 @@ export function getActiveProfile(): Profile {
   }
 
   const first = profiles[0]!;
-  store.setItem(ACTIVE_KEY, first.id);
+  writeKey(ACTIVE_KEY, first.id);
   return first;
 }
 
@@ -285,7 +329,7 @@ export function setActiveProfile(id: string): void {
   } catch {
     /* never cost the write */
   }
-  store.setItem(ACTIVE_KEY, id);
+  writeKey(ACTIVE_KEY, id);
 }
 
 /**
