@@ -77,6 +77,30 @@ function saidCount(page: Page): Promise<number> {
   return page.evaluate(() => window.__speechLog?.length ?? 0);
 }
 
+/**
+ * The log WITHOUT leaving the run, straight out of storage.
+ *
+ * `logText` reads the rendered panel, and getting to the panel means tapping
+ * Pause. That is fine for a test that is finished with the run and fatal for
+ * one that is not: `pauseFieldTestRun` writes `active: false`, so re-entering
+ * lands on the start gate rather than back on the step -- and a test that
+ * then "presses a wheel button on a route step" is pressing it with no step
+ * mounted at all. See the probe test below, which was doing exactly that.
+ */
+async function rawLog(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+    const all = raw
+      ? (JSON.parse(raw) as {
+          category: string;
+          event: string;
+          detail?: Record<string, unknown>;
+        }[])
+      : [];
+    return all.map((e) => `${e.category} ${e.event} ${JSON.stringify(e.detail ?? {})}`).join('\n');
+  });
+}
+
 async function logText(page: Page): Promise<string> {
   // The tab bar stands down during a run, so mid-run the way out is Pause --
   // which keeps the position and every stamp, unlike Finish.
@@ -142,12 +166,18 @@ test('it speaks its own line when a step opens, with nothing else running', asyn
   await withSettings(page, {});
   await openTest(page);
 
-  await expect.poll(() => saidCount(page), { timeout: 5000 }).toBeGreaterThan(0);
-
-  const spoken = await page.evaluate(() => window.__speechLog ?? []);
-  // Not any utterance -- the exact line this step declares, which is also a
-  // line that has a recorded clip (pinned in fieldTest.test.ts).
-  expect(spoken).toContain('Basic hit versus dealer nine.');
+  // POLLED FOR THE LINE ITSELF, not for "something was said".
+  //
+  // Every measured sample now has a fixed silence between its arrival chime
+  // and its utterance, so the first thing in the speech log is the chime and
+  // the line lands a second and a half later. Polling for a non-empty log
+  // therefore stopped at the chime and then asserted against a log with no
+  // line in it -- and the failure message said nothing about waiting.
+  await expect
+    .poll(async () => (await page.evaluate(() => window.__speechLog ?? [])).map(String), {
+      timeout: 15_000,
+    })
+    .toContain('Basic hit versus dealer nine.');
 });
 
 test('it will say the line again, because a line missed in traffic is a step wasted', async ({
@@ -155,16 +185,24 @@ test('it will say the line again, because a line missed in traffic is a step was
 }) => {
   await withSettings(page, {});
   await openTest(page);
-  await expect.poll(() => saidCount(page), { timeout: 5000 }).toBeGreaterThan(0);
+  // UTTERANCES, NOT SOUNDS. `__speechLog` carries chimes too, and every
+  // measured step now chimes on arrival and again after the settle -- so a
+  // count of everything the app emitted moved for reasons that have nothing
+  // to do with the control under test.
+  const lines = async () =>
+    (await page.evaluate(() => window.__speechLog ?? []))
+      .map(String)
+      .filter((l) => !l.startsWith('chime:'));
+  await expect.poll(lines, { timeout: 15_000 }).toContain('Basic hit versus dealer nine.');
   // Measured as an INCREASE rather than against a fixed count: StrictMode
   // double-invokes effects in dev, so the opening line lands once in a
   // production build and twice here. What the button has to do -- say it one
   // more time, on demand -- is the same number either way.
-  const before = await saidCount(page);
+  const before = (await lines()).length;
 
   await page.getByTestId('fieldtest-again').click();
 
-  await expect.poll(() => saidCount(page), { timeout: 5000 }).toBe(before + 1);
+  await expect.poll(async () => (await lines()).length, { timeout: 15_000 }).toBe(before + 1);
 });
 
 /**
@@ -498,12 +536,21 @@ test('the probe is let go when the step is not about the wheel', async ({ page }
   // car sends `play`, `pause` and `stop` of its own accord, so a leaked probe
   // would attribute the car's own chatter to whichever step happened to be
   // open, as presses the operator never made.
-  const before = (await logText(page)).split('field-test-arrival').length;
-  await page.getByTestId('fieldtest-open').click();
+  // WITHOUT LEAVING THE RUN. This used to call `logText`, which taps Pause to
+  // reach the diagnostic panel -- so `active` went false, the re-entry below
+  // landed on the START GATE, and the press was made with no step mounted at
+  // all. `fieldtest-wheel` only exists inside the running screen, so
+  // `toHaveCount(0)` held for the wrong reason entirely: a probe that really
+  // did leak onto a route step passed this test.
+  const before = (await rawLog(page)).split('field-test-arrival').length;
+  // Still on the route step, and asserted as such before anything is pressed.
+  await expect(page.getByTestId('fieldtest-title')).toBeVisible();
+  const title = await page.getByTestId('fieldtest-title').innerText();
+  expect(title, 'the run is not on a step any more').not.toMatch(/wheel/i);
   expect(await press(page, 'nexttrack')).toBe(true);
   await expect(page.getByTestId('fieldtest-wheel')).toHaveCount(0);
 
-  const after = (await logText(page)).split('field-test-arrival').length;
+  const after = (await rawLog(page)).split('field-test-arrival').length;
   expect(after, 'a press on a non-wheel step was filed as step evidence').toBe(before);
 });
 
@@ -683,14 +730,18 @@ test('Back is unavailable on the first step rather than wrapping round', async (
 });
 
 /**
- * The pairing the whole protocol exists to collect.
+ * An answer reaches the export joinable to the step that produced it.
  *
- * The file header's own words: "pair the answer with the path that spoke
- * it". Dropping `paths` from the stamp leaves every route answer in the
- * export unattributable between the recorded voice and the phone's, so the
- * run's leading hypothesis and the null hypothesis produce identical logs.
+ * RENAMED, and the docblock moved with the property. This used to be called
+ * "an answer is recorded together with the voice that spoke the line" and to
+ * claim that dropping `paths` from the stamp made every route answer
+ * unattributable -- while asserting only `step=` and `answer=`, so dropping
+ * `paths` left it green. The property IS covered, by the identically named
+ * test in `field-test-audio.spec.ts`, which runs without `?e2e=1` and
+ * asserts `paths` matches /clip|tts/ -- but two tests shared one name across
+ * two projects and the one a reader greps first was the vacuous one.
  */
-test('an answer is recorded together with the voice that spoke the line', async ({ page }) => {
+test('an answer reaches the log with its step and its response', async ({ page }) => {
   await withSettings(page, {});
   await openTest(page, 'Car, parked');
 
@@ -1081,11 +1132,14 @@ test('a bounced tap does not answer the next step as well', async ({ page }) => 
 
   const answers = page.getByTestId('fieldtest-answers').locator('button');
   await expect(answers.first()).toBeEnabled();
+  // PAST THE GUARD ON THIS STEP, so the first tap is a real answer and the
+  // second is the bounce. The window is measured from the step opening.
   await page.waitForTimeout(400);
 
-  // The bounce: two presses inside the window a rough road produces.
+  // The bounce: two presses inside the window a rough road produces. The
+  // second lands on the NEXT step's stack, at the same pixel.
   await answers.first().click();
-  await answers.first().click({ delay: 0 });
+  await answers.first().click({ delay: 0, force: true });
 
   // One step advanced, not two.
   await expect(
@@ -1094,9 +1148,17 @@ test('a bounced tap does not answer the next step as well', async ({ page }) => 
   ).toContainText('step 2 of');
 
   // ...and the swallowed tap is recorded, because a control that silently
-  // does nothing is its own diagnostic problem.
+  // does nothing is its own diagnostic problem. TWO WAYS TO SWALLOW IT, and
+  // the test accepts either: the 350ms bounce guard, and -- on a step that
+  // speaks -- the answers refusing taps until the line has been heard. Both
+  // write a line and both now chime; what must NOT happen is a second answer.
   const text = await logText(page);
-  expect(text).toMatch(/test\s+answer-ignored/);
+  expect(
+    text,
+    'the second tap was neither refused nor ignored, so nothing swallowed it',
+  ).toMatch(/test\s+answer-(ignored|blocked)/);
+  const answered = text.split('\n').filter((l) => /test\s+answer /.test(l));
+  expect(answered.length, `the bounce recorded ${answered.length} answers`).toBe(1);
 });
 
 /**
@@ -1610,7 +1672,7 @@ test('the step setup lands in the log attached to its own run and step', async (
   for (const line of setup) {
     expect(line, 'a step-setup line cannot be joined to its run').toMatch(/ run=[a-z0-9]+/);
     expect(line, 'a step-setup line does not say which condition it ran under').toMatch(
-      / cond=[a-z]+/,
+      / condition=[a-z]+/,
     );
   }
   // The `path=` half of this belongs in the real-audio project: under `?e2e=1`
@@ -1821,6 +1883,19 @@ test('a line after the microphone records how long after it went out', async ({ 
   await withFakeRecognition(page);
   await withSettings(page, {});
   await openTest(page, 'Car, parked');
+
+  // THE FIRST SAMPLE HAS TO HAVE BEEN TAKEN before we walk past it: this
+  // test compares the offset on a before-microphone cell against a
+  // post-microphone one, and every measured sample now waits a fixed silence
+  // after its arrival chime before it speaks. Skipping straight through
+  // route-1 left the comparison with nothing on one side.
+  await expect
+    .poll(
+      async () =>
+        (await events(page)).some((e) => e.event === 'say-start' && e.detail?.step === 'route-1'),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
 
   // Walk to the first post-microphone route sample and let its gate open.
   await goToStep(page, 'route-after-mic');
@@ -2159,7 +2234,11 @@ test('a first visit to the gate stays quiet', async ({ page }) => {
   await withSettings(page, {});
   await page.goto('/?e2e=1');
   await page.evaluate(() => {
-    window.localStorage.removeItem('bjtrainer.fieldtest.run.v1');
+    // THE REAL KEY. This read `bjtrainer.fieldtest.run.v1`, which is not what
+    // the store writes (`fieldTestRun`, capital T), so the defensive clear
+    // cleared nothing and the test passed only because Playwright hands every
+    // test a fresh context anyway.
+    window.localStorage.removeItem('bjtrainer.fieldTestRun.v1');
     window.__speechLog = [];
   });
   await page.getByRole('button', { name: 'Settings' }).first().click();
@@ -2311,6 +2390,15 @@ test('the repeat control still repeats the measured line', async ({ page }) => {
  */
 test('the audio graph is open before the first line is spoken', async ({ page }) => {
   await openTest(page, 'Car, parked');
+  // THE LINE HAS TO HAVE BEEN SPOKEN before the log is read: every measured
+  // sample now waits a fixed silence between its arrival chime and its
+  // utterance, and `logText` pauses the run, so reading it immediately
+  // caught the run mid-settle and the comparison had nothing on one side.
+  await expect
+    .poll(async () => (await page.evaluate(() => window.__speechLog ?? [])).map(String), {
+      timeout: 15_000,
+    })
+    .toContain('Basic hit versus dealer nine.');
   const text = await logText(page);
   const opened = text.indexOf('audio-graph-open');
   expect(opened, 'nothing opened the audio graph at run start').toBeGreaterThan(-1);

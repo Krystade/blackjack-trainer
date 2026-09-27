@@ -3981,6 +3981,14 @@ details.stats-section > summary::after {
    48px, not the 40px `.fieldtest-stamp` default: this is a control a driver
    aims at without looking, and 44pt is the floor Apple sets for that. */
 .fieldtest-controls {
+  /* INSET LIKE EVERYTHING ELSE. This row is a child of `.fieldtest-screen`
+     rather than of `.fieldtest-body`, so it took none of the body's side
+     padding: measured, "Say it again" spanned x=0..184 while the answers
+     above and below it spanned x=12..363. The rule this file states for the
+     screen is that the topbar spans it and everything else is inset from the
+     edges, and a control whose left edge is the bezel is also a control a
+     thumb reaches by sliding rather than by aiming. */
+  padding-inline: 0.75rem;
   /* NO AUTO MARGIN HERE, deliberately. Bottom-anchoring this row with
      `margin-top: auto` does pin it — auto margins absorb the free space before
      `flex-grow` is even considered — and that is exactly the problem: the
@@ -4023,7 +4031,10 @@ details.stats-section > summary::after {
    operator taps a live-looking control, nothing happens, and the only way to
    find out why is to look at the screen -- which is the one thing this screen
    exists to avoid. */
-.fieldtest-stamp:disabled {
+.fieldtest-stamp:disabled,
+/* ...AND THE ANSWERS, which are refused rather than disabled so that the
+   refusal can be heard (see FieldTest.tsx). They have to look the same. */
+.fieldtest-stamp[aria-disabled='true'] {
   opacity: 0.45;
   cursor: default;
 }
@@ -4114,9 +4125,6 @@ details.stats-section > summary::after {
     padding-top: 8px;
   }
 
-  .fieldtest-nav {
-    margin-top: 10px;
-  }
 }
 
 .fieldtest-nav {
@@ -4124,6 +4132,23 @@ details.stats-section > summary::after {
      moved to `.fieldtest-answers`. Fixed separation from the last answer, so
      the gap between "Missed it" and Skip does not depend on the step. */
   margin-top: 14px;
+}
+
+/* ...AND THE LAST 4px OF IT, which the block above could not reclaim.
+
+   This rule used to sit inside `@media (max-height: 719px)` ABOVE the
+   unconditional `margin-top: 14px`. Same specificity, later in the sheet
+   wins, so it never applied: measured at 375x667 the computed value was 14px,
+   and the comment three rules up called these "the last 14px the column
+   needs". Four of them were never there. It matters at that height: the same
+   measurement puts the six-answer stack 7px short of overflowing, and what
+   overflow produces here is not a clipped button but a touch-scrollable
+   answer stack -- every label free to move under the thumb, which is the
+   exact failure the fixed slots exist to prevent. */
+@media (max-height: 719px) {
+  .fieldtest-nav {
+    margin-top: 10px;
+  }
 }
 
 /* AN ARMED MARK, visibly armed. A modifier answer does not advance the step --

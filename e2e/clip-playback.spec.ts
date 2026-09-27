@@ -27,19 +27,43 @@ import {
 /**
  * Guard two of two against this harness being audible, independent of the
  * project's `--mute-audio` launch flag (playwright.config.ts): every media
- * element reports itself muted and ignores attempts to unmute.
+ * element is set to zero volume and muted, through the real setters, as it
+ * starts playing.
  *
- * Nothing in src/ reads `.muted` -- volume is set through `volume` and, above
- * 100%, through a Web Audio gain node -- so this changes no value the spec
- * asserts on, and playback still progresses and still fires `ended`.
+ * Nothing in src/ reads `.muted` or `.volume` back -- volume is set through
+ * `volume` and, above 100%, through a Web Audio gain node -- so this changes
+ * no value the spec asserts on, and playback still progresses and still
+ * fires `ended`.
  */
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    Object.defineProperty(HTMLMediaElement.prototype, 'muted', {
-      configurable: true,
-      get: () => true,
-      set: () => {},
-    });
+    /*
+     * SILENCED THROUGH THE REAL SETTERS, at the moment of play.
+     *
+     * This used to shadow the `muted` accessor with a JS getter returning
+     * true and a setter that did nothing. That changes what a script READS
+     * and nothing else: Blink's internal muted flag stays false, the no-op
+     * setter means nothing can ever set it, and the element plays at full
+     * volume. Since nothing in src/ reads `.muted` either, the override
+     * changed no observable value anywhere and protected nothing -- while
+     * playwright.config.ts told anyone reading it that being heard would
+     * take two independent failures.
+     *
+     * Assigning `volume` and `muted` through the prototype's own setters
+     * does reach the engine. Done inside `play()` so it applies to every
+     * element the app creates, however it creates it, and after any volume
+     * the app set for itself.
+     */
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function patchedPlay(this: HTMLMediaElement) {
+      try {
+        this.volume = 0;
+        this.muted = true;
+      } catch {
+        /* an element that will not be silenced must still be caught by --mute-audio */
+      }
+      return play.call(this);
+    };
   });
 });
 

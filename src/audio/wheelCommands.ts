@@ -75,7 +75,21 @@ export function setWheelCommandHandler(next: WheelHandler | null): void {
  * tell "handled" from "nothing on screen wanted it" -- the log records both,
  * and a press that reached nobody is itself evidence about the mapping.
  */
-export function invokeWheelCommand(command: WheelCommand): boolean {
+export function invokeWheelCommand(
+  command: WheelCommand,
+  /**
+   * What happens if no screen is listening, so ONE line describes the press.
+   *
+   * `speech.ts` used to call this, see it return false, and then handle the
+   * press itself with a second `wheel dispatch` entry saying `handled=true`.
+   * One skip-back therefore wrote `handled=false why=no-screen-listening`
+   * — the exact signature of the fault under investigation — immediately
+   * followed by a line contradicting it, and a reader counting presses counted
+   * one press as two. Passing the fallback in means the outcome is known
+   * before anything is written.
+   */
+  fallback?: { by: string; run: () => void },
+): boolean {
   // LOGGED, WITH WHAT BECAME OF IT. This function's own doc comment promised
   // "the log records both, and a press that reached nobody is itself
   // evidence" -- and it wrote nothing at all, while both call sites discarded
@@ -85,6 +99,14 @@ export function invokeWheelCommand(command: WheelCommand): boolean {
   // A handler that THREW is a third outcome again, and used to be reported as
   // the second.
   if (!handler) {
+    if (fallback) {
+      diag('wheel', 'dispatch', { command, handled: true, by: fallback.by });
+      fallback.run();
+      // STILL FALSE. The return value answers "did a screen want this", which
+      // is what the caller's own bookkeeping is about; the log answers "did
+      // the press do anything", and those are different questions.
+      return false;
+    }
     diag('wheel', 'dispatch', { command, handled: false, why: 'no-screen-listening' });
     return false;
   }

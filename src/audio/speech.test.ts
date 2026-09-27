@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-  speak, speakAsync, chime, isSpeechSupported, listVoices, cancelSpeech, pickBestVoice,
+  speak, speakAsync, chime, chimeFrequencyForTest, isSpeechSupported, listVoices, cancelSpeech, pickBestVoice,
   getLastSpoken, repeatLast, _resetLastSpokenForTest, _resetSharedAudioContextForTest,
   lastSpeechPath, _resetSpeechPathForTest,
   setSpeechActivityListener,
@@ -44,6 +44,51 @@ describe('speech wrapper — e2e log mode', () => {
     speak('Correct');
     chime('good');
     expect((globalThis as any).window.__speechLog).toEqual(['Correct', 'chime:good']);
+  });
+
+  /**
+   * F2b: every chime reaches the diagnostic log.
+   *
+   * The only line `chime()` used to write was `chime-suspended`, so a sound
+   * the app made was in the export exactly when it FAILED to make it. On this
+   * app that is not cosmetic: a chime is a Web Audio activation and an audio
+   * session event, and the field test's route samples measure where an audio
+   * session sends things. Only the post-microphone cells were getting an
+   * arrival chime, which correlated the acoustic run-up with the independent
+   * variable and left no trace of it at all.
+   */
+  it('writes every chime to the diagnostic log, not only the failures', () => {
+    clearDiagnosticLog();
+    chime('good');
+    chime('blocked');
+    chime('mark', { volume: 0.5 });
+    const chimes = readDiagnosticLog().filter((e) => e.category === 'speak' && e.event === 'chime');
+    expect(chimes.map((e) => e.detail?.kind)).toEqual(['good', 'blocked', 'mark']);
+    expect(chimes[2]?.detail?.volume, 'the volume a chime played at is not recorded').toBe(0.5);
+  });
+
+  /**
+   * E3/E4: arming and refusal are audibly distinct from answering.
+   *
+   * A `modifier` answer arms a marker and leaves the step open while every
+   * other answer stamps and advances, and both chimed `attention` -- so the
+   * one fact an eyes-free operator needs after a tap was the one the sound
+   * did not carry. A tap the screen refuses (the microphone gates, up to ten
+   * seconds at a stretch, and the bounce guard) made no sound at all, which
+   * is indistinguishable from missing the button.
+   */
+  it('gives arming and refusal tones of their own', () => {
+    const tones = new Map<string, number>();
+    for (const kind of ['good', 'bad', 'attention', 'mark', 'blocked'] as const) {
+      clearDiagnosticLog();
+      chime(kind);
+      tones.set(kind, chimeFrequencyForTest(kind));
+    }
+    expect(tones.get('mark'), 'arming sounds exactly like answering').not.toBe(
+      tones.get('attention'),
+    );
+    expect(tones.get('blocked'), 'a refused tap sounds like an answer').not.toBe(tones.get('bad'));
+    expect(new Set(tones.values()).size, 'two tones are the same sound').toBe(tones.size);
   });
 });
 

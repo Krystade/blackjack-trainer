@@ -16,17 +16,41 @@ import { test, expect } from '@playwright/test';
  * and reporting nothing -- it passes either way. This project can.
  *
  * Audible-by-accident is guarded twice, exactly as clip-playback.spec.ts is:
- * the project's `--mute-audio` launch flag, and the element-level `muted`
- * override below. Nothing in src/ reads `.muted`, so neither changes a value
- * this spec asserts on.
+ * the project's `--mute-audio` launch flag, and the element-level silencing
+ * below, which sets `volume` and `muted` through the real setters as each
+ * element starts. Nothing in src/ reads either back, so neither changes a
+ * value this spec asserts on, and playback still progresses and still fires
+ * `ended`.
  */
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    Object.defineProperty(HTMLMediaElement.prototype, 'muted', {
-      configurable: true,
-      get: () => true,
-      set: () => {},
-    });
+    /*
+     * SILENCED THROUGH THE REAL SETTERS, at the moment of play.
+     *
+     * This used to shadow the `muted` accessor with a JS getter returning
+     * true and a setter that did nothing. That changes what a script READS
+     * and nothing else: Blink's internal muted flag stays false, the no-op
+     * setter means nothing can ever set it, and the element plays at full
+     * volume. Since nothing in src/ reads `.muted` either, the override
+     * changed no observable value anywhere and protected nothing -- while
+     * playwright.config.ts told anyone reading it that being heard would
+     * take two independent failures.
+     *
+     * Assigning `volume` and `muted` through the prototype's own setters
+     * does reach the engine. Done inside `play()` so it applies to every
+     * element the app creates, however it creates it, and after any volume
+     * the app set for itself.
+     */
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function patchedPlay(this: HTMLMediaElement) {
+      try {
+        this.volume = 0;
+        this.muted = true;
+      } catch {
+        /* an element that will not be silenced must still be caught by --mute-audio */
+      }
+      return play.call(this);
+    };
     window.localStorage.setItem(
       'bjtrainer.settings.v1',
       JSON.stringify({
@@ -44,11 +68,22 @@ async function openTest(page: import('@playwright/test').Page): Promise<void> {
   // section has to be opened the way a person opens it.
   await page.locator('summary', { hasText: 'Field test' }).click();
   await page.getByTestId('fieldtest-open').click();
-  if ((await page.getByTestId('fieldtest-finish').count()) > 0) {
-    await page.getByTestId('fieldtest-finish').click();
+  // BOTH CONTROLS NEED TWO TAPS, and this used to give each of them one.
+  // Finish arms on the first tap ("Tap again to end") and Start reads "Start
+  // over from step 1" and arms too when there is a run to come back to -- so
+  // the cleanup left the run open and the `fieldtest-open` click below it hit
+  // a screen that was still running. Dead today only because every test gets
+  // a fresh context, which is exactly what makes it a trap: it is harness
+  // code that has never once run.
+  const finish = page.getByTestId('fieldtest-finish');
+  if ((await finish.count()) > 0) {
+    await finish.click();
+    if ((await finish.count()) > 0) await finish.click();
     await page.getByTestId('fieldtest-open').click();
   }
-  await page.getByTestId('fieldtest-start').click();
+  const start = page.getByTestId('fieldtest-start');
+  await start.click();
+  if ((await page.getByTestId('fieldtest-title').count()) === 0) await start.click();
 }
 
 /**
@@ -98,13 +133,25 @@ test('the path reaches the diagnostic log, not just the screen', async ({ page }
   await openTest(page);
   await expect(page.getByTestId('fieldtest-path')).toBeVisible({ timeout: 20_000 });
 
-  const entries = await page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
-    return raw ? (JSON.parse(raw) as { category: string; event: string; detail?: Record<string, unknown> }[]) : [];
-  });
-  const paths = entries.filter((e) => e.category === 'speak' && e.event === 'path');
-  expect(paths.length).toBeGreaterThan(0);
-  expect(paths.some((e) => e.detail?.path === 'clip')).toBe(true);
+  // THE SETTLED LINE, NOT THE GUESS. Two events describe one utterance:
+  // `path-chosen`, written before the clip plays and only a prediction, and
+  // `path`, written when it is over. The panel above is rendered from the
+  // settled one, but the log buffers for a second after that, so the panel
+  // being up is not evidence that the log has the fact yet.
+  await expect
+    .poll(
+      async () =>
+        (await allEvents(page)).filter((e) => e.category === 'speak' && e.event === 'path'),
+      { timeout: 20_000, message: 'the path never reached the log, only the screen' },
+    )
+    .not.toEqual([]);
+  const paths = (await allEvents(page)).filter(
+    (e) => e.category === 'speak' && e.event === 'path',
+  );
+  expect(
+    paths.map((e) => e.detail?.path),
+    'the log recorded a path, but not the recorded-clip one this step has',
+  ).toContain('clip');
 });
 
 /**
@@ -311,7 +358,28 @@ async function allEvents(
  */
 test('a line abandoned half way says so instead of looking like a hang', async ({ page }) => {
   await openTest(page);
-  // Skip while the first line is genuinely still playing.
+  // GENUINELY STILL PLAYING, WHICH HAS TO BE WAITED FOR AND THEN PROVEN.
+  //
+  // A measured step now opens with a chime and 1500ms of silence before its
+  // line, so a Skip fired the moment the screen mounts lands in the silence:
+  // nothing is in flight, nothing is abandoned, and the assertions below
+  // would be reporting on an utterance that was never interrupted.
+  //
+  // `fieldtest-path` is NOT the signal -- measured, the chain starts at
+  // :39.371, ends at :41.330 and the panel appears at :41.696, because the
+  // screen renders the SETTLED path. Waiting for it waits for the line to be
+  // over. `speak clip-chain` is written as the chain is handed to the audio
+  // element; it costs the log's one-second flush and still leaves about half
+  // of a two-second clip.
+  await expect
+    .poll(
+      async () =>
+        (await allEvents(page)).some(
+          (e) => e.event === 'clip-chain' && e.detail?.step === 'route-1',
+        ),
+      { timeout: 20_000, message: 'the first line never started playing' },
+    )
+    .toBe(true);
   await page.getByTestId('fieldtest-skip').click();
 
   // The log buffers for FLUSH_DELAY_MS before it reaches storage, and the step
@@ -335,6 +403,15 @@ test('a line abandoned half way says so instead of looking like a hang', async (
     .toBe(true);
 
   const events = await allEvents(page);
+  // THE AUDIO ITSELF STOPPED, not merely the bracket closed. `clip-end
+  // reason=ended` is a clip that ran to its natural end, which is what a
+  // Skip that lands in the settle produces -- and every assertion below
+  // would otherwise be satisfied by a run in which nothing was interrupted.
+  const ends = events.filter((e) => e.event === 'clip-end' && e.detail?.step === 'route-1');
+  expect(
+    ends.map((e) => e.detail?.reason),
+    'the first line played to its natural end, so nothing was abandoned',
+  ).toContain('stopped');
   const cancelled = events.filter((e) => e.event === 'say-cancelled');
   expect(
     cancelled.length,
@@ -480,4 +557,79 @@ test('a wheel press says whether the app was talking when it landed', async ({ p
     events.some((e) => e.event === 'instruction-spoken'),
     'the spoken instruction has no closing bracket',
   ).toBe(true);
+});
+
+/**
+ * L10: the guess and the outcome are different events.
+ *
+ * `speak path path=clip` was written BEFORE the chain played and
+ * `speak path path=clip-failed-to-tts` after it failed -- same event, same
+ * tag, the first flatly contradicted by the second with nothing marking it
+ * provisional. And because `clip` is a PREFIX of `clip-failed-to-tts`, a
+ * reader counting `path=clip` counted a broken utterance twice and a good
+ * one once: the export's own count of how often the recorded voice spoke was
+ * wrong in the direction that hides the fault.
+ *
+ * This runs against real playback, which is the only place the clip branch
+ * is taken at all.
+ */
+test('the path the app guessed and the path it took are different lines', async ({ page }) => {
+  await openTest(page);
+  // Both halves have to be in the log, and the settled one is written last
+  // and then buffered, so the panel appearing is not enough. (The panel is
+  // rendered from the settled path, but a second can pass before the log
+  // has it.)
+  await expect
+    .poll(
+      async () =>
+        (await allEvents(page)).filter((e) => e.category === 'speak' && e.event === 'path')
+          .length,
+      { timeout: 20_000, message: 'no settled path line was ever written' },
+    )
+    .toBeGreaterThan(0);
+
+  const events = await page.evaluate(() => {
+    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+    const all = raw
+      ? (JSON.parse(raw) as {
+          category: string;
+          event: string;
+          detail?: Record<string, unknown>;
+        }[])
+      : [];
+    return all
+      .filter((e) => e.category === 'speak' && e.event.startsWith('path'))
+      .map((e) => ({ event: e.event, path: String(e.detail?.path ?? '') }));
+  });
+
+  expect(events.length, 'nothing recorded which voice spoke at all').toBeGreaterThan(0);
+  // The optimistic line is named as one...
+  const chosen = events.filter((e) => e.event === 'path-chosen');
+  expect(chosen.length, 'the pre-play guess is not recorded').toBeGreaterThan(0);
+  for (const e of chosen) {
+    expect(e.path, 'only the clip branch guesses before it plays').toBe('clip');
+  }
+  // ...and the guess is followed by a settled line that says how it turned
+  // out. THE OLD RULE HERE WAS "a settled entry never says clip", which was
+  // the same rule as the implementation's own `path === 'clip' -> guess` --
+  // an oracle copied from the code it was checking. It also made the correct
+  // behaviour untestable: a clip that plays all the way through is a settled
+  // clip, and forbidding that entry is what left `speak path` counting only
+  // the utterances that failed.
+  const settled = events.filter((e) => e.event === 'path');
+  expect(
+    settled.length,
+    'the guess was never resolved: no settled path line followed it',
+  ).toBeGreaterThan(0);
+  expect(
+    settled.map((e) => e.path),
+    'step one plays a recorded line, so its settled path is the clip one',
+  ).toContain('clip');
+  // The two are separate lines, not one line written twice: the settled
+  // entries never outnumber the utterances, and the guesses are not settled
+  // entries.
+  expect(
+    chosen.length + settled.length,
+    'every path entry is either the guess or the outcome',
+  ).toBe(events.length);
 });

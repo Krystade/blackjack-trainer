@@ -113,3 +113,60 @@ describe('a wheel press records what happened to it', () => {
     expect(last?.error).toContain('drill blew up');
   });
 });
+
+/**
+ * L4: one press, one line.
+ *
+ * `speech.ts` used to call this, watch it return false, and then write its
+ * OWN `wheel dispatch` entry saying `handled=true by=repeat-last`. A single
+ * skip-back with nothing on screen therefore wrote
+ * `handled=false why=no-screen-listening` -- the exact signature of the fault
+ * under investigation -- immediately followed by a line contradicting it, and
+ * a reader counting presses counted one press as two.
+ */
+describe('a press nothing on screen wanted', () => {
+  beforeEach(() => {
+    _resetWheelCommandsForTest();
+    clearDiagnosticLog();
+  });
+
+  const dispatches = () =>
+    readDiagnosticLog()
+      .filter((e) => e.category === 'wheel' && e.event === 'dispatch')
+      .map((e) => e.detail ?? {});
+
+  it('writes one line, not two, when a fallback handles it', () => {
+    let ran = 0;
+    expect(invokeWheelCommand('back', { by: 'repeat-last', run: () => (ran += 1) })).toBe(false);
+    expect(ran, 'the fallback never ran').toBe(1);
+    const lines = dispatches();
+    expect(
+      lines.length,
+      `one press wrote ${lines.length} dispatch lines: ${JSON.stringify(lines)}`,
+    ).toBe(1);
+    expect(lines[0]?.handled, 'a press that was handled is filed as unhandled').toBe(true);
+    expect(lines[0]?.by).toBe('repeat-last');
+    expect(
+      lines[0]?.why,
+      'the line still carries the bug signature it was handled in spite of',
+    ).toBeUndefined();
+  });
+
+  it('still reports the press as unhandled when there is no fallback', () => {
+    expect(invokeWheelCommand('back')).toBe(false);
+    const lines = dispatches();
+    expect(lines.length).toBe(1);
+    expect(lines[0]?.handled).toBe(false);
+    expect(lines[0]?.why).toBe('no-screen-listening');
+  });
+
+  it('does not run the fallback when a screen did want the press', () => {
+    let ran = 0;
+    const seen: string[] = [];
+    setWheelCommandHandler((c) => seen.push(c));
+    expect(invokeWheelCommand('back', { by: 'repeat-last', run: () => (ran += 1) })).toBe(true);
+    expect(seen).toEqual(['back']);
+    expect(ran, 'the fallback spoke over the screen that handled the press').toBe(0);
+    expect(dispatches().length).toBe(1);
+  });
+});

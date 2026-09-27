@@ -492,6 +492,18 @@ export interface SpeechPathRecord {
    * dropped its `paths` field in the one case the protocol was rewritten for.
    */
   for: string;
+  /**
+   * WRITTEN BEFORE THE VOICE SPOKE, so it is a prediction and not a fact.
+   *
+   * Only the clip branch can guess: it commits to a path at the moment it
+   * hands the chain to the audio element, and finding out whether that was
+   * true takes until the last clip ends. Every other record is written once
+   * the outcome is known.
+   *
+   * This used to be inferred from `path === 'clip'`, which was the same thing
+   * only for as long as a clip that PLAYED wrote nothing at all.
+   */
+  chosen?: boolean;
   /** The caller's correlation id, when one was supplied. */
   tag?: string;
   /**
@@ -523,10 +535,26 @@ let pathSeq = 0;
  * response was the correct one: "it's not like they're played the same way
  * and the code doesn't know wtf?" It does know. Now it says so.
  */
+/**
+ * Which event name a path record gets: the guess, or the outcome.
+ *
+ * `path=clip` was written BEFORE the chain played and `path=clip-failed-to-tts`
+ * after it failed, both under the event `path`, both carrying the same `tag`.
+ * `clip` is a prefix of `clip-failed-to-tts`, so `grep 'path=clip'` counted a
+ * broken utterance twice and a good one once, and the first of the two lines
+ * was flatly contradicted by the second with nothing marking it provisional.
+ */
+function pathEvent(record: Omit<SpeechPathRecord, 'seq'>): 'path' | 'path-chosen' {
+  // WHETHER IT HAS HAPPENED YET, not which voice it was. `speak path` is
+  // counted as one line per utterance; a guess filed under it counts an
+  // utterance that has not finished and may not survive.
+  return record.chosen ? 'path-chosen' : 'path';
+}
+
 function recordSpeechPath(record: Omit<SpeechPathRecord, 'seq'>): void {
   const full: SpeechPathRecord = { ...record, seq: ++pathSeq };
   lastPath = full;
-  const { path, text, ...rest } = full;
+  const { path, text, partial, chosen: _chosen, ...rest } = full;
   // `said` rather than `text` in the log, because every other speak entry
   // already uses that key and the export is grepped by hand in a car park.
   //
@@ -534,7 +562,19 @@ function recordSpeechPath(record: Omit<SpeechPathRecord, 'seq'>): void {
   // the ONLY one that says which voice spoke -- could be joined to the step
   // that produced it by adjacency alone, and two steps deliberately speak the
   // same line, so even the text could not disambiguate them.
-  diag('speak', 'path', { path, said: text, ...rest });
+  /**
+   * `said-remainder` WHEN THAT IS WHAT IT IS.
+   *
+   * On a clip chain that broke part way, `text` is what is LEFT to say, while
+   * `said` on every other speak entry is the whole utterance. One key meant
+   * two things, distinguished only by a `partial=true` further along the same
+   * line, and the whole family is read by grep.
+   */
+  diag('speak', pathEvent(record), {
+    path,
+    ...(partial ? { 'said-remainder': text, partial } : { said: text }),
+    ...rest,
+  });
 }
 
 /**
@@ -576,14 +616,22 @@ export function speak(
     // see and the volume boost can reach, while live speechSynthesis is
     // neither, so which one spoke decides whether a line survives road noise
     // and whether the car even knows the app is talking.
-    recordSpeechPath({ path: 'clip', text, for: text, tag: opts?.tag });
+    recordSpeechPath({ path: 'clip', text, for: text, tag: opts?.tag, chosen: true });
     announceToMediaSession(text);
     void playClipsResumable(text, {
       interrupt: opts?.interrupt,
       rate: opts?.rate,
       volume: opts?.volume,
     }).then(({ played, remainder }) => {
-      if (played) return;
+      if (played) {
+        // THE SETTLED LINE, for the case that worked. `path-chosen` is
+        // written before the chain plays and is a guess; without this, a
+        // successful clip utterance had no settled record at all and only
+        // the failures did -- so counting `speak path` would have counted
+        // exactly the utterances that went wrong.
+        recordSpeechPath({ path: 'clip', text, for: text, tag: opts?.tag });
+        return;
+      }
       // A clip chain that broke is the app switching voices MID-UTTERANCE,
       // which is the worst case for the operator and the hardest to notice.
       recordSpeechPath({
@@ -680,17 +728,13 @@ export function ensureMediaSessionHandlers(): boolean {
       // driver could want from it rather than nothing, and that is "say that
       // again": the app is talking, the driver missed a word, and there is
       // no drill in the way.
-      if (!invokeWheelCommand('back')) {
-        // LOGGED AS HANDLED, because it was. `invokeWheelCommand` writes
-        // `wheel dispatch handled=false why=no-screen-listening` and then this
-        // line does something useful anyway -- so the export showed a press
-        // reaching nothing, immediately followed by the app re-speaking a line
-        // out of nowhere. A reader diagnosing the wheel counted that press as
-        // dead; a reader diagnosing the voice saw unprompted speech. Both are
-        // wrong, from the same two lines.
-        diag('wheel', 'dispatch', { command: 'back', handled: true, by: 'repeat-last' });
-        repeatLast();
-      }
+      // ONE PRESS, ONE LINE. This used to call `invokeWheelCommand`, watch it
+      // write `handled=false why=no-screen-listening`, and then write a
+      // second entry saying `handled=true` -- so the export showed a press
+      // reaching nothing immediately followed by a press reaching something,
+      // for one thumb. The fallback goes in, so the line is written once by
+      // the code that knows the outcome.
+      invokeWheelCommand('back', { by: 'repeat-last', run: repeatLast });
     },
   });
 }
@@ -924,14 +968,22 @@ export function speakAsync(
   // protocol produced was invisible in the very log the protocol exists to
   // fill. Two entry points, one decision, one place that writes it down.
   if (isClipsEnabled() && hasClips(text)) {
-    recordSpeechPath({ path: 'clip', text, for: text, tag: opts?.tag });
+    recordSpeechPath({ path: 'clip', text, for: text, tag: opts?.tag, chosen: true });
     announceToMediaSession(text);
     return playClipsResumable(text, {
       interrupt: opts?.interrupt,
       rate: opts?.rate,
       volume: opts?.volume,
     }).then(({ played, remainder }) => {
-      if (played) return;
+      if (played) {
+        // THE SETTLED LINE, for the case that worked. `path-chosen` is
+        // written before the chain plays and is a guess; without this, a
+        // successful clip utterance had no settled record at all and only
+        // the failures did -- so counting `speak path` would have counted
+        // exactly the utterances that went wrong.
+        recordSpeechPath({ path: 'clip', text, for: text, tag: opts?.tag });
+        return;
+      }
       recordSpeechPath({
         path: 'clip-failed-to-tts',
         text: remainder ?? text,
@@ -963,20 +1015,68 @@ export function speakAsync(
   return speakAsyncLive(text, opts);
 }
 
-const CHIME_FREQUENCY_HZ: Record<'good' | 'bad' | 'attention', number> = {
+/**
+ * The tones, and what each one is for.
+ *
+ * `mark` and `blocked` were added because the screen had two events an
+ * eyes-free operator could not hear at all. Tapping a `modifier` answer arms a
+ * marker and leaves the step OPEN, and it chimed `attention` -- the same tone
+ * as a route answer, which stamps and advances -- so the one thing the driver
+ * needs after a tap ("did we move on?") was the one thing the sound did not
+ * carry. And a tap the screen REFUSES (the microphone gates, which last up to
+ * ten seconds, and the 350ms bounce guard) made no sound whatsoever, which is
+ * indistinguishable from missing the button.
+ *
+ * Chosen to be distinguishable without pitch memory: `mark` sits a fourth
+ * below `good` and so reads as "held, not finished" next to it, and `blocked`
+ * is an octave below `bad`, which is already the lowest answer tone. No two
+ * kinds share a frequency -- `speech.test.ts` asserts exactly that, because a
+ * duplicate would silently undo the distinction this table exists for.
+ */
+export type ChimeKind = 'good' | 'bad' | 'attention' | 'mark' | 'blocked';
+
+const CHIME_FREQUENCY_HZ: Record<ChimeKind, number> = {
   good: 880,
   bad: 220,
   attention: 1320,
+  mark: 660,
+  blocked: 110,
 };
 
 /**
  * Plays a short (0.12s) gain-ramped sine tone. In e2e mode, records
  * `chime:<kind>` into `window.__speechLog` instead. Never throws.
  */
-export function chime(kind: 'good' | 'bad' | 'attention', opts?: { volume?: number }): void {
+/**
+ * The tone a kind plays at, for a test that has to assert they differ.
+ *
+ * Exported rather than duplicated in the spec: a test carrying its own copy
+ * of the table would keep passing after the table changed, which is the
+ * shape of test this codebase keeps finding and deleting.
+ */
+export function chimeFrequencyForTest(kind: ChimeKind): number {
+  return CHIME_FREQUENCY_HZ[kind];
+}
+
+export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
   // Before the e2e short-circuit, exactly as speak() does: the microphone's
   // bookkeeping is part of the behaviour under test, not part of the sound.
   notifyActivityMs(CHIME_ACTIVITY_MS);
+
+  /**
+   * EVERY CHIME, LOGGED. The only line this used to write was
+   * `chime-suspended`, so a sound the app made was in the export exactly when
+   * it FAILED to make it.
+   *
+   * That matters here more than it looks. A chime is a Web Audio activation
+   * and an audio-session event on iOS, and the field test's route samples are
+   * measurements of where an audio session sends things -- so a chime shortly
+   * before a sample is a confound the analysis has to be able to see. The
+   * post-microphone cells were the only ones getting an arrival chime, which
+   * correlated the run-up with the independent variable and left no trace of
+   * it whatsoever.
+   */
+  diag('speak', 'chime', { kind, ...(opts?.volume !== undefined ? { volume: opts.volume } : {}) });
 
   if (isE2eAudioMode()) {
     // Volume carried too: a chime that still sounds while the app is

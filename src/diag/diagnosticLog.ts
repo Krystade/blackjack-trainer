@@ -55,10 +55,26 @@
  * Surfaced in the export header. A log that silently drops part of a drive is
  * worse than one that says it did: the reader cannot tell "the app never logged
  * that" from "the app logged it and threw it away", and those have opposite
- * diagnoses. Counts malformed entries as well as ones lost to the caps, because
- * both leave the same kind of hole.
+ * diagnoses.
+ *
+ * ENTRIES LOST TO THE CAPS ONLY. Malformed ones are counted separately, below,
+ * because they are counted at a different moment: this one accumulates as
+ * writes happen and can only go up, while a malformed stored entry is
+ * rediscovered on every read.
  */
 let droppedEntries = 0;
+
+/**
+ * How many stored entries could not be read back.
+ *
+ * A MAXIMUM RATHER THAN A SUM, and that is the whole point. `readStored()`
+ * runs on every `readDiagnosticLog()`, which the Settings panel calls on every
+ * diag event while it is open -- so adding to a running total counted the same
+ * bad entry dozens of times, and the export's `# TRIMMED` line reported
+ * dozens of lost entries where one had been lost. Overstating the loss makes a
+ * reader throw away a record that is very nearly complete.
+ */
+let malformedEntries = 0;
 
 /**
  * The drop count belongs WITH the entries, because the entries outlive the tab.
@@ -263,7 +279,24 @@ function readStored(): DiagEntry[] {
         typeof (e as DiagEntry).ms === 'number' &&
         typeof (e as DiagEntry).session === 'string',
     );
-    if (kept.length < before) droppedEntries += before - kept.length;
+    /**
+     * COUNTED ONCE PER ENTRY, not once per read.
+     *
+     * `readStored()` runs on every `readDiagnosticLog()`, and the Settings
+     * panel calls that on EVERY diag event through its subscription. So one
+     * malformed stored entry added one to the tally per read until a flush
+     * happened to rewrite storage — and if `storageUsable` had latched
+     * false, forever. The header then said "# TRIMMED: 37 older entries
+     * dropped to fit the cap" for a single dropped entry, which is the same
+     * damage the `clearDiagnosticLog` comment warns about in the other
+     * direction: a reader discarding a complete record as truncated.
+     *
+     * The malformed ones are counted separately and by their MAXIMUM rather
+     * than by a running sum. It is idempotent by construction: however many
+     * times the same storage is read, the answer is the number of bad
+     * entries in it.
+     */
+    if (kept.length < before) malformedEntries = Math.max(malformedEntries, before - kept.length);
     return kept;
   } catch {
     return [];
@@ -272,7 +305,7 @@ function readStored(): DiagEntry[] {
 
 
 export function diagnosticEntriesDropped(): number {
-  return droppedEntries + storedDropped();
+  return droppedEntries + malformedEntries + storedDropped();
 }
 
 /** Drops recorded by earlier page loads, alongside the entries they trimmed. */
@@ -590,6 +623,7 @@ export function clearDiagnosticLog(): void {
   // exists to stop a reader confusing "never logged" with "logged and thrown
   // away"; a stale count does that damage in the other direction.
   droppedEntries = 0;
+  malformedEntries = 0;
   if (flushHandle !== null) {
     clearTimeout(flushHandle);
     flushHandle = null;
@@ -909,6 +943,31 @@ export function formatDiagnosticLog(entries: readonly DiagEntry[]): string {
     // device never exports from: it could not fail.
     ...(dropped > 0
       ? [`# TRIMMED: ${dropped} older entries dropped to fit the cap`]
+      : []),
+    /*
+     * ...AND WHAT TWO TABS DO TO EACH OTHER, which nothing said.
+     *
+     * The flush is a read-modify-write on one key with no coordination
+     * (`[...readStored(), ...buffer]`), and the key is deliberately excluded
+     * from cross-tab sync. The justification given there is about the WRITING
+     * tab -- "a tab overwriting the other's tail loses nothing that tab can
+     * see" -- and it is sound for the tab. It is not sound for the ARTEFACT:
+     * this formatter goes to real trouble to interleave both sessions by
+     * clock, so the reader is handed one file in which one session has holes
+     * that are in no drop count and under no TRIMMED line.
+     *
+     * A ~1MB parse-and-stringify every second on a phone is not a negligible
+     * window, and the field test is a protocol somebody might well run with
+     * the settings screen open in a second tab. Saying so is cheap; making
+     * the write atomic across tabs is not, and would not help a reader of a
+     * log that has already been written.
+     */
+    ...(sessions > 1
+      ? [
+          `# ${sessions} page loads share this log. Writes are last-one-wins per flush,`,
+          `# so a gap in one session may be another tab's write rather than a gap in`,
+          `# what happened. Entries within a single session are complete or counted.`,
+        ]
       : []),
     // The export leaves the device -- pasted into a chat, mailed to whoever is
     // helping. The Settings panel warns; the artefact did not.

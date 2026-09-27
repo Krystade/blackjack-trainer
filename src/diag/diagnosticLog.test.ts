@@ -152,14 +152,49 @@ describe('staying small', () => {
   });
 
   it('stays inside the byte cap even when single entries are huge', async () => {
+    /*
+     * ENOUGH ENTRIES TO REACH THE CAP, which this used to be nowhere near.
+     *
+     * It logged 300 entries of `'x'.repeat(5000)`. `diag()` already caps each
+     * value at MAX_DETAIL_CHARS (2000) on the way in, so each stored entry is
+     * about 2.1KB and the total was ~640KB against a 1.2MB cap -- the
+     * assertion held whatever `trim()` did, and in fact NO test in this file
+     * drove the byte loop at all. The loop is genuinely reachable: 3000
+     * entries (MAX_ENTRIES) at 2.1KB is about 6MB.
+     */
     const data = installStorage();
     const log = await fresh();
     const big = 'x'.repeat(5000);
-    for (let i = 0; i < 300; i++) {
-      log.diag('heard', 'utterance', { heard: big });
-      log.flushDiagnostics();
-    }
-    expect((data['bjtrainer.diagnostics.v1'] ?? '').length).toBeLessThanOrEqual(log.MAX_BYTES);
+    for (let i = 0; i < log.MAX_ENTRIES; i++) log.diag('heard', 'utterance', { heard: big });
+    log.flushDiagnostics();
+
+    const stored = data['bjtrainer.diagnostics.v1'] ?? '';
+    expect(stored.length, 'the write is past the cap the device will refuse').toBeLessThanOrEqual(
+      log.MAX_BYTES,
+    );
+    // ...AND THE LOOP RAN. Without this the assertion above passes for the
+    // uninteresting reason that nothing got big enough to trim -- which is
+    // exactly how the old version of this test passed.
+    expect(
+      log.readDiagnosticLog().length,
+      'nothing was dropped, so the byte cap was never exercised',
+    ).toBeLessThan(log.MAX_ENTRIES);
+    expect(
+      log.diagnosticEntriesDropped(),
+      'entries were dropped to fit the cap and the export would not say so',
+    ).toBeGreaterThan(0);
+  });
+
+  it('does not trim a log that fits', async () => {
+    // The control for the test above: `# TRIMMED` on a complete record makes
+    // a reader discard it, which is the same damage in the other direction.
+    const data = installStorage();
+    const log = await fresh();
+    for (let i = 0; i < 50; i++) log.diag('heard', 'utterance', { heard: 'x'.repeat(200) });
+    log.flushDiagnostics();
+    expect((data['bjtrainer.diagnostics.v1'] ?? '').length).toBeLessThan(log.MAX_BYTES);
+    expect(log.diagnosticEntriesDropped(), 'a log that fits was reported as trimmed').toBe(0);
+    expect(log.readDiagnosticLog().length).toBe(50);
   });
 });
 

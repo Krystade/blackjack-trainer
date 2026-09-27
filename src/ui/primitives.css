@@ -277,6 +277,22 @@ body:has(.fieldtest-running) .fieldtest-screen {
 .settings-screen,
 .profile-editor-screen,
 .placeholder-screen,
+/* THE FIELD TEST WAS MISSING FROM THIS LIST, on the screen where it costs
+   most. `index.html` sets `viewport-fit=cover` and the status bar is
+   black-translucent, so in the installed PWA the web view genuinely extends
+   under the status bar and the Dynamic Island. Measured with --safe-top at
+   59px: the topbar occupied y=0..68 and the Pause button y=10..58 -- all 48px
+   of it inside the inset, with the step counter ("Car, parked, step 17 of 30")
+   under the battery. Pause is the only exit that preserves the run, and the
+   counter is the one readout that says where in the protocol the operator is.
+   The regression that put this rule here in the first place was a screenshot
+   of the clock printed through "Back to Home"; this is the same bug on the
+   screen whose whole premise is being usable without looking.
+
+   Invisible to the harness: Chromium reports every `env(safe-area-inset-*)`
+   as 0, and `e2e/safe-area.spec.ts` simulates the inset with a variable it
+   sets itself -- the field test was simply not in its list either. */
+.fieldtest-screen,
 .charts-screen {
   padding-top: var(--safe-top);
 }

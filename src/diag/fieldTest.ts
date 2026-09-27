@@ -227,6 +227,24 @@ export interface FieldTestStep {
    * and an unclipped one back to back, on purpose, and says which is which.
    */
   sayUnclipped?: string;
+  /**
+   * A route sample that is deliberately NOT one of the crossed cells.
+   *
+   * `route-short` and `route-long` ask about clip playback of a one-word line
+   * and a fifteen-word one. They are worth having — a single word is the
+   * shape most likely to be lost under road noise, and a long one is the shape
+   * most likely to be interrupted — but they are not the same question as
+   * the six cells of path x microphone-state, and they used to be counted into
+   * the clip/before cell anyway. That cell was then A, B, "Correct?", and a
+   * fifteen-word sentence, against A, B, A in all five others: the one cell
+   * every conclusion is read against had a different composition from its
+   * comparisons, and the difference ran in the direction that produces
+   * `route-silent` and `missed`.
+   *
+   * Marked rather than moved, because their position matters: they belong
+   * immediately after the samples they vary from, on the same path.
+   */
+  aux?: boolean;
   /** Repeat `say` on demand -- a line missed in traffic is a step wasted. */
   sayAgain?: boolean;
   /** Arm wheel capture and show, live, whatever the car sends. */
@@ -344,7 +362,7 @@ export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
     setup:
       'Paired to the car over Bluetooth, engine running, handbrake on. Phone in the cradle, an arm’s length away — not in your hand or your lap.',
     proves:
-      'The baseline for everything else. Same audio route as a drive, without the road — so anything that fails here fails for reasons that have nothing to do with speed.',
+      'The baseline for everything else. Same audio route as a drive, without the road — so anything that fails here fails for reasons that have nothing to do with speed. The earpiece is inaudible from the cradle, so "phone earpiece" and "heard nothing" are one answer in this leg.',
   },
   {
     id: 'freeway',
@@ -354,7 +372,7 @@ export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
     setup:
       'Paired exactly as above, phone in the same cradle, at your normal road speed, windows up.',
     proves:
-      'The real thing, including the wheel. Whether the buttons reach the app at speed is the open question this protocol exists for, and it cannot be answered stationary.',
+      'The real thing, including the wheel. Whether the buttons reach the app at speed is the open question this protocol exists for, and it cannot be answered stationary. Earpiece and silence are one answer here too — at road speed nobody hears a receiver from the cradle.',
   },
   {
     id: 'speakerphone',
@@ -371,15 +389,39 @@ export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
     // useful thing a control can do. It just cannot say which of the remaining
     // three it was.
     proves:
-      'Rules the car out. Anything that still fails with Bluetooth off is the app, the phone or the road — it cannot say which, because this changes several things at once, but it takes the car off the list.',
+      'Rules the car out. Anything that still fails with Bluetooth off is the app, the phone or the road — it cannot say which, because this changes several things at once, but it takes the car off the list. Earpiece and silence are one answer here, as at speed: read them together unless the leg was run at your ear.',
   },
   {
+    /**
+     * THE ONLY LEG THAT CAN TELL THE EARPIECE FROM SILENCE, which is why it
+     * says "against your ear" and why Bluetooth is off.
+     *
+     * `route-earpiece` and `route-silent` are one cell everywhere else. The
+     * earpiece is a 40mm driver pointed at a head that is an arm’s length
+     * away in the cradle, and at road speed it is inaudible — so an
+     * utterance that came out of it and an utterance that came out of nowhere
+     * produce the same report, on `car`, `freeway` and `speakerphone` alike.
+     * Only a phone held against the ear separates them, and separating them is
+     * the difference between "iOS moved this to the receiver" and "this never
+     * played", which are opposite diagnoses with opposite fixes.
+     *
+     * BLUETOOTH OFF, and that is a correction. This was flagged `bluetooth:
+     * true` with "engine off" in the same sentence, which is not a state a
+     * Corolla is in: with the engine off the head unit is dark, there is
+     * nothing to pair to and no wheel to press, so six wheel steps buried
+     * "No Bluetooth" at slot five behind four answers about what a car that
+     * was not switched on did. And if the head unit IS alive on accessory
+     * power, the leg is a duplicate of `car` with the phone moved. Off, said
+     * plainly, and the wheel steps lead with the true answer.
+     */
     id: 'phone',
-    label: 'Phone, quiet',
+    label: 'Phone, at your ear',
     motion: 'parked',
-    bluetooth: true,
-    setup: 'Phone in your hand, at your usual distance, engine off, windows up.',
-    proves: 'If a step fails here it has nothing to do with driving at all.',
+    bluetooth: false,
+    setup:
+      'Bluetooth OFF, engine off, out of the car or with the ignition off. Hold the phone against your ear as if you were on a call.',
+    proves:
+      'The only leg that separates the earpiece from silence — everywhere else they are the same answer. Anything that fails here has nothing to do with driving, the car, or Bluetooth at all.',
   },
 ];
 
@@ -402,7 +444,7 @@ export const DEFAULT_FIELD_TEST_CONDITION = FIELD_TEST_CONDITIONS[0]!.id;
 export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   {
     id: 'route-1',
-    title: 'Where does it come from? (1 of 2, recorded)',
+    title: 'Where does it come from? (1 of 3, recorded)',
     instruction: 'Listen to the line. Where did it come from?',
     say: ['Basic hit versus dealer nine.'],
     sayAgain: true,
@@ -430,9 +472,8 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     id: 'route-2',
-    title: 'Where does it come from? (2 of 2, recorded)',
-    instruction:
-      'A second line, straight after the first. Where did it come from?',
+    title: 'Where does it come from? (2 of 3, recorded)',
+    instruction: 'Second of the three, straight after. Where did it come from?',
     say: ['Basic stand versus dealer six.'],
     sayAgain: true,
     responses: ROUTE_RESPONSES,
@@ -448,9 +489,25 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
    * at all -- see `route-1t`. Its line is not lost: `route-short` and
    * `route-long` follow immediately, on the same path, so this block still
    * carries four consecutive clip samples.
+   *
+   * ...AND IT IS BACK, because that argument was wrong twice over. Two samples
+   * do not separate a wandering route from a stable one (see `route-3t`), and
+   * the two steps below were never substitutes for a third: they change the
+   * line, which is the one thing a cell of this crossing is supposed to hold
+   * fixed. Counting them made clip/before the only cell composed of four
+   * different utterances, two of them chosen to be hard to place.
    */
   {
+    id: 'route-3',
+    title: 'Where does it come from? (3 of 3, recorded)',
+    instruction: 'Third of the three. Where did it come from?',
+    say: ['Basic hit versus dealer nine.'],
+    sayAgain: true,
+    responses: ROUTE_RESPONSES,
+  },
+  {
     id: 'route-short',
+    aux: true,
     title: 'A short line',
     instruction:
       'One word rather than a sentence. Where did it come from?',
@@ -460,6 +517,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     id: 'route-long',
+    aux: true,
     title: 'A long line',
     instruction:
       'A longer line this time. Where did it come from?',
@@ -549,8 +607,20 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
      */
     id: 'fallback-audible',
     title: 'Can you hear the fallback at all?',
+    /**
+     * SHORT ENOUGH TO BE ON THE SCREEN. This was 295 characters and the head
+     * is capped at 130px: measured, its last lines sat 53-94px BELOW the
+     * bottom of the head at all five phone heights, on the one step whose
+     * question needs explaining. The head scrolls, so the text was
+     * technically reachable -- by a driver, with a thumb, at speed.
+     *
+     * What was cut is the explanation of WHY the second line cannot be
+     * boosted. That belongs in this comment and in `proves`, not on a screen
+     * being read at 70mph; what the operator has to do is listen to two
+     * lines and say whether they made out the second.
+     */
     instruction:
-      'Two lines. The first is a recording, which the volume boost can reach; the second is your phone reading text aloud, which it cannot \u2014 that one is as loud as it will ever get. The app knows which is which, so it is not asking. It is asking whether you could make out the second one over the road.',
+      'Two lines, back to back. Could you make out the SECOND one over the road?',
     say: ['Correct play was double.'],
     sayUnclipped:
       'This second line has no recording behind it, so your phone is reading it aloud instead.',
@@ -653,22 +723,33 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     /**
-     * TWO BUTTONS ARE EXCLUDED BY NAME, and the exclusion is the point.
+     * THE BUTTONS ARE NAMED, and naming them rather than excluding a couple
+     * is the point.
      *
      * This asked for "volume, the voice button, whatever", upstream of the
-     * microphone block and of the entire after-microphone route block. Car
-     * volume is the one gain stage the app cannot see or record, so a leg in
-     * which it was nudged answers every later loudness question against a
-     * different baseline with nothing in the log to say so. The voice button
-     * seizes HFP outright — the exact transition the protocol is built to
-     * observe — meaning the step could hand the run the very state change
-     * it is meant to measure, ten minutes early, with `wheel-other-noted`,
-     * kind `note`, as the only trace.
+     * microphone block and of the entire after-microphone route block, and
+     * the first repair only excluded those two. A wheel has more than two
+     * ways to ruin a leg: call-answer opens hands-free, and mode/source takes
+     * the head unit off Bluetooth audio entirely. Either one, pressed here,
+     * puts every sample from `mic-route` to `route-after-mic-3t` in a state
+     * the operator created nineteen steps before the block that measures it.
+     *
+     * And it is invisible by construction: a press the car consumes produces
+     * no `field-test-arrival`, so the only trace is `wheel-other-noted`, kind
+     * `note`, which does not say which button was pressed.
+     *
+     * A blacklist has to enumerate every wheel layout that exists. A
+     * whitelist only has to name buttons that are safe on all of them, and
+     * the step still does its job: whether the car sends ANYTHING beyond
+     * skip-forward is the open question.
      */
     id: 'wheel-other',
     title: 'Any other button',
+    // ...AND SHORT ENOUGH TO READ. The whitelist made this 190 characters,
+    // which the 130px head clips on the three shortest phones. The reason
+    // the buttons are named is above; the operator needs the names.
     instruction:
-      'Press anything else you can reach on the wheel \u2014 but NOT volume and NOT the voice button. This is here to find out what the car will even send.',
+      'Press skip-BACK, or an info or display button. Nothing that answers a call, changes volume, or changes source.',
     wheel: true,
     responses: [
       // BEFORE THE SHARED SET, not after it. `WHEEL_RESPONSES` ends with
@@ -714,7 +795,23 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
       // the same pair of presses, and as a single choice between them an
       // arrival count of 1 could not be read -- one press lost to the radio
       // and one press never sent are the diagnosis and its opposite.
-      { id: 'wheel-radio', label: 'The radio changed track', kind: 'bad', modifier: true },
+      /**
+       * A DIFFERENT ID FROM THE STAMPING ONE, and the difference is a slot.
+       *
+       * This used to be `wheel-radio`, the same id `WHEEL_RESPONSES` offers
+       * on the step immediately before this one — so `WHEEL_SLOTS` put it
+       * at the same position on both, with near-identical labels and the same
+       * tint. On `wheel-other` that pixel stamps and advances; here it arms a
+       * marker and the step stays open. An operator who learned the position
+       * at speed tapped it on this step believing they had moved on, and
+       * their next tap landed on this step's stack.
+       */
+      {
+        id: 'wheel-radio-took-one',
+        label: 'The radio took one of them',
+        kind: 'bad',
+        modifier: true,
+      },
       { id: 'wheel-repeat-couldnt', label: 'Could not press twice', kind: 'note' },
       WHEEL_NA,
       MISSED,
@@ -1152,6 +1249,9 @@ export function describeFieldTestSetup(setup?: FieldTestSetup): string {
 }
 
 /** Record an answer, with the step and route that produced it. */
+/** Answers that no Bluetooth-off leg can produce, however the tap looked. */
+const ROUTE_IMPOSSIBLE_WITHOUT_BLUETOOTH: readonly string[] = ['route-car'];
+
 export function stampFieldTest(
   stepId: string,
   conditionId: string,
@@ -1168,7 +1268,45 @@ export function stampFieldTest(
    * was no single query that assembled a step's evidence, and this log is
    * read by grep in a car park.
    */
-  diag('test', 'answer', { step: stepId, condition: conditionId, answer: responseId, ...extra });
+  /**
+   * `impossible=true` WHEN THE ANSWER CANNOT BE TRUE OF THIS LEG.
+   *
+   * "Out of the car speakers" is offered on all nineteen route samples of
+   * `speakerphone` and `phone`, both of which run with Bluetooth off — so
+   * there is no route to a car speaker at all and every one of those taps is a
+   * mis-tap. The button stays where it is, because a wheel and route answer
+   * that moves position between legs is how the NEXT wrong answer gets tapped
+   * at speed; what changes is that the export says so, on the row the analysis
+   * is assembled from, rather than leaving a reader to reconstruct the
+   * condition’s Bluetooth state from the header.
+   */
+  /**
+   * `unknown=true` WHEN THE PROTOCOL DOES NOT OFFER THIS ANSWER HERE.
+   *
+   * The log is the artefact; a reader assembling the 2x2 in a car park takes
+   * `answer=` at face value. Nothing checked that the id was one of this
+   * step's buttons, so a rename, a deleted response, or a caller passing the
+   * wrong string all produced a row that looks exactly like a real answer —
+   * and `fieldTest.test.ts` was itself stamping `wheel-nothing`, an id
+   * deleted from the protocol, without anything noticing.
+   *
+   * Recorded rather than thrown: this runs at the wheel, and a protocol that
+   * crashes on a bad id costs the operator the whole leg. The row still
+   * lands; it just says it cannot be read.
+   */
+  const step = FIELD_TEST_STEPS.find((s) => s.id === stepId);
+  const unknown =
+    step !== undefined && !step.responses.some((r) => r.id === responseId) ? true : undefined;
+  const impossible = ROUTE_IMPOSSIBLE_WITHOUT_BLUETOOTH.includes(responseId) &&
+    FIELD_TEST_CONDITIONS.find((c) => c.id === conditionId)?.bluetooth === false;
+  diag('test', 'answer', {
+    step: stepId,
+    condition: conditionId,
+    answer: responseId,
+    ...(impossible ? { impossible: true } : {}),
+    ...(unknown ? { unknown: true } : {}),
+    ...extra,
+  });
 }
 
 /** Record entering a step, so the log brackets what follows. */
@@ -1274,9 +1412,18 @@ const WHEEL_SLOTS: readonly (readonly string[])[] = [
   // The step-specific "I did the thing" note. `wheel-other` and `wheel-repeat`
   // are different steps, so these two can never appear together.
   ['wheel-other-noted', 'wheel-repeat-done'],
-  ['wheel-car-quiet'],
+  // The step-specific second option, same rule: `wheel-car-quiet` is on the
+  // steps that ask for one press and `wheel-repeat-couldnt` only on the step
+  // that asks for two. Sharing frees the slot below without adding a seventh
+  // position, which at 375x667 is the difference between a stack that fits
+  // and a stack the thumb can scroll.
+  ['wheel-car-quiet', 'wheel-repeat-couldnt'],
+  // STAMPS AND ADVANCES.
   ['wheel-radio'],
-  ['wheel-repeat-couldnt'],
+  // ARMS A MARKER AND STAYS. Its own slot, because a position that stamps on
+  // one step and marks on the next is the single worst thing this table can
+  // do -- see `wheel-radio-took-one`.
+  ['wheel-radio-took-one'],
   ['wheel-na'],
   ['missed'],
 ];

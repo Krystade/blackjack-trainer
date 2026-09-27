@@ -24,7 +24,23 @@ export default defineConfig({
       // harness (that one needs a different Chromium launch and must not use
       // ?e2e=1, so it lives in its own project below).
       testIgnore: /(clip-playback|field-test-audio)\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 844 } },
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 390, height: 844 },
+        // A FAKE MICROPHONE, so the one step whose entire product is a number
+        // can be asserted on. `ambient` opens a real `getUserMedia` and folds
+        // five seconds of frames into a dBFS figure; with no device and no
+        // permission that call rejected in milliseconds, so every test
+        // touching it -- including one named for leaving a measurement
+        // running -- exercised only the rejection path and could not fail for
+        // the thing it was named after. `--use-fake-device-for-media-stream`
+        // is a generated tone, not a real microphone: nothing is recorded and
+        // nothing is heard.
+        permissions: ['microphone'],
+        launchOptions: {
+          args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+        },
+      },
     },
     {
       // Real clip audio playback (T0): no ?e2e=1, so clips.ts actually fetches
@@ -35,9 +51,21 @@ export default defineConfig({
       // the one harness that exercises real playback the one harness nobody
       // could ever run. Muting is process-wide and does not stop playback --
       // the elements still load, decode, fire `ended`, and drive the drill
-      // loop, which is the entire signal this project asserts on. The spec
-      // adds a second, independent guard at the element level (see its
-      // `muted` init script), so being heard would take both failing.
+      // loop, which is the entire signal this project asserts on.
+      //
+      // The specs add a second, independent guard: an init script that wraps
+      // `HTMLMediaElement.prototype.play` and sets `volume = 0` and
+      // `muted = true` through the real setters before the element starts.
+      // Being heard through a speaker takes both of those failing.
+      //
+      // WHAT THAT SECOND GUARD DOES NOT COVER, said plainly rather than
+      // implied: `clips.ts` can route an element through
+      // `createMediaElementSource` into a `GainNode` for the above-unity
+      // boost, and the launch flag is what covers that path. The guard used
+      // to be a `muted` accessor shadowed on the prototype, which reached
+      // Blink's internal flag not at all and silenced nothing whatsoever --
+      // so for as long as it stood, this comment was the only thing between
+      // the operator and a speaker.
       name: 'chromium-audio',
       testMatch: /(clip-playback|field-test-audio)\.spec\.ts/,
       use: {

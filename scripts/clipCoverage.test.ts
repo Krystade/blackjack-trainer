@@ -26,6 +26,7 @@ import { DEFAULT_RULES } from '../src/engine/ruleset';
 import { drawFlashcard } from '../src/drills/flashcards';
 import { drawQuizItem } from '../src/drills/deviationQuiz';
 import { reachableReasons } from './spokenPhrases';
+import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 import {
   narrateNotATag,
   narrateReadback,
@@ -175,6 +176,50 @@ describe('shipped clip coverage', () => {
         (text) => segmentForClips(text, manifest) === null,
       );
       expect(unresolved).toEqual([]);
+    });
+
+    /**
+     * THE FIELD TEST'S OWN LINES, against the shipped manifest.
+     *
+     * `fieldTest.test.ts` pins every `say` line against
+     * `scripts/spoken-phrases.json`, which is the list the GENERATOR reads --
+     * not what `public/clips/<voice>/manifest.json` ends up containing. A
+     * generation failure on one field-test line therefore dropped that step
+     * silently to live TTS, which is exactly the defect that test's docblock
+     * exists to prevent: a protocol asking "was that the recorded voice?"
+     * about an utterance that could only ever have been the phone's.
+     *
+     * The chain was closed only by the transitive argument that
+     * `spokenPhrases.ts` derives from the same narrate functions this file
+     * walks. This asserts the end of it directly.
+     */
+    it(`resolves every line the field test speaks (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      const lines = FIELD_TEST_STEPS.flatMap((step) => [...(step.say ?? [])]);
+      expect(lines.length, 'the protocol speaks nothing at all').toBeGreaterThan(3);
+      const unresolved = lines.filter((text) => segmentForClips(text, manifest) === null);
+      expect(
+        unresolved,
+        'a field-test line has no recording, so the step that asks which voice spoke can only ever be answered "the phone"',
+      ).toEqual([]);
+    });
+
+    /**
+     * ...and the calibration line must NOT resolve, which is its whole job.
+     *
+     * `sayUnclipped` exists to play one line the recorded voice cannot speak,
+     * back to back with one it can, so the operator can learn the difference
+     * by ear. A recording appearing for it would quietly delete the only
+     * calibration in the protocol.
+     */
+    it(`ships no recording for the deliberately unclipped line (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      const unclipped = FIELD_TEST_STEPS.map((s) => s.sayUnclipped).filter(
+        (t): t is string => typeof t === 'string',
+      );
+      expect(unclipped.length, 'nothing in the protocol calibrates the ear').toBeGreaterThan(0);
+      const resolved = unclipped.filter((text) => segmentForClips(text, manifest) !== null);
+      expect(resolved, 'the unclipped calibration line has a recording').toEqual([]);
     });
 
     /** A manifest entry with no file behind it is a chain that dies mid-word. */

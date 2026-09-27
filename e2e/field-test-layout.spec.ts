@@ -237,8 +237,21 @@ for (const vp of VIEWPORTS) {
      * is asserted here, is that one answer never moves — so a position
      * learned during the run keeps its meaning wherever that answer appears.
      */
-    test('an answer never moves to a different position during a run', async ({ page }) => {
-      await openTest(page, 'Car, parked');
+    /*
+     * UNDER BOTH KINDS OF CONDITION, and the second one is the one that
+     * reorders. `stepResponses` takes a different branch when the leg has
+     * Bluetooth off: it prepends "No Bluetooth" and shifts every wheel slot
+     * down by one, because otherwise the only honest answer on six wheel
+     * steps sits fifth, under four answers about what a car that is not
+     * connected did. Every geometry test in this file opened 'Car, parked',
+     * so the branch that moves the driver's thumb targets had never been
+     * rendered at any viewport.
+     */
+    for (const condition of ['Car, parked', 'Speakerphone'] as const)
+    test(`an answer never moves to a different position during a run (${condition})`, async ({
+      page,
+    }) => {
+      await openTest(page, condition);
       const seen = new Map<string, { y: number; step: string }>();
       const moved: string[] = [];
       let gaps = 0;
@@ -528,24 +541,53 @@ for (const vp of VIEWPORTS) {
       const styleOf = () =>
         answer.evaluate((el) => {
           const cs = getComputedStyle(el);
-          return { opacity: cs.opacity, cursor: cs.cursor, disabled: (el as HTMLButtonElement).disabled };
+          return {
+            opacity: cs.opacity,
+            cursor: cs.cursor,
+            refused: el.getAttribute('aria-disabled') === 'true',
+          };
         });
 
-      // Step 1 speaks, so the stack opens disabled; it enables when the line ends.
+      // BOTH STATES AS THE APP ITSELF DRAWS THEM. The answers are refused with
+      // `aria-disabled` rather than `disabled`, so that the tap still reaches
+      // the handler and can be answered with a sound; reading `el.disabled`
+      // found `false` on the first tick -- while the stack was refused and
+      // already dimmed -- and then compared that dim reading against itself.
+      //
+      // Step 1 speaks, so the stack opens refused and clears when the line and
+      // the settle are done.
+      const dead = await expect
+        .poll(async () => (await styleOf()).refused, { timeout: 15_000 })
+        .toBe(true)
+        .then(() => styleOf());
       const live = await expect
-        .poll(async () => (await styleOf()).disabled, { timeout: 15_000 })
+        .poll(async () => (await styleOf()).refused, { timeout: 20_000 })
         .toBe(false)
         .then(() => styleOf());
 
-      const dead = await answer.evaluate((el) => {
-        (el as HTMLButtonElement).disabled = true;
-        const cs = getComputedStyle(el);
-        return { opacity: cs.opacity, cursor: cs.cursor };
-      });
-
+      // VISIBLY. `cursor` was accepted as the difference here, and setting
+      // the refused opacity back to 1 left this test green on the strength of
+      // a cursor -- on a phone, in a car, with a thumb. The difference has to
+      // be one the operator can see.
       expect(
-        dead.opacity !== live.opacity || dead.cursor !== live.cursor,
-        'a disabled answer renders identically to a live one',
-      ).toBe(true);
+        dead.opacity,
+        `a refused answer is drawn exactly like a live one (both opacity ${live.opacity}); only the cursor differs, and there is no cursor in a car`,
+      ).not.toBe(live.opacity);
+
+      // ...and the other mechanism, which the control row still uses for real:
+      // the same class disabled the ordinary way has to look dead too.
+      const off = await answer.evaluate((el) => {
+        const button = el as HTMLButtonElement;
+        button.removeAttribute('aria-disabled');
+        button.disabled = true;
+        const cs = getComputedStyle(el);
+        const seen = { opacity: cs.opacity, cursor: cs.cursor };
+        button.disabled = false;
+        return seen;
+      });
+      expect(
+        off.opacity,
+        'a disabled control is drawn exactly like a live one',
+      ).not.toBe(live.opacity);
     });  });
 }

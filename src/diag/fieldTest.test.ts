@@ -435,7 +435,7 @@ describe('what the log gets', () => {
    * exactly the work that made the last two logs unusable.
    */
   it('carries the evidence the app gathered alongside the answer', () => {
-    stampFieldTest('wheel-gap', 'car', 'wheel-nothing', { wheel: 'nexttrack, previoustrack' });
+    stampFieldTest('wheel-gap', 'car', 'wheel-car-quiet', { wheel: 'nexttrack, previoustrack' });
     const entry = readDiagnosticLog().find((e) => e.category === 'test');
     expect(entry?.detail?.wheel).toBe('nexttrack, previoustrack');
   });
@@ -820,14 +820,18 @@ describe('resolveFieldTestSetup', () => {
     // An open microphone flips the car to its hands-free profile, which takes
     // the wheel. A wheel step run in that state reports the fault under
     // investigation for a reason the protocol created.
-    for (const step of FIELD_TEST_STEPS) {
-      if (!step.wheel) continue;
-      const micOn = at(step.id).voice === true;
-      const meantToHaveMicOn = /with-mic|with the microphone/i.test(step.id + ' ' + step.title);
-      expect(micOn, `${step.id} runs a wheel test with the microphone open`).toBe(
-        meantToHaveMicOn,
-      );
-    }
+    // A LITERAL THIS TEST OWNS, not a regex over the data under test. The
+    // oracle used to be /with-mic|with the microphone/ applied to the step's
+    // own id and title -- so renaming `wheel-with-mic` and dropping its
+    // `voice: true` in the same edit flipped both sides of the comparison
+    // and left this green while the property was gone.
+    const micOnSteps = FIELD_TEST_STEPS.filter((s) => s.wheel && at(s.id).voice === true).map(
+      (s) => s.id,
+    );
+    expect(
+      micOnSteps,
+      'a wheel step runs with the microphone open, which flips the car to hands-free and takes the wheel',
+    ).toEqual(['wheel-with-mic']);
   });
 
   /**
@@ -951,8 +955,16 @@ describe('the wheel steps ask only what the operator can answer', () => {
     // the failure signature. Without it every success in the export wears the
     // colour of the fault under investigation.
     for (const step of wheelSteps()) {
+      // `wheel-na` IS EXCLUDED, and the exclusion is most of the
+      // assertion. It is kind `note` and it is on every wheel step, so
+      // counting it made the total >= 1 unconditionally: deleting
+      // `wheel-car-quiet` left this green while the property was false.
+      // "No Bluetooth" means the press was impossible, not that it worked.
       const landings = step.responses.filter(
-        (r) => (r.kind === 'good' || r.kind === 'note') && r.id !== 'missed',
+        (r) =>
+          (r.kind === 'good' || r.kind === 'note') &&
+          r.id !== 'missed' &&
+          r.id !== 'wheel-na',
       );
       expect(
         landings.length,
@@ -964,8 +976,17 @@ describe('the wheel steps ask only what the operator can answer', () => {
   it('keeps a way to say the car took the press instead', () => {
     // The one fact the operator holds and the code cannot see.
     for (const step of wheelSteps()) {
+      // BY ID. `/radio|car/i` matched "The car did nothing else", so
+      // deleting `wheel-radio` — the answer that reports the car taking the
+      // press, which is the fact the operator holds and the code cannot
+      // see — left this green.
+      // EITHER FORM OF IT. `wheel-repeat` offers the modifier version
+      // (`wheel-radio-took-one`), which arms rather than stamps -- a
+      // different control at a different slot, but the same fact reaching
+      // the log. Both ids are named, so deleting either one from the step
+      // that carries it still fails here.
       expect(
-        step.responses.some((r) => /radio|car/i.test(r.label)),
+        step.responses.some((r) => r.id === 'wheel-radio' || r.id === 'wheel-radio-took-one'),
         `${step.id} cannot report the car consuming the press`,
       ).toBe(true);
     }
@@ -1298,7 +1319,13 @@ describe('an answer that marks rather than answers', () => {
     // for and a future edit that drops the flag should say so out loud.
     const ids = new Set(modifiers.map((m) => m.split(':')[1]));
     expect(ids.has('route-moved'), 'a route move is a choice again').toBe(true);
-    expect(ids.has('wheel-radio'), 'the radio taking a press is a choice again').toBe(true);
+    expect(
+      ids.has('wheel-radio-took-one'),
+      'the radio taking one of two presses is a choice again',
+    ).toBe(true);
+    // ...and the STAMPING one is not a modifier, which is the other half of
+    // the same requirement: one id, one behaviour, one slot.
+    expect(ids.has('wheel-radio'), 'the plain radio answer became a modifier').toBe(false);
   });
 });
 
@@ -1399,19 +1426,26 @@ describe('one starting line for every cell after the microphone', () => {
   });
 
   /**
-   * ONE opening, and one close, per leg.
+   * ONE BLOCK IN THE PROTOCOL — WHICH IS NOT THE SAME CLAIM AS ONE CLOSE.
    *
-   * The offset every post-microphone line carries is measured from the moment
-   * the app stopped reporting `listening`, and the runner keeps exactly one
-   * such moment. That is correct only while the microphone goes up once and
-   * comes down once: a second block would leave every cell after it timed from
-   * the FIRST close, which in a leg is a minute or more out and silently turns
-   * the shortest offsets in the run into the longest numbers in the export.
+   * This used to be named "opens the microphone exactly once, which is what
+   * the offset counts from", and `FieldTest.tsx` pointed at it by name as the
+   * guard on `micClosedAtRef`. It cannot be that guard and never could: it
+   * walks `FIELD_TEST_STEPS[].setup.voice`, which is DECLARED protocol data,
+   * while the runner watches `voiceStatus.state`, a runtime signal that flips
+   * on every recogniser restart — and on iOS the recogniser ends after
+   * every utterance, so a single declared block produced a dozen closes. The
+   * protocol could satisfy this test forever while the export was wrong on
+   * every mic-open row.
    *
-   * So the assumption is written down where a second block would trip over it,
-   * rather than left as a comment in the runner.
+   * What it does assert is worth keeping, so it stays, renamed to it: the
+   * protocol declares ONE microphone block, which is what makes "before the
+   * microphone" and "after the microphone" two cells rather than four. The
+   * runtime property — that a restart is not recorded as a close — is
+   * pinned in `e2e/field-test-mic.spec.ts`, against a recogniser that ends
+   * its session the way a phone does.
    */
-  it('opens the microphone exactly once, which is what the offset counts from', () => {
+  it('declares exactly one microphone block, so before and after are two cells', () => {
     let voice = false;
     let blocks = 0;
     for (const step of FIELD_TEST_STEPS) {
@@ -1421,7 +1455,7 @@ describe('one starting line for every cell after the microphone', () => {
     }
     expect(
       blocks,
-      'the microphone goes up more than once, so `msSinceAppLetGo` counts from the wrong close -- see micClosedAtRef',
+      'the protocol declares more than one microphone block, so "before" and "after" are no longer two cells',
     ).toBe(1);
     expect(voice, 'the leg ends with the microphone still open').toBe(false);
   });
@@ -1453,18 +1487,29 @@ describe('one starting line for every cell after the microphone', () => {
 describe('what the operator is asked to do', () => {
   const byId = (id: string) => FIELD_TEST_STEPS.find((s) => s.id === id)!;
 
-  it('does not send the operator to the two buttons that break the run', () => {
-    // S7. Car volume is the one gain stage the app cannot see, so a leg where
-    // it moved answers every later loudness question against a different
-    // baseline. The voice button seizes hands-free outright -- the exact
+  it('names the buttons that are safe rather than excluding a couple', () => {
+    // S7/F1. Car volume is the one gain stage the app cannot see, so a leg
+    // where it moved answers every later loudness question against a
+    // different baseline. Call-answer seizes hands-free outright -- the exact
     // transition the rest of the protocol is built to observe -- nineteen
-    // steps before the block that measures it.
-    const step = byId('wheel-other');
-    expect(step.instruction, 'the step asks for the volume button').not.toMatch(
-      /\bvolume\b(?!.*NOT)/i,
+    // steps before the block that measures it. Mode/source takes the head
+    // unit off Bluetooth audio entirely.
+    //
+    // A BLACKLIST WAS NOT ENOUGH, and neither was the assertion on it: the
+    // first version of this test used `not.toMatch(/\bvolume\b(?!.*NOT)/i)`,
+    // and the `i` let the lookahead be satisfied by any later "not",
+    // "nothing" or "cannot" in the sentence. It asserted almost nothing.
+    const asked = byId('wheel-other').instruction;
+    // What the operator is told to press, by name.
+    expect(asked, 'the step names no button that is safe to press').toMatch(/skip-BACK/);
+    // And the three that ruin the leg, each ruled out in its own clause.
+    expect(asked, 'call-answer is not ruled out').toMatch(/answers a call/i);
+    expect(asked, 'the volume is not ruled out').toMatch(/changes volume|changes the volume/i);
+    expect(asked, 'the source is not ruled out').toMatch(/changes source|changes the source/i);
+    // No open-ended invitation survives anywhere in the sentence.
+    expect(asked, 'the step still invites any button at all').not.toMatch(
+      /anything else|whatever|any button/i,
     );
-    expect(step.instruction).toMatch(/NOT volume/);
-    expect(step.instruction).toMatch(/NOT the voice button/);
   });
 
   it('lets the operator say they never got the word out', () => {
@@ -1493,8 +1538,29 @@ describe('what the operator is asked to do', () => {
     // in a lap are not the same measurement at all.
     for (const c of FIELD_TEST_CONDITIONS) {
       expect(c.setup, `${c.id} does not say where the phone is`).toMatch(
-        /cradle|in your hand|lap/i,
+        /cradle|in your hand|lap|against your ear/i,
       );
+    }
+  });
+
+  it('runs one leg with the phone at the ear, and only one', () => {
+    // F7. `route-earpiece` and `route-silent` are the same report everywhere
+    // else: a receiver is inaudible from a cradle an arm's length away, and
+    // at road speed it is inaudible full stop. If NO condition holds the
+    // phone to the head, the protocol has two buttons for one cell and the
+    // distinction between "iOS moved this to the receiver" and "this never
+    // played" — opposite diagnoses — is not in the data at all.
+    const atEar = FIELD_TEST_CONDITIONS.filter((c) => /against your ear|to your ear/i.test(c.setup));
+    expect(atEar.map((c) => c.id), 'no leg can separate the earpiece from silence').toEqual([
+      'phone',
+    ]);
+    // And the legs that CANNOT separate them say so where the operator reads
+    // what the leg is for, rather than leaving the analysis to infer it.
+    for (const c of FIELD_TEST_CONDITIONS.filter((x) => x.id !== 'phone')) {
+      expect(
+        c.proves,
+        `${c.id} does not admit that the earpiece and silence are one answer in it`,
+      ).toMatch(/earpiece/i);
     }
   });
 });
@@ -1504,11 +1570,28 @@ describe('what the operator is asked to do', () => {
  */
 describe('a condition the car is not part of', () => {
   it('knows which conditions have the car in the audio path', () => {
-    const speakerphone = FIELD_TEST_CONDITIONS.find((c) => c.id === 'speakerphone')!;
-    expect(speakerphone.bluetooth).toBe(false);
-    for (const c of FIELD_TEST_CONDITIONS.filter((x) => x.id !== 'speakerphone')) {
-      expect(c.bluetooth, `${c.id} is not marked as using the car`).toBe(true);
+    // F4. `phone` used to be flagged Bluetooth-ON while its own setup text
+    // said "engine off". With the engine off a Corolla's head unit is dark:
+    // nothing to pair to, no wheel to press, no route to a car speaker. The
+    // flag drove `stepResponses`, so all six wheel steps of that leg buried
+    // "No Bluetooth" at slot five behind four answers about what a car that
+    // was not switched on did.
+    //
+    // ASSERTED AGAINST THE SETUP TEXT, not against a list of ids: the flag
+    // and the sentence the operator follows have to agree, and it was their
+    // disagreement that was the bug.
+    for (const c of FIELD_TEST_CONDITIONS) {
+      const saysOff = /bluetooth off/i.test(c.setup);
+      expect(
+        c.bluetooth,
+        `${c.id} is flagged bluetooth=${String(c.bluetooth)} and its setup says ${
+          saysOff ? 'Bluetooth OFF' : 'nothing about turning Bluetooth off'
+        }`,
+      ).toBe(!saysOff);
     }
+    // Both directions are populated, or the assertion above is vacuous.
+    expect(FIELD_TEST_CONDITIONS.filter((c) => c.bluetooth).length).toBeGreaterThan(0);
+    expect(FIELD_TEST_CONDITIONS.filter((c) => !c.bluetooth).length).toBeGreaterThan(0);
   });
 
   it('puts the only possible answer first on a wheel step', () => {
@@ -1550,21 +1633,31 @@ describe('where an answer sits, from one step to the next', () => {
   const wheelSteps = FIELD_TEST_STEPS.filter((s) => s.wheel);
 
   it('keeps every wheel answer in the same position on every wheel step', () => {
-    const seen = new Map<string, number>();
-    for (const step of wheelSteps) {
-      const slots = stepResponses(step, 'car');
-      slots.forEach((r, i) => {
-        if (!r) return;
-        const was = seen.get(r.id);
-        if (was === undefined) seen.set(r.id, i);
-        else
-          expect(
-            i,
-            `"${r.label}" is slot ${was} on one wheel step and ${i} on ${step.id}`,
-          ).toBe(was);
-      });
+    // UNDER EVERY CONDITION, not just `car`. `stepResponses` takes a
+    // different branch when the condition has Bluetooth off -- it prepends
+    // `wheel-na` and shifts every other slot down one -- and that branch,
+    // the one that actually reorders the driver's thumb targets, had no
+    // position test at all. It is uniform today; nothing said so.
+    let checked = 0;
+    for (const condition of FIELD_TEST_CONDITIONS) {
+      const seen = new Map<string, number>();
+      for (const step of wheelSteps) {
+        stepResponses(step, condition.id).forEach((r, i) => {
+          if (!r) return;
+          const was = seen.get(r.id);
+          if (was === undefined) {
+            seen.set(r.id, i);
+            checked += 1;
+          } else
+            expect(
+              i,
+              `under ${condition.id}, "${r.label}" is slot ${was} on one wheel step and ${i} on ${step.id}`,
+            ).toBe(was);
+        });
+      }
+      expect(seen.size, `no wheel answers were checked under ${condition.id}`).toBeGreaterThan(3);
     }
-    expect(seen.size, 'no wheel answers were checked at all').toBeGreaterThan(3);
+    expect(checked, 'no conditions were walked at all').toBeGreaterThan(3);
   });
 
   it('holds the empty positions open rather than closing them up', () => {
@@ -1610,5 +1703,255 @@ describe('where an answer sits, from one step to the next', () => {
     const proves = FIELD_TEST_CONDITIONS.find((c) => c.id === 'speakerphone')!.proves;
     expect(proves, 'the control claims to isolate one variable').not.toMatch(/same distance/i);
     expect(proves).toMatch(/car/i);
+  });
+});
+
+/**
+ * F3: the cell every conclusion is read against was composed differently.
+ *
+ * `route-short` ("Correct?") and `route-long` (fifteen words) sat in the
+ * clip/before cell, so it was A, B, one word, a sentence -- against A, B, A in
+ * all five others. A one-word clip is the utterance most likely to be answered
+ * "heard nothing" under road noise and a long one the most likely to be
+ * interrupted, so the difference did not merely add noise: it ran towards the
+ * two answers the protocol reads as failure, in the cell used as the baseline.
+ */
+describe('every cell of the crossing is composed the same way', () => {
+  const crossed = () => {
+    let clips = true;
+    let voice = false;
+    let micHasBeenOn = false;
+    const cells = new Map<string, string[]>();
+    for (const step of FIELD_TEST_STEPS) {
+      if (step.setup?.useClips !== undefined) clips = step.setup.useClips;
+      if (step.setup?.voice !== undefined) voice = step.setup.voice;
+      if (voice) micHasBeenOn = true;
+      if (step.aux) continue;
+      if (!step.responses.some((r) => r.kind === 'route')) continue;
+      if (!step.say?.length) continue;
+      const key = `${clips ? 'clip' : 'tts'} / mic ${voice ? 'open' : micHasBeenOn ? 'after' : 'before'}`;
+      cells.set(key, [...(cells.get(key) ?? []), step.id]);
+    }
+    return cells;
+  };
+
+  it('gives every cell the same number of samples', () => {
+    // NOT ">= 3". The old assertion was a floor, and a floor let the cell with
+    // four odd utterances pass next to cells with three matched ones. A
+    // crossing read cell against cell has to hold the count fixed too.
+    const sizes = [...crossed().values()].map((ids) => ids.length);
+    expect(sizes.length, 'the crossing lost a cell entirely').toBe(6);
+    expect(
+      new Set(sizes).size,
+      `the cells hold ${sizes.join(', ')} samples: a cell with more samples than its comparison is not a control`,
+    ).toBe(1);
+    expect(sizes[0]).toBe(3);
+  });
+
+  it('speaks the same three lines, in the same order, in every cell', () => {
+    const say = (id: string) => FIELD_TEST_STEPS.find((s) => s.id === id)!.say![0];
+    const want = [say('route-1'), say('route-2'), say('route-1')];
+    expect(want[0], 'line A is empty').toBeTruthy();
+    expect(want[1], 'line B is empty').toBeTruthy();
+    expect(want[0]).not.toBe(want[1]);
+    for (const [key, ids] of crossed()) {
+      expect(
+        ids.map(say),
+        `${key} (${ids.join(', ')}) does not speak A, B, A -- so its answers differ from their comparison cell by the utterance as well as by the condition`,
+      ).toEqual(want);
+    }
+  });
+
+  it('keeps the odd-length samples, and keeps them out of the crossing', () => {
+    // They are worth running: a single word is the shape most likely to be
+    // lost and a long sentence the shape most likely to be cut off. They are
+    // just not the same question, and `aux` is what says so.
+    const aux = FIELD_TEST_STEPS.filter((s) => s.aux).map((s) => s.id);
+    expect(aux).toEqual(['route-short', 'route-long']);
+    for (const id of aux) {
+      const step = FIELD_TEST_STEPS.find((s) => s.id === id)!;
+      expect(step.responses.some((r) => r.kind === 'route'), `${id} stopped asking`).toBe(true);
+      expect(step.say?.length, `${id} says nothing`).toBeGreaterThan(0);
+    }
+  });
+});
+
+/**
+ * F8: "out of the car speakers" cannot happen with Bluetooth off.
+ *
+ * The button stays where it is — a route answer that moves between legs is
+ * how the next wrong answer gets tapped at speed — so the export is what
+ * has to say it, on the row the 2x2 is assembled from.
+ */
+describe('an answer that the leg makes impossible', () => {
+  beforeEach(() => {
+    clearDiagnosticLog();
+  });
+
+  it('marks a car-speaker answer taken with Bluetooth off', () => {
+    stampFieldTest('route-1', 'speakerphone', 'route-car');
+    stampFieldTest('route-1', 'phone', 'route-car');
+    const marked = readDiagnosticLog()
+      .filter((e) => e.event === 'answer')
+      .map((e) => e.detail?.impossible);
+    expect(marked, 'a car-speaker answer on a leg with no car reads as evidence').toEqual([
+      true,
+      true,
+    ]);
+  });
+
+  it('leaves an answer the leg can actually produce unmarked', () => {
+    stampFieldTest('route-1', 'car', 'route-car');
+    stampFieldTest('route-1', 'freeway', 'route-car');
+    stampFieldTest('route-1', 'speakerphone', 'route-phone');
+    for (const e of readDiagnosticLog().filter((x) => x.event === 'answer')) {
+      expect(
+        e.detail?.impossible,
+        `${String(e.detail?.condition)}/${String(e.detail?.answer)} was marked impossible`,
+      ).toBeUndefined();
+    }
+  });
+});
+
+/**
+ * W10: an answer id the step does not offer reads as a real answer.
+ *
+ * This test file was itself stamping `wheel-nothing`, deleted from the
+ * protocol months earlier, and nothing anywhere noticed — which is exactly
+ * what would happen to a rename that missed a call site, in a log whose whole
+ * purpose is to be greppable after the drive.
+ */
+describe('an answer the step does not offer', () => {
+  beforeEach(() => {
+    clearDiagnosticLog();
+  });
+
+  it('is marked unknown rather than filed as evidence', () => {
+    stampFieldTest('wheel-gap', 'car', 'wheel-nothing');
+    expect(
+      readDiagnosticLog().find((e) => e.event === 'answer')?.detail?.unknown,
+      'a deleted response id reads as a real answer',
+    ).toBe(true);
+  });
+
+  it('leaves every id the step really offers alone', () => {
+    for (const step of FIELD_TEST_STEPS) {
+      for (const response of step.responses) {
+        clearDiagnosticLog();
+        stampFieldTest(step.id, 'car', response.id);
+        expect(
+          readDiagnosticLog().find((e) => e.event === 'answer')?.detail?.unknown,
+          `${step.id}/${response.id} is offered by the step and was marked unknown`,
+        ).toBeUndefined();
+      }
+    }
+  });
+
+  it('says nothing about a step the protocol does not have', () => {
+    // A caller outside the protocol -- a test, a future screen -- is not the
+    // same fault and must not be labelled as one.
+    clearDiagnosticLog();
+    stampFieldTest('not-a-step', 'car', 'whatever');
+    expect(readDiagnosticLog().find((e) => e.event === 'answer')?.detail?.unknown).toBeUndefined();
+  });
+});
+
+/**
+ * E2: one position, one behaviour.
+ *
+ * A `modifier` answer arms a marker and leaves the step open; every other
+ * answer stamps and advances. `wheel-radio` was a plain answer on
+ * `wheel-other` and a modifier on `wheel-repeat`, the step immediately after
+ * it, at the same slot, in the same colour, with labels differing by two
+ * words. The operator learns positions, not labels.
+ */
+describe('a learned position does not change what a tap does', () => {
+  it('never offers one id as a modifier on one step and not on another', () => {
+    const kinds = new Map<string, Set<boolean>>();
+    for (const step of FIELD_TEST_STEPS) {
+      for (const r of step.responses) {
+        kinds.set(r.id, (kinds.get(r.id) ?? new Set()).add(r.modifier === true));
+      }
+    }
+    for (const [id, seen] of kinds) {
+      expect(
+        seen.size,
+        `${id} arms a marker on one step and stamps on another, and the operator cannot see which`,
+      ).toBe(1);
+    }
+  });
+
+  it('never puts a stamping answer and a modifier in the same slot', () => {
+    const modifier = new Map<string, boolean>();
+    for (const step of FIELD_TEST_STEPS) {
+      for (const r of step.responses) modifier.set(r.id, r.modifier === true);
+    }
+    for (const step of FIELD_TEST_STEPS.filter((x) => x.wheel)) {
+      for (const condition of FIELD_TEST_CONDITIONS) {
+        const slots = stepResponses(step, condition.id);
+        for (const [i, slot] of slots.entries()) {
+          if (slot === null) continue;
+          // Every OTHER wheel step's answer at this position.
+          for (const other of FIELD_TEST_STEPS.filter((x) => x.wheel && x.id !== step.id)) {
+            const there = stepResponses(other, condition.id)[i];
+            if (!there) continue;
+            expect(
+              modifier.get(there.id),
+              `${condition.id}: slot ${i} is "${slot.label}" on ${step.id} and "${there.label}" on ${other.id}, and one of them advances while the other does not`,
+            ).toBe(modifier.get(slot.id));
+          }
+        }
+      }
+    }
+  });
+
+  it('keeps both facts about a pair of presses available', () => {
+    // The modifier exists because "I pressed twice" and "the radio took one
+    // of them" are independent: an arrival count of 1 with neither recorded
+    // is the diagnosis and its opposite collapsed into one number.
+    const step = FIELD_TEST_STEPS.find((x) => x.id === 'wheel-repeat')!;
+    const ids = step.responses.map((r) => r.id);
+    expect(ids).toContain('wheel-repeat-done');
+    expect(ids).toContain('wheel-radio-took-one');
+    expect(step.responses.find((r) => r.id === 'wheel-radio-took-one')?.modifier).toBe(true);
+  });
+});
+
+/**
+ * E7: an instruction the operator cannot see.
+ *
+ * `.fieldtest-head` is capped at 130px with `overflow-y: auto`, because every
+ * other row on the screen is already at its floor -- six 44px answers, the
+ * 44px evidence slot, the 48px control row and the 48px nav row. So a long
+ * instruction does not push anything; it is simply cut off, and the only way
+ * to reach the rest is to scroll a panel with a thumb while driving.
+ * Measured, three steps overflowed it: `fallback-audible` by 53-94px at every
+ * phone height, `wheel-other` and `wheel-repeat` at the three shortest.
+ *
+ * A character count is a proxy for a pixel measurement, and it is the right
+ * one HERE: the geometry is measured in the layout spec, and this is the
+ * thing a person editing the protocol will change without opening a browser.
+ */
+describe('an instruction has to fit on the screen it is printed on', () => {
+  // 130px of head, minus the title, at the app's own body size, is about six
+  // lines of roughly 30 characters. Set where the measured offenders fail and
+  // everything that fits passes, with the boundary named rather than tuned.
+  const MAX_INSTRUCTION_CHARS = 150;
+
+  it('keeps every printed instruction inside the head', () => {
+    const tooLong = FIELD_TEST_STEPS.filter(
+      (s) => s.instruction.length > MAX_INSTRUCTION_CHARS,
+    ).map((s) => `${s.id} (${s.instruction.length})`);
+    expect(
+      tooLong,
+      `these are clipped mid-sentence on a phone, and the only way to read the rest is to scroll the panel while driving: ${tooLong.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('still says what to do', () => {
+    // The other half: "short" is trivially satisfiable by saying nothing.
+    for (const step of FIELD_TEST_STEPS) {
+      expect(step.instruction.length, `${step.id} instructs nobody`).toBeGreaterThan(20);
+    }
   });
 });

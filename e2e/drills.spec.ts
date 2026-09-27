@@ -2,6 +2,25 @@ import { test, expect, type Page } from '@playwright/test';
 import { shot, withSettings, withStats, readStats, goHomeAndNavigate } from './helpers';
 import { tcConversionAccepted } from '../src/engine/count';
 
+/**
+ * The feedback strip, with the spaced-repetition due time masked out.
+ *
+ * Several tests below prove that a keyboard answer and a click take the same
+ * path by diffing the whole strip between two runs of the identical card.
+ * The strip carries the card's SR line, which reads "due in 24h" on one side
+ * of the twenty-four hour boundary and "due in 1 day" on the other -- and the
+ * two runs render seconds apart, so the comparison failed on a clock rather
+ * than on anything about keyboards. Everything else is still compared
+ * character for character.
+ */
+async function stripText(page: Page): Promise<string> {
+  return (await page.locator('.message-strip').innerText()).replace(
+    /due in [^\n]*/g,
+    'due in <time>',
+  );
+}
+
+
 const SPEED_TIERS = ['Learning', 'Table-ready', 'Pro', 'Expert'];
 
 /**
@@ -443,7 +462,7 @@ test('flashcards: pressing "2" answers Stand, grading identically to a click', a
 
   await page.keyboard.press('2');
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-  const keyboardResult = await page.locator('.message-strip').innerText();
+  const keyboardResult = await stripText(page);
   const keyboardStats = await readStats(page);
 
   // Reset both persisted stats and the flashcard weighting (which a wrong
@@ -460,7 +479,7 @@ test('flashcards: pressing "2" answers Stand, grading identically to a click', a
 
   await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-  const clickResult = await page.locator('.message-strip').innerText();
+  const clickResult = await stripText(page);
   const clickStats = await readStats(page);
 
   expect(keyboardResult).toBe(clickResult);
@@ -806,7 +825,7 @@ test('flashcards: keyboard 3/4/5 answer Double/Split/Surrender, grading identica
 
     await page.keyboard.press(key);
     await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-    const keyboardResult = await page.locator('.message-strip').innerText();
+    const keyboardResult = await stripText(page);
 
     // Reset stats/weights (same idiom as the existing "pressing 2" spec)
     // before replaying the identical seed via a real click.
@@ -821,7 +840,7 @@ test('flashcards: keyboard 3/4/5 answer Double/Split/Surrender, grading identica
 
     await page.locator('.action-bar button.action-btn', { hasText: label }).click();
     await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-    const clickResult = await page.locator('.message-strip').innerText();
+    const clickResult = await stripText(page);
 
     expect(keyboardResult, `key "${key}" (${label}) should grade identically to a click`).toBe(clickResult);
 
@@ -866,7 +885,7 @@ test('deviation quiz: keyboard action key grades identically to clicking the mat
 
   await page.keyboard.press('1'); // KEY_TO_ACTION['1'] = 'hit'
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-  const keyboardResult = await page.locator('.message-strip').innerText();
+  const keyboardResult = await stripText(page);
   expect(await readStats(page)).not.toBeNull();
 
   await page.evaluate(() => {
@@ -880,7 +899,7 @@ test('deviation quiz: keyboard action key grades identically to clicking the mat
 
   await page.locator('.action-bar button.action-btn', { hasText: 'Hit' }).click();
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-  const clickResult = await page.locator('.message-strip').innerText();
+  const clickResult = await stripText(page);
 
   expect(keyboardResult).toBe(clickResult);
 });
@@ -898,7 +917,7 @@ test('deviation quiz: keyboard "1" takes insurance identically to clicking Take 
 
   await page.keyboard.press('1');
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-  const keyboardResult = await page.locator('.message-strip').innerText();
+  const keyboardResult = await stripText(page);
 
   await page.evaluate(() => window.localStorage.removeItem('bjtrainer.stats.v1'));
   await page.reload();
@@ -908,7 +927,7 @@ test('deviation quiz: keyboard "1" takes insurance identically to clicking Take 
 
   await page.getByRole('button', { name: 'Take Insurance', exact: true }).click();
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-  const clickResult = await page.locator('.message-strip').innerText();
+  const clickResult = await stripText(page);
 
   expect(keyboardResult).toBe(clickResult);
 });
@@ -926,7 +945,7 @@ test('deviation quiz: keyboard "2" declines insurance identically to clicking De
 
   await page.keyboard.press('2');
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-  const keyboardResult = await page.locator('.message-strip').innerText();
+  const keyboardResult = await stripText(page);
 
   await page.evaluate(() => window.localStorage.removeItem('bjtrainer.stats.v1'));
   await page.reload();
@@ -936,7 +955,7 @@ test('deviation quiz: keyboard "2" declines insurance identically to clicking De
 
   await page.getByRole('button', { name: 'Decline Insurance', exact: true }).click();
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-  const clickResult = await page.locator('.message-strip').innerText();
+  const clickResult = await stripText(page);
 
   expect(keyboardResult).toBe(clickResult);
 });

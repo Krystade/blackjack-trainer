@@ -95,6 +95,27 @@ export interface FieldTestRun {
    */
   beforeHandedBack?: boolean;
   /**
+   * Whether this run was ENDED on purpose, rather than merely stepped out of.
+   *
+   * `stopFieldTestRun` and `pauseFieldTestRun` wrote the identical object, so
+   * nothing in the store knew the difference — and three separate readers
+   * asked it anyway. After a deliberate Finish at the last step:
+   * `fieldTestRunIsResumable` stayed true, so the app opened on the field-test
+   * gate on EVERY launch for two hours; the gate's arrival cue then chimed and
+   * said "The field test is paused. Resume is the first button on the screen",
+   * a false statement about a run the operator had ended, on a screen designed
+   * to be used without looking; and `fieldTestRunIsLive` blocked the update
+   * check for ten minutes after the drive was over.
+   *
+   * The Resume BUTTON stays regardless — it exists for a mis-tapped Finish
+   * and that is worth keeping. What changes is that the app no longer volunteers
+   * a finished run to somebody who did not ask for it.
+   *
+   * Cleared by Resume and by Start, both of which mean "somebody is in this
+   * again".
+   */
+  endedAt?: number;
+  /**
    * When this run was last written to, as a wall clock.
    *
    * Two things need to know whether a run is being worked on RIGHT NOW rather
@@ -281,6 +302,10 @@ function coerce(raw: unknown): FieldTestRun {
     // and Resume re-takes the snapshot rather than trusting the spent one.
     beforeHandedBack: r.beforeHandedBack === true ? true : undefined,
     runId: typeof r.runId === 'string' ? r.runId : undefined,
+    // Carried through the reload for the same reason as `touchedAt`: the
+    // launch screen and the update check both read it, and both of them run
+    // on the far side of exactly that reload.
+    endedAt: typeof r.endedAt === 'number' && Number.isFinite(r.endedAt) ? r.endedAt : undefined,
     // Carried through the reload, because the reload is exactly what it is
     // there to be read across.
     touchedAt:
@@ -308,6 +333,11 @@ export function fieldTestRunAgeMs(now = Date.now()): number | undefined {
  */
 export function fieldTestRunIsLive(now = Date.now()): boolean {
   const age = fieldTestRunAgeMs(now);
+  // NOT A RUN THAT WAS FINISHED. `finish()` writes and therefore touches, so
+  // without this the update check stayed blocked for ten minutes after the
+  // drive ended -- on a phone that has just been put down, which is the one
+  // moment reloading for an update costs nothing at all.
+  if (readFieldTestRun().endedAt !== undefined) return false;
   return age !== undefined && age < RUN_LIVE_MS && readFieldTestRun().stepIndex > 0;
 }
 
@@ -321,6 +351,11 @@ export function fieldTestRunIsLive(now = Date.now()): boolean {
  */
 export function fieldTestRunIsResumable(now = Date.now()): boolean {
   const age = fieldTestRunAgeMs(now);
+  // A run the operator ENDED is not something to come back to. `finish()`
+  // keeps `stepIndex` on purpose (a mis-tapped Finish must be recoverable),
+  // and that made every completed run hijack the app's opening screen for two
+  // hours and speak "The field test is paused" at somebody who had finished it.
+  if (readFieldTestRun().endedAt !== undefined) return false;
   return age !== undefined && age < RUN_RESUMABLE_MS && readFieldTestRun().stepIndex > 0;
 }
 
@@ -539,9 +574,35 @@ export function markFieldTestBeforeOwed(): void {
  * true after they have been given back. This answers "is this run still
  * holding them", which does not.
  */
-export function unspentFieldTestBefore(): FieldTestBefore | undefined {
+export function unspentFieldTestBefore(now = Date.now()): FieldTestBefore | undefined {
   const current = readFieldTestRun();
-  return current.beforeHandedBack === true ? undefined : current.before;
+  if (current.beforeHandedBack === true) return undefined;
+  /**
+   * AND ONLY WHILE THE INTERRUPTION IT EXISTS FOR IS STILL PLAUSIBLE.
+   *
+   * The preference for a stored snapshot is there to survive one thing: a run
+   * that was killed before it could hand the settings back. Force-quitting
+   * from the running screen does exactly that — no React cleanup runs —
+   * and the gate's own session warning tells the operator to force-quit
+   * between legs, so it is a state the protocol asks for.
+   *
+   * Unbounded, it then outlived its purpose: the operator relaunches, turns
+   * the volume down or switches the recorded voice off ON PURPOSE, starts the
+   * next leg, and the new run adopts the pre-crash snapshot as `before` —
+   * so its restore writes the deliberate change away, permanently. That is
+   * the same bug `beforeHandedBack` was added to fix, reached through the one
+   * door that fix left open.
+   *
+   * The same two hours Resume uses, and for the same reason: past it, the
+   * likeliest explanation of a stale snapshot is no longer "the app was
+   * killed mid-run" but "these are last week's settings".
+   */
+  const age = fieldTestRunAgeMs(now);
+  if (age !== undefined && age >= RUN_RESUMABLE_MS) return undefined;
+  // A run that was ENDED handed its settings back through `finish()`. If the
+  // flag says otherwise the restore genuinely did not happen, so the snapshot
+  // is still owed -- but an ended run older than the window above is not.
+  return current.before;
 }
 
 /**
@@ -567,11 +628,13 @@ export function setFieldTestBefore(before: FieldTestBefore): void {
  * cost the whole run.
  */
 export function resumeFieldTestRun(): void {
-  write({ ...readFieldTestRun(), active: true });
+  // Un-ends it: whatever this run was before, somebody is in it now.
+  write({ ...readFieldTestRun(), active: true, endedAt: undefined });
 }
 
+/** End a run deliberately. See `endedAt` for what that buys over pausing. */
 export function stopFieldTestRun(): void {
-  write({ ...readFieldTestRun(), active: false });
+  write({ ...readFieldTestRun(), active: false, endedAt: Date.now() });
 }
 
 /**
@@ -594,6 +657,9 @@ export function stopFieldTestRun(): void {
  * offers Resume"; this is what makes that true.
  */
 export function pauseFieldTestRun(): void {
+  // NO `endedAt`, and that is now the entire difference between the two. A
+  // pause is the case the launch screen and the spoken "Resume is the first
+  // button" cue exist for; a Finish is not.
   write({ ...readFieldTestRun(), active: false });
 }
 

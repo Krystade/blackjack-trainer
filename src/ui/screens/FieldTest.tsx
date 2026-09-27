@@ -30,6 +30,7 @@ import {
   stopFieldTestRun,
   subscribeFieldTestRun,
   type FieldTestRun,
+  type FieldTestBefore,
 } from '../../diag/fieldTestRun';
 import {
   speakAsync,
@@ -117,7 +118,44 @@ const MIC_SETTLE_TIMEOUT_MS = 10_000;
  * short instead of leaving it a guess forever.
  */
 const MIC_RELEASE_TIMEOUT_MS = 5_000;
+/**
+ * How long a two-tap guard stays armed.
+ *
+ * Long enough for a deliberate second tap by someone who is not looking,
+ * short enough that the arming cannot outlive the intent behind it.
+ */
+const ARMED_MS = 5000;
+
+/**
+ * Disarm a two-tap guard after `ARMED_MS`.
+ *
+ * Both guards on this screen were disarmed only by something else changing:
+ * `confirmFinish` by the step effect, and `confirmRestart` by nothing at all.
+ * Two ordinary actions do not change the step -- tapping a `modifier` answer,
+ * and answering on `free`, which by design does not advance -- so an armed
+ * Finish survived any number of later taps. On the last step of the protocol,
+ * where the operator is deliberately tapping repeatedly, that is a run ended
+ * by a button they armed by accident several minutes earlier.
+ */
+function useArmedFor(armed: boolean, setArmed: (v: boolean) => void): void {
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), ARMED_MS);
+    return () => clearTimeout(t);
+  }, [armed, setArmed]);
+}
+
 const HFP_SETTLE_MS = 1_500;
+
+/**
+ * The silence between the arrival chime and a measured utterance.
+ *
+ * THE SAME NUMBER AS `HFP_SETTLE_MS`, on purpose and not by coincidence: the
+ * post-microphone steps get their run-up from that wait, so every other route
+ * sample has to get an identical one or the cells differ in something besides
+ * the factor being crossed. If one moves, the other moves with it.
+ */
+const PRE_SAMPLE_SETTLE_MS = HFP_SETTLE_MS;
 
 /**
  * How long after a step opens an answer is ignored.
@@ -128,6 +166,56 @@ const HFP_SETTLE_MS = 1_500;
  * operator never saw.
  */
 const ANSWER_GUARD_MS = 350;
+
+/**
+ * The stored snapshot, but only while it can still be true.
+ *
+ * `unspentFieldTestBefore()` answers "does the run still owe the operator
+ * their settings", and preferring it at Start is right in the case it exists
+ * for: a run killed before any cleanup could run: the persisted settings ARE
+ * the protocol's, and capturing them as the new `before` would make the
+ * protocol's own state permanent. Force-quitting from the running screen does
+ * exactly that, and the gate's session warning tells the operator to do it
+ * between legs.
+ *
+ * WHAT IT CANNOT SEE is the operator changing something afterwards. Relaunch,
+ * turn the volume down or switch the recorded voice off on purpose, start the
+ * next leg: the new run adopted the pre-crash snapshot and its restore wrote
+ * that deliberate change away, permanently. Same bug `beforeHandedBack` was
+ * added to fix, through the one door that fix left open.
+ *
+ * The settings themselves answer it. If what is on disk is still exactly what
+ * the protocol imposed at the step the old run died on, nobody has touched
+ * them and the snapshot is the operator's. If it is not, they have, and the
+ * live settings are the better record of what they want back.
+ */
+function owedSnapshot(run: FieldTestRun, settings: Settings): FieldTestBefore | undefined {
+  const stored = unspentFieldTestBefore();
+  if (!stored) return undefined;
+  const imposed = applyFieldTestSetup(settings, resolveFieldTestSetup(run.stepIndex));
+  const untouched =
+    imposed.audio.volume === settings.audio.volume &&
+    imposed.audio.useClips === settings.audio.useClips &&
+    imposed.audio.muted === settings.audio.muted &&
+    imposed.audio.enabled === settings.audio.enabled &&
+    imposed.drill.wheelMode === settings.drill.wheelMode;
+  if (untouched) return stored;
+  diag('test', 'before-snapshot-stale', {
+    atStep: run.stepIndex,
+    // What disagrees, so the export says which setting the operator changed
+    // rather than merely that the snapshot was dropped.
+    changed: [
+      imposed.audio.volume !== settings.audio.volume ? 'volume' : null,
+      imposed.audio.useClips !== settings.audio.useClips ? 'useClips' : null,
+      imposed.audio.muted !== settings.audio.muted ? 'muted' : null,
+      imposed.audio.enabled !== settings.audio.enabled ? 'enabled' : null,
+      imposed.drill.wheelMode !== settings.drill.wheelMode ? 'wheelMode' : null,
+    ]
+      .filter((x) => x !== null)
+      .join(', '),
+  });
+  return undefined;
+}
 
 export function FieldTest({
   settings,
@@ -172,7 +260,7 @@ export function FieldTest({
           closeSharedAudioContext();
           startFieldTestRun(
             run.condition,
-            unspentFieldTestBefore() ?? {
+            owedSnapshot(run, settings) ?? {
               volume: settings.audio.volume,
               useClips: settings.audio.useClips,
               muted: settings.audio.muted,
@@ -292,7 +380,21 @@ function StartGate({
    * mis-tap in a moving car ended a drive's evidence silently.
    */
   const [confirmRestart, setConfirmRestart] = useState(false);
+  // AND IT DISARMS. Nothing cleared this at all, so a stray tap left "Start
+  // over" armed across condition changes and for as long as the gate was up:
+  // the next tap anywhere near it discarded the run. A two-tap guard means
+  // two taps together, not two taps ever.
+  useArmedFor(confirmRestart, setConfirmRestart);
   const resumable = run.stepIndex > 0;
+  /**
+   * ...AND NOBODY ENDED IT. The Resume button stays on any run with a
+   * position -- it is there for a mis-tapped Finish and that is worth keeping
+   * -- but the spoken cue is a different claim. "The field test is paused"
+   * said out loud, to someone who tapped Finish twice on purpose thirty
+   * seconds ago, on a screen designed to be used without looking, is the app
+   * being wrong about the one thing it is telling them.
+   */
+  const interrupted = resumable && run.endedAt === undefined;
 
   /**
    * ARRIVE AT THE TOP, and say so when there is something to come back to.
@@ -316,8 +418,17 @@ function StartGate({
     } catch {
       /* a browser that will not scroll must still show the gate */
     }
-    if (!resumable) return;
-    diag('test', 'gate-resumable', { step: FIELD_TEST_STEPS[run.stepIndex]?.id, atStep: run.stepIndex });
+    if (!interrupted) return;
+    // `run=` HERE TOO. The gate runs outside the running screen's ambient
+    // context, so this and `condition-changed` were the two lines in the
+    // protocol that could not be joined to the run they are about -- which is
+    // the whole reason `run-start` and `run-resume` were given an explicit one.
+    diag('test', 'gate-resumable', {
+      run: run.runId,
+      condition: run.condition,
+      step: FIELD_TEST_STEPS[run.stepIndex]?.id,
+      atStep: run.stepIndex,
+    });
     chime('attention');
     void speakAsync('The field test is paused. Resume is the first button on the screen.', {
       interrupt: true,
@@ -507,6 +618,9 @@ function RunningTest({
   const [ambient, setAmbient] = useState<string | null>(null);
   const [measuring, setMeasuring] = useState(false);
   const [confirmFinish, setConfirmFinish] = useState(false);
+  // See `useArmedFor`: the step effect disarms this, and two ordinary actions
+  // never change the step.
+  useArmedFor(confirmFinish, setConfirmFinish);
   /** Trips on unmount, so a reading in flight is discarded rather than set. */
   const measureRun = useRef(0);
   /**
@@ -645,6 +759,15 @@ function RunningTest({
    */
   const micClosedAtRef = useRef<number | null>(null);
   /**
+   * When the recogniser last restarted itself, which is not the same event.
+   *
+   * iOS ends a webkit recognition session after every utterance and
+   * `voiceControl.ts` starts a new one from `onend`. That edge used to be
+   * written into `micClosedAtRef`, so mic-OPEN samples exported an offset
+   * documented as "how long after the app let go".
+   */
+  const micChurnAtRef = useRef<number | null>(null);
+  /**
    * The offset the CURRENT step's first line went out at, kept for the stamp.
    *
    * The answer row is what the analysis is read from, and the operator answers
@@ -708,6 +831,24 @@ function RunningTest({
     // and it fails LOUDLY in the export rather than quietly writing a guess.
     if (!stored) {
       diag('test', 'settings-restore-skipped', { why: 'nothing recorded' });
+      return;
+    }
+    /**
+     * ONCE PER RUN. `finish()` restores and then navigates, which unmounts
+     * the screen, which schedules the deferred teardown -- and nothing
+     * remounts to cancel it, so the commonest exit in the protocol restored
+     * twice: two `saveSettings`, two writes into App, two `storage` events to
+     * other tabs, and two `settings-restored from=run` lines in the artefact.
+     * The values were identical by then, so the only visible damage was in
+     * the export -- and the test that pins "exactly one restore" ran through
+     * Pause, the one exit where it already held.
+     *
+     * `beforeHandedBack` already records this exactly. Marked rather than
+     * deleted, so a genuine second restore after a Resume still works: Resume
+     * re-takes the snapshot and un-marks it.
+     */
+    if (unspentFieldTestBefore() === undefined) {
+      diag('test', 'settings-restore-skipped', { why: 'already handed back' });
       return;
     }
     const snapshot = settingsRef.current;
@@ -818,7 +959,25 @@ function RunningTest({
     // one to ten seconds between the cue and the measured utterance, the chime
     // is not the output immediately preceding the sample, so it cannot be what
     // the sample is measuring.
-    if (lines.length === 0 || step.awaitListening || step.awaitSilent) chime('good');
+    /**
+     * ...AND ON EVERY MEASURED ROUTE STEP, which is the half that made the
+     * cue a confound instead of a courtesy.
+     *
+     * Only the gated steps chimed, and only the gated steps then sat through
+     * `HFP_SETTLE_MS` of silence before speaking. Every one of those is a
+     * post-microphone or mic-open sample. So the six cells of the 2x2 differed
+     * not only in the factor under test but in their acoustic run-up: the
+     * before-microphone samples went out about 100ms after the previous
+     * answer's chime, and the after-microphone ones after a chime plus a
+     * second and a half of nothing. A route answer is a judgement about a
+     * sound in a stream of sounds, and the stream was correlated with the
+     * independent variable.
+     *
+     * So every sample now gets the same run-up: a chime, then a fixed silence,
+     * then the line. See `PRE_SAMPLE_SETTLE_MS`.
+     */
+    const measured = lines.length > 0 && step.responses.some((r) => r.kind === 'route');
+    if (lines.length === 0 || step.awaitListening || step.awaitSilent || measured) chime('good');
 
     /**
      * WAIT FOR THE MICROPHONE TO BE LIVE, on the steps that say they need it.
@@ -988,6 +1147,44 @@ function RunningTest({
       }
       setWaitingForMic(false);
     }
+    /**
+     * ABOVE THE SILENT-STEP RETURN, which is where it belonged all along.
+     *
+     * The previous step's offset must not be stamped onto this one's answer.
+     * This sat BELOW the early return, so it never ran on a step with no
+     * line, and nothing in the step effect cleared it either — so
+     * `wheel-after-mic`, the step added specifically to separate "the
+     * microphone took the wheel" from "the media slot lapsed", exported the
+     * offset of `route-after-mic-3`, taken however long the operator spent
+     * answering in between. `ambient` and `free` inherited
+     * `route-after-mic-3t`'s.
+     *
+     * A step that speaks overwrites it below; a step that does not speak has
+     * no utterance of its own, and now exports none.
+     */
+
+    /**
+     * THE SAME SILENCE BEFORE EVERY SAMPLE, whatever gate it came through.
+     *
+     * `awaitSilent` steps already waited `HFP_SETTLE_MS` for the hands-free
+     * link to come down, and that wait doubled as their run-up. The steps
+     * with no gate had none at all. This gives the ungated route samples the
+     * same one, so the interval between the arrival chime and the measured
+     * utterance is a constant of the protocol rather than a property of
+     * whichever cell a step happens to be in.
+     *
+     * Logged, because it is part of the conditions of the sample: a reader
+     * comparing two cells can check that both got it.
+     */
+    if (measured && !step.awaitSilent) {
+      const settleUntil = Date.now() + PRE_SAMPLE_SETTLE_MS;
+      diag('test', 'pre-sample-settle', { step: step.id, settleMs: PRE_SAMPLE_SETTLE_MS });
+      while (Date.now() < settleUntil) {
+        await new Promise((r) => setTimeout(r, 100));
+        if (sayRun.current !== run) return;
+      }
+    }
+    stepMicOffsetRef.current = null;
     if (lines.length === 0) {
       // CLEARED on the way out. The previous run's `finally` guard is already
       // false by the time it fires (the fence was bumped above), so arriving
@@ -1008,11 +1205,6 @@ function RunningTest({
       void speakInstruction();
       return;
     }
-    setPaths([]);
-    // The previous step's offset must not be stamped onto this one's answer. A
-    // step that speaks overwrites it below; a step that does not speak has no
-    // utterance to date, and exports none.
-    stepMicOffsetRef.current = null;
 
     // CLIPS ON, HERE, BEFORE ANYTHING IS SAID.
     //
@@ -1179,10 +1371,14 @@ function RunningTest({
    * the context is re-established before the step effect body runs.
    */
   useEffect(() => {
-    setDiagContext({ run: run.runId, step: step.id, cond: run.condition });
-    return () => {
-      setDiagContext({ run: undefined, step: undefined, cond: undefined });
-    };
+    // `condition`, NOT `cond`. The step entries passed `condition` explicitly
+    // and this passed `cond`, so a `test` row carried both while every
+    // `speak`, `wheel`, `focus`, `route` and `mic` row carried only the short
+    // one -- and `grep condition=freeway` in a car park returned the answers
+    // and the step-opens and none of the evidence underneath them.
+    //
+    // NOTHING IS CLEARED HERE. See the effect below the step effect.
+    setDiagContext({ run: run.runId, step: step.id, condition: run.condition });
   }, [run.runId, run.condition, step.id]);
 
   /**
@@ -1305,6 +1501,30 @@ function RunningTest({
   }, [step.id, run.condition]);
 
   /**
+   * THE CONTEXT COMES DOWN AFTER THE STEP EFFECT, which is why this is here
+   * rather than in the effect that sets it.
+   *
+   * React destroys every cleanup for a commit in declaration order, so with
+   * the clear alongside the set -- declared first, deliberately, so the
+   * context is installed before the step body runs -- the order on each step
+   * change was: context cleared, THEN the step cleanup's `cancelSpeech()`.
+   * Anything still playing therefore wrote `speak clip-end reason=stopped` or
+   * `speak tts-end reason=cancelled` with no run, no step and no condition,
+   * on Back, Skip, Pause and Finish, none of which are disabled while a line
+   * is playing. The round-four fix covered the create phase and left the
+   * destroy phase exactly as it was.
+   *
+   * Declared after the step effect, this cleanup runs after that one, so the
+   * lines a teardown emits still name the step that emitted them.
+   */
+  useEffect(
+    () => () => {
+      setDiagContext({ run: undefined, step: undefined, condition: undefined });
+    },
+    [],
+  );
+
+  /**
    * KEEP THE SCREEN AWAKE FOR THE RUN, which this screen alone did not.
    *
    * Every drill view calls `requestWakeLock`, and so does `useVoiceControl`
@@ -1421,6 +1641,11 @@ function RunningTest({
         // against each other.
         msSinceAppLetGo:
           micClosedAtRef.current === null ? undefined : Date.now() - micClosedAtRef.current,
+        // ...and how long after the recogniser last restarted itself, which is
+        // a different event and used to be reported as this one. Present only
+        // while the microphone is the thing being pressed against.
+        msSinceMicRestart:
+          micChurnAtRef.current === null ? undefined : Date.now() - micChurnAtRef.current,
       });
       setWheelSeen((prev) => [...prev, action]);
     });
@@ -1470,14 +1695,55 @@ function RunningTest({
   // noticed by comparing against what was there before. Safe under repeated
   // renders: after the assignment below the two agree, so a re-render with the
   // same state is not a second edge.
-  if (listeningRef.current && !nowListening) micClosedAtRef.current = Date.now();
-  // NOT CLEARED WHEN IT OPENS AGAIN, because within a leg it never does. The
-  // protocol turns the microphone on for one contiguous run of steps and off
-  // once, which `fieldTest.test.ts` asserts — if that ever stops being true
-  // this clock counts from the wrong close and the test says so by name. Across
-  // legs it cannot go stale either: a run that ends puts the start gate up in
-  // place of this component, so the next leg gets a fresh ref rather than the
-  // previous leg's close.
+  /**
+   * ONLY WHEN THE STEP HAS STOPPED ASKING FOR THE MICROPHONE.
+   *
+   * `msSinceAppLetGo` is the spine of the recovery curve: four route samples
+   * at roughly 1.5s, 9s, 20s and 31s after the microphone went down, read
+   * against a `null` that means "before the microphone was ever up". The edge
+   * this watches is `voiceStatus.state`, and on iOS the recogniser ENDS AFTER
+   * EVERY UTTERANCE — `voiceControl.ts` restarts it from `onend` and
+   * reports `restarting` in between, which its own comment describes as six
+   * sessions and five restarts in one drill. So inside the microphone block,
+   * which is eight steps long, this clock was being reset several times, and
+   * `mic-route-2`, `mic-route-3` and the three TTS ones exported
+   * `msSinceAppLetGo=850` on rows where the microphone was OPEN. The earliest
+   * and most decisive region of the curve was filled with samples belonging to
+   * the opposite cell of the 2x2.
+   *
+   * The declared setup is the right authority for "has the app stopped
+   * asking": it is what `say()` gates on, what the screen prints, and what
+   * the operator was told. A recogniser cycling mid-block is not the app
+   * letting go of anything.
+   */
+  const stepWantsVoice = resolveFieldTestSetup(run.stepIndex).voice === true;
+  if (listeningRef.current && !nowListening) {
+    if (stepWantsVoice) {
+      // A RESTART, NOT A CLOSE. Recorded rather than dropped: it is a real
+      // event on the audio session, it is the reason this guard exists, and a
+      // sample taken 200ms after a recogniser restart is worth being able to
+      // find.
+      micChurnAtRef.current = Date.now();
+    } else {
+      micClosedAtRef.current = Date.now();
+    }
+  }
+  /**
+   * CLEARED WHEN IT OPENS AGAIN, which the protocol does allow.
+   *
+   * The previous note said a leg turns the microphone on once and off once,
+   * and that is true only of forward travel. `resolveFieldTestSetup` folds
+   * setup forward in BOTH directions on purpose, so stepping Back from
+   * `route-after-mic` into `wheel-with-mic` — one tap on a control that is
+   * always enabled — turns it on again. Without this, every subsequent
+   * sample reported an offset "after the microphone let go" measured while
+   * the microphone was live, and `null` stopped meaning what the export says
+   * it means.
+   */
+  if (!listeningRef.current && nowListening) {
+    micClosedAtRef.current = null;
+    micChurnAtRef.current = null;
+  }
   listeningRef.current = nowListening;
   voiceStatusRef.current = voiceStatus.state;
 
@@ -1602,9 +1868,32 @@ function RunningTest({
   }, [step.id]);
 
   const answer = (responseId: string) => {
+    /**
+     * THE REFUSAL, SAID OUT LOUD. See the answer button's `aria-disabled`.
+     *
+     * This is the `disabled` guard, moved into the handler so that it can
+     * make a sound and leave a line. A tap here is not a mistake by the
+     * operator -- it is the app being deliberately unanswerable, for up to
+     * ten seconds, on a screen they cannot look at.
+     */
+    if (sampling || waitingForMic) {
+      diag('test', 'answer-blocked', {
+        step: step.id,
+        answer: responseId,
+        why: waitingForMic ? 'waiting-for-the-microphone' : 'still-speaking',
+      });
+      chime('blocked');
+      return;
+    }
     const sinceStep = Date.now() - stepReadyAt.current;
     if (sinceStep < ANSWER_GUARD_MS) {
       diag('test', 'answer-ignored', { step: step.id, answer: responseId, sinceStep });
+      // AUDIBLY REFUSED. A tap the screen throws away made no sound at all,
+      // which from the driver's seat is indistinguishable from having missed
+      // the button -- so the reflex is to tap again, harder, at a stack of
+      // six 52px targets. `blocked` is an octave below `bad`: plainly not the
+      // sound of an answer being taken.
+      chime('blocked');
       return;
     }
     const response = responses.find((r) => r?.id === responseId);
@@ -1625,7 +1914,13 @@ function RunningTest({
         });
         return next;
       });
-      chime('attention');
+      // A DIFFERENT SOUND FROM AN ANSWER, because it is a different event.
+      // This arms a marker and leaves the step OPEN; a route answer stamps
+      // and advances. Both chimed `attention`, so the one fact an eyes-free
+      // operator needs after a tap -- did we move on? -- was the one fact the
+      // sound did not carry, and the next tap landed on the next step's stack
+      // believing it was this one's.
+      chime('mark');
       return;
     }
     // Joined here rather than passed as arrays. The log caps a non-primitive
@@ -1767,7 +2062,18 @@ function RunningTest({
         className="fieldtest-stamp"
         data-testid="fieldtest-again"
         disabled={sampling || waitingForMic}
-        onClick={() => (step.say || step.sayUnclipped ? void say('repeat') : void speakInstruction())}
+        onClick={() =>
+          step.say || step.sayUnclipped
+            ? void say('repeat')
+            : // `'asked'`, BECAUSE THE OPERATOR ASKED. This branch passed
+              // nothing and took the `'arrival'` default, so on the six silent
+              // steps -- four of them wheel steps, where `field-test-arrival
+              // whileSpeaking=` is read against exactly this utterance -- the
+              // export could not tell a re-read the operator requested from
+              // the automatic one. The distinction is the reason the field
+              // exists.
+              void speakInstruction('asked')
+        }
       >
         {/* WHICH KIND OF NOT-READY. "Speaking..." during the microphone gate
             was false on the one screen whose whole subject is whether the
@@ -1810,6 +2116,32 @@ function RunningTest({
         </button>
       )}
 
+      {/*
+        A KNOWN POSITION CLASH, LEFT IN PLACE, and the reasoning rather than
+        the excuse.
+
+        On the 25 steps that speak, the right-hand control in this row reads
+        the step's instruction. On `ambient` there is no line to read, so this
+        takes that place — and it opens a raw `getUserMedia` for five
+        seconds. One pixel, two meanings, on the screen whose independent
+        variable is an open microphone.
+
+        Every fix costs more than it buys. Giving it a slot of its own means a
+        third position in a row of `flex: 1 1 0` children, which takes the
+        most-reached control on the screen ("Say it again", after a truck went
+        past) from half the width to a third on all 31 steps, and leaves the
+        six silent steps with one control and two-thirds dead space. Moving it
+        into the body shifts `ambient`'s answer stack down by a button pitch,
+        which breaks the one invariant three tests exist to hold.
+
+        What is true in mitigation: the microphone is opened on this step
+        either way — that is what the step IS — the label says what it
+        does rather than naming a generic action, the button reports
+        "Listening..." while the stream is live, and both the open and the
+        reading are in the log. A driver who taps here expecting a re-read
+        gets a labelled five-second measurement on the one step where a
+        measurement is what they came for.
+      */}
       {step.ambient && (
         <button
           type="button"
@@ -1951,15 +2283,30 @@ function RunningTest({
               }`}
               data-testid={`fieldtest-answer-${response.id}`}
               aria-pressed={response.modifier ? marks.includes(response.id) : undefined}
-              // DISABLED WHILE IT IS STILL TALKING, as "Say it again" already
-              // was. `answer()` stamps and advances, and the step cleanup
-              // cancels the rest -- so a tap during line 1 of `fallback-audible`
-              // records a two-line loudness comparison of one line, and on
-              // `route-long`, whose entire premise is the route moving PART WAY
-              // THROUGH, an early tap makes `route-moved` unobservable. The
-              // answer is about an utterance the operator has heard, so it
-              // cannot be collected before there is one.
-              disabled={sampling || waitingForMic}
+              /*
+               * REFUSED, NOT `disabled`, and the difference is audible.
+               *
+               * The answers must not be collectable while the app is still
+               * talking: a tap during line 1 of `fallback-audible` records a
+               * two-line loudness comparison of one line, and on `route-long`,
+               * whose premise is the route moving PART WAY THROUGH, an early
+               * tap makes `route-moved` unobservable. That part is unchanged.
+               *
+               * What changed is how the refusal reads from the driver's seat.
+               * A `disabled` button fires NO click event, so there was no
+               * handler to chime from and no entry to write -- and the
+               * answers are dead for up to ten seconds at a stretch across
+               * five consecutive steps while the microphone settles. Tapping
+               * and getting nothing is indistinguishable from missing a 52px
+               * target at speed, and the reflex is to tap again, harder. The
+               * only signals were 45% opacity and a label on another control:
+               * both require looking, on the screen built not to be looked at.
+               *
+               * `aria-disabled` keeps the semantics for a screen reader and
+               * the styling hook for the eye, while the tap still reaches
+               * `answer()`, which refuses it out loud and records it.
+               */
+              aria-disabled={sampling || waitingForMic ? true : undefined}
               onClick={() => answer(response.id)}
             >
               {response.label}
