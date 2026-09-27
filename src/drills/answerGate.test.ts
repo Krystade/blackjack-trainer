@@ -1,7 +1,11 @@
+import type { DeviationId } from '../engine/deviations';
+import { DEFAULT_RULES } from '../engine/ruleset';
+import type { StrategyRules } from '../engine/ruleset';
+import { drawQuizItem } from './deviationQuiz';
+import type { QuizItem } from './deviationQuiz';
 import { describe, it, expect } from 'vitest';
 import type { Card } from '../engine/cards';
-import { DEFAULT_RULES } from '../engine/ruleset';
-import { gateDrillAnswer } from './answerGate';
+import { gateDrillAnswer, gateQuizAnswer } from './answerGate';
 
 const c = (rank: Card['rank'], suit: Card['suit'] = 's'): Card => ({ rank, suit });
 
@@ -60,5 +64,58 @@ describe('gateDrillAnswer', () => {
 
   it('accepts any action when there is no hand to judge against', () => {
     expect(gateDrillAnswer('split', null, DEFAULT_RULES).accepted).toBe(true);
+  });
+});
+
+/* ---------------------------------------------------------------------- */
+/* F1: the gate a BLIND tap passes has to be the gate the buttons show     */
+/* ---------------------------------------------------------------------- */
+
+describe('the blind pad asks the same question the screen asks', () => {
+  // Surrender offered at the table AND surrender indices on: the only
+  // configuration where the two questions differ.
+  const RULES: StrategyRules = { ...DEFAULT_RULES, ls: true, surrenderIndices: true };
+
+  /** The first drawn item matching a predicate, or a failed test. */
+  function drawWhere(filter: DeviationId, want: (item: QuizItem) => boolean): QuizItem {
+    for (let seed = 1; seed <= 200; seed += 1) {
+      const item = drawQuizItem(seed, filter, RULES);
+      if (want(item)) return item;
+    }
+    throw new Error(`no ${filter} item matched in 200 draws`);
+  }
+
+  it('refuses a play the QUESTION excluded, though the table allows it', () => {
+    // 16 v 9 is asked with surrender unavailable -- it has to be, or basic
+    // surrender masks the stand index the question is about. The table
+    // allows surrender, so `drillLegalActions` says yes and the pad graded
+    // it. The ActionBar, on the same item, renders that button disabled.
+    const item = drawWhere('16v9', (i) => i.cards !== null);
+    const gate = gateQuizAnswer('surrender', item, RULES);
+    expect(gate.accepted, 'the blind pad graded a play the screen disabled').toBe(false);
+    expect(gate.announcement, 'refused in silence, which is a dead app eyes-free').toBeTruthy();
+    // ...and it does NOT claim the hand cannot be surrendered, because it
+    // can: the operator would hear a false statement about their own table.
+    expect(gate.announcement).not.toContain("isn't available on this hand");
+  });
+
+  it('accepts a surrender that IS the answer, on a surrender index', () => {
+    // The other half. A fix that refused surrender everywhere in the quiz
+    // would pass the test above and make every Fab 4 item unanswerable.
+    const item = drawWhere('sur15v10', (i) => i.correct === 'surrender');
+    expect(gateQuizAnswer('surrender', item, RULES).accepted).toBe(true);
+  });
+
+  it('still refuses a play the HAND cannot make, in the hand\u2019s own words', () => {
+    const item = drawWhere('16v9', (i) => i.cards !== null);
+    const gate = gateQuizAnswer('split', item, RULES);
+    expect(gate.accepted).toBe(false);
+    expect(gate.announcement).toContain("isn't available on this hand");
+  });
+
+  it('accepts everything on an insurance item, which has no hand to judge', () => {
+    const item = drawWhere('ins', (i) => i.cards === null);
+    expect(gateQuizAnswer('take-insurance', item, RULES).accepted).toBe(true);
+    expect(gateQuizAnswer('decline-insurance', item, RULES).accepted).toBe(true);
   });
 });

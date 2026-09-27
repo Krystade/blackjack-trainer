@@ -5,6 +5,7 @@ import type { PlayContext } from '../engine/strategy';
 import type { Action, Deviation, DeviationId } from '../engine/deviations';
 import { indexSetFor } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
+import { drillLegalActions } from './legalActions';
 import type { StrategyRules } from '../engine/ruleset';
 import { makeHardHand } from './buildHand';
 import { weightedIndex } from './weightedDraw';
@@ -84,6 +85,30 @@ export function quizCtxFor(item: QuizItem, rules: StrategyRules): PlayContext {
   if (!item.deviationId) return QUIZ_CTX;
   const entry = indexSetFor(rules).find((d) => d.id === item.deviationId);
   return entry ? ctxFor(entry) : QUIZ_CTX;
+}
+
+/**
+ * The actions an item may be answered with.
+ *
+ * Not `drillLegalActions` alone: that answers "what can this HAND do at this
+ * TABLE", and a quiz item is also asked under a ctx of the draw's choosing --
+ * surrender off for a stand index so basic surrender cannot mask it, on for a
+ * Fab 4 item, which is about surrender. An action the ctx excludes can never
+ * be the graded-correct answer, so offering it is offering a button that is
+ * always wrong: 16 v 10 at TC -2 on the default profile lit Surrender, and
+ * surrendering was recorded as a basic error while the table and the chart
+ * both said surrender.
+ *
+ * Lives here rather than in the screen because every input path needs the
+ * same answer -- the ActionBar, the keyboard, and the blind ZonePad -- and
+ * the one that had its own copy was the ZonePad, which is the one used while
+ * driving.
+ */
+export function quizLegalActions(item: QuizItem, rules: StrategyRules): Action[] {
+  if (!item.cards) return [];
+  const ctx = quizCtxFor(item, rules);
+  const legal = drillLegalActions(item.cards, rules);
+  return ctx.canSurrender ? legal : legal.filter((a) => a !== 'surrender');
 }
 
 /** tc uniform in [threshold-2, threshold+2] -- the original per-entry tc spread. */

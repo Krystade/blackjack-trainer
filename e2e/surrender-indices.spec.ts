@@ -200,3 +200,121 @@ test('a surrender index can still be answered with surrender', async ({ page }) 
     'the surrender index cannot be answered with surrender',
   ).toBeEnabled();
 });
+
+/* ---------------------------------------------------------------------- */
+/* F1: the eyes-free pad is the one input with no disabled state           */
+/* ---------------------------------------------------------------------- */
+
+async function openEyesFreeQuiz(page: Page, index: string) {
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'results' },
+    drill: { quizIndex: index },
+  });
+  await openDeviationQuiz(page);
+  await expect(page.locator('.dealer-area')).toBeVisible();
+  await page.getByLabel('Eyes-free audio').check();
+  const pad = page.locator('.zone-pad');
+  await expect(pad).toBeAttached();
+  await expect(page.locator('.zone-pad-quadrants')).toBeVisible();
+  return pad;
+}
+
+/** The centre circle of the pad is Surrender (ZonePad.tsx). */
+async function tapSurrender(page: Page, pad: ReturnType<Page['locator']>) {
+  const box = await pad.boundingBox();
+  if (!box) throw new Error('ZonePad has no bounding box');
+  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+}
+
+function speech(page: Page): Promise<string[]> {
+  return page.evaluate(() => window.__speechLog ?? []);
+}
+
+/**
+ * The ActionBar disables Surrender on a stand-index item (the test above).
+ * The ZonePad cannot disable anything -- it is five invisible zones on the
+ * glass -- so the same refusal has to arrive as a SENTENCE. It did not: the
+ * pad gated on the table's rules alone, accepted the tap, graded it against
+ * an expectation computed with surrender unavailable, said "Wrong", and
+ * demoted the card in the review deck.
+ */
+test('the blind pad refuses what the screen disables, out loud', async ({ page }) => {
+  await withProfile(page, { surrenderIndices: true });
+  const pad = await openEyesFreeQuiz(page, '16v9');
+
+  await tapSurrender(page, pad);
+  await page.waitForFunction(
+    () => (window.__speechLog ?? []).some((l) => /Surrender/i.test(l)),
+    undefined,
+    { timeout: 10_000 },
+  );
+
+  const log = await speech(page);
+  const joined = log.join(' | ');
+  expect(joined, `expected a spoken refusal in ${JSON.stringify(log)}`).toContain(
+    "isn't part of this question",
+  );
+  // ...and it must not tell the operator their own table cannot surrender.
+  expect(joined).not.toContain("isn't available on this hand");
+  // Nothing was graded: no verdict, no chime, no feedback panel.
+  expect(joined).not.toMatch(/Correct\.|Wrong\./);
+  await expect(page.locator('.drill-feedback')).toHaveCount(0);
+});
+
+/**
+ * The other half, on the same pad: a Fab 4 item IS about surrender, so the
+ * centre circle must grade. A gate that refused surrender everywhere on the
+ * pad would satisfy the test above and make the feature unanswerable in the
+ * only mode it is used in.
+ */
+test('the blind pad still takes a surrender that is the answer', async ({ page }) => {
+  await withProfile(page, { surrenderIndices: true });
+  const pad = await openEyesFreeQuiz(page, 'sur15v10');
+
+  await tapSurrender(page, pad);
+  await page.waitForFunction(
+    () => (window.__speechLog ?? []).some((l) => /^(Correct\.|Wrong\. )/.test(l)),
+    undefined,
+    { timeout: 10_000 },
+  );
+
+  const joined = (await speech(page)).join(' | ');
+  expect(joined).not.toContain("isn't part of this question");
+});
+
+/**
+ * ...and the MIXED session, which is the one an operator actually runs in
+ * the car: it alternates the two drills, and they ask different questions of
+ * the same five zones. Its pad had the same single gate.
+ */
+test('a mixed session gates a quiz item the way the quiz does', async ({ page }) => {
+  await withProfile(page, { surrenderIndices: true });
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'results' },
+    drill: { quizIndex: '16v9' },
+  });
+  // Pinned to a session that opens on a QUIZ item -- see the Mixed test
+  // above. Unpinned, half the runs open on a flashcard, where surrender is
+  // legal and nothing is being tested.
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills' }).first().click();
+  await page.getByRole('button', { name: 'Mixed', exact: true }).click();
+  await expect(page.locator('.quiz-tc'), 'this run did not open on a quiz item').toBeVisible();
+
+  await page.getByLabel('Eyes-free audio').check();
+  const pad = page.locator('.zone-pad');
+  await expect(page.locator('.zone-pad-quadrants')).toBeVisible();
+  await tapSurrender(page, pad);
+
+  await page.waitForFunction(
+    () => (window.__speechLog ?? []).some((l) => /Surrender/i.test(l)),
+    undefined,
+    { timeout: 10_000 },
+  );
+  const joined = (await speech(page)).join(' | ');
+  expect(joined).toContain("isn't part of this question");
+  expect(joined).not.toMatch(/Correct\.|Wrong\./);
+});

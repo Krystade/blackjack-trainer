@@ -19,8 +19,10 @@
 
 import type { Card } from '../engine/cards';
 import type { Action } from '../engine/deviations';
-import type { RuleSet } from '../engine/ruleset';
+import type { RuleSet, StrategyRules } from '../engine/ruleset';
 import { drillLegalActions } from './legalActions';
+import { quizLegalActions } from './deviationQuiz';
+import type { QuizItem } from './deviationQuiz';
 
 export interface AnswerGate {
   accepted: boolean;
@@ -55,6 +57,49 @@ export function gateDrillAnswer(
   if (drillLegalActions(cards, rules).includes(action)) return ACCEPTED;
 
   return { accepted: false, announcement: actionUnavailable(action) };
+}
+
+/**
+ * The same decision for a DEVIATION QUIZ item.
+ *
+ * `gateDrillAnswer` answers "can this hand play that at this table", which is
+ * the whole question for a flashcard. A quiz item carries a second one: it
+ * was ASKED under a ctx (surrender off for a stand index, on for a Fab 4),
+ * and an action that ctx excludes can never be the graded-correct answer.
+ *
+ * The ActionBar has shown that since RV3, by disabling the button. The
+ * ZonePad cannot disable anything, and it was still gating on the table
+ * alone -- so eyes-free, on a 16 v 9 at a table that offers surrender, a
+ * blind tap on Surrender was graded against an expectation computed WITHOUT
+ * surrender, called wrong, and demoted in the review deck. The eyes-on
+ * learner could not make that mistake; the driver could not avoid it.
+ *
+ * The refusal says which of the two reasons it is, because they are
+ * different facts about the world and one of them would otherwise be a lie
+ * about the operator's own table.
+ */
+export function gateQuizAnswer(taken: string, item: QuizItem, rules: StrategyRules): AnswerGate {
+  if (item.cards === null) return ACCEPTED;
+  if (!(taken in ACTION_SPOKEN)) return ACCEPTED;
+
+  const action = taken as Action;
+  if (quizLegalActions(item, rules).includes(action)) return ACCEPTED;
+
+  // Playable at the table, just not part of this question.
+  if (drillLegalActions(item.cards, rules).includes(action)) {
+    return { accepted: false, announcement: actionNotAsked(action) };
+  }
+  return { accepted: false, announcement: actionUnavailable(action) };
+}
+
+/**
+ * The sentence spoken when an action is legal at the table but outside the
+ * question. Deliberately not `actionUnavailable`: telling a driver that
+ * Surrender "isn't available on this hand" when their own table offers it is
+ * teaching them something false about the game.
+ */
+export function actionNotAsked(action: Action): string {
+  return `${ACTION_SPOKEN[action]} isn't part of this question.`;
 }
 
 /**

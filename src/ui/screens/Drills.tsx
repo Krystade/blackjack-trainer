@@ -8,9 +8,9 @@ import type { GradedEvent } from '../../engine/grade';
 import { drawFlashcard } from '../../drills/flashcards';
 import { formatSrCard } from '../../drills/srStatus';
 import { drillLegalActions } from '../../drills/legalActions';
-import { gateDrillAnswer } from '../../drills/answerGate';
+import { gateDrillAnswer, gateQuizAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
-import { drawQuizItem, quizCtxFor } from '../../drills/deviationQuiz';
+import { drawQuizItem, quizLegalActions } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
 // R4 (docs/BACKLOG.md, interleaved mixed-session mode): the ONE shared grade
 // path -- gradeFlashcardAnswer/gradeQuizAnswer back the standalone
@@ -976,26 +976,6 @@ function quizFilterArg(quizIndex: DeviationId | 'all'): DeviationId | undefined 
 }
 
 /**
- * The actions a quiz item may be answered with.
- *
- * NOT simply the legal actions for the hand. A quiz item is asked under a
- * `PlayContext` chosen by the draw -- surrender off for hard index items, so
- * that basic surrender cannot mask the stand index being studied; surrender
- * on for a Fab 4 item, which is about surrender. An action the item's ctx
- * excludes can never be the graded-correct answer, so offering it is
- * offering a button that is always wrong: 16 v 10 at TC -2 on the default
- * profile lit Surrender, and surrendering was recorded as a basic-error
- * while the table and the chart both said surrender.
- */
-function quizLegalActions(item: QuizItem, activeProfile: Profile): Action[] {
-  if (!item.cards) return [];
-  const rules = strategyRulesFor(activeProfile);
-  const ctx = quizCtxFor(item, rules);
-  const legal = drillLegalActions(item.cards, rules);
-  return ctx.canSurrender ? legal : legal.filter((a) => a !== 'surrender');
-}
-
-/**
  * Get the active quiz filter, falling back to 'all' if the saved index is
  * inactive in the current ruleset.
  */
@@ -1295,7 +1275,10 @@ function DeviationQuizView({
     // REFUSED and said out loud. Silence is indistinguishable from a dead app,
     // and letting it through would grade a play that cannot exist -- into
     // Stats and the spaced-repetition deck both.
-    const gate = gateDrillAnswer(taken, item.cards, activeProfile.rules);
+    // The QUIZ gate, not the table gate: see drills/answerGate.ts. The
+    // ActionBar has disabled out-of-question actions since RV3, and this
+    // path -- the blind one -- was still grading them.
+    const gate = gateQuizAnswer(taken, item, strategyRulesFor(activeProfile));
     if (!gate.accepted) {
       speak(gate.announcement!, speechOptsFrom(settings.audio, { interrupt: true }));
       return;
@@ -1356,7 +1339,7 @@ function DeviationQuizView({
         // Same legality gate as the ActionBar buttons -- see FlashcardsView.
         if (eyesFree) {
           handleZoneAnswer(action);
-        } else if (gateDrillAnswer(action, item.cards, activeProfile.rules).accepted) {
+        } else if (gateQuizAnswer(action, item, strategyRulesFor(activeProfile)).accepted) {
           handleAnswer(action);
         }
         return;
@@ -1533,7 +1516,7 @@ function DeviationQuizView({
           <ActionBar
             mode={{
               kind: 'actions',
-              legal: quizLegalActions(item, activeProfile),
+              legal: quizLegalActions(item, strategyRulesFor(activeProfile)),
               onAction: handleAnswer }}
           />
         )
@@ -1797,7 +1780,7 @@ function MixedSessionView({
     // REFUSED and said out loud. Silence is indistinguishable from a dead app,
     // and letting it through would grade a play that cannot exist -- into
     // Stats and the spaced-repetition deck both.
-    const gate = gateDrillAnswer(taken, handCards, activeProfile.rules);
+    const gate = gateCurrent(taken);
     if (!gate.accepted) {
       speak(gate.announcement!, speechOptsFrom(settings.audio, { interrupt: true }));
       return;
@@ -1846,7 +1829,7 @@ function MixedSessionView({
         e.preventDefault();
         // Same legality gate as the ActionBar buttons -- see FlashcardsView.
         if (eyesFree) handleZoneAnswer(action);
-        else if (gateDrillAnswer(action, handCards, activeProfile.rules).accepted) handleAnswer(action);
+        else if (gateCurrent(action).accepted) handleAnswer(action);
         return;
       }
 
@@ -1863,6 +1846,21 @@ function MixedSessionView({
 
   const dealerUp = current.type === 'flash' ? current.card.up : current.item.up;
   const handCards = current.type === 'flash' ? current.card.cards : current.item.cards;
+
+  /**
+   * Which gate this item is answered through.
+   *
+   * A mixed session alternates between the two drills, and they ask
+   * different questions of the same five buttons: a flashcard asks what the
+   * table allows, a quiz item also asks what the ITEM was drawn under. One
+   * gate for both left the quiz half of a mixed session with the bug the
+   * standalone quiz no longer has -- and a mixed session is what an operator
+   * runs in the car.
+   */
+  const gateCurrent = (taken: string) =>
+    current.type === 'quiz'
+      ? gateQuizAnswer(taken, current.item, strategyRulesFor(activeProfile))
+      : gateDrillAnswer(taken, handCards, activeProfile.rules);
 
   return (
     <div className="drill-screen" style={drillScreenStyle(padTop)}>
@@ -1993,7 +1991,7 @@ function MixedSessionView({
               // in the standalone quiz; a flashcard is an ordinary hand.
               legal:
                 current.type === 'quiz'
-                  ? quizLegalActions(current.item, activeProfile)
+                  ? quizLegalActions(current.item, strategyRulesFor(activeProfile))
                   : drillLegalActions(handCards ?? [], activeProfile.rules),
               onAction: handleAnswer }}
           />
