@@ -70,14 +70,29 @@
    * reason for existing. `clip` clips the same pixels and creates no
    * scrollport, so sticky resolves against the real scroller.
    *
-   * Declared twice on purpose: `clip` is Safari 16+, and an engine that does
-   * not know it drops the line. Without the `hidden` underneath, such a
-   * phone would be left with no overflow rule at all and the sideways scroll
-   * this is here to prevent -- it loses the sticky note instead, which is
-   * the right thing to lose.
+   * The fallback for that is an @supports block below, NOT a second
+   * declaration above this one. Two declarations is the usual idiom and it
+   * does not survive this build: the project sets no browser targets, so
+   * Lightning CSS assumes a modern engine and deletes the shadowed
+   * `overflow-x: hidden` outright -- checked against the deployed stylesheet,
+   * where it was simply absent.
    */
-  overflow-x: hidden;
   overflow-x: clip;
+}
+
+/*
+ * The floor under `clip`, for Safari 15 and older.
+ *
+ * An engine that does not know the value drops the declaration and is left
+ * with NO overflow rule at all -- which hands back the sideways page scroll
+ * `.charts-screen` exists to prevent. Here it keeps `hidden` and loses only
+ * the sticky note, which is the right thing to lose. Written as @supports
+ * because a minifier cannot collapse it.
+ */
+@supports not (overflow-x: clip) {
+  .charts-screen {
+    overflow-x: hidden;
+  }
 }
 
 /* ---------- header ---------- */
