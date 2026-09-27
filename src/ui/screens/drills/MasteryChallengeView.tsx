@@ -290,6 +290,9 @@ export function MasteryChallengeView({
           activeProfile={activeProfile}
           cards={cell.cards}
           dealerUp={cell.up}
+          // No `graded`: this drill asks every cell at true count zero, so
+          // the expectation IS the chart and there is never anything to
+          // reconcile. Passing one would only ever produce silence.
           onClose={() => setShowChart(false)}
         />
       )}

@@ -74,6 +74,12 @@ interface ChartsProps {
    */
   highlight?: ChartHighlight;
   /**
+   * One line reconciling this chart with the correction it was opened over
+   * -- see screens/chartNote.ts. Absent when the page is opened on its own,
+   * or when the chart and the grade agree.
+   */
+  note?: string;
+  /**
    * What the Back control does. Defaults to navigating Home, which is right
    * when Charts IS the screen.
    *
@@ -89,7 +95,7 @@ interface ChartsProps {
   backLabel?: string;
 }
 
-export function Charts({ onNavigate, activeProfile, highlight, onBack, backLabel }: ChartsProps) {
+export function Charts({ onNavigate, activeProfile, highlight, note, onBack, backLabel }: ChartsProps) {
   const [order, setOrder] = useState<RowOrder>(() => {
     if (typeof window === 'undefined') return 'descending';
     try {
@@ -171,7 +177,16 @@ export function Charts({ onNavigate, activeProfile, highlight, onBack, backLabel
       </div>
 
       <p className="charts-ruleset">{rulesetSummary(activeProfile.rules)}</p>
-      <p className="charts-provenance">Exactly the chart the trainer grades you against.</p>
+      {/* WHAT IT IS, rather than a promise it cannot keep. The old line --
+          "Exactly the chart the trainer grades you against." -- is true of
+          basic strategy and false of every counted hand, and this page is
+          reached from corrections, including the deviations that contradict
+          the cell being rung. */}
+      <p className="charts-provenance">
+        Exactly the basic-strategy chart the trainer grades you against. Count indices are not on
+        it.
+      </p>
+      {note && <p className="charts-note">{note}</p>}
 
       <div className="charts-order" role="group" aria-label="Row order">
         <span className="charts-order-label">Row order</span>

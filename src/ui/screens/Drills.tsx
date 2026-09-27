@@ -961,6 +961,15 @@ function FlashcardsView({
           activeProfile={activeProfile}
           cards={card.cards}
           dealerUp={card.up}
+          graded={
+            feedback
+              ? {
+                  expected: feedback.event.expected,
+                  reason: feedback.event.reason,
+                  tc: feedback.event.tc,
+                }
+              : undefined
+          }
           onClose={() => setShowChart(false)}
         />
       )}
@@ -1704,6 +1713,15 @@ function DeviationQuizView({
           activeProfile={activeProfile}
           cards={item.cards}
           dealerUp={item.up}
+          graded={
+            feedback
+              ? {
+                  expected: feedback.event.expected,
+                  reason: feedback.event.reason,
+                  tc: feedback.event.tc,
+                }
+              : undefined
+          }
           onClose={() => setShowChart(false)}
         />
       )}
@@ -2327,6 +2345,15 @@ function MixedSessionView({
           activeProfile={activeProfile}
           cards={handCards}
           dealerUp={dealerUp}
+          graded={
+            feedback
+              ? {
+                  expected: feedback.event.expected,
+                  reason: feedback.event.reason,
+                  tc: feedback.event.tc,
+                }
+              : undefined
+          }
           onClose={() => setShowChart(false)}
         />
       )}

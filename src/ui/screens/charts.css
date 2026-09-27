@@ -58,8 +58,19 @@
   background: radial-gradient(120% 55% at 50% 0%, var(--surface-raised) 0%, var(--felt) 62%);
   color: var(--ink);
 
-  /* Requirement: the PAGE never scrolls sideways. Only .chart-scroller does. */
-  overflow-x: hidden;
+  /*
+   * Requirement: the PAGE never scrolls sideways. Only .chart-scroller does.
+   *
+   * `clip`, not `hidden`, and the difference is load-bearing. `hidden` makes
+   * this element a scroll container in BOTH axes, and it is the nearest one
+   * to everything on the page -- so `position: sticky` here pins to a box
+   * that is the full height of the content and never scrolls, which looks
+   * exactly like sticky not working. Inside the study overlay (which is the
+   * scroller that actually moves) that silently cost .charts-note its whole
+   * reason for existing. `clip` clips the same pixels and creates no
+   * scrollport, so sticky resolves against the real scroller.
+   */
+  overflow-x: clip;
 }
 
 /* ---------- header ---------- */
@@ -114,6 +125,44 @@
   font-size: 0.72rem;
   line-height: 1.4;
   color: var(--ink-dim);
+}
+
+/*
+ * The one line on this screen that is about THIS learner rather than about
+ * the chart: it appears only when the answer they were just graded on is not
+ * the answer in the cell they are about to look at (a count deviation, or a
+ * rule the chart is not drawn for).
+ *
+ * Louder than the provenance line beneath it, because a contradiction the
+ * reader does not notice is worse than no note: full --ink, a brass rim, and
+ * the raised surface rather than the felt. The rim is an OPAQUE 3px edge --
+ * a translucent brass wash over either theme's surface blends to mud, and the
+ * light theme would lose it entirely.
+ *
+ * STICKY, and that is the whole reason this rule is not two lines long. The
+ * overlay scrolls the ringed cell into view the moment it opens, which takes
+ * the page header -- and anything sitting in it -- off the top of the screen
+ * before the learner has looked at anything. A note explaining the cell you
+ * are staring at is worthless parked above the fold you were just scrolled
+ * past, so it pins to the top of the overlay's own scroller and the grid
+ * passes underneath it. `--surface-raised` is opaque in both themes, which
+ * is what makes that legible; the shadow is the only thing saying "over".
+ */
+.charts-note {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  /* Full-bleed rather than an inset card: pinned at top: 0 a card touches
+     the edge of the screen on one side and floats on the other three, which
+     reads as a rendering fault. A bar owns the edge on purpose. */
+  margin: 0.6rem 0 0;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 2px solid var(--brass);
+  background: var(--surface-raised);
+  box-shadow: 0 6px 12px -6px rgba(0, 0, 0, 0.55);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--ink);
 }
 
 /* ---------- row-order toggle ---------- */

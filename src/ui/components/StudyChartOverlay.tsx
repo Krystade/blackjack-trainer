@@ -1,6 +1,8 @@
 import type { Card, Rank } from '../../engine/cards';
 import type { Profile } from '../../store/types';
 import { Charts, highlightForHand } from '../screens/Charts';
+import { chartNoteFor } from '../screens/chartNote';
+import { strategyRulesFor } from '../../store/profiles';
 import type { ChartHighlight } from '../screens/Charts';
 
 /**
@@ -30,6 +32,12 @@ export interface StudyChartOverlayProps {
   /** False when splitting was not on the table, so a pair still resolves to
    * its hard/soft row rather than lighting a PAIRS cell that never applied. */
   canSplit?: boolean;
+  /**
+   * The correction this overlay was opened over, so the page can say why the
+   * ringed cell and the grade differ (screens/chartNote.ts). Optional: the
+   * chart is also opened with nothing to reconcile.
+   */
+  graded?: { expected?: string; reason?: string; tc?: number };
   onClose: () => void;
 }
 
@@ -38,18 +46,32 @@ export function StudyChartOverlay({
   cards,
   dealerUp,
   canSplit,
+  graded,
   onClose,
 }: StudyChartOverlayProps) {
   const highlight: ChartHighlight | undefined =
     cards && dealerUp
       ? (highlightForHand(cards, dealerUp, activeProfile.rules, { canSplit }) ?? undefined)
       : undefined;
+  // `strategyRulesFor`, not the bare rules: the comparison is against what
+  // the trainer graded with, and that includes the surrender indices.
+  const note =
+    chartNoteFor({
+      cards,
+      dealerUp,
+      rules: strategyRulesFor(activeProfile),
+      expected: graded?.expected,
+      reason: graded?.reason,
+      tc: graded?.tc,
+      canSplit,
+    }) ?? undefined;
 
   return (
     <div className="study-chart-overlay">
       <Charts
         activeProfile={activeProfile}
         highlight={highlight}
+        note={note}
         // Back closes the overlay instead of routing Home; `onNavigate` is
         // never reached, but the prop is required by the screen's contract.
         // The label has to say so: this button returns to the hand you were

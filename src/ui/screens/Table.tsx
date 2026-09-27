@@ -993,6 +993,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           // engine has applied the action, so `legal` describes a different
           // (or no) hand. See OverlayInfo.canSplit.
           canSplit={overlay.canSplit}
+          graded={{ expected: overlay.expected, reason: overlay.reason, tc: overlay.tc }}
           onClose={() => setShowChart(false)}
         />
       )}
