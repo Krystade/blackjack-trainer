@@ -14,13 +14,15 @@
  * route to a web page, and speaking the answer does not change that. The
  * operator is still the instrument; this is only a second way to read them.
  *
- * THE COST, stated plainly because the protocol is an experiment and this
- * perturbs it: opening the microphone flips the phone to the car's hands-free
- * profile, which is the very thing several steps are measuring. On the steps
- * that already declare `setup.voice` the microphone is open regardless and
- * this is free. Everywhere else it is not, and the screen records which of
- * the two an answer came from (`FieldTest.tsx`, `via` / `mic`) so the
- * analysis can separate them rather than discovering the confound afterwards.
+ * THE LIMIT, stated plainly because the protocol is an experiment: opening
+ * the microphone flips the phone to the car's hands-free profile, which is
+ * the very thing several steps are measuring. So this channel never opens
+ * one. It listens only on the steps that already declare `setup.voice` --
+ * eight of thirty-one -- where the microphone is open regardless and a
+ * spoken answer costs the experiment nothing. The first version opened one
+ * everywhere while the switch was on, which sampled the "before the
+ * microphone" block with the microphone live and voided the leg without a
+ * row saying so; `FieldTest.tsx` records why that is no longer possible.
  *
  * WHY A WHOLE-PHRASE MATCHER RATHER THAN THE COMMAND VOCABULARY. The drill
  * commands (`VOICE_ACTIONS`) are a fixed global set -- hit, stand, double.
@@ -86,6 +88,7 @@ export const ANSWER_PHRASES: Readonly<Record<string, readonly string[]>> = {
   good: ['that worked', 'worked', 'good', 'yes'],
   bad: ['that was wrong', 'was wrong', 'bad', 'no'],
   'nothing-to-report': ['nothing to report', 'all fine'],
+  'lock-probe-done': ['unlocked', 'back', 'i am back'],
   missed: ['missed', 'missed it', 'could not tell', 'skip'],
 };
 

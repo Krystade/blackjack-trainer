@@ -159,6 +159,45 @@ export async function logAudioInputs(reason: string): Promise<void> {
 }
 
 /**
+ * WHICH microphone, not which microphones.
+ *
+ * `logAudioInputs` above lists the inputs that EXIST. Nothing in it says
+ * which one the phone is USING -- and that is the whole question, because
+ * the input switching to the car's hands-free unit is the one thing a web
+ * page can observe about the Bluetooth profile flip this protocol measures
+ * the effects of. The recogniser exposes no stream, so the only way to read
+ * the label is a short capture of our own, stopped at once.
+ *
+ * THE CALLER DECIDES WHERE. On iOS this is a second capture beside a live
+ * recogniser and may restart it (unverified), so it is only safe on a step
+ * whose own measurement is not a route sample. `fieldTest.ts` marks that
+ * step with `probeInput`; nothing else should call this mid-run.
+ */
+export async function logSelectedInput(reason: string): Promise<void> {
+  try {
+    const md = navigator.mediaDevices;
+    if (!md?.getUserMedia) {
+      diag('route', 'input-selected', { reason, state: 'unavailable' });
+      return;
+    }
+    const stream = await md.getUserMedia({ audio: true });
+    try {
+      const track = stream.getAudioTracks()[0];
+      diag('route', 'input-selected', {
+        reason,
+        label: track?.label || '(unlabelled)',
+        deviceId: track?.getSettings?.().deviceId ?? '(unknown)',
+      });
+    } finally {
+      // The probe must never be the thing that leaves a microphone open.
+      for (const track of stream.getTracks()) track.stop();
+    }
+  } catch (e) {
+    diag('route', 'input-selected', { reason, state: 'threw', error: String(e) });
+  }
+}
+
+/**
  * Install the page-level watchers. Idempotent.
  *
  * Called once from the app root, not from the voice hook: the events being

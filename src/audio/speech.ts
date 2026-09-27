@@ -623,6 +623,10 @@ export function speak(
       rate: opts?.rate,
       volume: opts?.volume,
     }).then(({ played, remainder }) => {
+      // Same re-assertion as `speakAsync` below, for the same reason: the
+      // drills speak through this twin, and the count drill's wheel entry
+      // submits in the silence after a line.
+      holdAudioFocus('speech');
       if (played) {
         // THE SETTLED LINE, for the case that worked. `path-chosen` is
         // written before the chain plays and is a guess; without this, a
@@ -975,6 +979,15 @@ export function speakAsync(
       rate: opts?.rate,
       volume: opts?.volume,
     }).then(({ played, remainder }) => {
+      // RE-ASSERTED ONCE THE CHAIN HAS SETTLED. The hold above was taken
+      // BEFORE the clip, and `holdAudioFocus` returns early on an element
+      // that is playing -- so if the platform paused the silent loop to play
+      // the clip (the suspected shape of 2026-09-19's "buttons worked only
+      // when the bot was talking"), nothing restarted it when the clip
+      // ended, and the app stopped being the active media app at precisely
+      // the moment a driver presses something. A no-op if the loop is still
+      // going; a restart, logged as one, if it lapsed.
+      holdAudioFocus('speech');
       if (played) {
         // THE SETTLED LINE, for the case that worked. `path-chosen` is
         // written before the chain plays and is a guess; without this, a

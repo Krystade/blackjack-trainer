@@ -18,7 +18,6 @@ import { looksLikeSelfEcho } from '../../audio/selfEcho';
 import { looksLikeAnAttempt } from '../../audio/voiceRecognition';
 import {
   countStampedSteps,
-  goToFieldTestStep,
   markFieldTestStamped,
   readFieldTestRun,
   setFieldTestAnswerByVoice,
@@ -33,6 +32,12 @@ import {
   startFieldTestRun,
   stopFieldTestRun,
   subscribeFieldTestRun,
+  setFieldTestLockProbe,
+  advanceFieldTestStep,
+  retreatFieldTestStep,
+  fieldTestStepCount,
+  fieldTestStepOrdinal,
+  nextActiveIndex,
   type FieldTestRun,
   type FieldTestBefore,
 } from '../../diag/fieldTestRun';
@@ -59,7 +64,12 @@ import { bandFor, adviceFor } from '../../diag/ambientNoise';
 import { useVoiceControl } from '../useVoiceControl';
 import { setVoiceOn } from '../voiceSession';
 import { setEyesFreeOn } from '../eyesFreeSession';
-import { diag, setDiagContext } from '../../diag/diagnosticLog';
+import { diag, diagnosticSessionId, setDiagContext } from '../../diag/diagnosticLog';
+import { classifyLockProbe, LOCK_PROBE_TICK_MS } from '../../diag/lockProbe';
+
+/** Steps on the path before anything is armed: the dormant probes are not steps yet. */
+const BASE_STEP_COUNT = FIELD_TEST_STEPS.filter((s) => !s.probe).length;
+import { logSelectedInput } from '../../diag/environment';
 import { saveSettings } from '../../store/persist';
 import { Segmented } from './Settings';
 import type { Settings } from '../../store/types';
@@ -232,6 +242,35 @@ export function FieldTest({
 }) {
   const [run, setRun] = useState<FieldTestRun>(() => readFieldTestRun());
   useEffect(() => subscribeFieldTestRun(() => setRun(readFieldTestRun())), []);
+
+  /**
+   * THE LOCK PROBE'S FOURTH VERDICT, scored by whoever boots next.
+   *
+   * The probe asks the operator to lock the phone and ticks while they do.
+   * If iOS kills the page under the lock there is nobody left to count the
+   * ticks, and the run comes back through `coerce` inactive, on this gate.
+   * The marker it left says a probe was running under a session id that is
+   * no longer ours -- and that IS the result: the page did not survive.
+   * Scored here, at the gate, so it lands whether or not the operator
+   * resumes; cleared at once so it is scored exactly once.
+   */
+  const scoredLockProbe = useRef<string | null>(null);
+  useEffect(() => {
+    const marker = run.lockProbe;
+    if (!marker || marker.session === diagnosticSessionId) return;
+    // Once per marker, not once per render: the clear below re-reads the run
+    // and this effect sees the same marker again before storage settles.
+    const key = `${marker.session}:${marker.startedAt}`;
+    if (scoredLockProbe.current === key) return;
+    scoredLockProbe.current = key;
+    diag('test', 'lock-probe-result', {
+      step: 'lock-probe',
+      classification: 'frozen-unloaded',
+      startedAt: marker.startedAt,
+      startedSession: marker.session,
+    });
+    setFieldTestLockProbe(undefined);
+  }, [run.lockProbe]);
 
   const condition =
     FIELD_TEST_CONDITIONS.find((c) => c.id === run.condition) ?? FIELD_TEST_CONDITIONS[0]!;
@@ -453,7 +492,7 @@ function StartGate({
 
       <div className="fieldtest-body">
       <p className="u-note">
-        Every condition runs all {FIELD_TEST_STEPS.length} steps, including the wheel — what changes
+        Every condition runs all {BASE_STEP_COUNT} steps, including the wheel — what changes
         between them is the car, not the protocol. Pick where you are, press start, and it will talk
         to you. Nothing else needs to be running. When you are done, send the diagnostic log.
       </p>
@@ -488,7 +527,7 @@ function StartGate({
           data-testid="fieldtest-resume"
           onClick={onResume}
         >
-          Resume — step {run.stepIndex + 1} of {FIELD_TEST_STEPS.length}
+          Resume — step {fieldTestStepOrdinal(run)} of {fieldTestStepCount(run)}
         </button>
       )}
 
@@ -550,17 +589,17 @@ function StartGate({
         />
         <span>
           Answer out loud
-          {/* THE COST, NOT A FEATURE LIST. Most steps keep the microphone
-              shut on purpose, and opening one flips the phone to the car's
-              hands-free profile -- which is the variable half this protocol
-              exists to measure. Saying so on the switch is the difference
-              between an operator choosing to perturb the run and one
-              discovering afterwards that they did. */}
+          {/* THE LIMIT, NOT A FEATURE LIST. Most steps keep the microphone
+              shut on purpose -- opening one flips the phone to the car's
+              hands-free profile, which is the variable this protocol exists
+              to measure -- so the channel cannot open one. It listens only
+              where the protocol already has the microphone open: eight of
+              the thirty-one steps. Saying so on the switch is what stops an
+              operator waiting for an answer that nothing is listening for. */}
           <span className="u-note">
-            Say the answer instead of finding the button. On steps that do not
-            already use the microphone this opens one, which moves the audio
-            route several steps are measuring — every spoken answer is
-            recorded with which of the two it was.
+            Say the answer instead of finding the button, on the steps that
+            already have the microphone open. The other steps keep it shut on
+            purpose and stay tap-only; the screen says which is which.
           </span>
         </span>
       </label>
@@ -581,7 +620,7 @@ function StartGate({
         }}
       >
         {!resumable
-          ? `Start — ${FIELD_TEST_STEPS.length} steps`
+          ? `Start — ${BASE_STEP_COUNT} steps`
           : confirmRestart
             ? // NAMES WHAT IS ACTUALLY LOST. A run skipped through has nothing
               // stamped, and "discard 0 answered steps" reads as "this is
@@ -590,7 +629,7 @@ function StartGate({
               ? `Tap again to discard ${countStampedSteps(run.stamps, run.condition)} answered ${
                   countStampedSteps(run.stamps, run.condition) === 1 ? 'step' : 'steps'
                 }`
-              : `Tap again to go back to step 1 of ${FIELD_TEST_STEPS.length}`
+              : `Tap again to go back to step 1 of ${BASE_STEP_COUNT}`
             : 'Start over from step 1'}
       </button>
 
@@ -637,6 +676,8 @@ function RunningTest({
   onNavigate: (screen: Screen) => void;
 }) {
   const step = FIELD_TEST_STEPS[Math.min(run.stepIndex, FIELD_TEST_STEPS.length - 1)]!;
+  // The last step ON THE PATH: a dormant probe after this one does not count.
+  const atLastStep = nextActiveIndex(run.stepIndex, 1, run.armedProbes ?? []) === run.stepIndex;
   // ORDERED FOR THE CONDITION BEING RUN. Under `speakerphone` the car is
   // not in the audio path at all, so every wheel step's only honest answer
   // is "No Bluetooth" — and it sat fifth, under four answers about what
@@ -1091,6 +1132,8 @@ function RunningTest({
           state: voiceStatusRef.current,
           ...(abandoned ? { abandoned: true } : {}),
         });
+        // THE INPUT IN USE, read here and nowhere else. See `probeInput`.
+        if (live && !abandoned && step.probeInput) void logSelectedInput('mic-settled');
         if (!live && !abandoned) {
           setAmbient(
             'The microphone never came up, so this step measures the state WITHOUT it — treat the answer accordingly.',
@@ -1586,6 +1629,68 @@ function RunningTest({
    * the wheel. The protocol declares eyes-free on nearly every step, and
    * `eyesFreeSession` is a plain flag with no wake-lock wiring of its own.
    */
+  /**
+   * THE LOCK PROBE: a clock of its own, and a verdict on the way back.
+   *
+   * See `lockProbe.ts` for why the existing log cannot answer "did the page
+   * keep running while locked". This ticks every `LOCK_PROBE_TICK_MS` while
+   * the step is showing, notes when the page went hidden, and on the way
+   * back counts how many ticks landed inside the window. It does NOT end on
+   * a timer: its timers are the thing under test, and a timeout would score
+   * "the operator never locked it" as normal. It ends when the screen comes
+   * back, or -- if the page was killed -- when the next boot finds the
+   * marker (`FieldTest`, top of the file).
+   */
+  useEffect(() => {
+    if (!step.lockProbe) return;
+    const ticks: number[] = [];
+    let hiddenAt: number | null = null;
+    let n = 0;
+    setFieldTestLockProbe({ startedAt: new Date().toISOString(), session: diagnosticSessionId });
+    const timer = window.setInterval(() => {
+      n += 1;
+      ticks.push(Date.now());
+      diag('test', 'lock-probe-tick', { step: step.id, n });
+    }, LOCK_PROBE_TICK_MS);
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now();
+        return;
+      }
+      if (hiddenAt === null) return;
+      const now = Date.now();
+      const hiddenMs = now - hiddenAt;
+      const inside = ticks.filter((t) => t > hiddenAt! && t < now).length;
+      hiddenAt = null;
+      const classification = classifyLockProbe({ hiddenMs, ticksInside: inside });
+      diag('test', 'lock-probe-result', {
+        step: step.id,
+        classification,
+        hiddenMs,
+        ticksInside: inside,
+        expected: Math.floor(hiddenMs / LOCK_PROBE_TICK_MS),
+      });
+      setFieldTestLockProbe(undefined);
+      const said =
+        classification === 'normal'
+          ? 'The page kept running while the phone was locked.'
+          : classification === 'throttled'
+            ? 'The page slowed down while the phone was locked, but kept running.'
+            : classification === 'frozen'
+              ? 'The page was frozen while the phone was locked.'
+              : 'That was too short to tell. Lock it again, for longer.';
+      setAmbient(said);
+      void speakAsync(said, { interrupt: true });
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+    // The probe is the step; nothing else it reads should re-arm it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step.id, step.lockProbe]);
+
   useEffect(() => {
     void requestWakeLock('field-test');
     return () => {
@@ -1713,19 +1818,30 @@ function RunningTest({
   const answerByVoice = run.active && run.answerByVoice === true;
 
   /**
-   * Whose microphone heard a spoken answer.
+   * THE CHANNEL NEVER OPENS A MICROPHONE. It listens on the steps where the
+   * protocol has one open anyway, and on no other.
    *
-   * `protocol` means the step declared `voice: true` and it was open anyway,
-   * so the answer cost the experiment nothing. `answer-channel` means this
-   * feature opened one on a step that had deliberately kept it shut, which
-   * moves the audio route the next samples measure. Two different rows in
-   * any honest reading of the export.
+   * The first version enabled the recogniser on every step while the switch
+   * was on. That opened a microphone on `route-1`, which is the first of the
+   * three "before the microphone" samples the whole crossing is read
+   * against -- so a leg run with the switch on had no before block, the
+   * recogniser's own restarts on those steps were written as closes, and a
+   * tapped stamp carried nothing that said so. Opening the microphone is the
+   * one event this protocol exists to measure the effect of; a convenience
+   * cannot be allowed to perform it.
+   *
+   * So `enabled` is the protocol's decision alone (`voiceWanted`), and the
+   * switch only changes what a transcript MEANS once one arrives. The
+   * `mic` field on a spoken stamp therefore always reads `protocol`; it is
+   * kept because the export's contract names it, and because a row that
+   * ever said otherwise would be the bug this comment describes, back.
    */
-  const micProvenance = (): 'protocol' | 'answer-channel' =>
-    resolveFieldTestSetup(run.stepIndex).voice === true ? 'protocol' : 'answer-channel';
+  const stepHasMicOpen = resolveFieldTestSetup(run.stepIndex).voice === true;
+  const spokenAnswersLive = answerByVoice && stepHasMicOpen;
+  const micProvenance = (): 'protocol' => 'protocol';
 
   const { status: voiceStatus } = useVoiceControl({
-    enabled: voiceWanted || answerByVoice,
+    enabled: voiceWanted,
     context: `field-test:${step.id}`,
     onAction: (action) => {
       diag('test', 'heard-action', { step: step.id, action });
@@ -2075,10 +2191,11 @@ function RunningTest({
       // that heard it was one the protocol had already asked for or one the
       // answer channel opened. On a step declaring `voice: true` the
       // microphone is open regardless and a spoken answer perturbs nothing;
-      // anywhere else it opened one, which flips the phone to the car's
-      // hands-free profile and is exactly the variable under test. Without
-      // this the two are indistinguishable in the export, and the confound
-      // would be discovered by re-reading the code rather than the log.
+      // anywhere else it would have opened one, which flips the phone to the
+      // car's hands-free profile and is exactly the variable under test --
+      // which is why the channel no longer can (see `spokenAnswersLive`).
+      // The field stays so the export's contract holds and so a row that
+      // ever read otherwise would be visible as the bug it was.
       via,
       mic: via === 'voice' ? micProvenance() : undefined,
       // Carried WITH the answer rather than instead of it -- the whole point
@@ -2101,7 +2218,12 @@ function RunningTest({
               .join(', ')
           : undefined,
     });
-    markFieldTestStamped(step.id);
+    markFieldTestStamped(step.id, {
+      id: responseId,
+      via,
+      ...(marks.length > 0 ? { marks: marks.join(', ') } : {}),
+      ...(via === 'voice' ? { mic: micProvenance() } : {}),
+    });
     /**
      * THE TAP IS AUDIBLE, because the operator is not looking at the screen.
      *
@@ -2117,8 +2239,11 @@ function RunningTest({
     chime(kind === 'good' ? 'good' : kind === 'bad' ? 'bad' : 'attention');
     // Answering IS finishing the step: a protocol that needs a tap to record
     // and a second tap to advance gets half as far per red light.
-    if (run.stepIndex < FIELD_TEST_STEPS.length - 1) {
-      goToFieldTestStep(run.stepIndex + 1);
+    if (!atLastStep) {
+      // THROUGH THE SCORER, not a bare index bump: leaving the last step of a
+      // route block is where the block is judged, and where four dormant
+      // steps may open behind it.
+      advanceFieldTestStep();
     } else {
       // THE LAST STEP DOES NOT ADVANCE, so the bounce guard -- which measures
       // from the step CHANGING -- never rearms there. `free` is the step whose
@@ -2179,7 +2304,7 @@ function RunningTest({
           ← Pause
         </button>
         <span className="u-note" data-testid="fieldtest-progress">
-          {conditionLabel} — step {run.stepIndex + 1} of {FIELD_TEST_STEPS.length}
+          {conditionLabel} — step {fieldTestStepOrdinal(run)} of {fieldTestStepCount(run)}
         </span>
       </header>
 
@@ -2409,13 +2534,15 @@ function RunningTest({
              switch lives on the start gate, where it is read while parked.
 
              What it says here is the half that changes per step: whether
-             this step asked for the microphone or the answer channel opened
-             one, which is the difference between a free answer and a
-             perturbed measurement. */
+             anything is listening. The channel only listens where the
+             protocol already has the microphone open, so on most steps the
+             honest line is "tap" -- and it is printed, because an operator
+             who is not looking needs to know which steps will not hear them
+             before they try. */
           <p className="fieldtest-evidence-line" data-testid="fieldtest-voice-answers">
-            {micProvenance() === 'protocol'
-              ? 'Answering out loud · this step has the microphone open anyway.'
-              : 'Answering out loud · mic open for answers, which this step did not ask for.'}
+            {spokenAnswersLive
+              ? 'Answering out loud · the microphone is open on this step.'
+              : 'Answering out loud · not on this step, the microphone is shut. Tap.'}
           </p>
         )}
         {marks.length > 0 && (
@@ -2486,7 +2613,7 @@ function RunningTest({
                   -- and printed rather than only documented, since a
                   vocabulary nobody can see is one the operator has to have
                   memorised before the drive. */}
-              {answerByVoice && spokenHintFor(response) && (
+              {spokenAnswersLive && spokenHintFor(response) && (
                 <span className="fieldtest-say">{`say “${spokenHintFor(response)}”`}</span>
               )}
             </button>
@@ -2499,19 +2626,19 @@ function RunningTest({
           type="button"
           data-testid="fieldtest-prev"
           disabled={run.stepIndex === 0}
-          onClick={() => goToFieldTestStep(run.stepIndex - 1)}
+          onClick={() => retreatFieldTestStep()}
         >
           Back
         </button>
         <button
           type="button"
           data-testid="fieldtest-skip"
-          disabled={run.stepIndex >= FIELD_TEST_STEPS.length - 1}
+          disabled={atLastStep}
           onClick={() => {
             // A skip is evidence too: a step nobody could do at speed is a
             // step to redesign, and that only shows up if it is recorded.
             diag('test', 'step-skipped', { step: step.id, condition: run.condition });
-            goToFieldTestStep(run.stepIndex + 1);
+            advanceFieldTestStep();
           }}
         >
           Skip

@@ -249,6 +249,32 @@ export interface FieldTestStep {
   sayAgain?: boolean;
   /** Arm wheel capture and show, live, whatever the car sends. */
   wheel?: boolean;
+  /**
+   * Read which input device the phone is actually using once the microphone
+   * is confirmed live. A short `getUserMedia` of our own, stopped at once:
+   * the recogniser exposes no stream, and the input flipping to the car's
+   * hands-free unit is the one machine-readable signature of the profile
+   * change. On iOS a second capture may restart the recogniser (unverified),
+   * so this belongs on exactly one step -- the last with the microphone
+   * open, whose own measurement is a wheel press and not a route sample.
+   * `fieldTest.test.ts` pins that placement.
+   */
+  probeInput?: boolean;
+  /**
+   * Ask the operator to lock the phone, and score what the page did while
+   * it was locked from the runner's own ticks. See `lockProbe.ts` for why
+   * the existing log cannot answer this, and `fieldTest.test.ts` for why the
+   * step sits last with the microphone shut.
+   */
+  lockProbe?: boolean;
+  /**
+   * A DORMANT step: in the list, off the path, until the block it follows
+   * is scored as needing it. The value is the cell it extends (a key of
+   * `routeCells()`); navigation skips a probe whose cell is not in the run's
+   * `armedProbes`. In the fixed list rather than spliced in, so that
+   * `resolveFieldTestSetup` stays a pure function of the index.
+   */
+  probe?: string;
   /** Measure the cabin with the microphone for a few seconds. */
   ambient?: boolean;
   responses: readonly StepResponse[];
@@ -259,6 +285,43 @@ const ROUTE_RESPONSES: readonly StepResponse[] = [
   ...ROUTE_ANSWERS.map((r) => ({ ...r, kind: 'route' as const })),
   MISSED,
 ];
+
+/**
+ * Four more samples of a cell, speaking A, A, B, B.
+ *
+ * WHY A, A, B, B. Every cell speaks A, B, A, and a route that depends on the
+ * LINE -- line B's clip file, say -- reads car / phone / car, exactly as a
+ * strictly alternating route does. The 2026-09-23 "alternating" report is
+ * consistent with either, and the protocol as it stood could not separate
+ * them. Two of each line can: line-dependence reads x x y y, a strict toggle
+ * reads x y x y, and noise reads neither.
+ *
+ * NOTHING IS ANNOUNCED. A spoken "your answers disagreed" before a sample
+ * can itself move the session and primes the next answer; the operator
+ * hears the ordinary chime and line and sees a neutral title.
+ */
+function routeProbes(
+  cell: string,
+  prefix: string,
+  title: (n: number) => string,
+  extra: Partial<FieldTestStep> = {},
+): FieldTestStep[] {
+  const A = 'Basic hit versus dealer nine.';
+  const B = 'Basic stand versus dealer six.';
+  return [A, A, B, B].map((line, i) => ({
+    id: `${prefix}-${i + 1}`,
+    probe: cell,
+    title: title(i + 1),
+    instruction:
+      i === 0
+        ? 'Four more, the same as before. Where did it come from?'
+        : 'Same again. Where did it come from?',
+    say: [line],
+    sayAgain: true,
+    responses: ROUTE_RESPONSES,
+    ...extra,
+  }));
+}
 
 /**
  * Bluetooth is off under `speakerphone`, so every wheel step there has no car
@@ -505,6 +568,8 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     sayAgain: true,
     responses: ROUTE_RESPONSES,
   },
+  // DORMANT until `route-1..3` disagree with themselves. See `routeProbes`.
+  ...routeProbes('clip / mic before', 'route-probe', (n) => `A few more of the same (${n} of 4)`),
   {
     id: 'route-short',
     aux: true,
@@ -997,6 +1062,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     instruction: 'The microphone is still on. Press skip-forward again.',
     awaitListening: true,
     wheel: true,
+    probeInput: true,
     setup: { voice: true },
     responses: WHEEL_RESPONSES,
   },
@@ -1068,6 +1134,13 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     awaitSilent: true,
     responses: ROUTE_RESPONSES,
   },
+  // DORMANT until `route-after-mic..3` disagree with themselves.
+  ...routeProbes(
+    'clip / mic after',
+    'route-after-mic-probe',
+    (n) => `A few more, after the microphone (${n} of 4)`,
+    { awaitSilent: true },
+  ),
   {
     /**
      * A WHEEL PRESS AFTER THE MICROPHONE, which the protocol never had.
@@ -1172,6 +1245,25 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     instruction:
       'Anything that worked or went wrong that no step above names. Stamp it the moment it happens \u2014 the log can find it afterwards, you cannot.',
     responses: FREE_RESPONSES,
+  },
+  {
+    /**
+     * LAST, AND FOR A DIFFERENT REASON FROM `ambient`. This asks for thirty
+     * seconds with the screen off. A microphone open under it would be thirty
+     * seconds of hands-free profile measuring nothing; a route sample after
+     * it would be taken on a page that may just have been frozen or reloaded.
+     * The only thing it measures is itself, and it ends on the screen coming
+     * back rather than on a timer -- its timers are what is under test.
+     */
+    id: 'lock-probe',
+    title: 'Lock the phone',
+    instruction:
+      'Lock the phone with the side button. Count thirty. Unlock it and come back — the app scores this itself.',
+    sayUnclipped: 'Lock the phone now. Wait thirty seconds, then unlock it.',
+    sayAgain: true,
+    lockProbe: true,
+    responses: [{ id: 'lock-probe-done', label: 'Unlocked and back', kind: 'note' }, MISSED],
+    setup: { voice: false },
   },
 ];
 
@@ -1349,7 +1441,8 @@ export function logFieldTestRunStart(conditionId: string, runId?: string): void 
     // the defect survived intact at exactly the place it was aimed at.
     ...(runId !== undefined ? { run: runId } : {}),
     condition: conditionId,
-    steps: FIELD_TEST_STEPS.length,
+    // ON THE PATH at the start: the dormant probes are not steps until armed.
+    steps: FIELD_TEST_STEPS.filter((s) => !s.probe).length,
     // THE MOTION, because the condition id alone does not survive the
     // protocol changing. Two of the four conditions are driven and two are
     // not, and "was the car moving" is the axis half the findings are pooled
@@ -1456,6 +1549,112 @@ export function stepResponses(step: FieldTestStep, conditionId: string): readonl
   const na = step.responses.find((r) => r.id === 'wheel-na');
   if (!na) return slots;
   return [na, ...slots.filter((r) => r?.id !== 'wheel-na')];
+}
+
+/**
+ * The 2x3 crossing, as cells of step ids: clip-or-tts against the microphone
+ * being before, open, or after.
+ *
+ * ONE DEFINITION, shared by `fieldTest.test.ts` (which proves every cell is
+ * composed the same way) and the in-drive detector (which scores a cell on
+ * the way out of it). The odd-length samples (`aux`) and the dormant probes
+ * are both kept out: neither is a matched sample of the cell it sits in.
+ */
+export function routeCells(): Map<string, string[]> {
+  let clips = true;
+  let voice = false;
+  let micHasBeenOn = false;
+  const cells = new Map<string, string[]>();
+  for (const step of FIELD_TEST_STEPS) {
+    if (step.setup?.useClips !== undefined) clips = step.setup.useClips;
+    if (step.setup?.voice !== undefined) voice = step.setup.voice;
+    if (voice) micHasBeenOn = true;
+    if (step.aux || step.probe) continue;
+    if (!step.responses.some((r) => r.kind === 'route')) continue;
+    if (!step.say?.length) continue;
+    const key = `${clips ? 'clip' : 'tts'} / mic ${voice ? 'open' : micHasBeenOn ? 'after' : 'before'}`;
+    cells.set(key, [...(cells.get(key) ?? []), step.id]);
+  }
+  return cells;
+}
+
+/** One answer as the run records it. See `FieldTestRun.answers`. */
+export interface RouteAnswer {
+  id: string;
+  via: 'tap' | 'voice';
+  marks?: string;
+  mic?: string;
+}
+
+export type RouteBlockVerdict = 'uniform' | 'wandering' | 'moved' | 'short';
+
+/**
+ * Where the sound came from, coarsened to what a block comparison can use.
+ *
+ * Earpiece and silent are one class -- "not audible where you are" -- except
+ * under `phone`, the device in the hand with the engine off, where the
+ * earpiece is perfectly audible and a route in its own right.
+ */
+function routeClass(id: string, conditionId: string): string | null {
+  switch (id) {
+    case 'route-car':
+      return 'car';
+    case 'route-loudspeaker':
+      return 'loud';
+    case 'route-earpiece':
+      return conditionId === 'phone' ? 'earpiece' : 'inaudible';
+    case 'route-silent':
+      return 'inaudible';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Does a block of route samples agree with itself?
+ *
+ * Read from the run's own record rather than the log, which is capped and
+ * holds counts here anyway. The LAST answer per step wins, because Back and
+ * re-answer is the only correction a moving car allows; `missed` is a refusal
+ * to answer and not a class; an answer that cannot be true of the leg (car
+ * speakers with Bluetooth off) is a mis-tap and is dropped the same way
+ * `stampFieldTest` flags it `impossible`.
+ *
+ *   short      fewer than two readable answers: the block says nothing, and
+ *              that is itself worth four more samples.
+ *   moved      a sample was marked as moving mid-line: a different finding
+ *              from wandering, reported before it.
+ *   wandering  the readable answers name more than one class.
+ *   uniform    they agree.
+ */
+export function routeBlockVerdict(
+  stepIds: readonly string[],
+  answers: Readonly<Record<string, readonly RouteAnswer[]>>,
+  conditionId: string,
+): { verdict: RouteBlockVerdict; classes: string[]; answers: string[] } {
+  const bluetooth = FIELD_TEST_CONDITIONS.find((c) => c.id === conditionId)?.bluetooth !== false;
+  const last: (RouteAnswer | undefined)[] = stepIds.map(
+    (id) => answers[`${conditionId}:${id}`]?.at(-1),
+  );
+  const ids = last.map((a) => a?.id ?? '-');
+  const classes: string[] = [];
+  let moved = false;
+  for (const a of last) {
+    if (!a) continue;
+    if (a.marks?.split(',').some((m) => m.trim() === 'route-moved')) moved = true;
+    if (a.id === 'route-car' && !bluetooth) continue;
+    const cls = routeClass(a.id, conditionId);
+    if (cls) classes.push(cls);
+  }
+  const verdict: RouteBlockVerdict =
+    classes.length < 2
+      ? 'short'
+      : moved
+        ? 'moved'
+        : new Set(classes).size > 1
+          ? 'wandering'
+          : 'uniform';
+  return { verdict, classes, answers: ids };
 }
 
 export function motionForCondition(conditionId: string): FieldTestMotion {

@@ -105,10 +105,17 @@ the car's own hands-free unit is exactly the flip being hunted"). Today:
 - The only row naming the input actually in use is `ambient-input` `track.label`
   (`carCheckCatalog.ts:261`) — taken on `ambient`, which is pinned last.
 
-Build: log `route input-selected {label, deviceId}` at `mic-settled` on every gated step,
-read from the live track. One row. It turns "the mic reached `listening`" into "the mic
-reached `listening` *on the car's unit*", which is what the no-move branch (§10) needs to be
-distinguishable from "the recogniser ran on the phone's own mic while A2DP stayed up".
+Build: log `route input-selected {label, deviceId}` at `mic-settled`, read from the live
+track. One row. It turns "the mic reached `listening`" into "the mic reached `listening`
+*on the car's unit*", which is what the no-move branch (§10) needs to be distinguishable
+from "the recogniser ran on the phone's own mic while A2DP stayed up".
+
+**As built (2026-09-27):** on `wheel-with-mic` only (`probeInput: true`), the last
+microphone-open step. Not on every gated step: reading the label costs a second
+`getUserMedia` call while the recogniser holds the first, and a second stream opened on a
+`mic-route*` step would itself be a candidate cause of the route move those steps are
+sampling. `wheel-with-mic` sits after all six of them, so the read lands with the profile
+already whatever the block found it to be.
 
 Test: the row appears *after* `session-start` in event order — kills logging at `listen-on`
 time, which is today's defect.
@@ -792,6 +799,8 @@ detector exist so that "undetermined" is caught in the car rather than in the ca
 | 7 | `readRouteCrossing` + the export header | the car-park reading, written once for four branches |
 | 8 | the drive | |
 | 9 | whichever of §1–§10 the export says | |
+
+Items 1–4 and 6 were built on 2026-09-27; items 5 and 7 remain.
 
 Items 1–7 are branch-independent and the whole of the pre-drive kit. Items 5–7 are the
 "build the branches the app can evaluate" argument made concrete: the app cannot see the

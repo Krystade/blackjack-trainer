@@ -183,8 +183,8 @@ async function answerable(page: Page, stepId: string): Promise<void> {
 
 test('a spoken answer stamps the step, and says it was spoken', async ({ page }) => {
   await openTest(page, { byVoice: true });
-  await goToStep(page, 'route-1');
-  await answerable(page, 'route-1');
+  await goToStep(page, 'mic-route');
+  await answerable(page, 'mic-route');
 
   await sayUntilHeard(page, 'that one came from the car');
 
@@ -193,18 +193,57 @@ test('a spoken answer stamps the step, and says it was spoken', async ({ page })
     .toContain('route-car');
 
   const stamped = (await answersIn(page)).find((e) => e.detail.answer === 'route-car')!;
-  expect(stamped.detail.step).toBe('route-1');
+  expect(stamped.detail.step).toBe('mic-route');
   expect(stamped.detail.via, 'nothing in the log says this answer was spoken').toBe('voice');
-  // `route-1` declares `voice: false`, so the microphone that heard this was
-  // opened by the answer channel -- and that moves the route the very next
-  // steps sample. The export has to say so.
-  expect(
-    stamped.detail.mic,
-    'the export cannot tell a free answer from one that perturbed the run',
-  ).toBe('answer-channel');
+  // `mic-route` declares `voice: true`: the microphone that heard this was the
+  // protocol's own, so the answer cost the experiment nothing. The export
+  // says whose it was.
+  expect(stamped.detail.mic).toBe('protocol');
 
   // Answering IS finishing the step, by voice exactly as by thumb.
   await expect(page.getByTestId('fieldtest-title')).not.toHaveText(
+    FIELD_TEST_STEPS.find((s) => s.id === 'mic-route')!.title,
+  );
+});
+
+/**
+ * THE CHANNEL NEVER OPENS A MICROPHONE OF ITS OWN.
+ *
+ * The first version of this feature enabled the recogniser on every step
+ * while the switch was on -- `enabled: voiceWanted || answerByVoice` -- so a
+ * leg run with it on sampled `route-1/2/3` with the microphone live. Those
+ * three steps are the "before the microphone" block the whole crossing is
+ * read against; with the switch on there was no before block at all, and
+ * nothing on a tapped stamp said so. Opening the microphone is the one event
+ * the protocol exists to measure the effect of, and a convenience must not
+ * be able to perform it.
+ *
+ * So: switch ON, on a step that declares `voice: false`, and no microphone
+ * session may start. The spoken hints are not printed either -- a hint to
+ * say something on a step where nothing is listening is a glance spent on a
+ * lie.
+ */
+test('with the switch on, a step that keeps the microphone shut still keeps it shut', async ({
+  page,
+}) => {
+  await openTest(page, { byVoice: true });
+  await goToStep(page, 'route-1');
+  await answerable(page, 'route-1');
+
+  for (let i = 0; i < 4; i++) {
+    await hear(page, 'that one came from the car');
+    await page.waitForTimeout(400);
+  }
+  await page.waitForTimeout(1500);
+
+  const log = await entries(page);
+  expect(
+    log.filter((e) => e.event === 'session-start' && e.detail.step === 'route-1'),
+    'the answer channel opened a microphone on a step whose whole point is that it is shut',
+  ).toEqual([]);
+  expect((await answersIn(page)).map((e) => e.detail.answer)).not.toContain('route-car');
+  await expect(page.locator('.fieldtest-say')).toHaveCount(0);
+  await expect(page.getByTestId('fieldtest-title')).toHaveText(
     FIELD_TEST_STEPS.find((s) => s.id === 'route-1')!.title,
   );
 });
@@ -256,8 +295,8 @@ test('with the switch off, nothing opens a microphone and nothing is stamped', a
 
 test('an utterance with no answer in it is refused, not guessed at', async ({ page }) => {
   await openTest(page, { byVoice: true });
-  await goToStep(page, 'route-1');
-  await answerable(page, 'route-1');
+  await goToStep(page, 'mic-route');
+  await answerable(page, 'mic-route');
 
   await sayUntilHeard(page, 'what on earth was that');
 
@@ -278,8 +317,8 @@ test('an utterance with no answer in it is refused, not guessed at', async ({ pa
  */
 test('an answer from another step is not accepted here', async ({ page }) => {
   await openTest(page, { byVoice: true });
-  await goToStep(page, 'route-1');
-  await answerable(page, 'route-1');
+  await goToStep(page, 'mic-route');
+  await answerable(page, 'mic-route');
 
   await sayUntilHeard(page, 'the radio changed track instead');
   await page.waitForTimeout(600);
@@ -310,4 +349,47 @@ test('on a microphone step the answer is recorded as free, not as a perturbation
     stamped.detail.mic,
     'a step that opens the microphone itself was blamed for the answer channel',
   ).toBe('protocol');
+});
+
+/**
+ * THE INPUT PROBE FIRES ON THE ONE STEP THAT CAN AFFORD IT.
+ *
+ * `wheel-with-mic` is the last step with the microphone open before the
+ * after block, and its own measurement is a wheel press, so a second capture
+ * there restarts nothing that is sampled. The unit test pins the placement in
+ * the protocol data; this proves the runner actually reads it -- a flag the
+ * runner ignores is a row that never lands, and the no-move reading of the
+ * crossing would then be indistinguishable from a false negative.
+ */
+test('the selected input is read once the microphone is live on wheel-with-mic, and not on a route step', async ({
+  page,
+}) => {
+  await openTest(page, { byVoice: false });
+
+  await goToStep(page, 'mic-route');
+  await answerable(page, 'mic-route');
+  await page.waitForTimeout(1500);
+  const onRoute = (await entries(page)).filter((e) => e.event === 'input-selected');
+  expect(onRoute, 'the probe ran inside the mic-open route block').toEqual([]);
+
+  await goToStep(page, 'wheel-with-mic');
+  await expect
+    .poll(
+      async () =>
+        (await entries(page)).some(
+          (e) => e.event === 'mic-settled' && e.detail.step === 'wheel-with-mic',
+        ),
+      { timeout: 20_000 },
+    )
+    .toBe(true);
+
+  await expect
+    .poll(async () => (await entries(page)).filter((e) => e.event === 'input-selected').length, {
+      timeout: 5_000,
+    })
+    .toBe(1);
+  const row = (await entries(page)).find((e) => e.event === 'input-selected')!;
+  expect(row.detail.reason).toBe('mic-settled');
+  expect(typeof row.detail.label, 'the row names no device').toBe('string');
+  expect(row.detail.state, 'the capture failed rather than reading a label').toBeUndefined();
 });

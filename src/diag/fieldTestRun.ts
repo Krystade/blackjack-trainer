@@ -27,6 +27,9 @@ import {
   DEFAULT_FIELD_TEST_CONDITION,
   FIELD_TEST_CONDITIONS,
   FIELD_TEST_STEPS,
+  routeBlockVerdict,
+  routeCells,
+  type RouteAnswer,
 } from './fieldTest';
 
 const STORAGE_KEY = 'bjtrainer.fieldTestRun.v1';
@@ -112,6 +115,30 @@ export interface FieldTestRun {
    */
   answerByVoice?: boolean;
   /**
+   * The lock probe is in progress, started under this diagnostic session.
+   *
+   * ON THE RUN RECORD RATHER THAN IN A REF because the case it exists for is
+   * the page dying. The probe asks the operator to lock the phone; if iOS
+   * kills the page under the lock there is nobody left to score it, and the
+   * next boot finding this marker with a session id that is not its own IS
+   * the result (`frozen-unloaded`). Cleared by the runner the moment a result
+   * is stamped.
+   */
+  lockProbe?: { startedAt: string; session: string };
+  /**
+   * What each step was answered, keyed like `stamps`, in the order given.
+   *
+   * `stamps` is a count and was enough while the only reader was the screen.
+   * The route-block detector needs the answers themselves, and the diagnostic
+   * log is capped at a few thousand rows and is not this module's to read
+   * back. Every stamp appends; the detector reads the last.
+   */
+  answers?: Record<string, RouteAnswer[]>;
+  /** Cells whose dormant probes are on the path. See `FieldTestStep.probe`. */
+  armedProbes?: string[];
+  /** Blocks already scored on the way out, keyed `<condition>:<cell>`. */
+  scoredBlocks?: string[];
+  /**
    * Whether this run was ENDED on purpose, rather than merely stepped out of.
    *
    * `stopFieldTestRun` and `pauseFieldTestRun` wrote the identical object, so
@@ -192,6 +219,34 @@ function storage(): Storage | null {
  * 9 and rendering nothing at all, which from the car is the panel having
  * vanished.
  */
+function coerceStrings(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v.filter((x): x is string => typeof x === 'string');
+  return out.length > 0 ? out : undefined;
+}
+
+function coerceAnswers(v: unknown): Record<string, RouteAnswer[]> | undefined {
+  if (typeof v !== 'object' || v === null) return undefined;
+  const out: Record<string, RouteAnswer[]> = {};
+  for (const [k, list] of Object.entries(v as Record<string, unknown>)) {
+    if (!Array.isArray(list)) continue;
+    const kept: RouteAnswer[] = [];
+    for (const a of list) {
+      if (typeof a !== 'object' || a === null) continue;
+      const { id, via, marks, mic } = a as Record<string, unknown>;
+      if (typeof id !== 'string' || (via !== 'tap' && via !== 'voice')) continue;
+      kept.push({
+        id,
+        via,
+        ...(typeof marks === 'string' ? { marks } : {}),
+        ...(typeof mic === 'string' ? { mic } : {}),
+      });
+    }
+    if (kept.length > 0) out[k] = kept;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /**
  * Hold an index inside the step list.
  *
@@ -320,6 +375,17 @@ function coerce(raw: unknown): FieldTestRun {
     beforeHandedBack: r.beforeHandedBack === true ? true : undefined,
     // Carried through the reload -- that is the whole point of persisting it.
     answerByVoice: r.answerByVoice === true ? true : undefined,
+    // Carried through the reload: the reload is the result it records.
+    answers: coerceAnswers(r.answers),
+    armedProbes: coerceStrings(r.armedProbes),
+    scoredBlocks: coerceStrings(r.scoredBlocks),
+    lockProbe:
+      typeof r.lockProbe === 'object' &&
+      r.lockProbe !== null &&
+      typeof (r.lockProbe as { startedAt?: unknown }).startedAt === 'string' &&
+      typeof (r.lockProbe as { session?: unknown }).session === 'string'
+        ? { startedAt: r.lockProbe.startedAt, session: r.lockProbe.session }
+        : undefined,
     runId: typeof r.runId === 'string' ? r.runId : undefined,
     // Carried through the reload for the same reason as `touchedAt`: the
     // launch screen and the update check both read it, and both of them run
@@ -511,6 +577,9 @@ export function startFieldTestRun(condition: string, before?: FieldTestBefore): 
     condition,
     stepIndex: 0,
     stamps: {},
+    answers: undefined,
+    armedProbes: undefined,
+    scoredBlocks: undefined,
     before,
     /*
      * CARRIED, and the first version of this cleared it -- which broke the
@@ -531,6 +600,14 @@ export function startFieldTestRun(condition: string, before?: FieldTestBefore): 
     beforeHandedBack: undefined,
     runId: newRunId(),
   });
+}
+
+/** Set or clear the lock probe's marker. See `FieldTestRun.lockProbe`. */
+export function setFieldTestLockProbe(
+  marker: { startedAt: string; session: string } | undefined,
+): void {
+  const current = readFieldTestRun();
+  write({ ...current, lockProbe: marker });
 }
 
 /**
@@ -756,7 +833,7 @@ export function goToFieldTestStep(index: number): void {
  * step done at a red light is visibly done when you next look at the screen,
  * and so a double-tap is visibly two rather than silently one.
  */
-export function markFieldTestStamped(stepId: string): void {
+export function markFieldTestStamped(stepId: string, answer?: RouteAnswer): void {
   const current = readFieldTestRun();
   // Keyed with the condition the stamp was made under. The condition is read
   // here rather than passed in so no caller can key one incorrectly.
@@ -764,6 +841,98 @@ export function markFieldTestStamped(stepId: string): void {
   write({
     ...current,
     stamps: { ...current.stamps, [key]: (current.stamps[key] ?? 0) + 1 },
+    ...(answer
+      ? { answers: { ...current.answers, [key]: [...(current.answers?.[key] ?? []), answer] } }
+      : {}),
+  });
+}
+
+/** Whether the step at `index` is on the path for a run with these probes armed. */
+function onPath(index: number, armed: readonly string[]): boolean {
+  const step = FIELD_TEST_STEPS[index];
+  return step !== undefined && (!step.probe || armed.includes(step.probe));
+}
+
+/**
+ * The next index on the path in direction `dir`, or `from` if there is none.
+ *
+ * `stepIndex` stays a plain index into `FIELD_TEST_STEPS` -- the setup fold
+ * depends on that -- so a dormant probe is skipped by the pointer's movement
+ * rather than by its absence from the list.
+ */
+export function nextActiveIndex(from: number, dir: 1 | -1, armed: readonly string[]): number {
+  for (let i = from + dir; i >= 0 && i < FIELD_TEST_STEPS.length; i += dir) {
+    if (onPath(i, armed)) return i;
+  }
+  return from;
+}
+
+/** How many steps are on this run's path. */
+export function fieldTestStepCount(run: FieldTestRun): number {
+  const armed = run.armedProbes ?? [];
+  let n = 0;
+  for (let i = 0; i < FIELD_TEST_STEPS.length; i += 1) if (onPath(i, armed)) n += 1;
+  return n;
+}
+
+/** The 1-based position of the current step on this run's path. */
+export function fieldTestStepOrdinal(run: FieldTestRun): number {
+  const armed = run.armedProbes ?? [];
+  let n = 0;
+  for (let i = 0; i <= run.stepIndex && i < FIELD_TEST_STEPS.length; i += 1) {
+    if (onPath(i, armed)) n += 1;
+  }
+  return n;
+}
+
+/**
+ * Leave the current step forwards, scoring a route block on the way out.
+ *
+ * ON THE WAY OUT OF THE BLOCK, not at the second answer: acting at stamp two
+ * would put a step between `route-2` and `route-3` and break the A, B, A
+ * every cell is built on. Every block writes a `route-block` row -- agreeing
+ * ones included, so one grep returns all six cells -- and a block that
+ * disagrees with itself, moved mid-line, or said too little arms the four
+ * dormant probes behind it, if it has any. Scored once per condition and
+ * cell: Back and forward again does not write a second row.
+ */
+export function advanceFieldTestStep(): void {
+  let current = readFieldTestRun();
+  const step = FIELD_TEST_STEPS[current.stepIndex];
+  const cell = step ? [...routeCells()].find(([, ids]) => ids.at(-1) === step.id) : undefined;
+  if (cell) {
+    const [key, ids] = cell;
+    const scoredKey = `${current.condition}:${key}`;
+    if (!current.scoredBlocks?.includes(scoredKey)) {
+      const v = routeBlockVerdict(ids, current.answers ?? {}, current.condition);
+      const site = FIELD_TEST_STEPS.find((s) => s.probe === key);
+      const arm = v.verdict !== 'uniform' && site !== undefined && !current.armedProbes?.includes(key);
+      diag('test', 'route-block', {
+        cell: key,
+        steps: ids.join(', '),
+        condition: current.condition,
+        verdict: v.verdict,
+        classes: v.classes.join(', '),
+        answers: v.answers.join(', '),
+        armed: arm,
+        ...(site ? { probe: site.id } : {}),
+      });
+      current = {
+        ...current,
+        scoredBlocks: [...(current.scoredBlocks ?? []), scoredKey],
+        ...(arm ? { armedProbes: [...(current.armedProbes ?? []), key] } : {}),
+      };
+    }
+  }
+  write({ ...current, stepIndex: nextActiveIndex(current.stepIndex, 1, current.armedProbes ?? []) });
+}
+
+/** Leave the current step backwards. Nothing is scored on the way back. */
+export function retreatFieldTestStep(): void {
+  const current = readFieldTestRun();
+  write({
+    ...current,
+    stepIndex: nextActiveIndex(current.stepIndex, -1, current.armedProbes ?? []),
   });
 }
 

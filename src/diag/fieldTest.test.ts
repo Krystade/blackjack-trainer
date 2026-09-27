@@ -14,6 +14,8 @@ import {
   fieldTestLegsThisSession,
   _resetFieldTestSessionForTest,
   stepResponses,
+  routeCells,
+  routeBlockVerdict,
 } from './fieldTest';
 import { DEFAULT_SETTINGS, type Settings } from '../store/types';
 import { readDiagnosticLog, clearDiagnosticLog } from './diagnosticLog';
@@ -152,7 +154,10 @@ describe('the test speaks for itself', () => {
    */
   it('keeps the calibration line unclipped, which is what it is for', () => {
     const haveClips = new Set(spokenPhrases as string[]);
-    const withFallback = FIELD_TEST_STEPS.filter((s) => s.sayUnclipped);
+    // The lock probe also speaks unclipped -- its instruction has no clip and
+    // that is fine, nothing on that step is comparing voices -- so it is not
+    // a calibration step and is not counted as one.
+    const withFallback = FIELD_TEST_STEPS.filter((s) => s.sayUnclipped && !s.lockProbe);
     expect(withFallback.length).toBe(1);
     for (const step of withFallback) {
       expect(haveClips.has(step.sayUnclipped!), step.id).toBe(false);
@@ -832,6 +837,53 @@ describe('resolveFieldTestSetup', () => {
       micOnSteps,
       'a wheel step runs with the microphone open, which flips the car to hands-free and takes the wheel',
     ).toEqual(['wheel-with-mic']);
+  });
+
+  /**
+   * THE ONE MACHINE-READABLE SIGNATURE OF THE PROFILE FLIP, read where it
+   * costs nothing.
+   *
+   * The recogniser exposes no stream, so the only way to learn which input
+   * device the phone is actually using -- "iPhone Microphone" or the car's
+   * hands-free unit -- is a short `getUserMedia` of our own. On iOS that is a
+   * second capture beside a live recogniser, and whether it aborts the
+   * recognition session is unknown. So it is read on exactly one step: the
+   * LAST one with the microphone open, whose own measurement is a wheel
+   * press rather than a route sample, immediately before the protocol shuts
+   * the microphone anyway. A restart there perturbs nothing that is
+   * measured. Anywhere earlier it would sit inside the mic-open route block;
+   * anywhere later the microphone is shut and opening one is the
+   * contamination the whole after block exists to avoid.
+   */
+  /**
+   * THE LOCK PROBE OPENS NOTHING AND SITS AFTER EVERYTHING.
+   *
+   * It asks the operator to lock the phone for thirty seconds. A microphone
+   * open under it would be thirty seconds of hands-free profile with nobody
+   * measuring anything; a route sample after it would be taken on a page that
+   * may just have been frozen or reloaded. So it goes last, with the
+   * microphone shut, and the only thing it measures is itself.
+   */
+  it('runs the lock probe once, last, with the microphone shut', () => {
+    const probes = FIELD_TEST_STEPS.filter((s) => s.lockProbe).map((s) => s.id);
+    expect(probes, 'one lock probe, no more').toEqual(['lock-probe']);
+    expect(FIELD_TEST_STEPS.at(-1)?.id, 'a step after the probe samples a page that may have died').toBe(
+      'lock-probe',
+    );
+    expect(at('lock-probe').voice, 'the probe locks the phone with a microphone open').toBe(false);
+  });
+
+  it('reads the selected input device on the last microphone-open step, and nowhere else', () => {
+    const probes = FIELD_TEST_STEPS.filter((s) => s.probeInput).map((s) => s.id);
+    expect(probes, 'the input probe belongs on one step').toEqual(['wheel-with-mic']);
+
+    const i = indexOf('wheel-with-mic');
+    expect(at('wheel-with-mic').voice, 'the probe reads an input nobody opened').toBe(true);
+    const next = FIELD_TEST_STEPS[i + 1]!;
+    expect(
+      at(next.id).voice,
+      `${next.id} still has the microphone open, so a probe on wheel-with-mic could restart it under a route sample`,
+    ).toBe(false);
   });
 
   /**
@@ -1717,23 +1769,9 @@ describe('where an answer sits, from one step to the next', () => {
  * two answers the protocol reads as failure, in the cell used as the baseline.
  */
 describe('every cell of the crossing is composed the same way', () => {
-  const crossed = () => {
-    let clips = true;
-    let voice = false;
-    let micHasBeenOn = false;
-    const cells = new Map<string, string[]>();
-    for (const step of FIELD_TEST_STEPS) {
-      if (step.setup?.useClips !== undefined) clips = step.setup.useClips;
-      if (step.setup?.voice !== undefined) voice = step.setup.voice;
-      if (voice) micHasBeenOn = true;
-      if (step.aux) continue;
-      if (!step.responses.some((r) => r.kind === 'route')) continue;
-      if (!step.say?.length) continue;
-      const key = `${clips ? 'clip' : 'tts'} / mic ${voice ? 'open' : micHasBeenOn ? 'after' : 'before'}`;
-      cells.set(key, [...(cells.get(key) ?? []), step.id]);
-    }
-    return cells;
-  };
+  // The grouping is exported now: the in-drive detector reads the same cells
+  // this test reads, so there is one definition of "a cell" and not two.
+  const crossed = routeCells;
 
   it('gives every cell the same number of samples', () => {
     // NOT ">= 3". The old assertion was a floor, and a floor let the cell with
@@ -1952,6 +1990,167 @@ describe('an instruction has to fit on the screen it is printed on', () => {
     // The other half: "short" is trivially satisfiable by saying nothing.
     for (const step of FIELD_TEST_STEPS) {
       expect(step.instruction.length, `${step.id} instructs nobody`).toBeGreaterThan(20);
+    }
+  });
+});
+
+/**
+ * THE DETECTOR FOR A BLOCK THAT DISAGREES WITH ITSELF.
+ *
+ * The 2026-09-23 drive answered car / phone / car on one block, and nothing
+ * in the app noticed: `stamps` holds counts, not answers, and the block was
+ * left as it was. Every test here is PAIRED WITH A CONTROL, so a detector
+ * that compares first-with-last, ignores `impossible`, or treats "missed"
+ * as a place the sound came from cannot pass both halves.
+ */
+describe('routeBlockVerdict', () => {
+  const block = ['route-1', 'route-2', 'route-3'] as const;
+  const given = (condition: string, ...ids: (string | [string, string])[]) => {
+    const answers: Record<string, { id: string; via: 'tap'; marks?: string }[]> = {};
+    ids.forEach((a, i) => {
+      const [id, marks] = Array.isArray(a) ? a : [a, undefined];
+      answers[`${condition}:${block[i]}`] = [{ id, via: 'tap', ...(marks ? { marks } : {}) }];
+    });
+    return answers;
+  };
+
+  it('calls car / loud / car wandering, and car / car / car uniform', () => {
+    expect(
+      routeBlockVerdict(block, given('car', 'route-car', 'route-loudspeaker', 'route-car'), 'car')
+        .verdict,
+    ).toBe('wandering');
+    expect(
+      routeBlockVerdict(block, given('car', 'route-car', 'route-car', 'route-car'), 'car').verdict,
+    ).toBe('uniform');
+  });
+
+  it('drops an answer that cannot be true of the leg, so a mis-tap under speakerphone is not a wander', () => {
+    // Bluetooth is off: "car speakers" is a mis-tap, not a route.
+    const taps = ['route-loudspeaker', 'route-car', 'route-loudspeaker'] as const;
+    expect(
+      routeBlockVerdict(block, given('speakerphone', ...taps), 'speakerphone').verdict,
+    ).toBe('uniform');
+    // ...and the same three taps under a Bluetooth leg are a wander.
+    expect(routeBlockVerdict(block, given('car', ...taps), 'car').verdict).toBe('wandering');
+  });
+
+  it('calls a block with fewer than two readable answers short, not wandering and not uniform', () => {
+    expect(
+      routeBlockVerdict(block, given('car', 'route-car', 'missed', 'missed'), 'car').verdict,
+    ).toBe('short');
+    expect(
+      routeBlockVerdict(block, given('car', 'route-car', 'missed', 'route-car'), 'car').verdict,
+    ).toBe('uniform');
+    expect(routeBlockVerdict(block, given('car'), 'car').verdict).toBe('short');
+  });
+
+  it('merges earpiece and silent into one class except under phone, where the earpiece is a route of its own', () => {
+    const taps = ['route-earpiece', 'route-silent', 'route-earpiece'] as const;
+    expect(routeBlockVerdict(block, given('freeway', ...taps), 'freeway').verdict).toBe('uniform');
+    expect(routeBlockVerdict(block, given('phone', ...taps), 'phone').verdict).toBe('wandering');
+  });
+
+  it('reads the last answer a step was given, so a correction after Back wins', () => {
+    const answers = given('car', 'route-car', 'route-car', 'route-car');
+    answers['car:route-2'] = [
+      { id: 'route-loudspeaker', via: 'tap' },
+      { id: 'route-car', via: 'tap' },
+    ];
+    expect(routeBlockVerdict(block, answers, 'car').verdict).toBe('uniform');
+    answers['car:route-2'] = [
+      { id: 'route-car', via: 'tap' },
+      { id: 'route-loudspeaker', via: 'tap' },
+    ];
+    expect(routeBlockVerdict(block, answers, 'car').verdict).toBe('wandering');
+  });
+
+  it('calls a block moved when any sample was marked as moving mid-line, even if every destination agrees', () => {
+    const v = routeBlockVerdict(
+      block,
+      given('car', 'route-car', ['route-car', 'route-moved'], 'route-car'),
+      'car',
+    );
+    expect(v.verdict).toBe('moved');
+  });
+
+  it('reports the classes it read, so the row can be checked against the answers', () => {
+    const v = routeBlockVerdict(
+      block,
+      given('car', 'route-car', 'route-loudspeaker', 'route-car'),
+      'car',
+    );
+    expect(v.classes).toEqual(['car', 'loud', 'car']);
+  });
+});
+
+/**
+ * THE PROBE STEPS: dormant until a block disagrees with itself.
+ *
+ * A, B, A cannot tell a line-dependent route from an alternating one -- both
+ * read car / phone / car. A, A, B, B can: line-dependence reads car car
+ * phone phone, a strict toggle reads x y x y, noise reads nothing. So each
+ * probeable cell has four more steps sitting after it, declared in the fixed
+ * list so `resolveFieldTestSetup` stays a pure function of the index, and
+ * skipped by navigation until the block before them is scored as needing
+ * them.
+ */
+describe('the route probes', () => {
+  const probes = FIELD_TEST_STEPS.filter((s) => s.probe);
+  const idx = (id: string) => FIELD_TEST_STEPS.findIndex((s) => s.id === id);
+  const SITES = ['clip / mic before', 'clip / mic after'];
+  const anchorOf = (cell: string) => (cell === 'clip / mic after' ? 'route-after-mic-3' : 'route-3');
+
+  it('sit in two sites of four, each straight after the block it probes', () => {
+    expect(probes).toHaveLength(8);
+    for (const cell of SITES) {
+      const ids = probes.filter((s) => s.probe === cell).map((s) => s.id);
+      expect(ids, cell).toHaveLength(4);
+      expect(idx(ids[0]!), cell).toBe(idx(anchorOf(cell)) + 1);
+      for (let k = 1; k < 4; k += 1) expect(idx(ids[k]!), cell).toBe(idx(ids[k - 1]!) + 1);
+    }
+    // The cells they name are cells the crossing actually has.
+    for (const p of probes) expect([...routeCells().keys()], p.id).toContain(p.probe);
+  });
+
+  it('speak A, A, B, B, which is what separates line-dependence from alternation', () => {
+    const say = (id: string) => FIELD_TEST_STEPS.find((s) => s.id === id)!.say![0];
+    const A = say('route-1');
+    const B = say('route-2');
+    for (const cell of SITES) {
+      const lines = probes.filter((s) => s.probe === cell).map((s) => s.say![0]);
+      expect(lines, cell).toEqual([A, A, B, B]);
+    }
+  });
+
+  it('offer the route answers, a repeat, and a title that says what they are', () => {
+    const routeIds = FIELD_TEST_STEPS.find((s) => s.id === 'route-1')!.responses.map((r) => r.id);
+    for (const p of probes) {
+      expect(p.responses.map((r) => r.id), p.id).toEqual(routeIds);
+      expect(p.sayAgain, p.id).toBe(true);
+      expect(p.title, p.id).toMatch(/^A few more(, after the microphone| of the same) \([1-4] of 4\)$/);
+    }
+  });
+
+  it('leak nothing forward: the setup after each site equals the setup before it', () => {
+    for (const cell of SITES) {
+      const ids = probes.filter((s) => s.probe === cell).map((s) => s.id);
+      const first = idx(ids[0]!);
+      const last = idx(ids[ids.length - 1]!);
+      expect(resolveFieldTestSetup(last), cell).toEqual(resolveFieldTestSetup(first - 1));
+      expect(resolveFieldTestSetup(last + 1), cell).toEqual(resolveFieldTestSetup(last));
+    }
+  });
+
+  it('wait for the recogniser to be down where the block they extend does', () => {
+    for (const p of probes) {
+      const anchor = FIELD_TEST_STEPS.find((s) => s.id === anchorOf(p.probe!))!;
+      expect(Boolean(p.awaitSilent), p.id).toBe(Boolean(anchor.awaitSilent));
+    }
+  });
+
+  it('are kept out of the crossing, so the cells still hold three matched samples', () => {
+    for (const ids of routeCells().values()) {
+      for (const p of probes) expect(ids, p.id).not.toContain(p.id);
     }
   });
 });

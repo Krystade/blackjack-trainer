@@ -417,3 +417,75 @@ describe('a refused hold is not permanent', () => {
   });
 });
 
+
+/**
+ * THE ONE EVENT THIS MODULE EXISTS TO SURVIVE, and nothing here exercised it.
+ *
+ * Every fake above stops only when the app asks it to. iOS does not work that
+ * way: another element starting -- a clip, a chime, a call -- can pause the
+ * silent loop underneath a hold that is still outstanding, which is exactly
+ * "buttons worked only when the bot was talking" (2026-09-19) with the fix in
+ * place. Eighteen tests proved `play()` was called; none proved the element
+ * was still playing a moment later, so the fix shipped behind a suite that
+ * could not tell it from the bug.
+ */
+describe('the hold lapsing under the OS, not the app', () => {
+  beforeEach(() => {
+    clearDiagnosticLog();
+  });
+
+  /** The platform pausing the element out from under a live hold. */
+  async function osPauses(el: FakeAudio & { onpause?: (() => void) | null }): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
+    el.paused = true;
+    el.onpause?.();
+  }
+
+  it('writes focus lapsed when the element stops while somebody still holds it', async () => {
+    holdAudioFocus('speech');
+    const el = created[0] as FakeAudio & { onpause?: (() => void) | null };
+
+    await osPauses(el);
+
+    const lapsed = readDiagnosticLog().find(
+      (e) => e.category === 'focus' && e.event === 'lapsed',
+    );
+    expect(lapsed, 'the platform stopped the loop and the log has no idea').toBeTruthy();
+    expect(lapsed?.detail?.paused).toBe(true);
+    expect(lapsed?.detail?.holders).toBe(1);
+  });
+
+  it('does not call its own release a lapse', async () => {
+    holdAudioFocus('speech');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    releaseAudioFocus('speech');
+
+    const lapsed = readDiagnosticLog().filter(
+      (e) => e.category === 'focus' && e.event === 'lapsed',
+    );
+    expect(lapsed, 'a deliberate stop was reported as the OS taking the slot').toEqual([]);
+  });
+
+  /**
+   * The recovery: a later hold must re-play a lapsed element rather than see
+   * an element object and return. This is the same path a refused first play
+   * takes, and it is the whole reason `holdAudioFocus` asks `paused` rather
+   * than `element !== null`.
+   */
+  it('re-plays a lapsed element on the next hold, and says it was a restart', async () => {
+    holdAudioFocus('speech');
+    const el = created[0] as FakeAudio & { onpause?: (() => void) | null };
+    await osPauses(el);
+    clearDiagnosticLog();
+
+    holdAudioFocus('speech');
+
+    expect(el.playCount, 'a lapsed loop was never started again').toBe(2);
+    expect(el.paused).toBe(false);
+    const hold = readDiagnosticLog().find((e) => e.category === 'focus' && e.event === 'hold');
+    expect(hold?.detail?.restart).toBe(true);
+  });
+});

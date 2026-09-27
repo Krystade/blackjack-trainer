@@ -20,6 +20,12 @@ import {
   fieldTestRunIsResumable,
   RUN_LIVE_MS,
   RUN_RESUMABLE_MS,
+  setFieldTestLockProbe,
+  nextActiveIndex,
+  advanceFieldTestStep,
+  retreatFieldTestStep,
+  fieldTestStepCount,
+  fieldTestStepOrdinal,
 } from './fieldTestRun';
 import { FIELD_TEST_STEPS } from './fieldTest';
 import { readDiagnosticLog } from './diagnosticLog';
@@ -936,5 +942,226 @@ describe('the cross-tab listener when the first read is too early', () => {
     localStorage.setItem('bjtrainer.fieldTestRun.v1', raw);
     for (const h of handlers) h({ key: 'bjtrainer.fieldTestRun.v1', oldValue: null, newValue: raw });
     expect(readFieldTestRun().stepIndex).toBe(5);
+  });
+});
+
+/**
+ * THE LOCK PROBE'S MARKER OUTLIVES THE PAGE, which is the whole reason it is
+ * on the run record rather than in a ref. The probe asks the operator to
+ * lock the phone; if iOS kills the page under the lock there is nobody left
+ * to score the result, and the only evidence is a marker that the next boot
+ * finds still set with a session id that is no longer its own.
+ */
+describe('the lock probe marker', () => {
+  it('survives a reload, so a page killed under the lock can be scored at the next boot', () => {
+    installStorage();
+    startFieldTestRun('car');
+    setFieldTestLockProbe({ startedAt: '2026-09-27T20:00:00.000Z', session: 'abc' });
+    forgetInMemoryOnly();
+
+    expect(readFieldTestRun().lockProbe).toEqual({
+      startedAt: '2026-09-27T20:00:00.000Z',
+      session: 'abc',
+    });
+
+    setFieldTestLockProbe(undefined);
+    forgetInMemoryOnly();
+    expect(readFieldTestRun().lockProbe, 'a cleared marker came back').toBeUndefined();
+  });
+
+  it('drops a marker that is not a marker', () => {
+    const store = installStorage();
+    store.set(
+      'bjtrainer.fieldTestRun.v1',
+      JSON.stringify({ condition: 'car', stepIndex: 3, stamps: {}, lockProbe: 'yes' }),
+    );
+    forgetInMemoryOnly();
+    expect(readFieldTestRun().lockProbe).toBeUndefined();
+  });
+});
+
+/**
+ * THE ANSWERS THEMSELVES, not just how many times a step was stamped.
+ *
+ * `stamps` was enough while the only reader was the screen; the route-block
+ * detector needs to know WHAT was answered, and the diagnostic log is capped
+ * and not this module's to read back. Keyed the same way as `stamps`, for
+ * the same reason.
+ */
+describe('the answers a run was given', () => {
+  const idx = (id: string) => FIELD_TEST_STEPS.findIndex((s) => s.id === id);
+
+  it('are recorded beside the stamp, under the condition they were given in, and survive a remount', () => {
+    startFieldTestRun('car');
+    markFieldTestStamped('route-1', { id: 'route-car', via: 'tap' });
+    markFieldTestStamped('route-1', {
+      id: 'route-loudspeaker',
+      via: 'voice',
+      marks: 'route-moved',
+      mic: 'protocol',
+    });
+    forgetInMemoryOnly();
+    expect(readFieldTestRun().answers?.['car:route-1']).toEqual([
+      { id: 'route-car', via: 'tap' },
+      { id: 'route-loudspeaker', via: 'voice', marks: 'route-moved', mic: 'protocol' },
+    ]);
+    expect(readFieldTestRun().stamps['car:route-1']).toBe(2);
+  });
+
+  it('drops answers and armed probes that do not have the right shape', () => {
+    const store = installStorage();
+    store.set(
+      'bjtrainer.fieldTestRun.v1',
+      JSON.stringify({
+        active: false,
+        condition: 'car',
+        stepIndex: 3,
+        stamps: {},
+        answers: {
+          'car:route-1': [{ id: 'route-car', via: 'tap' }, { id: 7 }, 'route-car', { via: 'tap' }],
+          'car:route-2': 'nope',
+        },
+        armedProbes: ['clip / mic before', 3, null],
+      }),
+    );
+    forgetInMemoryOnly();
+    const run = readFieldTestRun();
+    expect(run.answers).toEqual({ 'car:route-1': [{ id: 'route-car', via: 'tap' }] });
+    expect(run.armedProbes).toEqual(['clip / mic before']);
+  });
+
+  /**
+   * THE PROBES ARE IN THE LIST BUT NOT ON THE PATH until armed. `stepIndex`
+   * stays a plain index into `FIELD_TEST_STEPS` -- `resolveFieldTestSetup`
+   * depends on that -- so what changes is how the pointer moves.
+   */
+  it('steps over a dormant probe in both directions, and through it once armed', () => {
+    const route3 = idx('route-3');
+    const short = idx('route-short');
+    const probe1 = route3 + 1;
+    expect(FIELD_TEST_STEPS[probe1]?.probe).toBe('clip / mic before');
+    expect(nextActiveIndex(route3, 1, [])).toBe(short);
+    expect(nextActiveIndex(short, -1, [])).toBe(route3);
+    expect(nextActiveIndex(route3, 1, ['clip / mic before'])).toBe(probe1);
+    expect(nextActiveIndex(short, -1, ['clip / mic before'])).toBe(short - 1);
+    expect(FIELD_TEST_STEPS[short - 1]?.probe).toBe('clip / mic before');
+    // Nowhere to go stays put.
+    expect(nextActiveIndex(0, -1, [])).toBe(0);
+    expect(nextActiveIndex(FIELD_TEST_STEPS.length - 1, 1, [])).toBe(FIELD_TEST_STEPS.length - 1);
+  });
+
+  it('counts and numbers the steps that are actually on the path', () => {
+    startFieldTestRun('car');
+    const active = FIELD_TEST_STEPS.filter((s) => !s.probe).length;
+    expect(fieldTestStepCount(readFieldTestRun())).toBe(active);
+    goToFieldTestStep(idx('route-short'));
+    expect(fieldTestStepOrdinal(readFieldTestRun())).toBe(idx('route-3') + 2);
+    // Arm a site: four more on the path, and everything after it moves down.
+    const block = [
+      ['route-1', 'route-car'],
+      ['route-2', 'route-loudspeaker'],
+      ['route-3', 'route-car'],
+    ] as const;
+    for (const [step, id] of block) {
+      goToFieldTestStep(idx(step));
+      markFieldTestStamped(step, { id, via: 'tap' });
+    }
+    advanceFieldTestStep();
+    expect(fieldTestStepCount(readFieldTestRun())).toBe(active + 4);
+    goToFieldTestStep(idx('route-short'));
+    expect(fieldTestStepOrdinal(readFieldTestRun())).toBe(idx('route-3') + 6);
+  });
+});
+
+/**
+ * SCORED ON THE WAY OUT OF THE BLOCK, not on the second answer: acting at
+ * stamp two would put a step between `route-2` and `route-3` and break the
+ * A, B, A every cell is built on. Every block writes a row, agreeing ones
+ * included, so one grep returns all six cells; only a disagreeing one arms
+ * the probes behind it.
+ */
+describe('leaving a route block', () => {
+  const idx = (id: string) => FIELD_TEST_STEPS.findIndex((s) => s.id === id);
+  // The log is a ring buffer shared across this file's tests, so each test
+  // reads only the rows written after it began.
+  let baseline = 0;
+  beforeEach(() => {
+    baseline = readDiagnosticLog().length;
+  });
+  const rows = () =>
+    readDiagnosticLog()
+      .slice(baseline)
+      .filter((e) => e.event === 'route-block');
+  const answerBlock = (...ids: string[]) => {
+    for (const [i, step] of ['route-1', 'route-2', 'route-3'].entries()) {
+      goToFieldTestStep(idx(step));
+      if (ids[i]) markFieldTestStamped(step, { id: ids[i]!, via: 'tap' });
+    }
+  };
+
+  it('arms the probes behind a block that disagrees with itself, and walks into them', () => {
+    startFieldTestRun('car');
+    answerBlock('route-car', 'route-loudspeaker', 'route-car');
+    advanceFieldTestStep();
+    const run = readFieldTestRun();
+    expect(run.armedProbes).toEqual(['clip / mic before']);
+    expect(run.stepIndex).toBe(idx('route-3') + 1);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]?.detail).toMatchObject({
+      cell: 'clip / mic before',
+      verdict: 'wandering',
+      classes: 'car, loud, car',
+      condition: 'car',
+      armed: true,
+    });
+  });
+
+  it('leaves a block that agrees alone, but still writes the row', () => {
+    startFieldTestRun('car');
+    answerBlock('route-car', 'route-car', 'route-car');
+    advanceFieldTestStep();
+    const run = readFieldTestRun();
+    expect(run.armedProbes ?? []).toEqual([]);
+    expect(FIELD_TEST_STEPS[run.stepIndex]?.id).toBe('route-short');
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]?.detail).toMatchObject({ verdict: 'uniform', armed: false });
+  });
+
+  it('treats a skipped block as short, which is also worth four more samples', () => {
+    startFieldTestRun('car');
+    answerBlock('route-car');
+    advanceFieldTestStep();
+    expect(rows()[0]?.detail).toMatchObject({ verdict: 'short', armed: true });
+    expect(readFieldTestRun().armedProbes).toEqual(['clip / mic before']);
+  });
+
+  it('does not score a step that is not the end of a block, nor score one twice', () => {
+    startFieldTestRun('car');
+    goToFieldTestStep(idx('route-1'));
+    advanceFieldTestStep();
+    expect(rows()).toHaveLength(0);
+    answerBlock('route-car', 'route-loudspeaker', 'route-car');
+    advanceFieldTestStep();
+    retreatFieldTestStep();
+    expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('route-3');
+    advanceFieldTestStep();
+    expect(rows()).toHaveLength(1);
+    expect(readFieldTestRun().armedProbes).toEqual(['clip / mic before']);
+  });
+
+  it('scores a cell with no probe site, and has nowhere to arm', () => {
+    startFieldTestRun('car');
+    for (const [i, step] of ['route-1t', 'route-2t', 'route-3t'].entries()) {
+      goToFieldTestStep(idx(step));
+      markFieldTestStamped(step, { id: i === 1 ? 'route-loudspeaker' : 'route-car', via: 'tap' });
+    }
+    advanceFieldTestStep();
+    expect(rows()[0]?.detail).toMatchObject({
+      cell: 'tts / mic before',
+      verdict: 'wandering',
+      armed: false,
+    });
+    expect(readFieldTestRun().armedProbes ?? []).toEqual([]);
+    expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('fallback-audible');
   });
 });
