@@ -12,6 +12,7 @@ import { narrateAnswerEcho, ANSWER_ECHO_LABELS } from '../audio/narrate';
 import { holdAudioFocus, releaseAudioFocus, audioFocusElementIsPlaying } from '../audio/audioFocus';
 import { setMediaSessionProbe, MEDIA_SESSION_LABEL } from '../audio/mediaSession';
 import { foldFrames, bandFor, adviceFor, type NoiseReading } from './ambientNoise';
+import { diag } from './diagnosticLog';
 import type { CheckDefinition, CheckResult } from './carCheck';
 
 /** How long to wait for a wheel button before calling it inconclusive. */
@@ -223,7 +224,7 @@ export function ambientCheck(
 }
 
 /** Measure the room with Web Audio, folding the frames into one reading. */
-export async function measureWithWebAudio(ms: number): Promise<NoiseReading> {
+export async function measureWithWebAudio(ms: number, signal?: AbortSignal): Promise<NoiseReading> {
   const w = window as unknown as {
     AudioContext?: new () => AudioContext;
     webkitAudioContext?: new () => AudioContext;
@@ -231,7 +232,19 @@ export async function measureWithWebAudio(ms: number): Promise<NoiseReading> {
   const Ctor = w.AudioContext ?? w.webkitAudioContext;
   if (!Ctor || !navigator.mediaDevices?.getUserMedia) return foldFrames([], ms);
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  // CONSTRAINED, because the defaults edit the very thing being measured.
+  // Safari turns on echo cancellation, noise suppression and automatic gain
+  // control unless told otherwise, and AGC in particular destroys the absolute
+  // level that an ambient reading IS. Left on, a loud cabin and a quiet one
+  // converge toward the same number, and the figure's only use -- comparing
+  // one condition against another -- is exactly what it cannot support.
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+    },
+  });
   const ctx = new Ctor();
   try {
     const source = ctx.createMediaStreamSource(stream);
@@ -239,10 +252,31 @@ export async function measureWithWebAudio(ms: number): Promise<NoiseReading> {
     analyser.fftSize = 2048;
     source.connect(analyser);
 
+    // WHICH MICROPHONE, recorded with the reading. Over Bluetooth the input is
+    // the car's hands-free unit; without it, the phone's own. The two readings
+    // are taken on different hardware with different DSP, so a number with no
+    // device name attached cannot be compared across the conditions it exists
+    // to compare.
+    const track = stream.getAudioTracks()[0];
+    diag('route', 'ambient-input', {
+      label: track?.label || '(unnamed)',
+      // Whether the constraints above were actually honoured, which Safari
+      // does not guarantee.
+      agc: String(track?.getSettings?.().autoGainControl ?? 'unknown'),
+      ns: String(track?.getSettings?.().noiseSuppression ?? 'unknown'),
+    });
+
     const frames: Float32Array[] = [];
     const buf = new Float32Array(analyser.fftSize);
     const deadline = Date.now() + ms;
-    while (Date.now() < deadline) {
+    // ABORTABLE, because the caller can leave. Without this the loop ran to its
+    // full five seconds whatever happened on screen, and the `finally` below --
+    // the only thing that stops the tracks -- could not run until it did. An
+    // answer or a Pause tapped mid-measurement therefore left the microphone
+    // open into the NEXT step, which on this app is not merely a privacy
+    // surprise: the open microphone is the variable under test, so it corrupts
+    // the following sample too.
+    while (Date.now() < deadline && signal?.aborted !== true) {
       analyser.getFloatTimeDomainData(buf);
       frames.push(Float32Array.from(buf));
       await new Promise((r) => setTimeout(r, 100));

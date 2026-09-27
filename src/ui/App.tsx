@@ -119,8 +119,30 @@ function App() {
   // the operator left twenty minutes ago, so the moment there is no screen
   // here that speaks, the hold goes back.
   useEffect(() => {
-    const speaks = screen === 'drills' || screen === 'table';
-    if (!speaks || !settings.audio.enabled) releaseAudioFocus('speech');
+    // 'fieldtest' BELONGS HERE, and leaving it out silently broke the wheel
+    // steps it was written to measure. React flushes child passive effects
+    // before parent ones, so FieldTest's holdAudioFocus ran first and this
+    // release ran second -- net, the silent element was paused. Four of the
+    // five wheel steps declare no spoken line, so nothing re-took the hold,
+    // and a press in those steps reached the radio instead of the app. The
+    // protocol then recorded the exact 2026-09-19 fault it exists to detect,
+    // manufactured by the tool doing the detecting.
+    const speaks = screen === 'drills' || screen === 'table' || screen === 'fieldtest';
+    // THE SCREEN ALONE, not the audio toggle. The `enabled` half had the same
+    // shape as the `screen` half fixed above, and one more step of delay:
+    // opening the field test with audio switched off commits the parent with
+    // `enabled: false`, the child's step effect flushes FIRST -- writing
+    // `enabled: true` as a QUEUED parent setState and taking the hold -- and
+    // then this effect runs in the same pass still reading `false`, and
+    // releases it. The re-render that follows does not re-take it, and the
+    // step effect's deps have not changed. Steps that speak repair themselves
+    // via `announceToMediaSession`; the three wheel steps that declare no line
+    // do not, so the app is not the active media app and presses go to the
+    // radio -- reproducing the 2026-09-19 fault inside the tool built to
+    // detect it. The field test owns its own hold for the length of a run and
+    // releases it on the way out, so it is not this effect's business.
+    if (!speaks) releaseAudioFocus('speech');
+    else if (screen !== 'fieldtest' && !settings.audio.enabled) releaseAudioFocus('speech');
   }, [screen, settings.audio.enabled]);
 
   // Cross-tab safety. Every store here writes a WHOLE blob, and each tab keeps

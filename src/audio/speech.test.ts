@@ -2,8 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   speak, speakAsync, chime, isSpeechSupported, listVoices, cancelSpeech, pickBestVoice,
   getLastSpoken, repeatLast, _resetLastSpokenForTest, _resetSharedAudioContextForTest,
+  lastSpeechPath, _resetSpeechPathForTest,
   setSpeechActivityListener,
 } from './speech';
+import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 
 describe('speech wrapper — absence guards (no browser APIs in jsdom/node)', () => {
   it('speak() does not throw when speechSynthesis is unavailable', () => {
@@ -410,7 +412,10 @@ describe('chime() — volume', () => {
 /* ------------------------------------------------------------------------ */
 
 describe('last-utterance tracking', () => {
-  beforeEach(() => _resetLastSpokenForTest());
+  beforeEach(() => {
+    _resetLastSpokenForTest();
+    _resetSpeechPathForTest();
+  });
   afterEach(() => {
     _resetLastSpokenForTest();
     teardownFakeSpeechEnv();
@@ -475,6 +480,50 @@ describe('last-utterance tracking', () => {
     const before = fakeCancelCount();
     repeatLast();
     expect(fakeCancelCount()).toBe(before + 1);
+  });
+
+  it('repeatLast() re-speaks at the volume the line was said with, not the engine default', () => {
+    // THE WHEEL BUG. `previoustrack` calls `repeatLast()` with no arguments,
+    // so before the options were remembered the repeat reached the engine
+    // with `volume === undefined` and played at 1 -- out loud, at full
+    // volume, while the app was muted. Muting is implemented AS volume zero,
+    // so this is the mute switch failing, not a cosmetic difference.
+    const spoken = installFakeSpeechEnv([]);
+    speak('You have sixteen.', { volume: 0, rate: 1.4 });
+    expect(repeatLast()).toBe(true);
+    expect(spoken[1].volume).toBe(0);
+    expect(spoken[1].rate).toBe(1.4);
+  });
+
+  it("repeatLast()'s own opts still win over the remembered ones", () => {
+    const spoken = installFakeSpeechEnv([]);
+    speak('You have sixteen.', { volume: 0.2, rate: 1.4 });
+    repeatLast({ volume: 0.9 });
+    expect(spoken[1].volume).toBe(0.9);
+    // Not overridden, so the remembered one still applies.
+    expect(spoken[1].rate).toBe(1.4);
+  });
+
+  it('repeating twice does not let the options drift either', () => {
+    // `speak()` inside `repeatLast()` re-records, so without care the second
+    // repeat would inherit the FIRST repeat's merged options rather than the
+    // original utterance's -- the same reason the text is restored.
+    const spoken = installFakeSpeechEnv([]);
+    speak('You have sixteen.', { volume: 0.2 });
+    repeatLast({ volume: 0.9 });
+    repeatLast();
+    expect(spoken[2].volume).toBe(0.2);
+  });
+
+  it('a repeat is not tagged as the utterance that asked for the original', () => {
+    // A tag correlates ONE request with ONE `speak path` entry. Carrying it
+    // onto the repeat would file the repeat's path record under the original
+    // request, which is precisely the adjacency confusion tags exist to end.
+    const spoken = installFakeSpeechEnv([]);
+    speak('You have sixteen.', { volume: 0.2, tag: 'route-1#1' });
+    repeatLast();
+    expect(spoken).toHaveLength(2);
+    expect(lastSpeechPath()?.tag).toBeUndefined();
   });
 
   it('repeatLast() does nothing and returns false with nothing to repeat', () => {
@@ -554,5 +603,314 @@ describe('chime and the microphone', () => {
     });
     expect(() => chime('attention')).not.toThrow();
     setSpeechActivityListener(null);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* Both entry points deafen the microphone, not just one                     */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * `speakAsync` did not tell the microphone it was talking, and nothing noticed
+ * for as long as the function existed.
+ *
+ * `notifySpeechActivity` had exactly one call site in `speak()`. The field
+ * test speaks EXCLUSIVELY through `speakAsync`, so `suppressFor()` was never
+ * called on any microphone step: the live recogniser heard the app's own line
+ * and transcribed it as the operator's answer. On `mic-heard` the app asks
+ * "Did you have it?", the operator is told to say "double", and "It heard the
+ * wrong thing" became the honest tap for a microphone working perfectly --
+ * manufacturing the exact fault the step exists to detect. `looksLikeSelfEcho`
+ * cannot help: it is only consulted on a `suppressed` verdict, and there were
+ * none. The count drill is the other caller and lost suppression too.
+ *
+ * Asserted as a property of BOTH functions from one table, so a third entry
+ * point cannot be added with only half the contract.
+ */
+describe('every speaking entry point tells the microphone', () => {
+  const entryPoints: [string, (text: string, opts?: { rate?: number }) => unknown][] = [
+    ['speak', speak],
+    ['speakAsync', speakAsync],
+  ];
+
+  afterEach(() => {
+    setSpeechActivityListener(null);
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  for (const [name, fn] of entryPoints) {
+    it(`${name}() opens the suppression window`, () => {
+      const seen: number[] = [];
+      setSpeechActivityListener((ms) => seen.push(ms));
+      fn('Basic hit versus dealer nine.');
+      expect(seen, `${name} never notified the microphone`).toHaveLength(1);
+      expect(seen[0]).toBeGreaterThan(0);
+    });
+
+    it(`${name}() notifies even where the utterance is only logged`, () => {
+      // The e2e short-circuit is BELOW the notification in both, because the
+      // microphone's bookkeeping is behaviour under test rather than part of
+      // the sound. Notifying after it would leave every browser test
+      // exercising speech that deafens nothing.
+      (globalThis as unknown as { window: unknown }).window = {
+        location: { search: '?e2e=1' },
+      };
+      const seen: number[] = [];
+      setSpeechActivityListener((ms) => seen.push(ms));
+      fn('Basic hit versus dealer nine.');
+      expect(seen).toHaveLength(1);
+    });
+
+    it(`${name}() scales the window by the rate it was given`, () => {
+      const slow: number[] = [];
+      setSpeechActivityListener((ms) => slow.push(ms));
+      fn('Basic hit versus dealer nine.', { rate: 0.5 });
+      setSpeechActivityListener(null);
+
+      const fast: number[] = [];
+      setSpeechActivityListener((ms) => fast.push(ms));
+      fn('Basic hit versus dealer nine.', { rate: 2 });
+
+      expect(slow[0]).toBeGreaterThan(fast[0]!);
+    });
+  }
+});
+
+/**
+ * A suspended context makes the chime SILENT, not quiet -- and the field test
+ * now leans on chimes for two things it cannot do without: the arrival cue on
+ * its six silent steps, and "I did not understand you" on the microphone step.
+ *
+ * `resumeSharedAudioContext` had exactly one caller in the app, inside
+ * `amplify()`, which runs only when the volume is above 1. So on any run where
+ * the boost is not in play -- clips off, or after a step pins the volume to 1
+ * -- nothing ever nudged the context, the chime made no sound, and `chime()`
+ * logged nothing at all. A cue that silently does not happen is worse than no
+ * cue: on the microphone step it manufactures the fault it exists to rule out.
+ */
+describe('chime() — a context that is asleep', () => {
+  beforeEach(() => _resetSharedAudioContextForTest());
+  afterEach(() => {
+    _resetSharedAudioContextForTest();
+    clearDiagnosticLog();
+    delete (globalThis as any).window;
+  });
+
+  function installSuspendedContext(opts: { resumesTo?: string } = {}) {
+    const calls = { resume: 0 };
+    class SuspendedContext {
+      state = 'suspended';
+      currentTime = 0;
+      destination = {};
+      resume() {
+        calls.resume += 1;
+        if (opts.resumesTo) this.state = opts.resumesTo;
+        return Promise.resolve();
+      }
+      createOscillator() {
+        return {
+          type: '',
+          frequency: { value: 0 },
+          connect: () => {},
+          start: () => {},
+          stop: () => {},
+        };
+      }
+      createGain() {
+        return {
+          gain: { setValueAtTime: () => {}, linearRampToValueAtTime: () => {} },
+          connect: () => {},
+        };
+      }
+    }
+    (globalThis as any).window = { location: { search: '' }, AudioContext: SuspendedContext };
+    return calls;
+  }
+
+  it('nudges a suspended context awake before sounding', () => {
+    const calls = installSuspendedContext({ resumesTo: 'running' });
+    clearDiagnosticLog();
+    chime('good');
+    expect(calls.resume, 'the chime played into a suspended context').toBe(1);
+  });
+
+  it('says so in the log when the context is still not running', () => {
+    installSuspendedContext();
+    clearDiagnosticLog();
+    chime('attention');
+
+    const entry = readDiagnosticLog().find((e) => e.event === 'chime-suspended');
+    expect(entry, 'a chime that could make no sound left no trace').toBeTruthy();
+    expect(entry?.detail?.kind).toBe('attention');
+    expect(entry?.detail?.state).toBe('suspended');
+  });
+
+  it('says nothing when the context is running', () => {
+    installSuspendedContext({ resumesTo: 'running' });
+    clearDiagnosticLog();
+    chime('good');
+    expect(readDiagnosticLog().some((e) => e.event === 'chime-suspended')).toBe(false);
+  });
+});
+
+/**
+ * The TTS path had no ending at all, and it is every drill line in the app.
+ *
+ * `speak path path=tts said="..."` is written BEFORE the engine is touched, and
+ * `speakAsyncLive` resolved identically whether speech was unsupported (no
+ * utterance ever existed), the utterance errored, the watchdog gave up, or it
+ * ran cleanly to the end. So the one question the log exists to answer -- did it
+ * actually say it? -- was unanswerable for most of the log. The clips path has
+ * carried a reason code since round 2; this is its counterpart.
+ */
+describe('speak tts-end — how a live utterance finished', () => {
+  function installSynth(opts: { fire?: 'end' | 'error' | 'none' } = {}) {
+    const spoken: string[] = [];
+    let lastUtterance: FakeUtterance | null = null;
+    class FakeUtterance {
+      text: string;
+      rate = 1;
+      volume = 1;
+      voice: unknown = null;
+      onend: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      constructor(text: string) {
+        this.text = text;
+      }
+    }
+    (globalThis as any).window = {
+      location: { search: '' },
+      SpeechSynthesisUtterance: FakeUtterance,
+      speechSynthesis: {
+        speak: (u: FakeUtterance) => {
+          spoken.push(u.text);
+          lastUtterance = u;
+          const fire = opts.fire ?? 'end';
+          if (fire === 'end') queueMicrotask(() => u.onend?.());
+          if (fire === 'error') queueMicrotask(() => u.onerror?.());
+        },
+        cancel: () => {},
+        getVoices: () => [],
+      },
+    };
+    (globalThis as any).SpeechSynthesisUtterance = FakeUtterance;
+    return { spoken, last: () => lastUtterance };
+  }
+
+  afterEach(() => {
+    clearDiagnosticLog();
+    delete (globalThis as any).window;
+    delete (globalThis as any).SpeechSynthesisUtterance;
+    _resetLastSpokenForTest();
+  });
+
+  /**
+   * `say-start volume=1.5` records a REQUEST. `utteranceVolume` clamps live TTS
+   * at 1 -- only the clips path can exceed it -- so the reader takes a number
+   * for a setting the engine never honoured.
+   */
+  it('records the volume the engine actually got, not the one asked for', async () => {
+    installSynth({ fire: 'end' });
+    clearDiagnosticLog();
+    await speakAsync('Loud please', { volume: 1.5 });
+
+    const end = readDiagnosticLog().find((e) => e.event === 'tts-end');
+    expect(end?.detail?.volume, 'the clamped volume was reported as the requested one').toBe(1);
+  });
+
+  it('says when the chosen voice was not available and another was used', async () => {
+    installSynth({ fire: 'end' });
+    clearDiagnosticLog();
+    await speakAsync('Hit or stand', { voiceURI: 'a-voice-not-installed-here' });
+
+    const end = readDiagnosticLog().find((e) => e.event === 'tts-end');
+    expect(end?.detail?.voiceSubstituted, 'a silent voice substitution left no trace').toBe(true);
+  });
+
+  it('does not call the default voice a substitution', async () => {
+    installSynth({ fire: 'end' });
+    clearDiagnosticLog();
+    await speakAsync('Hit or stand');
+
+    const end = readDiagnosticLog().find((e) => e.event === 'tts-end');
+    expect(end?.detail?.voiceSubstituted).toBeUndefined();
+  });
+
+  it('records a clean utterance as ended, with what was said', async () => {
+    installSynth({ fire: 'end' });
+    clearDiagnosticLog();
+    await speakAsync('Hit or stand');
+
+    const end = readDiagnosticLog().find((e) => e.event === 'tts-end');
+    expect(end, 'a live utterance finished with no entry at all').toBeTruthy();
+    expect(end?.detail?.reason).toBe('ended');
+    expect(end?.detail?.said).toBe('Hit or stand');
+  });
+
+  it('distinguishes an errored utterance from a clean one', async () => {
+    installSynth({ fire: 'error' });
+    clearDiagnosticLog();
+    await speakAsync('Hit or stand');
+
+    const end = readDiagnosticLog().find((e) => e.event === 'tts-end');
+    expect(end?.detail?.reason, 'an error was indistinguishable from success').toBe('error');
+  });
+
+  it('says so when there is no synthesiser at all, rather than claiming an utterance', async () => {
+    // No `window.speechSynthesis` -- the path record is already written by the
+    // caller at this point, so silence here means the export asserts a line the
+    // device could never have spoken.
+    clearDiagnosticLog();
+    await speakAsync('Hit or stand');
+
+    const end = readDiagnosticLog().find((e) => e.event === 'tts-end');
+    expect(end?.detail?.reason).toBe('error');
+    expect(end?.detail?.why).toBe('unsupported');
+  });
+
+  it('reports an interrupted utterance as cancelled, not as ended', async () => {
+    installSynth({ fire: 'none' });
+    clearDiagnosticLog();
+    const inFlight = speakAsync('A long line nobody hears the end of');
+    cancelSpeech();
+    await inFlight;
+
+    const ends = readDiagnosticLog().filter((e) => e.event === 'tts-end');
+    expect(ends, 'an interrupted line had no ending at all').toHaveLength(1);
+    expect(ends[0]?.detail?.reason).toBe('cancelled');
+  });
+
+  /**
+   * Safari delivers a late `onend` after a cancel, and the watchdog can fire
+   * before either. Without the settled guard the same utterance reports twice
+   * with different reasons, and a reader counting endings counts more lines
+   * than were ever spoken.
+   */
+  it('reports one ending even if the engine settles the same utterance twice', async () => {
+    const synth = installSynth({ fire: 'none' });
+    clearDiagnosticLog();
+    const inFlight = speakAsync('One line');
+
+    const u = synth.last();
+    u?.onend?.();
+    u?.onend?.();
+    u?.onerror?.();
+    await inFlight;
+
+    const ends = readDiagnosticLog().filter((e) => e.event === 'tts-end');
+    expect(ends, 'one utterance produced more than one ending').toHaveLength(1);
+    expect(ends[0]?.detail?.reason).toBe('ended');
+  });
+
+  it('reports one ending per utterance, even when onend races the cancel', async () => {
+    const synth = installSynth({ fire: 'none' });
+    clearDiagnosticLog();
+    const inFlight = speakAsync('One line');
+    cancelSpeech();
+    await inFlight;
+    // A late onend, which Safari can still deliver after a cancel.
+    expect(synth.spoken).toHaveLength(1);
+
+    expect(readDiagnosticLog().filter((e) => e.event === 'tts-end')).toHaveLength(1);
   });
 });

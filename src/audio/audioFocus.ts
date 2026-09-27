@@ -102,12 +102,35 @@ let element: HTMLAudioElement | null = null;
  */
 export function holdAudioFocus(key: AudioFocusKey): void {
   const first = held.size === 0;
+  // WAS THIS KEY ALREADY HOLDING? Asked before the add, because `joined: true`
+  // was written for every re-hold of a key already in the set -- the field test
+  // calls this on every step change, so a 22-step run carried 21 entries
+  // claiming a holder had joined while the set never grew. `joined` is the
+  // field a reader uses to reconstruct who was contending for the slot.
+  const rehold = held.has(key);
   held.add(key);
-  if (!first && element) return;
+  // LOGGED BEFORE THE EARLY RETURN, so every acquire appears. The return
+  // below skipped `diag('focus','hold')` whenever a second key joined an
+  // existing hold, so `key=speech` was the only one an export ever showed --
+  // `button-test` and `car-check` acquired and released invisibly, and the
+  // `holders=` number was a lower bound presented as a count.
+  if (!first) diag('focus', 'hold', { key, holders: held.size, joined: !rehold, rehold });
+  // RETRIED WHEN THE ELEMENT IS NOT ACTUALLY PLAYING, not skipped because an
+  // element object exists.
+  //
+  // `play()` rejecting leaves `element` non-null, and this return then made the
+  // refusal permanent: every later hold -- from the field test's step effect,
+  // from `announceToMediaSession` on every clip -- short-circuited here and
+  // never tried again. One refusal at the first hold killed the media slot for
+  // the whole session, which reads in an export as a car that ignores the app.
+  // `paused === false` is the real question, the same one the car check asks.
+  if (!first && element && !element.paused) return;
 
   const Ctor = audioCtor();
   if (!Ctor) return;
   try {
+    // `??=`, so a retry re-plays the element we already have rather than
+    // orphaning it and starting another.
     element ??= new Ctor(silentWavDataUri());
     element.loop = true;
     element.volume = 1;
@@ -118,6 +141,19 @@ export function holdAudioFocus(key: AudioFocusKey): void {
         // `play()` resolving is not the element PLAYING -- report what it
         // actually is, because that is what the head unit reads.
         diag('focus', 'holding', { key, paused: el.paused, holders: held.size });
+        // THE HOLD LAPSING is the one event this category exists to record and
+        // the one it could not. Every other `focus` entry is app-initiated, so
+        // an OS interruption -- a call, another app taking the slot -- left no
+        // trace, and "a press that reached nothing" could not be told from "a
+        // press into a gap where the hold had already gone". `audioFocusElement
+        // IsPlaying()` existed for exactly this and only the car check ever
+        // asked it.
+        el.onpause = () => {
+          if (held.size > 0) diag('focus', 'lapsed', { holders: held.size, paused: true });
+        };
+        el.onended = () => {
+          if (held.size > 0) diag('focus', 'lapsed', { holders: held.size, ended: true });
+        };
       })
       .catch((e: unknown) => {
         appendLog({ kind: 'note', action: 'audio-focus-refused', ok: false });
@@ -128,7 +164,13 @@ export function holdAudioFocus(key: AudioFocusKey): void {
       });
     appendLog({ kind: 'note', action: `audio-focus-hold:${key}`, ok: true });
     diag('focus', 'hold', { key, holders: held.size });
-  } catch {
+  } catch (e) {
+    // Was silent. `new Ctor(...)`, the data URI, or the `loop`/`volume`
+    // setters throwing leaves `key` in `held` -- so `audioFocusHolders()`
+    // reports a holder while nothing is playing, the wheel is dead, and the
+    // export says nothing at all. That is the precise failure this file's
+    // header says it exists to end.
+    diag('focus', 'hold-failed', { key, why: e instanceof Error ? e.message : String(e) });
     element = null;
   }
 }
@@ -142,11 +184,20 @@ export function holdAudioFocus(key: AudioFocusKey): void {
  */
 export function releaseAudioFocus(key: AudioFocusKey): void {
   if (!held.delete(key)) return;
-  if (held.size > 0) return;
+  // Same asymmetry as the acquire above: a release that leaves other holders
+  // standing is still a release, and it was invisible.
+  if (held.size > 0) {
+    diag('focus', 'release', { key, holders: held.size, remaining: true });
+    return;
+  }
   appendLog({ kind: 'note', action: `audio-focus-release:${key}`, ok: true });
   diag('focus', 'release', { key, holders: held.size });
   if (!element) return;
   try {
+    // Cleared first: `pause()` here is deliberate, and firing `lapsed` for the
+    // app's own release would make the entry meaningless.
+    element.onpause = null;
+    element.onended = null;
     element.pause();
     element.currentTime = 0;
   } catch {

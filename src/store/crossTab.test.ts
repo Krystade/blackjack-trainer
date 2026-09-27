@@ -132,18 +132,101 @@ describe('externalWriteVersion', () => {
 });
 
 describe('OWNED_KEYS', () => {
-  // If a new store is added and not listed here, its cross-tab writes go
-  // unnoticed and that store silently regains the last-writer-wins bug.
-  it('covers every key the app persists', () => {
-    expect([...OWNED_KEYS].sort()).toEqual(
-      [
-        'bjtrainer.activeProfile.v1',
-        'bjtrainer.flashsr.v1',
-        'bjtrainer.profiles.v1',
-        'bjtrainer.quizsr.v1',
-        'bjtrainer.settings.v1',
-        'bjtrainer.stats.v1',
-      ].sort(),
+  /**
+   * Keys that are deliberately NOT synced across tabs, each with the reason.
+   *
+   * Every entry here is a claim that last-writer-wins is harmless for that
+   * key, so the reason is part of the data: a future reader has to be able to
+   * check the claim rather than assume the omission was considered.
+   */
+  const NOT_SYNCED: Record<string, string> = {
+    // Append-only diagnostic buffers. Each tab logs its own page load under
+    // its own session id, and the export is explicitly a merge of buffer and
+    // stored, so a tab overwriting the other's tail loses nothing that tab
+    // can see -- and re-reading would splice a foreign session into a
+    // per-load elapsed clock.
+    'bjtrainer.diagnostics.v1': 'append-only, per page load',
+    // The running total of entries those buffers discarded, written beside
+    // them on every flush so the count survives the reload the entries already
+    // survive. Same reasoning as the buffer itself: a tab folding in its own
+    // drops is additive, and re-reading another tab's total mid-flush would
+    // double-count rather than correct anything.
+    'bjtrainer.diagnostics.dropped.v1': 'append-only counter, follows the buffer',
+    'bjtrainer.mediaSessionLog.v1': 'append-only, per page load',
+    // Per-device caches of what the speech engine offered THIS tab. Voices
+    // are enumerated per document; another tab's list is not evidence about
+    // this one.
+    'bjtrainer.voiceHistory.v1': 'per-document voice enumeration',
+    'bjtrainer.voiceLocal.v1': 'per-document voice enumeration',
+    'bjtrainer.voiceLocalProbe.v1': 'per-document voice enumeration',
+    'bjtrainer.voiceProbe.v1': 'per-document voice enumeration',
+    // A sentinel the update check writes immediately before reloading ITSELF.
+    // Reacting to it in another tab is how you get two tabs reloading each
+    // other.
+    'bjtrainer.reloadedFor': 'reload sentinel, reacting to it would loop',
+    // A view preference on one screen, written on drag-end. The loser of a
+    // race loses a column order, and re-reading mid-drag would yank the
+    // columns out from under the finger doing the dragging.
+    'bjtrainer.chartOrder.v1': 'view preference, re-reading mid-drag is worse',
+    // Bounded to one challenge in one tab and cleared when it ends.
+    'bjtrainer.masteryrun.v1': 'single in-flight challenge, cleared on finish',
+  };
+
+  /**
+   * Every `'bjtrainer.…'` literal in the source.
+   *
+   * SCANNED, not listed. The old version of this test restated OWNED_KEYS as
+   * a literal and compared the two, which is a test that can only fail if
+   * someone edits both halves inconsistently -- it said "covers every key the
+   * app persists" while having no way at all to learn of a new key. It passed
+   * green with `bjtrainer.fieldTestRun.v1` unenrolled for exactly as long as
+   * that key existed.
+   */
+  function persistedKeys(): string[] {
+    // Vite's glob rather than `node:fs`: this project's tsconfig declares
+    // `types: ["vite/client"]` and no node types, so `fs` does not typecheck
+    // here -- and the glob is resolved at transform time, which means a path
+    // that stops matching fails loudly at build rather than silently
+    // returning nothing.
+    const sources = import.meta.glob('../**/*.{ts,tsx}', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    }) as Record<string, string>;
+    const found = new Set<string>();
+    for (const [file, src] of Object.entries(sources)) {
+      if (/\.test\.tsx?$/.test(file)) continue;
+      for (const m of src.matchAll(/'(bjtrainer\.[A-Za-z0-9._]+)'/g)) found.add(m[1]);
+    }
+    return [...found].sort();
+  }
+
+  it('accounts for every key the app persists', () => {
+    const unaccounted = persistedKeys().filter(
+      (k) => !(OWNED_KEYS as readonly string[]).includes(k) && !(k in NOT_SYNCED),
     );
+    expect(
+      unaccounted,
+      'new persisted key: enrol it in OWNED_KEYS, or list it in NOT_SYNCED with the reason',
+    ).toEqual([]);
+  });
+
+  it('finds the keys it is supposed to be scanning', () => {
+    // The scan is the whole instrument. A typo in the glob or the regex would
+    // return [] and make the test above pass unconditionally.
+    const found = persistedKeys();
+    expect(found).toContain('bjtrainer.settings.v1');
+    expect(found).toContain('bjtrainer.fieldTestRun.v1');
+    expect(found.length).toBeGreaterThan(10);
+  });
+
+  it('does not exempt a key it also claims to own', () => {
+    for (const key of OWNED_KEYS) {
+      expect(key in NOT_SYNCED, `${key} is both owned and exempt`).toBe(false);
+    }
+  });
+
+  it('syncs the field-test run, which caches a whole blob per tab', () => {
+    expect(OWNED_KEYS).toContain('bjtrainer.fieldTestRun.v1');
   });
 });

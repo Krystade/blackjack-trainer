@@ -3738,6 +3738,21 @@ details.stats-section > summary::after {
   line-height: 1.35;
 }
 
+/*
+  The stamped tick on the start gate's step list.
+
+  `markFieldTestStamped` has always documented itself as existing "so a step
+  done at a red light is visibly done when you next look at the screen" --
+  nothing rendered it, so the only readout of progress was a step counter that
+  moves identically for a skip and for an answer. Weighted and coloured rather
+  than a bare glyph, because this list is read at a glance from a cradle.
+*/
+.fieldtest-tick {
+  color: var(--good);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .fieldtest-stamp {
   align-self: flex-start;
   min-height: 40px;
@@ -3767,11 +3782,42 @@ details.stats-section > summary::after {
 /* The topbar spans the screen; everything else is inset from the edges. A
    step is read at arm's length in a moving car, and text against the bezel is
    the first thing to become unreadable. */
+/* A RUNNING STEP IS A FIXED PANEL, not a document.
+   `.fieldtest-screen` is `min-height: 100svh`, so a step whose instruction
+   wraps one line further grew the whole column and carried the exits down
+   with it -- 8px on "A short line", which is small but is exactly the drift
+   the rule exists to forbid: nothing a driver reaches for by feel may depend
+   on how long this step's text happens to be. Clamped to the viewport, the
+   overflow is absorbed by the answer stack's own scroll instead. The start
+   gate is deliberately left scrollable; it is read while parked. */
+.fieldtest-running {
+  height: 100svh;
+  max-height: 100svh;
+  overflow: hidden;
+}
+
 .fieldtest-body {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 12px 0.75rem 0;
+  /* Grows to fill the screen so the nav row's `margin-top: auto` has somewhere
+     to push to — otherwise the exits float directly under the last answer and
+     move with it. `min-height: 0` is the other half: a flex item refuses to
+     shrink below its content unless told it may, so without it the body
+     overflowed the clamped screen and the exits went down with it even though
+     the screen itself was the right height. */
+  flex: 1;
+  min-height: 0;
+  /* FROM THE BOTTOM UP, and it has to be on THIS column rather than on
+     `.fieldtest-screen`: the screen's only flex children are the topbar, the
+     controls row and this box, and this box grows to fill, so the screen never
+     has free space to justify. Every control the operator aims at without
+     looking is in the lower half and the variable-length instruction is at the
+     top, so whatever the head and the evidence panel cannot absorb belongs
+     above the instruction rather than under the answers. This is what keeps the
+     answer stack and the nav row at the same pixel on all 23 steps. */
+  justify-content: flex-end;
 }
 
 .fieldtest-heading {
@@ -3785,16 +3831,316 @@ details.stats-section > summary::after {
   line-height: 1.2;
 }
 
+/* THE EVIDENCE REGION, WITH ITS SPACE RESERVED.
+   The comment in FieldTest.tsx claimed a reserved minimum height "removes the
+   entire class of error". The rule was never written, so the region was 0px
+   tall while empty and grew when the evidence arrived — pushing every answer
+   button down 53px (74px for the long "the recording broke part way through"
+   variant, more than one 60px button pitch).
+
+   The shift fires at `say-end`: the instant the line finishes, which is the
+   instant the operator reaches to answer where it came from. A thumb aimed at
+   one button lands on the one above it, and `answer()` stamps and advances, so
+   the run records the opposite of what was heard with no way back. Reserving
+   the space costs a few empty pixels. */
+.fieldtest-evidence {
+  /* FIXED, AND OUTSIDE THE SCROLLING HEAD. As a `min-height` inside the 190px
+     head this region had zero visible pixels on all 22 steps -- so the wheel
+     arrival line, the played-from path and the recogniser transcript could
+     never appear, and the operator's only honest answer on every wheel step
+     and on `mic-heard` was the bug signature the protocol exists to detect.
+     An instrument that cannot show its reading manufactures its own result. */
+  /* Shrinkable, but never to nothing: two lines is the floor, because the
+     wheel-arrival line and the played-from path are what several steps are
+     read from. It gives way after the head and before the answers.
+
+     THE WEIGHT IS WHAT MAKES THAT ORDER REAL. All three regions used to
+     declare `flex-shrink: 1`, and flexbox then takes the deficit from every
+     shrinkable item AT ONCE, in proportion to its basis -- so the answer
+     stack, the largest basis, gave up the most and scrolled while the head
+     still had 58px of give left. Measured at 375x667: 13 of the 23 steps had
+     an answer no tap could reach. Shrinking in a declared order needs declared
+     weights, one per rank. */
+  flex: 1 100 64px;
+  min-height: 44px;
+  /* Grows into whatever the head does not take — this is where the wheel
+     arrival line, the played-from path and the recogniser transcript land, so
+     more room here is never wasted. Capped so the panel does not become a
+     field of empty felt on a tall screen; past the cap the column's
+     `justify-content: flex-end` parks the remainder above the head. */
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+
+/* No default paragraph margins: they were the other half of the movement. */
+.fieldtest-evidence-line {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--muted, #8a8a8a);
+}
+
+.fieldtest-wheel-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  margin-right: 0.4em;
+}
+
+/* The answer stack is pushed to a fixed slot and the exits are pinned to the
+   bottom, so nothing a driver reaches for by feel depends on how many answers
+   this step happens to have. Finish used to travel 336px across the run and
+   land, on two steps, exactly where the previous step's answer button was. */
+/* THE HEADER BLOCK IS A FIXED SLOT, which is what makes the answers hold
+   still. Title, instruction, setup banner and the repeat control all vary in
+   height -- the longest instruction is 295 characters, and six steps have no
+   repeat button at all -- and the answer stack sat directly underneath, so it
+   inherited every one of those variations. Measured across the 22 steps the
+   top of the stack moved 145px against a 60px button pitch, which means a
+   blind tap could land a whole button away from where the same tap landed on
+   the previous step. Capped and scrollable rather than clipped: the content
+   that overflows is prose the operator can read, not a control they reach
+   for. */
+/*
+  ...AND IT YIELDS BEFORE THE ANSWERS DO. It used to be a hard 130px on every
+  viewport, which is affordable at 390x844 and is not affordable anywhere else:
+  242px of fixed chrome above the answers left the six-button stack 3.8px of
+  slack at 844 and nothing at all at 763, 700 or 667. Prose that scrolls is a
+  nuisance; an answer below the fold is a wrong reading, so the prose gives way
+  first. Still capped, so on a tall screen the stack does not move between
+  steps -- which is the property the fixed slot was introduced for.
+*/
+.fieldtest-head {
+  /* FIRST TO GIVE WAY, by weight rather than by hope -- see
+     `.fieldtest-evidence` for why an equal shrink factor gave the opposite
+     order. The instruction is the one thing on this screen the operator has
+     already heard spoken. */
+  /* GROWS BACK INTO THE SLACK, up to its cap. Reserving the six-answer height
+     for the stack leaves the tall viewports with room to spare, and it was
+     showing as a void in the middle of the screen while the instruction above
+     it was clipped mid-sentence ("...volume 100%,"). The row below is pinned
+     either way, because whatever this and the evidence panel do not take,
+     `.fieldtest-controls` absorbs. */
+  /* FIRST TO GIVE WAY, and the cost of that is real: rendered at 375x667 the
+     head sits at its 72px floor on the six-answer steps, where the title alone
+     takes two lines. Making it shrink LAST instead was tried and is worse --
+     13 of the 23 steps then had an answer no tap could reach, because the
+     deficit has to land somewhere and every other floor is a 44px finger
+     target. So the evidence
+     panel and the answer buttons hold their floors and this gives way first,
+     because the operator has already heard the instruction spoken and can hear
+     it again on demand, while an answer below the fold cannot be given at all.
+
+     The 72px floor is not two lines of title plus two of instruction, and
+     on a 667px screen with six answers there is nowhere left to take it from:
+     six 44px buttons, a 44px evidence slot, the 48px repeat row and the 48px
+     nav row are all at their own floors. What gives instead is the "Set for
+     you" line, which is diagnostic rather than instructional and is in the
+     exported log verbatim — see the media query below. */
+  flex: 1 1000 130px;
+  min-height: 96px;
+  max-height: 130px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* THE CONTROLS, IN A FIXED ROW OF THEIR OWN.
+
+   They used to live inside the head, where the 190px cap clipped them: the
+   repeat button moved 94.5px across the 22 steps, five steps left it dead to a
+   tap at its own centre, and `fallback-audible` -- the 295-character step, the
+   one that most needs re-hearing -- hid it completely. Fixed height whether or
+   not the step has a measure button, so the answer stack below does not move.
+
+   48px, not the 40px `.fieldtest-stamp` default: this is a control a driver
+   aims at without looking, and 44pt is the floor Apple sets for that. */
+.fieldtest-controls {
+  /* NO AUTO MARGIN HERE, deliberately. Bottom-anchoring this row with
+     `margin-top: auto` does pin it — auto margins absorb the free space before
+     `flex-grow` is even considered — and that is exactly the problem: the
+     slack then shows as a void in the middle of the screen while the
+     instruction above it is clipped mid-sentence. The head and the evidence
+     panel grow into it instead, and `justify-content: flex-end` on the column
+     puts anything neither of them can take ABOVE the head, so every row from
+     here down still sits at the same pixel on every step.
+
+     (`margin-top: auto` used to sit one row lower, on `.fieldtest-answers`,
+     which welded this row to the bottom of a head that shrinks from 130px to
+     72px as the instruction shortens: the repeat button moved 42px across the
+     run at all four viewports, on the control the operator reaches for when a
+     line was drowned out by a truck.) */
+  flex: 0 0 auto;
+  height: 48px;
+  min-height: 48px;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.fieldtest-controls .fieldtest-stamp {
+  flex: 1 1 0;
+  min-height: 48px;
+  align-self: stretch;
+  text-align: center;
+  /* The labels are short ("Say it again", "Measure the cabin") but the box is
+     half a phone wide, so a long one must not reflow the row's height. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A DEAD CONTROL MUST LOOK DEAD.
+
+   Measured: an enabled and a disabled answer were byte-identical in computed
+   style, `cursor: pointer` included, and the answers stay disabled for up to
+   10s at a stretch on five consecutive steps while the microphone settles. The
+   operator taps a live-looking control, nothing happens, and the only way to
+   find out why is to look at the screen -- which is the one thing this screen
+   exists to avoid. */
+.fieldtest-stamp:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/*
+  BOTTOM-ANCHORED, which is a deliberate reversal.
+
+  Round 2 pinned the TOP of this stack, because a variable-height header was
+  dragging it around. That header is a fixed slot now, so the only remaining
+  variation is the number of answers -- 3 to 6 -- and with a pinned top that
+  variation comes out at the bottom. Measured across the run that produced 36
+  collisions where one step's button sits exactly where the previous step's
+  different button was; the sharpest is "Missed it — couldn't tell" becoming
+  "It moved while playing", which fieldTest.ts calls the sharpest possible
+  evidence about routing. A blind repeat tap files a fabricated positive for
+  the protocol's central hypothesis.
+
+  Within a run of same-shaped steps the two anchorings are identical. They
+  differ only at the boundaries, and there the question is which single button
+  deserves a fixed position. Every other answer means something different from
+  step to step, so a stable position for them invites exactly the blind tap
+  above. "Missed it" means the same thing on every step that has it, it is the
+  one a driver needs without looking, and it is last. So the stack hangs from
+  the bottom and "Missed it" stops moving — it used to travel 180px, three
+  full button pitches.
+*/
 .fieldtest-answers {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 6px;
+  /* The answer stack absorbs the slack AND the overflow. Without this, a step
+     whose instruction runs long (the longest is 295 characters) pushed the
+     column past the viewport and carried the exits down with it -- 8px on one
+     step, which is small but is exactly the kind of drift the whole rule is
+     meant to forbid. `min-height: 0` is what lets a flex child actually
+     shrink and scroll rather than refusing below its content size. */
+  /* SHRINKS LAST, and it does have to shrink. The head and the evidence region
+     above both give way first, down to their own minima. This one then gives
+     way from 52px per button to the 44px floor below -- and only then scrolls.
+     It used to be `flex: 0 0 auto`, which reads as "keeps its six 44px
+     buttons" and does the opposite: a container that cannot shrink never
+     passes a shrink signal to its children, so the buttons stayed at 52px and
+     the column overflowed instead. Measured at 375x667, the six-answer steps
+     ran 31px past the viewport and took Back and Skip with them -- 17 of their
+     48px left on screen, on the two controls pressed on every step. Six 44px
+     buttons and the chrome fit in 667px; six 52px ones do not. */
+  /* SIZED TO ITS OWN ANSWERS, and hung from the bottom of the column by
+     `justify-content: flex-end` on `.fieldtest-screen`.
+     It briefly reserved room for the six-answer worst case on every step, to
+     stop the row above it moving. That did pin the row — and left a 120px
+     void in the middle of a four-answer step while the instruction above it was
+     clipped mid-sentence, because reserved space cannot be given to anything
+     else. The row above is pinned by being moved out from under the variable
+     instruction instead, which costs nothing. */
+  flex: 0 1 auto;
+  /* SHRINKABLE, and the 44px floor is enforced on the BUTTONS rather than here.
+     `min-height: min-content` was tried and is wrong: it resolves to the
+     buttons' 52px preferred height, not their 44px floor, so the box refused to
+     shrink at all and the column overflowed upward past the controls row --
+     the instruction rendered on top of "Say it again". Letting the box shrink
+     lets each button give up its 8px of slack first, which is what makes six
+     answers, a readable instruction and a 48px nav row fit in 667px at once. */
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* THE ONE LINE THAT CAN GO, on the screens where something must.
+   Below ~700px of visible height the head is at its 72px floor on the
+   six-answer steps, and the title alone takes two lines there: the instruction
+   -- the thing the step is asking for -- scrolled out of sight on step one of
+   the protocol, with nothing on screen saying there was more. The "Set for
+   you" line is a diagnostic readback of state the operator did not choose and
+   cannot change from here, and `step-setup` records it verbatim in the export,
+   so it is the only thing in the head that can be dropped without losing
+   anything. */
+@media (max-height: 719px) {
+  [data-testid='fieldtest-setup'] {
+    display: none;
+  }
+
+  /* AND THE GAPS BETWEEN THE ROWS, which are the last 14px the column needs to
+     fit six 44px answers, a readable instruction and a full-height nav row into
+     667px without the bottom answer being cut off by the exits. Measured
+     before: "Missed it" scrolled 5px under the nav row on the six-answer steps,
+     on the button a merging driver reaches for without looking. */
+  .fieldtest-body {
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  .fieldtest-nav {
+    margin-top: 10px;
+  }
+}
+
+.fieldtest-nav {
+  /* The slack now lives above the answer stack, not here: `margin-top: auto`
+     moved to `.fieldtest-answers`. Fixed separation from the last answer, so
+     the gap between "Missed it" and Skip does not depend on the step. */
+  margin-top: 14px;
+}
+
+/* AN ARMED MARK, visibly armed. A modifier answer does not advance the step --
+   it records something true ALONGSIDE the answer -- so it is the one button
+   here whose state persists, and a button that looks identical armed and unarmed
+   cannot be un-armed on purpose. Same treatment as the armed Finish, in the
+   accent rather than the warning colour, because arming one is ordinary. */
+.fieldtest-answers .fieldtest-marked {
+  /* AN OPAQUE RIM, not a tint. A translucent wash over the button's own green
+     averages to a slightly different green, which is what the first attempt
+     rendered: legible on a desk and invisible through a windscreen at midday.
+     The rim is a full-strength colour at full width, so the difference is a
+     shape rather than a shade. */
+  border-color: var(--accent, #4aa3a0) !important;
+  border-width: 3px !important;
+  background: color-mix(in oklab, var(--accent, #4aa3a0) 28%, var(--raised)) !important;
+}
+
+/* ARMED FINISH, visibly armed. It carried a class and no rule, so the armed
+   state was pixel-identical to the unarmed one and the only signal was 13px of
+   muted text in the bottom corner — invisible to the eyes-free operator the
+   two-tap guard exists to protect. */
+.fieldtest-finish-armed {
+  border-color: color-mix(in oklab, var(--bad, #c4483f) 70%, var(--line)) !important;
+  background: color-mix(in oklab, var(--bad, #c4483f) 22%, var(--raised)) !important;
+  color: var(--ink) !important;
+  font-weight: 600;
 }
 
 .fieldtest-answers .fieldtest-stamp {
   align-self: stretch;
-  min-height: 52px;
+  /* 52 where there is room, never below 44 -- Apple's floor for something
+     aimed at without looking. On a 375x667 screen six 52px buttons plus the
+     chrome do not fit and six 44px ones do, and a 44px button on screen beats
+     a 52px button below the fold. */
+  flex: 0 1 52px;
+  min-height: 44px;
+  max-height: 52px;
   text-align: center;
 }
 
@@ -3819,12 +4165,14 @@ details.stats-section > summary::after {
 .fieldtest-nav {
   display: flex;
   gap: 8px;
-  margin-top: 14px;
 }
 
+/* 48px, up from 40px: these were the smallest targets on the screen and they
+   sit on the bottom edge, which is exactly where a thumb coming off the wheel
+   arrives. Every other button in the app is already 48px. */
 .fieldtest-nav button {
   flex: 1;
-  min-height: 40px;
+  min-height: 48px;
   border-radius: 8px;
   border: 1px solid var(--line);
   background: transparent;

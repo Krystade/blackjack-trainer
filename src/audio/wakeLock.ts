@@ -11,7 +11,26 @@ import { diag } from '../diag/diagnosticLog';
 // visible, for as long as it's still wanted.
 
 let sentinel: WakeLockSentinel | null = null;
-let wanted = false;
+
+/**
+ * WHO still needs the screen awake, not merely whether anyone did.
+ *
+ * This was a single boolean, and the last release won. The field test holds
+ * for its whole run while `useVoiceControl` holds only while the recogniser is
+ * up -- so the moment the microphone steps ended, the recogniser's teardown
+ * cleared the flag, released the sentinel and removed the re-acquire listener,
+ * and the field test's own hold (taken once, in an effect with `[]` deps) was
+ * never re-taken. Measured: held for steps 1-16, gone for 17-22.
+ *
+ * A Set of keys rather than a counter so an unbalanced release from one caller
+ * cannot silently decrement another's hold, and so the log can name the holder.
+ */
+const holders = new Set<string>();
+
+/** Anyone still asking for it? Replaces the old single `wanted` flag. */
+function wantedByAnyone(): boolean {
+  return holders.size > 0;
+}
 
 /**
  * The lock's life is logged because losing it is invisible and expensive.
@@ -30,7 +49,7 @@ function handleSentinelRelease(): void {
   sentinel = null;
   // Not the same as releaseWakeLock(): this fires when the PLATFORM takes the
   // lock back, which is the case worth seeing in a log.
-  diag('wake', 'lost', { stillWanted: wanted });
+  diag('wake', 'lost', { stillWanted: wantedByAnyone(), holders: [...holders].join(',') });
 }
 
 /** In-flight acquire, so two callers racing cannot both request a lock. */
@@ -78,7 +97,7 @@ async function acquire(): Promise<void> {
 
 function handleVisibilityChange(): void {
   if (
-    wanted &&
+    wantedByAnyone() &&
     !sentinel &&
     typeof document !== 'undefined' &&
     document.visibilityState === 'visible'
@@ -100,15 +119,33 @@ function removeVisibilityListener(): void {
   }
 }
 
-export async function requestWakeLock(): Promise<void> {
-  wanted = true;
+/**
+ * Ask for the screen to stay awake, on behalf of `key`.
+ *
+ * The default key preserves the drill views' existing behaviour: only one drill
+ * is mounted at a time, so they can all share one hold. The field test and the
+ * recogniser pass their own, because they overlap and used to cancel each
+ * other.
+ */
+export async function requestWakeLock(key: string = 'default'): Promise<void> {
+  holders.add(key);
   addVisibilityListener();
   await acquire();
 }
 
-export async function releaseWakeLock(): Promise<void> {
-  if (wanted) diag('wake', 'released');
-  wanted = false;
+/**
+ * Give up `key`'s claim. The lock itself is only dropped once nothing holds it.
+ */
+export async function releaseWakeLock(key: string = 'default'): Promise<void> {
+  if (!holders.delete(key)) return;
+  if (wantedByAnyone()) {
+    // SOMEONE ELSE IS STILL DRIVING. Releasing here is what put the last six
+    // steps of the field test to sleep, so the sentinel and the re-acquire
+    // listener both stay exactly as they are.
+    diag('wake', 'released', { key, remaining: [...holders].join(',') });
+    return;
+  }
+  diag('wake', 'released', { key });
   removeVisibilityListener();
   const lock = sentinel;
   sentinel = null;

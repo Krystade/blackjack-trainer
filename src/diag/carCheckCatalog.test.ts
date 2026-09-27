@@ -1,9 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   audioOutCheck,
   wheelPressCheck,
   ambientCheck,
   clipVoiceCheck,
+  measureWithWebAudio,
 } from './carCheckCatalog';
 import { foldFrames } from './ambientNoise';
 import { narrateAnswerEcho, ANSWER_ECHO_LABELS } from '../audio/narrate';
@@ -201,5 +202,92 @@ describe('a microphone that will not open', () => {
     expect(result.summary).toContain('could not be opened');
     expect(result.summary).not.toContain('The check itself failed');
     expect(result.detail?.why).toBe('NotAllowedError');
+  });
+});
+
+/**
+ * The measurement has to be stoppable, because the operator can leave.
+ *
+ * `measureWithWebAudio` polled to a fixed deadline and stopped the microphone
+ * tracks only in its `finally`, so nothing on the screen could shorten it.
+ * `measureRun.current += 1` in the field test's step cleanup discarded the
+ * RESULT but could not close the stream -- so an answer or a Pause tapped
+ * mid-measurement left the microphone open for the rest of the five seconds,
+ * across the next step or after the screen was gone. On this app that is not
+ * only a privacy surprise: the open microphone is the variable under test, so
+ * it corrupts the following sample too.
+ */
+describe('measureWithWebAudio — stopping early', () => {
+  function installAudioStack(): { stopped: () => number } {
+    let stopped = 0;
+    const track = {
+      label: 'Fake microphone',
+      stop: () => {
+        stopped += 1;
+      },
+      getSettings: () => ({ autoGainControl: false, noiseSuppression: false }),
+    };
+    const stream = { getAudioTracks: () => [track], getTracks: () => [track] };
+    class FakeCtx {
+      createMediaStreamSource() {
+        return { connect: () => {} };
+      }
+      createAnalyser() {
+        return {
+          fftSize: 2048,
+          getFloatTimeDomainData: (buf: Float32Array) => buf.fill(0.01),
+          connect: () => {},
+        };
+      }
+      close() {
+        return Promise.resolve();
+      }
+    }
+    (globalThis as unknown as { window: unknown }).window = { AudioContext: FakeCtx };
+    // `navigator` is a getter-only global under node, so it has to be
+    // redefined rather than assigned.
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { mediaDevices: { getUserMedia: () => Promise.resolve(stream) } },
+      configurable: true,
+      writable: true,
+    });
+    return { stopped: () => stopped };
+  }
+
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window;
+    delete (globalThis as unknown as { navigator?: unknown }).navigator;
+  });
+
+  it('returns at once when the signal is already aborted, and frees the microphone', async () => {
+    const { stopped } = installAudioStack();
+    const controller = new AbortController();
+    controller.abort();
+
+    const began = Date.now();
+    const reading = await measureWithWebAudio(5000, controller.signal);
+
+    expect(Date.now() - began, 'the loop ran on after being aborted').toBeLessThan(1000);
+    expect(reading.frames).toBe(0);
+    expect(stopped(), 'the microphone was left open after the abort').toBe(1);
+  });
+
+  it('stops when the signal aborts partway through', async () => {
+    const { stopped } = installAudioStack();
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 250);
+
+    const began = Date.now();
+    await measureWithWebAudio(5000, controller.signal);
+
+    expect(Date.now() - began, 'the five seconds ran to the end anyway').toBeLessThan(2000);
+    expect(stopped()).toBe(1);
+  });
+
+  it('still runs the full window when nothing aborts it', async () => {
+    const { stopped } = installAudioStack();
+    const reading = await measureWithWebAudio(300);
+    expect(reading.frames).toBeGreaterThan(0);
+    expect(stopped()).toBe(1);
   });
 });

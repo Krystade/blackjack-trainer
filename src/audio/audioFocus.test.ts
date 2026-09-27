@@ -112,6 +112,38 @@ function installRefusingAudio(): void {
   (globalThis as unknown as { window: unknown }).window = { Audio: Refusing };
 }
 
+/**
+ * iOS before the first gesture, then after it: `play()` refused once, accepted
+ * afterwards. The hold used to be taken once and never retried, so the refusal
+ * was permanent for the whole session.
+ */
+function installOnceRefusingAudio(): { plays: () => number } {
+  let attempts = 0;
+  class OnceRefusing {
+    src: string;
+    loop = false;
+    volume = 1;
+    paused = true;
+    currentTime = 0;
+    constructor(src?: string) {
+      this.src = src ?? '';
+    }
+    play(): Promise<void> {
+      attempts += 1;
+      if (attempts === 1) {
+        return Promise.reject(new DOMException('gesture required', 'NotAllowedError'));
+      }
+      this.paused = false;
+      return Promise.resolve();
+    }
+    pause(): void {
+      this.paused = true;
+    }
+  }
+  (globalThis as unknown as { window: unknown }).window = { Audio: OnceRefusing };
+  return { plays: () => attempts };
+}
+
 beforeEach(() => {
   created.length = 0;
   _resetAudioFocusForTest();
@@ -275,5 +307,78 @@ describe('the hold is visible in the exported log', () => {
       .filter((e) => e.category === 'focus')
       .map((e) => e.event);
     expect(events).toContain('refused');
+  });
+});
+
+describe('a refused hold is not permanent', () => {
+  beforeEach(() => {
+    clearDiagnosticLog();
+  });
+
+  /**
+   * The whole media slot used to die on one refusal.
+   *
+   * `holdAudioFocus` returned early on `!first && element`, and a rejected
+   * `play()` leaves `element` non-null -- so once the first hold was refused,
+   * every later hold short-circuited and never tried again. The field test
+   * takes its first hold from the step effect before any audio has played,
+   * which is exactly what iOS refuses, and the module's own header admits the
+   * contract it is breaking: "in practice the first hold rides on a clip that
+   * is already playing". One refusal at step 1 meant five wheel steps produced
+   * no arrival at all, and the export read as a car that ignores the app.
+   */
+  it('retries the element when a previous play() was refused', async () => {
+    const { plays } = installOnceRefusingAudio();
+    _resetAudioFocusForTest();
+
+    holdAudioFocus('speech');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(plays()).toBe(1);
+
+    // The next step's hold. Before the fix this returned at the early guard.
+    holdAudioFocus('speech');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(plays(), 'a refused hold was never retried').toBe(2);
+  });
+
+  it('does not re-play an element that is already going', async () => {
+    holdAudioFocus('speech');
+    await Promise.resolve();
+    const first = created.length;
+    const playsBefore = created[0]!.playCount;
+
+    holdAudioFocus('speech');
+    await Promise.resolve();
+
+    expect(created).toHaveLength(first);
+    expect(created[0]!.playCount, 'a healthy hold was restarted for no reason').toBe(playsBefore);
+  });
+
+  /**
+   * `joined: true` was written for a key already in the set, so a 22-step run
+   * carried 21 entries claiming a second holder had joined while the set never
+   * grew -- and that is the field a reader uses to work out who was contending
+   * for the slot.
+   */
+  it('calls a re-hold a re-hold, not a second holder joining', () => {
+    holdAudioFocus('speech');
+    clearDiagnosticLog();
+    holdAudioFocus('speech');
+
+    const hold = readDiagnosticLog().find((e) => e.category === 'focus' && e.event === 'hold');
+    expect(hold?.detail?.rehold).toBe(true);
+    expect(hold?.detail?.joined, 'a re-hold was reported as a new holder').toBe(false);
+  });
+
+  it('still calls a genuinely new holder a join', () => {
+    holdAudioFocus('speech');
+    clearDiagnosticLog();
+    holdAudioFocus('car-check');
+
+    const hold = readDiagnosticLog().find((e) => e.category === 'focus' && e.event === 'hold');
+    expect(hold?.detail?.joined).toBe(true);
+    expect(hold?.detail?.rehold).toBe(false);
   });
 });

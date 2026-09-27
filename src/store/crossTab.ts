@@ -39,6 +39,15 @@ export const OWNED_KEYS = [
   'bjtrainer.activeProfile.v1',
   'bjtrainer.flashsr.v1',
   'bjtrainer.quizsr.v1',
+  // THE FIELD-TEST RUN, which has exactly the shape this module exists for:
+  // `fieldTestRun.ts` caches the whole run in a module variable and `write()`
+  // saves the whole blob. Two tabs open on the app -- trivially easy on a
+  // phone, where the PWA and Safari can both hold it -- and the tab that was
+  // not looked at for a step keeps the run it read ten minutes ago, then
+  // stamps a step and saves that snapshot over the real one. The ticks the
+  // operator collected in the car vanish, which is the precise failure the
+  // run store was written to end.
+  'bjtrainer.fieldTestRun.v1',
 ] as const;
 
 export interface ExternalWrite {

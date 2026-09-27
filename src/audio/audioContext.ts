@@ -64,6 +64,29 @@ export function resumeSharedAudioContext(): void {
  * `window.AudioContext` would otherwise keep playing into the PREVIOUS
  * test's fake and silently assert nothing.
  */
+/**
+ * Close the shared graph so the next thing that needs one builds it fresh.
+ *
+ * FOR THE FIELD TEST, and not for ordinary use. Every leg of the protocol
+ * measures where audio comes out, and the four legs run in one page: without
+ * this, legs two to four inherit a context that has already been through the
+ * microphone opening and closing, so their "before the microphone" cells are
+ * not before anything. Closing is safe because `getSharedAudioContext` builds
+ * one on demand; a context that refuses to close is left alone rather than
+ * thrown, since a leg that runs on a stale graph is much better than a leg that
+ * does not run.
+ */
+export function closeSharedAudioContext(): void {
+  const ctx = sharedAudioContext;
+  sharedAudioContext = null;
+  if (!ctx || ctx.state === 'closed') return;
+  try {
+    void ctx.close();
+  } catch {
+    /* a graph that will not close must not stop the run */
+  }
+}
+
 export function _resetSharedAudioContextForTest(): void {
   sharedAudioContext = null;
 }

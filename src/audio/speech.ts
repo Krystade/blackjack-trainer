@@ -25,7 +25,11 @@
  */
 import { hasClips, isClipsEnabled, playClipsResumable, stopClips } from './clips';
 import { chimePeak, utteranceVolume } from './volume';
-import { getSharedAudioContext, _resetSharedAudioContextForTest } from './audioContext';
+import {
+  getSharedAudioContext,
+  resumeSharedAudioContext,
+  _resetSharedAudioContextForTest,
+} from './audioContext';
 // Re-exported: existing specs import this reset helper from speech.ts.
 export { _resetSharedAudioContextForTest };
 import { initMediaSession, setNowPlaying, setPlaybackState } from './mediaSession';
@@ -47,6 +51,18 @@ declare global {
      * and is invisible in the text.
      */
     __speechOptsLog?: { text: string; volume?: number; rate?: number }[];
+    /**
+     * How long a swallowed utterance should pretend to take, in e2e mode only.
+     *
+     * Everything else here resolves instantly, which is right for a spec about
+     * WHAT was said and useless for one about what the screen does WHILE it is
+     * being said. Those questions are real — the answers are held back during a
+     * measured line and must not be during a read-aloud instruction, and the
+     * difference is only observable inside the utterance. Read inside the e2e
+     * branch and nowhere else, so it cannot reach a real device: without
+     * `?e2e=1` this path is not taken at all.
+     */
+    __e2eSpeechDelayMs?: number;
   }
 }
 
@@ -224,6 +240,14 @@ export interface SpeechOpts {
   rate?: number;
   voiceURI?: string;
   volume?: number;
+  /**
+   * A correlation id written onto this utterance's `speak path` log entry.
+   *
+   * The path entry is the only record of WHICH voice spoke, and without a tag
+   * it can be tied to the thing that asked for it by adjacency alone -- which
+   * fails as soon as anything else speaks in between, and fails silently.
+   */
+  tag?: string;
 }
 
 /**
@@ -291,10 +315,28 @@ function speakLive(text: string, opts?: SpeechOpts): void {
  */
 let lastSpoken: string | null = null;
 
+/**
+ * The options the last line was spoken WITH, remembered alongside the text.
+ *
+ * `repeatLast()` took an `opts` argument but its only real caller -- the
+ * media-session `previoustrack` handler, i.e. skip-back on the steering wheel
+ * -- passes none, so the repeat reached `applyVolume` with
+ * `opts.volume === undefined` and played at the engine default of 1. A wheel
+ * press therefore re-spoke the line at FULL volume while the app was muted or
+ * turned down, and at the default rate rather than the configured one. The
+ * options are part of the utterance, so they are remembered with it.
+ */
+let lastSpokenOpts: SpeechOpts | null = null;
+
 /** Records an utterance. Called by every public speaking entry point, and by
  * nothing else — see `chime()`, which pointedly does not call it. */
-function rememberSpoken(text: string): void {
+function rememberSpoken(text: string, opts?: SpeechOpts): void {
   lastSpoken = text;
+  // `tag` is deliberately dropped: it correlates ONE request with ONE path
+  // entry, and reusing it would file the repeat's path under the original
+  // request, which is exactly the adjacency confusion tags exist to remove.
+  const { tag: _tag, interrupt: _interrupt, ...rest } = opts ?? {};
+  lastSpokenOpts = rest;
 }
 
 /** The last spoken text, or `null` when nothing has been said yet. */
@@ -400,14 +442,24 @@ export const CHIME_ACTIVITY_MS = 260;
 export function repeatLast(opts?: SpeechOpts): boolean {
   const text = lastSpoken;
   if (text === null) return false;
-  speak(text, { ...opts, interrupt: true });
+  // REMEMBERED OPTIONS FIRST, caller's on top. A repeat with no options at all
+  // is not "the default", it is a different utterance: full volume while muted
+  // and the engine's rate instead of the configured one.
+  const merged = { ...lastSpokenOpts, ...opts, interrupt: true };
+  const keptOpts = lastSpokenOpts;
+  speak(text, merged);
   lastSpoken = text;
+  // `speak` just overwrote these with the merged set. A repeat is not new
+  // information, so neither the text nor the options it was said with may
+  // drift because it was repeated.
+  lastSpokenOpts = keptOpts;
   return true;
 }
 
 /** Test-only reset of the module-level memory above. */
 export function _resetLastSpokenForTest(): void {
   lastSpoken = null;
+  lastSpokenOpts = null;
 }
 
 /**
@@ -417,11 +469,94 @@ export function _resetLastSpokenForTest(): void {
  * plays the concatenated clip(s) and falls back to live `speechSynthesis`
  * only if that fails. Never throws.
  */
+/**
+ * Which of the two voices spoke an utterance.
+ *
+ * `clip` is a recorded element; `tts` is the phone's own synthesiser; and
+ * `clip-failed-to-tts` is the nasty one -- the voice changing MID-utterance
+ * because a clip chain broke part way through.
+ */
+export type SpeechPath = 'clip' | 'clip-failed-to-tts' | 'tts';
+
+export interface SpeechPathRecord {
+  path: SpeechPath;
+  /** What was actually handed to the voice -- the REMAINDER on a partial break. */
+  text: string;
+  /**
+   * The whole utterance this record is about.
+   *
+   * Differs from `text` exactly when a clip chain broke part way through, and
+   * that difference is why this field exists: a caller matching on `text`
+   * silently fails to recognise its own line in precisely the mid-utterance
+   * break it most needs to hear about, so the screen went blank and the stamp
+   * dropped its `paths` field in the one case the protocol was rewritten for.
+   */
+  for: string;
+  /** The caller's correlation id, when one was supplied. */
+  tag?: string;
+  /**
+   * Monotonic, so a caller can tell ITS record from one that overtook it.
+   *
+   * Text alone cannot: two steps deliberately speak the identical line, and a
+   * stray wheel press routes to `repeatLast()`, which re-speaks the same
+   * string and leaves a record indistinguishable from the original.
+   */
+  seq: number;
+  /** Why it fell back, when it did: 'no-clip' (missing recording) or 'clips-off' (a setting). */
+  why?: string;
+  /** True when only the tail of the utterance fell back, not the whole thing. */
+  partial?: boolean;
+}
+
+let lastPath: SpeechPathRecord | null = null;
+let pathSeq = 0;
+
+/**
+ * Record which path spoke a line -- to the log, and to a variable a caller
+ * can read back.
+ *
+ * BOTH, and the second half is the point. The log is for diagnosis after the
+ * drive; the variable is so the app can tell the operator, in the moment,
+ * which voice it just used. The field test used to ASK -- "was that the
+ * recorded voice or your phone's?" -- which is asking a person to guess at
+ * something the code decided with certainty three lines above. The operator's
+ * response was the correct one: "it's not like they're played the same way
+ * and the code doesn't know wtf?" It does know. Now it says so.
+ */
+function recordSpeechPath(record: Omit<SpeechPathRecord, 'seq'>): void {
+  const full: SpeechPathRecord = { ...record, seq: ++pathSeq };
+  lastPath = full;
+  const { path, text, ...rest } = full;
+  // `said` rather than `text` in the log, because every other speak entry
+  // already uses that key and the export is grepped by hand in a car park.
+  //
+  // `tag` rides along when the caller supplied one. Without it this entry --
+  // the ONLY one that says which voice spoke -- could be joined to the step
+  // that produced it by adjacency alone, and two steps deliberately speak the
+  // same line, so even the text could not disambiguate them.
+  diag('speak', 'path', { path, said: text, ...rest });
+}
+
+/**
+ * The most recent path decision, for a caller that wants to show it.
+ *
+ * Carries its own text so a caller can check the record is about the
+ * utterance it just awaited rather than one that overtook it.
+ */
+export function lastSpeechPath(): SpeechPathRecord | null {
+  return lastPath;
+}
+
+export function _resetSpeechPathForTest(): void {
+  lastPath = null;
+  pathSeq = 0;
+}
+
 export function speak(
   text: string,
   opts?: SpeechOpts,
 ): void {
-  rememberSpoken(text);
+  rememberSpoken(text, opts);
   // BEFORE the e2e short-circuit: the microphone has to know about every
   // utterance the app decides to make, including the ones the test harness
   // swallows, or suppression is untestable.
@@ -441,7 +576,7 @@ export function speak(
     // see and the volume boost can reach, while live speechSynthesis is
     // neither, so which one spoke decides whether a line survives road noise
     // and whether the car even knows the app is talking.
-    diag('speak', 'path', { path: 'clip', said: text });
+    recordSpeechPath({ path: 'clip', text, for: text, tag: opts?.tag });
     announceToMediaSession(text);
     void playClipsResumable(text, {
       interrupt: opts?.interrupt,
@@ -451,10 +586,18 @@ export function speak(
       if (played) return;
       // A clip chain that broke is the app switching voices MID-UTTERANCE,
       // which is the worst case for the operator and the hardest to notice.
-      diag('speak', 'path', {
+      recordSpeechPath({
         path: 'clip-failed-to-tts',
-        said: remainder ?? text,
-        partial: remainder !== undefined && remainder !== text,
+        text: remainder ?? text,
+        for: text,
+        tag: opts?.tag,
+        // `remainder` is `string | null` (clips.ts), NEVER undefined -- the
+        // nothing-played case is `{ played: false, remainder: null }`. So the
+        // old `remainder !== undefined` was true in every case, and every
+        // clip failure reported itself as a voice change MID-utterance. That
+        // is the one thing the operator is asked to listen for, so the screen
+        // was crying wolf on every plain failure.
+        partial: remainder !== null && remainder !== text,
       });
       // A chain that broke PART WAY through reports what is still unsaid.
       // Speaking `text` there would repeat the half the clips already
@@ -466,9 +609,11 @@ export function speak(
     return;
   }
 
-  diag('speak', 'path', {
+  recordSpeechPath({
     path: 'tts',
-    said: text,
+    text,
+    for: text,
+    tag: opts?.tag,
     // The reason it is on the fallback path at all, which is the actionable
     // half: clips off is a setting, no clip is a missing recording.
     why: isClipsEnabled() ? 'no-clip' : 'clips-off',
@@ -519,8 +664,8 @@ function announceToMediaSession(text: string): void {
  * Safe to call repeatedly: `initMediaSession` registers once and ignores the
  * rest.
  */
-export function ensureMediaSessionHandlers(): void {
-  initMediaSession({
+export function ensureMediaSessionHandlers(): boolean {
+  return initMediaSession({
     // Routed rather than handled here: only the screen that is up knows what
     // a direction means to it, and speech.ts must not import React or the
     // store.
@@ -535,7 +680,17 @@ export function ensureMediaSessionHandlers(): void {
       // driver could want from it rather than nothing, and that is "say that
       // again": the app is talking, the driver missed a word, and there is
       // no drill in the way.
-      if (!invokeWheelCommand('back')) repeatLast();
+      if (!invokeWheelCommand('back')) {
+        // LOGGED AS HANDLED, because it was. `invokeWheelCommand` writes
+        // `wheel dispatch handled=false why=no-screen-listening` and then this
+        // line does something useful anyway -- so the export showed a press
+        // reaching nothing, immediately followed by the app re-speaking a line
+        // out of nowhere. A reader diagnosing the wheel counted that press as
+        // dead; a reader diagnosing the voice saw unprompted speech. Both are
+        // wrong, from the same two lines.
+        diag('wheel', 'dispatch', { command: 'back', handled: true, by: 'repeat-last' });
+        repeatLast();
+      }
     },
   });
 }
@@ -544,12 +699,31 @@ export function ensureMediaSessionHandlers(): void {
 /* speakAsync — speech-driven pacing primitive                            */
 /* ---------------------------------------------------------------------- */
 
+/** Why a live utterance stopped. Mirrors `ClipEndReason` in clips.ts. */
+export type TtsEndReason = 'ended' | 'error' | 'watchdog' | 'cancelled';
+
 type PendingSpeech = {
   // Kept even though nothing else reads it: holding the utterance here is
   // what stops the engine from garbage-collecting it mid-speech.
   utterance: SpeechSynthesisUtterance;
   resolve: () => void;
   watchdog: ReturnType<typeof setTimeout>;
+  /** For the `tts-end` entry: what was said, when it started, and how it went. */
+  text: string;
+  startedAt: number;
+  settled: boolean;
+  /**
+   * What the engine ACTUALLY got, as opposed to what the caller asked for.
+   *
+   * `utteranceVolume` clamps live TTS at 1, so a step requesting 1.5 is
+   * recorded by `say-start` as 1.5 and delivered at 1 -- and `resolveVoice`
+   * silently falls through to `pickBestVoice` when the configured voice is not
+   * installed here. Both were invisible, on a screen whose entire subject is
+   * which voice spoke and how loud.
+   */
+  appliedVolume: number;
+  appliedVoice: string | null;
+  voiceSubstituted: boolean;
 };
 
 /**
@@ -562,10 +736,35 @@ type PendingSpeech = {
  */
 let pendingSpeeches: PendingSpeech[] = [];
 
-function settlePendingSpeech(pending: PendingSpeech): void {
+/**
+ * THE TTS COUNTERPART TO `clip-end`, and the reason it had to exist.
+ *
+ * `speak path path=tts said="..."` is written before the engine is touched, and
+ * nothing was written afterwards -- so an utterance that never happened, one
+ * that errored, one abandoned by the watchdog and one that ran cleanly to the
+ * end all produced the same single line. The clips path has carried a reason
+ * code since round 2; this path is every drill line in the app and had none, so
+ * "did it actually say it?" could not be answered for most of the log.
+ *
+ * `settled` guards it: `onend` after a watchdog, or a cancel racing an `onend`,
+ * would otherwise report the same utterance twice with different reasons.
+ */
+function settlePendingSpeech(pending: PendingSpeech, reason: TtsEndReason = 'ended'): void {
   const idx = pendingSpeeches.indexOf(pending);
   if (idx !== -1) pendingSpeeches.splice(idx, 1);
   clearTimeout(pending.watchdog);
+  if (!pending.settled) {
+    pending.settled = true;
+    diag('speak', 'tts-end', {
+      reason,
+      ms: Date.now() - pending.startedAt,
+      said: pending.text,
+      // APPLIED, not requested. See `appliedVolume` on PendingSpeech.
+      volume: pending.appliedVolume,
+      voice: pending.appliedVoice,
+      ...(pending.voiceSubstituted ? { voiceSubstituted: true } : {}),
+    });
+  }
   pending.resolve();
 }
 
@@ -574,6 +773,17 @@ function settleAllPendingSpeeches(): void {
   pendingSpeeches = [];
   for (const p of pending) {
     clearTimeout(p.watchdog);
+    // CANCELLED IS AN OUTCOME TOO. Safari does not fire `onend` after
+    // `cancel()`, so without this an interrupted line simply had no ending at
+    // all -- and interrupting is what every `{interrupt: true}` call does.
+    if (!p.settled) {
+      p.settled = true;
+      diag('speak', 'tts-end', {
+        reason: 'cancelled',
+        ms: Date.now() - p.startedAt,
+        said: p.text,
+      });
+    }
     p.resolve();
   }
 }
@@ -596,6 +806,10 @@ function speakAsyncLive(
   opts?: SpeechOpts,
 ): Promise<void> {
   if (!isSpeechSupported()) {
+    // SAID SO, rather than resolving as though it had spoken. The path record
+    // is already written by the caller at this point, so without this line the
+    // export claims an utterance on a device with no synthesiser at all.
+    diag('speak', 'tts-end', { reason: 'error', ms: 0, said: text, why: 'unsupported' });
     return Promise.resolve();
   }
 
@@ -619,19 +833,40 @@ function speakAsyncLive(
       if (voice) {
         utterance.voice = voice;
       }
+      // A substitution is when the caller named a voice and got a different
+      // one (or none). Asking for nothing and being given the default is not a
+      // substitution, so it is not reported as one.
+      const wanted = opts?.voiceURI;
+      const voiceSubstituted =
+        !!wanted &&
+        wanted !== 'default' &&
+        (!voice || (voice.voiceURI !== wanted && voice.name !== wanted));
 
       const pending: PendingSpeech = {
         utterance,
         resolve,
-        watchdog: setTimeout(() => settlePendingSpeech(pending), estimateWatchdogMs(text)),
+        watchdog: setTimeout(() => settlePendingSpeech(pending, 'watchdog'), estimateWatchdogMs(text)),
+        text,
+        startedAt: Date.now(),
+        settled: false,
+        appliedVolume: utterance.volume,
+        appliedVoice: voice?.name ?? null,
+        voiceSubstituted,
       };
       pendingSpeeches.push(pending);
 
-      utterance.onend = () => settlePendingSpeech(pending);
-      utterance.onerror = () => settlePendingSpeech(pending);
+      utterance.onend = () => settlePendingSpeech(pending, 'ended');
+      utterance.onerror = () => settlePendingSpeech(pending, 'error');
 
       window.speechSynthesis.speak(utterance);
-    } catch {
+    } catch (e) {
+      // Also an ending, and also invisible until now.
+      diag('speak', 'tts-end', {
+        reason: 'error',
+        ms: 0,
+        said: text,
+        why: e instanceof Error ? e.name : String(e),
+      });
       resolve();
     }
   });
@@ -661,13 +896,35 @@ export function speakAsync(
   text: string,
   opts?: SpeechOpts,
 ): Promise<void> {
-  rememberSpoken(text);
+  rememberSpoken(text, opts);
+  // BEFORE THE E2E SHORT-CIRCUIT, exactly as `speak` does -- and missing here
+  // until 2026-09-24. `speak` has notified the microphone since echo
+  // suppression was written; this twin never did, and it has exactly one
+  // call site in `notifySpeechActivity`'s grep. The field test speaks
+  // EXCLUSIVELY through this function, so `suppressFor` was never called and
+  // nothing was ever suppressed: on every microphone step the live recogniser
+  // heard the app's own line and filed it as the operator's answer. On
+  // `mic-heard` the app says "Did you have it?", the operator is asked to say
+  // "double", and "It heard the wrong thing" became the honest tap for a
+  // microphone working perfectly. `looksLikeSelfEcho` could not save it --
+  // that guard is only consulted on a `suppressed` verdict, and there were
+  // none. The count drill is the other caller and lost suppression too.
+  notifySpeechActivity(text, opts?.rate);
   if (isE2eAudioMode()) {
     pushSpeechLog(text, opts);
-    return Promise.resolve();
+    const delay = hasWindow() ? window.__e2eSpeechDelayMs : undefined;
+    return typeof delay === 'number' && delay > 0
+      ? new Promise<void>((resolve) => setTimeout(resolve, delay))
+      : Promise.resolve();
   }
 
+  // RECORDED HERE TOO, and it was not until 2026-09-23. `speak` has logged
+  // the path since the voice-switch hunt, but this twin never did -- and the
+  // field test speaks exclusively through this one, so every utterance the
+  // protocol produced was invisible in the very log the protocol exists to
+  // fill. Two entry points, one decision, one place that writes it down.
   if (isClipsEnabled() && hasClips(text)) {
+    recordSpeechPath({ path: 'clip', text, for: text, tag: opts?.tag });
     announceToMediaSession(text);
     return playClipsResumable(text, {
       interrupt: opts?.interrupt,
@@ -675,6 +932,19 @@ export function speakAsync(
       volume: opts?.volume,
     }).then(({ played, remainder }) => {
       if (played) return;
+      recordSpeechPath({
+        path: 'clip-failed-to-tts',
+        text: remainder ?? text,
+        for: text,
+        tag: opts?.tag,
+        // `remainder` is `string | null` (clips.ts), NEVER undefined -- the
+        // nothing-played case is `{ played: false, remainder: null }`. So the
+        // old `remainder !== undefined` was true in every case, and every
+        // clip failure reported itself as a voice change MID-utterance. That
+        // is the one thing the operator is asked to listen for, so the screen
+        // was crying wolf on every plain failure.
+        partial: remainder !== null && remainder !== text,
+      });
       // Same resume rule as `speak` above: only re-speak what the broken
       // chain never got to. This path also drives drill PACING, so repeating
       // the whole utterance here stretched the gap between cards as well as
@@ -683,6 +953,13 @@ export function speakAsync(
     });
   }
 
+  recordSpeechPath({
+    path: 'tts',
+    text,
+    for: text,
+    tag: opts?.tag,
+    why: isClipsEnabled() ? 'no-clip' : 'clips-off',
+  });
   return speakAsyncLive(text, opts);
 }
 
@@ -709,8 +986,26 @@ export function chime(kind: 'good' | 'bad' | 'attention', opts?: { volume?: numb
   }
 
   try {
+    // NUDGED AWAKE FIRST, exactly as `amplify()` does.
+    //
+    // `resumeSharedAudioContext` had one caller in the whole app -- `amplify()`
+    // -- and that runs only when the volume is above 1. So on any run where the
+    // boost is not in play (clips off, or after a step pins volume to 1) a
+    // suspended context made the chime silent, and `chime()` said nothing at
+    // all. The field test now depends on chimes for the arrival cue on its six
+    // silent steps and for "I did not understand you", so a silent chime
+    // manufactures the very fault those cues exist to rule out.
     const ctx = getSharedAudioContext();
     if (!ctx) return;
+    // AFTER the get, not before it: `resumeSharedAudioContext` acts on the
+    // memoised context, which does not exist until `getSharedAudioContext`
+    // creates it -- so calling it first was a no-op on the very first chime,
+    // which is the one most likely to meet a suspended context.
+    resumeSharedAudioContext();
+    // REPORTED, not assumed. A context that is still not running after the
+    // resume produces no sound, and that has to leave a trace rather than
+    // looking like a chime nobody asked for.
+    if (ctx.state !== 'running') diag('speak', 'chime-suspended', { kind, state: ctx.state });
 
     const oscillator = ctx.createOscillator();
     const gain = ctx.createGain();

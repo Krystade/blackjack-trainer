@@ -1,3 +1,4 @@
+import { diag } from '../diag/diagnosticLog';
 /**
  * The steering wheel, wired to whatever drill is on screen.
  *
@@ -75,14 +76,32 @@ export function setWheelCommandHandler(next: WheelHandler | null): void {
  * and a press that reached nobody is itself evidence about the mapping.
  */
 export function invokeWheelCommand(command: WheelCommand): boolean {
-  if (!handler) return false;
-  try {
-    handler(command);
-  } catch {
-    // A screen throwing must never break the car's transport controls: the
-    // driver may be relying on pause to shut the app up.
+  // LOGGED, WITH WHAT BECAME OF IT. This function's own doc comment promised
+  // "the log records both, and a press that reached nobody is itself
+  // evidence" -- and it wrote nothing at all, while both call sites discarded
+  // its return. So `wheel invoke` in an export read identically whether the
+  // drill acted on the press or the press fell on an unmounted screen and
+  // vanished, which is the founding question of the whole `wheel` category.
+  // A handler that THREW is a third outcome again, and used to be reported as
+  // the second.
+  if (!handler) {
+    diag('wheel', 'dispatch', { command, handled: false, why: 'no-screen-listening' });
     return false;
   }
+  try {
+    handler(command);
+  } catch (e) {
+    // A screen throwing must never break the car's transport controls: the
+    // driver may be relying on pause to shut the app up.
+    diag('wheel', 'dispatch', {
+      command,
+      handled: false,
+      why: 'threw',
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return false;
+  }
+  diag('wheel', 'dispatch', { command, handled: true });
   return true;
 }
 

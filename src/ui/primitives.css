@@ -189,7 +189,32 @@
 body:has(.table-screen) .tab-bar,
 body:has(.drill-screen) .tab-bar,
 body:has(.zone-pad) .tab-bar,
+/* A RUNNING FIELD TEST owns the bottom edge too, and for a sharper reason
+   than the others: the bar is the lowest, widest, tallest strip on the
+   screen, which makes it the easiest thing to hit with a thumb coming off
+   the steering wheel -- easier than the answers it sits beneath. A tap there
+   unmounts the run's screen, which releases the media hold that is the only
+   reason the wheel reaches this app at all, and leaves the operator tapping
+   where the answers used to be on a Drills screen they cannot see. The run
+   itself survives; the drive does not. The deliberate exit is Finish. */
+body:has(.fieldtest-running) .tab-bar,
 body:has(.study-chart-overlay) .tab-bar {
+  display: none;
+}
+
+/* THE MUTE DISC GOES WITH IT, and this is a consequence of the rule above
+   rather than an independent choice. `.mute-btn` is pinned bottom-left at
+   `safe-area + 76px`, where the 76px reserves room for the tab bar -- so with
+   the bar stood down, that space is empty and the disc lands on the field
+   test's own nav row. Measured on a 390-wide viewport: the disc occupies
+   y 724-768 while `fieldtest-prev` spans y 732-772 from x 12, so reaching
+   bottom-left for Back mutes the app instead across roughly the left third of
+   that target. The run then re-asserts `muted: false` only on the NEXT step
+   change, so the current step goes silent, "Say it again" produces nothing,
+   and the only way out is forward -- past the step the operator was trying to
+   return to. Muting is available from Settings, and the protocol controls the
+   mute state itself for the duration of a run. */
+body:has(.fieldtest-running) .mute-btn {
   display: none;
 }
 
@@ -202,8 +227,21 @@ body:has(.tab-bar) .drills-picker,
 /* The session report ends in its own Back button, which the fixed bar sat on
    top of -- the control was visible but unclickable. */
 body:has(.tab-bar) .report-screen,
+body:has(.tab-bar) .fieldtest-screen,
 body:has(.tab-bar) .profiles-screen {
   padding-bottom: calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + var(--space-4));
+}
+
+/*
+  ...EXCEPT WHILE A STEP IS RUNNING, where the bar is not there to clear.
+  `.tab-bar` is hidden with `display: none` (above) rather than unmounted, so
+  `:has(.tab-bar)` still matched and the running screen reserved 72px+ at the
+  bottom for a bar nobody could see. That is more than one answer button:
+  measured, it is the difference between all six answers being on screen and
+  the last two being below the fold on every phone shorter than 390x844.
+*/
+body:has(.fieldtest-running) .fieldtest-screen {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--space-2));
 }
 
 /* ---------- Safe areas (notch / status bar / home indicator) ---------- */

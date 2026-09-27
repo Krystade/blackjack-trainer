@@ -23,7 +23,7 @@ export default defineConfig({
       // The default project runs every spec EXCEPT the real-audio clip-playback
       // harness (that one needs a different Chromium launch and must not use
       // ?e2e=1, so it lives in its own project below).
-      testIgnore: /clip-playback\.spec\.ts/,
+      testIgnore: /(clip-playback|field-test-audio)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 390, height: 844 } },
     },
     {
@@ -39,7 +39,7 @@ export default defineConfig({
       // adds a second, independent guard at the element level (see its
       // `muted` init script), so being heard would take both failing.
       name: 'chromium-audio',
-      testMatch: /clip-playback\.spec\.ts/,
+      testMatch: /(clip-playback|field-test-audio)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 390, height: 844 },

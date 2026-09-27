@@ -14,6 +14,14 @@ export async function shot(page: Page, name: string): Promise<void> {
 export async function withSettings(page: Page, patch: Record<string, unknown>): Promise<void> {
   const json = JSON.stringify({ version: 1, ...patch });
   await page.addInitScript((settingsJson) => {
+    // SEEDED ONCE, not on every navigation. `addInitScript` re-runs on each
+    // one, so a spec that reloads mid-run had its settings silently restored
+    // by the harness -- which made a test about surviving a reload unable to
+    // fail. A spec that wants the reload to be real sets `__noSeed` first.
+    // The marker lives in STORAGE, not on `window`: init scripts run in the
+    // order they were added, so a later script setting a window flag would
+    // run after this one had already re-seeded.
+    if (window.localStorage.getItem('e2e.noReseed') === '1') return;
     window.localStorage.setItem('bjtrainer.settings.v1', settingsJson);
   }, json);
 }

@@ -28,6 +28,7 @@
  */
 
 import { diag, flushDiagnostics } from './diagnosticLog';
+import { runningBuildId, runningBuiltAt } from '../updateCheck';
 
 /** Kept so a second mount (React strict mode, a remount) cannot double-log. */
 let installed = false;
@@ -71,6 +72,16 @@ export function logEnvironment(): void {
       online: typeof navigator.onLine === 'boolean' ? navigator.onLine : 'unknown',
       visibility: typeof document !== 'undefined' ? document.visibilityState : 'unknown',
       url: typeof location !== 'undefined' ? location.href : 'unknown',
+      // WHICH CODE WROTE THIS. The app deploys continuously from `main` and
+      // reloads ITSELF mid-drive when a new build lands, so one exported log
+      // routinely spans two different builds with nothing marking the seam --
+      // and a reader attributes behaviour to code that was not running. The
+      // id was already in the bundle and the logger simply never asked for
+      // it. `url` sometimes carries `?v=<id>` from the update check's reload,
+      // which is the id of the build the PREVIOUS load was navigating toward:
+      // a build-ish token that misleads rather than merely omits.
+      build: runningBuildId() ?? 'unknown',
+      builtAt: runningBuiltAt() ?? 'unknown',
     });
 
     diag('env', 'capabilities', {

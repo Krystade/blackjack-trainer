@@ -151,9 +151,25 @@ export function setMediaSessionProbe(fn: ((action: string) => void) | null): voi
  * have a position in. Registered so the log can still say whether this car
  * emits it.
  */
-export function initMediaSession(handlers: MediaSessionHandlers): void {
+export function initMediaSession(handlers: MediaSessionHandlers): boolean {
   const ms = session();
-  if (!ms || registered) return;
+  if (registered) return true;
+  if (!ms) {
+    /**
+     * SAID OUT LOUD, because the alternative is the app's own gap being filed
+     * as the fault under investigation.
+     *
+     * This returned silently. The field test then armed its probe over a
+     * session that did not exist and rendered "Waiting for a wheel button…"
+     * forever, so the operator pressed every control on the wheel, saw
+     * nothing, and answered "Nothing audible happened" -- a `bad` verdict on
+     * the routing hypothesis caused by an unsupported API. And because
+     * nothing was written, the exported log could not tell the two apart
+     * afterwards either.
+     */
+    diag('wheel', 'register', { action: 'all', ok: false, why: 'no-media-session' });
+    return false;
+  }
   registered = true;
 
   const set = (action: string, handler: () => void): void => {
@@ -204,6 +220,7 @@ export function initMediaSession(handlers: MediaSessionHandlers): void {
   set('seekforward', handlers.forward);
   set('previoustrack', handlers.back);
   set('seekbackward', handlers.back);
+  return true;
 }
 
 /**

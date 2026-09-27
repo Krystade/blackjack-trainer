@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
@@ -1317,7 +1317,17 @@ function DiagnosticLogPanel() {
   useEffect(() => subscribeDiagnostics(() => setEntries(readDiagnosticLog())), []);
 
   const summary = summariseDiagnostics(entries);
-  const text = formatDiagnosticLog(entries);
+  // MEMOISED, AND ONLY WHEN IT IS NEEDED.
+  //
+  // This ran on every render, including with the panel collapsed, and the
+  // effect above re-renders on EVERY diag event -- so with voice on and
+  // Settings open the app rebuilt an ~800KB string per logged line. The log is
+  // supposed to cost less than what it measures; formatting it for nobody is
+  // the clearest way it did not.
+  const text = useMemo(
+    () => (shown || copied !== 'idle' ? formatDiagnosticLog(entries) : ''),
+    [entries, shown, copied],
+  );
 
   return (
     <CollapsibleSection title={<>Diagnostic log</>} defaultOpen={false}>

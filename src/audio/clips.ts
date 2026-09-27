@@ -31,6 +31,7 @@
  */
 
 import { elementVolume, gainFactor, needsAmplification } from './volume';
+import { diag } from '../diag/diagnosticLog';
 import { getSharedAudioContext, resumeSharedAudioContext } from './audioContext';
 
 function hasWindow(): boolean {
@@ -365,10 +366,18 @@ function getAudioCtor(): (new () => HTMLAudioElement) | undefined {
   return w.Audio;
 }
 
+/**
+ * How a clip chain finished. `ended` is the only one that means the operator
+ * heard the whole line -- the rest were indistinguishable from it in the log.
+ */
+type ClipEndReason = 'ended' | 'watchdog' | 'stopped' | 'element-error' | 'play-rejected' | 'threw';
+
 interface ActiveChain {
   audio: HTMLAudioElement | null;
   watchdog: ReturnType<typeof setTimeout> | null;
   settled: boolean;
+  /** For the `ms` on `clip-end`: a stall reads as the watchdog's full timeout. */
+  startedAt: number;
   settle: (played: boolean) => void;
 }
 
@@ -381,11 +390,36 @@ function clearActiveWatchdog(chain: ActiveChain): void {
   chain.watchdog = null;
 }
 
-function settleChain(chain: ActiveChain, played: boolean): void {
+/**
+ * Settle a chain, saying WHY.
+ *
+ * The reason is the point. `played: true` was written by three completely
+ * different events -- the last file's `ended`, the watchdog giving up, and a
+ * deliberate interrupt -- and none of them logged anything, so all three
+ * produced a byte-identical export: `speak path path=clip` plus
+ * `speak clip-chain`, exactly what a flawless utterance produces. A route
+ * that flips to a disconnected A2DP sink makes the element accept `play()`
+ * and stall; eight seconds later the watchdog reports success and the log
+ * says the app spoke. The operator taps "Heard nothing", and the analysis
+ * goes looking at volume and car routing for a clip that never rendered a
+ * sample. Three events, three lines.
+ */
+function settleChain(chain: ActiveChain, played: boolean, reason: ClipEndReason): void {
   if (chain.settled) return;
   chain.settled = true;
   clearActiveWatchdog(chain);
   if (activeChain === chain) activeChain = null;
+  // `fellBack`, NOT `played`. The boolean is the answer to "must the caller now
+  // try live TTS?", not a claim that audio reached the cabin -- but rendered as
+  // a plain field beside `reason` it read as the latter, and it is the more
+  // assertive of the two: `clip-end reason=watchdog played=true` contradicts
+  // itself on one line, and a reader counting `played=true` to tally delivered
+  // lines counted every stall and every deliberate interruption as delivered.
+  diag('speak', 'clip-end', {
+    reason,
+    fellBack: !played,
+    ms: Date.now() - chain.startedAt,
+  });
   chain.settle(played);
 }
 
@@ -399,7 +433,7 @@ function stopActiveChain(): void {
   }
   // Settled by the interrupt/stop, not a failure -- a caller must never
   // wrongly fall back to live TTS over a clip that was cut off on purpose.
-  settleChain(chain, true);
+  settleChain(chain, true, 'stopped');
 }
 
 /** Stops any currently-playing clip chain and settles its pending promise. */
@@ -446,6 +480,17 @@ function amplify(audio: HTMLAudioElement, volume: number): boolean {
     const ctx = getSharedAudioContext();
     if (!ctx || typeof ctx.createMediaElementSource !== 'function') return false;
     resumeSharedAudioContext();
+    // THE STATE IS CHECKED, not assumed. `resumeSharedAudioContext` fires
+    // `ctx.resume()` unawaited and swallows the rejection, and nothing in the
+    // app resumes this context from a user gesture -- so on iOS it is
+    // routinely still suspended here. Connecting the element to a
+    // MediaElementSource routes it ONLY through the graph, so a suspended
+    // graph makes the clip SILENT rather than quiet, while `play()` resolves
+    // and `ended` fires. The chain then reports `played: true`, the path is
+    // recorded as `clip`, and the operator answers "heard nothing" on the one
+    // step whose premise is a loudness comparison. Staying on the plain
+    // element path loses the boost and keeps the sound.
+    if (ctx.state !== 'running') return false;
     const source = ctx.createMediaElementSource(audio);
     const gain = ctx.createGain();
     gain.gain.value = gainFactor(volume);
@@ -496,14 +541,30 @@ export function playClipsResumable(
       }
 
       const voiceId = currentClipVoice || (await resolveDefaultVoiceId());
-      if (!voiceId) return NOTHING_PLAYED;
+      if (!voiceId) {
+        // SAID, not silent. `speak path path=clip` is written BEFORE this
+        // function runs, so a bare return left the export claiming the clip
+        // path with nothing after it -- and "the manifest fetch failed", "the
+        // deploy has no public/clips" and "this phrase has no recording" became
+        // one outcome again, which is what `clip-chain` exists to prevent.
+        diag('speak', 'clip-skip', { why: 'no-voice-resolved' });
+        return NOTHING_PLAYED;
+      }
 
       const manifest = await loadVoiceManifest(voiceId);
       const segments = segmentsForClips(text, manifest);
-      if (!segments || segments.length === 0) return NOTHING_PLAYED;
+      if (!segments || segments.length === 0) {
+        // The ordinary miss: this phrase has no recording in this voice. Named
+        // so it can be told apart from a manifest that never loaded at all.
+        diag('speak', 'clip-skip', { why: 'no-cascade-match', voice: voiceId });
+        return NOTHING_PLAYED;
+      }
 
       const AudioCtor = getAudioCtor();
-      if (!AudioCtor) return NOTHING_PLAYED;
+      if (!AudioCtor) {
+        diag('speak', 'clip-skip', { why: 'no-audio-element' });
+        return NOTHING_PLAYED;
+      }
 
       const rate = opts?.rate ?? 1;
       // Presence-checked, never `?? 1` on a truthiness test: volume 0 means
@@ -540,6 +601,7 @@ export function playClipsResumable(
           audio: null,
           watchdog: null,
           settled: false,
+          startedAt: Date.now(),
           settle: settleResult,
         };
         activeChain = chain;
@@ -548,17 +610,28 @@ export function playClipsResumable(
 
         const armWatchdog = () => {
           clearActiveWatchdog(chain);
-          chain.watchdog = setTimeout(() => settleChain(chain, true), CLIP_WATCHDOG_PER_CLIP_MS);
+          chain.watchdog = setTimeout(() => settleChain(chain, true, 'watchdog'), CLIP_WATCHDOG_PER_CLIP_MS);
         };
 
         const playNext = () => {
           if (chain.settled) return;
           if (index >= fileList.length) {
-            settleChain(chain, true);
+            settleChain(chain, true, 'ended');
             return;
           }
           try {
             const audio = new AudioCtor();
+            if (index === 0) {
+              // THE CHAIN, named. Without it the export could say a clip
+              // played but never which recording, so "the phrase has no
+              // clip", "this deploy is missing the clips directory" and "the
+              // manifest fetch failed" were one indistinguishable outcome.
+              diag('speak', 'clip-chain', {
+                voiceId,
+                n: fileList.length,
+                files: fileList.map((f) => f.file).join(', '),
+              });
+            }
             audio.src = `${base}clips/${voiceId}/${fileList[index]!.file}`;
             audio.preservesPitch = true;
             audio.playbackRate = rate;
@@ -567,7 +640,32 @@ export function playClipsResumable(
             // above unity is carried by a GainNode instead.
             if (volume !== undefined) {
               audio.volume = elementVolume(volume);
-              if (needsAmplification(volume)) amplify(audio, volume);
+              if (needsAmplification(volume)) {
+                /**
+                 * THE RESULT, RECORDED. It was thrown away.
+                 *
+                 * Connecting an element to a MediaElementSource routes its
+                 * audio ONLY through the graph, so a suspended context makes
+                 * the clip silent rather than quiet. Every clip in the field
+                 * test used to run through here, because step one pinned the
+                 * volume at 1.5 and nothing lowered it. In that state the
+                 * chain still reports a clean `played: true`, the log still
+                 * says `path=clip`, and the operator still taps "Heard
+                 * nothing" -- so the single most likely mechanical cause of a
+                 * silent route was indistinguishable in the export from the
+                 * car sending audio to the earpiece.
+                 */
+                const ok = amplify(audio, volume);
+                // `state` rides along so a future export can tell the two
+                // failures apart: a graph that refused because it is suspended
+                // (no gesture) versus an element that was already routed.
+                diag('speak', 'amplify', {
+                  file: fileList[index]!.file,
+                  volume,
+                  ok,
+                  state: getSharedAudioContext()?.state ?? 'none',
+                });
+              }
             }
             chain.audio = audio;
             armWatchdog();
@@ -576,20 +674,49 @@ export function playClipsResumable(
               index += 1;
               playNext();
             };
-            audio.onerror = () => settleChain(chain, false);
+            audio.onerror = () => {
+              diag('speak', 'clip-broke', {
+                file: fileList[index]!.file,
+                index,
+                of: fileList.length,
+                why: 'error',
+              });
+              settleChain(chain, false, 'element-error');
+            };
 
             const playResult = audio.play();
             if (playResult && typeof playResult.catch === 'function') {
-              playResult.catch(() => settleChain(chain, false));
+              // LOGGED, unlike before. `play()` rejecting -- autoplay or
+              // `NotAllowedError` -- is the single most likely mechanical
+              // cause of a dead clip on iOS, and it was the one failure that
+              // wrote nothing, while the rarer `error` event right above it
+              // was logged. The two were not symmetric.
+              playResult.catch((e: unknown) => {
+                diag('speak', 'clip-broke', {
+                  file: fileList[index]?.file ?? '(none)',
+                  index,
+                  of: fileList.length,
+                  why: 'play-rejected',
+                  name: e instanceof Error ? e.name : String(e),
+                });
+                settleChain(chain, false, 'play-rejected');
+              });
             }
           } catch {
-            settleChain(chain, false);
+            settleChain(chain, false, 'threw');
           }
         };
 
         playNext();
       });
-    } catch {
+    } catch (e) {
+      // The outer catch: a manifest fetch that rejected, a bad JSON body, a
+      // throwing Audio constructor. Silent until now, which is why a missing
+      // `public/clips/` deploy looked exactly like clips being switched off.
+      diag('speak', 'clip-skip', {
+        why: 'threw',
+        error: e instanceof Error ? e.name : String(e),
+      });
       return NOTHING_PLAYED;
     }
   })();

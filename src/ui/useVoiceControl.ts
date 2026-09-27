@@ -114,6 +114,26 @@ export function useVoiceControl({
   const transcriptRef = useRef(onTranscript);
   transcriptRef.current = onTranscript;
 
+  /**
+   * THROUGH A REF, not through the dependency array.
+   *
+   * `context` names the screen a log line came from, and every use of it below
+   * is inside a callback that outlives the render it was created in. Left out
+   * of the effect entirely, the recogniser kept logging under the context
+   * captured when it started, so every `mic` and `heard` entry after a screen
+   * change was filed under the PREVIOUS screen -- in the field test, every
+   * transcript from `mic-heard` landed under `mic-route`, the step before it.
+   *
+   * Adding it to the deps instead would be worse than the bug: the effect
+   * tears the recogniser down and builds a new one, and the field test changes
+   * context on EVERY step. On iOS that is a microphone stopping and restarting
+   * eleven times mid-protocol, each restart re-arming the hands-free profile
+   * whose theft of the wheel is the thing under test -- the instrument would
+   * manufacture the signal it is measuring.
+   */
+  const contextRef = useRef(context);
+  contextRef.current = context;
+
   const unheardRef = useRef(onNotUnderstood);
   unheardRef.current = onNotUnderstood;
   // What the app is currently saying, so a suppressed utterance can be told
@@ -136,7 +156,7 @@ export function useVoiceControl({
   useEffect(() => {
     if (!enabled) return;
 
-    diag('mic', 'listen-on', { context });
+    diag('mic', 'listen-on', { context: contextRef.current });
     void logMicPermission('listen-on');
     void logAudioInputs('listen-on');
 
@@ -149,7 +169,7 @@ export function useVoiceControl({
     // hidden, and recognition stopped -- with nothing on screen to say so,
     // because the screen was off. That is precisely "the mic doesn't stay
     // active", and it is the most mundane explanation available for it.
-    void requestWakeLock();
+    void requestWakeLock('voice');
 
     const controller = createVoiceController({
       createRecognition: browserRecognition,
@@ -160,7 +180,7 @@ export function useVoiceControl({
       onTranscript: (heard, offered) => transcriptRef.current?.(heard, offered) ?? null,
       biasPhrases,
       processLocally,
-      log: (event, detail) => diag('mic', event, { ...detail, context }),
+      log: (event, detail) => diag('mic', event, { ...detail, context: contextRef.current }),
       hasWorked: micHasWorked,
       onWorked: markMicWorked,
       onState: (state) => setStatus((prev) => ({ ...prev, state })),
@@ -169,8 +189,8 @@ export function useVoiceControl({
         // Kept so the vocabulary can grow from evidence rather than from a
         // lucky glance at the screen mid-drill, which is how "stant" was
         // found and is not a method that works while driving.
-        recordHeard(heard, verdict, context);
-        diag('heard', 'utterance', { heard, verdict, context });
+        recordHeard(heard, verdict, contextRef.current);
+        diag('heard', 'utterance', { heard, verdict, context: contextRef.current });
 
         // Only a short utterance earns a cue. A rejected sentence was someone
         // talking, and chiming at every one of those in a moving car would be
@@ -199,7 +219,7 @@ export function useVoiceControl({
     // Deafen the microphone whenever the app talks. Registered only while
     // listening, so nothing pays for this when voice is off.
     setSpeechActivityListener((ms, text) => {
-      diag('speak', 'deafen', { ms, said: text, context });
+      diag('speak', 'deafen', { ms, said: text, context: contextRef.current });
       // A chime reports no text, and must not count as a new utterance: the
       // cue below IS a chime, so counting it would start the next generation
       // and re-arm the cue it just gave -- the same self-sustaining deafness
@@ -221,11 +241,11 @@ export function useVoiceControl({
       if (document.visibilityState === 'hidden') return;
       // Re-taking the lock matters as much as restarting: the browser drops a
       // screen wake lock whenever the page is hidden and does not give it back.
-      void requestWakeLock();
+      void requestWakeLock('voice');
       controller.resume(reason);
     };
     const onVisible = () => {
-      diag('mic', 'visibility', { state: document.visibilityState, context });
+      diag('mic', 'visibility', { state: document.visibilityState, context: contextRef.current });
       if (document.visibilityState === 'visible') wake('visible')();
     };
     const onOnline = wake('online');
@@ -250,7 +270,7 @@ export function useVoiceControl({
         state: controller.state(),
         visibility: document.visibilityState,
         online: navigator.onLine,
-        context,
+        context: contextRef.current,
       });
     }, HEARTBEAT_MS);
 
@@ -275,7 +295,7 @@ export function useVoiceControl({
      */
     const onPageHide = () => {
       if (controllerRef.current) {
-        diag('mic', 'stop-pagehide', { context });
+        diag('mic', 'stop-pagehide', { context: contextRef.current });
         controller.stop();
       }
     };
@@ -290,8 +310,8 @@ export function useVoiceControl({
       setSpeechActivityListener(null);
       controller.stop();
       controllerRef.current = null;
-      void releaseWakeLock();
-      diag('mic', 'listen-off', { context });
+      void releaseWakeLock('voice');
+      diag('mic', 'listen-off', { context: contextRef.current });
       setStatus(IDLE);
     };
     // `biasPhrases` is intentionally absent: callers build the list inline, so
