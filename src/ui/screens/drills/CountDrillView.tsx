@@ -45,6 +45,7 @@ import {
   NO_TAG_YET,
   NO_COUNT_YET,
   NO_COUNT_YET_CHECKPOINT,
+  NO_ANSWER_YET,
   DID_YOU_HAVE_IT,
   DECLINED_ANOTHER,
   SAY_YES_AGAIN,
@@ -1183,7 +1184,10 @@ export function CountDrillView({
     // RT#12: a checkpoint takes a running count too, and eyes-free it must be
     // sayable -- a checkpoint you can only answer by typing would make the
     // whole feature unavailable in the car, which is the case it matters in.
-    if (phase !== 'answering' && phase !== 'checkpoint') return null;
+    // 'distraction' too: it asks for a number out loud and then waits for
+    // one. Refusing the transcript here was half of what made that phase
+    // answerable only by typing.
+    if (phase !== 'answering' && phase !== 'checkpoint' && phase !== 'distraction') return null;
     const readings = offered.length > 0 ? offered : [heard];
 
     // Every reading is tried, best first. Over a car microphone "minus three"
@@ -1334,8 +1338,45 @@ export function CountDrillView({
         else if (action === 'no') sayBack(DECLINED_ANOTHER, true);
         return;
 
-      // 'flashing', 'selfcheck' and 'distraction' are the app's turn to talk.
-      // A command there has nothing to act on, and answering one would talk
+      /*
+       * 'distraction': the same propose-and-confirm gate the count uses.
+       *
+       * This phase used to sit in the default case below, under a comment
+       * calling it "the app's turn to talk". It is the opposite: the stream
+       * is PAUSED and an arithmetic question has been asked out loud. With
+       * the transcript refused as well (see interpretCountSpeech), the only
+       * way to answer was the NumPad -- so the distraction drill, whose
+       * whole point is rehearsing the count under interruption while
+       * driving, could not be completed without looking at the phone.
+       */
+      case 'distraction':
+        if (action === 'yes') {
+          if (pendingCount === null) {
+            sayBack(NO_ANSWER_YET, true);
+            return;
+          }
+          const confirmed = pendingCount;
+          setPendingCount(null);
+          handleDistractionSubmit(confirmed);
+          return;
+        }
+        if (action === 'no') {
+          setPendingCount(null);
+          if (distraction) sayBack(distraction.prompt, true);
+          return;
+        }
+        if (action === 'repeat') {
+          sayBack(
+            pendingCount === null
+              ? (distraction?.prompt ?? '')
+              : narrateReadback(pendingCount),
+            true,
+          );
+        }
+        return;
+
+      // 'flashing' and 'selfcheck' really are the app's turn to talk. A
+      // command there has nothing to act on, and answering one would talk
       // over the cards being counted.
       default:
         return;
@@ -1362,6 +1403,12 @@ export function CountDrillView({
     commit: (value) => {
       setPendingCount(null);
       if (phaseRef.current === 'checkpoint') handleCheckpointSubmit(value);
+      // A DISTRACTION IS A QUESTION. The stream is paused, the arithmetic
+      // has been said out loud, and nothing moves until a number arrives --
+      // and the only input that could supply one was the on-screen NumPad.
+      // In the car that means picking the phone up mid-run, in the drill
+      // whose entire subject is holding a count while interrupted.
+      else if (phaseRef.current === 'distraction') handleDistractionSubmit(value);
       else if (countdownMode) handleTagGuess(Math.max(-1, Math.min(1, value)) as -1 | 0 | 1);
       else handleRcSubmit(value);
     },
@@ -1398,6 +1445,9 @@ export function CountDrillView({
     switch (phaseRef.current) {
       case 'answering':
       case 'checkpoint':
+      // The arithmetic answer is a number like any other, so it is walked
+      // and committed by the same entry -- see wheelNumber's commit.
+      case 'distraction':
         setPendingCount(wheelNumber.press(command));
         return;
       // "Did you have it?" -- two outcomes, two buttons, and no ambiguity

@@ -295,3 +295,71 @@ test('a number spoken mid-flash is not taken as an answer', async ({ page }) => 
   expect(await spoken(page)).not.toContain('Correct?');
   await expect(page.locator('.manual-tap-zone')).toBeVisible();
 });
+
+/* ---------------------------------------------------------------------- */
+/* F2: the distraction asked out loud and refused to hear the answer       */
+/* ---------------------------------------------------------------------- */
+
+/** The arithmetic on screen, evaluated -- "-3 - (-6)" and friends. */
+function solveDistraction(prompt: string): number {
+  const m = /^\s*(-?\d+)\s*([+\-×])\s*\(?(-?\d+)\)?\s*$/.exec(prompt);
+  if (!m) throw new Error(`unparsed distraction prompt: ${JSON.stringify(prompt)}`);
+  const a = Number(m[1]);
+  const b = Number(m[3]);
+  return m[2] === '+' ? a + b : m[2] === '-' ? a - b : a * b;
+}
+
+/**
+ * `interpretCountSpeech` returned null for every phase but 'answering' and
+ * 'checkpoint'. A distraction is spoken aloud in eyes-free and then waits
+ * for a number -- so the drill whose whole subject is holding a count while
+ * something interrupts you could not be finished without picking the phone
+ * up and typing on it.
+ */
+test('a distraction can be answered out loud', async ({ page }) => {
+  test.setTimeout(60_000);
+  await withFakeEngine(page);
+  await withProfile(page);
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
+  await withSettings(page, {
+    audio: { enabled: true, verbosity: 'full', answerPauseMs: 0 },
+    drill: {
+      countLengthCards: 6,
+      countGroup: 1,
+      countIntervalMs: 200,
+      countManual: false,
+      distractionFreq: 'relentless',
+    },
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
+  await page.locator('label', { hasText: 'Voice answers' }).locator('input').check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  await expect(page.locator('.distraction-area')).toBeVisible({ timeout: 20_000 });
+  const prompt = await page.locator('.distraction-prompt').innerText();
+  const answer = solveDistraction(prompt);
+
+  // Proposed and read back -- nothing is graded on hearing it, exactly as a
+  // running count is not.
+  await sayWhenListening(page, String(answer));
+  await expect.poll(async () => await spoken(page), { timeout: 8000 }).toContain('Correct?');
+
+  await sayWhenListening(page, 'yes');
+
+  // The drill moved on: relentless means another question is usually up
+  // within a moment, so what is asserted is that THIS one is finished.
+  await expect
+    .poll(
+      async () => {
+        if ((await page.locator('.distraction-area').count()) === 0) return true;
+        return (await page.locator('.distraction-prompt').innerText()) !== prompt;
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(true);
+});

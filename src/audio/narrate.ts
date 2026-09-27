@@ -384,6 +384,11 @@ export const NO_TAG_YET = `I have no tag yet. ${COUNTDOWN_TAG_PROMPT}`;
 export const NO_COUNT_YET = 'I have no count yet. What is it?';
 export const NO_COUNT_YET_CHECKPOINT = `I have no count yet. ${CHECKPOINT_PROMPT}`;
 export const NO_TRUE_COUNT_YET = 'I have no true count yet. What is it?';
+/** The distraction's arithmetic, confirmed before it is graded like every
+ *  other spoken number. Its own line rather than NO_COUNT_YET's: what is
+ *  being asked for is a sum, and calling it "the count" mid-run is the one
+ *  confusion this drill exists to create deliberately. */
+export const NO_ANSWER_YET = 'I have no answer yet. What is it?';
 export const DID_YOU_HAVE_IT = 'Did you have it?';
 export const DECLINED_ANOTHER = 'Okay. Say yes when you want another.';
 export const DECLINED_NEXT = 'Okay. Say yes when you want the next one.';
@@ -399,6 +404,7 @@ export const VOICE_CONVERSATION_LINES: readonly string[] = [
   NO_COUNT_YET,
   NO_COUNT_YET_CHECKPOINT,
   NO_TRUE_COUNT_YET,
+  NO_ANSWER_YET,
   DID_YOU_HAVE_IT,
   DECLINED_ANOTHER,
   DECLINED_NEXT,
