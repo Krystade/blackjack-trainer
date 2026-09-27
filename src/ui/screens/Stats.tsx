@@ -33,6 +33,7 @@ import { CHANNEL_BASE_CAP, FLUENT_MS } from '../../drills/spacedRepetition';
 import { formatInterval, hasCurve, retentionByGap, wilson } from '../../store/retentionCurve';
 import { Stepper } from './Settings';
 import './sr.css';
+import { strategyRulesFor } from '../../store/profiles';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -341,6 +342,10 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   const [tab, setTab] = useState<StatsTab>('play');
   const [range, setRange] = useState<TimeRange>({ id: 'all' });
   const now = Date.now();
+  // The rules the app GRADES with, which is the profile's rules plus its
+  // surrender-index flag. Read once so the sections below cannot disagree
+  // with each other about which set of indices this profile studies.
+  const gradedRules = strategyRulesFor(activeProfile);
   const inRange = <T extends { date?: string }>(xs: readonly T[]): T[] =>
     filterByRange(xs, range, now);
   // V3-5: latency rows carry a date now, so they answer the range picker like
@@ -506,13 +511,20 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   // `generateAllCells().length` (not a hardcoded literal -- see srStatus.ts's
   // own header comment) is the flashcard universe's live size, so this
   // denominator can never silently drift if the cell universe's shape ever
-  // changes; the quiz universe is always `indexSetFor(...).length` (18,
-  // stable across rulesets). Reuses the same `now` every other section on
-  // this screen already agrees on (declared once, above).
+  // changes. Reuses the same `now` every other section on this screen
+  // already agrees on (declared once, above).
+  //
+  // THE QUIZ UNIVERSE IS NOT ALWAYS 18. The comment here used to say it was
+  // "stable across rulesets", and the denominator was read off the bare
+  // `activeProfile.rules`, which cannot carry the surrender-index flag. With
+  // the flag on the quiz draws from 24 and writes `sur*` keys into this very
+  // deck, so a learner who had studied twenty of them was told "18 of 18
+  // studied" over a box histogram summing to twenty, and a lapsed surrender
+  // index appeared in "Most often forgotten" as the raw key `sur15v10`.
   const flashSrSummary = summarizeSrDeck(loadFlashSr(), generateAllCells().length, now);
-  const quizSrSummary = summarizeSrDeck(loadQuizSr(), indexSetFor(activeProfile.rules).length, now);
+  const quizSrSummary = summarizeSrDeck(loadQuizSr(), indexSetFor(gradedRules).length, now);
   const quizLabelFor = (key: string) =>
-    indexSetFor(activeProfile.rules).find((d) => d.id === key)?.label ?? key;
+    indexSetFor(gradedRules).find((d) => d.id === key)?.label ?? key;
 
   // ET3 (docs/BACKLOG.md, bet/sit/leave): overall accuracy + a dedicated LEAVE
   // figure — leaving is the novel, hardest axis (R5's wong-out only covers
@@ -864,7 +876,11 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
               </tr>
             </thead>
             <tbody>
-              {indexSetFor(activeProfile.rules).map((dev) => {
+              {/* Every index the profile is GRADED on, which with surrender
+                  indices on is 24 rather than 18. The six Fab 4 tallies were
+                  being written to `perIndex` and then had no row to appear
+                  in. */}
+              {indexSetFor(gradedRules).map((dev) => {
                 const tally = stats.perIndex[dev.id];
                 return (
                   <tr key={dev.id}>

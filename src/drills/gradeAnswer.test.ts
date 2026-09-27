@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { drawFlashcard, generateAllCells } from './flashcards';
 import type { Flashcard } from './flashcards';
-import { drawQuizItem } from './deviationQuiz';
+import { drawQuizItem, quizCtxFor } from './deviationQuiz';
 import type { QuizItem } from './deviationQuiz';
 import {
   buildFlashcardEvent,
@@ -27,6 +27,7 @@ import { EMPTY_STATS } from '../store/types';
 import { applyEvents } from '../store/stats';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import { correctPlay } from '../engine/strategy';
+import { drillLegalActions } from './legalActions';
 import type { Card, Rank } from '../engine/cards';
 import type { Action } from '../engine/deviations';
 
@@ -692,5 +693,116 @@ describe('graded answers are dated (V3-5)', () => {
     expect(loadStats().latencyHistory.at(-1)!.date).toBe(stamp);
     // ...and the mastery source survives being spread over.
     expect(event.source).toBe('mastery');
+  });
+});
+
+/* ---------------------------------------------------------------------- */
+/* RV3: the draw and the grade have to agree about what was on the table   */
+/* ---------------------------------------------------------------------- */
+
+describe('the grader asks the same question the draw asked', () => {
+  const RULES = { ...DEFAULT_RULES, surrenderIndices: true };
+
+  /**
+   * B1. `drawQuizItem` asks a Fab 4 item with surrender AVAILABLE -- it has
+   * to, or the engine can never return the play the item is about -- and
+   * `item.correct` is `surrender`. The grader computed its expectation with
+   * `canSurrender: false` hardcoded, so the correct answer was marked wrong
+   * at every true count, on a feedback card printing "expected: surrender".
+   */
+  it('marks a correct surrender correct, on a surrender index', () => {
+    let checked = 0;
+    for (let seed = 1; seed <= 60; seed += 1) {
+      const item = drawQuizItem(seed, 'sur15v10', RULES);
+      if (item.correct !== 'surrender') continue;
+      checked += 1;
+      const right = gradeQuizAnswer(item, 'surrender', RULES, 100, {}, 0);
+      expect(
+        right.event.correct,
+        `tc=${item.tc}: answered surrender, item says ${item.correct}, graded wrong`,
+      ).toBe(true);
+      const wrong = gradeQuizAnswer(item, 'hit', RULES, 100, {}, 0);
+      expect(wrong.event.correct, `tc=${item.tc}: hitting scored on a surrender index`).toBe(
+        false,
+      );
+    }
+    // Vacuity guard: `sur15v10` surrenders at TC >= 0 and the draw spreads
+    // the count either side of the index, so roughly half the seeds must
+    // land on the deviation side. Zero means the loop asserted nothing.
+    expect(checked, 'no surrender item was ever drawn, so this proves nothing').toBeGreaterThan(5);
+  });
+
+  /**
+   * ...and the same item on the other side of its index, where the correct
+   * play is `hit`, must still grade. A fix that simply turned surrender on
+   * everywhere would pass the test above and fail this one.
+   */
+  it('still grades the non-deviation side of a surrender index', () => {
+    let checked = 0;
+    for (let seed = 1; seed <= 60; seed += 1) {
+      const item = drawQuizItem(seed, 'sur15v10', RULES);
+      if (item.correct === 'surrender') continue;
+      checked += 1;
+      const graded = gradeQuizAnswer(item, item.correct as string, RULES, 100, {}, 0);
+      expect(graded.event.correct, `tc=${item.tc}: the item's own answer was graded wrong`).toBe(
+        true,
+      );
+    }
+    expect(checked, 'every draw was on the deviation side').toBeGreaterThan(5);
+  });
+
+  /**
+   * B2. The action bar is built from the legal actions for the hand, but the
+   * item is asked under a ctx of the draw's choosing. An action the ctx
+   * excludes can never be the graded-correct answer -- offering it is a
+   * button that is always wrong, and 16 v 10 at TC -2 on the DEFAULT profile
+   * lit Surrender while the quiz graded `hit`.
+   */
+  it('never grades an answer the item could not have been asked with', () => {
+    for (const rules of [
+      { ...DEFAULT_RULES, surrenderIndices: false },
+      { ...DEFAULT_RULES, surrenderIndices: true },
+    ]) {
+      for (let seed = 1; seed <= 200; seed += 1) {
+        const item = drawQuizItem(seed, undefined, rules, 40);
+        if (!item.cards) continue;
+        const ctx = quizCtxFor(item, rules);
+        const offered = drillLegalActions(item.cards, rules).filter(
+          (a) => ctx.canSurrender || a !== 'surrender',
+        );
+        expect(
+          offered,
+          `seed ${seed}: the correct answer is ${item.correct}, which is not on offer`,
+        ).toContain(item.correct);
+      }
+    }
+  });
+
+  /**
+   * B3. "No index applies here -- basic strategy" is a claim, and
+   * `isBasicOnly` is the only thing behind it. It asked with surrender
+   * unavailable, where a Fab 4 index can never fire, so the cells that carry
+   * one passed: 16 v 8 at TC +6 -- the highest-value surrender index there
+   * is -- was presented under that sentence with `hit` graded correct.
+   */
+  it('puts no index-bearing cell behind "no index applies"', () => {
+    const rules = { ...DEFAULT_RULES, surrenderIndices: true };
+    const ctxOn = { canDouble: true, canSplit: true, canSurrender: true };
+    let checked = 0;
+    const wrong: string[] = [];
+    for (let seed = 1; seed <= 400; seed += 1) {
+      const item = drawQuizItem(seed, '16v9', rules, 100);
+      if (!item.isDistractor || !item.cards) continue;
+      checked += 1;
+      const played = correctPlay(item.cards, item.up, item.tc, ctxOn, rules);
+      if (played.source !== 'basic') {
+        wrong.push(`tc=${item.tc} v ${item.up}: ${played.reason ?? played.source}`);
+      }
+    }
+    expect(checked, 'no distractor was drawn, so this proves nothing').toBeGreaterThan(20);
+    expect(
+      wrong.slice(0, 5),
+      `distractors sit on live index cells: ${wrong.slice(0, 5).join('; ')}`,
+    ).toEqual([]);
   });
 });

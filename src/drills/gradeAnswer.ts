@@ -26,6 +26,7 @@ import type { StrategyRules } from '../engine/ruleset';
 import type { Action } from '../engine/deviations';
 import type { Flashcard } from './flashcards';
 import type { QuizItem } from './deviationQuiz';
+import { quizCtxFor } from './deviationQuiz';
 import { reviewCard, isGapReview, SCREEN_CHANNEL } from './spacedRepetition';
 import type { AnswerChannel } from './spacedRepetition';
 import type { SrCard, SrDeck } from './spacedRepetition';
@@ -271,9 +272,19 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: StrategyRul
     };
   }
 
-  // canSurrender: false must match drawQuizItem's ctx (deviationQuiz.ts) so the
-  // grader agrees with item.correct — see the deviation-quiz surrender-masking fix.
-  const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: false };
+  /*
+   * THE CTX THE ITEM WAS DRAWN UNDER, asked for rather than restated.
+   *
+   * This was a hardcoded `canSurrender: false`, with a comment saying it
+   * matched the draw. It did, until the draw learned `ctxFor(entry)` for the
+   * Fab 4 and this did not: a surrender index is drawn with surrender
+   * available and `item.correct` is `surrender`, while the expectation
+   * computed here came from a world where surrender does not exist. The
+   * learner answered surrender, was marked wrong, and read "expected:
+   * surrender" on the card that marked them -- at every true count, in both
+   * directions, for the whole feature.
+   */
+  const ctx: PlayContext = quizCtxFor(item, rules);
   const withCount = correctPlay(item.cards, item.up, item.tc, ctx, rules);
   const basicOnly = basicPlay(item.cards, item.up, ctx, rules);
   // See buildFlashcardEvent: a shot-clock timeout is not one of the five plays.

@@ -9,6 +9,7 @@ import { handValue } from '../../../engine/hand';
 import { PlayingCard } from '../../components/PlayingCard';
 import { useAudio } from '../../../audio/useAudio';
 import { loadStats, saveStats } from '../../../store/persist';
+import { strategyRulesFor } from '../../../store/profiles';
 
 const ROUNDS = 25; // length of a downswing session (v1)
 const SOLO_SEATS: SeatConfig = { bots: 0, playerHands: 1, playerPosition: 0, botMistakePct: 0 };
@@ -78,7 +79,11 @@ export function DownswingView({
       spread: activeProfile.spread,
       bankrollStart: activeProfile.bankrollStart,
       countCheckEvery: 0,
-      rules: activeProfile.rules,
+      // The drill plays real hands and grades them against the table, and
+      // the table grades with `strategyRulesFor` (useGame.ts). The bare
+      // rules here meant surrender indices were on at the table and off in
+      // the drill built to rehearse it.
+      rules: strategyRulesFor(activeProfile),
       seats: SOLO_SEATS,
     };
     const built = buildDownswingScript(ROUNDS, randomSeed());

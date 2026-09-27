@@ -10,7 +10,7 @@ import { formatSrCard } from '../../drills/srStatus';
 import { drillLegalActions } from '../../drills/legalActions';
 import { gateDrillAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
-import { drawQuizItem } from '../../drills/deviationQuiz';
+import { drawQuizItem, quizCtxFor } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
 // R4 (docs/BACKLOG.md, interleaved mixed-session mode): the ONE shared grade
 // path -- gradeFlashcardAnswer/gradeQuizAnswer back the standalone
@@ -976,6 +976,26 @@ function quizFilterArg(quizIndex: DeviationId | 'all'): DeviationId | undefined 
 }
 
 /**
+ * The actions a quiz item may be answered with.
+ *
+ * NOT simply the legal actions for the hand. A quiz item is asked under a
+ * `PlayContext` chosen by the draw -- surrender off for hard index items, so
+ * that basic surrender cannot mask the stand index being studied; surrender
+ * on for a Fab 4 item, which is about surrender. An action the item's ctx
+ * excludes can never be the graded-correct answer, so offering it is
+ * offering a button that is always wrong: 16 v 10 at TC -2 on the default
+ * profile lit Surrender, and surrendering was recorded as a basic-error
+ * while the table and the chart both said surrender.
+ */
+function quizLegalActions(item: QuizItem, activeProfile: Profile): Action[] {
+  if (!item.cards) return [];
+  const rules = strategyRulesFor(activeProfile);
+  const ctx = quizCtxFor(item, rules);
+  const legal = drillLegalActions(item.cards, rules);
+  return ctx.canSurrender ? legal : legal.filter((a) => a !== 'surrender');
+}
+
+/**
  * Get the active quiz filter, falling back to 'all' if the saved index is
  * inactive in the current ruleset.
  */
@@ -1513,7 +1533,7 @@ function DeviationQuizView({
           <ActionBar
             mode={{
               kind: 'actions',
-              legal: drillLegalActions(item.cards, activeProfile.rules),
+              legal: quizLegalActions(item, activeProfile),
               onAction: handleAnswer }}
           />
         )
@@ -1606,7 +1626,13 @@ function MixedSessionView({
       item: drawQuizItem(
         randomSeed(),
         quizFilterArg(activeFilter),
-        activeProfile.rules,
+        // THE SAME RULES THE FILTER WAS VALIDATED AGAINST, two lines up.
+        // `getActiveQuizFilter` uses `strategyRulesFor`, so with surrender
+        // indices on it accepts `sur15v10` -- and passing the bare rules
+        // here handed that id to a draw whose index set does not contain
+        // it. `drawQuizItem` throws on an unknown id, and this call is a
+        // `useState` initialiser, so the throw took the whole screen.
+        strategyRulesFor(activeProfile),
         settings.drill.quizDistractorPct,
         quizSrRef.current,
         Date.now(),
@@ -1731,7 +1757,10 @@ function MixedSessionView({
       flashSrRef.current = result.nextDeck;
       return { correct: result.event.correct, correctAction: result.correctAction, event: result.event };
     }
-    const result = gradeQuiz(current.item, taken, activeProfile.rules, elapsedMs, quizSrRef.current, Date.now());
+    // ...AND GRADED AGAINST THEM TOO. The standalone quiz grades with
+    // `strategyRulesFor`; grading a surrender index with the bare rules
+    // marks a correct surrender wrong.
+    const result = gradeQuiz(current.item, taken, strategyRulesFor(activeProfile), elapsedMs, quizSrRef.current, Date.now());
     quizSrRef.current = result.nextDeck;
     return { correct: result.event.correct, event: result.event };
   };
@@ -1959,7 +1988,13 @@ function MixedSessionView({
               // `handCards` is non-null on this branch (the insurance case is
               // the branch immediately above), so the hand is always the real
               // two-card hand the legality rules expect.
-              legal: drillLegalActions(handCards ?? [], activeProfile.rules),
+              //
+              // A quiz item answers to the ctx it was drawn under, exactly as
+              // in the standalone quiz; a flashcard is an ordinary hand.
+              legal:
+                current.type === 'quiz'
+                  ? quizLegalActions(current.item, activeProfile)
+                  : drillLegalActions(handCards ?? [], activeProfile.rules),
               onAction: handleAnswer }}
           />
         )

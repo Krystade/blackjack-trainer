@@ -69,6 +69,23 @@ function ctxFor(entry: Deviation): PlayContext {
   return entry.kind === 'surrender' ? QUIZ_CTX_SURRENDER : QUIZ_CTX;
 }
 
+/**
+ * The ctx an ITEM was drawn under, for everyone downstream of the draw.
+ *
+ * The grader and the action bar both need the same answer as `ctxFor`, and
+ * both used to hardcode their own: the grader's was `canSurrender: false`
+ * for every item, and the action bar's came from `rules.ls`. One derivation,
+ * from the item.
+ *
+ * A distractor carries no `deviationId` and is by construction a cell where
+ * no index applies, so it takes the ordinary hard ctx.
+ */
+export function quizCtxFor(item: QuizItem, rules: StrategyRules): PlayContext {
+  if (!item.deviationId) return QUIZ_CTX;
+  const entry = indexSetFor(rules).find((d) => d.id === item.deviationId);
+  return entry ? ctxFor(entry) : QUIZ_CTX;
+}
+
 /** tc uniform in [threshold-2, threshold+2] -- the original per-entry tc spread. */
 function tcNearThreshold(threshold: number, rng: () => number): number {
   const tcMin = threshold - 2;
@@ -120,6 +137,31 @@ function shuffled<T>(arr: T[], rng: () => number): T[] {
 function isBasicOnly(cards: [Card, Card], up: Rank, tc: number, rules: StrategyRules): { ok: boolean; action: Action } {
   const withCount = correctPlay(cards, up, tc, QUIZ_CTX, rules);
   const basicOnly = basicPlay(cards, up, QUIZ_CTX, rules);
+  /*
+   * ...AND AT THE TABLE THE OPERATOR IS ACTUALLY SITTING AT.
+   *
+   * This check is the only thing behind the sentence "No index applies here
+   * -- basic strategy", and it asked ONLY under `QUIZ_CTX`, where surrender
+   * does not exist and a Fab 4 index therefore cannot fire. Every cell that
+   * carries one passed: the quiz put 16 v 8 at TC +6 on screen -- the
+   * highest-value surrender index in the set -- printed that sentence over
+   * it, and graded `hit` correct.
+   *
+   * Comparing count-play with basic-play under the surrender ctx is not
+   * enough either: on 16 v 9 the basic play WITH surrender is surrender and
+   * `sur16v9` also says surrender, so they agree and the cell still looks
+   * clean -- while the item the operator sees says `hit`.
+   *
+   * So the cell has to be plain basic BOTH ways, and both ways have to give
+   * the same answer. A cell that fails that is one where the quiz would be
+   * teaching a play the table contradicts.
+   */
+  if (rules.ls) {
+    const atTable = correctPlay(cards, up, tc, QUIZ_CTX_SURRENDER, rules);
+    if (atTable.source !== 'basic' || atTable.action !== basicOnly.action) {
+      return { ok: false, action: basicOnly.action };
+    }
+  }
   return { ok: withCount.action === basicOnly.action, action: basicOnly.action };
 }
 
@@ -222,6 +264,36 @@ function buildRandomCandidate(rng: () => number, rules: StrategyRules): Candidat
   return null;
 }
 
+/**
+ * A distractor cell for `entry` that no index claims, found by walking the
+ * count outwards from the wrong side of the threshold.
+ *
+ * Every step is verified with `isBasicOnly`, the same check every other
+ * candidate passes. If nothing in range is clean -- which would mean the
+ * cell carries indices at every count the quiz asks about -- the wrong-side
+ * count is returned anyway, because a distractor that looks slightly wrong
+ * is better than a throw inside a drill; the caller's own label is derived
+ * from `isBasicOnly` either way.
+ */
+function fallbackCandidate(
+  entry: Deviation,
+  rng: () => number,
+  rules: StrategyRules,
+): Candidate | null {
+  const cards = entry.kind === 'pair10' ? makePair10Cards() : makeHardHand(entry.total!, rng)!;
+  const up = entry.up!;
+  const first = tcWrongSide(entry, rng);
+  const tries = [first, ...[1, 2, 3, 4, 5, 6].flatMap((d) => [first - d, first + d])];
+  for (const tc of tries) {
+    if (tc < -10 || tc > 10) continue;
+    if (isBasicOnly(cards, up, tc, rules).ok) return { cards, up, tc };
+  }
+  // Nothing on this cell is clean at any count the quiz asks about. Saying
+  // so is the point: the caller draws a real item rather than printing a
+  // claim that is false.
+  return null;
+}
+
 const NO_INDEX_LABEL = 'No index applies here — basic strategy.';
 
 function distractorLabel(near?: Deviation): string {
@@ -247,7 +319,7 @@ function buildDistractorItem(
   pinnedEntry: Deviation | undefined,
   rules: StrategyRules,
   deviationSet: readonly Deviation[],
-): QuizItem {
+): QuizItem | null {
   const activeEntries = deviationSet.filter((d) => d.active);
   const baseEntry = pinnedEntry ?? activeEntries[Math.floor(rng() * activeEntries.length)]!;
 
@@ -281,20 +353,55 @@ function buildDistractorItem(
     // through to a CLOSE candidate from baseEntry below instead of throwing.
   }
 
-  const candidate =
-    baseEntry.kind === 'pair10'
-      ? buildClosePair10Candidate(baseEntry, rng, rules)
-      : buildCloseHardCandidate(baseEntry, rng, rules);
+  /*
+   * TRIED PROPERLY BEFORE GIVING UP. Each call shuffles its three
+   * perturbations and takes the first that verifies; one call is one pass,
+   * and with the stricter check above a single pass can plausibly miss on a
+   * cell like 16 v 9 where the neighbours are ambiguous too. Eight passes
+   * costs nothing (it is arithmetic on two cards) and turns "no clean
+   * distractor found" back into what it should be -- rare.
+   */
+  let candidate: Candidate | null = null;
+  for (let attempt = 0; attempt < 8 && candidate === null; attempt += 1) {
+    candidate =
+      baseEntry.kind === 'pair10'
+        ? buildClosePair10Candidate(baseEntry, rng, rules)
+        : buildCloseHardCandidate(baseEntry, rng, rules);
+  }
 
-  const resolved: Candidate =
-    candidate ?? {
-      // Guaranteed-safe last resort: identical total/up to baseEntry, tc
-      // pushed to the wrong side of its threshold. No two Illustrious 18
-      // entries share a (total, up) pair, so no OTHER active deviation can
-      // apply here either.
-      cards: baseEntry.kind === 'pair10' ? makePair10Cards() : makeHardHand(baseEntry.total!, rng)!,
-      up: baseEntry.up!,
-      tc: tcWrongSide(baseEntry, rng) };
+  /*
+   * THE LAST RESORT, WHICH IS NOT GUARANTEED AND IS NOW CHECKED.
+   *
+   * This was documented as safe on the grounds that "no two Illustrious 18
+   * entries share a (total, up) pair" -- which RV3 ended, as the comment on
+   * `buildCloseHardCandidate` above already says: `sur16v9` sits on the
+   * same cell as the `16v9` stand index. So when the bounded search failed,
+   * this branch put the operator on a cell where a surrender index fires
+   * and labelled it "No index applies here". It was the ONE candidate path
+   * with no engine verification behind it, and with surrender indices on it
+   * was reached often enough to be most of the distractors for `16v9`.
+   *
+   * It is now tried like any other candidate, and if it is not clean the
+   * search widens outwards from the threshold until it finds a count where
+   * nothing fires. `tcWrongSide` stays the first choice so the distractor
+   * still looks like the spot being studied.
+   */
+  /*
+   * ...AND NO LAST RESORT THAT LIES.
+   *
+   * There used to be a "guaranteed-safe" fallback here: same total and up
+   * as the studied entry, count pushed to the wrong side, justified by "no
+   * two Illustrious 18 entries share a (total, up) pair". RV3 ended that --
+   * `sur16v9` sits on the same cell as the `16v9` stand index -- so the one
+   * candidate path with no engine verification behind it was the one that
+   * printed "no index applies" over a cell carrying an index.
+   *
+   * `fallbackCandidate` walks the count outwards looking for a clean one.
+   * If even that fails, the honest answer is that this index has no clean
+   * distractor near it, and the caller draws a REAL item instead.
+   */
+  const resolved: Candidate | null = candidate ?? fallbackCandidate(baseEntry, rng, rules);
+  if (resolved === null) return null;
 
   return {
     cards: resolved.cards,
@@ -359,7 +466,11 @@ export function drawQuizItem(
   }
 
   if (distractorPct > 0 && rng() * 100 < distractorPct) {
-    return buildDistractorItem(rng, entry, rules, deviationSet);
+    // `null` when no cell near this index is plain basic strategy both in
+    // the quiz's ctx and at the table -- see buildDistractorItem. A real
+    // item is always available, so the drill continues.
+    const distractor = buildDistractorItem(rng, entry, rules, deviationSet);
+    if (distractor) return distractor;
   }
 
   // No filter: pick an entry from the active ruleset's set, weighted by SR

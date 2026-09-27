@@ -230,14 +230,36 @@ test('the flashcard panel denominator is the live cell count, not a frozen liter
   await expect(flash).toContainText(`of ${expected} flashcards studied`);
 });
 
-test('the deviation-quiz panel denominator is the live Illustrious-18 count', async ({ page }) => {
-  await withProfile(page);
+test('the deviation-quiz panel denominator is the live index count', async ({ page }) => {
+  await withProfile(page, { surrenderIndices: false });
   await seedSrDeck(page, 'bjtrainer.quizsr.v1', { '16v10': card({ box: 1 }) });
   await page.goto('/?e2e=1');
   await openStatsProgressTab(page);
 
   const quiz = quizSection(page);
   await expect(quiz).toContainText('of 18 deviation-quiz items studied');
+});
+
+/**
+ * ...AND IT MOVES. The test above pinned the literal 18 against a default
+ * profile, which is the frozen-literal failure `srStatus.ts`'s own header
+ * warns about, reintroduced by the test rather than the code: the quiz
+ * universe is 24 for a profile with surrender indices on, and the panel went
+ * on reporting "18 of 18 studied" over a histogram summing to twenty.
+ */
+test('the deviation-quiz denominator grows with the profile that grades them', async ({ page }) => {
+  await withProfile(page, { surrenderIndices: true });
+  await seedSrDeck(page, 'bjtrainer.quizsr.v1', {
+    '16v10': card({ box: 1 }),
+    sur15v10: card({ box: 1 }),
+  });
+  await page.goto('/?e2e=1');
+  await openStatsProgressTab(page);
+
+  const quiz = quizSection(page);
+  await expect(quiz).toContainText('of 24 deviation-quiz items studied');
+  // ...and a studied surrender index is named, not printed as its raw key.
+  await expect(quiz).not.toContainText('sur15v10');
 });
 
 test('the panels follow the active theme instead of a hardcoded palette', async ({ page }) => {
