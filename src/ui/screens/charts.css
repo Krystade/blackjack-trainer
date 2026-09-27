@@ -69,7 +69,14 @@
    * scroller that actually moves) that silently cost .charts-note its whole
    * reason for existing. `clip` clips the same pixels and creates no
    * scrollport, so sticky resolves against the real scroller.
+   *
+   * Declared twice on purpose: `clip` is Safari 16+, and an engine that does
+   * not know it drops the line. Without the `hidden` underneath, such a
+   * phone would be left with no overflow rule at all and the sideways scroll
+   * this is here to prevent -- it loses the sticky note instead, which is
+   * the right thing to lose.
    */
+  overflow-x: hidden;
   overflow-x: clip;
 }
 
