@@ -6,6 +6,7 @@ import type { Screen } from '../App';
 import type { Profile, Settings, Stats as StatsData } from '../../store/types';
 import { EMPTY_STATS } from '../../store/types';
 import { filterByRange, RANGE_LABEL } from '../../store/timeRange';
+import { pct, clockGap } from './statsFormat';
 import type { RangeId, TimeRange } from '../../store/timeRange';
 import { loadStats, saveStats, loadSettings, exportAll, importAll } from '../../store/persist';
 import {
@@ -82,11 +83,6 @@ const MISTAKE_LABELS: Record<Exclude<MistakeClass, 'correct'>, string> = {
   'wrong-anyway': 'Wrong either way',
   timeout: 'Ran out of time',
   'self-report': 'Admitted misses (eyes-free)' };
-
-function pct(right: number, total: number): string {
-  if (total === 0) return '—';
-  return `${Math.round((right / total) * 100)}%`;
-}
 
 function formatSigned(n: number): string {
   return n >= 0 ? `+${n}` : String(n);
@@ -448,16 +444,26 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   // Cycle-4 per-drill telemetry (docs/research/2026-07-21-priority-list.md
   // item 8): same slice(-5).reverse() "recent runs" idiom as the count
   // drill's recentRuns above, one precomputed block per new drill.
-  const trueCountSummary = summarize(stats.trueCount.history);
-  const trueCountBreakdown = signedErrorBreakdown(stats.trueCount.history);
-  const trueCountRecent = stats.trueCount.history.slice(-5).reverse();
+  // THROUGH THE RANGE PICKER, like everything around them.
+  //
+  // These six read their full history while the sections above and below
+  // them were filtered, so "Last 7 days" produced a screen where some
+  // figures answered the question and some answered a different one, with
+  // nothing on screen saying which was which. Every row here has carried a
+  // `date` since it was first written; only the read was missing.
+  const trueCountRows = inRange(stats.trueCount.history);
+  const trueCountSummary = summarize(trueCountRows);
+  const trueCountBreakdown = signedErrorBreakdown(trueCountRows);
+  const trueCountRecent = trueCountRows.slice(-5).reverse();
 
-  const deckEstSummary = summarize(stats.deckEstimation.history);
-  const deckEstRecent = stats.deckEstimation.history.slice(-5).reverse();
+  const deckEstRows = inRange(stats.deckEstimation.history);
+  const deckEstSummary = summarize(deckEstRows);
+  const deckEstRecent = deckEstRows.slice(-5).reverse();
 
-  const timedCountSummary = summarize(stats.timedCount.history);
-  const timedCountBest = bestSecondsPerDeck(stats.timedCount.history);
-  const timedCountRecent = stats.timedCount.history.slice(-5).reverse();
+  const timedCountRows = inRange(stats.timedCount.history);
+  const timedCountSummary = summarize(timedCountRows);
+  const timedCountBest = bestSecondsPerDeck(timedCountRows);
+  const timedCountRecent = timedCountRows.slice(-5).reverse();
 
   // V3-8 (docs/BACKLOG.md, "decision drills grade strictly binary"): what the
   // mistakes actually COST, ranked by total units lost rather than by how
@@ -480,12 +486,24 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
     range.id === 'all' ? 0 : stats.evCost.history.filter((r) => !r.date).length;
   const evCost = evCostSummary(evCostRows);
   const totalMistakes = MISTAKE_ORDER.reduce((sum, cls) => sum + stats.mistakes[cls], 0);
-  const unpricedMistakes = Math.max(0, totalMistakes - evCost.priced);
+  /*
+   * ONLY ON "ALL TIME", because only there do the two numbers describe the
+   * same set of answers.
+   *
+   * `stats.mistakes` is an undated tally -- a running counter, not a log --
+   * so it cannot be windowed, while `evCost.priced` counts the priced rows
+   * INSIDE the selected range. Subtracting one from the other in a bounded
+   * range reported most of a lifetime of mistakes as "further mistakes"
+   * belonging to the last seven days, and the narrower the window the worse
+   * the overstatement got.
+   */
+  const unpricedMistakes =
+    range.id === 'all' ? Math.max(0, totalMistakes - evCost.priced) : 0;
 
   // D1 part 2 (docs/BACKLOG.md, distraction training): answer accuracy and
   // count-survival are reported separately -- see distractionSummary's own
   // header comment for why they're independent failure modes.
-  const distractionSum = distractionSummary(stats.distraction.history);
+  const distractionSum = distractionSummary(inRange(stats.distraction.history));
 
   // R8/TS#6 (docs/BACKLOG.md, pair-cancellation): overall accuracy plus a
   // dedicated figure for genuine cancelling pairs (the canonical chunk) --
@@ -539,14 +557,14 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   // ET3 (docs/BACKLOG.md, bet/sit/leave): overall accuracy + a dedicated LEAVE
   // figure — leaving is the novel, hardest axis (R5's wong-out only covers
   // bet vs sit), so it's worth seeing on its own.
-  const bslHistory = stats.betSitLeave.history;
+  const bslHistory = inRange(stats.betSitLeave.history);
   const bslAttempts = bslHistory.length;
   const bslCorrect = bslHistory.filter((h) => h.correct).length;
   const bslLeaveRows = bslHistory.filter((h) => h.correctAction === 'leave');
   const bslLeaveCorrect = bslLeaveRows.filter((h) => h.correct).length;
 
   // ET1 (V3-1): downswing sessions ridden out + spread-conformity through them.
-  const downswingHistory = stats.downswing.history;
+  const downswingHistory = inRange(stats.downswing.history);
   const downswingSessions = downswingHistory.length;
   const downswingConformCorrect = downswingHistory.reduce((s, h) => s + h.correct, 0);
   const downswingConformTotal = downswingHistory.reduce((s, h) => s + h.total, 0);
@@ -561,9 +579,14 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   // challenge — both dated per-run accuracy), grouped into sessions by the
   // configurable gap. Front-half vs back-half accuracy within a session reveals
   // the vigilance decrement — does your count slip late in a long session?
+  // The FILTERED rows on both sides. This array mixed an unfiltered
+  // countDrill history with an unfiltered timedCount history while
+  // `countHistory` twenty lines above was filtered -- so the same runs were
+  // counted two different ways on one screen, and "am I drifting this week"
+  // was answered from every run ever recorded.
   const countingResults: DatedResult[] = [
-    ...stats.countDrill.history.map((h) => ({ date: h.date, correct: h.correct })),
-    ...stats.timedCount.history.map((h) => ({ date: h.date, correct: h.correct })),
+    ...countHistory.map((h) => ({ date: h.date, correct: h.correct })),
+    ...timedCountRows.map((h) => ({ date: h.date, correct: h.correct })),
   ];
   const fatigueOpts = { gapMs: fatigueGapMin * 60 * 1000, minPerSession: 6 };
   const fatigue = fatigueDrift(countingResults, fatigueOpts);
@@ -832,7 +855,12 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                 </p>
               );
             }
-            const gap = Math.round((u.right / un - t.right / tn) * 100);
+            // The verdict, and whether there IS one -- see statsFormat's
+            // clockGap. This used to state the difference as fact off one
+            // answer per bucket, three lines under a comment warning that a
+            // figure "off two cards would invite exactly the wrong
+            // conclusion".
+            const verdict = clockGap(t, u);
             return (
               <>
                 <div className="category-list">
@@ -856,15 +884,11 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                     </div>
                   ))}
                 </div>
-                <p className="stats-detail">
-                  {gap > 0
-                    ? `You are ${gap} points better without the clock. That gap is the part of your
-                       score the deadline is taking, not the part you have yet to learn.`
-                    : gap < 0
-                      ? `You are ${-gap} points better WITH the clock — unusual, and usually a
-                         sign the untimed sample is small or came from a different stretch of
-                         practice.`
-                      : 'The clock is costing you nothing measurable.'}
+                <p
+                  className="stats-detail"
+                  data-clock-verdict={verdict.distinguishable ? 'stated' : 'too-few'}
+                >
+                  {verdict.text}
                 </p>
               </>
             );

@@ -513,3 +513,80 @@ test('a history with no checkpoints says nothing about them, rather than claimin
   await expect(page.getByText(/Checkpoints held/)).toHaveCount(0);
   await expect(page.getByText(/after drifting/)).toHaveCount(0);
 });
+
+/* ---------------------------------------------------------------------- */
+/* G1: a window that half the screen ignores is worse than no window       */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * One row 200 days old and one from today, in three sections that each read
+ * their history through a different path -- a summarize(), a bare length,
+ * and a summary helper. All three were reading the FULL history while the
+ * sections around them were filtered.
+ */
+async function seedDatedStats(page: Page): Promise<void> {
+  const day = 24 * 60 * 60 * 1000;
+  const old = new Date(Date.now() - 200 * day).toISOString();
+  const today = new Date().toISOString();
+  await withStats(page, {
+    trueCount: {
+      history: [
+        { date: old, runningCount: 6, decksRemaining: 3, guess: 2, correctTc: 2, correct: true },
+        { date: today, runningCount: 6, decksRemaining: 2, guess: 1, correctTc: 3, correct: false },
+      ],
+    },
+    betSitLeave: {
+      history: [
+        { date: old, taken: 'bet', correctAction: 'bet', correct: true },
+        { date: today, taken: 'sit', correctAction: 'leave', correct: false },
+      ],
+    },
+    distraction: {
+      history: [
+        { date: old, kind: 'near-count', answerCorrect: true, countKept: true },
+        { date: today, kind: 'near-count', answerCorrect: false, countKept: false },
+      ],
+    },
+  });
+}
+
+/** `?e2e=1` forces every <details> open, so a section only needs finding. */
+function section(page: Page, title: string) {
+  return page.locator('.stats-section', { hasText: title }).first();
+}
+
+/** The value cell of a named row inside a section. */
+function rowValue(page: Page, title: string, label: string) {
+  return section(page, title).locator('.mistake-row', { hasText: label }).locator('span').last();
+}
+
+test('the range picker reaches the sections that were reading lifetime totals', async ({
+  page,
+}) => {
+  await seedDatedStats(page);
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Stats' }).first().click();
+
+  // All time: both rows, everywhere.
+  await statsTab(page, 'Drills');
+  await expect(section(page, 'True count drill')).toContainText('1/2');
+  await expect(rowValue(page, 'Distraction', 'Attempts')).toHaveText('2');
+  await statsTab(page, 'Play');
+  await expect(rowValue(page, 'Bet / sit / leave', 'Decisions')).toHaveText('2');
+
+  // ...and the same window has to reach all three, or the screen is showing
+  // two different questions answered side by side with nothing saying which
+  // figure is which.
+  await page.getByRole('button', { name: 'Last 7 days', exact: true }).click();
+  await expect(rowValue(page, 'Bet / sit / leave', 'Decisions')).toHaveText('1');
+  await statsTab(page, 'Drills');
+  await expect(
+    section(page, 'True count drill'),
+    'the true-count section ignored the window',
+  ).toContainText('0/1');
+  await expect(rowValue(page, 'Distraction', 'Attempts')).toHaveText('1');
+
+  // And back, so this is a filter and not a one-way door.
+  await page.getByRole('button', { name: 'All time', exact: true }).click();
+  await expect(section(page, 'True count drill')).toContainText('1/2');
+});
