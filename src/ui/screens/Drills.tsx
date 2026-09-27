@@ -10,7 +10,7 @@ import { formatSrCard } from '../../drills/srStatus';
 import { drillLegalActions } from '../../drills/legalActions';
 import { gateDrillAnswer, gateQuizAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
-import { drawQuizItem, quizLegalActions } from '../../drills/deviationQuiz';
+import { drawQuizItem, quizLegalActions, tableMaskNote } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
 // R4 (docs/BACKLOG.md, interleaved mixed-session mode): the ONE shared grade
 // path -- gradeFlashcardAnswer/gradeQuizAnswer back the standalone
@@ -1453,6 +1453,8 @@ function DeviationQuizView({
     context: 'deviation-quiz',
   });
 
+  const maskNote = tableMaskNote(item, strategyRulesFor(activeProfile));
+
   // Desktop keyboard input (operator request): while an answer is awaited,
   // number keys feed the SAME handler a tap would use -- handleAnswer in
   // visual mode, handleZoneAnswer in eyes-free mode -- so grading/stats/
@@ -1672,6 +1674,11 @@ function DeviationQuizView({
               />
             )}
             <div className="quiz-label">{item.label}</div>
+            {/* Which table the question was asked for. Screen only -- see
+                tableMaskNote: it is a fact about the cell, not about the
+                answer, and the correction is already the longest thing the
+                car has to listen to. */}
+            {maskNote && <div className="quiz-table-note">{maskNote}</div>}
           </>
         )}
       </div>

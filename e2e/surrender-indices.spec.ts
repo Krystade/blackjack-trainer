@@ -318,3 +318,58 @@ test('a mixed session gates a quiz item the way the quiz does', async ({ page })
   expect(joined).toContain("isn't part of this question");
   expect(joined).not.toMatch(/Correct\.|Wrong\./);
 });
+
+/* ---------------------------------------------------------------------- */
+/* Round 6C: the flag outliving the rule, and the index the table overrules */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * C1. The editor greys the checkbox out when late surrender is off, but that
+ * is display only -- nothing rewrites the stored flag, and an imported or
+ * hand-edited profile never passed through the editor at all. A profile
+ * carrying both therefore listed six surrender indices for a table where
+ * surrender cannot be taken, and the grader would have marked one correct.
+ */
+test('a table with no late surrender is offered no surrender indices', async ({ page }) => {
+  await withProfile(page, { surrenderIndices: true, rules: { ls: false } });
+  await openDeviationQuiz(page);
+  const texts = await indexOptions(page).allTextContents();
+
+  expect(
+    texts.filter((t) => /surrender at TC/.test(t)),
+    'the Fab 4 were drillable at a table that cannot surrender',
+  ).toEqual([]);
+  // ...and the eighteen that do not depend on surrender are all still there,
+  // so this is a gate and not an outage.
+  expect(texts.length).toBeGreaterThan(15);
+});
+
+/**
+ * C2. The quiz asks every non-surrender index with surrender OFF, so that
+ * basic surrender cannot mask the 16/15-vs-high-card STAND cells. At a
+ * profile that DOES allow surrender that is a different table from the one
+ * the operator plays -- 16 v 9 is a surrender from TC 0 up there, and the
+ * stand index does not begin until +4 -- so the drill teaches a play the
+ * table penalises. The engine is right; the sentence was missing.
+ */
+test('an index the operator table overrules says so, and one it does not stays quiet', async ({
+  page,
+}) => {
+  await withProfile(page, { surrenderIndices: true });
+  await withSettings(page, { drill: { quizIndex: '16v9' } });
+  await openDeviationQuiz(page);
+  await page.locator('.action-bar button.action-btn:not([disabled])').first().click();
+
+  const note = page.locator('.quiz-table-note');
+  await expect(note, 'the quiz taught a play the table overrules, silently').toBeVisible();
+  await expect(note).toContainText('surrender');
+
+  // The guard: a cell both tables play the same way must not carry it, or
+  // the note is decoration rather than information.
+  await withProfile(page, { surrenderIndices: true });
+  await withSettings(page, { drill: { quizIndex: '12v3' } });
+  await openDeviationQuiz(page);
+  await page.locator('.action-bar button.action-btn:not([disabled])').first().click();
+  await expect(page.locator('.quiz-label')).toBeVisible();
+  await expect(page.locator('.quiz-table-note')).toHaveCount(0);
+});

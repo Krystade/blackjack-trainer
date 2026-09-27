@@ -344,5 +344,20 @@ export function setActiveProfile(id: string): void {
  * would be wrong to bend by the count.
  */
 export function strategyRulesFor(profile: Profile): StrategyRules {
-  return { ...profile.rules, surrenderIndices: profile.surrenderIndices === true };
+  return {
+    ...profile.rules,
+    /*
+     * AND the table's own rule, because an index cannot recommend a play the
+     * table does not offer. The Fab 4 are surrender indices; at `ls: false`
+     * every one of them is advice to take a play that does not exist, and
+     * the grader would mark it correct.
+     *
+     * The stored flag is left exactly as the user set it -- this is a read,
+     * not a migration -- so turning late surrender back on restores their
+     * choice rather than silently having cleared it. The editor greys the
+     * checkbox out in this state but only for display; nothing rewrites the
+     * profile, and an imported one never passed through the editor at all.
+     */
+    surrenderIndices: profile.surrenderIndices === true && profile.rules.ls,
+  };
 }

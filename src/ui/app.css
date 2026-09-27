@@ -1286,6 +1286,24 @@ button {
   padding: 0 1rem;
 }
 
+/*
+ * The regime caveat under the index label. Quieter than the correction and
+ * louder than the label: it is a standing property of the cell, so it must
+ * not compete with the verdict, but a learner who skims past it memorises a
+ * play their own table penalises.
+ */
+.quiz-table-note {
+  margin: 0.35rem 1rem 0;
+  padding: 0.4rem 0.55rem;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 5px 5px 0;
+  background: var(--surface);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  text-align: left;
+  color: var(--ink);
+}
+
 /* ---------- Report screen ---------- */
 
 .report-screen {

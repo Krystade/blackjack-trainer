@@ -111,6 +111,41 @@ export function quizLegalActions(item: QuizItem, rules: StrategyRules): Action[]
   return ctx.canSurrender ? legal : legal.filter((a) => a !== 'surrender');
 }
 
+/**
+ * The sentence that says which table this question was asked for, or null
+ * when it was asked for the learner's own.
+ *
+ * Every non-surrender index is drilled with surrender OFF (QUIZ_CTX, and the
+ * long comment above it says why). At a profile that allows late surrender
+ * that is a different table from the one the operator plays, and for the
+ * three 16/15-vs-high-card cells it is a different ANSWER at every count the
+ * index covers -- so the drill's correct play is one the table would mark
+ * wrong. Unsaid, the quiz teaches a play it will then penalise.
+ *
+ * Derived rather than listed: ask the engine what the same hand is at the
+ * same count with surrender available, and say something only when the two
+ * disagree. A cell the count moves for the same reason at both tables (12 v
+ * 3, say) stays silent, and if the index data ever changes the sentence
+ * follows it without being edited.
+ */
+export function tableMaskNote(item: QuizItem, rules: StrategyRules): string | null {
+  // Insurance is offered identically at both tables; a distractor is plain
+  // basic strategy and carries no index to be masked.
+  if (!item.cards || !item.deviationId) return null;
+  // No surrender at this table either: the drill's regime IS the table's.
+  if (!rules.ls) return null;
+  const asked = quizCtxFor(item, rules);
+  // A Fab 4 item is asked WITH surrender, because it is about surrender.
+  if (asked.canSurrender) return null;
+
+  const atTable = correctPlay(item.cards, item.up, item.tc, { ...asked, canSurrender: true }, rules);
+  if (atTable.action === item.correct) return null;
+  return (
+    `Your table allows surrender, where this hand is a ${atTable.action} at this count. ` +
+    `This index is the play when surrender is not on offer.`
+  );
+}
+
 /** tc uniform in [threshold-2, threshold+2] -- the original per-entry tc spread. */
 function tcNearThreshold(threshold: number, rng: () => number): number {
   const tcMin = threshold - 2;
