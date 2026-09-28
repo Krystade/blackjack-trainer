@@ -53,6 +53,22 @@ test('a condition without Bluetooth walks past every wheel step', async ({ page 
   await expect(page.getByTestId('fieldtest-progress')).toContainText(
     `of ${base - wheelSteps.length}`,
   );
+  // ...and the run's own boundary row counts the path, not the table.
+  // (Polled: the log flushes to storage once a second.)
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+          return raw
+            ? (JSON.parse(raw) as { event: string; detail?: Record<string, unknown> }[])
+                .filter((e) => e.event === 'run-start')
+                .map((e) => e.detail?.steps)
+            : [];
+        }),
+      { message: 'run-start under speakerphone counts the wheel steps it skips', timeout: 5_000 },
+    )
+    .toEqual([base - wheelSteps.length]);
 
   const seen = await walk(page);
   for (const id of wheelSteps) expect(seen, `${id} was shown with no car to press into`).not.toContain(id);

@@ -189,7 +189,9 @@ test('the button tester names each press and lists what never arrived', async ({
   await expect(section.locator('.car-press-row')).toHaveCount(3);
   await expect(section).toContainText('Skip forward. Goes FORWARD: start, answer, plus one, “I had it”.');
   await expect(section).toContainText('Pause. Ignored — the car sends this by itself.');
-  await expect(section).toContainText('Play. Ignored — the car sends this by itself.');
+  await expect(section).toContainText(
+    'Play. Never moves the drill — the car sends this by itself; it only re-plays a lapsed hold.',
+  );
 
   // And the more useful half: what this wheel never emitted.
   const unheard = section.locator('.settings-row', { hasText: 'Never arrived' });

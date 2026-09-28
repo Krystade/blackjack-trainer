@@ -144,6 +144,18 @@ export interface FieldTestRun {
   /** Cells whose dormant probes are on the path. See `FieldTestStep.probe`. */
   armedProbes?: string[];
   /**
+   * When the run's setup last stopped asking for the microphone (epoch ms),
+   * absent while it has not been up, or is up now.
+   *
+   * RUN STATE, NOT SCREEN STATE. Every after sample carries "how long since
+   * the app let go", and the screen kept that clock in a ref -- so a
+   * Pause/Resume or a reload inside the after block started a fresh
+   * component with no edge to see, and every later sample said the
+   * microphone had never been up. The pause is a gap in the run; it is not
+   * the microphone opening again.
+   */
+  micClosedAt?: number;
+  /**
    * Whether this run was ENDED on purpose, rather than merely stepped out of.
    *
    * `stopFieldTestRun` and `pauseFieldTestRun` wrote the identical object, so
@@ -238,13 +250,12 @@ function coerceAnswers(v: unknown): Record<string, RouteAnswer[]> | undefined {
     const kept: RouteAnswer[] = [];
     for (const a of list) {
       if (typeof a !== 'object' || a === null) continue;
-      const { id, via, marks, mic } = a as Record<string, unknown>;
+      const { id, via, marks } = a as Record<string, unknown>;
       if (typeof id !== 'string' || (via !== 'tap' && via !== 'voice')) continue;
       kept.push({
         id,
         via,
         ...(typeof marks === 'string' ? { marks } : {}),
-        ...(typeof mic === 'string' ? { mic } : {}),
       });
     }
     if (kept.length > 0) out[k] = kept;
@@ -253,14 +264,26 @@ function coerceAnswers(v: unknown): Record<string, RouteAnswer[]> | undefined {
 }
 
 /**
- * Hold an index inside the step list.
- *
- * No longer per-condition: every condition runs every step now. The split was
- * mine and it is what left the operator on a freeway with no wheel steps to
- * run -- "I never said I wanted to completely drop using the buttons."
+ * Hold an index inside the step list. The list is one for every condition;
+ * which of its steps are on a given run's path is `onPath`'s question, and
+ * `snapToPath` is what keeps the pointer on one.
  */
 function clampToRun(index: number): number {
   return Math.min(Math.max(index, 0), FIELD_TEST_STEPS.length - 1);
+}
+
+/**
+ * The nearest step on the path at or after `index`, or before it if nothing
+ * follows. The path can change under a pointer -- the picker sits on the
+ * gate beside Resume, so "pause on a wheel step, pick Speakerphone, Resume"
+ * is one tap away -- and a pointer left where it was resumed onto a wheel
+ * step of a leg with no car, with the ordinal repeating the previous step's
+ * number and a stamp the count could never reach.
+ */
+function snapToPath(index: number, run: FieldTestPath): number {
+  if (onPath(index, run)) return index;
+  const forward = nextActiveIndex(index, 1, run);
+  return forward !== index ? forward : nextActiveIndex(index, -1, run);
 }
 
 /**
@@ -358,6 +381,7 @@ function coerce(raw: unknown): FieldTestRun {
       delete stamps[k];
     }
   }
+  const armedProbes = coerceStrings(r.armedProbes);
   return {
     // NEVER RESTORED AS ACTIVE, and this is a privacy rule rather than a
     // tidiness one. `mic-route` declares `voice: true`, so a run restored
@@ -369,7 +393,7 @@ function coerce(raw: unknown): FieldTestRun {
     // the stamps survive, so Resume costs one deliberate tap.
     active: false,
     condition,
-    stepIndex: clampToRun(index),
+    stepIndex: snapToPath(clampToRun(index), { condition, armedProbes }),
     stamps: prunedStamps(stamps, condition),
     // CARRIED THROUGH THE RELOAD. Dropping it here would make the field
     // pointless: the mid-drive reload is the case it exists for.
@@ -380,9 +404,11 @@ function coerce(raw: unknown): FieldTestRun {
     beforeHandedBack: r.beforeHandedBack === true ? true : undefined,
     // Carried through the reload -- that is the whole point of persisting it.
     answerByVoice: r.answerByVoice === true ? true : undefined,
+    micClosedAt:
+      typeof r.micClosedAt === 'number' && Number.isFinite(r.micClosedAt) ? r.micClosedAt : undefined,
     // Carried through the reload: the reload is the result it records.
     answers: coerceAnswers(r.answers),
-    armedProbes: coerceStrings(r.armedProbes),
+    armedProbes,
     lockProbe:
       typeof r.lockProbe === 'object' &&
       r.lockProbe !== null &&
@@ -613,18 +639,28 @@ export function setFieldTestLockProbe(
   write({ ...current, lockProbe: marker });
 }
 
+/** Record when the setup stopped asking for the microphone, or that it is up again. */
+export function setFieldTestMicClosedAt(at: number | null): void {
+  const current = readFieldTestRun();
+  if ((current.micClosedAt ?? null) === at) return;
+  write({ ...current, micClosedAt: at ?? undefined });
+}
+
 /**
  * Turn the spoken answer channel on or off for this run.
  *
- * Logged rather than silently written, because it changes what the run
- * MEASURES: on a step that does not itself ask for the microphone, answering
- * out loud opens one, and an open microphone is what flips the phone to the
- * car's hands-free profile. Anyone reading the export has to be able to see
- * where in the run that started.
+ * Logged rather than silently written, because it changes what a transcript
+ * MEANS: with it on, a word heard on a step whose setup has the microphone
+ * open (and is not itself the evidence, as on `mic-heard`) is taken as an
+ * answer. It opens nothing -- the channel listens only where the protocol
+ * already has the microphone open (§0.1) -- but anyone reading the export
+ * has to be able to see where that started; `run-start`/`run-resume` carry
+ * what each run ran with.
  */
 export function setFieldTestAnswerByVoice(on: boolean): void {
   const current = readFieldTestRun();
   if ((current.answerByVoice === true) === on) return;
+  // A gate row, unjoined for the same reason as `condition-changed`.
   diag('test', 'answer-by-voice', { on, atStep: current.stepIndex });
   write({ ...current, answerByVoice: on ? true : undefined });
 }
@@ -769,10 +805,10 @@ export function stopFieldTestRun(): void {
 /**
  * Step out of a run without ending it.
  *
- * Identical in effect to `stopFieldTestRun` today, and named separately
- * because the two mean opposite things to the operator and will not stay
- * identical: stopping is "this run is over", pausing is "I am going to look
- * at something else for a minute".
+ * Named separately from `stopFieldTestRun` because the two mean opposite
+ * things to the operator: stopping is "this run is over" (it stamps
+ * `endedAt`), pausing is "I am going to look at something else for a
+ * minute" (it keeps the run resumable).
  *
  * WHY IT HAD TO EXIST. Pause used to log a line and navigate, leaving
  * `active: true` in module state. `readFieldTestRun` returns that object
@@ -813,6 +849,9 @@ export function pauseFieldTestRun(): void {
 export function setFieldTestCondition(condition: string): void {
   const current = readFieldTestRun();
   if (current.condition === condition) return;
+  // A GATE ROW, deliberately unjoined: written where the switch and the
+  // condition live, which is between runs as often as inside one. What a
+  // run actually ran with is on its own `run-start`/`run-resume`.
   diag('test', 'condition-changed', {
     from: current.condition,
     to: condition,
@@ -821,7 +860,11 @@ export function setFieldTestCondition(condition: string): void {
     // describe -- see `countStampedSteps`.
     stamped: countStampedSteps(current.stamps, current.condition),
   });
-  write({ ...current, condition });
+  write({
+    ...current,
+    condition,
+    stepIndex: snapToPath(current.stepIndex, { condition, armedProbes: current.armedProbes }),
+  });
 }
 
 export function goToFieldTestStep(index: number): void {
@@ -934,7 +977,8 @@ export function advanceFieldTestStep(): void {
     const [key, ids] = cell;
     const v = routeBlockVerdict(ids, current.answers ?? {}, current.condition);
     const site = FIELD_TEST_STEPS.find((s) => s.probe === key);
-    const arm = v.verdict !== 'uniform' && site !== undefined && !current.armedProbes?.includes(key);
+    const armedEarlier = current.armedProbes?.includes(key) === true;
+    const arm = v.verdict !== 'uniform' && site !== undefined && !armedEarlier;
     diag('test', 'route-block', {
       cell: key,
       steps: ids.join(', '),
@@ -942,7 +986,11 @@ export function advanceFieldTestStep(): void {
       verdict: v.verdict,
       classes: v.classes.join(', '),
       answers: v.answers.join(', '),
+      // `armed`: this row put the probes on the path. `probesOnPath`: they
+      // are on it, whichever row did it -- a re-scored block's last row can
+      // say `uniform, armed=false` with four probe answers already behind it.
       armed: arm,
+      probesOnPath: arm || armedEarlier,
       ...(site ? { probe: site.id } : {}),
     });
     if (arm) current = { ...current, armedProbes: [...(current.armedProbes ?? []), key] };

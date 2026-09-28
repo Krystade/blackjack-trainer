@@ -181,6 +181,50 @@ async function answerable(page: Page, stepId: string): Promise<void> {
   await page.waitForTimeout(400);
 }
 
+/**
+ * THE APP'S OWN INSTRUCTION IS NOT AN ANSWER. `wheel-with-mic` has no line,
+ * so its instruction is read aloud with the microphone open. Echoed back by
+ * the car it went to the answer matcher -- and while "skip" was a synonym
+ * for `missed` it stamped the step and started the after block before the
+ * press it was asking for. Now it is heard as the app: no stamp, and no
+ * not-understood chime on the one step whose own comment says a chime and
+ * nothing reads as a dead microphone.
+ */
+test('the read-aloud instruction echoed back is heard as the app, not stamped as an answer', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await openTest(page, { byVoice: true });
+  await goToStep(page, 'wheel-with-mic');
+  await expect
+    .poll(
+      async () =>
+        (await entries(page)).some(
+          (e) => e.event === 'instruction-spoken' && e.detail.step === 'wheel-with-mic',
+        ),
+      { timeout: 20_000 },
+    )
+    .toBe(true);
+  // Past the suppression window, as an echo off the car speakers can be.
+  await page.waitForTimeout(5_000);
+  await hear(page, 'the microphone is still on press skip forward again');
+
+  await expect
+    .poll(
+      async () =>
+        (await entries(page)).some(
+          (e) => e.event === 'heard-own-voice' && e.detail.step === 'wheel-with-mic',
+        ),
+      { timeout: 5_000 },
+    )
+    .toBe(true);
+  expect(
+    (await entries(page)).filter((e) => e.event === 'answer-unmatched'),
+    'the echo went to the matcher and chimed not-understood',
+  ).toHaveLength(0);
+  await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', 'wheel-with-mic');
+});
+
 test('a spoken answer stamps the step, and says it was spoken', async ({ page }) => {
   await openTest(page, { byVoice: true });
   await goToStep(page, 'mic-route');
@@ -195,10 +239,6 @@ test('a spoken answer stamps the step, and says it was spoken', async ({ page })
   const stamped = (await answersIn(page)).find((e) => e.detail.answer === 'route-car')!;
   expect(stamped.detail.step).toBe('mic-route');
   expect(stamped.detail.via, 'nothing in the log says this answer was spoken').toBe('voice');
-  // `mic-route` declares `voice: true`: the microphone that heard this was the
-  // protocol's own, so the answer cost the experiment nothing. The export
-  // says whose it was.
-  expect(stamped.detail.mic).toBe('protocol');
 
   // Answering IS finishing the step, by voice exactly as by thumb.
   await expect(page.getByTestId('fieldtest-title')).not.toHaveText(
@@ -327,29 +367,37 @@ test('an answer from another step is not accepted here', async ({ page }) => {
 });
 
 /**
- * On a step that asked for the microphone itself, a spoken answer costs the
- * experiment nothing -- and the record has to say which of the two it was,
- * or the two cannot be separated when the run is read.
+ * THE RUN'S OWN ROWS CARRY THE SWITCH. The `answer-by-voice` row is written
+ * from the gate, between runs as often as inside one; `run-start` and
+ * `run-resume` are the rows joined to the run, and the logger's test only
+ * shows it writes what it is handed.
  */
-test('on a microphone step the answer is recorded as free, not as a perturbation', async ({
-  page,
-}) => {
+test('run-start and run-resume say the run answers out loud', async ({ page }) => {
   await openTest(page, { byVoice: true });
-  await goToStep(page, 'mic-route-2');
-  await answerable(page, 'mic-route-2');
-
-  await sayUntilHeard(page, 'that one came from the car');
-
   await expect
-    .poll(async () => (await answersIn(page)).map((e) => e.detail.answer))
-    .toContain('route-car');
-  const stamped = (await answersIn(page)).find((e) => e.detail.answer === 'route-car')!;
-  expect(stamped.detail.step).toBe('mic-route-2');
-  expect(stamped.detail.via).toBe('voice');
-  expect(
-    stamped.detail.mic,
-    'a step that opens the microphone itself was blamed for the answer channel',
-  ).toBe('protocol');
+    .poll(async () => (await entries(page)).find((e) => e.event === 'run-start')?.detail.answerByVoice, {
+      timeout: 5_000,
+    })
+    .toBe(true);
+  await page.getByTestId('fieldtest-skip').click();
+  await page.getByTestId('fieldtest-pause').click();
+  await page.getByTestId('fieldtest-open').click();
+  await page.getByTestId('fieldtest-resume').click();
+  await expect(page.getByTestId('fieldtest-title')).toBeVisible();
+  await expect
+    .poll(async () => (await entries(page)).find((e) => e.event === 'run-resume')?.detail.answerByVoice, {
+      timeout: 5_000,
+    })
+    .toBe(true);
+});
+
+test('run-start says when the run does not answer out loud', async ({ page }) => {
+  await openTest(page, { byVoice: false });
+  await expect
+    .poll(async () => (await entries(page)).find((e) => e.event === 'run-start')?.detail.answerByVoice, {
+      timeout: 5_000,
+    })
+    .toBe(false);
 });
 
 /**

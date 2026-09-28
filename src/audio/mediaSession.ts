@@ -2,12 +2,14 @@
  * Show what is playing on a car head unit / lock screen, and let the
  * steering-wheel buttons drive it.
  *
- * REACHABLE ONLY VIA THE CLIPS PATH, and that is not an implementation
- * shortcut: `speechSynthesis` is not "media" as far as a phone OS is
- * concerned. It produces no media element, claims no audio focus, and never
- * appears in the now-playing UI, so there is nothing for Media Session to
- * attach to. The pre-rendered clips play through HTMLAudioElement, which is
- * real media, which is why only that path can offer this.
+ * REGISTERED FROM THE CLIPS PATH, the field test and the button tester --
+ * never from live TTS, and that is not an implementation shortcut:
+ * `speechSynthesis` is not "media" as far as a phone OS is concerned. It
+ * produces no media element and never appears in the now-playing UI, so
+ * there is nothing for Media Session to attach to. What carries the slot is
+ * a real element: a pre-rendered clip, or the silent loop in audioFocus.ts
+ * that the clips path and the field test hold for as long as they need the
+ * wheel.
  *
  * Everything here is defensive by design. `navigator.mediaSession` is absent
  * on some targets and PARTIAL on others: a browser can expose the object and
@@ -98,7 +100,7 @@ export function isWheelPress(action: string): boolean {
  * button called and what will it do" has exactly one answer in the codebase.
  */
 export const MEDIA_SESSION_LABEL: Record<MediaSessionAction, string> = {
-  play: 'Play. Ignored — the car sends this by itself.',
+  play: 'Play. Never moves the drill — the car sends this by itself; it only re-plays a lapsed hold.',
   pause: 'Pause. Ignored — the car sends this by itself.',
   stop: 'Stop. Ignored — the car sends this by itself.',
   previoustrack: 'Skip back. Goes BACK: repeat, minus one, “I missed it”.',
@@ -153,10 +155,10 @@ export function setMediaSessionProbe(fn: ((action: string) => void) | null): voi
  * after a `play`, once minutes later -- and they were wired to CANCEL SPEECH.
  * So the car has been able to cut a prompt off mid-sentence at a moment of
  * its own choosing, which from the driver's seat is indistinguishable from
- * the app having gone deaf or died. All three are now registered and inert:
- * registered, because refusing the slot hands it back to whatever was playing
- * before; inert, because a command the driver did not give should not move
- * the drill.
+ * the app having gone deaf or died. All three are registered and none moves
+ * the drill: registered, because refusing the slot hands it back to whatever
+ * was playing before; `play` alone re-plays a silent loop the app already
+ * holds (audioFocus.ts), which is the app staying where it was, not moving.
  *
  * That leaves the two real buttons, and they carry the whole vocabulary.
  * `nexttrack`/`seekforward` go FORWARD and `previoustrack`/`seekbackward` go
@@ -204,11 +206,15 @@ export function initMediaSession(handlers: MediaSessionHandlers): boolean {
         // Under test, the press is REPORTED and goes no further. Doing both
         // would mean learning what the ring's left click is called by having it
         // answer a drill question at the same time.
-        if (probe) {
-          probe(action);
-          return;
-        }
-        handler();
+        if (probe) probe(action);
+        // `play` PUTS A LAPSED HOLD BACK, probe or no probe. The car sends it
+        // precisely when it believes playback stopped -- when the silent loop
+        // has been paused out from under the app -- and an inert handler was
+        // throwing away the one request that would restore the slot. Done
+        // here rather than in the handler so the field test's wheel steps run
+        // with the behaviour the drills ship, which is what they measure.
+        if (action === 'play') reassertAudioFocus('play-request');
+        if (!probe) handler();
       });
       appendLog({ kind: 'register', action, ok: true });
       diag('wheel', 'register', { action, ok: true });
@@ -228,14 +234,9 @@ export function initMediaSession(handlers: MediaSessionHandlers): boolean {
   // Registered, and none of them touches the drill. See the note above: the
   // car sends these of its own accord, so acting on one moves the drill for a
   // press nobody made. The log entries are still written, which is how the
-  // next drive can show how often the car asks.
-  //
-  // `play` DOES ONE THING: it puts a lapsed hold back. The car sends it
-  // precisely when it believes playback stopped -- which is when the silent
-  // loop has been paused out from under the app -- and an inert handler was
-  // throwing away the one request that would have restored the slot. It
-  // speaks nothing, and starts nothing when the app holds nothing.
-  set('play', () => reassertAudioFocus());
+  // next drive can show how often the car asks. What `play` does to the
+  // media hold happens in the wrapper above, before the handler.
+  set('play', () => {});
   set('pause', () => {});
   set('stop', () => {});
   set('seekto', () => {});

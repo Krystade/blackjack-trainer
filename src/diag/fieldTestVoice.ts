@@ -17,8 +17,9 @@
  * THE LIMIT, stated plainly because the protocol is an experiment: opening
  * the microphone flips the phone to the car's hands-free profile, which is
  * the very thing several steps are measuring. So this channel never opens
- * one. It listens only on the steps that already declare `setup.voice` --
- * eight of thirty-one -- where the microphone is open regardless and a
+ * one. It listens only on the steps that already declare `setup.voice` and
+ * whose transcript is not itself the evidence -- seven of the thirty-two on
+ * a Bluetooth path -- where the microphone is open regardless and a
  * spoken answer costs the experiment nothing. The first version opened one
  * everywhere while the switch was on, which sampled the "before the
  * microphone" block with the microphone live and voided the leg without a
@@ -89,7 +90,10 @@ export const ANSWER_PHRASES: Readonly<Record<string, readonly string[]>> = {
   bad: ['that was wrong', 'was wrong', 'bad', 'no'],
   'nothing-to-report': ['nothing to report', 'all fine'],
   'lock-probe-done': ['unlocked', 'back', 'i am back'],
-  missed: ['missed', 'missed it', 'could not tell', 'skip'],
+  // Not "skip": on `wheel-with-mic` the instruction asks for the skip-forward
+  // button with the microphone open, and "I pressed skip, nothing happened"
+  // is not `missed`.
+  missed: ['missed', 'missed it', 'could not tell'],
 };
 
 /** Lowercase, strip everything that is not a letter, digit or space. */

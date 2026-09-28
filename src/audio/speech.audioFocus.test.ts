@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { hasClips, playClipsResumable } from './clips';
-import { speakAsync } from './speech';
-import { _resetAudioFocusForTest } from './audioFocus';
+import { speak, speakAsync } from './speech';
+import { _resetAudioFocusForTest, holdAudioFocus, releaseAllAudioFocus } from './audioFocus';
 import { clearDiagnosticLog, readDiagnosticLog } from '../diag/diagnosticLog';
 
 /**
@@ -82,12 +82,16 @@ afterEach(() => {
 });
 
 /**
- * THE SAME HOLD, ON THE PATH WITH NO CLIP. Every field-test instruction and
- * every line that has no phrase in the manifest is live `speechSynthesis`,
- * and that path re-asserted nothing: a silent loop the platform paused to
- * speak the line stayed paused after it, so `wheel-back` -- whose line is a
- * TTS instruction -- was dead for the same reason `wheel-gap` was suspected
- * to be, and the two could not be told apart.
+ * THE SAME RE-ASSERTION, ON THE PATH WITH NO CLIP. Every field-test
+ * instruction and every line that has no phrase in the manifest is live
+ * `speechSynthesis`, and that path re-asserted nothing: a silent loop the
+ * platform paused to speak the line stayed paused after it, so `wheel-back`
+ * -- whose line is a TTS instruction -- was dead for the same reason
+ * `wheel-gap` was suspected to be, and the two could not be told apart.
+ *
+ * A RE-ASSERTION ONLY. Whoever wants the slot across the line holds it; a
+ * live utterance with nobody holding must not start the loop, or the count
+ * drill's narration and the paused gate's cue become the active media app.
  */
 describe('the hold across live TTS', () => {
   class FakeUtterance {
@@ -116,9 +120,10 @@ describe('the hold across live TTS', () => {
     };
   });
 
-  it('is re-asserted once the utterance ends', async () => {
+  it('re-plays a held loop that lapsed under the utterance, once it ends', async () => {
+    holdAudioFocus('speech');
     const spoken = speakAsync('The microphone is still on. Press skip-forward again.');
-    expect(created, 'a live line took no hold at all').toHaveLength(1);
+    expect(created).toHaveLength(1);
     const el = created[0]!;
 
     // The platform pauses the silent loop to speak.
@@ -133,6 +138,36 @@ describe('the hold across live TTS', () => {
     expect(el.paused, 'the line ended and the app is no longer the active media app').toBe(
       false,
     );
+    expect(el.playCount).toBe(2);
+  });
+
+  it('takes no hold of its own when nobody holds one', async () => {
+    const spoken = speakAsync('Nine.');
+    endLine();
+    await spoken;
+    expect(created, 'a live line with no holder started the silent loop').toHaveLength(0);
+  });
+
+  /**
+   * The fire-and-forget twin is what the drills speak through, and its live
+   * path once had no completion hook at all -- so "Did you have it?" could
+   * leave the loop paused for the wheel entry that follows it. It speaks
+   * through `speakAsyncLive` now, the same retained, watched utterance as
+   * the awaited twin.
+   */
+  it('is re-asserted by speak() as well, and never taken by it', async () => {
+    speak('Did you have it?');
+    endLine();
+    expect(created, 'a live line with no holder started the silent loop').toHaveLength(0);
+
+    holdAudioFocus('speech');
+    const el = created[0]!;
+    speak('Did you have it?');
+    el.paused = true;
+    el.onpause?.();
+    endLine();
+    await Promise.resolve();
+    expect(el.paused, 'the line ended and the lapsed loop stayed paused').toBe(false);
     expect(el.playCount).toBe(2);
   });
 });
@@ -172,6 +207,30 @@ describe('the hold across a clip', () => {
     ).toBe(false);
     expect(el.playCount).toBe(2);
   });
+
+  /**
+   * A cancel settles the chain too, and the screen change that cancelled it
+   * has just released the hold. Taking one when the chain settled left the
+   * silent loop running on Settings, with the app the active media app on a
+   * screen that speaks nothing.
+   */
+  it('does not take the hold back when it was released while the clip was in flight', async () => {
+    let finishClip: (r: { played: boolean; remainder: string | null }) => void = () => {};
+    vi.mocked(playClipsResumable).mockReturnValue(
+      new Promise((resolve) => {
+        finishClip = resolve;
+      }),
+    );
+    const spoken = speakAsync('Basic hit versus dealer nine.');
+    const el = created[0]!;
+    releaseAllAudioFocus();
+    expect(el.paused).toBe(true);
+
+    finishClip({ played: false, remainder: null });
+    await spoken;
+    expect(el.paused, 'the settled chain re-took a hold nobody holds').toBe(true);
+    expect(created, 'the settled chain created a fresh loop').toHaveLength(1);
+  });
 });
 
 describe('the hold across a clip, on the fire-and-forget twin', () => {
@@ -206,5 +265,29 @@ describe('the hold across a clip, on the fire-and-forget twin', () => {
 
     expect(el.paused, 'a drill line ended and the wheel is dead until the next one').toBe(false);
     expect(el.playCount).toBe(2);
+  });
+
+  it('does not take the hold back on the twin either, when it was released in flight', async () => {
+    let finishClip: (r: { played: boolean; remainder: string | null }) => void = () => {};
+    vi.mocked(playClipsResumable).mockReturnValue(
+      new Promise((resolve) => {
+        finishClip = resolve;
+      }),
+    );
+    speak('Basic hit versus dealer nine.');
+    const el = created[0]!;
+    // The screen changes: the drill's cleanup cancels the line and App
+    // releases the hold, in the same flush.
+    releaseAllAudioFocus();
+    expect(el.paused).toBe(true);
+
+    finishClip({ played: false, remainder: null });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(el.paused, 'the settled chain re-took a hold nobody holds: the loop runs on Settings').toBe(
+      true,
+    );
+    expect(created).toHaveLength(1);
   });
 });

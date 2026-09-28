@@ -93,9 +93,11 @@ let element: HTMLAudioElement | null = null;
  * `play()` on an element that no tap ever started, and a refusal here is
  * silent -- the app simply is not the active media app and no button works,
  * which is indistinguishable from the bug this fixes. In practice the first
- * hold rides on a clip that is already playing (see speech.ts), which means
- * the media engine is unlocked by then. A refusal is logged rather than
- * thrown so a drill never dies for want of a wheel.
+ * hold rides on a clip that is already playing (see speech.ts) or on the
+ * field test's Start/Resume tap, which means the media engine is unlocked by
+ * then.
+ * A refusal is logged rather than thrown so a drill never dies for want of a
+ * wheel.
  *
  * Volume 1 and genuinely silent, not muted: a muted element is not reliably
  * treated as playing media, which would defeat the entire point.
@@ -234,23 +236,35 @@ export function audioFocusElementIsPlaying(): boolean {
 }
 
 /**
- * Put a lapsed hold back, if there is one. For the car's own `play`: the head
- * unit sends it whenever it thinks playback stopped, which is exactly when
- * the silent loop has been paused out from under a live hold -- and the one
- * request that would restore the slot used to be swallowed by an inert
- * handler. Starts nothing when nobody holds: a `play` with no holder is the
- * car asking for music, and that is not this app's to answer.
+ * Put a lapsed hold back, if there is one; add no holder and start nothing.
+ *
+ * Two callers. The car's own `play`: the head unit sends it whenever it
+ * thinks playback stopped, which is exactly when the silent loop has been
+ * paused out from under a live hold, and the one request that would restore
+ * the slot used to be swallowed by an inert handler. And the end of a live
+ * utterance (speech.ts): if the platform paused the loop to speak, nothing
+ * else restarts it, and the moment after a line is the moment a driver
+ * presses something. Neither is a claim on the slot -- a `play` with no
+ * holder is the car asking for music, and a drill narrating with no hold is
+ * not the active media app and must not become one here.
+ *
+ * A `restart` row when there is something to do (`why` says which caller),
+ * then the same `holding` or `refused` row a hold writes once `play()`
+ * settles -- so the reader can tell a restart that took from one that did
+ * not, with `refused why=` meaning the same thing on both. Nothing at all
+ * when there is nothing to do: the car can ask every five seconds for as
+ * long as it likes.
  */
-export function reassertAudioFocus(): void {
+export function reassertAudioFocus(why: 'play-request' | 'after-speech'): void {
   if (held.size === 0 || !element || element.paused === false) return;
   const el = element;
   void el
     .play()
-    .then(() => diag('focus', 'holding', { key: 'play-request', paused: el.paused, holders: held.size }))
+    .then(() => diag('focus', 'holding', { restart: why, paused: el.paused, holders: held.size }))
     .catch((e: unknown) => {
-      diag('focus', 'refused', { key: 'play-request', why: e instanceof Error ? e.name : String(e) });
+      diag('focus', 'refused', { restart: why, why: e instanceof Error ? e.name : String(e) });
     });
-  diag('focus', 'hold', { key: 'play-request', holders: held.size, restart: true });
+  diag('focus', 'restart', { why, holders: held.size });
 }
 
 /** Whether anything currently holds the slot. Exposed for tests and the panel. */

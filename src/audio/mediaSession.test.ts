@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { readDiagnosticLog } from '../diag/diagnosticLog';
 import {
   holdAudioFocus,
   releaseAllAudioFocus,
@@ -103,7 +104,7 @@ describe('initMediaSession', () => {
    * it means re-playing the loop the app already holds, never speaking, and
    * never starting a hold nobody has.
    */
-  it('re-plays a lapsed hold on play, and starts nothing when there is no hold', () => {
+  it('re-plays a lapsed hold on play, and starts nothing when there is no hold', async () => {
     const created: { paused: boolean; playCount: number; onpause: (() => void) | null }[] = [];
     class FakeAudio {
       loop = false;
@@ -149,6 +150,45 @@ describe('initMediaSession', () => {
       );
       expect(el.playCount).toBe(2);
       expect(advanced).toBe(0);
+
+      // Under the field test's probe as well: the wheel steps measure the
+      // app the drills ship, and the probe used to swallow `play` before it
+      // reached this.
+      const seen: string[] = [];
+      setMediaSessionProbe((a) => seen.push(a));
+      el.paused = true;
+      el.onpause?.();
+      actions.get('play')!();
+      expect(seen).toEqual(['play']);
+      expect(el.paused, 'the probe swallowed the play request').toBe(false);
+      expect(el.playCount).toBe(3);
+      // ...and the analyst can see it happened: the drive doc reads cause A
+      // from `lapsed` followed by a `restart`.
+      expect(
+        readDiagnosticLog().filter(
+          (e) => e.category === 'focus' && e.event === 'restart' && e.detail?.why === 'play-request',
+        ),
+      ).toHaveLength(2);
+      // ...and whether it took, on the same row shape a hold writes.
+      await Promise.resolve();
+      expect(
+        readDiagnosticLog().filter(
+          (e) =>
+            e.category === 'focus' &&
+            e.event === 'holding' &&
+            e.detail?.restart === 'play-request' &&
+            e.detail?.paused === false,
+        ),
+      ).toHaveLength(2);
+      setMediaSessionProbe(null);
+
+      // Released: the element exists, nobody holds it, and the car's `play`
+      // must leave it alone.
+      releaseAllAudioFocus();
+      expect(el.paused).toBe(true);
+      actions.get('play')!();
+      expect(el.paused, 'play with no holder restarted a released loop').toBe(true);
+      expect(el.playCount).toBe(3);
     } finally {
       releaseAllAudioFocus();
       _resetAudioFocusForTest();

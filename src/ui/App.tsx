@@ -153,8 +153,9 @@ function App() {
     // `enabled: true` as a QUEUED parent setState and taking the hold -- and
     // then this effect runs in the same pass still reading `false`, and
     // releases it. The re-render that follows does not re-take it, and the
-    // step effect's deps have not changed. Steps that speak repair themselves
-    // via `announceToMediaSession`; the three wheel steps that declare no line
+    // step effect's deps have not changed. Steps that speak a clip repair
+    // themselves via `announceToMediaSession` (a live line only re-asserts a
+    // hold that exists); the three wheel steps that declare no line
     // do not, so the app is not the active media app and presses go to the
     // radio -- reproducing the 2026-09-19 fault inside the tool built to
     // detect it. The field test owns its own hold for the length of a run and

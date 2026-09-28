@@ -282,6 +282,45 @@ test('what the recogniser heard reaches the screen and the answer', async ({ pag
 });
 
 /**
+ * PAUSE IS THE APP LETTING GO. The recogniser goes down with the screen,
+ * and the condition picker sits beside Resume: a leg paused on
+ * `wheel-with-mic` and re-opened as Speakerphone resumes on
+ * `route-after-mic`, where every after sample must say how long since the
+ * microphone closed -- and said nothing, because no edge was ever seen.
+ */
+test('an after sample taken after Pause on a microphone step carries the offset', async ({
+  page,
+}) => {
+  await openTest(page, 'Car, parked');
+  await goToStep(page, 'wheel-with-mic');
+  await expect
+    .poll(async () => (await entries(page)).some((e) => e.event === 'mic-settled'), {
+      timeout: 15_000,
+    })
+    .toBe(true);
+  await page.getByTestId('fieldtest-pause').click();
+  await page.getByTestId('fieldtest-open').click();
+  await page.getByRole('button', { name: 'Speakerphone', exact: true }).click();
+  await page.getByTestId('fieldtest-resume').click();
+  await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', 'route-after-mic');
+
+  const answers = page.getByTestId('fieldtest-answers').locator('button');
+  await expect(answers.first()).toBeEnabled({ timeout: 15_000 });
+  await page.waitForTimeout(400);
+  await answers.first().click();
+  const answer = await waitForEntry(
+    page,
+    (e) => e.event === 'answer' && e.detail.step === 'route-after-mic',
+    'the step was never answered',
+  );
+  expect(
+    answer.detail.msSinceAppLetGo,
+    'the pause closed the microphone and nothing recorded it',
+  ).toEqual(expect.any(Number));
+  expect(answer.detail.msSinceAppLetGo as number).toBeLessThan(60_000);
+});
+
+/**
  * F5: a recogniser restart is not the microphone letting go.
  *
  * iOS ends a webkit session after every utterance and `voiceControl.ts`
@@ -416,26 +455,53 @@ test('the after-block clock starts when the step stops asking, whatever the reco
     'the recogniser was mid-restart when the app let go, and the after clock never started',
   ).toBe('number');
 
-  // ...and the gate row says what the recogniser was doing, so a reader can
-  // tell "closed after a clean session" from "was already down".
+  // ...and the gate row says what the recogniser was doing when the step
+  // opened, so a reader can tell "mid-restart" from "never up" without
+  // reading `wasLive=false` as either.
   const stopped = (await entries(page)).find(
     (e) => (e.event === 'mic-stopped' || e.event === 'mic-still-live') && e.detail.step === 'route-after-mic',
   );
   expect(stopped, 'no release-gate row for the first after step').toBeTruthy();
-  expect(typeof stopped!.detail.state, 'the gate row does not say what state the recogniser was in').toBe(
-    'string',
+  expect(stopped!.detail.wasLive, 'the stalled recogniser was reported as listening').toBe(false);
+  expect(
+    stopped!.detail.stateAtArrival,
+    'the gate row does not say the recogniser was mid-restart',
+  ).toBe('restarting');
+  expect(
+    stopped!.detail.sinceAppLetGoAtArrivalMs,
+    'the gate row does not carry the after clock as the step opened',
+  ).toEqual(expect.any(Number));
+  expect(Number(stopped!.detail.sinceAppLetGoAtArrivalMs)).toBeLessThan(5_000);
+  expect(stopped!.detail.why, 'the gate row does not say which utterance it belongs to').toBe(
+    'step-open',
   );
+
+  // ...and a restart that was in progress when the block closed is not
+  // "against" a press on `wheel-after-mic`: the churn clock clears on the
+  // declared close, the after clock keeps running.
+  await goToStep(page, 'wheel-after-mic');
+  await page.waitForTimeout(300);
+  expect(await press(page, 'nexttrack')).toBe(true);
+  const arrival = await waitForEntry(
+    page,
+    (e) => e.event === 'field-test-arrival' && e.detail.step === 'wheel-after-mic',
+    'the press on wheel-after-mic was never recorded',
+  );
+  expect(arrival.detail.msSinceMicRestart, 'a stalled restart from the mic block was carried into the after block').toBeUndefined();
+  expect(arrival.detail.msSinceAppLetGo).toEqual(expect.any(Number));
 });
 
 /**
- * MEASURE IS HELD WHILE THE APP IS TALKING. Arrival on `ambient` reads
- * "Stay quiet for five seconds" aloud, and the button was live under it: the
- * first seconds of the five-second window could be the app's own voice, and
- * that figure is the leg's reference level.
+ * THE WINDOW OPENS WHEN THE LINE ENDS, NOT BEFORE. Arrival on `ambient` reads
+ * the instruction aloud; the first seconds of a five-second window opened
+ * under it would be the app's own voice, and that figure is the leg's
+ * reference level. And it opens by itself: the operator was told to stay
+ * quiet and then asked for a tap.
  */
-test('the cabin cannot be measured while the app is reading the instruction', async ({
+test('the cabin is measured by itself once the instruction has been read, and not under it', async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   await page.addInitScript(() => {
     (window as unknown as { __e2eSpeechDelayMs?: number }).__e2eSpeechDelayMs = 4_000;
   });
@@ -445,9 +511,24 @@ test('the cabin cannot be measured while the app is reading the instruction', as
   const measure = page.getByTestId('fieldtest-measure');
   await expect(measure).toBeVisible();
   await expect(measure, 'the cabin can be measured over the app\u2019s own voice').toBeDisabled();
-  // The line ends; the measurement is offered.
-  await expect(measure).toBeEnabled({ timeout: 10_000 });
-  expect((await entries(page)).filter((e) => e.event === 'ambient')).toHaveLength(0);
+  // Under the read-aloud, nothing is listening: the panel (which only
+  // exists once a window has opened) would say so, and so would the button.
+  await expect(page.getByTestId('fieldtest-ambient')).toHaveCount(0);
+  await expect(measure).not.toHaveText(/listening/i);
+  await expect
+    .poll(async () => (await entries(page)).some((e) => e.event === 'instruction-spoken' && e.detail.step === 'ambient'), {
+      timeout: 10_000,
+    })
+    .toBe(true);
+  // ...and once it is over, the window opens with no tap.
+  await expect(measure).toHaveText(/listening/i, { timeout: 5_000 });
+  const reading = await waitForEntry(
+    page,
+    (e) => (e.event === 'ambient' || e.event === 'ambient-failed') && e.detail.step === 'ambient',
+    'the cabin was never measured after the instruction',
+  );
+  expect(reading.event).toBe('ambient');
+  expect(reading.detail.aborted, 'the window was cut short').toBeUndefined();
 });
 
 /**
@@ -467,7 +548,7 @@ test('the cabin measurement produces a reading, on the screen and in the log', a
 
   const measure = page.getByTestId('fieldtest-measure');
   await expect(measure).toBeVisible();
-  await measure.click();
+  // The first window opens by itself after the read-aloud; nothing to tap.
 
   // FIVE SECONDS OF FRAMES, so this is a real wait rather than a rejection.
   // FIVE SECONDS. The panel reads "listening..." until the frames are
@@ -485,35 +566,6 @@ test('the cabin measurement produces a reading, on the screen and in the log', a
   expect(Number.isFinite(reading.detail.dbfs), 'the level is not a finite number').toBe(true);
   expect(reading.detail.band, 'the log entry carries no band').toBeTruthy();
   expect(Number(reading.detail.frames), 'the reading folded no frames').toBeGreaterThan(0);
-});
-
-/**
- * ...and the measure button survives the operator leaving mid-measurement.
- *
- * The previous version of this test could not fail: with no fake device the
- * five-second window never opened, `measureWithWebAudio` rejected within
- * milliseconds, and `setMeasuring(false)` had already run before the test
- * navigated anywhere. The `measureRun` fence it exists to pin was
- * unreachable. Now the window is real.
- */
-test('leaving a measurement running does not kill the measure button', async ({ page }) => {
-  test.setTimeout(60_000);
-  await openTest(page, 'Car, parked');
-  await goToStep(page, 'ambient');
-
-  await page.getByTestId('fieldtest-measure').click();
-  // INSIDE the window, asserted rather than assumed: the button reports it.
-  await expect(page.getByTestId('fieldtest-measure')).toBeDisabled();
-
-  await page.getByTestId('fieldtest-pause').click();
-  await page.getByTestId('fieldtest-open').click();
-  await page.getByTestId('fieldtest-resume').click();
-  await expect(page.getByTestId('fieldtest-title')).toBeVisible();
-
-  await expect(
-    page.getByTestId('fieldtest-measure'),
-    'the measure button never came back after leaving mid-measurement',
-  ).toBeEnabled({ timeout: 20_000 });
 });
 
 /**

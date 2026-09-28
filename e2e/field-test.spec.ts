@@ -1589,17 +1589,18 @@ test('leaving a measurement running does not kill the measure button', async ({ 
   await goToStep(page, 'How loud is it in here');
 
   const measure = page.getByTestId('fieldtest-measure');
-  await expect(measure).toBeEnabled();
-  await measure.click();
-  // Leave while the five-second window is still open.
-  await page.getByTestId('fieldtest-prev').click();
+  // The window opens by itself once the instruction has been read.
+  await expect(measure).toHaveText(/listening/i, { timeout: 10_000 });
+  // Leave while the five-second window is still open. The aborted window's
+  // own `finally` cannot clear `measuring` (the fence has moved on), so the
+  // arrival has to -- and the next step's "Say it again", which is held
+  // while measuring, is where a stale `measuring` shows.
   await page.getByTestId('fieldtest-skip').click();
-  await expect(page.getByTestId('fieldtest-title')).toHaveText('How loud is it in here');
-
+  await expect(page.getByTestId('fieldtest-title')).not.toHaveText('How loud is it in here');
   await expect(
-    page.getByTestId('fieldtest-measure'),
-    'the measure button stayed dead after the step was left mid-measurement',
-  ).toBeEnabled();
+    page.getByTestId('fieldtest-again'),
+    'the aborted window left the next step measuring',
+  ).toBeEnabled({ timeout: 10_000 });
 });
 
 /**

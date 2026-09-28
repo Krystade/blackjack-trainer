@@ -29,13 +29,20 @@ describe('classifyLockProbe', () => {
     return out;
   };
 
-  it('calls a window too short to hold two ticks inconclusive, whatever landed in it', () => {
+  it('calls a window no longer than a normal gap inconclusive, whatever landed in it', () => {
     expect(classifyLockProbe({ hiddenMs: tick, ticks: [] }).verdict).toBe('too-short');
     expect(classifyLockProbe({ hiddenMs: tick * 2 - 1, ticks: [tick] }).verdict).toBe(
       'too-short',
     );
-    // Exactly two ticks' worth is enough to say something.
-    expect(classifyLockProbe({ hiddenMs: tick * 2, ticks: [tick, tick * 2 - 100] }).verdict).toBe(
+    // A frozen page under a lock shorter than the allowed gap: no tick, and
+    // the one gap is the whole span. That read `normal` when the bound was
+    // two ticks and the allowed gap two and a half.
+    expect(classifyLockProbe({ hiddenMs: 4_500, ticks: [] }).verdict).toBe('too-short');
+    expect(classifyLockProbe({ hiddenMs: 4_800, ticks: [4_700] }).verdict).toBe('too-short');
+    expect(classifyLockProbe({ hiddenMs: 3_000, ticks: [-1_900] }).verdict).toBe('too-short');
+    // Just past the allowed gap is enough to say something, either way.
+    expect(classifyLockProbe({ hiddenMs: 5_001, ticks: [] }).verdict).toBe('frozen');
+    expect(classifyLockProbe({ hiddenMs: 5_001, ticks: [tick, tick * 2] }).verdict).toBe(
       'normal',
     );
   });
@@ -74,6 +81,40 @@ describe('classifyLockProbe', () => {
     });
   });
 
+  /**
+   * iOS suspends the web process some seconds after the lock. Cadence for
+   * twenty seconds and then nothing is a page that froze late; the old rule
+   * (largest gap against half the window) called it throttled or frozen
+   * depending on how long the operator waited before unlocking.
+   */
+  it('calls a page that kept cadence and then stopped for good frozen, however late it stopped', () => {
+    expect(
+      classifyLockProbe({ hiddenMs: 30_000, ticks: cadence(tick, 20_001) }).verdict,
+    ).toBe('frozen');
+    // ...with the overdue callback landing on resume, just before `visible`
+    // (the usual order, per the header): still one hole, still frozen.
+    expect(
+      classifyLockProbe({ hiddenMs: 30_000, ticks: [...cadence(tick, 20_001), 29_900] }).verdict,
+    ).toBe('frozen');
+    expect(
+      classifyLockProbe({ hiddenMs: 60_000, ticks: [...cadence(tick, 40_001), 59_900] }).verdict,
+    ).toBe('frozen');
+    // Two ticks after the hole is a page that came back and kept going: not
+    // a freeze, whatever the hole's size short of half the window.
+    expect(
+      classifyLockProbe({ hiddenMs: 30_000, ticks: [...cadence(tick, 20_001), 27_900, 29_900] })
+        .verdict,
+    ).toBe('throttled');
+    // ...but one hole in the middle with the cadence back afterwards is not
+    // a freeze (the boundary test below pins the half-window rule for it).
+    expect(
+      classifyLockProbe({
+        hiddenMs: 30_000,
+        ticks: [...cadence(tick, 10_001), ...cadence(20_000, 30_000)],
+      }).verdict,
+    ).toBe('throttled');
+  });
+
   it('calls sparse ticks throttled: alive, but not keeping time', () => {
     // Every 8 s instead of every 2 s: no gap covers half the window, but every
     // gap is well past the cadence.
@@ -98,12 +139,44 @@ describe('classifyLockProbe', () => {
     expect(withGap(15_000).verdict).toBe('frozen');
   });
 
-  it('ignores ticks that fall outside the window', () => {
+  it('ignores ticks after the window, and counts only those inside it', () => {
     const v = classifyLockProbe({
       hiddenMs: 30_000,
       ticks: [-2_000, -1, ...cadence(tick, 30_000), 30_000, 31_000],
     });
     expect(v.verdict).toBe('normal');
     expect(v.ticksInside).toBe(14);
+    expect(v.gapBeforeHiddenMs).toBe(1);
+  });
+
+  /**
+   * A `hidden` DELIVERED ON THE WAY BACK. iOS can hand the event over when
+   * the page resumes, so the window is a few hundred milliseconds and the
+   * whole lock sits before it. The last tick before the event is the last
+   * time anything ran, and the span runs from there.
+   */
+  it('calls a lock whose hidden event arrived on resume frozen, from the tick before it', () => {
+    const v = classifyLockProbe({ hiddenMs: 300, ticks: [-30_000, 250] });
+    expect(v).toMatchObject({ verdict: 'frozen', gapBeforeHiddenMs: 30_000 });
+    expect(v.maxGapMs).toBe(30_250);
+    // The overdue callback can fire BEFORE the late `hidden` too. Then the
+    // last tick before the event is the catch-up tick, and the window has to
+    // start where the cadence broke, not at that tick.
+    const early = classifyLockProbe({ hiddenMs: 300, ticks: [-34_000, -32_000, -30_050, -50] });
+    expect(early).toMatchObject({ verdict: 'frozen', gapBeforeHiddenMs: 30_050 });
+    expect(early.maxGapMs).toBe(30_000);
+    // An older stall with the cadence back after it is not this lock's: the
+    // window still starts at the last tick, and a normal lock reads normal.
+    const stale = classifyLockProbe({
+      hiddenMs: 30_000,
+      ticks: [-60_000, -52_000, ...cadence(-50_000, 1), ...cadence(tick, 30_000)],
+    });
+    expect(stale).toMatchObject({ verdict: 'normal', gapBeforeHiddenMs: 0 });
+    // ...but a short window with a fresh tick before it is still inconclusive.
+    expect(classifyLockProbe({ hiddenMs: 300, ticks: [-500] }).verdict).toBe('too-short');
+    // A tick before hidden at cadence does not turn a normal lock into anything else.
+    expect(
+      classifyLockProbe({ hiddenMs: 30_000, ticks: [-1_500, ...cadence(tick, 30_000)] }).verdict,
+    ).toBe('normal');
   });
 });

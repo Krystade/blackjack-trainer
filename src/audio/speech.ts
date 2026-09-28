@@ -33,7 +33,7 @@ import {
 // Re-exported: existing specs import this reset helper from speech.ts.
 export { _resetSharedAudioContextForTest };
 import { initMediaSession, setNowPlaying, setPlaybackState } from './mediaSession';
-import { holdAudioFocus } from './audioFocus';
+import { holdAudioFocus, reassertAudioFocus } from './audioFocus';
 import { invokeWheelCommand } from './wheelCommands';
 import { diag } from '../diag/diagnosticLog';
 
@@ -271,34 +271,6 @@ function applyVolume(utterance: SpeechSynthesisUtterance, opts?: SpeechOpts): vo
     // states the ceiling in the one place someone would look for it. Live
     // speechSynthesis genuinely cannot be amplified; only the clips path can.
     utterance.volume = utteranceVolume(opts.volume);
-  }
-}
-
-/** The live-`speechSynthesis` path, used directly when clips are disabled/
- * absent, and as the fallback when a clip lookup misses or playback fails. */
-function speakLive(text: string, opts?: SpeechOpts): void {
-  if (!isSpeechSupported()) return;
-
-  try {
-    if (opts?.interrupt) {
-      // Interrupt means interrupt EVERYTHING audible, not just the utterance
-      // queue: a clip chain started by a previous call is still playing and
-      // would otherwise be talked over.
-      stopClips();
-      window.speechSynthesis.cancel();
-    }
-    const utterance = new SpeechSynthesisUtterance(text);
-    if (opts?.rate) {
-      utterance.rate = opts.rate;
-    }
-    applyVolume(utterance, opts);
-    const voice = resolveVoice(opts?.voiceURI);
-    if (voice) {
-      utterance.voice = voice;
-    }
-    window.speechSynthesis.speak(utterance);
-  } catch {
-    // never throw
   }
 }
 
@@ -630,8 +602,11 @@ export function speak(
     }).then(({ played, remainder }) => {
       // Same re-assertion as `speakAsync` below, for the same reason: the
       // drills speak through this twin, and the count drill's wheel entry
-      // submits in the silence after a line.
-      holdAudioFocus('speech');
+      // submits in the silence after a line. A RE-ASSERTION, not a hold:
+      // this settles after a cancel too, and the screen change that
+      // cancelled it has just released the hold -- taking one here left the
+      // silent loop running on Settings.
+      reassertAudioFocus('after-speech');
       if (played) {
         // THE SETTLED LINE, for the case that worked. `path-chosen` is
         // written before the chain plays and is a guess; without this, a
@@ -661,7 +636,7 @@ export function speak(
       // delivered -- the user heard the opening twice and the good audio was
       // thrown away for nothing. Fall back to the remainder when there is
       // one, and to the whole utterance only when nothing played at all.
-      speakLive(remainder ?? text, opts);
+      void speakAsyncLive(remainder ?? text, opts).then(() => reassertAudioFocus('after-speech'));
     });
     return;
   }
@@ -675,7 +650,13 @@ export function speak(
     // half: clips off is a setting, no clip is a missing recording.
     why: isClipsEnabled() ? 'no-clip' : 'clips-off',
   });
-  speakLive(text, opts);
+  // ONE LIVE PATH. This twin had its own `speakLive`, which kept no
+  // reference to the utterance and had no watchdog -- and this file's own
+  // note (`pendingSpeeches`) says Safari collects such utterances and drops
+  // their callbacks, so a re-assert hung on `onend` there could never fire.
+  // `speakAsyncLive` retains the utterance, settles on a watchdog, writes
+  // `tts-end`, and re-asserts the hold when the line is over.
+  void speakAsyncLive(text, opts).then(() => reassertAudioFocus('after-speech'));
 }
 
 /**
@@ -683,7 +664,8 @@ export function speak(
  * is being said.
  *
  * Called from the clips path only -- see mediaSession.ts for why live TTS
- * cannot participate. Registration is one-shot and happens on first clip
+ * has nothing to announce (the field test registers on its own, from a
+ * tap). Registration is one-shot and happens on first clip
  * playback rather than at startup, because a Media Session claimed before
  * any audio exists is either ignored or, worse, steals the now-playing slot
  * from whatever the driver actually had going.
@@ -699,10 +681,10 @@ function announceToMediaSession(text: string): void {
   // drive of 2026-09-19 reported exactly that -- "buttons worked only when
   // the bot was talking" -- which was not a mapping problem at all.
   //
-  // Placed here because this is the one point in the app that is guaranteed
-  // to be inside a real media context: a clip is playing, so the engine is
-  // unlocked and `play()` on the silent element will be allowed. Called for
-  // every utterance and idempotent after the first (audio/audioFocus.ts).
+  // Placed here because a clip is playing, so the engine is unlocked and
+  // `play()` on the silent element will be allowed. Called for every clip
+  // utterance and idempotent after the first (audio/audioFocus.ts); a live
+  // utterance only re-asserts a hold someone else took (`speakAsync`, below).
   holdAudioFocus('speech');
   setNowPlaying(text, (import.meta.env.BASE_URL as string | undefined) ?? '');
   setPlaybackState('playing');
@@ -851,9 +833,9 @@ function estimateWatchdogMs(text: string): number {
   return Math.max(WATCHDOG_FLOOR_MS, WATCHDOG_BASE_MS + text.length * WATCHDOG_PER_CHAR_MS);
 }
 
-/** The live-`speechSynthesis` path for `speakAsync`, used directly when
- * clips are disabled/absent, and as the fallback when a clip lookup misses
- * or playback fails. */
+/** The one live-`speechSynthesis` path, for `speak()` and `speakAsync()`
+ * both: used directly when clips are disabled/absent, and as the fallback
+ * when a clip lookup misses or playback fails. */
 function speakAsyncLive(
   text: string,
   opts?: SpeechOpts,
@@ -991,8 +973,9 @@ export function speakAsync(
       // when the bot was talking"), nothing restarted it when the clip
       // ended, and the app stopped being the active media app at precisely
       // the moment a driver presses something. A no-op if the loop is still
-      // going; a restart, logged as one, if it lapsed.
-      holdAudioFocus('speech');
+      // going; a restart, logged as one, if it lapsed; nothing if the hold
+      // was released while the chain was in flight (a cancel settles it).
+      reassertAudioFocus('after-speech');
       if (played) {
         // THE SETTLED LINE, for the case that worked. `path-chosen` is
         // written before the chain plays and is a guess; without this, a
@@ -1019,7 +1002,7 @@ export function speakAsync(
       // chain never got to. This path also drives drill PACING, so repeating
       // the whole utterance here stretched the gap between cards as well as
       // saying the opening twice.
-      return speakAsyncLive(remainder ?? text, opts).then(reholdAfterLive);
+      return speakAsyncLive(remainder ?? text, opts).then(() => reassertAudioFocus('after-speech'));
     });
   }
 
@@ -1030,23 +1013,19 @@ export function speakAsync(
     tag: opts?.tag,
     why: isClipsEnabled() ? 'no-clip' : 'clips-off',
   });
-  // THE SAME HOLD AS THE CLIP PATH. `speechSynthesis` is not media, so this
-  // path claimed nothing and re-asserted nothing -- and every field-test
-  // instruction is live TTS. The silent loop is what carries the slot
-  // (audioFocus.ts); it is held here before the line and put back after it,
-  // exactly as around a clip, or `wheel-back` dies for the reason `wheel-gap`
-  // is suspected of and the two cannot be told apart.
-  holdAudioFocus('speech');
-  return speakAsyncLive(text, opts).then(reholdAfterLive);
-}
-
-/**
- * Re-assert the hold once a live utterance has settled: if the platform
- * paused the silent loop to speak, nothing else restarts it, and the moment
- * after a line is the moment a driver presses something.
- */
-function reholdAfterLive(): void {
-  holdAudioFocus('speech');
+  /**
+   * Once a live utterance has settled, put back a hold that lapsed under it.
+   *
+   * `speechSynthesis` is not media, so this path re-asserted nothing -- and
+   * every field-test instruction is live TTS: if the platform paused the
+   * silent loop to speak, nothing restarted it, so `wheel-back` died for the
+   * reason `wheel-gap` is suspected of and the two could not be told apart.
+   * A RE-ASSERTION, NOT A HOLD: whoever wants the slot across an utterance
+   * holds it (the field test does, for the whole run). Taking one here made
+   * the count drill's narration, and the paused gate's cue, the active media
+   * app with no handlers registered.
+   */
+  return speakAsyncLive(text, opts).then(() => reassertAudioFocus('after-speech'));
 }
 
 /**

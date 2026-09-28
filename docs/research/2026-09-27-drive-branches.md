@@ -35,6 +35,10 @@ these first.**
 
 ### 0.1 The spoken-answer switch, as shipped, voids the baseline
 
+*Superseded as built: the channel listens only on steps whose setup opens the microphone
+(seven on a Bluetooth path), there is no `mic=` field, and what a run ran with is on its
+`run-start`/`run-resume answerByVoice=` rows. The analysis below is kept as the reason.*
+
 `FieldTest.tsx:1728` — `enabled: voiceWanted || answerByVoice`. With the switch on, the
 recogniser is mounted on **every** step from `route-1` onward, not only when an answer is
 spoken. Consequences, all confirmed in code:
@@ -82,21 +86,30 @@ page and an idle page produce identical logs. Safari also has no `freeze`/`resum
 Build: a self-scoring lock probe as a `FIELD_TEST_STEPS` entry (not a `carCheckCatalog`
 check — those are bounded and have no persisted-across-reload story; `fieldTestRun.ts`
 already solves that). On arrival it speaks "Lock the phone now, wait at least thirty
-seconds, then unlock", persists a marker `{probeId, startedAtIso, startedAtMs, sessionId}`,
-runs a `diag('test','lock-probe-tick',{n})` interval at ~2 s, and on
+seconds, then unlock", persists a marker `{hiddenAt, session}` when the page goes hidden
+(as built), ticks every ~2 s and writes `lock-probe-tick {n, sinceHiddenMs}` rows only while
+hidden (capped at 60; the verdict is scored from the in-memory ticks), and on
 `visibilitychange → visible` diffs the tick gaps and stamps
-`lock-probe-result {classification, hiddenMs, ticksSeen, expected, maxGapMs}`.
-Classification from `ms` (monotonic, `diagnosticLog.ts:195`): gaps ≤ 1.5× interval →
-`normal`; several gaps of 3–10× inside the window → `throttled`; zero ticks inside the
-window → `frozen`; a new `session` id with the marker still persisted → `frozen-unloaded`,
+`lock-probe-result {classification, hiddenMs, ticksInside, maxGapMs, gapBeforeHiddenMs,
+focusPlayingAtHidden, focusPlayingAtVisible}` (as built; a `lock-probe-pagehide {persisted,
+hidden}` row is written and flushed on any `pagehide` during the step). As built, the window
+starts at the last tick before `hidden`, or one tick earlier when that last tick is the
+overdue callback landing just ahead of a late event (iOS can deliver `hidden` on the way
+back, with the overdue tick either side of it); and one gap over cadence with at most one
+tick after it is `frozen` however long the page kept cadence first.
+Classification, as built, from `Date.now()` (`lockProbe.ts`): a window no longer than the
+allowed gap (5 s) → `too-short`; largest gap ≤ 2.5× the interval → `normal`; ≥ half the
+window, or one over-cadence gap with at most the overdue tick after it → `frozen`; otherwise
+→ `throttled`; a new `session` id with the marker still persisted → `frozen-unloaded`,
 stamped retroactively on the next boot.
 
 **It must not end on a timer** — its timers are the thing under test. It ends on the
 `visible` transition, or on the next boot finding the stale marker, or on a Skip. A bare
 timeout would score "operator never locked it" as normal.
 
-Cost: ~180 rows on a 15-minute drive against `MAX_ENTRIES = 3000`. Run once per page
-session, not per leg — the behaviour is a property of the event loop, not of a step.
+Cost: at most 60 tick rows per lock, written only while hidden (the verdict is scored from
+memory), against `MAX_ENTRIES = 3000`. Run once per page session, not per leg — the
+behaviour is a property of the event loop, not of a step.
 
 **As built (2026-09-28, after review):** the marker is `{hiddenAt, session}` and is set when
 the page goes hidden, not on arrival; the verdict is on the largest gap (`maxGapMs`), not the
@@ -196,10 +209,9 @@ URL is public while it lives.
 
 **Confounds.** The wake lock is held for the screen's whole life (`FieldTest.tsx:1590`), so
 a lock is necessarily a deliberate button press. Low Power Mode and the charger are
-invisible to the app — operator logs them by hand. A lock landing in the deferred-by-a-tick
-release/reacquire gap between steps behaves like the no-hold case — grep `focus
-hold/release` against `hidden`. Gap arithmetic finer than ~1–2 s is meaningless given the
-1 s flush buffer.
+invisible to the app — operator logs them by hand. The hold is taken once for the run and
+not released between steps, so there is no between-step gap for a lock to land in. Gap
+arithmetic finer than ~1–2 s is meaningless given the 1 s flush buffer.
 
 ---
 
@@ -217,7 +229,8 @@ silent element is holding and the head unit never concluded playback stopped.
 
 Not this branch: any `wheel-radio`/`wheel-radio-took-one`; invokes only under
 `whileSpeaking=true` (that is §6); `test wheel-unavailable`; an invoke with no matching
-arrival at the same `pressIndex`.
+arrival at the same `pressIndex` (which restarts at 1 on every mount of the running screen:
+Resume, and leaving and returning by the tab bar alike).
 
 **In-drive.** Receipt is already machine-visible per press. Smallest change: once
 `wheelSeen.length > 0`, swap the instruction text to "Received — did the car do anything
@@ -257,20 +270,31 @@ Bluetooth on is marked. `legsBefore > 0`.
 Before = after ≠ during. The mic moves the route; closing it puts it back.
 
 **Signature.** Nine `test answer` rows (`route-1/2/3`, `mic-route*`, `route-after-mic*`) —
-six on one destination, three on another. Trust requires: `mic-settled` (never
-`mic-never-live`, never `abandoned`) on each `mic-route*`; `mic-stopped wasLive=true` on
-`route-after-mic`; `pre-sample-settle` on every ungated sample; `say-end matched=true
+six on one destination, three on another. Trust requires, on the gate row that belongs to
+the answer — the last `why=step-open` row for the step before its final `answer` row (a
+"Say it again" writes a `why=repeat` row; Back, Pause/Resume or a reload re-open the step and
+write a fresh `step-open` row, and the answer the run keeps is the last one): `mic-settled`
+(never `mic-never-live`, never `abandoned`) on each `mic-route*`; on `route-after-mic`,
+`mic-stopped` with `sinceAppLetGoAtArrivalMs` small (under a few seconds) and
+`stateAtArrival` one of `listening|restarting|starting` (`denied`, `error` and `unsupported`
+mean the recogniser had given up before the close; `off` with a large clock is a step
+re-opened after Back, Pause/Resume or a reload, and its sample was re-taken late) — `wasLive`
+is not a trust gate: on
+iOS the recogniser is between sessions after every utterance, so `wasLive=false
+stateAtArrival=restarting` is the ordinary reading; `pre-sample-settle` on every ungated
+sample; `say-end matched=true
 path=clip` and `say-start volume=1` on all nine; `msSinceAppLetGo` absent on before/during,
-present and rising across after; `run-start legsBefore=0`. `answer-by-voice on=true` is
-NOT a kill: since §0.1 the switch only listens on steps whose setup already opens the
-microphone, so it is a covariate (`via=voice` on an answer row of a mic-open step) and
-nothing more. A `via=voice` on a step whose setup has the microphone OFF is the kill.
+present and rising across after; `run-start legsBefore=0`. `run-start answerByVoice=true`
+(or `run-resume`) is NOT a kill: since §0.1 the switch only listens on steps whose setup
+already opens the microphone, so it is a covariate (`via=voice` on an answer row of a
+mic-open step) and nothing more. A `via=voice` on a step whose setup has the microphone OFF is the kill.
 
 Under `car`, `freeway` and `speakerphone`, `route-earpiece` and `route-silent` are one
 answer (`fieldTest.ts:365, 375, 392`); only `phone` separates them.
 
-**In-drive.** Known after `route-after-mic-3` (index 24). **Say nothing** — seven route
-samples remain and an announcement primes them (`fieldTest.ts:823–829`). Write a silent
+**In-drive.** Known after `route-after-mic-3` (`step-open index=28`). **Say nothing** — three
+route samples remain, seven with the after probes armed, and an announcement primes them
+(`fieldTest.ts:823–829`). Write a silent
 `diag('test','crossing', {before, during, after, verdict, trust})` row at that stamp.
 
 **Builds.**
@@ -303,7 +327,8 @@ live-link §5.2 and §7 for the route steps: buttons stay; spoken answers are ri
 does not matter" is claimable. Replication with `legsBefore=0`. Whether the first sample
 after `mic-settled` already sits on the new route (`waitedMs` against the answer).
 
-**Confounds.** Gate timing (`mic-never-live`, `wasLive=false`); volume mismatch; a
+**Confounds.** Gate timing (`mic-never-live`; `stateAtArrival=off` or no
+`sinceAppLetGoAtArrivalMs` on `route-after-mic`); volume mismatch; a
 `route-moved` mark on a during answer (read the destination, flag the mark); a
 `clip-failed-to-tts` inside the mic block confounds path with mic; chance — three samples
 uniform by chance ≈ 1 in 9 (`fieldTest.ts:576–581`); `answer-ignored`/`answer-blocked`/
@@ -377,8 +402,16 @@ reload mid-run (`run-resume` plus missing `msSinceAppLetGo`).
 ## 5. LOCK: throttled — ~30%
 
 **Signature.** Probe ticks still landing inside the window but sparse — several gaps of
-3–10× the interval, none spanning the whole window — then normal cadence at `visible`.
-Distinct from frozen (one gap = the whole window) and normal (≤ 1.5×).
+3–10× the interval, none spanning half the window — then normal cadence at `visible`.
+Distinct from frozen (one gap, with at most the overdue tick after it) and normal (≤ 2.5×).
+One caveat when reading it: the car's own periodic `play` (every ~5 s on 09-11) now re-plays
+the silent loop, and if that wakes a frozen page each wake runs an overdue tick, so a
+`throttled` with `wheel invoke action=play` rows between `hidden` and `visible` is the car,
+not the lock — cross-check them and `focusPlayingAtVisible`. A window no longer than the
+allowed gap (5 s) is `too-short` whatever happened in it; the window runs from the last tick
+before `hidden`, so a 3.5 s lock can score, and a page that kept ticking up to a late
+`hidden` 300 ms before `visible` cannot (a frozen one can: its window starts at the last
+tick before the freeze).
 
 What a held-open connection would experience that a discrete `fetch` would not
 (speculation, labelled): iOS is widely reported to suspend or close background sockets
@@ -457,10 +490,10 @@ does not change.
   `audioFocus.ts:134` sees a playing element and does nothing. Every clip is a new `Audio`
   (`clips.ts:623`). Speculation: iOS pauses the other element when a clip starts, `lapsed
   paused=true` fires, and nothing re-plays it until the next clip — exactly "worked only
-  while talking". Discriminator: `wheel-back` speaks its instruction through live TTS with
-  no clip (`FieldTest.tsx:1255, :1952`); if `wheel-back` arrives while `wheel-gap` does not,
-  suspect A. Fix: re-assert the hold after the chain settles (the `.then` at
-  `speech.ts:977`), and let `onpause` with `held.size > 0` retry `play()` once. Test: §0.4.
+  while talking". As built, both paths re-assert the hold when the utterance ends (`focus
+  restart why=after-speech`) and the car's own `play` restores it too (`why=play-request`),
+  so `wheel-back` against `wheel-gap` no longer separates the paths. Evidence for A is now
+  `focus lapsed` followed by a `restart`, with the press landing between them. Test: §0.4.
 - **B. A cleanup releases the hold between steps.** The step cleanup calls `cancelSpeech`
   but does not release (`FieldTest.tsx:1535–1549`); the unmount release is deferred
   (`:1623`); `App.tsx:148–163` exempts `fieldtest`. Row: `focus release` without
@@ -528,9 +561,16 @@ tell them apart**, and the 2026-09-23 "alternating" report is consistent with ei
 - **Fires on leaving the block's last step, not at the second answer.** Acting at stamp 2
   would put steps between `route-2` and `route-3`, breaking A, B, A and failing
   `fieldTest.test.ts:1751`. Fires on Skip too.
-- Always writes `diag('test','route-block', {cell, steps, verdict, classes, paths})` —
-  uniform blocks included, so one grep returns all six cells. On `wandering`/`moved`/`short`,
-  arms a probe; `armedProbes: string[]` persisted on the run.
+- Always writes `diag('test','route-block', {cell, steps, condition, verdict, classes,
+  answers, armed, probesOnPath, probe})` — uniform blocks included, so one grep returns all
+  six cells. **Written every time the block's last step is left** (Back-and-correct, Skip
+  included), so a cell can have several rows under one condition: THE LAST ROW FOR A
+  (condition, cell) IS THE VERDICT. `armed` says that row put the probes on the path;
+  `probesOnPath` says they are on it whichever row did it. On `wandering`/`moved`/`short`,
+  arms a probe once; `armedProbes: string[]` persisted on the run. Answers are keyed by
+  condition, so a block whose three samples straddle a condition change scores under the
+  new condition with the samples it has (`answers=-,…`): `uniform` or `wandering` from two,
+  `short` from one — the honest reading of that leg.
 - **Probes live in the fixed list as dormant steps** (`probe: '<cell>'`); advancing moves
   the pointer to the next non-dormant index via `nextActiveIndex(from, dir)`. `stepIndex`
   stays a plain pointer and `resolveFieldTestSetup` stays a pure function of it. Two probe
@@ -577,8 +617,9 @@ exonerated; whether `speakerphone` wanders — if so Bluetooth is out.
 **Confounds.** Path rather than route: `paths=` on each row and `clip-failed-to-tts` rows —
 if the disagreeing sample is the one that fell back, the operator heard a voice change.
 The answer channel (§0.1); the recogniser also restarts on its own — after every
-utterance on iOS, every 45 s in any case (`CYCLE_AFTER_MS`), and up to 8 s after an
-`audio-capture` error (`MAX_RESTART_DELAY_MS`, `voiceControl.ts`) — so a `mic restarting` row inside a mic-open
+utterance on iOS and up to 8 s after an `audio-capture` error (`MAX_RESTART_DELAY_MS`,
+`voiceControl.ts`; the drills' 45 s `CYCLE_AFTER_MS` cycle never runs on this screen) — so a
+`mic restarting` row inside a mic-open
 block is expected, not a fault. `route devicechange` between samples is a correlate, not proof.
 Line B's clip file itself (speculation; the probe is what tests it).
 
@@ -595,8 +636,10 @@ not-playing and handles the button itself; **(c)** only `wheel-repeat` loses one
 `wheel-radio-took-one` co-occurring with exactly two invokes in that bracket.
 
 Not this branch: two invokes with no radio answer and `pressIndex` +2 (operator pressed
-twice); `action=play`/`pause` clusters (the head unit's automatic resume/pause bookkeeping,
-registered inert at `mediaSession.ts:213–216`) — filter by `action` before counting.
+twice); `action=play`/`pause` clusters (the head unit's automatic resume/pause bookkeeping;
+`play` re-plays a lapsed hold and nothing else, the rest are inert) — filter by `action`
+before counting. `pressIndex` restarts at 1 after each `run-resume` (Pause/Resume, reload):
+count across them for a per-run figure.
 
 **In-drive.** Only partly, and the code says so (`fieldTest.ts:284–296, 309–311`): the app
 has no channel back from the head unit. An unprompted `play`/`pause` within hundreds of ms
@@ -646,10 +689,11 @@ Resume (`fieldTestRun.ts:301–310`); **(c)** the silent element was not playing
 moment — `focus lapsed` preceding `hidden`, or no `focus hold` at all inside the run window.
 
 **Why §4's "existing drives produced logs with the screen off" can be true and this still
-happen.** The *drills* hold `speech` focus continuously across every utterance. A field-test
-step holds it only while `step.wheel` is set or a line is speaking; a step with no `say`,
-no `wheel` and a long dwell can sit with the element paused. The old evidence is about the
-drill cascade, not the field-test runner. It does not transfer.
+happen.** The *drills* hold `speech` focus across every clip utterance (live TTS holds
+nothing; it only re-asserts a hold that exists), and the field test holds it for the whole
+run, taken on every step (§8). What differs is the dwell: a drill never sits silent for
+thirty seconds with the screen off, and `lock-probe` does exactly that. The old evidence is
+about a talking page, not an idle one.
 
 **In-drive.** After the fact only. On `visible`, read the tail of `readDiagnosticLog()`,
 compare `Date.now() - Date.parse(last.at)` against ~15–20 s (above the ten-second gate
@@ -707,9 +751,12 @@ before that step's `say-start` and no `mic listen-off` or `session-end` between 
 `say-start` and its `say-end` (the heartbeat is every 30 s, so it cannot "cover" a two-second
 line — the session boundaries are what say the microphone was open through it);
 `heard-text` on `mic-heard` (the mic was capturing, not just reporting a state);
-`mic-stopped wasLive=true` on `route-after-mic` — the FIRST after step only. The later
-after steps open with the microphone already closed, so `wasLive=false` there is the
-expected reading, not a failed gate. **The kill check** is no longer the switch (see §3):
+`mic-stopped why=step-open` on `route-after-mic` (the last such row before the step's final
+answer) with `sinceAppLetGoAtArrivalMs` small and `stateAtArrival` one of
+`listening|restarting|starting` — `wasLive` says only whether a session happened to be up at that instant, and on
+iOS it usually is not (`restarting`). The later after steps open with the microphone long
+closed, so a larger `sinceAppLetGoAtArrivalMs` there is the expected reading, not a failed
+gate. **The kill check** is no longer the switch (see §3):
 it is a `via=voice` answer on a step whose setup has the microphone OFF. And §0.3's `input-selected` row must name the car's hands-free unit during the
 middle block — without it, "no move" and "the recogniser ran on the phone's own mic while
 A2DP stayed up" are the same log.

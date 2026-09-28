@@ -30,6 +30,28 @@
  * events -- the lock, each tick, the unlock -- is what says whether anything
  * ran, and for how long it did not.
  *
+ * THE TICKS BEFORE `hidden` COUNT TOO. iOS can deliver `visibilitychange:
+ * hidden` on the way BACK, when the page resumes, so the window it reports is
+ * a few hundred milliseconds and everything that happened under the lock sits
+ * before it -- and the overdue interval callback can fire before the event
+ * as well, so the last tick before `hidden` may itself be the catch-up tick.
+ * The `hidden` event is not proof that anything ran; the ticks are. So the
+ * window starts at the last tick before the event -- or one tick earlier,
+ * when the gap ahead of that last tick is over cadence and the tick itself
+ * landed within a cadence of the event: that last tick is the overdue
+ * callback, and the freeze is the gap before it. The caller feeds the ticks
+ * since the page was last scored; an older stall with ticks after it is not
+ * this lock's and does not move the start.
+ *
+ * ONE GAP OVER CADENCE, WITH AT MOST ONE TICK AFTER IT, IS A FREEZE however
+ * long the page kept cadence first. iOS suspends the web process some
+ * seconds after the lock; twenty seconds of cadence and then ten of nothing
+ * is a page that froze late, not one that "ticked, but sparsely", and the
+ * overdue callback that fires on resume -- before or after `visible` -- is
+ * the one tick a frozen page produces. Judging the freeze by the largest
+ * gap against half the window made the verdict depend on how long the
+ * operator waited before unlocking.
+ *
  * A fourth verdict, `frozen-unloaded`, is stamped by the runner rather than
  * here: the page was killed outright and came back as a new session, so
  * there was nobody left to do this arithmetic at the time.
@@ -56,36 +78,64 @@ export type LockProbeVerdict = 'normal' | 'throttled' | 'frozen' | 'too-short';
 
 export interface LockProbeReading {
   verdict: LockProbeVerdict;
-  /** The longest stretch with no tick, counting the lock and unlock as events. */
+  /** The longest stretch with no tick, from the window's start to the unlock. */
   maxGapMs: number;
   /** Ticks that landed strictly inside the window. */
   ticksInside: number;
+  /** How long before `hidden` the window's start tick landed; 0 when none had. */
+  gapBeforeHiddenMs: number;
 }
 
 export function classifyLockProbe(input: {
   hiddenMs: number;
-  /** Tick times as ms since the page went hidden; outside the window is ignored. */
+  /** Tick times as ms since the page went hidden; those before it (<= 0) count as the start. */
   ticks: readonly number[];
   tickMs?: number;
 }): LockProbeReading {
   const tickMs = input.tickMs ?? LOCK_PROBE_TICK_MS;
+  const normalGapMs = tickMs * NORMAL_MAX_GAP_TICKS;
   const inside = input.ticks.filter((t) => t > 0 && t < input.hiddenMs).sort((a, b) => a - b);
+  const before = input.ticks.filter((t) => t <= 0).sort((a, b) => a - b);
+  // The last tick before `hidden` -- or the one before it, when the last
+  // tick is the overdue callback landing just ahead of a late event.
+  let start = 0;
+  if (before.length > 0) {
+    const last = before[before.length - 1]!;
+    const prev = before.length > 1 ? before[before.length - 2]! : undefined;
+    start =
+      prev !== undefined && last - prev > normalGapMs && -last <= normalGapMs ? prev : last;
+  }
+  const spanMs = input.hiddenMs - start;
+  const events = [...before.filter((t) => t > start), ...inside, input.hiddenMs];
   let maxGapMs = 0;
-  let prev = 0;
-  for (const t of [...inside, input.hiddenMs]) {
-    if (t - prev > maxGapMs) maxGapMs = t - prev;
+  let gapsOverCadence = 0;
+  let ticksAfterLastBigGap = 0;
+  let prev = start;
+  for (const [i, t] of events.entries()) {
+    const gap = t - prev;
+    if (gap > maxGapMs) maxGapMs = gap;
+    if (gap > normalGapMs) {
+      gapsOverCadence += 1;
+      // Ticks after this gap: the events past it, less the unlock itself.
+      ticksAfterLastBigGap = events.length - 1 - i;
+    }
     prev = t;
   }
   const reading = (verdict: LockProbeVerdict): LockProbeReading => ({
     verdict,
     maxGapMs,
     ticksInside: inside.length,
+    gapBeforeHiddenMs: Math.abs(start),
   });
-  // Fewer than two ticks' worth of window and the gaps say nothing either
-  // way: one tick could land or miss on interval slop alone.
-  if (input.hiddenMs < tickMs * 2) return reading('too-short');
-  // Cadence first: on a short window a single normal gap is also half of it.
-  if (maxGapMs <= tickMs * NORMAL_MAX_GAP_TICKS) return reading('normal');
-  if (maxGapMs >= input.hiddenMs * FROZEN_GAP_FRACTION) return reading('frozen');
+  // A span no longer than the gap a running page is allowed cannot hold an
+  // over-cadence gap at all, so it cannot tell frozen from running: with no
+  // tick in it the one gap IS the span, and it would read normal.
+  if (spanMs <= normalGapMs) return reading('too-short');
+  // Cadence first: on a short span a single normal gap is also half of it.
+  if (maxGapMs <= normalGapMs) return reading('normal');
+  if (maxGapMs >= spanMs * FROZEN_GAP_FRACTION) return reading('frozen');
+  // One hole, and at most the overdue callback after it: the page stopped
+  // and did not run again until the unlock.
+  if (gapsOverCadence === 1 && ticksAfterLastBigGap <= 1) return reading('frozen');
   return reading('throttled');
 }

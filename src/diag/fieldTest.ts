@@ -274,7 +274,8 @@ export interface FieldTestStep {
    * Ask the operator to lock the phone, and score what the page did while
    * it was locked from the runner's own ticks. See `lockProbe.ts` for why
    * the existing log cannot answer this, and `fieldTest.test.ts` for why the
-   * step sits last with the microphone shut.
+   * step sits after every measurement (second to last, ahead only of `free`)
+   * with the microphone shut.
    */
   lockProbe?: boolean;
   /**
@@ -341,8 +342,9 @@ function routeProbes(
  * step's answers were "pressed twice", "the radio took one" and "could not
  * press twice", none of which is true when there is nothing to press INTO. So
  * the one condition where the answer is certain in advance was the one
- * condition with no button for it. `stepResponses` moves this to the front
- * under a condition with no Bluetooth.
+ * condition with no button for it. Since the 2026-09-27 drive the wheel
+ * steps are off the path under a condition with no Bluetooth (`onPath`), so
+ * this is now for a car whose Bluetooth dropped mid-leg.
  */
 const WHEEL_NA: StepResponse = {
   id: 'wheel-na',
@@ -528,7 +530,6 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
       muted: false,
       voice: false,
       eyesFree: true,
-      // Above unity on purpose: a clip can carry the excess through a gain
       // UNITY, and pinned at unity on purpose.
       //
       // This used to be 1.5, which confounded the comparison it was meant to
@@ -1219,7 +1220,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     /**
-     * LAST, AND THAT IS A COMPROMISE RATHER THAN A CHOICE.
+     * AFTER EVERY MEASUREMENT, AND THAT IS A COMPROMISE RATHER THAN A CHOICE.
      *
      * The number normalises the route block, which ran ten minutes and one
      * microphone session earlier, and a cabin measured at the end of a leg is
@@ -1235,7 +1236,8 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
      */
     id: 'ambient',
     title: 'How loud is it in here',
-    instruction: 'Stay quiet for five seconds. This measures the cabin, not you.',
+    instruction:
+      'Stay quiet. Five seconds of the cabin are measured the moment this line ends, and a chime says when it is done.',
     ambient: true,
     /**
      * A single "Done" filed every reading as a clean cabin measurement. If a
@@ -1252,7 +1254,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     /**
-     * LAST, AND FOR A DIFFERENT REASON FROM `ambient`. This asks for thirty
+     * AFTER `ambient`, AND FOR A DIFFERENT REASON. This asks for thirty
      * seconds with the screen off. A microphone open under it would be thirty
      * seconds of hands-free profile measuring nothing; a route sample after
      * it would be taken on a page that may just have been frozen or reloaded.
@@ -1449,6 +1451,7 @@ export function logFieldTestRunStart(
   conditionId: string,
   runId: string | undefined,
   steps: number,
+  answerByVoice: boolean,
 ): void {
   diag('test', 'run-start', {
     // THE RUN ID, which this line of all lines was missing.
@@ -1466,6 +1469,11 @@ export function logFieldTestRunStart(
     // a no-Bluetooth leg has no wheel steps at all. This module cannot count
     // them itself without importing the run.
     steps,
+    // THE SWITCH, on the one row that is joined to the run. The
+    // `answer-by-voice` row is written from the gate, where the switch
+    // lives, and can belong to the run just finished or the one about to
+    // start; this row says what the run actually ran with.
+    answerByVoice,
     // THE MOTION, because the condition id alone does not survive the
     // protocol changing. Two of the four conditions are driven and two are
     // not, and "was the car moving" is the axis half the findings are pooled
@@ -1496,20 +1504,6 @@ export function logFieldTestRunEnd(conditionId: string, stamped: number, steps: 
   diag('test', 'run-end', { condition: conditionId, stamped, steps });
 }
 
-/**
- * A step's answers, in the fixed positions the wheel family uses.
- *
- * Nothing here depends on the condition any more. A no-Bluetooth leg used to
- * prepend `wheel-na` and shift every wheel slot down one, because the only
- * honest answer on six wheel steps sat fifth; those steps are off such a
- * leg's path now (`onPath`, fieldTestRun.ts), so the branch had nothing to
- * render and was deleted rather than kept as a second ordering nobody sees.
- * `wheel-na` stays as an answer: Bluetooth dropping mid-leg is a real thing
- * to report.
- *
- * `MISSED` STAYS LAST: the one escape hatch that means the same thing on
- * every step never moves, which is what makes it reachable without looking.
- */
 /**
  * FIXED POSITIONS FOR THE WHEEL FAMILY, top to bottom.
  *
@@ -1552,19 +1546,17 @@ const WHEEL_SLOTS: readonly (readonly string[])[] = [
 export type StepSlot = StepResponse | null;
 
 /**
- * A step's answers, in the positions they occupy for the condition being run.
+ * A step's answers, in the fixed positions the wheel family uses.
  *
- * `speakerphone` has Bluetooth off, so on its wheel steps every honest answer
- * is `wheel-na` -- and it sat fifth, underneath four answers about what the
- * car did. Asking a driver to read past four impossible options to reach the
- * only possible one is how a wrong answer gets tapped at speed, and a wrong
- * answer here reads in the analysis as the car ignoring the app. The move is
- * the same on every wheel step of that condition, so positions stay fixed
- * within the run the operator is actually doing.
+ * Nothing here depends on the condition. A no-Bluetooth leg used to prepend
+ * `wheel-na` and shift every wheel slot down one, because the only honest
+ * answer on six wheel steps sat fifth; those steps are off such a leg's path
+ * now (`onPath`, fieldTestRun.ts), so the branch had nothing to render and
+ * was deleted rather than kept as a second ordering nobody sees. `wheel-na`
+ * stays as an answer: Bluetooth dropping mid-leg is a real thing to report.
  *
- * `MISSED` STAYS LAST regardless: the one escape hatch that means the same
- * thing on every step never moves, which is what makes it reachable without
- * looking.
+ * `MISSED` STAYS LAST: the one escape hatch that means the same thing on
+ * every step never moves, which is what makes it reachable without looking.
  */
 export function stepResponses(step: FieldTestStep): readonly StepSlot[] {
   if (!step.wheel) return step.responses;
@@ -1603,7 +1595,6 @@ export interface RouteAnswer {
   id: string;
   via: 'tap' | 'voice';
   marks?: string;
-  mic?: string;
 }
 
 export type RouteBlockVerdict = 'uniform' | 'wandering' | 'moved' | 'short';

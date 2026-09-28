@@ -463,7 +463,7 @@ describe('what the log gets', () => {
    * two drives produced no diagnosis for exactly this reason.
    */
   it('brackets the run and every step, so the stamps have something to sit between', () => {
-    logFieldTestRunStart('freeway', undefined, 32);
+    logFieldTestRunStart('freeway', undefined, 32, false);
     logFieldTestStep('route-1', 'freeway', 0);
     stampFieldTest('route-1', 'freeway', 'route-car');
     logFieldTestRunEnd('freeway', 1, 32);
@@ -861,8 +861,10 @@ describe('resolveFieldTestSetup', () => {
    * It asks the operator to lock the phone for thirty seconds. A microphone
    * open under it would be thirty seconds of hands-free profile with nobody
    * measuring anything; a route sample after it would be taken on a page that
-   * may just have been frozen or reloaded. So it goes last, with the
-   * microphone shut, and the only thing it measures is itself.
+   * may just have been frozen or reloaded. So it goes after every
+   * measurement -- second to last, ahead only of `free`, which has to stay
+   * last -- with the microphone shut, and the only thing it measures is
+   * itself.
    */
   it('runs the lock probe once, after every measurement, with the microphone shut', () => {
     const probes = FIELD_TEST_STEPS.filter((s) => s.lockProbe).map((s) => s.id);
@@ -1191,7 +1193,7 @@ describe('what a step lets the operator say', () => {
 describe('whether the car is moving', () => {
   it('records it on the run, so a renamed condition does not lose it', () => {
     clearDiagnosticLog();
-    logFieldTestRunStart('freeway', undefined, 32);
+    logFieldTestRunStart('freeway', undefined, 32, false);
     const start = readDiagnosticLog().find((e) => e.event === 'run-start');
     expect(start?.detail?.motion, 'nothing in the run says whether the car was moving').toBe(
       'driving',
@@ -1200,7 +1202,7 @@ describe('whether the car is moving', () => {
 
   it('does not call a parked condition driven', () => {
     clearDiagnosticLog();
-    logFieldTestRunStart('car', undefined, 32);
+    logFieldTestRunStart('car', undefined, 32, false);
     const start = readDiagnosticLog().find((e) => e.event === 'run-start');
     expect(start?.detail?.motion).toBe('parked');
   });
@@ -1231,7 +1233,7 @@ describe('the line that opens a run', () => {
    */
   it('carries the step count it was given, at both ends', () => {
     clearDiagnosticLog();
-    logFieldTestRunStart('speakerphone', 'abc123', 25);
+    logFieldTestRunStart('speakerphone', 'abc123', 25, false);
     logFieldTestRunEnd('speakerphone', 20, 29);
     const start = readDiagnosticLog().find((e) => e.event === 'run-start');
     const end = readDiagnosticLog().find((e) => e.event === 'run-end');
@@ -1241,16 +1243,29 @@ describe('the line that opens a run', () => {
 
   it('carries the id of the run it opens', () => {
     clearDiagnosticLog();
-    logFieldTestRunStart('freeway', 'abc123', 32);
+    logFieldTestRunStart('freeway', 'abc123', 32, false);
     const start = readDiagnosticLog().find((e) => e.event === 'run-start');
     expect(start?.detail?.run, 'run-start cannot be joined to its own run').toBe('abc123');
+  });
+
+  /**
+   * The `answer-by-voice` row is written from the gate, between runs as often
+   * as inside one, so it cannot say which run it applied to. The run's own
+   * boundary row can.
+   */
+  it('says whether the run answers out loud', () => {
+    clearDiagnosticLog();
+    logFieldTestRunStart('freeway', 'abc123', 32, true);
+    logFieldTestRunStart('freeway', 'abc124', 32, false);
+    const rows = readDiagnosticLog().filter((e) => e.event === 'run-start');
+    expect(rows.map((r) => r.detail?.answerByVoice)).toEqual([true, false]);
   });
 
   it('still writes the line when there is no id to carry', () => {
     // A run begun by an older build. Worse than having one, not worse than
     // losing the boundary entirely.
     clearDiagnosticLog();
-    logFieldTestRunStart('freeway', undefined, 32);
+    logFieldTestRunStart('freeway', undefined, 32, false);
     const start = readDiagnosticLog().find((e) => e.event === 'run-start');
     expect(start?.detail?.condition).toBe('freeway');
     expect(start?.detail?.run).toBeUndefined();
@@ -1442,15 +1457,15 @@ describe('what a run says about the page it started in', () => {
   });
 
   it('counts the legs this page has already run', () => {
-    logFieldTestRunStart('car', 'aaa', 32);
-    logFieldTestRunStart('freeway', 'bbb', 32);
-    logFieldTestRunStart('phone', 'ccc', 32);
+    logFieldTestRunStart('car', 'aaa', 32, false);
+    logFieldTestRunStart('freeway', 'bbb', 32, false);
+    logFieldTestRunStart('phone', 'ccc', 32, false);
     const starts = readDiagnosticLog().filter((e) => e.event === 'run-start');
     expect(starts.map((e) => e.detail?.legsBefore)).toEqual([0, 1, 2]);
   });
 
   it('says how long the page has been open, so a stale session is visible', () => {
-    logFieldTestRunStart('car', 'aaa', 32);
+    logFieldTestRunStart('car', 'aaa', 32, false);
     const start = readDiagnosticLog().find((e) => e.event === 'run-start');
     expect(typeof start?.detail?.sessionAgeMs).toBe('number');
     expect(start?.detail?.sessionAgeMs as number).toBeGreaterThanOrEqual(0);
@@ -1460,7 +1475,7 @@ describe('what a run says about the page it started in', () => {
     // The value the whole thing hangs on: `legsBefore=0` is the only leg whose
     // before-microphone cells are before anything.
     expect(fieldTestLegsThisSession()).toBe(0);
-    logFieldTestRunStart('car', 'aaa', 32);
+    logFieldTestRunStart('car', 'aaa', 32, false);
     expect(fieldTestLegsThisSession()).toBe(1);
   });
 });
@@ -1712,29 +1727,20 @@ describe('where an answer sits, from one step to the next', () => {
   const wheelSteps = FIELD_TEST_STEPS.filter((s) => s.wheel);
 
   it('keeps every wheel answer in the same position on every wheel step', () => {
-    // The ordering no longer depends on the condition -- a no-Bluetooth leg
-    // has no wheel steps on its path -- but walking every condition costs
-    // nothing and would catch the dependence coming back.
-    let checked = 0;
-    for (const condition of FIELD_TEST_CONDITIONS) {
-      const seen = new Map<string, number>();
-      for (const step of wheelSteps) {
-        stepResponses(step).forEach((r, i) => {
-          if (!r) return;
-          const was = seen.get(r.id);
-          if (was === undefined) {
-            seen.set(r.id, i);
-            checked += 1;
-          } else
-            expect(
-              i,
-              `under ${condition.id}, "${r.label}" is slot ${was} on one wheel step and ${i} on ${step.id}`,
-            ).toBe(was);
-        });
-      }
-      expect(seen.size, `no wheel answers were checked under ${condition.id}`).toBeGreaterThan(3);
+    const seen = new Map<string, number>();
+    for (const step of wheelSteps) {
+      stepResponses(step).forEach((r, i) => {
+        if (!r) return;
+        const was = seen.get(r.id);
+        if (was === undefined) seen.set(r.id, i);
+        else
+          expect(
+            i,
+            `"${r.label}" is slot ${was} on one wheel step and ${i} on ${step.id}`,
+          ).toBe(was);
+      });
     }
-    expect(checked, 'no conditions were walked at all').toBeGreaterThan(3);
+    expect(seen.size, 'no wheel answers were checked').toBeGreaterThan(3);
   });
 
   it('holds the empty positions open rather than closing them up', () => {
@@ -1946,19 +1952,17 @@ describe('a learned position does not change what a tap does', () => {
       for (const r of step.responses) modifier.set(r.id, r.modifier === true);
     }
     for (const step of FIELD_TEST_STEPS.filter((x) => x.wheel)) {
-      for (const condition of FIELD_TEST_CONDITIONS) {
-        const slots = stepResponses(step);
-        for (const [i, slot] of slots.entries()) {
-          if (slot === null) continue;
-          // Every OTHER wheel step's answer at this position.
-          for (const other of FIELD_TEST_STEPS.filter((x) => x.wheel && x.id !== step.id)) {
-            const there = stepResponses(other)[i];
-            if (!there) continue;
-            expect(
-              modifier.get(there.id),
-              `${condition.id}: slot ${i} is "${slot.label}" on ${step.id} and "${there.label}" on ${other.id}, and one of them advances while the other does not`,
-            ).toBe(modifier.get(slot.id));
-          }
+      const slots = stepResponses(step);
+      for (const [i, slot] of slots.entries()) {
+        if (slot === null) continue;
+        // Every OTHER wheel step's answer at this position.
+        for (const other of FIELD_TEST_STEPS.filter((x) => x.wheel && x.id !== step.id)) {
+          const there = stepResponses(other)[i];
+          if (!there) continue;
+          expect(
+            modifier.get(there.id),
+            `slot ${i} is "${slot.label}" on ${step.id} and "${there.label}" on ${other.id}, and one of them advances while the other does not`,
+          ).toBe(modifier.get(slot.id));
         }
       }
     }

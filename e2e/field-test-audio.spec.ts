@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
  * The field test against REAL clip playback.
@@ -502,8 +503,11 @@ function press(page: import('@playwright/test').Page, action: string): Promise<b
 test('a wheel press says whether the app was talking when it landed', async ({ page }) => {
   await captureWheel(page);
   await openTest(page);
-  for (let i = 0; i < 14; i += 1) {
-    if ((await page.getByTestId('fieldtest-title').innerText()) === 'Skip-back') break;
+  // Walked by id and bounded by the list, not by a count: the first route
+  // block is skipped unanswered here, which scores it `short` and puts the
+  // four probes behind it on the path.
+  for (let i = 0; i < FIELD_TEST_STEPS.length + 2; i += 1) {
+    if ((await page.getByTestId('fieldtest-title').getAttribute('data-step')) === 'wheel-back') break;
     await page.getByTestId('fieldtest-skip').click();
   }
   await expect(page.getByTestId('fieldtest-title')).toHaveText('Skip-back');

@@ -33,6 +33,7 @@ import {
   stopFieldTestRun,
   subscribeFieldTestRun,
   setFieldTestLockProbe,
+  setFieldTestMicClosedAt,
   advanceFieldTestStep,
   retreatFieldTestStep,
   fieldTestStepCount,
@@ -64,7 +65,12 @@ import { bandFor, adviceFor } from '../../diag/ambientNoise';
 import { useVoiceControl } from '../useVoiceControl';
 import { setVoiceOn } from '../voiceSession';
 import { setEyesFreeOn } from '../eyesFreeSession';
-import { diag, diagnosticSessionId, setDiagContext } from '../../diag/diagnosticLog';
+import {
+  diag,
+  diagnosticSessionId,
+  flushDiagnostics,
+  setDiagContext,
+} from '../../diag/diagnosticLog';
 import { classifyLockProbe, LOCK_PROBE_TICK_MS } from '../../diag/lockProbe';
 import { audioFocusElementIsPlaying } from '../../audio/audioFocus';
 
@@ -160,6 +166,19 @@ function useArmedFor(armed: boolean, setArmed: (v: boolean) => void): void {
 
 /** Tick rows written per hidden window; the verdict itself is not capped. */
 const LOCK_PROBE_MAX_TICK_ROWS = 60;
+/**
+ * The voice settings every line this screen speaks is spoken with.
+ *
+ * Four sites said a line -- the pause cue, the measured lines, the lock
+ * verdict and the read-aloud instruction -- and each spelled the options
+ * out by hand, so two of them dropped `volume` and, for a drive, the
+ * instructions dropped `voiceURI` and fell to the heuristic voice ("some
+ * horrible creepy raspy roboty voice"). One function, so a setting the
+ * protocol imposes cannot be forgotten at one of them.
+ */
+function spokenOpts(audio: Settings['audio']): { rate: number; voiceURI: string; volume: number } {
+  return { rate: audio.rate, voiceURI: audio.voiceURI, volume: effectiveVolume(audio) };
+}
 
 const HFP_SETTLE_MS = 1_500;
 
@@ -267,6 +286,9 @@ export function FieldTest({
     if (scoredLockProbe.current === key) return;
     scoredLockProbe.current = key;
     diag('test', 'lock-probe-result', {
+      // The run the marker was left by, read from the store rather than the
+      // prop so the effect stays keyed on the marker alone.
+      run: readFieldTestRun().runId,
       step: 'lock-probe',
       classification: 'frozen-unloaded',
       hiddenAt: marker.hiddenAt,
@@ -321,6 +343,7 @@ export function FieldTest({
             run.condition,
             readFieldTestRun().runId,
             fieldTestStepCount({ condition: run.condition }),
+            run.answerByVoice === true,
           );
           // THE GRAPH EXISTS BEFORE THE FIRST SAMPLE, not partway through the
           // first pair.
@@ -355,6 +378,9 @@ export function FieldTest({
             // joined to the run it resumes.
             run: run.runId,
             condition: run.condition,
+            // The switch, on the row that is joined to the run: the
+            // `answer-by-voice` row is written from the gate and is not.
+            answerByVoice: run.answerByVoice === true,
             step: FIELD_TEST_STEPS[run.stepIndex]?.id,
             atStep: run.stepIndex,
           });
@@ -486,8 +512,7 @@ function StartGate({
     chime('attention');
     void speakAsync('The field test is paused. Resume is the first button on the screen.', {
       interrupt: true,
-      rate: audio.rate,
-      voiceURI: audio.voiceURI,
+      ...spokenOpts(audio),
     });
     // ONCE PER ARRIVAL. `run` changes when the picker is touched, and a driver
     // changing condition does not need to be told again where Resume is.
@@ -607,8 +632,10 @@ function StartGate({
               shut on purpose -- opening one flips the phone to the car's
               hands-free profile, which is the variable this protocol exists
               to measure -- so the channel cannot open one. It listens only
-              where the protocol already has the microphone open: eight of
-              the thirty-one steps. Saying so on the switch is what stops an
+              where the protocol already has the microphone open and the word
+              is not itself the evidence: seven of the thirty-two on a
+              Bluetooth path.
+              Saying so on the switch is what stops an
               operator waiting for an answer that nothing is listening for. */}
           <span className="u-note">
             Say the answer instead of finding the button, on the steps that
@@ -692,10 +719,7 @@ function RunningTest({
   const step = FIELD_TEST_STEPS[Math.min(run.stepIndex, FIELD_TEST_STEPS.length - 1)]!;
   // The last step ON THE PATH: a dormant probe after this one does not count.
   const atLastStep = nextActiveIndex(run.stepIndex, 1, run) === run.stepIndex;
-  // ORDERED FOR THE CONDITION BEING RUN. Under `speakerphone` the car is
-  // not in the audio path at all, so every wheel step's only honest answer
-  // is "No Bluetooth" — and it sat fifth, under four answers about what
-  // the car did. See `stepResponses`.
+  // In the wheel family's fixed positions. See `stepResponses`.
   const responses = useMemo(() => stepResponses(step), [step]);
   /**
    * What this step says, for telling the app's voice from the operator's.
@@ -705,7 +729,16 @@ function RunningTest({
    * check has to work for a fragment arriving after the line has finished.
    */
   const stepLines = useMemo(
-    () => [...(step.say ?? []), ...(step.sayUnclipped ? [step.sayUnclipped] : [])],
+    () => [
+      ...(step.say ?? []),
+      ...(step.sayUnclipped ? [step.sayUnclipped] : []),
+      // THE READ-ALOUD INSTRUCTION TOO. On `wheel-with-mic` it is spoken with
+      // the microphone open; echoed back by the car it went to the matcher,
+      // which stamped `missed` while "skip" was a synonym for it and chimes
+      // not-understood otherwise -- on the one step whose own comment says a
+      // chime and nothing reads as a dead microphone.
+      step.instruction,
+    ],
     [step],
   );
   const [wheelSeen, setWheelSeen] = useState<string[]>([]);
@@ -813,22 +846,6 @@ function RunningTest({
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
-  /**
-   * What the operator had before the run started, so it can be given back.
-   *
-   * Steps write real, persisted settings -- volume, wheelMode, audioEnabled,
-   * useClips, muted -- through `saveSettings`. Nothing ever restored them, so
-   * a completed run left the phone at `volume: 1.5` and `wheelMode: 'answer'`
-   * for good: the operator's next drill ran at 150% with the wheel in the
-   * wrong mode, for reasons that have nothing to do with the drill. Leaving
-   * mid-run was worse -- whatever partial state the last step imposed is what
-   * they kept, including `useClips: false` if they stopped anywhere in the
-   * three TTS route steps, which silently disables the recorded voice
-   * everywhere.
-   *
-   * Captured in a ref on the first render and never updated, so it survives
-   * every step's writes.
-   */
 
   /**
    * Whether the recogniser is actually live, for the steps that must wait.
@@ -839,8 +856,8 @@ function RunningTest({
    */
   const listeningRef = useRef(false);
   /**
-   * When the app last stopped reporting `listening`, and `null` before it ever
-   * has.
+   * When the run's setup last stopped asking for the microphone, and `null`
+   * before it ever has.
    *
    * WHY A CLOCK AT ALL. The four post-microphone cells exist to separate two
    * explanations of a route that moved: the phone comes back on a timer, or it
@@ -851,20 +868,29 @@ function RunningTest({
    * no clock on them read as "the route alternated", which answers nothing.
    *
    * HONEST ABOUT WHAT IT TIMES, for the same reason `appLetGoAfterMs` was
-   * renamed: this is when the RECOGNISER stopped saying `listening`, which is
-   * the app letting go. The phone releases the hands-free link some unexposed
-   * time later. So every field derived from it is named after the app, and a
-   * reading taken 1.5s after it is not a reading 1.5s after the car switched
-   * back — it is 1.5s after the last moment either side of the browser can
-   * see.
+   * renamed: this is when the STEP stopped asking for the microphone -- the
+   * render in which the declared setup turned `voice` off -- which is the app
+   * letting go. The recogniser closes within a render of that; the phone
+   * releases the hands-free link some unexposed time later. So every field
+   * derived from it is named after the app, and a reading taken 1.5s after
+   * it is not a reading 1.5s after the car switched back — it is 1.5s after
+   * the last moment either side of the browser can see.
    *
-   * `null` is meaningful: it says the microphone has not been up in this page
+   * `null` is meaningful: it says the microphone has not been up in this run
    * yet, which is exactly the before-microphone half of the 2x2. Those cells
    * export no offset rather than a zero that would average in.
+   *
+   * SEEDED FROM THE RUN AND WRITTEN BACK TO IT (`micClosedAt`). A Pause, or
+   * the tab bar, unmounts this component and Resume mounts a fresh one; a
+   * reload does the same. Kept only here, the clock was lost on any of them
+   * inside the after block, and every later sample said the microphone had
+   * never been up. A pause is a gap in the run, not the microphone opening.
    */
-  const micClosedAtRef = useRef<number | null>(null);
+  const micClosedAtRef = useRef<number | null>(run.micClosedAt ?? null);
   /**
-   * When the recogniser last restarted itself, which is not the same event.
+   * When the recogniser last restarted itself, which is not the same event,
+   * and only while that restart is still in progress: cleared the moment it
+   * is `listening` again, and on the declared close.
    *
    * iOS ends a webkit recognition session after every utterance and
    * `voiceControl.ts` starts a new one from `onend`. That edge used to be
@@ -872,6 +898,17 @@ function RunningTest({
    * documented as "how long after the app let go".
    */
   const micChurnAtRef = useRef<number | null>(null);
+  /**
+   * What the recogniser was doing, and how long since the app let go, AS
+   * THE STEP OPENED -- taken once per step, on the `step-open` utterance,
+   * and reused by "Say it again". Recomputed per utterance, a replay on
+   * `route-after-mic` wrote a second gate row reading `stateAtArrival=off`
+   * with the clock several seconds on, which failed the doc's gate on a
+   * clean leg.
+   */
+  const arrivalMicRef = useRef<{ state: string; sinceAppLetGoMs: number | undefined } | null>(
+    null,
+  );
   /** Whether the previous render's step declared the microphone open. */
   const wantedVoiceRef = useRef(false);
   /**
@@ -893,8 +930,10 @@ function RunningTest({
    * a phone. The count is a fact the screen already holds, so it goes on the
    * line.
    *
-   * Per leg, not per step: the quantity the hypothesis is about is how many
-   * presses the car has been asked for since the run began.
+   * Per mount, not per step: it restarts at 1 after a Pause/Resume or a
+   * reload (each writes `run-resume`), because the hold it counts presses
+   * against is released and re-taken there too. A per-run figure is the
+   * count across `run-resume` rows.
    */
   const pressCountRef = useRef(0);
   const voiceStatusRef = useRef('off');
@@ -1011,6 +1050,13 @@ function RunningTest({
    */
   const run_condition = run.condition;
   const say = useCallback(async (why: string) => {
+    if (why === 'step-open') {
+      arrivalMicRef.current = {
+        state: voiceStatusRef.current,
+        sinceAppLetGoMs:
+          micClosedAtRef.current === null ? undefined : Date.now() - micClosedAtRef.current,
+      };
+    }
     // BUMPED BEFORE THE EMPTY CHECK, not after. With the early return first, a
     // step that speaks nothing could not fence the previous step's in-flight
     // run -- so an orphaned continuation appended its path to the silent step
@@ -1144,6 +1190,9 @@ function RunningTest({
         const live = listeningRef.current;
         diag('test', live ? 'mic-settled' : 'mic-never-live', {
           step: step.id,
+          // WHICH UTTERANCE: the doc's gates read the `step-open` row; a
+          // replay waits again and writes its own.
+          why,
           waitedMs,
           state: voiceStatusRef.current,
           ...(abandoned ? { abandoned: true } : {}),
@@ -1180,9 +1229,14 @@ function RunningTest({
      */
     if (step.awaitSilent) {
       const waitedFrom = Date.now();
-      // WAS THE RECOGNISER EVEN UP? Recorded, because it is the only part of
-      // this gate that is a fact rather than a timer -- see the `finally`.
+      // WHAT THE RECOGNISER WAS DOING WHEN THE STEP OPENED, and how long ago
+      // the app let go. `wasLive` alone was read as a trust gate and on iOS
+      // it is usually `false` here for an innocent reason: the recogniser
+      // ends after every utterance and is mid-restart when the step is left.
+      // The two together say which it was -- see the `finally`.
       const wasLive = listeningRef.current;
+      const stateAtArrival = arrivalMicRef.current?.state;
+      const sinceAppLetGoAtArrivalMs = arrivalMicRef.current?.sinceAppLetGoMs;
       // Same flag as the opening gate, deliberately. It reads "Waiting for the
       // microphone", which is true in both directions, and it is what the
       // answer stack is disabled on -- so the operator cannot answer "where
@@ -1232,14 +1286,25 @@ function RunningTest({
         const live = listeningRef.current;
         diag('test', live ? 'mic-still-live' : 'mic-stopped', {
           step: step.id,
+          // WHICH UTTERANCE. The doc's gates read the `step-open` row; a
+          // replay's `wasLive` is about the replay, its arrival fields are
+          // the step's.
+          why,
           // How long until the APP stopped reporting `listening`. This is a
           // React round trip, not a fact about the microphone -- the name says
           // so now, because the old one claimed the opposite.
           appLetGoAfterMs: stoppedAfterMs ?? undefined,
-          // Whether the recogniser was up at all when this step opened. A
-          // `false` here means the gate had nothing to wait for and the sample
-          // is not "after the microphone" in any meaningful sense.
+          // Whether the recogniser was `listening` when this step opened.
+          // NOT a trust gate on its own: on iOS the recogniser is between
+          // sessions after every utterance, so `false` on `route-after-mic`
+          // is the usual reading. `stateAtArrival` says what it was doing
+          // instead (`restarting` is the innocent case; `off` means it was
+          // never up), and `sinceAppLetGoAtArrivalMs` is the after clock as
+          // this step opened -- small on `route-after-mic`, absent before
+          // the microphone was ever up.
           wasLive,
+          stateAtArrival,
+          sinceAppLetGoAtArrivalMs,
           waitedMs: Date.now() - waitedFrom,
           // The only part of the wait that is doing real work, and a DECLARED
           // number rather than an observation. A drive whose route still moves
@@ -1368,9 +1433,7 @@ function RunningTest({
         try {
           await speakAsync(text, {
             interrupt: i === 0,
-            rate: settingsRef.current.audio.rate,
-            voiceURI: settingsRef.current.audio.voiceURI,
-            volume: effectiveVolume(settingsRef.current.audio),
+            ...spokenOpts(settingsRef.current.audio),
             tag,
           });
           if (sayRun.current !== run) return;
@@ -1521,7 +1584,7 @@ function RunningTest({
      * the transcript, the ambient line and the paths, and `RunningTest` does
      * not remount between steps.
      *
-     * In the car: tap "Measure the cabin" on `ambient`, tap an answer or Skip
+     * In the car: the window opens itself on `ambient`; tap an answer or Skip
      * inside the five seconds, come Back -- and the button reads "Listening..."
      * and is dead for the rest of the run. `ambient` is the one step that
      * cannot be done without it, and the only recovery is Pause and re-enter.
@@ -1637,18 +1700,6 @@ function RunningTest({
   );
 
   /**
-   * KEEP THE SCREEN AWAKE FOR THE RUN, which this screen alone did not.
-   *
-   * Every drill view calls `requestWakeLock`, and so does `useVoiceControl`
-   * while the microphone is live -- so the fifteen non-microphone steps of a
-   * twenty-two step protocol ran with the display free to sleep on its
-   * ordinary timer. A slept screen is a hidden page: timers throttle, the
-   * ambient measurement's loop stalls, and the operator has to wake the phone
-   * at every step, which is a glance and a tap they should not be spending at
-   * the wheel. The protocol declares eyes-free on nearly every step, and
-   * `eyesFreeSession` is a plain flag with no wake-lock wiring of its own.
-   */
-  /**
    * THE LOCK PROBE: a clock of its own, and a verdict on the way back.
    *
    * See `lockProbe.ts` for why the existing log cannot answer "did the page
@@ -1674,7 +1725,11 @@ function RunningTest({
    */
   useEffect(() => {
     if (!step.lockProbe) return;
-    let ticks: number[] = [];
+    // THE ARRIVAL IS A TICK: proof the page ran at that moment. The window
+    // starts at the last tick before `hidden` (lockProbe.ts), and a lock
+    // taken within a tick of arriving -- or of the previous verdict -- had
+    // none, so a late `hidden` on a frozen page read `too-short`.
+    const ticks: number[] = [Date.now()];
     let hiddenAt: number | null = null;
     let rows = 0;
     let focusAtHidden: boolean | null = null;
@@ -1682,6 +1737,11 @@ function RunningTest({
     const timer = window.setInterval(() => {
       const now = Date.now();
       ticks.push(now);
+      // While the screen is on only the last two matter (the window's start,
+      // and the one before it when the last is the overdue callback). A cap
+      // over the whole array shifted those out under a lock longer than the
+      // cap, and a normal twenty-five-minute lock read `throttled`.
+      if (hiddenAt === null && ticks.length > 2) ticks.shift();
       if (hiddenAt !== null && rows < LOCK_PROBE_MAX_TICK_ROWS) {
         rows += 1;
         diag('test', 'lock-probe-tick', { step: step.id, n: rows, sinceHiddenMs: now - hiddenAt });
@@ -1691,7 +1751,8 @@ function RunningTest({
       if (document.visibilityState === 'hidden') {
         if (hiddenAt !== null || unloading) return;
         hiddenAt = Date.now();
-        ticks = [];
+        // The ticks before this moment are KEPT: the last of them is the
+        // start of the window when iOS delivers `hidden` late (lockProbe.ts).
         rows = 0;
         // WHETHER THE SILENT ELEMENT WAS PLAYING, because that is plausibly the
         // only reason iOS keeps the page alive under the lock at all, and a
@@ -1703,12 +1764,17 @@ function RunningTest({
         });
         return;
       }
+      // Visible again: whatever `pagehide` said, this page is still here.
+      unloading = false;
       if (hiddenAt === null) return;
       const from = hiddenAt;
       const now = Date.now();
       const hiddenMs = now - from;
       hiddenAt = null;
       const reading = classifyLockProbe({ hiddenMs, ticks: ticks.map((t) => t - from) });
+      // A NEW BASELINE, starting now: the ticks of this lock have been read,
+      // and this moment is the first proof of running for the next one.
+      ticks.splice(0, ticks.length, now);
       const classification = reading.verdict;
       diag('test', 'lock-probe-result', {
         step: step.id,
@@ -1716,7 +1782,7 @@ function RunningTest({
         hiddenMs,
         ticksInside: reading.ticksInside,
         maxGapMs: reading.maxGapMs,
-        expected: Math.floor(hiddenMs / LOCK_PROBE_TICK_MS),
+        gapBeforeHiddenMs: reading.gapBeforeHiddenMs,
         focusPlayingAtHidden: focusAtHidden,
         focusPlayingAtVisible: audioFocusElementIsPlaying(),
       });
@@ -1730,11 +1796,7 @@ function RunningTest({
               ? 'The page was frozen while the phone was locked.'
               : 'That was too short to tell. Lock it again, for longer.';
       setAmbient(said);
-      void speakAsync(said, {
-        interrupt: true,
-        rate: settingsRef.current.audio.rate,
-        voiceURI: settingsRef.current.audio.voiceURI,
-      });
+      void speakAsync(said, { interrupt: true, ...spokenOpts(settingsRef.current.audio) });
     };
     // A NAVIGATION IS NOT A KILL. Reloading -- the update check does it by
     // itself -- fires `pagehide` and THEN `visibilitychange: hidden` on the
@@ -1744,6 +1806,18 @@ function RunningTest({
     // entering the back-forward cache, which iOS can do on backgrounding:
     // not a navigation, so the marker stays.)
     const onPageHide = (e: PageTransitionEvent) => {
+      // Written either way: a `pagehide` under the lock is the one line that
+      // says whether the marker was cleared by a navigation or left for the
+      // next boot, and a run whose page was killed has nothing else to say.
+      diag('test', 'lock-probe-pagehide', {
+        step: step.id,
+        persisted: e.persisted,
+        hidden: hiddenAt !== null,
+      });
+      // FLUSHED HERE. The boot-time `pagehide` listener (environment.ts)
+      // flushed before this one ran, so the row sat in the one-second buffer
+      // -- and on a kill after a lock there is no later flush.
+      flushDiagnostics();
       if (e.persisted) return;
       unloading = true;
       if (hiddenAt !== null) setFieldTestLockProbe(undefined);
@@ -1762,6 +1836,18 @@ function RunningTest({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step.id, step.lockProbe]);
 
+  /**
+   * KEEP THE SCREEN AWAKE FOR THE RUN, which this screen alone did not.
+   *
+   * Every drill view calls `requestWakeLock`, and so does `useVoiceControl`
+   * while the microphone is live -- so the fifteen non-microphone steps of a
+   * twenty-two step protocol ran with the display free to sleep on its
+   * ordinary timer. A slept screen is a hidden page: timers throttle, the
+   * ambient measurement's loop stalls, and the operator has to wake the phone
+   * at every step, which is a glance and a tap they should not be spending at
+   * the wheel. The protocol declares eyes-free on nearly every step, and
+   * `eyesFreeSession` is a plain flag with no wake-lock wiring of its own.
+   */
   useEffect(() => {
     void requestWakeLock('field-test');
     return () => {
@@ -1865,7 +1951,10 @@ function RunningTest({
       diag('wheel', 'field-test-arrival', {
         step: step.id,
         action,
-        // WAS ANYTHING PLAYING WHEN IT ARRIVED.
+        // WAS THE STEP INSIDE ITS UTTERANCE WHEN IT ARRIVED. `speaking` is
+        // set from the moment a step with a line arrives, through the
+        // prewarm and the settle, until the line has ended -- so `true` is
+        // "inside the utterance bracket", not "sound was audible".
         //
         // The wheel block is built as a contrast between pressing while the app
         // talks and pressing in the silence, and on the three steps that
@@ -1887,9 +1976,10 @@ function RunningTest({
         // against each other.
         msSinceAppLetGo:
           micClosedAtRef.current === null ? undefined : Date.now() - micClosedAtRef.current,
-        // ...and how long after the recogniser last restarted itself, which is
+        // ...and how long a recogniser restart has been IN PROGRESS, which is
         // a different event and used to be reported as this one. Present only
-        // while the microphone is the thing being pressed against.
+        // while the restart is still under way: absent means listening, or
+        // never up -- the arrival row does not say which.
         msSinceMicRestart:
           micChurnAtRef.current === null ? undefined : Date.now() - micChurnAtRef.current,
       });
@@ -1922,14 +2012,16 @@ function RunningTest({
    * cannot be allowed to perform it.
    *
    * So `enabled` is the protocol's decision alone (`voiceWanted`), and the
-   * switch only changes what a transcript MEANS once one arrives. The
-   * `mic` field on a spoken stamp therefore always reads `protocol`; it is
-   * kept because the export's contract names it, and because a row that
-   * ever said otherwise would be the bug this comment describes, back.
+   * switch only changes what a transcript MEANS once one arrives -- and not
+   * on a step whose transcript IS the evidence (`transcriptIsEvidence`):
+   * there the word goes to the drill vocabulary, as the step is asking.
+   *
+   * `stepWantsVoice` is the declared setup, and it is the one authority for
+   * "the microphone is open on this step": `say()` gates on it, the screen
+   * prints it, the after-block clock below starts on its edge.
    */
-  const stepHasMicOpen = resolveFieldTestSetup(run.stepIndex).voice === true;
-  const spokenAnswersLive = answerByVoice && stepHasMicOpen;
-  const micProvenance = (): 'protocol' => 'protocol';
+  const stepWantsVoice = resolveFieldTestSetup(run.stepIndex).voice === true;
+  const spokenAnswersLive = answerByVoice && stepWantsVoice && !step.transcriptIsEvidence;
 
   const { status: voiceStatus } = useVoiceControl({
     enabled: voiceWanted,
@@ -1948,8 +2040,13 @@ function RunningTest({
        * vocabulary never sees it -- which is right: "no" is a command
        * elsewhere and an answer here.
        *
-       * Three refusals, all of them deliberate:
+       * Four refusals, all of them deliberate:
        *
+       *  - Not on a step whose transcript is the evidence (`mic-heard`). The
+       *    word is shown above and goes on to the command vocabulary, where
+       *    "double" lands as a `heard-action` -- which is what that step is
+       *    looking at. `spokenAnswersLive` is false there, and the banner
+       *    says so.
        *  - Not while `sampling` or `waitingForMic`. The tap path is refused
        *    then for a reason (an answer during line 1 of `fallback-audible`
        *    compares one line to nothing), and a channel that walked round
@@ -1964,11 +2061,7 @@ function RunningTest({
        *    two answers fit equally, and a wrong stamp reads in the analysis
        *    as the opposite finding.
        */
-      // THE STEP WHOSE EVIDENCE THIS IS. See `transcriptIsEvidence`: the word
-      // is shown above and goes on to the command vocabulary, where "double"
-      // lands as a `heard-action` -- which is what the step is looking at.
-      if (step.transcriptIsEvidence) return null;
-      if (!answerByVoice) return null;
+      if (!spokenAnswersLive) return null;
       if (stepLines.some((line) => looksLikeSelfEcho(text, line))) {
         diag('test', 'heard-own-voice', { step: step.id, text });
         return null;
@@ -1999,7 +2092,9 @@ function RunningTest({
      * only when, the thing thrown away was an answer this step was offering.
      */
     isAttempt: (heard) =>
-      answerByVoice ? matchFieldTestAnswer(heard, responses) !== null : looksLikeAnAttempt(heard),
+      spokenAnswersLive
+        ? matchFieldTestAnswer(heard, responses) !== null
+        : looksLikeAnAttempt(heard),
     onNotUnderstood: (why) => {
       diag('test', 'heard-unclear', { step: step.id, why });
       if (why === 'suppressed') {
@@ -2043,53 +2138,62 @@ function RunningTest({
    * `msSinceAppLetGo` is the spine of the recovery curve: four route samples
    * at roughly 1.5s, 9s, 20s and 31s after the microphone went down, read
    * against a `null` that means "before the microphone was ever up". The edge
-   * this watches is `voiceStatus.state`, and on iOS the recogniser ENDS AFTER
-   * EVERY UTTERANCE — `voiceControl.ts` restarts it from `onend` and
-   * reports `restarting` in between, which its own comment describes as six
-   * sessions and five restarts in one drill. So inside the microphone block,
-   * which is eight steps long, this clock was being reset several times, and
-   * `mic-route-2`, `mic-route-3` and the three TTS ones exported
-   * `msSinceAppLetGo=850` on rows where the microphone was OPEN. The earliest
-   * and most decisive region of the curve was filled with samples belonging to
-   * the opposite cell of the 2x2.
+   * is `stepWantsVoice` -- the declared setup ceasing to ask -- and it is one
+   * edge, seen here whatever the recogniser happened to be doing at the time.
    *
-   * The declared setup is the right authority for "has the app stopped
-   * asking": it is what `say()` gates on, what the screen prints, and what
-   * the operator was told. A recogniser cycling mid-block is not the app
-   * letting go of anything.
+   * It used to be the recogniser's own `listening` edge, and on iOS the
+   * recogniser ENDS AFTER EVERY UTTERANCE — `voiceControl.ts` restarts it
+   * from `onend` and reports `restarting` in between, six sessions and five
+   * restarts in one drill. So inside the microphone block, which is eight
+   * steps long, the clock was reset several times and `mic-route-2`,
+   * `mic-route-3` and the three TTS ones exported `msSinceAppLetGo=850` on
+   * rows where the microphone was OPEN; and whenever the block was left
+   * mid-restart -- after every utterance, after an `audio-capture` error
+   * (this screen never runs the drills' 45 s cycle) -- there was no edge at
+   * all, every after sample
+   * lost its offset, and `route-after-mic` read `wasLive=false`. A recogniser
+   * cycling mid-block is not the app letting go of anything.
+   *
+   * CLEARED WHEN IT OPENS AGAIN, which the protocol does allow: setup folds
+   * forward in BOTH directions, so stepping Back from `route-after-mic` into
+   * `wheel-with-mic` — one tap on a control that is always enabled — turns
+   * the microphone on again. Without this, every subsequent sample reported
+   * an offset "after the microphone let go" measured while the microphone
+   * was live, and `null` stopped meaning what the export says it means.
    */
-  const stepWantsVoice = resolveFieldTestSetup(run.stepIndex).voice === true;
-  // THE CLOSE IS THE DECLARED EDGE, not the recogniser's. "The app let go" is
-  // the step ceasing to ask for the microphone, and that is one edge, seen
-  // here whatever the recogniser happened to be doing at the time. Watching
-  // `listening` for it instead meant there was nothing to see whenever the
-  // step was left mid-restart -- after every utterance on iOS, every 45 s,
-  // after an `audio-capture` error -- and then every after sample lost its
-  // offset and `route-after-mic` read `wasLive=false`.
-  if (wantedVoiceRef.current && !stepWantsVoice) micClosedAtRef.current = Date.now();
+  if (wantedVoiceRef.current && !stepWantsVoice) {
+    micClosedAtRef.current = Date.now();
+    // The recogniser's last restart belongs to the block that is over; a
+    // press on `wheel-after-mic` is not "against" it.
+    micChurnAtRef.current = null;
+  }
   if (!wantedVoiceRef.current && stepWantsVoice) micClosedAtRef.current = null;
   wantedVoiceRef.current = stepWantsVoice;
   if (listeningRef.current && !nowListening && stepWantsVoice) {
     // A RESTART, NOT A CLOSE. Recorded rather than dropped: it is a real
     // event on the audio session, and a sample taken 200ms after a recogniser
-    // restart is worth being able to find.
+    // restart is worth being able to find. Cleared when the session is back.
     micChurnAtRef.current = Date.now();
   }
-  /**
-   * CLEARED WHEN IT OPENS AGAIN, which the protocol does allow.
-   *
-   * The previous note said a leg turns the microphone on once and off once,
-   * and that is true only of forward travel. `resolveFieldTestSetup` folds
-   * setup forward in BOTH directions on purpose, so stepping Back from
-   * `route-after-mic` into `wheel-with-mic` — one tap on a control that is
-   * always enabled — turns it on again. Without this, every subsequent
-   * sample reported an offset "after the microphone let go" measured while
-   * the microphone was live, and `null` stopped meaning what the export says
-   * it means.
-   */
   if (!listeningRef.current && nowListening) micChurnAtRef.current = null;
   listeningRef.current = nowListening;
   voiceStatusRef.current = voiceStatus.state;
+  // THE UNMOUNT IS THE APP LETTING GO TOO. Pause on a microphone step tears
+  // the recogniser down with the screen, and the condition picker sits
+  // beside Resume: a leg re-opened as no-Bluetooth snaps onto an after step
+  // with no edge recorded, and every after sample said the microphone had
+  // never been up. A Resume onto a microphone step clears it again, above.
+  useEffect(
+    () => () => {
+      if (wantedVoiceRef.current) setFieldTestMicClosedAt(Date.now());
+    },
+    [],
+  );
+  // WRITTEN BACK TO THE RUN, after the render rather than during it, so a
+  // Pause/Resume or a reload inside the after block keeps the clock.
+  useEffect(() => {
+    setFieldTestMicClosedAt(micClosedAtRef.current);
+  });
 
   /** Measure the cabin, on the step that asks for it. */
   const measure = useCallback(async () => {
@@ -2115,8 +2219,17 @@ function RunningTest({
         peakDbfs: Number(reading.peakDbfs.toFixed(1)),
         band,
         frames: reading.frames,
+        // CUT SHORT, said so. An answer, Skip, Pause or a second window
+        // inside the five seconds aborts this one, and `measureWithWebAudio`
+        // returns the frames it had rather than throwing -- so without this
+        // a partial window read like a whole one.
+        aborted: controller.signal.aborted || undefined,
       });
       if (measureRun.current !== mine) return;
+      // HEARD, NOT READ. The window starts by itself after the instruction
+      // and the operator is looking at the road; the chime is how they know
+      // the five seconds are over and they may speak again.
+      chime(reading.frames === 0 ? 'bad' : 'good');
       setAmbient(
         reading.frames === 0
           ? 'The microphone produced nothing at all — that is not a quiet room.'
@@ -2125,7 +2238,10 @@ function RunningTest({
     } catch (e) {
       const why = e instanceof Error ? e.name : String(e);
       diag('test', 'ambient-failed', { step: step.id, why });
-      if (measureRun.current === mine) setAmbient(`The microphone could not be opened (${why}).`);
+      if (measureRun.current === mine) {
+        chime('bad');
+        setAmbient(`The microphone could not be opened (${why}).`);
+      }
     } finally {
       if (measureAbort.current === controller) measureAbort.current = null;
       if (measureRun.current === mine) setMeasuring(false);
@@ -2144,8 +2260,8 @@ function RunningTest({
    * Whether the instruction is being read aloud right now. `sampling` is
    * deliberately NOT set for this -- the read-aloud is not a sample and must
    * not hold the answers -- but `ambient`'s Measure has to wait for it: the
-   * first seconds of a five-second window that opened under "Stay quiet for
-   * five seconds" are the app's own voice, and that figure is the leg's
+   * first seconds of a five-second window that opened under the instruction
+   * still being read are the app's own voice, and that figure is the leg's
    * reference level.
    */
   const [reading, setReading] = useState(false);
@@ -2174,12 +2290,7 @@ function RunningTest({
     try {
       await speakAsync(step.instruction, {
         interrupt: true,
-        rate: settingsRef.current.audio.rate,
-        // THE CHOSEN VOICE. The measured lines carried this and the
-        // instructions did not, so they fell to the heuristic pick -- heard
-        // in the car as "some horrible creepy raspy roboty voice".
-        voiceURI: settingsRef.current.audio.voiceURI,
-        volume: effectiveVolume(settingsRef.current.audio),
+        ...spokenOpts(settingsRef.current.audio),
         tag: `${step.id}#instruction`,
       });
     } catch (e) {
@@ -2209,7 +2320,13 @@ function RunningTest({
       return;
     }
     diag('test', 'instruction-spoken', { step: step.id, why });
-  }, [step.id, step.instruction, setSpeaking]);
+    // THE CABIN IS MEASURED WHEN THE LINE ENDS, on arrival. Holding the
+    // button for the read-aloud (`reading`) put a second tap between an
+    // operator who cannot look and the one reading the leg is referenced
+    // to; the step said "stay quiet" and then waited for a thumb. The
+    // button stays for a second reading.
+    if (why === 'arrival' && step.ambient) void measure();
+  }, [step.id, step.instruction, step.ambient, setSpeaking, measure]);
 
   /**
    * When the current step became answerable.
@@ -2243,11 +2360,18 @@ function RunningTest({
   // MIRRORED, so the draft can be read at the moment a step is left -- from
   // an effect cleanup, whose closure holds the step it was written on.
   const noteDraftRef = useRef('');
+  // ONE WRITER, so the row has one shape wherever the note is saved from --
+  // and `run` explicitly: the ambient context that would supply it is torn
+  // down by the same exits (Finish, Pause, the tab bar) whose unmount
+  // cleanup below saves the draft.
+  const writeNote = (text: string) => {
+    diag('test', 'note', { step: step.id, condition: run.condition, run: run.runId, text });
+    noteDraftRef.current = '';
+  };
   const saveNote = () => {
     const text = noteDraftRef.current.trim();
     if (!text) return;
-    diag('test', 'note', { step: step.id, condition: run.condition, text });
-    noteDraftRef.current = '';
+    writeNote(text);
     setNoted(text);
     setNoteDraft('');
   };
@@ -2256,15 +2380,15 @@ function RunningTest({
    * that lands on an answer with the keyboard still up moves the step on
    * before anything blurred the box, and the arrival effect then cleared the
    * draft: a note typed and never submitted was simply gone. Saved here, on
-   * the way out, against the step and condition the cleanup closed over.
+   * the way out -- the next step, Pause, Finish or the tab bar alike --
+   * against the step and condition the cleanup closed over.
    */
   useEffect(
     () => () => {
       const text = noteDraftRef.current.trim();
-      if (!text) return;
-      diag('test', 'note', { step: step.id, condition: run.condition, text });
-      noteDraftRef.current = '';
+      if (text) writeNote(text);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [step.id, run.condition],
   );
 
@@ -2275,7 +2399,8 @@ function RunningTest({
    * Recorded on every stamp because the two are not interchangeable
    * evidence: a spoken answer was given with the microphone OPEN, and an
    * open microphone is what moves the audio route this protocol exists to
-   * measure. See `micProvenance`.
+   * measure -- which is why the channel only listens where the protocol has
+   * it open already (`spokenAnswersLive`).
    */
   const answer = (responseId: string, via: 'tap' | 'voice' = 'tap') => {
     /**
@@ -2341,17 +2466,9 @@ function RunningTest({
     // site means the separator is chosen rather than inherited from
     // JSON.stringify, and the field stays greppable.
     stampFieldTest(step.id, run.condition, responseId, {
-      // HOW IT ARRIVED, and -- when it was spoken -- whether the microphone
-      // that heard it was one the protocol had already asked for or one the
-      // answer channel opened. On a step declaring `voice: true` the
-      // microphone is open regardless and a spoken answer perturbs nothing;
-      // anywhere else it would have opened one, which flips the phone to the
-      // car's hands-free profile and is exactly the variable under test --
-      // which is why the channel no longer can (see `spokenAnswersLive`).
-      // The field stays so the export's contract holds and so a row that
-      // ever read otherwise would be visible as the bug it was.
+      // HOW IT ARRIVED. A spoken answer was heard by the protocol's own
+      // microphone: the channel cannot open one (see `spokenAnswersLive`).
       via,
-      mic: via === 'voice' ? micProvenance() : undefined,
       // Carried WITH the answer rather than instead of it -- the whole point
       // of a modifier. A step answered "car speakers" having been marked
       // "it moved while playing" exports both, and the 2x2 can still be read
@@ -2376,7 +2493,6 @@ function RunningTest({
       id: responseId,
       via,
       ...(marks.length > 0 ? { marks: marks.join(', ') } : {}),
-      ...(via === 'voice' ? { mic: micProvenance() } : {}),
     });
     /**
      * THE TAP IS AUDIBLE, because the operator is not looking at the screen.
@@ -2492,7 +2608,10 @@ function RunningTest({
         type="button"
         className="fieldtest-stamp"
         data-testid="fieldtest-again"
-        disabled={sampling || waitingForMic}
+        // ...and while the cabin is being measured: the app's own voice in
+        // the five-second window is the leg's reference level (the other
+        // direction of the `reading` guard on Measure).
+        disabled={sampling || waitingForMic || measuring}
         onClick={() =>
           step.say || step.sayUnclipped
             ? void say('repeat')
@@ -2560,7 +2679,7 @@ function RunningTest({
         Every fix costs more than it buys. Giving it a slot of its own means a
         third position in a row of `flex: 1 1 0` children, which takes the
         most-reached control on the screen ("Say it again", after a truck went
-        past) from half the width to a third on all 31 steps, and leaves the
+        past) from half the width to a third on every step, and leaves the
         six silent steps with one control and two-thirds dead space. Moving it
         into the body shifts `ambient`'s answer stack down by a button pitch,
         which breaks the one invariant three tests exist to hold.
@@ -2580,11 +2699,12 @@ function RunningTest({
           data-testid="fieldtest-measure"
           // ...and while the app is reading the instruction: the first
           // seconds of the window would be the app's own voice, and that
-          // figure is the leg's reference level.
+          // figure is the leg's reference level. The first window opens by
+          // itself when the line ends; this is for a second one.
           disabled={measuring || reading}
           onClick={() => void measure()}
         >
-          {measuring ? 'Listening\u2026' : 'Measure the cabin'}
+          {measuring ? 'Listening\u2026' : 'Measure the cabin again'}
         </button>
       )}
 
@@ -2699,7 +2819,9 @@ function RunningTest({
           <p className="fieldtest-evidence-line" data-testid="fieldtest-voice-answers">
             {spokenAnswersLive
               ? 'Answering out loud · the microphone is open on this step.'
-              : 'Answering out loud · not on this step, the microphone is shut. Tap.'}
+              : step.transcriptIsEvidence
+                ? 'Answering out loud · not on this step. What you say is the evidence here. Tap.'
+                : 'Answering out loud · not on this step, the microphone is shut. Tap.'}
           </p>
         )}
         {marks.length > 0 && (

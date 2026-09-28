@@ -88,6 +88,65 @@ test('leaving the box saves it too, and an empty box saves nothing', async ({ pa
     .toEqual(['second try']);
 });
 
+/**
+ * PAUSE SAVES THE DRAFT. The screen unmounts on the way to the gate, the
+ * cleanup writes what was in the box, and the row carries the run itself
+ * because the context that would supply it is torn down by the same exit.
+ *
+ * TAPPED WITHOUT A BLUR, as iOS taps a button: Playwright's click focuses
+ * the button first, which blurred the box and saved through `onBlur` while
+ * the context was still up -- so the cleanup found nothing and the test
+ * passed with the cleanup, or the explicit `run`, deleted.
+ */
+test('a draft still in the box when the run is paused is saved, with the run', async ({
+  page,
+}) => {
+  await openTest(page);
+  // Past the first step, so the run is resumable and the gate shows Resume.
+  await page.getByTestId('fieldtest-skip').click();
+  const step = await page.getByTestId('fieldtest-title').getAttribute('data-step');
+  await page.getByTestId('fieldtest-note').fill('parked to take a call');
+  await page.getByTestId('fieldtest-pause').evaluate((b) => (b as HTMLButtonElement).click());
+  await page.getByTestId('fieldtest-open').click();
+  await expect(page.getByTestId('fieldtest-resume')).toBeVisible();
+
+  await expect
+    .poll(async () => (await entries(page)).filter((e) => e.event === 'note').length, {
+      timeout: 5_000,
+    })
+    .toBe(1);
+  const note = (await entries(page)).find((e) => e.event === 'note')!;
+  expect(note.detail).toMatchObject({ step, condition: 'car', text: 'parked to take a call' });
+  expect(note.detail.run, 'the note does not say which run it belongs to').toEqual(
+    expect.stringMatching(/^[a-z0-9]+$/),
+  );
+});
+
+/** FINISH SAVES IT TOO, through the same cleanup, after the run has ended. */
+test('a draft still in the box when the run is finished is saved, with the run', async ({
+  page,
+}) => {
+  await openTest(page);
+  const step = await page.getByTestId('fieldtest-title').getAttribute('data-step');
+  await page.getByTestId('fieldtest-note').fill('gave up at the lights');
+  const finish = page.getByTestId('fieldtest-finish');
+  await finish.evaluate((b) => (b as HTMLButtonElement).click());
+  await expect(finish).toHaveText('Tap again to end');
+  await finish.evaluate((b) => (b as HTMLButtonElement).click());
+  await expect(page.getByTestId('fieldtest-open')).toContainText('Open the field test');
+
+  await expect
+    .poll(async () => (await entries(page)).filter((e) => e.event === 'note').length, {
+      timeout: 5_000,
+    })
+    .toBe(1);
+  const note = (await entries(page)).find((e) => e.event === 'note')!;
+  expect(note.detail).toMatchObject({ step, condition: 'car', text: 'gave up at the lights' });
+  expect(note.detail.run, 'the note does not say which run it belongs to').toEqual(
+    expect.stringMatching(/^[a-z0-9]+$/),
+  );
+});
+
 test('the noted line clears when the step changes', async ({ page }) => {
   await openTest(page);
   const note = page.getByTestId('fieldtest-note');

@@ -5,6 +5,7 @@ import {
   startFieldTestRun,
   stopFieldTestRun,
   setFieldTestCondition,
+  setFieldTestMicClosedAt,
   goToFieldTestStep,
   countStampedSteps,
   markFieldTestStamped,
@@ -84,7 +85,7 @@ describe('a run', () => {
    */
   it('survives the module losing its in-memory copy, which is what navigation costs', () => {
     startFieldTestRun('car');
-    goToFieldTestStep(4);
+    goToFieldTestStep(8);
     markFieldTestStamped('wheel-gap');
     markFieldTestStamped('wheel-gap');
     const before = readFieldTestRun();
@@ -94,7 +95,7 @@ describe('a run', () => {
     forgetInMemoryOnly();
 
     const after = readFieldTestRun();
-    expect(after.stepIndex).toBe(4);
+    expect(after.stepIndex).toBe(8);
     expect(after.stamps['car:wheel-gap']).toBe(2);
     expect(after.condition).toBe(before.condition);
     // ...but NOT active. Restoring a run as active would mount the running
@@ -132,7 +133,7 @@ describe('a run', () => {
   it('keeps the place and the ticks when the route changes', () => {
     startFieldTestRun('car');
     markFieldTestStamped('wheel-gap');
-    goToFieldTestStep(3);
+    goToFieldTestStep(7);
 
     setFieldTestCondition('speakerphone');
 
@@ -142,12 +143,12 @@ describe('a run', () => {
     // survive the switch (see above) but they do not become freeway results
     // just because the operator pulled out of the car park.
     expect(run.stamps).toEqual({ 'car:wheel-gap': 1 });
-    expect(run.stepIndex).toBe(3);
+    expect(run.stepIndex).toBe(7);
   });
 
   it('records where the route changed, so the two halves are separable', () => {
     startFieldTestRun('car');
-    goToFieldTestStep(5);
+    goToFieldTestStep(9);
     setFieldTestCondition('freeway');
 
     // The LAST one: the log is a ring buffer shared across this file's tests,
@@ -156,13 +157,13 @@ describe('a run', () => {
     const entry = all[all.length - 1];
     expect(entry?.detail?.from).toBe('car');
     expect(entry?.detail?.to).toBe('freeway');
-    expect(entry?.detail?.atStep).toBe(5);
+    expect(entry?.detail?.atStep).toBe(9);
   });
 
   it('starting over is still how the ticks are cleared', () => {
     startFieldTestRun('car');
     markFieldTestStamped('wheel-gap');
-    goToFieldTestStep(3);
+    goToFieldTestStep(7);
 
     startFieldTestRun('speakerphone');
 
@@ -427,9 +428,9 @@ describe('a run when another tab writes it', () => {
     goToFieldTestStep(2);
     expect(readFieldTestRun().stepIndex).toBe(2);
 
-    otherTabWrites({ active: true, condition: 'car', stepIndex: 5, stamps: { 'route-1': 1 } });
+    otherTabWrites({ active: true, condition: 'car', stepIndex: 9, stamps: { 'route-1': 1 } });
 
-    expect(readFieldTestRun().stepIndex).toBe(5);
+    expect(readFieldTestRun().stepIndex).toBe(9);
     expect(readFieldTestRun().stamps).toEqual({ 'car:route-1': 1 });
   });
 
@@ -439,7 +440,7 @@ describe('a run when another tab writes it', () => {
     // steps of work is what lands in storage.
     startFieldTestRun('car');
     goToFieldTestStep(2);
-    otherTabWrites({ active: true, condition: 'car', stepIndex: 5, stamps: { 'route-1': 1 } });
+    otherTabWrites({ active: true, condition: 'car', stepIndex: 9, stamps: { 'route-1': 1 } });
 
     markFieldTestStamped('mic-route');
 
@@ -448,7 +449,7 @@ describe('a run when another tab writes it', () => {
         'bjtrainer.fieldTestRun.v1',
       ) as string,
     );
-    expect(saved.stepIndex).toBe(5);
+    expect(saved.stepIndex).toBe(9);
     expect(saved.stamps).toEqual({ 'car:route-1': 1, 'car:mic-route': 1 });
   });
 
@@ -461,7 +462,7 @@ describe('a run when another tab writes it', () => {
     subscribeFieldTestRun(() => {
       calls += 1;
     });
-    otherTabWrites({ active: true, condition: 'car', stepIndex: 5, stamps: {} });
+    otherTabWrites({ active: true, condition: 'car', stepIndex: 9, stamps: {} });
     expect(calls).toBe(1);
   });
 
@@ -475,30 +476,30 @@ describe('a run when another tab writes it', () => {
     goToFieldTestStep(2);
     expect(readFieldTestRun().active).toBe(true);
 
-    otherTabWrites({ active: false, condition: 'car', stepIndex: 5, stamps: {} });
+    otherTabWrites({ active: false, condition: 'car', stepIndex: 9, stamps: {} });
 
     expect(readFieldTestRun().active, 'a second tab ended the drive').toBe(true);
     // ...and it still took the write's answer to everything it can answer.
-    expect(readFieldTestRun().stepIndex).toBe(5);
+    expect(readFieldTestRun().stepIndex).toBe(9);
   });
 
   it('leaves a tab that is not in a run out of one', () => {
     // The rule is "this tab keeps what only it knows", not "active is sticky".
     stopFieldTestRun();
-    otherTabWrites({ active: true, condition: 'car', stepIndex: 5, stamps: {} });
+    otherTabWrites({ active: true, condition: 'car', stepIndex: 9, stamps: {} });
     expect(readFieldTestRun().active).toBe(false);
   });
 
   it('says in the log that another tab did it', () => {
     startFieldTestRun('car');
     goToFieldTestStep(2);
-    otherTabWrites({ active: true, condition: 'car', stepIndex: 5, stamps: {} });
+    otherTabWrites({ active: true, condition: 'car', stepIndex: 9, stamps: {} });
 
     const entry = readDiagnosticLog()
       .filter((e) => e.category === 'test' && e.event === 'run-external-write')
       .at(-1);
     expect(entry, 'a step changing with nobody touching it must be explicable').toBeTruthy();
-    expect(entry?.detail).toMatchObject({ from: 2, to: 5 });
+    expect(entry?.detail).toMatchObject({ from: 2, to: 9 });
   });
 });
 
@@ -938,10 +939,10 @@ describe('the cross-tab listener when the first read is too early', () => {
     readFieldTestRun();
     expect(handlers.size, 'the page can no longer see another tab at all').toBe(1);
 
-    const raw = JSON.stringify({ active: true, condition: 'car', stepIndex: 5, stamps: {} });
+    const raw = JSON.stringify({ active: true, condition: 'car', stepIndex: 9, stamps: {} });
     localStorage.setItem('bjtrainer.fieldTestRun.v1', raw);
     for (const h of handlers) h({ key: 'bjtrainer.fieldTestRun.v1', oldValue: null, newValue: raw });
-    expect(readFieldTestRun().stepIndex).toBe(5);
+    expect(readFieldTestRun().stepIndex).toBe(9);
   });
 });
 
@@ -1011,12 +1012,11 @@ describe('the answers a run was given', () => {
       id: 'route-loudspeaker',
       via: 'voice',
       marks: 'route-moved',
-      mic: 'protocol',
     });
     forgetInMemoryOnly();
     expect(readFieldTestRun().answers?.['car:route-1']).toEqual([
       { id: 'route-car', via: 'tap' },
-      { id: 'route-loudspeaker', via: 'voice', marks: 'route-moved', mic: 'protocol' },
+      { id: 'route-loudspeaker', via: 'voice', marks: 'route-moved' },
     ]);
     expect(readFieldTestRun().stamps['car:route-1']).toBe(2);
   });
@@ -1179,14 +1179,23 @@ describe('leaving a route block', () => {
 
     retreatFieldTestStep();
     expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('route-3');
+    // Corrected to another disagreement: the block is still not uniform, so
+    // without the arm-once guard this scoring would arm the probes again.
+    goToFieldTestStep(idx('route-2'));
+    markFieldTestStamped('route-2', { id: 'route-earpiece', via: 'tap' });
+    goToFieldTestStep(idx('route-3'));
+    advanceFieldTestStep();
+
+    expect(rows().map((r) => r.detail?.verdict)).toEqual(['wandering', 'wandering']);
+    expect(rows()[1]?.detail).toMatchObject({ armed: false, probesOnPath: true });
+    expect(readFieldTestRun().armedProbes).toEqual(['clip / mic before']);
+
+    // ...and corrected to agreement, the last row says so.
     goToFieldTestStep(idx('route-2'));
     markFieldTestStamped('route-2', { id: 'route-car', via: 'tap' });
     goToFieldTestStep(idx('route-3'));
     advanceFieldTestStep();
-
-    expect(rows().map((r) => r.detail?.verdict)).toEqual(['wandering', 'uniform']);
-    expect(rows()[1]?.detail).toMatchObject({ armed: false });
-    expect(readFieldTestRun().armedProbes).toEqual(['clip / mic before']);
+    expect(rows().at(-1)?.detail).toMatchObject({ verdict: 'uniform', armed: false, probesOnPath: true });
   });
 
   it('scores a cell with no probe site, and has nowhere to arm', () => {
@@ -1200,6 +1209,7 @@ describe('leaving a route block', () => {
       cell: 'tts / mic before',
       verdict: 'wandering',
       armed: false,
+      probesOnPath: false,
     });
     expect(readFieldTestRun().armedProbes ?? []).toEqual([]);
     expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('fallback-audible');
@@ -1244,6 +1254,71 @@ describe('a condition without Bluetooth', () => {
     ]);
     expect(fieldTestStepCount({ condition: 'speakerphone' })).toBe(base - 7);
     expect(fieldTestStepCount({ condition: 'car' })).toBe(base);
+  });
+
+  /**
+   * THE POINTER FOLLOWS THE PATH WHEN THE PATH CHANGES UNDER IT. The picker
+   * sits on the gate beside Resume, so "pause on a wheel step, pick
+   * Speakerphone, Resume" is one tap away -- and it resumed onto a wheel
+   * step on a leg with no car, the exact thing the path rule exists to
+   * prevent, with the ordinal repeating the previous step's number.
+   */
+  it('moves a pointer that a condition change left off the path onto it', () => {
+    startFieldTestRun('car');
+    goToFieldTestStep(idx('wheel-gap'));
+    setFieldTestCondition('speakerphone');
+    expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('mic-route');
+    // ...and leaves a pointer that is still on the path alone.
+    goToFieldTestStep(idx('route-2'));
+    setFieldTestCondition('phone');
+    expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('route-2');
+  });
+
+  it('does the same for a run read back from storage', () => {
+    const store = installStorage();
+    store.set(
+      'bjtrainer.fieldTestRun.v1',
+      JSON.stringify({ active: false, condition: 'speakerphone', stepIndex: idx('wheel-gap'), stamps: {} }),
+    );
+    forgetInMemoryOnly();
+    expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('mic-route');
+  });
+
+  /**
+   * ...and only for a pointer that is OFF the path. A reload on an armed
+   * probe step (the update check does one every ten minutes) must not walk
+   * the pointer forward: the probe is on the path because `armedProbes`
+   * says so, and the snap has to read it.
+   */
+  it('leaves a pointer on an armed probe where it is, across a reload and a condition change', () => {
+    installStorage();
+    startFieldTestRun('car');
+    for (const [i, step] of ['route-1', 'route-2', 'route-3'].entries()) {
+      goToFieldTestStep(idx(step));
+      markFieldTestStamped(step, { id: ['route-car', 'route-loudspeaker', 'route-car'][i]!, via: 'tap' });
+    }
+    advanceFieldTestStep();
+    const probe = readFieldTestRun().stepIndex;
+    expect(FIELD_TEST_STEPS[probe]?.probe, 'the block did not arm its probes').toBeTruthy();
+
+    forgetInMemoryOnly();
+    expect(readFieldTestRun().stepIndex, 'a reload walked off the armed probe').toBe(probe);
+
+    setFieldTestCondition('freeway');
+    expect(readFieldTestRun().stepIndex, 'a condition change walked off the armed probe').toBe(probe);
+  });
+
+  it('keeps the microphone-close clock across a reload, and a new run starts without one', () => {
+    installStorage();
+    startFieldTestRun('car');
+    setFieldTestMicClosedAt(1_700_000_000_000);
+    forgetInMemoryOnly();
+    expect(readFieldTestRun().micClosedAt).toBe(1_700_000_000_000);
+    setFieldTestMicClosedAt(null);
+    expect(readFieldTestRun().micClosedAt).toBeUndefined();
+    setFieldTestMicClosedAt(5);
+    startFieldTestRun('car');
+    expect(readFieldTestRun().micClosedAt).toBeUndefined();
   });
 
   it('walks past them when advancing', () => {

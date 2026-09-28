@@ -70,6 +70,27 @@ async function setVisibility(page: Page, state: 'hidden' | 'visible'): Promise<v
   }, state);
 }
 
+/**
+ * Several events in ONE turn of the page, so no interval tick can land
+ * between them. `jump` is the clock moving thirty seconds with the page
+ * frozen -- and nothing else: a real interval on Chromium keeps firing, and
+ * a wait after the jump lets one or two ticks land depending on where the
+ * jump fell in the tick's phase, which made the verdict a coin toss.
+ */
+async function burst(page: Page, steps: ('hidden' | 'visible' | 'jump')[]): Promise<void> {
+  await page.evaluate((list) => {
+    for (const s of list) {
+      if (s === 'jump') {
+        const real = Date.now;
+        Date.now = () => real() + 30_000;
+        continue;
+      }
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => s });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }
+  }, steps);
+}
+
 const ticks = async (page: Page) =>
   (await entries(page)).filter((e) => e.event === 'lock-probe-tick').length;
 const result = async (page: Page) =>
@@ -112,6 +133,109 @@ test('scores a lock from the gaps in its own ticks, and says so', async ({ page 
 
   // Scored once: the marker is cleared, so a second boot has nothing to find.
   expect(await marker(page)).toBeUndefined();
+
+});
+
+/**
+ * A SECOND LOCK ON THE SAME STEP starts from a clean baseline. The ticks the
+ * first verdict read are cleared; without that, a freeze scored a moment
+ * ago is the "gap before hidden" of a re-lock that follows it at once, and a
+ * normal second lock reads frozen.
+ */
+test('a re-lock straight after a frozen verdict is scored on its own', async ({ page }) => {
+  await openTest(page);
+  await goToStep(page, 'lock-probe');
+  await page.waitForTimeout(4_500);
+  // The whole first lock, its verdict and the re-lock in one turn, so no
+  // tick lands anywhere in it: without the reset, the ticks before the first
+  // lock sit thirty seconds behind the second and it reads frozen.
+  await burst(page, ['hidden', 'jump', 'visible', 'hidden']);
+  await expect
+    .poll(async () => (await result(page))?.classification, { timeout: 5_000 })
+    .toBe('frozen');
+  await page.waitForTimeout(6_500);
+  await setVisibility(page, 'visible');
+  await expect
+    .poll(async () => (await entries(page)).filter((e) => e.event === 'lock-probe-result').length, {
+      timeout: 5_000,
+    })
+    .toBe(2);
+  const second = (await entries(page)).filter((e) => e.event === 'lock-probe-result').at(-1)!.detail;
+  expect(second.classification, 'the first lock\u2019s freeze was read into the second').toBe(
+    'normal',
+  );
+  expect(second.gapBeforeHiddenMs as number).toBeLessThan(5_000);
+});
+
+/**
+ * THE MOMENT OF THE VERDICT IS THE NEXT WINDOW'S FIRST TICK. A re-lock
+ * within a tick of it, with `hidden` arriving late and the page frozen, has
+ * no tick before `hidden` except the overdue one -- and with nothing to
+ * start the window from it read `too-short`.
+ */
+test('a frozen re-lock straight after a verdict is still scored frozen', async ({ page }) => {
+  await openTest(page);
+  await goToStep(page, 'lock-probe');
+  await page.waitForTimeout(4_500);
+  // Frozen again at once, with `hidden` delivered on the way back: the
+  // first lock, its verdict, the second freeze and the late event in one
+  // turn, so the only tick before the second `hidden` is the one the
+  // verdict seeded.
+  await burst(page, ['hidden', 'jump', 'visible', 'jump', 'hidden']);
+  await expect
+    .poll(async () => (await result(page))?.classification, { timeout: 5_000 })
+    .toBe('frozen');
+  await page.waitForTimeout(300);
+  await setVisibility(page, 'visible');
+  await expect
+    .poll(async () => (await entries(page)).filter((e) => e.event === 'lock-probe-result').length, {
+      timeout: 5_000,
+    })
+    .toBe(2);
+  const second = (await entries(page)).filter((e) => e.event === 'lock-probe-result').at(-1)!.detail;
+  expect(second.classification, 'no tick to start the window from').toBe('frozen');
+  expect(second.gapBeforeHiddenMs as number).toBeGreaterThanOrEqual(27_000);
+});
+
+/**
+ * THE ARRIVAL IS THE FIRST TICK. A lock taken the moment the step opens,
+ * with the page frozen and `hidden` delivered late, has no interval tick
+ * before it -- and with nothing to start the window from it read
+ * `too-short`.
+ */
+test('a frozen lock taken the moment the step opens is still scored frozen', async ({ page }) => {
+  await openTest(page);
+  await goToStep(page, 'lock-probe');
+  await burst(page, ['jump', 'hidden']);
+  await page.waitForTimeout(300);
+  await setVisibility(page, 'visible');
+  await expect
+    .poll(async () => (await result(page))?.classification, { timeout: 5_000 })
+    .toBe('frozen');
+  expect((await result(page))!.gapBeforeHiddenMs as number).toBeGreaterThanOrEqual(27_000);
+});
+
+/**
+ * A NAVIGATION UNDER THE LOCK IS NOT A KILL. The update check reloads the
+ * app by itself; a reload fires `pagehide persisted=false` and then
+ * `hidden`, and the marker has to be cleared on the way out or the next
+ * boot scores a kill that never happened (the original B1).
+ */
+test('a reload while hidden clears the marker, and the next boot scores nothing', async ({
+  page,
+}) => {
+  await openTest(page);
+  await goToStep(page, 'lock-probe');
+  await setVisibility(page, 'hidden');
+  await expect.poll(() => marker(page), { timeout: 3_000 }).toBeTruthy();
+  await page.reload();
+  await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
+  await page.waitForTimeout(1_500);
+  expect(await marker(page), 'the navigation left the marker for the next boot').toBeUndefined();
+  expect(
+    (await entries(page)).filter((e) => e.event === 'lock-probe-result'),
+    'a reload was scored as a kill',
+  ).toHaveLength(0);
 });
 
 test('one overdue tick on resume is a frozen page, not a throttled one', async ({ page }) => {
@@ -136,6 +260,57 @@ test('one overdue tick on resume is a frozen page, not a throttled one', async (
   expect(await spoken(page)).toContain('The page was frozen while the phone was locked.');
 });
 
+/**
+ * THE SCREEN FEEDS THE CLASSIFIER THE TICKS BEFORE `hidden` TOO. iOS can
+ * deliver the event on the way back, with the whole lock sitting before it.
+ * The clock jumps while the page is still "visible", then a 300 ms
+ * hidden/visible pair arrives: a window that short read `too-short` for
+ * ever. (The overdue callback landing before the late event is the
+ * classifier's own case, in lockProbe.test.ts: a real interval here fires
+ * one or two after the jump depending on its phase.)
+ */
+test('a hidden event that arrives on resume still scores the lock before it', async ({
+  page,
+}) => {
+  await openTest(page);
+  await goToStep(page, 'lock-probe');
+  await page.waitForTimeout(4_500);
+  await burst(page, ['jump', 'hidden']);
+  await page.waitForTimeout(300);
+  await setVisibility(page, 'visible');
+
+  await expect
+    .poll(() => result(page), { timeout: 5_000 })
+    .toMatchObject({ classification: 'frozen' });
+  const r = (await result(page))!;
+  expect(r.hiddenMs as number).toBeLessThan(3_000);
+  expect(r.gapBeforeHiddenMs as number).toBeGreaterThanOrEqual(27_000);
+  expect(r.maxGapMs as number).toBeGreaterThanOrEqual(27_000);
+  expect(await spoken(page)).toContain('The page was frozen while the phone was locked.');
+});
+
+/**
+ * A `pagehide` under the lock is the one row that says whether the marker
+ * was cleared by a navigation or left for the next boot -- and the boot-time
+ * listener had already flushed before it was written, so on a kill it never
+ * reached storage.
+ */
+test('a pagehide while hidden is written, and reaches storage at once', async ({ page }) => {
+  await openTest(page);
+  await goToStep(page, 'lock-probe');
+  await setVisibility(page, 'hidden');
+  await expect.poll(() => marker(page), { timeout: 3_000 }).toBeTruthy();
+  await page.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+  });
+  // No waiting on the one-second buffer: the row is flushed as it is written.
+  const row = (await entries(page)).find((e) => e.event === 'lock-probe-pagehide');
+  expect(row, 'the pagehide row did not reach storage').toBeTruthy();
+  expect(row!.detail).toMatchObject({ step: 'lock-probe', persisted: true, hidden: true });
+  // Entering the back-forward cache is not a navigation: the marker stays.
+  expect(await marker(page)).toBeTruthy();
+});
+
 test('a page killed while hidden is scored by the next boot', async ({ page }) => {
   await openTest(page);
   await goToStep(page, 'lock-probe');
@@ -146,7 +321,7 @@ test('a page killed while hidden is scored by the next boot', async ({ page }) =
 
   // iOS discarding the page fires nothing, so it cannot be driven from here:
   // a reload is a navigation, and a navigation is exactly what the probe
-  // must NOT score (next test). What a kill leaves behind is the marker in
+  // must NOT score (the reload-while-hidden test). What a kill leaves behind is the marker in
   // storage under a session id that is no longer anyone's; that is what the
   // next boot finds.
   const left = (await marker(page)) as { hiddenAt: string; session: string };
@@ -169,6 +344,9 @@ test('a page killed while hidden is scored by the next boot', async ({ page }) =
     .poll(async () => (await result(page))?.classification, { timeout: 5_000 })
     .toBe('frozen-unloaded');
   expect((await result(page))!.hiddenAt).toBe(left.hiddenAt);
+  expect((await result(page))!.run, 'the boot row cannot be joined to its run').toEqual(
+    expect.any(String),
+  );
   // ...and exactly once, whatever the gate re-renders.
   await page.waitForTimeout(1_500);
   expect((await entries(page)).filter((e) => e.event === 'lock-probe-result')).toHaveLength(1);

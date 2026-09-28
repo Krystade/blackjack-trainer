@@ -850,6 +850,25 @@ describe('speak tts-end — how a live utterance finished', () => {
   });
 
   /**
+   * The fire-and-forget twin goes through the same retained, watched
+   * utterance as the awaited one. Its own live path wrote no `tts-end` and
+   * kept no reference to the utterance, so on a Safari that collects it the
+   * hold re-assert hung on `onend` never ran and the log never said the
+   * line had ended.
+   */
+  it('is written for speak() too, not only for speakAsync()', async () => {
+    installSynth({ fire: 'end' });
+    clearDiagnosticLog();
+    speak('Did you have it?');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const end = readDiagnosticLog().find((e) => e.event === 'tts-end');
+    expect(end, 'the fire-and-forget line ended without a tts-end row').toBeTruthy();
+    expect(end?.detail).toMatchObject({ reason: 'ended', said: 'Did you have it?' });
+  });
+
+  /**
    * `say-start volume=1.5` records a REQUEST. `utteranceVolume` clamps live TTS
    * at 1 -- only the clips path can exceed it -- so the reader takes a number
    * for a setting the engine never honoured.

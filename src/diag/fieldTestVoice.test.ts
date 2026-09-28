@@ -12,18 +12,9 @@ import {
   type StepSlot,
 } from './fieldTest';
 
-/** Every (step, condition) pair the protocol can actually present. */
+/** Every answer set the protocol can present: one per step, whatever the condition. */
 function everyOfferedSet(): { where: string; slots: readonly StepSlot[] }[] {
-  const out: { where: string; slots: readonly StepSlot[] }[] = [];
-  for (const condition of FIELD_TEST_CONDITIONS) {
-    for (const step of FIELD_TEST_STEPS) {
-      out.push({
-        where: `${condition.id}/${step.id}`,
-        slots: stepResponses(step),
-      });
-    }
-  }
-  return out;
+  return FIELD_TEST_STEPS.map((step) => ({ where: step.id, slots: stepResponses(step) }));
 }
 
 describe('the spoken vocabulary', () => {
@@ -163,6 +154,20 @@ describe('matching a transcript', () => {
     ];
     expect(matchFieldTestAnswer('nothing to report', slots)?.id).toBe('nothing-to-report');
     expect(matchFieldTestAnswer('missed it', slots)?.id).toBe('missed');
+  });
+
+  /**
+   * "skip" is the name of the button `wheel-with-mic` asks for, with the
+   * microphone open. It was a synonym for `missed`, so "I pressed skip
+   * forward, nothing happened" stamped the step missed and lost the sample.
+   */
+  it('does not take the skip-forward button’s name as missed', () => {
+    const slots: StepSlot[] = [
+      { id: 'wheel-car-quiet', label: 'The car did nothing else', kind: 'good' },
+      { id: 'missed', label: 'Missed it', kind: 'note' },
+    ];
+    expect(matchFieldTestAnswer('i pressed skip forward nothing happened', slots)).toBeNull();
+    expect(matchFieldTestAnswer('skip', slots)).toBeNull();
   });
 
   it('matches whole words only', () => {

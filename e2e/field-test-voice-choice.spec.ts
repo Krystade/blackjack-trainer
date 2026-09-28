@@ -13,7 +13,7 @@ import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
  * the chosen voice, and the seam records which.
  */
 
-type OptsRow = { text: string; voiceURI?: string };
+type OptsRow = { text: string; voiceURI?: string; volume?: number };
 
 async function optsLog(page: Page): Promise<OptsRow[]> {
   return page.evaluate(
@@ -69,10 +69,11 @@ test('the pause cue and the lock verdict are read in the chosen voice too', asyn
   await expect
     .poll(
       async () =>
-        (await optsLog(page)).find((r) => r.text.startsWith('The field test is paused'))?.voiceURI,
+        (await optsLog(page)).find((r) => r.text.startsWith('The field test is paused')),
       { timeout: 8_000 },
     )
-    .toBe('Samantha');
+    // ...and carrying a volume at all: this line had dropped it.
+    .toMatchObject({ voiceURI: 'Samantha', volume: expect.any(Number) });
 
   // Resume, walk to the lock probe, lock and unlock: the verdict is spoken.
   await page.getByTestId('fieldtest-resume').click();
@@ -88,13 +89,15 @@ test('the pause cue and the lock verdict are read in the chosen voice too', asyn
       document.dispatchEvent(new Event('visibilitychange'));
     }, state);
   await setVisibility('hidden');
-  await page.waitForTimeout(4_500);
+  // Longer than the allowed gap (5 s) plus a tick, or the window is
+  // `too-short` and a different line is spoken.
+  await page.waitForTimeout(7_500);
   await setVisibility('visible');
   await expect
     .poll(
       async () =>
-        (await optsLog(page)).find((r) => r.text.startsWith('The page kept running'))?.voiceURI,
+        (await optsLog(page)).find((r) => r.text.startsWith('The page kept running')),
       { timeout: 8_000 },
     )
-    .toBe('Samantha');
+    .toMatchObject({ voiceURI: 'Samantha', volume: expect.any(Number) });
 });
