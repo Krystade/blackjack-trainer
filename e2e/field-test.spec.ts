@@ -489,6 +489,43 @@ async function goToStep(page: Page, step: string): Promise<void> {
   throw new Error(`never reached step "${step}"`);
 }
 
+/**
+ * THE CAR PRESSES BUTTONS OF ITS OWN. A head unit sends `play` by itself
+ * whenever it believes playback stopped -- the 2026-09-11 drive logged nine
+ * of them at five-second intervals with nobody touching anything -- and
+ * `pause`/`stop` arrive unprompted too. The probe used to count every one as
+ * a press: on `wheel-gap` an automatic `play` five seconds after the clip
+ * read as "arrived in the silence", which is the exact signature the wheel
+ * block exists to find. Only the two buttons the driver can reach are
+ * presses; the rest are transport, logged as such and counted as nothing.
+ */
+test("the car's own play, pause and stop are transport, not presses", async ({ page }) => {
+  await captureWheel(page);
+  await withSettings(page, {});
+  await openTest(page, 'Car, parked');
+  await goToStep(page, 'Wheel, after the line ends');
+
+  expect(await press(page, 'play')).toBe(true);
+  await press(page, 'pause');
+  await press(page, 'stop');
+  await expect(page.getByTestId('fieldtest-wheel')).toContainText('Waiting');
+  await expect(page.getByTestId('fieldtest-wheel')).not.toContainText('press');
+
+  // Then a real one, so the filter is shown to let presses through.
+  await press(page, 'nexttrack');
+  await expect(page.getByTestId('fieldtest-wheel')).toContainText('1 press');
+
+  await page.waitForTimeout(1_200);
+  const text = await logText(page);
+  const arrivals = text.split('\n').filter((l) => l.includes('field-test-arrival'));
+  expect(arrivals, 'an automatic action was logged as an arrival').toHaveLength(1);
+  expect(arrivals[0]).toContain('action=nexttrack');
+  expect(arrivals[0]).toContain('pressIndex=1');
+  const transport = text.split('\n').filter((l) => l.includes('field-test-transport'));
+  expect(transport.map((l) => /action=(\w+)/.exec(l)?.[1])).toEqual(['play', 'pause', 'stop']);
+  expect(transport[0]).toContain('step=wheel-gap');
+});
+
 test('a wheel press on a wheel step is caught, shown, and logged', async ({ page }) => {
   await captureWheel(page);
   await withSettings(page, {});

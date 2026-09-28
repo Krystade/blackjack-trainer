@@ -115,16 +115,23 @@ export interface FieldTestRun {
    */
   answerByVoice?: boolean;
   /**
-   * The lock probe is in progress, started under this diagnostic session.
+   * The page went hidden on the lock probe, under this diagnostic session,
+   * and has not come back.
    *
    * ON THE RUN RECORD RATHER THAN IN A REF because the case it exists for is
    * the page dying. The probe asks the operator to lock the phone; if iOS
    * kills the page under the lock there is nobody left to score it, and the
    * next boot finding this marker with a session id that is not its own IS
-   * the result (`frozen-unloaded`). Cleared by the runner the moment a result
-   * is stamped.
+   * the result (`frozen-unloaded`).
+   *
+   * SET WHEN THE PAGE GOES HIDDEN, not when the step is reached. The first
+   * build set it on arrival and cleared it only on a hidden/visible cycle, so
+   * leaving the step any other way -- Missed, Finish, Back, a force-quit
+   * between legs, the update check's reload -- left it behind, and the next
+   * launch scored a kill that never happened. Cleared on the way back to
+   * visible and when the step is left.
    */
-  lockProbe?: { startedAt: string; session: string };
+  lockProbe?: { hiddenAt: string; session: string };
   /**
    * What each step was answered, keyed like `stamps`, in the order given.
    *
@@ -382,9 +389,9 @@ function coerce(raw: unknown): FieldTestRun {
     lockProbe:
       typeof r.lockProbe === 'object' &&
       r.lockProbe !== null &&
-      typeof (r.lockProbe as { startedAt?: unknown }).startedAt === 'string' &&
+      typeof (r.lockProbe as { hiddenAt?: unknown }).hiddenAt === 'string' &&
       typeof (r.lockProbe as { session?: unknown }).session === 'string'
-        ? { startedAt: r.lockProbe.startedAt, session: r.lockProbe.session }
+        ? { hiddenAt: r.lockProbe.hiddenAt, session: r.lockProbe.session }
         : undefined,
     runId: typeof r.runId === 'string' ? r.runId : undefined,
     // Carried through the reload for the same reason as `touchedAt`: the
@@ -604,7 +611,7 @@ export function startFieldTestRun(condition: string, before?: FieldTestBefore): 
 
 /** Set or clear the lock probe's marker. See `FieldTestRun.lockProbe`. */
 export function setFieldTestLockProbe(
-  marker: { startedAt: string; session: string } | undefined,
+  marker: { hiddenAt: string; session: string } | undefined,
 ): void {
   const current = readFieldTestRun();
   write({ ...current, lockProbe: marker });

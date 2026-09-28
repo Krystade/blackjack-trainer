@@ -50,7 +50,7 @@ import {
   type SpeechPathRecord,
 } from '../../audio/speech';
 import { effectiveVolume } from '../../audio/volume';
-import { setMediaSessionProbe } from '../../audio/mediaSession';
+import { isWheelPress, setMediaSessionProbe } from '../../audio/mediaSession';
 import { holdAudioFocus, releaseAudioFocus } from '../../audio/audioFocus';
 import {
   closeSharedAudioContext,
@@ -66,6 +66,7 @@ import { setVoiceOn } from '../voiceSession';
 import { setEyesFreeOn } from '../eyesFreeSession';
 import { diag, diagnosticSessionId, setDiagContext } from '../../diag/diagnosticLog';
 import { classifyLockProbe, LOCK_PROBE_TICK_MS } from '../../diag/lockProbe';
+import { audioFocusElementIsPlaying } from '../../audio/audioFocus';
 
 import { logSelectedInput } from '../../diag/environment';
 import { saveSettings } from '../../store/persist';
@@ -157,6 +158,9 @@ function useArmedFor(armed: boolean, setArmed: (v: boolean) => void): void {
   }, [armed, setArmed]);
 }
 
+/** Tick rows written per hidden window; the verdict itself is not capped. */
+const LOCK_PROBE_MAX_TICK_ROWS = 60;
+
 const HFP_SETTLE_MS = 1_500;
 
 /**
@@ -247,10 +251,11 @@ export function FieldTest({
    * The probe asks the operator to lock the phone and ticks while they do.
    * If iOS kills the page under the lock there is nobody left to count the
    * ticks, and the run comes back through `coerce` inactive, on this gate.
-   * The marker it left says a probe was running under a session id that is
-   * no longer ours -- and that IS the result: the page did not survive.
-   * Scored here, at the gate, so it lands whether or not the operator
-   * resumes; cleared at once so it is scored exactly once.
+   * The marker it left says the page went hidden on the probe under a
+   * session id that is no longer ours and never came back -- and that IS
+   * the result: the page did not survive being hidden. Scored here, at the
+   * gate, so it lands whether or not the operator resumes; cleared at once
+   * so it is scored exactly once.
    */
   const scoredLockProbe = useRef<string | null>(null);
   useEffect(() => {
@@ -258,14 +263,14 @@ export function FieldTest({
     if (!marker || marker.session === diagnosticSessionId) return;
     // Once per marker, not once per render: the clear below re-reads the run
     // and this effect sees the same marker again before storage settles.
-    const key = `${marker.session}:${marker.startedAt}`;
+    const key = `${marker.session}:${marker.hiddenAt}`;
     if (scoredLockProbe.current === key) return;
     scoredLockProbe.current = key;
     diag('test', 'lock-probe-result', {
       step: 'lock-probe',
       classification: 'frozen-unloaded',
-      startedAt: marker.startedAt,
-      startedSession: marker.session,
+      hiddenAt: marker.hiddenAt,
+      hiddenSession: marker.session,
     });
     setFieldTestLockProbe(undefined);
   }, [run.lockProbe]);
@@ -1641,41 +1646,72 @@ function RunningTest({
    *
    * See `lockProbe.ts` for why the existing log cannot answer "did the page
    * keep running while locked". This ticks every `LOCK_PROBE_TICK_MS` while
-   * the step is showing, notes when the page went hidden, and on the way
-   * back counts how many ticks landed inside the window. It does NOT end on
-   * a timer: its timers are the thing under test, and a timeout would score
-   * "the operator never locked it" as normal. It ends when the screen comes
-   * back, or -- if the page was killed -- when the next boot finds the
-   * marker (`FieldTest`, top of the file).
+   * the step is showing and, on the way back from hidden, scores the gaps
+   * between the ticks that landed. It does NOT end on a timer: its timers
+   * are the thing under test, and a timeout would score "the operator never
+   * locked it" as normal. It ends when the screen comes back, or -- if the
+   * page was killed -- when the next boot finds the marker (`FieldTest`, top
+   * of the file).
+   *
+   * THE MARKER GOES DOWN WHEN THE PAGE GOES HIDDEN, and comes up when it
+   * comes back or the step is left. Set on arrival it outlived every exit
+   * but the one it was for, and the next launch scored a kill that never
+   * happened. A page killed on this step with the screen ON runs the cleanup
+   * never and sets the marker never, so it scores nothing -- which is right:
+   * that is not the question the probe asks.
+   *
+   * TICK ROWS ONLY WHILE HIDDEN, and capped. The verdict is scored from the
+   * in-memory ticks; the rows are for reading the gaps by hand afterwards,
+   * and a row every two seconds for as long as the operator sits on the
+   * step was the run's own history scrolling out of a 3000-row log.
    */
   useEffect(() => {
     if (!step.lockProbe) return;
-    const ticks: number[] = [];
+    let ticks: number[] = [];
     let hiddenAt: number | null = null;
-    let n = 0;
-    setFieldTestLockProbe({ startedAt: new Date().toISOString(), session: diagnosticSessionId });
+    let rows = 0;
+    let focusAtHidden: boolean | null = null;
+    let unloading = false;
     const timer = window.setInterval(() => {
-      n += 1;
-      ticks.push(Date.now());
-      diag('test', 'lock-probe-tick', { step: step.id, n });
+      const now = Date.now();
+      ticks.push(now);
+      if (hiddenAt !== null && rows < LOCK_PROBE_MAX_TICK_ROWS) {
+        rows += 1;
+        diag('test', 'lock-probe-tick', { step: step.id, n: rows, sinceHiddenMs: now - hiddenAt });
+      }
     }, LOCK_PROBE_TICK_MS);
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
+        if (hiddenAt !== null || unloading) return;
         hiddenAt = Date.now();
+        ticks = [];
+        rows = 0;
+        // WHETHER THE SILENT ELEMENT WAS PLAYING, because that is plausibly the
+        // only reason iOS keeps the page alive under the lock at all, and a
+        // "normal" without it is a different finding from one with it.
+        focusAtHidden = audioFocusElementIsPlaying();
+        setFieldTestLockProbe({
+          hiddenAt: new Date(hiddenAt).toISOString(),
+          session: diagnosticSessionId,
+        });
         return;
       }
       if (hiddenAt === null) return;
+      const from = hiddenAt;
       const now = Date.now();
-      const hiddenMs = now - hiddenAt;
-      const inside = ticks.filter((t) => t > hiddenAt! && t < now).length;
+      const hiddenMs = now - from;
       hiddenAt = null;
-      const classification = classifyLockProbe({ hiddenMs, ticksInside: inside });
+      const reading = classifyLockProbe({ hiddenMs, ticks: ticks.map((t) => t - from) });
+      const classification = reading.verdict;
       diag('test', 'lock-probe-result', {
         step: step.id,
         classification,
         hiddenMs,
-        ticksInside: inside,
+        ticksInside: reading.ticksInside,
+        maxGapMs: reading.maxGapMs,
         expected: Math.floor(hiddenMs / LOCK_PROBE_TICK_MS),
+        focusPlayingAtHidden: focusAtHidden,
+        focusPlayingAtVisible: audioFocusElementIsPlaying(),
       });
       setFieldTestLockProbe(undefined);
       const said =
@@ -1693,10 +1729,27 @@ function RunningTest({
         voiceURI: settingsRef.current.audio.voiceURI,
       });
     };
+    // A NAVIGATION IS NOT A KILL. Reloading -- the update check does it by
+    // itself -- fires `pagehide` and THEN `visibilitychange: hidden` on the
+    // way out, so the hidden alone set the marker and the next boot scored a
+    // kill. A navigation announces itself with `pagehide` `persisted=false`;
+    // a page the OS discards fires nothing. (`persisted=true` is the page
+    // entering the back-forward cache, which iOS can do on backgrounding:
+    // not a navigation, so the marker stays.)
+    const onPageHide = (e: PageTransitionEvent) => {
+      if (e.persisted) return;
+      unloading = true;
+      if (hiddenAt !== null) setFieldTestLockProbe(undefined);
+    };
     document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
     return () => {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
+      // Leaving the step while hidden -- Back, or a condition change, with the
+      // screen off -- is not a kill. A killed page never gets here.
+      if (hiddenAt !== null) setFieldTestLockProbe(undefined);
     };
     // The probe is the step; nothing else it reads should re-arm it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1785,6 +1838,23 @@ function RunningTest({
       setWheelUnavailable(false);
     }
     setMediaSessionProbe((action) => {
+      // THE CAR PRESSES BUTTONS OF ITS OWN. `play` arrives by itself whenever
+      // the head unit thinks playback stopped -- nine of them at five-second
+      // intervals on the 09-11 drive with nobody touching anything -- and
+      // `pause`/`stop` come unprompted too. Counted as presses they inflate
+      // the count on screen and in the stamp, and on `wheel-gap` an
+      // automatic `play` five seconds after the clip is a false "arrived in
+      // the silence": the very signature that step exists to find. Logged,
+      // because how often the car asks is itself a reading; counted, never.
+      if (!isWheelPress(action)) {
+        diag('wheel', 'field-test-transport', {
+          step: step.id,
+          action,
+          whileSpeaking: speakingRef.current,
+          focusPlaying: audioFocusElementIsPlaying(),
+        });
+        return;
+      }
       diag('wheel', 'field-test-arrival', {
         step: step.id,
         action,
@@ -1799,6 +1869,9 @@ function RunningTest({
         // side of it a given press fell on. Read from the ref rather than the
         // state so it is the value at the instant of arrival.
         whileSpeaking: speakingRef.current,
+        // ...and whether the silent element -- the thing that holds the
+        // now-playing slot the press arrives through -- was playing.
+        focusPlaying: audioFocusElementIsPlaying(),
         // WHICH PRESS OF THE RUN THIS IS. See `pressCountRef`.
         pressIndex: (pressCountRef.current += 1),
         // ...and how long after the microphone let go, absent before it has

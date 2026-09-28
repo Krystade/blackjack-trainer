@@ -956,11 +956,11 @@ describe('the lock probe marker', () => {
   it('survives a reload, so a page killed under the lock can be scored at the next boot', () => {
     installStorage();
     startFieldTestRun('car');
-    setFieldTestLockProbe({ startedAt: '2026-09-27T20:00:00.000Z', session: 'abc' });
+    setFieldTestLockProbe({ hiddenAt: '2026-09-27T20:00:00.000Z', session: 'abc' });
     forgetInMemoryOnly();
 
     expect(readFieldTestRun().lockProbe).toEqual({
-      startedAt: '2026-09-27T20:00:00.000Z',
+      hiddenAt: '2026-09-27T20:00:00.000Z',
       session: 'abc',
     });
 
@@ -974,6 +974,19 @@ describe('the lock probe marker', () => {
     store.set(
       'bjtrainer.fieldTestRun.v1',
       JSON.stringify({ condition: 'car', stepIndex: 3, stamps: {}, lockProbe: 'yes' }),
+    );
+    forgetInMemoryOnly();
+    expect(readFieldTestRun().lockProbe).toBeUndefined();
+    // ...including the shape the first build wrote, which said nothing about
+    // the page having gone hidden and so scored every stale one as a kill.
+    store.set(
+      'bjtrainer.fieldTestRun.v1',
+      JSON.stringify({
+        condition: 'car',
+        stepIndex: 3,
+        stamps: {},
+        lockProbe: { startedAt: '2026-09-27T20:00:00.000Z', session: 'abc' },
+      }),
     );
     forgetInMemoryOnly();
     expect(readFieldTestRun().lockProbe).toBeUndefined();

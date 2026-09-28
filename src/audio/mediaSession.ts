@@ -73,6 +73,24 @@ export const MEDIA_SESSION_ACTIONS = [
 export type MediaSessionAction = (typeof MEDIA_SESSION_ACTIONS)[number];
 
 /**
+ * The actions a driver can actually cause. Everything else -- `play`,
+ * `pause`, `stop`, `seekto` -- the car sends of its own accord (see the note
+ * above `initMediaSession`), so a probe counting arrivals must not count
+ * them: an automatic `play` five seconds after a clip reads as "a press in
+ * the silence", which is the exact signature the wheel block exists to find.
+ */
+export const WHEEL_PRESS_ACTIONS: readonly string[] = [
+  'nexttrack',
+  'seekforward',
+  'previoustrack',
+  'seekbackward',
+];
+
+export function isWheelPress(action: string): boolean {
+  return WHEEL_PRESS_ACTIONS.includes(action);
+}
+
+/**
  * What each action does, in words a driver would use.
  *
  * The tester speaks these, and the Settings panel prints them, so "what is this

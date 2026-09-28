@@ -864,12 +864,18 @@ describe('resolveFieldTestSetup', () => {
    * may just have been frozen or reloaded. So it goes last, with the
    * microphone shut, and the only thing it measures is itself.
    */
-  it('runs the lock probe once, last, with the microphone shut', () => {
+  it('runs the lock probe once, after every measurement, with the microphone shut', () => {
     const probes = FIELD_TEST_STEPS.filter((s) => s.lockProbe).map((s) => s.id);
     expect(probes, 'one lock probe, no more').toEqual(['lock-probe']);
-    expect(FIELD_TEST_STEPS.at(-1)?.id, 'a step after the probe samples a page that may have died').toBe(
-      'lock-probe',
-    );
+    // After every measured step: a sample taken after the page may have died
+    // is not a sample. But NOT last -- `free` is last, and has to be: it is
+    // the one step meant to be tapped repeatedly, and `answer()` only stays
+    // put on the last step. Appending the probe after it made the first tap
+    // on `free` advance into "Lock the phone now".
+    expect(FIELD_TEST_STEPS.at(-1)?.id, '`free` is no longer last, so it advances').toBe('free');
+    expect(FIELD_TEST_STEPS.at(-2)?.id).toBe('lock-probe');
+    const measured = FIELD_TEST_STEPS.filter((s) => s.say || s.wheel || s.ambient).map((s) => s.id);
+    for (const id of measured) expect(indexOf(id), id).toBeLessThan(indexOf('lock-probe'));
     expect(at('lock-probe').voice, 'the probe locks the phone with a microphone open').toBe(false);
   });
 

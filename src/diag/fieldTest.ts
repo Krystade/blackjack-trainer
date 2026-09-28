@@ -1240,13 +1240,6 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     setup: { voice: false, useClips: true },
   },
   {
-    id: 'free',
-    title: 'Anything else',
-    instruction:
-      'Anything that worked or went wrong that no step above names. Stamp it the moment it happens \u2014 the log can find it afterwards, you cannot.',
-    responses: FREE_RESPONSES,
-  },
-  {
     /**
      * LAST, AND FOR A DIFFERENT REASON FROM `ambient`. This asks for thirty
      * seconds with the screen off. A microphone open under it would be thirty
@@ -1254,6 +1247,11 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
      * it would be taken on a page that may just have been frozen or reloaded.
      * The only thing it measures is itself, and it ends on the screen coming
      * back rather than on a timer -- its timers are what is under test.
+     *
+     * BEFORE `free`, which has to stay last: it is the one step meant to be
+     * tapped repeatedly and `answer()` only stays put on the last step.
+     * Appended after it, the first "That worked" advanced into "Lock the
+     * phone now".
      */
     id: 'lock-probe',
     title: 'Lock the phone',
@@ -1264,6 +1262,13 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     lockProbe: true,
     responses: [{ id: 'lock-probe-done', label: 'Unlocked and back', kind: 'note' }, MISSED],
     setup: { voice: false },
+  },
+  {
+    id: 'free',
+    title: 'Anything else',
+    instruction:
+      'Anything that worked or went wrong that no step above names. Stamp it the moment it happens \u2014 the log can find it afterwards, you cannot.',
+    responses: FREE_RESPONSES,
   },
 ];
 

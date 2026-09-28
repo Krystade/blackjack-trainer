@@ -9,6 +9,11 @@ The ranking is by my estimate of prior probability, grounded in the three drives
 against the codebase at `3987662` and reconciled here; where two disagreed, the code was
 checked and the disagreement is recorded in §12.
 
+**Reading this after 2026-09-28.** Line numbers cite the code at `3987662` and have
+drifted; use the symbol names. The "As built" notes and the gate rewrites below were
+added after the 2026-09-28 review (`2026-09-28-review.md`), which supersedes any gate
+here that it contradicts.
+
 The three questions the drive answers are independent in what they gate:
 
 | question | outcomes | gates |
@@ -92,6 +97,11 @@ timeout would score "operator never locked it" as normal.
 
 Cost: ~180 rows on a 15-minute drive against `MAX_ENTRIES = 3000`. Run once per page
 session, not per leg — the behaviour is a property of the event loop, not of a step.
+
+**As built (2026-09-28, after review):** the marker is `{hiddenAt, session}` and is set when
+the page goes hidden, not on arrival; the verdict is on the largest gap (`maxGapMs`), not the
+tick count — one overdue callback on resume is `frozen`; tick rows only while hidden. The step
+runs on every leg (it is a step), before `free`. See `docs/research/2026-09-28-review.md`.
 
 ### 0.3 The one machine-readable signature of the profile flip is logged at the wrong moment
 
@@ -251,7 +261,10 @@ six on one destination, three on another. Trust requires: `mic-settled` (never
 `mic-never-live`, never `abandoned`) on each `mic-route*`; `mic-stopped wasLive=true` on
 `route-after-mic`; `pre-sample-settle` on every ungated sample; `say-end matched=true
 path=clip` and `say-start volume=1` on all nine; `msSinceAppLetGo` absent on before/during,
-present and rising across after; `run-start legsBefore=0`; no `answer-by-voice on=true`.
+present and rising across after; `run-start legsBefore=0`. `answer-by-voice on=true` is
+NOT a kill: since §0.1 the switch only listens on steps whose setup already opens the
+microphone, so it is a covariate (`via=voice` on an answer row of a mic-open step) and
+nothing more. A `via=voice` on a step whose setup has the microphone OFF is the kill.
 
 Under `car`, `freeway` and `speakerphone`, `route-earpiece` and `route-silent` are one
 answer (`fieldTest.ts:365, 375, 392`); only `phone` separates them.
@@ -310,8 +323,10 @@ context=field-test:route-after-mic` present; **no** `mic heartbeat`, `heard-text
 WebKit still holds the audio session after `stop()`. Read the branch as "the route stayed
 after the app let go".
 
-**In-drive.** Known at `route-after-mic-3`. Log `crossing-verdict verdict=permanent`. Say
-once, through ordinary step speech: "The sound did not come back to the car." Carry on
+**In-drive.** Known at `route-after-mic-3`. Log `crossing-verdict verdict=permanent`.
+~~Say once, through ordinary step speech: "The sound did not come back to the car."~~ Do
+not build the spoken line: it is an announcement that primes the four samples still to
+come, which §0.2's silence rule exists to prevent; the row is enough. Carry on
 unchanged — the TTS cells and `wheel-after-mic` are still needed and predicted dead. Turn
 the start-gate force-quit warning (`FieldTest.tsx:525–531`) from advice into a required
 acknowledgement for the next leg. **Never** try to fix the route mid-run.
@@ -561,8 +576,10 @@ exonerated; whether `speakerphone` wanders — if so Bluetooth is out.
 
 **Confounds.** Path rather than route: `paths=` on each row and `clip-failed-to-tts` rows —
 if the disagreeing sample is the one that fell back, the operator heard a voice change.
-The answer channel (§0.1); the recogniser also restarts ~every 90 s
-(`voiceControl.ts:17–21`). `route devicechange` between samples is a correlate, not proof.
+The answer channel (§0.1); the recogniser also restarts on its own — after every
+utterance on iOS, every 45 s in any case (`CYCLE_AFTER_MS`), and up to 8 s after an
+`audio-capture` error (`MAX_RESTART_DELAY_MS`, `voiceControl.ts`) — so a `mic restarting` row inside a mic-open
+block is expected, not a fault. `route devicechange` between samples is a correlate, not proof.
 Line B's clip file itself (speculation; the probe is what tests it).
 
 ---
@@ -686,11 +703,14 @@ All three blocks agree. The founding model is wrong.
 
 **Signature.** All 18 route rows carry the same `answer=`, **and** the middle block is
 proven open: `mic-settled` with `waitedMs < 10000` on every `mic-route*`; `mic session-start`
-before that step's `say-start`; `mic heartbeat state=listening` covering the utterance;
+before that step's `say-start` and no `mic listen-off` or `session-end` between that
+`say-start` and its `say-end` (the heartbeat is every 30 s, so it cannot "cover" a two-second
+line — the session boundaries are what say the microphone was open through it);
 `heard-text` on `mic-heard` (the mic was capturing, not just reporting a state);
-`mic-stopped wasLive=true` on each `route-after-mic*`. **The kill check:** `answer-by-voice
-on=true` — with the switch on, phone/phone/phone is what the model *predicts*, not evidence
-against it. And §0.3's `input-selected` row must name the car's hands-free unit during the
+`mic-stopped wasLive=true` on `route-after-mic` — the FIRST after step only. The later
+after steps open with the microphone already closed, so `wasLive=false` there is the
+expected reading, not a failed gate. **The kill check** is no longer the switch (see §3):
+it is a `via=voice` answer on a step whose setup has the microphone OFF. And §0.3's `input-selected` row must name the car's hands-free unit during the
 middle block — without it, "no move" and "the recogniser ran on the phone's own mic while
 A2DP stayed up" are the same log.
 
@@ -739,8 +759,8 @@ works. Ideally a second car or a Bluetooth speaker.
 
 **Confounds.** The recogniser on the iPhone mic while the car stayed on A2DP — the model is
 untested, not refuted; shows as an iPhone-mic label and no `devicechange` near
-`session-start`. `mic-never-live` / `mic-still-live`. `answer-by-voice on=true`.
-`legsBefore>0`. A stalled clip (`clip-end reason=watchdog`, `clip-failed-to-tts`).
+`session-start`. `mic-never-live` / `mic-still-live`. A `via=voice` answer on a
+mic-off step (not the switch itself; §3). `legsBefore>0`. A stalled clip (`clip-end reason=watchdog`, `clip-failed-to-tts`).
 
 ---
 

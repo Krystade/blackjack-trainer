@@ -12,49 +12,98 @@ import { classifyLockProbe, LOCK_PROBE_TICK_MS } from './lockProbe';
  * steps.
  *
  * So the probe brings its own clock -- a tick every `LOCK_PROBE_TICK_MS` --
- * and this is the arithmetic that turns "how many ticks landed while the
- * screen was off" into a verdict. Pure, so the three shapes of the answer
- * can be pinned without a phone.
+ * and this is the arithmetic that turns the ticks that landed while the
+ * screen was off into a verdict. ON THE GAPS, NOT THE COUNT. The first
+ * version counted ticks, and a page that was frozen for the whole window
+ * fires its one overdue interval callback on resume -- before
+ * `visibilitychange` is delivered -- so it counted one tick and was called
+ * throttled. Frozen versus throttled is exactly the decision the live-link
+ * design waits on, and a count cannot make it.
  */
 describe('classifyLockProbe', () => {
-  const tickMs = LOCK_PROBE_TICK_MS;
+  const tick = LOCK_PROBE_TICK_MS;
+  /** Ticks every `tick` ms from `from` up to but not past `until`, with slop. */
+  const cadence = (from: number, until: number, slop = 0) => {
+    const out: number[] = [];
+    for (let t = from; t < until; t += tick) out.push(t + slop);
+    return out;
+  };
 
   it('calls a window too short to hold two ticks inconclusive, whatever landed in it', () => {
-    expect(classifyLockProbe({ hiddenMs: tickMs, ticksInside: 0 })).toBe('too-short');
-    expect(classifyLockProbe({ hiddenMs: tickMs * 2 - 1, ticksInside: 1 })).toBe('too-short');
-  });
-
-  it('calls a full cadence normal', () => {
-    // 30s hidden at a 2s tick: fifteen expected, fifteen seen.
-    expect(classifyLockProbe({ hiddenMs: 30_000, ticksInside: 30_000 / tickMs })).toBe('normal');
-    // setInterval slop and the 1s flush buffer cost a tick or two; that is
-    // still a page that kept running.
-    expect(classifyLockProbe({ hiddenMs: 30_000, ticksInside: 30_000 / tickMs - 2 })).toBe(
+    expect(classifyLockProbe({ hiddenMs: tick, ticks: [] }).verdict).toBe('too-short');
+    expect(classifyLockProbe({ hiddenMs: tick * 2 - 1, ticks: [tick] }).verdict).toBe(
+      'too-short',
+    );
+    // Exactly two ticks' worth is enough to say something.
+    expect(classifyLockProbe({ hiddenMs: tick * 2, ticks: [tick, tick * 2 - 100] }).verdict).toBe(
       'normal',
     );
   });
 
-  it('calls a sparse cadence throttled, not frozen', () => {
-    // The page ticked -- so it was alive -- but at a fraction of the rate.
-    // This is the shape the design doc predicts and the one that rules out a
-    // held-open connection while leaving a discrete poll usable.
-    expect(classifyLockProbe({ hiddenMs: 30_000, ticksInside: 3 })).toBe('throttled');
-    expect(classifyLockProbe({ hiddenMs: 30_000, ticksInside: 1 })).toBe('throttled');
-  });
-
-  it('calls no ticks at all frozen', () => {
-    expect(classifyLockProbe({ hiddenMs: 30_000, ticksInside: 0 })).toBe('frozen');
+  it('calls a full cadence normal, with the slop a real interval has', () => {
+    expect(classifyLockProbe({ hiddenMs: 30_000, ticks: cadence(tick, 30_000, 150) })).toMatchObject(
+      { verdict: 'normal', ticksInside: 14 },
+    );
+    // One dropped tick is still a page keeping time.
+    const oneDropped = cadence(tick, 30_000).filter((t) => t !== tick * 5);
+    expect(classifyLockProbe({ hiddenMs: 30_000, ticks: oneDropped }).verdict).toBe('normal');
   });
 
   /**
-   * THE BOUNDARY BETWEEN NORMAL AND THROTTLED IS THE ONE THAT PICKS A
-   * TRANSPORT, so it is pinned on both sides rather than left to a
-   * comparison that happens to be true.
+   * THE CATCH-UP TICK. A page frozen for the whole window fires its overdue
+   * callback once on resume, usually before `visible` is delivered. That is
+   * one tick inside the window and it means nothing ran.
    */
-  it('draws the normal/throttled line at two thirds of the expected ticks', () => {
-    const expected = 30_000 / tickMs; // 15
-    expect(classifyLockProbe({ hiddenMs: 30_000, ticksInside: 10 })).toBe('normal');
-    expect(classifyLockProbe({ hiddenMs: 30_000, ticksInside: 9 })).toBe('throttled');
-    expect(Math.ceil(expected * (2 / 3))).toBe(10);
+  it('calls one tick at the very end of the window frozen, not throttled', () => {
+    const v = classifyLockProbe({ hiddenMs: 30_000, ticks: [29_900] });
+    expect(v.verdict).toBe('frozen');
+    expect(v.maxGapMs).toBe(29_900);
+    expect(v.ticksInside).toBe(1);
+  });
+
+  it('calls a page that ran for a few seconds and then stopped frozen', () => {
+    // iOS suspends the web process a few seconds after the lock: two ticks,
+    // then nothing for the remaining twenty-six seconds.
+    expect(classifyLockProbe({ hiddenMs: 30_000, ticks: [tick, tick * 2] }).verdict).toBe(
+      'frozen',
+    );
+    expect(classifyLockProbe({ hiddenMs: 30_000, ticks: [] })).toMatchObject({
+      verdict: 'frozen',
+      maxGapMs: 30_000,
+      ticksInside: 0,
+    });
+  });
+
+  it('calls sparse ticks throttled: alive, but not keeping time', () => {
+    // Every 8 s instead of every 2 s: no gap covers half the window, but every
+    // gap is well past the cadence.
+    expect(classifyLockProbe({ hiddenMs: 30_000, ticks: [8_000, 16_000, 24_000] }).verdict).toBe(
+      'throttled',
+    );
+  });
+
+  /**
+   * THE TWO LINES THAT PICK A TRANSPORT are pinned on both sides rather than
+   * left to a comparison that happens to be true.
+   */
+  it('draws normal/throttled at two and a half ticks, and throttled/frozen at half the window', () => {
+    const withGap = (gap: number) => {
+      // A full cadence with one hole of exactly `gap` ms starting at 10 s.
+      const ticks = [...cadence(tick, 10_000 + 1), ...cadence(10_000 + gap, 30_000)];
+      return classifyLockProbe({ hiddenMs: 30_000, ticks });
+    };
+    expect(withGap(tick * 2.5).verdict).toBe('normal');
+    expect(withGap(tick * 2.5 + 1).verdict).toBe('throttled');
+    expect(withGap(15_000 - 1).verdict).toBe('throttled');
+    expect(withGap(15_000).verdict).toBe('frozen');
+  });
+
+  it('ignores ticks that fall outside the window', () => {
+    const v = classifyLockProbe({
+      hiddenMs: 30_000,
+      ticks: [-2_000, -1, ...cadence(tick, 30_000), 30_000, 31_000],
+    });
+    expect(v.verdict).toBe('normal');
+    expect(v.ticksInside).toBe(14);
   });
 });

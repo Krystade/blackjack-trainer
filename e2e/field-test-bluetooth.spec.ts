@@ -57,7 +57,7 @@ test('a condition without Bluetooth walks past every wheel step', async ({ page 
   const seen = await walk(page);
   for (const id of wheelSteps) expect(seen, `${id} was shown with no car to press into`).not.toContain(id);
   expect(seen).toContain('mic-route');
-  expect(seen.at(-1)).toBe('lock-probe');
+  expect(seen.at(-1)).toBe('free');
 });
 
 test('a condition with Bluetooth still runs them all', async ({ page }) => {
