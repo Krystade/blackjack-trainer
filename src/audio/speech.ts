@@ -1019,7 +1019,7 @@ export function speakAsync(
       // chain never got to. This path also drives drill PACING, so repeating
       // the whole utterance here stretched the gap between cards as well as
       // saying the opening twice.
-      return speakAsyncLive(remainder ?? text, opts);
+      return speakAsyncLive(remainder ?? text, opts).then(reholdAfterLive);
     });
   }
 
@@ -1030,7 +1030,23 @@ export function speakAsync(
     tag: opts?.tag,
     why: isClipsEnabled() ? 'no-clip' : 'clips-off',
   });
-  return speakAsyncLive(text, opts);
+  // THE SAME HOLD AS THE CLIP PATH. `speechSynthesis` is not media, so this
+  // path claimed nothing and re-asserted nothing -- and every field-test
+  // instruction is live TTS. The silent loop is what carries the slot
+  // (audioFocus.ts); it is held here before the line and put back after it,
+  // exactly as around a clip, or `wheel-back` dies for the reason `wheel-gap`
+  // is suspected of and the two cannot be told apart.
+  holdAudioFocus('speech');
+  return speakAsyncLive(text, opts).then(reholdAfterLive);
+}
+
+/**
+ * Re-assert the hold once a live utterance has settled: if the platform
+ * paused the silent loop to speak, nothing else restarts it, and the moment
+ * after a line is the moment a driver presses something.
+ */
+function reholdAfterLive(): void {
+  holdAudioFocus('speech');
 }
 
 /**

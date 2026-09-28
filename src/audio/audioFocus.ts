@@ -142,25 +142,26 @@ export function holdAudioFocus(key: AudioFocusKey): void {
     element.loop = true;
     element.volume = 1;
     const el = element;
+    // THE HOLD LAPSING is the one event this category exists to record and
+    // the one it could not. Every other `focus` entry is app-initiated, so
+    // an OS interruption -- a call, another app taking the slot -- left no
+    // trace, and "a press that reached nothing" could not be told from "a
+    // press into a gap where the hold had already gone". `audioFocusElement
+    // IsPlaying()` existed for exactly this and only the car check ever
+    // asked it.
+    //
+    // ATTACHED BEFORE `play()`, not once it resolves: iOS can pause the
+    // element between the request and the promise settling, and a pause
+    // that early fired into nothing. The app's own stop is not a lapse
+    // because `releaseAudioFocus` clears these before it pauses.
+    el.onpause = () => diag('focus', 'lapsed', { holders: held.size, paused: true });
+    el.onended = () => diag('focus', 'lapsed', { holders: held.size, ended: true });
     void el
       .play()
       .then(() => {
         // `play()` resolving is not the element PLAYING -- report what it
         // actually is, because that is what the head unit reads.
         diag('focus', 'holding', { key, paused: el.paused, holders: held.size });
-        // THE HOLD LAPSING is the one event this category exists to record and
-        // the one it could not. Every other `focus` entry is app-initiated, so
-        // an OS interruption -- a call, another app taking the slot -- left no
-        // trace, and "a press that reached nothing" could not be told from "a
-        // press into a gap where the hold had already gone". `audioFocusElement
-        // IsPlaying()` existed for exactly this and only the car check ever
-        // asked it.
-        el.onpause = () => {
-          if (held.size > 0) diag('focus', 'lapsed', { holders: held.size, paused: true });
-        };
-        el.onended = () => {
-          if (held.size > 0) diag('focus', 'lapsed', { holders: held.size, ended: true });
-        };
       })
       .catch((e: unknown) => {
         appendLog({ kind: 'note', action: 'audio-focus-refused', ok: false });
@@ -230,6 +231,26 @@ export function releaseAllAudioFocus(): void {
  */
 export function audioFocusElementIsPlaying(): boolean {
   return element !== null && element.paused === false;
+}
+
+/**
+ * Put a lapsed hold back, if there is one. For the car's own `play`: the head
+ * unit sends it whenever it thinks playback stopped, which is exactly when
+ * the silent loop has been paused out from under a live hold -- and the one
+ * request that would restore the slot used to be swallowed by an inert
+ * handler. Starts nothing when nobody holds: a `play` with no holder is the
+ * car asking for music, and that is not this app's to answer.
+ */
+export function reassertAudioFocus(): void {
+  if (held.size === 0 || !element || element.paused === false) return;
+  const el = element;
+  void el
+    .play()
+    .then(() => diag('focus', 'holding', { key: 'play-request', paused: el.paused, holders: held.size }))
+    .catch((e: unknown) => {
+      diag('focus', 'refused', { key: 'play-request', why: e instanceof Error ? e.name : String(e) });
+    });
+  diag('focus', 'hold', { key: 'play-request', holders: held.size, restart: true });
 }
 
 /** Whether anything currently holds the slot. Exposed for tests and the panel. */

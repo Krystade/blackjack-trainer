@@ -143,8 +143,6 @@ export interface FieldTestRun {
   answers?: Record<string, RouteAnswer[]>;
   /** Cells whose dormant probes are on the path. See `FieldTestStep.probe`. */
   armedProbes?: string[];
-  /** Blocks already scored on the way out, keyed `<condition>:<cell>`. */
-  scoredBlocks?: string[];
   /**
    * Whether this run was ENDED on purpose, rather than merely stepped out of.
    *
@@ -385,7 +383,6 @@ function coerce(raw: unknown): FieldTestRun {
     // Carried through the reload: the reload is the result it records.
     answers: coerceAnswers(r.answers),
     armedProbes: coerceStrings(r.armedProbes),
-    scoredBlocks: coerceStrings(r.scoredBlocks),
     lockProbe:
       typeof r.lockProbe === 'object' &&
       r.lockProbe !== null &&
@@ -586,7 +583,6 @@ export function startFieldTestRun(condition: string, before?: FieldTestBefore): 
     stamps: {},
     answers: undefined,
     armedProbes: undefined,
-    scoredBlocks: undefined,
     before,
     /*
      * CARRIED, and the first version of this cleared it -- which broke the
@@ -921,8 +917,14 @@ export function fieldTestStepOrdinal(run: FieldTestRun): number {
  * every cell is built on. Every block writes a `route-block` row -- agreeing
  * ones included, so one grep returns all six cells -- and a block that
  * disagrees with itself, moved mid-line, or said too little arms the four
- * dormant probes behind it, if it has any. Scored once per condition and
- * cell: Back and forward again does not write a second row.
+ * dormant probes behind it, if it has any.
+ *
+ * SCORED EVERY TIME THE BLOCK IS LEFT. "Last answer wins" is the rule for a
+ * step, and the first version froze the block's verdict on the first exit,
+ * so an operator who went Back to correct a mis-tap left the corrected answer
+ * in the run under a row that still said `wandering`. The last `route-block`
+ * row for a cell is the verdict. The probes are armed once: they are steps,
+ * and arming them twice would be the same steps again.
  */
 export function advanceFieldTestStep(): void {
   let current = readFieldTestRun();
@@ -930,27 +932,20 @@ export function advanceFieldTestStep(): void {
   const cell = step ? [...routeCells()].find(([, ids]) => ids.at(-1) === step.id) : undefined;
   if (cell) {
     const [key, ids] = cell;
-    const scoredKey = `${current.condition}:${key}`;
-    if (!current.scoredBlocks?.includes(scoredKey)) {
-      const v = routeBlockVerdict(ids, current.answers ?? {}, current.condition);
-      const site = FIELD_TEST_STEPS.find((s) => s.probe === key);
-      const arm = v.verdict !== 'uniform' && site !== undefined && !current.armedProbes?.includes(key);
-      diag('test', 'route-block', {
-        cell: key,
-        steps: ids.join(', '),
-        condition: current.condition,
-        verdict: v.verdict,
-        classes: v.classes.join(', '),
-        answers: v.answers.join(', '),
-        armed: arm,
-        ...(site ? { probe: site.id } : {}),
-      });
-      current = {
-        ...current,
-        scoredBlocks: [...(current.scoredBlocks ?? []), scoredKey],
-        ...(arm ? { armedProbes: [...(current.armedProbes ?? []), key] } : {}),
-      };
-    }
+    const v = routeBlockVerdict(ids, current.answers ?? {}, current.condition);
+    const site = FIELD_TEST_STEPS.find((s) => s.probe === key);
+    const arm = v.verdict !== 'uniform' && site !== undefined && !current.armedProbes?.includes(key);
+    diag('test', 'route-block', {
+      cell: key,
+      steps: ids.join(', '),
+      condition: current.condition,
+      verdict: v.verdict,
+      classes: v.classes.join(', '),
+      answers: v.answers.join(', '),
+      armed: arm,
+      ...(site ? { probe: site.id } : {}),
+    });
+    if (arm) current = { ...current, armedProbes: [...(current.armedProbes ?? []), key] };
   }
   write({ ...current, stepIndex: nextActiveIndex(current.stepIndex, 1, current) });
 }

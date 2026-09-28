@@ -19,7 +19,7 @@ function everyOfferedSet(): { where: string; slots: readonly StepSlot[] }[] {
     for (const step of FIELD_TEST_STEPS) {
       out.push({
         where: `${condition.id}/${step.id}`,
-        slots: stepResponses(step, condition.id),
+        slots: stepResponses(step),
       });
     }
   }
@@ -96,7 +96,7 @@ describe('the spoken vocabulary', () => {
       for (const step of FIELD_TEST_STEPS) {
         const lines = [...(step.say ?? []), ...(step.sayUnclipped ? [step.sayUnclipped] : [])];
         for (const line of lines) {
-          const match = matchFieldTestAnswer(line, stepResponses(step, condition.id));
+          const match = matchFieldTestAnswer(line, stepResponses(step));
           if (match) {
             hazards.push(`${condition.id}/${step.id}: says "${line}" -> ${match.id}`);
           }
@@ -125,7 +125,7 @@ describe('the spoken vocabulary', () => {
 
 describe('matching a transcript', () => {
   const routeStep = FIELD_TEST_STEPS.find((s) => s.id === 'route-1')!;
-  const routeSlots = stepResponses(routeStep, 'car');
+  const routeSlots = stepResponses(routeStep);
 
   it('takes the answer out of a sentence, not just a bare word', () => {
     expect(matchFieldTestAnswer('that came from the car', routeSlots)?.id).toBe('route-car');
@@ -193,7 +193,7 @@ describe('matching a transcript', () => {
 describe('the printed hint', () => {
   it('is the shortest way to select the answer, not its label', () => {
     const wheel = FIELD_TEST_STEPS.find((s) => s.wheel)!;
-    const radio = stepResponses(wheel, 'car').find((r) => r?.id === 'wheel-radio')!;
+    const radio = stepResponses(wheel).find((r) => r?.id === 'wheel-radio')!;
     const hint = spokenHintFor(radio)!;
     expect(hint).toBe('radio');
     expect(hint.length, 'the hint is as long as the label it was meant to replace').toBeLessThan(

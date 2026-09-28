@@ -51,6 +51,9 @@ async function withFakeEngine(page: Page): Promise<void> {
 
       start(): void {
         this.aborted = false;
+        // A stalled engine: `start()` accepted, `onstart` never delivered.
+        // This is the recogniser between sessions on iOS, held there.
+        if ((window as unknown as { __recStall?: boolean }).__recStall) return;
         setTimeout(() => this.onstart?.(), 0);
       }
 
@@ -360,6 +363,91 @@ test('a restart mid-utterance is not recorded as the microphone letting go', asy
     noLine.detail.msSinceAppLetGo,
     'a step with no utterance of its own exported the previous step\u2019s offset',
   ).toBeUndefined();
+});
+
+/**
+ * THE AFTER-BLOCK CLOCK RUNS FROM THE STEP THAT STOPPED ASKING.
+ *
+ * `msSinceAppLetGo` was set on the recogniser's listening->not edge, seen
+ * on a step that no longer wants the microphone. But on iOS the recogniser
+ * ends after every utterance and restarts, cycles every 45 s, and backs off
+ * after an `audio-capture` error -- so at the moment `wheel-with-mic` is
+ * left it is as likely to be mid-restart as listening, and then there is no
+ * edge to see: every after sample lost its offset and `route-after-mic`
+ * read `wasLive=false`. The declared setup is the authority for "the app
+ * stopped asking", and that edge is the step change itself.
+ */
+test('the after-block clock starts when the step stops asking, whatever the recogniser was doing', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await openTest(page, 'Car, parked');
+  await goToStep(page, 'wheel-with-mic');
+  await expect
+    .poll(
+      async () =>
+        (await entries(page)).some(
+          (e) => e.event === 'mic-settled' && e.detail.step === 'wheel-with-mic',
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+
+  // The engine ends its session and the restart never lands: the recogniser
+  // is not `listening` when the operator moves on.
+  await page.evaluate(() => {
+    (window as unknown as { __recStall?: boolean }).__recStall = true;
+  });
+  await endSession(page);
+  await page.waitForTimeout(300);
+
+  await goToStep(page, 'route-after-mic');
+  const answers = page.getByTestId('fieldtest-answers').locator('button');
+  await expect(answers.first()).toBeEnabled({ timeout: 25_000 });
+  await page.waitForTimeout(400);
+  await answers.first().click();
+  const afterMic = await waitForEntry(
+    page,
+    (e) => e.event === 'answer' && e.detail.step === 'route-after-mic',
+    'the first post-microphone sample was never answered',
+  );
+  expect(
+    typeof afterMic.detail.msSinceAppLetGo,
+    'the recogniser was mid-restart when the app let go, and the after clock never started',
+  ).toBe('number');
+
+  // ...and the gate row says what the recogniser was doing, so a reader can
+  // tell "closed after a clean session" from "was already down".
+  const stopped = (await entries(page)).find(
+    (e) => (e.event === 'mic-stopped' || e.event === 'mic-still-live') && e.detail.step === 'route-after-mic',
+  );
+  expect(stopped, 'no release-gate row for the first after step').toBeTruthy();
+  expect(typeof stopped!.detail.state, 'the gate row does not say what state the recogniser was in').toBe(
+    'string',
+  );
+});
+
+/**
+ * MEASURE IS HELD WHILE THE APP IS TALKING. Arrival on `ambient` reads
+ * "Stay quiet for five seconds" aloud, and the button was live under it: the
+ * first seconds of the five-second window could be the app's own voice, and
+ * that figure is the leg's reference level.
+ */
+test('the cabin cannot be measured while the app is reading the instruction', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __e2eSpeechDelayMs?: number }).__e2eSpeechDelayMs = 4_000;
+  });
+  await openTest(page, 'Car, parked');
+  await goToStep(page, 'ambient');
+
+  const measure = page.getByTestId('fieldtest-measure');
+  await expect(measure).toBeVisible();
+  await expect(measure, 'the cabin can be measured over the app\u2019s own voice').toBeDisabled();
+  // The line ends; the measurement is offered.
+  await expect(measure).toBeEnabled({ timeout: 10_000 });
+  expect((await entries(page)).filter((e) => e.event === 'ambient')).toHaveLength(0);
 });
 
 /**

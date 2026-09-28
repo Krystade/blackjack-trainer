@@ -19,6 +19,7 @@
 
 import { appendLog } from './mediaSessionLog';
 import { diag } from '../diag/diagnosticLog';
+import { reassertAudioFocus } from './audioFocus';
 
 export interface MediaSessionHandlers {
   /**
@@ -224,11 +225,17 @@ export function initMediaSession(handlers: MediaSessionHandlers): boolean {
     }
   };
 
-  // Registered and intentionally inert -- all three. See the note above: the
+  // Registered, and none of them touches the drill. See the note above: the
   // car sends these of its own accord, so acting on one moves the drill for a
   // press nobody made. The log entries are still written, which is how the
   // next drive can show how often the car asks.
-  set('play', () => {});
+  //
+  // `play` DOES ONE THING: it puts a lapsed hold back. The car sends it
+  // precisely when it believes playback stopped -- which is when the silent
+  // loop has been paused out from under the app -- and an inert handler was
+  // throwing away the one request that would have restored the slot. It
+  // speaks nothing, and starts nothing when the app holds nothing.
+  set('play', () => reassertAudioFocus());
   set('pause', () => {});
   set('stop', () => {});
   set('seekto', () => {});

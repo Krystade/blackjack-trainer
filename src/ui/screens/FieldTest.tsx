@@ -317,7 +317,11 @@ export function FieldTest({
           );
           // LOGGED AFTER THE RUN EXISTS, so the line carries the id of the run
           // it opens. See `logFieldTestRunStart`.
-          logFieldTestRunStart(run.condition, readFieldTestRun().runId);
+          logFieldTestRunStart(
+            run.condition,
+            readFieldTestRun().runId,
+            fieldTestStepCount({ condition: run.condition }),
+          );
           // THE GRAPH EXISTS BEFORE THE FIRST SAMPLE, not partway through the
           // first pair.
           //
@@ -692,7 +696,7 @@ function RunningTest({
   // not in the audio path at all, so every wheel step's only honest answer
   // is "No Bluetooth" — and it sat fifth, under four answers about what
   // the car did. See `stepResponses`.
-  const responses = useMemo(() => stepResponses(step, run.condition), [step, run.condition]);
+  const responses = useMemo(() => stepResponses(step), [step]);
   /**
    * What this step says, for telling the app's voice from the operator's.
    *
@@ -868,6 +872,8 @@ function RunningTest({
    * documented as "how long after the app let go".
    */
   const micChurnAtRef = useRef<number | null>(null);
+  /** Whether the previous render's step declared the microphone open. */
+  const wantedVoiceRef = useRef(false);
   /**
    * The offset the CURRENT step's first line went out at, kept for the stamp.
    *
@@ -1500,6 +1506,7 @@ function RunningTest({
     setMarks([]);
     setNoted(null);
     setNoteDraft('');
+    noteDraftRef.current = '';
     setAmbient(null);
     setPaths([]);
     /**
@@ -1957,6 +1964,10 @@ function RunningTest({
        *    two answers fit equally, and a wrong stamp reads in the analysis
        *    as the opposite finding.
        */
+      // THE STEP WHOSE EVIDENCE THIS IS. See `transcriptIsEvidence`: the word
+      // is shown above and goes on to the command vocabulary, where "double"
+      // lands as a `heard-action` -- which is what the step is looking at.
+      if (step.transcriptIsEvidence) return null;
       if (!answerByVoice) return null;
       if (stepLines.some((line) => looksLikeSelfEcho(text, line))) {
         diag('test', 'heard-own-voice', { step: step.id, text });
@@ -2048,16 +2059,21 @@ function RunningTest({
    * letting go of anything.
    */
   const stepWantsVoice = resolveFieldTestSetup(run.stepIndex).voice === true;
-  if (listeningRef.current && !nowListening) {
-    if (stepWantsVoice) {
-      // A RESTART, NOT A CLOSE. Recorded rather than dropped: it is a real
-      // event on the audio session, it is the reason this guard exists, and a
-      // sample taken 200ms after a recogniser restart is worth being able to
-      // find.
-      micChurnAtRef.current = Date.now();
-    } else {
-      micClosedAtRef.current = Date.now();
-    }
+  // THE CLOSE IS THE DECLARED EDGE, not the recogniser's. "The app let go" is
+  // the step ceasing to ask for the microphone, and that is one edge, seen
+  // here whatever the recogniser happened to be doing at the time. Watching
+  // `listening` for it instead meant there was nothing to see whenever the
+  // step was left mid-restart -- after every utterance on iOS, every 45 s,
+  // after an `audio-capture` error -- and then every after sample lost its
+  // offset and `route-after-mic` read `wasLive=false`.
+  if (wantedVoiceRef.current && !stepWantsVoice) micClosedAtRef.current = Date.now();
+  if (!wantedVoiceRef.current && stepWantsVoice) micClosedAtRef.current = null;
+  wantedVoiceRef.current = stepWantsVoice;
+  if (listeningRef.current && !nowListening && stepWantsVoice) {
+    // A RESTART, NOT A CLOSE. Recorded rather than dropped: it is a real
+    // event on the audio session, and a sample taken 200ms after a recogniser
+    // restart is worth being able to find.
+    micChurnAtRef.current = Date.now();
   }
   /**
    * CLEARED WHEN IT OPENS AGAIN, which the protocol does allow.
@@ -2071,10 +2087,7 @@ function RunningTest({
    * the microphone was live, and `null` stopped meaning what the export says
    * it means.
    */
-  if (!listeningRef.current && nowListening) {
-    micClosedAtRef.current = null;
-    micChurnAtRef.current = null;
-  }
+  if (!listeningRef.current && nowListening) micChurnAtRef.current = null;
   listeningRef.current = nowListening;
   voiceStatusRef.current = voiceStatus.state;
 
@@ -2127,6 +2140,15 @@ function RunningTest({
    * the operator to judge where THIS came from -- so it is deliberately kept
    * off the steps that do measure.
    */
+  /**
+   * Whether the instruction is being read aloud right now. `sampling` is
+   * deliberately NOT set for this -- the read-aloud is not a sample and must
+   * not hold the answers -- but `ambient`'s Measure has to wait for it: the
+   * first seconds of a five-second window that opened under "Stay quiet for
+   * five seconds" are the app's own voice, and that figure is the leg's
+   * reference level.
+   */
+  const [reading, setReading] = useState(false);
   const speakInstruction = useCallback(async (why: 'arrival' | 'asked' = 'arrival') => {
     // FENCED, HELD AND INTERRUPTING, exactly as `say()` is.
     //
@@ -2137,6 +2159,7 @@ function RunningTest({
     // likely to be tapped twice by someone who is not looking at it.
     const run = ++sayRun.current;
     setSpeaking(true);
+    setReading(true);
     // BRACKETED LIKE ANY OTHER UTTERANCE. This is speech the app produces, on
     // the steps whose whole question is what happens during speech, and it
     // used to reach the log as nothing at all — so a wheel press could not be
@@ -2174,7 +2197,10 @@ function RunningTest({
         error: e instanceof Error ? e.message : String(e),
       });
     } finally {
-      if (sayRun.current === run) setSpeaking(false);
+      if (sayRun.current === run) {
+        setSpeaking(false);
+        setReading(false);
+      }
     }
     if (sayRun.current !== run) {
       // The third of the three. A step left while its instruction was still
@@ -2214,13 +2240,33 @@ function RunningTest({
    */
   const [noteDraft, setNoteDraft] = useState('');
   const [noted, setNoted] = useState<string | null>(null);
+  // MIRRORED, so the draft can be read at the moment a step is left -- from
+  // an effect cleanup, whose closure holds the step it was written on.
+  const noteDraftRef = useRef('');
   const saveNote = () => {
-    const text = noteDraft.trim();
+    const text = noteDraftRef.current.trim();
     if (!text) return;
     diag('test', 'note', { step: step.id, condition: run.condition, text });
+    noteDraftRef.current = '';
     setNoted(text);
     setNoteDraft('');
   };
+  /**
+   * WHATEVER IS STILL IN THE BOX GOES WITH THE STEP IT WAS TYPED ON. A thumb
+   * that lands on an answer with the keyboard still up moves the step on
+   * before anything blurred the box, and the arrival effect then cleared the
+   * draft: a note typed and never submitted was simply gone. Saved here, on
+   * the way out, against the step and condition the cleanup closed over.
+   */
+  useEffect(
+    () => () => {
+      const text = noteDraftRef.current.trim();
+      if (!text) return;
+      diag('test', 'note', { step: step.id, condition: run.condition, text });
+      noteDraftRef.current = '';
+    },
+    [step.id, run.condition],
+  );
 
   /**
    * How an answer arrived.
@@ -2371,7 +2417,7 @@ function RunningTest({
     // on the freeway leg the moment it reached the end, having measured two of
     // them there.
     const stamped = countStampedSteps(run.stamps, run.condition);
-    logFieldTestRunEnd(run.condition, stamped);
+    logFieldTestRunEnd(run.condition, stamped, fieldTestStepCount(run));
     // FENCE FIRST. `cancelSpeech()` settles the awaited promise synchronously
     // and queues the loop's continuation as a microtask; without bumping the
     // fence that continuation's guard still passes, so on the one two-line
@@ -2532,7 +2578,10 @@ function RunningTest({
           type="button"
           className="fieldtest-stamp"
           data-testid="fieldtest-measure"
-          disabled={measuring}
+          // ...and while the app is reading the instruction: the first
+          // seconds of the window would be the app's own voice, and that
+          // figure is the leg's reference level.
+          disabled={measuring || reading}
           onClick={() => void measure()}
         >
           {measuring ? 'Listening\u2026' : 'Measure the cabin'}
@@ -2677,12 +2726,17 @@ function RunningTest({
           placeholder="Note anything a button can't say"
           aria-label="Note for this step"
           value={noteDraft}
-          onChange={(e) => setNoteDraft(e.target.value)}
+          onChange={(e) => {
+            noteDraftRef.current = e.target.value;
+            setNoteDraft(e.target.value);
+          }}
           onBlur={saveNote}
           onKeyDown={(e) => {
+            // ONE SAVE PATH. Enter used to save and then blur, and the blur
+            // saved again from the same render: every keyboard note landed
+            // twice. Enter only puts the keyboard away; the blur saves.
             if (e.key === 'Enter') {
               e.preventDefault();
-              saveNote();
               e.currentTarget.blur();
             }
           }}

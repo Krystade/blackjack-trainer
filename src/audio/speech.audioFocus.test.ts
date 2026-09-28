@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { playClipsResumable } from './clips';
+import { hasClips, playClipsResumable } from './clips';
 import { speakAsync } from './speech';
 import { _resetAudioFocusForTest } from './audioFocus';
 import { clearDiagnosticLog, readDiagnosticLog } from '../diag/diagnosticLog';
@@ -20,7 +20,7 @@ import { clearDiagnosticLog, readDiagnosticLog } from '../diag/diagnosticLog';
  */
 
 vi.mock('./clips', () => ({
-  hasClips: () => true,
+  hasClips: vi.fn(() => true),
   isClipsEnabled: () => true,
   playClipsResumable: vi.fn(),
   stopClips: vi.fn(),
@@ -74,7 +74,67 @@ beforeEach(() => {
 afterEach(() => {
   _resetAudioFocusForTest();
   delete (globalThis as unknown as { window?: unknown }).window;
+  delete (globalThis as unknown as { SpeechSynthesisUtterance?: unknown })
+    .SpeechSynthesisUtterance;
   vi.mocked(playClipsResumable).mockReset();
+  vi.mocked(hasClips).mockReset();
+  vi.mocked(hasClips).mockReturnValue(true);
+});
+
+/**
+ * THE SAME HOLD, ON THE PATH WITH NO CLIP. Every field-test instruction and
+ * every line that has no phrase in the manifest is live `speechSynthesis`,
+ * and that path re-asserted nothing: a silent loop the platform paused to
+ * speak the line stayed paused after it, so `wheel-back` -- whose line is a
+ * TTS instruction -- was dead for the same reason `wheel-gap` was suspected
+ * to be, and the two could not be told apart.
+ */
+describe('the hold across live TTS', () => {
+  class FakeUtterance {
+    text: string;
+    onend: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    volume = 1;
+    rate = 1;
+    voice: unknown = null;
+    constructor(text: string) {
+      this.text = text;
+    }
+  }
+  let endLine: () => void = () => {};
+  beforeEach(() => {
+    vi.mocked(hasClips).mockReturnValue(false);
+    (globalThis as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance =
+      FakeUtterance;
+    const w = globalThis as unknown as { window: Record<string, unknown> };
+    w.window.speechSynthesis = {
+      getVoices: () => [],
+      speak: (u: FakeUtterance) => {
+        endLine = () => u.onend?.();
+      },
+      cancel: () => {},
+    };
+  });
+
+  it('is re-asserted once the utterance ends', async () => {
+    const spoken = speakAsync('The microphone is still on. Press skip-forward again.');
+    expect(created, 'a live line took no hold at all').toHaveLength(1);
+    const el = created[0]!;
+
+    // The platform pauses the silent loop to speak.
+    await Promise.resolve();
+    await Promise.resolve();
+    el.paused = true;
+    el.onpause?.();
+
+    endLine();
+    await spoken;
+
+    expect(el.paused, 'the line ended and the app is no longer the active media app').toBe(
+      false,
+    );
+    expect(el.playCount).toBe(2);
+  });
 });
 
 describe('the hold across a clip', () => {

@@ -335,20 +335,56 @@ test('on a microphone step the answer is recorded as free, not as a perturbation
   page,
 }) => {
   await openTest(page, { byVoice: true });
-  await goToStep(page, 'mic-heard');
-  await answerable(page, 'mic-heard');
+  await goToStep(page, 'mic-route-2');
+  await answerable(page, 'mic-route-2');
 
-  await sayUntilHeard(page, 'it got it right');
+  await sayUntilHeard(page, 'that one came from the car');
 
   await expect
     .poll(async () => (await answersIn(page)).map((e) => e.detail.answer))
-    .toContain('heard-right');
-  const stamped = (await answersIn(page)).find((e) => e.detail.answer === 'heard-right')!;
+    .toContain('route-car');
+  const stamped = (await answersIn(page)).find((e) => e.detail.answer === 'route-car')!;
+  expect(stamped.detail.step).toBe('mic-route-2');
   expect(stamped.detail.via).toBe('voice');
   expect(
     stamped.detail.mic,
     'a step that opens the microphone itself was blamed for the answer channel',
   ).toBe('protocol');
+});
+
+/**
+ * THE TEST WORD IS NOT AN ANSWER. `mic-heard` asks for "double" so the
+ * transcript has a ground truth. With the switch on, that word went into the
+ * answer matcher, matched nothing, and chimed the not-understood tone -- on
+ * the one step whose own comment warns that a chime-and-nothing reads as a
+ * dead microphone. What it hears is the evidence; the answer is tapped.
+ */
+test('on mic-heard what is heard is evidence, not an answer, even with the switch on', async ({
+  page,
+}) => {
+  await openTest(page, { byVoice: true });
+  await goToStep(page, 'mic-heard');
+  await answerable(page, 'mic-heard');
+  const before = (await entries(page)).length;
+
+  await sayUntilHeard(page, 'double');
+  await page.waitForTimeout(600);
+
+  const since = (await entries(page)).slice(before);
+  expect(
+    since.find((e) => e.event === 'heard-action')?.detail.action,
+    'the test word never reached the drill vocabulary, which is what the step shows',
+  ).toBe('double');
+  expect(since.filter((e) => e.event === 'answer-unmatched')).toEqual([]);
+  expect(await answersIn(page)).toEqual([]);
+  await expect(page.getByTestId('fieldtest-title')).toHaveText(
+    FIELD_TEST_STEPS.find((s) => s.id === 'mic-heard')!.title,
+  );
+  // ...and a spoken answer is not taken here either: the step's own
+  // recogniser is the thing under test.
+  await sayUntilHeard(page, 'it got it right');
+  await page.waitForTimeout(600);
+  expect(await answersIn(page)).toEqual([]);
 });
 
 /**

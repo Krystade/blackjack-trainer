@@ -237,18 +237,9 @@ for (const vp of VIEWPORTS) {
      * is asserted here, is that one answer never moves — so a position
      * learned during the run keeps its meaning wherever that answer appears.
      */
-    /*
-     * UNDER BOTH KINDS OF CONDITION, and the second one is the one that
-     * reorders. `stepResponses` takes a different branch when the leg has
-     * Bluetooth off: it prepends "No Bluetooth" and shifts every wheel slot
-     * down by one, because otherwise the only honest answer on six wheel
-     * steps sits fifth, under four answers about what a car that is not
-     * connected did. Every geometry test in this file opened 'Car, parked',
-     * so the branch that moves the driver's thumb targets had never been
-     * rendered at any viewport.
-     */
-    // Speakerphone used to be the second condition here, for its "No Bluetooth"
-    // first branch; its wheel steps are off the path now (field-test-bluetooth.spec).
+    // Under two conditions. Speakerphone used to be the second, for the
+    // "No Bluetooth"-first ordering its wheel steps had; those steps are off
+    // its path now (field-test-bluetooth.spec) and the ordering is one.
     for (const condition of ['Car, parked', 'Freeway'] as const)
     test(`an answer never moves to a different position during a run (${condition})`, async ({
       page,

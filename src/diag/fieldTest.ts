@@ -57,11 +57,11 @@ export interface FieldTestCondition {
   /**
    * Whether the car is in the audio path at all.
    *
-   * `speakerphone` runs with Bluetooth OFF, so its six wheel steps have no car
-   * to answer for: every one of them can only be `wheel-na`, and the operator
-   * met six steps asking them to press a button connected to nothing.
-   * Declared here rather than inferred from the id, so the step list can order
-   * those steps' answers for the condition actually being run.
+   * `speakerphone` runs with Bluetooth OFF, so its wheel steps have no car
+   * to answer for, and the operator met six steps asking them to press a
+   * button connected to nothing. Declared here rather than inferred from the
+   * id, so the runner can keep those steps off such a leg's path (`onPath`,
+   * fieldTestRun.ts).
    */
   bluetooth: boolean;
 }
@@ -260,6 +260,16 @@ export interface FieldTestStep {
    * `fieldTest.test.ts` pins that placement.
    */
   probeInput?: boolean;
+  /**
+   * What the recogniser hears on this step is the measurement, not an
+   * answer. `mic-heard` asks for a word that is deliberately not in the
+   * answer vocabulary, and with "Answer out loud" on that word went into the
+   * matcher, matched nothing, and chimed the not-understood tone -- on the
+   * one step whose comment warns that silence-then-chime reads as a dead
+   * microphone. Answers on such a step are tapped; the transcript is shown
+   * and logged and left alone.
+   */
+  transcriptIsEvidence?: boolean;
   /**
    * Ask the operator to lock the phone, and score what the page did while
    * it was locked from the runner's own ticks. See `lockProbe.ts` for why
@@ -1023,6 +1033,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     // change the thing being measured halfway through the microphone block.
     setup: { voice: true, useClips: true },
     sayAgain: true,
+    transcriptIsEvidence: true,
     responses: [
       { id: 'heard-right', label: 'It got it right', kind: 'good' },
       /**
@@ -1434,7 +1445,11 @@ export function fieldTestLegsThisSession(): number {
   return legsThisSession;
 }
 
-export function logFieldTestRunStart(conditionId: string, runId?: string): void {
+export function logFieldTestRunStart(
+  conditionId: string,
+  runId: string | undefined,
+  steps: number,
+): void {
   diag('test', 'run-start', {
     // THE RUN ID, which this line of all lines was missing.
     //
@@ -1446,8 +1461,11 @@ export function logFieldTestRunStart(conditionId: string, runId?: string): void 
     // the defect survived intact at exactly the place it was aimed at.
     ...(runId !== undefined ? { run: runId } : {}),
     condition: conditionId,
-    // ON THE PATH at the start: the dormant probes are not steps until armed.
-    steps: FIELD_TEST_STEPS.filter((s) => !s.probe).length,
+    // ON THE PATH at the start, as the caller measured it with
+    // `fieldTestStepCount`: the dormant probes are not steps until armed, and
+    // a no-Bluetooth leg has no wheel steps at all. This module cannot count
+    // them itself without importing the run.
+    steps,
     // THE MOTION, because the condition id alone does not survive the
     // protocol changing. Two of the four conditions are driven and two are
     // not, and "was the car moving" is the axis half the findings are pooled
@@ -1470,23 +1488,27 @@ export function logFieldTestRunStart(conditionId: string, runId?: string): void 
   legsThisSession += 1;
 }
 
-export function logFieldTestRunEnd(conditionId: string, stamped: number): void {
-  diag('test', 'run-end', { condition: conditionId, stamped });
+/**
+ * `steps` is the path as it ended -- armed probes included -- so `stamped`
+ * is read against the number it could actually reach.
+ */
+export function logFieldTestRunEnd(conditionId: string, stamped: number, steps: number): void {
+  diag('test', 'run-end', { condition: conditionId, stamped, steps });
 }
 
 /**
- * A step's answers, ordered for the condition actually being run.
+ * A step's answers, in the fixed positions the wheel family uses.
  *
- * `speakerphone` has Bluetooth off, so on its six wheel steps every honest
- * answer is `wheel-na` — and it sat fifth in a list of six, underneath four
- * answers about what the car did. Asking a driver to read past four impossible
- * options to reach the only possible one is how a wrong answer gets tapped at
- * speed, and a wrong answer here reads in the analysis as the car ignoring the
- * app.
+ * Nothing here depends on the condition any more. A no-Bluetooth leg used to
+ * prepend `wheel-na` and shift every wheel slot down one, because the only
+ * honest answer on six wheel steps sat fifth; those steps are off such a
+ * leg's path now (`onPath`, fieldTestRun.ts), so the branch had nothing to
+ * render and was deleted rather than kept as a second ordering nobody sees.
+ * `wheel-na` stays as an answer: Bluetooth dropping mid-leg is a real thing
+ * to report.
  *
- * `MISSED` STAYS LAST regardless: the one escape hatch that means the same
- * thing on every step never moves, which is what makes it reachable without
- * looking.
+ * `MISSED` STAYS LAST: the one escape hatch that means the same thing on
+ * every step never moves, which is what makes it reachable without looking.
  */
 /**
  * FIXED POSITIONS FOR THE WHEEL FAMILY, top to bottom.
@@ -1544,16 +1566,9 @@ export type StepSlot = StepResponse | null;
  * thing on every step never moves, which is what makes it reachable without
  * looking.
  */
-export function stepResponses(step: FieldTestStep, conditionId: string): readonly StepSlot[] {
+export function stepResponses(step: FieldTestStep): readonly StepSlot[] {
   if (!step.wheel) return step.responses;
-  const slots: StepSlot[] = WHEEL_SLOTS.map(
-    (ids) => step.responses.find((r) => ids.includes(r.id)) ?? null,
-  );
-  const condition = FIELD_TEST_CONDITIONS.find((c) => c.id === conditionId);
-  if (condition?.bluetooth !== false) return slots;
-  const na = step.responses.find((r) => r.id === 'wheel-na');
-  if (!na) return slots;
-  return [na, ...slots.filter((r) => r?.id !== 'wheel-na')];
+  return WHEEL_SLOTS.map((ids) => step.responses.find((r) => ids.includes(r.id)) ?? null);
 }
 
 /**

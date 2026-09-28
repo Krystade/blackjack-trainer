@@ -78,13 +78,19 @@ function installFakeAudio(): void {
       this.src = src ?? '';
       created.push(this as unknown as FakeAudio);
     }
+    onpause: (() => void) | null = null;
+    onended: (() => void) | null = null;
     play(): Promise<void> {
       this.playCount += 1;
       this.paused = false;
       return Promise.resolve();
     }
+    // FIRES `onpause`, as an element does. The fake swallowed it, so "the
+    // app's own release is not a lapse" could not fail whatever the release
+    // did or did not clear first.
     pause(): void {
       this.paused = true;
+      this.onpause?.();
     }
   }
   (globalThis as unknown as { window: unknown }).window = { Audio: Fake };
@@ -454,6 +460,24 @@ describe('the hold lapsing under the OS, not the app', () => {
     expect(lapsed, 'the platform stopped the loop and the log has no idea').toBeTruthy();
     expect(lapsed?.detail?.paused).toBe(true);
     expect(lapsed?.detail?.holders).toBe(1);
+  });
+
+  /**
+   * BEFORE `play()` HAS RESOLVED. iOS can pause the element between the
+   * request and the promise settling; with the handlers attached in `.then`
+   * that pause fired into nothing and the export showed `refused AbortError`
+   * or nothing at all where the slot had in fact been taken.
+   */
+  it('records a lapse that lands before play() has resolved', () => {
+    holdAudioFocus('speech');
+    const el = created[0] as FakeAudio & { onpause?: (() => void) | null };
+    el.paused = true;
+    el.onpause?.();
+
+    const lapsed = readDiagnosticLog().find(
+      (e) => e.category === 'focus' && e.event === 'lapsed',
+    );
+    expect(lapsed, 'a pause before play() settled went unrecorded').toBeTruthy();
   });
 
   it('does not call its own release a lapse', async () => {

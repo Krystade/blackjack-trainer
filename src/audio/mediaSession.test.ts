@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
+  holdAudioFocus,
+  releaseAllAudioFocus,
+  _resetAudioFocusForTest,
+} from './audioFocus';
+import {
   initMediaSession,
   setNowPlaying,
   setPlaybackState,
@@ -91,6 +96,66 @@ describe('initMediaSession', () => {
    * resume, repeat spoke again. The 2026-09-11 drive logged nine of them at
    * five-second intervals with nobody touching anything.
    */
+  /**
+   * WHAT `play` IS FOR. The car sends it whenever it thinks playback stopped,
+   * which is exactly when the silent loop has lapsed -- and an inert handler
+   * swallowed the one request that would have put the slot back. Honouring
+   * it means re-playing the loop the app already holds, never speaking, and
+   * never starting a hold nobody has.
+   */
+  it('re-plays a lapsed hold on play, and starts nothing when there is no hold', () => {
+    const created: { paused: boolean; playCount: number; onpause: (() => void) | null }[] = [];
+    class FakeAudio {
+      loop = false;
+      volume = 1;
+      paused = false;
+      playCount = 0;
+      currentTime = 0;
+      onpause: (() => void) | null = null;
+      onended: (() => void) | null = null;
+      constructor(_src?: string) {
+        created.push(this);
+      }
+      play(): Promise<void> {
+        this.playCount += 1;
+        this.paused = false;
+        return Promise.resolve();
+      }
+      pause(): void {
+        this.paused = true;
+        this.onpause?.();
+      }
+    }
+    (globalThis as unknown as { window: unknown }).window = { Audio: FakeAudio };
+    _resetAudioFocusForTest();
+    const actions = new Map<string, () => void>();
+    withMediaSession({
+      metadata: null,
+      setActionHandler: (a: string, h: () => void) => actions.set(a, h),
+    });
+    initMediaSession({ back: () => {}, forward: () => (advanced += 1) });
+    try {
+      // No hold: the car's `play` starts nothing.
+      actions.get('play')!();
+      expect(created, 'play with no holder started a loop').toHaveLength(0);
+
+      holdAudioFocus('speech');
+      const el = created[0]!;
+      el.paused = true;
+      el.onpause?.();
+      actions.get('play')!();
+      expect(el.paused, 'the car asked for playback and the lapsed loop stayed paused').toBe(
+        false,
+      );
+      expect(el.playCount).toBe(2);
+      expect(advanced).toBe(0);
+    } finally {
+      releaseAllAudioFocus();
+      _resetAudioFocusForTest();
+      delete (globalThis as unknown as { window?: unknown }).window;
+    }
+  });
+
   it('never acts on play, which the car sends itself whenever a clip ends', () => {
     const actions = new Map<string, () => void>();
     withMediaSession({

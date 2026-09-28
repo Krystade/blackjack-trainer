@@ -1031,7 +1031,13 @@ describe('the answers a run was given', () => {
         stepIndex: 3,
         stamps: {},
         answers: {
-          'car:route-1': [{ id: 'route-car', via: 'tap' }, { id: 7 }, 'route-car', { via: 'tap' }],
+          'car:route-1': [
+            { id: 'route-car', via: 'tap' },
+            { id: 7 },
+            'route-car',
+            { via: 'tap' },
+            { id: 'route-car', via: 'x' },
+          ],
           'car:route-2': 'nope',
         },
         armedProbes: ['clip / mic before', 3, null],
@@ -1150,17 +1156,36 @@ describe('leaving a route block', () => {
     expect(readFieldTestRun().armedProbes).toEqual(['clip / mic before']);
   });
 
-  it('does not score a step that is not the end of a block, nor score one twice', () => {
+  it('does not score a step that is not the end of a block', () => {
     startFieldTestRun('car');
     goToFieldTestStep(idx('route-1'));
     advanceFieldTestStep();
     expect(rows()).toHaveLength(0);
+  });
+
+  /**
+   * BACK AND CORRECT IS RE-SCORED. "Last answer wins" is the rule for a step;
+   * a block whose verdict was frozen the first time it was left made the rule
+   * a lie one level up -- the corrected answer was in the run and the row
+   * still said `wandering`. The probes, though, are armed once: they are
+   * steps, and a second arming would be the same steps again.
+   */
+  it('scores a block again after Back-and-correct, and arms its probes once', () => {
+    startFieldTestRun('car');
     answerBlock('route-car', 'route-loudspeaker', 'route-car');
     advanceFieldTestStep();
+    expect(rows().map((r) => r.detail?.verdict)).toEqual(['wandering']);
+    expect(readFieldTestRun().armedProbes).toEqual(['clip / mic before']);
+
     retreatFieldTestStep();
     expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('route-3');
+    goToFieldTestStep(idx('route-2'));
+    markFieldTestStamped('route-2', { id: 'route-car', via: 'tap' });
+    goToFieldTestStep(idx('route-3'));
     advanceFieldTestStep();
-    expect(rows()).toHaveLength(1);
+
+    expect(rows().map((r) => r.detail?.verdict)).toEqual(['wandering', 'uniform']);
+    expect(rows()[1]?.detail).toMatchObject({ armed: false });
     expect(readFieldTestRun().armedProbes).toEqual(['clip / mic before']);
   });
 
@@ -1205,9 +1230,20 @@ describe('a condition without Bluetooth', () => {
 
   it('counts the steps it will actually show', () => {
     const base = FIELD_TEST_STEPS.filter((s) => !s.probe).length;
-    expect(fieldTestStepCount({ condition: 'speakerphone' })).toBe(base - wheel.length);
+    // THE SEVEN, BY NAME. An oracle built from `s.wheel` shares its source
+    // with the code under test, so a wheel flag dropped from one step moved
+    // both sides together.
+    expect(wheel).toEqual([
+      'wheel-talking',
+      'wheel-gap',
+      'wheel-back',
+      'wheel-other',
+      'wheel-repeat',
+      'wheel-with-mic',
+      'wheel-after-mic',
+    ]);
+    expect(fieldTestStepCount({ condition: 'speakerphone' })).toBe(base - 7);
     expect(fieldTestStepCount({ condition: 'car' })).toBe(base);
-    expect(wheel.length).toBeGreaterThanOrEqual(4);
   });
 
   it('walks past them when advancing', () => {
