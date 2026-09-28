@@ -1040,14 +1040,16 @@ describe('the answers a run was given', () => {
     const short = idx('route-short');
     const probe1 = route3 + 1;
     expect(FIELD_TEST_STEPS[probe1]?.probe).toBe('clip / mic before');
-    expect(nextActiveIndex(route3, 1, [])).toBe(short);
-    expect(nextActiveIndex(short, -1, [])).toBe(route3);
-    expect(nextActiveIndex(route3, 1, ['clip / mic before'])).toBe(probe1);
-    expect(nextActiveIndex(short, -1, ['clip / mic before'])).toBe(short - 1);
+    const car = { condition: 'car' };
+    const armed = { condition: 'car', armedProbes: ['clip / mic before'] };
+    expect(nextActiveIndex(route3, 1, car)).toBe(short);
+    expect(nextActiveIndex(short, -1, car)).toBe(route3);
+    expect(nextActiveIndex(route3, 1, armed)).toBe(probe1);
+    expect(nextActiveIndex(short, -1, armed)).toBe(short - 1);
     expect(FIELD_TEST_STEPS[short - 1]?.probe).toBe('clip / mic before');
     // Nowhere to go stays put.
-    expect(nextActiveIndex(0, -1, [])).toBe(0);
-    expect(nextActiveIndex(FIELD_TEST_STEPS.length - 1, 1, [])).toBe(FIELD_TEST_STEPS.length - 1);
+    expect(nextActiveIndex(0, -1, car)).toBe(0);
+    expect(nextActiveIndex(FIELD_TEST_STEPS.length - 1, 1, car)).toBe(FIELD_TEST_STEPS.length - 1);
   });
 
   it('counts and numbers the steps that are actually on the path', () => {
@@ -1163,5 +1165,45 @@ describe('leaving a route block', () => {
     });
     expect(readFieldTestRun().armedProbes ?? []).toEqual([]);
     expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('fallback-audible');
+  });
+});
+
+/**
+ * NO BLUETOOTH, NO WHEEL STEPS. Under `speakerphone` and `phone` there is no
+ * car to press into, and the first answer to that -- "No Bluetooth" first on
+ * every wheel step -- was still seven steps of nothing on the 2026-09-27
+ * drive. A path rule on the run, like the dormant probes, rather than a
+ * per-condition list: `FIELD_TEST_STEPS` is still one list and
+ * `resolveFieldTestSetup` is still a function of the index.
+ */
+describe('a condition without Bluetooth', () => {
+  const idx = (id: string) => FIELD_TEST_STEPS.findIndex((s) => s.id === id);
+  const wheel = FIELD_TEST_STEPS.filter((s) => s.wheel).map((s) => s.id);
+
+  it('has the wheel steps off its path, in both directions', () => {
+    const from = idx('fallback-audible');
+    expect(FIELD_TEST_STEPS[from + 1]?.wheel).toBe(true);
+    expect(nextActiveIndex(from, 1, { condition: 'speakerphone' })).toBe(idx('mic-route'));
+    expect(nextActiveIndex(idx('mic-route'), -1, { condition: 'phone' })).toBe(from);
+    // ...and on it under a paired one.
+    expect(nextActiveIndex(from, 1, { condition: 'car' })).toBe(from + 1);
+    expect(nextActiveIndex(from, 1, { condition: 'freeway' })).toBe(from + 1);
+  });
+
+  it('counts the steps it will actually show', () => {
+    const base = FIELD_TEST_STEPS.filter((s) => !s.probe).length;
+    expect(fieldTestStepCount({ condition: 'speakerphone' })).toBe(base - wheel.length);
+    expect(fieldTestStepCount({ condition: 'car' })).toBe(base);
+    expect(wheel.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('walks past them when advancing', () => {
+    startFieldTestRun('phone');
+    goToFieldTestStep(idx('fallback-audible'));
+    advanceFieldTestStep();
+    expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('mic-route');
+    goToFieldTestStep(idx('mic-heard'));
+    advanceFieldTestStep();
+    expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('route-after-mic');
   });
 });

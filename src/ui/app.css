@@ -3923,6 +3923,30 @@ details.stats-section > summary::after {
   color: var(--muted, #8a8a8a);
 }
 
+/* The free-text note. Inside the evidence panel, which scrolls rather than
+   grows, so it costs the answer stack and the nav row nothing. Not a button
+   height on purpose: it is not a target for a thumb off the wheel. NO MARGIN:
+   measured at 375x667, a 4px margin-top here reached the answer stack --
+   it scrolled 7px on the three longest-instruction steps -- and the panel's
+   own 2px gap is the spacing. On the SE the panel sits at its 44px floor on
+   wheel steps, so the box is reached by scrolling the panel there; on
+   anything taller the panel grows into the slack and it is in full view. */
+.fieldtest-note {
+  flex: none;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.fieldtest-note::placeholder {
+  color: var(--ink-faint);
+}
+
 .fieldtest-wheel-count {
   font-variant-numeric: tabular-nums;
   color: var(--ink);

@@ -67,8 +67,6 @@ import { setEyesFreeOn } from '../eyesFreeSession';
 import { diag, diagnosticSessionId, setDiagContext } from '../../diag/diagnosticLog';
 import { classifyLockProbe, LOCK_PROBE_TICK_MS } from '../../diag/lockProbe';
 
-/** Steps on the path before anything is armed: the dormant probes are not steps yet. */
-const BASE_STEP_COUNT = FIELD_TEST_STEPS.filter((s) => !s.probe).length;
 import { logSelectedInput } from '../../diag/environment';
 import { saveSettings } from '../../store/persist';
 import { Segmented } from './Settings';
@@ -279,6 +277,7 @@ export function FieldTest({
     return (
       <StartGate
         run={run}
+        audio={settings.audio}
         onNavigate={onNavigate}
         onStart={() => {
           // AN EXISTING SNAPSHOT WINS OVER WHAT IS ON DISK NOW.
@@ -403,11 +402,14 @@ function stampsFor(run: FieldTestRun, stepId: string): number {
 
 function StartGate({
   run,
+  audio,
   onStart,
   onResume,
   onNavigate,
 }: {
   run: FieldTestRun;
+  /** The chosen voice and rate, for the arrival cue. */
+  audio: Settings['audio'];
   onStart: () => void;
   onResume: () => void;
   onNavigate: (screen: Screen) => void;
@@ -475,6 +477,8 @@ function StartGate({
     chime('attention');
     void speakAsync('The field test is paused. Resume is the first button on the screen.', {
       interrupt: true,
+      rate: audio.rate,
+      voiceURI: audio.voiceURI,
     });
     // ONCE PER ARRIVAL. `run` changes when the picker is touched, and a driver
     // changing condition does not need to be told again where Resume is.
@@ -492,8 +496,9 @@ function StartGate({
 
       <div className="fieldtest-body">
       <p className="u-note">
-        Every condition runs all {BASE_STEP_COUNT} steps, including the wheel — what changes
-        between them is the car, not the protocol. Pick where you are, press start, and it will talk
+        This condition runs {fieldTestStepCount({ condition: run.condition })} steps — what changes
+        between conditions is the car, not the protocol. A condition with no Bluetooth skips the
+        wheel steps, since there is nothing to press into. Pick where you are, press start, and it will talk
         to you. Nothing else needs to be running. When you are done, send the diagnostic log.
       </p>
 
@@ -620,7 +625,7 @@ function StartGate({
         }}
       >
         {!resumable
-          ? `Start — ${BASE_STEP_COUNT} steps`
+          ? `Start — ${fieldTestStepCount({ condition: run.condition })} steps`
           : confirmRestart
             ? // NAMES WHAT IS ACTUALLY LOST. A run skipped through has nothing
               // stamped, and "discard 0 answered steps" reads as "this is
@@ -629,7 +634,7 @@ function StartGate({
               ? `Tap again to discard ${countStampedSteps(run.stamps, run.condition)} answered ${
                   countStampedSteps(run.stamps, run.condition) === 1 ? 'step' : 'steps'
                 }`
-              : `Tap again to go back to step 1 of ${BASE_STEP_COUNT}`
+              : `Tap again to go back to step 1 of ${fieldTestStepCount({ condition: run.condition })}`
             : 'Start over from step 1'}
       </button>
 
@@ -677,7 +682,7 @@ function RunningTest({
 }) {
   const step = FIELD_TEST_STEPS[Math.min(run.stepIndex, FIELD_TEST_STEPS.length - 1)]!;
   // The last step ON THE PATH: a dormant probe after this one does not count.
-  const atLastStep = nextActiveIndex(run.stepIndex, 1, run.armedProbes ?? []) === run.stepIndex;
+  const atLastStep = nextActiveIndex(run.stepIndex, 1, run) === run.stepIndex;
   // ORDERED FOR THE CONDITION BEING RUN. Under `speakerphone` the car is
   // not in the audio path at all, so every wheel step's only honest answer
   // is "No Bluetooth" — and it sat fifth, under four answers about what
@@ -1488,6 +1493,8 @@ function RunningTest({
     // A mark describes ONE utterance or ONE pair of presses; carrying it into
     // the next step would file it against something the operator never saw.
     setMarks([]);
+    setNoted(null);
+    setNoteDraft('');
     setAmbient(null);
     setPaths([]);
     /**
@@ -1680,7 +1687,11 @@ function RunningTest({
               ? 'The page was frozen while the phone was locked.'
               : 'That was too short to tell. Lock it again, for longer.';
       setAmbient(said);
-      void speakAsync(said, { interrupt: true });
+      void speakAsync(said, {
+        interrupt: true,
+        rate: settingsRef.current.audio.rate,
+        voiceURI: settingsRef.current.audio.voiceURI,
+      });
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
@@ -2068,6 +2079,10 @@ function RunningTest({
       await speakAsync(step.instruction, {
         interrupt: true,
         rate: settingsRef.current.audio.rate,
+        // THE CHOSEN VOICE. The measured lines carried this and the
+        // instructions did not, so they fell to the heuristic pick -- heard
+        // in the car as "some horrible creepy raspy roboty voice".
+        voiceURI: settingsRef.current.audio.voiceURI,
         volume: effectiveVolume(settingsRef.current.audio),
         tag: `${step.id}#instruction`,
       });
@@ -2113,6 +2128,26 @@ function RunningTest({
   useEffect(() => {
     stepReadyAt.current = Date.now();
   }, [step.id]);
+
+  /**
+   * A NOTE, FOR WHAT NO BUTTON SAYS.
+   *
+   * The stack is a fixed vocabulary on purpose, and each of the first four
+   * drives produced something it had no word for, remembered in the car
+   * park and gone by the time the log was read. So a line of free text,
+   * written against the step and condition. NOT an answer: it stamps
+   * nothing and advances nothing, because a note about a step is not a
+   * reading of it, and a box that advanced would be a seventh button.
+   */
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noted, setNoted] = useState<string | null>(null);
+  const saveNote = () => {
+    const text = noteDraft.trim();
+    if (!text) return;
+    diag('test', 'note', { step: step.id, condition: run.condition, text });
+    setNoted(text);
+    setNoteDraft('');
+  };
 
   /**
    * How an answer arrived.
@@ -2557,6 +2592,28 @@ function RunningTest({
               .join(', ')}. Now say what happened.`}
           </p>
         )}
+        {noted && (
+          <p className="fieldtest-evidence-line" data-testid="fieldtest-noted">
+            {`Noted: ${noted}`}
+          </p>
+        )}
+        <input
+          type="text"
+          className="fieldtest-note"
+          data-testid="fieldtest-note"
+          placeholder="Note anything a button can't say"
+          aria-label="Note for this step"
+          value={noteDraft}
+          onChange={(e) => setNoteDraft(e.target.value)}
+          onBlur={saveNote}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              saveNote();
+              e.currentTarget.blur();
+            }
+          }}
+        />
       </div>
 
       <div className="fieldtest-answers" data-testid="fieldtest-answers">

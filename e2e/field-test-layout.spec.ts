@@ -247,7 +247,9 @@ for (const vp of VIEWPORTS) {
      * so the branch that moves the driver's thumb targets had never been
      * rendered at any viewport.
      */
-    for (const condition of ['Car, parked', 'Speakerphone'] as const)
+    // Speakerphone used to be the second condition here, for its "No Bluetooth"
+    // first branch; its wheel steps are off the path now (field-test-bluetooth.spec).
+    for (const condition of ['Car, parked', 'Freeway'] as const)
     test(`an answer never moves to a different position during a run (${condition})`, async ({
       page,
     }) => {

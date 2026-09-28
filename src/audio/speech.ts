@@ -50,7 +50,7 @@ declare global {
      * a volume of zero, so "was it silent" is a question about the options
      * and is invisible in the text.
      */
-    __speechOptsLog?: { text: string; volume?: number; rate?: number }[];
+    __speechOptsLog?: { text: string; volume?: number; rate?: number; voiceURI?: string }[];
     /**
      * How long a swallowed utterance should pretend to take, in e2e mode only.
      *
@@ -89,7 +89,12 @@ function pushSpeechLog(entry: string, opts?: SpeechOpts): void {
   if (!window.__speechOptsLog) {
     window.__speechOptsLog = [];
   }
-  window.__speechOptsLog.push({ text: entry, volume: opts?.volume, rate: opts?.rate });
+  window.__speechOptsLog.push({
+    text: entry,
+    volume: opts?.volume,
+    rate: opts?.rate,
+    voiceURI: opts?.voiceURI,
+  });
 }
 
 /** True when this environment can actually speak (real speechSynthesis present). */

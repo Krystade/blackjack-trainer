@@ -2411,57 +2411,6 @@ test('the audio graph is open before the first line is spoken', async ({ page })
 });
 
 /**
- * S13: under a condition with no Bluetooth, every wheel step's only honest
- * answer is "No Bluetooth" — and it sat fifth of six, underneath four
- * answers about what the car did.
- */
-test('a condition with no Bluetooth puts the only possible answer first', async ({ page }) => {
-  await openTest(page, 'Speakerphone');
-  // Walk to the first wheel step. `fieldtest-wheel-seen` only exists on one.
-  for (let i = 0; i < 40; i += 1) {
-    const answers = page.locator('[data-testid^="fieldtest-answer-"]');
-    const first = await answers.first().getAttribute('data-testid');
-    if (first === 'fieldtest-answer-wheel-na') break;
-    const ids = await answers.evaluateAll((els) =>
-      els.map((e) => e.getAttribute('data-testid') ?? ''),
-    );
-    if (ids.some((id) => id.startsWith('fieldtest-answer-wheel-'))) {
-      expect(
-        ids[0],
-        `a wheel step under Speakerphone leads with ${ids[0]}, not the only true answer`,
-      ).toBe('fieldtest-answer-wheel-na');
-      break;
-    }
-    await page.getByTestId('fieldtest-skip').click();
-  }
-
-  // ...and the escape hatch is still the bottom button, where it is on every
-  // other step in the protocol.
-  const ids = await page
-    .locator('[data-testid^="fieldtest-answer-"]')
-    .evaluateAll((els) => els.map((e) => e.getAttribute('data-testid') ?? ''));
-  expect(ids[0]).toBe('fieldtest-answer-wheel-na');
-  expect(ids.at(-1)).toBe('fieldtest-answer-missed');
-});
-
-test('and leaves the answers alone under a condition that does use the car', async ({ page }) => {
-  await openTest(page, 'Car, parked');
-  for (let i = 0; i < 40; i += 1) {
-    const ids = await page
-      .locator('[data-testid^="fieldtest-answer-"]')
-      .evaluateAll((els) => els.map((e) => e.getAttribute('data-testid') ?? ''));
-    if (ids.some((id) => id.startsWith('fieldtest-answer-wheel-'))) {
-      expect(ids[0], 'a paired condition leads with "No Bluetooth"').not.toBe(
-        'fieldtest-answer-wheel-na',
-      );
-      return;
-    }
-    await page.getByTestId('fieldtest-skip').click();
-  }
-  throw new Error('no wheel step was reached');
-});
-
-/**
  * A run must not hand the settings back while it is starting.
  *
  * React destroys a commit's cleanups before running any of its create

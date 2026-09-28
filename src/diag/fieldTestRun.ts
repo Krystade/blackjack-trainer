@@ -847,40 +847,61 @@ export function markFieldTestStamped(stepId: string, answer?: RouteAnswer): void
   });
 }
 
-/** Whether the step at `index` is on the path for a run with these probes armed. */
-function onPath(index: number, armed: readonly string[]): boolean {
+/** What decides which steps are on a run's path. */
+export type FieldTestPath = Pick<FieldTestRun, 'condition' | 'armedProbes'>;
+
+/**
+ * Whether the step at `index` is on the path for this run.
+ *
+ * Two rules, both on the RUN rather than the list -- `FIELD_TEST_STEPS` is
+ * one list for every condition and `resolveFieldTestSetup` is a function of
+ * the index, and both stay so:
+ *
+ *  - a dormant probe is on the path once its cell is armed;
+ *  - a wheel step is off the path when the condition has no Bluetooth.
+ *    There is no car to press into, and the first answer to that ("No
+ *    Bluetooth" first on every wheel step) was still seven steps of nothing
+ *    on the 2026-09-27 drive: "the bluetooth off tests need to skip the
+ *    bluetooth required ones, don't just put a button there."
+ */
+function onPath(index: number, run: FieldTestPath): boolean {
   const step = FIELD_TEST_STEPS[index];
-  return step !== undefined && (!step.probe || armed.includes(step.probe));
+  if (!step) return false;
+  if (step.probe && !run.armedProbes?.includes(step.probe)) return false;
+  if (step.wheel && conditionOf(run.condition)?.bluetooth === false) return false;
+  return true;
+}
+
+function conditionOf(id: string) {
+  return FIELD_TEST_CONDITIONS.find((c) => c.id === id);
 }
 
 /**
  * The next index on the path in direction `dir`, or `from` if there is none.
  *
  * `stepIndex` stays a plain index into `FIELD_TEST_STEPS` -- the setup fold
- * depends on that -- so a dormant probe is skipped by the pointer's movement
- * rather than by its absence from the list.
+ * depends on that -- so a step off the path is skipped by the pointer's
+ * movement rather than by its absence from the list.
  */
-export function nextActiveIndex(from: number, dir: 1 | -1, armed: readonly string[]): number {
+export function nextActiveIndex(from: number, dir: 1 | -1, run: FieldTestPath): number {
   for (let i = from + dir; i >= 0 && i < FIELD_TEST_STEPS.length; i += dir) {
-    if (onPath(i, armed)) return i;
+    if (onPath(i, run)) return i;
   }
   return from;
 }
 
 /** How many steps are on this run's path. */
-export function fieldTestStepCount(run: FieldTestRun): number {
-  const armed = run.armedProbes ?? [];
+export function fieldTestStepCount(run: FieldTestPath): number {
   let n = 0;
-  for (let i = 0; i < FIELD_TEST_STEPS.length; i += 1) if (onPath(i, armed)) n += 1;
+  for (let i = 0; i < FIELD_TEST_STEPS.length; i += 1) if (onPath(i, run)) n += 1;
   return n;
 }
 
 /** The 1-based position of the current step on this run's path. */
 export function fieldTestStepOrdinal(run: FieldTestRun): number {
-  const armed = run.armedProbes ?? [];
   let n = 0;
   for (let i = 0; i <= run.stepIndex && i < FIELD_TEST_STEPS.length; i += 1) {
-    if (onPath(i, armed)) n += 1;
+    if (onPath(i, run)) n += 1;
   }
   return n;
 }
@@ -924,16 +945,13 @@ export function advanceFieldTestStep(): void {
       };
     }
   }
-  write({ ...current, stepIndex: nextActiveIndex(current.stepIndex, 1, current.armedProbes ?? []) });
+  write({ ...current, stepIndex: nextActiveIndex(current.stepIndex, 1, current) });
 }
 
 /** Leave the current step backwards. Nothing is scored on the way back. */
 export function retreatFieldTestStep(): void {
   const current = readFieldTestRun();
-  write({
-    ...current,
-    stepIndex: nextActiveIndex(current.stepIndex, -1, current.armedProbes ?? []),
-  });
+  write({ ...current, stepIndex: nextActiveIndex(current.stepIndex, -1, current) });
 }
 
 /** Test-only: forget the run and every subscriber. */

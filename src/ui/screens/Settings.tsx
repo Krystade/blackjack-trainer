@@ -692,8 +692,8 @@ function FieldTestPanel({ onNavigate }: { onNavigate: (screen: Screen) => void }
       <div className="settings-note-row u-note">
         {FIELD_TEST_STEPS.length} steps that run themselves: it speaks its own lines through the
         real audio path, captures whatever the wheel sends, listens to the cabin, and writes all of
-        it to the diagnostic log as it happens. Every condition runs every step, buttons included.
-        Nothing else needs to be running.
+        it to the diagnostic log as it happens. A condition with no Bluetooth skips the wheel
+        steps; every other step runs under every condition. Nothing else needs to be running.
       </div>
 
       <button
