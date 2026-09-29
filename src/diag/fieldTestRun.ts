@@ -27,6 +27,7 @@ import {
   DEFAULT_FIELD_TEST_CONDITION,
   FIELD_TEST_CONDITIONS,
   FIELD_TEST_STEPS,
+  resolveFieldTestSetup,
   routeBlockVerdict,
   routeCells,
   type RouteAnswer,
@@ -131,7 +132,23 @@ export interface FieldTestRun {
    * launch scored a kill that never happened. Cleared on the way back to
    * visible and when the step is left.
    */
-  lockProbe?: { hiddenAt: string; session: string };
+  /**
+   * The lock probe's marker: the operator is ON the step, and -- once the
+   * page goes hidden -- when that happened.
+   *
+   * ARMED ON ARRIVAL, not on `hidden`, because the event the probe waits for
+   * is one iOS can fail to deliver: a page killed under a lock that was
+   * never announced left nothing at all, and a leg with no lock verdict was
+   * indistinguishable from a leg where the step was never run. `hiddenAt`
+   * absent on a marker left by a dead session says exactly that much and no
+   * more -- the app died on the step, and no `hidden` was recorded -- which
+   * is a missing measurement rather than a result.
+   *
+   * Cleared when the step is left and when a navigation announces itself
+   * (`pagehide persisted=false`); a page the OS discards clears nothing,
+   * which is what makes the leftover marker evidence.
+   */
+  lockProbe?: { session: string; onStepAt: string; hiddenAt?: string };
   /**
    * What each step was answered, keyed like `stamps`, in the order given.
    *
@@ -159,6 +176,19 @@ export interface FieldTestRun {
    * re-renders, which writes.
    */
   micClosedAt?: number;
+
+  /**
+   * Whether the setup has asked for the microphone at any point in this run.
+   *
+   * `micClosedAt` absent means two different things -- the microphone has
+   * never been up, or it was up and the moment it closed was lost -- and the
+   * export reads the two the same way. A reload or a kill runs no cleanup, so
+   * the second case is real: `resumeFieldTestRun` can only put a close time
+   * back if it knows there was something to close, and the before block
+   * (`route-1`, where `msSinceAppLetGo` MUST be absent) must not be given
+   * one.
+   */
+  micHasBeenUp?: boolean;
   /**
    * Whether this run was ENDED on purpose, rather than merely stepped out of.
    *
@@ -274,6 +304,31 @@ function coerceAnswers(v: unknown): Record<string, RouteAnswer[]> | undefined {
  */
 function clampToRun(index: number): number {
   return Math.min(Math.max(index, 0), FIELD_TEST_STEPS.length - 1);
+}
+
+/**
+ * A lock marker out of storage, INCLUDING ONE LEFT BY THE BUILD BEFORE THIS.
+ *
+ * That build wrote `{hiddenAt, session}` and only on `hidden`, so the marker
+ * it leaves behind is the one case the probe is most for: a page that died
+ * under a lock. Requiring `onStepAt` dropped it silently -- and the phone in
+ * the car is on the old build until the update check runs, so the very first
+ * boot of this one is exactly when such a marker exists. Read with `hiddenAt`
+ * standing in for the arrival: the page was demonstrably on the step then,
+ * which is all `onStepAt` claims.
+ *
+ * Nothing double-scores as a result. `diagnosticSessionId` is minted per page
+ * load and a session overwrites its own marker, so a session leaves at most
+ * one -- the scorer's `session:onStepAt` key is unique either way.
+ */
+function coerceLockProbe(raw: unknown): FieldTestRun['lockProbe'] {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const m = raw as { session?: unknown; onStepAt?: unknown; hiddenAt?: unknown };
+  if (typeof m.session !== 'string') return undefined;
+  const hiddenAt = typeof m.hiddenAt === 'string' ? m.hiddenAt : undefined;
+  const onStepAt = typeof m.onStepAt === 'string' ? m.onStepAt : hiddenAt;
+  if (onStepAt === undefined) return undefined;
+  return { session: m.session, onStepAt, ...(hiddenAt === undefined ? {} : { hiddenAt }) };
 }
 
 /**
@@ -410,16 +465,11 @@ function coerce(raw: unknown): FieldTestRun {
     answerByVoice: r.answerByVoice === true ? true : undefined,
     micClosedAt:
       typeof r.micClosedAt === 'number' && Number.isFinite(r.micClosedAt) ? r.micClosedAt : undefined,
+    micHasBeenUp: r.micHasBeenUp === true ? true : undefined,
     // Carried through the reload: the reload is the result it records.
     answers: coerceAnswers(r.answers),
     armedProbes,
-    lockProbe:
-      typeof r.lockProbe === 'object' &&
-      r.lockProbe !== null &&
-      typeof (r.lockProbe as { hiddenAt?: unknown }).hiddenAt === 'string' &&
-      typeof (r.lockProbe as { session?: unknown }).session === 'string'
-        ? { hiddenAt: r.lockProbe.hiddenAt, session: r.lockProbe.session }
-        : undefined,
+    lockProbe: coerceLockProbe(r.lockProbe),
     runId: typeof r.runId === 'string' ? r.runId : undefined,
     // Carried through the reload for the same reason as `touchedAt`: the
     // launch screen and the update check both read it, and both of them run
@@ -637,10 +687,17 @@ export function startFieldTestRun(condition: string, before?: FieldTestBefore): 
 
 /** Set or clear the lock probe's marker. See `FieldTestRun.lockProbe`. */
 export function setFieldTestLockProbe(
-  marker: { hiddenAt: string; session: string } | undefined,
+  marker: { session: string; onStepAt: string; hiddenAt?: string } | undefined,
 ): void {
   const current = readFieldTestRun();
   write({ ...current, lockProbe: marker });
+}
+
+/** Record that the setup has asked for the microphone in this run. */
+export function markFieldTestMicUp(): void {
+  const current = readFieldTestRun();
+  if (current.micHasBeenUp === true) return;
+  write({ ...current, micHasBeenUp: true });
 }
 
 /** Record when the setup stopped asking for the microphone, or that it is up again. */
@@ -797,8 +854,49 @@ export function setFieldTestBefore(before: FieldTestBefore): void {
  * cost the whole run.
  */
 export function resumeFieldTestRun(): void {
+  const current = readFieldTestRun();
+  /**
+   * AND PUTS BACK THE MICROPHONE'S CLOSE TIME IF NOTHING ELSE COULD.
+   *
+   * The screen records it when a microphone step is left, from a cleanup --
+   * which a reload or a kill never runs. The pointer can also have moved
+   * while the run was away: the condition picker sits beside Resume, and a
+   * leg switched to one with no Bluetooth has no wheel steps, so a run
+   * interrupted on `wheel-with-mic` comes back on `route-after-mic`. Without
+   * this, every after sample in that leg exported as though the microphone
+   * had never been up, which is the before block's reading.
+   *
+   * It is down now -- nothing is listening on this gate -- and this is the
+   * latest moment it can have closed, so the offsets it produces are lower
+   * bounds. Only when the run has actually had it up (`micHasBeenUp`) and the
+   * step being resumed onto does not want it: resuming INTO the block leaves
+   * it absent, which is what "open" is written as.
+   *
+   * AND IT SAYS SO, because a lower bound is read at the wrong end of the
+   * curve. The after block's offsets are compared against samples at roughly
+   * 1.5, 9, 20 and 31 seconds; a phone picked up in the kitchen forty minutes
+   * later and resumed exports its first answer at two seconds, which a reader
+   * files as the 1.5s sample -- the most load-bearing point in the whole
+   * protocol. The row brackets it: `from` is the last moment the app is known
+   * to have been running, `to` is the gate. Every other recovery here is
+   * marked (`recovered`, `heldActive`, `read_as`); this one was not.
+   */
+  const wantsVoice = resolveFieldTestSetup(current.stepIndex).voice === true;
+  const backfill =
+    current.micHasBeenUp === true && !wantsVoice && current.micClosedAt === undefined;
+  const micClosedAt = backfill ? Date.now() : current.micClosedAt;
+  if (backfill) {
+    diag('test', 'mic-close-backfilled', {
+      run: current.runId,
+      atStep: current.stepIndex,
+      // The bracket the reader needs: between these two the microphone closed,
+      // and nothing in the page was alive to see it.
+      from: current.touchedAt,
+      to: micClosedAt,
+    });
+  }
   // Un-ends it: whatever this run was before, somebody is in it now.
-  write({ ...readFieldTestRun(), active: true, endedAt: undefined });
+  write({ ...current, active: true, endedAt: undefined, micClosedAt });
 }
 
 /** End a run deliberately. See `endedAt` for what that buys over pausing. */

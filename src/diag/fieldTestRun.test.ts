@@ -957,17 +957,39 @@ describe('the lock probe marker', () => {
   it('survives a reload, so a page killed under the lock can be scored at the next boot', () => {
     installStorage();
     startFieldTestRun('car');
-    setFieldTestLockProbe({ hiddenAt: '2026-09-27T20:00:00.000Z', session: 'abc' });
+    setFieldTestLockProbe({
+      session: 'abc',
+      onStepAt: '2026-09-27T19:59:00.000Z',
+      hiddenAt: '2026-09-27T20:00:00.000Z',
+    });
     forgetInMemoryOnly();
 
     expect(readFieldTestRun().lockProbe).toEqual({
-      hiddenAt: '2026-09-27T20:00:00.000Z',
       session: 'abc',
+      onStepAt: '2026-09-27T19:59:00.000Z',
+      hiddenAt: '2026-09-27T20:00:00.000Z',
     });
 
     setFieldTestLockProbe(undefined);
     forgetInMemoryOnly();
     expect(readFieldTestRun().lockProbe, 'a cleared marker came back').toBeUndefined();
+  });
+
+  /**
+   * ARMED ON ARRIVAL, WITHOUT A LOCK. The step arms the marker when it opens
+   * so that a page killed under a `hidden` iOS never delivered still leaves
+   * something behind -- so the shape with no `hiddenAt` has to survive the
+   * round trip, and has to stay distinguishable from one that was locked.
+   */
+  it('keeps a marker that was armed but never hidden, and says which it is', () => {
+    installStorage();
+    startFieldTestRun('car');
+    setFieldTestLockProbe({ session: 'abc', onStepAt: '2026-09-27T19:59:00.000Z' });
+    forgetInMemoryOnly();
+
+    const back = readFieldTestRun().lockProbe;
+    expect(back).toEqual({ session: 'abc', onStepAt: '2026-09-27T19:59:00.000Z' });
+    expect(back?.hiddenAt, 'an un-hidden marker came back claiming a lock').toBeUndefined();
   });
 
   it('drops a marker that is not a marker', () => {
@@ -991,6 +1013,97 @@ describe('the lock probe marker', () => {
     );
     forgetInMemoryOnly();
     expect(readFieldTestRun().lockProbe).toBeUndefined();
+  });
+
+  /**
+   * THE SHAPE THE BUILD IN THE CAR WRITES, and it is the one marker that
+   * matters most: that build sets it only on `hidden`, so a marker it leaves
+   * behind is a page that died under a lock. Requiring `onStepAt` threw it
+   * away on the first boot of this build -- which is precisely the boot on
+   * which such a marker exists. `hiddenAt` stands in for the arrival, which
+   * is true of it: the page was demonstrably on the step then.
+   */
+  it('reads the marker left by the build before this one', () => {
+    const store = installStorage();
+    store.set(
+      'bjtrainer.fieldTestRun.v1',
+      JSON.stringify({
+        condition: 'car',
+        stepIndex: 3,
+        stamps: {},
+        lockProbe: { hiddenAt: '2026-09-27T20:00:00.000Z', session: 'abc' },
+      }),
+    );
+    forgetInMemoryOnly();
+    expect(readFieldTestRun().lockProbe).toEqual({
+      session: 'abc',
+      onStepAt: '2026-09-27T20:00:00.000Z',
+      hiddenAt: '2026-09-27T20:00:00.000Z',
+    });
+  });
+});
+
+/**
+ * RESUMING INTO THE MICROPHONE BLOCK RECORDS NO CLOSE, which is the half of
+ * the back-fill that nothing else can observe.
+ *
+ * `micClosedAt` absent is how "the microphone is open" is written. The gate
+ * puts a close time back when a reload or a kill lost one -- and if it did so
+ * on a resume INTO the block, the step the operator is about to run with the
+ * microphone up would export as though it had already let go. The screen
+ * happens to clear it again on its first render, so only this, at the store,
+ * can tell the clause is doing anything.
+ */
+describe('the microphone close time put back at the gate', () => {
+  function resumeAt(stepId: string, fields: Record<string, unknown>): number | undefined {
+    const store = installStorage();
+    const stepIndex = FIELD_TEST_STEPS.findIndex((s) => s.id === stepId);
+    expect(stepIndex, stepId).toBeGreaterThanOrEqual(0);
+    store.set(
+      'bjtrainer.fieldTestRun.v1',
+      JSON.stringify({ condition: 'car', stepIndex, stamps: {}, active: false, ...fields }),
+    );
+    forgetInMemoryOnly();
+    resumeFieldTestRun();
+    return readFieldTestRun().micClosedAt;
+  }
+
+  it('is put back when the run comes back after the block, and says so', () => {
+    expect(resumeAt('route-after-mic', { micHasBeenUp: true, touchedAt: 1_700_000_000_000 })).toEqual(
+      expect.any(Number),
+    );
+    // MARKED, because the number it produces is a lower bound and it is read
+    // against samples at one and a half seconds. A phone picked up an hour
+    // later and resumed exports its first answer at two seconds; the bracket
+    // is the only thing that stops that being read as the 1.5s sample.
+    const row = readDiagnosticLog().find((e) => e.event === 'mic-close-backfilled');
+    expect(row, 'the close time was invented and nothing said so').toBeDefined();
+    expect(row?.detail?.from).toBe(1_700_000_000_000);
+    expect(row?.detail?.to).toEqual(expect.any(Number));
+  });
+
+  it('says nothing when there was nothing to put back', () => {
+    // Counted rather than asked for absence: the log is module state and the
+    // test above legitimately put one in it.
+    const before = readDiagnosticLog().filter((e) => e.event === 'mic-close-backfilled').length;
+    resumeAt('route-2', {});
+    expect(readDiagnosticLog().filter((e) => e.event === 'mic-close-backfilled')).toHaveLength(
+      before,
+    );
+  });
+
+  it('is left absent when the run comes back INTO the block', () => {
+    expect(resumeAt('mic-route', { micHasBeenUp: true })).toBeUndefined();
+  });
+
+  it('is left absent when the microphone was never up', () => {
+    expect(resumeAt('route-2', {})).toBeUndefined();
+  });
+
+  it('does not overwrite one the screen already recorded', () => {
+    expect(resumeAt('route-after-mic', { micHasBeenUp: true, micClosedAt: 1_700_000_000_000 })).toBe(
+      1_700_000_000_000,
+    );
   });
 });
 

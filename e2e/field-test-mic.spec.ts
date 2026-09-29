@@ -321,6 +321,80 @@ test('an after sample taken after Pause on a microphone step carries the offset'
 });
 
 /**
+ * A RELOAD RUNS NO CLEANUP AT ALL. The update check reloads the app by
+ * itself, mid-drive, and an iOS kill is the same from in here: the unmount
+ * that records the microphone closing never happens. The run is resumed from
+ * the gate, where nothing is listening -- so the close time is put back
+ * there, from `micHasBeenUp`, and only when the step being resumed onto does
+ * not itself want the microphone.
+ */
+test('an after sample taken after a reload on a microphone step carries the offset', async ({
+  page,
+}) => {
+  await openTest(page, 'Car, parked');
+  await goToStep(page, 'wheel-with-mic');
+  await expect
+    .poll(async () => (await entries(page)).some((e) => e.event === 'mic-settled'), {
+      timeout: 15_000,
+    })
+    .toBe(true);
+
+  await page.reload();
+  await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
+  // ...and the leg re-opened with no Bluetooth, which snaps the pointer off
+  // the wheel step it was left on.
+  await page.getByRole('button', { name: 'Speakerphone', exact: true }).click();
+  await page.getByTestId('fieldtest-resume').click();
+  await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', 'route-after-mic');
+
+  const answers = page.getByTestId('fieldtest-answers').locator('button');
+  await expect(answers.first()).toBeEnabled({ timeout: 15_000 });
+  await page.waitForTimeout(400);
+  await answers.first().click();
+  const answer = await waitForEntry(
+    page,
+    (e) => e.event === 'answer' && e.detail.step === 'route-after-mic',
+    'the step was never answered',
+  );
+  expect(
+    answer.detail.msSinceAppLetGo,
+    'the reload closed the microphone and nothing recorded it',
+  ).toEqual(expect.any(Number));
+  expect(answer.detail.msSinceAppLetGo as number).toBeLessThan(60_000);
+});
+
+/**
+ * ...AND THE BEFORE BLOCK STILL HAS NO OFFSET. `micClosedAt` absent means
+ * two things -- never up, or up and the moment lost -- and putting a close
+ * time back on a run that never opened the microphone would give `route-1`
+ * the reading that only an after step can have.
+ */
+test('a reload before the microphone block leaves the before samples with no offset', async ({
+  page,
+}) => {
+  await openTest(page, 'Car, parked');
+  await goToStep(page, 'route-2');
+  await page.reload();
+  await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
+  await page.getByTestId('fieldtest-resume').click();
+  await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', 'route-2');
+
+  const answers = page.getByTestId('fieldtest-answers').locator('button');
+  await expect(answers.first()).toBeEnabled({ timeout: 20_000 });
+  await page.waitForTimeout(400);
+  await answers.first().click();
+  const answer = await waitForEntry(
+    page,
+    (e) => e.event === 'answer' && e.detail.step === 'route-2',
+    'the step was never answered',
+  );
+  expect(
+    answer.detail.msSinceAppLetGo,
+    'a before sample was given an after sample\u2019s reading',
+  ).toBeUndefined();
+});
+
+/**
  * F5: a recogniser restart is not the microphone letting go.
  *
  * iOS ends a webkit session after every utterance and `voiceControl.ts`

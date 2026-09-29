@@ -7,13 +7,17 @@ import { LOCK_PROBE_TICK_MS } from '../src/diag/lockProbe';
  * THE LOCK PROBE, DRIVEN.
  *
  * `lockProbe.test.ts` pins the arithmetic. This proves the runner actually
- * does it: the marker goes down when the page goes hidden and not before,
- * ticks are written only while hidden, a hidden/visible cycle is scored from
- * the gaps, and a page killed while hidden is scored by the next boot -- and
- * ONLY a page killed while hidden. The first build set the marker on arrival
- * and cleared it only on a hidden/visible cycle, so leaving the step any
- * other way, or reloading without ever locking, scored a kill that never
- * happened.
+ * does it: the marker goes down when the STEP OPENS and claims no lock until
+ * one happens, ticks are written only while hidden, a hidden/visible cycle is
+ * scored from the gaps, and a page that died on the step is scored by the
+ * next boot -- under the lock as `frozen-unloaded`, with no `hidden` event
+ * ever delivered as `unloaded-no-hidden`.
+ *
+ * WHAT THE ARRIVAL MARKER COSTS, and what pins the price: the first build
+ * armed on arrival and cleared only on a hidden/visible cycle, so leaving the
+ * step any other way, or reloading without ever locking, scored a kill that
+ * never happened. The tests below hold every one of those exits to scoring
+ * nothing -- the cleanup and `pagehide` both clear it unconditionally.
  *
  * Chromium here is never really hidden, so the "lock" is `visibilityState`
  * faked and `visibilitychange` dispatched; the page keeps ticking through it,
@@ -34,10 +38,18 @@ async function entries(page: Page): Promise<{ event: string; detail: Record<stri
   });
 }
 
-async function marker(page: Page): Promise<unknown> {
+async function marker(
+  page: Page,
+): Promise<{ session: string; onStepAt: string; hiddenAt?: string } | undefined> {
   return page.evaluate(() => {
     const raw = localStorage.getItem('bjtrainer.fieldTestRun.v1');
-    return raw ? (JSON.parse(raw) as { lockProbe?: unknown }).lockProbe : undefined;
+    return raw
+      ? (
+          JSON.parse(raw) as {
+            lockProbe?: { session: string; onStepAt: string; hiddenAt?: string };
+          }
+        ).lockProbe
+      : undefined;
   });
 }
 
@@ -111,7 +123,14 @@ test('scores a lock from the gaps in its own ticks, and says so', async ({ page 
   // The clock runs, but a row every two seconds for as long as the operator
   // sits on the step is the run's own history scrolling out of the log.
   await page.waitForTimeout(4_500);
-  expect(await marker(page), 'a marker before the phone was locked').toBeUndefined();
+  // The marker is down from the moment the step opens -- the event a lock
+  // announces itself with is one iOS can swallow -- but it claims no lock
+  // until one happens.
+  expect(await marker(page), 'no marker on the step at all').toBeTruthy();
+  expect(
+    (await marker(page))?.hiddenAt,
+    'a marker claimed a lock before the phone was locked',
+  ).toBeUndefined();
   expect(await ticks(page), 'tick rows while visible').toBe(0);
 
   await setVisibility(page, 'hidden');
@@ -136,8 +155,12 @@ test('scores a lock from the gaps in its own ticks, and says so', async ({ page 
   // the phone and is not reading the log.
   expect(await spoken(page)).toContain('The page kept running while the phone was locked.');
 
-  // Scored once: the marker is cleared, so a second boot has nothing to find.
-  expect(await marker(page)).toBeUndefined();
+  // Scored once: the lock is spent, so a second boot finds no lock to score
+  // -- while the marker itself stays down, because the operator is still on
+  // the step and a kill from here still happened here.
+  expect((await marker(page))?.hiddenAt, 'the scored lock was left to be scored again')
+    .toBeUndefined();
+  expect(await marker(page), 'the step stopped saying it was open').toBeTruthy();
 });
 
 /**
@@ -230,6 +253,51 @@ test('a frozen lock taken the moment the step opens is still scored frozen', asy
     .poll(async () => (await result(page))?.classification, { timeout: 5_000 })
     .toBe('frozen');
   expect((await result(page))!.gapBeforeHiddenMs as number).toBeGreaterThanOrEqual(27_000);
+});
+
+/**
+ * A PAGE THAT DIED ON THE STEP WITHOUT EVER GOING HIDDEN. iOS can deliver
+ * `visibilitychange` late or not at all, and a force-quit with the screen on
+ * looks the same from in here -- so this is not a verdict about the lock. It
+ * is the row that tells "this leg has no lock reading" from "this leg never
+ * reached the step", which were the same silence: nothing was written at all.
+ */
+test('a page that died on the step with no hidden event is scored as that, not as a lock', async ({
+  page,
+}) => {
+  await openTest(page);
+  await goToStep(page, 'lock-probe');
+  const left = (await marker(page))!;
+  expect(left.hiddenAt, 'the phone was never locked in this test').toBeUndefined();
+
+  // A KILL CANNOT BE DRIVEN FROM HERE -- iOS discarding the page fires
+  // nothing, and a reload is a navigation, which clears the marker on
+  // purpose. So leave the step (clearing the live marker) and put back what a
+  // killed page would have left: this step's own marker, under a session id
+  // that is nobody's.
+  await page.getByTestId('fieldtest-prev').click();
+  await expect.poll(() => marker(page), { timeout: 3_000 }).toBeUndefined();
+  await page.evaluate((m) => {
+    const raw = localStorage.getItem('bjtrainer.fieldTestRun.v1')!;
+    const run = JSON.parse(raw) as Record<string, unknown>;
+    localStorage.setItem(
+      'bjtrainer.fieldTestRun.v1',
+      JSON.stringify({ ...run, lockProbe: { ...m, session: 'dead' } }),
+    );
+  }, left);
+  await page.reload();
+  await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
+
+  await expect
+    .poll(async () => (await result(page))?.classification, { timeout: 5_000 })
+    .toBe('unloaded-no-hidden');
+  const r = (await result(page))!;
+  expect(r.onStepAt).toBe(left.onStepAt);
+  expect(r.hiddenAt, 'a lock was claimed where none was recorded').toBeUndefined();
+  // Once, and the marker is spent.
+  await page.waitForTimeout(1_500);
+  expect((await entries(page)).filter((e) => e.event === 'lock-probe-result')).toHaveLength(1);
+  expect(await marker(page)).toBeUndefined();
 });
 
 /**

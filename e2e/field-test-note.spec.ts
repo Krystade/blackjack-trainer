@@ -147,6 +147,186 @@ test('a draft still in the box when the run is finished is saved, with the run',
   );
 });
 
+/**
+ * A RELOAD IS NOT AN EXIT, AND IT EATS NOTHING. The update check reloads the
+ * app by itself, mid-drive; no cleanup runs, so the draft was simply gone.
+ * It is written to storage on every keystroke.
+ *
+ * SAVED AT THE GATE, BEFORE ANYTHING IS RESUMED. That is the whole point: the
+ * export taken in the car park without resuming is when the note is read, and
+ * written from the running screen it would not be in it.
+ */
+test('a draft is written out as a note on the boot that finds it', async ({ page }) => {
+  await openTest(page);
+  await page.getByTestId('fieldtest-skip').click();
+  const step = await page.getByTestId('fieldtest-title').getAttribute('data-step');
+  await page.getByTestId('fieldtest-note').fill('truck went past mid-line');
+
+  await page.reload();
+  // The gate, and nothing tapped on it.
+  await expect(page.getByTestId('fieldtest-resume')).toBeVisible();
+  await expect
+    .poll(
+      async () =>
+        (await entries(page))
+          .filter((e) => e.event === 'note')
+          .map((e) => ({ step: e.detail.step, text: e.detail.text, recovered: e.detail.recovered })),
+      { timeout: 5_000 },
+    )
+    .toEqual([{ step, text: 'truck went past mid-line', recovered: true }]);
+});
+
+/**
+ * ...AND THE BOX COMES BACK AS IT WAS LEFT, so the operator finishes the
+ * sentence rather than starting it again. What they then type is saved on the
+ * way out as its own note; the recovered row above is the partial one.
+ */
+test('the box comes back filled, and finishing the sentence writes one more note', async ({
+  page,
+}) => {
+  await openTest(page);
+  await page.getByTestId('fieldtest-skip').click();
+  const step = await page.getByTestId('fieldtest-title').getAttribute('data-step');
+  await page.getByTestId('fieldtest-note').fill('truck went past');
+
+  await page.reload();
+  await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
+  await page.getByTestId('fieldtest-resume').click();
+  await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', step!);
+  await expect(page.getByTestId('fieldtest-note')).toHaveValue('truck went past');
+
+  // NOTHING WRITTEN BY ARRIVING. The restored text is already a recovered
+  // row; saving the box again on the way in would file it twice, which is
+  // what React's development double-mount used to do here.
+  expect(
+    (await entries(page)).filter((e) => e.event === 'note' && e.detail.recovered !== true),
+  ).toHaveLength(0);
+
+  await page.getByTestId('fieldtest-note').fill('truck went past mid-line');
+  await page.getByTestId('fieldtest-skip').click();
+  await expect
+    .poll(
+      async () =>
+        (await entries(page))
+          .filter((e) => e.event === 'note' && e.detail.recovered !== true)
+          .map((e) => ({ step: e.detail.step, text: e.detail.text })),
+      { timeout: 5_000 },
+    )
+    .toEqual([{ step, text: 'truck went past mid-line' }]);
+});
+
+/**
+ * A DRAFT FROM A RUN THAT IS OVER DOES NOT OPEN THE NEXT ONE'S BOX. `car`
+ * twice over is two legs at the same step under the same condition, so the
+ * step and the condition cannot tell them apart -- only the run id can, and
+ * without it leg 2 opened holding leg 1's text and filed it as leg 2's note.
+ */
+test('a draft from the previous run does not come back in the next run\u2019s box', async ({
+  page,
+}) => {
+  await openTest(page);
+  const step = await page.getByTestId('fieldtest-title').getAttribute('data-step');
+  await page.getByTestId('fieldtest-note').fill('this belongs to the leg that died');
+
+  // The page dies on step one, so the app comes back to the tab bar rather
+  // than to the run: walked in by hand, which is what the operator does.
+  await page.reload();
+  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('fieldtest-open').click();
+  await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
+  // A new run: same condition, same first step, different run id.
+  const start = page.getByTestId('fieldtest-start');
+  await start.click();
+  if ((await page.getByTestId('fieldtest-title').count()) === 0) await start.click();
+  await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', step!);
+
+  await expect(page.getByTestId('fieldtest-note')).toHaveValue('');
+  // It is not lost -- it is in the log, against the run it was typed in.
+  const recovered = (await entries(page)).filter(
+    (e) => e.event === 'note' && e.detail.recovered === true,
+  );
+  expect(recovered).toHaveLength(1);
+  expect(recovered[0]!.detail.text).toBe('this belongs to the leg that died');
+});
+
+/**
+ * A DRAFT WHOSE STEP THE RUN NO LONGER SITS ON is still evidence about the
+ * step it was typed on, and there is no box to put it back in. The condition
+ * picker sits beside Resume: a leg re-opened as one with no Bluetooth has no
+ * wheel steps, so a run interrupted on `wheel-with-mic` comes back further on.
+ */
+test('a draft left on a step the run no longer sits on is recovered as a note', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openTest(page);
+  const title = page.getByTestId('fieldtest-title');
+  for (let i = 0; i < FIELD_TEST_STEPS.length + 2; i += 1) {
+    if ((await title.getAttribute('data-step')) === 'wheel-with-mic') break;
+    await page.getByTestId('fieldtest-skip').click();
+  }
+  await expect(title).toHaveAttribute('data-step', 'wheel-with-mic');
+  await page.getByTestId('fieldtest-note').fill('the wheel did nothing at all here');
+
+  // The page dies, and the leg is re-opened with no Bluetooth: the pointer
+  // snaps off the wheel step it was left on.
+  await page.reload();
+  await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
+  await page.getByRole('button', { name: 'Speakerphone', exact: true }).click();
+  await page.getByTestId('fieldtest-resume').click();
+  await expect(title).not.toHaveAttribute('data-step', 'wheel-with-mic');
+
+  await expect
+    .poll(
+      async () =>
+        (await entries(page))
+          .filter((e) => e.event === 'note' && e.detail.recovered === true)
+          .map((e) => ({ step: e.detail.step, text: e.detail.text, condition: e.detail.condition })),
+      { timeout: 5_000 },
+    )
+    .toEqual([
+      {
+        step: 'wheel-with-mic',
+        text: 'the wheel did nothing at all here',
+        // The condition it was typed under, not the one the run carries now.
+        condition: 'car',
+      },
+    ]);
+  // The box it does not belong in stayed empty.
+  await expect(page.getByTestId('fieldtest-note')).toHaveValue('');
+});
+
+/**
+ * THE SAME STEP UNDER A DIFFERENT CONDITION IS A DIFFERENT CELL, and the
+ * condition half of that check had nothing holding it: the test above has
+ * already moved the step, so it misses either way. `car` and `freeway` are
+ * both Bluetooth legs, so the pointer does not move between them.
+ */
+test('a draft is not put back in the same step\u2019s box under another condition', async ({
+  page,
+}) => {
+  await openTest(page);
+  await page.getByTestId('fieldtest-skip').click();
+  const step = await page.getByTestId('fieldtest-title').getAttribute('data-step');
+  await page.getByTestId('fieldtest-note').fill('this was typed in the car park');
+
+  await page.reload();
+  await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
+  await page.getByRole('button', { name: 'Freeway', exact: true }).click();
+  await page.getByTestId('fieldtest-resume').click();
+  // Same step, other condition.
+  await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', step!);
+
+  await expect(page.getByTestId('fieldtest-note')).toHaveValue('');
+  await expect
+    .poll(
+      async () =>
+        (await entries(page))
+          .filter((e) => e.event === 'note' && e.detail.recovered === true)
+          .map((e) => ({ step: e.detail.step, condition: e.detail.condition })),
+      { timeout: 5_000 },
+    )
+    .toEqual([{ step, condition: 'car' }]);
+});
+
 test('the noted line clears when the step changes', async ({ page }) => {
   await openTest(page);
   const note = page.getByTestId('fieldtest-note');

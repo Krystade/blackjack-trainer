@@ -52,9 +52,17 @@
  * gap against half the window made the verdict depend on how long the
  * operator waited before unlocking.
  *
- * A fourth verdict, `frozen-unloaded`, is stamped by the runner rather than
- * here: the page was killed outright and came back as a new session, so
- * there was nobody left to do this arithmetic at the time.
+ * TWO MORE VERDICTS ARE STAMPED BY THE RUNNER rather than here, because the
+ * page was killed outright and came back as a new session, so there was
+ * nobody left to do this arithmetic at the time. `frozen-unloaded` is a
+ * marker that recorded a lock and then died under it. `unloaded-no-hidden` is
+ * a marker that never recorded one: the page died on the step with no
+ * `hidden` event ever delivered, which is a force-quit with the screen on, or
+ * iOS swallowing the event, and there is no telling those apart from in here.
+ * That one is NOT a verdict about the lock -- it shares the `classification`
+ * field with these, and can even follow a real verdict for the same step. It
+ * is the row that separates "no lock reading from this leg" from "this leg
+ * never reached the step", which were the same silence.
  *
  * WHAT IT DOES NOT DO: end on a timer. Its timers are the thing under test,
  * and a bare timeout would score "the operator never locked it" as normal.

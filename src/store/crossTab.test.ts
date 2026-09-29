@@ -170,6 +170,13 @@ describe('OWNED_KEYS', () => {
     'bjtrainer.chartOrder.v1': 'view preference, re-reading mid-drag is worse',
     // Bounded to one challenge in one tab and cleared when it ends.
     'bjtrainer.masteryrun.v1': 'single in-flight challenge, cleared on finish',
+    // A half-typed note, written on every keystroke so a reload or an iOS
+    // kill cannot eat it. NOT one box in one tab -- the run itself is synced,
+    // so two tabs can sit on the same step with a box each. It is excluded
+    // because a keystroke is not a fact to agree on: syncing it would make
+    // every character a storage event in the other tab, and the last writer
+    // would win a half-typed line rather than either box being right.
+    'bjtrainer.fieldTestDraft.v1': 'in-flight keystrokes, last writer wins a half line',
   };
 
   /**

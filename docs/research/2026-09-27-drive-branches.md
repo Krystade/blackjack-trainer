@@ -87,9 +87,10 @@ page and an idle page produce identical logs. Safari also has no `freeze`/`resum
 Build: a self-scoring lock probe as a `FIELD_TEST_STEPS` entry (not a `carCheckCatalog`
 check — those are bounded and have no persisted-across-reload story; `fieldTestRun.ts`
 already solves that). On arrival it speaks "Lock the phone now, wait at least thirty
-seconds, then unlock", persists a marker `{hiddenAt, session}` when the page goes hidden
-(as built), ticks every ~2 s and writes `lock-probe-tick {n, sinceHiddenMs}` rows only while
-hidden (capped at 60; the verdict is scored from the in-memory ticks), and on
+seconds, then unlock", persists a marker `{session, onStepAt, hiddenAt?}` — `onStepAt` when
+the step opens, `hiddenAt` added when the page goes hidden (as built) — ticks every ~2 s and
+writes `lock-probe-tick {n, sinceHiddenMs}` rows only while hidden (capped at 60; the verdict
+is scored from the in-memory ticks), and on
 `visibilitychange → visible` diffs the tick gaps and stamps
 `lock-probe-result {classification, hiddenMs, ticksInside, maxGapMs, gapBeforeHiddenMs,
 focusPlayingAtHidden, focusPlayingAtVisible}` (as built; a `lock-probe-pagehide {persisted,
@@ -101,8 +102,15 @@ tick after it is `frozen` however long the page kept cadence first.
 Classification, as built, from `Date.now()` (`lockProbe.ts`): a window no longer than the
 allowed gap (5 s) → `too-short`; largest gap ≤ 2.5× the interval → `normal`; ≥ half the
 window, or one over-cadence gap with at most the overdue tick after it → `frozen`; otherwise
-→ `throttled`; a new `session` id with the marker still persisted → `frozen-unloaded`,
-stamped retroactively on the next boot.
+→ `throttled`; a new `session` id with the marker still persisted and a `hiddenAt` on it
+→ `frozen-unloaded`, stamped retroactively on the next boot; the same with NO `hiddenAt` →
+`unloaded-no-hidden`, which is not a verdict about the lock at all (and can follow a real
+verdict for the same step, if the page died after a lock was scored; a second copy of the app
+open at the gate can also emit it against a tab that is alive — see the review doc). iOS can deliver
+`visibilitychange` late or never, and a force-quit with the screen on is indistinguishable
+from in here, so that row says only "the app died on this step and no lock was recorded" —
+what it buys is telling a leg with a missing lock reading from a leg that never reached the
+step, which used to be the same silence.
 
 **It must not end on a timer** — its timers are the thing under test. It ends on the
 `visible` transition, or on the next boot finding the stale marker. Leaving the step scores
@@ -115,10 +123,13 @@ memory), against `MAX_ENTRIES = 3000`. Every lock on the step is scored, and the
 on every leg — the behaviour is a property of the event loop, so one reading of it per leg
 is the point of comparison.
 
-**As built (2026-09-28, after review):** the marker is `{hiddenAt, session}` and is set when
-the page goes hidden, not on arrival; the verdict is on the largest gap (`maxGapMs`), not the
-tick count — one overdue callback on resume is `frozen`; tick rows only while hidden. The step
-runs on every leg (it is a step), before `free`. See `docs/research/2026-09-28-review.md`.
+**As built (2026-09-28, after review; marker revised 2026-09-29):** the marker is
+`{session, onStepAt, hiddenAt?}`, armed when the step opens and given its `hiddenAt` when the
+page goes hidden — armed on arrival so that a kill under a `hidden` iOS never delivered still
+leaves something, and cleared when the step is left or a navigation announces itself; the
+verdict is on the largest gap (`maxGapMs`), not the tick count — one overdue callback on
+resume is `frozen`; tick rows only while hidden. The step runs on every leg (it is a step),
+before `free`. See `docs/research/2026-09-28-review.md`.
 
 ### 0.3 The one machine-readable signature of the profile flip is logged at the wrong moment
 
@@ -399,7 +410,10 @@ working wheel with phone audio is a different fault.
 `mic-never-live`; the answer channel opened earlier (`listen-on` before `mic-route`); a
 second leg on the same page (leg 2's before cells should also say phone — itself a check);
 Back reopening the mic (`FieldTest.tsx:1863–1873`, `step-open index=` non-monotonic); a
-reload mid-run (`run-resume` plus missing `msSinceAppLetGo`).
+reload mid-run (`run-resume`; since 2026-09-29 the close time is put back when the run is
+resumed, so the after-block offsets on that leg are lower bounds rather than measurements —
+a `mic-close-backfilled {from, to}` row brackets it, and a leg carrying one cannot be read
+against the 1.5 s sample; a reload before the microphone block still leaves them absent).
 
 ---
 

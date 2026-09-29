@@ -33,6 +33,7 @@ import {
   stopFieldTestRun,
   subscribeFieldTestRun,
   setFieldTestLockProbe,
+  markFieldTestMicUp,
   setFieldTestMicClosedAt,
   advanceFieldTestStep,
   retreatFieldTestStep,
@@ -42,6 +43,12 @@ import {
   type FieldTestRun,
   type FieldTestBefore,
 } from '../../diag/fieldTestRun';
+import {
+  clearFieldTestDraft,
+  readFieldTestDraft,
+  writeFieldTestDraft,
+  type FieldTestDraft,
+} from '../../diag/fieldTestDraft';
 import {
   speakAsync,
   cancelSpeech,
@@ -270,11 +277,20 @@ export function FieldTest({
    * The probe asks the operator to lock the phone and ticks while they do.
    * If iOS kills the page under the lock there is nobody left to count the
    * ticks, and the run comes back through `coerce` inactive, on this gate.
-   * The marker it left says the page went hidden on the probe under a
-   * session id that is no longer ours and never came back -- and that IS
-   * the result: the page did not survive being hidden. Scored here, at the
-   * gate, so it lands whether or not the operator resumes; cleared at once
-   * so it is scored exactly once.
+   * The marker it left says the page was on the probe under a session id
+   * that is no longer ours and never came back -- and that IS the result:
+   * the page did not survive. Scored here, at the gate, so it lands whether
+   * or not the operator resumes; cleared at once so it is scored exactly
+   * once.
+   *
+   * WITH `hiddenAt`, the page died under a lock it announced:
+   * `frozen-unloaded`, the fourth verdict. WITHOUT it, the page died on the
+   * step and no `hidden` was ever recorded -- iOS can deliver that event
+   * late or not at all, and a force-quit with the screen on looks the same
+   * from in here. That is `unloaded-no-hidden`: not a verdict about the
+   * lock, but the one row that distinguishes "this leg has no lock reading"
+   * from "this leg never ran the step", which until now were the same
+   * silence.
    */
   const scoredLockProbe = useRef<string | null>(null);
   useEffect(() => {
@@ -282,7 +298,10 @@ export function FieldTest({
     if (!marker || marker.session === diagnosticSessionId) return;
     // Once per marker, not once per render: the clear below re-reads the run
     // and this effect sees the same marker again before storage settles.
-    const key = `${marker.session}:${marker.hiddenAt}`;
+    // Keyed on `onStepAt`, which every marker has -- `hiddenAt` is the thing
+    // in question here and cannot be part of the key that stops a double
+    // score.
+    const key = `${marker.session}:${marker.onStepAt}`;
     if (scoredLockProbe.current === key) return;
     scoredLockProbe.current = key;
     diag('test', 'lock-probe-result', {
@@ -290,12 +309,54 @@ export function FieldTest({
       // prop so the effect stays keyed on the marker alone.
       run: readFieldTestRun().runId,
       step: 'lock-probe',
-      classification: 'frozen-unloaded',
-      hiddenAt: marker.hiddenAt,
+      classification: marker.hiddenAt === undefined ? 'unloaded-no-hidden' : 'frozen-unloaded',
+      onStepAt: marker.onStepAt,
+      ...(marker.hiddenAt === undefined ? {} : { hiddenAt: marker.hiddenAt }),
       hiddenSession: marker.session,
     });
     setFieldTestLockProbe(undefined);
   }, [run.lockProbe]);
+
+  /**
+   * A DRAFT THAT OUTLIVED ITS PAGE IS A NOTE, WRITTEN OUT HERE.
+   *
+   * At the gate, beside the lock probe's own boot scoring, and for the same
+   * reason: it has to land whether or not the operator resumes. Written from
+   * the running screen it did not -- that screen mounts on Resume, and the
+   * export taken in the car park without resuming is exactly the moment the
+   * note is read. Worse, a later Start over filed it under a run that never
+   * visited the step.
+   *
+   * Flushed before the key is dropped. `diag` buffers for a second, and this
+   * text has already survived one death; a kill inside that second would have
+   * taken it for good, out of the one place it was safe.
+   *
+   * The draft is still handed to the running screen, which puts it back in
+   * the box when the run resumes onto the same step of the same run under the
+   * same condition -- the operator was mid-sentence, and the row written here
+   * is marked `recovered` so a reader can tell the two apart.
+   */
+  const recoveredDraft = useRef(readFieldTestDraft());
+  const wroteRecovered = useRef(false);
+  useEffect(() => {
+    const d = recoveredDraft.current;
+    if (!d || wroteRecovered.current) return;
+    wroteRecovered.current = true;
+    diag('test', 'note', {
+      step: d.step,
+      condition: d.condition,
+      // THE RUN IT WAS TYPED IN, not the one that happens to be loaded. They
+      // are different runs precisely when this matters.
+      run: d.run,
+      text: d.text,
+      recovered: true,
+    });
+    flushDiagnostics();
+    clearFieldTestDraft();
+    // Once, on mount: the draft is read before the first render and there is
+    // only ever one of them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const condition =
     FIELD_TEST_CONDITIONS.find((c) => c.id === run.condition) ?? FIELD_TEST_CONDITIONS[0]!;
@@ -426,6 +487,7 @@ export function FieldTest({
       settings={settings}
       onSettingsChange={onSettingsChange}
       onNavigate={onNavigate}
+      recoveredDraft={recoveredDraft.current}
     />
   );
 }
@@ -709,12 +771,15 @@ function RunningTest({
   settings,
   onSettingsChange,
   onNavigate,
+  recoveredDraft,
 }: {
   run: FieldTestRun;
   conditionLabel: string;
   settings: Settings;
   onSettingsChange: (settings: Settings) => void;
   onNavigate: (screen: Screen) => void;
+  /** Already written to the log by the gate; this puts it back in the box. */
+  recoveredDraft: FieldTestDraft | undefined;
 }) {
   const step = FIELD_TEST_STEPS[Math.min(run.stepIndex, FIELD_TEST_STEPS.length - 1)]!;
   // The last step ON THE PATH: a dormant probe after this one does not count.
@@ -1568,8 +1633,19 @@ function RunningTest({
     // the next step would file it against something the operator never saw.
     setMarks([]);
     setNoted(null);
-    setNoteDraft('');
-    noteDraftRef.current = '';
+    // ON A STEP CHANGE, NOT ON A MOUNT. This effect fires on the first render
+    // too, and a box seeded from a draft that survived the page was cleared
+    // before the operator ever saw it -- the bug it exists to prevent, one
+    // layer down. Read from the step it last ran for rather than a one-shot
+    // flag, because React's development double-invoke runs it twice on the
+    // same step and a flag is spent by the first run.
+    const arrivedAt = `${step.id}|${run.condition}`;
+    const stepChanged = arrivedStep.current !== null && arrivedStep.current !== arrivedAt;
+    arrivedStep.current = arrivedAt;
+    if (stepChanged) {
+      setNoteDraft('');
+      noteDraftRef.current = '';
+    }
     setAmbient(null);
     setPaths([]);
     /**
@@ -1711,12 +1787,22 @@ function RunningTest({
    * page was killed -- when the next boot finds the marker (`FieldTest`, top
    * of the file).
    *
-   * THE MARKER GOES DOWN WHEN THE PAGE GOES HIDDEN, and comes up when it
-   * comes back or the step is left. Set on arrival it outlived every exit
-   * but the one it was for, and the next launch scored a kill that never
-   * happened. A page killed on this step with the screen ON runs the cleanup
-   * never and sets the marker never, so it scores nothing -- which is right:
-   * that is not the question the probe asks.
+   * THE MARKER GOES DOWN WHEN THE STEP OPENS, and its `hiddenAt` is added
+   * when the page goes hidden. It was set on `hidden` alone, on the reasoning
+   * that only a page killed under a lock is this probe's business -- but iOS
+   * can deliver that event late or never, so a page killed on the step with
+   * the screen on set no marker and recorded nothing at all, which is
+   * indistinguishable from a leg that never reached the step.
+   *
+   * WHAT PAYS FOR THAT is clearing it everywhere a page can leave the step
+   * while alive: the cleanup below, and `pagehide` (a reload is a navigation,
+   * not a death). Set on arrival WITHOUT those, the first build scored a kill
+   * on every exit -- which is what got it reverted, and what
+   * `e2e/field-test-lock.spec.ts` pins.
+   *
+   * A marker from a dead session with no `hiddenAt` is scored
+   * `unloaded-no-hidden` at the next boot, which is not a verdict about the
+   * lock: see the scorer at the top of the file.
    *
    * TICK ROWS ONLY WHILE HIDDEN, and capped. The verdict is scored from the
    * in-memory ticks; the rows are for reading the gaps by hand afterwards,
@@ -1725,6 +1811,11 @@ function RunningTest({
    */
   useEffect(() => {
     if (!step.lockProbe) return;
+    // ON THE STEP, from this instant. See `FieldTestRun.lockProbe`: the
+    // event this probe waits for is one iOS can swallow, so the marker
+    // cannot wait for it.
+    const onStepAt = new Date().toISOString();
+    setFieldTestLockProbe({ session: diagnosticSessionId, onStepAt });
     // THE ARRIVAL IS A TICK: proof the page ran at that moment. The window
     // starts at the last tick before `hidden` (lockProbe.ts), and a lock
     // taken within a tick of arriving -- or of the previous verdict -- had
@@ -1759,8 +1850,9 @@ function RunningTest({
         // "normal" without it is a different finding from one with it.
         focusAtHidden = audioFocusElementIsPlaying();
         setFieldTestLockProbe({
-          hiddenAt: new Date(hiddenAt).toISOString(),
           session: diagnosticSessionId,
+          onStepAt,
+          hiddenAt: new Date(hiddenAt).toISOString(),
         });
         return;
       }
@@ -1786,7 +1878,9 @@ function RunningTest({
         focusPlayingAtHidden: focusAtHidden,
         focusPlayingAtVisible: audioFocusElementIsPlaying(),
       });
-      setFieldTestLockProbe(undefined);
+      // STILL ON THE STEP: the lock is scored and its `hiddenAt` is spent,
+      // but a page killed after this unlock still died here.
+      setFieldTestLockProbe({ session: diagnosticSessionId, onStepAt });
       const said =
         classification === 'normal'
           ? 'The page kept running while the phone was locked.'
@@ -1820,7 +1914,9 @@ function RunningTest({
       flushDiagnostics();
       if (e.persisted) return;
       unloading = true;
-      if (hiddenAt !== null) setFieldTestLockProbe(undefined);
+      // Cleared whether or not the page was hidden: a navigation is not a
+      // death, and the marker now says "on the step" as well as "locked".
+      setFieldTestLockProbe(undefined);
     };
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('pagehide', onPageHide);
@@ -1828,9 +1924,11 @@ function RunningTest({
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', onPageHide);
-      // Leaving the step while hidden -- Back, or a condition change, with the
-      // screen off -- is not a kill. A killed page never gets here.
-      if (hiddenAt !== null) setFieldTestLockProbe(undefined);
+      // Leaving the step -- Back, Skip, a condition change, Pause, Finish --
+      // is not a kill, with the screen on or off. A killed page never gets
+      // here, which is what makes a marker that outlives its session mean
+      // something.
+      setFieldTestLockProbe(undefined);
     };
     // The probe is the step; nothing else it reads should re-arm it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2194,6 +2292,12 @@ function RunningTest({
   useEffect(() => {
     setFieldTestMicClosedAt(micClosedAtRef.current);
   });
+  // AND THAT IT WAS EVER UP AT ALL, which is what lets `resumeFieldTestRun`
+  // tell "never opened" from "opened, and the close was lost with the page".
+  // In an effect rather than at the edge above, which runs during the render.
+  useEffect(() => {
+    if (stepWantsVoice) markFieldTestMicUp();
+  }, [stepWantsVoice]);
 
   /** Measure the cabin, on the step that asks for it. */
   const measure = useCallback(async () => {
@@ -2362,10 +2466,45 @@ function RunningTest({
    * nothing and advances nothing, because a note about a step is not a
    * reading of it, and a box that advanced would be a seventh button.
    */
-  const [noteDraft, setNoteDraft] = useState('');
+  /**
+   * THE BOX COMES BACK AS IT WAS LEFT, so a reload or a kill does not make the
+   * operator start the sentence again.
+   *
+   * Only when the draft belongs to THIS step of THIS run under THIS condition.
+   * The pointer moves while the page is away (a condition change at the gate
+   * snaps it), and `car` twice over is two legs at the same step under the
+   * same name -- so without the run id the second leg's box opened holding the
+   * first leg's text and filed it as the second leg's note.
+   *
+   * The text is already in the log either way: the gate wrote it out as
+   * `recovered` before this screen existed. That is what lets the save buffer
+   * below start EMPTY.
+   */
+  const [noteDraft, setNoteDraft] = useState(() =>
+    recoveredDraft &&
+    recoveredDraft.step === step.id &&
+    recoveredDraft.condition === run.condition &&
+    recoveredDraft.run === run.runId
+      ? recoveredDraft.text
+      : '',
+  );
   const [noted, setNoted] = useState<string | null>(null);
-  // MIRRORED, so the draft can be read at the moment a step is left -- from
-  // an effect cleanup, whose closure holds the step it was written on.
+  // What the arrival reset last ran for. Keyed the same way as the effect it
+  // guards (`[step.id, run.condition]`), so a condition change with no step
+  // change still clears the box: see that effect for why it reads this at all.
+  const arrivedStep = useRef<string | null>(null);
+  /**
+   * WHAT THE OPERATOR TYPED ON THIS SCREEN, mirrored so it can be read at the
+   * moment the step is left -- from an effect cleanup, whose closure holds the
+   * step it was written on.
+   *
+   * EMPTY AT MOUNT EVEN WHEN THE BOX IS NOT. Restored text is already a
+   * `recovered` row; saving it again on the way out would file the same
+   * sentence twice. It also cannot be seeded, because React's development
+   * double-invoke runs this effect's cleanup once immediately after mount --
+   * which would write that row, empty this ref, and clear the draft, leaving
+   * the operator looking at text whose Save no longer did anything.
+   */
   const noteDraftRef = useRef('');
   // ONE WRITER, so the row has one shape wherever the note is saved from --
   // and `run` explicitly: the ambient context that would supply it is torn
@@ -2374,6 +2513,10 @@ function RunningTest({
   const writeNote = (text: string) => {
     diag('test', 'note', { step: step.id, condition: run.condition, run: run.runId, text });
     noteDraftRef.current = '';
+    // FLUSHED BEFORE THE KEY GOES. `diag` buffers for a second; a kill inside
+    // that second would take the note out of both places at once.
+    flushDiagnostics();
+    clearFieldTestDraft();
   };
   const saveNote = () => {
     const text = noteDraftRef.current.trim();
@@ -2859,6 +3002,15 @@ function RunningTest({
           onChange={(e) => {
             noteDraftRef.current = e.target.value;
             setNoteDraft(e.target.value);
+            // ON EVERY KEYSTROKE. The cleanup that saves the box covers every
+            // exit the app controls and none of the two it does not: a
+            // reload (the update check does one unasked) and an iOS kill.
+            writeFieldTestDraft({
+              step: step.id,
+              condition: run.condition,
+              run: run.runId ?? '',
+              text: e.target.value,
+            });
           }}
           onBlur={saveNote}
           onKeyDown={(e) => {
