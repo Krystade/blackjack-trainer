@@ -1321,6 +1321,29 @@ describe('a condition without Bluetooth', () => {
     expect(readFieldTestRun().micClosedAt).toBeUndefined();
   });
 
+  /**
+   * The screen writes the clock after EVERY render, so an unchanged value
+   * must not reach storage: a write notifies, a notify re-renders, and the
+   * render writes again. The equality guard is what stops that loop, and
+   * nothing pinned it.
+   */
+  it('writes nothing when the microphone-close clock has not moved', () => {
+    startFieldTestRun('car');
+    setFieldTestMicClosedAt(1_000);
+    let notifications = 0;
+    const off = subscribeFieldTestRun(() => {
+      notifications += 1;
+    });
+    setFieldTestMicClosedAt(1_000);
+    setFieldTestMicClosedAt(1_000);
+    expect(notifications, 'an unchanged write re-renders, which writes again').toBe(0);
+    setFieldTestMicClosedAt(null);
+    setFieldTestMicClosedAt(null);
+    expect(notifications, 'clearing it says so once, and once only').toBe(1);
+    off();
+    expect(readFieldTestRun().micClosedAt).toBeUndefined();
+  });
+
   it('walks past them when advancing', () => {
     startFieldTestRun('phone');
     goToFieldTestStep(idx('fallback-audible'));

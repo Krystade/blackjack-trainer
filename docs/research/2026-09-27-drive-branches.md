@@ -60,8 +60,9 @@ channel to steps that already declare `setup.voice === true`.** Add a pure
 "accept spoken answers where the mic is open anyway", `mic: 'answer-channel'` can no longer
 occur, and no operator action can void a leg.
 
-**The cost, stated plainly:** only 8 of 31 steps declare `voice: true` (`mic-route` ×6,
-`mic-heard`, `wheel-with-mic`). The channel goes from 31 steps to 8. On the other 23 the
+**The cost, stated plainly:** only 8 of the 32 steps on a Bluetooth leg declare
+`voice: true` (`mic-route` ×6, `mic-heard`, `wheel-with-mic`) — and seven take a spoken
+answer, `mic-heard` being the one whose transcript IS the evidence. On the other 24 the
 glance is the price of the measurement — every one of them is `voice: false` for a reason
 that a spoken answer would destroy — and no design removes it. If a fully-spoken run is
 wanted for learning the protocol, that is a separate non-measuring leg type whose export is
@@ -104,12 +105,15 @@ window, or one over-cadence gap with at most the overdue tick after it → `froz
 stamped retroactively on the next boot.
 
 **It must not end on a timer** — its timers are the thing under test. It ends on the
-`visible` transition, or on the next boot finding the stale marker, or on a Skip. A bare
-timeout would score "operator never locked it" as normal.
+`visible` transition, or on the next boot finding the stale marker. Leaving the step scores
+nothing: it clears the marker (`e2e/field-test-lock.spec.ts` asserts this), because a step
+nobody locked the phone on has no verdict. A bare timeout would score "operator never
+locked it" as normal.
 
 Cost: at most 60 tick rows per lock, written only while hidden (the verdict is scored from
-memory), against `MAX_ENTRIES = 3000`. Run once per page session, not per leg — the
-behaviour is a property of the event loop, not of a step.
+memory), against `MAX_ENTRIES = 3000`. Every lock on the step is scored, and the step runs
+on every leg — the behaviour is a property of the event loop, so one reading of it per leg
+is the point of comparison.
 
 **As built (2026-09-28, after review):** the marker is `{hiddenAt, session}` and is set when
 the page goes hidden, not on arrival; the verdict is on the largest gap (`maxGapMs`), not the
@@ -229,8 +233,8 @@ silent element is holding and the head unit never concluded playback stopped.
 
 Not this branch: any `wheel-radio`/`wheel-radio-took-one`; invokes only under
 `whileSpeaking=true` (that is §6); `test wheel-unavailable`; an invoke with no matching
-arrival at the same `pressIndex` (which restarts at 1 on every mount of the running screen:
-Resume, and leaving and returning by the tab bar alike).
+arrival at the same `pressIndex` (which restarts at 1 on every mount of the running screen,
+so after a Resume or a reload; the tab bar is hidden while a run is on screen).
 
 **In-drive.** Receipt is already machine-visible per press. Smallest change: once
 `wheelSeen.length > 0`, swap the instruction text to "Received — did the car do anything

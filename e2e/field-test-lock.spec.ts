@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { withSettings } from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
+import { LOCK_PROBE_TICK_MS } from '../src/diag/lockProbe';
 
 /**
  * THE LOCK PROBE, DRIVEN.
@@ -76,6 +77,10 @@ async function setVisibility(page: Page, state: 'hidden' | 'visible'): Promise<v
  * frozen -- and nothing else: a real interval on Chromium keeps firing, and
  * a wait after the jump lets one or two ticks land depending on where the
  * jump fell in the tick's phase, which made the verdict a coin toss.
+ *
+ * Each `jump` wraps the already-patched clock, so two of them in one burst
+ * leave the page a minute ahead. Every window's own gap is still thirty
+ * seconds, which is what the verdicts are read from.
  */
 async function burst(page: Page, steps: ('hidden' | 'visible' | 'jump')[]): Promise<void> {
   await page.evaluate((list) => {
@@ -133,7 +138,6 @@ test('scores a lock from the gaps in its own ticks, and says so', async ({ page 
 
   // Scored once: the marker is cleared, so a second boot has nothing to find.
   expect(await marker(page)).toBeUndefined();
-
 });
 
 /**
@@ -205,8 +209,21 @@ test('a frozen re-lock straight after a verdict is still scored frozen', async (
  */
 test('a frozen lock taken the moment the step opens is still scored frozen', async ({ page }) => {
   await openTest(page);
-  await goToStep(page, 'lock-probe');
+  // Stop one step short, so the clock can be started immediately before the
+  // press that mounts the probe's effect.
+  await goToStep(page, 'ambient');
+  const opened = Date.now();
+  await page.getByTestId('fieldtest-skip').click();
+  await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', 'lock-probe');
   await burst(page, ['jump', 'hidden']);
+  // THE WHOLE POINT IS THAT NO INTERVAL TICK HAS LANDED YET: one would start
+  // the window by itself and the verdict would be `frozen` with the arrival
+  // seed deleted. A slow machine that let a tick through fails here rather
+  // than passing against code that has no seed.
+  expect(
+    Date.now() - opened,
+    'a tick may have landed before the lock, so this run proves nothing',
+  ).toBeLessThan(LOCK_PROBE_TICK_MS);
   await page.waitForTimeout(300);
   await setVisibility(page, 'visible');
   await expect

@@ -153,6 +153,10 @@ export interface FieldTestRun {
    * component with no edge to see, and every later sample said the
    * microphone had never been up. The pause is a gap in the run; it is not
    * the microphone opening again.
+   *
+   * The screen writes this on EVERY render, so `setFieldTestMicClosedAt` has
+   * to be a no-op when the value has not moved: a write notifies, which
+   * re-renders, which writes.
    */
   micClosedAt?: number;
   /**

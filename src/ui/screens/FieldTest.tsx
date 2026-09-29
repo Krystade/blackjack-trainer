@@ -1368,7 +1368,7 @@ function RunningTest({
       setSampling(false);
       setWaitingForMic(false);
       // ...AND THE INSTRUCTION, SPOKEN. The protocol forces eyes-free on from
-      // step one and never unsets it, then puts all 22 steps' instructions in
+      // step one and never unsets it, then puts every step's instruction in
       // print -- so the mode that means "you should not be reading this" is
       // exactly the mode the operator must read in. Spoken only where there
       // is no measurement utterance to confound: on a step that samples the
@@ -1840,8 +1840,8 @@ function RunningTest({
    * KEEP THE SCREEN AWAKE FOR THE RUN, which this screen alone did not.
    *
    * Every drill view calls `requestWakeLock`, and so does `useVoiceControl`
-   * while the microphone is live -- so the fifteen non-microphone steps of a
-   * twenty-two step protocol ran with the display free to sleep on its
+   * while the microphone is live -- so the twenty-four non-microphone steps
+   * of a thirty-two step leg ran with the display free to sleep on its
    * ordinary timer. A slept screen is a hidden page: timers throttle, the
    * ambient measurement's loop stalls, and the operator has to wake the phone
    * at every step, which is a glance and a tap they should not be spending at
@@ -2287,6 +2287,7 @@ function RunningTest({
     // to be able to see it and treat that sample accordingly, rather than
     // meeting an unexplained utterance in the middle of the run.
     diag('test', 'instruction-start', { step: step.id, why });
+    let spoke = true;
     try {
       await speakAsync(step.instruction, {
         interrupt: true,
@@ -2302,6 +2303,10 @@ function RunningTest({
        * in the app and two are not, and `instruction-spoken` was written only
        * on the success path, so absence covered all three.
        */
+      // ...AND NOT ALSO `instruction-spoken`. The catch fell through to the
+      // success row below, so a throw wrote BOTH -- and the row that says
+      // "the app spoke here" is the one a wheel press is placed against.
+      spoke = false;
       diag('test', 'instruction-failed', {
         step: step.id,
         why,
@@ -2319,8 +2324,10 @@ function RunningTest({
       diag('test', 'instruction-abandoned', { step: step.id, why });
       return;
     }
-    diag('test', 'instruction-spoken', { step: step.id, why });
-    // THE CABIN IS MEASURED WHEN THE LINE ENDS, on arrival. Holding the
+    if (spoke) diag('test', 'instruction-spoken', { step: step.id, why });
+    // THE CABIN IS MEASURED WHEN THE LINE ENDS, on arrival. Measured after a
+    // failure too: nothing is speaking, which is the condition the sample
+    // needs, and a leg with no reference level is a leg that cannot be read. Holding the
     // button for the read-aloud (`reading`) put a second tap between an
     // operator who cannot look and the one reading the leg is referenced
     // to; the step said "stay quiet" and then waited for a thumb. The
@@ -2380,7 +2387,8 @@ function RunningTest({
    * that lands on an answer with the keyboard still up moves the step on
    * before anything blurred the box, and the arrival effect then cleared the
    * draft: a note typed and never submitted was simply gone. Saved here, on
-   * the way out -- the next step, Pause, Finish or the tab bar alike --
+   * the way out -- the next step, Pause and Finish alike, which are the
+   * exits a run has (the tab bar is hidden while one is running) --
    * against the step and condition the cleanup closed over.
    */
   useEffect(
@@ -2556,7 +2564,7 @@ function RunningTest({
           PAUSE, at the top, and distinct from Finish.
           The tab bar stands down during a run because it is the easiest thing
           to hit with a thumb coming off the wheel, which left no way out that
-          did not end the run -- and a 20-step protocol on a freeway needs one,
+          did not end the run -- and a thirty-step protocol on a freeway needs one,
           because traffic does not wait for step 14. This is at the top of the
           screen, the furthest point from where that thumb lands, and it keeps
           the position and every stamp: re-entering offers Resume.
@@ -2716,7 +2724,7 @@ function RunningTest({
 
         The answer stack was top-anchored under this material, so where it sat
         depended on how far the instruction wrapped and on whether the step had
-        a repeat button -- measured across the 22 steps, the top of the stack
+        a repeat button -- measured across every step, the top of the stack
         travelled 145px. Button pitch is 60px, and one adjacent pair shifted
         69px: the pixel that was "the car did nothing else" on `wheel-gap`
         became "the radio changed track instead" on `wheel-back`. `answer()`

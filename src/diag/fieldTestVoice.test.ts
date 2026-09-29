@@ -8,6 +8,7 @@ import {
 import {
   FIELD_TEST_CONDITIONS,
   FIELD_TEST_STEPS,
+  resolveFieldTestSetup,
   stepResponses,
   type StepSlot,
 } from './fieldTest';
@@ -84,8 +85,20 @@ describe('the spoken vocabulary', () => {
   it('never puts an answer into the line the step itself speaks', () => {
     const hazards: string[] = [];
     for (const condition of FIELD_TEST_CONDITIONS) {
-      for (const step of FIELD_TEST_STEPS) {
-        const lines = [...(step.say ?? []), ...(step.sayUnclipped ? [step.sayUnclipped] : [])];
+      for (const [index, step] of FIELD_TEST_STEPS.entries()) {
+        // THE READ-ALOUD INSTRUCTION IS A LINE TOO, on the steps where a
+        // transcript is taken as an answer: the screen treats it as one
+        // (`stepLines`), so a step whose instruction contains one of its own
+        // answers is the same vocabulary bug. Not on the other steps -- the
+        // microphone is shut there, and `route-1t` says "switched", which is
+        // `route-moved` on its own stack and harmless with nothing listening.
+        const heard =
+          resolveFieldTestSetup(index).voice === true && step.transcriptIsEvidence !== true;
+        const lines = [
+          ...(step.say ?? []),
+          ...(step.sayUnclipped ? [step.sayUnclipped] : []),
+          ...(heard ? [step.instruction] : []),
+        ];
         for (const line of lines) {
           const match = matchFieldTestAnswer(line, stepResponses(step));
           if (match) {
