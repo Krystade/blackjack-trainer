@@ -133,7 +133,18 @@ export function holdAudioFocus(key: AudioFocusKey): void {
   // never tried again. One refusal at the first hold killed the media slot for
   // the whole session, which reads in an export as a car that ignores the app.
   // `paused === false` is the real question, the same one the car check asks.
-  if (!first && element && !element.paused) return;
+  //
+  // ...AND NOT SKIPPED WHEN A RE-TAKE IS STILL OWED. `paused === false` is
+  // not proof the slot is held: iOS detaches the app from the car's
+  // remote-command target when the microphone reconfigures the audio
+  // session, and leaves the element playing. The attempt made on the close
+  // may have been too early (see `REASSERT`), so the first hold after one
+  // stops trusting `paused` for exactly one play.
+  if (!first && element && !element.paused && !retakeOwed) return;
+  // Spent here rather than after `play()` settles: a refusal leaves the
+  // element paused, so every later hold retries through the gate above
+  // anyway, and holding the flag open would re-play the loop all session.
+  retakeOwed = false;
 
   const Ctor = audioCtor();
   if (!Ctor) return;
@@ -235,18 +246,93 @@ export function audioFocusElementIsPlaying(): boolean {
   return element !== null && element.paused === false;
 }
 
+export type AudioFocusReassertReason = 'play-request' | 'after-speech' | 'mic-closed';
+
+interface ReassertPolicy {
+  /**
+   * Whether this reason is evidence the slot may be gone WHILE THE ELEMENT
+   * STILL REPORTS PLAYING, and so may act without waiting for a pause.
+   *
+   * `paused === true` proves the hold lapsed. `paused === false` proves
+   * nothing, because iOS detaches the app from the remote-command target
+   * without touching the element -- see `reassertAudioFocus`.
+   */
+  readonly onALiveElement: boolean;
+  /**
+   * Whether the attempt may land BEFORE the audio session has finished
+   * changing, in which case the next hold tries once more.
+   */
+  readonly mayBeTooEarly: boolean;
+}
+
+const REASSERT: Record<AudioFocusReassertReason, ReassertPolicy> = {
+  /**
+   * THE MICROPHONE JUST CLOSED. Opening it reconfigured the audio session
+   * underneath the loop, which is exactly when the slot goes without a
+   * pause, and the app is the only thing that knows the moment it let go.
+   *
+   * ...AND IT KNOWS TOO EARLY. Run `ulq6vs` recorded `appLetGoAfterMs=102`
+   * while the output route did not reach the car again until
+   * `msSinceAppLetGo=1634`, so a `play()` on the close goes into a session
+   * still in record mode. `devicechange` would have said when it settled and
+   * is not available: in that run it fired twice, both times while the
+   * microphone was open, and never on the close.
+   */
+  'mic-closed': { onALiveElement: true, mayBeTooEarly: true },
+  /**
+   * THE CAR ASKED TO PLAY, which a head unit sends precisely when it
+   * believes playback stopped -- the same evidence from the other side of
+   * the link. Gated on `paused` this discarded the one request that could
+   * restore the slot whenever the element lied about playing, which made the
+   * only recovery path in the file unreachable in the case it was written
+   * for.
+   *
+   * Not too early: the car asks at a moment of its own choosing, with the
+   * session long settled. Arming a retry here would also arm one on every
+   * clip end, which is when this arrives most.
+   */
+  'play-request': { onALiveElement: true, mayBeTooEarly: false },
+  /**
+   * A LINE FINISHED, and that is not evidence of anything. It fires after
+   * every utterance, so forcing here would call `play()` fifty times a run
+   * and write fifty rows reporting that nothing needed doing. It stays for
+   * the documented case: the platform pausing the loop in order to speak.
+   */
+  'after-speech': { onALiveElement: false, mayBeTooEarly: false },
+};
+
 /**
- * Put a lapsed hold back, if there is one; add no holder and start nothing.
+ * A re-take that may have been issued too early, owed one more attempt.
  *
- * Two callers. The car's own `play`: the head unit sends it whenever it
- * thinks playback stopped, which is exactly when the silent loop has been
- * paused out from under a live hold, and the one request that would restore
- * the slot used to be swallowed by an inert handler. And the end of a live
- * utterance (speech.ts): if the platform paused the loop to speak, nothing
- * else restarts it, and the moment after a line is the moment a driver
- * presses something. Neither is a claim on the slot -- a `play` with no
- * holder is the car asking for music, and a drill narrating with no hold is
- * not the active media app and must not become one here.
+ * Consumed by the next `holdAudioFocus` -- the next thing the drill says,
+ * seconds away and long after the session has settled. A remembered fact
+ * rather than a timer, so there is nothing to cancel on unmount and no retry
+ * loop to bound.
+ */
+let retakeOwed = false;
+
+/**
+ * Play the silent loop again, so the app is the active media app once more;
+ * add no holder and start nothing that was not already wanted.
+ *
+ * WHY THIS CANNOT ASK `paused`. The drive of 2026-09-29 (run `ulq6vs`) logged
+ * one `focus hold`, one `focus holding`, no `focus lapsed` at all, and not a
+ * single wheel press arriving in the nine minutes after the microphone first
+ * opened. Fifty holds in between each returned early on `!element.paused`.
+ * The element was not lying idly: iOS had taken the app off the car's
+ * remote-command target when the microphone reconfigured the audio session,
+ * and left the element playing. Output routing recovered on its own 1.6s
+ * after the microphone shut, because iOS re-decides that per sound; the
+ * buttons never did, because the slot is only ever handed to a fresh
+ * `play()`.
+ *
+ * So `paused === true` means the hold lapsed, `paused === false` means
+ * nothing, and which reasons may act on a live element is stated in
+ * `RETAKES_A_LIVE_ELEMENT` above rather than inferred here.
+ *
+ * Never a claim on the slot: with no holder, a `play` is the car asking for
+ * music and a closing microphone is a screen that wants no wheel, and taking
+ * the slot for either would steal the car from the radio.
  *
  * A `restart` row when there is something to do (`why` says which caller),
  * then the same `holding` or `refused` row a hold writes once `play()`
@@ -255,8 +341,11 @@ export function audioFocusElementIsPlaying(): boolean {
  * when there is nothing to do: the car can ask every five seconds for as
  * long as it likes.
  */
-export function reassertAudioFocus(why: 'play-request' | 'after-speech'): void {
-  if (held.size === 0 || !element || element.paused === false) return;
+export function reassertAudioFocus(why: AudioFocusReassertReason): void {
+  if (held.size === 0 || !element) return;
+  const policy = REASSERT[why];
+  if (element.paused === false && !policy.onALiveElement) return;
+  if (policy.mayBeTooEarly) retakeOwed = true;
   const el = element;
   void el
     .play()
@@ -276,4 +365,5 @@ export function audioFocusHolders(): AudioFocusKey[] {
 export function _resetAudioFocusForTest(): void {
   held.clear();
   element = null;
+  retakeOwed = false;
 }

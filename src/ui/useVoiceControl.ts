@@ -13,6 +13,7 @@ import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition'
 import { looksLikeSelfEcho } from '../audio/selfEcho';
 import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
+import { reassertAudioFocus } from '../audio/audioFocus';
 import { logAudioInputs, logMicPermission } from '../diag/environment';
 import { micHasWorked, markMicWorked } from './voiceSession';
 
@@ -202,7 +203,32 @@ export function useVoiceControl({
       log: (event, detail) => diag('mic', event, { ...detail, context: contextRef.current }),
       hasWorked: micHasWorked,
       onWorked: markMicWorked,
-      onState: (state) => setStatus((prev) => ({ ...prev, state })),
+      onState: (state) => {
+        setStatus((prev) => ({ ...prev, state }));
+        /**
+         * THE MICROPHONE CLOSING TAKES THE STEERING WHEEL WITH IT, and
+         * nothing used to put it back.
+         *
+         * Opening the microphone reconfigures the audio session, and iOS
+         * detaches the app from the car's remote-command target when it
+         * does -- without pausing the silent loop that holds the slot
+         * (audio/audioFocus.ts). The drive of 2026-09-29, run `ulq6vs`,
+         * recorded the whole shape of it: nine wheel presses arriving
+         * before the microphone opened, a single unsolicited `pause` from
+         * the head unit 143ms after it did, and then not one press in the
+         * remaining nine minutes -- across two wheel steps the operator
+         * pressed and answered "the car did nothing else" on. Output
+         * routing came back to the car 1.6s after the microphone shut,
+         * because iOS re-decides that for each new sound; the buttons
+         * never did, because the slot is only handed to a fresh `play()`.
+         *
+         * `setState` de-duplicates, so this is one call per real close, not
+         * one per heartbeat. It claims nothing: with no holder outstanding
+         * the re-take is a no-op, so a microphone closing on a screen that
+         * wants no wheel cannot take the car from the radio.
+         */
+        if (state === 'off') reassertAudioFocus('mic-closed');
+      },
       onHeard: (heard, verdict) => {
         setStatus((prev) => ({ ...prev, heard, verdict }));
         // Kept so the vocabulary can grow from evidence rather than from a

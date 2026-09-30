@@ -6,6 +6,7 @@ import {
   audioFocusHolders,
   silentWavDataUri,
   _resetAudioFocusForTest,
+  reassertAudioFocus,
 } from './audioFocus';
 import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 
@@ -511,5 +512,172 @@ describe('the hold lapsing under the OS, not the app', () => {
     expect(el.paused).toBe(false);
     const hold = readDiagnosticLog().find((e) => e.category === 'focus' && e.event === 'hold');
     expect(hold?.detail?.restart).toBe(true);
+  });
+});
+
+/**
+ * THE DRIVE OF 2026-09-29, and the fault every other test in this file was
+ * built unable to see.
+ *
+ * The element can lose the car's media slot WITHOUT PAUSING. Opening the
+ * microphone on iOS reconfigures the audio session and detaches the app from
+ * the remote-command target, and the silent loop goes on reporting
+ * `paused === false` right through it. The exported log of run `ulq6vs`
+ * proves it: one `focus hold` and one `focus holding` in twelve minutes, no
+ * `focus lapsed` anywhere, and not one wheel press arriving after the
+ * microphone opened -- while fifty later holds each short-circuited on
+ * `!element.paused` and did nothing at all.
+ *
+ * So `paused === true` is evidence the slot is gone, and `paused === false`
+ * is NOT evidence that it is held. A recovery gated on it cannot run in the
+ * one case it was written for, which is why the wheel stayed dead for the
+ * remaining nine minutes of that run and why the audio came back at 1.6s
+ * while the buttons never did: iOS re-decides output routing for each new
+ * sound, but hands the remote-command slot only to a fresh `play()`.
+ */
+describe('a slot lost without the element ever pausing', () => {
+  it('re-takes the slot when the microphone closes, though the element calls itself playing', () => {
+    holdAudioFocus('speech');
+    const el = created[0]!;
+    expect(el.paused, 'the premise: the element believes it is still playing').toBe(false);
+
+    reassertAudioFocus('mic-closed');
+
+    expect(el.playCount, 'the slot was never re-taken, so the wheel stays dead').toBe(2);
+  });
+
+  /**
+   * The car's own `play` is the same evidence wearing a different face -- a
+   * head unit sends it precisely when it believes playback stopped -- and it
+   * was gated on the same predicate, so the one request that could restore
+   * the slot was discarded whenever the element lied about playing.
+   */
+  it('re-takes the slot when the car asks to play, though the element calls itself playing', () => {
+    holdAudioFocus('speech');
+    const el = created[0]!;
+
+    reassertAudioFocus('play-request');
+
+    expect(el.playCount, "the car asked for the slot back and was ignored").toBe(2);
+  });
+
+  /**
+   * ...AND THE END OF AN UTTERANCE IS NOT SUCH EVIDENCE. This fires after
+   * every line the app speaks, so forcing it here would call `play()` fifty
+   * times a run and write fifty rows saying nothing happened. It stays gated
+   * on a real lapse.
+   */
+  it('does not re-take a slot that never lapsed at the end of an utterance', () => {
+    holdAudioFocus('speech');
+    const el = created[0]!;
+
+    reassertAudioFocus('after-speech');
+
+    expect(el.playCount, 'every utterance now re-takes a slot it already holds').toBe(1);
+  });
+
+  it('says which event re-took it, so an export can tell this from a lapse', () => {
+    holdAudioFocus('speech');
+    clearDiagnosticLog();
+
+    reassertAudioFocus('mic-closed');
+
+    const restart = readDiagnosticLog().find(
+      (e) => e.category === 'focus' && e.event === 'restart',
+    );
+    expect(restart?.detail?.why).toBe('mic-closed');
+  });
+
+  /**
+   * A microphone closing on a screen that wants no wheel must not make this
+   * app the active media app. `held` empty means the app has deliberately let
+   * go, and taking the slot back then would steal the car from the radio.
+   */
+  it('re-takes nothing once the app has let the slot go', () => {
+    holdAudioFocus('speech');
+    const el = created[0]!;
+    releaseAudioFocus('speech');
+    const before = el.playCount;
+
+    reassertAudioFocus('mic-closed');
+
+    expect(el.playCount, 'a released hold was re-taken behind the radio').toBe(before);
+  });
+});
+
+/**
+ * ...AND ONE ATTEMPT IS NOT ENOUGH, which the same log says plainly.
+ *
+ * The app knows the moment it lets the microphone go, but iOS does not
+ * finish with the audio session then: run `ulq6vs` recorded
+ * `appLetGoAfterMs=102` and the output route did not return to the car until
+ * `msSinceAppLetGo=1634`. A `play()` issued on the close is therefore issued
+ * into a session still in record mode.
+ *
+ * `devicechange` would have been the signal that it had settled, and it is
+ * not available: in that run it fired at 19:03:52 and 19:05:18, both while
+ * the microphone was OPEN, and never once on the close.
+ *
+ * So the disturbance is remembered instead, and the next hold -- the next
+ * thing the drill says, which in a drill is seconds away and long after the
+ * session has settled -- stops trusting `paused` for exactly one attempt. No
+ * timer, no retry loop, and nothing to cancel.
+ */
+describe('the second attempt, once the session has actually settled', () => {
+  it('re-takes the slot on the next hold after a microphone close', () => {
+    holdAudioFocus('speech');
+    const el = created[0]!;
+    reassertAudioFocus('mic-closed');
+    expect(el.playCount, 'the immediate attempt is the premise here').toBe(2);
+
+    holdAudioFocus('speech');
+
+    expect(el.playCount, 'the hold after the close trusted `paused` and did nothing').toBe(3);
+  });
+
+  it('stops re-taking once one hold has done it, so a drill is not replaying it all session', () => {
+    holdAudioFocus('speech');
+    const el = created[0]!;
+    reassertAudioFocus('mic-closed');
+    holdAudioFocus('speech');
+    const settled = el.playCount;
+
+    holdAudioFocus('speech');
+    holdAudioFocus('speech');
+
+    expect(el.playCount, 'every later hold re-plays the loop for nothing').toBe(settled);
+  });
+
+  /**
+   * The guard the whole file already depended on, restated inside this
+   * describe because the flag above is the thing that could break it: an
+   * ordinary hold on a live element must stay a no-op.
+   */
+  it('leaves an ordinary hold on a live element alone', () => {
+    holdAudioFocus('speech');
+    const el = created[0]!;
+
+    holdAudioFocus('speech');
+    holdAudioFocus('speech');
+
+    expect(el.playCount, 'a plain rehold is re-playing the element').toBe(1);
+  });
+
+  /**
+   * The end of an utterance must not consume the pending attempt either: it
+   * is gated on `paused`, so it does nothing on a live element, and letting
+   * it clear the flag would spend the one retry on the very thing that
+   * cannot perform it.
+   */
+  it('does not let the end of an utterance spend the pending attempt', () => {
+    holdAudioFocus('speech');
+    const el = created[0]!;
+    reassertAudioFocus('mic-closed');
+    reassertAudioFocus('after-speech');
+    const before = el.playCount;
+
+    holdAudioFocus('speech');
+
+    expect(el.playCount, 'the retry was swallowed by an utterance ending').toBe(before + 1);
   });
 });
