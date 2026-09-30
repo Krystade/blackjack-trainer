@@ -270,6 +270,49 @@ test('an honest "could not make it out" is scored as neither right nor wrong', a
   expect(row, 'a decline was scored as a guess').not.toContain('correct=');
 });
 
+/**
+ * THE STEP'S REASON IS ON SCREEN AND NOT IN THE AUDIO.
+ *
+ * Both halves matter and they fail in opposite directions. Without the print,
+ * the operator answers ten questions with no reminder of what any of them
+ * measures -- the gate's `proves` was read once, parked, twenty minutes
+ * earlier. Without the silence, the purpose would be prepended to a
+ * discrimination sample, and those steps measure whether one specific
+ * sentence survives road noise; a clause about the experiment in front of it
+ * changes the thing being measured.
+ */
+test('every drill step prints why it exists and never speaks it', async ({ page }) => {
+  test.setTimeout(45_000);
+  await withSettings(page, { audio: { enabled: true, useClips: true } });
+  await openDrillLeg(page, PARKED);
+
+  const purpose = page.getByTestId('fieldtest-purpose');
+  const seen: string[] = [];
+
+  for (let i = 0; i < 20; i++) {
+    await expect(purpose, 'a drill step with no stated purpose').toBeVisible();
+    const text = (await purpose.innerText()).trim();
+    expect(text.length, 'an empty purpose line is the same as none').toBeGreaterThan(24);
+    seen.push(text);
+
+    const skip = page.getByTestId('fieldtest-skip');
+    if (await skip.isDisabled()) break;
+    await skip.click();
+  }
+
+  expect(seen.length, 'the leg ended before its steps were walked').toBeGreaterThanOrEqual(10);
+  // Every step's own reason, not one line carried across the whole leg.
+  expect(new Set(seen).size).toBe(seen.length);
+
+  // ...and not one word of it went to the speaker.
+  const said = await spoken(page);
+  for (const text of seen) {
+    for (const line of said) {
+      expect(line, `a purpose was spoken: ${text}`).not.toContain(text);
+    }
+  }
+});
+
 test('the phone-speaker leg drops the wheel steps and keeps the microphone ones', async ({
   page,
 }) => {

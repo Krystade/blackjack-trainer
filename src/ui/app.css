@@ -3757,6 +3757,26 @@ details.stats-section > summary::after {
 }
 
 /*
+ * THE STEP'S REASON, quieter than the instruction and louder than nothing.
+ *
+ * It sits between the imperative and the setup note and must lose a glance to
+ * the instruction every time: an operator at speed reads one line and acts.
+ * So it is smaller and italic -- two signals that this is context rather than
+ * a thing to do.
+ *
+ * `--ink-dim` rather than a mix of my own: it is the token every other muted
+ * line in the app already uses (`.u-note`), it is defined per theme, and a
+ * translucent tint over this surface averages to mud.
+ */
+.fieldtest-purpose {
+  margin: 0.2rem 0 0;
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+
+/*
   The stamped tick on the start gate's step list.
 
   `markFieldTestStamped` has always documented itself as existing "so a step

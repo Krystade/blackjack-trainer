@@ -3274,6 +3274,24 @@ function RunningTest({
         {step.instruction}
       </p>
       {/*
+        WHAT THIS STEP IS MEASURING, under what to do about it.
+
+        The leg's `proves` is on the gate and is read once, parked, before
+        twenty minutes of driving. By step six the operator is answering
+        questions with no reminder of which finding any of them feeds, and
+        "why am I doing this one" is the thought that turns an honest
+        "Missed it" into a plausible-looking guess.
+
+        Rendered whenever the step declares one, so the answer stack below
+        does not move once the step is open -- the same reason the evidence
+        region is always present. Never spoken: see `purpose` in fieldTest.ts.
+      */}
+      {step.purpose ? (
+        <p className="fieldtest-purpose" data-testid="fieldtest-purpose">
+          {step.purpose}
+        </p>
+      ) : null}
+      {/*
         THE RESOLVED STATE, not the declared delta. `describeFieldTestSetup`
         used to be handed `step.setup`, so a step that declares nothing printed
         "Nothing changed for this step" -- which on a resumed run was an active

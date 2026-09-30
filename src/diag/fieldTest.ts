@@ -206,6 +206,20 @@ export interface FieldTestStep {
   title: string;
   instruction: string;
   /**
+   * What this step MEASURES, printed under the instruction and never spoken.
+   *
+   * The leg's `proves` is on the gate, read once while parked; ten steps then
+   * follow with no reminder of what any of them is for. The instruction says
+   * what to do and deliberately not why -- an imperative that argues its own
+   * case gets longer and less scannable at exactly the moment the operator is
+   * merging.
+   *
+   * Never spoken, because the discrimination steps measure whether one
+   * specific sentence survives road noise and prefixing it with a clause
+   * about the experiment changes the sample.
+   */
+  purpose?: string;
+  /**
    * Wait for the recogniser to be LIVE before speaking this step's line.
    *
    * The 2026-09-23 drive settled why this has to exist. `mic-route` declares
@@ -1564,7 +1578,9 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
      * measuring anything and should be restarted rather than continued.
      */
     instruction:
-      'Press skip-forward on the wheel once, then listen. The app will say back the word it took your press to mean.',
+      'Press skip-forward on the wheel once, then listen. The word that comes back is what the app thinks you pressed.',
+    purpose:
+      'The positive control. No word back here means nothing later in this leg can be read at all.',
     say: ['Basic hit versus dealer nine.'],
     echo: 'wheel',
     sayAgain: true,
@@ -1594,6 +1610,8 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
      */
     instruction:
       'Now press skip-back once, and listen for the word that comes back.',
+    purpose:
+      'Skip-back is a separate wire, and last drive it was the only one of the two that worked.',
     say: ['Basic stand versus dealer six.'],
     echo: 'wheel',
     sayAgain: true,
@@ -1604,7 +1622,9 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     protocol: 'drill',
     title: 'Which word was that',
     instruction:
-      'One line, then guess even if you are unsure. Tap the word you heard.',
+      'One line plays. Guess even if you are unsure. Tap the word you heard.',
+    purpose:
+      'First of three samples of one question: does the decision word survive this cabin.',
     discriminate: DISCRIMINATE_LINES,
     sayAgain: true,
     responses: DISCRIMINATE_RESPONSES,
@@ -1615,6 +1635,8 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     protocol: 'drill',
     title: 'Which word was that (two of three)',
     instruction: 'Again. Tap the word you heard.',
+    purpose:
+      'The second sample. Three of them make the result a rate instead of an anecdote.',
     // WORDED IDENTICALLY to its siblings, which is not tidiness: three
     // samples of one measurement asked in three different sentences are three
     // different measurements. `fieldTest.test.ts` pins the closing question.
@@ -1634,6 +1656,8 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
      */
     title: 'Which word was that (three of three)',
     instruction: 'Last one. Tap the word you heard.',
+    purpose:
+      'The third. Two samples can only agree or disagree; three give the score a denominator.',
     discriminate: DISCRIMINATE_LINES,
     sayAgain: true,
     responses: DISCRIMINATE_RESPONSES,
@@ -1644,6 +1668,8 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     title: 'Say the answer out loud',
     instruction:
       'Say \u201chit\u201d or \u201cstand\u201d out loud, whichever you like. The app will say back the word it heard.',
+    purpose:
+      'Whether talking to it works as an answer channel — the alternative to using the wheel.',
     say: ['Basic double versus dealer nine.'],
     echo: 'voice',
     awaitListening: true,
@@ -1657,6 +1683,8 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     title: 'Say the answer out loud (again)',
     instruction:
       'Once more \u2014 say \u201chit\u201d or \u201cstand\u201d, and listen for what comes back.',
+    purpose:
+      'A second try, because one misheard word could be the recogniser or could be the road.',
     say: ['Basic split versus dealer nine.'],
     echo: 'voice',
     awaitListening: true,
@@ -1688,6 +1716,8 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     title: 'The wheel, straight after the microphone',
     instruction:
       'Microphone off again. Press skip-forward once and listen for the word \u2014 this is the press that went missing on the last drive.',
+    purpose:
+      'The press that vanished last drive: does the car withhold skip while hands-free is up?',
     say: ['Basic hit versus dealer ten.'],
     echo: 'wheel',
     awaitSilent: true,
@@ -1708,6 +1738,8 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     // mid-sentence with the rest behind a scroll nobody performs at speed.
     instruction:
       'Nothing to do. Hold your speed, leave the phone alone, and tap below when the screen says the measurement has finished.',
+    purpose:
+      'Every microphone the phone offers, measured under one noise level: car mic against phone.',
     ambientSweep: true,
     responses: [
       { id: 'sweep-done', label: 'Done \u2014 it finished', kind: 'note' },
@@ -1722,6 +1754,8 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     title: 'Anything else',
     instruction:
       'Anything that worked or went wrong that no step above names. Stamp it the moment it happens \u2014 the log can find it afterwards, you cannot.',
+    purpose:
+      'Anything the nine steps above cannot express. The log cannot find what was never stamped.',
     responses: FREE_RESPONSES,
   },
 ];
