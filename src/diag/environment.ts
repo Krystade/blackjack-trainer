@@ -95,6 +95,40 @@ export function logEnvironment(): void {
       wakeLock: !!nav.wakeLock,
       speechSynthesis: typeof w.speechSynthesis !== 'undefined',
     });
+
+    /**
+     * WHICH VOICES EXIST, AND WHETHER THE PHONE NOMINATES ONE.
+     *
+     * The voice heuristic in speech.ts weights `SpeechSynthesisVoice.default`
+     * and falls back to a name allowlist when nothing is nominated, and until
+     * now nothing recorded which of those two paths a given phone takes. That
+     * gap produced two shipped bugs in one evening: the drill was read out by
+     * `Bahh` on 2026-09-29 because every en-US voice tied and the tie-break is
+     * alphabetical, and the first fix for it would have returned `Fred` on any
+     * phone that nominates nothing -- a case nobody could check, because the
+     * flag was never in a log.
+     *
+     * `count` also stands as the readiness reading. iOS populates the list
+     * asynchronously and there is no `voiceschanged` listener, so an utterance
+     * spoken early resolves against a partial list. A `tts-end` with a voice
+     * name that could not have won a full list is evidence the list was still
+     * filling, which is a candidate explanation for the six silent utterances
+     * of 2026-09-29 that is otherwise unfalsifiable.
+     */
+    try {
+      const synth = (w as unknown as { speechSynthesis?: SpeechSynthesis }).speechSynthesis;
+      const voices: SpeechSynthesisVoice[] = synth?.getVoices?.() ?? [];
+      diag('env', 'voices', {
+        count: voices.length,
+        nominated: voices.find((v) => v.default === true)?.name,
+        names: voices
+          .filter((v) => v.lang?.toLowerCase().startsWith('en'))
+          .map((v) => v.name)
+          .join(', '),
+      });
+    } catch {
+      /* a voice inventory is a diagnostic; never let it break boot */
+    }
   });
 }
 

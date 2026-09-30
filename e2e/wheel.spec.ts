@@ -466,6 +466,19 @@ test('the mixed session takes a self-check on either kind of item', async ({ pag
     audio: { enabled: true, verbosity: 'results', answerPauseMs: 15000 },
     drill: { quizIndex: '16v10' },
   });
+  // PINNED, because it never was. The assertion below needs BOTH item kinds
+  // to turn up, and the interleave seed is `randomSeed()` off a live
+  // `Math.random()` -- so this test was an unseeded coin flip asserting that
+  // eight flips were not all the same, which fails 2*(1/2)^8 = 1 run in 128.
+  // It duly failed on 2026-09-29 with `seen` = {quiz}. The comment below used
+  // to call the flip "seeded" and there was no seed anywhere in the file.
+  // `drills.spec.ts` already pins it the same way for the same schedule:
+  // floor(0.42*1e9) = 420000000, whose pickMixedType sequence is
+  // quiz,quiz,quiz,flash,flash,flash (locked in mixedSession.test.ts), so
+  // both kinds are reached by item four.
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+  });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Mixed', exact: true }).click();
@@ -482,7 +495,8 @@ test('the mixed session takes a self-check on either kind of item', async ({ pag
     await press(page, 'forward'); // next item
     await expect(page.locator('.message-strip .result-correct')).toHaveCount(0);
   }
-  // The interleave is a seeded coin flip, so eight items is plenty for both
-  // kinds -- and a run that saw only one has not tested the dispatch.
+  // With the seed pinned above this is deterministic: quiz at item one,
+  // flash at item four. A run that saw only one kind has not tested the
+  // dispatch -- and now that can only mean the schedule itself moved.
   expect([...seen].sort(), 'only one kind of item ever appeared').toEqual(['flash', 'quiz']);
 });

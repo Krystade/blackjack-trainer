@@ -23,19 +23,28 @@
  * clips.ts has no store/React dependency, so this import doesn't change
  * speech.ts's dependency profile.
  */
-import { hasClips, isClipsEnabled, playClipsResumable, stopClips } from './clips';
-import { chimePeak, utteranceVolume } from './volume';
+import {
+  hasClips,
+  isClipsEnabled,
+  playClipsResumable,
+  stopClips,
+} from "./clips";
+import { chimePeak, utteranceVolume } from "./volume";
 import {
   getSharedAudioContext,
   resumeSharedAudioContext,
   _resetSharedAudioContextForTest,
-} from './audioContext';
+} from "./audioContext";
 // Re-exported: existing specs import this reset helper from speech.ts.
 export { _resetSharedAudioContextForTest };
-import { initMediaSession, setNowPlaying, setPlaybackState } from './mediaSession';
-import { holdAudioFocus, reassertAudioFocus } from './audioFocus';
-import { invokeWheelCommand } from './wheelCommands';
-import { diag } from '../diag/diagnosticLog';
+import {
+  initMediaSession,
+  setNowPlaying,
+  setPlaybackState,
+} from "./mediaSession";
+import { holdAudioFocus, reassertAudioFocus } from "./audioFocus";
+import { invokeWheelCommand } from "./wheelCommands";
+import { diag } from "../diag/diagnosticLog";
 
 declare global {
   interface Window {
@@ -50,7 +59,12 @@ declare global {
      * a volume of zero, so "was it silent" is a question about the options
      * and is invisible in the text.
      */
-    __speechOptsLog?: { text: string; volume?: number; rate?: number; voiceURI?: string }[];
+    __speechOptsLog?: {
+      text: string;
+      volume?: number;
+      rate?: number;
+      voiceURI?: string;
+    }[];
     /**
      * How long a swallowed utterance should pretend to take, in e2e mode only.
      *
@@ -67,16 +81,16 @@ declare global {
 }
 
 function hasWindow(): boolean {
-  return typeof window !== 'undefined';
+  return typeof window !== "undefined";
 }
 
 /** True when running under the Playwright e2e harness (`?e2e=1` in the URL). */
 export function isE2eAudioMode(): boolean {
   return (
     hasWindow() &&
-    typeof window.location !== 'undefined' &&
-    typeof window.location.search === 'string' &&
-    window.location.search.includes('e2e=1')
+    typeof window.location !== "undefined" &&
+    typeof window.location.search === "string" &&
+    window.location.search.includes("e2e=1")
   );
 }
 
@@ -99,14 +113,16 @@ function pushSpeechLog(entry: string, opts?: SpeechOpts): void {
 
 /** True when this environment can actually speak (real speechSynthesis present). */
 export function isSpeechSupported(): boolean {
-  return hasWindow() && 'speechSynthesis' in window && !!window.speechSynthesis;
+  return hasWindow() && "speechSynthesis" in window && !!window.speechSynthesis;
 }
 
 /** Available voices, or [] when unsupported. */
 export function listVoices(): { name: string; voiceURI: string }[] {
   if (!isSpeechSupported()) return [];
   try {
-    return window.speechSynthesis.getVoices().map((v) => ({ name: v.name, voiceURI: v.voiceURI }));
+    return window.speechSynthesis
+      .getVoices()
+      .map((v) => ({ name: v.name, voiceURI: v.voiceURI }));
   } catch {
     return [];
   }
@@ -122,20 +138,90 @@ export function listVoices(): { name: string; voiceURI: string }[] {
  * voice" is necessarily a curated heuristic over the name string. See
  * docs/research/2026-07-21-web-tts-options.md §1.
  */
-const PREFERRED_VOICE_NAME_TOKENS = ['google', 'natural', 'neural', 'premium', 'enhanced', 'siri'];
+const PREFERRED_VOICE_NAME_TOKENS = [
+  "google",
+  "natural",
+  "neural",
+  "premium",
+  "enhanced",
+  "siri",
+];
 
-/** Legacy SAPI voices and macOS novelty voices — the "robotic" complaints. */
+/**
+ * Legacy SAPI voices and Apple novelty voices — the "robotic" complaints.
+ *
+ * THE DRIVE OF 2026-09-29 was read its prompts by `Bahh`, which bleats. Three
+ * of Apple's novelty voices were named here and Apple ships about twenty, so
+ * the list was not the safeguard it looked like: on iOS every en-US voice
+ * scores identically, the tie-break is alphabetical, and with `Albert` and
+ * `Bad News` penalised the next name in the alphabet is `Bahh`. Not a glitch
+ * -- the guaranteed pick whenever no voice is configured.
+ *
+ * Completed here, but a denylist of joke voices is a losing game and is no
+ * longer what carries this: `DEFAULT_VOICE_WEIGHT` below lets the platform
+ * nominate its own voice, which is a fact rather than a guess at one. This
+ * list is the fallback for platforms that nominate nothing.
+ */
 const PENALIZED_VOICE_NAME_TOKENS = [
-  'microsoft david',
-  'microsoft zira',
-  'microsoft mark',
-  'espeak',
-  'albert',
-  'bad news',
-  'zarvox',
+  "microsoft david",
+  "microsoft zira",
+  "microsoft mark",
+  "espeak",
+  // Apple's novelty set, in full.
+  "albert",
+  "bad news",
+  "bahh",
+  "bells",
+  "boing",
+  "bubbles",
+  "cellos",
+  "good news",
+  "jester",
+  "organ",
+  "superstar",
+  "trinoids",
+  "whisper",
+  "wobble",
+  "zarvox",
 ];
 
 const NAME_TOKEN_WEIGHT = 10;
+
+/**
+ * What the platform itself nominates, which the heuristic used to ignore
+ * while guessing at the same question from name substrings.
+ *
+ * `SpeechSynthesisVoice.default` is the one quality-adjacent fact the Web
+ * Speech API actually exposes, and this file's own header notes the API
+ * exposes `default` before going on not to read it. Weighted BELOW a
+ * genuinely premium name and ABOVE a plain one, so a nominated voice breaks
+ * the ties that decide the outcome on iOS without outranking a Google or
+ * Neural voice where one exists.
+ */
+const DEFAULT_VOICE_WEIGHT = 5;
+
+/**
+ * Voices a platform ships for actually reading text, as opposed to for a
+ * joke or from 1984.
+ *
+ * WHY AN ALLOWLIST EXISTS AT ALL, having argued against one. Weighting the
+ * platform's nomination only helps if some voice reports `default`, and
+ * nothing here has ever logged whether this iPhone does -- so the first
+ * version of that fix silently depended on it. With no nomination every
+ * en-US voice ties, the alphabetical tie-break decides again, and from the
+ * real iOS list the winner is `Fred`: the classic robotic Apple voice,
+ * unlisted because the denylist was written for the NOVELTY voices. That is
+ * the same fault as `Bahh` a few letters later, and it is the second name to
+ * walk through a denylist, which is the argument against relying on one.
+ *
+ * Ranked BELOW the platform's nomination, so a phone that names its own
+ * voice still wins, and below a premium name. Deliberately short: these are
+ * the built-in voices Apple and Android actually use for speech, not a
+ * ranking of them.
+ */
+const KNOWN_SPEECH_VOICE_TOKENS = ['samantha', 'alex', 'karen', 'daniel', 'moira', 'tessa'];
+
+const KNOWN_VOICE_WEIGHT = 3;
 /** Large enough that the language tier always dominates the name score. */
 const LANG_EXACT_WEIGHT = 1000;
 const LANG_FAMILY_WEIGHT = 500;
@@ -152,10 +238,21 @@ function scoreVoiceName(name: string): number {
   return score;
 }
 
+/** Whatever the platform nominated. See `DEFAULT_VOICE_WEIGHT`. */
+function scoreVoiceDefault(voice: SpeechSynthesisVoice): number {
+  return voice.default === true ? DEFAULT_VOICE_WEIGHT : 0;
+}
+
+/** A voice the platform ships for speech. See `KNOWN_SPEECH_VOICE_TOKENS`. */
+function scoreKnownSpeechVoice(name: string): number {
+  const lower = name.toLowerCase();
+  return KNOWN_SPEECH_VOICE_TOKENS.some((t) => lower.includes(t)) ? KNOWN_VOICE_WEIGHT : 0;
+}
+
 function scoreVoiceLang(voiceLang: string, targetLang: string): number {
-  const lower = (voiceLang || '').toLowerCase();
+  const lower = (voiceLang || "").toLowerCase();
   const target = targetLang.toLowerCase();
-  const targetFamily = target.split('-')[0];
+  const targetFamily = target.split("-")[0];
   if (lower.startsWith(target)) return LANG_EXACT_WEIGHT;
   if (targetFamily && lower.startsWith(targetFamily)) return LANG_FAMILY_WEIGHT;
   return 0;
@@ -169,13 +266,17 @@ function scoreVoiceLang(voiceLang: string, targetLang: string): number {
  */
 export function pickBestVoice(
   voices: SpeechSynthesisVoice[],
-  lang: string = 'en-US',
+  lang: string = "en-US",
 ): SpeechSynthesisVoice | null {
   let best: SpeechSynthesisVoice | null = null;
   let bestScore = -Infinity;
 
   for (const voice of voices) {
-    const score = scoreVoiceName(voice.name) + scoreVoiceLang(voice.lang, lang);
+    const score =
+      scoreVoiceName(voice.name) +
+      scoreVoiceLang(voice.lang, lang) +
+      scoreVoiceDefault(voice) +
+      scoreKnownSpeechVoice(voice.name);
     const isBetter =
       best === null ||
       score > bestScore ||
@@ -209,10 +310,14 @@ function getRawVoices(): SpeechSynthesisVoice[] {
  *   returns `null` so the caller leaves `utterance.voice` unset rather than
  *   silently substituting something the user didn't choose.
  */
-function resolveVoice(voiceURI: string | undefined): SpeechSynthesisVoice | null {
+function resolveVoice(
+  voiceURI: string | undefined,
+): SpeechSynthesisVoice | null {
   const voices = getRawVoices();
-  if (voiceURI && voiceURI !== 'default') {
-    return voices.find((v) => v.voiceURI === voiceURI || v.name === voiceURI) ?? null;
+  if (voiceURI && voiceURI !== "default") {
+    return (
+      voices.find((v) => v.voiceURI === voiceURI || v.name === voiceURI) ?? null
+    );
   }
   return pickBestVoice(voices);
 }
@@ -265,7 +370,10 @@ export interface SpeechOpts {
  * is the single most surprising bug this feature could ship, so it is pinned
  * by its own test.
  */
-function applyVolume(utterance: SpeechSynthesisUtterance, opts?: SpeechOpts): void {
+function applyVolume(
+  utterance: SpeechSynthesisUtterance,
+  opts?: SpeechOpts,
+): void {
   if (opts?.volume !== undefined) {
     // Above 1 the spec clamps silently, so this changes no behaviour -- it
     // states the ceiling in the one place someone would look for it. Live
@@ -352,7 +460,9 @@ let speechActivityListener: SpeechActivityListener | null = null;
  * The suppression window alone does not show that; the sentence that caused it
  * does.
  */
-export function setSpeechActivityListener(fn: SpeechActivityListener | null): void {
+export function setSpeechActivityListener(
+  fn: SpeechActivityListener | null,
+): void {
   speechActivityListener = fn;
 }
 
@@ -376,7 +486,7 @@ export function estimateSpeechMs(text: string, rate = 1): number {
   const chars = text.trim().length;
   if (chars === 0) return 0;
   const safeRate = rate > 0 ? rate : 1;
-  const ms = (chars / SPEECH_CHARS_PER_SEC) * 1000 / safeRate;
+  const ms = ((chars / SPEECH_CHARS_PER_SEC) * 1000) / safeRate;
   return Math.round(Math.min(MAX_SPEECH_MS, Math.max(MIN_SPEECH_MS, ms)));
 }
 
@@ -453,7 +563,7 @@ export function _resetLastSpokenForTest(): void {
  * `clip-failed-to-tts` is the nasty one -- the voice changing MID-utterance
  * because a clip chain broke part way through.
  */
-export type SpeechPath = 'clip' | 'clip-failed-to-tts' | 'tts';
+export type SpeechPath = "clip" | "clip-failed-to-tts" | "tts";
 
 export interface SpeechPathRecord {
   path: SpeechPath;
@@ -521,14 +631,16 @@ let pathSeq = 0;
  * broken utterance twice and a good one once, and the first of the two lines
  * was flatly contradicted by the second with nothing marking it provisional.
  */
-function pathEvent(record: Omit<SpeechPathRecord, 'seq'>): 'path' | 'path-chosen' {
+function pathEvent(
+  record: Omit<SpeechPathRecord, "seq">,
+): "path" | "path-chosen" {
   // WHETHER IT HAS HAPPENED YET, not which voice it was. `speak path` is
   // counted as one line per utterance; a guess filed under it counts an
   // utterance that has not finished and may not survive.
-  return record.chosen ? 'path-chosen' : 'path';
+  return record.chosen ? "path-chosen" : "path";
 }
 
-function recordSpeechPath(record: Omit<SpeechPathRecord, 'seq'>): void {
+function recordSpeechPath(record: Omit<SpeechPathRecord, "seq">): void {
   const full: SpeechPathRecord = { ...record, seq: ++pathSeq };
   lastPath = full;
   const { path, text, partial, chosen: _chosen, ...rest } = full;
@@ -547,9 +659,9 @@ function recordSpeechPath(record: Omit<SpeechPathRecord, 'seq'>): void {
    * two things, distinguished only by a `partial=true` further along the same
    * line, and the whole family is read by grep.
    */
-  diag('speak', pathEvent(record), {
+  diag("speak", pathEvent(record), {
     path,
-    ...(partial ? { 'said-remainder': text, partial } : { said: text }),
+    ...(partial ? { "said-remainder": text, partial } : { said: text }),
     ...rest,
   });
 }
@@ -569,10 +681,7 @@ export function _resetSpeechPathForTest(): void {
   pathSeq = 0;
 }
 
-export function speak(
-  text: string,
-  opts?: SpeechOpts,
-): void {
+export function speak(text: string, opts?: SpeechOpts): void {
   rememberSpoken(text, opts);
   // BEFORE the e2e short-circuit: the microphone has to know about every
   // utterance the app decides to make, including the ones the test harness
@@ -593,7 +702,13 @@ export function speak(
     // see and the volume boost can reach, while live speechSynthesis is
     // neither, so which one spoke decides whether a line survives road noise
     // and whether the car even knows the app is talking.
-    recordSpeechPath({ path: 'clip', text, for: text, tag: opts?.tag, chosen: true });
+    recordSpeechPath({
+      path: "clip",
+      text,
+      for: text,
+      tag: opts?.tag,
+      chosen: true,
+    });
     announceToMediaSession(text);
     void playClipsResumable(text, {
       interrupt: opts?.interrupt,
@@ -606,20 +721,20 @@ export function speak(
       // this settles after a cancel too, and the screen change that
       // cancelled it has just released the hold -- taking one here left the
       // silent loop running on Settings.
-      reassertAudioFocus('after-speech');
+      reassertAudioFocus("after-speech");
       if (played) {
         // THE SETTLED LINE, for the case that worked. `path-chosen` is
         // written before the chain plays and is a guess; without this, a
         // successful clip utterance had no settled record at all and only
         // the failures did -- so counting `speak path` would have counted
         // exactly the utterances that went wrong.
-        recordSpeechPath({ path: 'clip', text, for: text, tag: opts?.tag });
+        recordSpeechPath({ path: "clip", text, for: text, tag: opts?.tag });
         return;
       }
       // A clip chain that broke is the app switching voices MID-UTTERANCE,
       // which is the worst case for the operator and the hardest to notice.
       recordSpeechPath({
-        path: 'clip-failed-to-tts',
+        path: "clip-failed-to-tts",
         text: remainder ?? text,
         for: text,
         tag: opts?.tag,
@@ -636,19 +751,21 @@ export function speak(
       // delivered -- the user heard the opening twice and the good audio was
       // thrown away for nothing. Fall back to the remainder when there is
       // one, and to the whole utterance only when nothing played at all.
-      void speakAsyncLive(remainder ?? text, opts).then(() => reassertAudioFocus('after-speech'));
+      void speakAsyncLive(remainder ?? text, opts).then(() =>
+        reassertAudioFocus("after-speech"),
+      );
     });
     return;
   }
 
   recordSpeechPath({
-    path: 'tts',
+    path: "tts",
     text,
     for: text,
     tag: opts?.tag,
     // The reason it is on the fallback path at all, which is the actionable
     // half: clips off is a setting, no clip is a missing recording.
-    why: isClipsEnabled() ? 'no-clip' : 'clips-off',
+    why: isClipsEnabled() ? "no-clip" : "clips-off",
   });
   // ONE LIVE PATH. This twin had its own `speakLive`, which kept no
   // reference to the utterance and had no watchdog -- and this file's own
@@ -656,7 +773,9 @@ export function speak(
   // their callbacks, so a re-assert hung on `onend` there could never fire.
   // `speakAsyncLive` retains the utterance, settles on a watchdog, writes
   // `tts-end`, and re-asserts the hold when the line is over.
-  void speakAsyncLive(text, opts).then(() => reassertAudioFocus('after-speech'));
+  void speakAsyncLive(text, opts).then(() =>
+    reassertAudioFocus("after-speech"),
+  );
 }
 
 /**
@@ -685,9 +804,9 @@ function announceToMediaSession(text: string): void {
   // `play()` on the silent element will be allowed. Called for every clip
   // utterance and idempotent after the first (audio/audioFocus.ts); a live
   // utterance only re-asserts a hold someone else took (`speakAsync`, below).
-  holdAudioFocus('speech');
-  setNowPlaying(text, (import.meta.env.BASE_URL as string | undefined) ?? '');
-  setPlaybackState('playing');
+  holdAudioFocus("speech");
+  setNowPlaying(text, (import.meta.env.BASE_URL as string | undefined) ?? "");
+  setPlaybackState("playing");
 }
 
 /**
@@ -704,30 +823,32 @@ function announceToMediaSession(text: string): void {
  * rest.
  */
 export function ensureMediaSessionHandlers(): boolean {
-  return initMediaSession({
-    // Routed rather than handled here: only the screen that is up knows what
-    // a direction means to it, and speech.ts must not import React or the
-    // store.
-    forward: () => {
-      invokeWheelCommand('forward');
+  return initMediaSession(
+    {
+      // Routed rather than handled here: only the screen that is up knows what
+      // a direction means to it, and speech.ts must not import React or the
+      // store.
+      forward: () => {
+        invokeWheelCommand("forward");
+      },
+      back: () => {
+        // Repeat is the FALLBACK, not the meaning. A screen that claims the
+        // wheel decides what back does there -- minus one while a count is
+        // being entered, "I missed it" on a self-check. But a press that
+        // reaches no screen at all should still do the most useful thing a
+        // driver could want from it rather than nothing, and that is "say that
+        // again": the app is talking, the driver missed a word, and there is
+        // no drill in the way.
+        // ONE PRESS, ONE LINE. This used to call `invokeWheelCommand`, watch it
+        // write `handled=false why=no-screen-listening`, and then write a
+        // second entry saying `handled=true` -- so the export showed a press
+        // reaching nothing immediately followed by a press reaching something,
+        // for one thumb. The fallback goes in, so the line is written once by
+        // the code that knows the outcome.
+        invokeWheelCommand("back", { by: "repeat-last", run: repeatLast });
+      },
     },
-    back: () => {
-      // Repeat is the FALLBACK, not the meaning. A screen that claims the
-      // wheel decides what back does there -- minus one while a count is
-      // being entered, "I missed it" on a self-check. But a press that
-      // reaches no screen at all should still do the most useful thing a
-      // driver could want from it rather than nothing, and that is "say that
-      // again": the app is talking, the driver missed a word, and there is
-      // no drill in the way.
-      // ONE PRESS, ONE LINE. This used to call `invokeWheelCommand`, watch it
-      // write `handled=false why=no-screen-listening`, and then write a
-      // second entry saying `handled=true` -- so the export showed a press
-      // reaching nothing immediately followed by a press reaching something,
-      // for one thumb. The fallback goes in, so the line is written once by
-      // the code that knows the outcome.
-      invokeWheelCommand('back', { by: 'repeat-last', run: repeatLast });
-    },
-  });
+  );
 }
 
 /* ---------------------------------------------------------------------- */
@@ -735,7 +856,7 @@ export function ensureMediaSessionHandlers(): boolean {
 /* ---------------------------------------------------------------------- */
 
 /** Why a live utterance stopped. Mirrors `ClipEndReason` in clips.ts. */
-export type TtsEndReason = 'ended' | 'error' | 'watchdog' | 'cancelled';
+export type TtsEndReason = "ended" | "error" | "watchdog" | "cancelled";
 
 type PendingSpeech = {
   // Kept even though nothing else reads it: holding the utterance here is
@@ -784,13 +905,16 @@ let pendingSpeeches: PendingSpeech[] = [];
  * `settled` guards it: `onend` after a watchdog, or a cancel racing an `onend`,
  * would otherwise report the same utterance twice with different reasons.
  */
-function settlePendingSpeech(pending: PendingSpeech, reason: TtsEndReason = 'ended'): void {
+function settlePendingSpeech(
+  pending: PendingSpeech,
+  reason: TtsEndReason = "ended",
+): void {
   const idx = pendingSpeeches.indexOf(pending);
   if (idx !== -1) pendingSpeeches.splice(idx, 1);
   clearTimeout(pending.watchdog);
   if (!pending.settled) {
     pending.settled = true;
-    diag('speak', 'tts-end', {
+    diag("speak", "tts-end", {
       reason,
       ms: Date.now() - pending.startedAt,
       said: pending.text,
@@ -813,8 +937,8 @@ function settleAllPendingSpeeches(): void {
     // all -- and interrupting is what every `{interrupt: true}` call does.
     if (!p.settled) {
       p.settled = true;
-      diag('speak', 'tts-end', {
-        reason: 'cancelled',
+      diag("speak", "tts-end", {
+        reason: "cancelled",
         ms: Date.now() - p.startedAt,
         said: p.text,
       });
@@ -830,21 +954,26 @@ const WATCHDOG_PER_CHAR_MS = 90;
 /** Generous, text-length-scaled bound so a lost `onend` can never hang the
  * caller forever. */
 function estimateWatchdogMs(text: string): number {
-  return Math.max(WATCHDOG_FLOOR_MS, WATCHDOG_BASE_MS + text.length * WATCHDOG_PER_CHAR_MS);
+  return Math.max(
+    WATCHDOG_FLOOR_MS,
+    WATCHDOG_BASE_MS + text.length * WATCHDOG_PER_CHAR_MS,
+  );
 }
 
 /** The one live-`speechSynthesis` path, for `speak()` and `speakAsync()`
  * both: used directly when clips are disabled/absent, and as the fallback
  * when a clip lookup misses or playback fails. */
-function speakAsyncLive(
-  text: string,
-  opts?: SpeechOpts,
-): Promise<void> {
+function speakAsyncLive(text: string, opts?: SpeechOpts): Promise<void> {
   if (!isSpeechSupported()) {
     // SAID SO, rather than resolving as though it had spoken. The path record
     // is already written by the caller at this point, so without this line the
     // export claims an utterance on a device with no synthesiser at all.
-    diag('speak', 'tts-end', { reason: 'error', ms: 0, said: text, why: 'unsupported' });
+    diag("speak", "tts-end", {
+      reason: "error",
+      ms: 0,
+      said: text,
+      why: "unsupported",
+    });
     return Promise.resolve();
   }
 
@@ -874,13 +1003,16 @@ function speakAsyncLive(
       const wanted = opts?.voiceURI;
       const voiceSubstituted =
         !!wanted &&
-        wanted !== 'default' &&
+        wanted !== "default" &&
         (!voice || (voice.voiceURI !== wanted && voice.name !== wanted));
 
       const pending: PendingSpeech = {
         utterance,
         resolve,
-        watchdog: setTimeout(() => settlePendingSpeech(pending, 'watchdog'), estimateWatchdogMs(text)),
+        watchdog: setTimeout(
+          () => settlePendingSpeech(pending, "watchdog"),
+          estimateWatchdogMs(text),
+        ),
         text,
         startedAt: Date.now(),
         settled: false,
@@ -890,14 +1022,14 @@ function speakAsyncLive(
       };
       pendingSpeeches.push(pending);
 
-      utterance.onend = () => settlePendingSpeech(pending, 'ended');
-      utterance.onerror = () => settlePendingSpeech(pending, 'error');
+      utterance.onend = () => settlePendingSpeech(pending, "ended");
+      utterance.onerror = () => settlePendingSpeech(pending, "error");
 
       window.speechSynthesis.speak(utterance);
     } catch (e) {
       // Also an ending, and also invisible until now.
-      diag('speak', 'tts-end', {
-        reason: 'error',
+      diag("speak", "tts-end", {
+        reason: "error",
         ms: 0,
         said: text,
         why: e instanceof Error ? e.name : String(e),
@@ -927,10 +1059,7 @@ function speakAsyncLive(
  * after `cancel()` (`cancelSpeech()`/`{interrupt:true}` settle explicitly),
  * and a lost/never-fired `onend` (watchdog timeout settles it anyway).
  */
-export function speakAsync(
-  text: string,
-  opts?: SpeechOpts,
-): Promise<void> {
+export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
   rememberSpoken(text, opts);
   // BEFORE THE E2E SHORT-CIRCUIT, exactly as `speak` does -- and missing here
   // until 2026-09-24. `speak` has notified the microphone since echo
@@ -948,7 +1077,7 @@ export function speakAsync(
   if (isE2eAudioMode()) {
     pushSpeechLog(text, opts);
     const delay = hasWindow() ? window.__e2eSpeechDelayMs : undefined;
-    return typeof delay === 'number' && delay > 0
+    return typeof delay === "number" && delay > 0
       ? new Promise<void>((resolve) => setTimeout(resolve, delay))
       : Promise.resolve();
   }
@@ -959,7 +1088,13 @@ export function speakAsync(
   // protocol produced was invisible in the very log the protocol exists to
   // fill. Two entry points, one decision, one place that writes it down.
   if (isClipsEnabled() && hasClips(text)) {
-    recordSpeechPath({ path: 'clip', text, for: text, tag: opts?.tag, chosen: true });
+    recordSpeechPath({
+      path: "clip",
+      text,
+      for: text,
+      tag: opts?.tag,
+      chosen: true,
+    });
     announceToMediaSession(text);
     return playClipsResumable(text, {
       interrupt: opts?.interrupt,
@@ -975,18 +1110,18 @@ export function speakAsync(
       // the moment a driver presses something. A no-op if the loop is still
       // going; a restart, logged as one, if it lapsed; nothing if the hold
       // was released while the chain was in flight (a cancel settles it).
-      reassertAudioFocus('after-speech');
+      reassertAudioFocus("after-speech");
       if (played) {
         // THE SETTLED LINE, for the case that worked. `path-chosen` is
         // written before the chain plays and is a guess; without this, a
         // successful clip utterance had no settled record at all and only
         // the failures did -- so counting `speak path` would have counted
         // exactly the utterances that went wrong.
-        recordSpeechPath({ path: 'clip', text, for: text, tag: opts?.tag });
+        recordSpeechPath({ path: "clip", text, for: text, tag: opts?.tag });
         return;
       }
       recordSpeechPath({
-        path: 'clip-failed-to-tts',
+        path: "clip-failed-to-tts",
         text: remainder ?? text,
         for: text,
         tag: opts?.tag,
@@ -1002,16 +1137,18 @@ export function speakAsync(
       // chain never got to. This path also drives drill PACING, so repeating
       // the whole utterance here stretched the gap between cards as well as
       // saying the opening twice.
-      return speakAsyncLive(remainder ?? text, opts).then(() => reassertAudioFocus('after-speech'));
+      return speakAsyncLive(remainder ?? text, opts).then(() =>
+        reassertAudioFocus("after-speech"),
+      );
     });
   }
 
   recordSpeechPath({
-    path: 'tts',
+    path: "tts",
     text,
     for: text,
     tag: opts?.tag,
-    why: isClipsEnabled() ? 'no-clip' : 'clips-off',
+    why: isClipsEnabled() ? "no-clip" : "clips-off",
   });
   /**
    * Once a live utterance has settled, put back a hold that lapsed under it.
@@ -1025,7 +1162,9 @@ export function speakAsync(
    * the count drill's narration, and the paused gate's cue, the active media
    * app with no handlers registered.
    */
-  return speakAsyncLive(text, opts).then(() => reassertAudioFocus('after-speech'));
+  return speakAsyncLive(text, opts).then(() =>
+    reassertAudioFocus("after-speech"),
+  );
 }
 
 /**
@@ -1046,7 +1185,7 @@ export function speakAsync(
  * kinds share a frequency -- `speech.test.ts` asserts exactly that, because a
  * duplicate would silently undo the distinction this table exists for.
  */
-export type ChimeKind = 'good' | 'bad' | 'attention' | 'mark' | 'blocked';
+export type ChimeKind = "good" | "bad" | "attention" | "mark" | "blocked";
 
 const CHIME_FREQUENCY_HZ: Record<ChimeKind, number> = {
   good: 880,
@@ -1089,7 +1228,10 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
    * correlated the run-up with the independent variable and left no trace of
    * it whatsoever.
    */
-  diag('speak', 'chime', { kind, ...(opts?.volume !== undefined ? { volume: opts.volume } : {}) });
+  diag("speak", "chime", {
+    kind,
+    ...(opts?.volume !== undefined ? { volume: opts.volume } : {}),
+  });
 
   if (isE2eAudioMode()) {
     // Volume carried too: a chime that still sounds while the app is
@@ -1118,11 +1260,12 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
     // REPORTED, not assumed. A context that is still not running after the
     // resume produces no sound, and that has to leave a trace rather than
     // looking like a chime nobody asked for.
-    if (ctx.state !== 'running') diag('speak', 'chime-suspended', { kind, state: ctx.state });
+    if (ctx.state !== "running")
+      diag("speak", "chime-suspended", { kind, state: ctx.state });
 
     const oscillator = ctx.createOscillator();
     const gain = ctx.createGain();
-    oscillator.type = 'sine';
+    oscillator.type = "sine";
     oscillator.frequency.value = CHIME_FREQUENCY_HZ[kind];
 
     const now = ctx.currentTime;

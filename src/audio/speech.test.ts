@@ -134,6 +134,94 @@ describe('pickBestVoice', () => {
     expect(pickBestVoice([albert, badNews, zarvox, neutral])).toBe(neutral);
   });
 
+  /**
+   * THE VOICE THE CAR ACTUALLY GOT, 2026-09-29: `voice=Bahh`, a novelty
+   * voice that bleats instead of speaking. Reported from the driver's seat
+   * as "the voice it was using was fucked".
+   *
+   * It was not a glitch, it was the guaranteed outcome. Every en-US voice on
+   * iOS scores the same -- 1000 for the language, 0 for the name -- so the
+   * tie-break decided it, and the tie-break is alphabetical. `Albert` and
+   * `Bad News` were penalised; the next name in the alphabet is `Bahh`. The
+   * penalty list named three of Apple's novelty voices and Apple ships
+   * about twenty.
+   *
+   * The list below is iOS 18's en-US set.
+   */
+  const IOS_EN_US = [
+    'Albert', 'Bad News', 'Bahh', 'Bells', 'Boing', 'Bubbles', 'Cellos',
+    'Fred', 'Good News', 'Jester', 'Junior', 'Kathy', 'Organ', 'Ralph',
+    'Samantha', 'Superstar', 'Trinoids', 'Whisper', 'Wobble', 'Zarvox',
+  ];
+
+  it('does not read the drill out in a novelty voice on an iPhone', () => {
+    const voices = IOS_EN_US.map((name) =>
+      fakeVoice({ name, default: name === 'Samantha' }),
+    );
+
+    const picked = pickBestVoice(voices);
+
+    expect(picked?.name, 'the car was read to in a joke voice').toBe('Samantha');
+  });
+
+  /**
+   * ...AND NOT BECAUSE `Samantha` IS SPELLED INTO THE CODE. The platform
+   * says which voice it considers default and the heuristic ignored it,
+   * guessing from name substrings instead while the answer was on the
+   * object. A denylist of joke voices is a losing game -- one unlisted name
+   * that sorts early takes the drill -- so the default is what breaks a tie,
+   * and the list is only there for platforms that nominate nothing.
+   */
+  /**
+   * WHAT HAPPENS WHEN THE PHONE NOMINATES NOTHING, which is the case the
+   * first version of this fix never considered and could not survive.
+   *
+   * Weighting `default` only helps if some voice reports it, and nothing in
+   * this app has ever logged whether that iPhone does. With no nomination
+   * every en-US voice ties again, the alphabetical tie-break decides again,
+   * and from the real iOS list the winner was `Fred` -- the classic robotic
+   * Apple voice, unlisted because the denylist was built for the NOVELTY
+   * voices. Same bug as `Bahh`, one letter further down the alphabet.
+   *
+   * So the platform's nomination cannot be the only safeguard, and a denylist
+   * cannot be either: this is the second name that walked through it. A small
+   * allowlist of the voices Apple ships for actual speech carries the
+   * fallback instead, ranked under a nomination and over a plain name.
+   */
+  it('does not fall back to a robotic voice when the phone nominates nothing', () => {
+    const voices = IOS_EN_US.map((name) => fakeVoice({ name }));
+
+    const picked = pickBestVoice(voices);
+
+    expect(picked?.name, 'the alphabet picked the voice again').toBe('Samantha');
+  });
+
+  it('lets the platform break a tie with its own default voice', () => {
+    const plain = fakeVoice({ name: 'Aaa Plain' });
+    const chosen = fakeVoice({ name: 'Zzz Chosen', default: true });
+
+    expect(pickBestVoice([plain, chosen])).toBe(chosen);
+  });
+
+  it('still prefers a genuinely better voice over the platform default', () => {
+    const dflt = fakeVoice({ name: 'Samantha', default: true });
+    const premium = fakeVoice({ name: 'Google US English' });
+
+    expect(pickBestVoice([dflt, premium])).toBe(premium);
+  });
+
+  it('ranks every one of Apple’s novelty voices below a plain voice', () => {
+    const plain = fakeVoice({ name: 'Zzz Plain Voice' });
+    for (const name of [
+      'Bahh', 'Bells', 'Boing', 'Bubbles', 'Cellos', 'Jester', 'Organ',
+      'Superstar', 'Trinoids', 'Whisper', 'Wobble', 'Good News', 'Albert',
+      'Bad News', 'Zarvox',
+    ]) {
+      const novelty = fakeVoice({ name });
+      expect(pickBestVoice([novelty, plain]), `${name} beat a plain voice`).toBe(plain);
+    }
+  });
+
   it('scores eSpeak (any case) below a neutral voice', () => {
     const espeak = fakeVoice({ name: 'espeak-ng English' });
     const neutral = fakeVoice({ name: 'Samantha' });
