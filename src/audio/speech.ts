@@ -118,14 +118,7 @@ export function isSpeechSupported(): boolean {
 
 /** Available voices, or [] when unsupported. */
 export function listVoices(): { name: string; voiceURI: string }[] {
-  if (!isSpeechSupported()) return [];
-  try {
-    return window.speechSynthesis
-      .getVoices()
-      .map((v) => ({ name: v.name, voiceURI: v.voiceURI }));
-  } catch {
-    return [];
-  }
+  return getRawVoices().map((v) => ({ name: v.name, voiceURI: v.voiceURI }));
 }
 
 /* ---------------------------------------------------------------------- */
@@ -290,13 +283,78 @@ export function pickBestVoice(
   return best;
 }
 
-function getRawVoices(): SpeechSynthesisVoice[] {
-  if (!isSpeechSupported()) return [];
+/**
+ * THE VOICE LIST, ONCE SEEN, IS KEPT.
+ *
+ * `getVoices()` is reached from exactly one place on the live path --
+ * `resolveVoice` -- and clips never touch `speechSynthesis` at all. So on a
+ * session that runs on clips until something falls back, the first fallback
+ * utterance was also the first time the list had ever been asked for, and
+ * WebKit populates it asynchronously on that first access. The utterance was
+ * therefore built against an empty list and died with no `end` event.
+ *
+ * Run `vfktl7` in the car on 2026-09-29 is the evidence: five live
+ * utterances, one sentence, one voice, the FIRST ending
+ * `reason=watchdog ms=4615` and the next four ending normally at ~1.1s. Same
+ * text, same voice, same route, 43 seconds into the page load -- so elapsed
+ * time does not explain it and "first access" does.
+ */
+let voiceCache: SpeechSynthesisVoice[] = [];
+let voicesSubscribed = false;
+
+/**
+ * Open the voice list early and keep it warm, so no drill line is ever the
+ * call that opens it. Idempotent, never throws, and safe to call often: it is
+ * called at boot and again on every clip utterance, because iOS may not
+ * populate the list until a user gesture has happened and a clip is the first
+ * gesture-driven audio in any session.
+ */
+export function primeVoices(): void {
   try {
-    return window.speechSynthesis.getVoices();
+    if (!isSpeechSupported()) return;
+    const synth = window.speechSynthesis;
+    const seen = synth.getVoices();
+    if (seen.length > 0) voiceCache = seen;
+    if (!voicesSubscribed && typeof synth.addEventListener === "function") {
+      // Marked BEFORE the call, so a throwing addEventListener cannot leave
+      // this retrying on every clip for the life of the page.
+      voicesSubscribed = true;
+      synth.addEventListener("voiceschanged", () => {
+        try {
+          const list = window.speechSynthesis.getVoices();
+          if (list.length > 0) voiceCache = list;
+        } catch {
+          /* the late list is an optimisation; never let it throw into an event */
+        }
+      });
+    }
   } catch {
-    return [];
+    /* a voice inventory is a diagnostic: it must never break boot or a clip */
   }
+}
+
+export function _resetVoiceCacheForTest(): void {
+  voiceCache = [];
+  voicesSubscribed = false;
+}
+
+function getRawVoices(): SpeechSynthesisVoice[] {
+  try {
+    if (isSpeechSupported()) {
+      const live = window.speechSynthesis.getVoices();
+      // A NON-EMPTY live list always wins: the platform may add voices, and
+      // the cache must not pin an early short list forever.
+      if (live.length > 0) {
+        voiceCache = live;
+        return live;
+      }
+    }
+  } catch {
+    /* fall through to whatever was seen last */
+  }
+  // EMPTY DOES NOT ERASE. WebKit returns [] transiently, and a voice chosen
+  // from [] is no voice at all -- which is the watchdog this exists to stop.
+  return voiceCache;
 }
 
 /**
@@ -791,6 +849,12 @@ export function speak(text: string, opts?: SpeechOpts): void {
  */
 function announceToMediaSession(text: string): void {
   ensureMediaSessionHandlers();
+  // ...AND OPEN THE VOICE LIST, here, where a clip is playing.
+  //
+  // This is the earliest gesture-driven moment in any session, and it always
+  // precedes the first live fallback -- which is the utterance that used to
+  // die because it was itself the first `getVoices()` call. Idempotent.
+  primeVoices();
   // Hold the media slot BETWEEN clips, not merely during one.
   //
   // Registering handlers is not what makes the wheel work: a phone routes a

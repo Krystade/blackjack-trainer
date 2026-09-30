@@ -3,6 +3,17 @@ import { createRoot } from 'react-dom/client';
 import App from './ui/App.tsx';
 import { startUpdateWatch } from './updateCheck.ts';
 import { fieldTestRunIsLive } from './diag/fieldTestRun.ts';
+import { primeVoices } from './audio/speech.ts';
+
+// OPEN THE VOICE LIST BEFORE ANYTHING WANTS TO SPEAK.
+//
+// WebKit populates `getVoices()` asynchronously on first access, so whichever
+// utterance asks first is spoken against an empty list and dies silently --
+// which in the car was always the first live line of the session (see
+// `primeVoices` in audio/speech.ts for the run that proved it). Priming here
+// costs nothing and takes the drill out of that position; speech.ts primes
+// again on the first clip, because iOS may withhold the list until a gesture.
+primeVoices();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

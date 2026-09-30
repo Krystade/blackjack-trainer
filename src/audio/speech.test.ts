@@ -4,6 +4,7 @@ import {
   getLastSpoken, repeatLast, _resetLastSpokenForTest, _resetSharedAudioContextForTest,
   lastSpeechPath, _resetSpeechPathForTest,
   setSpeechActivityListener,
+  primeVoices, _resetVoiceCacheForTest,
 } from './speech';
 import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 
@@ -1064,5 +1065,139 @@ describe('speak tts-end — how a live utterance finished', () => {
     expect(synth.spoken).toHaveLength(1);
 
     expect(readDiagnosticLog().filter((e) => e.event === 'tts-end')).toHaveLength(1);
+  });
+});
+
+/**
+ * THE FIRST LIVE UTTERANCE OF A PAGE LOAD FAILED SILENTLY, every time, and
+ * the reason was that it was also the first `getVoices()` call.
+ *
+ * `getRawVoices` is reached from exactly one place -- `resolveVoice`, on the
+ * live-TTS path -- and clips never touch `speechSynthesis` at all. So on a
+ * phone whose whole session is clips until something falls back, the first
+ * fallback utterance is the first time the voice list has ever been asked
+ * for. WebKit populates it asynchronously on that first access and fires
+ * `voiceschanged` when it is ready, so the utterance is constructed against
+ * an empty list and dies without an `end` event.
+ *
+ * Observed in the car on 2026-09-29, run `vfktl7`: five live utterances, all
+ * the same sentence, all Samantha. The FIRST ended `reason=watchdog ms=4615`
+ * and the next four ended normally at ~1.1s. Same text, same voice, same
+ * route -- the only variable that moved was which utterance it was. Elapsed
+ * time does not explain it (that first one was 43s into the page load), and
+ * "first access" does.
+ *
+ * So the list is primed at boot and kept warm by the event, and a drill
+ * utterance is never the thing that opens it.
+ */
+describe('the voice list is warm before the first drill line', () => {
+  beforeEach(() => {
+    _resetVoiceCacheForTest();
+  });
+
+  afterEach(() => {
+    _resetVoiceCacheForTest();
+    delete (globalThis as any).window;
+  });
+
+  it('asks for the voice list without anything being spoken', () => {
+    let calls = 0;
+    (globalThis as any).window = {
+      location: { search: '' },
+      speechSynthesis: {
+        getVoices: () => {
+          calls += 1;
+          return [];
+        },
+        addEventListener: () => {},
+        speak: () => {},
+        cancel: () => {},
+      },
+    };
+
+    primeVoices();
+
+    expect(calls, 'nothing opened the voice list, so the first drill line will').toBeGreaterThan(0);
+  });
+
+  it('subscribes to voiceschanged so the late list is not missed', () => {
+    const events: string[] = [];
+    (globalThis as any).window = {
+      location: { search: '' },
+      speechSynthesis: {
+        getVoices: () => [],
+        addEventListener: (name: string) => events.push(name),
+        speak: () => {},
+        cancel: () => {},
+      },
+    };
+
+    primeVoices();
+
+    expect(events).toContain('voiceschanged');
+  });
+
+  /**
+   * The payload of the whole fix: once the list has been seen, a LATER
+   * `getVoices()` that comes back empty must not erase it. WebKit returns []
+   * transiently -- that is the reported shape of the bug -- and a voice
+   * picked from [] is no voice at all, which is what produced the watchdog.
+   */
+  it('keeps the voices it has already seen when a later call comes back empty', () => {
+    let list: any[] = [];
+    const handlers: Record<string, () => void> = {};
+    (globalThis as any).window = {
+      location: { search: '' },
+      speechSynthesis: {
+        getVoices: () => list,
+        addEventListener: (name: string, fn: () => void) => {
+          handlers[name] = fn;
+        },
+        speak: () => {},
+        cancel: () => {},
+      },
+    };
+
+    primeVoices();
+    expect(listVoices()).toEqual([]);
+
+    // The list arrives, late, exactly as iOS delivers it.
+    list = [{ name: 'Samantha', voiceURI: 'com.apple.Samantha', lang: 'en-US', default: true }];
+    handlers['voiceschanged']?.();
+    expect(listVoices().map((v) => v.name)).toEqual(['Samantha']);
+
+    // ...and now it goes empty again under us.
+    list = [];
+    expect(
+      listVoices().map((v) => v.name),
+      'a transient empty list erased the voices and the next line speaks with none',
+    ).toEqual(['Samantha']);
+  });
+
+  it('does not invent voices on a platform that genuinely has none', () => {
+    (globalThis as any).window = {
+      location: { search: '' },
+      speechSynthesis: {
+        getVoices: () => [],
+        addEventListener: () => {},
+        speak: () => {},
+        cancel: () => {},
+      },
+    };
+
+    primeVoices();
+
+    expect(listVoices()).toEqual([]);
+  });
+
+  it('survives a speechSynthesis that throws on access', () => {
+    (globalThis as any).window = {
+      location: { search: '' },
+      get speechSynthesis(): never {
+        throw new Error('nope');
+      },
+    };
+
+    expect(() => primeVoices()).not.toThrow();
   });
 });
