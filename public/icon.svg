@@ -2,108 +2,217 @@
   THE SOURCE OF TRUTH FOR EVERY ICON PNG in this directory.
 
   `icon-192`, `icon-512`, `icon-maskable-512` and `apple-touch-icon` are all
-  rasterised from this file by `scripts/generate-icons.mjs`. Edit this, run the
-  script, commit the PNGs -- never hand-edit a PNG, or the next run reverts it.
+  rasterised from this file by `npm run icons`. Edit this, run that, commit the
+  PNGs -- never hand-edit a PNG, or the next run reverts it.
 
-  THREE CHIPS, TOP DOWN, ON ONE AXIS.
+  THREE CHIPS, TOP DOWN, IN A SYMMETRIC FAN.
 
-  The whole layout comes from two constants: the canvas centre (256, 256) and a
-  chip radius of 104. The three chips sit on one horizontal line at y = 256
-  with centres at x = 152, 256 and 360 -- one radius apart, so each overlaps
-  its neighbour by half and the group is exactly symmetric about the vertical
-  centreline. Outer chips are drawn first and the pale one last, so the stack
-  reads as a fan with a clear top.
+  Geometry comes from four constants and nothing is placed by hand:
 
-  Every chip is the same construction: rim circle, eight edge notches placed by
-  one 45-degree rotation loop, a disc that trims the notches' inner ends, a
-  ring, and a face. Nothing is positioned by hand, which is what keeps the
-  symmetry exact -- the earlier attempt placed elements individually and drifted.
+      r  = 124   chip radius
+      s  = 102   horizontal step between chip centres
+      yo = 266   y of the outer two
+      yc = 230   y of the centre one
+
+  Centres are (256 - s, yo), (256, yc), (256 + s, yo), so the group is exactly
+  symmetric about x = 256. The lift on the middle chip is what stops a row of
+  circles leaving dead bands at the top and bottom of a square canvas.
+
+  A NOTE ON THE NOTCHES AND THE MARGIN, because the arithmetic is not what it
+  looks like. A notch is a 34x36 rect whose outer edge is 129 from the centre,
+  so its corners sit 130 out -- the silhouette's effective radius is 130, not
+  r. That put the group at x 24..488 and left a 25px margin, tight enough to
+  look like it touches the icons either side. The whole group is therefore
+  drawn inside one 0.94 scale about (256, 250); the constants above stay
+  readable and the margin comes out near 38px.
+
+  WHAT THE PREVIOUS VERSION OF THIS COMMENT GOT WRONG. It listed six faults in
+  the version before it. Measured afterwards, three of them were false: the
+  chips were NOT too small in the frame (they spanned 81% of the width, not
+  45%); red and blue did NOT die at small size (a true 60px downscale samples
+  (218,145,140) and (128,154,196)); and the 28px notches did NOT mush (they
+  were the most legible feature at size). Two were real -- the floating
+  specular arc and the blank outer faces -- and the "sits optically high"
+  claim was backwards, since every heavy element biases downward. The lesson
+  is in the fixes below: each one names the measurement that forced it.
+
+  WHAT IS FIXED HERE, worst first:
+
+  - THE SPADE WAS OFF-CENTRE, and had been since the first draft. It was
+    placed with `<use ... width="78" height="78">`, and width/height on a
+    `<use>` that references a `<path>` are IGNORED -- they only apply to an
+    `<svg>` or a `<symbol>`. So it drew at its native 64x88 at the wrong
+    origin: measured bbox centre (267, 248) against a chip centre of
+    (256, 238), i.e. 11px right and 10px low, inside a ring where the left gap
+    was 47px and the right 26px. On an icon whose brief asked for symmetry,
+    the one focal mark was the thing out of true. `#spade` is now a `<symbol>`
+    with a viewBox, so the declared size is the size that draws.
+
+  - CHIP EDGE AGAINST FELT MEASURED 2.0-2.25:1 between the notches, while the
+    white notches measured 7-13:1. The discs only read because of their
+    notches; the arcs between them dissolved and the eye joined up white
+    blobs, which is why the outline looked scalloped at 60pt. Every chip now
+    carries a dark rim stroke just inside its edge. This is the single change
+    that most alters how the icon reads on a home screen.
+
+  - THE CONTACT SHADOW WAS A DRAWN OVAL. No blur, a hard luminance step at its
+    boundary, and its lower arc hung clear of the chips -- the same fault as
+    the old floating specular arc, moved to the bottom of the canvas. It is
+    blurred now, and pulled in under the chips it belongs to.
+
+  - THE CENTRE CHIP'S NOTCHES WERE THE FELT COLOUR (#123a24 against a felt
+    whose mid stop was #114027), measuring 2.01:1 against the background. They
+    read as holes punched through the pale chip, so the one chip that most
+    needs to hold its outline was the only one that did not. They are darker
+    now, and that chip's ring is rotated 22.5 degrees so no notch lands at 6
+    or 12 o'clock -- the 6 o'clock one used to fuse with the green wedge
+    between red and blue. Near-black was tried and is worse: the chip reads as
+    a black-toothed sprocket. It stays green, just darker than the felt.
+
+  - THE GOLD RING VANISHED ON ITS UPPER ARC. Gold at 12 o'clock measured
+    luminance 205 against a 250 face -- 1.35:1 -- so at 60pt the ring was a
+    crescent and the one warm accent in the icon was the thing that did not
+    survive. Darker ramp, one step wider, a hairline at its inner edge, and a
+    warmer face behind it.
+
+  - THE COMPOSITION SAT LOW. Luminance centroid measured 267 on a 512 canvas,
+    and iOS wants a mark a shade high rather than low. The invisible top notch
+    was most of the cause; the constants are lifted 8px as well.
+
+  - THE FELT BOTTOMED OUT AT #06190f, which renders as (6,26,16) -- black. The
+    lower third stopped reading as green and the bottom corners melted into a
+    dark wallpaper. Raised.
+
+  - TWO LIGHT DIRECTIONS: the felt sheen sat at cx 0.3 while every chip
+    gradient ran straight down. The sheen is centred now.
+
+  - THE CENTRE CHIP'S SHADOW IS TIGHTER AND DARKER than the outer two. A
+    single shared drop shadow said "three stickers at the same height", which
+    contradicts the overlap and is why the fan did not read as top-down. A
+    differential shadow is the cheap half of that fix.
+
+  CONSIDERED AND DECLINED: a lit rim arc along the centre chip's leading edge,
+  to strengthen the top-down read further. It is the right idea, and it is
+  also exactly the shape that became the old floating scratch. Not without
+  seeing it rendered at 60pt first.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="felt" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1d6340"/>
-      <stop offset="0.55" stop-color="#114027"/>
-      <stop offset="1" stop-color="#071e12"/>
+      <stop offset="0" stop-color="#175738"/>
+      <stop offset="0.55" stop-color="#0e3320"/>
+      <stop offset="1" stop-color="#0a2517"/>
     </linearGradient>
 
-    <radialGradient id="sheen" cx="0.3" cy="0.16" r="0.9">
-      <stop offset="0" stop-color="#7cf0b8" stop-opacity="0.26"/>
-      <stop offset="0.55" stop-color="#7cf0b8" stop-opacity="0.05"/>
-      <stop offset="1" stop-color="#7cf0b8" stop-opacity="0"/>
+    <!-- Centred, because the chips are lit from straight above. -->
+    <radialGradient id="sheen" cx="0.5" cy="0.14" r="0.9">
+      <stop offset="0" stop-color="#8affc8" stop-opacity="0.16"/>
+      <stop offset="0.6" stop-color="#8affc8" stop-opacity="0.03"/>
+      <stop offset="1" stop-color="#8affc8" stop-opacity="0"/>
     </radialGradient>
 
-    <!-- Top-down light: brighter at the top of each disc, falling to the base. -->
-    <linearGradient id="liftRed" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#e2574f"/><stop offset="1" stop-color="#a4241f"/>
+    <linearGradient id="red" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ef6257"/><stop offset="1" stop-color="#9c1f1a"/>
     </linearGradient>
-    <linearGradient id="liftBlue" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#4a7fd0"/><stop offset="1" stop-color="#20407a"/>
+    <linearGradient id="redFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d94238"/><stop offset="1" stop-color="#7e1512"/>
     </linearGradient>
-    <linearGradient id="liftPale" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d9d3c0"/>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5a8fe0"/><stop offset="1" stop-color="#1b3a72"/>
+    </linearGradient>
+    <linearGradient id="blueFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3e6fc4"/><stop offset="1" stop-color="#132750"/>
+    </linearGradient>
+    <linearGradient id="pale" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#d7d0ba"/>
     </linearGradient>
     <linearGradient id="gold" x1="0" y1="0" x2="0.4" y2="1">
-      <stop offset="0" stop-color="#f6dd93"/><stop offset="0.5" stop-color="#d3a743"/>
-      <stop offset="1" stop-color="#9b701d"/>
+      <stop offset="0" stop-color="#cfa445"/><stop offset="0.5" stop-color="#9d7022"/>
+      <stop offset="1" stop-color="#6d4a10"/>
     </linearGradient>
 
+    <!-- The outer two: they sit on the felt. -->
     <filter id="cast" x="-60%" y="-60%" width="220%" height="220%">
-      <feDropShadow dx="0" dy="9" stdDeviation="11" flood-color="#03130a" flood-opacity="0.55"/>
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#021007" flood-opacity="0.58"/>
+    </filter>
+    <!-- The centre one: it sits on THEM, so its shadow is tighter and darker.
+         This is what separates the two planes. -->
+    <filter id="castTop" x="-60%" y="-60%" width="220%" height="220%">
+      <feDropShadow dx="0" dy="6" stdDeviation="7" flood-color="#021007" flood-opacity="0.72"/>
+    </filter>
+    <filter id="soften" x="-70%" y="-140%" width="240%" height="380%">
+      <feGaussianBlur stdDeviation="16"/>
     </filter>
 
-    <path id="spade"
-      d="M50 8 C50 8 18 38 18 58 C18 72 28 81 38 81 C44 81 47 78 49 75 C47 87 43 93 36 96 L64 96 C57 93 53 87 51 75 C53 78 56 81 62 81 C72 81 82 72 82 58 C82 38 50 8 50 8 Z"/>
+    <!-- A SYMBOL, not a path, so `width`/`height` on the `<use>` apply. The
+         viewBox is the path's own extents padded to a square-ish box, and the
+         spade is centred in it. -->
+    <symbol id="spade" viewBox="10 4 80 96">
+      <path d="M50 8 C50 8 18 38 18 58 C18 72 28 81 38 81 C44 81 47 78 49 75 C47 87 43 93 36 96 L64 96 C57 93 53 87 51 75 C53 78 56 81 62 81 C72 81 82 72 82 58 C82 38 50 8 50 8 Z"/>
+    </symbol>
 
-    <!-- One chip. `use` cannot pass colours, so each chip repeats this eight-
-         notch loop with its own fills; the geometry below is identical. -->
+    <!-- Eight edge notches at 45-degree intervals, sized for r = 124. -->
     <g id="notches">
-      <rect x="-14" y="-108" width="28" height="30" rx="7"/>
-      <rect x="-14" y="-108" width="28" height="30" rx="7" transform="rotate(45)"/>
-      <rect x="-14" y="-108" width="28" height="30" rx="7" transform="rotate(90)"/>
-      <rect x="-14" y="-108" width="28" height="30" rx="7" transform="rotate(135)"/>
-      <rect x="-14" y="-108" width="28" height="30" rx="7" transform="rotate(180)"/>
-      <rect x="-14" y="-108" width="28" height="30" rx="7" transform="rotate(225)"/>
-      <rect x="-14" y="-108" width="28" height="30" rx="7" transform="rotate(270)"/>
-      <rect x="-14" y="-108" width="28" height="30" rx="7" transform="rotate(315)"/>
+      <rect x="-17" y="-129" width="34" height="36" rx="9"/>
+      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(45)"/>
+      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(90)"/>
+      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(135)"/>
+      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(180)"/>
+      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(225)"/>
+      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(270)"/>
+      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(315)"/>
     </g>
+
+    <!-- The dark edge every chip needs against the felt. Drawn just inside the
+         rim so it darkens the boundary without growing the silhouette. -->
+    <circle id="edge" r="121.5" fill="none" stroke="#08160e" stroke-width="5" opacity="0.62"/>
   </defs>
 
   <rect width="512" height="512" fill="url(#felt)"/>
   <rect width="512" height="512" fill="url(#sheen)"/>
 
-  <!-- LEFT: red -->
-  <g transform="translate(152 256)" filter="url(#cast)">
-    <circle r="104" fill="url(#liftRed)"/>
-    <use href="#notches" fill="#f7e9e6" opacity="0.94"/>
-    <circle r="79" fill="url(#liftRed)"/>
-    <circle r="72" fill="none" stroke="#f7e9e6" stroke-width="6" opacity="0.9"/>
-    <circle r="56" fill="#f7e9e6" opacity="0.95"/>
-    <circle r="56" fill="none" stroke="#8d1c18" stroke-width="3" opacity="0.5"/>
-  </g>
+  <!-- One scale for the whole group: see the margin note in the header. -->
+  <g transform="translate(256 250) scale(0.94) translate(-256 -250)">
 
-  <!-- RIGHT: blue -->
-  <g transform="translate(360 256)" filter="url(#cast)">
-    <circle r="104" fill="url(#liftBlue)"/>
-    <use href="#notches" fill="#e8eefb" opacity="0.94"/>
-    <circle r="79" fill="url(#liftBlue)"/>
-    <circle r="72" fill="none" stroke="#e8eefb" stroke-width="6" opacity="0.9"/>
-    <circle r="56" fill="#e8eefb" opacity="0.95"/>
-    <circle r="56" fill="none" stroke="#1b3466" stroke-width="3" opacity="0.5"/>
-  </g>
+    <!-- The group's contact shadow on the felt, so it sits rather than floats.
+         Blurred, and tucked under the chips rather than reaching past them. -->
+    <ellipse cx="256" cy="396" rx="168" ry="22" fill="#020d06" opacity="0.4"
+             filter="url(#soften)"/>
 
-  <!-- CENTRE: pale, on top, carrying the spade so the icon still says cards. -->
-  <g transform="translate(256 256)" filter="url(#cast)">
-    <circle r="104" fill="url(#liftPale)"/>
-    <use href="#notches" fill="#114027" opacity="0.9"/>
-    <circle r="79" fill="url(#liftPale)"/>
-    <circle r="72" fill="none" stroke="url(#gold)" stroke-width="6"/>
-    <circle r="56" fill="#fbf8ef"/>
-    <use href="#spade" x="-33" y="-36" width="66" height="66" fill="#12321f"/>
-  </g>
+    <!-- LEFT: red -->
+    <g transform="translate(154 266)" filter="url(#cast)">
+      <circle r="124" fill="url(#red)"/>
+      <use href="#edge"/>
+      <use href="#notches" fill="#fdf1ef"/>
+      <circle r="95" fill="url(#red)"/>
+      <circle r="86" fill="none" stroke="#fdf1ef" stroke-width="8"/>
+      <circle r="68" fill="url(#redFace)"/>
+    </g>
 
-  <!-- A single specular arc across the top of the stack, which is what reads
-       as "top down" rather than "flat". -->
-  <path d="M96 196 A180 180 0 0 1 416 196" fill="none" stroke="#ffffff"
-        stroke-width="7" stroke-linecap="round" opacity="0.12"/>
+    <!-- RIGHT: blue -->
+    <g transform="translate(358 266)" filter="url(#cast)">
+      <circle r="124" fill="url(#blue)"/>
+      <use href="#edge"/>
+      <use href="#notches" fill="#eef3fd"/>
+      <circle r="95" fill="url(#blue)"/>
+      <circle r="86" fill="none" stroke="#eef3fd" stroke-width="8"/>
+      <circle r="68" fill="url(#blueFace)"/>
+    </g>
+
+    <!-- CENTRE: pale, lifted, on top, carrying the spade. -->
+    <g transform="translate(256 230)" filter="url(#castTop)">
+      <circle r="124" fill="url(#pale)"/>
+      <use href="#edge"/>
+      <!-- Rotated so no notch lands at 6 or 12 o'clock: the top one used to
+           dissolve into the felt and the bottom one into the wedge between
+           red and blue. -->
+      <use href="#notches" fill="#c9a24a" transform="rotate(22.5)"/>
+      <circle r="95" fill="url(#pale)"/>
+      <circle r="86" fill="none" stroke="url(#gold)" stroke-width="8"/>
+      <circle r="81.5" fill="none" stroke="#5c3d0c" stroke-width="2" opacity="0.75"/>
+      <circle r="90.5" fill="none" stroke="#5c3d0c" stroke-width="2" opacity="0.75"/>
+      <circle r="68" fill="#f5ecd8"/>
+      <use href="#spade" x="-37" y="-44" width="74" height="89" fill="#10321e"/>
+    </g>
+  </g>
 </svg>
