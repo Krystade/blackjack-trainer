@@ -311,7 +311,10 @@ export function FieldTest({
       step: 'lock-probe',
       classification: marker.hiddenAt === undefined ? 'unloaded-no-hidden' : 'frozen-unloaded',
       onStepAt: marker.onStepAt,
-      ...(marker.hiddenAt === undefined ? {} : { hiddenAt: marker.hiddenAt }),
+      // Plainly: `diag` drops undefined detail values itself
+      // (`diagnosticLog.ts`, and a test of its own says so), so the key is
+      // simply absent on the verdict that has no `hiddenAt`.
+      hiddenAt: marker.hiddenAt,
       hiddenSession: marker.session,
     });
     setFieldTestLockProbe(undefined);
@@ -527,11 +530,44 @@ function StartGate({
   // the next tap anywhere near it discarded the run. A two-tap guard means
   // two taps together, not two taps ever.
   useArmedFor(confirmRestart, setConfirmRestart);
-  const resumable = run.stepIndex > 0;
+  /**
+   * A RUN IS RESUMABLE BECAUSE IT EXISTS, not because the pointer has moved.
+   *
+   * This read `run.stepIndex > 0`, so a run paused, killed or reloaded on step
+   * ONE came back to a gate whose only button was Start -- which is a two-tap
+   * discard of that run's answers. Step one is where a leg is most likely to
+   * be interrupted (it is the step the operator is on while still getting the
+   * car into the condition), and `route-1` is the first cell of the block the
+   * whole protocol is a comparison against.
+   *
+   * A run that somebody ENDED is not resumable on that basis -- only on its
+   * position, which is the older rule and is kept for a mis-tapped Finish (see
+   * `interrupted`). Otherwise starting the next leg after finishing one became
+   * a two-tap discard of a run that was already over.
+   *
+   * `stepIndex > 0` is also what reads a run stored by a build from before
+   * `runId` existed.
+   */
+  const resumable = run.stepIndex > 0 || (run.runId !== undefined && run.endedAt === undefined);
+  /**
+   * ...AND WHETHER STARTING OVER COSTS ANYTHING IS A DIFFERENT QUESTION.
+   *
+   * The confirm was gated on `resumable` too, so widening that put a two-tap
+   * guard in front of Start for a run sitting on step 1 with nothing answered
+   * -- and the second tap's own label read "Tap again to go back to step 1 of
+   * 23" on a run already on step 1 of 23. A confirmation that names nothing
+   * teaches the operator to tap through confirmations, on the screen where the
+   * one real one costs a whole leg.
+   *
+   * The stamps are counted as well as the position: answering `route-1` and
+   * tapping Back leaves a stamp at index 0.
+   */
+  const canLose = run.stepIndex > 0 || countStampedSteps(run.stamps, run.condition) > 0;
   /**
    * ...AND NOBODY ENDED IT. The Resume button stays on any run with a
-   * position -- it is there for a mis-tapped Finish and that is worth keeping
-   * -- but the spoken cue is a different claim. "The field test is paused"
+   * position, and on any run still going (see `resumable`) -- it is there for
+   * a mis-tapped Finish and that is worth keeping -- but the spoken cue is a
+   * different claim. "The field test is paused"
    * said out loud, to someone who tapped Finish twice on purpose thirty
    * seconds ago, on a screen designed to be used without looking, is the app
    * being wrong about the one thing it is telling them.
@@ -621,7 +657,7 @@ function StartGate({
         Finish. Without it the only button was Start, which resets to step one
         and drops every stamp.
       */}
-      {run.stepIndex > 0 && (
+      {resumable && (
         <button
           type="button"
           className="fieldtest-stamp fieldtest-good"
@@ -714,7 +750,7 @@ function StartGate({
         }
         data-testid="fieldtest-start"
         onClick={() => {
-          if (!resumable || confirmRestart) {
+          if (!canLose || confirmRestart) {
             onStart();
             return;
           }
@@ -722,7 +758,7 @@ function StartGate({
           chime('attention');
         }}
       >
-        {!resumable
+        {!canLose
           ? `Start — ${fieldTestStepCount({ condition: run.condition })} steps`
           : confirmRestart
             ? // NAMES WHAT IS ACTUALLY LOST. A run skipped through has nothing
@@ -2289,6 +2325,12 @@ function RunningTest({
   );
   // WRITTEN BACK TO THE RUN, after the render rather than during it, so a
   // Pause/Resume or a reload inside the after block keeps the clock.
+  //
+  // ...AND ON EVERY RENDER, with no dependency array, which is what makes the
+  // development double-mount harmless: React runs a commit's cleanups before
+  // any of its creates, so the unmount save above fires between the two passes
+  // and writes a close time the microphone has not reached -- and this, having
+  // no deps, puts back what the render decided on the very next one.
   useEffect(() => {
     setFieldTestMicClosedAt(micClosedAtRef.current);
   });

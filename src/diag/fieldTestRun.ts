@@ -116,25 +116,14 @@ export interface FieldTestRun {
    */
   answerByVoice?: boolean;
   /**
-   * The page went hidden on the lock probe, under this diagnostic session,
-   * and has not come back.
+   * The lock probe's marker: the operator is ON the step, and -- once the
+   * page goes hidden -- when that happened.
    *
    * ON THE RUN RECORD RATHER THAN IN A REF because the case it exists for is
    * the page dying. The probe asks the operator to lock the phone; if iOS
    * kills the page under the lock there is nobody left to score it, and the
    * next boot finding this marker with a session id that is not its own IS
-   * the result (`frozen-unloaded`).
-   *
-   * SET WHEN THE PAGE GOES HIDDEN, not when the step is reached. The first
-   * build set it on arrival and cleared it only on a hidden/visible cycle, so
-   * leaving the step any other way -- Missed, Finish, Back, a force-quit
-   * between legs, the update check's reload -- left it behind, and the next
-   * launch scored a kill that never happened. Cleared on the way back to
-   * visible and when the step is left.
-   */
-  /**
-   * The lock probe's marker: the operator is ON the step, and -- once the
-   * page goes hidden -- when that happened.
+   * the result.
    *
    * ARMED ON ARRIVAL, not on `hidden`, because the event the probe waits for
    * is one iOS can fail to deliver: a page killed under a lock that was
@@ -507,7 +496,14 @@ export function fieldTestRunIsLive(now = Date.now()): boolean {
   // drive ended -- on a phone that has just been put down, which is the one
   // moment reloading for an update costs nothing at all.
   if (readFieldTestRun().endedAt !== undefined) return false;
-  return age !== undefined && age < RUN_LIVE_MS && readFieldTestRun().stepIndex > 0;
+  // A RUN ON STEP ONE IS IN THE MIDDLE OF THE PROTOCOL, which is what this
+  // asks. It read `stepIndex > 0` on the reasoning that a reload there has
+  // nothing to hand back -- true of the POSITION, and the wrong question: step
+  // one is `route-1`, the first cell of the block every other block is
+  // compared against, and it is the step the operator sits on while getting
+  // the car into the condition. Leaving the update check free to reload the
+  // app exactly there is the interruption most likely to happen.
+  return age !== undefined && age < RUN_LIVE_MS && readFieldTestRun().runId !== undefined;
 }
 
 /**
@@ -525,7 +521,10 @@ export function fieldTestRunIsResumable(now = Date.now()): boolean {
   // and that made every completed run hijack the app's opening screen for two
   // hours and speak "The field test is paused" at somebody who had finished it.
   if (readFieldTestRun().endedAt !== undefined) return false;
-  return age !== undefined && age < RUN_RESUMABLE_MS && readFieldTestRun().stepIndex > 0;
+  // Step one included, for the reason `fieldTestRunIsLive` gives: a run
+  // interrupted before its first answer came back to Home, and the way back
+  // in is three taps through Settings.
+  return age !== undefined && age < RUN_RESUMABLE_MS && readFieldTestRun().runId !== undefined;
 }
 
 let run: FieldTestRun | null = null;

@@ -802,9 +802,25 @@ describe('how long ago the run was touched', () => {
     expect(fieldTestRunIsResumable(Date.now() + RUN_RESUMABLE_MS + 1)).toBe(false);
   });
 
-  it('is neither at step one, where a reload has nothing to hand back', () => {
+  /**
+   * STEP ONE IS IN THE MIDDLE OF IT. This asserted the opposite, on the
+   * reasoning that a reload there has nothing to hand back -- which is true of
+   * the position and is the wrong question. `route-1` is the first cell of the
+   * before block, and it is the step the operator sits on while getting the car
+   * into the condition, so it is where an interruption is most likely. Excluded,
+   * the update check was free to reload the app exactly there, and the reload
+   * then opened on Home.
+   */
+  it('counts a run on step one as live and as worth coming back to', () => {
     startFieldTestRun('car');
     expect(readFieldTestRun().stepIndex).toBe(0);
+    expect(fieldTestRunIsLive(), 'the update check was free to reload step one').toBe(true);
+    expect(fieldTestRunIsResumable(), 'a reload on step one opened on Home').toBe(true);
+  });
+
+  it('still counts neither once that run has been finished', () => {
+    startFieldTestRun('car');
+    stopFieldTestRun();
     expect(fieldTestRunIsLive()).toBe(false);
     expect(fieldTestRunIsResumable()).toBe(false);
   });
@@ -1069,15 +1085,21 @@ describe('the microphone close time put back at the gate', () => {
   }
 
   it('is put back when the run comes back after the block, and says so', () => {
-    expect(resumeAt('route-after-mic', { micHasBeenUp: true, touchedAt: 1_700_000_000_000 })).toEqual(
-      expect.any(Number),
-    );
+    expect(
+      resumeAt('route-after-mic', {
+        micHasBeenUp: true,
+        touchedAt: 1_700_000_000_000,
+        runId: 'r9',
+      }),
+    ).toEqual(expect.any(Number));
     // MARKED, because the number it produces is a lower bound and it is read
     // against samples at one and a half seconds. A phone picked up an hour
     // later and resumed exports its first answer at two seconds; the bracket
     // is the only thing that stops that being read as the 1.5s sample.
     const row = readDiagnosticLog().find((e) => e.event === 'mic-close-backfilled');
     expect(row, 'the close time was invented and nothing said so').toBeDefined();
+    // Named, like every other gate row: nothing else joins it to its run.
+    expect(row?.detail?.run, 'the row cannot be joined to a run').toBe('r9');
     expect(row?.detail?.from).toBe(1_700_000_000_000);
     expect(row?.detail?.to).toEqual(expect.any(Number));
   });

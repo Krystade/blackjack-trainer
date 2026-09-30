@@ -16,8 +16,11 @@ import { LOCK_PROBE_TICK_MS } from '../src/diag/lockProbe';
  * WHAT THE ARRIVAL MARKER COSTS, and what pins the price: the first build
  * armed on arrival and cleared only on a hidden/visible cycle, so leaving the
  * step any other way, or reloading without ever locking, scored a kill that
- * never happened. The tests below hold every one of those exits to scoring
- * nothing -- the cleanup and `pagehide` both clear it unconditionally.
+ * never happened. Two of those exits are held to scoring nothing below --
+ * stepping back off the step, and a reload that was never hidden. The rest
+ * (Pause, Finish, a skip forward, a condition change) leave through the same
+ * unconditional cleanup, so the mechanism is covered and the individual exits
+ * are not.
  *
  * Chromium here is never really hidden, so the "lock" is `visibilityState`
  * faked and `visibilitychange` dispatched; the page keeps ticking through it,

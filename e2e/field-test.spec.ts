@@ -31,8 +31,10 @@ function diagPanel(page: Page) {
 /**
  * End a run. TWO TAPS, deliberately: Finish sits under the answer stack at
  * bottom-right, which is the easiest thing to hit with a thumb coming off the
- * wheel, and ending a run discards it -- re-entering only offers Start, from
- * step one with no stamps. That is how the first two runs died.
+ * wheel. One tap used to end the run outright and the gate then offered only
+ * Start, from step one with no stamps -- which is how the first two runs died.
+ * It keeps the position and the stamps now, so a mis-tapped Finish is
+ * recoverable, and the two taps are what stop it being tapped by a bump.
  */
 async function endRun(page: Page): Promise<void> {
   const finish = page.getByTestId('fieldtest-finish');
@@ -307,6 +309,48 @@ test('the run survives leaving the screen', async ({ page }) => {
   // is the position and the ticks, not the run running on unattended.
   await page.getByTestId('fieldtest-resume').click();
   await expect(page.getByTestId('fieldtest-progress')).toContainText('step 2 of');
+});
+
+/**
+ * A RUN INTERRUPTED ON STEP ONE IS STILL A RUN.
+ *
+ * Resume was offered on `stepIndex > 0`, so a leg paused, reloaded or killed
+ * before the first answer came back to a gate whose only button was Start --
+ * a two-tap discard. Step one is where a leg is most likely to be interrupted:
+ * it is the step the operator is on while still getting the car into the
+ * condition, and `route-1` is the first cell of the block every other block is
+ * compared against.
+ */
+test('a run paused on step one can be resumed rather than only restarted', async ({ page }) => {
+  await withSettings(page, {});
+  await openTest(page);
+  await expect(page.getByTestId('fieldtest-progress')).toContainText('step 1 of');
+
+  await page.getByTestId('fieldtest-pause').click();
+  await page.getByTestId('fieldtest-open').click();
+
+  const resume = page.getByTestId('fieldtest-resume');
+  await expect(resume).toContainText('step 1 of');
+  // ...AND STARTING OVER IS STILL ONE TAP, because there is nothing to lose.
+  // Gating the confirm on the same flag as Resume put a two-tap guard in front
+  // of Start whose second tap read "Tap again to go back to step 1 of 23" on a
+  // run already on step 1 of 23. A confirmation that names nothing teaches the
+  // operator to tap through the one that costs a leg.
+  // Tapped, not merely read: the label and the guard are two different
+  // expressions, and only a tap tells whether the guard moved.
+  await resume.click();
+  await expect(page.getByTestId('fieldtest-progress')).toContainText('step 1 of');
+  await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', 'route-1');
+
+  await page.getByTestId('fieldtest-pause').click();
+  await page.getByTestId('fieldtest-open').click();
+  const start = page.getByTestId('fieldtest-start');
+  await expect(start).toContainText('Start \u2014');
+  await start.click();
+  await expect(
+    page.getByTestId('fieldtest-title'),
+    'Start armed a confirm for a run with nothing to discard',
+  ).toBeVisible();
 });
 
 test('the run is still there after a reload, which the update check can force mid-drive', async ({

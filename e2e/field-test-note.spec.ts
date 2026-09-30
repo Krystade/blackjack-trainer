@@ -65,11 +65,47 @@ test('a note lands in the log against the step, and is not an answer', async ({ 
   // same render, so every note typed with the keyboard landed twice.
   await page.waitForTimeout(1_500);
   expect((await entries(page)).filter((e) => e.event === 'note')).toHaveLength(1);
+  // A SAVED NOTE IS NOT A DRAFT ANY MORE. The box is cleared in code, which
+  // fires no `onChange`, so nothing else drops the key -- and the boot that
+  // finds a draft writes it out as a recovered note, so leaving it there files
+  // the same sentence a second time and puts it back in the box for a third.
+  expect(
+    await page.evaluate(() => localStorage.getItem('bjtrainer.fieldTestDraft.v1')),
+    'the saved note is still sitting in the draft key',
+  ).toBeNull();
   // Still here, nothing stamped, and the box is ready for another.
   await expect(page.getByTestId('fieldtest-progress')).toHaveText(progress);
   await expect(note).toHaveValue('');
   await expect(page.getByTestId('fieldtest-noted')).toContainText('sounded like it came from');
   expect((await entries(page)).filter((e) => e.event === 'answer')).toHaveLength(0);
+});
+
+/**
+ * IN STORAGE THE MOMENT IT IS SAVED, not a second later. `diag` buffers for
+ * `FLUSH_DELAY_MS`, and the draft key -- the note's only other copy -- is
+ * dropped in the same breath as the row is written. A kill inside that second
+ * used to take the note out of both places at once, which is the whole failure
+ * this draft exists for, reopened at the moment of saving.
+ *
+ * Read unpolled, deliberately: every other assertion in this file waits, and a
+ * wait cannot tell a flush from the flush that was going to happen anyway.
+ */
+test('a saved note is in storage before anything waits for it', async ({ page }) => {
+  await openTest(page);
+  const note = page.getByTestId('fieldtest-note');
+  await note.fill('in the log or nowhere');
+  await note.press('Enter');
+  await expect(page.getByTestId('fieldtest-noted')).toBeVisible();
+
+  const stored = await page.evaluate(() => {
+    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+    return raw
+      ? (JSON.parse(raw) as { event: string; detail?: { text?: string } }[]).filter(
+          (e) => e.event === 'note',
+        )
+      : [];
+  });
+  expect(stored.map((e) => e.detail?.text)).toEqual(['in the log or nowhere']);
 });
 
 test('leaving the box saves it too, and an empty box saves nothing', async ({ page }) => {
