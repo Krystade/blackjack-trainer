@@ -1,6 +1,7 @@
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   FIELD_TEST_CONDITIONS,
+  OFFERED_FIELD_TEST_CONDITIONS,
   motionForCondition,
   FIELD_TEST_STEPS,
   stepResponses,
@@ -633,20 +634,33 @@ function StartGate({
 
       <div className="fieldtest-body">
       <p className="u-note">
-        This condition runs {fieldTestStepCount({ condition: run.condition })} steps — what changes
-        between conditions is the car, not the protocol. A condition with no Bluetooth skips the
-        wheel steps, since there is nothing to press into. Pick where you are, press start, and it will talk
-        to you. Nothing else needs to be running. When you are done, send the diagnostic log.
+        This condition runs {fieldTestStepCount({ condition: run.condition })} steps. The three{' '}
+        <strong>Drill</strong> legs are the ones still worth running: they measure whether the words
+        can be made out at speed, whether a wheel press answers a question, and how the car
+        microphone compares with the phone&rsquo;s. The four below them are the older routing
+        protocol, kept so its runs still open — its questions are answered, so running one collects
+        nothing new. A condition with no Bluetooth skips the wheel steps, since there is nothing to
+        press into. Pick where you are, press start, and it will talk to you. When you are done, send
+        the diagnostic log.
       </p>
 
-      <div className="settings-row">
-        <span className="settings-label">Where are you</span>
-        <Segmented
-          value={run.condition}
-          options={FIELD_TEST_CONDITIONS.map((c) => ({ value: c.id, label: c.label }))}
-          onChange={(value) => setFieldTestCondition(value)}
-        />
-      </div>
+      {/*
+        ONE EXPERIMENT, so no menu. A picker here asked the operator to choose
+        an experiment from the driver's seat, and four of the seven choices
+        were the settled routing protocol -- which is how a drive got spent on
+        "the same 40 questions". The remaining variants stay reachable in the
+        data; they are not a decision to make at the wheel.
+      */}
+      {OFFERED_FIELD_TEST_CONDITIONS.length > 1 && (
+        <div className="settings-row">
+          <span className="settings-label">Where are you</span>
+          <Segmented
+            value={run.condition}
+            options={OFFERED_FIELD_TEST_CONDITIONS.map((c) => ({ value: c.id, label: c.label }))}
+            onChange={(value) => setFieldTestCondition(value)}
+          />
+        </div>
+      )}
 
       <div className="settings-note-row u-note">
         <strong>Set up:</strong> {condition.setup}

@@ -75,6 +75,21 @@ export interface FieldTestCondition {
   label: string;
   motion: FieldTestMotion;
   /** Which step set this leg runs. Absent means `routing`, the original. */
+  /**
+   * OFFERED ON THE GATE. Exactly one condition sets this.
+   *
+   * The picker used to list all seven, and on 2026-09-30 that produced the
+   * report "it looks like the field test is the same 40 questions": four of
+   * them are the old routing protocol, whose answers are already in
+   * `docs/research/2026-09-29-drive-findings.md`, and two more are variants
+   * of the drill worth running only once the main one has been read.
+   *
+   * A field test with a menu asks the operator to choose an experiment from
+   * the driver's seat. There is one experiment. The rest stay in this array
+   * so their steps still run, old runs still resolve, and the suite still
+   * selects them by name -- they are simply not offered.
+   */
+  offered?: boolean;
   protocol?: FieldTestProtocol;
   setup: string;
   proves: string;
@@ -646,6 +661,71 @@ export const ECHO_LINES: Readonly<Record<'forward' | 'back', string>> = {
 
 export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
   {
+    id: 'drill-freeway',
+    offered: true,
+    label: 'Drill — freeway',
+    motion: 'driving',
+    protocol: 'drill',
+    bluetooth: true,
+    setup:
+      'Paired exactly as parked, same cradle, same volume, at your normal road speed with the windows up.',
+    proves:
+      'The whole goal. Whether a press answers and whether the words can be made out, at the speed and the noise the app exists to be used at. Read every answer here against the parked leg: a step that passed parked and fails here is the road, and nothing else changed.',
+  },
+
+  /*
+   * THE DRILL LEGS COME FIRST, and that is not cosmetic.
+   *
+   * `DEFAULT_FIELD_TEST_CONDITION` is `FIELD_TEST_CONDITIONS[0].id`, so
+   * whichever entry leads this array is what a fresh field test opens on.
+   * `car` led it, so opening the field test handed the operator `Car,
+   * parked` -- a 32-step ROUTING leg whose questions are all answered (see
+   * `docs/research/2026-09-29-drive-findings.md` sections 2 and 3). The
+   * labels make that worse rather than better: sitting in a parked car,
+   * `Car, parked` is obviously the right button and `Drill -- parked` looks
+   * like something else. So the operator ran 32 settled steps instead of the
+   * 10 that still measure something, which is what happened on 2026-09-30.
+   *
+   * The routing legs stay in the array and keep their labels. Their steps
+   * still run, old runs still resolve their condition, and about a hundred
+   * tests still select them by name. They are simply no longer what the
+   * screen offers first, nor what it opens on.
+   */
+
+  /* ------------------------------------------------------------------ */
+  /* The drill protocol: can the product be used, not where sound goes. */
+  /* ------------------------------------------------------------------ */
+  {
+    id: 'drill-parked',
+    label: 'Drill — parked',
+    motion: 'parked',
+    protocol: 'drill',
+    bluetooth: true,
+    setup:
+      'Paired to the car over Bluetooth, engine running, handbrake on. Phone in the cradle, an arm’s length away. Radio volume where you would actually drive with it.',
+    proves:
+      'That the product works at all before any of it is risked at speed. Every failure here is a failure that has nothing to do with the road, and finding one costs a parked five minutes instead of a drive.',
+  },
+
+  {
+    id: 'drill-phone',
+    label: 'Drill — phone speaker',
+    motion: 'driving',
+    protocol: 'drill',
+    bluetooth: false,
+    setup:
+      'Bluetooth OFF, phone in the cradle on its own speaker, at road speed with the windows up.',
+    // WHY THE WHEEL STEPS ARE GONE FROM THIS LEG, and it is not an omission.
+    // With Bluetooth off the car is not connected, so there is no wheel to
+    // press -- and there is no configuration that keeps the wheel while moving
+    // the sound to the phone, because iOS gives a web app no way to hold the
+    // AVRCP link and route audio locally at the same time. So this leg's input
+    // channel is the microphone, necessarily, and that trade is the finding.
+    proves:
+      'Whether the phone’s own speaker and microphone are the better pair — the open product question. It costs the wheel: with Bluetooth off there is nothing to press, so voice is the only input, and that trade-off is what this leg is for. Compare its words-heard score against the freeway leg’s.',
+  },
+
+  {
     id: 'car',
     label: 'Car, parked',
     motion: 'parked',
@@ -660,6 +740,7 @@ export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
     proves:
       'The baseline for everything else. Same audio route as a drive, without the road — so anything that fails here fails for reasons that have nothing to do with speed. The earpiece is inaudible from the cradle, so "phone earpiece" and "heard nothing" are one answer in this leg.',
   },
+
   {
     id: 'freeway',
     label: 'Freeway',
@@ -670,6 +751,7 @@ export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
     proves:
       'The real thing, including the wheel. Whether the buttons reach the app at speed is the open question this protocol exists for, and it cannot be answered stationary. Earpiece and silence are one answer here too — at road speed nobody hears a receiver from the cradle.',
   },
+
   {
     id: 'speakerphone',
     label: 'Speakerphone',
@@ -687,6 +769,7 @@ export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
     proves:
       'Rules the car out. Anything that still fails with Bluetooth off is the app, the phone or the road — it cannot say which, because this changes several things at once, but it takes the car off the list. Earpiece and silence are one answer here, as at speed: read them together unless the leg was run at your ear.',
   },
+
   {
     /**
      * THE ONLY LEG THAT CAN TELL THE EARPIECE FROM SILENCE, which is why it
@@ -719,49 +802,19 @@ export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
     proves:
       'The only leg that separates the earpiece from silence — everywhere else they are the same answer. Anything that fails here has nothing to do with driving, the car, or Bluetooth at all.',
   },
-  /* ------------------------------------------------------------------ */
-  /* The drill protocol: can the product be used, not where sound goes. */
-  /* ------------------------------------------------------------------ */
-  {
-    id: 'drill-parked',
-    label: 'Drill — parked',
-    motion: 'parked',
-    protocol: 'drill',
-    bluetooth: true,
-    setup:
-      'Paired to the car over Bluetooth, engine running, handbrake on. Phone in the cradle, an arm’s length away. Radio volume where you would actually drive with it.',
-    proves:
-      'That the product works at all before any of it is risked at speed. Every failure here is a failure that has nothing to do with the road, and finding one costs a parked five minutes instead of a drive.',
-  },
-  {
-    id: 'drill-freeway',
-    label: 'Drill — freeway',
-    motion: 'driving',
-    protocol: 'drill',
-    bluetooth: true,
-    setup:
-      'Paired exactly as parked, same cradle, same volume, at your normal road speed with the windows up.',
-    proves:
-      'The whole goal. Whether a press answers and whether the words can be made out, at the speed and the noise the app exists to be used at. Read every answer here against the parked leg: a step that passed parked and fails here is the road, and nothing else changed.',
-  },
-  {
-    id: 'drill-phone',
-    label: 'Drill — phone speaker',
-    motion: 'driving',
-    protocol: 'drill',
-    bluetooth: false,
-    setup:
-      'Bluetooth OFF, phone in the cradle on its own speaker, at road speed with the windows up.',
-    // WHY THE WHEEL STEPS ARE GONE FROM THIS LEG, and it is not an omission.
-    // With Bluetooth off the car is not connected, so there is no wheel to
-    // press -- and there is no configuration that keeps the wheel while moving
-    // the sound to the phone, because iOS gives a web app no way to hold the
-    // AVRCP link and route audio locally at the same time. So this leg's input
-    // channel is the microphone, necessarily, and that trade is the finding.
-    proves:
-      'Whether the phone’s own speaker and microphone are the better pair — the open product question. It costs the wheel: with Bluetooth off there is nothing to press, so voice is the only input, and that trade-off is what this leg is for. Compare its words-heard score against the freeway leg’s.',
-  },
 ];
+
+/**
+ * What the gate offers. One entry, by design -- see `offered`.
+ *
+ * Falls back to the whole list if nothing is marked, so a bad edit shows too
+ * many choices rather than none at all: a gate with an empty picker cannot be
+ * started, and that failure would only appear in the car.
+ */
+export const OFFERED_FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] =
+  FIELD_TEST_CONDITIONS.filter((c) => c.offered).length > 0
+    ? FIELD_TEST_CONDITIONS.filter((c) => c.offered)
+    : FIELD_TEST_CONDITIONS;
 
 export const DEFAULT_FIELD_TEST_CONDITION = FIELD_TEST_CONDITIONS[0]!.id;
 

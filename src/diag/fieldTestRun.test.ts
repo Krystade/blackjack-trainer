@@ -28,7 +28,9 @@ import {
   fieldTestStepCount,
   fieldTestStepOrdinal,
 } from './fieldTestRun';
-import { FIELD_TEST_STEPS } from './fieldTest';
+import { FIELD_TEST_STEPS,
+  DEFAULT_FIELD_TEST_CONDITION,
+} from './fieldTest';
 import { readDiagnosticLog } from './diagnosticLog';
 
 /**
@@ -874,7 +876,7 @@ describe('a run written by a build that called things something else', () => {
       'bjtrainer.fieldTestRun.v1',
       JSON.stringify({ active: true, condition: 'motorway', stepIndex: 3, stamps: {} }),
     );
-    expect(readFieldTestRun().condition).toBe('car');
+    expect(readFieldTestRun().condition).toBe(DEFAULT_FIELD_TEST_CONDITION);
   });
 
   it('says in the log that it did, because a relabelled run is not a detail', () => {
@@ -887,7 +889,10 @@ describe('a run written by a build that called things something else', () => {
       .filter((e) => e.category === 'test' && e.event === 'run-condition-unknown')
       .at(-1);
     expect(entry, 'the run changed condition with nothing saying so').toBeTruthy();
-    expect(entry?.detail).toMatchObject({ was: 'motorway', read_as: 'car' });
+    expect(entry?.detail).toMatchObject({
+      was: 'motorway',
+      read_as: DEFAULT_FIELD_TEST_CONDITION,
+    });
   });
 
   it('carries the ticks across instead of stranding them under a dead prefix', () => {
@@ -904,7 +909,10 @@ describe('a run written by a build that called things something else', () => {
       }),
     );
     const restored = readFieldTestRun();
-    expect(restored.stamps).toEqual({ 'car:route-1': 1, 'car:route-2': 2 });
+    expect(restored.stamps).toEqual({
+      [`${DEFAULT_FIELD_TEST_CONDITION}:route-1`]: 1,
+      [`${DEFAULT_FIELD_TEST_CONDITION}:route-2`]: 2,
+    });
     expect(countStampedSteps(restored.stamps, restored.condition)).toBe(2);
   });
 

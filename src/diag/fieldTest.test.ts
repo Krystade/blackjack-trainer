@@ -3,6 +3,7 @@ import {
   FIELD_TEST_CONDITIONS,
   FIELD_TEST_STEPS,
   DEFAULT_FIELD_TEST_CONDITION,
+  OFFERED_FIELD_TEST_CONDITIONS,
   ROUTE_ANSWERS,
   motionForCondition,
   stampFieldTest,
@@ -41,6 +42,28 @@ describe('the protocol itself', () => {
 
   it('opens on a condition that exists', () => {
     expect(FIELD_TEST_CONDITIONS.map((c) => c.id)).toContain(DEFAULT_FIELD_TEST_CONDITION);
+  });
+
+  /**
+   * THE FIELD TEST OPENS ON A LEG THAT STILL MEASURES SOMETHING.
+   *
+   * `DEFAULT_FIELD_TEST_CONDITION` is `FIELD_TEST_CONDITIONS[0].id`, and the
+   * array led with `car`. So opening the field test selected `Car, parked` --
+   * 32 steps of the routing protocol, every one of them answered months ago.
+   * On 2026-09-30 the operator drove out, opened it, and was handed exactly
+   * that: "it looks like the field test is the same 40 questions."
+   *
+   * Membership in the list is not enough to catch this, which is why the
+   * assertion above passed throughout. The default has to be on the protocol
+   * that is still open.
+   */
+  it('opens on a drill leg, not on a settled routing one', () => {
+    const fallback = FIELD_TEST_CONDITIONS.find((c) => c.id === DEFAULT_FIELD_TEST_CONDITION);
+    expect(fallback, 'the default names no condition at all').toBeDefined();
+    expect(
+      fallback!.protocol,
+      `the field test opens on "${fallback!.label}", whose questions are settled`,
+    ).toBe('drill');
   });
 
   /**
@@ -2415,12 +2438,40 @@ describe('the drill protocol', () => {
     }
   });
 
+  /**
+   * ONE LEG IS OFFERED, and it is the one that measures the open question.
+   *
+   * A field test with a menu asks the operator to choose an experiment from
+   * the driver's seat, and on 2026-09-30 that cost a drive: the gate listed
+   * all seven conditions, four of them the settled routing protocol, and the
+   * report came back as "the same 40 questions".
+   *
+   * The driving leg rather than the parked one, because road noise is the
+   * variable every open question is about. The leg still starts stopped --
+   * its first step is the positive control, answered before pulling out.
+   */
+  it('offers exactly one leg, and it is the one driven', () => {
+    expect(OFFERED_FIELD_TEST_CONDITIONS).toHaveLength(1);
+    const only = OFFERED_FIELD_TEST_CONDITIONS[0]!;
+    expect(only.protocol).toBe('drill');
+    expect(only.motion).toBe('driving');
+    expect(only.bluetooth).toBe(true);
+    // ...and opening the field test lands on it, rather than on anything else.
+    expect(DEFAULT_FIELD_TEST_CONDITION).toBe(only.id);
+  });
+
   it('is entered through conditions that declare the drill protocol', () => {
     const legs = FIELD_TEST_CONDITIONS.filter((c) => c.protocol === 'drill');
-    expect(legs.map((c) => c.id)).toEqual(['drill-parked', 'drill-freeway', 'drill-phone']);
-    // A parked leg first, because a fault found parked costs five minutes and
-    // the same fault found at speed costs a drive.
-    expect(legs[0]?.motion).toBe('parked');
+    // The SET, not the order. Order used to carry meaning here because all
+    // three were offered and the operator picked one; now exactly one is
+    // offered, so which entry leads the array is about the default rather
+    // than about a running order, and `OFFERED_FIELD_TEST_CONDITIONS` is
+    // where that is pinned.
+    expect([...legs.map((c) => c.id)].sort()).toEqual([
+      'drill-freeway',
+      'drill-parked',
+      'drill-phone',
+    ]);
     // ...and the phone-speaker leg has no car, which is why it loses the
     // wheel. See the condition's own note.
     expect(legs.find((c) => c.id === 'drill-phone')?.bluetooth).toBe(false);
