@@ -41,8 +41,21 @@ async function walk(page: Page): Promise<string[]> {
   throw new Error('the run never ended');
 }
 
-const wheelSteps = FIELD_TEST_STEPS.filter((s) => s.wheel).map((s) => s.id);
-const base = FIELD_TEST_STEPS.filter((s) => !s.probe).length;
+/**
+ * THE ROUTING PROTOCOL'S OWN STEPS, and nothing else.
+ *
+ * Both oracles below predict a path length, and `onPath` drops a step whose
+ * protocol does not match the leg's. This counted the whole table, so the
+ * moment ten drill steps were appended it predicted 42 and 35 -- lengths no
+ * leg has ever had -- while the app correctly offered 32 and 25. The
+ * assertion failed on the oracle, not on the behaviour.
+ *
+ * The protocol filter is duplicated from `onPath` rather than imported: an
+ * oracle that calls the function under test agrees with it by construction.
+ */
+const routing = FIELD_TEST_STEPS.filter((s) => (s.protocol ?? 'routing') === 'routing');
+const wheelSteps = routing.filter((s) => s.wheel).map((s) => s.id);
+const base = routing.filter((s) => !s.probe).length;
 
 test('a condition without Bluetooth walks past every wheel step', async ({ page }) => {
   await openTest(page, 'Speakerphone');

@@ -658,7 +658,19 @@ export function startFieldTestRun(condition: string, before?: FieldTestBefore): 
   write({
     active: true,
     condition,
-    stepIndex: 0,
+    /**
+     * SNAPPED ONTO THE PATH, because index 0 is not on every leg's.
+     *
+     * This was `0` outright, which is `route-1` -- the first step of the
+     * ROUTING protocol. A drill leg therefore opened on a routing step: the
+     * operator is handed the protocol they did not pick, on questions that
+     * are already settled, and the leg's own first measurement is skipped.
+     * A Bluetooth-off leg has the same problem one step further on, since
+     * its first two steps need a car.
+     *
+     * A fresh run has no armed probes, so the condition is the whole path.
+     */
+    stepIndex: snapToPath(0, { condition }),
     stamps: {},
     answers: undefined,
     armedProbes: undefined,
@@ -1014,8 +1026,25 @@ export type FieldTestPath = Pick<FieldTestRun, 'condition' | 'armedProbes'>;
 function onPath(index: number, run: FieldTestPath): boolean {
   const step = FIELD_TEST_STEPS[index];
   if (!step) return false;
+  const condition = conditionOf(run.condition);
+  /**
+   * A LEG RUNS ONE PROTOCOL. The routing steps and the drill steps share
+   * `FIELD_TEST_STEPS` so that `resolveFieldTestSetup` can stay a pure
+   * function of the index -- the fold that makes the effective settings
+   * identical however the operator arrived -- but they ask different
+   * questions and are read against different comparisons. Mixing them would
+   * put a diagnostic probe on the path of a leg measuring the product, which
+   * is the exact defect the drill protocol exists to escape: a wheel step
+   * arms `setMediaSessionProbe`, and a probed press never reaches a handler.
+   *
+   * Defaulting BOTH sides to `routing` means every existing step and every
+   * existing condition keeps its current path without being touched.
+   */
+  if ((step.protocol ?? 'routing') !== (condition?.protocol ?? 'routing')) return false;
   if (step.probe && !run.armedProbes?.includes(step.probe)) return false;
-  if (step.wheel && conditionOf(run.condition)?.bluetooth === false) return false;
+  // `wheel` arms the diagnostic probe and `needsBluetooth` does not, but both
+  // mean "there has to be a car on the other end of this".
+  if ((step.wheel || step.needsBluetooth) && condition?.bluetooth === false) return false;
   return true;
 }
 

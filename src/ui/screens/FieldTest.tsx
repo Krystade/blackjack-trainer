@@ -12,7 +12,12 @@ import {
   fieldTestLegsThisSession,
   logFieldTestStep,
   stampFieldTest,
+  ECHO_LINES,
+  DISCRIMINATE_LINES,
+  discriminateWordFor,
+  discriminateAnswerFor,
 } from '../../diag/fieldTest';
+import { setWheelCommandHandler, type WheelCommand } from '../../audio/wheelCommands';
 import { matchFieldTestAnswer, spokenHintFor } from '../../diag/fieldTestVoice';
 import { looksLikeSelfEcho } from '../../audio/selfEcho';
 import { looksLikeAnAttempt } from '../../audio/voiceRecognition';
@@ -67,7 +72,7 @@ import {
 } from '../../audio/audioContext';
 import { requestWakeLock, releaseWakeLock } from '../../audio/wakeLock';
 import { setClipsEnabled, setClipVoice, prewarmClips } from '../../audio/clips';
-import { measureWithWebAudio } from '../../diag/carCheckCatalog';
+import { measureWithWebAudio, listAudioInputs } from '../../diag/carCheckCatalog';
 import { bandFor, adviceFor } from '../../diag/ambientNoise';
 import { useVoiceControl } from '../useVoiceControl';
 import { setVoiceOn } from '../voiceSession';
@@ -821,6 +826,26 @@ function RunningTest({
   // The last step ON THE PATH: a dormant probe after this one does not count.
   const atLastStep = nextActiveIndex(run.stepIndex, 1, run) === run.stepIndex;
   // In the wheel family's fixed positions. See `stepResponses`.
+  /**
+   * WHICH LINE A DISCRIMINATION STEP ACTUALLY SPOKE -- the ground truth the
+   * tap is scored against, and the reason that step can fail at all.
+   *
+   * Held in a ref as well as in state because `answer()` reads it at the
+   * instant of the tap: a render that has not caught up would score the
+   * answer against the previous sample, and a mis-scored sample is worse
+   * than a missing one because it looks like data.
+   *
+   * Keyed by CONDITION and step, so the same step draws a fresh line on
+   * every leg while `sayAgain` on one leg repeats the line the operator is
+   * being asked about rather than quietly swapping it.
+   */
+  const spokenChoiceRef = useRef<{ key: string; line: string } | null>(null);
+  const [spokenChoice, setSpokenChoice] = useState<string | null>(null);
+  /** What the app took the last press (or spoken word) on this step to mean. */
+  const [echoTaken, setEchoTaken] = useState<WheelCommand | null>(null);
+  /** Progress of the automatic microphone sweep, for the screen. */
+  const [sweepLine, setSweepLine] = useState<string | null>(null);
+  const sweepRun = useRef(0);
   const responses = useMemo(() => stepResponses(step), [step]);
   /**
    * What this step says, for telling the app's voice from the operator's.
@@ -839,8 +864,15 @@ function RunningTest({
       // not-understood otherwise -- on the one step whose own comment says a
       // chime and nothing reads as a dead microphone.
       step.instruction,
+      // ...AND THE DRAWN LINE, on a discrimination step. It is not in
+      // `step.say` -- it is chosen at random when the step opens -- so
+      // without it the app's own sentence coming back through the car's
+      // microphone is not recognised as an echo. On `drill-phone` the phone
+      // speaker and the phone microphone are inches apart, which is the leg
+      // where that matters most.
+      ...(spokenChoice === null ? [] : [spokenChoice]),
     ],
-    [step],
+    [step, spokenChoice],
   );
   const [wheelSeen, setWheelSeen] = useState<string[]>([]);
   /**
@@ -1164,7 +1196,36 @@ function RunningTest({
     // and the log recorded `wheel-gap`, which says nothing at all, as having
     // played a clip.
     const run = ++sayRun.current;
-    const lines = [...(step.say ?? []), ...(step.sayUnclipped ? [step.sayUnclipped] : [])];
+    let lines = [...(step.say ?? []), ...(step.sayUnclipped ? [step.sayUnclipped] : [])];
+    /**
+     * ONE LINE, DRAWN, on a discrimination step.
+     *
+     * The step's whole value is that the operator cannot predict which word
+     * is coming: a self-report ("could you make it out?") is answered by
+     * somebody who has already heard the line and knows what it said, and so
+     * it cannot fail. A forced choice between four lines that differ in one
+     * word can, and the app knows which it drew.
+     *
+     * Drawn once per leg per step, not once per utterance -- `sayAgain` has
+     * to repeat the line being asked about. Logged at the moment it is
+     * chosen, so a leg where the operator answered before the line finished
+     * is still readable.
+     */
+    if (step.discriminate && step.discriminate.length > 0) {
+      const key = `${run_condition}:${step.id}`;
+      if (spokenChoiceRef.current?.key !== key) {
+        const pool = step.discriminate;
+        const drawn = pool[Math.floor(Math.random() * pool.length)]!;
+        spokenChoiceRef.current = { key, line: drawn };
+        setSpokenChoice(drawn);
+        diag('test', 'word-spoken', {
+          step: step.id,
+          condition: run_condition,
+          word: discriminateWordFor(drawn) ?? 'unknown',
+        });
+      }
+      lines = [spokenChoiceRef.current.line];
+    }
     // HELD BEFORE THE GATE, not after it. The gate can wait ten seconds, and
     // the answers are disabled on `speaking` -- so leaving this until after
     // would let the operator answer "where did it come from" during the
@@ -1230,7 +1291,15 @@ function RunningTest({
      * So every sample now gets the same run-up: a chime, then a fixed silence,
      * then the line. See `PRE_SAMPLE_SETTLE_MS`.
      */
-    const measured = lines.length > 0 && step.responses.some((r) => r.kind === 'route');
+    // ...AND A DRAWN LINE COUNTS AS A MEASURED ONE. A discrimination step is
+    // a judgement about a sound, exactly as a route step is, so it needs the
+    // identical run-up: chime, fixed silence, line. Without this the word
+    // samples would be the only ones in the protocol spoken ~100ms after the
+    // previous answer's chime, and the thing being compared across legs
+    // would include their acoustic run-up.
+    const measured =
+      lines.length > 0 &&
+      (step.responses.some((r) => r.kind === 'route') || step.discriminate !== undefined);
     if (lines.length === 0 || step.awaitListening || step.awaitSilent || measured) chime('good');
 
     /**
@@ -1665,6 +1734,11 @@ function RunningTest({
   useEffect(() => {
     setWheelSeen([]);
     setHeard([]);
+    // What the LAST step's press was taken to mean is not evidence about this
+    // one, and left standing it would put a stale word on screen next to a
+    // step the operator has not pressed on yet.
+    setEchoTaken(null);
+    setSweepLine(null);
     // A mark describes ONE utterance or ONE pair of presses; carrying it into
     // the next step would file it against something the operator never saw.
     setMarks([]);
@@ -2123,6 +2197,185 @@ function RunningTest({
   }, [step.wheel, step.id, run.condition]);
 
   /**
+   * THE PRESS THAT ANSWERS SOMETHING -- the whole reason the drill protocol
+   * exists.
+   *
+   * A routing wheel step arms `setMediaSessionProbe`, and `mediaSession.ts`
+   * runs `if (probe) probe(action)` and then `if (!probe) handler()`. The
+   * exclusion is deliberate and right there: a test press must not also
+   * answer a drill question. Its consequence is that press-to-action-to-
+   * audible-response has never once been exercised in the car, and a leg
+   * could come back green on the wheel while the drill was unanswerable.
+   *
+   * An echo step arms NO probe -- it declares `echo` rather than `wheel`, so
+   * the effect above returns early -- and claims the wheel the way a drill
+   * screen does, with `setWheelCommandHandler`. The press therefore travels
+   * the identical path a real answer would, and the app says back the word
+   * it took the press to mean. What the log cannot hold is whether that was
+   * the word the operator intended, and that is the one thing the step asks.
+   *
+   * `forward` and `back` are separately worth testing: `back` falls through
+   * to `repeatLast` when no screen claims it, and on 2026-09-29 that
+   * fallback was the only thing any press did -- every `seekforward` wrote
+   * `handled=false why=no-screen-listening` while every `seekbackward` was
+   * handled. A leg that exercised one direction would have read as a pass.
+   */
+  useEffect(() => {
+    if (step.echo !== 'wheel') return;
+    const armed = ensureMediaSessionHandlers();
+    if (!armed) {
+      setWheelUnavailable(true);
+      diag('test', 'wheel-unavailable', { step: step.id, condition: run.condition });
+    } else {
+      setWheelUnavailable(false);
+    }
+    setWheelCommandHandler((command) => {
+      setWheelSeen((prev) => [...prev, command]);
+      setEchoTaken(command);
+      diag('wheel', 'field-test-echo', {
+        step: step.id,
+        condition: run.condition,
+        command,
+        // The same clocks an arrival row carries, so an echo and a route
+        // sample taken at the same point in the recovery can be read against
+        // each other.
+        whileSpeaking: speakingRef.current,
+        focusPlaying: audioFocusElementIsPlaying(),
+        pressIndex: (pressCountRef.current += 1),
+        msSinceAppLetGo:
+          micClosedAtRef.current === null ? undefined : Date.now() - micClosedAtRef.current,
+      });
+      // SPOKEN, not shown. The operator is looking at the road, and an echo
+      // that only appeared on screen would make this step a self-report
+      // again.
+      void speakAsync(ECHO_LINES[command], {
+        interrupt: true,
+        ...spokenOpts(settingsRef.current.audio),
+        tag: `${step.id}#echo`,
+      }).catch(() => {
+        // A throw here is the measurement, not an error to swallow: the press
+        // arrived and the app could not answer it, which from the driver's
+        // seat is "nothing came back".
+        diag('test', 'echo-failed', { step: step.id, command });
+      });
+    });
+    return () => setWheelCommandHandler(null);
+  }, [step.echo, step.id, run.condition]);
+
+  /**
+   * The same measurement through the microphone.
+   *
+   * Separate from the answer matcher on purpose: these steps declare
+   * `echo: 'voice'` and their transcript is evidence, not an answer, so
+   * `spokenAnswersLive` is false and the words reach here instead of being
+   * consumed as a stamp. See `onTranscript` below for where this is called.
+   */
+  const echoSpokenWord = useCallback(
+    (text: string): WheelCommand | null => {
+      const said = text.toLowerCase();
+      // Only the two words the wheel can express, so the two channels are
+      // being compared on the same vocabulary rather than on speech's wider
+      // one. "hit" before "stand" is arbitrary and cannot matter: an
+      // utterance containing both is not one of these answers.
+      const command: WheelCommand | null = said.includes('hit')
+        ? 'forward'
+        : said.includes('stand')
+          ? 'back'
+          : null;
+      if (command === null) return null;
+      setEchoTaken(command);
+      diag('test', 'voice-echo', { step: step.id, condition: run.condition, command, text });
+      void speakAsync(ECHO_LINES[command], {
+        interrupt: true,
+        ...spokenOpts(settingsRef.current.audio),
+        tag: `${step.id}#echo`,
+      }).catch(() => {
+        diag('test', 'echo-failed', { step: step.id, command });
+      });
+      return command;
+    },
+    [step.id, run.condition],
+  );
+
+  /**
+   * Measure the noise floor through every input the phone will offer.
+   *
+   * Fully automatic and the last step on the path: it opens the microphone,
+   * and an open microphone is the variable every echo step above is holding
+   * still.
+   *
+   * The comparison this exists for is the car's hands-free unit against the
+   * phone's own microphone under road noise. If the phone offers only one
+   * input -- which is the likely outcome on iOS, where input follows the
+   * audio session rather than a `deviceId` -- that is recorded as the
+   * finding rather than presented as a comparison of one thing with itself.
+   */
+  const runSweep = useCallback(async () => {
+    const mine = ++sweepRun.current;
+    const inputs = await listAudioInputs();
+    diag('test', 'sweep-start', {
+      step: step.id,
+      condition: run.condition,
+      inputs: inputs.length,
+      labels: inputs.map((i) => i.label).join(', ') || undefined,
+    });
+    if (sweepRun.current !== mine) return;
+    if (inputs.length === 0) {
+      // No enumeration at all: still worth one reading, and the export says
+      // the device could not be named rather than leaving a bare number.
+      setSweepLine('Measuring (the phone would not name its inputs)…');
+    }
+    const targets: (string | undefined)[] =
+      inputs.length === 0 ? [undefined] : inputs.map((i) => i.deviceId);
+    const readings: string[] = [];
+    for (let i = 0; i < targets.length; i += 1) {
+      if (sweepRun.current !== mine) return;
+      const label = inputs[i]?.label ?? '(phone default)';
+      setSweepLine(`Measuring ${i + 1} of ${targets.length}: ${label}…`);
+      try {
+        const reading = await measureWithWebAudio(3000, undefined, targets[i]);
+        if (sweepRun.current !== mine) return;
+        const band = bandFor(reading.dbfs);
+        diag('test', 'sweep-reading', {
+          step: step.id,
+          condition: run.condition,
+          index: i + 1,
+          of: targets.length,
+          label,
+          dbfs: Number(reading.dbfs.toFixed(1)),
+          peakDbfs: Number(reading.peakDbfs.toFixed(1)),
+          band,
+          frames: reading.frames,
+        });
+        readings.push(`${label}: ${reading.dbfs.toFixed(1)} dBFS (${band})`);
+      } catch (e) {
+        const why = e instanceof Error ? e.name : String(e);
+        // A REFUSED INPUT IS A RESULT. An exact `deviceId` the phone will not
+        // honour rejects, and that is the answer to "can this app choose its
+        // microphone at all" -- which is the question behind the whole sweep.
+        diag('test', 'sweep-refused', {
+          step: step.id,
+          condition: run.condition,
+          index: i + 1,
+          label,
+          why,
+        });
+        readings.push(`${label}: refused (${why})`);
+      }
+    }
+    if (sweepRun.current !== mine) return;
+    diag('test', 'sweep-done', { step: step.id, condition: run.condition, taken: readings.length });
+    // HEARD, because the operator is driving and was told to leave the phone
+    // alone. The chime is how they know it is over and they may answer.
+    chime('good');
+    setSweepLine(
+      readings.length === 0
+        ? 'No microphone could be opened at all.'
+        : `Done. ${readings.join(' \u2014 ')}`,
+    );
+  }, [step.id, run.condition]);
+
+  /**
    * The operator is answering out loud, and this run is live.
    *
    * `run.active` is in the condition rather than assumed: `coerce` never
@@ -2195,6 +2448,30 @@ function RunningTest({
        *    two answers fit equally, and a wrong stamp reads in the analysis
        *    as the opposite finding.
        */
+      /**
+       * THE ECHO STEPS CLAIM THE TRANSCRIPT FIRST.
+       *
+       * They declare `echo: 'voice'`, so what the recogniser heard is the
+       * measurement rather than an answer -- the same reasoning as
+       * `mic-heard`. Answering the STEP is done by tapping; this turns the
+       * word into the app's spoken reply, which is the thing being measured.
+       * Returning a label consumes the transcript so the drill command
+       * vocabulary never also acts on it.
+       */
+      if (step.echo === 'voice') {
+        if (stepLines.some((line) => looksLikeSelfEcho(text, line))) {
+          diag('test', 'heard-own-voice', { step: step.id, text });
+          return null;
+        }
+        const took = echoSpokenWord(text);
+        if (took !== null) return `field-test: echo ${took}`;
+        // Heard something that was neither word. Chimed rather than silent:
+        // from the driver's seat an unmatched utterance and a dead
+        // microphone are the same experience.
+        diag('test', 'echo-unmatched', { step: step.id, text });
+        chime('attention');
+        return 'field-test: echo no word';
+      }
       if (!spokenAnswersLive) return null;
       if (stepLines.some((line) => looksLikeSelfEcho(text, line))) {
         diag('test', 'heard-own-voice', { step: step.id, text });
@@ -2479,7 +2756,20 @@ function RunningTest({
     // to; the step said "stay quiet" and then waited for a thumb. The
     // button stays for a second reading.
     if (why === 'arrival' && step.ambient) void measure();
-  }, [step.id, step.instruction, step.ambient, setSpeaking, measure]);
+    // THE SWEEP STARTS ITSELF TOO, and for a stronger reason: its instruction
+    // is "nothing to do". A step that told the operator to leave the phone
+    // alone and then waited for a thumb would be asking for the one thing it
+    // just said not to do, at speed.
+    if (why === 'arrival' && step.ambientSweep) void runSweep();
+  }, [
+    step.id,
+    step.instruction,
+    step.ambient,
+    step.ambientSweep,
+    setSpeaking,
+    measure,
+    runSweep,
+  ]);
 
   /**
    * When the current step became answerable.
@@ -2653,6 +2943,23 @@ function RunningTest({
       chime('mark');
       return;
     }
+    // THE DRAWN LINE, READ FROM THE REF. `answer()` runs at the instant of
+    // the tap and a render that has not caught up would score against the
+    // previous sample. Guarded on the step id so a ref left by another step
+    // cannot contribute a `said` to a step that drew nothing.
+    const drawn =
+      step.discriminate && spokenChoiceRef.current?.key === `${run.condition}:${step.id}`
+        ? spokenChoiceRef.current.line
+        : null;
+    const drawnWord = drawn === null ? null : discriminateWordFor(drawn);
+    const drawnAnswer = drawn === null ? null : discriminateAnswerFor(drawn);
+    // The four word buttons, derived from the lines themselves rather than
+    // spelled out again: a fifth line added to the set brings its button
+    // into the scoring without this having to be remembered.
+    const wasAGuess =
+      drawn !== null &&
+      DISCRIMINATE_LINES.map((l) => discriminateAnswerFor(l)).includes(responseId);
+
     // Joined here rather than passed as arrays. The log caps a non-primitive
     // by its serialised length and otherwise keeps it as JSON, so an array
     // would export as `["a","b"]` inside a logfmt field -- joining at the call
@@ -2675,6 +2982,26 @@ function RunningTest({
       msSinceAppLetGo: stepMicOffsetRef.current ?? undefined,
       wheel: wheelSeen.length > 0 ? wheelSeen.join(', ') : undefined,
       heard: heard.length > 0 ? heard.join(' | ') : undefined,
+      /**
+       * WHAT THE APP ACTUALLY SAID, AND WHETHER THE TAP MATCHED IT.
+       *
+       * The point of a forced choice is that it can be wrong, and only the
+       * app knows which line it drew. Without `said` on the answer row the
+       * export holds a tap with nothing to score it against, and the step
+       * degrades into the self-report it was built to replace.
+       *
+       * `correct` is set ONLY for a tap on one of the four word buttons.
+       * "Heard it, could not make out the word", "heard nothing at all" and
+       * `missed` are not wrong guesses -- they are declines, and scoring them
+       * as wrong would inflate the error rate with the operator's honesty.
+       * They are still on the row, as the answer itself.
+       */
+      said: drawnWord ?? undefined,
+      correct: wasAGuess ? responseId === drawnAnswer : undefined,
+      // What the press or the spoken word was taken to mean, on the row the
+      // analysis reads. The echo is spoken, so a mismatch between this and
+      // `echo-right` is the channel getting the answer wrong.
+      echoTook: echoTaken ?? undefined,
       paths:
         paths.length > 0
           ? paths
@@ -2885,6 +3212,20 @@ function RunningTest({
         gets a labelled five-second measurement on the one step where a
         measurement is what they came for.
       */}
+      {/* WHAT THE APP TOOK THE PRESS TO MEAN, on screen as well as spoken.
+          The spoken echo is the measurement -- the operator is looking at the
+          road -- but a parked leg is read with the eyes, and at a red light
+          this is how a mismatch gets noticed rather than remembered. */}
+      {step.echo && echoTaken !== null && (
+        <p className="fieldtest-ambient" data-testid="fieldtest-echo">
+          {`Taken as: ${ECHO_LINES[echoTaken]}`}
+        </p>
+      )}
+      {step.ambientSweep && sweepLine !== null && (
+        <p className="fieldtest-ambient" data-testid="fieldtest-sweep">
+          {sweepLine}
+        </p>
+      )}
       {step.ambient && (
         <button
           type="button"

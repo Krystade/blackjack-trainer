@@ -85,6 +85,31 @@ export const ANSWER_PHRASES: Readonly<Record<string, readonly string[]>> = {
   'ambient-noted': ['it was quiet', 'cabin quiet', 'nothing to note'],
   'ambient-dirty': ['noise', 'noisy', 'something made noise'],
 
+  // ---- the echo steps: what came back, which is the half the log cannot see
+  'echo-right': ['what i meant', 'that was it', 'right'],
+  'echo-wrong': ['the other one', 'wrong one', 'wrong word'],
+  'echo-silent': ['nothing came back', 'nothing back', 'no answer'],
+  'echo-not-said': ['never got it out', 'did not say it'],
+  // Distinct from `missed`, and that distinction is the whole point of the
+  // button: "I could not tell what happened" and "there was nothing to tell
+  // because I never pressed" are opposite readings of an empty log.
+  'wheel-not-pressed': ['never pressed', 'did not press', 'no press'],
+
+  // ---- which word was that. The mic is OFF on these steps (`voice: false`),
+  // so these exist for the vocabulary's completeness rule rather than to be
+  // spoken: answering by voice would inject the input channel's errors into
+  // the one measurement that is about the OUTPUT channel.
+  'heard-hit': ['hit'],
+  'heard-stand': ['stand'],
+  'heard-double': ['double'],
+  'heard-split': ['split'],
+  'heard-unintelligible': ['could not make it out', 'garbled', 'muffled'],
+  'heard-nothing-at-all': ['nothing at all', 'heard nothing'],
+
+  // ---- the automatic sweep
+  'sweep-done': ['finished', 'it finished'],
+  'sweep-interrupted': ['interrupted', 'had to stop it'],
+
   // ---- the free step, and the escape hatch that is on every step
   good: ['that worked', 'worked', 'good', 'yes'],
   bad: ['that was wrong', 'was wrong', 'bad', 'no'],

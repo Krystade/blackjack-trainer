@@ -573,3 +573,131 @@ One instrument weakness worth naming: a press that never arrives leaves no
 row, so the count of presses the operator MADE exists only in a note. On
 `wheel-repeat` the operator pressed four times against an instruction of two,
 and only the note says so.
+
+---
+
+## 7. The replacement protocol, built 2026-09-30
+
+Sections 1-6 describe an instrument that answered its routing questions and
+then kept asking them. Three legs of a new protocol replace it. They share the
+step array and the runner; a `protocol` field on both the condition and the
+step keeps the two sets apart, and `onPath` drops a step whose protocol does
+not match the leg, both defaulting to `routing` so nothing above changed.
+
+Operator card: `docs/2026-10-01-drive-card.md`. The old card is marked
+superseded and kept for the routing legs, which are still in the app.
+
+### 7.1 Why the drill was never actually tested
+
+`mediaSession.ts` runs `if (probe) probe(action)` and then `if (!probe)
+handler()`. The exclusion is deliberate -- a diagnostic press must not also
+answer a real drill question -- and every routing wheel step arms a probe. So
+**press-to-action-to-audible-response, which is the entire product, had never
+run in the car or in the suite.** A leg could come back green on the wheel
+while the drill was unanswerable, and in `vfktl7` one did: every `seekforward`
+press wrote `handled=false why=no-screen-listening` while every `seekbackward`
+was handled, because `back` falls through to `repeatLast` when no screen claims
+it. **A protocol that tested one direction would have read as a pass.**
+
+### 7.2 Echo-back, not real drills
+
+The drill steps do not host graded questions. `gradeQuizAnswer` and
+`gradeFlashcardAnswer` persist to Stats and advance the spaced-repetition
+deck, so a field test that used them would pollute the real training history
+with a diagnostic session -- and the damage would be invisible, because a
+polluted deck looks exactly like a studied one.
+
+Instead each wheel step registers through `setWheelCommandHandler` -- the
+production path, no probe -- and the app **says back the word it took the
+press to mean**. The operator reports whether that matched intent. The press
+therefore travels the whole production route and produces an audible result,
+which is what was never observed, and nothing is written to Stats.
+
+### 7.3 Forced choice, because a self-report cannot fail
+
+The old intelligibility question was "could you make out the words", asked of
+somebody who has already heard the line and knows what it said. **It collects
+a pass whatever happens in the cabin.**
+
+The four `DISCRIMINATE_LINES` differ only in the decision word -- hit, stand,
+double, split, all against dealer nine. A step draws one at random, logs
+`word-spoken` with what it drew, and offers the four words as buttons. A wrong
+tap is hard evidence that the word did not survive the road, and three samples
+per leg make the result a rate rather than an anecdote.
+
+Two properties of the scoring matter:
+
+- **A decline carries no score.** "Heard it, could not make out the word" is
+  the honest answer when the road wins. Scoring it wrong would inflate the
+  error rate with the operator's honesty; scoring it right would hide the
+  failure. `wasAGuess` is derived from whether the response is one of the four
+  words, so a decline is stamped with no `correct=` at all.
+- **The oracle is bounded at both ends.** Two versions of the e2e assertion
+  were wrong and both passed sometimes, which is the only reason they survived:
+  `echo-forward` speaks one of the four lines two steps earlier, so an oracle
+  reading the first match agreed with the draw one time in four, and one
+  polling for mere existence resolved 1.5s before the step under test spoke.
+
+### 7.4 What each leg is for
+
+| Leg | Bluetooth | Steps | The question it settles |
+|-----|-----------|-------|-------------------------|
+| `drill-parked` | on | 10 | Does any of it work with the road removed |
+| `drill-freeway` | on | 10 | The whole point: usable at speed |
+| `drill-phone` | **off** | 7 | Is the head unit the problem, or the speech |
+
+`drill-phone` drops `echo-forward`, `echo-back` and `echo-after-voice` by
+construction, not by choice: iOS gives a web app no way to hold AVRCP while
+routing audio to the local speaker, so there is no wheel to press. Asking for
+one is the mistake the routing protocol made with six steps.
+
+### 7.5 The step that separates the two surviving candidates
+
+`echo-after-voice` re-asks the question section 3.1 got wrong. In `ulq6vs` no
+wheel press arrived for nine minutes after the microphone first opened; the
+conclusion -- that iOS drops the skip handlers -- was falsified by `vfktl7`
+and by the transport controls working from the lock screen. Two candidates
+remain: **the head unit withholds AVRCP skip while HFP is up**, or **the
+presses were never made**.
+
+The old step could not tell them apart. This one can, for two reasons: the
+echo is audible, so a press that arrives proves itself, and `wheel-not-pressed`
+("I never pressed -- no chance") is on the response stack, so a press that was
+never made says so. `awaitSilent` holds the step until the recogniser is
+genuinely down, because `setVoiceOn(false)` only requests the end of a session
+and the phone tears the link down some time afterwards.
+
+`echo-forward` is the leg's positive control and is first for the reason
+`yvjxzk` demonstrated: with no earlier evidence that a press ever worked in
+that page load, "the fix failed" and "the wheel never worked here" are
+indistinguishable and the run cannot be read at all. Nothing before it has
+opened a microphone. **An echo that fails there means the leg is measuring
+nothing and should be restarted, not continued** -- which the card says in
+those words.
+
+### 7.6 The one fully automatic measurement
+
+`ambient-sweep` enumerates every `audioinput` the phone offers, measures the
+cabin through each for three seconds via `measureWithWebAudio(ms, signal,
+deviceId)` with `echoCancellation`, `noiseSuppression` and `autoGainControl`
+all false, logs a `sweep-reading` per input, and chimes. It answers the car-mic
+versus phone-mic question under identical road noise, which no pair of separate
+legs could -- two legs are two noise environments.
+
+It is last on purpose: it opens a microphone, and an open microphone is the one
+variable every echo step above it is holding still.
+
+### 7.7 Two defects the new tests caught before the car
+
+- **`startFieldTestRun` hardcoded `stepIndex: 0`**, which is `route-1`. Picking
+  a drill leg and tapping Start opened the routing protocol -- the operator is
+  handed questions that are already settled and the leg's first measurement is
+  never reached. Now `snapToPath(0, { condition })`.
+- **The word buttons were modelled as `kind: 'route'`**, which declares a
+  routing question and obliges the step to produce `say`. An existing test
+  caught it. A neutral `kind: 'choice'` was added instead, deliberately
+  plainer than `.fieldtest-route`: colouring a word button good or bad would
+  announce the answer before the tap.
+
+Five mutations of the drill data and `onPath` were injected and all five were
+caught.

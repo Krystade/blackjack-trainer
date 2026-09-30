@@ -16,6 +16,10 @@ import {
   stepResponses,
   routeCells,
   routeBlockVerdict,
+  DISCRIMINATE_LINES,
+  ECHO_LINES,
+  discriminateWordFor,
+  discriminateAnswerFor,
 } from './fieldTest';
 import { DEFAULT_SETTINGS, type Settings } from '../store/types';
 import { readDiagnosticLog, clearDiagnosticLog } from './diagnosticLog';
@@ -134,6 +138,28 @@ describe('the test speaks for itself', () => {
    * scripts/spoken-phrases.json is the list the clips are GENERATED from, so
    * membership in it is the real precondition, not a proxy for one.
    */
+  /**
+   * ...AND THE LINES THAT ARE NOT IN `say`, which is where this rule had a
+   * hole the moment the drill protocol arrived.
+   *
+   * A drawn line lives in `discriminate` and an echo line in `ECHO_LINES`,
+   * so neither is reached by the walk below. Both are spoken through the
+   * real speech path, so both fall back to live TTS if they have no clip --
+   * and live TTS is the path with the watchdog fault on the first utterance
+   * of a page load. The word-discrimination step would then be comparing a
+   * synthesised voice against the road instead of the recorded one, which
+   * makes the voice the variable rather than the noise.
+   */
+  it('draws and echoes only lines that actually have a recorded clip', () => {
+    const haveClips = new Set(spokenPhrases as string[]);
+    for (const line of DISCRIMINATE_LINES) {
+      expect(haveClips.has(line), `no clip for the drawn line "${line}"`).toBe(true);
+    }
+    for (const line of Object.values(ECHO_LINES)) {
+      expect(haveClips.has(line), `no clip for the echo line "${line}"`).toBe(true);
+    }
+  });
+
   it('speaks only lines that actually have a recorded clip', () => {
     const haveClips = new Set(spokenPhrases as string[]);
     for (const step of FIELD_TEST_STEPS) {
@@ -870,13 +896,30 @@ describe('resolveFieldTestSetup', () => {
     const probes = FIELD_TEST_STEPS.filter((s) => s.lockProbe).map((s) => s.id);
     expect(probes, 'one lock probe, no more').toEqual(['lock-probe']);
     // After every measured step: a sample taken after the page may have died
-    // is not a sample. But NOT last -- `free` is last, and has to be: it is
-    // the one step meant to be tapped repeatedly, and `answer()` only stays
-    // put on the last step. Appending the probe after it made the first tap
-    // on `free` advance into "Lock the phone now".
-    expect(FIELD_TEST_STEPS.at(-1)?.id, '`free` is no longer last, so it advances').toBe('free');
-    expect(FIELD_TEST_STEPS.at(-2)?.id).toBe('lock-probe');
-    const measured = FIELD_TEST_STEPS.filter((s) => s.say || s.wheel || s.ambient).map((s) => s.id);
+    // is not a sample. But NOT last -- the free step is last, and has to be:
+    // it is the one step meant to be tapped repeatedly, and `answer()` only
+    // stays put on the last step. Appending the probe after it made the first
+    // tap on `free` advance into "Lock the phone now".
+    //
+    // PER PROTOCOL, because there are two now and each ends with its own free
+    // step, on its own path. A protocol whose free step is not last has that
+    // first tap advance out of it -- the bug this assertion was written for.
+    const stepsOf = (protocol: 'routing' | 'drill') =>
+      FIELD_TEST_STEPS.filter((x) => (x.protocol ?? 'routing') === protocol);
+    expect(stepsOf('routing').at(-1)?.id, '`free` is no longer last, so it advances').toBe('free');
+    expect(
+      stepsOf('drill').at(-1)?.id,
+      '`drill-free` is no longer last, so it advances',
+    ).toBe('drill-free');
+    // The lock probe belongs to the routing protocol, second from its end.
+    expect(stepsOf('routing').at(-2)?.id).toBe('lock-probe');
+    // ...and every routing measurement precedes it. Scoped, because the drill
+    // steps sit after the whole routing list in the array and are never on the
+    // same path as the probe, so comparing their indices to its would fail on
+    // a layout fact rather than on an ordering mistake.
+    const measured = stepsOf('routing')
+      .filter((s) => s.say || s.wheel || s.ambient)
+      .map((s) => s.id);
     for (const id of measured) expect(indexOf(id), id).toBeLessThan(indexOf('lock-probe'));
     expect(at('lock-probe').voice, 'the probe locks the phone with a microphone open').toBe(false);
   });
@@ -1499,11 +1542,25 @@ describe('what a run says about the page it started in', () => {
  */
 describe('one starting line for every cell after the microphone', () => {
   /** Every step that speaks with the microphone already down. */
+  /**
+   * SCOPED TO THE ROUTING PROTOCOL, because the walk is positional and the
+   * two protocols share one array.
+   *
+   * `setup.voice` carries forward, so without this the walk leaves the
+   * routing list with the microphone flag still set and reports the first
+   * drill steps as "after the microphone" -- when on a drill leg they are the
+   * FIRST steps on the path and no microphone has opened at all. The drill
+   * protocol has its own post-microphone step, `echo-after-voice`, with its
+   * own assertion below.
+   */
+  const routingSteps = FIELD_TEST_STEPS.filter((s) => (s.protocol ?? 'routing') === 'routing');
+  const drillSteps = FIELD_TEST_STEPS.filter((s) => s.protocol === 'drill');
+
   const afterMic = (() => {
     let voice = false;
     let wasOn = false;
     const out: (typeof FIELD_TEST_STEPS)[number][] = [];
-    for (const step of FIELD_TEST_STEPS) {
+    for (const step of routingSteps) {
       if (step.setup?.voice !== undefined) voice = step.setup.voice;
       if (voice) {
         wasOn = true;
@@ -1549,19 +1606,50 @@ describe('one starting line for every cell after the microphone', () => {
    * pinned in `e2e/field-test-mic.spec.ts`, against a recogniser that ends
    * its session the way a phone does.
    */
-  it('declares exactly one microphone block, so before and after are two cells', () => {
+  const microphoneBlocks = (steps: readonly (typeof FIELD_TEST_STEPS)[number][]) => {
     let voice = false;
     let blocks = 0;
-    for (const step of FIELD_TEST_STEPS) {
+    for (const step of steps) {
       if (step.setup?.voice === undefined) continue;
       if (step.setup.voice && !voice) blocks += 1;
       voice = step.setup.voice;
     }
+    return { blocks, endsOpen: voice };
+  };
+
+  it('declares exactly one microphone block, so before and after are two cells', () => {
+    const routing = microphoneBlocks(routingSteps);
     expect(
-      blocks,
+      routing.blocks,
       'the protocol declares more than one microphone block, so "before" and "after" are no longer two cells',
     ).toBe(1);
-    expect(voice, 'the leg ends with the microphone still open').toBe(false);
+    expect(routing.endsOpen, 'the leg ends with the microphone still open').toBe(false);
+  });
+
+  /**
+   * THE SAME INVARIANT FOR THE DRILL PROTOCOL, which needs it for a different
+   * reason. Its point of interest is the step immediately after the
+   * microphone shuts (`echo-after-voice`): the press that went missing for
+   * nine minutes on 2026-09-29. A second block anywhere in the list would
+   * mean "after the microphone" named two different moments, and a leg that
+   * ended with the microphone still open would leave the car in the
+   * hands-free profile for whatever the operator did next.
+   */
+  it('declares exactly one microphone block on the drill protocol too', () => {
+    const drill = microphoneBlocks(drillSteps);
+    expect(drill.blocks, 'the drill leg opens the microphone more than once').toBe(1);
+    expect(drill.endsOpen, 'the drill leg ends with the microphone still open').toBe(false);
+  });
+
+  it('puts the drill protocol\u2019s post-microphone press behind the silence guard', () => {
+    const step = drillSteps.find((x) => x.id === 'echo-after-voice');
+    expect(step, 'the step that asks what the wheel does after the microphone is gone').toBeTruthy();
+    // `setVoiceOn(false)` only REQUESTS the end of a session; the phone tears
+    // the link down some time later. Without this the press is tested while
+    // the microphone is still coming down, which is the confound the whole
+    // step exists to remove.
+    expect(step?.awaitSilent, 'it presses while the microphone is still coming down').toBe(true);
+    expect(step?.setup?.voice, 'it leaves the microphone on').toBe(false);
   });
 
   it('covers both paths, so the wait is not what separates them', () => {
@@ -1658,9 +1746,15 @@ describe('what the operator is asked to do', () => {
     expect(atEar.map((c) => c.id), 'no leg can separate the earpiece from silence').toEqual([
       'phone',
     ]);
-    // And the legs that CANNOT separate them say so where the operator reads
-    // what the leg is for, rather than leaving the analysis to infer it.
-    for (const c of FIELD_TEST_CONDITIONS.filter((x) => x.id !== 'phone')) {
+    // ROUTING LEGS ONLY. The claim is about `ROUTE_ANSWERS`, which offers
+    // `route-earpiece` and `route-silent` as separate buttons -- so a leg
+    // that cannot separate them has to say so, or the analysis reads two
+    // cells where there is one. A drill leg asks no routing question and
+    // offers neither button, so there is nothing for it to admit.
+    const routingConditions = FIELD_TEST_CONDITIONS.filter(
+      (c) => (c.protocol ?? 'routing') === 'routing',
+    );
+    for (const c of routingConditions.filter((x) => x.id !== 'phone')) {
       expect(
         c.proves,
         `${c.id} does not admit that the earpiece and silence are one answer in it`,
@@ -1995,6 +2089,92 @@ describe('a learned position does not change what a tap does', () => {
  * one HERE: the geometry is measured in the layout spec, and this is the
  * thing a person editing the protocol will change without opening a browser.
  */
+/**
+ * WHAT THE STEP IS FOR, ON THE STEP.
+ *
+ * The leg's `proves` is rendered on the gate, which the operator reads once,
+ * parked, before a twenty-minute drive -- and then answers ten steps with no
+ * reminder of what any of them is measuring. The instruction says what to DO;
+ * it deliberately does not say why, because a step that argues its case in
+ * the imperative gets longer and less scannable at speed.
+ *
+ * So `purpose` is a separate short line, printed and never spoken. Never
+ * spoken for two reasons: the drill legs measure whether a specific sentence
+ * survives road noise, and prefixing every sample with a clause about the
+ * experiment lengthens the audio the operator has to sit through on the very
+ * steps that are timed against a settle window.
+ */
+describe('every drill step says what it is for', () => {
+  // The gate's `proves` can be a paragraph -- it is read parked. This is read
+  // in traffic, under the instruction, above the answer stack, and anything
+  // that wraps past two lines pushes the buttons down the screen.
+  const MAX_PURPOSE_CHARS = 110;
+
+  const drill = FIELD_TEST_STEPS.filter((s) => s.protocol === 'drill');
+
+  it('has drill steps to check, or this whole block is vacuous', () => {
+    // The guard that stops the three assertions below from passing by
+    // iterating an empty list -- the failure mode that makes a suite green
+    // when a protocol is renamed out from under it.
+    expect(drill.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it('declares a purpose on every one of them', () => {
+    const silent = drill.filter((s) => !s.purpose).map((s) => s.id);
+    expect(
+      silent,
+      `these steps ask for something at speed without saying what it measures: ${silent.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('keeps each purpose to the two lines it has room for', () => {
+    const tooLong = drill
+      .filter((s) => (s.purpose?.length ?? 0) > MAX_PURPOSE_CHARS)
+      .map((s) => `${s.id} (${s.purpose?.length})`);
+    expect(
+      tooLong,
+      `these push the answer buttons down the screen: ${tooLong.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('says something on each, rather than being short by saying nothing', () => {
+    for (const step of drill) {
+      expect(step.purpose!.length, `${step.id} explains nothing`).toBeGreaterThan(24);
+    }
+  });
+
+  /**
+   * A DISTINCT REASON PER STEP. Two steps sharing a purpose verbatim means
+   * one of them was appended without asking what it adds -- and the three
+   * `hear-word-*` steps are a real temptation here, being three samples of
+   * one measurement. They are allowed to rhyme; they are not allowed to be
+   * the same string, because then the middle one is documented as a
+   * duplicate of a measurement rather than as its second sample.
+   */
+  it('gives each step its own reason', () => {
+    const seen = new Map<string, string>();
+    for (const step of drill) {
+      const clash = seen.get(step.purpose!);
+      expect(clash, `${step.id} and ${clash} claim the same purpose verbatim`).toBeUndefined();
+      seen.set(step.purpose!, step.id);
+    }
+  });
+
+  /**
+   * NEVER SPOKEN. `stepLines` is what the app reads out; a purpose that
+   * leaked into `say` would be prepended to a discrimination sample, which is
+   * the one thing those steps hold constant.
+   */
+  it('never puts the purpose into anything the app speaks', () => {
+    for (const step of drill) {
+      const spoken = [...(step.say ?? []), ...(step.sayUnclipped ?? [])];
+      for (const line of spoken) {
+        expect(line, `${step.id} speaks its purpose`).not.toContain(step.purpose!);
+      }
+    }
+  });
+});
+
 describe('an instruction has to fit on the screen it is printed on', () => {
   // 130px of head, minus the title, at the app's own body size, is about six
   // lines of roughly 30 characters. Set where the measured offenders fail and
@@ -2183,6 +2363,163 @@ describe('the route probes', () => {
   it('are kept out of the crossing, so the cells still hold three matched samples', () => {
     for (const ids of routeCells().values()) {
       for (const p of probes) expect(ids, p.id).not.toContain(p.id);
+    }
+  });
+});
+
+/**
+ * THE DRILL PROTOCOL'S OWN INVARIANTS.
+ *
+ * It measures the product rather than the plumbing: whether a press answers
+ * anything, and whether the words can be made out at speed. Neither had ever
+ * been measured before 2026-09-30 -- the routing protocol replaces the real
+ * wheel handler with a diagnostic probe on every wheel step, on purpose, so
+ * a leg could come back green on the wheel while the drill was unanswerable.
+ */
+describe('the drill protocol', () => {
+  const drill = FIELD_TEST_STEPS.filter((s) => s.protocol === 'drill');
+
+  it('has steps at all, so nothing below is vacuous', () => {
+    expect(drill.length).toBeGreaterThanOrEqual(8);
+  });
+
+  /**
+   * THE FOLD HAZARD, pinned.
+   *
+   * `resolveFieldTestSetup` folds `setup` from index 0 through the current
+   * step -- which is what makes the effective settings identical however the
+   * operator arrived. The drill steps sit AFTER every routing step in the
+   * array, so the fold reaching them has already applied the whole routing
+   * list: whatever `route-after-mic-3t` left behind (clips off, at the time
+   * of writing) is the state the first drill step inherits.
+   *
+   * So the first drill step has to declare every field it depends on, or a
+   * drill leg silently runs under the tail of a protocol it never ran.
+   */
+  it('opens with a complete setup rather than inheriting the routing list', () => {
+    const first = drill[0]!;
+    const declared = Object.keys(first.setup ?? {});
+    for (const field of [
+      'audioEnabled',
+      'useClips',
+      'muted',
+      'volume',
+      'voice',
+      'eyesFree',
+      'wheelMode',
+    ]) {
+      expect(
+        declared,
+        `${first.id} inherits ${field} from the routing protocol's last step`,
+      ).toContain(field);
+    }
+  });
+
+  it('is entered through conditions that declare the drill protocol', () => {
+    const legs = FIELD_TEST_CONDITIONS.filter((c) => c.protocol === 'drill');
+    expect(legs.map((c) => c.id)).toEqual(['drill-parked', 'drill-freeway', 'drill-phone']);
+    // A parked leg first, because a fault found parked costs five minutes and
+    // the same fault found at speed costs a drive.
+    expect(legs[0]?.motion).toBe('parked');
+    // ...and the phone-speaker leg has no car, which is why it loses the
+    // wheel. See the condition's own note.
+    expect(legs.find((c) => c.id === 'drill-phone')?.bluetooth).toBe(false);
+  });
+
+  /**
+   * THE MEASUREMENT RESTS ENTIRELY ON THIS.
+   *
+   * The four lines must be identical apart from the decision word. If one
+   * were longer, or named a different dealer card, a wrong tap could be
+   * explained by the sentence rather than by the word being unintelligible --
+   * and the word is what the product turns on.
+   */
+  it('draws from lines that differ in exactly one word', () => {
+    const templates = new Set(
+      DISCRIMINATE_LINES.map((line) =>
+        line.replace(/\b(hit|stand|double|split)\b/i, '<WORD>'),
+      ),
+    );
+    expect(
+      [...templates],
+      'the lines differ in more than the decision word, so a wrong tap has another explanation',
+    ).toHaveLength(1);
+    expect(DISCRIMINATE_LINES.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('can name the word in every line it will draw, and score it', () => {
+    for (const line of DISCRIMINATE_LINES) {
+      const word = discriminateWordFor(line);
+      expect(word, `no decision word could be read out of ${line}`).toBeTruthy();
+      expect(discriminateAnswerFor(line)).toBe(`heard-${word}`);
+    }
+    // ...and every one of those answers is actually on the step's stack, or
+    // the correct answer is unreachable and the step can only be failed.
+    const step = drill.find((x) => x.discriminate !== undefined)!;
+    const ids = step.responses.map((r) => r.id);
+    for (const line of DISCRIMINATE_LINES) {
+      expect(ids, 'the correct answer is not on the stack').toContain(
+        discriminateAnswerFor(line),
+      );
+    }
+  });
+
+  it('never colours the word buttons so the screen gives the answer away', () => {
+    for (const step of drill.filter((x) => x.discriminate !== undefined)) {
+      const words = step.responses.filter((r) => r.id.startsWith('heard-') && r.id !== 'heard-nothing-at-all' && r.id !== 'heard-unintelligible');
+      expect(words.length).toBeGreaterThan(0);
+      const kinds = new Set(words.map((r) => r.kind));
+      expect(
+        [...kinds],
+        'one word button looks different from the others, which hands over the answer',
+      ).toEqual(['choice']);
+    }
+  });
+
+  /**
+   * An echo step must not ALSO arm the diagnostic probe. `wheel` is what arms
+   * it, and a probed press returns before the real handler runs -- which
+   * would leave the echo silent and the step measuring the routing protocol's
+   * blind spot all over again.
+   */
+  it('keeps the diagnostic probe off every echo step', () => {
+    for (const step of drill.filter((x) => x.echo !== undefined)) {
+      expect(step.wheel, `${step.id} arms the probe, so its press cannot reach a handler`).toBeFalsy();
+    }
+  });
+
+  it('asks the wheel echo steps for a car and the voice ones for a microphone', () => {
+    for (const step of drill.filter((x) => x.echo === 'wheel')) {
+      expect(step.needsBluetooth, `${step.id} would ask for a button with no car attached`).toBe(true);
+    }
+    const voiceEcho = drill.filter((x) => x.echo === 'voice');
+    expect(voiceEcho.length).toBeGreaterThan(0);
+    for (const step of voiceEcho) {
+      expect(step.needsBluetooth, `${step.id} needs no car: it is measured through the phone`).toBeFalsy();
+      expect(step.awaitListening, `${step.id} speaks before the recogniser is live`).toBe(true);
+    }
+  });
+
+  it('offers "I never pressed" on every step that asks for a press', () => {
+    for (const step of drill.filter((x) => x.echo === 'wheel')) {
+      const ids = step.responses.map((r) => r.id);
+      // Without it, a press never made and a press that vanished produce the
+      // identical record -- and a whole diagnosis was built on that
+      // ambiguity on 2026-09-29 and had to be withdrawn.
+      expect(ids, `${step.id} cannot say the press was never made`).toContain(
+        'wheel-not-pressed',
+      );
+    }
+  });
+
+  it('puts the sweep last, where its open microphone spoils nothing', () => {
+    const sweep = drill.findIndex((x) => x.ambientSweep === true);
+    expect(sweep, 'no sweep step').toBeGreaterThan(-1);
+    const echoes = drill
+      .map((x, i) => (x.echo !== undefined ? i : -1))
+      .filter((i) => i > -1);
+    for (const i of echoes) {
+      expect(i, 'an echo step runs after the sweep has opened the microphone').toBeLessThan(sweep);
     }
   });
 });

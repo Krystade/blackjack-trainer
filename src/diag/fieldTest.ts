@@ -48,10 +48,34 @@ import type { Settings } from '../store/types';
 
 export type FieldTestMotion = 'parked' | 'driving';
 
+/**
+ * WHICH QUESTION A LEG IS ASKING, because there are now two and they do not
+ * share steps.
+ *
+ * `routing` is the original protocol: where does sound come out, and does a
+ * press reach the app at all. One complete leg on 2026-09-29 settled it for a
+ * Bluetooth path, and its conclusions are in
+ * docs/research/2026-09-29-drive-findings.md.
+ *
+ * `drill` is the product: does a press ANSWER something, and can the prompt be
+ * made out at road speed. Neither had ever been measured -- the routing
+ * protocol replaces the real wheel handler with a diagnostic probe on every
+ * wheel step, deliberately, so that a test press cannot also answer a drill
+ * question. The consequence is that a leg could come back green on the wheel
+ * while the drill was unanswerable, and one did.
+ *
+ * Two protocols rather than a rewrite because the routing steps are still the
+ * instrument to reach for if routing ever regresses, and their conclusions
+ * are only readable against the steps that produced them.
+ */
+export type FieldTestProtocol = 'routing' | 'drill';
+
 export interface FieldTestCondition {
   id: string;
   label: string;
   motion: FieldTestMotion;
+  /** Which step set this leg runs. Absent means `routing`, the original. */
+  protocol?: FieldTestProtocol;
   setup: string;
   proves: string;
   /**
@@ -127,8 +151,18 @@ const MISSED: StepResponse = {
 export interface StepResponse {
   id: string;
   label: string;
-  /** Colours the button and, more importantly, the reading of the log. */
-  kind: 'route' | 'good' | 'bad' | 'note';
+  /**
+   * Colours the button and, more importantly, the reading of the log.
+   *
+   * `choice` is a NEUTRAL forced-choice option -- one of several answers of
+   * which exactly one is correct, where the app knows which and the operator
+   * must not be able to tell from the screen. It is deliberately not `route`:
+   * a `route` response is how the protocol declares "this step asks where the
+   * sound came from", and `fieldTest.test.ts` reads that to require the step
+   * to produce an utterance of its own. The word buttons are not a routing
+   * question, and colouring them `good`/`bad` would announce the answer.
+   */
+  kind: 'route' | 'choice' | 'good' | 'bad' | 'note';
   /**
    * An observation that is true ALONGSIDE the answer, not instead of it.
    *
@@ -288,6 +322,66 @@ export interface FieldTestStep {
   probe?: string;
   /** Measure the cabin with the microphone for a few seconds. */
   ambient?: boolean;
+  /**
+   * Take a press on the REAL wheel handler and say back what it was taken as.
+   *
+   * The one thing the routing protocol structurally cannot do. There, every
+   * wheel step arms `setMediaSessionProbe`, and `mediaSession.ts` runs
+   * `if (probe) probe(action)` and then `if (!probe) handler()` -- so a press
+   * made during a wheel step reaches the probe and stops. That is correct for
+   * a mapping probe and it means press-to-action-to-audible-response, which is
+   * the entire product, has never once been exercised in the car.
+   *
+   * An echo step arms no probe. It claims the wheel with
+   * `setWheelCommandHandler`, so the press travels the same path a drill's
+   * would, and the app answers out loud with the word it took the press to
+   * mean. The operator then reports the only thing the log cannot hold:
+   * whether the word that came back was the one they intended.
+   *
+   * `'voice'` is the same measurement through the microphone instead.
+   */
+  echo?: 'wheel' | 'voice';
+  /**
+   * Speak ONE line chosen at random from this set, and score the tap against
+   * which one it actually was.
+   *
+   * The protocol's only intelligibility question used to be a self-report,
+   * and a self-report cannot fail: "could you make it out" is answered by an
+   * operator who has already heard the line and knows what it said. Worse,
+   * `ROUTE_ANSWERS` had no button for "came from the car and I could not make
+   * out the words", so an unusable prompt that arrived on the right speaker
+   * recorded as a pass -- which at road speed is the single most likely
+   * failure and the one the log could not represent.
+   *
+   * A forced choice can fail. Every line here differs from the others in ONE
+   * word -- the decision word, which is the word the product turns on -- so a
+   * tap is either right or wrong and the app knows which. Three samples give
+   * a rate rather than an anecdote.
+   */
+  discriminate?: readonly string[];
+  /**
+   * Measure the noise floor through EVERY input the phone will offer, in
+   * turn, recording each device's own label with its reading.
+   *
+   * Which microphone the phone hands over is not the app's choice and it has
+   * already been seen to differ run to run: `ulq6vs` was given the iPhone's
+   * on one step and the Corolla's hands-free unit on another, and the readings
+   * are taken on different hardware with different DSP, so a number without a
+   * device beside it cannot be compared to anything.
+   *
+   * Fully automatic, and last on the path: it opens the microphone, and an
+   * open microphone is the variable every wheel step is trying to hold still.
+   */
+  ambientSweep?: boolean;
+  /**
+   * Needs a car on the other end, so it comes off a Bluetooth-off leg's path.
+   *
+   * `wheel` already implies this and is checked separately -- that flag also
+   * arms the diagnostic probe, which an echo step must not do.
+   */
+  needsBluetooth?: boolean;
+  /** Which protocol this step belongs to. Absent means `routing`. */
+  protocol?: FieldTestProtocol;
   responses: readonly StepResponse[];
   setup?: FieldTestSetup;
 }
@@ -423,6 +517,119 @@ const FREE_RESPONSES: readonly StepResponse[] = [
   MISSED,
 ];
 
+/**
+ * "I NEVER PRESSED", which the protocol had no way to say.
+ *
+ * `WHEEL_RESPONSES` is about what the CAR did, on the reasoning that whether
+ * the press arrived is already in the log -- and that reasoning is sound. It
+ * leaves a different hole: whether a press was MADE. An operator who never
+ * got a hand to the wheel in time taps "the car did nothing else", which is
+ * true, and produces a record byte-identical to a press that vanished.
+ *
+ * That lands on the most consequential row of 2026-09-29: `wheel-after-mic`
+ * recorded zero arrivals, and zero arrivals reads as "the fix failed" whether
+ * the button was pressed or not. A whole diagnosis was built on it and had to
+ * be withdrawn.
+ *
+ * `mic-heard` solved the same problem years earlier with `heard-not-said`,
+ * whose comment reasons that without it "it never heard me" carried both "the
+ * microphone is dead" and "I never said it" -- opposite diagnoses. The wheel
+ * needs the identical button.
+ */
+const NEVER_PRESSED: StepResponse = {
+  id: 'wheel-not-pressed',
+  label: 'I never pressed — no chance',
+  kind: 'note',
+};
+
+/**
+ * What came back, which is the only half of an echo the operator holds.
+ *
+ * The app logs the press, what it took the press to mean, and what it spoke.
+ * It cannot know what was INTENDED, and that is the whole measurement: a
+ * channel that reliably reports "stand" when you meant "hit" is worse than
+ * one that reports nothing, because it grades you wrong and you never find
+ * out.
+ */
+const ECHO_RESPONSES: readonly StepResponse[] = [
+  { id: 'echo-right', label: 'It said back what I meant', kind: 'good' },
+  { id: 'echo-wrong', label: 'It said back the other one', kind: 'bad' },
+  { id: 'echo-silent', label: 'Nothing came back', kind: 'bad' },
+  NEVER_PRESSED,
+  MISSED,
+];
+
+/** The same, for the microphone: the extra outcome is not getting the word out. */
+const ECHO_VOICE_RESPONSES: readonly StepResponse[] = [
+  { id: 'echo-right', label: 'It said back what I meant', kind: 'good' },
+  { id: 'echo-wrong', label: 'It said back a different word', kind: 'bad' },
+  { id: 'echo-silent', label: 'Nothing came back', kind: 'bad' },
+  { id: 'echo-not-said', label: 'I never got the word out', kind: 'note' },
+  MISSED,
+];
+
+/**
+ * The decision words, as buttons. A forced choice, and the app knows the
+ * answer -- see `FieldTestStep.discriminate` for why a self-report could not
+ * be used here.
+ *
+ * `kind: 'choice'` because none of them is the "good" one and the screen must
+ * not say which is: colouring the correct word would hand over the answer to
+ * the one question this step exists to ask. They are not `route` either --
+ * that kind declares a routing question and obliges the step to produce an
+ * utterance through `say`, and these produce theirs through `discriminate`.
+ */
+const DISCRIMINATE_RESPONSES: readonly StepResponse[] = [
+  { id: 'heard-hit', label: 'Hit', kind: 'choice' },
+  { id: 'heard-stand', label: 'Stand', kind: 'choice' },
+  { id: 'heard-double', label: 'Double', kind: 'choice' },
+  { id: 'heard-split', label: 'Split', kind: 'choice' },
+  { id: 'heard-unintelligible', label: 'Heard it, couldn’t make out the word', kind: 'bad' },
+  { id: 'heard-nothing-at-all', label: 'Heard nothing at all', kind: 'bad' },
+  MISSED,
+];
+
+/**
+ * The four lines the discrimination steps draw from.
+ *
+ * Same hand, same dealer card, same length, same recorded voice: the ONLY
+ * difference between them is the decision word. So a wrong tap cannot be
+ * explained by a longer sentence or an unfamiliar phrase, and it cannot be
+ * explained by guessing the dealer card -- it is the decision word being
+ * unintelligible, which is exactly the thing the product needs to survive.
+ *
+ * All four are in scripts/spoken-phrases.json, so all four play as recorded
+ * clips. A line without a clip would be spoken by live TTS, and comparing a
+ * clip against live speech would make the voice the variable instead of the
+ * road.
+ */
+export const DISCRIMINATE_LINES: readonly string[] = [
+  'Basic hit versus dealer nine.',
+  'Basic stand versus dealer nine.',
+  'Basic double versus dealer nine.',
+  'Basic split versus dealer nine.',
+];
+
+/** The word each discrimination line is asking the operator to recover. */
+export function discriminateWordFor(line: string): string | null {
+  for (const word of ['hit', 'stand', 'double', 'split']) {
+    if (line.toLowerCase().includes(` ${word} `)) return word;
+  }
+  return null;
+}
+
+/** The response id that is CORRECT for a given spoken line. */
+export function discriminateAnswerFor(line: string): string | null {
+  const word = discriminateWordFor(line);
+  return word === null ? null : `heard-${word}`;
+}
+
+/** What the app says back when a press or a word is taken as this command. */
+export const ECHO_LINES: Readonly<Record<'forward' | 'back', string>> = {
+  forward: 'Correct play was hit.',
+  back: 'Correct play was stand.',
+};
+
 export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
   {
     id: 'car',
@@ -497,6 +704,48 @@ export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
       'Bluetooth OFF, engine off, out of the car or with the ignition off. Hold the phone against your ear as if you were on a call.',
     proves:
       'The only leg that separates the earpiece from silence — everywhere else they are the same answer. Anything that fails here has nothing to do with driving, the car, or Bluetooth at all.',
+  },
+  /* ------------------------------------------------------------------ */
+  /* The drill protocol: can the product be used, not where sound goes. */
+  /* ------------------------------------------------------------------ */
+  {
+    id: 'drill-parked',
+    label: 'Drill — parked',
+    motion: 'parked',
+    protocol: 'drill',
+    bluetooth: true,
+    setup:
+      'Paired to the car over Bluetooth, engine running, handbrake on. Phone in the cradle, an arm’s length away. Radio volume where you would actually drive with it.',
+    proves:
+      'That the product works at all before any of it is risked at speed. Every failure here is a failure that has nothing to do with the road, and finding one costs a parked five minutes instead of a drive.',
+  },
+  {
+    id: 'drill-freeway',
+    label: 'Drill — freeway',
+    motion: 'driving',
+    protocol: 'drill',
+    bluetooth: true,
+    setup:
+      'Paired exactly as parked, same cradle, same volume, at your normal road speed with the windows up.',
+    proves:
+      'The whole goal. Whether a press answers and whether the words can be made out, at the speed and the noise the app exists to be used at. Read every answer here against the parked leg: a step that passed parked and fails here is the road, and nothing else changed.',
+  },
+  {
+    id: 'drill-phone',
+    label: 'Drill — phone speaker',
+    motion: 'driving',
+    protocol: 'drill',
+    bluetooth: false,
+    setup:
+      'Bluetooth OFF, phone in the cradle on its own speaker, at road speed with the windows up.',
+    // WHY THE WHEEL STEPS ARE GONE FROM THIS LEG, and it is not an omission.
+    // With Bluetooth off the car is not connected, so there is no wheel to
+    // press -- and there is no configuration that keeps the wheel while moving
+    // the sound to the phone, because iOS gives a web app no way to hold the
+    // AVRCP link and route audio locally at the same time. So this leg's input
+    // channel is the microphone, necessarily, and that trade is the finding.
+    proves:
+      'Whether the phone’s own speaker and microphone are the better pair — the open product question. It costs the wheel: with Bluetooth off there is nothing to press, so voice is the only input, and that trade-off is what this leg is for. Compare its words-heard score against the freeway leg’s.',
   },
 ];
 
@@ -1278,6 +1527,198 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
   },
   {
     id: 'free',
+    title: 'Anything else',
+    instruction:
+      'Anything that worked or went wrong that no step above names. Stamp it the moment it happens \u2014 the log can find it afterwards, you cannot.',
+    responses: FREE_RESPONSES,
+  },
+
+  /* ==================================================================== */
+  /* THE DRILL PROTOCOL.                                                  */
+  /*                                                                      */
+  /* Ordered by what each step does to the audio session, not by          */
+  /* importance. Everything that must not have met a microphone comes     */
+  /* first; the microphone opens once, in the middle; the step that asks  */
+  /* what the wheel does AFTER the microphone comes straight after it;    */
+  /* and the sweep, which opens the microphone for six seconds, is last   */
+  /* so there is nothing left for it to contaminate.                      */
+  /*                                                                      */
+  /* Appended after every routing step on purpose:                        */
+  /* `resolveFieldTestSetup` folds setups from index 0, so the first step */
+  /* here declares a COMPLETE setup and overwrites whatever the routing   */
+  /* list left behind. fieldTest.test.ts pins that.                       */
+  /* ==================================================================== */
+  {
+    id: 'echo-forward',
+    protocol: 'drill',
+    needsBluetooth: true,
+    title: 'Skip-forward, and what comes back',
+    /**
+     * ALSO THE POSITIVE CONTROL FOR THE WHOLE LEG, and it has to be first.
+     *
+     * `yvjxzk` stamped three steps and no press was ever shown to arrive in
+     * that page load BEFORE the microphone opened -- so "the fix did not work"
+     * and "the wheel never worked in this page load" were indistinguishable,
+     * and the run could not be read at all. Nothing here has opened a
+     * microphone yet, so an echo that fails on this step means the leg is not
+     * measuring anything and should be restarted rather than continued.
+     */
+    instruction:
+      'Press skip-forward on the wheel once, then listen. The app will say back the word it took your press to mean.',
+    say: ['Basic hit versus dealer nine.'],
+    echo: 'wheel',
+    sayAgain: true,
+    responses: ECHO_RESPONSES,
+    setup: {
+      audioEnabled: true,
+      useClips: true,
+      muted: false,
+      volume: 1,
+      voice: false,
+      eyesFree: true,
+      wheelMode: 'answer',
+    },
+  },
+  {
+    id: 'echo-back',
+    protocol: 'drill',
+    needsBluetooth: true,
+    title: 'Skip-back, and what comes back',
+    /**
+     * BOTH DIRECTIONS, because they are different wires. `forward` reaches
+     * the screen's handler; `back` falls through to `repeatLast` when no
+     * screen claims it, and on 2026-09-29 that fallback was the ONLY thing a
+     * press did -- all three `seekforward` presses in `vfktl7` wrote
+     * `handled=false why=no-screen-listening` while every `seekbackward` was
+     * handled. A leg that tested one direction would have read as a pass.
+     */
+    instruction:
+      'Now press skip-back once, and listen for the word that comes back.',
+    say: ['Basic stand versus dealer six.'],
+    echo: 'wheel',
+    sayAgain: true,
+    responses: ECHO_RESPONSES,
+  },
+  {
+    id: 'hear-word-1',
+    protocol: 'drill',
+    title: 'Which word was that',
+    instruction:
+      'One line, then guess even if you are unsure. Tap the word you heard.',
+    discriminate: DISCRIMINATE_LINES,
+    sayAgain: true,
+    responses: DISCRIMINATE_RESPONSES,
+    setup: { voice: false },
+  },
+  {
+    id: 'hear-word-2',
+    protocol: 'drill',
+    title: 'Which word was that (two of three)',
+    instruction: 'Again. Tap the word you heard.',
+    // WORDED IDENTICALLY to its siblings, which is not tidiness: three
+    // samples of one measurement asked in three different sentences are three
+    // different measurements. `fieldTest.test.ts` pins the closing question.
+    discriminate: DISCRIMINATE_LINES,
+    sayAgain: true,
+    responses: DISCRIMINATE_RESPONSES,
+  },
+  {
+    id: 'hear-word-3',
+    protocol: 'drill',
+    /**
+     * THREE, so the result is a rate and not an anecdote. One sample cannot
+     * distinguish "the words are unintelligible at speed" from "that one
+     * went wrong", and two cannot either: they agree or they disagree, and
+     * neither reading has a denominator worth the name. Three is the fewest
+     * that produces a score an operator can act on in the car.
+     */
+    title: 'Which word was that (three of three)',
+    instruction: 'Last one. Tap the word you heard.',
+    discriminate: DISCRIMINATE_LINES,
+    sayAgain: true,
+    responses: DISCRIMINATE_RESPONSES,
+  },
+  {
+    id: 'echo-voice-1',
+    protocol: 'drill',
+    title: 'Say the answer out loud',
+    instruction:
+      'Say \u201chit\u201d or \u201cstand\u201d out loud, whichever you like. The app will say back the word it heard.',
+    say: ['Basic double versus dealer nine.'],
+    echo: 'voice',
+    awaitListening: true,
+    sayAgain: true,
+    responses: ECHO_VOICE_RESPONSES,
+    setup: { voice: true },
+  },
+  {
+    id: 'echo-voice-2',
+    protocol: 'drill',
+    title: 'Say the answer out loud (again)',
+    instruction:
+      'Once more \u2014 say \u201chit\u201d or \u201cstand\u201d, and listen for what comes back.',
+    say: ['Basic split versus dealer nine.'],
+    echo: 'voice',
+    awaitListening: true,
+    sayAgain: true,
+    responses: ECHO_VOICE_RESPONSES,
+  },
+  {
+    id: 'echo-after-voice',
+    protocol: 'drill',
+    needsBluetooth: true,
+    /**
+     * THE QUESTION THE WITHDRAWN DIAGNOSIS WAS ABOUT, asked properly this
+     * time.
+     *
+     * In `ulq6vs` no wheel press arrived for nine minutes after the
+     * microphone first opened, and the conclusion drawn -- that iOS drops the
+     * skip handlers -- was falsified by `vfktl7` and by the transport
+     * controls working from the lock screen. Two candidates are left: the
+     * head unit withholds AVRCP skip while the hands-free profile is up, or
+     * the presses were never made.
+     *
+     * This step separates them, which the old one could not: the echo is
+     * audible, so a press that arrives proves it, and `wheel-not-pressed` is
+     * on the stack so a press that was never made says so. `awaitSilent`
+     * holds the line until the recogniser is genuinely down, because
+     * `setVoiceOn(false)` only requests the end of a session and the phone
+     * tears the link down some time afterwards.
+     */
+    title: 'The wheel, straight after the microphone',
+    instruction:
+      'Microphone off again. Press skip-forward once and listen for the word \u2014 this is the press that went missing on the last drive.',
+    say: ['Basic hit versus dealer ten.'],
+    echo: 'wheel',
+    awaitSilent: true,
+    sayAgain: true,
+    responses: ECHO_RESPONSES,
+    setup: { voice: false },
+  },
+  {
+    id: 'ambient-sweep',
+    protocol: 'drill',
+    /**
+     * FULLY AUTOMATIC, and last. It opens the microphone for a few seconds
+     * per input, and an open microphone is the one variable every echo step
+     * above is holding still.
+     */
+    title: 'Measuring the noise (nothing to do)',
+    // 150 CHARS IS THE LIMIT and this was 169, which on a phone is clipped
+    // mid-sentence with the rest behind a scroll nobody performs at speed.
+    instruction:
+      'Nothing to do. Hold your speed, leave the phone alone, and tap below when the screen says the measurement has finished.',
+    ambientSweep: true,
+    responses: [
+      { id: 'sweep-done', label: 'Done \u2014 it finished', kind: 'note' },
+      { id: 'sweep-interrupted', label: 'I had to interrupt it', kind: 'note' },
+      MISSED,
+    ],
+    setup: { voice: false },
+  },
+  {
+    id: 'drill-free',
+    protocol: 'drill',
     title: 'Anything else',
     instruction:
       'Anything that worked or went wrong that no step above names. Stamp it the moment it happens \u2014 the log can find it afterwards, you cannot.',

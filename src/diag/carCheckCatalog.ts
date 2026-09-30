@@ -223,8 +223,55 @@ export function ambientCheck(
   };
 }
 
-/** Measure the room with Web Audio, folding the frames into one reading. */
-export async function measureWithWebAudio(ms: number, signal?: AbortSignal): Promise<NoiseReading> {
+/** One microphone the phone is willing to hand over. */
+export interface AudioInputChoice {
+  deviceId: string;
+  label: string;
+}
+
+/**
+ * Every audio input the browser will admit to, so a reading can name the
+ * hardware it was taken on.
+ *
+ * THE QUESTION THIS EXISTS FOR. Whether the phone's own microphone beats the
+ * car's hands-free unit under road noise is an open product question, and the
+ * app has never chosen between them -- it takes whatever it is handed, and
+ * that has already been observed changing run to run within a single leg.
+ * Two readings on two different pieces of hardware with two different DSP
+ * chains are not a comparison unless each one says which it was.
+ *
+ * Never throws and never rejects: an input inventory is a diagnostic, and on
+ * iOS `enumerateDevices` may be absent, may reject, and may return entries
+ * whose labels are empty until permission has been granted once. An unnamed
+ * input is kept -- dropping it would quietly turn a two-microphone sweep into
+ * a one-microphone one and the export would look like a phone that only has
+ * the one.
+ */
+export async function listAudioInputs(): Promise<AudioInputChoice[]> {
+  try {
+    const md = navigator.mediaDevices;
+    if (typeof md?.enumerateDevices !== 'function') return [];
+    const devices = await md.enumerateDevices();
+    return devices
+      .filter((d) => d.kind === 'audioinput')
+      .map((d) => ({ deviceId: d.deviceId, label: d.label || '(unnamed)' }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Measure the room with Web Audio, folding the frames into one reading.
+ *
+ * `deviceId` pins which microphone, for the sweep that compares them. Left
+ * out, the phone chooses -- which is the behaviour every reading before
+ * 2026-09-30 was taken under.
+ */
+export async function measureWithWebAudio(
+  ms: number,
+  signal?: AbortSignal,
+  deviceId?: string,
+): Promise<NoiseReading> {
   const w = window as unknown as {
     AudioContext?: new () => AudioContext;
     webkitAudioContext?: new () => AudioContext;
@@ -243,6 +290,12 @@ export async function measureWithWebAudio(ms: number, signal?: AbortSignal): Pro
       echoCancellation: false,
       noiseSuppression: false,
       autoGainControl: false,
+      // EXACT, and not `ideal`. A preference the browser is free to ignore
+      // would hand back two readings from the SAME microphone under two
+      // different device labels, which is worse than having no comparison:
+      // it looks like an answer. An exact constraint that cannot be met
+      // rejects instead, and the caller records that the input was refused.
+      ...(deviceId === undefined ? {} : { deviceId: { exact: deviceId } }),
     },
   });
   const ctx = new Ctor();

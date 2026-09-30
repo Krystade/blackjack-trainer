@@ -4258,6 +4258,16 @@ details.stats-section > summary::after {
   background: color-mix(in oklab, var(--accent) 10%, var(--raised));
 }
 
+/* A forced choice: one of these is correct and the screen must not say which.
+   So all of them carry the SAME neutral weight -- no green, no red, nothing
+   that could be read as a hint by an operator glancing down. Slightly plainer
+   than `.fieldtest-route` so a stack of four words does not read as four
+   destinations. */
+.fieldtest-choice {
+  border-color: color-mix(in oklab, var(--accent) 30%, var(--line));
+  background: color-mix(in oklab, var(--accent) 6%, var(--raised));
+}
+
 /* Back / Skip / Finish. Deliberately smaller and plainer than the answers:
    they are the exits, and an exit that looks like an answer gets tapped as
    one by somebody who is not looking at the screen. */

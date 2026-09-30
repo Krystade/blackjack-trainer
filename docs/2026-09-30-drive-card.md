@@ -1,4 +1,17 @@
-# The drive card — 2026-09-30
+# The drive card — 2026-09-30 (SUPERSEDED)
+
+> **This protocol has been run and its questions are answered.** Audio comes out of the
+> car speakers, the wheel works from the cradle, the lock screen and the Control Center,
+> and the routing failure the 32 steps were chasing was never real (see
+> `docs/research/2026-09-29-drive-findings.md` §3.1, withdrawn).
+>
+> **Do not run this programme again.** Use [the drill card](2026-10-01-drive-card.md) —
+> three legs, ten steps, twenty minutes — which measures what is still unknown:
+> intelligibility at speed, whether a press answers a question, whether voice works as an
+> answer channel, and the car mic against the phone mic under road noise.
+>
+> The routing legs are still in the app and this card still describes them correctly. It
+> is kept for that, and for the rules in the last three sections, which still hold.
 
 What to do, in order. Everything here is a tap or a spoken line; nothing needs a laptop.
 

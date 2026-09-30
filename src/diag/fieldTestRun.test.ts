@@ -241,7 +241,12 @@ describe('a stored run that no longer fits', () => {
     // Restored, but parked at the gate rather than running -- see the privacy
     // test below.
     expect(run.active).toBe(false);
-    expect(run.stepIndex).toBe(FIELD_TEST_STEPS.length - 1);
+    // THE LAST STEP ON THIS RUN'S PATH, which is not the last index in the
+    // array. `FIELD_TEST_STEPS` holds both protocols, and a `car` leg runs
+    // only the routing one, so clamping to the array's end and then snapping
+    // to the path lands on the routing protocol's final step. Asserted by id:
+    // an index would pass while pointing at a step from the other protocol.
+    expect(FIELD_TEST_STEPS[run.stepIndex]?.id).toBe('free');
   });
 
   /** Same rescue, for a stored DRIVING run. */
@@ -253,7 +258,13 @@ describe('a stored run that no longer fits', () => {
     );
     forgetInMemoryOnly();
 
-    expect(readFieldTestRun().stepIndex).toBe(FIELD_TEST_STEPS.length - 1);
+    // By id, for the reason given on the parked case above: `freeway` runs
+    // the routing protocol, so the far end of its path is `free` and not the
+    // final index of an array that also holds the drill steps.
+    const landed = readFieldTestRun().stepIndex;
+    expect(FIELD_TEST_STEPS[landed]?.id, 'snapped onto a step from the other protocol').toBe(
+      'free',
+    );
   });
 
   /**
@@ -1208,7 +1219,12 @@ describe('the answers a run was given', () => {
 
   it('counts and numbers the steps that are actually on the path', () => {
     startFieldTestRun('car');
-    const active = FIELD_TEST_STEPS.filter((s) => !s.probe).length;
+    // ROUTING STEPS ONLY: a `car` leg runs one of the two protocols. Without
+    // the filter this oracle counts the drill steps too and the assertion
+    // fails on a fact about the array's layout rather than about the path.
+    const active = FIELD_TEST_STEPS.filter(
+      (s) => !s.probe && (s.protocol ?? 'routing') === 'routing',
+    ).length;
     expect(fieldTestStepCount(readFieldTestRun())).toBe(active);
     goToFieldTestStep(idx('route-short'));
     expect(fieldTestStepOrdinal(readFieldTestRun())).toBe(idx('route-3') + 2);
@@ -1374,7 +1390,11 @@ describe('a condition without Bluetooth', () => {
   });
 
   it('counts the steps it will actually show', () => {
-    const base = FIELD_TEST_STEPS.filter((s) => !s.probe).length;
+    // Both legs compared here run the routing protocol, so the oracle counts
+    // only its steps -- see the note on the path count above.
+    const base = FIELD_TEST_STEPS.filter(
+      (s) => !s.probe && (s.protocol ?? 'routing') === 'routing',
+    ).length;
     // THE SEVEN, BY NAME. An oracle built from `s.wheel` shares its source
     // with the code under test, so a wheel flag dropped from one step moved
     // both sides together.
@@ -1487,5 +1507,106 @@ describe('a condition without Bluetooth', () => {
     goToFieldTestStep(idx('mic-heard'));
     advanceFieldTestStep();
     expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('route-after-mic');
+  });
+});
+
+/**
+ * TWO PROTOCOLS IN ONE ARRAY, and a leg must run only its own.
+ *
+ * The routing steps answer "where does the sound come out" and are settled
+ * for a Bluetooth path. The drill steps answer "does a press answer
+ * anything", which had never been measured at all -- because every routing
+ * wheel step replaces the real handler with a diagnostic probe, on purpose.
+ * They share `FIELD_TEST_STEPS` so `resolveFieldTestSetup` can stay a pure
+ * function of the index, and `onPath` is what keeps them apart.
+ */
+describe('the drill protocol runs its own steps and nobody else\u2019s', () => {
+  beforeEach(() => {
+    _resetFieldTestRunForTest();
+  });
+
+  const drillSteps = () => FIELD_TEST_STEPS.filter((s) => s.protocol === 'drill');
+  const routingSteps = () => FIELD_TEST_STEPS.filter((s) => s.protocol !== 'drill');
+
+  it('keeps every drill step off a routing leg', () => {
+    const count = fieldTestStepCount({ condition: 'car' });
+    expect(count).toBe(routingSteps().filter((s) => !s.probe).length);
+
+    // ...and named, so a failure says WHICH step leaked rather than a number.
+    const onCarLeg: string[] = [];
+    for (let i = 0; i < FIELD_TEST_STEPS.length; i += 1) {
+      const step = FIELD_TEST_STEPS[i]!;
+      if (nextActiveIndex(i - 1, 1, { condition: 'car' }) === i) onCarLeg.push(step.id);
+    }
+    expect(onCarLeg.filter((id) => drillSteps().some((d) => d.id === id))).toEqual([]);
+  });
+
+  it('keeps every routing step off a drill leg', () => {
+    const onDrillLeg: string[] = [];
+    for (let i = 0; i < FIELD_TEST_STEPS.length; i += 1) {
+      const step = FIELD_TEST_STEPS[i]!;
+      if (nextActiveIndex(i - 1, 1, { condition: 'drill-parked' }) === i) onDrillLeg.push(step.id);
+    }
+    expect(onDrillLeg.filter((id) => routingSteps().some((r) => r.id === id))).toEqual([]);
+  });
+
+  it('runs the whole drill list on a leg that has a car', () => {
+    expect(fieldTestStepCount({ condition: 'drill-parked' })).toBe(drillSteps().length);
+    expect(fieldTestStepCount({ condition: 'drill-freeway' })).toBe(drillSteps().length);
+  });
+
+  /**
+   * THE WHEEL STEPS COME OFF THE PHONE-SPEAKER LEG, and that is the finding
+   * rather than an omission: with Bluetooth off the car is not connected, so
+   * there is no wheel to press. The routing protocol learned this the hard
+   * way -- an operator met six steps asking them to press a button connected
+   * to nothing -- and `needsBluetooth` is the same guard for an echo step,
+   * which must not arm the diagnostic probe that `wheel` arms.
+   */
+  it('drops the wheel echo steps from a leg with no car', () => {
+    const needCar = drillSteps().filter((s) => s.needsBluetooth).length;
+    expect(needCar, 'no drill step declares that it needs the car').toBeGreaterThan(0);
+    expect(fieldTestStepCount({ condition: 'drill-phone' })).toBe(drillSteps().length - needCar);
+  });
+
+  /**
+   * A FRESH RUN STARTS ON ITS OWN PATH, which it did not.
+   *
+   * `startFieldTestRun` wrote `stepIndex: 0` outright, and index 0 is
+   * `route-1` -- a ROUTING step. Picking a drill leg and tapping Start
+   * therefore opened "Where does it come from? (1 of 3, recorded)": the
+   * operator is handed the protocol they did not choose, on a leg whose
+   * conclusions are already settled, and the first thing the drill protocol
+   * exists to measure is never reached. Caught by the e2e before it reached
+   * a car; pinned here because it is a one-line fact about the data.
+   */
+  it('opens a drill leg on the drill protocol, not on step zero', () => {
+    startFieldTestRun('drill-parked');
+    expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('echo-forward');
+  });
+
+  it('opens a phone-speaker leg past the steps that need a car', () => {
+    startFieldTestRun('drill-phone');
+    // `echo-forward` needs Bluetooth, so the first step on this path is the
+    // first one that does not.
+    expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('hear-word-1');
+  });
+
+  it('still opens a routing leg on its own first step', () => {
+    startFieldTestRun('car');
+    expect(FIELD_TEST_STEPS[readFieldTestRun().stepIndex]?.id).toBe('route-1');
+  });
+
+  it('leaves the microphone steps on the phone-speaker leg, which is its point', () => {
+    const onPhoneLeg: string[] = [];
+    for (let i = 0; i < FIELD_TEST_STEPS.length; i += 1) {
+      if (nextActiveIndex(i - 1, 1, { condition: 'drill-phone' }) === i) {
+        onPhoneLeg.push(FIELD_TEST_STEPS[i]!.id);
+      }
+    }
+    expect(onPhoneLeg).toContain('echo-voice-1');
+    expect(onPhoneLeg).toContain('hear-word-1');
+    expect(onPhoneLeg).toContain('ambient-sweep');
+    expect(onPhoneLeg).not.toContain('echo-forward');
   });
 });
