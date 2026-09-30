@@ -51,7 +51,25 @@ const VIEWPORTS = [
   { name: 'iPhone 14/15 in a Safari tab', width: 390, height: 700 },
   { name: 'iPhone SE 2/3, iPhone 8', width: 375, height: 667 },
   { name: 'narrowest Android supported', width: 360, height: 740 },
+  // The phone this is actually driven on, and the one size the list was
+  // missing -- narrower than every 390 entry and 145px taller than the SE.
+  { name: 'iPhone 13 mini, the drive phone', width: 375, height: 812 },
 ] as const;
+
+/**
+ * ONE LEG OF EACH PROTOCOL, because they are not the same screen.
+ *
+ * Every geometry test below walked `Car, parked` and nothing else, so the
+ * drill legs -- which is what the app is now driven with -- were measured by
+ * none of them. They are the denser of the two: a discrimination step carries
+ * a `purpose` line no routing step has, and a seven-button answer stack where
+ * a route step has five. The suite would have stayed green while the words a
+ * driver has to tap at speed went under a finger or off the bottom.
+ *
+ * `Drill \u2014 parked` rather than the freeway leg: identical geometry, and it
+ * is the one whose ten steps include every shape the protocol has.
+ */
+const GEOMETRY_LEGS = ['Car, parked', 'Drill \u2014 parked'] as const;
 
 async function openTest(page: Page, condition: string): Promise<void> {
   await page.goto('/?e2e=1');
@@ -439,8 +457,9 @@ for (const vp of VIEWPORTS) {
      * 667px screen the six-answer steps pushed the nav row's own bottom to
      * 698px. Back and Skip were 17px tall to a finger and the suite was green.
      */
-    test('every control is inside the viewport', async ({ page }) => {
-      await openTest(page, 'Car, parked');
+    for (const leg of GEOMETRY_LEGS)
+      test(`every control is inside the viewport (${leg})`, async ({ page }) => {
+      await openTest(page, leg);
       const past: string[] = [];
       for (let i = 0; ; i += 1) {
         const step = await page.getByTestId('fieldtest-title').innerText();
@@ -474,8 +493,9 @@ for (const vp of VIEWPORTS) {
      * shrinks from 52px toward it when the column is tight; it must not go
      * under, because below that the operator's tap lands on the answer above.
      */
-    test('no answer is smaller than a finger', async ({ page }) => {
-      await openTest(page, 'Car, parked');
+    for (const leg of GEOMETRY_LEGS)
+      test(`no answer is smaller than a finger (${leg})`, async ({ page }) => {
+      await openTest(page, leg);
       const small: string[] = [];
       for (let i = 0; ; i += 1) {
         const step = await page.getByTestId('fieldtest-title').innerText();
@@ -509,8 +529,9 @@ for (const vp of VIEWPORTS) {
       ).toBe(true);
     });
 
-    test('no answer button overflows the bottom of the screen', async ({ page }) => {
-      await openTest(page, 'Car, parked');
+    for (const leg of GEOMETRY_LEGS)
+      test(`no answer button overflows the bottom of the screen (${leg})`, async ({ page }) => {
+      await openTest(page, leg);
       const overflows: string[] = [];
       for (let i = 0; ; i += 1) {
         const step = await page.getByTestId('fieldtest-title').innerText();

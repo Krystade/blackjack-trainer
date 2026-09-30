@@ -12,6 +12,12 @@ The app runs the protocol. It draws the words, speaks them, listens for the pres
 what it heard, and scores your answer against what it actually said. You press the wheel,
 tap a word, and say a word out loud.
 
+**Every step prints what it is measuring**, in a small italic line under the instruction, so
+you never have to remember why you are doing one. The leg's whole purpose is on the gate
+under **Proves:** before you start. Neither is ever spoken — the drill legs measure whether
+one specific sentence survives road noise, and a clause about the experiment in front of it
+would change the thing being measured.
+
 ---
 
 ## Before you leave — three minutes, on wifi
@@ -64,8 +70,8 @@ for a press you cannot make.
 ## What it asks, in order
 
 **Step 1 — Skip-forward, and what comes back.** It plays a line. Press skip-forward on the
-wheel once. The app says back the word it took your press to mean. You report whether that
-matched what you meant.
+wheel once. The word that comes back is what the app thinks you pressed. You report whether
+that matched what you meant.
 
 > **This is the positive control, and it is first for a reason.** Nothing in the page has
 > opened a microphone yet, so the wheel is in the cleanest state it will ever be in. If no

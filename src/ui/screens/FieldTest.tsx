@@ -806,6 +806,44 @@ function StartGate({
   );
 }
 
+/**
+ * Answers laid out in rows: consecutive `choice` answers pair up two to a
+ * row, everything else keeps a row of its own.
+ *
+ * Only `choice` pairs, and only consecutively. `kind` is the protocol's own
+ * statement that an answer is one of a set of equals -- the four decision
+ * words -- rather than a verdict or a decline, and those stay full width:
+ * they are read, not scanned, and they are what a driver reaches for when
+ * the measurement has already failed.
+ *
+ * A run of odd length leaves its last answer alone on a row rather than
+ * stretching it, so the grid never implies a pairing the protocol did not.
+ *
+ * Generic over the answer type on purpose: it needs `kind` and nothing else,
+ * and the slot index is carried through untouched because the gap placeholders
+ * are keyed by it.
+ */
+function groupAnswerRows<T extends { kind?: string } | null>(
+  responses: readonly T[],
+): { response: T; slot: number }[][] {
+  const rows: { response: T; slot: number }[][] = [];
+  let run: { response: T; slot: number }[] = [];
+  const flush = (): void => {
+    for (let i = 0; i < run.length; i += 2) rows.push(run.slice(i, i + 2));
+    run = [];
+  };
+  responses.forEach((response, slot) => {
+    if (response && response.kind === 'choice') {
+      run.push({ response, slot });
+      return;
+    }
+    flush();
+    rows.push([{ response, slot }]);
+  });
+  flush();
+  return rows;
+}
+
 function RunningTest({
   run,
   conditionLabel,
@@ -3069,6 +3107,66 @@ function RunningTest({
     onNavigate('settings');
   };
 
+  const renderAnswer = (response: (typeof responses)[number], slot: number) =>
+
+          // A SLOT THIS STEP HAS NO ANSWER FOR, held open rather than closed
+          // up. See `WHEEL_SLOTS`: the alternative is the answer below it
+          // moving up under a thumb that is not looking, and arriving as a
+          // different answer to a different question.
+          response === null ? (
+            <div
+              key={`gap-${slot}`}
+              className="fieldtest-answer-gap"
+              data-testid={`fieldtest-answer-gap-${slot}`}
+              aria-hidden="true"
+            />
+          ) : (
+            <button
+              type="button"
+              key={response.id}
+              className={`fieldtest-stamp fieldtest-${response.kind}${
+                marks.includes(response.id) ? ' fieldtest-marked' : ''
+              }`}
+              data-testid={`fieldtest-answer-${response.id}`}
+              aria-pressed={response.modifier ? marks.includes(response.id) : undefined}
+              /*
+               * REFUSED, NOT `disabled`, and the difference is audible.
+               *
+               * The answers must not be collectable while the app is still
+               * talking: a tap during line 1 of `fallback-audible` records a
+               * two-line loudness comparison of one line, and on `route-long`,
+               * whose premise is the route moving PART WAY THROUGH, an early
+               * tap makes `route-moved` unobservable. That part is unchanged.
+               *
+               * What changed is how the refusal reads from the driver's seat.
+               * A `disabled` button fires NO click event, so there was no
+               * handler to chime from and no entry to write -- and the
+               * answers are dead for up to ten seconds at a stretch across
+               * five consecutive steps while the microphone settles. Tapping
+               * and getting nothing is indistinguishable from missing a 52px
+               * target at speed, and the reflex is to tap again, harder. The
+               * only signals were 45% opacity and a label on another control:
+               * both require looking, on the screen built not to be looked at.
+               *
+               * `aria-disabled` keeps the semantics for a screen reader and
+               * the styling hook for the eye, while the tap still reaches
+               * `answer()`, which refuses it out loud and records it.
+               */
+              aria-disabled={sampling || waitingForMic ? true : undefined}
+              onClick={() => answer(response.id)}
+            >
+              {response.label}
+              {/* WHAT TO SAY, not what it means. Shown only while the channel
+                  is on, because it is noise on a screen being read by thumb
+                  -- and printed rather than only documented, since a
+                  vocabulary nobody can see is one the operator has to have
+                  memorised before the drive. */}
+              {spokenAnswersLive && spokenHintFor(response) && (
+                <span className="fieldtest-say">{`say “${spokenHintFor(response)}”`}</span>
+              )}
+            </button>
+          );
+
   return (
     <div className="fieldtest-screen fieldtest-running" data-testid="fieldtest-screen">
       <header className="fieldtest-topbar">
@@ -3274,24 +3372,6 @@ function RunningTest({
         {step.instruction}
       </p>
       {/*
-        WHAT THIS STEP IS MEASURING, under what to do about it.
-
-        The leg's `proves` is on the gate and is read once, parked, before
-        twenty minutes of driving. By step six the operator is answering
-        questions with no reminder of which finding any of them feeds, and
-        "why am I doing this one" is the thought that turns an honest
-        "Missed it" into a plausible-looking guess.
-
-        Rendered whenever the step declares one, so the answer stack below
-        does not move once the step is open -- the same reason the evidence
-        region is always present. Never spoken: see `purpose` in fieldTest.ts.
-      */}
-      {step.purpose ? (
-        <p className="fieldtest-purpose" data-testid="fieldtest-purpose">
-          {step.purpose}
-        </p>
-      ) : null}
-      {/*
         THE RESOLVED STATE, not the declared delta. `describeFieldTestSetup`
         used to be handed `step.setup`, so a step that declares nothing printed
         "Nothing changed for this step" -- which on a resumed run was an active
@@ -3303,6 +3383,28 @@ function RunningTest({
       </p>
       </div>
 
+
+      {/*
+        WHAT THIS STEP IS MEASURING, OUTSIDE THE HEAD.
+
+        It belongs next to the instruction and it cannot live there. The head
+        is a 130px box with `overflow-y: auto` that is deliberately the first
+        thing to give way, and it already drops its own "Set for you" line
+        below 719px. A fourth child put this at y=264 in a box ending at
+        y=258 on a 375x812 screen -- present in the DOM, returned by
+        `innerText`, reported visible by Playwright, and invisible to the
+        person driving, reachable only by scrolling a panel nobody scrolls at
+        speed.
+
+        So it sits in the slack above the evidence region instead, which is
+        empty on most steps. Like the setup line it is context rather than the
+        ask, so it is dropped on short screens where something must go.
+      */}
+      {step.purpose ? (
+        <p className="fieldtest-purpose" data-testid="fieldtest-purpose">
+          {step.purpose}
+        </p>
+      ) : null}
 
       {/*
         ONE REGION, ALWAYS RENDERED, IN ITS OWN ALWAYS-VISIBLE SLOT.
@@ -3427,63 +3529,38 @@ function RunningTest({
       </div>
 
       <div className="fieldtest-answers" data-testid="fieldtest-answers">
-        {responses.map((response, slot) =>
-          // A SLOT THIS STEP HAS NO ANSWER FOR, held open rather than closed
-          // up. See `WHEEL_SLOTS`: the alternative is the answer below it
-          // moving up under a thumb that is not looking, and arriving as a
-          // different answer to a different question.
-          response === null ? (
-            <div
-              key={`gap-${slot}`}
-              className="fieldtest-answer-gap"
-              data-testid={`fieldtest-answer-gap-${slot}`}
-              aria-hidden="true"
-            />
+        {/*
+          FOUR ONE-WORD ANSWERS SHARE TWO ROWS, not four.
+
+          The stack's budget is stated in `app.css`: six 44px buttons and the
+          chrome fit in 667px. The discrimination steps ask for seven -- hit,
+          stand, double, split, the two declines and `Missed it` -- and seven
+          do not fit. Measured on `hear-word-1`: 356px of buttons into a 313px
+          column at 375x667 and 346px at 390x700, so the stack scrolled and
+          the answers at the bottom were unreachable by a thumb that is not
+          looking. The routing protocol never had more than five, which is why
+          the limit surfaced only when the drill legs were walked.
+
+          Pairing beats dropping one, because all seven say different things:
+          the four words are the measurement, "couldn't make out the word"
+          says the audio arrived unintelligible, "heard nothing at all" says
+          it never arrived -- the routing-versus-intelligibility distinction
+          the protocol turns on -- and `Missed it` says the operator was
+          driving. They are also the only answers short enough to read at half
+          width.
+
+          Grouped into ONE flex child so the container's sizing is untouched:
+          it still shrinks its children from 52px to the 44px floor along its
+          own main axis, which a `row wrap` on the stack itself would have
+          silently turned off by making width the main axis.
+        */}
+        {groupAnswerRows(responses).map((row, rowIndex) =>
+          row.length > 1 ? (
+            <div className="fieldtest-choice-row" key={`choices-${rowIndex}`}>
+              {row.map(({ response, slot }) => renderAnswer(response, slot))}
+            </div>
           ) : (
-            <button
-              type="button"
-              key={response.id}
-              className={`fieldtest-stamp fieldtest-${response.kind}${
-                marks.includes(response.id) ? ' fieldtest-marked' : ''
-              }`}
-              data-testid={`fieldtest-answer-${response.id}`}
-              aria-pressed={response.modifier ? marks.includes(response.id) : undefined}
-              /*
-               * REFUSED, NOT `disabled`, and the difference is audible.
-               *
-               * The answers must not be collectable while the app is still
-               * talking: a tap during line 1 of `fallback-audible` records a
-               * two-line loudness comparison of one line, and on `route-long`,
-               * whose premise is the route moving PART WAY THROUGH, an early
-               * tap makes `route-moved` unobservable. That part is unchanged.
-               *
-               * What changed is how the refusal reads from the driver's seat.
-               * A `disabled` button fires NO click event, so there was no
-               * handler to chime from and no entry to write -- and the
-               * answers are dead for up to ten seconds at a stretch across
-               * five consecutive steps while the microphone settles. Tapping
-               * and getting nothing is indistinguishable from missing a 52px
-               * target at speed, and the reflex is to tap again, harder. The
-               * only signals were 45% opacity and a label on another control:
-               * both require looking, on the screen built not to be looked at.
-               *
-               * `aria-disabled` keeps the semantics for a screen reader and
-               * the styling hook for the eye, while the tap still reaches
-               * `answer()`, which refuses it out loud and records it.
-               */
-              aria-disabled={sampling || waitingForMic ? true : undefined}
-              onClick={() => answer(response.id)}
-            >
-              {response.label}
-              {/* WHAT TO SAY, not what it means. Shown only while the channel
-                  is on, because it is noise on a screen being read by thumb
-                  -- and printed rather than only documented, since a
-                  vocabulary nobody can see is one the operator has to have
-                  memorised before the drive. */}
-              {spokenAnswersLive && spokenHintFor(response) && (
-                <span className="fieldtest-say">{`say “${spokenHintFor(response)}”`}</span>
-              )}
-            </button>
+            renderAnswer(row[0]!.response, row[0]!.slot)
           ),
         )}
       </div>

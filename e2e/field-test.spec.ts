@@ -2389,6 +2389,27 @@ test('the instruction can be heard on a step that already speaks a line', async 
   await openTest(page, 'Car, parked');
   await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', 'route-1');
   await expect(page.getByTestId('fieldtest-read-step')).toBeEnabled({ timeout: 20_000 });
+
+  /**
+   * WAIT FOR THE STEP'S OWN LINE BEFORE CLEARING, or this test blames the
+   * click for an utterance the step had already scheduled.
+   *
+   * `route-1` is `measured`, so it speaks its line only after
+   * `PRE_SAMPLE_SETTLE_MS`. The read-step button enables earlier than that.
+   * Clearing the log on the button alone therefore leaves a 1.5s window in
+   * which the step's FIRST sample can still land -- and on a loaded machine
+   * it does, after the clear, where the assertion below reads it as the
+   * click having re-spoken the measured line. It failed exactly that way in
+   * a full-suite run on 2026-09-30 and passes 7/7 on an idle one, which is
+   * the signature of an unbounded window rather than of a real defect.
+   *
+   * Waiting for the line first makes the window start after the only other
+   * thing that could have produced it.
+   */
+  await expect
+    .poll(() => page.evaluate(() => window.__speechLog ?? []), { timeout: 20_000 })
+    .toContain('Basic hit versus dealer nine.');
+
   await page.evaluate(() => {
     window.__speechLog = [];
   });
@@ -2397,8 +2418,24 @@ test('the instruction can be heard on a step that already speaks a line', async 
   await expect
     .poll(() => page.evaluate(() => window.__speechLog ?? []), { timeout: 8_000 })
     .toContain('Listen to the line. Where did it come from?');
-  // ...and NOT the measured line, which would be a second sample nobody asked
-  // for, arriving between the one they heard and the answer they give.
+  /**
+   * ...and NOT the measured line, which would be a second sample nobody asked
+   * for, arriving between the one they heard and the answer they give.
+   *
+   * THE WAIT IS THE ASSERTION. This used to read the log in a single snapshot
+   * taken the instant the instruction appeared, and a re-spoken sample cannot
+   * have arrived by then: `say` on a `measured` step waits out
+   * `PRE_SAMPLE_SETTLE_MS` (1500ms) first. So the absence was asserted over a
+   * window in which the thing could not yet have happened, and the test was
+   * unable to fail -- injecting a `say('asked')` into the button's own
+   * handler left it green.
+   *
+   * An absence is only as strong as the time it was watched for, so the
+   * window is held open past the settle it would have to come through. This
+   * is one of the few places a fixed wait is the measurement rather than a
+   * substitute for one.
+   */
+  await page.waitForTimeout(2_600);
   expect(
     await page.evaluate(() => window.__speechLog ?? []),
     'asking for the instruction re-spoke the line being measured',

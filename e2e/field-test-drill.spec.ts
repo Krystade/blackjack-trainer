@@ -281,6 +281,48 @@ test('an honest "could not make it out" is scored as neither right nor wrong', a
  * sentence survives road noise; a clause about the experiment in front of it
  * changes the thing being measured.
  */
+/**
+ * IS IT ACTUALLY ON THE SCREEN, not merely in the document.
+ *
+ * `toBeVisible()` checks for a box and for `display`/`visibility`. It says
+ * nothing about whether an ancestor with `overflow` has clipped the element
+ * out of sight, and `toBeInViewport()` does not either -- the element can sit
+ * inside the viewport while sitting outside the 130px panel that contains it.
+ *
+ * This is not hypothetical. The purpose line shipped in the first draft of
+ * this feature INSIDE `.fieldtest-head`, which is `max-height: 130px;
+ * overflow-y: auto`. On a 375x812 screen the head ended at y=258 and the line
+ * rendered at y=264: in the DOM, returned by `innerText`, reported visible by
+ * Playwright, and invisible to the person driving unless they scrolled a
+ * panel nobody scrolls at speed. The test passed. A screenshot caught it.
+ *
+ * So: find every clipping ancestor and require the element to be inside all
+ * of them.
+ */
+async function assertNotClipped(page: Page, testId: string): Promise<void> {
+  const verdict = await page.evaluate((id) => {
+    const el = document.querySelector(`[data-testid="${id}"]`);
+    if (!el) return { ok: false, why: 'not in the document' };
+    const r = el.getBoundingClientRect();
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      const clips = [cs.overflowX, cs.overflowY].some((v) => v !== 'visible');
+      if (!clips) continue;
+      const pr = p.getBoundingClientRect();
+      if (r.top < pr.top - 1 || r.bottom > pr.bottom + 1) {
+        return {
+          ok: false,
+          why: `clipped by .${p.className.split(' ')[0]} (element ${Math.round(r.top)}-${Math.round(
+            r.bottom,
+          )}, container ${Math.round(pr.top)}-${Math.round(pr.bottom)})`,
+        };
+      }
+    }
+    return { ok: true, why: '' };
+  }, testId);
+  expect(verdict.ok, `${testId} is in the DOM but not on the screen: ${verdict.why}`).toBe(true);
+}
+
 test('every drill step prints why it exists and never speaks it', async ({ page }) => {
   test.setTimeout(45_000);
   await withSettings(page, { audio: { enabled: true, useClips: true } });
@@ -291,6 +333,8 @@ test('every drill step prints why it exists and never speaks it', async ({ page 
 
   for (let i = 0; i < 20; i++) {
     await expect(purpose, 'a drill step with no stated purpose').toBeVisible();
+    // ...and on the screen, not merely in the document.
+    await assertNotClipped(page, 'fieldtest-purpose');
     const text = (await purpose.innerText()).trim();
     expect(text.length, 'an empty purpose line is the same as none').toBeGreaterThan(24);
     seen.push(text);

@@ -3769,7 +3769,12 @@ details.stats-section > summary::after {
  * translucent tint over this surface averages to mud.
  */
 .fieldtest-purpose {
-  margin: 0.2rem 0 0;
+  /* OUTSIDE THE HEAD, so it is not clipped by the 130px cap -- see the
+     comment on this element in FieldTest.tsx. `flex: 0 0 auto` keeps it from
+     being squeezed to nothing by the column's shrink weights, which is how
+     the head loses its own lines. */
+  flex: 0 0 auto;
+  margin: 2px 0 0;
   font-size: 12.5px;
   font-style: italic;
   line-height: 1.35;
@@ -4177,6 +4182,13 @@ details.stats-section > summary::after {
     display: none;
   }
 
+  /* AND THE STEP'S REASON, for the same reason and in the same breath: it
+     says why the step exists, which is worth a line when there is a line to
+     spare and is never worth an answer button the operator cannot reach. */
+  [data-testid='fieldtest-purpose'] {
+    display: none;
+  }
+
   /* AND THE GAPS BETWEEN THE ROWS, which are the last 14px the column needs to
      fit six 44px answers, a readable instruction and a full-height nav row into
      667px without the bottom answer being cut off by the exits. Measured
@@ -4243,6 +4255,26 @@ details.stats-section > summary::after {
 /* A HELD-OPEN SLOT. Sized exactly like a button and hit by nothing: the
    point is that a remembered thumb position lands on air rather than on a
    different answer. See `WHEEL_SLOTS` in fieldTest.ts. */
+/*
+ * THE FOUR DECISION WORDS, two to a row.
+ *
+ * One grid inside one flex child, so `.fieldtest-answers` still sees a single
+ * row here and its shrink cascade is unchanged. `1fr 1fr` rather than
+ * `auto-fit`: the pairing must be identical on all three samples, because an
+ * answer that changes column between them is an answer that moves under a
+ * thumb that is not looking.
+ */
+.fieldtest-choice-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  min-height: 0;
+}
+
+.fieldtest-choice-row > button {
+  width: 100%;
+}
+
 .fieldtest-answers .fieldtest-answer-gap {
   align-self: stretch;
   flex: 0 1 52px;

@@ -701,3 +701,56 @@ variable every echo step above it is holding still.
 
 Five mutations of the drill data and `onPath` were injected and all five were
 caught.
+
+### 7.8 What the step is for, on the step
+
+The leg's `proves` is rendered on the gate, which is read once, parked, before
+twenty minutes of driving. Ten steps then follow with no reminder of what any
+of them measures, and "why am I doing this one" is the thought that turns an
+honest `Missed it` into a plausible-looking guess.
+
+So each drill step declares a `purpose`: one short line under the instruction,
+printed and never spoken. Never spoken because the discrimination steps
+measure whether one specific sentence survives road noise, and prefixing that
+sample with a clause about the experiment changes the thing being measured.
+
+### 7.9 Three instrument defects found while building it, all of the same family
+
+Every one is a window that was not closed at both ends. They are recorded
+together because the shape is the point.
+
+**A test that could not fail.** `the instruction can be heard on a step that
+already speaks a line` asserted that asking for the instruction does not
+re-speak the measured sample -- by reading the speech log in a single snapshot
+taken the instant the instruction appeared. A re-spoken sample cannot have
+arrived by then: `say` on a `measured` step waits out `PRE_SAMPLE_SETTLE_MS`
+first. Injecting a `say('asked')` into the button's own handler left the test
+green. **An absence is only as strong as the time it was watched for**, so the
+window is now held open past the settle the sample would have to come through.
+
+**A test that failed for a reason that was not true.** The same test cleared
+the speech log as soon as the read-step button enabled -- which happens
+*before* the step's own line is spoken. On a loaded machine the step's first
+sample landed after the clear and was attributed to the click. It failed
+exactly that way in the full-suite run of 2026-09-30 and passed 7/7 on an idle
+one. The clear now waits for the step's own line first.
+
+**A test that passed while the feature was invisible.** The `purpose` line
+shipped in its first draft inside `.fieldtest-head`, a `max-height: 130px;
+overflow-y: auto` panel. On a 375x812 screen the head ends at y=258 and the
+line rendered at y=264. It was in the DOM, `innerText` returned it, and
+Playwright's `toBeVisible()` reported it visible -- because `toBeVisible`
+checks for a box and for `display`/`visibility`, and says nothing about an
+ancestor having clipped the element out of sight. `toBeInViewport()` would
+have passed too: the element was inside the viewport, just outside its own
+container. **A screenshot caught it; no assertion did.** The spec now walks
+every clipping ancestor and requires the element to be inside all of them,
+and the line lives in the slack above the evidence region, where the head's
+130px cap cannot reach it.
+
+The head is where it could not go for a documented reason: it is deliberately
+the first thing on the screen to give way, and already drops its own "Set for
+you" line below 719px of viewport. The purpose line is dropped there too, in
+the same media query and for the same reason -- it is context rather than the
+ask, and it is never worth an answer button the operator cannot reach.
+

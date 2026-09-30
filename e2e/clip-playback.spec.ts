@@ -208,7 +208,20 @@ test('clip playback (no ?e2e=1): eyes-free count drill fetches real clips and co
 /* ------------------------------------------------------------------------ */
 
 test('clip playback fallback: a bogus clip voice still completes the drill via live TTS', async ({ page }) => {
-  test.setTimeout(30_000);
+  /*
+   * 60s, not 30s: this is the SLOWEST variant in the file and it had the
+   * same budget as the ordinary ones.
+   *
+   * Nothing here resolves to a clip -- that is the point of the bogus voice
+   * -- so every utterance of the drill goes through live speechSynthesis and
+   * costs real time, where the sibling tests play a cached mp3. Measured on
+   * an idle machine it takes 12.0, 12.5 and 18.7 seconds: 1.6x headroom at
+   * the worst sample. Under a full-suite run that is not enough, and it
+   * timed out at 30s on 2026-09-30 while passing 3/3 alone -- the signature
+   * of a budget too tight for the work rather than of a defect. The
+   * assertions below are unchanged; only the time they are allowed is.
+   */
+  test.setTimeout(60_000);
   // Bogus clipVoice -> `/clips/<bogus>/manifest.json` 404s -> loadVoiceManifest
   // resolves `{}` -> segmentForClips never matches -> every speak()/speakAsync()
   // call falls back to live speechSynthesis. Proves the cascade-miss path
