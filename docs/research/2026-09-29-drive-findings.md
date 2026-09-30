@@ -754,3 +754,52 @@ you" line below 719px of viewport. The purpose line is dropped there too, in
 the same media query and for the same reason -- it is context rather than the
 ask, and it is never worth an answer button the operator cannot reach.
 
+
+### 7.10 One leg is offered, not seven — decided 2026-09-30 after a wasted drive
+
+The gate listed every condition in `FIELD_TEST_CONDITIONS`. Seven of them:
+three drill legs and the four routing legs whose answers are already in §2 to
+§4 of this document. `DEFAULT_FIELD_TEST_CONDITION` was `car`, the first entry
+in the array, so a fresh field test opened on the routing protocol. The report
+back was **"it looks like the field test is the same 40 questions"**, which is
+exactly what it was: the operator had been handed a menu, the menu defaulted
+to the settled experiment, and a drive went into re-answering it.
+
+The fix is not a better default. **A field test with a menu asks the operator
+to choose an experiment from the driver's seat**, and choosing between
+experiments is not a task to perform at the wheel — it is a task for whoever
+wrote the protocol, done before the car moves. So `offered?: boolean` marks
+exactly one condition, `OFFERED_FIELD_TEST_CONDITIONS` is what the gate reads,
+and the picker does not render at all when that list has one entry. The other
+six stay in the array: their steps still run, old runs still resolve by id,
+and the e2e suite still drives them by name through
+`selectFieldTestCondition` in `e2e/helpers.ts`, which seeds the persisted run
+rather than clicking a label that no longer exists.
+
+**Which leg.** `drill-freeway`, because road noise is the variable every open
+question is about. The parked leg was the obvious alternative and it was the
+wrong one: it measures the thing that is not in doubt. What the parked leg was
+actually *for* — a same-page-load baseline to read the freeway answers
+against — is preserved without spending a second leg on it, because the
+drill's first two steps are the wheel controls and they are answered stopped,
+before pulling out. Same build, same volume, same cradle, microphone not yet
+opened. A step that passes there and fails at speed is the road.
+
+Three guards, because the failure this replaces was silent:
+
+- `OFFERED_FIELD_TEST_CONDITIONS` falls back to the whole list when nothing is
+  marked. A bad edit then shows too many choices rather than none: a gate with
+  an empty picker cannot be started, and that failure would only be discovered
+  in the car.
+- A unit test pins that exactly one leg is offered, that it is the driving
+  one, that it carries Bluetooth, and that `DEFAULT_FIELD_TEST_CONDITION`
+  equals it. The old test pinned the *order* of the drill legs, which stopped
+  meaning anything once the operator no longer picks from them; it now pins
+  the set.
+- Reordering the array to put the offered leg first is what makes the default
+  correct, and doing that by joining entry buffers produced an **array
+  elision** — `[ , {…} ]`, a hole at index 0. TypeScript accepts it. `tsc`
+  stayed green while the module threw on import, because
+  `FIELD_TEST_CONDITIONS[0]!` was `undefined` at run time. This is the same
+  family as §7.9: the check that was supposed to catch the edit could not see
+  the thing the edit broke.

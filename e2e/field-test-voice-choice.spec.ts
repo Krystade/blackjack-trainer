@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { selectFieldTestCondition, withSettings } from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
@@ -23,6 +23,9 @@ async function optsLog(page: Page): Promise<OptsRow[]> {
 
 test('the instruction is read in the chosen voice, like the measured line', async ({ page }) => {
   await withSettings(page, { audio: { voiceURI: 'Samantha' } });
+  // Named, not inherited: `FIELD_TEST_STEPS[0]` and the lock walk below are
+  // routing steps, and the gate's default leg is the drill one now.
+  await selectFieldTestCondition(page, 'Car, parked');
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
   await page.getByTestId('fieldtest-open').click();
@@ -54,6 +57,9 @@ test('the instruction is read in the chosen voice, like the measured line', asyn
  */
 test('the pause cue and the lock verdict are read in the chosen voice too', async ({ page }) => {
   await withSettings(page, { audio: { voiceURI: 'Samantha' } });
+  // Named, not inherited: `FIELD_TEST_STEPS[0]` and the lock walk below are
+  // routing steps, and the gate's default leg is the drill one now.
+  await selectFieldTestCondition(page, 'Car, parked');
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
   await page.getByTestId('fieldtest-open').click();

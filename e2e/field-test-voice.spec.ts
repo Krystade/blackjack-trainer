@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { selectFieldTestCondition, withSettings } from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
@@ -87,6 +87,12 @@ async function answersIn(page: Page) {
 async function openTest(page: Page, { byVoice }: { byVoice: boolean }): Promise<void> {
   await withFakeEngine(page);
   await withSettings(page, {});
+  // The routing protocol, named rather than inherited. This spec walks to
+  // `route-1`/`mic-route`/`mic-heard`, which are routing steps: the gate's
+  // default is the drill leg now, and `onPath` drops a step whose protocol
+  // is not the condition's, so inheriting the default would walk past the
+  // end of the protocol looking for a step that is never rendered.
+  await selectFieldTestCondition(page, 'Car, parked');
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
   await page.getByTestId('fieldtest-open').click();

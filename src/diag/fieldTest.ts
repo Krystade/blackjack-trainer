@@ -670,7 +670,7 @@ export const FIELD_TEST_CONDITIONS: readonly FieldTestCondition[] = [
     setup:
       'Paired exactly as parked, same cradle, same volume, at your normal road speed with the windows up.',
     proves:
-      'The whole goal. Whether a press answers and whether the words can be made out, at the speed and the noise the app exists to be used at. Read every answer here against the parked leg: a step that passed parked and fails here is the road, and nothing else changed.',
+      'The whole goal. Whether a press answers and whether the words can be made out, at the speed and the noise the app exists to be used at. Step 1 is the control and it is answered before you pull out: a step that passed stopped and fails once you are moving is the road, because nothing else changed.',
   },
 
   /*

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { withSettings, selectFieldTestCondition, switchFieldTestCondition} from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
@@ -134,11 +134,11 @@ async function openTest(page: Page, condition: string): Promise<void> {
   await withFakeEngine(page);
   await captureWheel(page);
   await withSettings(page, {});
+  await selectFieldTestCondition(page, condition);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
-  await page.getByRole('button', { name: condition, exact: true }).click();
   const start = page.getByTestId('fieldtest-start');
   await start.click();
   if ((await page.getByTestId('fieldtest-title').count()) === 0) await start.click();
@@ -300,7 +300,7 @@ test('an after sample taken after Pause on a microphone step carries the offset'
     .toBe(true);
   await page.getByTestId('fieldtest-pause').click();
   await page.getByTestId('fieldtest-open').click();
-  await page.getByRole('button', { name: 'Speakerphone', exact: true }).click();
+  await switchFieldTestCondition(page, 'Speakerphone');
   await page.getByTestId('fieldtest-resume').click();
   await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', 'route-after-mic');
 
@@ -343,7 +343,7 @@ test('an after sample taken after a reload on a microphone step carries the offs
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
   // ...and the leg re-opened with no Bluetooth, which snaps the pointer off
   // the wheel step it was left on.
-  await page.getByRole('button', { name: 'Speakerphone', exact: true }).click();
+  await switchFieldTestCondition(page, 'Speakerphone');
   await page.getByTestId('fieldtest-resume').click();
   await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', 'route-after-mic');
 

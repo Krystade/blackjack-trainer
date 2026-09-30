@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { withSettings, selectFieldTestCondition} from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 import { LOCK_PROBE_TICK_MS } from '../src/diag/lockProbe';
 
@@ -58,6 +58,7 @@ async function marker(
 
 async function openTest(page: Page): Promise<void> {
   await withSettings(page, {});
+  await selectFieldTestCondition(page, 'Car, parked');
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
   await page.getByTestId('fieldtest-open').click();

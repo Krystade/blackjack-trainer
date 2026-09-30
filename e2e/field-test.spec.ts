@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { withSettings, selectFieldTestCondition, switchFieldTestCondition} from './helpers';
 
 /**
  * The field test, end to end.
@@ -43,7 +43,17 @@ async function endRun(page: Page): Promise<void> {
   await finish.click();
 }
 
-async function openTest(page: Page, condition?: string): Promise<void> {
+/**
+ * The routing leg by default, because that is what this file measures.
+ *
+ * It used to be inherited: no argument meant whatever the gate defaulted to,
+ * and the gate defaulted to `car`. The gate defaults to the drill leg now, so
+ * the nine tests here that pass no condition would silently walk a protocol
+ * whose steps they have no answers for. Naming it costs a word and cannot
+ * drift again.
+ */
+async function openTest(page: Page, condition: string = 'Car, parked'): Promise<void> {
+  if (condition) await selectFieldTestCondition(page, condition);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
   await page.getByTestId('fieldtest-open').click();
@@ -55,7 +65,6 @@ async function openTest(page: Page, condition?: string): Promise<void> {
     await endRun(page);
     await page.getByTestId('fieldtest-open').click();
   }
-  if (condition) await page.getByRole('button', { name: condition, exact: true }).click();
   await startRun(page);
 }
 
@@ -1533,13 +1542,13 @@ test('a driven condition says so before the run starts', async ({ page }) => {
     await page.getByTestId('fieldtest-open').click();
   }
 
-  await page.getByRole('button', { name: 'Car, parked', exact: true }).click();
+  await switchFieldTestCondition(page, 'Car, parked');
   await expect(
     page.getByTestId('fieldtest-motion-warning'),
     'a parked condition was warned about as though it were driven',
   ).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Freeway', exact: true }).click();
+  await switchFieldTestCondition(page, 'Freeway');
   await expect(
     page.getByTestId('fieldtest-motion-warning'),
     'a driven condition started with nothing said about it',
@@ -1579,7 +1588,7 @@ test('the ticks belong to the condition they were measured under', async ({ page
 
   // The operator pulls out of the car park. The place and the ticks are kept
   // on purpose -- but the car-park answer is not a freeway result.
-  await page.getByRole('button', { name: 'Freeway', exact: true }).click();
+  await switchFieldTestCondition(page, 'Freeway');
   await expect(
     page.getByTestId('fieldtest-tick-route-1'),
     'an answer given parked was shown as a freeway result',
@@ -1873,7 +1882,7 @@ test('a second leg in the same page says so, on screen and in the log', async ({
   // Nothing to warn about on the first leg, which is the discriminating half:
   // a banner shown on every run would say nothing.
   await expect(page.getByTestId('fieldtest-session-warning')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Car, parked', exact: true }).click();
+  await switchFieldTestCondition(page, 'Car, parked');
   await page.getByTestId('fieldtest-start').click();
   await expect(page.getByTestId('fieldtest-title')).toBeVisible();
   await endRun(page);

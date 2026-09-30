@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { selectFieldTestCondition } from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
@@ -63,6 +64,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function openTest(page: import('@playwright/test').Page): Promise<void> {
+  await selectFieldTestCondition(page, 'Car, parked');
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings' }).first().click();
   // Without ?e2e=1 the collapsible sections are genuinely collapsed, so the

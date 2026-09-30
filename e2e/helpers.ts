@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { FIELD_TEST_CONDITIONS } from '../src/diag/fieldTest';
 
 /** Screenshot to e2e/screenshots/<name>.png (gitignored; reviewed set lives in e2e/screenshots-reviewed/). */
 export async function shot(page: Page, name: string): Promise<void> {
@@ -182,4 +183,74 @@ export async function answerSelfReportIfPresent(page: Page): Promise<void> {
   await yes.click({ timeout: 20_000 }).catch(() => {
     /* Not an eyes-free run, or it ended some other way. */
   });
+}
+
+/**
+ * Put the field test on a condition WITHOUT the gate's picker, because there
+ * is no longer a picker to go through.
+ *
+ * The gate offers exactly one leg now (`offered` in `fieldTest.ts`) and
+ * renders no chooser when that is so: a field test with a menu asked the
+ * operator to pick an experiment from the driver's seat, and four of the
+ * seven choices were the settled routing protocol. The other six conditions
+ * still exist and their steps still run, so the specs still need to drive
+ * them -- they just cannot be reached by clicking a label.
+ *
+ * Seeding the persisted run is the honest way in: `condition` is the same
+ * field `setFieldTestCondition` writes, so the app boots believing the
+ * operator chose it and every path after that is the production one. Call it
+ * BEFORE `page.goto`, like the other seeding helpers here.
+ */
+export async function selectFieldTestCondition(page: Page, label: string): Promise<void> {
+  const found = FIELD_TEST_CONDITIONS.find((c) => c.label === label);
+  if (!found) {
+    throw new Error(
+      `no field-test condition is labelled "${label}" -- ` +
+        `have: ${FIELD_TEST_CONDITIONS.map((c) => c.label).join(', ')}`,
+    );
+  }
+  await page.addInitScript((id) => {
+    const KEY = 'bjtrainer.fieldTestRun.v1';
+    let current: Record<string, unknown> = {};
+    try {
+      current = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Record<string, unknown>;
+    } catch {
+      /* a corrupt blob is the app's problem to survive, not this helper's */
+    }
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ active: false, stepIndex: 0, stamps: {}, ...current, condition: id }),
+    );
+  }, found.id);
+}
+
+/**
+ * Change the condition on a gate that is already open.
+ *
+ * `selectFieldTestCondition` above is the one to reach for: it seeds storage
+ * before the page loads and needs no seam at all. Use this one only where the
+ * test's subject IS the change -- a leg paused and resumed somewhere else, a
+ * tick earned under one condition and read under another -- because the
+ * screen no longer offers a way to do it and storage cannot reach a running
+ * store.
+ */
+export async function switchFieldTestCondition(page: Page, label: string): Promise<void> {
+  const found = FIELD_TEST_CONDITIONS.find((c) => c.label === label);
+  if (!found) {
+    throw new Error(
+      `no field-test condition is labelled "${label}" -- ` +
+        `have: ${FIELD_TEST_CONDITIONS.map((c) => c.label).join(', ')}`,
+    );
+  }
+  const took = await page.evaluate(
+    (id) => window.__setFieldTestCondition?.(id) ?? false,
+    found.id,
+  );
+  if (!took) {
+    throw new Error(
+      `the field test would not take the condition "${label}". The seam is ` +
+        'registered by the field-test screen under ?e2e=1, so the page has to ' +
+        'be on that screen, with that parameter, before this is called.',
+    );
+  }
 }

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { withSettings, selectFieldTestCondition, switchFieldTestCondition} from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
@@ -27,11 +27,11 @@ async function entries(page: Page): Promise<{ event: string; detail: Record<stri
 
 async function openTest(page: Page, condition = 'Car, parked'): Promise<void> {
   await withSettings(page, {});
+  await selectFieldTestCondition(page, condition);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
-  await page.getByRole('button', { name: condition, exact: true }).click();
   const start = page.getByTestId('fieldtest-start');
   await start.click();
   if ((await page.getByTestId('fieldtest-title').count()) === 0) await start.click();
@@ -306,7 +306,7 @@ test('a draft left on a step the run no longer sits on is recovered as a note', 
   // snaps off the wheel step it was left on.
   await page.reload();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
-  await page.getByRole('button', { name: 'Speakerphone', exact: true }).click();
+  await switchFieldTestCondition(page, 'Speakerphone');
   await page.getByTestId('fieldtest-resume').click();
   await expect(title).not.toHaveAttribute('data-step', 'wheel-with-mic');
 
@@ -346,7 +346,7 @@ test('a draft is not put back in the same step\u2019s box under another conditio
 
   await page.reload();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
-  await page.getByRole('button', { name: 'Freeway', exact: true }).click();
+  await switchFieldTestCondition(page, 'Freeway');
   await page.getByTestId('fieldtest-resume').click();
   // Same step, other condition.
   await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', step!);

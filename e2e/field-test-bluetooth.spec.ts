@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { withSettings, selectFieldTestCondition} from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
@@ -16,11 +16,11 @@ import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 async function openTest(page: Page, condition: string): Promise<void> {
   await withSettings(page, {});
+  await selectFieldTestCondition(page, condition);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
-  await page.getByRole('button', { name: condition, exact: true }).click();
 }
 
 async function start(page: Page): Promise<void> {

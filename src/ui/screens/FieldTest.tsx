@@ -93,6 +93,31 @@ import { Segmented } from './Settings';
 import type { Settings } from '../../store/types';
 import type { Screen } from '../App';
 
+declare global {
+  interface Window {
+    /**
+     * Put the run on a condition from a test. Present only under `?e2e=1`.
+     *
+     * The gate offers one leg and therefore renders no picker (see `offered`
+     * in `diag/fieldTest.ts`). The other six conditions still exist, their
+     * steps still run, and several of them are only reachable mid-run -- a
+     * leg paused on a microphone step and resumed under a condition with no
+     * Bluetooth is how the after-sample offset is measured at all. With the
+     * picker gone there is no way for a test to get there through the
+     * screen, and the alternative is to stop measuring it.
+     *
+     * Seeding storage before the page loads covers the cases that choose a
+     * condition once; `selectFieldTestCondition` in `e2e/helpers.ts` does
+     * that and is preferred. This is for the cases that CHANGE it while the
+     * gate is open, which storage cannot reach.
+     *
+     * Same shape and same gate as `window.__wheelPress` in `ui/App.tsx`, for
+     * the same reason: the real way in is not available to the page.
+     */
+    __setFieldTestCondition?: (id: string) => boolean;
+  }
+}
+
 /**
  * The field test, as a screen of its own.
  *
@@ -299,6 +324,17 @@ export function FieldTest({
    * silence.
    */
   const scoredLockProbe = useRef<string | null>(null);
+  // Test seam for the condition; see Window.__setFieldTestCondition above.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!window.location.search.includes('e2e=1')) return;
+    window.__setFieldTestCondition = (id) => {
+      if (!FIELD_TEST_CONDITIONS.some((c) => c.id === id)) return false;
+      setFieldTestCondition(id);
+      return true;
+    };
+  }, []);
+
   useEffect(() => {
     const marker = run.lockProbe;
     if (!marker || marker.session === diagnosticSessionId) return;

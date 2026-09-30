@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { withSettings, selectFieldTestCondition} from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
@@ -72,6 +72,7 @@ const VIEWPORTS = [
 const GEOMETRY_LEGS = ['Car, parked', 'Drill \u2014 parked'] as const;
 
 async function openTest(page: Page, condition: string): Promise<void> {
+  await selectFieldTestCondition(page, condition);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
   await page.getByTestId('fieldtest-open').click();
@@ -82,7 +83,6 @@ async function openTest(page: Page, condition: string): Promise<void> {
     await finish.click();
     await page.getByTestId('fieldtest-open').click();
   }
-  await page.getByRole('button', { name: condition, exact: true }).click();
   const start = page.getByTestId('fieldtest-start');
   await start.click();
   // Start-over arms before it discards, so a resumable run needs two taps.

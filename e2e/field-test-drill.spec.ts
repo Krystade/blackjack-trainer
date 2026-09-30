@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { withSettings, selectFieldTestCondition} from './helpers';
 
 /**
  * The drill protocol, end to end.
@@ -122,6 +122,7 @@ async function stepIntoDrawn(page: Page, from: string, to: string): Promise<stri
 }
 
 async function openDrillLeg(page: Page, label: string): Promise<void> {
+  await selectFieldTestCondition(page, label);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
   await page.getByTestId('fieldtest-open').click();
@@ -130,7 +131,6 @@ async function openDrillLeg(page: Page, label: string): Promise<void> {
     await endRun(page);
     await page.getByTestId('fieldtest-open').click();
   }
-  await page.getByRole('button', { name: label, exact: true }).click();
   const start = page.getByTestId('fieldtest-start');
   await start.click();
   if ((await page.getByTestId('fieldtest-title').count()) === 0) await start.click();
