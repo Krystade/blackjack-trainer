@@ -458,14 +458,39 @@ describe('playClipsAsync / stopClips — absence guards in node (no window)', ()
 /* playClipsAsync — full happy path with a fake HTMLAudioElement env        */
 /* ------------------------------------------------------------------------ */
 
+/**
+ * `load()` and the `src` setter are modelled, not stubbed.
+ *
+ * A real element runs the media load algorithm whenever `src` is set, and that
+ * algorithm resets `playbackRate` to `defaultPlaybackRate`. That only became
+ * observable once the chain started reusing one element: a `playbackRate`
+ * written before the next clip's `src` is silently thrown away, so the clip
+ * plays at 1 while the log still reports the rate that was asked for. A fake
+ * that ignored `load` would let that through.
+ */
 class FakeAudioElement {
-  src = '';
+  #src = '';
   preservesPitch = false;
+  defaultPlaybackRate = 1;
   playbackRate = 1;
+  volume = 1;
   onended: (() => void) | null = null;
   onerror: (() => void) | null = null;
   played = false;
   paused = true;
+  /** Every `src` assignment, so a chain can be read back as a sequence. */
+  loads: string[] = [];
+  get src(): string {
+    return this.#src;
+  }
+  set src(value: string) {
+    this.#src = value;
+    this.load();
+  }
+  load(): void {
+    this.loads.push(this.#src);
+    this.playbackRate = this.defaultPlaybackRate;
+  }
   play(): Promise<void> {
     this.played = true;
     this.paused = false;
@@ -536,13 +561,16 @@ describe('playClipsAsync — happy path (fake Audio + fetch)', () => {
 
     const playPromise = playClipsAsync('You have fourteen. Dealer shows ten.', { rate: 3 });
     await vi.waitFor(() => expect(env.instances.length).toBe(1));
-    expect(env.instances[0].playbackRate).toBe(3);
-    env.instances[0].onended?.();
+    const audio = env.instances[0];
+    expect(audio.playbackRate).toBe(3);
+    audio.onended?.();
 
-    await vi.waitFor(() => expect(env.instances.length).toBe(2));
-    expect(env.instances[1].playbackRate).toBe(3);
-    expect(env.instances[1].src).toBe(`${import.meta.env.BASE_URL}clips/aria/b.mp3`);
-    env.instances[1].onended?.();
+    // EVERY clip, on a reused element: loading a new source resets
+    // `playbackRate` to `defaultPlaybackRate`, so a rate set before the load
+    // instead of after is silently discarded from the second clip on.
+    await vi.waitFor(() => expect(audio.src).toBe(`${import.meta.env.BASE_URL}clips/aria/b.mp3`));
+    expect(audio.playbackRate, 'the rate was lost when the next clip loaded').toBe(3);
+    audio.onended?.();
 
     await expect(playPromise).resolves.toBe(true);
   });
@@ -556,17 +584,19 @@ describe('playClipsAsync — happy path (fake Audio + fetch)', () => {
 
     const playPromise = playClipsAsync('queen, four, king');
     await vi.waitFor(() => expect(env.instances.length).toBe(1));
-    expect(env.instances[0].src).toContain('queen.mp3');
+    const audio = env.instances[0];
+    expect(audio.src).toContain('queen.mp3');
 
-    env.instances[0].onended?.();
-    await vi.waitFor(() => expect(env.instances.length).toBe(2));
-    expect(env.instances[1].src).toContain('four.mp3');
+    // The next clip is loaded only once the previous one reports `ended` --
+    // asserted by advancing one step at a time and reading the source each
+    // time, which is the ordering the chain exists to guarantee.
+    audio.onended?.();
+    await vi.waitFor(() => expect(audio.src).toContain('four.mp3'));
 
-    env.instances[1].onended?.();
-    await vi.waitFor(() => expect(env.instances.length).toBe(3));
-    expect(env.instances[2].src).toContain('king.mp3');
+    audio.onended?.();
+    await vi.waitFor(() => expect(audio.src).toContain('king.mp3'));
 
-    env.instances[2].onended?.();
+    audio.onended?.();
     await expect(playPromise).resolves.toBe(true);
   });
 
@@ -591,11 +621,12 @@ describe('playClipsAsync — happy path (fake Audio + fetch)', () => {
     expect(env.instances[0].paused).toBe(false);
 
     const second = playClipsAsync('king', { interrupt: true });
-    await expect(first).resolves.toBe(true); // settled by the interrupt, not a failure
-    expect(env.instances[0].paused).toBe(true);
+    // Settled by the interrupt, NOT a failure: `false` here would send the
+    // caller off to speak the line again over the clip that replaced it.
+    await expect(first).resolves.toBe(true);
 
-    await vi.waitFor(() => expect(env.instances.length).toBe(2));
-    env.instances[1].onended?.();
+    await vi.waitFor(() => expect(env.instances[0].src).toContain('king.mp3'));
+    env.instances[0].onended?.();
     await expect(second).resolves.toBe(true);
   });
 
@@ -660,5 +691,129 @@ describe('playClipsAsync — happy path (fake Audio + fetch)', () => {
     expect(env.instances[0].src).toBe(`${import.meta.env.BASE_URL}clips/guy/guy-queen.mp3`);
     env.instances[0].onended?.();
     await expect(playPromise).resolves.toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* One long-lived element, because iOS gates a fresh one                    */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Why these exist.
+ *
+ * On the 2026-09-30 drive, every clip up to the first voice step played, and
+ * then `echo-voice-1` logged `clip-broke why=play-rejected name=NotAllowedError`
+ * fifty milliseconds after the recogniser confirmed it was listening. The step
+ * fell through to live TTS in a different voice, which is the one thing the
+ * clip path exists to avoid.
+ *
+ * `play()` on an HTMLAudioElement that has never played is subject to the
+ * activation check; an element that HAS played is unlocked for the life of the
+ * page. The chain was constructing a new element per clip, so it threw that
+ * unlocked state away on every single line and re-faced the gate each time --
+ * and the moment the gate is least likely to pass is exactly when the
+ * recogniser has just taken the audio session.
+ *
+ * The element is therefore the thing that must persist. These tests pin that
+ * it does, and -- the one that actually matters -- that the shared element is
+ * never handed to the amplifying path, because `createMediaElementSource`
+ * consumes an element permanently: once routed, its audio flows only through
+ * the graph, and a suspended graph makes every later clip SILENT rather than
+ * quiet.
+ */
+describe('the element that plays a clip outlives the clip', () => {
+  const realFetch = (globalThis as any).fetch;
+
+  beforeEach(() => _resetClipsForTest());
+  afterEach(() => {
+    _resetClipsForTest();
+    (globalThis as any).fetch = realFetch;
+    delete (globalThis as any).window;
+  });
+
+  function twoClipVoice(): void {
+    mockFetchRouter({
+      'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
+      'manifest.json': async () => ({ clips: { queen: 'queen.mp3', four: 'four.mp3' } }),
+    });
+  }
+
+  it('plays every clip in a chain through the same element', async () => {
+    const env = installFakeAudioEnv();
+    twoClipVoice();
+
+    const playPromise = playClipsAsync('queen, four');
+    await vi.waitFor(() => expect(env.instances[0]?.src).toContain('queen.mp3'));
+    env.instances[0].onended?.();
+    await vi.waitFor(() => expect(env.instances[0]?.src).toContain('four.mp3'));
+    env.instances[0].onended?.();
+
+    await expect(playPromise).resolves.toBe(true);
+    expect(env.instances.length, 'a new element per clip re-faces the activation gate').toBe(1);
+  });
+
+  it('plays a second utterance through the element the first one unlocked', async () => {
+    const env = installFakeAudioEnv();
+    twoClipVoice();
+
+    const first = playClipsAsync('queen');
+    await vi.waitFor(() => expect(env.instances[0]?.src).toContain('queen.mp3'));
+    env.instances[0].onended?.();
+    await expect(first).resolves.toBe(true);
+
+    const second = playClipsAsync('four');
+    await vi.waitFor(() => expect(env.instances[0]?.src).toContain('four.mp3'));
+    env.instances[0].onended?.();
+    await expect(second).resolves.toBe(true);
+
+    expect(env.instances.length, 'the second utterance built a fresh, locked element').toBe(1);
+  });
+
+  it('does not leave the previous utterance’s volume on the element', async () => {
+    const env = installFakeAudioEnv();
+    twoClipVoice();
+
+    const quiet = playClipsAsync('queen', { volume: 0.2 });
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    const audio = env.instances[0];
+    expect(audio.volume).toBe(0.2);
+    audio.onended?.();
+    await expect(quiet).resolves.toBe(true);
+
+    // A caller that passes no volume used to leave `volume` untouched, which
+    // was the same thing as 1 on a brand-new element and is the PREVIOUS
+    // utterance's level on a reused one. A step at 0.2 would then mute the
+    // step after it, in a car, with the log reporting a clean `path=clip`.
+    const next = playClipsAsync('four');
+    await vi.waitFor(() => expect(audio.src).toContain('four.mp3'));
+    expect(audio.volume, 'the earlier utterance’s volume carried over').toBe(1);
+    audio.onended?.();
+    await expect(next).resolves.toBe(true);
+  });
+
+  it('never hands the shared element to the amplifying path', async () => {
+    const env = installFakeAudioEnv();
+    twoClipVoice();
+
+    const quiet = playClipsAsync('queen', { volume: 1 });
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    const shared = env.instances[0];
+    shared.onended?.();
+    await expect(quiet).resolves.toBe(true);
+
+    // Above unity the clip is routed through a GainNode, and
+    // createMediaElementSource consumes the element for good.
+    const loud = playClipsAsync('four', { volume: 1.5 });
+    await vi.waitFor(() => expect(env.instances.length).toBe(2));
+    expect(env.instances[1], 'the amplified clip was routed through the shared element').not.toBe(shared);
+    env.instances[1].onended?.();
+    await expect(loud).resolves.toBe(true);
+
+    // And the shared element is still the one the ordinary path uses.
+    const quietAgain = playClipsAsync('queen', { volume: 1 });
+    await vi.waitFor(() => expect(shared.src).toContain('queen.mp3'));
+    shared.onended?.();
+    await expect(quietAgain).resolves.toBe(true);
+    expect(env.instances.length, 'the ordinary path stopped reusing the shared element').toBe(2);
   });
 });

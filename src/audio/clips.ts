@@ -367,6 +367,29 @@ function getAudioCtor(): (new () => HTMLAudioElement) | undefined {
 }
 
 /**
+ * The ONE element the ordinary clip path ever plays through.
+ *
+ * `play()` on an element that has never played is subject to the activation
+ * check; an element that HAS played is unlocked for the life of the page. The
+ * chain used to build a new element per clip, which threw that unlocked state
+ * away on every line and re-faced the gate each time. On the 2026-09-30 drive
+ * it was refused exactly once -- `echo-voice-1`, fifty milliseconds after the
+ * recogniser confirmed it was listening -- and the step fell through to live
+ * TTS in a different voice, which is the one outcome the clip path exists to
+ * prevent. The gate is least likely to pass precisely when the recogniser has
+ * just taken the audio session, and that is when the drill needs the clip.
+ *
+ * It is deliberately NOT used by the amplifying path.
+ * `createMediaElementSource` consumes an element permanently: once routed, its
+ * audio flows only through the graph, and a suspended graph makes every later
+ * clip SILENT rather than quiet. So a routed element must never come back to
+ * ordinary playback, and the only way to guarantee that is to decide BEFORE
+ * any routing happens -- which `needsAmplification` does, from the requested
+ * volume alone.
+ */
+let sharedAudio: HTMLAudioElement | null = null;
+
+/**
  * How a clip chain finished. `ended` is the only one that means the operator
  * heard the whole line -- the rest were indistinguishable from it in the log.
  */
@@ -620,7 +643,11 @@ export function playClipsResumable(
             return;
           }
           try {
-            const audio = new AudioCtor();
+            // Above unity this element gets routed and consumed, so it must be
+            // its own. Everything else -- which is every drill line, since the
+            // drill runs at volume 1 -- reuses the unlocked one.
+            const amplifying = volume !== undefined && needsAmplification(volume);
+            const audio = amplifying ? new AudioCtor() : (sharedAudio ??= new AudioCtor());
             if (index === 0) {
               // THE CHAIN, named. Without it the export could say a clip
               // played but never which recording, so "the phrase has no
@@ -633,13 +660,30 @@ export function playClipsResumable(
               });
             }
             audio.src = `${base}clips/${voiceId}/${fileList[index]!.file}`;
+            // EXPLICIT, because the element is reused. The drill repeats a line
+            // verbatim whenever the operator asks for it again, so the same src
+            // is routinely assigned twice in a row; an element sitting at
+            // `ended` that does not reload accepts `play()`, never fires
+            // `ended` again, and the chain reports success eight seconds later
+            // off the watchdog while the cabin hears nothing. Setting `src` is
+            // specified to invoke the load algorithm either way -- this says so
+            // out loud rather than relying on it.
+            if (typeof audio.load === 'function') audio.load();
+            // After the load, not before: loading resets `playbackRate` to
+            // `defaultPlaybackRate`, which would silently undo `opts.rate`.
             audio.preservesPitch = true;
             audio.playbackRate = rate;
             // Never hand the element more than 1: the setter THROWS above
             // that, and a throw here would kill the whole utterance. Anything
             // above unity is carried by a GainNode instead.
+            //
+            // Set unconditionally, because the element is reused: a chain that
+            // passed no volume used to leave the element untouched, which was
+            // the same thing as 1 on a brand-new one but is the PREVIOUS
+            // chain's level on a shared one -- so a quiet step could mute the
+            // step after it.
+            audio.volume = volume === undefined ? 1 : elementVolume(volume);
             if (volume !== undefined) {
-              audio.volume = elementVolume(volume);
               if (needsAmplification(volume)) {
                 /**
                  * THE RESULT, RECORDED. It was thrown away.
@@ -739,4 +783,5 @@ export function _resetClipsForTest(): void {
     clearActiveWatchdog(activeChain);
   }
   activeChain = null;
+  sharedAudio = null;
 }
