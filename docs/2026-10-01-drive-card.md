@@ -53,7 +53,7 @@ would change the thing being measured.
 
 | Leg | Where | Bluetooth | Steps |
 |-----|-------|-----------|-------|
-| **Drill — freeway** | Cradle, normal road speed, windows up, paired as usual | on | 10 |
+| **Drill — freeway** | Cradle, normal road speed, windows up, paired as usual | on | 9 |
 
 ### The four moves
 
@@ -112,8 +112,14 @@ offer, measures the cabin through each for three seconds, and chimes when it is 
 your speed, leave the phone alone, and tap when the screen says it has finished. This is the
 car-mic-versus-phone-mic comparison and it is entirely automatic.
 
-**Step 10 — Anything else.** Stamp anything that worked or went wrong that no step names.
-Stamp it the moment it happens; the log can find it afterwards, you cannot.
+**There is no step 10.** There used to be an "Anything else" step with four buttons at the
+end of the leg, and it was cut after the 2026-09-30 drive: its buttons named nothing, because
+by then there is nothing in front of you for "That worked" to be about, and it asked at the
+END for things to be stamped the moment they happen.
+
+**The note box is on every step**, which is where that actually gets done. Type into it the
+moment something happens and it lands in the log against the step you were on. On the
+2026-09-30 drive that is exactly how it was used, twice, while the free step went unanswered.
 
 ---
 
@@ -124,6 +130,7 @@ Stamp it the moment it happens; the log can find it afterwards, you cannot.
   investigation. A guess about *which word you heard* is fine and wanted — those are
   different questions.
 - **"I never pressed" is also a real answer**, on every wheel step. See step 8.
+- **The note box is on every step.** Anything a button cannot say, type there — it is stamped against the step you are on, which is what makes it readable afterwards.
 - **"Say it again" is always at the top of the controls.** A truck went past — press it. It
   is logged as a re-read you asked for, which is why it does not spoil the sample.
 - **Do not debug in the car.** Stamp it, finish the leg, copy the log, drive on. A leg that
@@ -137,7 +144,7 @@ Stamp it the moment it happens; the log can find it afterwards, you cannot.
 ## What is automatic, and what needs your hands
 
 Everything you do is: **3 wheel presses, 3 taps on a word, 2 words spoken, 1 tap to confirm
-the sweep** — plus one answer button per step.
+the sweep** — plus one answer button per step. Nine steps.
 
 The app does the rest without being asked: it draws the word at random and records which one
 (`said=`), scores your tap against it (`correct=`), times how long the echo took
@@ -152,7 +159,7 @@ and none of it can be got wrong by tapping in the wrong order.
 
 Send me the pasted log. What I read first:
 
-- `said=` against the answer on each of the nine word steps — the intelligibility **rate**,
+- `said=` against the answer on each of the word steps — the intelligibility **rate**,
   which is the headline.
 - Whether every echo step produced a word, and `echoTook=` for each.
 - Step 8 against step 1: same press, same page, microphone in between.
@@ -163,7 +170,7 @@ Send me the pasted log. What I read first:
 - `wheel-not-pressed` wherever it appears, which is the answer step 8 could not get before.
 
 One thing I cannot get from the log: **whether any of this was pleasant to use.** If the leg
-was annoying, say so in the free step or just tell me.
+was annoying, say so in a note on any step, or just tell me.
 
 ---
 

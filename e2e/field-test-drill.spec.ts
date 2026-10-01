@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, selectFieldTestCondition} from './helpers';
+import { withSettings, selectFieldTestCondition } from './helpers';
+import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
  * The drill protocol, end to end.
@@ -344,7 +345,8 @@ test('every drill step prints why it exists and never speaks it', async ({ page 
     await skip.click();
   }
 
-  expect(seen.length, 'the leg ended before its steps were walked').toBeGreaterThanOrEqual(10);
+  const expected = FIELD_TEST_STEPS.filter((x) => x.protocol === 'drill').length;
+  expect(seen.length, 'the leg ended before its steps were walked').toBe(expected);
   // Every step's own reason, not one line carried across the whole leg.
   expect(new Set(seen).size).toBe(seen.length);
 

@@ -930,10 +930,12 @@ describe('resolveFieldTestSetup', () => {
     const stepsOf = (protocol: 'routing' | 'drill') =>
       FIELD_TEST_STEPS.filter((x) => (x.protocol ?? 'routing') === protocol);
     expect(stepsOf('routing').at(-1)?.id, '`free` is no longer last, so it advances').toBe('free');
-    expect(
-      stepsOf('drill').at(-1)?.id,
-      '`drill-free` is no longer last, so it advances',
-    ).toBe('drill-free');
+    // THE DRILL HAS NO FREE STEP, so this invariant does not apply to it: the
+    // rule exists for a step meant to be tapped repeatedly, and there is no
+    // such step here. `ambient-sweep` ends it, is tapped once, and being last
+    // is what stops that tap advancing into nothing.
+    expect(stepsOf('drill').some((x) => x.id === 'drill-free')).toBe(false);
+    expect(stepsOf('drill').at(-1)?.id).toBe('ambient-sweep');
     // The lock probe belongs to the routing protocol, second from its end.
     expect(stepsOf('routing').at(-2)?.id).toBe('lock-probe');
     // ...and every routing measurement precedes it. Scoped, because the drill
@@ -2139,7 +2141,7 @@ describe('every drill step says what it is for', () => {
     // The guard that stops the three assertions below from passing by
     // iterating an empty list -- the failure mode that makes a suite green
     // when a protocol is renamed out from under it.
-    expect(drill.length).toBeGreaterThanOrEqual(10);
+    expect(drill.length).toBeGreaterThanOrEqual(9);
   });
 
   it('declares a purpose on every one of them', () => {

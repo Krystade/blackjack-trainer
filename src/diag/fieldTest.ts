@@ -1782,9 +1782,25 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     id: 'ambient-sweep',
     protocol: 'drill',
     /**
-     * FULLY AUTOMATIC, and last. It opens the microphone for a few seconds
+     * FULLY AUTOMATIC, AND LAST. It opens the microphone for a few seconds
      * per input, and an open microphone is the one variable every echo step
      * above is holding still.
+     *
+     * THERE IS NO FREE STEP AFTER THIS ONE, and that is deliberate. The drill
+     * used to end with "Anything else" and four buttons -- "That worked",
+     * "That was wrong", "Nothing to report", "Missed it" -- which name no
+     * referent, because by then there is nothing in front of the operator for
+     * them to be about. Worse, the step asked AT THE END for things to be
+     * stamped "the moment it happens", which is a thing that can only be done
+     * earlier.
+     *
+     * The mechanism for doing it earlier is already on every step: the note
+     * box is unconditional. The 2026-09-30 drive used it twice, on
+     * `echo-forward` and on `hear-word-1`, at the moment each thing happened
+     * -- and then left the free step the one step of ten unanswered.
+     *
+     * The routing protocol keeps its `free` step. It is settled and not
+     * offered, and changing it would churn its tests for no reading.
      */
     title: 'Measuring the noise (nothing to do)',
     // 150 CHARS IS THE LIMIT and this was 169, which on a phone is clipped
@@ -1800,16 +1816,6 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
       MISSED,
     ],
     setup: { voice: false },
-  },
-  {
-    id: 'drill-free',
-    protocol: 'drill',
-    title: 'Anything else',
-    instruction:
-      'Anything that worked or went wrong that no step above names. Stamp it the moment it happens \u2014 the log can find it afterwards, you cannot.',
-    purpose:
-      'Anything the nine steps above cannot express. The log cannot find what was never stamped.',
-    responses: FREE_RESPONSES,
   },
 ];
 
