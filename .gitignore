@@ -5,3 +5,15 @@ test-results/
 playwright-report/
 e2e/screenshots/
 models/
+
+# Field-test logs. NEVER COMMITTED, and this repo is public.
+#
+# An exported diagnostic log carries speech captured in the cabin including
+# anyone else present, Bluetooth device labels (which routinely contain a
+# person's name -- "TOYOTA Corolla" is the polite case), the phone's OS and
+# browser version, profile names with their rules, stakes and bankroll, and
+# timestamps showing when and for how long the device was being driven.
+#
+# The whole directory is ignored rather than a glob, so a log saved under any
+# name is covered.
+field-logs/

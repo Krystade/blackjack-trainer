@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   ANSWER_PHRASES,
+  ECHO_VOICE_WORDS,
   matchFieldTestAnswer,
   normaliseHeard,
+  selfEchoLines,
   spokenHintFor,
 } from './fieldTestVoice';
+import { looksLikeSelfEcho } from '../audio/selfEcho';
 import {
   FIELD_TEST_CONDITIONS,
   FIELD_TEST_STEPS,
@@ -217,5 +220,71 @@ describe('the printed hint', () => {
     expect(hint.length, 'the hint is as long as the label it was meant to replace').toBeLessThan(
       radio.label.length,
     );
+  });
+});
+
+describe('what counts as the app hearing itself', () => {
+  /**
+   * THE ECHO STEPS COULD NOT BE PASSED, and the drive of 2026-09-30 is the
+   * evidence: `heard=Stand` and `heard=Hit` both logged `heard-own-voice`
+   * and were discarded, so the app never spoke a word back and the operator
+   * answered "nothing came back" on both steps. Twice, correctly.
+   *
+   * The cause is that the step's own instruction names the two words it asks
+   * for -- 'Say "hit" or "stand" out loud' -- and the instruction was in the
+   * list used to recognise the app's voice. `looksLikeSelfEcho` does
+   * word-boundary containment, so every correct answer matched it.
+   *
+   * This is the discriminating test: it is about the protocol as shipped, so
+   * it fails for any future step that asks out loud for a word its own
+   * instruction contains.
+   */
+  it('never swallows a word the step is asking the operator to say', () => {
+    const voiceSteps = FIELD_TEST_STEPS.filter((s) => s.echo === 'voice');
+    expect(voiceSteps.length, 'no echo steps to check').toBeGreaterThan(0);
+
+    for (const step of voiceSteps) {
+      const lines = selfEchoLines(step, { instructionSpoken: false, spokenChoice: null });
+      for (const word of ECHO_VOICE_WORDS) {
+        for (const line of lines) {
+          expect(
+            looksLikeSelfEcho(word, line),
+            `"${word}" on ${step.id} is taken for the app's own voice, because ` +
+              `the line "${line}" contains it -- so that answer can never land`,
+          ).toBe(false);
+        }
+      }
+    }
+  });
+
+  /**
+   * ...and the protection the instruction was added for is kept. On
+   * `wheel-with-mic` the instruction IS read aloud with the microphone open,
+   * the car sends it back, and without this it reached the answer matcher and
+   * stamped `missed`.
+   */
+  it('still knows the instruction once the app has actually said it', () => {
+    const step = FIELD_TEST_STEPS.find((s) => s.id === 'wheel-with-mic');
+    expect(step, 'wheel-with-mic is gone; this test needs rewriting').toBeTruthy();
+
+    const unspoken = selfEchoLines(step!, { instructionSpoken: false, spokenChoice: null });
+    expect(unspoken, 'an unspoken instruction cannot have been echoed').not.toContain(
+      step!.instruction,
+    );
+
+    const spoken = selfEchoLines(step!, { instructionSpoken: true, spokenChoice: null });
+    expect(spoken, 'the instruction was read aloud and comes back through the car').toContain(
+      step!.instruction,
+    );
+  });
+
+  it('carries the measured lines and the drawn line regardless', () => {
+    const step = FIELD_TEST_STEPS.find((s) => s.id === 'echo-voice-1')!;
+    const lines = selfEchoLines(step, {
+      instructionSpoken: false,
+      spokenChoice: 'Basic double versus dealer nine.',
+    });
+    for (const line of step.say ?? []) expect(lines).toContain(line);
+    expect(lines).toContain('Basic double versus dealer nine.');
   });
 });

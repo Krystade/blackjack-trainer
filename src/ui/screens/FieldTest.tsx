@@ -19,7 +19,7 @@ import {
   discriminateAnswerFor,
 } from '../../diag/fieldTest';
 import { setWheelCommandHandler, type WheelCommand } from '../../audio/wheelCommands';
-import { matchFieldTestAnswer, spokenHintFor } from '../../diag/fieldTestVoice';
+import { matchFieldTestAnswer, selfEchoLines, spokenHintFor } from '../../diag/fieldTestVoice';
 import { looksLikeSelfEcho } from '../../audio/selfEcho';
 import { looksLikeAnAttempt } from '../../audio/voiceRecognition';
 import {
@@ -936,31 +936,17 @@ function RunningTest({
   const sweepRun = useRef(0);
   const responses = useMemo(() => stepResponses(step), [step]);
   /**
-   * What this step says, for telling the app's voice from the operator's.
-   *
-   * Derived from the step rather than captured as the last utterance,
-   * because the step is the authority on what it is about to say and the
-   * check has to work for a fragment arriving after the line has finished.
+   * HAS THE APP READ THIS STEP'S INSTRUCTION ALOUD? Only then can the car
+   * send it back, and only then is it the app's own voice. See
+   * `selfEchoLines`: listing it unconditionally made both words
+   * `echo-voice-1` asks for indistinguishable from the app talking, and the
+   * step could not be passed.
    */
+  const [instructionSpoken, setInstructionSpoken] = useState(false);
+  /** What this step says, for telling the app's voice from the operator's. */
   const stepLines = useMemo(
-    () => [
-      ...(step.say ?? []),
-      ...(step.sayUnclipped ? [step.sayUnclipped] : []),
-      // THE READ-ALOUD INSTRUCTION TOO. On `wheel-with-mic` it is spoken with
-      // the microphone open; echoed back by the car it went to the matcher,
-      // which stamped `missed` while "skip" was a synonym for it and chimes
-      // not-understood otherwise -- on the one step whose own comment says a
-      // chime and nothing reads as a dead microphone.
-      step.instruction,
-      // ...AND THE DRAWN LINE, on a discrimination step. It is not in
-      // `step.say` -- it is chosen at random when the step opens -- so
-      // without it the app's own sentence coming back through the car's
-      // microphone is not recognised as an echo. On `drill-phone` the phone
-      // speaker and the phone microphone are inches apart, which is the leg
-      // where that matters most.
-      ...(spokenChoice === null ? [] : [spokenChoice]),
-    ],
-    [step, spokenChoice],
+    () => selfEchoLines(step, { instructionSpoken, spokenChoice }),
+    [step, instructionSpoken, spokenChoice],
   );
   const [wheelSeen, setWheelSeen] = useState<string[]>([]);
   /**
@@ -1831,6 +1817,8 @@ function RunningTest({
     // the next step would file it against something the operator never saw.
     setMarks([]);
     setNoted(null);
+    // The next step has not been read aloud yet, whatever this one did.
+    setInstructionSpoken(false);
     // ON A STEP CHANGE, NOT ON A MOUNT. This effect fires on the first render
     // too, and a box seeded from a draft that survived the page was cleared
     // before the operator ever saw it -- the bug it exists to prevent, one
@@ -2835,7 +2823,12 @@ function RunningTest({
       diag('test', 'instruction-abandoned', { step: step.id, why });
       return;
     }
-    if (spoke) diag('test', 'instruction-spoken', { step: step.id, why });
+    if (spoke) {
+      diag('test', 'instruction-spoken', { step: step.id, why });
+      // ...and from here the car may send it back, so it counts as the app's
+      // voice for the rest of this step.
+      setInstructionSpoken(true);
+    }
     // THE CABIN IS MEASURED WHEN THE LINE ENDS, on arrival. Measured after a
     // failure too: nothing is speaking, which is the condition the sample
     // needs, and a leg with no reference level is a leg that cannot be read. Holding the

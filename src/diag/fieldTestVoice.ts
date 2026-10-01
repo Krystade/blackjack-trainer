@@ -34,7 +34,7 @@
  * unambiguous on one step is free to mean something else on another.
  */
 
-import type { StepResponse, StepSlot } from './fieldTest';
+import type { FieldTestStep, StepResponse, StepSlot } from './fieldTest';
 
 /**
  * What the operator can say for each answer.
@@ -191,4 +191,52 @@ export function matchFieldTestAnswer(
  */
 export function spokenHintFor(response: StepResponse): string | null {
   return ANSWER_PHRASES[response.id]?.[0] ?? null;
+}
+
+/**
+ * The two words the echo steps accept, and the only two the wheel can also
+ * express -- which is the point: the two channels are compared on one
+ * vocabulary rather than on speech's wider one.
+ */
+export const ECHO_VOICE_WORDS = ['hit', 'stand'] as const;
+
+/**
+ * What the app may have said on this step, for telling its voice from the
+ * operator's.
+ *
+ * Derived from the step rather than captured as the last utterance, because
+ * the step is the authority on what it is about to say and the check has to
+ * work for a fragment arriving after the line has finished.
+ *
+ * THE INSTRUCTION IS ONLY IN HERE ONCE THE APP HAS ACTUALLY SAID IT, and that
+ * condition is the whole reason this function exists. It was unconditional,
+ * and `echo-voice-1` asks 'Say "hit" or "stand" out loud' -- so both words the
+ * step exists to collect were, for the entire step, indistinguishable from the
+ * app talking. `looksLikeSelfEcho` does word-boundary containment, which is
+ * right, and it found ` stand ` inside ` say hit or stand out loud `. On the
+ * 2026-09-30 drive both voice steps logged `heard-own-voice` for a correct
+ * answer and spoke nothing back; the operator answered "nothing came back",
+ * twice, and was right both times. The step could not be passed.
+ *
+ * The instruction still belongs here when it HAS been spoken. On
+ * `wheel-with-mic` it is read aloud with the microphone open, the car sends it
+ * back, and before it was listed the matcher stamped `missed` from the app's
+ * own sentence -- on the one step whose own comment says a chime and nothing
+ * reads as a dead microphone.
+ */
+export function selfEchoLines(
+  step: FieldTestStep,
+  { instructionSpoken, spokenChoice }: { instructionSpoken: boolean; spokenChoice?: string | null },
+): readonly string[] {
+  return [
+    ...(step.say ?? []),
+    ...(step.sayUnclipped ? [step.sayUnclipped] : []),
+    ...(instructionSpoken ? [step.instruction] : []),
+    // The DRAWN line on a discrimination step. It is not in `step.say` -- it
+    // is chosen at random when the step opens -- so without it the app's own
+    // sentence coming back through the car's microphone is not recognised as
+    // an echo. On `drill-phone` the speaker and the microphone are inches
+    // apart, which is where that matters most.
+    ...(spokenChoice ? [spokenChoice] : []),
+  ];
 }
