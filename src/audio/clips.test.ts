@@ -791,6 +791,63 @@ describe('the element that plays a clip outlives the clip', () => {
     await expect(next).resolves.toBe(true);
   });
 
+  /**
+   * THE CASE THE FIRST VERSION OF THIS GOT WRONG, caught by the browser and
+   * not by any fake.
+   *
+   * `clips.ts` claimed "at most one at a time, matching speech.ts's
+   * single-utterance model", and that is false. `speak()` is fire-and-forget,
+   * so a dealt round starts five chains inside one millisecond. With a single
+   * shared element, each new chain's `src` assignment aborted the pending
+   * `play()` of the one before it: four `clip-broke why=play-rejected
+   * name=AbortError` in a row, and four lines spoken in the fallback voice.
+   *
+   * So the element is POOLED, not shared. One chain at a time -- which is the
+   * drill, and is where the iOS gate matters -- always gets the same unlocked
+   * element back; overlapping chains each get their own, exactly as before.
+   */
+  it('gives overlapping chains their own elements', async () => {
+    const env = installFakeAudioEnv();
+    twoClipVoice();
+
+    const first = playClipsAsync('queen');
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    const second = playClipsAsync('four');
+    await vi.waitFor(() => expect(env.instances.length).toBe(2));
+
+    expect(env.instances[0].src, 'the second chain took the first chain’s element').toContain(
+      'queen.mp3',
+    );
+    expect(env.instances[1].src).toContain('four.mp3');
+
+    env.instances[0].onended?.();
+    env.instances[1].onended?.();
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(true);
+  });
+
+  it('hands a finished chain’s element back for the next one', async () => {
+    const env = installFakeAudioEnv();
+    twoClipVoice();
+
+    const first = playClipsAsync('queen');
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    const overlapping = playClipsAsync('four');
+    await vi.waitFor(() => expect(env.instances.length).toBe(2));
+    env.instances[0].onended?.();
+    env.instances[1].onended?.();
+    await expect(first).resolves.toBe(true);
+    await expect(overlapping).resolves.toBe(true);
+
+    // Both are idle now, so a third chain reuses one rather than building a
+    // locked third element.
+    const third = playClipsAsync('queen');
+    await vi.waitFor(() => expect(env.instances.some((a) => a.src.includes('queen.mp3'))).toBe(true));
+    expect(env.instances.length, 'a finished element was never reused').toBe(2);
+    for (const a of env.instances) a.onended?.();
+    await expect(third).resolves.toBe(true);
+  });
+
   it('never hands the shared element to the amplifying path', async () => {
     const env = installFakeAudioEnv();
     twoClipVoice();

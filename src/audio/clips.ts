@@ -367,27 +367,62 @@ function getAudioCtor(): (new () => HTMLAudioElement) | undefined {
 }
 
 /**
- * The ONE element the ordinary clip path ever plays through.
+ * Elements that have already played and are idle, waiting to be used again.
  *
- * `play()` on an element that has never played is subject to the activation
- * check; an element that HAS played is unlocked for the life of the page. The
- * chain used to build a new element per clip, which threw that unlocked state
- * away on every line and re-faced the gate each time. On the 2026-09-30 drive
- * it was refused exactly once -- `echo-voice-1`, fifty milliseconds after the
- * recogniser confirmed it was listening -- and the step fell through to live
- * TTS in a different voice, which is the one outcome the clip path exists to
- * prevent. The gate is least likely to pass precisely when the recogniser has
- * just taken the audio session, and that is when the drill needs the clip.
+ * WHY THEY ARE KEPT. `play()` on an element that has never played is subject
+ * to the activation check; an element that HAS played is unlocked for the life
+ * of the page. The chain used to build a new element per clip, which threw
+ * that unlocked state away on every line and re-faced the gate each time. On
+ * the 2026-09-30 drive it was refused exactly once -- `echo-voice-1`, fifty
+ * milliseconds after the recogniser confirmed it was listening -- and the step
+ * fell through to live TTS in a different voice, which is the one outcome the
+ * clip path exists to prevent. The gate is least likely to pass precisely when
+ * the recogniser has just taken the audio session, and that is when the drill
+ * needs the clip.
  *
- * It is deliberately NOT used by the amplifying path.
+ * WHY A POOL AND NOT ONE ELEMENT, which is what this was first written as.
+ * The comment on `activeChain` says "at most one at a time, matching
+ * speech.ts's single-utterance model", and that is not true of the table:
+ * `speak()` is fire-and-forget, so dealing a round starts five chains inside
+ * one millisecond. Sharing a single element made each new chain's `src`
+ * assignment abort the pending `play()` of the one before it -- four
+ * `clip-broke why=play-rejected name=AbortError` in a row, four lines spoken
+ * in the fallback voice, and a regression caught by the browser after the
+ * fakes had passed.
+ *
+ * So: one chain at a time -- which is the drill, and is the case where the
+ * activation gate actually bites -- always gets the same unlocked element
+ * back, and overlapping chains each get their own exactly as before.
+ *
+ * The pool is deliberately NOT used by the amplifying path.
  * `createMediaElementSource` consumes an element permanently: once routed, its
  * audio flows only through the graph, and a suspended graph makes every later
  * clip SILENT rather than quiet. So a routed element must never come back to
  * ordinary playback, and the only way to guarantee that is to decide BEFORE
  * any routing happens -- which `needsAmplification` does, from the requested
- * volume alone.
+ * volume alone. An amplified chain builds its own element and never returns
+ * it here.
  */
-let sharedAudio: HTMLAudioElement | null = null;
+const idleAudio: HTMLAudioElement[] = [];
+
+function takeIdleAudio(AudioCtor: new () => HTMLAudioElement): HTMLAudioElement {
+  return idleAudio.pop() ?? new AudioCtor();
+}
+
+function returnIdleAudio(audio: HTMLAudioElement): void {
+  try {
+    // Paused on the way back, so an element released by the watchdog or by a
+    // stop is not still rendering samples when the next chain picks it up.
+    audio.pause();
+  } catch {
+    // never throw on the way out
+  }
+  // Handlers dropped: a late `ended` from the clip this element was playing
+  // must not advance whichever chain takes it next.
+  audio.onended = null;
+  audio.onerror = null;
+  if (!idleAudio.includes(audio)) idleAudio.push(audio);
+}
 
 /**
  * How a clip chain finished. `ended` is the only one that means the operator
@@ -397,6 +432,9 @@ type ClipEndReason = 'ended' | 'watchdog' | 'stopped' | 'element-error' | 'play-
 
 interface ActiveChain {
   audio: HTMLAudioElement | null;
+  /** The pooled element to hand back on settle; null for an amplified chain,
+   * whose element has been routed and can never return to ordinary playback. */
+  pooled: HTMLAudioElement | null;
   watchdog: ReturnType<typeof setTimeout> | null;
   settled: boolean;
   /** For the `ms` on `clip-end`: a stall reads as the watchdog's full timeout. */
@@ -432,6 +470,14 @@ function settleChain(chain: ActiveChain, played: boolean, reason: ClipEndReason)
   chain.settled = true;
   clearActiveWatchdog(chain);
   if (activeChain === chain) activeChain = null;
+  // THE ONE EXIT, which is why the release lives here: `ended`, the watchdog,
+  // a deliberate stop, an element error and a rejected `play()` all land on
+  // this function, and an element released on only some of those paths leaks
+  // out of the pool and the next chain builds a locked one.
+  if (chain.pooled) {
+    returnIdleAudio(chain.pooled);
+    chain.pooled = null;
+  }
   // `fellBack`, NOT `played`. The boolean is the answer to "must the caller now
   // try live TTS?", not a claim that audio reached the cabin -- but rendered as
   // a plain field beside `reason` it read as the latter, and it is the more
@@ -620,8 +666,13 @@ export function playClipsResumable(
           else resolve({ played: false, remainder: index > 0 ? remainderFrom(index) : null });
         };
 
+        // Decided once, from the requested volume, BEFORE anything is routed.
+        const amplifying = volume !== undefined && needsAmplification(volume);
+        const audio = amplifying ? new AudioCtor() : takeIdleAudio(AudioCtor);
+
         const chain: ActiveChain = {
-          audio: null,
+          audio,
+          pooled: amplifying ? null : audio,
           watchdog: null,
           settled: false,
           startedAt: Date.now(),
@@ -643,11 +694,6 @@ export function playClipsResumable(
             return;
           }
           try {
-            // Above unity this element gets routed and consumed, so it must be
-            // its own. Everything else -- which is every drill line, since the
-            // drill runs at volume 1 -- reuses the unlocked one.
-            const amplifying = volume !== undefined && needsAmplification(volume);
-            const audio = amplifying ? new AudioCtor() : (sharedAudio ??= new AudioCtor());
             if (index === 0) {
               // THE CHAIN, named. Without it the export could say a clip
               // played but never which recording, so "the phrase has no
@@ -711,7 +757,6 @@ export function playClipsResumable(
                 });
               }
             }
-            chain.audio = audio;
             armWatchdog();
 
             audio.onended = () => {
@@ -783,5 +828,5 @@ export function _resetClipsForTest(): void {
     clearActiveWatchdog(activeChain);
   }
   activeChain = null;
-  sharedAudio = null;
+  idleAudio.length = 0;
 }
