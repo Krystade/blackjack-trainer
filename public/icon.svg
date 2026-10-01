@@ -151,16 +151,22 @@
       <path d="M50 8 C50 8 18 38 18 58 C18 72 28 81 38 81 C44 81 47 78 49 75 C47 87 43 93 36 96 L64 96 C57 93 53 87 51 75 C53 78 56 81 62 81 C72 81 82 72 82 58 C82 38 50 8 50 8 Z"/>
     </symbol>
 
-    <!-- Eight edge notches at 45-degree intervals, sized for r = 124. -->
+    <!--
+      Eight edge notches at 45-degree intervals, sized for r = 124.
+
+      34 WIDE AND 28 LONG, running from r = 101 out to r = 129. The length
+      was 36, reaching in to r = 93, and that inner end is what came round to
+      meet the front chip. See the rotation note on the back chips.
+    -->
     <g id="notches">
-      <rect x="-17" y="-129" width="34" height="36" rx="9"/>
-      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(45)"/>
-      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(90)"/>
-      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(135)"/>
-      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(180)"/>
-      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(225)"/>
-      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(270)"/>
-      <rect x="-17" y="-129" width="34" height="36" rx="9" transform="rotate(315)"/>
+      <rect x="-17" y="-129" width="34" height="28" rx="9"/>
+      <rect x="-17" y="-129" width="34" height="28" rx="9" transform="rotate(45)"/>
+      <rect x="-17" y="-129" width="34" height="28" rx="9" transform="rotate(90)"/>
+      <rect x="-17" y="-129" width="34" height="28" rx="9" transform="rotate(135)"/>
+      <rect x="-17" y="-129" width="34" height="28" rx="9" transform="rotate(180)"/>
+      <rect x="-17" y="-129" width="34" height="28" rx="9" transform="rotate(225)"/>
+      <rect x="-17" y="-129" width="34" height="28" rx="9" transform="rotate(270)"/>
+      <rect x="-17" y="-129" width="34" height="28" rx="9" transform="rotate(315)"/>
     </g>
 
     <!-- The dark edge every chip needs against the felt. Drawn just inside the
@@ -179,11 +185,28 @@
     <ellipse cx="256" cy="396" rx="168" ry="22" fill="#020d06" opacity="0.4"
              filter="url(#soften)"/>
 
+    <!--
+      THE BACK CHIPS' NOTCH RINGS ARE TURNED, red by +25.5 and blue by -25.5
+      so the pair stays mirrored about x = 256.
+
+      Unturned, two notches on each back chip STRADDLED the front chip's rim:
+      part hidden, part not, so the notch's white ran straight into the pale
+      chip's white with no felt between them and the two read as one shape.
+      Turning is the only free variable -- the notches sit every 45 degrees,
+      the overlap is fixed by the fan -- and 25.5 is where a scan of 0..45
+      finds no straddling notch and the widest felt gap at the tightest point.
+
+      Rotation alone tops out at 6.2px of felt, which is about two pixels at
+      60pt and still reads as touching, so the notches are 28 long rather than
+      36 as well: it is their inner end that comes round to the front chip,
+      the outer edge stays at 129, and the silhouette does not move. Together:
+      12px, four pixels at 60pt.
+    -->
     <!-- LEFT: red -->
     <g transform="translate(154 266)" filter="url(#cast)">
       <circle r="124" fill="url(#red)"/>
       <use href="#edge"/>
-      <use href="#notches" fill="#fdf1ef"/>
+      <use href="#notches" fill="#fdf1ef" transform="rotate(25.5)"/>
       <circle r="95" fill="url(#red)"/>
       <circle r="86" fill="none" stroke="#fdf1ef" stroke-width="8"/>
       <circle r="68" fill="url(#redFace)"/>
@@ -193,7 +216,7 @@
     <g transform="translate(358 266)" filter="url(#cast)">
       <circle r="124" fill="url(#blue)"/>
       <use href="#edge"/>
-      <use href="#notches" fill="#eef3fd"/>
+      <use href="#notches" fill="#eef3fd" transform="rotate(-25.5)"/>
       <circle r="95" fill="url(#blue)"/>
       <circle r="86" fill="none" stroke="#eef3fd" stroke-width="8"/>
       <circle r="68" fill="url(#blueFace)"/>
