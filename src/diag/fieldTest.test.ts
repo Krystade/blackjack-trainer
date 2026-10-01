@@ -10,6 +10,7 @@ import {
   logFieldTestStep,
   logFieldTestRunStart,
   logFieldTestRunEnd,
+  stepSpeaksALine,
   applyFieldTestSetup,
   describeFieldTestSetup,
   fieldTestLegsThisSession,
@@ -2573,6 +2574,41 @@ describe('the drill protocol', () => {
       .filter((i) => i > -1);
     for (const i of echoes) {
       expect(i, 'an echo step runs after the sweep has opened the microphone').toBeLessThan(sweep);
+    }
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* What "say it again" has to re-read                                       */
+/* ------------------------------------------------------------------------ */
+
+describe('a step that offers a re-read has a line to re-read', () => {
+  /**
+   * `sayAgain` is the promise; this is whether the step can keep it.
+   *
+   * Three call sites asked `step.say || step.sayUnclipped`, which misses
+   * `discriminate` -- so on the three word steps the one control an operator
+   * reaches for without looking, after a truck has gone past, read the
+   * INSTRUCTION back instead of the line being measured, and labelled itself
+   * "Read it to me". Those are the steps where a re-read matters most: the
+   * measured utterance is one sentence, it plays once, and a missed one costs
+   * a third of the leg's headline result.
+   */
+  it('every step offering a re-read reports that it speaks a line', () => {
+    const offering = FIELD_TEST_STEPS.filter((s) => s.sayAgain);
+    expect(offering.length, 'no step offers a re-read at all').toBeGreaterThan(4);
+    for (const step of offering) {
+      expect(stepSpeaksALine(step), `${step.id} offers a re-read of nothing`).toBe(true);
+    }
+  });
+
+  it('a step with no line of its own says so, so the control reads the instruction', () => {
+    const silent = FIELD_TEST_STEPS.filter((s) => !stepSpeaksALine(s));
+    expect(silent.length, 'every step speaks a line, so the branch is dead').toBeGreaterThan(0);
+    for (const step of silent) {
+      expect(step.say ?? [], `${step.id}`).toHaveLength(0);
+      expect(step.sayUnclipped, `${step.id}`).toBeUndefined();
+      expect(step.discriminate ?? [], `${step.id}`).toHaveLength(0);
     }
   });
 });

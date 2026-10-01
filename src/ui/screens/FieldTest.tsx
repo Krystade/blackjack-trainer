@@ -17,6 +17,7 @@ import {
   DISCRIMINATE_LINES,
   discriminateWordFor,
   discriminateAnswerFor,
+  stepSpeaksALine,
 } from '../../diag/fieldTest';
 import { setWheelCommandHandler, type WheelCommand } from '../../audio/wheelCommands';
 import { matchFieldTestAnswer, selfEchoLines, spokenHintFor } from '../../diag/fieldTestVoice';
@@ -2297,7 +2298,35 @@ function RunningTest({
    * handled. A leg that exercised one direction would have read as a pass.
    */
   useEffect(() => {
-    if (step.echo !== 'wheel') return;
+    if (step.echo !== 'wheel') {
+      /**
+       * THE WHEEL IS STILL CLAIMED, on the four steps that are not about it.
+       *
+       * This used to `return` here, so arriving at a word step released the
+       * handler and nothing took it back. On the 2026-09-30 drive the operator
+       * pressed both directions on `hear-word-1`: skip-back fell through to
+       * `repeatLast` and happened to re-read the line, and skip-forward wrote
+       * `handled=false why=no-screen-listening` -- the signature of the fault
+       * the whole protocol is investigating, produced by the instrument rather
+       * than by the car. The press arrived; the field test had let go of it.
+       *
+       * What a press does here is the one wheel-shaped action such a step has,
+       * which is also the control an operator most wants without looking: read
+       * it again. Both directions, because a press that does nothing is
+       * indistinguishable in the cabin from a dead wheel -- and the direction
+       * is logged, so the export can still tell the two presses apart.
+       */
+      setWheelCommandHandler((command) => {
+        diag('test', 'wheel-repeat', { step: step.id, condition: run.condition, command });
+        // EXACTLY what the "Say it again" button does, including the branch:
+        // a step with a measured line re-reads the line it already drew (`say`
+        // does not redraw), and a step with no line of its own reads its
+        // instruction.
+        if (stepSpeaksALine(step)) void say('repeat');
+        else void speakInstruction('asked');
+      });
+      return () => setWheelCommandHandler(null);
+    }
     const armed = ensureMediaSessionHandlers();
     if (!armed) {
       setWheelUnavailable(true);
@@ -2336,7 +2365,17 @@ function RunningTest({
       });
     });
     return () => setWheelCommandHandler(null);
-  }, [step.echo, step.id, run.condition]);
+    // `say` keys off `step.id`, which is already here, so naming it cannot add
+    // a re-registration -- but the non-echo branch calls it, and a handler
+    // holding the previous step's `say` would re-read the previous step's line.
+    //
+    // `speakInstruction` is deliberately NOT named: it is declared further
+    // down the component, so reading it in this array -- which is evaluated
+    // during render -- is a temporal-dead-zone throw, and the error boundary
+    // replaces the whole screen with "Something broke". The handler closure
+    // can still call it, because that happens after the binding exists, and it
+    // keys off `step.id` too.
+  }, [step.echo, step.id, step.say, step.sayUnclipped, run.condition, say]);
 
   /**
    * The same measurement through the microphone.
@@ -3274,7 +3313,7 @@ function RunningTest({
         // direction of the `reading` guard on Measure).
         disabled={sampling || waitingForMic || measuring}
         onClick={() =>
-          step.say || step.sayUnclipped
+          stepSpeaksALine(step)
             ? void say('repeat')
             : // `'asked'`, BECAUSE THE OPERATOR ASKED. This branch passed
               // nothing and took the `'arrival'` default, so on the six silent
@@ -3294,7 +3333,7 @@ function RunningTest({
           ? 'Waiting for the microphone…'
           : sampling
             ? 'Speaking…'
-            : step.say || step.sayUnclipped
+            : stepSpeaksALine(step)
               ? 'Say it again'
               : 'Read it to me'}
       </button>
@@ -3315,7 +3354,7 @@ function RunningTest({
         audio session itself, and then the answer is about the wrong thing.
         Asked for, it is the operator's own choice and it is in the log.
       */}
-      {(step.say || step.sayUnclipped) && (
+      {stepSpeaksALine(step) && (
         <button
           type="button"
           className="fieldtest-stamp"

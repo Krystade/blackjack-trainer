@@ -385,3 +385,60 @@ test('the phone-speaker leg drops the wheel steps and keeps the microphone ones'
   expect(seen).toContain('echo-voice-1');
   expect(seen).toContain('ambient-sweep');
 });
+
+/**
+ * `__wheelPress`, not `__wheel`: the question is whether a SCREEN claimed the
+ * press, and `invokeWheelCommand` returns exactly that. `press()` above goes
+ * in at the media-session boundary and returns true whenever the app
+ * registered the action at all, which it always does -- so it cannot tell a
+ * press that answered something from one that fell on the floor.
+ */
+function pressWheel(page: Page, command: 'forward' | 'back'): Promise<boolean> {
+  return page.evaluate((c) => window.__wheelPress?.(c as 'forward' | 'back') ?? false, command);
+}
+
+/**
+ * THE WHEEL ON THE STEPS THAT ARE NOT ABOUT THE WHEEL.
+ *
+ * Four of the nine drill steps declare no `echo: 'wheel'`, and the effect that
+ * claims the wheel returned early on all four -- so the screen released the
+ * handler on arriving at `hear-word-1` and nothing took it back. On the
+ * 2026-09-30 drive the operator pressed both directions there: skip-back fell
+ * through to `repeatLast` and happened to re-read the line, and skip-forward
+ * wrote `handled=false why=no-screen-listening`.
+ *
+ * That string is the signature of the fault the whole protocol is
+ * investigating -- `wheelCommands.ts` says so in as many words -- and here it
+ * was produced by the instrument rather than by the car. The press DID arrive;
+ * the field test had simply let go of it.
+ *
+ * So on a step with no echo the wheel does the one wheel-shaped thing such a
+ * step has, which is also the control the operator most wants without looking:
+ * read it again. Both directions, because a press that does nothing is
+ * indistinguishable in the cabin from a dead wheel, and the direction is
+ * logged so the export can still tell them apart.
+ */
+test('the wheel still reaches the screen on a step that does not echo', async ({ page }) => {
+  test.setTimeout(45_000);
+  await withSettings(page, { audio: { enabled: true, useClips: true } });
+  await openDrillLeg(page, PARKED);
+
+  const word = await stepIntoDrawn(page, 'echo-back', 'hear-word-1');
+  const before = (await spoken(page)).length;
+
+  expect(
+    await pressWheel(page, 'forward'),
+    'the field test let go of the wheel on a word step',
+  ).toBe(true);
+
+  // Read again, and the SAME line -- a repeat that redrew would quietly
+  // destroy the sample the step exists to take.
+  await expect
+    .poll(async () => (await spoken(page)).slice(before), { timeout: 5_000 })
+    .toContain(`Basic ${word} versus dealer nine.`);
+
+  const log = await logText(page);
+  expect(log, 'a press the screen received was logged as reaching nobody').not.toContain(
+    'no-screen-listening',
+  );
+});

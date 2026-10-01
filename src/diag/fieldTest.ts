@@ -653,6 +653,23 @@ export function discriminateAnswerFor(line: string): string | null {
   return word === null ? null : `heard-${word}`;
 }
 
+/**
+ * Does this step have a line of its OWN to re-read, as opposed to only an
+ * instruction?
+ *
+ * One predicate, because three call sites each wrote their own as
+ * `step.say || step.sayUnclipped` and all three missed `discriminate`. A word
+ * step draws its line at runtime and holds it in `spokenChoice`, so it has no
+ * `say` -- and so the control an operator reaches for without looking after a
+ * truck has gone past read the INSTRUCTION back to them and called itself
+ * "Read it to me". Those are the three steps where a re-read matters most: the
+ * measured utterance is one sentence, it plays once, and a lost one costs a
+ * third of the leg's headline result.
+ */
+export function stepSpeaksALine(step: FieldTestStep): boolean {
+  return Boolean(step.say?.length || step.sayUnclipped || step.discriminate?.length);
+}
+
 /** What the app says back when a press or a word is taken as this command. */
 export const ECHO_LINES: Readonly<Record<'forward' | 'back', string>> = {
   forward: 'Correct play was hit.',
