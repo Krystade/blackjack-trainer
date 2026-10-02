@@ -106,15 +106,13 @@ export function _resetVoiceSessionForTest(): void {
 /* ---------------------------------------------------------------------- */
 
 /**
- * How long the microphone stays open for one wheel press.
+ * How long the microphone stays open for one wheel press, ONCE IT IS LIVE.
  *
  * NOT the two seconds the request guessed at, and the difference is the
  * Bluetooth link rather than the speaking. Opening the microphone flips the
- * car from A2DP to HFP, and that re-negotiation is not instant -- the first
- * stretch of the window is deaf while the route settles, and a two-second
- * window would spend most of itself on the handshake and close again before
- * the count arrived. Five gives a real second or two of listening after the
- * link is up, which is all "plus four" needs.
+ * car from A2DP to HFP, and that re-negotiation is not instant. Five gives a
+ * real second or two of listening after the link is up, which is all "plus
+ * four" needs.
  *
  * It is a window rather than a toggle for the reason the wheel exists at all:
  * while the microphone is open the car owns the buttons, so a second press
@@ -123,12 +121,57 @@ export function _resetVoiceSessionForTest(): void {
  */
 export const PUSH_TO_TALK_MS = 5000;
 
-let talkingUntil: number | null = null;
+/**
+ * How long the app will WAIT for the microphone before giving the press up.
+ *
+ * The window above used to be counted from the button press, which spent it on
+ * the wrong thing. The 2026-09-30 drive measured the first microphone of a page
+ * load reaching `listening` after 6033ms -- one five-second watchdog plus a
+ * 460ms retry -- so the first press of a cold page opened five seconds that
+ * were over before the engine could hear anything. The operator heard the press
+ * acknowledged, spoke into a microphone that was not yet live, and got nothing;
+ * the second press worked, because by then it was warm. A bigger number would
+ * not have fixed that, because the window is a budget for SPEAKING and the
+ * press is not when speaking can start.
+ *
+ * So the press opens a wait, the wait becomes the speaking window the moment
+ * the microphone actually goes live (`markPushToTalkLive`, called from
+ * `useVoiceControl` rather than from any screen, so no screen can forget it),
+ * and this cap is what stops a microphone that never opens from holding the
+ * window -- and the car's buttons with it -- indefinitely.
+ *
+ * Comfortably past that 6033ms, because a cap that fires before a slow start
+ * would close the window in precisely the case it exists to rescue. Two
+ * watchdog cycles and change.
+ */
+export const PUSH_TO_TALK_CAP_MS = 12000;
+
+/**
+ * `waiting` is a press whose microphone has not opened yet; `speaking` is the
+ * window the press was actually for. Both are open as far as the recogniser is
+ * concerned -- it has to be running during the wait, or it would never go live
+ * to end it -- which is why `isPushToTalkOpen` covers the pair.
+ */
+export type PushToTalkPhase = 'closed' | 'waiting' | 'speaking';
+
+let phase: PushToTalkPhase = 'closed';
 let talkHandle: ReturnType<typeof setTimeout> | null = null;
 
-/** Whether the push-to-talk window is currently open. */
+function clearTalkTimer(): void {
+  if (talkHandle !== null) {
+    clearTimeout(talkHandle);
+    talkHandle = null;
+  }
+}
+
+/** Whether the push-to-talk window is currently open, in either phase. */
 export function isPushToTalkOpen(): boolean {
-  return talkingUntil !== null;
+  return phase !== 'closed';
+}
+
+/** Which half of the window is running. */
+export function pushToTalkPhase(): PushToTalkPhase {
+  return phase;
 }
 
 /**
@@ -137,17 +180,50 @@ export function isPushToTalkOpen(): boolean {
  * Restarting rather than ignoring: pressing again while it is listening is
  * someone asking for more time, and the alternative -- the window closing
  * under a sentence because it began before the press -- is the failure this
- * whole feature exists to avoid.
+ * whole feature exists to avoid. Pressing again while it is still WAITING is
+ * the same request about the other phase, so it restarts the cap.
  */
 export function startPushToTalk(context: string): void {
-  const restarted = talkingUntil !== null;
-  talkingUntil = Date.now() + PUSH_TO_TALK_MS;
-  diag('mic', restarted ? 'ptt-extend' : 'ptt-open', { context, forMs: PUSH_TO_TALK_MS });
-  if (talkHandle !== null) clearTimeout(talkHandle);
+  const restarted = phase !== 'closed';
+  const wasSpeaking = phase === 'speaking';
+  clearTalkTimer();
+  // A press during the speaking window buys more speaking; a press while still
+  // waiting buys more waiting. Either way it is the same gesture asking for
+  // more of whatever is currently running.
+  phase = wasSpeaking ? 'speaking' : 'waiting';
+  const forMs = wasSpeaking ? PUSH_TO_TALK_MS : PUSH_TO_TALK_CAP_MS;
+  diag('mic', restarted ? 'ptt-extend' : 'ptt-open', { context, phase, forMs });
   talkHandle = setTimeout(() => {
     talkHandle = null;
-    talkingUntil = null;
-    diag('mic', 'ptt-close', { context });
+    const why = phase === 'waiting' ? 'never-opened' : 'elapsed';
+    phase = 'closed';
+    diag('mic', 'ptt-close', { context, why });
+    notify();
+  }, forMs);
+  notify();
+}
+
+/**
+ * The microphone this window was waiting for is now live.
+ *
+ * Called from `useVoiceControl`'s state handler, which is the one place that
+ * learns this for every screen at once -- the same argument that made its
+ * `onListening` cue required rather than optional.
+ *
+ * Idempotent while speaking. The cloud recogniser ends its own session roughly
+ * every ninety seconds and the controller restarts it, so `listening` can
+ * arrive a second time inside one window; it must not hand out speaking time
+ * the press did not buy.
+ */
+export function markPushToTalkLive(): void {
+  if (phase !== 'waiting') return;
+  clearTalkTimer();
+  phase = 'speaking';
+  diag('mic', 'ptt-live', { forMs: PUSH_TO_TALK_MS });
+  talkHandle = setTimeout(() => {
+    talkHandle = null;
+    phase = 'closed';
+    diag('mic', 'ptt-close', { why: 'elapsed' });
     notify();
   }, PUSH_TO_TALK_MS);
   notify();
@@ -155,13 +231,10 @@ export function startPushToTalk(context: string): void {
 
 /** Close it now -- a screen being left, or an answer already heard. */
 export function endPushToTalk(): void {
-  if (talkHandle !== null) {
-    clearTimeout(talkHandle);
-    talkHandle = null;
-  }
-  if (talkingUntil === null) return;
-  talkingUntil = null;
-  diag('mic', 'ptt-close', { reason: 'done' });
+  clearTalkTimer();
+  if (phase === 'closed') return;
+  phase = 'closed';
+  diag('mic', 'ptt-close', { why: 'done' });
   notify();
 }
 

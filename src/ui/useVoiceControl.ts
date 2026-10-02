@@ -15,7 +15,7 @@ import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
 import { reassertAudioFocus } from '../audio/audioFocus';
 import { logAudioInputs, logMicPermission } from '../diag/environment';
-import { micHasWorked, markMicWorked } from './voiceSession';
+import { micHasWorked, markMicWorked, markPushToTalkLive } from './voiceSession';
 
 /**
  * Speech recognition, wired to a screen.
@@ -258,6 +258,18 @@ export function useVoiceControl({
          * wants no wheel cannot take the car from the radio.
          */
         if (state === 'off') reassertAudioFocus('mic-closed');
+        if (state === 'listening') {
+          /**
+           * A push-to-talk window spends its five seconds on SPEAKING, which
+           * cannot start before this moment. Told here rather than from any
+           * screen for the same reason the cue below is required rather than
+           * optional: seven screens listen, and the one that forgot would
+           * throw the operator's press away with no way to tell.
+           *
+           * Outside a window this is a no-op, so the toggle path is unaffected.
+           */
+          markPushToTalkLive();
+        }
         if (state === 'listening' && !cuedLiveRef.current) {
           cuedLiveRef.current = true;
           try {
