@@ -155,7 +155,17 @@ async function seedClipDrillSettings(page: Page, audioPatch: Record<string, unkn
       answerPauseMs: 500,
       ...audioPatch,
     },
-    drill: { countManual: false, countLengthCards: 5, countGroup: 1, countIntervalMs: 0 },
+    // `wheelMode` stated rather than inherited: the default is 'talk' now
+    // (store/types.ts), and the wheel test in this file is explicitly about
+    // running the drill WITH THE MICROPHONE OFF. Inheriting the default made
+    // it open one.
+    drill: {
+      countManual: false,
+      countLengthCards: 5,
+      countGroup: 1,
+      countIntervalMs: 0,
+      wheelMode: 'answer',
+    },
   });
 }
 

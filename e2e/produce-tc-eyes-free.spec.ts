@@ -14,7 +14,10 @@ import { withSettings, withProfile } from './helpers';
 
 const SETTINGS = {
   audio: { enabled: true, verbosity: 'results', answerPauseMs: 300 },
-  drill: { countLengthCards: 4, countIntervalMs: 40, countGroup: 1 },
+  // `wheelMode` stated rather than inherited: the default is 'talk' now
+  // (store/types.ts), and every press in this file is meant to ANSWER. Without
+  // this they open a microphone instead and the drill never advances.
+  drill: { countLengthCards: 4, countIntervalMs: 40, countGroup: 1, wheelMode: 'answer' },
 };
 
 async function open(page: import('@playwright/test').Page) {
