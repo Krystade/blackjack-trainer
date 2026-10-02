@@ -53,6 +53,7 @@ export function useVoiceControl({
   onAction,
   onTranscript,
   onNotUnderstood,
+  onListening,
   isAttempt,
   biasPhrases,
   context,
@@ -71,6 +72,17 @@ export function useVoiceControl({
    * say it again instead of waiting on a card that will never turn.
    */
   onNotUnderstood?: (why: 'rejected' | 'suppressed') => void;
+  /**
+   * The microphone is open NOW -- the one thing eyes-free had no signal for.
+   *
+   * Required rather than optional, and that is the whole guard: a screen that
+   * forgets it leaves its operator talking into a microphone that is not
+   * listening yet, and nothing on the screen they are not looking at says so.
+   * A type error is the only thing that reliably catches a screen added later.
+   * Pass a no-op where the sound would be a confound, with the reason written
+   * down.
+   */
+  onListening: () => void;
   /**
    * What counts as an attempt worth cueing, when the default does not fit.
    *
@@ -171,11 +183,29 @@ export function useVoiceControl({
   const speechGenRef = useRef(0);
   const cuedGenRef = useRef(-1);
 
+  const listeningRef = useRef(onListening);
+  listeningRef.current = onListening;
+  /**
+   * Whether the "it is open now" cue has been given for THIS request.
+   *
+   * Per enable, not per session. The cloud recogniser ends a session roughly
+   * every ninety seconds by design and the controller restarts it, so cueing
+   * every arrival at `listening` would put a beep in the cabin every ninety
+   * seconds for an event the operator did not cause and can do nothing about.
+   * The moment worth marking is the one they are waiting on: the microphone
+   * they just asked for becoming live, which on the 2026-09-30 drive took
+   * 6033ms and made no sound at either end of it.
+   */
+  const cuedLiveRef = useRef(false);
+
   const controllerRef = useRef<VoiceController | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
 
+    // Armed for THIS request, so turning voice off and on again is cued again
+    // -- that is the operator asking a second time and waiting a second time.
+    cuedLiveRef.current = false;
     diag('mic', 'listen-on', { context: contextRef.current });
     void logMicPermission('listen-on');
     void logAudioInputs('listen-on');
@@ -228,6 +258,14 @@ export function useVoiceControl({
          * wants no wheel cannot take the car from the radio.
          */
         if (state === 'off') reassertAudioFocus('mic-closed');
+        if (state === 'listening' && !cuedLiveRef.current) {
+          cuedLiveRef.current = true;
+          try {
+            listeningRef.current();
+          } catch {
+            // A screen's cue must never take the microphone down with it.
+          }
+        }
       },
       onHeard: (heard, verdict) => {
         setStatus((prev) => ({ ...prev, heard, verdict }));

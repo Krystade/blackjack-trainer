@@ -2621,6 +2621,17 @@ function RunningTest({
       spokenAnswersLive
         ? matchFieldTestAnswer(heard, responses) !== null
         : looksLikeAnAttempt(heard),
+    /**
+     * DELIBERATELY SILENT HERE, which is the reason the option is required
+     * rather than defaulted: this is the one screen where the cue would be a
+     * confound. A chime is a Web Audio activation and an audio-session event
+     * on iOS, it deafens the microphone for CHIME_ACTIVITY_MS, and the voice
+     * steps speak their measured line within milliseconds of the microphone
+     * settling -- so a tone at exactly that moment would sit between the gate
+     * and the sample the step exists to take. The step already chimes on
+     * arrival and prints its own state.
+     */
+    onListening: () => {},
     onNotUnderstood: (why) => {
       diag('test', 'heard-unclear', { step: step.id, why });
       if (why === 'suppressed') {

@@ -705,6 +705,30 @@ describe('chime and the microphone', () => {
   });
 
   /**
+   * EXCEPT the one whose whole message is "start talking now".
+   *
+   * `ready` is played at the instant the microphone becomes live, after a wait
+   * that on the 2026-09-30 drive was six seconds long. Deafening the
+   * microphone for the sound that announces it is open defeats the cue: the
+   * first 260ms of the window it just opened are deaf, and five voice-table
+   * specs -- which speak the moment the microphone reports listening --
+   * stopped hearing the word at all.
+   *
+   * The deafening exists to stop a FEEDBACK LOOP: a chime heard as speech can
+   * be rejected, and a rejection cues another chime. `ready` cannot enter that
+   * loop. It fires at most once per time the operator asks for the microphone
+   * and never in response to a transcript, so the worst case is one stray
+   * `attention` -- which does deafen, and ends it.
+   */
+  it('does not deafen for the cue that says the microphone is open', () => {
+    const seen: number[] = [];
+    setSpeechActivityListener((ms) => seen.push(ms));
+    chime('ready');
+    setSpeechActivityListener(null);
+    expect(seen, 'the cue announcing the microphone deafened it').toEqual([]);
+  });
+
+  /**
    * IN E2E MODE TOO, which is the case that actually needs pinning.
    *
    * Under `?e2e=1` the tone is never synthesised -- it is written to a log

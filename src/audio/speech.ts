@@ -1243,13 +1243,24 @@ export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
  * ten seconds, and the 350ms bounce guard) made no sound whatsoever, which is
  * indistinguishable from missing the button.
  *
+ * `ready` was added for the third such event: the microphone actually
+ * becoming live. On the 2026-09-30 drive that took six seconds -- the first
+ * session of a page load fires nothing for the whole five-second watchdog
+ * while the permission is still being established -- and nothing marked the
+ * moment it arrived, so the operator spoke into a microphone that was not
+ * listening yet.
+ *
  * Chosen to be distinguishable without pitch memory: `mark` sits a fourth
  * below `good` and so reads as "held, not finished" next to it, and `blocked`
- * is an octave below `bad`, which is already the lowest answer tone. No two
- * kinds share a frequency -- `speech.test.ts` asserts exactly that, because a
- * duplicate would silently undo the distinction this table exists for.
+ * is an octave below `bad`, which is already the lowest answer tone. `ready`
+ * is deliberately NOT in a simple ratio with any of the verdict tones -- no
+ * octave, no fifth -- because it is not a verdict, and a cue that reads as
+ * "correct" in the one mode where sound is the only channel is worse than no
+ * cue. No two kinds share a frequency -- `speech.test.ts` asserts exactly
+ * that, because a duplicate would silently undo the distinction this table
+ * exists for.
  */
-export type ChimeKind = "good" | "bad" | "attention" | "mark" | "blocked";
+export type ChimeKind = "good" | "bad" | "attention" | "mark" | "blocked" | "ready";
 
 const CHIME_FREQUENCY_HZ: Record<ChimeKind, number> = {
   good: 880,
@@ -1257,6 +1268,7 @@ const CHIME_FREQUENCY_HZ: Record<ChimeKind, number> = {
   attention: 1320,
   mark: 660,
   blocked: 110,
+  ready: 523,
 };
 
 /**
@@ -1277,7 +1289,20 @@ export function chimeFrequencyForTest(kind: ChimeKind): number {
 export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
   // Before the e2e short-circuit, exactly as speak() does: the microphone's
   // bookkeeping is part of the behaviour under test, not part of the sound.
-  notifyActivityMs(CHIME_ACTIVITY_MS);
+  //
+  // `ready` IS THE EXCEPTION, and it is the only one. It is played at the
+  // instant the microphone becomes live, after a wait that on the 2026-09-30
+  // drive was six seconds, and its entire message is "start talking now".
+  // Deafening the microphone for the sound announcing it is open defeats the
+  // cue -- the first 260ms of the window it just opened would be deaf.
+  //
+  // Safe to exempt because of what the deafening is actually FOR: a feedback
+  // loop. A chime heard as speech can be rejected, and a rejection cues
+  // another chime, which is why `CHIME_ACTIVITY_MS` is longer than the tone.
+  // `ready` fires at most once per time the operator asks for the microphone
+  // and never in response to a transcript, so it cannot sustain that loop; the
+  // worst case is one stray `attention`, which does deafen and ends it.
+  if (kind !== 'ready') notifyActivityMs(CHIME_ACTIVITY_MS);
 
   /**
    * EVERY CHIME, LOGGED. The only line this used to write was

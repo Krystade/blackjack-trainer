@@ -15,7 +15,7 @@ import { prewarmClips, setClipsEnabled, setClipVoice } from './clips';
 export interface AudioApi {
   say: (text: string, opts?: { interrupt?: boolean }) => void;
   sayFull: (text: string) => void;
-  ding: (kind: 'good' | 'bad' | 'attention') => void;
+  ding: (kind: 'good' | 'bad' | 'attention' | 'ready') => void;
   /** Re-speak the last utterance at the CURRENT rate/voice/volume. Backs the
    * Repeat control; a no-op when audio is off or nothing has been said. */
   replay: () => void;
