@@ -265,6 +265,88 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         <div className="settings-heading">Settings</div>
       </div>
 
+      {/*
+        THE SWITCHES A DRIVE NEEDS, IN ONE PLACE.
+
+        They were spread from the Audio section to the bottom of Car controls:
+        the on switch, the recorded voice, and -- 1700px further down, past a
+        button-mapping diagnostic and five hundred words -- the one control
+        that decides what the wheel does at all. Setting the phone up in a
+        parked car meant scrolling a six-thousand-pixel page twice.
+
+        First and open by default, because this is the screen's purpose. The
+        explanation that used to be its own section four headings above the
+        controls now sits beside them.
+      */}
+      <CollapsibleSection title={<>In the car</>} defaultOpen={true}>
+        <div className="settings-note-row u-note">
+          <strong>Eyes-free</strong> is the goal: drill without looking at the screen. It
+          needs two halves &mdash; the app <em>speaking</em> to you, and <em>you
+          answering</em>. Eyes-free itself is turned on inside each drill, not here, because
+          it lasts one session on purpose.
+        </div>
+
+        <Toggle
+          label="Audio enabled"
+          checked={settings.audio.enabled}
+          onChange={(v) => updateAudio({ enabled: v })}
+        />
+        <Toggle
+          label="Use recorded voice (higher quality)"
+          checked={settings.audio.useClips}
+          onChange={updateUseClips}
+          disabled={audioDisabled}
+        />
+        <div className="settings-note-row u-note">
+          Everything else the app says &mdash; how much, how fast, how loud, which voice
+          &mdash; is under <strong>Audio</strong> below.
+        </div>
+
+        <div className="settings-row">
+          <span className="settings-label">The two wheel buttons</span>
+          <Segmented
+            options={[
+              { value: 'answer', label: 'Answer' },
+              { value: 'talk', label: 'Talk' },
+            ]}
+            value={settings.drill.wheelMode}
+            onChange={(wheelMode) => updateDrill({ wheelMode })}
+          />
+        </div>
+        {settings.drill.wheelMode === 'answer' ? (
+          <div className="settings-note-row u-note">
+            Forward and back drive the drill with no microphone at all, so nothing can take
+            the wheel away mid-session. One button cannot pick one of five plays, so
+            Flashcards, the Deviation Quiz and the Mixed Session run a <strong>self-check
+            </strong> instead: forward says the correct play and asks &ldquo;had it?&rdquo;,
+            then forward is yes and back is no. The count drills and the table are answered
+            outright.
+          </div>
+        ) : (
+          <div className="settings-note-row u-note">
+            Forward opens the microphone, then closes it{' '}
+            {Math.round(PUSH_TO_TALK_MS / 1000)} seconds after it actually goes live; back
+            still repeats. This is the only mode in which the five plays can be{' '}
+            <em>spoken</em> while the wheel still exists between windows &mdash; left simply
+            on, the microphone hands the car&rsquo;s buttons to its hands-free call and the
+            wheel never comes back. The cost is that the car&rsquo;s audio ducks on each
+            window, and that the buttons cannot be reached until it closes.
+          </div>
+        )}
+        <div className="settings-note-row u-note">
+          One tone marks the press; a second, lower one marks the microphone actually going
+          live &mdash; <strong>that</strong> is when to speak. If the second never sounds,
+          the microphone never opened. Tones are under <strong>Audio</strong>.
+        </div>
+        <div className="settings-note-row u-note">
+          <strong>Can it use the phone&rsquo;s own microphone instead?</strong> Not while the
+          car is connected: browser speech recognition takes no device to listen on, and uses
+          whatever the phone is routing audio through. Turning Bluetooth off does give you
+          the phone&rsquo;s microphone and speaker &mdash; and costs the wheel entirely,
+          which is what the Field test&rsquo;s phone-speaker leg is for.
+        </div>
+      </CollapsibleSection>
+
       <CollapsibleSection
         title={<>Theme</>}
         defaultOpen={false}
@@ -296,23 +378,28 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
       </CollapsibleSection>
 
       <CollapsibleSection
-        title={<>Feedback mode</>}
-        defaultOpen={true}
-      >
-          <Segmented
-            options={[
-              { value: 'training', label: 'Training' },
-              { value: 'test', label: 'Test' },
-            ]}
-            value={settings.feedbackMode}
-            onChange={(v) => update({ feedbackMode: v })}
-          />
-      </CollapsibleSection>
-
-      <CollapsibleSection
         title={<>Play</>}
         defaultOpen={false}
       >
+          {/* Was a section of its own holding this one switch, unlabelled and
+              unexplained -- a heading to collapse, for a control that fits on
+              a line among the others that decide how a hand plays. */}
+          <div className="settings-row">
+            <span className="settings-label">Feedback</span>
+            <Segmented
+              options={[
+                { value: 'training', label: 'Training' },
+                { value: 'test', label: 'Test' },
+              ]}
+              value={settings.feedbackMode}
+              onChange={(v) => update({ feedbackMode: v })}
+            />
+          </div>
+          <div className="settings-note-row u-note">
+            <strong>Training</strong> corrects a wrong play as it happens.{' '}
+            <strong>Test</strong> keeps quiet and leaves the scoring to the end, which is
+            the honest measure of what you actually know.
+          </div>
           <Toggle
             label="Count peek"
             checked={settings.countPeek}
@@ -416,57 +503,15 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           </p>
       </CollapsibleSection>
 
-      {/* The four sections below all look like "audio" and are constantly
-          confused for one another. This one exists to say, once, which is
-          which and that two of them are mutually exclusive — a fact that was
-          previously buried three paragraphs into Car controls. */}
-      <CollapsibleSection
-        title={<>Voice &amp; eyes-free &mdash; how it fits together</>}
-        defaultOpen={true}
-      >
-        <div className="settings-note-row u-note">
-          <strong>Eyes-free</strong> is the goal: drill without looking at the screen. It needs
-          two halves &mdash; the app <em>speaking</em> to you, and <em>you answering</em>. The
-          speaking half is <strong>Audio</strong>, below, and it is the same for everyone.
-        </div>
-        <div className="settings-note-row u-note">
-          The answering half has two routes, and{' '}
-          <strong>you have to pick one &mdash; they cannot both work</strong>:
-        </div>
-        <div className="settings-note-row u-note">
-          &bull; <strong>Steering wheel</strong> (set up under <em>Car controls</em>). Skip
-          forward means &ldquo;yes&rdquo;. Works in the car, needs no microphone. This is the
-          one to use while driving. One button cannot pick one of five plays, so the drills
-          whose answer is a play &mdash; Flashcards, the Deviation Quiz, the Mixed Session
-          &mdash; run a <strong>self-check</strong> instead: forward says the correct play out
-          loud and asks &ldquo;had it?&rdquo;, then forward is yes and back is no. The Count
-          drills, the True Count drill and the table are answered outright, forward being
-          &ldquo;yes&rdquo; and a number being pressed out one click at a time.
-        </div>
-        <div className="settings-note-row u-note">
-          &bull; <strong>Your voice</strong> (set up under <em>Voice control</em>). Say
-          &ldquo;hit&rdquo;, &ldquo;stand&rdquo;, &ldquo;yes&rdquo; and so on, so it can answer
-          every drill. But an open microphone switches a car to its hands-free{' '}
-          <em>call</em> route, which hands the wheel&rsquo;s buttons to that call instead of to
-          this app. Fine at a desk; it takes the wheel away in the car.
-        </div>
-      </CollapsibleSection>
 
       <CollapsibleSection
         title={<>Audio &mdash; the app speaking</>}
         defaultOpen={false}
       >
-          <Toggle
-            label="Audio enabled"
-            checked={settings.audio.enabled}
-            onChange={(v) => updateAudio({ enabled: v })}
-          />
-          <Toggle
-            label="Use recorded voice (higher quality)"
-            checked={settings.audio.useClips}
-            onChange={updateUseClips}
-            disabled={audioDisabled}
-          />
+          <div className="settings-note-row u-note">
+            The on switch and the recorded voice are in <strong>In the car</strong> at the
+            top, with the rest of what a drive needs. This is the detail behind them.
+          </div>
           <Verified state="partly">
             Driven on 2026-09-30: fourteen clips played to the end on the phone, in the car,
             over Bluetooth. So iOS does let them play and they are audible at speed. One
@@ -650,11 +695,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           </div>
       </CollapsibleSection>
 
-      <CarDiagnostics
-        audio={settings.audio}
-        wheelMode={settings.drill.wheelMode}
-        onWheelMode={(wheelMode) => updateDrill({ wheelMode })}
-      />
+      <CarDiagnostics audio={settings.audio} />
 
       <CarCheckSection />
       <FieldTestPanel onNavigate={onNavigate} />
@@ -838,15 +879,7 @@ function ButtonTester({ onPressed }: { onPressed: () => void }) {
  * Deliberately last in Settings and empty-by-default: it is diagnostic, not
  * a control, and it says nothing at all until there is something to report.
  */
-function CarDiagnostics({
-  audio,
-  wheelMode,
-  onWheelMode,
-}: {
-  audio: AudioSettings;
-  wheelMode: 'answer' | 'talk';
-  onWheelMode: (mode: 'answer' | 'talk') => void;
-}) {
+function CarDiagnostics({ audio }: { audio: AudioSettings }) {
   const [entries, setEntries] = useState<LogEntry[]>(() => readLog());
   const [shown, setShown] = useState(false);
   const blockers = carControlsBlockers(audio);
@@ -887,58 +920,24 @@ function CarDiagnostics({
             {describeCarControlsBlocker(b)}
           </div>
         ))}
+        {/* This paragraph used to say "leave the microphone off", which was
+            right when the wheel always answered and is wrong now that it opens
+            the microphone by default. The route fact behind it is unchanged
+            and still belongs here, next to the readout it explains; the choice
+            it was attached to has moved to "In the car", and the phone-mic
+            answer (asked directly, 2026-09-16) moved with it rather than being
+            said twice on one screen. */}
         <div className="settings-note-row u-note">
-          Leave the microphone off. Turning voice on switches the car to its hands-free
-          CALL route &mdash; which is why the app showed up as a phone call &mdash; and the
-          wheel&rsquo;s buttons then go to that call, not to this app. Talking to it and
-          steering-wheel control cannot both work at once, which is why the two buttons
-          can answer for you: with the microphone off, the wheel is the whole loop.
+          An open microphone switches the car to its hands-free CALL route &mdash; which is
+          why the app once showed up as a phone call &mdash; and the wheel&rsquo;s buttons
+          then go to that call rather than to this app. Talking and steering-wheel control
+          cannot both be live at once. Which of the two the buttons do, and what that costs,
+          is set under <strong>In the car</strong> at the top.
         </div>
 
-        {/* Asked directly (2026-09-16): "can we use my phone mic". The answer
-            is no, and it is a platform fact rather than a missing feature, so
-            it belongs here next to the route explanation rather than in a
-            backlog nobody reads from the driver's seat. */}
-        <div className="settings-note-row u-note">
-          <strong>Can it use the phone&rsquo;s own microphone instead?</strong> No &mdash; not
-          from a web app. Speech recognition in the browser takes no device to listen on:
-          it uses whatever the phone is currently routing audio through, and while the car
-          is connected that is the car. Nothing in this app can override it. The two things
-          that can are turning Bluetooth off (see the Field test&rsquo;s speakerphone
-          condition, which is the same room and the same road noise without the car in the
-          way) and push-to-talk, which at least keeps the route flipped for seconds at a
-          time instead of permanently.
-        </div>
-
-        {/* The one real choice the wheel offers, and it is a choice because
-            there are two buttons and three things worth doing with them. */}
-        <div className="settings-row">
-          <span className="settings-label">The two wheel buttons</span>
-          <Segmented
-            options={[
-              { value: 'answer', label: 'Answer' },
-              { value: 'talk', label: 'Open mic' },
-            ]}
-            value={wheelMode}
-            onChange={onWheelMode}
-          />
-        </div>
-        {wheelMode === 'answer' ? (
-          <div className="settings-note-row u-note">
-            Forward and back drive the drill with no microphone at all — which is the
-            only state the wheel works in, so nothing can take it away mid-session.
-          </div>
-        ) : (
-          <div className="settings-note-row u-note">
-            Forward opens the microphone for {Math.round(PUSH_TO_TALK_MS / 1000)} seconds and
-            then closes it again; back still repeats. Saying &ldquo;plus four&rdquo; is one
-            gesture where pressing it is four — but every window costs a round trip through
-            the car&rsquo;s hands-free route, the first moment of it is deaf while the link
-            flips, and the buttons cannot be reached at all until it closes. A chime marks
-            the window opening. Worth a drive to find out which you prefer.
-          </div>
-        )}
-
+        {/* The wheel's own MODE lives in "In the car" at the top, beside the
+            other switches a drive needs. What is left here is the mapping
+            diagnostic: which buttons this car actually sends. */}
         <ButtonTester onPressed={() => setEntries(readLog())} />
 
         <div className="settings-row">
@@ -1501,15 +1500,17 @@ function VoiceProbePanel() {
 
   return (
     <CollapsibleSection
-      title={<>Voice control (experiment)</>}
+      title={<>Voice control</>}
       defaultOpen={false}
     >
 
-        <Verified state="untested">
-          An experiment, and the least proven thing here. Recognition quality depends on the
-          browser and the device, it has not been used in a real session, and in a car it takes
-          the steering wheel away (see &ldquo;Voice &amp; eyes-free&rdquo; at the top). Use it
-          at a desk first, then read the transcript below to see what it actually heard.
+        <Verified state="partly">
+          Driven on 2026-09-30, through the car&rsquo;s own microphone at freeway speed: it
+          transcribed &ldquo;Stand&rdquo; outright and found &ldquo;hit&rdquo; in its own
+          second-ranked guess. So it hears a cabin at speed. What is unproven is the long
+          run of it &mdash; recognition quality varies by browser and device, and a whole
+          drill session has never been answered this way. Read the transcript below to see
+          what it actually heard rather than trusting the score.
         </Verified>
 
         <div className="settings-note-row u-note">
