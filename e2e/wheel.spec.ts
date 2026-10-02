@@ -15,6 +15,20 @@ import { withSettings } from './helpers';
  * hands-free route and the wheel stops reaching the app at all.
  */
 
+/**
+ * Answer mode, stated rather than inherited.
+ *
+ * Every test here except the push-to-talk pair is about what the two buttons
+ * do when they ANSWER, and they used to get that from DEFAULT_SETTINGS. The
+ * default is now 'talk' (store/types.ts), so a test that does not name its
+ * mode is testing whichever one shipped last -- which is how seventeen of
+ * these began opening a microphone instead of answering a drill.
+ */
+async function inAnswerMode(page: Page, patch: Record<string, unknown> = {}): Promise<void> {
+  const drill = { ...((patch.drill as Record<string, unknown>) ?? {}), wheelMode: 'answer' };
+  await withSettings(page, { ...patch, drill });
+}
+
 const READBACK_MS = 900;
 const COMMIT_MS = 3000;
 
@@ -56,7 +70,7 @@ async function openTrueCountDrill(page: Page): Promise<void> {
 }
 
 test('forward starts the drill', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true, verbosity: 'full' } });
+  await inAnswerMode(page, { audio: { enabled: true, verbosity: 'full' } });
   await openTrueCountDrill(page);
 
   await press(page, 'forward');
@@ -70,7 +84,7 @@ test('forward starts the drill', async ({ page }) => {
  * meanings at once.
  */
 test('back says the result again once the question is answered', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true, verbosity: 'full' } });
+  await inAnswerMode(page, { audio: { enabled: true, verbosity: 'full' } });
   await openTrueCountDrill(page);
   await press(page, 'forward'); // Start
   // One press, then silence: the proposal submits itself, which is how every
@@ -88,7 +102,7 @@ test('back says the result again once the question is answered', async ({ page }
 });
 
 test('the two buttons walk a true count and quiet submits it', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true, verbosity: 'full' } });
+  await inAnswerMode(page, { audio: { enabled: true, verbosity: 'full' } });
   await openTrueCountDrill(page);
   await press(page, 'forward'); // Start
 
@@ -107,7 +121,7 @@ test('the two buttons walk a true count and quiet submits it', async ({ page }) 
 });
 
 test('a press during the correction window pushes the submission back', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true, verbosity: 'full' } });
+  await inAnswerMode(page, { audio: { enabled: true, verbosity: 'full' } });
   await openTrueCountDrill(page);
   await press(page, 'forward');
 
@@ -133,7 +147,7 @@ test('a press during the correction window pushes the submission back', async ({
  */
 test('on a self-check, forward is "I had it" and back is "I missed it"', async ({ page }) => {
   test.setTimeout(30_000);
-  await withSettings(page, {
+  await inAnswerMode(page, {
     audio: { enabled: true, verbosity: 'results', answerPauseMs: 300 },
   });
   await openTrueCountDrill(page);
@@ -148,7 +162,7 @@ test('on a self-check, forward is "I had it" and back is "I missed it"', async (
 
 test('the count drill takes a running count from the wheel too', async ({ page }) => {
   test.setTimeout(30_000);
-  await withSettings(page, {
+  await inAnswerMode(page, {
     audio: { enabled: true, verbosity: 'full' },
     drill: { countLengthCards: 4, countIntervalMs: 50, countGroup: 1 },
   });
@@ -206,7 +220,7 @@ test('in talk mode, forward opens the microphone and closes it again', async ({ 
 });
 
 test('in answer mode, forward answers and never opens the microphone', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true }, drill: { wheelMode: 'answer' } });
+  await inAnswerMode(page, { audio: { enabled: true }, drill: { wheelMode: 'answer' } });
   await openTrueCountDrill(page);
 
   await press(page, 'forward');
@@ -246,7 +260,7 @@ test('a distraction is answered with the same two buttons the count is', async (
   await page.addInitScript(() => {
     Math.random = () => 0.42;
   });
-  await withSettings(page, {
+  await inAnswerMode(page, {
     audio: { enabled: true, verbosity: 'full' },
     drill: {
       countIntervalMs: 200,
@@ -312,7 +326,7 @@ test('the wheel answer to a distraction is the answer that gets graded', async (
   await page.addInitScript(() => {
     Math.random = () => 0.42;
   });
-  await withSettings(page, {
+  await inAnswerMode(page, {
     audio: { enabled: true, verbosity: 'full' },
     drill: {
       countIntervalMs: 200,
@@ -389,7 +403,7 @@ test('the wheel answer to a distraction is the answer that gets graded', async (
 /* ---------------------------------------------------------------------- */
 
 async function openQuiz(page: Page, index = '16v10'): Promise<void> {
-  await withSettings(page, {
+  await inAnswerMode(page, {
     audio: { enabled: true, verbosity: 'results', answerPauseMs: 15000 },
     drill: { quizIndex: index },
   });
@@ -462,7 +476,7 @@ test('a quiz self-report is recorded as a self-report, not as a play', async ({ 
  */
 test('the mixed session takes a self-check on either kind of item', async ({ page }) => {
   test.setTimeout(45_000);
-  await withSettings(page, {
+  await inAnswerMode(page, {
     audio: { enabled: true, verbosity: 'results', answerPauseMs: 15000 },
     drill: { quizIndex: '16v10' },
   });

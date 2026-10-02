@@ -2,6 +2,20 @@ import { test, expect, type Page } from '@playwright/test';
 import { withSettings, goHomeAndNavigate } from './helpers';
 
 /**
+ * Answer mode, stated rather than inherited.
+ *
+ * Every test here is about what the two buttons do when they ANSWER, and they
+ * used to get that from DEFAULT_SETTINGS. The default is now 'talk'
+ * (store/types.ts), so a test that does not name its mode is testing whichever
+ * one shipped last -- which is how all six of these began opening a microphone
+ * instead of revealing a play.
+ */
+async function inAnswerMode(page: Page, patch: Record<string, unknown> = {}): Promise<void> {
+  const drill = { ...((patch.drill as Record<string, unknown>) ?? {}), wheelMode: 'answer' };
+  await withSettings(page, { ...patch, drill });
+}
+
+/**
  * The two wheel buttons, on flashcards.
  *
  * The ask, verbatim (2026-09-16): "i want them both given actually useful uses
@@ -38,7 +52,7 @@ async function openFlashcards(page: Page): Promise<void> {
 }
 
 test('forward reveals the right play and asks whether you had it', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true, verbosity: 'full' } });
+  await inAnswerMode(page, { audio: { enabled: true, verbosity: 'full' } });
   await openFlashcards(page);
 
   await expect(page.getByTestId('flash-selfcheck')).toHaveCount(0);
@@ -55,7 +69,7 @@ test('"I had it" grades as correct and "I missed it" does not', async ({ page })
   // A long answer pause so the scheduled auto-advance cannot clear a
   // correction while an assertion is still retrying -- "it went away" would
   // otherwise satisfy `toHaveCount(0)` no matter which report was submitted.
-  await withSettings(page, {
+  await inAnswerMode(page, {
     audio: { enabled: true, verbosity: 'full', answerPauseMs: 15000 },
   });
   await openFlashcards(page);
@@ -83,7 +97,7 @@ test('"I had it" grades as correct and "I missed it" does not', async ({ page })
  * that becomes visible, so that is where it is checked.
  */
 test('an admitted miss is filed apart from wrong plays', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true, verbosity: 'full' } });
+  await inAnswerMode(page, { audio: { enabled: true, verbosity: 'full' } });
   await openFlashcards(page);
 
   await press(page, 'forward');
@@ -103,7 +117,7 @@ test('an admitted miss is filed apart from wrong plays', async ({ page }) => {
 });
 
 test('back repeats the hand rather than answering it', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true, verbosity: 'full' } });
+  await inAnswerMode(page, { audio: { enabled: true, verbosity: 'full' } });
   await openFlashcards(page);
 
   const before = (await spoken(page)).length;
@@ -127,7 +141,7 @@ test('back repeats the hand rather than answering it', async ({ page }) => {
  * same card would move.
  */
 test('forward advances off a correction, back repeats it without regrading', async ({ page }) => {
-  await withSettings(page, {
+  await inAnswerMode(page, {
     audio: { enabled: true, verbosity: 'full', answerPauseMs: 15000 },
   });
   await openFlashcards(page);
@@ -160,7 +174,7 @@ test('forward advances off a correction, back repeats it without regrading', asy
  * drill. The phase ref is what makes this pass.
  */
 test('a double press reveals and then reports, in one tick', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true, verbosity: 'full' } });
+  await inAnswerMode(page, { audio: { enabled: true, verbosity: 'full' } });
   await openFlashcards(page);
 
   await press(page, 'forward', 2);

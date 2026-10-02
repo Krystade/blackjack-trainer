@@ -151,21 +151,27 @@ export interface Settings {
     /**
      * What the two steering-wheel buttons do in the car.
      *
-     * 'answer' (default): forward and back drive the drill directly -- start,
-     * plus one, minus one, "I had it". No microphone is involved, which is
-     * the only reason the wheel works at all: opening the mic flips the car
-     * to its hands-free CALL route and every button goes to that call
-     * instead of to this app (audio/carControls.ts).
+     * 'answer': forward and back drive the drill directly -- start, plus one,
+     * minus one, "I had it". No microphone is involved, so nothing can take
+     * the wheel away mid-session: opening the mic flips the car to its
+     * hands-free CALL route and every button goes to that call instead of to
+     * this app (audio/carControls.ts).
      *
-     * 'talk': forward OPENS THE MICROPHONE for a few seconds and then closes
-     * it again -- push to talk. Requested on the grounds that saying "plus
-     * four" is one gesture where pressing it is four, which is true. The
-     * catch is the same route flip: each window costs a round trip through
-     * HFP and back, the first moment of it is deaf while the link
-     * re-negotiates, and the car's audio ducks each time. So it is a MODE
-     * rather than an addition -- with two buttons there is no third gesture
-     * to hold both meanings, and which trade is right is a thing only
-     * driving can settle.
+     * 'talk' (DEFAULT): forward OPENS THE MICROPHONE for a window and then
+     * closes it again -- push to talk. Saying "plus four" is one gesture
+     * where pressing it is four, and it is the only mode in which the five
+     * plays can be SPOKEN while the wheel still exists between windows: with
+     * the microphone merely left on, the car keeps the buttons for the call
+     * and the wheel never comes back.
+     *
+     * It is the default because it is what the operator asked for as the car
+     * mode (2026-10-01), and because the objection that stood against it has
+     * been fixed: each window costs a round trip through HFP and back, and
+     * the first press of a cold page used to be spent entirely on that round
+     * trip (ui/voiceSession.ts). The window now starts when the microphone
+     * does. What remains true is that the car's audio ducks on each window,
+     * and that a mode is all two buttons can carry -- there is no third
+     * gesture to hold both meanings.
      */
     wheelMode: 'answer' | 'talk';
   };
@@ -288,7 +294,7 @@ export const DEFAULT_SETTINGS: Settings = {
     pacePressure: false,
     masteryDistractionFreq: 'off',
     shotClockMs: 0,
-    wheelMode: 'answer',
+    wheelMode: 'talk',
   },
   audio: { ...DEFAULT_AUDIO },
 };
