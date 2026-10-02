@@ -261,7 +261,22 @@ export interface AudioSettings {
 }
 
 export const DEFAULT_AUDIO: AudioSettings = {
-  enabled: false,
+  /*
+   * ON, which it was not.
+   *
+   * This app's purpose is drilling with the screen in a pocket, and both
+   * halves of that are gated on this one flag -- nineteen controls grey out
+   * behind it, "Eyes-free audio" among them. Shipping it off meant a fresh
+   * install was silent, and silent is indistinguishable from broken when
+   * nobody is looking at the screen. `audioGate.ts` exists only because of
+   * how badly that landed.
+   *
+   * It was off because audio that starts talking unasked is rude on a desk.
+   * That cost is a sound the operator did not expect, once; the cost of the
+   * other default is a drive spent wondering why the app says nothing.
+   * (Operator, 2026-10-02: make the settings I want the default.)
+   */
+  enabled: true,
   verbosity: 'results',
   rate: 1,
   volume: 1,
@@ -271,7 +286,22 @@ export const DEFAULT_AUDIO: AudioSettings = {
   answerPauseMs: 3000,
   dimZones: false,
   cardDetail: 'rank',
-  useClips: false,
+  /*
+   * ON, now that a real drive has played them.
+   *
+   * This shipped off because the clips had only ever run in the test harness,
+   * which checks that every phrase RESOLVES to a clip and not that iOS will
+   * play one unprompted. The 2026-09-30 drive settled that: fourteen played to
+   * the end on the phone, in the car, over Bluetooth. The one that failed
+   * failed because the microphone opened under it, which is fixed (8e526ae).
+   *
+   * Anything a clip cannot cover still falls back to live speech, so the worst
+   * case of this default is the behaviour of the old one.
+   */
+  useClips: true,
+  // '' means "whatever public/clips/index.json names as its default", which is
+  // how a new voice becomes the default by shipping rather than by editing a
+  // constant here. See clips.ts's `activeClipVoice`.
   clipVoice: '',
   handStyle: 'cards',
 };

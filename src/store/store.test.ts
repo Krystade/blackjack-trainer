@@ -208,10 +208,16 @@ describe('store/persist', () => {
       expect(loaded.audio.chimes).toBe(true); // filled from defaults
     });
 
+    /**
+     * Written against the default rather than against `true`, because it was
+     * written against `true` and `DEFAULT_AUDIO.enabled` later became `true`.
+     * The mutation then set the field to the value it already had and the test
+     * passed whether or not the object was shared -- it could no longer fail.
+     */
     test('does not share a reference with the DEFAULT_AUDIO singleton', () => {
       const a = loadSettings();
-      a.audio.enabled = true;
-      expect(loadSettings().audio.enabled).toBe(false);
+      a.audio.enabled = !DEFAULT_AUDIO.enabled;
+      expect(loadSettings().audio.enabled).toBe(DEFAULT_AUDIO.enabled);
     });
   });
 
