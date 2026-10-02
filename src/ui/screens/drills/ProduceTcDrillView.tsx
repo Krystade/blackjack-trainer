@@ -418,7 +418,7 @@ export function ProduceTcDrillView({
   useWheelCommand((command) => {
     if (settings.drill.wheelMode === 'talk') {
       if (command === 'forward') {
-        startPushToTalk('produce-tc-drill');
+        startPushToTalk('produce-tc-drill', settings.drill.pushToTalkMs);
         audio.ding('attention');
       } else {
         handleVoiceCommand('repeat');

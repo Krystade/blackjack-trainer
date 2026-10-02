@@ -515,7 +515,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // repeats, which is the one meaning worth keeping in every mode.
     if (settings.drill.wheelMode === 'talk') {
       if (command === 'forward') {
-        startPushToTalk('table');
+        startPushToTalk('table', settings.drill.pushToTalkMs);
         // A cue, because the window is invisible and the Bluetooth route
         // takes a moment to flip: without it there is no way to tell
         // "listening now" from "pressed nothing".

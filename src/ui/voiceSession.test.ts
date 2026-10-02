@@ -122,6 +122,39 @@ describe('the push-to-talk window is spent on speaking, not on waiting', () => {
     expect(pushToTalkPhase()).toBe('closed');
   });
 
+  /**
+   * One word does not need five seconds, and the window cannot be ended by a
+   * second press -- while it is open the car owns the buttons. So the length
+   * is the operator's to set (store/types.ts `pushToTalkMs`).
+   */
+  it('speaks for as long as the press asked for, not a fixed five seconds', () => {
+    startPushToTalk('test', 2000);
+    markPushToTalkLive();
+    vi.advanceTimersByTime(1999);
+    expect(pushToTalkPhase()).toBe('speaking');
+    vi.advanceTimersByTime(2);
+    expect(pushToTalkPhase()).toBe('closed');
+  });
+
+  it('waits the same cap however short the speaking window is', () => {
+    // The wait is for the microphone, which does not open any faster because
+    // the operator wants to say less into it.
+    startPushToTalk('test', 1000);
+    vi.advanceTimersByTime(PUSH_TO_TALK_CAP_MS - 1);
+    expect(pushToTalkPhase()).toBe('waiting');
+  });
+
+  it('extends by the length the extending press asked for', () => {
+    startPushToTalk('test', 2000);
+    markPushToTalkLive();
+    vi.advanceTimersByTime(1500);
+    startPushToTalk('test', 2000);
+    vi.advanceTimersByTime(1999);
+    expect(pushToTalkPhase()).toBe('speaking');
+    vi.advanceTimersByTime(2);
+    expect(pushToTalkPhase()).toBe('closed');
+  });
+
   it('ignores a microphone going live when no window is open', () => {
     markPushToTalkLive();
     expect(pushToTalkPhase()).toBe('closed');

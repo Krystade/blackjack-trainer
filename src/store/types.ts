@@ -174,6 +174,20 @@ export interface Settings {
      * gesture to hold both meanings.
      */
     wheelMode: 'answer' | 'talk';
+    /**
+     * How long the push-to-talk window listens, once the microphone is live.
+     *
+     * Settable because only driving settles it, and because the window cannot
+     * be ended by a second press -- while the microphone is open the car owns
+     * the buttons. Five seconds was sized when the window was counted from the
+     * press and had to cover the Bluetooth handshake too; it does not any more
+     * (ui/voiceSession.ts), so this is purely how long one word needs. Two,
+     * asked for directly (operator, 2026-10-02).
+     *
+     * A recognised word closes the window early regardless, so this is the
+     * ceiling rather than the cost.
+     */
+    pushToTalkMs: number;
   };
   audio: AudioSettings;
 }
@@ -295,6 +309,7 @@ export const DEFAULT_SETTINGS: Settings = {
     masteryDistractionFreq: 'off',
     shotClockMs: 0,
     wheelMode: 'talk',
+    pushToTalkMs: 2000,
   },
   audio: { ...DEFAULT_AUDIO },
 };

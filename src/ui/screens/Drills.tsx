@@ -636,7 +636,7 @@ function FlashcardsView({
     // a few seconds, back still repeats. See ui/voiceSession.ts.
     if (settings.drill.wheelMode === 'talk') {
       if (command === 'forward') {
-        startPushToTalk('flashcards');
+        startPushToTalk('flashcards', settings.drill.pushToTalkMs);
         audio.ding('attention');
       } else {
         handleRepeat();
@@ -1416,7 +1416,7 @@ function DeviationQuizView({
     // ui/voiceSession.ts.
     if (settings.drill.wheelMode === 'talk') {
       if (command === 'forward') {
-        startPushToTalk('deviation-quiz');
+        startPushToTalk('deviation-quiz', settings.drill.pushToTalkMs);
         audio.ding('attention');
       } else {
         handleRepeat();
@@ -2085,7 +2085,7 @@ function MixedSessionView({
   useWheelCommand((command) => {
     if (settings.drill.wheelMode === 'talk') {
       if (command === 'forward') {
-        startPushToTalk('mixed-session');
+        startPushToTalk('mixed-session', settings.drill.pushToTalkMs);
         audio.ding('attention');
       } else {
         handleRepeat();

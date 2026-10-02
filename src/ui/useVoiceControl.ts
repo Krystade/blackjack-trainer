@@ -15,7 +15,12 @@ import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
 import { reassertAudioFocus } from '../audio/audioFocus';
 import { logAudioInputs, logMicPermission } from '../diag/environment';
-import { micHasWorked, markMicWorked, markPushToTalkLive } from './voiceSession';
+import {
+  micHasWorked,
+  markMicWorked,
+  markPushToTalkLive,
+  endPushToTalk,
+} from './voiceSession';
 
 /**
  * Speech recognition, wired to a screen.
@@ -226,7 +231,23 @@ export function useVoiceControl({
       now: () => Date.now(),
       schedule: (fn, ms) => window.setTimeout(fn, ms),
       cancel: (handle) => window.clearTimeout(handle),
-      onAction: (action) => actionRef.current(action),
+      onAction: (action) => {
+        /**
+         * The word has been heard, so the window has done its job.
+         *
+         * While the microphone is open the car owns the wheel's buttons, so
+         * every millisecond past the word is a millisecond the operator cannot
+         * reach the wheel -- and the window cannot be ended by pressing again,
+         * for exactly that reason. Closing here is what makes a short window
+         * cheap: the length becomes a ceiling on how long to WAIT for a word
+         * rather than a cost paid after every one.
+         *
+         * A no-op outside a push-to-talk window, so the plain voice toggle is
+         * unaffected.
+         */
+        endPushToTalk('heard');
+        actionRef.current(action);
+      },
       onTranscript: (heard, offered) => transcriptRef.current?.(heard, offered) ?? null,
       biasPhrases,
       processLocally,

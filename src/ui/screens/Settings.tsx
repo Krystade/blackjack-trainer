@@ -28,7 +28,11 @@ import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
 import { FIELD_TEST_CONDITIONS, FIELD_TEST_STEPS } from '../../diag/fieldTest';
 import { CarCheckPanel } from '../components/CarCheckPanel';
 import { readFieldTestRun, subscribeFieldTestRun } from '../../diag/fieldTestRun';
-import { PUSH_TO_TALK_MS } from '../voiceSession';
+import {
+  PUSH_TO_TALK_MAX_MS,
+  PUSH_TO_TALK_MIN_MS,
+  PUSH_TO_TALK_STEP_MS,
+} from '../voiceSession';
 import { detectVoiceSupport } from '../../audio/voiceRecognition';
 import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
 import {
@@ -313,6 +317,24 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             onChange={(wheelMode) => updateDrill({ wheelMode })}
           />
         </div>
+        {settings.drill.wheelMode === 'talk' && (
+          <>
+            <Stepper
+              label="Listen for"
+              value={settings.drill.pushToTalkMs}
+              min={PUSH_TO_TALK_MIN_MS}
+              max={PUSH_TO_TALK_MAX_MS}
+              step={PUSH_TO_TALK_STEP_MS}
+              format={(v) => `${(v / 1000).toFixed(2)} s`}
+              onChange={(pushToTalkMs) => updateDrill({ pushToTalkMs })}
+            />
+            <div className="settings-note-row u-note">
+              A ceiling, not a cost: a word that is recognised closes the window at once, so
+              this is only how long it waits for one that is not coming. It cannot be ended
+              by pressing again &mdash; while the microphone is open the car has the buttons.
+            </div>
+          </>
+        )}
         {settings.drill.wheelMode === 'answer' ? (
           <div className="settings-note-row u-note">
             Forward and back drive the drill with no microphone at all, so nothing can take
@@ -324,9 +346,8 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           </div>
         ) : (
           <div className="settings-note-row u-note">
-            Forward opens the microphone, then closes it{' '}
-            {Math.round(PUSH_TO_TALK_MS / 1000)} seconds after it actually goes live; back
-            still repeats. This is the only mode in which the five plays can be{' '}
+            Forward opens the microphone and closes it again as soon as it hears a word,
+            or after the window above if it does not; back still repeats. This is the only mode in which the five plays can be{' '}
             <em>spoken</em> while the wheel still exists between windows &mdash; left simply
             on, the microphone hands the car&rsquo;s buttons to its hands-free call and the
             wheel never comes back. The cost is that the car&rsquo;s audio ducks on each

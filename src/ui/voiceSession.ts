@@ -106,20 +106,28 @@ export function _resetVoiceSessionForTest(): void {
 /* ---------------------------------------------------------------------- */
 
 /**
- * How long the microphone stays open for one wheel press, ONCE IT IS LIVE.
+ * The DEFAULT length of the speaking window, once the microphone is live.
  *
- * NOT the two seconds the request guessed at, and the difference is the
- * Bluetooth link rather than the speaking. Opening the microphone flips the
- * car from A2DP to HFP, and that re-negotiation is not instant. Five gives a
- * real second or two of listening after the link is up, which is all "plus
- * four" needs.
+ * Five was chosen to cover the Bluetooth handshake as well as the speaking,
+ * because the window used to be counted from the button press. It is not any
+ * more -- the wait has its own budget below -- so this is purely how long the
+ * operator has to say one word, and two seconds is what that is worth
+ * (operator, 2026-10-02). Adjustable, because only driving settles it:
+ * `DrillSettings.pushToTalkMs`.
  *
  * It is a window rather than a toggle for the reason the wheel exists at all:
  * while the microphone is open the car owns the buttons, so a second press
- * cannot reach the app to close it. The only thing that can end the window is
- * the app itself.
+ * cannot reach the app to close it. The two things that can end it are this
+ * timer and a word actually being recognised -- `useVoiceControl` closes the
+ * window the moment it has an action, so a one-word answer costs one word
+ * rather than the whole window.
  */
-export const PUSH_TO_TALK_MS = 5000;
+export const PUSH_TO_TALK_MS = 2000;
+
+/** The range the operator can set it to, in quarter seconds. */
+export const PUSH_TO_TALK_MIN_MS = 1000;
+export const PUSH_TO_TALK_MAX_MS = 8000;
+export const PUSH_TO_TALK_STEP_MS = 250;
 
 /**
  * How long the app will WAIT for the microphone before giving the press up.
@@ -156,6 +164,7 @@ export type PushToTalkPhase = 'closed' | 'waiting' | 'speaking';
 
 let phase: PushToTalkPhase = 'closed';
 let talkHandle: ReturnType<typeof setTimeout> | null = null;
+let speakingMs: number = PUSH_TO_TALK_MS;
 
 function clearTalkTimer(): void {
   if (talkHandle !== null) {
@@ -183,15 +192,18 @@ export function pushToTalkPhase(): PushToTalkPhase {
  * whole feature exists to avoid. Pressing again while it is still WAITING is
  * the same request about the other phase, so it restarts the cap.
  */
-export function startPushToTalk(context: string): void {
+export function startPushToTalk(context: string, speakMs: number = PUSH_TO_TALK_MS): void {
   const restarted = phase !== 'closed';
   const wasSpeaking = phase === 'speaking';
   clearTalkTimer();
+  // Held for `markPushToTalkLive`, which fires later and has no other way to
+  // know what this press asked for.
+  speakingMs = speakMs;
   // A press during the speaking window buys more speaking; a press while still
   // waiting buys more waiting. Either way it is the same gesture asking for
   // more of whatever is currently running.
   phase = wasSpeaking ? 'speaking' : 'waiting';
-  const forMs = wasSpeaking ? PUSH_TO_TALK_MS : PUSH_TO_TALK_CAP_MS;
+  const forMs = wasSpeaking ? speakingMs : PUSH_TO_TALK_CAP_MS;
   diag('mic', restarted ? 'ptt-extend' : 'ptt-open', { context, phase, forMs });
   talkHandle = setTimeout(() => {
     talkHandle = null;
@@ -219,22 +231,30 @@ export function markPushToTalkLive(): void {
   if (phase !== 'waiting') return;
   clearTalkTimer();
   phase = 'speaking';
-  diag('mic', 'ptt-live', { forMs: PUSH_TO_TALK_MS });
+  diag('mic', 'ptt-live', { forMs: speakingMs });
   talkHandle = setTimeout(() => {
     talkHandle = null;
     phase = 'closed';
     diag('mic', 'ptt-close', { why: 'elapsed' });
     notify();
-  }, PUSH_TO_TALK_MS);
+  }, speakingMs);
   notify();
 }
 
-/** Close it now -- a screen being left, or an answer already heard. */
-export function endPushToTalk(): void {
+/**
+ * Close it now -- a word recognised, or a screen being left.
+ *
+ * The comment here used to claim an answer already heard closed the window.
+ * Nothing called it: the window ran its full length after the word had been
+ * graded, holding the car's buttons for the remainder. `useVoiceControl` calls
+ * it on every action now, which is what makes a short window cheap -- the
+ * length is a ceiling on waiting, not a cost paid every time.
+ */
+export function endPushToTalk(why: string = 'done'): void {
   clearTalkTimer();
   if (phase === 'closed') return;
   phase = 'closed';
-  diag('mic', 'ptt-close', { why: 'done' });
+  diag('mic', 'ptt-close', { why });
   notify();
 }
 
