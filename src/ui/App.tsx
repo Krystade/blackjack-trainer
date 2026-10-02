@@ -21,6 +21,7 @@ import { startDiagnostics } from '../diag/environment';
 import { diag } from '../diag/diagnosticLog';
 import { invokeWheelCommand, type WheelCommand } from '../audio/wheelCommands';
 import { releaseAudioFocus } from '../audio/audioFocus';
+import { installAudioUnlock } from '../audio/unlock';
 
 declare global {
   interface Window {
@@ -127,6 +128,24 @@ function App() {
   useEffect(() => {
     startDiagnostics();
   }, []);
+
+  /**
+   * Unlock the audio on the first tap, and only there.
+   *
+   * `AudioContext.resume()` and the first `play()` on an element are both
+   * honoured only inside a user activation, and NOTHING in the drill runs
+   * inside one -- clips play off timers and recogniser callbacks. So the
+   * amplifying path found a suspended graph and refused to route (no boost
+   * above 100%), and every amplified line met the activation gate on a fresh
+   * element (`NotAllowedError`, then live TTS, which caps at 1.0). Jack asked
+   * for more volume off Bluetooth on 2026-10-02; turning it up would have made
+   * the car quieter until this existed.
+   *
+   * At the App level because the first tap is whatever the operator happens to
+   * touch -- a tab, a profile, Start -- and it has to be caught wherever it
+   * lands, before any drill has begun.
+   */
+  useEffect(() => installAudioUnlock(), []);
 
   // Give the car's media slot back when there is nothing here to control.
   //

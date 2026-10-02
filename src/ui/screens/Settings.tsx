@@ -284,10 +284,9 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
       */}
       <CollapsibleSection title={<>In the car</>} defaultOpen={true}>
         <div className="settings-note-row u-note">
-          <strong>Eyes-free</strong> is the goal: drill without looking at the screen. It
-          needs two halves &mdash; the app <em>speaking</em> to you, and <em>you
-          answering</em>. Eyes-free itself is turned on inside each drill, not here, because
-          it lasts one session on purpose.
+          <strong>Eyes-free</strong> &mdash; drilling without looking at the screen &mdash;
+          needs the app <em>speaking</em> and <em>you answering</em>. It is switched on
+          inside each drill, not here: it lasts one session on purpose.
         </div>
 
         <Toggle
@@ -301,9 +300,33 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           onChange={updateUseClips}
           disabled={audioDisabled}
         />
+        {/* A Stepper rather than a range input, matching Speech rate: the
+            eyes-free use case is a phone in a car mount, where a discrete +/-
+            target is hittable without looking and a thin slider thumb is not.
+            0% is reachable on purpose -- see AudioSettings.volume.
+
+            HERE, and not under Audio, since 2026-10-02: asked for from the
+            driver's seat with the car off Bluetooth, where the phone's own
+            speaker has to carry the cabin. It is the one audio control a drive
+            actually reaches for. */}
+        <Stepper
+          label="Volume"
+          value={settings.audio.volume}
+          min={0}
+          max={MAX_VOLUME}
+          step={0.05}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onChange={(v) => updateAudio({ volume: v })}
+          disabled={audioDisabled}
+        />
+        {settings.audio.volume > 1 && !settings.audio.useClips && (
+          <div className="settings-note-row u-note">
+            Above 100% only applies to the recorded voice. Live speech is capped at 100% by
+            the browser and cannot be amplified &mdash; turn the recorded voice on to use it.
+          </div>
+        )}
         <div className="settings-note-row u-note">
-          Everything else the app says &mdash; how much, how fast, how loud, which voice
-          &mdash; is under <strong>Audio</strong> below.
+          How much it says, how fast, and which voice: under <strong>Audio</strong>.
         </div>
 
         <div className="settings-row">
@@ -530,11 +553,12 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             top, with the rest of what a drive needs. This is the detail behind them.
           </div>
           <Verified state="partly">
-            Driven on 2026-09-30: fourteen clips played to the end on the phone, in the car,
-            over Bluetooth. So iOS does let them play and they are audible at speed. One
-            failed, and it failed the moment the microphone opened under it; that is fixed
-            and the fix has not yet been driven. Still ships off, because nothing here
-            checks that a given voice sounds right to you &mdash; turn it on and listen.
+            Driven on 2026-09-30 and again on 2026-10-02: clips play to the end on the phone,
+            in the car, over Bluetooth, and are audible at speed. The one failure on the
+            first drive &mdash; a clip refused the moment the microphone opened under it
+            &mdash; was only half fixed, and recurred twice on the second: two utterances
+            overlapping meant the second one got a fresh audio element, which iOS refuses to
+            play. Both now come from a pool primed on your first tap.
           </Verified>
           <div className="settings-note-row u-note">
             Recorded clips cover any card/count/prompt phrase by concatenating per-sentence and
@@ -607,24 +631,13 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             onChange={(v) => updateAudio({ rate: v })}
             disabled={audioDisabled}
           />
-          {/* A Stepper rather than a range input, matching Speech rate: the
-              eyes-free use case is a phone in a car mount, where a discrete
-              +/- target is hittable without looking and a thin slider thumb
-              is not. 0% is reachable on purpose -- see AudioSettings.volume. */}
-          <Stepper
-            label="Volume"
-            value={settings.audio.volume}
-            min={0}
-            max={MAX_VOLUME}
-            step={0.05}
-            format={(v) => `${Math.round(v * 100)}%`}
-            onChange={(v) => updateAudio({ volume: v })}
-            disabled={audioDisabled}
-          />
-          {/* Under Volume on purpose: they are the same control to the
-              operator, and mute is the one of the two that has to be findable
-              without reading. It does NOT touch `volume` -- see
-              AudioSettings.muted. */}
+          {/* Volume itself lives under "In the car": it was asked for from
+              the driver's seat (2026-10-02) while sitting four collapsed
+              sections above here. Mute stays, because there is a Mute button
+              in the app chrome on every screen -- so the argument that paired
+              them, that mute must be findable without reading, is already
+              answered without opening Settings at all. It does NOT touch
+              `volume` -- see AudioSettings.muted. */}
           <Toggle
             label="Mute"
             checked={settings.audio.muted}
@@ -635,12 +648,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             <div className="settings-note-row u-note">
               Everything is silent, including the test button. Your volume is still{' '}
               {Math.round(settings.audio.volume * 100)}% and comes back when you unmute.
-            </div>
-          )}
-          {settings.audio.volume > 1 && !settings.audio.useClips && (
-            <div className="settings-note-row u-note">
-              Above 100% only applies to the recorded voice. Live speech is capped at 100% by
-              the browser and cannot be amplified — turn on the recorded voice to use the boost.
             </div>
           )}
           <div className="settings-row">

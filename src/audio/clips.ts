@@ -403,13 +403,116 @@ function getAudioCtor(): (new () => HTMLAudioElement) | undefined {
  * volume alone. An amplified chain builds its own element and never returns
  * it here.
  */
+/**
+ * 50ms of 8-bit silence at 8kHz, as a data URI.
+ *
+ * Priming needs something an element will actually load and play: `play()`
+ * with no source rejects, and a zero-length stream is refused by some
+ * decoders. 8-bit PCM silence is 0x80, not 0x00.
+ */
+const SILENT_WAV =
+  'data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
+
+/**
+ * How many elements to prime into EACH pool.
+ *
+ * Three, from the shape of the thing being protected: dealing a round starts
+ * five chains inside one millisecond, but they are short and settle fast, so
+ * three in flight covers what the 2026-10-02 log actually shows (two
+ * overlapping chains, twice). More elements cost a little memory; too few
+ * costs a line in the fallback voice.
+ */
+const PRIMED_PER_POOL = 3;
+
 const idleAudio: HTMLAudioElement[] = [];
+
+/**
+ * The same thing for AMPLIFIED playback, kept separate on purpose.
+ *
+ * `createMediaElementSource` consumes an element permanently: its audio then
+ * flows only through the graph, so a routed element can never go back to
+ * ordinary playback and must not be returned to `idleAudio`. The old code
+ * drew the right conclusion from that and then threw the element away, so
+ * every clip above unity met the activation gate on a brand-new element --
+ * `play()` rejected, the line fell through to live TTS, and
+ * `utteranceVolume` caps live TTS at 1.0. Turning the volume UP made the car
+ * quieter, in the fallback voice.
+ *
+ * A routed element is reusable by amplified chains and nothing else, which is
+ * exactly what a second pool is.
+ */
+const idleAmplified: HTMLAudioElement[] = [];
+
+/** The GainNode each routed element plays through, so a later chain at a
+ * different volume changes the factor instead of re-routing a consumed
+ * element (which throws). */
+const gainForAudio = new WeakMap<HTMLAudioElement, GainNode>();
 
 function takeIdleAudio(AudioCtor: new () => HTMLAudioElement): HTMLAudioElement {
   return idleAudio.pop() ?? new AudioCtor();
 }
 
-function returnIdleAudio(audio: HTMLAudioElement): void {
+function takeIdleAmplified(AudioCtor: new () => HTMLAudioElement): HTMLAudioElement {
+  return idleAmplified.pop() ?? new AudioCtor();
+}
+
+/**
+ * Play silence on fresh elements so they are unlocked before the drill needs
+ * them. CALLED FROM A USER GESTURE ONLY -- see audio/unlock.ts, which is the
+ * only caller and the only place where `play()` is allowed to succeed on an
+ * element that has never played.
+ *
+ * Both pools, because both gates bite: the ordinary one on a round that deals
+ * five overlapping chains inside a millisecond, and the amplified one on
+ * every line above 100%.
+ */
+export function primeClipAudio(count = PRIMED_PER_POOL): void {
+  const AudioCtor = getAudioCtor();
+  if (!AudioCtor) return;
+  for (let i = 0; i < count; i++) {
+    for (const pool of [idleAudio, idleAmplified]) {
+      try {
+        const audio = new AudioCtor();
+        audio.src = SILENT_WAV;
+        if (typeof audio.load === 'function') audio.load();
+        audio.volume = 0;
+        const result = audio.play();
+        const park = () => {
+          try {
+            audio.pause();
+          } catch {
+            /* never throw on the way in */
+          }
+          if (!pool.includes(audio)) pool.push(audio);
+        };
+        if (result && typeof result.then === 'function') {
+          result.then(park, () => {
+            // Refused even inside the gesture. The element is useless to the
+            // pool -- a locked element handed to a chain is the failure this
+            // exists to prevent -- so it is dropped rather than parked.
+            diag('speak', 'prime-refused', {});
+          });
+        } else {
+          park();
+        }
+      } catch {
+        /* one element failing must not stop the rest */
+      }
+    }
+  }
+}
+
+/** How many idle ordinary elements the pool holds. Test-only. */
+export function idleClipAudioCountForTest(): number {
+  return idleAudio.length;
+}
+
+/** How many idle AMPLIFIED elements the pool holds. Test-only. */
+export function idleAmplifiedCountForTest(): number {
+  return idleAmplified.length;
+}
+
+function returnIdleAudio(audio: HTMLAudioElement, pool: HTMLAudioElement[] = idleAudio): void {
   try {
     // Paused on the way back, so an element released by the watchdog or by a
     // stop is not still rendering samples when the next chain picks it up.
@@ -421,7 +524,7 @@ function returnIdleAudio(audio: HTMLAudioElement): void {
   // must not advance whichever chain takes it next.
   audio.onended = null;
   audio.onerror = null;
-  if (!idleAudio.includes(audio)) idleAudio.push(audio);
+  if (!pool.includes(audio)) pool.push(audio);
 }
 
 /**
@@ -432,9 +535,13 @@ type ClipEndReason = 'ended' | 'watchdog' | 'stopped' | 'element-error' | 'play-
 
 interface ActiveChain {
   audio: HTMLAudioElement | null;
-  /** The pooled element to hand back on settle; null for an amplified chain,
-   * whose element has been routed and can never return to ordinary playback. */
+  /** The pooled element to hand back on settle. */
   pooled: HTMLAudioElement | null;
+  /** Which pool it came from. A routed element must go back to `idleAmplified`
+   * and never to `idleAudio`: once consumed by a MediaElementSource its audio
+   * flows only through the graph, so handing it to ordinary playback makes a
+   * clip SILENT whenever the context is suspended. */
+  pool: HTMLAudioElement[];
   watchdog: ReturnType<typeof setTimeout> | null;
   settled: boolean;
   /** For the `ms` on `clip-end`: a stall reads as the watchdog's full timeout. */
@@ -475,7 +582,7 @@ function settleChain(chain: ActiveChain, played: boolean, reason: ClipEndReason)
   // this function, and an element released on only some of those paths leaks
   // out of the pool and the next chain builds a locked one.
   if (chain.pooled) {
-    returnIdleAudio(chain.pooled);
+    returnIdleAudio(chain.pooled, chain.pool);
     chain.pooled = null;
   }
   // `fellBack`, NOT `played`. The boolean is the answer to "must the caller now
@@ -546,6 +653,17 @@ const CLIP_WATCHDOG_PER_CLIP_MS = 8000;
  */
 function amplify(audio: HTMLAudioElement, volume: number): boolean {
   try {
+    // ALREADY ROUTED, so there is nothing to build and only the factor to
+    // change. This used to call `createMediaElementSource` again on every
+    // clip of a chain; on a consumed element that THROWS, which was caught
+    // and reported as `amplify ok=false` -- so a working boost logged as a
+    // routing failure from the second clip onward, and the one diagnostic
+    // that would have shown a genuinely suspended graph was buried in noise.
+    const routed = gainForAudio.get(audio);
+    if (routed) {
+      routed.gain.value = gainFactor(volume);
+      return true;
+    }
     const ctx = getSharedAudioContext();
     if (!ctx || typeof ctx.createMediaElementSource !== 'function') return false;
     resumeSharedAudioContext();
@@ -565,6 +683,7 @@ function amplify(audio: HTMLAudioElement, volume: number): boolean {
     gain.gain.value = gainFactor(volume);
     source.connect(gain);
     gain.connect(ctx.destination);
+    gainForAudio.set(audio, gain);
     return true;
   } catch {
     // createMediaElementSource throws if the element was already routed, and
@@ -668,11 +787,16 @@ export function playClipsResumable(
 
         // Decided once, from the requested volume, BEFORE anything is routed.
         const amplifying = volume !== undefined && needsAmplification(volume);
-        const audio = amplifying ? new AudioCtor() : takeIdleAudio(AudioCtor);
+        // BOTH pooled now. The amplifying path used to build a fresh element
+        // every time, on the reasoning that a routed element can never return
+        // to ordinary playback -- true, and the conclusion should have been a
+        // second pool rather than no pool. A fresh element is a LOCKED one.
+        const audio = amplifying ? takeIdleAmplified(AudioCtor) : takeIdleAudio(AudioCtor);
 
         const chain: ActiveChain = {
           audio,
-          pooled: amplifying ? null : audio,
+          pooled: audio,
+          pool: amplifying ? idleAmplified : idleAudio,
           watchdog: null,
           settled: false,
           startedAt: Date.now(),
@@ -728,7 +852,25 @@ export function playClipsResumable(
             // the same thing as 1 on a brand-new one but is the PREVIOUS
             // chain's level on a shared one -- so a quiet step could mute the
             // step after it.
-            audio.volume = volume === undefined ? 1 : elementVolume(volume);
+            const wantedVolume = volume === undefined ? 1 : elementVolume(volume);
+            audio.volume = wantedVolume;
+            /**
+             * READ BACK, because the setter may be a no-op.
+             *
+             * WebKit has long made `HTMLMediaElement.volume` read-only on
+             * iOS -- the hardware buttons are the only volume control -- and
+             * assignment is ignored silently rather than throwing. If that is
+             * still true on Jack's phone then the Volume setting does nothing
+             * at or below 100% there, and the GainNode above unity is the only
+             * level control the app actually has. That is a very different
+             * answer to "can we turn it up?" than a quiet clip, and one line
+             * from a drive settles it.
+             *
+             * First clip only: the same element, the same answer, every time.
+             */
+            if (index === 0 && Math.abs(audio.volume - wantedVolume) > 0.01) {
+              diag('speak', 'volume-ignored', { wanted: wantedVolume, got: audio.volume });
+            }
             if (volume !== undefined) {
               if (needsAmplification(volume)) {
                 /**
@@ -829,4 +971,5 @@ export function _resetClipsForTest(): void {
   }
   activeChain = null;
   idleAudio.length = 0;
+  idleAmplified.length = 0;
 }

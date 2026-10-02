@@ -11,7 +11,21 @@ import { withSettings } from './helpers';
  *
  * So above unity only a GainNode works, and it reaches only the recorded
  * clips. These specs pin the user-visible half of that.
+ *
+ * The control and its caveat live under "In the car" since 2026-10-02, not
+ * under "Audio": Jack asked for more volume from the driver's seat with the
+ * car off Bluetooth. NAMED HERE rather than left to a page-wide search --
+ * three of these assert that the caveat is ABSENT, and a selector pointed at
+ * the wrong section passes every one of them without reading anything.
  */
+
+const CAR = 'In the car';
+
+function section(page: import('@playwright/test').Page, title: string) {
+  return page
+    .locator('.settings-section')
+    .filter({ has: page.locator('summary', { hasText: title }) });
+}
 
 async function openAudioSettings(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/?e2e=1');
@@ -34,27 +48,23 @@ test('a boost with live speech explains that it will not apply', async ({ page }
   await withSettings(page, { audio: { enabled: true, volume: 1.5, useClips: false } });
   await openAudioSettings(page);
 
-  await expect(page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Audio' }) })).toContainText(
-    'Live speech is capped at 100%',
-  );
+  await expect(section(page, CAR)).toContainText('Live speech is capped at 100%');
 });
 
 test('the explanation disappears once the recorded voice is on', async ({ page }) => {
   await withSettings(page, { audio: { enabled: true, volume: 1.5, useClips: true } });
   await openAudioSettings(page);
 
-  await expect(page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Audio' }) })).not.toContainText(
-    'Live speech is capped at 100%',
-  );
+  await expect(section(page, CAR)).toContainText('Volume');
+  await expect(section(page, CAR)).not.toContainText('Live speech is capped at 100%');
 });
 
 test('no explanation at or below 100%, where nothing is being promised', async ({ page }) => {
   await withSettings(page, { audio: { enabled: true, volume: 1, useClips: false } });
   await openAudioSettings(page);
 
-  await expect(page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Audio' }) })).not.toContainText(
-    'Live speech is capped at 100%',
-  );
+  await expect(section(page, CAR)).toContainText('Volume');
+  await expect(section(page, CAR)).not.toContainText('Live speech is capped at 100%');
 });
 
 /**

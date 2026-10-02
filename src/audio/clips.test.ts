@@ -12,8 +12,11 @@ import {
   isClipsEnabled,
   setClipVoice,
   _resetClipsForTest,
+  idleAmplifiedCountForTest,
   type ClipManifest,
 } from './clips';
+import { _resetSharedAudioContextForTest } from './audioContext';
+import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 
 /* ------------------------------------------------------------------------ */
 /* manifestLookup — pure exact-key matching, no browser needed              */
@@ -872,5 +875,243 @@ describe('the element that plays a clip outlives the clip', () => {
     shared.onended?.();
     await expect(quietAgain).resolves.toBe(true);
     expect(env.instances.length, 'the ordinary path stopped reusing the shared element').toBe(2);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* The amplifying path keeps its elements too                               */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Why these exist.
+ *
+ * Jack asked after the 2026-10-02 drive whether the phone could be louder off
+ * Bluetooth. `MAX_VOLUME` is 2 and he was at 1, so the setting had the
+ * headroom -- and using it would have made the car QUIETER, because the
+ * amplifying path built a brand-new element for every line. A brand-new
+ * element on iOS is a LOCKED element: `play()` is refused, the line falls
+ * through to live TTS, and `utteranceVolume` caps live TTS at 1.0.
+ *
+ * The reason given for the fresh element was sound -- a routed element can
+ * never return to ordinary playback, because once `createMediaElementSource`
+ * has consumed it its audio flows only through the graph, and a suspended
+ * graph makes it SILENT rather than quiet. The conclusion should have been a
+ * second pool, not no pool.
+ *
+ * These use a fake AudioContext, unlike the tests above it, so the routing
+ * actually happens: without one `amplify()` returns false at the first guard
+ * and the whole amplified path is never entered.
+ */
+describe('the amplifying path has a pool of its own', () => {
+  const realFetch = (globalThis as any).fetch;
+
+  beforeEach(() => {
+    _resetClipsForTest();
+    _resetSharedAudioContextForTest();
+  });
+  afterEach(() => {
+    _resetClipsForTest();
+    _resetSharedAudioContextForTest();
+    (globalThis as any).fetch = realFetch;
+    delete (globalThis as any).window;
+  });
+
+  interface FakeGain {
+    gain: { value: number };
+    connect: (to: unknown) => void;
+  }
+
+  function installFakeAudioAndGraph(): {
+    instances: FakeAudioElement[];
+    gains: FakeGain[];
+    routed: FakeAudioElement[];
+    ctx: { state: AudioContextState };
+  } {
+    const instances: FakeAudioElement[] = [];
+    const gains: FakeGain[] = [];
+    const routed: FakeAudioElement[] = [];
+    class TrackedFakeAudioElement extends FakeAudioElement {
+      constructor() {
+        super();
+        instances.push(this);
+      }
+    }
+    const ctx = {
+      state: 'running' as AudioContextState,
+      destination: {},
+      createMediaElementSource(el: FakeAudioElement) {
+        // The real one THROWS on an element it has already consumed, which is
+        // the behaviour that made `amplify()` report ok=false from the second
+        // clip of every chain onward.
+        if (routed.includes(el)) throw new Error('InvalidStateError');
+        routed.push(el);
+        return { connect: () => {} };
+      },
+      createGain(): FakeGain {
+        const g: FakeGain = { gain: { value: 1 }, connect: () => {} };
+        gains.push(g);
+        return g;
+      },
+      resume: () => Promise.resolve(),
+      close: () => Promise.resolve(),
+    };
+    (globalThis as any).window = {
+      Audio: TrackedFakeAudioElement,
+      AudioContext: class {
+        constructor() {
+          return ctx as unknown as AudioContext;
+        }
+      },
+    };
+    mockFetchRouter({
+      'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
+      'manifest.json': async () => ({ clips: { queen: 'queen.mp3', four: 'four.mp3' } }),
+    });
+    return { instances, gains, routed, ctx };
+  }
+
+  it('reuses one routed element across consecutive loud utterances', async () => {
+    const env = installFakeAudioAndGraph();
+
+    const first = playClipsAsync('queen', { volume: 1.5 });
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    const loud = env.instances[0];
+    loud.onended?.();
+    await expect(first).resolves.toBe(true);
+
+    const second = playClipsAsync('four', { volume: 1.5 });
+    await vi.waitFor(() => expect(loud.src).toContain('four.mp3'));
+    loud.onended?.();
+    await expect(second).resolves.toBe(true);
+
+    // THE ASSERTION. A second element here is a second trip through the iOS
+    // activation gate, which is what turned the volume setting into a
+    // fallback-voice switch.
+    expect(env.instances.length, 'the second loud utterance built a fresh, locked element').toBe(1);
+    expect(env.routed.length, 'the element was routed twice').toBe(1);
+  });
+
+  it('retunes the existing gain node rather than re-routing a consumed element', async () => {
+    const env = installFakeAudioAndGraph();
+
+    const first = playClipsAsync('queen', { volume: 1.5 });
+    await vi.waitFor(() => expect(env.gains.length).toBe(1));
+    expect(env.gains[0]!.gain.value).toBe(1.5);
+    env.instances[0].onended?.();
+    await expect(first).resolves.toBe(true);
+
+    const second = playClipsAsync('four', { volume: 2 });
+    await vi.waitFor(() => expect(env.instances[0]!.src).toContain('four.mp3'));
+    // Same node, new factor. Re-routing throws on a consumed element, which
+    // `amplify()` caught and reported as a routing failure -- so a working
+    // boost logged identically to a suspended graph.
+    expect(env.gains.length, 'a second gain node was built for the same element').toBe(1);
+    expect(env.gains[0]!.gain.value, 'the boost stayed at the first utterance’s level').toBe(2);
+    env.instances[0].onended?.();
+    await expect(second).resolves.toBe(true);
+  });
+
+  it('gives overlapping loud chains their own routed elements', async () => {
+    const env = installFakeAudioAndGraph();
+
+    const first = playClipsAsync('queen', { volume: 1.5 });
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    const second = playClipsAsync('four', { volume: 1.5 });
+    await vi.waitFor(() => expect(env.instances.length).toBe(2));
+
+    // Sharing one element would abort the pending `play()` of the chain
+    // before it -- the `AbortError` the ordinary pool was built to stop. The
+    // amplified pool has to behave the same way.
+    expect(env.instances[0].src).toContain('queen.mp3');
+    expect(env.instances[1].src).toContain('four.mp3');
+    env.instances[0].onended?.();
+    env.instances[1].onended?.();
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(true);
+
+    expect(idleAmplifiedCountForTest(), 'the finished loud elements were not kept').toBe(2);
+  });
+
+  it('never returns a routed element to the ordinary pool', async () => {
+    const env = installFakeAudioAndGraph();
+
+    const loud = playClipsAsync('queen', { volume: 1.5 });
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    const routedEl = env.instances[0];
+    routedEl.onended?.();
+    await expect(loud).resolves.toBe(true);
+
+    // A routed element handed to ordinary playback is SILENT whenever the
+    // graph is suspended, while `play()` resolves and `ended` fires -- the
+    // worst failure this app has, because the log reports a clean clip.
+    const quiet = playClipsAsync('four', { volume: 1 });
+    await vi.waitFor(() => expect(env.instances.length).toBe(2));
+    expect(env.instances[1], 'the ordinary chain took the routed element').not.toBe(routedEl);
+    env.instances[1].onended?.();
+    await expect(quiet).resolves.toBe(true);
+  });
+
+  it('says so when the element refuses the volume it was handed', async () => {
+    const instances: FakeAudioElement[] = [];
+    // WebKit has long made `volume` read-only on iOS -- the hardware buttons
+    // are the only volume control -- and assignment is IGNORED rather than
+    // refused. A Volume setting that does nothing then looks exactly like a
+    // clip that played quietly, and only a read-back can tell them apart.
+    class DeafToVolume extends FakeAudioElement {
+      constructor() {
+        super();
+        // On the instance, because the base class sets `volume` as an own
+        // field; a prototype accessor would be shadowed by it.
+        Object.defineProperty(this, 'volume', { get: () => 1, set: () => {} });
+        instances.push(this);
+      }
+    }
+    (globalThis as any).window = { Audio: DeafToVolume };
+    mockFetchRouter({
+      'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
+      'manifest.json': async () => ({ clips: { queen: 'queen.mp3' } }),
+    });
+    clearDiagnosticLog();
+
+    const quiet = playClipsAsync('queen', { volume: 0.2 });
+    await vi.waitFor(() => expect(instances.length).toBe(1));
+    instances[0].onended?.();
+    await expect(quiet).resolves.toBe(true);
+
+    const reported = readDiagnosticLog().filter((e) => e.event === 'volume-ignored');
+    expect(reported.length, 'a volume the element threw away was never reported').toBe(1);
+    expect(reported[0]!.detail).toMatchObject({ wanted: 0.2, got: 1 });
+  });
+
+  it('stays quiet when the element honours the volume', async () => {
+    installFakeAudioAndGraph();
+    clearDiagnosticLog();
+
+    const quiet = playClipsAsync('queen', { volume: 0.2 });
+    await vi.waitFor(() => expect(readDiagnosticLog().some((e) => e.event === 'clip-chain')).toBe(true));
+
+    // The other half of the instrument: a report on every clip would be noise
+    // nobody reads, and an export full of it says nothing about the one phone
+    // where it matters.
+    expect(readDiagnosticLog().filter((e) => e.event === 'volume-ignored').length).toBe(0);
+    stopClips();
+    await expect(quiet).resolves.toBe(true);
+  });
+
+  it('falls back to unamplified playback when the graph is suspended', async () => {
+    const env = installFakeAudioAndGraph();
+    env.ctx.state = 'suspended';
+
+    const loud = playClipsAsync('queen', { volume: 1.5 });
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+
+    // Not routed, because a suspended graph would swallow it -- and still
+    // PLAYED, at full-but-unamplified level, on a pooled element. This is the
+    // case where the gesture unlock did not happen.
+    expect(env.routed.length, 'a suspended graph was routed into').toBe(0);
+    expect(env.instances[0].volume, 'the element was handed a value above 1').toBe(1);
+    expect(env.instances[0].played).toBe(true);
+    env.instances[0].onended?.();
+    await expect(loud).resolves.toBe(true);
   });
 });
