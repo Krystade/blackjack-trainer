@@ -100,7 +100,7 @@ matched.
 > **Wait for the line, then speak.** On the 2026-09-30 drive the microphone took six
 > seconds to open on the first of these — the first session of a page load has to establish
 > the permission, and it fires nothing at all while it does. Outside the field test there is
-> now a low tone the moment the microphone actually goes live, but these two steps are
+> now a single mid tone the moment the microphone actually goes live, but these two steps are
 > deliberately silent: a tone there would deafen the microphone for a quarter second and sit
 > between the gate and the sample. The step waits for the microphone itself and then speaks
 > its line, so **the line playing IS the signal that it is listening.**
@@ -146,10 +146,11 @@ moment something happens and it lands in the log against the step you were on. O
   different questions.
 - **"I never pressed" is also a real answer**, on every wheel step. See step 8.
 - **The note box is on every step.** Anything a button cannot say, type there — it is stamped against the step you are on, which is what makes it readable afterwards.
-- **A low tone means a microphone just opened.** New since the last drive, and you will
-  hear it in the drills rather than here — the operator used to flip voice on and get
+- **A single mid tone means a microphone just opened.** New since the last drive, and you
+  will hear it in the drills rather than here — the operator used to flip voice on and get
   silence for up to six seconds with no way to know whether it had worked. It is its own
-  pitch, not the right/wrong pair.
+  pitch: below the right-answer tone and well above the wrong-answer one, which is the
+  pair it must not be mistaken for.
 - **"Say it again" is always at the top of the controls.** A truck went past — press it. It
   is logged as a re-read you asked for, which is why it does not spoil the sample.
 - **Do not debug in the car.** Stamp it, finish the leg, copy the log, drive on. A leg that
