@@ -436,9 +436,12 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         <div className="settings-note-row u-note">
           &bull; <strong>Steering wheel</strong> (set up under <em>Car controls</em>). Skip
           forward means &ldquo;yes&rdquo;. Works in the car, needs no microphone. This is the
-          one to use while driving. It answers yes/no questions only, so the Count drill, True
-          Count drill and the table work; Flashcards and the Deviation Quiz cannot, because
-          their answer is a five-way choice and one button cannot say which.
+          one to use while driving. One button cannot pick one of five plays, so the drills
+          whose answer is a play &mdash; Flashcards, the Deviation Quiz, the Mixed Session
+          &mdash; run a <strong>self-check</strong> instead: forward says the correct play out
+          loud and asks &ldquo;had it?&rdquo;, then forward is yes and back is no. The Count
+          drills, the True Count drill and the table are answered outright, forward being
+          &ldquo;yes&rdquo; and a number being pressed out one click at a time.
         </div>
         <div className="settings-note-row u-note">
           &bull; <strong>Your voice</strong> (set up under <em>Voice control</em>). Say
@@ -464,11 +467,12 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             onChange={updateUseClips}
             disabled={audioDisabled}
           />
-          <Verified state="untested">
-            Recorded clips have never been played on your phone &mdash; only in the test
-            harness, which checks that every phrase RESOLVES to a clip, not that the audio
-            sounds right or that iOS lets it play unprompted. That is why this ships off.
-            Turn it on, run a drill on the phone you will actually use, and listen.
+          <Verified state="partly">
+            Driven on 2026-09-30: fourteen clips played to the end on the phone, in the car,
+            over Bluetooth. So iOS does let them play and they are audible at speed. One
+            failed, and it failed the moment the microphone opened under it; that is fixed
+            and the fix has not yet been driven. Still ships off, because nothing here
+            checks that a given voice sounds right to you &mdash; turn it on and listen.
           </Verified>
           <div className="settings-note-row u-note">
             Recorded clips cover any card/count/prompt phrase by concatenating per-sentence and
