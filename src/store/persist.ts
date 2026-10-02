@@ -324,6 +324,30 @@ const EXTRA_KEYS: { key: string; field: string }[] = [
   { key: 'bjtrainer.flashsr.v1', field: 'flashSr' },
   { key: 'bjtrainer.quizsr.v1', field: 'quizSr' },
   { key: 'bjtrainer.masteryrun.v1', field: 'masteryRun' },
+  // A reading preference rather than part of the game definition, which is
+  // why it has its own key (see Charts.tsx) -- and why it was missed. It is
+  // still something the operator chose and would have to choose again.
+  { key: 'bjtrainer.chartOrder.v1', field: 'chartOrder' },
+];
+
+/**
+ * Every key a backup carries, for the test that no OTHER key escapes.
+ *
+ * This file's own comment records what happens without that check: `exportAll`
+ * shipped carrying settings and stats alone, profiles and both
+ * spaced-repetition decks were added to the app later and never added here,
+ * and a restore onto a wiped browser returned stats and settings while
+ * silently losing every profile and the entire review schedule. Fixing those
+ * three does not stop the fourth; a list that something asserts against does.
+ *
+ * `persistHardening.test.ts` scans `src/` for every `bjtrainer.*` literal and
+ * requires each one to appear here or in its own list of deliberate
+ * exclusions, with the reason written next to it.
+ */
+export const BACKED_UP_KEYS: readonly string[] = [
+  'bjtrainer.settings.v1',
+  'bjtrainer.stats.v1',
+  ...EXTRA_KEYS.map((e) => e.key),
 ];
 
 /**

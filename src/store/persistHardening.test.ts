@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { _setStorage, loadStats, loadSettings, exportAll, importAll, saveStats } from './persist';
+import {
+  _setStorage,
+  loadStats,
+  loadSettings,
+  exportAll,
+  importAll,
+  saveStats,
+  BACKED_UP_KEYS,
+} from './persist';
+import { persistedStorageKeys } from './storageKeyScan';
 import { EMPTY_STATS, DEFAULT_SETTINGS } from './types';
 
 function memStore() {
@@ -323,5 +332,78 @@ describe('import says what it actually did', () => {
     expect(importAll(BLOB)).toEqual({ ok: true });
     expect(store.map.get('bjtrainer.profiles.v1')).toContain('Imported');
     expect(store.map.get('bjtrainer.quizsr.v1')).toContain('16v10');
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* Nothing the app saves escapes the backup unnoticed                       */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * WHY THIS READS THE SOURCE.
+ *
+ * `exportAll`'s own comment records that it shipped carrying only settings and
+ * stats: profiles and both spaced-repetition decks were added to the app later
+ * and never added here, so restoring onto a wiped browser returned stats and
+ * settings and silently lost every profile plus the entire review schedule.
+ * The SR loss is the unrecoverable one -- those boxes encode elapsed real
+ * time, which no amount of re-drilling reconstructs.
+ *
+ * Fixing the three keys that had escaped does not stop the fourth. The thing
+ * that does is making a new key impossible to add without a decision: every
+ * `bjtrainer.*` literal in `src/` must appear either in the backup or in the
+ * list below, which says why it is left out. An uncategorised key fails here
+ * with its own name in the message.
+ *
+ * On 2026-09-30 the operator removed and re-added the home-screen icon, which
+ * on iOS deletes the web app's storage container, and lost everything. The
+ * backup existed; its completeness is what this protects.
+ */
+
+/** Keys deliberately left out of a backup, each with the reason. */
+const NOT_BACKED_UP: Record<string, string> = {
+  'bjtrainer.diagnostics.v1':
+    'the diagnostic log: transient, capped, and the one store that carries cabin speech and Bluetooth device names -- it must not ride along in a file the user may hand to someone',
+  'bjtrainer.diagnostics.dropped.v1': 'a counter belonging to the diagnostic buffer above',
+  'bjtrainer.mediaSessionLog.v1': 'diagnostic, about this device’s head unit',
+  'bjtrainer.voiceHistory.v1': 'what the microphone heard: diagnostic, and speech',
+  'bjtrainer.fieldTestRun.v1': 'progress through a field-test leg, meaningless off the drive',
+  'bjtrainer.fieldTestDraft.v1': 'an unsent note inside a field-test leg',
+  'bjtrainer.reloadedFor': 'a one-shot guard against a reload loop',
+  'bjtrainer.voiceProbe.v1': 'what THIS device’s recogniser can do; restoring it onto another device would be a lie',
+  'bjtrainer.voiceLocal.v1': 'as above, for on-device recognition',
+  'bjtrainer.voiceLocalProbe.v1': 'as above',
+  'bjtrainer.stats.v1.corrupt':
+    'written by the reader, not the app, and already carried verbatim by exportAll when present',
+};
+
+describe('every key the app writes is either backed up or deliberately not', () => {
+  it('finds the keys at all, so an empty scan cannot pass', () => {
+    const keys = persistedStorageKeys();
+    expect(keys.length, 'the source scan found no storage keys').toBeGreaterThan(10);
+    expect(keys).toContain('bjtrainer.settings.v1');
+    expect(keys).toContain('bjtrainer.profiles.v1');
+  });
+
+  it('leaves nothing uncategorised', () => {
+    const unclassified = persistedStorageKeys().filter(
+      (key) => !BACKED_UP_KEYS.includes(key) && !(key in NOT_BACKED_UP),
+    );
+    expect(
+      unclassified,
+      `a storage key is in neither the backup nor the deliberately-excluded list: ${unclassified.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('actually carries every key it claims to', () => {
+    for (const key of BACKED_UP_KEYS) {
+      store.setItem(key, key === 'bjtrainer.activeProfile.v1' ? 'an-id' : '{"version":1}');
+    }
+    const blob = exportAll();
+    store.map.clear();
+    expect(importAll(blob).ok).toBe(true);
+    for (const key of BACKED_UP_KEYS) {
+      expect(store.getItem(key), `${key} did not survive the round trip`).not.toBeNull();
+    }
   });
 });

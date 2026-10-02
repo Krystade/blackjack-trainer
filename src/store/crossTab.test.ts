@@ -5,6 +5,7 @@ import {
   OWNED_KEYS,
   _resetCrossTabForTest,
 } from './crossTab';
+import { persistedStorageKeys } from './storageKeyScan';
 
 /**
  * There is no DOM under this repo's `environment: 'node'` vitest config, so
@@ -182,34 +183,13 @@ describe('OWNED_KEYS', () => {
   /**
    * Every `'bjtrainer.…'` literal in the source.
    *
-   * SCANNED, not listed. The old version of this test restated OWNED_KEYS as
-   * a literal and compared the two, which is a test that can only fail if
-   * someone edits both halves inconsistently -- it said "covers every key the
-   * app persists" while having no way at all to learn of a new key. It passed
-   * green with `bjtrainer.fieldTestRun.v1` unenrolled for exactly as long as
-   * that key existed.
+   * SCANNED, not listed -- see `storageKeyScan.ts`, which holds the scan so
+   * this test and the backup's key inventory cannot disagree about the set of
+   * keys they are each classifying.
    */
-  function persistedKeys(): string[] {
-    // Vite's glob rather than `node:fs`: this project's tsconfig declares
-    // `types: ["vite/client"]` and no node types, so `fs` does not typecheck
-    // here -- and the glob is resolved at transform time, which means a path
-    // that stops matching fails loudly at build rather than silently
-    // returning nothing.
-    const sources = import.meta.glob('../**/*.{ts,tsx}', {
-      query: '?raw',
-      import: 'default',
-      eager: true,
-    }) as Record<string, string>;
-    const found = new Set<string>();
-    for (const [file, src] of Object.entries(sources)) {
-      if (/\.test\.tsx?$/.test(file)) continue;
-      for (const m of src.matchAll(/'(bjtrainer\.[A-Za-z0-9._]+)'/g)) found.add(m[1]);
-    }
-    return [...found].sort();
-  }
 
   it('accounts for every key the app persists', () => {
-    const unaccounted = persistedKeys().filter(
+    const unaccounted = persistedStorageKeys().filter(
       (k) => !(OWNED_KEYS as readonly string[]).includes(k) && !(k in NOT_SYNCED),
     );
     expect(
@@ -221,7 +201,7 @@ describe('OWNED_KEYS', () => {
   it('finds the keys it is supposed to be scanning', () => {
     // The scan is the whole instrument. A typo in the glob or the regex would
     // return [] and make the test above pass unconditionally.
-    const found = persistedKeys();
+    const found = persistedStorageKeys();
     expect(found).toContain('bjtrainer.settings.v1');
     expect(found).toContain('bjtrainer.fieldTestRun.v1');
     expect(found.length).toBeGreaterThan(10);
