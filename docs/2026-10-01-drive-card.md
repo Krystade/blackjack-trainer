@@ -97,6 +97,14 @@ Three samples, because one cannot tell "unintelligible at speed" from "that one 
 **"stand"**, whichever you like. The app says back the word it heard. Report whether that
 matched.
 
+> **Wait for the line, then speak.** On the 2026-09-30 drive the microphone took six
+> seconds to open on the first of these — the first session of a page load has to establish
+> the permission, and it fires nothing at all while it does. Outside the field test there is
+> now a low tone the moment the microphone actually goes live, but these two steps are
+> deliberately silent: a tone there would deafen the microphone for a quarter second and sit
+> between the gate and the sample. The step waits for the microphone itself and then speaks
+> its line, so **the line playing IS the signal that it is listening.**
+
 **Step 8 — The wheel, straight after the microphone.** Microphone off. Press skip-forward
 once and listen for the word.
 
@@ -117,6 +125,13 @@ end of the leg, and it was cut after the 2026-09-30 drive: its buttons named not
 by then there is nothing in front of you for "That worked" to be about, and it asked at the
 END for things to be stamped the moment they happen.
 
+**The wheel repeats the line on every other step.** Steps 3-5 and 9 do not test the wheel,
+and until the 2026-09-30 drive they did not claim it either — so a press there did nothing
+and wrote `handled=false why=no-screen-listening`, which is the signature of the fault the
+whole leg is investigating. Either direction now re-reads the step, which is what "Say it
+again" does. **It is not an answer**: the four word buttons are still the only way to answer
+steps 3-5.
+
 **The note box is on every step**, which is where that actually gets done. Type into it the
 moment something happens and it lands in the log against the step you were on. On the
 2026-09-30 drive that is exactly how it was used, twice, while the free step went unanswered.
@@ -131,6 +146,10 @@ moment something happens and it lands in the log against the step you were on. O
   different questions.
 - **"I never pressed" is also a real answer**, on every wheel step. See step 8.
 - **The note box is on every step.** Anything a button cannot say, type there — it is stamped against the step you are on, which is what makes it readable afterwards.
+- **A low tone means a microphone just opened.** New since the last drive, and you will
+  hear it in the drills rather than here — the operator used to flip voice on and get
+  silence for up to six seconds with no way to know whether it had worked. It is its own
+  pitch, not the right/wrong pair.
 - **"Say it again" is always at the top of the controls.** A truck went past — press it. It
   is logged as a re-read you asked for, which is why it does not spoil the sample.
 - **Do not debug in the car.** Stamp it, finish the leg, copy the log, drive on. A leg that
@@ -168,6 +187,9 @@ Send me the pasted log. What I read first:
 - `sweep-reading` per input in step 9 — the car mic against the phone mic under the same
   road noise.
 - `wheel-not-pressed` wherever it appears, which is the answer step 8 could not get before.
+- `clip-broke why=play-rejected`, which is what fell through to the fallback voice on the
+  last drive the instant the microphone opened. It should not appear at all now.
+- `wheel-repeat`, for a press on a step that does not echo — a press that used to vanish.
 
 One thing I cannot get from the log: **whether any of this was pleasant to use.** If the leg
 was annoying, say so in a note on any step, or just tell me.

@@ -225,7 +225,29 @@
     <!-- CENTRE: pale, lifted, on top, carrying the spade. -->
     <g transform="translate(256 230)" filter="url(#castTop)">
       <circle r="124" fill="url(#pale)"/>
-      <use href="#edge"/>
+      <!--
+        ITS OWN RIM, OPAQUE, rather than the shared `#edge`.
+
+        `#edge` is `#08160e` at 0.62 opacity. Over the red chip that averages
+        to a dark warm red and over the blue to a dark blue, both right. Over
+        THIS chip's cream face it averages to rgb(95,102,92) -- saturation 10,
+        a neutral grey -- and this is the only chip whose left and right sit
+        against the saturated back chips, where a neutral grey reads as dirt
+        rather than as an edge. Against felt, top and bottom, it looked fine,
+        which is how it got through. At 180 physical pixels, which is 60pt on
+        the drive phone, the band is plainly visible.
+
+        A translucent dark tint over three different faces cannot be the right
+        colour on all three: it averages toward grey on the lightest one. So
+        this one is opaque.
+
+        #494430 is this chip's BODY colour (#d7d0ba, the gradient's lower stop)
+        with its OKLab lightness pulled to 0.42 and its hue and chroma left
+        alone. Not the upper stop: that is #ffffff, a specular highlight with
+        no chroma to keep, and darkening it only produces grey again -- which
+        is the defect, not the fix.
+      -->
+      <circle r="121.5" fill="none" stroke="#494430" stroke-width="5"/>
       <!-- Rotated so no notch lands at 6 or 12 o'clock: the top one used to
            dissolve into the felt and the bottom one into the wedge between
            red and blue. -->
