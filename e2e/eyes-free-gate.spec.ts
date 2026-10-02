@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { withSettings } from './helpers';
 
 /**
  * "The button to turn on audio mode doesn't work."
@@ -41,6 +42,10 @@ for (const drill of DRILLS) {
 }
 
 test('turning on eyes-free enables audio and persists it', async ({ page }) => {
+  // MUST start from off, and not merely to go green: the whole claim is that
+  // this toggle turns audio ON. Starting from the shipped default -- which is
+  // now on -- the assertion would pass without the gate existing at all.
+  await withSettings(page, { audio: { enabled: false } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();

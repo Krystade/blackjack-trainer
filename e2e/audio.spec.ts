@@ -402,9 +402,11 @@ test('eyes-free deviation quiz: insurance two-zone prompt, left-half tap logs Ta
 /* Case 7: Audio off (default) -- the parity guard                   */
 /* ---------------------------------------------------------------- */
 
-test('audio off (default): a full round leaves __speechLog empty or undefined', async ({ page }) => {
+test('audio off: a full round leaves __speechLog empty or undefined', async ({ page }) => {
   test.setTimeout(60_000);
-  await withSettings(page, { dealSpeedMs: 0 }); // audio untouched -> DEFAULT_AUDIO.enabled === false
+  // Was `audio untouched -> DEFAULT_AUDIO.enabled === false`. It ships ON now,
+  // so the off state has to be asked for; the guard itself is unchanged.
+  await withSettings(page, { dealSpeedMs: 0, audio: { enabled: false } });
   await withProfile(page, { name: 'Audio Off Profile' });
 
   let dealt = false;
@@ -477,6 +479,9 @@ async function openSettingsWithAudioOn(page: Page): Promise<void> {
 }
 
 test('settings: "Use recorded voice" reveals the clip-voice picker; both persist', async ({ page }) => {
+  // The recorded voice ships ON now, and this test is about REVEALING the
+  // picker by turning it on -- so it has to start from off.
+  await withSettings(page, { audio: { enabled: false, useClips: false } });
   await openSettingsWithAudioOn(page);
 
   const clipVoiceRow = settingsRow(page, 'Clip voice');

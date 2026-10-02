@@ -122,6 +122,9 @@ test('#2 Repeat re-speaks the last utterance, and only appears when audio is on'
 });
 
 test('#2 no Repeat control when audio is disabled', async ({ page }) => {
+  // Disabled on purpose: audio ships on now (store/types.ts), and the control
+  // this guards is the one that should not exist when it is off.
+  await withSettings(page, { audio: { enabled: false } });
   await page.goto('/?e2e=1');
   await openFlashcards(page);
   await expect(page.getByRole('button', { name: 'Repeat', exact: true })).toHaveCount(0);

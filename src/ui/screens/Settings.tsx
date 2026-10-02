@@ -360,11 +360,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           the microphone never opened. Tones are under <strong>Audio</strong>.
         </div>
         <div className="settings-note-row u-note">
-          <strong>Can it use the phone&rsquo;s own microphone instead?</strong> Not while the
-          car is connected: browser speech recognition takes no device to listen on, and uses
-          whatever the phone is routing audio through. Turning Bluetooth off does give you
-          the phone&rsquo;s microphone and speaker &mdash; and costs the wheel entirely,
-          which is what the Field test&rsquo;s phone-speaker leg is for.
+          Using the phone&rsquo;s own microphone instead: see <strong>Car controls</strong>.
         </div>
       </CollapsibleSection>
 
@@ -954,6 +950,20 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
           then go to that call rather than to this app. Talking and steering-wheel control
           cannot both be live at once. Which of the two the buttons do, and what that costs,
           is set under <strong>In the car</strong> at the top.
+        </div>
+
+        {/* Asked directly (2026-09-16): "can we use my phone mic". A platform
+            fact rather than a missing feature, and too long to sit in a
+            section that opens by default -- which is held to under two screens
+            by e2e/collapsible-sections.spec.ts. "In the car" points here. */}
+        <div className="settings-note-row u-note">
+          <strong>Can it use the phone&rsquo;s own microphone instead?</strong> Not while the
+          car is connected. Browser speech recognition takes no device to listen on: it uses
+          whatever the phone is currently routing audio through, and while the car is
+          connected that is the car. Nothing in this app can override it. Turning Bluetooth
+          off does give you the phone&rsquo;s own microphone and speaker &mdash; and costs
+          the wheel entirely, since there is nothing left to press. That trade is what the
+          Field test&rsquo;s phone-speaker leg exists to settle.
         </div>
 
         {/* The wheel's own MODE lives in "In the car" at the top, beside the

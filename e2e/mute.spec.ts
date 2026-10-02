@@ -20,7 +20,9 @@ const MUTE = '[data-testid~="mute-btn"]';
 
 test('there is no mute button until the app has a voice', async ({ page }) => {
   // Audio off is not the same state as muted: nothing can make noise, so a
-  // control for silencing noise would be a control that does nothing.
+  // control for silencing noise would be a control that does nothing. Seeded
+  // rather than inherited -- audio ships on now (store/types.ts).
+  await withSettings(page, { audio: { enabled: false } });
   await page.goto('/?e2e=1');
   await expect(page.locator(MUTE)).toHaveCount(0);
 });

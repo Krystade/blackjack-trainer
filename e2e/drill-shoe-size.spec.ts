@@ -50,7 +50,13 @@ test('produce the true count: a one-deck profile never divides by more than one 
   // graded against. On the old hardcoded 6 this ran up to "6 decks" for
   // everyone; a 1-deck profile can only ever legitimately print 0.5 or 1.
   await withProfile(page, { rules: { decks: 1 } });
-  await withSettings(page, { drill: { countLengthCards: 4, countIntervalMs: 10, countGroup: 1 } });
+  // Audio off: this is about the DIVISOR, and narration only adds pauses
+  // between rounds. It ships on now, so it is turned off here rather than
+  // inherited.
+  await withSettings(page, {
+    audio: { enabled: false },
+    drill: { countLengthCards: 4, countIntervalMs: 10, countGroup: 1 },
+  });
   await openDrill(page, 'Produce the True Count');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
