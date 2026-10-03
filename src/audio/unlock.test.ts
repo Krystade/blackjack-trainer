@@ -31,7 +31,6 @@ import {
 import {
   _resetClipsForTest,
   idleClipAudioCountForTest,
-  idleAmplifiedCountForTest,
 } from './clips';
 import { _resetSharedAudioContextForTest } from './audioContext';
 
@@ -205,9 +204,6 @@ describe('the audio unlock', () => {
     // chains inside one millisecond and the second one used to build a fresh,
     // locked element. Jack's 2026-10-02 log has that twice.
     expect(idleClipAudioCountForTest()).toBeGreaterThan(1);
-    // And the amplified pool too, which is the one Jack's volume question
-    // actually lands on.
-    expect(idleAmplifiedCountForTest()).toBeGreaterThan(1);
   });
 
   it('runs once, however many times the operator taps', () => {

@@ -4,6 +4,7 @@ import {
   type SpokenMatch,
   type VoiceAction,
 } from './voiceRecognition';
+import { looksLikeLateSelfEcho } from './selfEcho';
 
 /**
  * A speech-recognition session that survives being left running.
@@ -307,7 +308,12 @@ export interface VoiceController {
    * Called by the app as it begins speaking, with how long it expects to
    * talk. Results are discarded until then, plus a tail.
    */
-  suppressFor: (ms: number) => void;
+  /**
+   * Deafen the microphone for `ms` plus a tail. `said` is what the app is
+   * about to say, when there are words -- it lets a transcript that arrives
+   * after the window shuts still be recognised as the app's own voice.
+   */
+  suppressFor: (ms: number, said?: string) => void;
   /**
    * Cycle the session now if it is old, so its deaf window lands here --
    * during answer feedback, say -- instead of in the middle of the next
@@ -334,6 +340,13 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
   let running = false;
   let sessionStartedAt = 0;
   let suppressedUntil = 0;
+  /**
+   * The last thing the app actually said, kept so a transcript that arrives
+   * after the window has shut can still be recognised as its own voice. See
+   * `looksLikeLateSelfEcho` -- the clock cannot cover delivery latency, and
+   * this is the only other thing the app knows.
+   */
+  let lastSaid: string | null = null;
   let restartHandle: number | null = null;
   /** Sessions that have died in a row without doing any work. */
   let failedStreak = 0;
@@ -578,6 +591,39 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
         return;
       }
 
+      /**
+       * THE SAME VOICE, ARRIVING LATE.
+       *
+       * On 2026-10-02 the window above was open for the whole of a correction
+       * and still lost it: the engine delivered the transcript 2258ms after
+       * the audio stopped, and `isSuppressed` is asked when the result
+       * ARRIVES. "Correct play was hit true count was zero" was graded as a
+       * HIT and the hand was played. A Web Speech result carries no timestamp
+       * for its audio, so no amount of tail fixes this -- and a tail long
+       * enough to try would throw away every answer given over the end of a
+       * prompt, which is the failure the suppressed-utterance cue exists for.
+       *
+       * Logged under its own name: a window that was open when the result
+       * landed and a window that had already shut are different problems, and
+       * one name for both is unreadable after a drive.
+       *
+       * AFTER THE CLAIM, NOT BEFORE IT. A screen that owns the microphone
+       * knows more about its own echoes than this does -- the field test
+       * compares against the lines of the step it is actually on, and records
+       * `heard-own-voice` against that step. Put ahead of the claim, this
+       * silently took that away: the outcome stayed right and the field test
+       * lost the evidence it exists to produce. This is the backstop for the
+       * screens that have no such check, which is all of the drills, which is
+       * where the 2026-10-02 drive went wrong.
+       */
+      const sinceClosed = deps.now() - suppressedUntil;
+      if (looksLikeLateSelfEcho(heard, lastSaid, sinceClosed)) {
+        log('suppressed-echo', { heard, sinceMs: sinceClosed, said: lastSaid });
+        deps.onHeard?.(heard, 'suppressed');
+        return;
+      }
+
+
       const match = resolveSpoken(offered);
       // How it matched is worth keeping. An engine that ranked the word
       // second, and one that never produced it at all, are different problems
@@ -654,11 +700,16 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       log('stop');
       setState('off');
     },
-    suppressFor: (ms: number) => {
+    suppressFor: (ms: number, said?: string) => {
       const until = deps.now() + Math.max(0, ms) + SPEECH_TAIL_MS;
       // Never shorten an existing window: back-to-back utterances would
       // otherwise unmute the microphone while the app is still talking.
       if (until > suppressedUntil) suppressedUntil = until;
+      // Only when there ARE words. A chime reports a duration and no text, and
+      // the chime that follows a correction lands exactly when the late
+      // transcript of that correction is still in flight -- so letting it
+      // clear this would undo the check at the one moment it is needed.
+      if (said !== undefined) lastSaid = said;
     },
     cycleIfStale: () => {
       if (!running) return;

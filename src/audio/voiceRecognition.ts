@@ -74,6 +74,18 @@ const ALIASES: Record<string, VoiceAction> = {
 };
 
 /**
+ * Every phrase the operator can actually say, aliases included.
+ *
+ * Exported for one reason: audio/selfEcho.ts dismisses a late transcript as
+ * the app's own voice when it is long enough, and "long enough" is only safe
+ * while it is LONGER THAN ANYTHING IN HERE. That is a contract between two
+ * modules, so it is checked against this list rather than against a number
+ * somebody remembered -- add a three-word alias and the test fails before a
+ * drive does.
+ */
+export const VOICE_PHRASES: readonly string[] = Object.keys(ALIASES);
+
+/**
  * The five that play a hand, as against the three that talk about one.
  *
  * The distinction earns its keep on sentences carrying both. A real drive

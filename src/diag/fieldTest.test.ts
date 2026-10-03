@@ -848,13 +848,29 @@ describe('resolveFieldTestSetup', () => {
   const indexOf = (id: string) => FIELD_TEST_STEPS.findIndex((s) => s.id === id);
   const at = (id: string) => resolveFieldTestSetup(indexOf(id));
 
-  it('carries the boost to the step whose premise it is, and nowhere else', () => {
-    // `fallback-audible` asks whether the un-boostable fallback voice is
-    // audible at all. Above unity a clip carries the excess through a gain
-    // node and live speech cannot carry any of it; at unity the question is
-    // empty and "the second was much quieter" is a null result filed as
-    // evidence.
-    expect(at('fallback-audible').volume).toBeGreaterThan(1);
+  it('runs every step at unity, because above it the voice is damaged', () => {
+    /**
+     * THE INVERSE OF WHAT THIS ONCE ASSERTED, and the reason is measured.
+     *
+     * `fallback-audible` used to pin 1.5 so that the clip was routed through a
+     * GainNode and the fallback was not, making the loudness gap the thing
+     * under test. On Jack's phone on 2026-10-02 that route stretched a 3029ms
+     * prompt to 4455ms and went silent at 200%, so it is gone (audio/volume.ts
+     * carries the readings). A step that still asked for a boost would now get
+     * a clip clamped to unity and a chime at full scale -- no voice gain, and a
+     * protocol step quietly louder than the drill it is meant to represent.
+     *
+     * Every step, not just that one: this is the guard that stops a boost
+     * creeping back in anywhere, which is how the last one arrived.
+     */
+    for (let i = 0; i < FIELD_TEST_STEPS.length; i++) {
+      const v = resolveFieldTestSetup(i).volume;
+      if (v === undefined) continue;
+      expect(v, `step ${FIELD_TEST_STEPS[i]!.id} runs above unity`).toBeLessThanOrEqual(1);
+    }
+    // And the step that used to carry it still declares one, so the fold has
+    // something to carry and the banner something to print.
+    expect(at('fallback-audible').volume).toBe(1);
   });
 
   it('asks every route question at the same loudness', () => {
@@ -1142,10 +1158,13 @@ describe('the wheel steps ask only what the operator can answer', () => {
  * `applyFieldTestSetup` dropping `volume`, and the banner printing it without
  * the ×100, both passed the whole suite: the existing "applies exactly what a
  * step asked for" test asserts `enabled`, `useClips`, `muted` and `wheelMode`
- * and stops there. `fallback-audible` is the one step whose entire premise is
- * the 1.5 boost a clip can carry and live TTS cannot, so losing the volume
- * makes both lines play at unity and files "the second was much quieter" as a
- * null result -- while the banner still says 150%.
+ * and stops there.
+ *
+ * It still matters now that every step runs at unity, and arguably more. A
+ * step reaches `fallback-audible` after one that lowered the volume to 0.3; if
+ * the fold drops the declared 1, the comparison runs at a third of the level
+ * the banner claims and the operator reports road noise. A volume that is lost
+ * is invisible either way -- which is the point of pinning it here.
  */
 describe('the setup carries volume, not just the flags', () => {
   const base = (): Settings => structuredClone(DEFAULT_SETTINGS);
@@ -1161,20 +1180,25 @@ describe('the setup carries volume, not just the flags', () => {
     expect(applyFieldTestSetup(before, { useClips: true }).audio.volume).toBe(0.4);
   });
 
-  it('carries the boost through the fold to the step that needs it', () => {
+  it('carries a declared volume through the fold to the step that needs it', () => {
     // Via `resolveFieldTestSetup`, because that is what the screen applies --
     // a volume declared on a step but lost in the fold would be just as dead.
+    // Asserted against the declared value rather than a number, so this keeps
+    // guarding the fold if the protocol's level is ever changed again.
     const index = FIELD_TEST_STEPS.findIndex((s) => s.id === 'fallback-audible');
     expect(index, 'fallback-audible is gone').toBeGreaterThanOrEqual(0);
+    const declared = FIELD_TEST_STEPS[index]!.setup?.volume;
+    expect(declared, 'the step stopped declaring a volume at all').toBeDefined();
     const resolved = resolveFieldTestSetup(index);
-    expect(resolved.volume).toBeGreaterThan(1);
-    expect(applyFieldTestSetup(base(), resolved).audio.volume).toBe(resolved.volume);
+    expect(resolved.volume).toBe(declared);
+    expect(applyFieldTestSetup(base(), resolved).audio.volume).toBe(declared);
   });
 
   it('prints the volume as a percentage the operator can read at a glance', () => {
-    // `Math.round(v)` instead of `Math.round(v * 100)` renders "volume 2%" on
-    // the one step whose premise is the boost, which reads as the opposite of
-    // what the app just did.
+    // `Math.round(v)` instead of `Math.round(v * 100)` renders "volume 2%"
+    // for a doubled level and "volume 1%" for a normal one, which reads as the
+    // opposite of what the app just did. 1.5 is not a level any step uses any
+    // more; it is here because it is the case the bug produced.
     expect(describeFieldTestSetup({ volume: 1.5 })).toContain('volume 150%');
     expect(describeFieldTestSetup({ volume: 1 })).toContain('volume 100%');
   });

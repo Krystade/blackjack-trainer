@@ -334,7 +334,16 @@ export function useVoiceControl({
 
     // Deafen the microphone whenever the app talks. Registered only while
     // listening, so nothing pays for this when voice is off.
-    setSpeechActivityListener((ms, text) => {
+    setSpeechActivityListener((ms, text, phase) => {
+      // An ENDING, not a new sound: the utterance has actually stopped, so the
+      // window is re-armed from now rather than from an estimate made before
+      // it started. `suppressFor` never shortens, so this cannot cut a window
+      // short -- it only stops one ending early.
+      if (phase === 'end') {
+        controller.suppressFor(0, undefined);
+        diag('speak', 'deafen-until-now', { context: contextRef.current });
+        return;
+      }
       diag('speak', 'deafen', { ms, said: text, context: contextRef.current });
       // A chime reports no text, and must not count as a new utterance: the
       // cue below IS a chime, so counting it would start the next generation
@@ -344,7 +353,13 @@ export function useVoiceControl({
         saidRef.current = text;
         speechGenRef.current += 1;
       }
-      controller.suppressFor(ms);
+      // The WORDS go through too, not just the duration. The timer brackets
+      // the audio; it cannot bracket how long the engine then takes to deliver
+      // a transcript of it, which on 2026-10-02 was 2258ms after the window had
+      // already shut -- long enough for the app to grade its own correction as
+      // a HIT. `text` is undefined for a chime, and `suppressFor` leaves the
+      // stored sentence alone in that case on purpose.
+      controller.suppressFor(ms, text);
     });
     controller.start();
 

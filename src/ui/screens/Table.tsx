@@ -541,7 +541,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     onNotUnderstood: () => audio.ding('attention'),
     // ...and the state before that one. The table is played eyes-free too, and
     // the microphone can take seconds to come up on the first ask of a page.
-    onListening: () => audio.ding('ready'),
+    onListening: () => audio.dingWhenQuiet('ready'),
     // Biased toward the commands AND the count words at once. The phrase list
     // is fixed for the life of a session, and rebuilding the recogniser as
     // the prompt opens would cost a deaf gap exactly when an answer is due.

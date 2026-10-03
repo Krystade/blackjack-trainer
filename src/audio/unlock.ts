@@ -62,10 +62,26 @@ export function unlockAudioNow(reason: string): void {
   // `AudioContext` -- and the element gate is the one that silenced a clip on
   // the drive, so neither is allowed to skip the other.
   let state = 'none';
+  let rate = 0;
   try {
     const ctx = getSharedAudioContext();
     resumeSharedAudioContext();
     state = ctx?.state ?? 'none';
+    /**
+     * THE HARDWARE SAMPLE RATE, which is the one number that would have told
+     * us why volumes above 100% wrecked playback on 2026-10-02 without having
+     * to infer it from clip durations.
+     *
+     * An AudioContext is fixed at the rate it is constructed with. The clips
+     * are 24kHz files; if this reads 48000 the graph was resampling every one
+     * of them in real time, and if it reads 16000 or 8000 the open microphone
+     * had already pulled the audio session into play-and-record or Bluetooth
+     * HFP -- which is also the reason the sound comes out of the earpiece
+     * instead of the bottom speaker. Clips no longer go anywhere near the
+     * graph, but the chimes still do, and the rate still names the route.
+     */
+    rate = ctx?.sampleRate ?? 0;
+    rate = ctx?.sampleRate ?? 0;
   } catch {
     /* a graph that will not build must not stop the elements */
   }
@@ -74,10 +90,19 @@ export function unlockAudioNow(reason: string): void {
   } catch {
     /* nor the other way round */
   }
-  // The state BEFORE the resume settles, which is the useful one: `resume()`
-  // is fire-and-forget, so this says what the gesture found, and
-  // `speak amplify` later says what playback found.
-  diag('speak', 'audio-unlock', { reason, state });
+  /**
+   * The state BEFORE the resume settles, which is the useful one: `resume()`
+   * is fire-and-forget, so this says what the gesture found.
+   *
+   * `rate` IS THE ONE NUMBER THAT NAMES THE OUTPUT ROUTE, and on 2026-10-02 we
+   * had to infer it from clip durations instead. An AudioContext is fixed at
+   * the rate it is built with. 48000 is the speaker. 16000 or 8000 means the
+   * audio session had already been pulled into play-and-record or Bluetooth
+   * HFP by the open microphone -- which is also why the sound comes out of the
+   * earpiece at the top of the phone rather than the loud speaker at the
+   * bottom, and no amount of digital gain competes with that.
+   */
+  diag('speak', 'audio-unlock', { reason, state, rate });
 }
 
 /**

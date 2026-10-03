@@ -15,6 +15,7 @@ import {
   type HeardVerdict,
   type RecognitionLike,
 } from './voiceControl';
+import { ECHO_GRACE_MS } from './selfEcho';
 import type { VoiceAction } from './voiceRecognition';
 
 /**
@@ -77,7 +78,12 @@ interface Harness {
   controller: ReturnType<typeof createVoiceController>;
 }
 
-function harness(opts: { create?: () => RecognitionLike | null } = {}): Harness {
+function harness(
+  opts: {
+    create?: () => RecognitionLike | null;
+    onTranscript?: (heard: string, offered: readonly string[]) => string | null;
+  } = {},
+): Harness {
   const actions: VoiceAction[] = [];
   const states: ListenState[] = [];
   const heard: Array<[string, HeardVerdict]> = [];
@@ -106,6 +112,7 @@ function harness(opts: { create?: () => RecognitionLike | null } = {}): Harness 
     },
     onAction: (a) => actions.push(a),
     onState: (s) => states.push(s),
+    onTranscript: opts.onTranscript,
     onHeard: (h, v) => heard.push([h, v]),
     log: (event, detail) => logs.push({ event, detail }),
   });
@@ -314,6 +321,144 @@ describe('the app must not hear itself', () => {
     h.advance(1000);
     h.current().say('hit');
     expect(h.actions).toEqual([]);
+  });
+});
+
+/**
+ * THE SAME FAILURE, ARRIVING LATE. Reported from the 2026-10-02 drive as "it
+ * was also hearing its own corrections", and the log says exactly how:
+ *
+ *   09:49:08.267  speak deafen ms=5000 said="Wrong. Basic hit versus dealer
+ *                 three. Correct play was hit. True count was zero."
+ *   09:49:13.906  tts-end ms=5615        -- 61ms before the window shut
+ *   09:49:16.225  mic result heard="Correct play was hit true count was zero"
+ *                 -> mic verdict verdict=hit
+ *
+ * The window was open for the whole utterance and still lost, because
+ * `isSuppressed` is asked when the RESULT ARRIVES and the engine took 2.3
+ * seconds to deliver it. A Web Speech result carries no timestamp for its
+ * audio, so the clock cannot be made to cover this; the app's own words can.
+ */
+describe('the app must not hear itself after the window has closed', () => {
+  const SAID = 'Wrong. Basic hit versus dealer three. Correct play was hit. True count was zero.';
+
+  it('refuses the correction that was graded as a HIT on the drive', () => {
+    const h = harness();
+    h.controller.start();
+    h.controller.suppressFor(5000, SAID);
+    // Past the window AND its tail: the exact state the drive was in.
+    h.advance(5000 + SPEECH_TAIL_MS + 2258);
+    h.current().say('Correct play was hit true count was zero');
+
+    expect(h.actions, 'the app played a hand off its own voice').toEqual([]);
+    expect(h.heard).toEqual([['Correct play was hit true count was zero', 'suppressed']]);
+  });
+
+  it('says in the log that this one was caught by its words, not by the clock', () => {
+    const h = harness();
+    h.controller.start();
+    h.controller.suppressFor(5000, SAID);
+    h.advance(5000 + SPEECH_TAIL_MS + 1000);
+    h.current().say('Correct play was hit true count was zero');
+
+    // Two different faults wearing one name would be unreadable after a drive:
+    // a window that was open is a tuning question, a window that had already
+    // shut is a latency one.
+    const echo = h.logs.filter((l) => l.event === 'suppressed-echo');
+    expect(echo.length, 'a late echo was logged as an ordinary suppression').toBe(1);
+    expect(h.logs.filter((l) => l.event === 'suppressed')).toEqual([]);
+  });
+
+  it('still takes a one-word answer the app happens to have just said', () => {
+    const h = harness();
+    h.controller.start();
+    h.controller.suppressFor(5000, 'Correct play was hit. True count was zero.');
+    h.advance(5000 + SPEECH_TAIL_MS + 500);
+    // THE CASE THAT MUST NOT REGRESS: the correction ends, the next hand is
+    // dealt, and the operator says "hit". Containment alone calls that an echo
+    // and the drill sits there in silence -- which is what a dead microphone
+    // sounds like, and the thing this app is most often accused of.
+    h.current().say('hit');
+
+    expect(h.actions, 'a real answer was thrown away as an echo').toEqual(['hit']);
+  });
+
+  it('gives up on the words once the app has been quiet long enough', () => {
+    const h = harness();
+    h.controller.start();
+    // A sentence with no action word in it, so the verdict shows the ECHO
+    // check letting go rather than `resolveSpoken` picking "hit" out of it.
+    const quiet = 'the true count was zero and the shoe is nearly done';
+    h.controller.suppressFor(1000, `Note. ${quiet}.`);
+    h.advance(1000 + SPEECH_TAIL_MS + ECHO_GRACE_MS + 1);
+    h.current().say(quiet);
+
+    // Not an echo any more -- just a long sentence, rejected on its merits.
+    expect(h.heard).toEqual([[quiet, 'rejected']]);
+  });
+
+  it('does not dismiss a long sentence the app never said', () => {
+    const h = harness();
+    h.controller.start();
+    h.controller.suppressFor(5000, SAID);
+    h.advance(5000 + SPEECH_TAIL_MS + 500);
+    h.current().say('i reckon the true count is about plus four now');
+
+    expect(h.heard).toEqual([['i reckon the true count is about plus four now', 'rejected']]);
+  });
+
+  it('forgets nothing when a caller passes no text, as the chime path does', () => {
+    const h = harness();
+    h.controller.start();
+    h.controller.suppressFor(5000, SAID);
+    // A chime reports a duration and no words. It must not wipe the sentence
+    // the echo check is still holding -- the chime that follows a correction
+    // is exactly when the late transcript lands.
+    h.controller.suppressFor(260);
+    h.advance(5000 + SPEECH_TAIL_MS + 500);
+    h.current().say('Correct play was hit true count was zero');
+
+    expect(h.actions).toEqual([]);
+  });
+
+  it('lets a screen that owns the microphone classify its own echo first', () => {
+    // FOUND BY e2e/field-test-voice.spec.ts, not by reasoning. Placed ahead of
+    // the claim, this check was correct and silent: the echo was still not
+    // stamped as an answer, and the field test quietly stopped recording
+    // `heard-own-voice` against the step -- the evidence the protocol exists
+    // to produce. A screen holding the microphone knows which lines IT just
+    // spoke; this only knows the last thing the speaker said.
+    const claimed: string[] = [];
+    const h = harness({
+      onTranscript: (heard) => {
+        claimed.push(heard);
+        return 'own-voice';
+      },
+    });
+    h.controller.start();
+    h.controller.suppressFor(5000, SAID);
+    h.advance(5000 + SPEECH_TAIL_MS + 2258);
+    h.current().say('Correct play was hit true count was zero');
+
+    expect(claimed, 'the owning screen never saw the echo').toEqual([
+      'Correct play was hit true count was zero',
+    ]);
+    expect(h.heard).toEqual([['Correct play was hit true count was zero', 'own-voice']]);
+  });
+
+  it('holds only the latest utterance, not a transcript of the drive', () => {
+    const h = harness();
+    h.controller.start();
+    const quiet = 'the true count was zero and the shoe is nearly done';
+    h.controller.suppressFor(5000, `Note. ${quiet}.`);
+    h.controller.suppressFor(3000, 'You have a pair of sevens.');
+    h.advance(5000 + SPEECH_TAIL_MS + 500);
+    // The older sentence is gone: only what the app LAST said can come back
+    // through the microphone, so an unbounded memory of the drive is not what
+    // is being built here.
+    h.current().say(quiet);
+
+    expect(h.heard).toEqual([[quiet, 'rejected']]);
   });
 });
 

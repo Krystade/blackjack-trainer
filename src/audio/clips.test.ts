@@ -12,11 +12,11 @@ import {
   isClipsEnabled,
   setClipVoice,
   _resetClipsForTest,
-  idleAmplifiedCountForTest,
   type ClipManifest,
 } from './clips';
 import { _resetSharedAudioContextForTest } from './audioContext';
 import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
+import { setSpeechActivityListener } from './speechActivity';
 
 /* ------------------------------------------------------------------------ */
 /* manifestLookup — pure exact-key matching, no browser needed              */
@@ -851,7 +851,7 @@ describe('the element that plays a clip outlives the clip', () => {
     await expect(third).resolves.toBe(true);
   });
 
-  it('never hands the shared element to the amplifying path', async () => {
+  it('hands the shared element to a loud clip like any other', async () => {
     const env = installFakeAudioEnv();
     twoClipVoice();
 
@@ -861,48 +861,48 @@ describe('the element that plays a clip outlives the clip', () => {
     shared.onended?.();
     await expect(quiet).resolves.toBe(true);
 
-    // Above unity the clip is routed through a GainNode, and
-    // createMediaElementSource consumes the element for good.
+    // THE OPPOSITE OF WHAT THIS USED TO ASSERT. A request above unity went to
+    // its own element because it was about to be consumed by
+    // `createMediaElementSource`. Nothing is routed any more -- measured on
+    // the phone on 2026-10-02, routing stretched a 3029ms prompt to 4455ms --
+    // so a loud request is an ordinary request that happens to clamp to 1, and
+    // it must reuse the unlocked element like everything else. A brand-new
+    // element on iOS is a LOCKED one.
     const loud = playClipsAsync('four', { volume: 1.5 });
-    await vi.waitFor(() => expect(env.instances.length).toBe(2));
-    expect(env.instances[1], 'the amplified clip was routed through the shared element').not.toBe(shared);
-    env.instances[1].onended?.();
-    await expect(loud).resolves.toBe(true);
-
-    // And the shared element is still the one the ordinary path uses.
-    const quietAgain = playClipsAsync('queen', { volume: 1 });
-    await vi.waitFor(() => expect(shared.src).toContain('queen.mp3'));
+    await vi.waitFor(() => expect(shared.src).toContain('four.mp3'));
+    expect(env.instances.length, 'a loud clip built an element of its own').toBe(1);
     shared.onended?.();
-    await expect(quietAgain).resolves.toBe(true);
-    expect(env.instances.length, 'the ordinary path stopped reusing the shared element').toBe(2);
+    await expect(loud).resolves.toBe(true);
   });
 });
 
 /* ------------------------------------------------------------------------ */
-/* The amplifying path keeps its elements too                               */
+/* A clip never goes through Web Audio, however loud the setting            */
 /* ------------------------------------------------------------------------ */
 
 /**
- * Why these exist.
+ * WHY THE ROUTE IS GONE, from Jack's phone on 2026-10-02.
  *
- * Jack asked after the 2026-10-02 drive whether the phone could be louder off
- * Bluetooth. `MAX_VOLUME` is 2 and he was at 1, so the setting had the
- * headroom -- and using it would have made the car QUIETER, because the
- * amplifying path built a brand-new element for every line. A brand-new
- * element on iOS is a LOCKED element: `play()` is refused, the line falls
- * through to live TTS, and `utteranceVolume` caps live TTS at 1.0.
+ * `HTMLMediaElement.volume` throws above 1, so a GainNode was the only way
+ * past 100%. It worked -- `amplify ok=true state=running` on every clip -- and
+ * it wrecked the sound:
  *
- * The reason given for the fresh element was sound -- a routed element can
- * never return to ordinary playback, because once `createMediaElementSource`
- * has consumed it its audio flows only through the graph, and a suspended
- * graph makes it SILENT rather than quiet. The conclusion should have been a
- * second pool, not no pool.
+ *   "You have fifteen. Dealer shows five."   3029ms at 100%, 4455ms at 200%
+ *   "You have ace, seven. Dealer shows six." 3099ms at 100%, 7687ms at 150%
  *
- * These use a fake AudioContext, unlike the tests above it, so the routing
- * actually happens: without one `amplify()` returns false at the first guard
- * and the whole amplified path is never entered.
+ * 150% stretched a prompt further than 200% did, so the damage is not
+ * proportional to the gain and is therefore not the gain; and it is not
+ * clipping either, because the shipped clips peak at 0.34-0.81 and not one
+ * sample in a 150-file sample reaches full scale even at 2x. What is left is
+ * the route: 24kHz files resampled in real time into a graph clocked by
+ * hardware whose rate the open microphone keeps moving. "150% is choppy and
+ * 200% is just silent", reported exactly that way.
+ *
+ * So these tests assert the ABSENCE of something, which is only worth having
+ * because the fake AudioContext below makes the route available: restore
+ * `amplify()` and the first of them goes red.
  */
-describe('the amplifying path has a pool of its own', () => {
+describe('a clip never goes through Web Audio', () => {
   const realFetch = (globalThis as any).fetch;
 
   beforeEach(() => {
@@ -970,84 +970,42 @@ describe('the amplifying path has a pool of its own', () => {
     return { instances, gains, routed, ctx };
   }
 
-  it('reuses one routed element across consecutive loud utterances', async () => {
+  it('routes nothing through the graph, however loud the setting', async () => {
     const env = installFakeAudioAndGraph();
 
-    const first = playClipsAsync('queen', { volume: 1.5 });
+    // A RUNNING graph, deliberately: this is the state in which the old code
+    // DID route, so a fake that refused would prove nothing. See
+    // audio/clips.ts's pool comment for what routing cost on the phone.
+    expect(env.ctx.state).toBe('running');
+
+    const loud = playClipsAsync('queen', { volume: 2 });
     await vi.waitFor(() => expect(env.instances.length).toBe(1));
-    const loud = env.instances[0];
-    loud.onended?.();
-    await expect(first).resolves.toBe(true);
 
-    const second = playClipsAsync('four', { volume: 1.5 });
-    await vi.waitFor(() => expect(loud.src).toContain('four.mp3'));
-    loud.onended?.();
-    await expect(second).resolves.toBe(true);
-
-    // THE ASSERTION. A second element here is a second trip through the iOS
-    // activation gate, which is what turned the volume setting into a
-    // fallback-voice switch.
-    expect(env.instances.length, 'the second loud utterance built a fresh, locked element').toBe(1);
-    expect(env.routed.length, 'the element was routed twice').toBe(1);
+    expect(env.routed.length, 'a clip was handed to createMediaElementSource').toBe(0);
+    expect(env.gains.length, 'a gain node was built for a clip').toBe(0);
+    // And it still plays, at the only level an element will accept.
+    expect(env.instances[0].volume, 'the element was handed a value above 1').toBe(1);
+    expect(env.instances[0].played).toBe(true);
+    env.instances[0].onended?.();
+    await expect(loud).resolves.toBe(true);
   });
 
-  it('retunes the existing gain node rather than re-routing a consumed element', async () => {
+  it('keeps reusing one element across loud and quiet utterances alike', async () => {
     const env = installFakeAudioAndGraph();
 
-    const first = playClipsAsync('queen', { volume: 1.5 });
-    await vi.waitFor(() => expect(env.gains.length).toBe(1));
-    expect(env.gains[0]!.gain.value).toBe(1.5);
-    env.instances[0].onended?.();
-    await expect(first).resolves.toBe(true);
-
-    const second = playClipsAsync('four', { volume: 2 });
-    await vi.waitFor(() => expect(env.instances[0]!.src).toContain('four.mp3'));
-    // Same node, new factor. Re-routing throws on a consumed element, which
-    // `amplify()` caught and reported as a routing failure -- so a working
-    // boost logged identically to a suspended graph.
-    expect(env.gains.length, 'a second gain node was built for the same element').toBe(1);
-    expect(env.gains[0]!.gain.value, 'the boost stayed at the first utterance’s level').toBe(2);
-    env.instances[0].onended?.();
-    await expect(second).resolves.toBe(true);
-  });
-
-  it('gives overlapping loud chains their own routed elements', async () => {
-    const env = installFakeAudioAndGraph();
-
-    const first = playClipsAsync('queen', { volume: 1.5 });
+    const loud = playClipsAsync('queen', { volume: 2 });
     await vi.waitFor(() => expect(env.instances.length).toBe(1));
-    const second = playClipsAsync('four', { volume: 1.5 });
-    await vi.waitFor(() => expect(env.instances.length).toBe(2));
-
-    // Sharing one element would abort the pending `play()` of the chain
-    // before it -- the `AbortError` the ordinary pool was built to stop. The
-    // amplified pool has to behave the same way.
-    expect(env.instances[0].src).toContain('queen.mp3');
-    expect(env.instances[1].src).toContain('four.mp3');
-    env.instances[0].onended?.();
-    env.instances[1].onended?.();
-    await expect(first).resolves.toBe(true);
-    await expect(second).resolves.toBe(true);
-
-    expect(idleAmplifiedCountForTest(), 'the finished loud elements were not kept').toBe(2);
-  });
-
-  it('never returns a routed element to the ordinary pool', async () => {
-    const env = installFakeAudioAndGraph();
-
-    const loud = playClipsAsync('queen', { volume: 1.5 });
-    await vi.waitFor(() => expect(env.instances.length).toBe(1));
-    const routedEl = env.instances[0];
-    routedEl.onended?.();
+    const shared = env.instances[0];
+    shared.onended?.();
     await expect(loud).resolves.toBe(true);
 
-    // A routed element handed to ordinary playback is SILENT whenever the
-    // graph is suspended, while `play()` resolves and `ended` fires -- the
-    // worst failure this app has, because the log reports a clean clip.
+    // The two pools existed only because a routed element could never come
+    // back. Nothing is routed, so one pool serves both, and the element that
+    // played the loud line is the one the quiet line gets -- unlocked.
     const quiet = playClipsAsync('four', { volume: 1 });
-    await vi.waitFor(() => expect(env.instances.length).toBe(2));
-    expect(env.instances[1], 'the ordinary chain took the routed element').not.toBe(routedEl);
-    env.instances[1].onended?.();
+    await vi.waitFor(() => expect(shared.src).toContain('four.mp3'));
+    expect(env.instances.length, 'a second element was built for a quiet clip').toBe(1);
+    shared.onended?.();
     await expect(quiet).resolves.toBe(true);
   });
 
@@ -1098,20 +1056,129 @@ describe('the amplifying path has a pool of its own', () => {
     await expect(quiet).resolves.toBe(true);
   });
 
-  it('falls back to unamplified playback when the graph is suspended', async () => {
+  it('plays a loud clip whether the graph is awake or suspended', async () => {
     const env = installFakeAudioAndGraph();
     env.ctx.state = 'suspended';
 
     const loud = playClipsAsync('queen', { volume: 1.5 });
     await vi.waitFor(() => expect(env.instances.length).toBe(1));
 
-    // Not routed, because a suspended graph would swallow it -- and still
-    // PLAYED, at full-but-unamplified level, on a pooled element. This is the
-    // case where the gesture unlock did not happen.
+    // THE FAILURE THAT CAN NO LONGER HAPPEN. A routed element plays only
+    // through the graph, so a suspended one made the clip SILENT while
+    // `play()` resolved and `ended` fired -- the log said `path=clip` and the
+    // cabin heard nothing, which is the worst failure this app has. The graph
+    // state is now irrelevant to a clip, and that is the point.
     expect(env.routed.length, 'a suspended graph was routed into').toBe(0);
-    expect(env.instances[0].volume, 'the element was handed a value above 1').toBe(1);
+    expect(env.instances[0].volume).toBe(1);
     expect(env.instances[0].played).toBe(true);
     env.instances[0].onended?.();
     await expect(loud).resolves.toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* A chain that ends tells the microphone it has stopped                    */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * The deaf window is sized before the chain starts, from `estimateSpeechMs`,
+ * and against recorded clips that guess is consistently short -- clips run
+ * slower than sixteen characters a second and carry leading and trailing
+ * silence. Both measured off the 2026-10-02 drive:
+ *
+ *   "You have seventeen. Dealer shows nine."  estimate 2375ms, clip 3550ms
+ *   "Stand."                                  estimate  400ms, clip 1240ms
+ *
+ * The first left the microphone live for the last 476ms of the prompt, under
+ * the app's own voice. `looksLikeLateSelfEcho` catches long echoes on their
+ * words and deliberately will not touch anything shorter than three words, so
+ * a one-word echo depends on the timer alone -- and the timer should stop
+ * guessing the moment it has a measurement.
+ *
+ * The live-TTS path has reported endings since the same change. This is the
+ * path that actually speaks: the recorded voice ships on.
+ */
+describe('a clip chain says when it has stopped', () => {
+  const realFetch = (globalThis as any).fetch;
+
+  beforeEach(() => _resetClipsForTest());
+  afterEach(() => {
+    setSpeechActivityListener(null);
+    _resetClipsForTest();
+    (globalThis as any).fetch = realFetch;
+    delete (globalThis as any).window;
+  });
+
+  function oneClipVoice(): void {
+    mockFetchRouter({
+      'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
+      'manifest.json': async () => ({ clips: { queen: 'queen.mp3', four: 'four.mp3' } }),
+    });
+  }
+
+  it('reports the ending of a chain that ran to the end', async () => {
+    const env = installFakeAudioEnv();
+    oneClipVoice();
+    const phases: (string | undefined)[] = [];
+    setSpeechActivityListener((_ms, _text, phase) => phases.push(phase));
+
+    const play = playClipsAsync('queen');
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    expect(phases, 'the chain reported an ending before it had one').toEqual([]);
+
+    env.instances[0].onended?.();
+    await expect(play).resolves.toBe(true);
+
+    expect(phases).toEqual(['end']);
+  });
+
+  it('reports it once per chain, not once per clip', async () => {
+    const env = installFakeAudioEnv();
+    oneClipVoice();
+    const phases: (string | undefined)[] = [];
+    setSpeechActivityListener((_ms, _text, phase) => phases.push(phase));
+
+    // Two clips, one utterance. The microphone stops being deaf when the
+    // SENTENCE is over, not between its halves.
+    const play = playClipsAsync('queen, four');
+    await vi.waitFor(() => expect(env.instances[0]?.src).toContain('queen.mp3'));
+    env.instances[0].onended?.();
+    await vi.waitFor(() => expect(env.instances[0]?.src).toContain('four.mp3'));
+    expect(phases).toEqual([]);
+    env.instances[0].onended?.();
+    await expect(play).resolves.toBe(true);
+
+    expect(phases).toEqual(['end']);
+  });
+
+  it('reports a chain that was cut off, which has also stopped making noise', async () => {
+    const env = installFakeAudioEnv();
+    oneClipVoice();
+    const phases: (string | undefined)[] = [];
+    setSpeechActivityListener((_ms, _text, phase) => phases.push(phase));
+
+    const play = playClipsAsync('queen');
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    // An interrupted line is silent from that moment, and a window held open
+    // for the rest of an utterance nobody heard is a deaf microphone.
+    stopClips();
+    await expect(play).resolves.toBe(true);
+
+    expect(phases).toEqual(['end']);
+  });
+
+  it('does not throw when nothing is listening, or when the listener does', async () => {
+    const env = installFakeAudioEnv();
+    oneClipVoice();
+    setSpeechActivityListener(() => {
+      throw new Error('nope');
+    });
+
+    const play = playClipsAsync('queen');
+    await vi.waitFor(() => expect(env.instances.length).toBe(1));
+    env.instances[0].onended?.();
+    // A consumer's bookkeeping must never take out the utterance that was
+    // trying to tell it something.
+    await expect(play).resolves.toBe(true);
   });
 });

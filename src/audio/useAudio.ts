@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import type { AudioSettings } from '../store/types';
-import { speak, chime, repeatLast } from './speech';
+import { speak, chime, chimeWhenQuiet, repeatLast } from './speech';
 import { effectiveVolume } from './volume';
 import { prewarmClips, setClipsEnabled, setClipVoice } from './clips';
 
@@ -16,6 +16,23 @@ export interface AudioApi {
   say: (text: string, opts?: { interrupt?: boolean }) => void;
   sayFull: (text: string) => void;
   ding: (kind: 'good' | 'bad' | 'attention' | 'ready') => void;
+  /**
+   * A chime held until the app stops talking.
+   *
+   * For the cue that says "the microphone is open". From Jack's 2026-10-02
+   * log:
+   *
+   *   16:22:58.527  clip-chain files="you-have-ace-five.mp3, dealer-shows-ten.mp3"
+   *   16:22:58.597  chime kind=ready volume=1
+   *   16:23:01.556  clip-end   ms=3029
+   *
+   * It fired seventy milliseconds into a three-second prompt, as a 120ms sine
+   * at half scale under a voice at full, and he reported a chime that never
+   * played. It was premature as well as inaudible: anything said during that
+   * prompt is thrown away as the app's own voice, so the moment worth marking
+   * is not when the recogniser confirms but when the app next shuts up.
+   */
+  dingWhenQuiet: (kind: 'good' | 'bad' | 'attention' | 'ready') => void;
   /** Re-speak the last utterance at the CURRENT rate/voice/volume. Backs the
    * Repeat control; a no-op when audio is off or nothing has been said. */
   replay: () => void;
@@ -72,6 +89,15 @@ export function useAudio(audio: AudioSettings): AudioApi {
       chime(kind, { volume });
     };
 
+    // Same two gates as `ding`, checked at the moment of the REQUEST rather
+    // than when the cue finally sounds. Mute between the two is handled a
+    // layer down: `cancelSpeech()` drops a held cue, and the mute button calls
+    // it.
+    const dingWhenQuiet: AudioApi['dingWhenQuiet'] = (kind) => {
+      if (!enabled || !chimes) return;
+      chimeWhenQuiet(kind, { volume });
+    };
+
     // There is deliberately no `hasSpoken()` companion (A2). It would have to
     // read speech.ts's module state during render, which React does not
     // subscribe to, so a Repeat button disabled by it would not re-enable when
@@ -87,7 +113,7 @@ export function useAudio(audio: AudioSettings): AudioApi {
       repeatLast({ rate, voiceURI, volume });
     };
 
-    return { say, sayFull, ding, replay, enabled };
+    return { say, sayFull, ding, dingWhenQuiet, replay, enabled };
     // `volume` belongs here with rate/voiceURI: omitting it would freeze every
     // bound closure above at the volume in force when the memo last ran, so
     // dragging the slider would appear to do nothing until some other audio

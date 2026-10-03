@@ -679,7 +679,7 @@ function FlashcardsView({
     // real use: "stand" came back as "Stant" and was rejected -- unbiased,
     // the engine is choosing a one-syllable word out of all of English.
     biasPhrases: Object.keys(VOICE_ACTIONS),
-    onListening: () => audio.ding('ready'),
+    onListening: () => audio.dingWhenQuiet('ready'),
     context: 'flashcards',
   });
 
@@ -1451,7 +1451,7 @@ function DeviationQuizView({
     onAction: handleVoiceAction,
     onNotUnderstood: () => audio.ding('attention'),
     biasPhrases: Object.keys(VOICE_ACTIONS),
-    onListening: () => audio.ding('ready'),
+    onListening: () => audio.dingWhenQuiet('ready'),
     context: 'deviation-quiz',
   });
 
@@ -2118,7 +2118,7 @@ function MixedSessionView({
     onAction: handleVoiceAction,
     onNotUnderstood: () => audio.ding('attention'),
     biasPhrases: Object.keys(VOICE_ACTIONS),
-    onListening: () => audio.ding('ready'),
+    onListening: () => audio.dingWhenQuiet('ready'),
     context: 'mixed-session',
   });
 

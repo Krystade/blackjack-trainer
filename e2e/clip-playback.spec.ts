@@ -290,18 +290,25 @@ test('clip playback at rate=2.0 still fetches clips and completes cleanly', asyn
 });
 
 /* ------------------------------------------------------------------------ */
-/* Volume boost: the >100% path actually routes, and the normal path doesn't */
+/* Volume: a clip never touches Web Audio, at any level                     */
 /* ------------------------------------------------------------------------ */
 
 /**
- * Instrument the two things that matter about amplification.
+ * Instrument the two things that matter about volume.
  *
  * `HTMLMediaElement.volume` THROWS IndexSizeError above 1, so every value
  * handed to the element is recorded -- a regression there does not look like
  * a wrong loudness, it looks like an exception that kills the utterance.
  * `createMediaElementSource` calls are counted because routing through Web
- * Audio is the risky path: once an element is in the graph, a suspended
- * context makes it SILENT rather than quiet.
+ * Audio is what the app must never do to a clip: once an element is in the
+ * graph its audio flows only through the graph, and on Jack's phone on
+ * 2026-10-02 that stretched a 3029ms prompt to 4455ms at 200% and 7687ms at
+ * 150% -- choppy, then silent. See audio/volume.ts for the readings.
+ *
+ * THIS IS THE ONLY PROJECT WHERE THESE CAN BE CHECKED. Every other spec
+ * navigates with `?e2e=1`, which short-circuits `speak()` into
+ * `window.__speechLog` BEFORE the clips gate, so no clip ever plays and
+ * "nothing was routed" is a tautology that passes with the route restored.
  */
 async function instrumentAudioRouting(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -340,7 +347,7 @@ async function instrumentAudioRouting(page: Page): Promise<void> {
   });
 }
 
-test('volume 200%: clips route through a gain node, and the element stays at 1', async ({ page }) => {
+test('volume 200%: clips still never touch Web Audio', async ({ page }) => {
   test.setTimeout(30_000);
   await instrumentAudioRouting(page);
   await seedClipDrillSettings(page, { volume: 2 });
@@ -358,10 +365,21 @@ test('volume 200%: clips route through a gain node, and the element stays at 1',
     gains: (window as unknown as { __gains: number[] }).__gains,
   }));
 
-  // The boost is actually engaged...
-  expect(seen.mes, 'expected clips to be routed through Web Audio at 200%').toBeGreaterThan(0);
-  expect(seen.gains, 'expected a gain of 2 to be applied').toContain(2);
-  // ...and the element was never given a value that would throw.
+  /**
+   * THE EXACT OPPOSITE OF WHAT THIS ASSERTED THIS MORNING, and the drive is
+   * the reason. It used to require `mes > 0` and a gain of 2, and it got both
+   * -- the phone's log says `amplify ok=true state=running` on every clip --
+   * and the sound was ruined. The instrument was right and the thing it was
+   * instrumenting was wrong.
+   *
+   * The premise is checked first: this harness runs a real clip drill to
+   * completion, so a run where no clip played would have timed out on
+   * `.drill-result` above rather than reach here with zero of everything.
+   */
+  expect(seen.elVolumes.length, 'no element ever took a volume, so nothing played').toBeGreaterThan(0);
+  expect(seen.mes, 'a clip was routed through Web Audio at 200%').toBe(0);
+  expect(seen.gains, 'a gain node was built for a clip').toEqual([]);
+  // And the element was never given a value that would throw.
   expect(Math.max(...seen.elVolumes)).toBeLessThanOrEqual(1);
   expect(harness.pageErrors).toEqual([]);
 });

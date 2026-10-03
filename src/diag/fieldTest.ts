@@ -199,14 +199,20 @@ export interface StepResponse {
 export interface FieldTestSetup {
   audioEnabled?: boolean;
   /**
-   * Pinned, because `fallback-audible`'s premise depends on it.
+   * Pinned, so that every step that compares two things compares them at one
+   * level.
    *
-   * Above 1.0 a clip is routed through a GainNode to carry the excess, and
-   * live speech cannot be amplified at all -- that asymmetry is the whole
-   * point of the comparison. At or below 1.0 both play at unity, the
-   * comparison measures nothing, and the operator's "the second was much
-   * quieter" is a null result filed as evidence. Nothing in the log said
-   * which of the two situations produced an answer.
+   * This used to carry the opposite instruction. `fallback-audible` pinned
+   * 1.5 on purpose, because above unity a clip was routed through a GainNode
+   * while live speech could not be amplified at all, and that asymmetry was
+   * the comparison. The GainNode route is gone -- it stretched a 3029ms prompt
+   * to 4455ms on Jack's phone, see audio/volume.ts -- so there is no asymmetry
+   * left to measure and a step that still asked for one would be comparing a
+   * line against itself while reporting a verdict.
+   *
+   * What the two paths still differ in is the PATH, which is the protocol's
+   * leading hypothesis about the route, and that comparison needs one fixed
+   * volume rather than two.
    */
   volume?: number;
   useClips?: boolean;
@@ -1007,12 +1013,12 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
      * is a question that cannot produce information.
      *
      * What the app CANNOT know is whether the fallback was audible. That is
-     * not a preference: live speechSynthesis is capped at unity gain by the
-     * browser, so unlike a clip it cannot be amplified past 100% at all --
-     * which means an utterance that falls back is an utterance that may
-     * simply vanish under road noise, at a volume the operator has no way to
-     * raise. Whether it did vanish is a fact about this car at this speed,
-     * and only the person in it can report it.
+     * not a preference: both paths are capped at unity -- live speechSynthesis
+     * by the browser, and clips since the GainNode route was removed -- so an
+     * utterance that falls back may simply vanish under road noise at a volume
+     * the operator has no way to raise in software. Whether it did vanish, and
+     * whether it came out of the same speaker, are facts about this car at
+     * this speed, and only the person in it can report them.
      */
     id: 'fallback-audible',
     title: 'Can you hear the fallback at all?',
@@ -1034,21 +1040,27 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     sayUnclipped:
       'This second line has no recording behind it, so your phone is reading it aloud instead.',
     /**
-     * THE BOOST LIVES HERE, on the step whose premise it is.
+     * ONE LEVEL FOR BOTH LINES, which is the whole premise now.
      *
-     * Above unity a clip carries the excess through a GainNode and live
-     * speech cannot carry any of it. That asymmetry is the entire question
-     * this step asks. It used to be pinned six steps earlier at `route-1`,
-     * which meant a run RESUMED at this step -- the ordinary outcome of the
-     * update check reloading mid-drive -- ran the comparison at unity, where
-     * it measures nothing, while the screen said "Nothing changed for this
-     * step".
+     * This step used to pin 1.5 so that the clip was routed through a GainNode
+     * and the fallback was not, making the loudness gap the thing under test.
+     * That route is gone (audio/volume.ts: it stretched a 3029ms prompt to
+     * 4455ms on the phone and went silent at 200%), so pinning 1.5 would now
+     * play both lines at exactly unity while the question still asked which
+     * was quieter -- a step that cannot produce information, reported as
+     * evidence.
+     *
+     * At one level the step measures what is left and what actually matters:
+     * two different playback paths, and whether the second one comes out of
+     * the same speaker and loudly enough to make out at road speed. That is
+     * `fallback-moved` below, which the 2026-10-02 drive moved to the front of
+     * the queue.
      */
     // CLIPS DECLARED, not inherited, because the step immediately above now
     // turns them off. The premise here is one recorded line against one
     // unrecorded one; inheriting `useClips: false` would make both of them
     // unrecorded and the operator would be comparing a line against itself.
-    setup: { volume: 1.5, useClips: true },
+    setup: { volume: 1, useClips: true },
     sayAgain: true,
     responses: [
       { id: 'fallback-clear', label: 'Heard both fine', kind: 'good' },
@@ -1065,13 +1077,18 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
        * the cause. The step would have confirmed a volume ceiling while
        * demonstrating a routing split.
        *
-       * `bad`, NOT `route`, and that is deliberate. `kind: 'route'` is what
-       * marks a step as one of the route SAMPLES -- the set that is compared
-       * against itself and must therefore run at one fixed volume. This step
-       * is the one place the protocol raises the volume on purpose, because
-       * the gain asymmetry is its entire premise, so enrolling it in that set
-       * would reintroduce the confound this batch exists to remove. The answer
-       * is still uniquely identified by its id wherever the log is read.
+       * `bad`, NOT `route`, and the reason has changed. It used to be that
+       * `kind: 'route'` marks a step as one of the route SAMPLES -- the set
+       * compared against itself, which must therefore run at one fixed volume
+       * -- and this was the one step that raised the volume on purpose. It no
+       * longer does, so that objection is spent.
+       *
+       * It stays `bad` because the two lines here still go down two different
+       * paths, and the route samples compare steps that are alike in every way
+       * but the one being varied. A `route` answer from a step whose two lines
+       * take different paths would be a sample of something else. The answer is
+       * still uniquely identified by its id wherever the log is read, and after
+       * 2026-10-02 it is the first thing to look for.
        */
       { id: 'fallback-moved', label: 'The second came from somewhere else', kind: 'bad' },
       MISSED,

@@ -576,7 +576,7 @@ export function TrueCountDrillView({
     // microphone. A short cue says "say it again".
     onNotUnderstood: () => audio.ding('attention'),
     biasPhrases: [...Object.keys(VOICE_ACTIONS), ...COUNT_BIAS_PHRASES],
-    onListening: () => audio.ding('ready'),
+    onListening: () => audio.dingWhenQuiet('ready'),
     context: 'true-count-drill',
   });
 

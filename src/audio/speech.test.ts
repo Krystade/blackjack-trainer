@@ -1,12 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { _resetQuietWaitersForTest } from './speechActivity';
+import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
+import { _resetClipsForTest } from './clips';
 import {
   speak, speakAsync, chime, chimeFrequencyForTest, isSpeechSupported, listVoices, cancelSpeech, pickBestVoice,
   getLastSpoken, repeatLast, _resetLastSpokenForTest, _resetSharedAudioContextForTest,
   lastSpeechPath, _resetSpeechPathForTest,
   setSpeechActivityListener,
+  chimeWhenQuiet,
+  CUE_WAIT_CEILING_MS,
   primeVoices, _resetVoiceCacheForTest,
 } from './speech';
-import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 
 describe('speech wrapper — absence guards (no browser APIs in jsdom/node)', () => {
   it('speak() does not throw when speechSynthesis is unavailable', () => {
@@ -683,6 +687,232 @@ describe('last-utterance tracking', () => {
  * that tone and reject it in turn, the cue would answer itself -- so the
  * speaker tells the microphone about every sound it makes, not just words.
  */
+/**
+ * The deaf window, re-armed from the moment the sound actually stopped.
+ *
+ * It is sized up front from `estimateSpeechMs`, which is a guess and is
+ * routinely short: on the 2026-10-02 drive it read 5000ms for an utterance
+ * that ran 5615, so the window shut 61 milliseconds after the audio ended. It
+ * held by a hair. The correction was still graded as a HIT, by a transcript
+ * the engine delivered 2.3 seconds later -- which `looksLikeLateSelfEcho` now
+ * catches on its words. What the words CANNOT catch is a one- or two-word echo
+ * ("Surrender", 09:49:53 on the same drive), because the word floor is there
+ * to protect one- and two-word answers. Those depend on the timer alone, so
+ * the timer stops guessing as soon as it has a measurement.
+ */
+describe('the microphone is told when the app actually stopped', () => {
+  afterEach(teardownFakeSpeechEnv);
+
+  it('reports an ending, not just a beginning', async () => {
+    const seen: Array<[number, string | undefined, string | undefined]> = [];
+    installFakeSpeechEnv([]);
+    setSpeechActivityListener((ms, text, phase) => seen.push([ms, text, phase]));
+    try {
+      await speakAsync('You have sixteen. Dealer shows ten.');
+    } finally {
+      setSpeechActivityListener(null);
+    }
+
+    expect(seen.map((s) => s[2])).toEqual(['start', 'end']);
+    // The estimate goes out first and the measurement follows it.
+    expect(seen[0]![0]).toBeGreaterThan(0);
+    expect(seen[1]![0]).toBe(0);
+  });
+
+  it('sends no words with the ending, which is not a new utterance', async () => {
+    const seen: Array<[number, string | undefined, string | undefined]> = [];
+    installFakeSpeechEnv([]);
+    setSpeechActivityListener((ms, text, phase) => seen.push([ms, text, phase]));
+    try {
+      await speakAsync('Correct play was stand.');
+    } finally {
+      setSpeechActivityListener(null);
+    }
+
+    const end = seen.find((s) => s[2] === 'end');
+    // The sentence is already held one level up for the echo check; re-sending
+    // it here would count as a fresh utterance and re-arm the cue it just gave.
+    expect(end?.[1]).toBeUndefined();
+  });
+
+  it('reports the ending of a line nobody is listening to without throwing', async () => {
+    installFakeSpeechEnv([]);
+    setSpeechActivityListener(null);
+    await expect(speakAsync('Queen.')).resolves.toBeUndefined();
+  });
+
+  it('survives a listener that throws on the ending', async () => {
+    installFakeSpeechEnv([]);
+    setSpeechActivityListener((_ms, _text, phase) => {
+      if (phase === 'end') throw new Error('nope');
+    });
+    try {
+      // A consumer's bookkeeping must never take out the utterance that was
+      // trying to tell it something.
+      await expect(speakAsync('Queen.')).resolves.toBeUndefined();
+    } finally {
+      setSpeechActivityListener(null);
+    }
+  });
+});
+
+/**
+ * The cue that says "the microphone is open, speak now", held until the app
+ * has actually stopped talking.
+ *
+ * From Jack's 2026-10-02 log, with the car off Bluetooth:
+ *
+ *   16:22:58.527  speak clip-chain  files="you-have-ace-five.mp3, dealer-shows-ten.mp3"
+ *   16:22:58.597  speak chime kind=ready volume=1
+ *   16:23:01.556  speak clip-end   ms=3029
+ *
+ * He reported it as a chime that never played. It played -- a 120ms sine at
+ * half scale, seventy milliseconds into a three-second prompt, underneath a
+ * voice at full level. There is no `chime-suspended` line, so the tone was
+ * generated and simply masked.
+ *
+ * Holding it is not only about being audible. The cue is premature there too:
+ * anything said during that prompt is suppressed as the app's own voice, so
+ * the moment worth marking is when the app shuts up, not when the recogniser
+ * happens to confirm.
+ */
+/** Which chimes the app actually asked for, from the log it already writes. */
+function chimed(): string[] {
+  return readDiagnosticLog()
+    .filter((e) => e.event === 'chime')
+    .map((e) => String((e.detail as Record<string, unknown>).kind));
+}
+
+describe('the microphone-is-open cue waits for the app to stop talking', () => {
+  beforeEach(() => {
+    _resetQuietWaitersForTest();
+    _resetClipsForTest();
+  });
+  afterEach(() => {
+    _resetQuietWaitersForTest();
+    _resetClipsForTest();
+    teardownFakeSpeechEnv();
+  });
+
+  it('sounds at once when nothing is being said', () => {
+    installFakeSpeechEnv([]);
+    clearDiagnosticLog();
+    chimeWhenQuiet('ready');
+    expect(chimed()).toEqual(['ready']);
+  });
+
+  it('holds while live speech is still running, then sounds', async () => {
+    // autoEnd off: the utterance stays pending until the test ends it.
+    const spoken = installFakeSpeechEnv([], { autoEnd: false });
+    const pending = speakAsync('You have ace, five. Dealer shows ten.');
+    clearDiagnosticLog();
+    chimeWhenQuiet('ready');
+
+    expect(chimed(), 'the cue sounded under the app’s own voice').toEqual([]);
+
+    spoken[0]!.onend?.();
+    await pending;
+    expect(chimed()).toEqual(['ready']);
+  });
+
+  it('sounds only once, however many things finish', async () => {
+    const spoken = installFakeSpeechEnv([], { autoEnd: false });
+    const first = speakAsync('Queen.');
+    clearDiagnosticLog();
+    chimeWhenQuiet('ready');
+    spoken[0]!.onend?.();
+    await first;
+
+    const second = speakAsync('Four.');
+    spoken[1]!.onend?.();
+    await second;
+
+    expect(chimed()).toEqual(['ready']);
+  });
+
+  it('can be cancelled, so a screen that unmounts leaves no beep behind', async () => {
+    const spoken = installFakeSpeechEnv([], { autoEnd: false });
+    const pending = speakAsync('Queen.');
+    clearDiagnosticLog();
+    const cancel = chimeWhenQuiet('ready');
+    cancel();
+    spoken[0]!.onend?.();
+    await pending;
+
+    expect(chimed()).toEqual([]);
+  });
+
+  it('is called off by cancelSpeech, which is what a screen change does', async () => {
+    /**
+     * THE BEEP ON THE WRONG SCREEN. `cancelSpeech()` stops the clip chain,
+     * the chain settles, and settling is exactly the signal a held cue is
+     * waiting for -- so leaving a drill mid-prompt would fire the cue onto
+     * whatever screen the operator just moved to, up to six seconds later.
+     *
+     * The mute button calls the same function, which is the worse case: the
+     * one control whose entire promise is that nothing makes a noise.
+     */
+    vi.useFakeTimers();
+    try {
+      installFakeSpeechEnv([], { autoEnd: false });
+      void speakAsync('You have seventeen. Dealer shows nine.');
+      clearDiagnosticLog();
+      chimeWhenQuiet('ready');
+      expect(chimed()).toEqual([]);
+
+      cancelSpeech();
+
+      /**
+       * THE CEILING IS WHERE THIS BITES, and it is the only place it does.
+       * A cancel reports no ENDING -- `settleAllPendingSpeeches` resolves the
+       * promise and the tts-end path that calls `notifySpeechEnded` is for an
+       * utterance that finished, not one that was stopped. So a held cue is
+       * not fired by the cancel; it is simply left waiting, and six seconds
+       * later the timeout fires it onto whatever screen is up by then. The
+       * assertion has to reach that timeout or it tests nothing: without the
+       * drop in `cancelSpeech`, this beeps here.
+       */
+      vi.advanceTimersByTime(CUE_WAIT_CEILING_MS + 100);
+      expect(chimed(), 'a cancelled cue sounded after the ceiling').toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps only the newest cue, because there is only one microphone', async () => {
+    const spoken = installFakeSpeechEnv([], { autoEnd: false });
+    const pending = speakAsync('Queen.');
+    clearDiagnosticLog();
+    // Two cues for one moment would beep twice for one opening. The first is
+    // for a moment that has already passed.
+    chimeWhenQuiet('ready');
+    chimeWhenQuiet('attention');
+    spoken[0]!.onend?.();
+    await pending;
+
+    expect(chimed()).toEqual(['attention']);
+  });
+
+  it('sounds anyway if no ending ever arrives', async () => {
+    vi.useFakeTimers();
+    try {
+      installFakeSpeechEnv([], { autoEnd: false });
+      void speakAsync('Queen.');
+      clearDiagnosticLog();
+      chimeWhenQuiet('ready');
+      expect(chimed()).toEqual([]);
+
+      // A lost `onend` must not swallow the one cue the operator is waiting
+      // for: a microphone that opened and said nothing is indistinguishable
+      // from one that never opened.
+      vi.advanceTimersByTime(CUE_WAIT_CEILING_MS);
+      expect(chimed()).toEqual(['ready']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('chime and the microphone', () => {
   it('tells the microphone how long it will be making a noise', () => {
     const seen: number[] = [];

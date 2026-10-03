@@ -1471,7 +1471,7 @@ export function CountDrillView({
     // of narration mid-drill.
     onNotUnderstood: () => audio.ding('attention'),
     biasPhrases: [...Object.keys(VOICE_ACTIONS), ...COUNT_BIAS_PHRASES],
-    onListening: () => audio.ding('ready'),
+    onListening: () => audio.dingWhenQuiet('ready'),
     context: 'count-drill',
   });
 

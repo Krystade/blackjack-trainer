@@ -25,6 +25,7 @@
  */
 import {
   hasClips,
+  isClipChainActive,
   isClipsEnabled,
   playClipsResumable,
   stopClips,
@@ -45,6 +46,14 @@ import {
 import { holdAudioFocus, reassertAudioFocus } from "./audioFocus";
 import { invokeWheelCommand } from "./wheelCommands";
 import { diag } from "../diag/diagnosticLog";
+import {
+  notifyActivityMs,
+  notifySpeechEnded,
+  setSpeechActivityListener,
+  type SpeechActivityListener,
+  type SpeechActivityPhase,
+  whenSomethingFinishesSpeaking,
+} from "./speechActivity";
 
 declare global {
   interface Window {
@@ -388,6 +397,15 @@ export function cancelSpeech(): void {
   // nothing about. `stopClips` existed for exactly this and had ZERO callers,
   // so leaving a screen mid-clip left the audio playing over whatever came
   // next, and an interrupting live-TTS line spoke ON TOP of the clip chain.
+  /**
+   * THE CUE GOES FIRST, before anything that produces an ending.
+   *
+   * `stopClips()` settles the chain, which tells every waiter the app has
+   * stopped talking -- and a cue held for silence would take that as its
+   * moment and beep. On a screen change that beep lands on the next screen;
+   * on the mute button it lands in a room someone just silenced.
+   */
+  pendingCue?.();
   stopClips();
   settleAllPendingSpeeches();
   if (!isSpeechSupported()) return;
@@ -499,30 +517,15 @@ export function getLastSpoken(): string | null {
  * a Stand the driver never said. Every utterance the app produces is a live
  * command unless the listener is told to ignore that stretch of audio.
  *
- * `speak()` is the single funnel for everything the app says, clips and live
- * TTS alike, so this is the one place that can promise the microphone knows
- * about all of it. The listener is a single slot rather than a set: exactly
- * one recogniser can run per page (a second ends the first), so exactly one
- * thing ever needs telling.
+ * THE CHANNEL ITSELF NOW LIVES IN audio/speechActivity.ts, and the reason is
+ * the half of it that reports an ENDING. Clips settle in clips.ts, which
+ * cannot import this file -- this file imports clips.ts -- so while the
+ * listener lived here only live TTS could say when it had stopped, and the
+ * recorded voice ships on by default. Re-exported from here because every
+ * caller already looks for it in this module.
  */
-type SpeechActivityListener = (estimatedMs: number, text?: string) => void;
-
-let speechActivityListener: SpeechActivityListener | null = null;
-
-/**
- * `text` is optional and carried only for the diagnostic log.
- *
- * What the app said is the other half of "it didn't hear me": every utterance
- * deafens the microphone for its own duration plus a tail, so a verbose
- * setting can leave the operator answering into a window that was never open.
- * The suppression window alone does not show that; the sentence that caused it
- * does.
- */
-export function setSpeechActivityListener(
-  fn: SpeechActivityListener | null,
-): void {
-  speechActivityListener = fn;
-}
+export { setSpeechActivityListener };
+export type { SpeechActivityListener, SpeechActivityPhase };
 
 /** Average characters per second of speech at rate 1.0, from ~150wpm. */
 const SPEECH_CHARS_PER_SEC = 16;
@@ -548,14 +551,113 @@ export function estimateSpeechMs(text: string, rate = 1): number {
   return Math.round(Math.min(MAX_SPEECH_MS, Math.max(MIN_SPEECH_MS, ms)));
 }
 
-function notifyActivityMs(ms: number, text?: string): void {
-  const listener = speechActivityListener;
-  if (!listener || ms <= 0) return;
-  try {
-    listener(ms, text);
-  } catch {
-    /* the microphone's bookkeeping must never break making a sound */
+/**
+ * How long a held cue will wait before sounding regardless.
+ *
+ * Six seconds is longer than any single prompt this app speaks and shorter
+ * than the operator's patience. The ceiling exists because a lost `onend` --
+ * which Safari produces after a cancel, and which the watchdog exists for --
+ * would otherwise swallow the cue entirely, and a microphone that opened and
+ * said nothing is indistinguishable from one that never opened. That is the
+ * exact failure this cue is here to rule out, so it must not be able to cause
+ * it.
+ */
+export const CUE_WAIT_CEILING_MS = 6000;
+
+/** Is the app making a noise right now, by either path? */
+function isSpeakingNow(): boolean {
+  return pendingSpeeches.length > 0 || isClipChainActive();
+}
+
+/**
+ * Sound a chime once the app has stopped talking.
+ *
+ * WHY, from Jack's 2026-10-02 log with the car off Bluetooth:
+ *
+ *   16:22:58.527  speak clip-chain  files="you-have-ace-five.mp3, dealer-shows-ten.mp3"
+ *   16:22:58.597  speak chime kind=ready volume=1
+ *   16:23:01.556  speak clip-end   ms=3029
+ *
+ * He reported it as a chime that never played. It played: a 120ms sine at half
+ * scale, seventy milliseconds into a three-second prompt, underneath a voice at
+ * full level. There is no `chime-suspended` line, so the tone was generated and
+ * simply masked.
+ *
+ * Holding it is not only about being heard. The cue is premature there too --
+ * anything said during that prompt is suppressed as the app's own voice -- so
+ * the moment worth marking is when the app shuts up, not when the recogniser
+ * happens to confirm.
+ *
+ * Returns a canceller, so a screen that unmounts while waiting leaves no beep
+ * behind for whatever is on screen next.
+ */
+/**
+ * The one cue waiting for silence, so that something can call it off.
+ *
+ * One slot, not a list: the cue exists to mark the microphone opening, there
+ * is one microphone, and a second cue would be marking the same moment twice.
+ *
+ * It needs calling off because an ENDING is what fires it, and leaving a
+ * screen produces an ending -- `cancelSpeech()` stops the clip chain, the
+ * chain settles, the waiter runs, and the operator gets a beep on whatever
+ * screen they just moved to. Mute is the same story and worse: the whole point
+ * of mute is that nothing makes a noise.
+ */
+let pendingCue: (() => void) | null = null;
+
+export function chimeWhenQuiet(
+  kind: ChimeKind,
+  opts?: { volume?: number },
+): () => void {
+  // A cue already waiting is a cue for a moment that has passed.
+  pendingCue?.();
+  let done = false;
+  let unregister: (() => void) | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const fire = (why: string): void => {
+    if (done) return;
+    done = true;
+    unregister?.();
+    unregister = null;
+    if (timer !== null) clearTimeout(timer);
+    // The reason rides along: "it waited" and "it gave up waiting" are
+    // different stories about the same beep, and only one of them is healthy.
+    pendingCue = null;
+    diag("speak", "cue-held", { kind, why });
+    chime(kind, opts);
+  };
+
+  const attempt = (): void => {
+    if (done) return;
+    if (!isSpeakingNow()) {
+      fire("quiet");
+      return;
+    }
+    // Still talking -- something else was in flight. Wait for the next ending.
+    unregister = whenSomethingFinishesSpeaking(attempt);
+  };
+
+  if (!isSpeakingNow()) {
+    fire("quiet");
+    return () => {};
   }
+
+  diag("speak", "cue-waiting", { kind });
+  unregister = whenSomethingFinishesSpeaking(attempt);
+  timer = setTimeout(() => fire("timeout"), CUE_WAIT_CEILING_MS);
+
+  const drop = (): void => {
+    if (done) return;
+    done = true;
+    unregister?.();
+    unregister = null;
+    if (timer !== null) clearTimeout(timer);
+    pendingCue = null;
+    diag("speak", "cue-dropped", { kind });
+  };
+  pendingCue = drop;
+  return drop;
 }
 
 function notifySpeechActivity(text: string, rate?: number): void {
@@ -987,6 +1089,11 @@ function settlePendingSpeech(
       voice: pending.appliedVoice,
       ...(pending.voiceSubstituted ? { voiceSubstituted: true } : {}),
     });
+    // THE ONE FUNNEL. `ended`, `error` and the watchdog all land here, and the
+    // microphone needs the real stopping time from every one of them -- an
+    // utterance abandoned by the watchdog has stopped making noise just as
+    // surely as one that ran to the end.
+    notifySpeechEnded();
   }
   pending.resolve();
 }

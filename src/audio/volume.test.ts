@@ -5,9 +5,8 @@ import {
   effectiveVolume,
   elementVolume,
   utteranceVolume,
-  needsAmplification,
-  gainFactor,
   chimePeak,
+  CHIME_PEAK_GAIN,
 } from './volume';
 
 /**
@@ -60,40 +59,31 @@ describe('element and utterance ceilings', () => {
   });
 });
 
-describe('amplification is only engaged when it has work to do', () => {
+describe('a request above unity reaches the voice as unity', () => {
   /**
-   * The safety property. Routing through Web Audio means a suspended
-   * AudioContext produces SILENCE rather than quiet, so the ordinary path
-   * must never touch it.
+   * The whole of the clip path's level control, now that the GainNode route is
+   * gone (audio/volume.ts says why -- it stretched a 3029ms prompt to 4455ms
+   * on the phone). An element clamped here is an element that still PLAYS; the
+   * setter throws above 1, and a throw takes out the utterance.
    */
-  it('is not needed at or below unity', () => {
-    expect(needsAmplification(0)).toBe(false);
-    expect(needsAmplification(0.5)).toBe(false);
-    expect(needsAmplification(1)).toBe(false);
+  it('hands an element at most unity, whatever was asked for', () => {
+    expect(elementVolume(1)).toBe(1);
+    expect(elementVolume(1.5)).toBe(1);
+    expect(elementVolume(2)).toBe(1);
+    expect(elementVolume(99)).toBe(1);
   });
 
-  it('is needed above unity', () => {
-    expect(needsAmplification(1.01)).toBe(true);
-    expect(needsAmplification(2)).toBe(true);
+  it('still attenuates below unity, which is the half that works', () => {
+    expect(elementVolume(0)).toBe(0);
+    expect(elementVolume(0.25)).toBe(0.25);
   });
 
-  it('has unity gain whenever it is not needed', () => {
-    expect(gainFactor(0)).toBe(1);
-    expect(gainFactor(0.5)).toBe(1);
-    expect(gainFactor(1)).toBe(1);
-  });
-
-  it('carries only the excess above unity', () => {
-    expect(gainFactor(1.5)).toBe(1.5);
-    expect(gainFactor(2)).toBe(2);
-    expect(gainFactor(5)).toBe(MAX_VOLUME);
-  });
-
-  // element x gain reconstructs the requested loudness.
-  it('composes back to the requested volume', () => {
-    for (const v of [0, 0.25, 1, 1.5, 2]) {
-      expect(elementVolume(v) * gainFactor(v)).toBeCloseTo(clampVolume(v), 5);
-    }
+  // The one path the headroom above unity still reaches: a bare oscillator,
+  // inside the graph already, with nothing to resample and nothing to damage.
+  it('spends the headroom above unity on the chimes instead', () => {
+    expect(chimePeak(1)).toBe(CHIME_PEAK_GAIN);
+    expect(chimePeak(2)).toBe(1);
+    expect(chimePeak(2)).toBeGreaterThan(chimePeak(1));
   });
 });
 

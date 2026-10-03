@@ -319,10 +319,10 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           onChange={(v) => updateAudio({ volume: v })}
           disabled={audioDisabled}
         />
-        {settings.audio.volume > 1 && !settings.audio.useClips && (
+        {settings.audio.volume > 1 && (
           <div className="settings-note-row u-note">
-            Above 100% only applies to the recorded voice. Live speech is capped at 100% by
-            the browser and cannot be amplified &mdash; turn the recorded voice on to use it.
+            Above 100% raises the alert tones only. Neither voice can go past 100% on
+            iOS &mdash; use the car or phone volume buttons for that.
           </div>
         )}
         <div className="settings-note-row u-note">
