@@ -14,7 +14,7 @@ import { looksLikeSelfEcho } from '../audio/selfEcho';
 import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
 import { reassertAudioFocus } from '../audio/audioFocus';
-import { logAudioInputs, logMicPermission } from '../diag/environment';
+import { logAudioInputs, logHardwareRate, logMicPermission } from '../diag/environment';
 import {
   micHasWorked,
   markMicWorked,
@@ -278,8 +278,24 @@ export function useVoiceControl({
          * the re-take is a no-op, so a microphone closing on a screen that
          * wants no wheel cannot take the car from the radio.
          */
-        if (state === 'off') reassertAudioFocus('mic-closed');
+        if (state === 'off') {
+          reassertAudioFocus('mic-closed');
+          /**
+           * READ AFTER THE CLOSE, which is half of the pair.
+           *
+           * The comment above this one already records what the 2026-09-29
+           * drive saw: output routing came back to the car 1.6 seconds after
+           * the microphone shut, because iOS re-decides it for each new sound.
+           * That is the behaviour this reading quantifies -- if the rate goes
+           * back up when the microphone closes, then closing it while the app
+           * speaks is the fix for the earpiece, and if it does not, the
+           * earpiece has some other cause and the fix would be wasted work.
+           */
+          logHardwareRate('mic-closed');
+        }
         if (state === 'listening') {
+          // The other half: read as soon as the session is confirmed open.
+          logHardwareRate('mic-open');
           /**
            * A push-to-talk window spends its five seconds on SPEAKING, which
            * cannot start before this moment. Told here rather than from any

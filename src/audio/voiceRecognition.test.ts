@@ -404,3 +404,45 @@ describe('looksLikeAnAttempt', () => {
     expect(looksLikeAnAttempt('   ')).toBe(false);
   });
 });
+
+
+/**
+ * A SENTENCE IS NOT AN ANSWER, when the only thing matching in it is a "no".
+ *
+ * 2026-10-02, 19:00:32, with Jack telling the app its audio was broken:
+ *
+ *   heard="Ignored the app was speaking you're not saying anything
+ *          there's no audio coming out"   -> verdict=no
+ *
+ * Thirteen words graded as an answer. "Yes" and "no" are among the commonest
+ * words in English and the only two in the vocabulary that are; an action word
+ * is not, which is why the gate is on the meta-words alone.
+ */
+describe('a meta-word only answers when the transcript is short', () => {
+  it('refuses a "no" buried in a sentence', () => {
+    expect(
+      matchVoiceAction("Ignored the app was speaking you're not saying anything there's no audio coming out"),
+    ).toBeNull();
+  });
+
+  it('refuses a "yes" buried in a sentence', () => {
+    expect(matchVoiceAction('well yes I suppose that is what it sounded like')).toBeNull();
+  });
+
+  it('still takes a plain one or two word answer', () => {
+    expect(matchVoiceAction('no')).toBe('no');
+    expect(matchVoiceAction('nope')).toBe('no');
+    expect(matchVoiceAction('uh yes')).toBe('yes');
+    expect(matchVoiceAction('yeah okay')).toBe('yes');
+    expect(matchVoiceAction('say again')).toBe('repeat');
+  });
+
+  it('still takes an ACTION however long the transcript', () => {
+    // The other half, and the half that would cost a real play. "Stand" and
+    // "surrender" are not words a passenger says in a car, so one buried in a
+    // long transcript is still the answer -- and throwing it away makes the
+    // drill sit in silence, which is what a dead microphone sounds like.
+    expect(matchVoiceAction('um I think I am going to have to stand')).toBe('stand');
+    expect(matchVoiceAction('okay well in that case let us double down')).toBe('double');
+  });
+});

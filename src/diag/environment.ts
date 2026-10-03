@@ -193,6 +193,62 @@ export async function logAudioInputs(reason: string): Promise<void> {
 }
 
 /**
+ * WHICH OUTPUT THE PHONE IS ON, read through the one thing a web page can see.
+ *
+ * This is the question the 2026-10-02 drive could not answer. "It's still
+ * coming from the top quiet phone speaker instead of the bottom loud speaker"
+ * is the loudest complaint in the log and the only one with no measurement
+ * behind it: iOS exposes no output-route API to a web page at all -- no
+ * `setSinkId`, no device list for outputs, nothing.
+ *
+ * But an AudioContext is built at the rate the HARDWARE is on at the moment it
+ * is constructed, and that rate names the route:
+ *
+ *   48000  -> the ordinary playback session, which is the loud bottom speaker
+ *   16000 or 8000 -> play-and-record or Bluetooth HFP, which is the earpiece
+ *                    at the top of the phone and the car's phone-call path
+ *
+ * iOS moves the session into play-and-record whenever a microphone is open,
+ * and play-and-record defaults its output to the receiver. That is the leading
+ * explanation for the earpiece, and this is what settles it -- read before the
+ * microphone opens and again after, the pair says whether the session moved.
+ *
+ * THROWAWAY ON PURPOSE. The shared context (audio/audioContext.ts) is fixed at
+ * whatever rate it was built with and cannot answer this twice; a fresh one
+ * reports the rate right now. It is closed immediately, and the count is
+ * capped, because a drill that opens the microphone every few seconds would
+ * otherwise build hundreds of them over a drive.
+ */
+const MAX_RATE_PROBES = 24;
+let rateProbes = 0;
+
+export function logHardwareRate(reason: string): void {
+  if (rateProbes >= MAX_RATE_PROBES) return;
+  rateProbes += 1;
+  try {
+    const Ctor =
+      (window as unknown as { AudioContext?: typeof AudioContext }).AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) {
+      diag('route', 'hardware-rate', { reason, state: 'unavailable' });
+      return;
+    }
+    const ctx = new Ctor();
+    diag('route', 'hardware-rate', { reason, rate: ctx.sampleRate, state: ctx.state });
+    // Fire and forget: `close()` returns a promise, and a rejection here is of
+    // no interest -- the reading is already taken.
+    void Promise.resolve(ctx.close()).catch(() => {});
+  } catch (e) {
+    diag('route', 'hardware-rate', { reason, state: 'threw', error: String(e) });
+  }
+}
+
+/** Test-only: let a suite take more than one drive's worth of readings. */
+export function _resetRateProbesForTest(): void {
+  rateProbes = 0;
+}
+
+/**
  * WHICH microphone, not which microphones.
  *
  * `logAudioInputs` above lists the inputs that EXIST. Nothing in it says

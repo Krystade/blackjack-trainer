@@ -107,6 +107,30 @@ function normalise(transcript: string): string {
 }
 
 /**
+ * How long a transcript may be and still count as "yes", "no" or "repeat".
+ *
+ * From the 2026-10-02 drive, at 19:00:32, while Jack was telling the app its
+ * audio was broken:
+ *
+ *   heard="Ignored the app was speaking you're not saying anything
+ *          there's no audio coming out"   -> verdict=no
+ *
+ * Thirteen words, graded as an answer, because one of them was "no".
+ *
+ * ACTIONS ARE NOT GATED THIS WAY and must not be. "Stand", "split" and
+ * "surrender" are not words that turn up in ordinary speech in a moving car,
+ * so one buried in a long transcript is still very probably the answer, and
+ * dropping it costs a real play. "Yes" and "no" are the two commonest words in
+ * English after the articles; buried in a sentence, a "no" is almost never an
+ * answer, and grading one wrong writes a loss into the record and tells the
+ * driver they were wrong.
+ *
+ * Three, because that is what the filler actually looks like: "uh yes",
+ * "no thanks", "yeah okay". Every real answer in this app is one word.
+ */
+const META_MAX_TOKENS = 3;
+
+/**
  * Map a raw transcript to an action, or null to reject it.
  *
  * Reads right to left: engines routinely prepend filler ("uh, stand", "okay
@@ -124,12 +148,13 @@ export function matchVoiceAction(transcript: string): VoiceAction | null {
   if (whole) return whole;
 
   const tokens = cleaned.split(/\s+/);
+  const metaAllowed = tokens.length <= META_MAX_TOKENS;
   let lastMeta: VoiceAction | null = null;
   for (let i = tokens.length - 1; i >= 0; i--) {
     const hit = ALIASES[tokens[i]!];
     if (!hit) continue;
     if (ACTIONS.has(hit)) return hit;
-    lastMeta ??= hit;
+    if (metaAllowed) lastMeta ??= hit;
   }
   return lastMeta;
 }
