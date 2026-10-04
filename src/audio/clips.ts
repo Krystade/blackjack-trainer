@@ -916,6 +916,21 @@ export function playClipsResumable(
               // wrote nothing, while the rarer `error` event right above it
               // was logged. The two were not symmetric.
               playResult.catch((e: unknown) => {
+                /**
+                 * A rejection AFTER the chain has settled is the stop we asked
+                 * for, not a fault. Pausing an element whose `play()` is still
+                 * pending is how a browser reports a deliberate interruption,
+                 * and `stopActiveChain` has already settled this chain
+                 * `stopped` and sent the caller on its way. Logging
+                 * `clip-broke` here put the word that means trouble into the
+                 * export on every voice toggle mid-sentence -- see the test
+                 * that pins this, and the 2026-10-03 reading it came from.
+                 *
+                 * `chain.settled` rather than the error NAME on purpose: an
+                 * AbortError can also arrive from a `src` reassignment that
+                 * nothing asked for, and that one is still a broken clip.
+                 */
+                if (chain.settled) return;
                 diag('speak', 'clip-broke', {
                   file: fileList[index]?.file ?? '(none)',
                   index,

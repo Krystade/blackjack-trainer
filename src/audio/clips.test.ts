@@ -648,6 +648,71 @@ describe('playClipsAsync — happy path (fake Audio + fetch)', () => {
     await expect(playing).resolves.toBe(true);
   });
 
+  /**
+   * Seen in the 2026-10-03 export, on the line where voice was switched off
+   * mid-sentence: `clip-broke why=play-rejected name=AbortError`.
+   *
+   * Nothing was broken. Pausing an element whose `play()` is still pending is
+   * how a browser reports a deliberate stop, and the chain had already settled
+   * `stopped` -- so the caller never fell back and the cabin heard exactly what
+   * was intended. What the log said was that a clip failed.
+   *
+   * That matters because of how these logs get read. A 335-entry export is
+   * searched for the words that mean trouble, and `clip-broke` is one of them;
+   * an entry that cries fault on a normal toggle sends the next reading of that
+   * log after a bug that is not there. The fix is to say nothing when the
+   * rejection is the stop we asked for, which is exactly what `chain.settled`
+   * already distinguishes.
+   */
+  it('a stop that rejects a pending play is not reported as a broken clip', async () => {
+    const instances: PausingAudio[] = [];
+    /** Rejects a pending `play()` on pause, the way a real browser does. */
+    class PausingAudio extends FakeAudioElement {
+      #rejectPending: ((e: unknown) => void) | null = null;
+      constructor() {
+        super();
+        instances.push(this);
+      }
+      play(): Promise<void> {
+        this.played = true;
+        this.paused = false;
+        return new Promise((_resolve, reject) => {
+          this.#rejectPending = reject;
+        });
+      }
+      pause(): void {
+        this.paused = true;
+        const reject = this.#rejectPending;
+        this.#rejectPending = null;
+        reject?.(new DOMException('interrupted by pause()', 'AbortError'));
+      }
+    }
+    (globalThis as any).window = { Audio: PausingAudio };
+    mockFetchRouter({
+      'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
+      'manifest.json': async () => ({ clips: { queen: 'queen.mp3' } }),
+    });
+    clearDiagnosticLog();
+
+    const playing = playClipsAsync('queen');
+    await vi.waitFor(() => expect(instances.length).toBe(1));
+    stopClips();
+    // Settled by the stop, so the caller must not go off and speak it again.
+    await expect(playing).resolves.toBe(true);
+    // The rejection lands a microtask later than the pause.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const log = readDiagnosticLog();
+    expect(
+      log.filter((e) => e.event === 'clip-broke'),
+      'a deliberate stop was written down as a broken clip',
+    ).toEqual([]);
+    // The premise: the stop WAS recorded, so this is not green merely because
+    // nothing was logged at all.
+    expect(log.some((e) => e.event === 'clip-end' && e.detail?.reason === 'stopped')).toBe(true);
+  });
+
   it('a lost ended event is settled by the watchdog rather than hanging forever', async () => {
     vi.useFakeTimers();
     try {

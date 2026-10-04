@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { logSelectedInput, logHardwareRate, _resetRateProbesForTest } from './environment';
+import {
+  logEnvironment,
+  logSelectedInput,
+  logHardwareRate,
+  _resetRateProbesForTest,
+} from './environment';
 import { clearDiagnosticLog, readDiagnosticLog } from './diagnosticLog';
 
 /**
@@ -179,5 +184,104 @@ describe('logHardwareRate', () => {
       (e) => e.category === 'route' && e.event === 'hardware-rate',
     );
     expect(row?.detail).toMatchObject({ reason: 'boot', state: 'unavailable' });
+  });
+});
+
+
+/**
+ * THE VOICE LIST, READ TWICE, because once answers the wrong question.
+ *
+ * `env voices count=0` appeared on one page load of the 2026-10-03 export and
+ * it is unreadable on its own: iOS fills the list asynchronously, so zero at
+ * boot means either "this phone has no speech synthesis" or "ask again in a
+ * moment", and those two want opposite responses from whoever reads the log.
+ * The probe's own comment claimed there was no `voiceschanged` listener, which
+ * stopped being true when `primeVoices` was added to speech.ts -- so the one
+ * reading in the log was the pessimistic one and nothing ever corrected it.
+ *
+ * A second entry when the list fills makes the distinction, and the silence
+ * when it does not is then meaningful too.
+ */
+describe('the voice inventory', () => {
+  interface FakeSynth {
+    getVoices: () => unknown[];
+    addEventListener: (type: string, fn: () => void) => void;
+  }
+
+  function installSynth(initial: unknown[]): { fill: (later: unknown[]) => void } {
+    let current = initial;
+    const listeners: Record<string, Array<() => void>> = {};
+    const synth: FakeSynth = {
+      getVoices: () => current,
+      addEventListener: (type, fn) => {
+        (listeners[type] ??= []).push(fn);
+      },
+    };
+    (globalThis as { window?: unknown }).window = { speechSynthesis: synth };
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { userAgent: 'fake', language: 'en-GB' },
+      configurable: true,
+      writable: true,
+    });
+    return {
+      fill: (later) => {
+        current = later;
+        for (const fn of listeners.voiceschanged ?? []) fn();
+      },
+    };
+  }
+
+  const voiceRows = () =>
+    readDiagnosticLog().filter((e) => e.category === 'env' && e.event === 'voices');
+
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it('writes the late list down when the first reading was empty', () => {
+    const synth = installSynth([]);
+    logEnvironment();
+    expect(voiceRows()[0]?.detail).toMatchObject({ count: 0 });
+
+    synth.fill([{ name: 'Samantha', lang: 'en-US', default: true }]);
+
+    const rows = voiceRows();
+    expect(rows.length, 'an empty first reading was never corrected').toBe(2);
+    expect(rows[1]!.detail).toMatchObject({ count: 1, nominated: 'Samantha', when: 'late' });
+  });
+
+  it('says nothing more when the list was already there', () => {
+    // The other half of the instrument. A second row on every page load would
+    // be noise, and a reader counting `voices` rows to spot the slow phones
+    // would count every phone.
+    const synth = installSynth([{ name: 'Daniel', lang: 'en-GB', default: true }]);
+    logEnvironment();
+    synth.fill([
+      { name: 'Daniel', lang: 'en-GB', default: true },
+      { name: 'Samantha', lang: 'en-US' },
+    ]);
+    expect(voiceRows().length).toBe(1);
+  });
+
+  it('stays silent where the list never fills, which is the real absence', () => {
+    installSynth([]);
+    logEnvironment();
+    expect(voiceRows().length).toBe(1);
+    expect(voiceRows()[0]!.detail).toMatchObject({ count: 0 });
+  });
+
+  it('ignores a voiceschanged that brought nothing with it', () => {
+    // WebKit fires this event more than once, and an early fire can still
+    // hand back an empty list. A `count=0 when=late` row would say the list
+    // had been re-read and found empty, which is true and useless -- it is
+    // the same non-answer as the boot row, written twice.
+    const synth = installSynth([]);
+    logEnvironment();
+    synth.fill([]);
+    expect(voiceRows().length).toBe(1);
+
+    // And the correcting row still arrives when the list actually turns up.
+    synth.fill([{ name: 'Samantha', lang: 'en-US', default: true }]);
+    expect(voiceRows().length).toBe(2);
   });
 });

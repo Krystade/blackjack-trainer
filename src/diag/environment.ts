@@ -109,23 +109,51 @@ export function logEnvironment(): void {
      * flag was never in a log.
      *
      * `count` also stands as the readiness reading. iOS populates the list
-     * asynchronously and there is no `voiceschanged` listener, so an utterance
-     * spoken early resolves against a partial list. A `tts-end` with a voice
-     * name that could not have won a full list is evidence the list was still
-     * filling, which is a candidate explanation for the six silent utterances
-     * of 2026-09-29 that is otherwise unfalsifiable.
+     * asynchronously, so an utterance spoken early resolves against a partial
+     * list. A `tts-end` with a voice name that could not have won a full list
+     * is evidence the list was still filling, which is a candidate explanation
+     * for the six silent utterances of 2026-09-29 that is otherwise
+     * unfalsifiable.
+     *
+     * AND READ AGAIN IF IT WAS EMPTY. `count=0` appeared on one page load of
+     * the 2026-10-03 export and means two opposite things -- a phone with no
+     * speech synthesis at all, or a list that had simply not filled yet -- so
+     * on its own it is not a reading. `speech.ts` has subscribed to
+     * `voiceschanged` since `primeVoices` landed, and this takes the same
+     * event for the log: one correcting row, only where the first was empty,
+     * so silence afterwards means the list genuinely never arrived.
      */
     try {
       const synth = (w as unknown as { speechSynthesis?: SpeechSynthesis }).speechSynthesis;
+      const report = (voices: SpeechSynthesisVoice[], when: 'boot' | 'late'): void => {
+        diag('env', 'voices', {
+          when,
+          count: voices.length,
+          nominated: voices.find((v) => v.default === true)?.name,
+          names: voices
+            .filter((v) => v.lang?.toLowerCase().startsWith('en'))
+            .map((v) => v.name)
+            .join(', '),
+        });
+      };
       const voices: SpeechSynthesisVoice[] = synth?.getVoices?.() ?? [];
-      diag('env', 'voices', {
-        count: voices.length,
-        nominated: voices.find((v) => v.default === true)?.name,
-        names: voices
-          .filter((v) => v.lang?.toLowerCase().startsWith('en'))
-          .map((v) => v.name)
-          .join(', '),
-      });
+      report(voices, 'boot');
+      if (voices.length === 0 && typeof synth?.addEventListener === 'function') {
+        let corrected = false;
+        synth.addEventListener('voiceschanged', () => {
+          try {
+            // ONCE. A phone that fires the event repeatedly would otherwise
+            // write a row per fire into a log read by hand.
+            if (corrected) return;
+            const later: SpeechSynthesisVoice[] = synth.getVoices?.() ?? [];
+            if (later.length === 0) return;
+            corrected = true;
+            report(later, 'late');
+          } catch {
+            /* the late reading is an improvement on silence, never a cost */
+          }
+        });
+      }
     } catch {
       /* a voice inventory is a diagnostic; never let it break boot */
     }
