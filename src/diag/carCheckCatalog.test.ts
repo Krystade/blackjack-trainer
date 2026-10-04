@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import {
+  audioGraphCheck,
   audioOutCheck,
+  chimeAudibleCheck,
+  clipSpeedCheck,
+  elementVolumeCheck,
+  outputRouteCheck,
   wheelPressCheck,
   ambientCheck,
   clipVoiceCheck,
@@ -8,6 +13,7 @@ import {
   listAudioInputs,
 } from './carCheckCatalog';
 import { foldFrames } from './ambientNoise';
+import { _resetSharedAudioContextForTest } from '../audio/audioContext';
 import { narrateAnswerEcho, ANSWER_ECHO_LABELS } from '../audio/narrate';
 
 /** An element that accepts play() and may or may not actually render audio. */
@@ -445,5 +451,237 @@ describe('measuring one named input', () => {
 
     const audio = (asked as { audio?: Record<string, unknown> }).audio ?? {};
     expect(audio.deviceId, 'pinned a device nobody asked for').toBeUndefined();
+  });
+});
+
+
+/* ------------------------------------------------------------------------ */
+/* The checks that run on the phone because they cannot run anywhere else   */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * THE TESTS FOR THE TESTS, and the reason they matter more than usual.
+ *
+ * These five checks exist because Jack said, on 2026-10-03, "you running the
+ * tests here on my computer vs me using the app on my phone just doesn't
+ * equate" -- and he was right: every fault that reached the car this week was
+ * green on the desktop suite. The checks are the answer to that, so a check
+ * that cannot report a fault is worse than no check at all. It would turn a
+ * real fault into a screen full of ticks.
+ *
+ * So each one is driven here with a fake that FAILS in the exact way the phone
+ * failed, as well as one that works.
+ */
+describe('the device-only checks', () => {
+  const realWindow = (globalThis as any).window;
+  afterEach(() => {
+    _resetSharedAudioContextForTest();
+    if (realWindow === undefined) delete (globalThis as any).window;
+    else (globalThis as any).window = realWindow;
+  });
+
+  /** An element that honours, ignores, or refuses a volume assignment. */
+  function volumeElement(mode: 'honours' | 'ignores'): HTMLAudioElement {
+    const el: Record<string, unknown> = {};
+    let stored = 1;
+    Object.defineProperty(el, 'volume', {
+      get: () => (mode === 'ignores' ? 1 : stored),
+      set: (v: number) => {
+        stored = v;
+      },
+    });
+    return el as unknown as HTMLAudioElement;
+  }
+
+  describe('the Web Audio graph', () => {
+    function installContext(state: string, resumesTo?: string) {
+      class Ctx {
+        state = state;
+        sampleRate = 48_000;
+        resume() {
+          if (resumesTo) this.state = resumesTo;
+          return Promise.resolve();
+        }
+      }
+      (globalThis as any).window = { AudioContext: Ctx };
+    }
+
+    it('passes when a resume wakes it', async () => {
+      installContext('suspended', 'running');
+      const r = await audioGraphCheck().run();
+      expect(r.outcome).toBe('pass');
+      expect(r.detail).toMatchObject({ state: 'running', rate: 48_000 });
+    });
+
+    it('warns when it stays asleep, which is what the phone did', async () => {
+      // 2026-10-03: `audio-unlock state=suspended` from a gesture, and
+      // `chime-suspended state=suspended` eight seconds later. Twice.
+      installContext('suspended');
+      const r = await audioGraphCheck().run();
+      expect(r.outcome).toBe('warn');
+      expect(r.detail).toMatchObject({ state: 'suspended' });
+    });
+
+    it('warns rather than failing where there is no graph at all', async () => {
+      (globalThis as any).window = {};
+      expect((await audioGraphCheck().run()).outcome).toBe('warn');
+    });
+  });
+
+  describe('whether the app can set its own volume', () => {
+    it('passes when the assignment reaches the audio', async () => {
+      const r = await elementVolumeCheck(() => volumeElement('honours')).run();
+      expect(r.outcome).toBe('pass');
+      expect(r.detail).toMatchObject({ wanted: 0.37, got: 0.37 });
+    });
+
+    it('fails when the setter is a no-op, which is WebKit on iOS', async () => {
+      // The open question the whole Volume setting rests on: assignment is
+      // IGNORED rather than refused, so a dead slider and a quiet clip look
+      // identical from inside the app.
+      const r = await elementVolumeCheck(() => volumeElement('ignores')).run();
+      expect(r.outcome).toBe('fail');
+      expect(r.detail).toMatchObject({ wanted: 0.37, got: 1 });
+      expect(r.summary).toContain('hardware buttons');
+    });
+
+    it('fails rather than throwing where there is no element', async () => {
+      expect((await elementVolumeCheck(() => null).run()).outcome).toBe('fail');
+    });
+  });
+
+  describe('whether the microphone cue makes a sound', () => {
+    function installToneElement(behaviour: 'ends' | 'stalls' | 'refuses' | 'errors') {
+      class ToneEl {
+        src = '';
+        volume = 1;
+        onended: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        play(): Promise<void> {
+          if (behaviour === 'refuses') {
+            return Promise.reject(new DOMException('no gesture', 'NotAllowedError'));
+          }
+          if (behaviour === 'ends') setTimeout(() => this.onended?.(), 10);
+          if (behaviour === 'errors') setTimeout(() => this.onerror?.(), 10);
+          return Promise.resolve();
+        }
+      }
+      (globalThis as any).window = { Audio: ToneEl };
+    }
+
+    it('passes when the tone plays to the end', async () => {
+      installToneElement('ends');
+      const r = await chimeAudibleCheck().run();
+      expect(r.outcome).toBe('pass');
+      expect(r.detail).toMatchObject({ how: 'ended' });
+    });
+
+    it('fails when it starts and never finishes', async () => {
+      // Both shapes of "I didn't hear any chime": masked under a prompt, then
+      // synthesised into a suspended graph. The app believed it chimed.
+      vi.useFakeTimers();
+      try {
+        installToneElement('stalls');
+        const pending = chimeAudibleCheck().run();
+        await vi.advanceTimersByTimeAsync(2_500);
+        const r = await pending;
+        expect(r.outcome).toBe('fail');
+        expect(r.detail).toMatchObject({ how: 'timeout' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('fails when the phone refuses to play it', async () => {
+      installToneElement('refuses');
+      const r = await chimeAudibleCheck().run();
+      expect(r.outcome).toBe('fail');
+      expect(r.detail).toMatchObject({ why: 'NotAllowedError' });
+    });
+  });
+
+  describe('whether a recorded line plays at its own speed', () => {
+    function timedClip(durationS: number, playMs: number): HTMLAudioElement {
+      const el: Record<string, unknown> = {
+        duration: durationS,
+        readyState: 1,
+        pause: () => {},
+        load: () => {},
+        onended: null,
+        onerror: null,
+        onloadedmetadata: null,
+      };
+      el.play = () => {
+        setTimeout(() => (el.onended as (() => void) | null)?.(), playMs);
+        return Promise.resolve();
+      };
+      return el as unknown as HTMLAudioElement;
+    }
+
+    it('passes when the wall time matches the recording', async () => {
+      const r = await clipSpeedCheck(() => timedClip(1.0, 30)).run();
+      expect(r.outcome).toBe('pass');
+      expect((r.detail as { ratio: number }).ratio).toBeLessThanOrEqual(1.4);
+    });
+
+    it('fails when something stretches it, which is what the gain node did', async () => {
+      /**
+       * The readings this exists for, from the phone on 2026-10-02:
+       *   3029ms -> 4455ms at 200%   (1.47x)
+       *   3099ms -> 7687ms at 150%   (2.48x)
+       * Reported as "150% is choppy and 200% is just silent".
+       */
+      vi.useFakeTimers();
+      try {
+        const pending = clipSpeedCheck(() => timedClip(1.0, 2_500)).run();
+        await vi.advanceTimersByTimeAsync(3_000);
+        const r = await pending;
+        expect(r.outcome).toBe('fail');
+        expect((r.detail as { ratio: number }).ratio).toBeGreaterThan(2);
+        expect(r.summary).toContain('choppy');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('warns rather than failing when the clip never loads', async () => {
+      // "We did not find out" is not "it is broken", and the two must not
+      // share a verdict on a roadside.
+      vi.useFakeTimers();
+      try {
+        const el = { readyState: 0, load: () => {}, onloadedmetadata: null, onerror: null };
+        const pending = clipSpeedCheck(() => el as unknown as HTMLAudioElement).run();
+        await vi.advanceTimersByTimeAsync(6_000);
+        expect((await pending).outcome).toBe('warn');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('which speaker the voice came out of', () => {
+    it('runs in the microphone phase, because that is what moves the route', () => {
+      // An output-route question asked before anything opened the microphone
+      // would be asked in the one state where the answer is never in doubt.
+      expect(outputRouteCheck(() => null).phase).toBe('microphone');
+    });
+
+    it('asks the operator rather than answering itself', async () => {
+      const el = { play: () => Promise.resolve(), pause: () => {} };
+      const check = outputRouteCheck(() => el as unknown as HTMLAudioElement);
+      expect(check.askOperator).toBeTruthy();
+      vi.useFakeTimers();
+      try {
+        const pending = check.run();
+        await vi.advanceTimersByTimeAsync(2_000);
+        const r = await pending;
+        // Never a pass: the app cannot observe its own output route on iOS --
+        // no setSinkId, no output device list, and the hardware rate read
+        // 48000 on both sides of the microphone opening.
+        expect(r.outcome).toBe('warn');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

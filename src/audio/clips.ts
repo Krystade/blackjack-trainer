@@ -448,6 +448,9 @@ function takeIdleAudio(AudioCtor: new () => HTMLAudioElement): HTMLAudioElement 
   return idleAudio.pop() ?? new AudioCtor();
 }
 
+/** How long a 120ms tone is given before its element is reclaimed regardless. */
+const TONE_RELEASE_MS = 1000;
+
 /**
  * Play silence on fresh elements so they are unlocked before the drill needs
  * them. CALLED FROM A USER GESTURE ONLY -- see audio/unlock.ts, which is the
@@ -510,6 +513,67 @@ function returnIdleAudio(audio: HTMLAudioElement): void {
   audio.onended = null;
   audio.onerror = null;
   if (!idleAudio.includes(audio)) idleAudio.push(audio);
+}
+
+/**
+ * Play a short generated sound on a pooled element, outside the chain.
+ *
+ * FOR THE CHIMES, which until 2026-10-03 were an oscillator in the Web Audio
+ * graph and on Jack's phone made no sound at all: `chime-suspended` twice in
+ * one export, eight seconds after a gesture had resumed the graph, while
+ * recorded clips played perfectly throughout. The element path works on that
+ * device and the graph does not, so the chimes move to the element path.
+ *
+ * DELIBERATELY NOT A CHAIN. `activeChain` holds at most one, so routing a
+ * 120ms beep through it would cancel whatever prompt was speaking -- and the
+ * cue that says "the microphone is open" fires precisely when a prompt has
+ * just finished and the next may have started. A chime and a sentence are
+ * allowed to overlap; a chime must never stop one.
+ *
+ * It still draws from the same pool, because the pool is what makes an
+ * element unlocked: a brand-new element on iOS has never played, so `play()`
+ * on it is refused outside a gesture, which is the failure that silenced
+ * clips on the 2026-10-02 drive.
+ */
+export function playPooledTone(src: string, volume: number): void {
+  const AudioCtor = getAudioCtor();
+  if (!AudioCtor) return;
+  try {
+    const audio = takeIdleAudio(AudioCtor);
+    let returned = false;
+    const release = () => {
+      if (returned) return;
+      returned = true;
+      returnIdleAudio(audio);
+    };
+    audio.src = src;
+    if (typeof audio.load === 'function') audio.load();
+    audio.volume = elementVolume(volume);
+    audio.onended = release;
+    audio.onerror = () => {
+      diag('speak', 'tone-broke', { why: 'element-error' });
+      release();
+    };
+    const result = audio.play();
+    if (result && typeof result.then === 'function') {
+      result.catch((e: unknown) => {
+        // Named, because the two reasons are different problems: a locked
+        // element (NotAllowedError) means the gesture unlock did not happen,
+        // and an AbortError means something reset `src` underneath it.
+        diag('speak', 'tone-broke', {
+          why: 'play-rejected',
+          name: (e as { name?: string })?.name ?? 'unknown',
+        });
+        release();
+      });
+    }
+    // A belt-and-braces return: `ended` is not guaranteed on a sound this
+    // short if the element is interrupted, and an element that never comes
+    // back is an element the pool has lost.
+    setTimeout(release, TONE_RELEASE_MS);
+  } catch {
+    /* a chime must never throw into whatever asked for it */
+  }
 }
 
 /**

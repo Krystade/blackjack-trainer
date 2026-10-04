@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { micSessionCostPaid } from '../../audio/micSessionCost';
 import type { VoiceStatus } from '../useVoiceControl';
 import { VOICE_STATE_LABEL, VOICE_WORDS, describeVerdict } from '../voiceLabels';
 
@@ -9,6 +10,12 @@ import { VOICE_STATE_LABEL, VOICE_WORDS, describeVerdict } from '../voiceLabels'
  * `hint` replaces only the last line, because the vocabulary differs per
  * screen -- "yes" deals a hand at the table and confirms a count in a drill
  * -- while the state and the last-heard readout never do.
+ *
+ * The earpiece line appears only once a session has actually opened, which is
+ * why it is read here rather than passed in: seven screens render this strip
+ * and the cost belongs to the page, not to any of them. It is not a warning to
+ * act on -- there is no action -- it is the answer to "why has it gone quiet",
+ * which otherwise arrives as a mystery mid-drive. See audio/micSessionCost.ts.
  */
 export function VoiceStatusBar({ status, hint }: { status: VoiceStatus; hint?: ReactNode }) {
   return (
@@ -20,6 +27,12 @@ export function VoiceStatusBar({ status, hint }: { status: VoiceStatus; hint?: R
         </span>
       )}
       <span className="voice-status-words">{hint ?? <>Say: {VOICE_WORDS}</>}</span>
+      {micSessionCostPaid() && (
+        <span className="voice-status-earpiece">
+          Sound is on the earpiece at the top of the phone: the open microphone put it
+          there.
+        </span>
+      )}
     </div>
   );
 }

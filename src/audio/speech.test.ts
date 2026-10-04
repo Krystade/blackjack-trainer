@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { _resetQuietWaitersForTest } from './speechActivity';
 import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 import { _resetClipsForTest } from './clips';
+import { _resetToneCacheForTest } from './tone';
 import {
   speak, speakAsync, chime, chimeFrequencyForTest, isSpeechSupported, listVoices, cancelSpeech, pickBestVoice,
   getLastSpoken, repeatLast, _resetLastSpokenForTest, _resetSharedAudioContextForTest,
@@ -468,80 +469,96 @@ describe('speak()/speakAsync() — opts.volume', () => {
 /* chime() — volume scaling of the tone's gain peak                         */
 /* ------------------------------------------------------------------------ */
 
-interface RampCall {
-  value: number;
-  time: number;
-}
-
 /**
- * Minimal Web Audio stand-in that records the gain envelope chime() builds,
- * so the peak can be asserted without a real AudioContext.
+ * The minimum element a generated tone needs. The chimes play through the
+ * same pooled `HTMLAudioElement` path as the recorded clips since 2026-10-03
+ * -- see audio/tone.ts for the export that forced it.
  */
-function installFakeAudioContextEnv(): { ramps: RampCall[] } {
-  const ramps: RampCall[] = [];
-  class FakeAudioContext {
-    currentTime = 0;
-    destination = {};
-    createOscillator() {
-      return {
-        type: '',
-        frequency: { value: 0 },
-        connect: () => {},
-        start: () => {},
-        stop: () => {},
-      };
-    }
-    createGain() {
-      return {
-        gain: {
-          setValueAtTime: () => {},
-          linearRampToValueAtTime: (value: number, time: number) => {
-            ramps.push({ value, time });
-          },
-        },
-        connect: () => {},
-      };
-    }
+class FakeChimeElement {
+  src = '';
+  volume = 1;
+  muted = false;
+  paused = true;
+  played = false;
+  onended: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  load(): void {}
+  pause(): void {
+    this.paused = true;
   }
-  (globalThis as any).window = { location: { search: '' }, AudioContext: FakeAudioContext };
-  return { ramps };
+  play(): Promise<void> {
+    this.played = true;
+    this.paused = false;
+    return Promise.resolve();
+  }
 }
 
 describe('chime() — volume', () => {
-  // The shared AudioContext is memoized for the page's lifetime, so without
-  // this each test after the first would chime into the PREVIOUS test's fake
-  // and record nothing into its own `ramps`.
-  beforeEach(() => _resetSharedAudioContextForTest());
   afterEach(() => {
-    _resetSharedAudioContextForTest();
+    _resetClipsForTest();
+    _resetToneCacheForTest();
     delete (globalThis as any).window;
   });
 
-  it('scales the tone\'s gain peak by opts.volume', () => {
-    const env = installFakeAudioContextEnv();
+  /**
+   * The level now rides on the ELEMENT, not on a gain envelope, because the
+   * tone is a generated WAV played the way the clips are played. On Jack's
+   * phone the oscillator version made no sound at all -- two `chime-suspended`
+   * lines in the 2026-10-03 export, eight seconds after a gesture had resumed
+   * the graph, while every recorded clip played. See audio/tone.ts.
+   */
+  function installFakeChimeElements(): FakeChimeElement[] {
+    const made: FakeChimeElement[] = [];
+    class Tracked extends FakeChimeElement {
+      constructor() {
+        super();
+        made.push(this);
+      }
+    }
+    (globalThis as any).window = { location: { search: '' }, Audio: Tracked };
+    return made;
+  }
+
+  it("scales the tone's level by opts.volume", () => {
+    const made = installFakeChimeElements();
     chime('good', { volume: 0.5 });
-    // First ramp is the attack to the peak; second is the release to silence.
-    expect(env.ramps[0].value).toBeCloseTo(0.25, 5);
-    expect(env.ramps[1].value).toBe(0);
+    expect(made.length, 'no element was asked to play the tone').toBe(1);
+    expect(made[0]!.volume).toBeCloseTo(0.25, 5);
+    expect(made[0]!.played).toBe(true);
   });
 
-  // The peak was 0.3 for most of this app's life, leaving most of the
-  // available headroom unused -- a bare oscillator reaches full scale at 1.0.
-  // The operator asked for more volume, and the chime was the one path with
-  // room to give it for free (see audio/volume.ts). Now 0.5 at full volume.
+  // The peak was 0.3 for most of this app's life. Half scale at full volume
+  // keeps a beep from being as loud as a voice, which in a car is startling.
   it('uses the full-volume peak when no volume is given', () => {
-    const env = installFakeAudioContextEnv();
+    const made = installFakeChimeElements();
     chime('good');
-    expect(env.ramps[0].value).toBeCloseTo(0.5, 5);
+    expect(made[0]!.volume).toBeCloseTo(0.5, 5);
   });
 
-  // The boost ceiling reaches the chime too, but a bare oscillator clips
-  // above full scale, so the envelope must saturate rather than overshoot.
-  it('never rings above full scale even at the boost ceiling', () => {
-    const env = installFakeAudioContextEnv();
+  // The headroom above 100% reaches the chime and nothing else, which is the
+  // whole of what the slider still buys above unity (audio/volume.ts). An
+  // element throws above 1, so it has to saturate rather than overshoot.
+  it('rings louder at the boost ceiling, but never above full scale', () => {
+    const made = installFakeChimeElements();
     chime('good', { volume: 2 });
-    expect(env.ramps[0].value).toBeLessThanOrEqual(1);
-    expect(env.ramps[0].value).toBeGreaterThan(0.5);
+    expect(made[0]!.volume).toBeGreaterThan(0.5);
+    expect(made[0]!.volume).toBeLessThanOrEqual(1);
+  });
+
+  it('plays a real sound rather than an empty source', () => {
+    const made = installFakeChimeElements();
+    chime('ready');
+    // A data URI of actual samples: the tone is generated, so a regression
+    // that produced an empty or malformed one would still "play" silently.
+    expect(made[0]!.src.startsWith('data:audio/wav;base64,')).toBe(true);
+    expect(made[0]!.src.length).toBeGreaterThan(1000);
+  });
+
+  it('gives a different kind a different tone', () => {
+    const made = installFakeChimeElements();
+    chime('good');
+    chime('bad');
+    expect(made[0]!.src).not.toBe(made[1]!.src);
   });
 });
 
@@ -1076,68 +1093,98 @@ describe('every speaking entry point tells the microphone', () => {
  * logged nothing at all. A cue that silently does not happen is worse than no
  * cue: on the microphone step it manufactures the fault it exists to rule out.
  */
-describe('chime() — a context that is asleep', () => {
-  beforeEach(() => _resetSharedAudioContextForTest());
+describe('chime() — the Web Audio graph is not involved', () => {
   afterEach(() => {
+    _resetClipsForTest();
+    _resetToneCacheForTest();
     _resetSharedAudioContextForTest();
     clearDiagnosticLog();
     delete (globalThis as any).window;
   });
 
-  function installSuspendedContext(opts: { resumesTo?: string } = {}) {
-    const calls = { resume: 0 };
-    class SuspendedContext {
+  /**
+   * THE REGRESSION THIS EXISTS TO CATCH, written from the export rather than
+   * from a theory. 2026-10-03, build 89bd8db, twice on two page loads:
+   *
+   *   17:12:10.573  audio-unlock    reason=gesture state=suspended rate=48000
+   *   17:12:18.556  cue-held        kind=ready why=quiet
+   *   17:12:18.556  chime           kind=ready volume=1
+   *   17:12:18.658  chime-suspended kind=ready state=suspended
+   *
+   * A gesture resumed the context and it was still suspended eight seconds
+   * later, so the oscillator played into silence -- while recorded clips, on
+   * plain elements, played perfectly throughout the same minute. The graph
+   * does not reliably wake on that device. Anything that puts the chime back
+   * into it puts the cue back into silence, and the operator cannot see that:
+   * a chime nobody hears is indistinguishable from a microphone that never
+   * opened, which is the single thing this app is most often accused of.
+   */
+  it('builds no AudioContext, however loud or quiet the chime', () => {
+    let contexts = 0;
+    class CountingContext {
       state = 'suspended';
       currentTime = 0;
       destination = {};
+      constructor() {
+        contexts += 1;
+      }
       resume() {
-        calls.resume += 1;
-        if (opts.resumesTo) this.state = opts.resumesTo;
         return Promise.resolve();
       }
       createOscillator() {
-        return {
-          type: '',
-          frequency: { value: 0 },
-          connect: () => {},
-          start: () => {},
-          stop: () => {},
-        };
+        return { type: '', frequency: { value: 0 }, connect: () => {}, start: () => {}, stop: () => {} };
       }
       createGain() {
-        return {
-          gain: { setValueAtTime: () => {}, linearRampToValueAtTime: () => {} },
-          connect: () => {},
-        };
+        return { gain: { setValueAtTime: () => {}, linearRampToValueAtTime: () => {} }, connect: () => {} };
       }
     }
-    (globalThis as any).window = { location: { search: '' }, AudioContext: SuspendedContext };
-    return calls;
-  }
+    class Tracked extends FakeChimeElement {}
+    (globalThis as any).window = {
+      location: { search: '' },
+      AudioContext: CountingContext,
+      Audio: Tracked,
+    };
 
-  it('nudges a suspended context awake before sounding', () => {
-    const calls = installSuspendedContext({ resumesTo: 'running' });
-    clearDiagnosticLog();
     chime('good');
-    expect(calls.resume, 'the chime played into a suspended context').toBe(1);
+    chime('ready', { volume: 2 });
+    chime('attention', { volume: 0.2 });
+
+    expect(contexts, 'a chime reached for the Web Audio graph').toBe(0);
   });
 
-  it('says so in the log when the context is still not running', () => {
-    installSuspendedContext();
+  it('still says it chimed, which is what the field test reads', () => {
+    class Tracked extends FakeChimeElement {}
+    (globalThis as any).window = { location: { search: '' }, Audio: Tracked };
     clearDiagnosticLog();
+
     chime('attention');
 
-    const entry = readDiagnosticLog().find((e) => e.event === 'chime-suspended');
-    expect(entry, 'a chime that could make no sound left no trace').toBeTruthy();
+    const entry = readDiagnosticLog().find((e) => e.event === 'chime');
     expect(entry?.detail?.kind).toBe('attention');
-    expect(entry?.detail?.state).toBe('suspended');
   });
 
-  it('says nothing when the context is running', () => {
-    installSuspendedContext({ resumesTo: 'running' });
+  it('reports a refused element instead of failing silently', async () => {
+    // The element path has its own way of making no sound: an element that
+    // has never played is locked on iOS and `play()` rejects. That has to
+    // leave a trace for exactly the reason the oscillator's silence did not.
+    class Refusing extends FakeChimeElement {
+      play(): Promise<void> {
+        return Promise.reject(Object.assign(new Error('no'), { name: 'NotAllowedError' }));
+      }
+    }
+    (globalThis as any).window = { location: { search: '' }, Audio: Refusing };
     clearDiagnosticLog();
+
     chime('good');
-    expect(readDiagnosticLog().some((e) => e.event === 'chime-suspended')).toBe(false);
+    await vi.waitFor(() => {
+      const entry = readDiagnosticLog().find((e) => e.event === 'tone-broke');
+      expect(entry?.detail?.name).toBe('NotAllowedError');
+    });
+  });
+
+  it('does not throw where there is no Audio element at all', () => {
+    (globalThis as any).window = { location: { search: '' } };
+    expect(() => chime('good')).not.toThrow();
   });
 });
 

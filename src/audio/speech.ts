@@ -28,14 +28,14 @@ import {
   isClipChainActive,
   isClipsEnabled,
   playClipsResumable,
+  playPooledTone,
   stopClips,
 } from "./clips";
 import { chimePeak, utteranceVolume } from "./volume";
-import {
-  getSharedAudioContext,
-  resumeSharedAudioContext,
-  _resetSharedAudioContextForTest,
-} from "./audioContext";
+import { cachedToneDataUri } from "./tone";
+// Only the test reset is still wanted here: nothing in speech.ts touches the
+// Web Audio graph any more. The chimes were the last thing that did.
+import { _resetSharedAudioContextForTest } from "./audioContext";
 // Re-exported: existing specs import this reset helper from speech.ts.
 export { _resetSharedAudioContextForTest };
 import {
@@ -1436,49 +1436,32 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
     return;
   }
 
+  /**
+   * ON AN ELEMENT, NOT AN OSCILLATOR, since 2026-10-03.
+   *
+   * The graph version is in the history and its failure is in Jack's export:
+   *
+   *   17:12:10.573  audio-unlock    reason=gesture state=suspended rate=48000
+   *   17:12:18.556  cue-held        kind=ready why=quiet
+   *   17:12:18.556  chime           kind=ready volume=1
+   *   17:12:18.658  chime-suspended kind=ready state=suspended
+   *
+   * A gesture resumed the context and eight seconds later it was still
+   * suspended, so the tone was synthesised into silence -- twice in that
+   * export, on two page loads -- while every recorded clip played. The held
+   * cue had finally put the beep in the right place and the beep still could
+   * not be heard. There is nothing left to fix inside the graph on a device
+   * where the graph does not wake, so the tone is generated as WAV data
+   * (audio/tone.ts) and played the way everything audible on that phone is
+   * played.
+   *
+   * `chimePeak` still sets the level, now through the element's own `volume`
+   * rather than an envelope, so the relationship to speech is unchanged: half
+   * scale at 100%, because a beep at the same amplitude as a voice is startling
+   * in a car.
+   */
   try {
-    // NUDGED AWAKE FIRST, exactly as `amplify()` does.
-    //
-    // `resumeSharedAudioContext` had one caller in the whole app -- `amplify()`
-    // -- and that runs only when the volume is above 1. So on any run where the
-    // boost is not in play (clips off, or after a step pins volume to 1) a
-    // suspended context made the chime silent, and `chime()` said nothing at
-    // all. The field test now depends on chimes for the arrival cue on its six
-    // silent steps and for "I did not understand you", so a silent chime
-    // manufactures the very fault those cues exist to rule out.
-    const ctx = getSharedAudioContext();
-    if (!ctx) return;
-    // AFTER the get, not before it: `resumeSharedAudioContext` acts on the
-    // memoised context, which does not exist until `getSharedAudioContext`
-    // creates it -- so calling it first was a no-op on the very first chime,
-    // which is the one most likely to meet a suspended context.
-    resumeSharedAudioContext();
-    // REPORTED, not assumed. A context that is still not running after the
-    // resume produces no sound, and that has to leave a trace rather than
-    // looking like a chime nobody asked for.
-    if (ctx.state !== "running")
-      diag("speak", "chime-suspended", { kind, state: ctx.state });
-
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.value = CHIME_FREQUENCY_HZ[kind];
-
-    const now = ctx.currentTime;
-    const duration = 0.12;
-    // The chime rides the same volume setting as speech, so turning the app
-    // down turns ALL of it down. Scaling the envelope peak (rather than
-    // routing through another GainNode) keeps the attack/release shape
-    // identical at every volume. Absent opts, the historical 0.3 stands.
-    const peak = chimePeak(opts?.volume ?? 1);
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(peak, now + 0.02);
-    gain.gain.linearRampToValueAtTime(0, now + duration);
-
-    oscillator.connect(gain);
-    gain.connect(ctx.destination);
-    oscillator.start(now);
-    oscillator.stop(now + duration);
+    playPooledTone(cachedToneDataUri(CHIME_FREQUENCY_HZ[kind]), chimePeak(opts?.volume ?? 1));
   } catch {
     // never throw
   }

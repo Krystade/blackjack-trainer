@@ -14,6 +14,7 @@ import { looksLikeSelfEcho } from '../audio/selfEcho';
 import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
 import { reassertAudioFocus } from '../audio/audioFocus';
+import { markMicSessionOpened } from '../audio/micSessionCost';
 import { logAudioInputs, logHardwareRate, logMicPermission } from '../diag/environment';
 import {
   micHasWorked,
@@ -296,6 +297,15 @@ export function useVoiceControl({
         if (state === 'listening') {
           // The other half: read as soon as the session is confirmed open.
           logHardwareRate('mic-open');
+          /**
+           * And record the thing the rate probe could NOT see. That reading was
+           * built to catch the earpiece switch and read 48000 on both sides of
+           * it, so there is no measurement to wait for: the session being open
+           * is, on iOS, the whole cause. Marked here rather than from the
+           * toggle because a session that never reaches 'listening' never
+           * moved the route either.
+           */
+          markMicSessionOpened();
           /**
            * A push-to-talk window spends its five seconds on SPEAKING, which
            * cannot start before this moment. Told here rather than from any

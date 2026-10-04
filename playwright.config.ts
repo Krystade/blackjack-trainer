@@ -38,7 +38,31 @@ export default defineConfig({
         // nothing is heard.
         permissions: ['microphone'],
         launchOptions: {
-          args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+          /**
+           * `--mute-audio` IS NOT OPTIONAL HERE EITHER, and the reason this
+           * project went without it for so long was a wrong assumption.
+           *
+           * Nearly every spec navigates with `?e2e=1`, which short-circuits
+           * `speak()` and `chime()` into `window.__speechLog` before any sound
+           * is made -- so the default project looked silent by construction.
+           * `collapsible-sections.spec.ts` does not: it measures the real
+           * Settings page at a real viewport and loads `/` plainly, which
+           * leaves the audio paths live. Jack heard it out of his speakers on
+           * 2026-10-03, right after the chimes moved from a Web Audio
+           * oscillator onto a media element and so began playing reliably.
+           *
+           * Muting is process-wide and stops nothing the suite asserts on:
+           * elements still load, decode, fire `ended` and drive every loop,
+           * and no spec anywhere asserts that something was AUDIBLE -- only
+           * that it played, how long it took, and what it logged. The cost of
+           * the flag is zero and the cost of omitting it is a suite nobody can
+           * run while anyone else is in the room.
+           */
+          args: [
+            '--use-fake-device-for-media-stream',
+            '--use-fake-ui-for-media-stream',
+            '--mute-audio',
+          ],
         },
       },
     },

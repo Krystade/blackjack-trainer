@@ -977,6 +977,15 @@ button {
   font-size: 0.8rem;
 }
 
+/* The earpiece line. Dim rather than alarming on purpose: there is no action to
+   take and no fault to report -- it answers a question rather than asking one.
+   See audio/micSessionCost.ts. */
+.voice-status-earpiece {
+  width: 100%;
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+}
+
 .count-config {
   display: flex;
   flex-direction: column;

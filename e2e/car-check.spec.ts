@@ -3,10 +3,11 @@ import { test, expect, type Page } from '@playwright/test';
 /**
  * The car check, end to end.
  *
- * What is worth asserting here is not that five rows appeared -- it is the
- * two properties the whole design rests on: the microphone is shut while the
+ * What is worth asserting here is not how many rows appeared -- it is the two
+ * properties the whole design rests on: the microphone is shut while the
  * speaker and wheel checks run, and the run tells the operator what to do
- * next rather than leaving them to read ticks.
+ * next rather than leaving them to read ticks. Plus the one thing a count
+ * cannot say: that every named check actually reported.
  */
 
 
@@ -42,10 +43,35 @@ test('runs every check and ends with something to do next', async ({ page }) => 
   // runs, so give the whole run room.
   await expect(page.getByTestId('carcheck-next')).toBeVisible({ timeout: 30_000 });
 
+  /**
+   * By NAME, not by count. A bare row count was the old assertion and it was
+   * the weaker instrument twice over: it went red when five device checks were
+   * added in 2026-10-03, which is maintenance rather than a fault, and it
+   * would have stayed green if one check had quietly been replaced by another.
+   * What the run must actually guarantee is that every check the panel lists
+   * reaches a verdict -- a check that throws, hangs, or is dropped from the
+   * list is the fault this exists to catch, and the symptom is a MISSING NAME.
+   */
+  const EXPECTED = [
+    'clip-voice',
+    'audio-out',
+    'audio-graph',
+    'element-volume',
+    'chime-audible',
+    'clip-speed',
+    'media-slot',
+    'wheel-press',
+    'ambient',
+    'output-route',
+  ];
   const rows = page.getByTestId('carcheck-results').locator('li');
-  await expect(rows).toHaveCount(5);
+  const texts = await rows.allTextContents();
+  for (const id of EXPECTED) {
+    expect(texts.filter((t) => t.includes(id)), `${id} should report exactly once`).toHaveLength(1);
+  }
+  expect(texts).toHaveLength(EXPECTED.length);
   // Every row reached a verdict; none is left blank.
-  for (const text of await rows.allTextContents()) {
+  for (const text of texts) {
     expect(text.trim().length).toBeGreaterThan(10);
   }
 });

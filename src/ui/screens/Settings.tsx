@@ -24,6 +24,7 @@ import { startButtonTest, unheardActions } from '../../audio/buttonTester';
 import type { ButtonPress, ButtonTesterHandle } from '../../audio/buttonTester';
 import { MEDIA_SESSION_LABEL } from '../../audio/mediaSession';
 import type { MediaSessionAction } from '../../audio/mediaSession';
+import { micSessionCostPaid } from '../../audio/micSessionCost';
 import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
 import { FIELD_TEST_CONDITIONS, FIELD_TEST_STEPS } from '../../diag/fieldTest';
 import { CarCheckPanel } from '../components/CarCheckPanel';
@@ -323,6 +324,22 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           <div className="settings-note-row u-note">
             Above 100% raises the alert tones only. Neither voice can go past 100% on
             iOS &mdash; use the car or phone volume buttons for that.
+          </div>
+        )}
+        {micSessionCostPaid() && (
+          /**
+           * Only after a microphone has opened, and then for the rest of the
+           * page -- which is exactly how long the earpiece lasts. The listening
+           * strip says the same thing, but the strip is gone the moment voice
+           * is switched off, and that is precisely when the cabin goes quiet
+           * and the operator comes looking. See audio/micSessionCost.ts for
+           * what iOS does here and why no part of it is callable from a page.
+           */
+          <div className="settings-note-row u-note settings-earpiece">
+            Voice has been used this session, so iOS moved the sound to the earpiece at
+            the top of the phone. Nothing in the app can move it back &mdash; close and
+            reopen the app for the loud speaker. The wheel answers without the
+            microphone.
           </div>
         )}
         <div className="settings-note-row u-note">

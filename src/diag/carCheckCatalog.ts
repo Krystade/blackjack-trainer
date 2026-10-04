@@ -13,12 +13,23 @@ import { holdAudioFocus, releaseAudioFocus, audioFocusElementIsPlaying } from '.
 import { setMediaSessionProbe, MEDIA_SESSION_LABEL } from '../audio/mediaSession';
 import { foldFrames, bandFor, adviceFor, type NoiseReading } from './ambientNoise';
 import { diag } from './diagnosticLog';
+import { getSharedAudioContext, resumeSharedAudioContext } from '../audio/audioContext';
+import { cachedToneDataUri } from '../audio/tone';
 import type { CheckDefinition, CheckResult } from './carCheck';
 
 /** How long to wait for a wheel button before calling it inconclusive. */
 export const WHEEL_WAIT_MS = 12_000;
 /** How long to listen to the room. Long enough to catch a passing truck. */
 export const AMBIENT_WINDOW_MS = 5_000;
+/** The cue's pitch, for the chime check. Matches `ready` in speech.ts. */
+export const CUE_TONE_HZ = 880;
+/**
+ * How much longer than its own duration a clip may take before it counts
+ * as broken. 1.4x is well clear of decode and of the worst honest reading
+ * on a healthy run, and well under the 1.47x and 2.48x the Web Audio route
+ * produced on 2026-10-02.
+ */
+export const CLIP_SPEED_TOLERANCE = 1.4;
 
 const pass = (id: string, summary: string, detail?: Record<string, unknown>): CheckResult => ({
   id,
@@ -224,6 +235,302 @@ export function ambientCheck(
 }
 
 /** One microphone the phone is willing to hand over. */
+/* ------------------------------------------------------------------------ */
+/* The checks that exist because the desktop suite cannot see any of this   */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * WHY THIS SECTION EXISTS, in Jack's words on 2026-10-03: "you running the
+ * tests here on my computer vs me using the app on my phone just doesn't
+ * equate."
+ *
+ * He is right, and the week proves it. Every fault that reached the car was
+ * invisible to all 719 end-to-end tests and visible immediately on the phone:
+ *
+ *   - a Web Audio graph that never wakes, so every chime was silent
+ *   - an output route that moves to the earpiece and stays there
+ *   - clips stretched from 3.0s to 7.7s by a resampling path
+ *   - `HTMLMediaElement.volume` possibly being read-only on iOS, still open
+ *
+ * Headless Chromium on Windows has a graph that always resumes, one output
+ * route, no audio session and a writable `volume`. It cannot fail any of
+ * these, which is the definition of a test that cannot fail.
+ *
+ * So they run HERE, on the device, in the browser that actually has the bug.
+ * Each one below names the fault it would have caught.
+ */
+
+/**
+ * Is the Web Audio graph actually awake?
+ *
+ * 2026-10-03, on the phone, twice on two page loads:
+ *
+ *   17:12:10.573  audio-unlock    reason=gesture state=suspended rate=48000
+ *   17:12:18.556  chime           kind=ready volume=1
+ *   17:12:18.658  chime-suspended kind=ready state=suspended
+ *
+ * A gesture resumed the context and it was still suspended eight seconds
+ * later, so every chime was synthesised into silence while recorded clips
+ * played perfectly. The chimes have since moved to a media element and no
+ * longer depend on this -- which is exactly why it is worth checking rather
+ * than assuming: if the graph is still dead, anything that drifts back into
+ * it is silent, and nothing else in the app would say so.
+ *
+ * A dead graph WARNS rather than fails: nothing the drill does needs it any
+ * more, so it is a fact to carry rather than a fault to stop for.
+ */
+export function audioGraphCheck(): CheckDefinition {
+  return {
+    id: 'audio-graph',
+    label: 'The Web Audio graph wakes up',
+    phase: 'speaker',
+    run: async () => {
+      const ctx = getSharedAudioContext();
+      if (!ctx) return warn('audio-graph', 'This browser exposes no AudioContext.');
+      resumeSharedAudioContext();
+      // Resume is fire-and-forget and settles asynchronously; a graph that is
+      // going to wake does it well inside this.
+      await new Promise((r) => setTimeout(r, 400));
+      const detail = { state: ctx.state, rate: ctx.sampleRate };
+      return ctx.state === 'running'
+        ? pass('audio-graph', 'The graph is running, so a generated tone would be heard.', detail)
+        : warn(
+            'audio-graph',
+            `The graph is ${ctx.state} after a resume. Nothing in the drill needs it, but anything that used it would be silent.`,
+            detail,
+          );
+    },
+  };
+}
+
+/**
+ * Does setting `volume` on an element do anything at all?
+ *
+ * STILL AN OPEN QUESTION, and it decides whether the app has any software
+ * level control over its own voice. WebKit has long made
+ * `HTMLMediaElement.volume` read-only on iOS -- the hardware buttons being the
+ * only volume control -- and assignment is IGNORED rather than refused, so a
+ * Volume setting that does nothing looks exactly like a clip that played
+ * quietly. The `volume-ignored` line in clips.ts can only report it when a
+ * clip happens to play at a non-default level; this asks directly.
+ *
+ * 0.37 deliberately: not 0, not 1, not 0.5, and not a value any code path in
+ * the app would set on its own, so a reading of 0.37 cannot be a coincidence.
+ */
+export function elementVolumeCheck(makeAudio: () => HTMLAudioElement | null): CheckDefinition {
+  return {
+    id: 'element-volume',
+    label: 'The app can set its own volume',
+    phase: 'speaker',
+    run: async () => {
+      const el = makeAudio();
+      if (!el) return fail('element-volume', 'This browser exposes no audio element at all.');
+      const wanted = 0.37;
+      try {
+        el.volume = wanted;
+      } catch (e) {
+        return fail('element-volume', 'Setting the volume threw.', {
+          why: e instanceof Error ? e.name : String(e),
+        });
+      }
+      const got = el.volume;
+      const detail = { wanted, got: Number(got.toFixed(3)) };
+      return Math.abs(got - wanted) < 0.01
+        ? pass('element-volume', 'The volume setting reaches the audio, so the slider works.', detail)
+        : fail(
+            'element-volume',
+            `Ignored: asked for ${wanted}, reads back ${got.toFixed(2)}. The Volume setting cannot change the voice on this phone -- only the hardware buttons can.`,
+            detail,
+          );
+    },
+  };
+}
+
+/**
+ * Does the microphone-open cue actually make a sound?
+ *
+ * "I didn't hear any chime indicating the mic was activated" was reported on
+ * 2026-10-02 and was still true on 2026-10-03, through two different causes:
+ * first the cue fired 70ms into a three-second prompt and was masked, then the
+ * held cue fired into silence and the oscillator played into a suspended
+ * graph. Both times the app believed it had chimed.
+ *
+ * The tone is generated WAV data played on a pooled element (audio/tone.ts),
+ * so this plays one and waits for `ended`. An element that accepts `play()`
+ * and never finishes is the exact shape of both failures.
+ */
+export function chimeAudibleCheck(): CheckDefinition {
+  return {
+    id: 'chime-audible',
+    label: 'The microphone cue plays to the end',
+    phase: 'speaker',
+    askOperator: 'Listen for a short beep.',
+    run: async () => {
+      if (typeof window === 'undefined' || typeof window.Audio !== 'function') {
+        return fail('chime-audible', 'This browser exposes no audio element at all.');
+      }
+      const el = new window.Audio();
+      el.src = cachedToneDataUri(CUE_TONE_HZ);
+      el.volume = 0.5;
+      const startedAt = Date.now();
+      const finished = new Promise<string>((resolve) => {
+        el.onended = () => resolve('ended');
+        el.onerror = () => resolve('error');
+        // A 120ms tone that has not finished in two seconds has not played.
+        setTimeout(() => resolve('timeout'), 2_000);
+      });
+      try {
+        await el.play();
+      } catch (e) {
+        return fail('chime-audible', 'The phone refused to play the cue.', {
+          why: e instanceof Error ? e.name : String(e),
+        });
+      }
+      const how = await finished;
+      const ms = Date.now() - startedAt;
+      const detail = { how, ms };
+      if (how === 'ended') {
+        return pass('chime-audible', `The cue played and finished in ${ms}ms.`, detail);
+      }
+      return fail(
+        'chime-audible',
+        how === 'timeout'
+          ? 'The cue started and never finished, so the beep was not heard.'
+          : 'The cue could not be decoded.',
+        detail,
+      );
+    },
+  };
+}
+
+/**
+ * Does a recorded line take as long as the recording?
+ *
+ * THE 2026-10-02 FAULT, measured. Above 100% the clips were routed through a
+ * GainNode, and on the phone that stretched them:
+ *
+ *   "You have fifteen. Dealer shows five."   3029ms at 100%, 4455ms at 200%
+ *   "You have ace, seven. Dealer shows six." 3099ms at 100%, 7687ms at 150%
+ *
+ * Choppy, then silent. The route is gone, and this is what would catch it
+ * coming back -- or any other cause of the same thing, which is the point:
+ * it measures the SYMPTOM rather than the mechanism. A clip whose wall time
+ * runs far past its own duration is a clip the cabin hears break up,
+ * whatever did it.
+ *
+ * The tolerance is generous on purpose. Decode and the gap between clips are
+ * real time too, and a check that cries wolf on a slow first fetch is a check
+ * that gets ignored.
+ */
+export function clipSpeedCheck(makeAudio: () => HTMLAudioElement | null): CheckDefinition {
+  return {
+    id: 'clip-speed',
+    label: 'A recorded line plays at its own speed',
+    phase: 'speaker',
+    run: async () => {
+      const el = makeAudio();
+      if (!el) return fail('clip-speed', 'This browser exposes no audio element at all.');
+      const ready = new Promise<boolean>((resolve) => {
+        if (el.readyState >= 1) return resolve(true);
+        el.onloadedmetadata = () => resolve(true);
+        el.onerror = () => resolve(false);
+        setTimeout(() => resolve(false), 5_000);
+      });
+      if (typeof el.load === 'function') el.load();
+      if (!(await ready)) return warn('clip-speed', 'The clip never loaded, so nothing was timed.');
+
+      const expectedMs = Math.round((el.duration || 0) * 1000);
+      if (!expectedMs) return warn('clip-speed', 'The clip reports no duration, so nothing was timed.');
+
+      const startedAt = Date.now();
+      const finished = new Promise<string>((resolve) => {
+        el.onended = () => resolve('ended');
+        el.onerror = () => resolve('error');
+        // Four times the recording, which is past anything worth waiting for.
+        setTimeout(() => resolve('timeout'), expectedMs * 4 + 2_000);
+      });
+      try {
+        await el.play();
+      } catch (e) {
+        return fail('clip-speed', 'The phone refused to play the clip.', {
+          why: e instanceof Error ? e.name : String(e),
+        });
+      }
+      const how = await finished;
+      const actualMs = Date.now() - startedAt;
+      el.pause();
+      const ratio = Number((actualMs / expectedMs).toFixed(2));
+      const detail = { expectedMs, actualMs, ratio, how };
+      if (how !== 'ended') {
+        return fail('clip-speed', 'The clip started and never finished.', detail);
+      }
+      return ratio <= CLIP_SPEED_TOLERANCE
+        ? pass('clip-speed', `A ${expectedMs}ms line took ${actualMs}ms. Nothing is stretching it.`, detail)
+        : fail(
+            'clip-speed',
+            `A ${expectedMs}ms line took ${actualMs}ms (${ratio}x). The voice will sound choppy or drop out.`,
+            detail,
+          );
+    },
+  };
+}
+
+/**
+ * Which speaker is the sound coming from, before and after the microphone?
+ *
+ * THE ONE THING ONLY A PERSON CAN ANSWER, and the fault that cost the most
+ * this week. Jack, 2026-10-03: "Whenever I turn on the mic it switches my
+ * speaker to the phone speaker like I'm on a phone call... It works fine until
+ * I turn on voice and then it's stuck like that." Asked whether turning voice
+ * off brings the loud speaker back: no, it stays on the earpiece for the rest
+ * of the session.
+ *
+ * iOS puts the audio session into play-and-record the moment anything opens a
+ * microphone, and play-and-record sends output to the receiver. The Phone app
+ * escapes it with `.defaultToSpeaker`; Safari exposes no part of the audio
+ * session to a web page, so there is nothing to call. It is not even a rate
+ * change -- the hardware probe read 48000 on every `mic-open` and
+ * `mic-closed` of that drive -- so the app cannot detect it at all.
+ *
+ * WHICH IS WHY THIS IS A QUESTION AND NOT A MEASUREMENT. It runs in the
+ * microphone phase, after something has opened the microphone, and all it does
+ * is play a line and ask where it came from. `warn` on a bad answer rather
+ * than `fail`: on this phone today the answer is "the earpiece" and that is
+ * not a regression, it is the platform. What the check is for is noticing the
+ * day it changes -- in either direction.
+ */
+export function outputRouteCheck(makeAudio: () => HTMLAudioElement | null): CheckDefinition {
+  return {
+    id: 'output-route',
+    label: 'Which speaker the voice comes out of',
+    phase: 'microphone',
+    askOperator:
+      'Listen, then say where it came from: the loud speaker at the bottom of the phone, or the quiet earpiece at the top?',
+    run: async () => {
+      const el = makeAudio();
+      if (!el) return fail('output-route', 'This browser exposes no audio element at all.');
+      try {
+        await el.play();
+      } catch (e) {
+        return fail('output-route', 'The phone refused to play it.', {
+          why: e instanceof Error ? e.name : String(e),
+        });
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+      el.pause();
+      // Deliberately inconclusive on its own: the verdict is the operator's,
+      // and recording it as a pass would be the app answering its own
+      // question. The panel asks; this only guarantees there was a sound to
+      // judge.
+      return warn(
+        'output-route',
+        'Played with the microphone open. Only you can say which speaker that was -- on iOS the open microphone moves it to the earpiece and it stays there until the app is reopened.',
+        { micOpen: true },
+      );
+    },
+  };
+}
+
 export interface AudioInputChoice {
   deviceId: string;
   label: string;

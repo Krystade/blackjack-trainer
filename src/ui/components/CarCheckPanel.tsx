@@ -6,9 +6,14 @@ import {
   type CheckResult,
 } from '../../diag/carCheck';
 import {
+  audioGraphCheck,
   audioOutCheck,
+  chimeAudibleCheck,
+  clipSpeedCheck,
   clipVoiceCheck,
+  elementVolumeCheck,
   mediaSlotCheck,
+  outputRouteCheck,
   wheelPressCheck,
   ambientCheck,
   measureWithWebAudio,
@@ -60,6 +65,21 @@ export function CarCheckPanel() {
     const checks: CheckDefinition[] = [
       clipVoiceCheck(),
       audioOutCheck(makeAudio),
+      /**
+       * THE DEVICE-ONLY CHECKS, added 2026-10-03 for the reason Jack gave:
+       * "you running the tests here on my computer vs me using the app on my
+       * phone just doesn't equate." Every fault that reached the car this week
+       * was invisible to all 719 end-to-end tests and obvious on the phone --
+       * a graph that never wakes, a volume setter that may be ignored, a cue
+       * that never sounds, clips stretched to twice their length. Headless
+       * Chromium has none of those failure modes, so the checks have to run
+       * where the failures are. See audio/carCheckCatalog.ts for what each one
+       * caught.
+       */
+      audioGraphCheck(),
+      elementVolumeCheck(makeAudio),
+      chimeAudibleCheck(),
+      clipSpeedCheck(makeAudio),
       mediaSlotCheck(),
       // Under the e2e flag the wheel wait is short: a test driving a fake
       // button press should not sit through the twelve seconds a real
@@ -70,6 +90,10 @@ export function CarCheckPanel() {
           : undefined,
       ),
       ambientCheck(measureWithWebAudio),
+      // Last, and in the microphone phase on purpose: it is the only check
+      // whose answer depends on the microphone having been opened, which is
+      // the event that moves the output to the earpiece.
+      outputRouteCheck(makeAudio),
     ];
 
     const done: CheckResult[] = [];
