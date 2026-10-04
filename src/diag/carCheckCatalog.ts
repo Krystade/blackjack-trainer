@@ -13,6 +13,11 @@ import { holdAudioFocus, releaseAudioFocus, audioFocusElementIsPlaying } from '.
 import { setMediaSessionProbe, MEDIA_SESSION_LABEL } from '../audio/mediaSession';
 import { foldFrames, bandFor, adviceFor, type NoiseReading } from './ambientNoise';
 import { diag } from './diagnosticLog';
+import {
+  audioSessionSupported,
+  outputRoutePreference,
+  readAudioSessionType,
+} from '../audio/audioSession';
 import { getSharedAudioContext, resumeSharedAudioContext } from '../audio/audioContext';
 import { cachedToneDataUri } from '../audio/tone';
 import type { CheckDefinition, CheckResult } from './carCheck';
@@ -486,20 +491,27 @@ export function clipSpeedCheck(makeAudio: () => HTMLAudioElement | null): CheckD
  * of the session.
  *
  * iOS puts the audio session into play-and-record the moment anything opens a
- * microphone, and play-and-record sends output to the receiver. The Phone app
- * escapes it with `.defaultToSpeaker`; Safari exposes no part of the audio
- * session to a web page, so there is nothing to call. It is not even a rate
- * change -- the hardware probe read 48000 on every `mic-open` and
- * `mic-closed` of that drive -- so the app cannot detect it at all.
+ * microphone, and play-and-record sends output to the receiver. I wrote here
+ * that Safari exposes no part of the audio session to a page and there was
+ * nothing to call. That was wrong: `navigator.audioSession` shipped in Safari
+ * 17 and its `type` is the category -- see audio/audioSession.ts. So this now
+ * REPORTS the category alongside the question, which is the measurement the
+ * hardware-rate probe failed to be.
  *
- * WHICH IS WHY THIS IS A QUESTION AND NOT A MEASUREMENT. It runs in the
- * microphone phase, after something has opened the microphone, and all it does
- * is play a line and ask where it came from. `warn` on a bad answer rather
- * than `fail`: on this phone today the answer is "the earpiece" and that is
- * not a regression, it is the platform. What the check is for is noticing the
- * day it changes -- in either direction.
+ * IT IS STILL A QUESTION, because the category is what the app ASKED for and
+ * the speaker is what the cabin HEARD, and those two came apart once already.
+ * `warn` rather than `fail` on a bad answer: the earpiece is the platform's
+ * behaviour today, not a regression. What the check is for is noticing the day
+ * it changes -- in either direction.
+ *
+ * IT PLAYS THROUGH THE POOL, not a fresh element. The 2026-10-04 run reported
+ * `fail why=NotAllowedError` twice and never asked Jack anything: this check
+ * runs last, roughly forty seconds after the gesture that started the run and
+ * after `getUserMedia`, and a brand-new `Audio` is locked by then. The pool's
+ * elements were unlocked inside the gesture, which is the whole reason the
+ * pool exists.
  */
-export function outputRouteCheck(makeAudio: () => HTMLAudioElement | null): CheckDefinition {
+export function outputRouteCheck(playClip: () => Promise<string>): CheckDefinition {
   return {
     id: 'output-route',
     label: 'Which speaker the voice comes out of',
@@ -507,25 +519,34 @@ export function outputRouteCheck(makeAudio: () => HTMLAudioElement | null): Chec
     askOperator:
       'Listen, then say where it came from: the loud speaker at the bottom of the phone, or the quiet earpiece at the top?',
     run: async () => {
-      const el = makeAudio();
-      if (!el) return fail('output-route', 'This browser exposes no audio element at all.');
-      try {
-        await el.play();
-      } catch (e) {
-        return fail('output-route', 'The phone refused to play it.', {
-          why: e instanceof Error ? e.name : String(e),
-        });
+      const asked = outputRoutePreference();
+      const before = readAudioSessionType() ?? 'unknown';
+      const how = await playClip();
+      const session = {
+        setting: asked,
+        sessionSupported: audioSessionSupported(),
+        sessionType: readAudioSessionType() ?? 'unknown',
+        sessionWas: before,
+        how,
+      };
+      if (how !== 'ended') {
+        // A sound that never reached the cabin leaves NOTHING to judge, and
+        // the honest verdict is that the check did not run -- not that the
+        // route is bad.
+        return fail(
+          'output-route',
+          `Nothing played (${how}), so there was nothing to listen to.`,
+          session,
+        );
       }
-      await new Promise((r) => setTimeout(r, 1500));
-      el.pause();
       // Deliberately inconclusive on its own: the verdict is the operator's,
       // and recording it as a pass would be the app answering its own
       // question. The panel asks; this only guarantees there was a sound to
-      // judge.
+      // judge, and says which category the session was in while it played.
       return warn(
         'output-route',
-        'Played with the microphone open. Only you can say which speaker that was -- on iOS the open microphone moves it to the earpiece and it stays there until the app is reopened.',
-        { micOpen: true },
+        `Played with the microphone open, session type "${session.sessionType}". Only you can say which speaker that was.`,
+        session,
       );
     },
   };

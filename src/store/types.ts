@@ -258,6 +258,25 @@ export interface AudioSettings {
   // hard total. Hard hands and pairs are unaffected either way; see
   // narrateHandPhrase in audio/narrate.ts. 'total' restores the old wording.
   handStyle: 'cards' | 'total';
+  /**
+   * What to do about the earpiece, now that there turns out to be something
+   * to do about it.
+   *
+   * Opening a microphone moves iOS output to the receiver -- the quiet
+   * earpiece at the top of the phone -- for the rest of the page load, which
+   * Jack confirmed on the road on 2026-10-03. I said that was unfixable
+   * because Safari exposes no audio session to a page. That was wrong:
+   * `navigator.audioSession` shipped in Safari 17 / iOS 17 and its `type` is
+   * the category intent. See audio/audioSession.ts for what each value does.
+   *
+   * Nothing specifies whether WebKit honours a page that asks for 'playback'
+   * while capturing, and no browser on the development machine implements the
+   * API at all, so this cannot be settled here -- only in the car. Hence a
+   * choice rather than a guess: 'playback' (the default) is the likeliest
+   * remedy, 'switch' is the more honest request and the likelier to cost the
+   * microphone, and 'auto' is the shipped behaviour for comparison.
+   */
+  outputRoute: 'auto' | 'playback' | 'switch';
 }
 
 export const DEFAULT_AUDIO: AudioSettings = {
@@ -285,6 +304,9 @@ export const DEFAULT_AUDIO: AudioSettings = {
   chimes: true,
   answerPauseMs: 3000,
   dimZones: false,
+  // 'playback' rather than 'auto': 'auto' is the state Jack reported as
+  // broken, so shipping it as the default would be shipping the fault.
+  outputRoute: 'playback',
   cardDetail: 'rank',
   /*
    * ON, now that a real drive has played them.

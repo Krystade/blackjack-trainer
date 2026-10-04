@@ -29,8 +29,8 @@ export function VoiceStatusBar({ status, hint }: { status: VoiceStatus; hint?: R
       <span className="voice-status-words">{hint ?? <>Say: {VOICE_WORDS}</>}</span>
       {micSessionCostPaid() && (
         <span className="voice-status-earpiece">
-          Sound is on the earpiece at the top of the phone: the open microphone put it
-          there.
+          If the sound moved to the earpiece, the microphone did it &mdash; Settings,
+          &ldquo;Sound with the mic on&rdquo;.
         </span>
       )}
     </div>

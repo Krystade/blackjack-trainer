@@ -19,6 +19,7 @@ import {
   measureWithWebAudio,
 } from '../../diag/carCheckCatalog';
 import { releaseAudioFocus } from '../../audio/audioFocus';
+import { playPooledTone } from '../../audio/clips';
 import { setVoiceOn } from '../voiceSession';
 import { diag } from '../../diag/diagnosticLog';
 
@@ -93,7 +94,19 @@ export function CarCheckPanel() {
       // Last, and in the microphone phase on purpose: it is the only check
       // whose answer depends on the microphone having been opened, which is
       // the event that moves the output to the earpiece.
-      outputRouteCheck(makeAudio),
+      /**
+       * Through the POOL, not `makeAudio`. This check runs last, about forty
+       * seconds after the button press that started the run, and the
+       * 2026-10-04 readings show what that costs a fresh element:
+       * `output-route outcome=fail why=NotAllowedError`, twice, with Jack
+       * never asked the one question the whole check exists for.
+       */
+      outputRouteCheck(() => {
+        const base = import.meta.env.BASE_URL ?? '/';
+        return playPooledTone(`${base}clips/af_bella/correct.mp3`, 1, {
+          releaseAfterMs: 4000,
+        });
+      }),
     ];
 
     const done: CheckResult[] = [];

@@ -15,6 +15,11 @@ import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
 import { reassertAudioFocus } from '../audio/audioFocus';
 import { markMicSessionOpened } from '../audio/micSessionCost';
+import {
+  audioSessionSupported,
+  readAudioSessionType,
+  releaseSpeakerForListening,
+} from '../audio/audioSession';
 import { logAudioInputs, logHardwareRate, logMicPermission } from '../diag/environment';
 import {
   micHasWorked,
@@ -293,6 +298,10 @@ export function useVoiceControl({
            * earpiece has some other cause and the fix would be wasted work.
            */
           logHardwareRate('mic-closed');
+          diag('route', 'session-at-mic-close', {
+            supported: audioSessionSupported(),
+            type: readAudioSessionType() ?? 'unknown',
+          });
         }
         if (state === 'listening') {
           // The other half: read as soon as the session is confirmed open.
@@ -306,6 +315,20 @@ export function useVoiceControl({
            * moved the route either.
            */
           markMicSessionOpened();
+          /**
+           * AND READ BACK WHAT WEBKIT DID TO THE SESSION, which is the
+           * reading the hardware-rate probe was built for and could not take.
+           * The rate does not move when the output goes to the earpiece; the
+           * session CATEGORY is what moves, and until now nothing asked it.
+           *
+           * `releaseSpeakerForListening` is a no-op unless the route setting
+           * is 'switch' -- see audio/audioSession.ts.
+           */
+          releaseSpeakerForListening();
+          diag('route', 'session-at-mic-open', {
+            supported: audioSessionSupported(),
+            type: readAudioSessionType() ?? 'unknown',
+          });
           /**
            * A push-to-talk window spends its five seconds on SPEAKING, which
            * cannot start before this moment. Told here rather than from any

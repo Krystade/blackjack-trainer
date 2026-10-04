@@ -3,6 +3,7 @@ import { _resetQuietWaitersForTest } from './speechActivity';
 import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 import { _resetClipsForTest } from './clips';
 import { _resetToneCacheForTest } from './tone';
+import { setOutputRoutePreference, _resetAudioSessionForTest } from './audioSession';
 import {
   speak, speakAsync, chime, chimeFrequencyForTest, isSpeechSupported, listVoices, cancelSpeech, pickBestVoice,
   getLastSpoken, repeatLast, _resetLastSpokenForTest, _resetSharedAudioContextForTest,
@@ -1500,5 +1501,69 @@ describe('the voice list is warm before the first drill line', () => {
     };
 
     expect(() => primeVoices()).not.toThrow();
+  });
+});
+
+
+/**
+ * THE WIRING, which is the part that can silently not be there.
+ *
+ * `audioSession.ts` can be perfect and the earpiece stays exactly where it is
+ * if nothing calls it. These assert the three sounds the app makes -- a line,
+ * an awaited line, and a cue -- each ask for the speaker BEFORE they play, and
+ * that they ask through the preference rather than around it.
+ */
+describe('claiming the speaker before making a sound', () => {
+  const realNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+
+  function installSession(): { type: string } {
+    const session = { type: 'play-and-record' };
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { audioSession: session },
+      configurable: true,
+      writable: true,
+    });
+    return session;
+  }
+
+  beforeEach(() => {
+    _resetAudioSessionForTest();
+    (globalThis as any).window = { location: { search: '?e2e=1' } };
+  });
+
+  afterEach(() => {
+    _resetAudioSessionForTest();
+    delete (globalThis as any).window;
+    if (realNavigator) Object.defineProperty(globalThis, 'navigator', realNavigator);
+    else delete (globalThis as { navigator?: unknown }).navigator;
+  });
+
+  it('speak() asks for the media category first', () => {
+    const session = installSession();
+    speak('You have sixteen. Dealer shows ten.');
+    expect(session.type).toBe('playback');
+  });
+
+  it('speakAsync() asks too, since the field test speaks only through it', () => {
+    const session = installSession();
+    void speakAsync('Correct.');
+    expect(session.type).toBe('playback');
+  });
+
+  it('chime() asks, because the cue is the sound most easily lost', () => {
+    const session = installSession();
+    chime('ready');
+    expect(session.type).toBe('playback');
+  });
+
+  it('leaves the session alone when the setting says to', () => {
+    // The comparison arm. If this ever stops working, the "Leave it" setting
+    // silently becomes a second copy of "Speaker" and the one measurement
+    // that could tell them apart is gone.
+    const session = installSession();
+    setOutputRoutePreference('auto');
+    speak('You have sixteen. Dealer shows ten.');
+    chime('ready');
+    expect(session.type).toBe('play-and-record');
   });
 });

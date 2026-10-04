@@ -663,25 +663,39 @@ describe('the device-only checks', () => {
     it('runs in the microphone phase, because that is what moves the route', () => {
       // An output-route question asked before anything opened the microphone
       // would be asked in the one state where the answer is never in doubt.
-      expect(outputRouteCheck(() => null).phase).toBe('microphone');
+      expect(outputRouteCheck(async () => 'ended').phase).toBe('microphone');
     });
 
     it('asks the operator rather than answering itself', async () => {
-      const el = { play: () => Promise.resolve(), pause: () => {} };
-      const check = outputRouteCheck(() => el as unknown as HTMLAudioElement);
+      (globalThis as any).window = {};
+      Object.defineProperty(globalThis, 'navigator', {
+        value: { audioSession: { type: 'play-and-record' } },
+        configurable: true,
+        writable: true,
+      });
+      const check = outputRouteCheck(async () => 'ended');
       expect(check.askOperator).toBeTruthy();
-      vi.useFakeTimers();
-      try {
-        const pending = check.run();
-        await vi.advanceTimersByTimeAsync(2_000);
-        const r = await pending;
-        // Never a pass: the app cannot observe its own output route on iOS --
-        // no setSinkId, no output device list, and the hardware rate read
-        // 48000 on both sides of the microphone opening.
-        expect(r.outcome).toBe('warn');
-      } finally {
-        vi.useRealTimers();
-      }
+      const r = await check.run();
+      // Never a pass: the session type says what the app ASKED for, and the
+      // speaker is what the cabin HEARD. Those came apart once already.
+      expect(r.outcome).toBe('warn');
+      expect(r.detail).toMatchObject({ sessionType: 'play-and-record', how: 'ended' });
+      delete (globalThis as { navigator?: unknown }).navigator;
+    });
+
+    it('fails rather than asking when nothing played', async () => {
+      /**
+       * THE 2026-10-04 READING, which is why this test exists.
+       * `car-check:output-route outcome=fail why=NotAllowedError`, twice in
+       * one sitting, and Jack was never asked the question. A fresh `Audio`
+       * forty seconds past the gesture is locked; the pool's elements are not.
+       *
+       * A check with nothing to listen to must say THAT, not grade the route.
+       */
+      const r = await outputRouteCheck(async () => 'NotAllowedError').run();
+      expect(r.outcome).toBe('fail');
+      expect(r.summary).toContain('Nothing played');
+      expect(r.detail).toMatchObject({ how: 'NotAllowedError' });
     });
   });
 });

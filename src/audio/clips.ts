@@ -452,6 +452,18 @@ function takeIdleAudio(AudioCtor: new () => HTMLAudioElement): HTMLAudioElement 
 const TONE_RELEASE_MS = 1000;
 
 /**
+ * How a pooled one-shot finished.
+ *
+ * Returned rather than merely logged because the car check has to be able to
+ * SAY which happened: `output-route` reported `fail why=NotAllowedError` twice
+ * on the 2026-10-04 run and the operator was never asked anything, and a check
+ * that cannot distinguish "the phone refused to play it" from "it played and
+ * you did not answer" is a check that wastes a drive. Anything other than
+ * 'ended' means no sound reached the cabin.
+ */
+export type PooledEnding = 'ended' | 'error' | 'timeout' | 'threw' | 'unavailable' | string;
+
+/**
  * Play silence on fresh elements so they are unlocked before the drill needs
  * them. CALLED FROM A USER GESTURE ONLY -- see audio/unlock.ts, which is the
  * only caller and the only place where `play()` is allowed to succeed on an
@@ -535,24 +547,33 @@ function returnIdleAudio(audio: HTMLAudioElement): void {
  * on it is refused outside a gesture, which is the failure that silenced
  * clips on the 2026-10-02 drive.
  */
-export function playPooledTone(src: string, volume: number): void {
+export function playPooledTone(
+  src: string,
+  volume: number,
+  opts?: { releaseAfterMs?: number },
+): Promise<PooledEnding> {
   const AudioCtor = getAudioCtor();
-  if (!AudioCtor) return;
+  if (!AudioCtor) return Promise.resolve('unavailable');
+  let settle: (how: PooledEnding) => void = () => {};
+  const ending = new Promise<PooledEnding>((resolve) => {
+    settle = resolve;
+  });
   try {
     const audio = takeIdleAudio(AudioCtor);
     let returned = false;
-    const release = () => {
+    const release = (how: PooledEnding) => {
       if (returned) return;
       returned = true;
       returnIdleAudio(audio);
+      settle(how);
     };
     audio.src = src;
     if (typeof audio.load === 'function') audio.load();
     audio.volume = elementVolume(volume);
-    audio.onended = release;
+    audio.onended = () => release('ended');
     audio.onerror = () => {
       diag('speak', 'tone-broke', { why: 'element-error' });
-      release();
+      release('error');
     };
     const result = audio.play();
     if (result && typeof result.then === 'function') {
@@ -564,16 +585,18 @@ export function playPooledTone(src: string, volume: number): void {
           why: 'play-rejected',
           name: (e as { name?: string })?.name ?? 'unknown',
         });
-        release();
+        release(((e as { name?: string })?.name ?? 'play-rejected') as PooledEnding);
       });
     }
     // A belt-and-braces return: `ended` is not guaranteed on a sound this
     // short if the element is interrupted, and an element that never comes
     // back is an element the pool has lost.
-    setTimeout(release, TONE_RELEASE_MS);
+    setTimeout(() => release('timeout'), opts?.releaseAfterMs ?? TONE_RELEASE_MS);
   } catch {
     /* a chime must never throw into whatever asked for it */
+    settle('threw');
   }
+  return ending;
 }
 
 /**

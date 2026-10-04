@@ -336,12 +336,12 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
            * what iOS does here and why no part of it is callable from a page.
            */
           <div className="settings-note-row u-note settings-earpiece">
-            Voice has been used this session, so iOS moved the sound to the earpiece at
-            the top of the phone. Nothing in the app can move it back &mdash; close and
-            reopen the app for the loud speaker. The wheel answers without the
-            microphone.
+            Voice was used, so iOS may have moved the sound to the earpiece.{' '}
+            <strong>Sound with the mic on</strong>, under <strong>Audio</strong>, is the
+            control for it; reopening the app also clears it.
           </div>
         )}
+
         <div className="settings-note-row u-note">
           How much it says, how fast, and which voice: under <strong>Audio</strong>.
         </div>
@@ -568,6 +568,30 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           <div className="settings-note-row u-note">
             The on switch and the recorded voice are in <strong>In the car</strong> at the
             top, with the rest of what a drive needs. This is the detail behind them.
+          </div>
+
+          {/* HERE RATHER THAN "In the car": that section opens by default and
+              is held to under two phone screens by
+              e2e/collapsible-sections.spec.ts, which this one row broke on its
+              own. "In the car" points here once voice has been used. */}
+          <div className="settings-row">
+            <span className="settings-label">Sound with the mic on</span>
+            <Segmented
+              options={[
+                { value: 'playback', label: 'Speaker' },
+                { value: 'switch', label: 'Switch' },
+                { value: 'auto', label: 'Auto' },
+              ]}
+              value={settings.audio.outputRoute}
+              onChange={(outputRoute) => updateAudio({ outputRoute })}
+            />
+          </div>
+          <div className="settings-note-row u-note">
+            Opening the microphone moves iOS output to the earpiece at the top of the
+            phone. <strong>Speaker</strong> keeps the media category and never asks for
+            recording mode &mdash; try this first. <strong>Switch</strong> hands the
+            session back to listen: safer for the microphone, likelier to keep the
+            earpiece. <strong>Auto</strong> never touches the session, for comparison.
           </div>
           <Verified state="partly">
             Driven on 2026-09-30 and again on 2026-10-02: clips play to the end on the phone,

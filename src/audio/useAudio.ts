@@ -1,3 +1,4 @@
+import { setOutputRoutePreference } from './audioSession';
 import { useEffect, useMemo } from 'react';
 import type { AudioSettings } from '../store/types';
 import { speak, chime, chimeWhenQuiet, repeatLast } from './speech';
@@ -47,7 +48,7 @@ export interface AudioApi {
  * re-fire loop.
  */
 export function useAudio(audio: AudioSettings): AudioApi {
-  const { enabled, verbosity, rate, voiceURI, chimes, useClips, clipVoice } = audio;
+  const { enabled, verbosity, rate, voiceURI, chimes, useClips, clipVoice, outputRoute } = audio;
   // Mute is folded in HERE, once, rather than at the four call sites below:
   // a path that forgot it would be a path that still makes noise in a
   // quiet room, which is the one failure this control exists to prevent.
@@ -65,6 +66,13 @@ export function useAudio(audio: AudioSettings): AudioApi {
     // utterance of the session (see prewarmClips).
     if (useClips) void prewarmClips();
   }, [useClips]);
+
+  // Same pattern for the audio session category. Module-level because
+  // `speak` has no access to settings and the route is a property of the
+  // PAGE, not of any utterance -- see audio/audioSession.ts.
+  useEffect(() => {
+    setOutputRoutePreference(outputRoute);
+  }, [outputRoute]);
 
   // Same pattern for the selected clip voice, warmed for the same reason --
   // switching voice empties the cache for the one now selected.
