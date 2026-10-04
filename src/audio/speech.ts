@@ -525,7 +525,7 @@ export function getLastSpoken(): string | null {
  * recorded voice ships on by default. Re-exported from here because every
  * caller already looks for it in this module.
  */
-export { setSpeechActivityListener };
+export { setSpeechActivityListener, whenSomethingFinishesSpeaking };
 export type { SpeechActivityListener, SpeechActivityPhase };
 
 /** Average characters per second of speech at rate 1.0, from ~150wpm. */
@@ -565,9 +565,38 @@ export function estimateSpeechMs(text: string, rate = 1): number {
  */
 export const CUE_WAIT_CEILING_MS = 6000;
 
-/** Is the app making a noise right now, by either path? */
+/**
+ * Utterances the harness has swallowed but which are still notionally sounding.
+ *
+ * WHY THE FAKE HAS TO BE HONEST ABOUT THIS. Under `?e2e=1` nothing is queued
+ * and no clip chain runs, so "is the app speaking" answered NO for the entire
+ * duration of every simulated utterance -- which meant the one rule the
+ * 2026-10-04 drive was lost to, that the microphone must not open over the
+ * app's own voice, could not be exercised by any test. The suite would have
+ * gone green on a build that opened the microphone mid-prompt, which is
+ * exactly the build Jack had just driven.
+ *
+ * Counted rather than flagged because a prompt is a chain and the app can
+ * decide to say a second thing while the first is still going.
+ */
+let e2eUtterancesSounding = 0;
+
+/** Is the app making a noise right now, by any path? */
 function isSpeakingNow(): boolean {
-  return pendingSpeeches.length > 0 || isClipChainActive();
+  return pendingSpeeches.length > 0 || isClipChainActive() || e2eUtterancesSounding > 0;
+}
+
+/**
+ * The same question, for the microphone.
+ *
+ * Exported because the voice controller must not open a session over the
+ * app's own voice -- the 2026-10-04 drive opened one 7ms into a 4489ms prompt
+ * and spent the whole prompt on the earpiece. Both paths have to count: the
+ * recorded voice ships on by default, so a predicate that knew only about
+ * live TTS would answer "quiet" through every prompt Jack actually hears.
+ */
+export function appIsSpeaking(): boolean {
+  return isSpeakingNow();
 }
 
 /**
@@ -708,6 +737,10 @@ export function repeatLast(opts?: SpeechOpts): boolean {
 export function _resetLastSpokenForTest(): void {
   lastSpoken = null;
   lastSpokenOpts = null;
+  // A simulated utterance left sounding would make the app look permanently
+  // mid-sentence to the next test, which reads as a microphone that never
+  // opens.
+  e2eUtterancesSounding = 0;
 }
 
 /**
@@ -866,7 +899,16 @@ export function speak(text: string, opts?: SpeechOpts): void {
     // Scheduled at the estimate, which is what production approximates: the
     // real ending arrives when the utterance really stops, and the estimate is
     // the app's own best guess at that.
-    setTimeout(() => notifySpeechEnded(), estimateSpeechMs(text, opts?.rate));
+    // AND IT COUNTS AS SOUNDING WHILE IT RUNS, so that the microphone gate
+    // sees the same shape of utterance it sees in the car. Decremented before
+    // the notification, because the listeners woken by it ask whether the app
+    // is still speaking in order to decide whether to open the microphone --
+    // and the answer at that moment is no.
+    e2eUtterancesSounding += 1;
+    setTimeout(() => {
+      e2eUtterancesSounding = Math.max(0, e2eUtterancesSounding - 1);
+      notifySpeechEnded();
+    }, estimateSpeechMs(text, opts?.rate));
     return;
   }
 

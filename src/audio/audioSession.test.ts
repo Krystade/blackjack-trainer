@@ -11,6 +11,7 @@ import {
   setOutputRoutePreference,
   _resetAudioSessionForTest,
   outputRoutePreference,
+  openMicWhenQuiet,
 } from './audioSession';
 import { clearDiagnosticLog, readDiagnosticLog } from '../diag/diagnosticLog';
 import { DEFAULT_AUDIO } from '../store/types';
@@ -351,5 +352,160 @@ describe('the shipped default', () => {
      */
     _resetAudioSessionForTest();
     expect(outputRoutePreference()).toBe(DEFAULT_AUDIO.outputRoute);
+  });
+});
+
+/**
+ * NOT OPENING THE MICROPHONE OVER THE APP'S OWN VOICE.
+ *
+ * THE BUG THIS EXISTS FOR, from Jack's 2026-10-04 drive on build 47500a2e7ce8
+ * with the route setting already on 'switch':
+ *
+ *   15:44:16.646  speak path-chosen   said="You have ace, nine. Dealer shows two."
+ *   15:44:16.653  mic listen-on                              <- 7ms later
+ *   15:44:16.780  route session-at-mic-open type=play-and-record
+ *   15:44:21.143  speak clip-end      ms=4489
+ *
+ * Not one `route handoff` row in 155 entries. The handoff was wired to the
+ * START of an utterance, and the utterance always starts first: the prompt
+ * begins, and seven milliseconds later the screen opens the microphone and
+ * registers the listener that would have heard about it. The 'start' phase had
+ * already been and gone. So the app then talked for four and a half seconds
+ * with capture live in `play-and-record` -- precisely the earpiece condition
+ * the setting was built to escape, reached by the setting's own code path.
+ *
+ * Hooking the start was the wrong lever. Jack, on being told the shape of the
+ * fix: "im not the one that controls when the mic opens either, its automatic
+ * no? no button for me or anything so it needs to wait and allow it to finish
+ * talking." Which is the rule -- the microphone is open only while the app is
+ * not speaking -- and deferring the OPEN is the half of it that no event
+ * ordering can lose, because it is checked at the moment of opening rather
+ * than announced beforehand.
+ *
+ * Nothing is given up by waiting: the recogniser is deafened for the duration
+ * of every utterance anyway (`suppressFor`), so a session opened over the
+ * app's voice could never have heard a word of the answer. It only ever cost
+ * the loud speaker.
+ */
+describe('opening the microphone around the app talking', () => {
+  const realNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+
+  function installSession(initial: string): { type: string } {
+    const s = { type: initial };
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { audioSession: s },
+      configurable: true,
+      writable: true,
+    });
+    return s;
+  }
+
+  beforeEach(() => {
+    clearDiagnosticLog();
+    _resetAudioSessionForTest();
+    installSession('auto');
+  });
+
+  afterEach(() => {
+    if (realNavigator) Object.defineProperty(globalThis, 'navigator', realNavigator);
+    else delete (globalThis as { navigator?: unknown }).navigator;
+  });
+
+  function gate(
+    speaking: boolean,
+    route: 'auto' | 'playback' | 'switch' = 'switch',
+  ) {
+    setOutputRoutePreference(route);
+    const waiters: (() => void)[] = [];
+    let opened = 0;
+    const cancel = openMicWhenQuiet({
+      speaking: () => speaking,
+      whenQuiet: (fn) => {
+        waiters.push(fn);
+        return () => {
+          const i = waiters.indexOf(fn);
+          if (i >= 0) waiters.splice(i, 1);
+        };
+      },
+      open: () => {
+        opened += 1;
+      },
+      why: 'test',
+    });
+    return {
+      cancel,
+      waiters,
+      opens: () => opened,
+      finishSpeaking: () => {
+        speaking = false;
+        for (const fn of [...waiters]) fn();
+      },
+    };
+  }
+
+  it('waits, instead of opening it mid-sentence', () => {
+    // The whole bug in one assertion. Before this, `open` ran 7ms into a
+    // 4489ms prompt.
+    const g = gate(true);
+    expect(g.opens()).toBe(0);
+  });
+
+  it('opens it once the app has stopped', () => {
+    const g = gate(true);
+    g.finishSpeaking();
+    expect(g.opens()).toBe(1);
+  });
+
+  it('declares playback while it waits, so the prompt gets the speaker', () => {
+    // Deferring alone would leave the session wherever it was. The reason the
+    // wait is worth anything is that the utterance now happens with nothing
+    // capturing and the media intent declared -- the ORDER that WebKit bug
+    // 218012 reports as the only thing that works.
+    gate(true);
+    expect(readAudioSessionType()).toBe('playback');
+  });
+
+  it('opens it straight away when the app is quiet', () => {
+    // The common case, and it must not pay a round trip through the waiters:
+    // a drill that has just finished speaking should be listening now.
+    const g = gate(false);
+    expect(g.opens()).toBe(1);
+    expect(g.waiters).toHaveLength(0);
+  });
+
+  it('leaves the other routes alone, including the one that shipped', () => {
+    // 'auto' is defined as "never touch the session", and a user who picked it
+    // is asking for the behaviour that shipped, deafness and all.
+    expect(gate(true, 'auto').opens()).toBe(1);
+    expect(gate(true, 'playback').opens()).toBe(1);
+  });
+
+  it('can be called off, so a screen that leaves opens nothing', () => {
+    // An unmounted screen's deferred open would start a recogniser with no
+    // controller behind it -- the microphone live on whatever is on screen
+    // next, which is the failure `abandonSpeechHandoff` exists for one level
+    // up.
+    const g = gate(true);
+    g.cancel();
+    g.finishSpeaking();
+    expect(g.opens()).toBe(0);
+  });
+
+  it('opens only once, however many endings arrive', () => {
+    // A prompt is a CHAIN of clips and each one settles, so the waiters run
+    // more than once per utterance. Two opens would mean two recognisers, and
+    // the second ends the first.
+    const g = gate(true);
+    g.finishSpeaking();
+    g.finishSpeaking();
+    expect(g.opens()).toBe(1);
+  });
+
+  it('writes down that it waited, because a silent mic looks like a dead one', () => {
+    clearDiagnosticLog();
+    gate(true);
+    const rows = readDiagnosticLog().filter((r) => r.event === 'mic-deferred');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.detail).toMatchObject({ why: 'test' });
   });
 });

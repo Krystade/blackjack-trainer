@@ -209,6 +209,90 @@ export function endSpeechHandoff(): 'open-mic' | 'none' {
 }
 
 /**
+ * OPEN THE MICROPHONE, BUT NOT OVER THE APP'S OWN VOICE.
+ *
+ * THE BUG, from Jack's 2026-10-04 drive on build 47500a2e7ce8 with the route
+ * setting already on 'switch':
+ *
+ *   15:44:16.646  speak path-chosen   said="You have ace, nine. Dealer shows two."
+ *   15:44:16.653  mic listen-on                              <- 7ms later
+ *   15:44:16.780  route session-at-mic-open type=play-and-record
+ *   15:44:21.143  speak clip-end      ms=4489
+ *
+ * Not one `route handoff` row in 155 entries: `beginSpeechHandoff` was never
+ * reached. The handoff hung off the START of an utterance, and the utterance
+ * always starts first -- the prompt begins, and seven milliseconds later the
+ * screen opens the microphone and registers the listener that would have been
+ * told. The 'start' phase had already gone by. The app then talked for four
+ * and a half seconds with capture live in `play-and-record`: exactly the
+ * earpiece condition this setting exists to escape, arrived at down the
+ * setting's own code path.
+ *
+ * SO THE LEVER IS THE OPEN, NOT THE START. Jack, on hearing the shape of the
+ * fix: "im not the one that controls when the mic opens either, its automatic
+ * no? no button for me or anything so it needs to wait and allow it to finish
+ * talking." The rule is that the microphone is open only while the app is not
+ * speaking, and this is the half of it that no event ordering can lose --
+ * it is a question asked at the moment of opening rather than a notification
+ * sent beforehand and hopefully heard.
+ *
+ * NOTHING IS GIVEN UP BY WAITING. Every utterance deafens the recogniser for
+ * its own duration anyway (`suppressFor` one level up), so a session opened
+ * over the app's voice could never have heard a word of the answer. It only
+ * ever cost the loud speaker. The wait is also where the declaration goes:
+ * capture is not running, so asking for 'playback' here is the ORDER that
+ * WebKit bug 218012 reports as the one thing that works, rather than the
+ * mid-capture request that drive proved inert.
+ *
+ * Returns a canceller, because a screen that leaves while waiting must not
+ * open a microphone onto whatever is on screen next.
+ */
+export function openMicWhenQuiet(deps: {
+  /** Is the app making a noise right now? */
+  speaking: () => boolean;
+  /** Register for the next time it stops; returns an unregister. */
+  whenQuiet: (fn: () => void) => () => void;
+  /** Actually start the recogniser. */
+  open: () => void;
+  /** For the log: which path asked. */
+  why: string;
+}): () => void {
+  // 'auto' is defined as never touching the session, and 'playback' is the
+  // mode that keeps the declaration and accepts the deafness. Only 'switch'
+  // promises to sequence the two, so only 'switch' pays for it.
+  if (preference !== 'switch' || !deps.speaking()) {
+    deps.open();
+    return () => {};
+  }
+  // The utterance now runs with nothing capturing and the media intent
+  // declared, which is the entire point of the wait.
+  requestAudioSessionType('playback');
+  diag('mic', 'mic-deferred', { why: deps.why });
+  let done = false;
+  let unregister: (() => void) | null = null;
+  const attempt = (): void => {
+    if (done) return;
+    // A prompt is a CHAIN of clips and each one settles, so this runs more
+    // than once per utterance. Opening twice would mean two recognisers, and
+    // the second ends the first.
+    if (deps.speaking()) {
+      unregister = deps.whenQuiet(attempt);
+      return;
+    }
+    done = true;
+    unregister = null;
+    deps.open();
+  };
+  unregister = deps.whenQuiet(attempt);
+  return () => {
+    if (done) return;
+    done = true;
+    unregister?.();
+    unregister = null;
+  };
+}
+
+/**
  * Forget any outstanding handoff, without reopening anything.
  *
  * For the case where the screen that closed the microphone has gone: voice

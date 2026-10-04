@@ -6,7 +6,11 @@ import {
   type HeardVerdict,
   type VoiceController,
 } from '../audio/voiceControl';
-import { setSpeechActivityListener } from '../audio/speech';
+import {
+  appIsSpeaking,
+  setSpeechActivityListener,
+  whenSomethingFinishesSpeaking,
+} from '../audio/speech';
 import { onDeviceStatus, prefersOnDevice, shouldProcessLocally } from '../audio/onDeviceSpeech';
 import { recordHeard } from '../audio/voiceHistory';
 import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition';
@@ -20,7 +24,9 @@ import {
   abandonSpeechHandoff,
   audioSessionSupported,
   beginSpeechHandoff,
+  claimSpeakerForPlayback,
   endSpeechHandoff,
+  openMicWhenQuiet,
   readAudioSessionType,
   releaseSpeakerForListening,
 } from '../audio/audioSession';
@@ -229,6 +235,15 @@ export function useVoiceControl({
 
   const controllerRef = useRef<VoiceController | null>(null);
 
+  /**
+   * Call off a microphone open that is waiting for the app to shut up.
+   *
+   * A screen that leaves mid-prompt would otherwise open a session onto
+   * whatever is on screen next -- the same debt `abandonSpeechHandoff` pays
+   * for the other direction.
+   */
+  const deferredOpenRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     if (!enabled) return;
 
@@ -320,6 +335,23 @@ export function useVoiceControl({
             supported: audioSessionSupported(),
             type: readAudioSessionType() ?? 'unknown',
           });
+          /**
+           * AND STOP DECLARING THE RECORDING INTENT, now that nothing is
+           * recording.
+           *
+           * The 2026-10-04 log ends its last mic session with
+           * `session-at-mic-close type=play-and-record`: capture was over and
+           * the page was still asking for the category that puts output on the
+           * earpiece. Nothing undid it, because the only thing that declared
+           * 'playback' was the handoff, and the handoff never ran.
+           *
+           * Read first and claim second, deliberately: the row above is the
+           * measurement of what WebKit was left in, and claiming before
+           * reading would have the app recording its own request as a finding.
+           * A no-op under 'auto', which is defined as never touching the
+           * session.
+           */
+          claimSpeakerForPlayback();
         }
         if (state === 'listening') {
           // The other half: read as soon as the session is confirmed open.
@@ -407,6 +439,29 @@ export function useVoiceControl({
      * ending, or an utterance that began before the setting was switched on,
      * cannot start a recogniser the operator never asked for.
      */
+    /**
+     * START THE RECOGNISER, ONCE THE APP IS QUIET.
+     *
+     * Every path that opens the microphone goes through here, because the one
+     * that did not is the bug: on the 2026-10-04 drive the screen's own
+     * opening call ran 7ms after the prompt began and the app then spent
+     * 4489ms talking with capture live in `play-and-record`. Waiting costs
+     * nothing -- the recogniser is deafened for the length of every utterance
+     * regardless -- and it is what puts the prompt on the loud speaker.
+     */
+    const startMic = (why: string) => {
+      deferredOpenRef.current?.();
+      deferredOpenRef.current = openMicWhenQuiet({
+        speaking: appIsSpeaking,
+        whenQuiet: whenSomethingFinishesSpeaking,
+        open: () => {
+          deferredOpenRef.current = null;
+          controller.start();
+        },
+        why,
+      });
+    };
+
     const reopenMic = (why: string) => {
       if (reopenTimerRef.current !== null) {
         clearTimeout(reopenTimerRef.current);
@@ -414,7 +469,7 @@ export function useVoiceControl({
       }
       if (endSpeechHandoff() !== 'open-mic') return;
       diag('route', 'handoff', { to: 'microphone', why });
-      controller.start();
+      startMic(why);
     };
 
     // Deafen the microphone whenever the app talks. Registered only while
@@ -486,7 +541,13 @@ export function useVoiceControl({
       // stored sentence alone in that case on purpose.
       controller.suppressFor(ms, text);
     });
-    controller.start();
+    /*
+     * AND THE OPENING ITSELF WAITS, which is the fix for the drive that was
+     * still on the earpiece with 'switch' already selected. This call used to
+     * be a bare `controller.start()`, which is how a prompt that had begun
+     * seven milliseconds earlier ended up playing with capture live.
+     */
+    startMic('listen-on');
 
     // Everything below is a nudge from outside the controller, for the events
     // it cannot see: the page coming back, the network returning, the car's
@@ -572,6 +633,8 @@ export function useVoiceControl({
         clearTimeout(reopenTimerRef.current);
         reopenTimerRef.current = null;
       }
+      deferredOpenRef.current?.();
+      deferredOpenRef.current = null;
       abandonSpeechHandoff();
       controller.stop();
       controllerRef.current = null;
