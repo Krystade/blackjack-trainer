@@ -155,3 +155,70 @@ describe('what to do next', () => {
     expect(steps[0]).toContain('needs a drive');
   });
 });
+
+describe('next steps for the capability and handoff checks', () => {
+  const r = (id: string, outcome: 'pass' | 'fail' | 'warn', detail?: Record<string, unknown>) => ({
+    id,
+    outcome,
+    summary: '',
+    ...(detail ? { detail } : {}),
+  });
+
+  it('says what a stale build means before anything else is trusted', () => {
+    // The fault that silently wastes a whole drive: the fix was never on the
+    // phone, and every other result was gathered from the wrong code.
+    const steps = nextSteps([r('build', 'fail', { build: 'aaa', deployed: 'bbb' })]);
+    expect(steps.join(' ')).toContain('aaa');
+    expect(steps.join(' ')).toContain('bbb');
+    expect(steps.join(' ')).toMatch(/close every tab/i);
+  });
+
+  it('tells the operator to abandon Switch when the microphone will not restart', () => {
+    const steps = nextSteps([r('mic-restart', 'fail')]);
+    expect(steps.join(' ')).toMatch(/Speaker or Auto/);
+  });
+
+  it('carries the restart cost into the advice when it is merely slow', () => {
+    const steps = nextSteps([r('mic-restart', 'warn', { ms: 2400 })]);
+    expect(steps.join(' ')).toContain('2400ms');
+  });
+
+  it('turns the two route warnings into the comparison they exist for', () => {
+    /*
+     * NEITHER CHECK CAN REACH A VERDICT -- only ears can -- so the advice has
+     * to state the experiment rather than an outcome, and has to say what
+     * BOTH answers mean. Advice that only explained the good outcome would
+     * leave the operator with no reading for the bad one, which is the more
+     * likely of the two.
+     */
+    const steps = nextSteps([r('output-route', 'warn'), r('handoff-route', 'warn')]).join(' ');
+    expect(steps).toMatch(/if the second was louder/i);
+    expect(steps).toMatch(/sounded the same/i);
+  });
+
+  it('says nothing about the comparison when only one of the two ran', () => {
+    // Half the experiment is not the experiment, and advice that implied it
+    // was would have the operator comparing a clip against nothing.
+    const steps = nextSteps([r('output-route', 'warn'), r('handoff-route', 'fail')]).join(' ');
+    expect(steps).not.toMatch(/if the second was louder/i);
+  });
+
+  it('still says everything passed when nothing failed', () => {
+    const steps = nextSteps([r('build', 'pass'), r('wake-lock', 'pass'), r('storage', 'pass')]);
+    expect(steps.join(' ')).toMatch(/needs a drive/);
+  });
+
+  it('names the screen lock, the tunnel and the private window separately', () => {
+    // Three different capabilities with three different remedies. One
+    // catch-all line would tell the operator to do the wrong thing twice.
+    const steps = nextSteps([
+      r('wake-lock', 'fail'),
+      r('offline-clips', 'fail'),
+      r('storage', 'fail'),
+    ]);
+    expect(steps).toHaveLength(3);
+    expect(steps.join(' ')).toMatch(/screen locks/);
+    expect(steps.join(' ')).toMatch(/Wi-Fi/);
+    expect(steps.join(' ')).toMatch(/private browsing/);
+  });
+});

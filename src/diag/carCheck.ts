@@ -31,9 +31,27 @@
  * open, and the microphone is closed again between them. `runCarCheck`
  * enforces that rather than documenting it, because a phase order held only
  * by convention is one refactor from being wrong in a way nobody can see.
+ *
+ * THE THIRD PHASE, and why the microphone being shut is not enough to
+ * describe it.
+ *
+ * HANDOFF runs with the microphone shut, exactly like SPEAKER -- but AFTER it
+ * has been open. That difference is the whole question this app has been
+ * stuck on. On iOS, opening the microphone moves output to the earpiece, and
+ * nothing in a page could be found that moves it back; declaring
+ * `navigator.audioSession.type = 'playback'` while capturing was tried on the
+ * 2026-10-04 drive and held at `playback` end to end with the sound on the
+ * earpiece anyway. The only remaining lever is the ORDER -- stop capturing,
+ * declare playback, then make the sound -- and whether that works cannot be
+ * determined anywhere but on the phone.
+ *
+ * So the handoff phase is the measurement: the microphone HAS been open, it
+ * is now shut, playback has been declared, and a real clip plays. The app can
+ * report which category the session is in and that the clip ran to the end.
+ * Which speaker it came out of only an operator can answer, so that one asks.
  */
 
-export type CheckPhase = 'speaker' | 'microphone';
+export type CheckPhase = 'speaker' | 'microphone' | 'handoff';
 
 /**
  * 'warn' is not a soft 'fail'. A check warns when it could not reach a
@@ -72,7 +90,7 @@ export interface CarCheckDeps {
 }
 
 /** The phases, in the only order that can work. */
-export const PHASE_ORDER: readonly CheckPhase[] = ['speaker', 'microphone'];
+export const PHASE_ORDER: readonly CheckPhase[] = ['speaker', 'microphone', 'handoff'];
 
 export function checksForPhase(
   checks: readonly CheckDefinition[],
@@ -103,8 +121,11 @@ export async function runCarCheck(deps: CarCheckDeps): Promise<CarCheckRun> {
     const phaseChecks = checksForPhase(deps.checks, phase);
     if (phaseChecks.length === 0) continue;
 
-    // The invariant, enforced: the speaker phase runs with the microphone
-    // SHUT, because an open one takes the wheel and the loudspeaker with it.
+    // The invariant, enforced: only the MICROPHONE phase runs with the
+    // microphone open, because an open one takes the wheel and the
+    // loudspeaker with it. 'handoff' is shut on purpose and must stay that
+    // way -- it is measuring what closing it gives back, so opening it would
+    // destroy the thing being measured.
     const wantMic = phase === 'microphone';
     if (deps.isMicOpen() !== wantMic) await deps.setMicOpen(wantMic);
     deps.log('phase', { phase, micOpen: deps.isMicOpen() });
@@ -171,6 +192,50 @@ export function nextSteps(results: readonly CheckResult[]): string[] {
   if (failed('ambient')) {
     steps.push(
       'The microphone produced no signal at all. In a moving car that means the app is listening to a different input than you think.',
+    );
+  }
+  /* The capability and handoff checks (2026-10-04). Each one fails in a way
+     that looks like the app being broken, so each needs the one sentence
+     that says what to do instead. */
+  if (failed('build')) {
+    const detail = by.get('build')?.detail;
+    steps.push(
+      `This phone is running an older build than the one deployed${
+        detail?.deployed ? ` (${String(detail.build)} here, ${String(detail.deployed)} there)` : ''
+      }. Anything you are here to test may not be on the phone yet -- close every tab and reopen before trusting a result.`,
+    );
+  }
+  if (failed('wake-lock')) {
+    steps.push(
+      'The screen cannot be kept awake, so a drill will stop when the screen locks. Keep the phone awake by hand, or expect the audio to die mid-shoe.',
+    );
+  }
+  if (failed('offline-clips')) {
+    steps.push(
+      'The recorded voice is not stored on the phone, so it needs a signal. Open a drill once on Wi-Fi before driving anywhere with tunnels.',
+    );
+  }
+  if (failed('storage')) {
+    steps.push(
+      'This phone will not keep a setting, so everything resets on the next launch. That usually means private browsing or a full disk.',
+    );
+  }
+  if (failed('mic-restart')) {
+    steps.push(
+      'The microphone does not come back after being closed, which makes "Sound with the mic on: Switch" unusable -- it would leave the drill deaf. Set it to Speaker or Auto.',
+    );
+  }
+  if (warned('mic-restart')) {
+    const ms = by.get('mic-restart')?.detail?.ms;
+    steps.push(
+      `The microphone takes ${ms ? `${String(ms)}ms` : 'a long time'} to come back, and Switch pays that after every spoken line. If the drill feels deaf, that is why.`,
+    );
+  }
+  if (warned('handoff-route') && warned('output-route')) {
+    // Both are warns by design -- only ears can answer them -- so the step is
+    // the comparison itself rather than a verdict.
+    steps.push(
+      'Two clips played: one with the microphone open, one with it shut. If the second was louder, "Switch" is worth its cost and should stay on. If they sounded the same, nothing in a web page can move the sound off the earpiece and the setting is only costing you deafness.',
     );
   }
   if (steps.length === 0) {

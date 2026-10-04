@@ -503,38 +503,11 @@ export interface SelfTestStorage {
   removeItem(key: string): void;
 }
 
-const PROBE_KEY = 'bjtrainer.selftest.probe';
-
 export function settingsCases(
   store: SelfTestStorage | null,
   live?: Record<string, unknown>,
 ): SelfTestCase[] {
   return [
-    {
-      id: 'settings-storage',
-      group: 'Settings',
-      label: 'this phone can store a setting and read it back',
-      run: () => {
-        if (!store) return 'this browser exposes no storage, so every setting resets on launch';
-        const value = `probe-${Date.now()}`;
-        try {
-          store.setItem(PROBE_KEY, value);
-          const got = store.getItem(PROBE_KEY);
-          store.removeItem(PROBE_KEY);
-          if (got !== value) {
-            return `wrote "${value}" and read back "${String(got)}" -- settings will not survive a relaunch`;
-          }
-          if (store.getItem(PROBE_KEY) !== null) {
-            return 'storage would not delete a key, so the log and history cannot be cleared';
-          }
-          return null;
-        } catch (e) {
-          // Private browsing and a full quota both land here, and both mean
-          // every setting resets on the next launch.
-          return `storage refused: ${e instanceof Error ? e.message : String(e)}`;
-        }
-      },
-    },
     {
       id: 'settings-serialisable',
       group: 'Settings',

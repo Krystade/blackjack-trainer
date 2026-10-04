@@ -161,11 +161,11 @@ describe('OWNED_KEYS', () => {
     'bjtrainer.voiceLocal.v1': 'per-document voice enumeration',
     'bjtrainer.voiceLocalProbe.v1': 'per-document voice enumeration',
     'bjtrainer.voiceProbe.v1': 'per-document voice enumeration',
-    // Written and deleted inside one synchronous run of the on-device test
-    // suite, purely to find out whether this browser can store anything at
-    // all (diag/selfTest.ts). It never holds state, and by the time any other
+    // Written and deleted inside one run of the device check, purely to find
+    // out whether this browser can store anything at all
+    // (diag/deviceChecks.ts). It never holds state, and by the time any other
     // tab could react to it, it is already gone.
-    'bjtrainer.selftest.probe': 'write-read-delete probe, gone before it lands',
+    'bjtrainer.devicecheck.probe': 'write-read-delete probe, gone before it lands',
     // A sentinel the update check writes immediately before reloading ITSELF.
     // Reacting to it in another tab is how you get two tabs reloading each
     // other.

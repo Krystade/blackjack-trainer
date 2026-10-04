@@ -710,8 +710,8 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
 
       <CarDiagnostics audio={settings.audio} />
 
-      <SelfTestSection live={settings} />
       <CarCheckSection onNavigate={onNavigate} />
+      <SelfTestSection live={settings} />
 
       <VoiceProbePanel />
       <VoiceHistoryPanel />
@@ -817,10 +817,19 @@ function SelfTestSection({ live }: { live: SettingsData }) {
     : [];
 
   return (
-    <CollapsibleSection title={<>Test suite</>} defaultOpen={false}>
+    <CollapsibleSection title={<>Strategy and counting check</>} defaultOpen={false}>
+      {/*
+        NAMED FOR WHAT IT IS, not "Test suite". Jack, 2026-10-04: "This wasn't
+        the main thing I wanted to test. Supposed to test functionality more
+        like the field test rather than the logic which can start testing on
+        the computer." He is right, and the device functionality now lives in
+        Car check above. What is left here is the arithmetic -- worth having on
+        the phone because it runs against the bundle that actually shipped,
+        but not the thing a drive depends on.
+      */}
       <div className="settings-note-row u-note">
-        The checks that would catch a wrong answer: the chart, the count, the indices, the
-        recorded voice, settings reaching storage. Silent and instant.
+        The chart, the count, the indices and the recorded voice, checked against the build
+        on this phone. Silent and instant. Device faults are under <strong>Car check</strong>.
       </div>
 
       <button

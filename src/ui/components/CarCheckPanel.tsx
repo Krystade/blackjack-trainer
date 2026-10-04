@@ -18,10 +18,34 @@ import {
   ambientCheck,
   measureWithWebAudio,
 } from '../../diag/carCheckCatalog';
+import {
+  buildCheck,
+  handoffPhaseChecks,
+  offlineClipCheck,
+  storageCheck,
+  wakeLockCheck,
+} from '../../diag/deviceChecks';
+import { activeClipVoice, loadVoiceManifest, manifestLookup } from '../../audio/clips';
+import { parseVersion, runningBuildId, versionUrl } from '../../updateCheck';
 import { releaseAudioFocus } from '../../audio/audioFocus';
 import { playPooledTone } from '../../audio/clips';
 import { setVoiceOn } from '../voiceSession';
 import { diag } from '../../diag/diagnosticLog';
+
+/**
+ * Just enough of a recogniser to find out whether one will start.
+ *
+ * Not the app's `VoiceController`: that one restarts itself, backs off, holds
+ * a wake lock and keeps a watchdog, all of which would make the measurement
+ * about the controller rather than about the device.
+ */
+interface SpeechRecognitionLike {
+  onstart: (() => void) | null;
+  onerror: ((e: unknown) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  abort(): void;
+}
 
 /**
  * The car check, as a thing you press once.
@@ -58,6 +82,76 @@ export function CarCheckPanel() {
     return new window.Audio(`${base}clips/af_bella/correct.mp3`);
   };
 
+  /**
+   * A clip URL to look for in the cache, or null when the recorded voice is
+   * off. Asks the manifest the app actually loaded rather than guessing a
+   * filename: a guess that happened to be absent would report a tunnel
+   * failure that does not exist.
+   */
+  const clipUrlForCache = async (): Promise<string | null> => {
+    const voice = await activeClipVoice();
+    if (!voice) return null;
+    const manifest = await loadVoiceManifest(voice);
+    const file = manifestLookup(manifest, 'Correct.');
+    if (!file) return null;
+    const base = import.meta.env.BASE_URL ?? '/';
+    return new URL(`${base}clips/${voice}/${file}`, window.location.href).toString();
+  };
+
+  /** Reading `localStorage` can itself throw in some privacy modes. */
+  const probeStorage = () => {
+    try {
+      return window.localStorage;
+    } catch {
+      return null;
+    }
+  };
+
+  /**
+   * Open a real recogniser and resolve when it is LIVE, which is what the
+   * handoff pays after every spoken line.
+   *
+   * Deliberately a bare recogniser rather than `getUserMedia`. Acquiring a
+   * raw stream is the cheap part; what Switch actually waits for is the
+   * recognition session's own handshake, measured at `confirmedInMs=1233` on
+   * the 2026-10-04 drive. Measuring the stream instead would report a cost
+   * several times lower than the real one and make the setting look free.
+   */
+  const reopenRecogniser = (): Promise<boolean> => {
+    const w = window as unknown as {
+      SpeechRecognition?: new () => SpeechRecognitionLike;
+      webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+    };
+    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!Ctor) return Promise.resolve(false);
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const rec = new Ctor();
+      const finish = (live: boolean) => {
+        if (settled) return;
+        settled = true;
+        try {
+          rec.abort();
+        } catch {
+          /* a recogniser that will not abort is not this check's problem */
+        }
+        resolve(live);
+      };
+      rec.onstart = () => finish(true);
+      rec.onerror = () => finish(false);
+      rec.onend = () => finish(false);
+      // A recogniser that neither starts nor errors is the worst case and the
+      // one that would hang the run: it resolves as a failure, which is the
+      // honest reading -- the microphone did not come back.
+      window.setTimeout(() => finish(false), 8000);
+      try {
+        rec.start();
+      } catch {
+        finish(false);
+      }
+    });
+  };
+
   const start = async () => {
     setRunning(true);
     setResults([]);
@@ -91,6 +185,24 @@ export function CarCheckPanel() {
           : undefined,
       ),
       ambientCheck(measureWithWebAudio),
+      /**
+       * THE CAPABILITIES A DRIVE RESTS ON, added 2026-10-04 because the first
+       * on-device suite was the wrong half. Jack: "This wasn't the main thing
+       * I wanted to test. Supposed to test functionality more like the field
+       * test rather than the logic which can start testing on the computer."
+       *
+       * Each of these is refused silently in conditions that only exist on a
+       * phone -- a locked screen, a tunnel, private browsing, a PWA running
+       * last week's shell -- and each one presents as the app simply stopping.
+       */
+      wakeLockCheck(),
+      offlineClipCheck(clipUrlForCache),
+      storageCheck(probeStorage()),
+      buildCheck(runningBuildId, async () => {
+        const res = await fetch(versionUrl(window.location.href), { cache: 'no-store' });
+        if (!res.ok) return null;
+        return parseVersion((await res.json()) as unknown);
+      }),
       // Last, and in the microphone phase on purpose: it is the only check
       // whose answer depends on the microphone having been opened, which is
       // the event that moves the output to the earpiece.
@@ -106,6 +218,27 @@ export function CarCheckPanel() {
         return playPooledTone(`${base}clips/af_bella/correct.mp3`, 1, {
           releaseAfterMs: 4000,
         });
+      }),
+      /**
+       * AND THEN THE SAME QUESTION WITH THE MICROPHONE SHUT, which is the one
+       * measurement the whole earpiece problem turns on and the one no
+       * desktop browser can be asked. The pair is the experiment:
+       * `output-route` above played with the microphone open, this plays with
+       * it closed and playback declared, and the difference between what Jack
+       * hears is the answer.
+       *
+       * The order inside the phase is `handoffPhaseChecks`'s, not this
+       * array's, because reopening the microphone first would destroy the
+       * thing being measured.
+       */
+      ...handoffPhaseChecks({
+        playClip: () => {
+          const base = import.meta.env.BASE_URL ?? '/';
+          return playPooledTone(`${base}clips/af_bella/correct.mp3`, 1, {
+            releaseAfterMs: 4000,
+          });
+        },
+        reopenMic: reopenRecogniser,
       }),
     ];
 

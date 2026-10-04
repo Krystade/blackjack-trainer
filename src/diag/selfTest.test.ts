@@ -230,19 +230,15 @@ describe('the settings cases', () => {
   const live = { audio: { outputRoute: 'playback', volume: 1 } };
 
   /** A storage that behaves, unless told to misbehave in one specific way. */
-  function fakeStore(
-    seed: Record<string, string> = {},
-    bad?: 'throws' | 'swallows' | 'wont-delete',
-  ): SelfTestStorage {
+  /** A plain working store. Misbehaving ones belong to the device suite. */
+  function fakeStore(seed: Record<string, string> = {}): SelfTestStorage {
     const map = new Map(Object.entries(seed));
     return {
-      getItem: (k) => (bad === 'swallows' && k.includes('probe') ? null : (map.get(k) ?? null)),
+      getItem: (k) => map.get(k) ?? null,
       setItem: (k, v) => {
-        if (bad === 'throws') throw new Error('QuotaExceededError');
         map.set(k, v);
       },
       removeItem: (k) => {
-        if (bad === 'wont-delete') return;
         map.delete(k);
       },
     };
@@ -258,51 +254,29 @@ describe('the settings cases', () => {
     expect(summarise(results).failures.map((f) => f.id)).toEqual([]);
   });
 
-  it('fails when the browser exposes no storage at all', () => {
-    const results = runCases(settingsCases(null, live));
-    const failures = summarise(results).failures;
-    expect(failures.map((f) => f.id)).toEqual(['settings-storage']);
-    expect(failures[0].detail).toContain('resets on launch');
-  });
 
-  it('fails when a write throws', () => {
-    const failures = summarise(runCases(settingsCases(fakeStore({}, 'throws'), live))).failures;
-    expect(failures.map((f) => f.id)).toEqual(['settings-storage']);
-    expect(failures[0].detail).toContain('QuotaExceededError');
-  });
 
-  it('fails when storage swallows the write without complaining', () => {
-    // Worse than a throw, and real: some private-mode implementations accept
-    // setItem and then hand back nothing.
-    const failures = summarise(runCases(settingsCases(fakeStore({}, 'swallows'), live))).failures;
-    expect(failures.map((f) => f.id)).toEqual(['settings-storage']);
-    expect(failures[0].detail).toContain('will not survive a relaunch');
-  });
 
-  it('fails when storage will not delete a key', () => {
-    const failures = summarise(
-      runCases(settingsCases(fakeStore({}, 'wont-delete'), live)),
-    ).failures;
-    expect(failures.map((f) => f.id)).toEqual(['settings-storage']);
-    expect(failures[0].detail).toContain('cannot be cleared');
-  });
 
-  it('leaves no probe of its own behind', () => {
+  it('writes nothing at all, now that the storage probe has moved', () => {
+    // The probe belongs to the device suite (diag/deviceChecks.ts), which is
+    // where a question about THIS PHONE belongs. Two implementations of one
+    // check is how they drift apart, so these cases must not write either.
     const store = fakeStore(stored({ audio: { outputRoute: 'playback' } }));
-    const seen: string[] = [];
+    const wrote: string[] = [];
     const watched: SelfTestStorage = {
       getItem: (k) => store.getItem(k),
       setItem: (k, v) => {
-        seen.push(k);
+        wrote.push(k);
         store.setItem(k, v);
       },
-      removeItem: (k) => store.removeItem(k),
+      removeItem: (k) => {
+        wrote.push(k);
+        store.removeItem(k);
+      },
     };
     runCases(settingsCases(watched, live));
-    // It may write its probe, but whatever it writes it must take away, and
-    // it must never write the real settings key.
-    expect(seen).not.toContain(SETTINGS_KEY);
-    expect(store.getItem('bjtrainer.selftest.probe')).toBeNull();
+    expect(wrote).toEqual([]);
   });
 
   it('fails when the stored blob lost its audio section', () => {

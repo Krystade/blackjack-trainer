@@ -370,8 +370,8 @@ const NOT_BACKED_UP: Record<string, string> = {
   'bjtrainer.fieldTestRun.v1': 'progress through a field-test leg, meaningless off the drive',
   'bjtrainer.fieldTestDraft.v1': 'an unsent note inside a field-test leg',
   'bjtrainer.reloadedFor': 'a one-shot guard against a reload loop',
-  'bjtrainer.selftest.probe':
-    'written and deleted inside one run of the on-device test suite, to find out whether this browser can store anything at all -- it holds no state to back up',
+  'bjtrainer.devicecheck.probe':
+    'written and deleted inside one run of the device check, to find out whether this browser can store anything at all -- it holds no state to back up',
   'bjtrainer.voiceProbe.v1': 'what THIS device’s recogniser can do; restoring it onto another device would be a lie',
   'bjtrainer.voiceLocal.v1': 'as above, for on-device recognition',
   'bjtrainer.voiceLocalProbe.v1': 'as above',
