@@ -3609,36 +3609,24 @@ details.stats-section > summary::after {
   }
 }
 
-/* ---------- Settings: has this actually been tried on hardware? ---------- */
-.settings-verified {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+/* ---------- Settings: the on-device test suite's failures ----------
+   A count of failures with no names leaves the operator where a green tick
+   does, so the list is the point. Red, indented, and readable at arm's
+   length in a parked car. */
+.selftest-failures {
+  margin: 0.4rem 0 0;
+  padding: 0 0 0 1.1rem;
   font-size: 0.82rem;
-  line-height: 1.35;
-  color: var(--ink-dim);
+  line-height: 1.4;
+  color: var(--bad, #e0725e);
 }
 
-.settings-verified-tag {
-  flex: none;
-  padding: 0.1rem 0.4rem;
-  border-radius: 0.6rem;
-  border: 1px solid currentColor;
-  font-size: 0.72rem;
-  font-weight: 700;
-  white-space: nowrap;
+.selftest-failures li + li {
+  margin-top: 0.5rem;
 }
 
-.settings-verified.is-confirmed .settings-verified-tag {
-  color: var(--good, #6fcf97);
-}
-
-.settings-verified.is-untested .settings-verified-tag {
-  color: var(--warn, #e0b25e);
-}
-
-.settings-verified.is-partly .settings-verified-tag {
-  color: var(--warn, #e0b25e);
+.selftest-failures strong {
+  color: var(--ink, inherit);
 }
 
 /* A control that cannot do anything under the current rules (see the Profile

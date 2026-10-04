@@ -855,6 +855,18 @@ export function speak(text: string, opts?: SpeechOpts): void {
   notifySpeechActivity(text, opts?.rate);
   if (isE2eAudioMode()) {
     pushSpeechLog(text, opts);
+    // AND THE ENDING TOO. The harness swallowed the sound and then never said
+    // it had stopped, so under `?e2e=1` the microphone only ever saw half of
+    // every utterance: the 'start' phase fired and 'end' never did. Anything
+    // that hangs off the ending -- the speaker handoff reopening the
+    // recogniser, the deaf window closing on the real stopping time rather
+    // than on its estimate -- was therefore untestable, and the handoff's
+    // backstop timer was silently carrying the whole feature in e2e.
+    //
+    // Scheduled at the estimate, which is what production approximates: the
+    // real ending arrives when the utterance really stops, and the estimate is
+    // the app's own best guess at that.
+    setTimeout(() => notifySpeechEnded(), estimateSpeechMs(text, opts?.rate));
     return;
   }
 

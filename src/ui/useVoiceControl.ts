@@ -17,7 +17,10 @@ import { reassertAudioFocus } from '../audio/audioFocus';
 import { markMicSessionOpened } from '../audio/micSessionCost';
 import { markInputDeviceChanged } from '../diag/deviceChurn';
 import {
+  abandonSpeechHandoff,
   audioSessionSupported,
+  beginSpeechHandoff,
+  endSpeechHandoff,
   readAudioSessionType,
   releaseSpeakerForListening,
 } from '../audio/audioSession';
@@ -47,6 +50,18 @@ export interface VoiceStatus {
 }
 
 const IDLE: VoiceStatus = { state: 'off', heard: null, verdict: null };
+
+/**
+ * How long past an utterance's own estimate to wait before giving the
+ * microphone back regardless.
+ *
+ * Only reached when the ending never arrives, so it is deliberately generous:
+ * the real ending should win every ordinary time, and a reopen that raced a
+ * still-talking app would put the recogniser back under the app's own voice.
+ * Two seconds is longer than the gap between any estimate and its real
+ * duration seen in the drive logs.
+ */
+const REOPEN_BACKSTOP_MS = 2000;
 
 /**
  * How often to write a line saying nothing happened.
@@ -171,6 +186,8 @@ export function useVoiceControl({
    * manufacture the signal it is measuring.
    */
   const contextRef = useRef(context);
+  // The armed reopen deadline, so it can be cancelled from two places.
+  const reopenTimerRef = useRef<number | null>(null);
   contextRef.current = context;
 
   const unheardRef = useRef(onNotUnderstood);
@@ -382,6 +399,24 @@ export function useVoiceControl({
     });
     controllerRef.current = controller;
 
+    /**
+     * Give the microphone back, once, whoever notices first.
+     *
+     * Idempotent by way of `endSpeechHandoff`, which returns 'none' unless
+     * this handoff is the thing that closed the recogniser -- so a chime's
+     * ending, or an utterance that began before the setting was switched on,
+     * cannot start a recogniser the operator never asked for.
+     */
+    const reopenMic = (why: string) => {
+      if (reopenTimerRef.current !== null) {
+        clearTimeout(reopenTimerRef.current);
+        reopenTimerRef.current = null;
+      }
+      if (endSpeechHandoff() !== 'open-mic') return;
+      diag('route', 'handoff', { to: 'microphone', why });
+      controller.start();
+    };
+
     // Deafen the microphone whenever the app talks. Registered only while
     // listening, so nothing pays for this when voice is off.
     setSpeechActivityListener((ms, text, phase) => {
@@ -392,9 +427,49 @@ export function useVoiceControl({
       if (phase === 'end') {
         controller.suppressFor(0, undefined);
         diag('speak', 'deafen-until-now', { context: contextRef.current });
+        // THE OTHER HALF OF THE HANDOFF, and the one that normally runs.
+        reopenMic('speech-ended');
         return;
       }
       diag('speak', 'deafen', { ms, said: text, context: contextRef.current });
+      /**
+       * TAKE THE MICROPHONE DOWN FIRST, under the 'switch' setting only.
+       *
+       * Deafening the recogniser is not enough to move the output: WebKit set
+       * the audio session's real category when capture started, and the
+       * 2026-10-04 drive held `type=playback` from end to end with the sound
+       * still on the earpiece. The only lever the thread on WebKit bug 218012
+       * reports as working is stopping capture outright and declaring playback
+       * before the sound. It costs about 1.2 seconds of deafness per line,
+       * which is why it is a setting rather than the default, and why a chime
+       * never triggers it.
+       */
+      if (beginSpeechHandoff(text !== undefined) === 'close-mic') {
+        diag('route', 'handoff', { to: 'speaker', said: text });
+        controller.stop();
+        /*
+         * A DEADLINE, because closing the microphone is a debt.
+         *
+         * The reopen above hangs off one event. Every production path that
+         * makes a sound does funnel into it -- `ended`, `error` and the
+         * watchdog all land in the same place in speech.ts -- but a silenced
+         * microphone that waits forever for a single event sounds exactly
+         * like the app being broken, and is the worst failure this setting
+         * could have. So whichever arrives first wins: the real ending, or
+         * this. `endSpeechHandoff` only ever acts once, so the loser is a
+         * no-op.
+         *
+         * `ms` is the same estimate the deaf window is already sized from.
+         * The margin on top is slack for an utterance that runs over its
+         * estimate, so the real ending wins in the ordinary case and this
+         * fires only when nothing else does.
+         */
+        if (reopenTimerRef.current !== null) clearTimeout(reopenTimerRef.current);
+        reopenTimerRef.current = window.setTimeout(
+          () => reopenMic('deadline'),
+          ms + REOPEN_BACKSTOP_MS,
+        );
+      }
       // A chime reports no text, and must not count as a new utterance: the
       // cue below IS a chime, so counting it would start the next generation
       // and re-arm the cue it just gave -- the same self-sustaining deafness
@@ -490,6 +565,14 @@ export function useVoiceControl({
       window.removeEventListener('online', onOnline);
       media?.removeEventListener?.('devicechange', onDeviceChange);
       setSpeechActivityListener(null);
+      // A pending reopen must not outlive the screen that armed it: it would
+      // start a recogniser after voice was switched off, or on a drill the
+      // operator has already left.
+      if (reopenTimerRef.current !== null) {
+        clearTimeout(reopenTimerRef.current);
+        reopenTimerRef.current = null;
+      }
+      abandonSpeechHandoff();
       controller.stop();
       controllerRef.current = null;
       void releaseWakeLock('voice');

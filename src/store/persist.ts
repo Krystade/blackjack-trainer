@@ -210,9 +210,18 @@ function quarantine(key: string, raw: string): void {
   }
 }
 
+/**
+ * The one place the settings key is spelled.
+ *
+ * It was a bare literal in eight places, and a test written against
+ * "bjtrainer.settings.v2" passed by reading nothing at all -- the exact shape
+ * of check that cannot fail. Anything reading settings off disk imports this.
+ */
+export const SETTINGS_KEY = 'bjtrainer.settings.v1';
+
 export function loadSettings(): Settings {
   const store = getStorage();
-  const json = store.getItem('bjtrainer.settings.v1');
+  const json = store.getItem(SETTINGS_KEY);
 
   if (!json) {
     return structuredClone(DEFAULT_SETTINGS);
@@ -223,11 +232,11 @@ export function loadSettings(): Settings {
     if (isVersion1Object(parsed)) {
       return mergeSettings(parsed);
     }
-    quarantine('bjtrainer.settings.v1', json);
+    quarantine(SETTINGS_KEY, json);
     return structuredClone(DEFAULT_SETTINGS);
   } catch {
     // JSON parse error
-    quarantine('bjtrainer.settings.v1', json);
+    quarantine(SETTINGS_KEY, json);
     return structuredClone(DEFAULT_SETTINGS);
   }
 }
@@ -283,7 +292,7 @@ export function saveSettings(s: Settings): boolean {
   } catch {
     /* a log must never cost a settings write */
   }
-  return writeKey('bjtrainer.settings.v1', JSON.stringify(s));
+  return writeKey(SETTINGS_KEY, JSON.stringify(s));
 }
 
 export function loadStats(): Stats {
@@ -345,7 +354,7 @@ const EXTRA_KEYS: { key: string; field: string }[] = [
  * exclusions, with the reason written next to it.
  */
 export const BACKED_UP_KEYS: readonly string[] = [
-  'bjtrainer.settings.v1',
+  SETTINGS_KEY,
   'bjtrainer.stats.v1',
   ...EXTRA_KEYS.map((e) => e.key),
 ];
@@ -373,7 +382,7 @@ export function exportAll(): string {
   // user got a file that looked complete, believed they were safe, and
   // reset. Whatever could not be read rides along verbatim so a human (or a
   // later build) can still get at it.
-  for (const key of ['bjtrainer.settings.v1', 'bjtrainer.stats.v1']) {
+  for (const key of [SETTINGS_KEY, 'bjtrainer.stats.v1']) {
     const grave = store.getItem(`${key}.corrupt`);
     if (grave !== null) blob[`${key}.corrupt`] = grave;
   }
@@ -436,7 +445,7 @@ export function importAll(json: string): { ok: boolean; error?: string } {
      */
     const extras = parsed as Record<string, unknown>;
     const pending: { key: string; value: string }[] = [
-      { key: 'bjtrainer.settings.v1', value: JSON.stringify(mergeSettings(obj.settings)) },
+      { key: SETTINGS_KEY, value: JSON.stringify(mergeSettings(obj.settings)) },
       { key: 'bjtrainer.stats.v1', value: JSON.stringify(capHistories(mergeStats(obj.stats))) },
     ];
     for (const { key, field } of EXTRA_KEYS) {
@@ -449,7 +458,7 @@ export function importAll(json: string): { ok: boolean; error?: string } {
     // backup taken while something was unreadable still holds the only copy
     // of it; dropping them here would mean the round trip -- the exact
     // sequence the crash screen tells people to perform -- destroyed it.
-    for (const key of ['bjtrainer.settings.v1', 'bjtrainer.stats.v1']) {
+    for (const key of [SETTINGS_KEY, 'bjtrainer.stats.v1']) {
       const grave = extras[`${key}.corrupt`];
       if (typeof grave === 'string') pending.push({ key: `${key}.corrupt`, value: grave });
     }

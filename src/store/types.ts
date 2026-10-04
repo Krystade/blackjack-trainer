@@ -269,12 +269,18 @@ export interface AudioSettings {
    * `navigator.audioSession` shipped in Safari 17 / iOS 17 and its `type` is
    * the category intent. See audio/audioSession.ts for what each value does.
    *
-   * Nothing specifies whether WebKit honours a page that asks for 'playback'
-   * while capturing, and no browser on the development machine implements the
-   * API at all, so this cannot be settled here -- only in the car. Hence a
-   * choice rather than a guess: 'playback' (the default) is the likeliest
-   * remedy, 'switch' is the more honest request and the likelier to cost the
-   * microphone, and 'auto' is the shipped behaviour for comparison.
+   * 'playback' IS SETTLED, AND IT DOES NOT WORK. The 2026-10-04 drive asked
+   * for it and got it -- `audio-session was=auto wanted=playback got=playback
+   * ok=true`, then `session-at-mic-open type=playback` and
+   * `session-at-mic-close type=playback` -- and the sound was on the earpiece
+   * the whole way. The category a page DECLARES and the category the session
+   * is IN are different things once something is capturing.
+   *
+   * So 'switch' is the default: close capture, declare playback, then speak,
+   * which is the order the thread on WebKit bug 218012 reports as the only
+   * thing that moves the route. It costs about 1.2 seconds of deafness per
+   * spoken line. 'playback' and 'auto' stay as the two cheaper answers for
+   * whoever would rather keep the microphone and lose the speaker.
    */
   outputRoute: 'auto' | 'playback' | 'switch';
 }
@@ -304,9 +310,12 @@ export const DEFAULT_AUDIO: AudioSettings = {
   chimes: true,
   answerPauseMs: 3000,
   dimZones: false,
-  // 'playback' rather than 'auto': 'auto' is the state Jack reported as
-  // broken, so shipping it as the default would be shipping the fault.
-  outputRoute: 'playback',
+  // 'switch', because the two cheaper answers are both known to leave the
+  // sound on the earpiece and that was called unacceptable (2026-10-04:
+  // "Speaker with voice not working isn't acceptable"). It is the only mode
+  // that actually takes the microphone down, which is the only lever reported
+  // to work. Costs ~1.2s of deafness per line; both other modes remain.
+  outputRoute: 'switch',
   cardDetail: 'rank',
   /*
    * ON, now that a real drive has played them.

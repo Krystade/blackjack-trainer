@@ -16,7 +16,9 @@ import {
   setClipVoice,
   loadClipIndex,
   prewarmClips,
+  loadVoiceManifest,
   type ClipVoiceInfo,
+  type ClipManifest,
 } from '../../audio/clips';
 import { carControlsBlockers, describeCarControlsBlocker } from '../../audio/carControls';
 import { readLog, clearLog, formatLog } from '../../audio/mediaSessionLog';
@@ -27,6 +29,15 @@ import type { MediaSessionAction } from '../../audio/mediaSession';
 import { micSessionCostPaid } from '../../audio/micSessionCost';
 import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
 import { FIELD_TEST_CONDITIONS, FIELD_TEST_STEPS } from '../../diag/fieldTest';
+import {
+  clipCoverageCases,
+  pureCases,
+  runCases,
+  settingsCases,
+  summarise,
+  type SelfTestResult,
+  type SelfTestStorage,
+} from '../../diag/selfTest';
 import { CarCheckPanel } from '../components/CarCheckPanel';
 import { readFieldTestRun, subscribeFieldTestRun } from '../../diag/fieldTestRun';
 import {
@@ -131,28 +142,6 @@ function Toggle({
         disabled={disabled}
       />
     </label>
-  );
-}
-
-/**
- * Says whether a feature has actually been confirmed to work on real hardware,
- * as opposed to merely passing tests on a desk.
- *
- * Several things here can only be validated by using them — recorded clips on
- * the operator's own phone, the wheel mapping in the operator's own car. The
- * code cannot tell the difference between "works" and "has never been tried",
- * and until now neither could the screen: a toggle for an untried feature
- * looked exactly like a toggle for a proven one.
- */
-type VerifiedState = 'confirmed' | 'untested' | 'partly';
-
-function Verified({ state, children }: { state: VerifiedState; children: React.ReactNode }) {
-  const label = state === 'confirmed' ? 'Confirmed' : state === 'partly' ? 'Partly tested' : 'Not tested yet';
-  return (
-    <div className={`settings-verified is-${state}`}>
-      <span className="settings-verified-tag">{label}</span>
-      <span className="settings-verified-text">{children}</span>
-    </div>
   );
 }
 
@@ -284,12 +273,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         controls now sits beside them.
       */}
       <CollapsibleSection title={<>In the car</>} defaultOpen={true}>
-        <div className="settings-note-row u-note">
-          <strong>Eyes-free</strong> &mdash; drilling without looking at the screen &mdash;
-          needs the app <em>speaking</em> and <em>you answering</em>. It is switched on
-          inside each drill, not here: it lasts one session on purpose.
-        </div>
-
         <Toggle
           label="Audio enabled"
           checked={settings.audio.enabled}
@@ -369,38 +352,25 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
               onChange={(pushToTalkMs) => updateDrill({ pushToTalkMs })}
             />
             <div className="settings-note-row u-note">
-              A ceiling, not a cost: a word that is recognised closes the window at once, so
-              this is only how long it waits for one that is not coming. It cannot be ended
-              by pressing again &mdash; while the microphone is open the car has the buttons.
+              A ceiling, not a cost: a recognised word closes the window at once.
             </div>
           </>
         )}
         {settings.drill.wheelMode === 'answer' ? (
           <div className="settings-note-row u-note">
-            Forward and back drive the drill with no microphone at all, so nothing can take
-            the wheel away mid-session. One button cannot pick one of five plays, so
-            Flashcards, the Deviation Quiz and the Mixed Session run a <strong>self-check
-            </strong> instead: forward says the correct play and asks &ldquo;had it?&rdquo;,
-            then forward is yes and back is no. The count drills and the table are answered
-            outright.
+            No microphone at all. Where one button cannot pick one of five plays, forward
+            says the correct play and asks &ldquo;had it?&rdquo; &mdash; forward yes, back no.
           </div>
         ) : (
           <div className="settings-note-row u-note">
-            Forward opens the microphone and closes it again as soon as it hears a word,
-            or after the window above if it does not; back still repeats. This is the only mode in which the five plays can be{' '}
-            <em>spoken</em> while the wheel still exists between windows &mdash; left simply
-            on, the microphone hands the car&rsquo;s buttons to its hands-free call and the
-            wheel never comes back. The cost is that the car&rsquo;s audio ducks on each
-            window, and that the buttons cannot be reached until it closes.
+            Forward opens the microphone and closes it on the first word it hears; back
+            repeats. The only mode where the five plays can be <em>spoken</em> and the wheel
+            still comes back between windows.
           </div>
         )}
         <div className="settings-note-row u-note">
-          One tone marks the press; a second, lower one marks the microphone actually going
-          live &mdash; <strong>that</strong> is when to speak. If the second never sounds,
-          the microphone never opened. Tones are under <strong>Audio</strong>.
-        </div>
-        <div className="settings-note-row u-note">
-          Using the phone&rsquo;s own microphone instead: see <strong>Car controls</strong>.
+          Two tones: the press, then the microphone going live. The second one is when to
+          speak &mdash; if it never sounds, the microphone never opened.
         </div>
       </CollapsibleSection>
 
@@ -453,9 +423,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             />
           </div>
           <div className="settings-note-row u-note">
-            <strong>Training</strong> corrects a wrong play as it happens.{' '}
-            <strong>Test</strong> keeps quiet and leaves the scoring to the end, which is
-            the honest measure of what you actually know.
+            <strong>Training</strong> corrects as you go. <strong>Test</strong> scores at the end.
           </div>
           <Toggle
             label="Count peek"
@@ -533,13 +501,8 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             />
           </div>
           <p className="settings-note">
-            How finely you read the discard tray &mdash; the Deck Estimation answer grid and its
-            tolerance, and what the produce-a-true-count drill forgives. Half a deck is the
-            default and the honest one: nobody looks at a stack of plastic and thinks &ldquo;2.3
-            decks&rdquo;. It is worth less as a ceiling near the end of a shoe, though &mdash;
-            with half a deck left, reading the tray half a deck wrong moves the true count by
-            your whole running count. &ldquo;Last deck&rdquo; keeps halves everywhere except the
-            last deck and asks for quarters there, which is where the precision pays.
+            How finely you read the discard tray. &ldquo;Last deck&rdquo; asks for quarters
+            in the last deck only, which is where the precision pays.
           </p>
           <div className="settings-row">
             <span className="settings-label">Shot clock</span>
@@ -553,10 +516,8 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             />
           </div>
           <p className="settings-note">
-            A time limit on flashcard and deviation-quiz answers. Running out counts the card as
-            missed — under "Ran out of time" on Stats, kept apart from wrong plays — and puts it back
-            in the review deck. Off by default: pressure before accuracy inflates the score without
-            building the recall.
+            A time limit on flashcard and deviation-quiz answers. Running out counts the card
+            as missed and puts it back in the review deck.
           </p>
       </CollapsibleSection>
 
@@ -587,24 +548,11 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             />
           </div>
           <div className="settings-note-row u-note">
-            Opening the microphone moves iOS output to the earpiece at the top of the
-            phone. <strong>Speaker</strong> keeps the media category and never asks for
-            recording mode &mdash; try this first. <strong>Switch</strong> hands the
-            session back to listen: safer for the microphone, likelier to keep the
-            earpiece. <strong>Auto</strong> never touches the session, for comparison.
-          </div>
-          <Verified state="partly">
-            Driven on 2026-09-30 and again on 2026-10-02: clips play to the end on the phone,
-            in the car, over Bluetooth, and are audible at speed. The one failure on the
-            first drive &mdash; a clip refused the moment the microphone opened under it
-            &mdash; was only half fixed, and recurred twice on the second: two utterances
-            overlapping meant the second one got a fresh audio element, which iOS refuses to
-            play. Both now come from a pool primed on your first tap.
-          </Verified>
-          <div className="settings-note-row u-note">
-            Recorded clips cover any card/count/prompt phrase by concatenating per-sentence and
-            per-item clips; anything not covered falls back to live speech. Speech rate applies to
-            both -- clip playback speeds up without changing pitch.
+            Opening the microphone moves iOS output to the earpiece. <strong>Speaker</strong>
+            declares media mode and never asks to record. <strong>Switch</strong> closes the
+            microphone while the app talks &mdash; about a second of deafness per line, and
+            the only lever so far that moves the sound back. <strong>Auto</strong> leaves
+            iOS alone.
           </div>
           {settings.audio.useClips && clipVoices.length > 0 && (
             <div className="settings-row">
@@ -762,8 +710,8 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
 
       <CarDiagnostics audio={settings.audio} />
 
-      <CarCheckSection />
-      <FieldTestPanel onNavigate={onNavigate} />
+      <SelfTestSection live={settings} />
+      <CarCheckSection onNavigate={onNavigate} />
 
       <VoiceProbePanel />
       <VoiceHistoryPanel />
@@ -772,10 +720,157 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
   );
 }
 
-function CarCheckSection() {
+function CarCheckSection({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
+  const [run, setRun] = useState(() => readFieldTestRun());
+  useEffect(() => subscribeFieldTestRun(() => setRun(readFieldTestRun())), []);
+  const condition =
+    FIELD_TEST_CONDITIONS.find((c) => c.id === run.condition) ?? FIELD_TEST_CONDITIONS[0]!;
+
   return (
     <CollapsibleSection title={<>Car check</>} defaultOpen={false}>
       <CarCheckPanel />
+
+      {/* The field test used to be its own section with its own paragraph.
+          The screen is kept -- it is the only thing that measures the
+          speaker-versus-wheel trade, and e2e/field-test-audio.spec.ts drives
+          it -- but the way in is one button, here with the rest of the
+          measuring, rather than a heading of its own. */}
+      <button
+        type="button"
+        className="fieldtest-stamp"
+        data-testid="fieldtest-open"
+        onClick={() => onNavigate('fieldtest')}
+      >
+        {run.active
+          ? `Back to the field test \u2014 step ${run.stepIndex + 1} of ${FIELD_TEST_STEPS.length}`
+          : `Open the field test (${FIELD_TEST_STEPS.length} steps) \u2014 ${condition.label}`}
+      </button>
+    </CollapsibleSection>
+  );
+}
+
+
+/**
+ * THE TEST SUITE, ON THE PHONE.
+ *
+ * Asked for twice. Jack, 2026-10-03: "can you add all the tests you run to the
+ * app itself? ... me using the app on my phone just doesn't equate", and again
+ * on 2026-10-04 when the first answer -- device checks bolted onto the car
+ * check -- turned out not to be it. What runs here are the invariants that
+ * would make the app WRONG rather than merely broken: the strategy chart, the
+ * count, the true-count rounding, the indices, the clip coverage, the settings
+ * round trip. Nothing speaks, nothing records, nothing touches the car; it is
+ * safe to press at a red light.
+ *
+ * The cases themselves are in diag/selfTest.ts, and the meta-tests in
+ * diag/selfTest.test.ts break each subject in turn to prove a case can fail.
+ */
+function selfTestStorage(): SelfTestStorage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function SelfTestSection({ live }: { live: SettingsData }) {
+  const [results, setResults] = useState<SelfTestResult[] | null>(null);
+  const [running, setRunning] = useState(false);
+
+  const run = () => {
+    setRunning(true);
+    // The clip manifest is the one subject that needs a fetch, so the whole
+    // run is async even though every case itself is synchronous. The voice
+    // checked is the one the app would actually SPEAK with -- checking the
+    // default while a different voice is selected would report coverage the
+    // operator never hears.
+    void (async () => {
+      let manifest: ClipManifest | null = null;
+      try {
+        const index = await loadClipIndex();
+        const voiceId = live.audio.clipVoice || index?.default || '';
+        if (voiceId) manifest = await loadVoiceManifest(voiceId);
+      } catch {
+        manifest = null;
+      }
+      setResults(
+        runCases([
+          ...pureCases(),
+          ...clipCoverageCases(manifest),
+          ...settingsCases(
+            selfTestStorage(),
+            live as unknown as Record<string, unknown>,
+          ),
+        ]),
+      );
+      setRunning(false);
+    })();
+  };
+
+  const summary = results ? summarise(results) : null;
+  const groups = results
+    ? [...new Set(results.map((r) => r.group))].map((group) => ({
+        group,
+        total: results.filter((r) => r.group === group).length,
+        failed: results.filter((r) => r.group === group && r.outcome === 'fail').length,
+      }))
+    : [];
+
+  return (
+    <CollapsibleSection title={<>Test suite</>} defaultOpen={false}>
+      <div className="settings-note-row u-note">
+        The checks that would catch a wrong answer: the chart, the count, the indices, the
+        recorded voice, settings reaching storage. Silent and instant.
+      </div>
+
+      <button
+        type="button"
+        className="fieldtest-stamp"
+        data-testid="selftest-run"
+        disabled={running}
+        onClick={run}
+      >
+        {running ? 'Running\u2026' : summary ? 'Run again' : 'Run the tests'}
+      </button>
+
+      {summary && (
+        <>
+          <div
+            className="settings-row"
+            data-testid={summary.failed === 0 ? 'selftest-pass' : 'selftest-fail'}
+          >
+            <span className="settings-label">
+              {summary.failed === 0 ? 'All passed' : `${summary.failed} failed`}
+            </span>
+            <span className="settings-value">
+              {summary.passed}/{summary.total}
+            </span>
+          </div>
+
+          {groups.map((g) => (
+            <div className="settings-row" key={g.group}>
+              <span className="settings-label">{g.group}</span>
+              <span className="settings-value">
+                {g.failed === 0 ? `${g.total} ok` : `${g.failed} of ${g.total} failed`}
+              </span>
+            </div>
+          ))}
+
+          {/* The whole point of the screen. A count of failures with no names
+              would leave the operator exactly where a green tick does. */}
+          {summary.failures.length > 0 && (
+            <ul className="selftest-failures" data-testid="selftest-failures">
+              {summary.failures.map((f) => (
+                <li key={f.id}>
+                  <strong>{f.label}</strong>
+                  <br />
+                  {f.detail}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
     </CollapsibleSection>
   );
 }
@@ -791,35 +886,6 @@ function CarCheckSection() {
  * why we have to go to a drill in the first place"). Now the protocol has its
  * own screen and its own voice; this is only the way in.
  */
-function FieldTestPanel({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const [run, setRun] = useState(() => readFieldTestRun());
-  useEffect(() => subscribeFieldTestRun(() => setRun(readFieldTestRun())), []);
-  const condition =
-    FIELD_TEST_CONDITIONS.find((c) => c.id === run.condition) ?? FIELD_TEST_CONDITIONS[0]!;
-
-  return (
-    <CollapsibleSection title={<>Field test</>} defaultOpen={false}>
-      <div className="settings-note-row u-note">
-        {FIELD_TEST_STEPS.length} steps that run themselves: it speaks its own lines through the
-        real audio path, captures whatever the wheel sends, listens to the cabin, and writes all of
-        it to the diagnostic log as it happens. A condition with no Bluetooth skips the wheel
-        steps; every other step runs under every condition. Nothing else needs to be running.
-      </div>
-
-      <button
-        type="button"
-        className="fieldtest-stamp"
-        data-testid="fieldtest-open"
-        onClick={() => onNavigate('fieldtest')}
-      >
-        {run.active
-          ? `Back to the field test — step ${run.stepIndex + 1} of ${FIELD_TEST_STEPS.length}`
-          : `Open the field test — ${condition.label}`}
-      </button>
-    </CollapsibleSection>
-  );
-}
-
 /**
  * Press a wheel button; be told what it is called.
  *
@@ -892,11 +958,8 @@ function ButtonTester({ onPressed }: { onPressed: () => void }) {
 
       {!running && presses.length === 0 && (
         <div className="settings-note-row u-note">
-          Start this, then press every button on the wheel one at a time — the ring in all
-          four directions and its centre, volume up and down, and the call keys. Each one
-          that reaches the app says its own name out loud, so you can do this parked without
-          looking. Nothing you press during the test does anything else. Your car will only
-          send some of these; the ones it never sends are worth knowing too.
+          Press every wheel button one at a time. Each one that reaches the app says its own
+          name out loud, and does nothing else while the test runs.
         </div>
       )}
 
@@ -964,13 +1027,6 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
           matched to it. Fills in by itself while you drive.
         </div>
 
-        <Verified state="partly">
-          Confirmed on a real drive: the wheel does reach the app, the repeat-forever loop is
-          fixed, and skip forward/back are both reachable without looking. Not yet confirmed in
-          any car but that one &mdash; a different head unit may name its buttons differently,
-          which is what the button test below is for.
-        </Verified>
-
         {/* Why the readout below can stay empty forever. Both conditions are
             invisible from the driver's seat, and the first drive met neither:
             the wheel did nothing, and the car showed the app as a phone call. */}
@@ -993,25 +1049,18 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
             answer (asked directly, 2026-09-16) moved with it rather than being
             said twice on one screen. */}
         <div className="settings-note-row u-note">
-          An open microphone switches the car to its hands-free CALL route &mdash; which is
-          why the app once showed up as a phone call &mdash; and the wheel&rsquo;s buttons
-          then go to that call rather than to this app. Talking and steering-wheel control
-          cannot both be live at once. Which of the two the buttons do, and what that costs,
-          is set under <strong>In the car</strong> at the top.
+          An open microphone flips the car to its hands-free route &mdash; the app shows up
+          as a <strong>phone call</strong> &mdash; and the wheel&rsquo;s buttons go to that
+          call. Which of the two the buttons do is set under <strong>In the car</strong>.
         </div>
 
-        {/* Asked directly (2026-09-16): "can we use my phone mic". A platform
-            fact rather than a missing feature, and too long to sit in a
-            section that opens by default -- which is held to under two screens
-            by e2e/collapsible-sections.spec.ts. "In the car" points here. */}
+        {/* Asked directly (2026-09-16): "can we use my phone mic". Kept because
+            it is a platform fact that looks like a missing feature; cut to one
+            line because the paragraph it used to be gets read once. */}
         <div className="settings-note-row u-note">
-          <strong>Can it use the phone&rsquo;s own microphone instead?</strong> Not while the
-          car is connected. Browser speech recognition takes no device to listen on: it uses
-          whatever the phone is currently routing audio through, and while the car is
-          connected that is the car. Nothing in this app can override it. Turning Bluetooth
-          off does give you the phone&rsquo;s own microphone and speaker &mdash; and costs
-          the wheel entirely, since there is nothing left to press. That trade is what the
-          Field test&rsquo;s phone-speaker leg exists to settle.
+          <strong>The phone&rsquo;s own microphone?</strong> Not while the car is connected
+          &mdash; recognition uses whatever the phone is routing through, and nothing in a
+          page can override it.
         </div>
 
         {/* The wheel's own MODE lives in "In the car" at the top, beside the
@@ -1027,16 +1076,9 @@ function CarDiagnostics({ audio }: { audio: AudioSettings }) {
             guess: the 2026-09-11 drive showed this car sends skip and pause on a
             press, and sends `play` on its own every time a clip ends. */}
         <div className="settings-note-row u-note">
-          <strong>Skip forward goes forward</strong> — start, answer, plus one, &ldquo;I had
-          it&rdquo;. <strong>Skip back goes back</strong> — say it again, minus one, &ldquo;I
-          missed it&rdquo;. Where a drill wants a number the two buttons walk it: press up
-          or down, wait, and it reads the count back and submits it. That is the whole
-          input method with the microphone off, which is the only state the wheel works in.
-        </div>
-        <div className="settings-note-row u-note">
-          Play, pause and stop do nothing on purpose. Your car sends all three by itself —
-          play every time a clip finishes, and pause unprompted — and acting on them made
-          the question repeat without end and cut prompts off mid-sentence.
+          <strong>Skip forward goes forward</strong>, <strong>skip back goes back</strong>.
+          Where a drill wants a number the two walk it and read it back. Play, pause and
+          stop are ignored on purpose &mdash; this car sends them unprompted.
         </div>
         <div className="settings-row">
           <span className="settings-label">Accepted by this phone</span>
@@ -1183,16 +1225,13 @@ function OnDeviceModelPanel() {
         <div className="settings-note-row u-note">
           {crashedBefore ? (
             <>
-              This browser closed the app the last time it was asked whether an
-              offline model exists, so it will not be asked again here. Voice keeps
-              working over the network. A browser update may fix it &mdash; use
-              &ldquo;Ask this browser again&rdquo; below to retry.
+              This browser closed the app the last time it was asked, so it is not asked
+              again here. Voice still works over the network.
             </>
           ) : (
             <>
-              Recognition normally needs a signal. Checking asks whether this browser
-              can install a speech model that runs on the device instead &mdash; worth
-              having in a tunnel.
+              Asks whether this browser can install a speech model that runs on the device
+              &mdash; worth having in a tunnel.
             </>
           )}
         </div>
@@ -1286,10 +1325,8 @@ function VoiceHistoryPanel() {
     >
 
         <div className="settings-note-row u-note">
-          Every phrase heard while voice is on, with what the app made of it. Kept so
-          misheard words like &ldquo;Stant&rdquo; can be found and taught, instead of
-          waiting to catch one by eye. <strong>Text only, stored on this device,
-          never uploaded</strong> &mdash; and clearable below.
+          Every phrase heard while voice is on, with what the app made of it.{' '}
+          <strong>Text only, on this device, never uploaded.</strong>
         </div>
 
         <div className="settings-row">
@@ -1419,14 +1456,11 @@ function DiagnosticLogPanel() {
   return (
     <CollapsibleSection title={<>Diagnostic log</>} defaultOpen={false}>
       <div className="settings-note-row u-note">
-        Everything the app can see about a voice session: microphone sessions starting,
-        ending and failing; the page being hidden or woken; audio devices appearing and
-        disappearing as the car&rsquo;s Bluetooth connects; permission changes; the wake
-        lock; every phrase heard; and every settings change. Press <strong>Mark</strong>,
-        try a session, press <strong>Mark</strong> again, then <strong>Copy</strong>.
+        Everything the app saw during a voice session. Press <strong>Mark</strong>, try a
+        session, press <strong>Mark</strong> again, then <strong>Copy</strong>.
         <br />
-        <strong>Text only, stored on this device, never uploaded</strong> &mdash; it does
-        contain what the microphone heard, and it is clearable below.
+        <strong>On this device, never uploaded</strong> &mdash; it does contain what the
+        microphone heard.
       </div>
 
       <div className="settings-row">
@@ -1583,21 +1617,10 @@ function VoiceProbePanel() {
       defaultOpen={false}
     >
 
-        <Verified state="partly">
-          Driven on 2026-09-30, through the car&rsquo;s own microphone at freeway speed: it
-          transcribed &ldquo;Stand&rdquo; outright and found &ldquo;hit&rdquo; in its own
-          second-ranked guess. So it hears a cabin at speed. What is unproven is the long
-          run of it &mdash; recognition quality varies by browser and device, and a whole
-          drill session has never been answered this way. Read the transcript below to see
-          what it actually heard rather than trusting the score.
-        </Verified>
-
         <div className="settings-note-row u-note">
           Say <strong>hit</strong>, <strong>stand</strong>, <strong>double</strong>,{' '}
           <strong>split</strong>, <strong>surrender</strong>, <strong>yes</strong>,{' '}
-          <strong>no</strong> or <strong>repeat</strong>. Start it, talk, then come back and
-          read what it heard. Works while this tab is in the background &mdash; that is
-          one of the things being measured.
+          <strong>no</strong> or <strong>repeat</strong>, then come back and read what it heard.
         </div>
 
         <div className="settings-row">

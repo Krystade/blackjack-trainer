@@ -23,6 +23,7 @@
  * ASKED FOR would let me make the same confident claim a second time. Every
  * row carries `wanted` and `got`, and `got` is read from the browser.
  */
+import { DEFAULT_AUDIO } from '../store/types';
 import { diag } from '../diag/diagnosticLog';
 
 /** The values the spec defines. 'auto' means "stop declaring anything". */
@@ -118,7 +119,15 @@ export function requestAudioSessionType(wanted: AudioSessionType): boolean {
  */
 export type OutputRoutePreference = 'auto' | 'playback' | 'switch';
 
-let preference: OutputRoutePreference = 'playback';
+/*
+ * ONE DECLARATION OF THE DEFAULT, taken from the stored defaults themselves.
+ *
+ * There were three: this, `DEFAULT_AUDIO.outputRoute`, and a literal inside
+ * `_resetAudioSessionForTest`. The last one was still saying 'playback' after
+ * the other two moved to 'switch', so every unit test ran in a mode the app
+ * does not ship -- which is how a default nothing asserts goes wrong.
+ */
+let preference: OutputRoutePreference = DEFAULT_AUDIO.outputRoute;
 
 export function setOutputRoutePreference(next: OutputRoutePreference): void {
   preference = next;
@@ -146,8 +155,75 @@ export function releaseSpeakerForListening(): void {
   requestAudioSessionType('play-and-record');
 }
 
+/**
+ * THE HANDOFF, which is the part "Switch" was missing.
+ *
+ * Flipping the declared `type` while the recogniser is still capturing changes
+ * nothing: WebKit set the real category when capture started, and the 2026-10-04
+ * drive proved it -- `got=playback ok=true` and `session-at-mic-open
+ * type=playback` all the way through, with the sound still on the earpiece.
+ * The category the page declares and the category the audio session is in are
+ * two different things once something is recording.
+ *
+ * WebKit bug 218012 (open since 2020, unresolved at iOS 18.6): Safari sets
+ * `AllowBluetooth | MixWithOthers` and never `defaultToSpeaker`, so "when the
+ * mic turns on the receiver speaker becomes the only one active" -- a WebKit
+ * engineer's own words. The workaround reported in that thread is not a flag,
+ * it is an ORDER: record while capturing, then STOP capturing and declare
+ * playback before making a sound.
+ *
+ * So the handoff actually takes the microphone down. That is the cost, and it
+ * is a real one: the recogniser needs roughly 1.2 seconds to come back, and it
+ * cannot hear anything said over the app. It is only worth paying for speech;
+ * a chime is 120ms and the app chimes after every answer, so trading a second
+ * of deafness for each of those would make the drill unusable.
+ */
+let micClosedForSpeech = false;
+
+/**
+ * The app is about to speak. Returns whether the caller must close the
+ * microphone first.
+ *
+ * `hasWords` is false for a chime -- see above.
+ */
+export function beginSpeechHandoff(hasWords: boolean): 'close-mic' | 'none' {
+  if (preference !== 'switch' || !hasWords || micClosedForSpeech) return 'none';
+  micClosedForSpeech = true;
+  requestAudioSessionType('playback');
+  return 'close-mic';
+}
+
+/**
+ * The app has stopped speaking. Returns whether the caller must reopen the
+ * microphone it was told to close.
+ *
+ * Nothing happens unless this handoff actually closed it, so an ending that
+ * belongs to a chime, or to an utterance that began before the setting was
+ * switched on, cannot start a recogniser the operator never asked for.
+ */
+export function endSpeechHandoff(): 'open-mic' | 'none' {
+  if (!micClosedForSpeech) return 'none';
+  micClosedForSpeech = false;
+  requestAudioSessionType('play-and-record');
+  return 'open-mic';
+}
+
+/**
+ * Forget any outstanding handoff, without reopening anything.
+ *
+ * For the case where the screen that closed the microphone has gone: voice
+ * switched off, or the operator left the drill. The debt cannot be paid --
+ * there is no controller left to start -- and carrying it would mean the next
+ * session's first utterance saw a handoff already in progress and never closed
+ * the microphone at all.
+ */
+export function abandonSpeechHandoff(): void {
+  micClosedForSpeech = false;
+}
+
 /** Test-only: forget what has been logged, and the preference. */
 export function _resetAudioSessionForTest(): void {
   lastLogged = null;
-  preference = 'playback';
+  preference = DEFAULT_AUDIO.outputRoute;
+  micClosedForSpeech = false;
 }

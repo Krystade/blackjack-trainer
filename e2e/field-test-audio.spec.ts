@@ -69,7 +69,9 @@ async function openTest(page: import('@playwright/test').Page): Promise<void> {
   await page.getByRole('button', { name: 'Settings' }).first().click();
   // Without ?e2e=1 the collapsible sections are genuinely collapsed, so the
   // section has to be opened the way a person opens it.
-  await page.locator('summary', { hasText: 'Field test' }).click();
+  // The way in moved into "Car check" when Field test lost its own section
+  // (Settings was "full of junk", 2026-10-04). One button, no heading.
+  await page.locator('summary', { hasText: 'Car check' }).click();
   await page.getByTestId('fieldtest-open').click();
   // BOTH CONTROLS NEED TWO TAPS, and this used to give each of them one.
   // Finish arms on the first tap ("Tap again to end") and Start reads "Start

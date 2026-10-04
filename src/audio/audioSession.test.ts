@@ -1,14 +1,19 @@
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 import {
   audioSessionSupported,
+  abandonSpeechHandoff,
+  beginSpeechHandoff,
+  endSpeechHandoff,
   claimSpeakerForPlayback,
   readAudioSessionType,
   releaseSpeakerForListening,
   requestAudioSessionType,
   setOutputRoutePreference,
   _resetAudioSessionForTest,
+  outputRoutePreference,
 } from './audioSession';
 import { clearDiagnosticLog, readDiagnosticLog } from '../diag/diagnosticLog';
+import { DEFAULT_AUDIO } from '../store/types';
 
 /**
  * THE API I SAID DID NOT EXIST.
@@ -193,5 +198,158 @@ describe('the output-route preference', () => {
     expect(s.type).toBe('playback');
     releaseSpeakerForListening();
     expect(s.type).toBe('play-and-record');
+  });
+});
+
+
+/**
+ * THE HANDOFF, and why "Switch" as first shipped could not have worked.
+ *
+ * The 2026-10-04 drive ran entirely on `playback`: `got=playback ok=true`,
+ * `session-at-mic-open type=playback`, `session-at-mic-close type=playback` --
+ * the page held the category it asked for from end to end, and the sound was
+ * on the earpiece the whole time. Declaring a category while something is
+ * capturing does not move the route, because WebKit set the real one when
+ * capture began (bug 218012: `AllowBluetooth | MixWithOthers`, never
+ * `defaultToSpeaker`).
+ *
+ * The workaround in that thread is an order of operations, not a flag: stop
+ * capturing, THEN declare playback, then make the sound. So the handoff has to
+ * take the microphone down, and these pin the two things that make that
+ * affordable -- it only happens for speech, and it only reopens what it closed.
+ */
+describe('handing the speaker back and forth', () => {
+  const realNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+
+  function installSession(initial: string): { type: string } {
+    const s = { type: initial };
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { audioSession: s },
+      configurable: true,
+      writable: true,
+    });
+    return s;
+  }
+
+  beforeEach(() => {
+    clearDiagnosticLog();
+    _resetAudioSessionForTest();
+  });
+
+  afterEach(() => {
+    if (realNavigator) Object.defineProperty(globalThis, 'navigator', realNavigator);
+    else delete (globalThis as { navigator?: unknown }).navigator;
+  });
+
+  it('closes the microphone and claims playback before a spoken line', () => {
+    const s = installSession('play-and-record');
+    setOutputRoutePreference('switch');
+    expect(beginSpeechHandoff(true)).toBe('close-mic');
+    expect(s.type).toBe('playback');
+  });
+
+  it('gives the microphone back when the line ends', () => {
+    const s = installSession('play-and-record');
+    setOutputRoutePreference('switch');
+    beginSpeechHandoff(true);
+    expect(endSpeechHandoff()).toBe('open-mic');
+    expect(s.type).toBe('play-and-record');
+  });
+
+  it('does NOT take the microphone down for a chime', () => {
+    /**
+     * The cost that would make this unusable. A recogniser needs about 1.2
+     * seconds to come back (`confirmedInMs=1233`, 2026-10-04), and the app
+     * chimes after every single answer. Trading a second of deafness for a
+     * 120ms beep would cost more than the earpiece does.
+     */
+    const s = installSession('play-and-record');
+    setOutputRoutePreference('switch');
+    expect(beginSpeechHandoff(false)).toBe('none');
+    expect(s.type).toBe('play-and-record');
+  });
+
+  it('reopens nothing it did not close', () => {
+    // An ending that belongs to a chime, or to a line that began before the
+    // setting was switched on, must not start a recogniser nobody asked for.
+    installSession('play-and-record');
+    setOutputRoutePreference('switch');
+    expect(endSpeechHandoff()).toBe('none');
+  });
+
+  it('does not close it twice for one utterance', () => {
+    installSession('play-and-record');
+    setOutputRoutePreference('switch');
+    expect(beginSpeechHandoff(true)).toBe('close-mic');
+    expect(beginSpeechHandoff(true)).toBe('none');
+  });
+
+  it('stays out of the way entirely on the other two settings', () => {
+    for (const pref of ['auto', 'playback'] as const) {
+      _resetAudioSessionForTest();
+      const s = installSession('play-and-record');
+      setOutputRoutePreference(pref);
+      expect(beginSpeechHandoff(true)).toBe('none');
+      expect(endSpeechHandoff()).toBe('none');
+      // 'playback' still claims the category on its own path; what it must
+      // never do is take the microphone down.
+      expect(s.type).toBe('play-and-record');
+    }
+  });
+});
+
+describe('abandoning a handoff', () => {
+  beforeEach(() => {
+    _resetAudioSessionForTest();
+    setOutputRoutePreference('switch');
+  });
+
+  it('lets the next utterance close the microphone again', () => {
+    expect(beginSpeechHandoff(true)).toBe('close-mic');
+    // The screen goes away while the microphone is still down.
+    abandonSpeechHandoff();
+    // Without this, the next session's first line would see a handoff already
+    // in progress and never close the microphone -- the setting would appear
+    // to work once and then stop, which is the hardest kind of fault to
+    // report from a car.
+    expect(beginSpeechHandoff(true)).toBe('close-mic');
+  });
+
+  it('does not ask anyone to reopen a microphone that has gone', () => {
+    expect(beginSpeechHandoff(true)).toBe('close-mic');
+    abandonSpeechHandoff();
+    expect(endSpeechHandoff()).toBe('none');
+  });
+
+  it('is harmless when no handoff is outstanding', () => {
+    abandonSpeechHandoff();
+    expect(endSpeechHandoff()).toBe('none');
+    expect(beginSpeechHandoff(true)).toBe('close-mic');
+  });
+});
+
+describe('the shipped default', () => {
+  it('is Switch, the only mode that takes the microphone down', () => {
+    // THE MOST CONSEQUENTIAL LINE IN THIS FILE, and until now nothing
+    // asserted it: changing it broke no test, while deciding what every drive
+    // actually does. 'playback' was the default until 2026-10-04, when the
+    // drive log settled that declaring the category while capturing does
+    // nothing -- `got=playback ok=true` with the sound on the earpiece
+    // throughout.
+    expect(DEFAULT_AUDIO.outputRoute).toBe('switch');
+  });
+
+  it('agrees with the preference this module starts in', () => {
+    /*
+     * TWO DECLARATIONS OF ONE DEFAULT, in two files, and they can drift.
+     *
+     * `DEFAULT_AUDIO` seeds the stored settings and is what the screen shows.
+     * This module's own initial value is what the audio path uses before any
+     * settings have loaded -- so the first utterance after a cold launch runs
+     * on it. If they disagree, the app spends that utterance in a mode the
+     * screen is not showing, which is unreportable from a car.
+     */
+    _resetAudioSessionForTest();
+    expect(outputRoutePreference()).toBe(DEFAULT_AUDIO.outputRoute);
   });
 });
