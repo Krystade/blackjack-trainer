@@ -5,6 +5,7 @@ import {
   type VoiceAction,
 } from './voiceRecognition';
 import { looksLikeLateSelfEcho } from './selfEcho';
+import { msSinceInputDeviceChanged } from '../diag/deviceChurn';
 
 /**
  * A speech-recognition session that survives being left running.
@@ -510,7 +511,20 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
         // Fall through to `onend`, which backs off and retries.
         return;
       }
-      log('session-error', { error, sessionMs: sessionStartedAt > 0 ? deps.now() - sessionStartedAt : 0 });
+      /**
+       * AND WHETHER THE CAR JUST MOVED UNDER IT. `audio-capture` two seconds
+       * after the input list changed is a Bluetooth device going away, which
+       * in a car is routine; the same error out of a clear sky is a real
+       * fault worth hunting. The 2026-10-04 export had the first and read
+       * like the second. Omitted entirely when nothing has changed, because a
+       * field present on every line correlates with nothing.
+       */
+      const sinceDeviceChangeMs = msSinceInputDeviceChanged(deps.now());
+      log('session-error', {
+        error,
+        sessionMs: sessionStartedAt > 0 ? deps.now() - sessionStartedAt : 0,
+        ...(sinceDeviceChangeMs === null ? {} : { sinceDeviceChangeMs }),
+      });
       // Everything else is left to `onend`, which always follows it, so one
       // failure produces exactly one restart rather than two.
     };

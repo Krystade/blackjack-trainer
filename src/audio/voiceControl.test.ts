@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { markInputDeviceChanged, _resetDeviceChurnForTest } from '../diag/deviceChurn';
 import {
   createVoiceController,
   restartDelayFor,
@@ -74,6 +75,7 @@ interface Harness {
   logs: LogLine[];
   made: FakeRecognition[];
   current: () => FakeRecognition;
+  now: () => number;
   advance: (ms: number) => void;
   controller: ReturnType<typeof createVoiceController>;
 }
@@ -134,6 +136,7 @@ function harness(
     logs,
     made,
     current: () => made[made.length - 1]!,
+    now: () => clock,
     advance,
     controller,
   };
@@ -980,6 +983,36 @@ describe('the diagnostic log', () => {
 
     const err = h.logs.find((l) => l.event === 'session-error');
     expect(err?.detail?.error).toBe('audio-capture');
+  });
+
+  it('says how long ago the inputs changed, so the car can be told from a fault', () => {
+    /**
+     * THE 2026-10-04 READING this exists for: `mic session-error
+     * error=audio-capture sessionMs=2287`, two seconds after the Corolla left
+     * the input list. Without this number the line reads as an unexplained
+     * hardware failure, which is what sent me looking for one.
+     */
+    _resetDeviceChurnForTest();
+    const h = harness();
+    h.controller.start();
+    markInputDeviceChanged(h.now() - 2_000);
+    h.current().fail('audio-capture');
+
+    const err = h.logs.find((l) => l.event === 'session-error');
+    expect(err?.detail?.sinceDeviceChangeMs).toBe(2_000);
+  });
+
+  it('omits the age entirely when nothing has changed', () => {
+    // The other half. A `sinceDeviceChangeMs` on every error would make the
+    // number meaningless -- it is a correlation, and a correlation that is
+    // always present correlates with nothing.
+    _resetDeviceChurnForTest();
+    const h = harness();
+    h.controller.start();
+    h.current().fail('audio-capture');
+
+    const err = h.logs.find((l) => l.event === 'session-error');
+    expect(err?.detail).not.toHaveProperty('sinceDeviceChangeMs');
   });
 
   it('never lets a throwing logger reach the microphone', () => {

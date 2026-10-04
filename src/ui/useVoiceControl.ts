@@ -15,6 +15,7 @@ import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
 import { reassertAudioFocus } from '../audio/audioFocus';
 import { markMicSessionOpened } from '../audio/micSessionCost';
+import { markInputDeviceChanged } from '../diag/deviceChurn';
 import {
   audioSessionSupported,
   readAudioSessionType,
@@ -430,6 +431,7 @@ export function useVoiceControl({
     };
     const onOnline = wake('online');
     const onDeviceChange = () => {
+      markInputDeviceChanged(Date.now());
       void logAudioInputs('devicechange-voice');
       wake('devicechange')();
     };

@@ -178,9 +178,26 @@ export function wheelPressCheck(waitMs = WHEEL_WAIT_MS): CheckDefinition {
         setMediaSessionProbe(null);
       }
       if (seen.length === 0) {
+        /**
+         * WITH THE TWO FACTS THAT NARROW IT. The verdict cannot be narrowed --
+         * "nobody pressed" and "the car sent it to the radio" are genuinely
+         * indistinguishable from inside the app -- but the 2026-10-04 run
+         * warned twice with no detail whatsoever, which left the operator
+         * nothing to weigh either.
+         *
+         * How long it waited decides whether a slow hand explains it. Whether
+         * the silent hold was still playing decides whether a press COULD have
+         * arrived: the hold is what makes this app the active media app, and
+         * without it the car has no reason to send anything here.
+         */
+        const slotHeld = audioFocusElementIsPlaying();
+        const waited = waitMs >= 1000 ? `${Math.round(waitMs / 1000)}` : (waitMs / 1000).toFixed(1);
         return warn(
           'wheel-press',
-          'No button arrived. Either none was pressed, or the car sent it somewhere else.',
+          `No button arrived in ${waited} seconds. Either none was pressed, or the car sent it somewhere else${
+            slotHeld ? '' : ' -- and the silent hold had stopped, so it had nowhere to send it'
+          }.`,
+          { waitedMs: waitMs, slotHeld },
         );
       }
       const named = seen
@@ -447,7 +464,25 @@ export function clipSpeedCheck(makeAudio: () => HTMLAudioElement | null): CheckD
       const expectedMs = Math.round((el.duration || 0) * 1000);
       if (!expectedMs) return warn('clip-speed', 'The clip reports no duration, so nothing was timed.');
 
-      const startedAt = Date.now();
+      const askedAt = Date.now();
+      /**
+       * FROM THE SOUND, NOT FROM THE REQUEST.
+       *
+       * This used to start the clock at the `play()` call, and the 2026-10-04
+       * run read 1.26 and 1.23 on a phone that was stretching nothing: around
+       * 170ms of decode and audio-route setup on a 696ms line, counted as
+       * playback. Besides accusing the phone of a fault it did not have, it
+       * spent the margin -- a 1.4 tolerance against a 1.25 baseline leaves
+       * 0.15, and the fault this check exists for measured 1.47x.
+       *
+       * `playing` is the event that means sound is coming out. Where an
+       * element never fires it, `startedAt` stays at the request and the
+       * reading degrades to exactly what it used to be rather than to nothing.
+       */
+      let startedAt = askedAt;
+      el.onplaying = () => {
+        startedAt = Date.now();
+      };
       const finished = new Promise<string>((resolve) => {
         el.onended = () => resolve('ended');
         el.onerror = () => resolve('error');
@@ -465,7 +500,10 @@ export function clipSpeedCheck(makeAudio: () => HTMLAudioElement | null): CheckD
       const actualMs = Date.now() - startedAt;
       el.pause();
       const ratio = Number((actualMs / expectedMs).toFixed(2));
-      const detail = { expectedMs, actualMs, ratio, how };
+      // `startMs` is kept rather than discarded: a long wait before the first
+      // word is its own symptom in a car, and it is the half of the old
+      // reading that was real.
+      const detail = { expectedMs, actualMs, ratio, startMs: startedAt - askedAt, how };
       if (how !== 'ended') {
         return fail('clip-speed', 'The clip started and never finished.', detail);
       }

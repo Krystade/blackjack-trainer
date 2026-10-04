@@ -600,8 +600,33 @@ describe('the device-only checks', () => {
     });
   });
 
+  describe('a warn that can be acted on', () => {
+    it('says how long it waited and whether the slot was held', async () => {
+      /**
+       * THE 2026-10-04 READING: `car-check:wheel-press outcome=warn`, twice,
+       * with no detail at all. The verdict is right -- "nobody pressed" and
+       * "the car sent it elsewhere" genuinely cannot be told apart from inside
+       * the app -- but a bare warn gives the operator nothing to weigh. Twelve
+       * seconds or one and a half? Was the media hold even playing at the
+       * time, which is the precondition for a press arriving at all?
+       *
+       * Both are known at the moment the warn is written, and both change what
+       * to do next.
+       */
+      const r = await wheelPressCheck(120).run();
+      expect(r.outcome).toBe('warn');
+      expect(r.detail).toMatchObject({ waitedMs: 120, slotHeld: false });
+      expect(r.summary).toContain('0.1 seconds');
+    });
+  });
+
   describe('whether a recorded line plays at its own speed', () => {
-    function timedClip(durationS: number, playMs: number): HTMLAudioElement {
+    /**
+     * `startMs` is how long the element takes to actually START -- decode,
+     * buffer, and on a phone the audio route being set up. `playMs` is the
+     * sound itself.
+     */
+    function timedClip(durationS: number, playMs: number, startMs = 0): HTMLAudioElement {
       const el: Record<string, unknown> = {
         duration: durationS,
         readyState: 1,
@@ -609,14 +634,48 @@ describe('the device-only checks', () => {
         load: () => {},
         onended: null,
         onerror: null,
+        onplaying: null,
         onloadedmetadata: null,
       };
       el.play = () => {
-        setTimeout(() => (el.onended as (() => void) | null)?.(), playMs);
+        setTimeout(() => {
+          (el.onplaying as (() => void) | null)?.();
+          setTimeout(() => (el.onended as (() => void) | null)?.(), playMs);
+        }, startMs);
         return Promise.resolve();
       };
       return el as unknown as HTMLAudioElement;
     }
+
+    it('times the SOUND, not the wait before it', async () => {
+      /**
+       * THE 2026-10-04 READING: ratio 1.26 and 1.23 on two runs of a clip that
+       * was not being stretched at all. The clock started at the `play()` CALL,
+       * so ~170ms of decode and audio-route setup on a 696ms line was reported
+       * as a 25% stretch.
+       *
+       * Two costs, and the second is the one that matters. It accuses the phone
+       * of a fault it does not have -- and it eats the detection margin: with a
+       * 1.4 tolerance and a 1.25 baseline there was 0.15 left, and the fault
+       * this check exists for measured 1.47x. One more slow start and a real
+       * stretch would have passed as normal.
+       */
+      vi.useFakeTimers();
+      try {
+        const pending = clipSpeedCheck(() => timedClip(1.0, 1_000, 400)).run();
+        await vi.advanceTimersByTimeAsync(3_000);
+        const r = await pending;
+        expect(r.outcome).toBe('pass');
+        const d = r.detail as { ratio: number; startMs: number };
+        // 1.4 would be the old reading: 400ms of startup on a 1000ms line.
+        expect(d.ratio).toBeLessThanOrEqual(1.05);
+        // And the wait is not thrown away -- a slow first word is its own
+        // symptom in a car, so it is reported rather than silently excluded.
+        expect(d.startMs).toBeGreaterThanOrEqual(400);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
 
     it('passes when the wall time matches the recording', async () => {
       const r = await clipSpeedCheck(() => timedClip(1.0, 30)).run();

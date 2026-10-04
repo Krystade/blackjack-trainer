@@ -29,6 +29,7 @@
 
 import { diag, flushDiagnostics } from './diagnosticLog';
 import { runningBuildId, runningBuiltAt } from '../updateCheck';
+import { markInputDeviceChanged } from './deviceChurn';
 
 /** Kept so a second mount (React strict mode, a remount) cannot double-log. */
 let installed = false;
@@ -376,6 +377,10 @@ export function startDiagnostics(): void {
       addEventListener?: (t: string, fn: () => void) => void;
     };
     md?.addEventListener?.('devicechange', () => {
+      // Stamped before anything async: the correlation on a `session-error`
+      // is only worth having if it is accurate to the event rather than to
+      // whenever `enumerateDevices` happened to come back.
+      markInputDeviceChanged(Date.now());
       diag('route', 'devicechange');
       void logAudioInputs('devicechange');
     });
