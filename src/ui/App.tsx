@@ -143,6 +143,12 @@ function App() {
     startDiagnostics();
   }, []);
 
+  // Which screen is up, for the one layout rule that is per-screen rather than
+  // per-component: the field test gives the mute strip back (app.css).
+  useEffect(() => {
+    if (typeof document !== 'undefined') document.body.dataset.screen = screen;
+  }, [screen]);
+
   /**
    * Unlock the audio on the first tap, and only there.
    *

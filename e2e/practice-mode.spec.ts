@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { openCountOptions, withSettings } from './helpers';
 
 /**
  * Practice only: the mode that asks for nothing back.
@@ -91,6 +91,8 @@ test('the count drill practises the same way', async ({ page }) => {
   await openDrill(page, 'Count drill');
 
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
+  // Practice only lives under the count drill's Options since 2026-10-05.
+  await openCountOptions(page);
   await page.locator('label', { hasText: 'Practice only' }).locator('input').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 

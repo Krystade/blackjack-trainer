@@ -265,13 +265,27 @@ body:has(.fieldtest-running) .fieldtest-screen {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   /* The strip the global mute button lives in (see `.mute-btn`). */
   --mute-h: 44px;
+  /* The disc's own size. Separate from the strip so a screen can drop the
+     strip (the field test) and still show a full-size disc. */
+  --mute-disc: 44px;
   /* Everything above the screens: status-bar inset plus the mute strip. */
   --chrome-top: calc(var(--safe-top) + var(--mute-h));
 }
 @media (max-height: 699px) {
   :root {
     --mute-h: 32px;
+    --mute-disc: 32px;
   }
+}
+/* THE FIELD TEST KEEPS ITS HEIGHT. Its answer stack is laid out to the pixel
+   on a 375x667 screen (e2e/field-test-layout.spec.ts) and the strip pushed it
+   into scrolling. Its own top bar has room on the right, so the disc sits
+   there instead and no strip is reserved. */
+body[data-screen='fieldtest'] {
+  --mute-h: 0px;
+  /* Restated, not inherited: a custom property's var() is resolved where it
+     is declared, so the :root --chrome-top would still carry the 44px. */
+  --chrome-top: var(--safe-top);
 }
 
 /* Reserve the status-bar inset AND the mute strip above every screen, once,
