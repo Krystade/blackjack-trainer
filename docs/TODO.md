@@ -148,6 +148,31 @@ One unblinded answer per step, so treat these as leads, not settled facts.
 - **New lead for G3:** the first mic session of a page load can lose its input to a route
   change and go deaf for ~20s. Drills would lose their first answers the same way.
 
+## Swarm, 2026-10-05 (Sonnet agents; Claude orchestrates, merges and deploys)
+
+- [~] **Bluetooth: phone mic? kit**: built in a worktree. Covers the spectral probe on the iPhone
+  input, the finger test, where the sound goes while that input is held, recognition with the mic
+  covered and uncovered, and the wheel during capture.
+- [~] **Matcher false accepts**: "But" (confidence 0.35) was graded as SPLIT on 2026-10-05. Tighten
+  it without losing real rescues.
+- [~] **e2e health**: fix the fake recogniser's missing `onaudiostart` (flaky voice-aliases:119 and
+  voice-tc-drill:177), and root-cause field-test-round5:347, field-test:1973 and
+  field-test-audio:441/507.
+- [~] Research: an in-browser recogniser limited to the command words (Vosk, sherpa-onnx,
+  Whisper-wasm, Picovoice, custom keyword spotting) on iOS Safari.
+- [~] Audit: every sound path, which can still land on the earpiece, and lines with no clip.
+- [~] UX audit at 375×812, every screen, both themes.
+- [~] Roadmap: next car session (about 15 minutes) and a two-week plan.
+
+## Results — Flashcards drill, 2026-10-05 01:35 (build 8195254)
+
+- Every prompt while voice was on: `path=webaudio`, on the loud speaker. **G1 confirmed in a real
+  drill.**
+- Then voice was turned off, and the next two prompts went back to `<audio>` and the **earpiece**.
+  Fixed in `7826a3e`: Web Audio now stays on for the rest of the page once the mic has opened.
+- "But" was accepted as split ("approximate"), handed to the swarm. "Stand hit hit hit" was
+  accepted as hit.
+
 ## G1 · Loud speaker + voice, no Bluetooth
 
 **Evidence so far (do not re-run):**
