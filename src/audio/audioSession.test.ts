@@ -330,14 +330,22 @@ describe('abandoning a handoff', () => {
 });
 
 describe('the shipped default', () => {
-  it('is Switch, the only mode that takes the microphone down', () => {
-    // THE MOST CONSEQUENTIAL LINE IN THIS FILE, and until now nothing
-    // asserted it: changing it broke no test, while deciding what every drive
-    // actually does. 'playback' was the default until 2026-10-04, when the
-    // drive log settled that declaring the category while capturing does
-    // nothing -- `got=playback ok=true` with the sound on the earpiece
-    // throughout.
-    expect(DEFAULT_AUDIO.outputRoute).toBe('switch');
+  it('is Auto, because both of the other two were disproved on the road', () => {
+    // THE MOST CONSEQUENTIAL LINE IN THIS FILE, and for a long time nothing
+    // asserted it: changing it broke no test, while deciding what every
+    // drive actually does.
+    //
+    // It was 'playback' until 2026-10-04, when a drive settled that
+    // declaring the category while capturing does nothing -- `got=playback
+    // ok=true` with the sound on the earpiece throughout. It was then
+    // 'switch' for one evening, which was the untried order the WebKit bug
+    // thread recommends: stop capturing, declare playback, then speak. That
+    // evening's 17:00 log ran it exactly -- `mic stop`, then
+    // `session-at-mic-close type=playback`, then a 3089ms clip to its
+    // natural end with nothing capturing -- and Jack still could not hear
+    // the app on the loud speaker. So both are dead, and 'switch' costs a
+    // recogniser restart per line on top of not working.
+    expect(DEFAULT_AUDIO.outputRoute).toBe('auto');
   });
 
   it('agrees with the preference this module starts in', () => {

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { waitForMic } from './helpers';
 
 /**
  * Answering flashcards out loud.
@@ -56,6 +57,12 @@ async function openFlashcardsWithVoice(page: Page): Promise<void> {
 
 /** Feed the app a transcript, as the engine would. */
 async function say(page: Page, transcript: string, alternatives: string[] = []): Promise<void> {
+  // WAIT FOR THE MICROPHONE FIRST. Under the shipped 'switch' route the
+  // recogniser is closed for the length of every spoken line, so a word fired
+  // the instant after an action went into a dead session and the answer was
+  // never graded -- which this file read as the app ignoring speech. A person
+  // waits for the prompt to end too.
+  await waitForMic(page);
   await page.evaluate(({ text, alts }) => {
     const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
     // A real engine hands back its winner plus the readings it ranked below

@@ -1528,6 +1528,11 @@ describe('claiming the speaker before making a sound', () => {
 
   beforeEach(() => {
     _resetAudioSessionForTest();
+    // THE CLAIM IS A NO-OP UNDER THE SHIPPED DEFAULT, which is now 'auto' --
+    // defined as never touching the session, because both modes that did
+    // touch it were disproved on the road. These tests are about the claim
+    // being MADE where it is wanted, so they select a mode that wants it.
+    setOutputRoutePreference('playback');
     (globalThis as any).window = { location: { search: '?e2e=1' } };
   });
 

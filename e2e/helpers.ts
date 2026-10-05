@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { FIELD_TEST_CONDITIONS } from '../src/diag/fieldTest';
 
 /** Screenshot to e2e/screenshots/<name>.png (gitignored; reviewed set lives in e2e/screenshots-reviewed/). */
@@ -253,4 +253,99 @@ export async function switchFieldTestCondition(page: Page, label: string): Promi
         'be on that screen, with that parameter, before this is called.',
     );
   }
+}
+
+/**
+ * Say something into the fake engine, having first waited for the microphone
+ * to actually be open.
+ *
+ * WHY WAITING FOR 'listening' IS THE WHOLE HELPER, and why firing on a timer
+ * was not merely slower but wrong. The old version fired a transcript every
+ * 400ms until the status stopped saying "the app was speaking". Once the route
+ * setting began closing the recogniser for each spoken line, that turned into
+ * a loop that could not end: every transcript that arrived while the app was
+ * talking came back `suppressed`, an unheard answer makes the app ASK AGAIN,
+ * and asking again closes the microphone again. Fifteen seconds of that, and
+ * the spec blamed the app for a deadlock the spec was driving.
+ *
+ * A person does not do that. They wait for the prompt to finish and then
+ * speak once, which is exactly what `data-voice-state` reports -- the
+ * recogniser is 'listening' only when a session is live, which under the
+ * 'switch' route means the app has stopped talking. So: wait for the
+ * microphone, say it once, and only then ask whether it landed.
+ *
+ * The retry around the outside stays, because a session can be confirmed open
+ * in the same tick as the tail of an utterance and one word can still be
+ * eaten. What it may not do is fire into a closed microphone.
+ */
+export async function sayOnceListening(
+  page: Page,
+  transcript: string,
+  alternatives: string[] = [],
+): Promise<void> {
+  const deadline = Date.now() + 20_000;
+  let heard: string | null = null;
+  while (Date.now() < deadline) {
+    // THE MICROPHONE FIRST. An open session is the precondition for being
+    // heard at all, and the thing the old helper never checked.
+    await expect(page.locator('.voice-status')).toHaveAttribute(
+      'data-voice-state',
+      'listening',
+      { timeout: 15_000 },
+    );
+    await page.evaluate(
+      ({ text, alts }) => {
+        const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
+        // The winner plus the readings ranked below it, as a real engine hands
+        // them over in one result.
+        const readings = [{ transcript: text }, ...alts.map((a) => ({ transcript: a }))];
+        rec?.onresult?.({ results: [readings] });
+      },
+      { text: transcript, alts: alternatives },
+    );
+    heard = await page.locator('.voice-status-heard').textContent();
+    if (heard !== null && !heard.includes('the app was speaking')) return;
+    // Suppressed after all: the app started talking again between the state
+    // check and the word. Wait for the next opening rather than hammering.
+    await page.waitForTimeout(250);
+  }
+  throw new Error(
+    `"${transcript}" was still suppressed after 20s; last heard status: ${String(heard)}`,
+  );
+}
+
+/**
+ * Wait until a recognition session is actually live.
+ *
+ * Under the 'switch' route the microphone is CLOSED for the whole of every
+ * spoken line, so a transcript fired on a timer lands in a dead session and
+ * the spec reads it as the app failing to grade an answer. The state attribute
+ * is the only honest signal that the engine can hear anything.
+ */
+export async function waitForMic(page: Page): Promise<void> {
+  await expect(page.locator('.voice-status')).toHaveAttribute(
+    'data-voice-state',
+    'listening',
+    { timeout: 15_000 },
+  );
+}
+
+/**
+ * Pin the route setting to the mode where the microphone STAYS OPEN while the
+ * app talks.
+ *
+ * For the specs whose subject is what happens to a word spoken OVER the app:
+ * the suppression window, the say-again cue, the app hearing its own voice
+ * back. Every one of those behaviours exists only while a session is live
+ * during an utterance, which is precisely what 'switch' now prevents -- it
+ * takes the microphone down instead, so under the shipped default there is no
+ * such thing as a word spoken over the app to suppress.
+ *
+ * So these specs are not being worked around; they are being run in the mode
+ * their subject exists in. 'auto' is also what a user who declines the
+ * handoff's cost actually gets, which makes this the real configuration
+ * rather than a test-only one.
+ */
+export async function withMicOpenWhileSpeaking(page: Page): Promise<void> {
+  await withSettings(page, { audio: { outputRoute: 'auto' } });
 }

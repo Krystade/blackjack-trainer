@@ -315,7 +315,7 @@ export const DEFAULT_AUDIO: AudioSettings = {
   // "Speaker with voice not working isn't acceptable"). It is the only mode
   // that actually takes the microphone down, which is the only lever reported
   // to work. Costs ~1.2s of deafness per line; both other modes remain.
-  outputRoute: 'switch',
+  outputRoute: 'auto',
   cardDetail: 'rank',
   /*
    * ON, now that a real drive has played them.

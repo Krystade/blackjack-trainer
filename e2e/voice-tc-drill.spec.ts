@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile } from './helpers';
+import { sayOnceListening, withSettings, withProfile } from './helpers';
 
 /**
  * The true-count drill, answered out loud.
@@ -47,22 +47,7 @@ async function sayWhenListening(
   transcript: string,
   alternatives: string[] = [],
 ): Promise<void> {
-  await expect
-    .poll(
-      async () => {
-        await page.evaluate(
-          ({ text, alts }) => {
-            const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
-            const readings = [{ transcript: text }, ...alts.map((a) => ({ transcript: a }))];
-            rec?.onresult?.({ results: [readings] });
-          },
-          { text: transcript, alts: alternatives },
-        );
-        return page.locator('.voice-status-heard').textContent();
-      },
-      { timeout: 15_000, intervals: [400] },
-    )
-    .not.toContain('the app was speaking');
+  await sayOnceListening(page, transcript, alternatives);
 }
 
 async function spoken(page: Page): Promise<string> {

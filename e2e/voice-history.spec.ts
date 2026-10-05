@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { sayOnceListening } from './helpers';
 
 /**
  * The microphone log.
@@ -64,15 +65,7 @@ async function sayWhenListening(
   transcript: string,
   alternatives: string[] = [],
 ): Promise<void> {
-  await expect
-    .poll(
-      async () => {
-        await say(page, transcript, alternatives);
-        return page.locator('.voice-status-heard').textContent();
-      },
-      { timeout: 15_000, intervals: [400] },
-    )
-    .not.toContain('the app was speaking');
+  await sayOnceListening(page, transcript, alternatives);
 }
 
 async function drillWithVoice(page: Page): Promise<void> {

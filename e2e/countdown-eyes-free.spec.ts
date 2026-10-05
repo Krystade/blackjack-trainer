@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile } from './helpers';
+import { sayOnceListening, withSettings, withProfile } from './helpers';
 
 /**
  * D2: Countdown, from the driver's seat.
@@ -43,18 +43,7 @@ async function withFakeEngine(page: Page): Promise<void> {
 
 /** Say something, having first waited out whatever the app is saying. */
 async function sayWhenListening(page: Page, transcript: string): Promise<void> {
-  await expect
-    .poll(
-      async () => {
-        await page.evaluate((text) => {
-          const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
-          rec?.onresult?.({ results: [[{ transcript: text }]] });
-        }, transcript);
-        return page.locator('.voice-status-heard').textContent();
-      },
-      { timeout: 15_000, intervals: [300] },
-    )
-    .not.toContain('the app was speaking');
+  await sayOnceListening(page, transcript);
 }
 
 async function spoken(page: Page): Promise<string[]> {

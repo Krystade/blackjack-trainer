@@ -49,6 +49,42 @@ function isVersion1Object(parsed: unknown): parsed is Record<string, unknown> {
  * fields (or predates cycle 3, i.e. has no audio object at all), and never
  * shares references with the DEFAULT_SETTINGS singleton.
  */
+/**
+ * THE TWO OUTPUT ROUTES THAT ARE NOW KNOWN NOT TO WORK, retired in place.
+ *
+ * Both were attempts at WebKit bug 218012 and both are settled by Jack's
+ * drives. 'playback' declares the media intent while capture is live, and the
+ * 2026-10-04 drive held `type=playback` end to end with the sound still on the
+ * earpiece. 'switch' was the untried half -- stop capturing, THEN declare
+ * playback, THEN make the sound, the order the bug thread reports as the
+ * workaround. The 17:00 log that evening ran it exactly:
+ *
+ *   17:00:29.765  mic   stop
+ *   17:00:29.782  route session-at-mic-close type=playback
+ *   17:00:29.827  speak clip-chain files="you-have-ten.mp3, dealer-shows-four.mp3"
+ *   17:00:32.916  speak clip-end   reason=ended ms=3089
+ *
+ * Microphone shut, 'playback' confirmed by readback, three seconds of clip run
+ * to its natural end with nothing capturing anywhere. Jack: "I can't fucking
+ * hear the app cause it's not going through the loud speaker." So the ORDER
+ * fails too. Once a page has opened a microphone the loud speaker is gone for
+ * the life of that page, and nothing a web page can call reverses it.
+ *
+ * 'switch' is also actively harmful: taking the microphone down mid-drill put
+ * the same prompt round a repeat loop, seq 7 through 28 of one sentence.
+ *
+ * MIGRATED RATHER THAN JUST RE-DEFAULTED, because a default never reaches an
+ * existing install -- `mergeSettings` spreads the stored blob OVER the
+ * defaults, so Jack's hand-picked 'switch' would win every time. I told him
+ * the default had changed once before without checking that; this is the same
+ * mistake made impossible.
+ *
+ * Only the one field moves. Resetting the whole audio section would take the
+ * voice, rate and volume with it, which is a worse outcome than the setting
+ * being fixed.
+ */
+const DEAD_OUTPUT_ROUTES = new Set(['playback', 'switch']);
+
 function mergeSettings(parsed: Record<string, unknown>): Settings {
   const base = structuredClone(DEFAULT_SETTINGS);
   const p = parsed as Partial<Settings>;
@@ -60,8 +96,11 @@ function mergeSettings(parsed: Record<string, unknown>): Settings {
     typeof p.audio === 'object' && p.audio !== null
       ? { ...base.audio, ...p.audio }
       : base.audio;
+  if (DEAD_OUTPUT_ROUTES.has(audio.outputRoute)) audio.outputRoute = 'auto';
   return { ...base, ...p, version: 1, drill, audio };
 }
+
+export { mergeSettings };
 
 /**
  * Merge a parsed (possibly partial) stats blob over a deep copy of the empty
