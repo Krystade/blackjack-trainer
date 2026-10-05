@@ -397,7 +397,9 @@ function getAudioCtor(): (new () => HTMLAudioElement) | undefined {
  * activation gate actually bites -- always gets the same unlocked element
  * back, and overlapping chains each get their own exactly as before.
  *
- * ONE POOL, because clips never touch Web Audio any more. There used to be a
+ * ONE ELEMENT POOL, because the element path never touches the graph. (Chains
+ * played after a microphone has opened skip the pool and use Web Audio
+ * decoding instead; see playChainThroughWebAudio.) There used to be a
  * second pool for elements routed through a GainNode, which was the only way
  * past 100% -- `HTMLMediaElement.volume` throws above 1. Measured on the phone
  * on 2026-10-02, that route DAMAGES playback, and the clip durations in the
@@ -869,7 +871,8 @@ function decodeClip(ctx: AudioContext, url: string): Promise<AudioBuffer> {
  * WHY: with a microphone open, iOS sends <audio> to the earpiece and Web
  * Audio to the loud speaker. Measured blind on Jack's phone on 2026-10-05:
  * Web Audio 7 of 7 on the loud speaker across three runs, the element 2 of 7.
- * Used only while a voice session is running (see micSessionCost.ts) because
+ * Used whenever a microphone is live or has been opened in this page load (see
+ * micSessionCost.ts), because
  * outside one, Web Audio obeys the ring switch and the element does not.
  *
  * Returns null if it could not start -- no context, still suspended, or the

@@ -3,7 +3,14 @@ import { test, expect, type Page } from '@playwright/test';
 /**
  * The app saying out loud what opening the microphone costs.
  *
- * WHAT THIS IS NOT. It is not a fix. Jack, 2026-10-03: "Whenever I turn on the
+ * WHAT THE NOTICE SAYS NOW. Since 2026-10-05 recorded clips and chimes are
+ * played through Web Audio once a microphone has been opened, and that stays on
+ * the loud speaker (7/7 on the operator's phone against 2/7 for <audio>). Only
+ * the phone's own speech-synthesis voice, which cannot be routed through Web
+ * Audio, may still use the earpiece. The notice says that, and no longer tells
+ * anyone to reopen the app.
+ *
+ * THE ORIGINAL PROBLEM. Jack, 2026-10-03: "Whenever I turn on the
  * mic it switches my speaker to the phone speaker like I'm on a phone call...
  * It works fine until I turn on voice and then it's stuck like that." Asked
  * whether turning voice back off brings the loud speaker back: "No -- stays on
@@ -14,9 +21,8 @@ import { test, expect, type Page } from '@playwright/test';
  * to call, and the app cannot even detect it (the hardware rate read 48000 on
  * both sides of every mic-open that drive).
  *
- * So what is left is not hiding it. The two things the operator cannot work out
- * from the symptom alone are that the microphone caused it and that reopening
- * the app is the way back, and those are what these tests pin.
+ * What these tests pin is that the notice appears only after a microphone has
+ * opened, survives voice being switched off, and says what is true.
  */
 
 /** A recogniser that starts, as the real one does once permission is granted. */
@@ -92,6 +98,10 @@ test('Settings keeps saying so after voice is switched back off', async ({ page 
 
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await openTab(page, 'Settings');
-  await expect(page.locator('.settings-earpiece')).toContainText('reopen');
+  const notice = page.locator('.settings-earpiece');
+  await expect(notice).toContainText('Recorded lines and alert tones stay on the loud speaker');
+  await expect(notice).toContainText('phone\u2019s own voice may still come from the earpiece');
+  // The old advice was wrong for recorded lines: nothing needs reopening.
+  await expect(notice).not.toContainText('reopen');
 });
 

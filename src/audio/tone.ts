@@ -1,6 +1,11 @@
 /**
  * Chime tones as WAV data, built in plain arithmetic.
  *
+ * NOTE (2026-10-05): once a microphone has been opened, chimes play this same
+ * waveform through Web Audio (toneSamples -> AudioBuffer in clips.ts), with the
+ * element path below as the fallback when the context is not running. The
+ * reasoning below still explains why the DEFAULT is an element.
+ *
  * WHY NOT AN OSCILLATOR. Because on Jack's phone the oscillator makes no
  * sound. From the 2026-10-03 export, on build 89bd8db:
  *
