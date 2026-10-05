@@ -33,7 +33,6 @@ import {
 } from "./clips";
 import { chimePeak, utteranceVolume } from "./volume";
 import { cachedToneDataUri } from "./tone";
-import { claimSpeakerForPlayback } from "./audioSession";
 // Only the test reset is still wanted here: nothing in speech.ts touches the
 // Web Audio graph any more. The chimes were the last thing that did.
 import { _resetSharedAudioContextForTest } from "./audioContext";
@@ -864,11 +863,6 @@ export function _resetSpeechPathForTest(): void {
 
 export function speak(text: string, opts?: SpeechOpts): void {
   rememberSpoken(text, opts);
-  // ASK FOR THE SPEAKER FIRST. A no-op under 'auto' and after the first
-  // successful claim; see audio/audioSession.ts for why this exists at all
-  // and why its log reads back what the browser did rather than what we
-  // asked for.
-  claimSpeakerForPlayback();
   // BEFORE the e2e short-circuit: the microphone has to know about every
   // utterance the app decides to make, including the ones the test harness
   // swallows, or suppression is untestable.
@@ -1279,7 +1273,6 @@ function speakAsyncLive(text: string, opts?: SpeechOpts): Promise<void> {
  */
 export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
   rememberSpoken(text, opts);
-  claimSpeakerForPlayback();
   // BEFORE THE E2E SHORT-CIRCUIT, exactly as `speak` does -- and missing here
   // until 2026-09-24. `speak` has notified the microphone since echo
   // suppression was written; this twin never did, and it has exactly one
@@ -1458,11 +1451,6 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
   // and never in response to a transcript, so it cannot sustain that loop; the
   // worst case is one stray `attention`, which does deafen and ends it.
   if (kind !== 'ready') notifyActivityMs(CHIME_ACTIVITY_MS);
-
-  // The cue is the one sound the operator is MOST likely to miss on the
-  // earpiece -- it is short, and it plays at the moment the microphone opens,
-  // which is the moment the route moves.
-  claimSpeakerForPlayback();
 
   /**
    * EVERY CHIME, LOGGED. The only line this used to write was

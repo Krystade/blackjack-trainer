@@ -1,4 +1,3 @@
-import { setOutputRoutePreference } from './audioSession';
 import { setUserVoiceAliases, type VoiceAction } from './voiceRecognition';
 import { useEffect, useMemo } from 'react';
 import type { AudioSettings } from '../store/types';
@@ -10,7 +9,7 @@ import { prewarmClips, setClipsEnabled, setClipVoice } from './clips';
  * Stable narration/chime handle bound to the current `AudioSettings`.
  * `say` speaks at both 'results' and 'full' verbosity (a no-op when audio is
  * disabled or verbosity is 'off'); `sayFull` speaks ONLY at 'full'; `ding`
- * plays a chime tone (a no-op when chimes are off or audio is disabled).
+ * plays a chime tone (a no-op when audio is disabled).
  * Every method is itself a no-op-safe wrapper over `speech.ts` -- callers
  * never need to check `enabled`/`verbosity` themselves.
  */
@@ -54,10 +53,8 @@ export function useAudio(audio: AudioSettings): AudioApi {
     verbosity,
     rate,
     voiceURI,
-    chimes,
     useClips,
     clipVoice,
-    outputRoute,
     voiceAliases,
   } = audio;
   // Mute is folded in HERE, once, rather than at the four call sites below:
@@ -77,13 +74,6 @@ export function useAudio(audio: AudioSettings): AudioApi {
     // utterance of the session (see prewarmClips).
     if (useClips) void prewarmClips();
   }, [useClips]);
-
-  // Same pattern for the audio session category. Module-level because
-  // `speak` has no access to settings and the route is a property of the
-  // PAGE, not of any utterance -- see audio/audioSession.ts.
-  useEffect(() => {
-    setOutputRoutePreference(outputRoute);
-  }, [outputRoute]);
 
   /*
    * And the operator's own alias table, module-level for the same reason:
@@ -113,16 +103,16 @@ export function useAudio(audio: AudioSettings): AudioApi {
     };
 
     const ding: AudioApi['ding'] = (kind) => {
-      if (!enabled || !chimes) return;
+      if (!enabled) return;
       chime(kind, { volume });
     };
 
-    // Same two gates as `ding`, checked at the moment of the REQUEST rather
-    // than when the cue finally sounds. Mute between the two is handled a
+    // Same gate as `ding`, checked at the moment of the REQUEST rather than
+    // when the cue finally sounds. Mute between the two is handled a
     // layer down: `cancelSpeech()` drops a held cue, and the mute button calls
     // it.
     const dingWhenQuiet: AudioApi['dingWhenQuiet'] = (kind) => {
-      if (!enabled || !chimes) return;
+      if (!enabled) return;
       chimeWhenQuiet(kind, { volume });
     };
 
@@ -149,5 +139,5 @@ export function useAudio(audio: AudioSettings): AudioApi {
     // Mute needs no entry of its own: it is already folded into `volume`
     // above, so pressing the button changes this value and re-binds every
     // closure -- which is what stops a half-spoken drill from carrying on.
-  }, [enabled, verbosity, rate, voiceURI, chimes, volume]);
+  }, [enabled, verbosity, rate, voiceURI, volume]);
 }

@@ -50,56 +50,56 @@ function isVersion1Object(parsed: unknown): parsed is Record<string, unknown> {
  * shares references with the DEFAULT_SETTINGS singleton.
  */
 /**
- * THE TWO OUTPUT ROUTES THAT ARE NOW KNOWN NOT TO WORK, retired in place.
+ * SETTINGS THAT NO LONGER EXIST, dropped from a stored blob on load.
  *
- * Both were attempts at WebKit bug 218012 and both are settled by Jack's
- * drives. 'playback' declares the media intent while capture is live, and the
- * 2026-10-04 drive held `type=playback` end to end with the sound still on the
- * earpiece. 'switch' was the untried half -- stop capturing, THEN declare
- * playback, THEN make the sound, the order the bug thread reports as the
- * workaround. The 17:00 log that evening ran it exactly:
+ * `mergeSettings` spreads the stored blob OVER the defaults, so a retired key
+ * would otherwise ride along in memory and be written straight back by the
+ * next save -- harmless to read, but it keeps a dead setting alive in every
+ * export, every settings diff in the diagnostic log, and every backup.
  *
- *   17:00:29.765  mic   stop
- *   17:00:29.782  route session-at-mic-close type=playback
- *   17:00:29.827  speak clip-chain files="you-have-ten.mp3, dealer-shows-four.mp3"
- *   17:00:32.916  speak clip-end   reason=ended ms=3089
- *
- * Microphone shut, 'playback' confirmed by readback, three seconds of clip run
- * to its natural end with nothing capturing anywhere. Jack: "I can't fucking
- * hear the app cause it's not going through the loud speaker." So the ORDER
- * fails too. Once a page has opened a microphone the loud speaker is gone for
- * the life of that page, and nothing a web page can call reverses it.
- *
- * 'switch' is also actively harmful: taking the microphone down mid-drill put
- * the same prompt round a repeat loop, seq 7 through 28 of one sentence.
- *
- * MIGRATED RATHER THAN JUST RE-DEFAULTED, because a default never reaches an
- * existing install -- `mergeSettings` spreads the stored blob OVER the
- * defaults, so Jack's hand-picked 'switch' would win every time. I told him
- * the default had changed once before without checking that; this is the same
- * mistake made impossible.
- *
- * Only the one field moves. Resetting the whole audio section would take the
- * voice, rate and volume with it, which is a worse outcome than the setting
- * being fixed.
+ * Retired 2026-10-05 in the Settings cull, each because its default was the
+ * only value worth having:
+ *   - countPeek: the peek button is always shown; every peek is already
+ *     recorded against the session ("assisted"), which polices it better
+ *     than hiding it did.
+ *   - pushToTalkMs: a tuning constant (PUSH_TO_TALK_MS), not a preference --
+ *     a recognised word closes the window early anyway.
+ *   - chimes: switching them off silenced the "microphone is live" cue that
+ *     tells a driver when to speak; Mute covers wanting silence.
+ *   - cardDetail: cards are spoken by rank. Suits are irrelevant to the count
+ *     and doubled every line; collapsing tens to "ten" skipped the very
+ *     rank-to-tag step the count drill exists to train.
+ *   - handStyle: soft hands are spoken card by card. "Soft fourteen" is the
+ *     phrase that gets misheard as a hard total.
+ *   - outputRoute: 'playback' and 'switch' were both proven on the road not to
+ *     move the sound off the earpiece ('switch' also looped a prompt), and
+ *     were already migrated to 'auto' on every load. One value is no choice.
  */
-const DEAD_OUTPUT_ROUTES = new Set<string>(['playback', 'switch']);
-
 /**
- * Audio fields that no longer exist, dropped on load so a stored blob stops
- * carrying them forward through every save.
+ * Fields that no longer exist, dropped on load so a stored blob stops carrying
+ * them forward through every save.
  *
  * `micCueOn` and `voiceAlternatives` were the two arms of the 2026-10-04
- * microphone experiments. Both shipped defaults dominate by construction, so
- * they are now fixed behaviour in ui/useVoiceControl.ts and nothing reads the
- * stored values -- including a stored control arm, which is deliberately not
- * honoured.
+ * microphone experiments; their winning values are now fixed behaviour in
+ * ui/useVoiceControl.ts. `outputRoute` went when both of its non-default
+ * values were proved not to move sound off the earpiece. The rest were cut in
+ * the 2026-10-05 Settings cull.
  */
-const RETIRED_AUDIO_KEYS = ['micCueOn', 'voiceAlternatives'] as const;
+const RETIRED_DRILL_KEYS = ['pushToTalkMs'] as const;
+const RETIRED_AUDIO_KEYS = [
+  'micCueOn',
+  'voiceAlternatives',
+  'chimes',
+  'cardDetail',
+  'handStyle',
+  'outputRoute',
+] as const;
+const RETIRED_TOP_KEYS = ['countPeek'] as const;
 
 function mergeSettings(parsed: Record<string, unknown>): Settings {
   const base = structuredClone(DEFAULT_SETTINGS);
-  const p = parsed as Partial<Settings>;
+  const p = { ...parsed } as Partial<Settings> & Record<string, unknown>;
+  for (const k of RETIRED_TOP_KEYS) delete p[k];
   const drill =
     typeof p.drill === 'object' && p.drill !== null
       ? { ...base.drill, ...p.drill }
@@ -108,8 +108,13 @@ function mergeSettings(parsed: Record<string, unknown>): Settings {
     typeof p.audio === 'object' && p.audio !== null
       ? { ...base.audio, ...p.audio }
       : base.audio;
-  if (DEAD_OUTPUT_ROUTES.has(audio.outputRoute)) audio.outputRoute = 'auto';
-  for (const key of RETIRED_AUDIO_KEYS) delete (audio as unknown as Record<string, unknown>)[key];
+  for (const k of RETIRED_DRILL_KEYS) delete (drill as unknown as Record<string, unknown>)[k];
+  for (const k of RETIRED_AUDIO_KEYS) delete (audio as unknown as Record<string, unknown>)[k];
+  // The recorded voice is no longer a choice (see AudioSettings.useClips).
+  // Forced rather than defaulted, because a `false` saved while the shipped
+  // default was off would otherwise win over the default forever, with no
+  // control left to undo it.
+  audio.useClips = true;
   return { ...base, ...p, version: 1, drill, audio };
 }
 

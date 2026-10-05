@@ -15,7 +15,6 @@ import { foldFrames, bandFor, adviceFor, type NoiseReading } from './ambientNois
 import { diag } from './diagnosticLog';
 import {
   audioSessionSupported,
-  outputRoutePreference,
   readAudioSessionType,
 } from '../audio/audioSession';
 import { getSharedAudioContext, resumeSharedAudioContext } from '../audio/audioContext';
@@ -557,11 +556,9 @@ export function outputRouteCheck(playClip: () => Promise<string>): CheckDefiniti
     askOperator:
       'Listen, then say where it came from: the loud speaker at the bottom of the phone, or the quiet earpiece at the top?',
     run: async () => {
-      const asked = outputRoutePreference();
       const before = readAudioSessionType() ?? 'unknown';
       const how = await playClip();
       const session = {
-        setting: asked,
         sessionSupported: audioSessionSupported(),
         sessionType: readAudioSessionType() ?? 'unknown',
         sessionWas: before,

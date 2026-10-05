@@ -15,11 +15,7 @@ import { diag } from '../diag/diagnosticLog';
 import { reassertAudioFocus } from '../audio/audioFocus';
 import { markMicSessionOpened } from '../audio/micSessionCost';
 import { markInputDeviceChanged } from '../diag/deviceChurn';
-import {
-  audioSessionSupported,
-  claimSpeakerForPlayback,
-  readAudioSessionType,
-} from '../audio/audioSession';
+import { audioSessionSupported, readAudioSessionType } from '../audio/audioSession';
 import { logAudioInputs, logHardwareRate, logMicPermission } from '../diag/environment';
 import {
   micHasWorked,
@@ -300,23 +296,6 @@ export function useVoiceControl({
             supported: audioSessionSupported(),
             type: readAudioSessionType() ?? 'unknown',
           });
-          /**
-           * AND STOP DECLARING THE RECORDING INTENT, now that nothing is
-           * recording.
-           *
-           * The 2026-10-04 log ends its last mic session with
-           * `session-at-mic-close type=play-and-record`: capture was over and
-           * the page was still asking for the category that puts output on the
-           * earpiece. Nothing undid it, because the only thing that declared
-           * 'playback' was the handoff, and the handoff never ran.
-           *
-           * Read first and claim second, deliberately: the row above is the
-           * measurement of what WebKit was left in, and claiming before
-           * reading would have the app recording its own request as a finding.
-           * A no-op under 'auto', which is defined as never touching the
-           * session.
-           */
-          claimSpeakerForPlayback();
         }
         if (state === 'listening') {
           // The other half: read as soon as the session is confirmed open.

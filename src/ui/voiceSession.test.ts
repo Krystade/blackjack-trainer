@@ -125,7 +125,7 @@ describe('the push-to-talk window is spent on speaking, not on waiting', () => {
   /**
    * One word does not need five seconds, and the window cannot be ended by a
    * second press -- while it is open the car owns the buttons. So the length
-   * is the operator's to set (store/types.ts `pushToTalkMs`).
+   * is whatever the caller passes (PUSH_TO_TALK_MS by default).
    */
   it('speaks for as long as the press asked for, not a fixed five seconds', () => {
     startPushToTalk('test', 2000);

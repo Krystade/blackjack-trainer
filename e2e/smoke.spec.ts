@@ -66,20 +66,18 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   await expect(page.locator('.home-title')).toBeVisible();
 
   // ---------------------------------------------------------------
-  // 3. Settings: toggle Count peek off and back on (leaves state clean),
+  // 3. Settings: flip Feedback to Test and back (leaves state clean),
   //    confirm the Audio section (Test audio button) is present
   // ---------------------------------------------------------------
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.locator('.settings-heading')).toHaveText('Settings');
 
-  const countPeekToggle = page
-    .locator('.settings-toggle-row', { hasText: 'Count peek' })
-    .locator('input.settings-toggle');
-  await expect(countPeekToggle).toBeChecked();
-  await countPeekToggle.click();
-  await expect(countPeekToggle).not.toBeChecked();
-  await countPeekToggle.click();
-  await expect(countPeekToggle).toBeChecked();
+  const feedback = page.locator('.settings-row', { hasText: 'Feedback' });
+  await expect(feedback.locator('.segmented-btn-active')).toHaveText('Training');
+  await feedback.getByRole('button', { name: 'Test', exact: true }).click();
+  await expect(feedback.locator('.segmented-btn-active')).toHaveText('Test');
+  await feedback.getByRole('button', { name: 'Training', exact: true }).click();
+  await expect(feedback.locator('.segmented-btn-active')).toHaveText('Training');
 
   await expect(page.locator('.settings-test-audio-btn')).toBeVisible();
   await shot(page, 'smoke-03-settings');

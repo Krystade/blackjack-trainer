@@ -66,7 +66,7 @@ test('the convention reaches the live table count, not just the profile', async 
   // profile would report identical readings throughout.
   const readCounts = async (tcRounding: 'floor' | 'truncate') => {
     const page = await browser.newPage();
-    await withSettings(page, { countCheckEvery: 0, countPeek: true });
+    await withSettings(page, { countCheckEvery: 0 });
     await withProfile(page, { tcRounding });
     await page.goto('/?seed=102&e2e=1');
     await page.getByRole('button', { name: 'Play', exact: true }).click();

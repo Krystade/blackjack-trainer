@@ -269,7 +269,9 @@ function owedSnapshot(run: FieldTestRun, settings: Settings): FieldTestBefore | 
   const imposed = applyFieldTestSetup(settings, resolveFieldTestSetup(run.stepIndex));
   const untouched =
     imposed.audio.volume === settings.audio.volume &&
-    imposed.audio.useClips === settings.audio.useClips &&
+    // Not `useClips`: loading settings forces it back on (store/persist.ts), so
+    // after a reload mid-step it differs from what the step imposed without
+    // anybody having touched it -- and there is no control left to touch.
     imposed.audio.muted === settings.audio.muted &&
     imposed.audio.enabled === settings.audio.enabled &&
     imposed.drill.wheelMode === settings.drill.wheelMode;
@@ -280,7 +282,6 @@ function owedSnapshot(run: FieldTestRun, settings: Settings): FieldTestBefore | 
     // rather than merely that the snapshot was dropped.
     changed: [
       imposed.audio.volume !== settings.audio.volume ? 'volume' : null,
-      imposed.audio.useClips !== settings.audio.useClips ? 'useClips' : null,
       imposed.audio.muted !== settings.audio.muted ? 'muted' : null,
       imposed.audio.enabled !== settings.audio.enabled ? 'enabled' : null,
       imposed.drill.wheelMode !== settings.drill.wheelMode ? 'wheelMode' : null,

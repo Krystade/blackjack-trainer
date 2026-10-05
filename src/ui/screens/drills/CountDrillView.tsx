@@ -560,7 +560,7 @@ export function CountDrillView({
         const g = groups[i];
         if (!g) return;
 
-        await speakAsync(narrateCards(g, settings.audio.cardDetail), speechOptsFrom(settings.audio));
+        await speakAsync(narrateCards(g, 'rank'), speechOptsFrom(settings.audio));
         if (isStale()) return;
 
         const isLast = i >= groups.length - 1;
@@ -646,9 +646,9 @@ export function CountDrillView({
     const g = groups[shownIndex];
     if (!g) return;
     if (eyesFree) {
-      speak(narrateCards(g, settings.audio.cardDetail), speechOptsFrom(settings.audio, { interrupt: true }));
+      speak(narrateCards(g, 'rank'), speechOptsFrom(settings.audio, { interrupt: true }));
     } else {
-      audio.sayFull(narrateCards(g, settings.audio.cardDetail));
+      audio.sayFull(narrateCards(g, 'rank'));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, shownIndex, countdownMode, groups, eyesFree, settings.drill.countManual, timedChallenge]);
@@ -1140,7 +1140,7 @@ export function CountDrillView({
   /** What the run comes to, said out loud. */
   const countdownVerdict = (correct: boolean, hidden: Card): string =>
     `${correct ? 'Correct.' : 'Wrong.'} The card left over was ` +
-    `${narrateCards([hidden], settings.audio.cardDetail)}, ` +
+    `${narrateCards([hidden], 'rank')}, ` +
     `${speakableCount(hiLoTag(hidden.rank))}.`;
 
   const handleTagGuess = (guess: -1 | 0 | 1) => {
@@ -1432,7 +1432,7 @@ export function CountDrillView({
     // repeats, which is the one meaning worth keeping in every mode.
     if (settings.drill.wheelMode === 'talk') {
       if (command === 'forward') {
-        startPushToTalk('count-drill', settings.drill.pushToTalkMs);
+        startPushToTalk('count-drill');
         // A cue, because the window is invisible and the Bluetooth route
         // takes a moment to flip: without it there is no way to tell
         // "listening now" from "pressed nothing".

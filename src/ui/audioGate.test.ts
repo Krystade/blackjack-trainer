@@ -30,7 +30,7 @@ describe('withAudioEnabled', () => {
         volume: 0.4,
         rate: 1.6,
         useClips: true,
-        handStyle: 'total' as const,
+        voiceURI: 'Samantha',
       },
     };
     const on = withAudioEnabled(off);
@@ -38,7 +38,7 @@ describe('withAudioEnabled', () => {
       volume: 0.4,
       rate: 1.6,
       useClips: true,
-      handStyle: 'total',
+      voiceURI: 'Samantha',
     });
   });
 

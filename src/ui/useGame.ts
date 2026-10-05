@@ -9,7 +9,6 @@ import type { Profile, Settings } from '../store/types';
 import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
 import type { AudioApi } from '../audio/useAudio';
-import type { CardDetail } from '../audio/narrate';
 import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverBets';
 import {
   narrateBotAction,
@@ -182,13 +181,13 @@ function botLabelFor(game: Game, seatIndex: number): string {
  * the mid-round bot HIT/DOUBLE cards get paced (see the narration-reveal
  * effect below), because those are the only cards the UI itself paces.
  */
-function narrateDeal(game: Game, audio: AudioApi, cardDetail: CardDetail): void {
+function narrateDeal(game: Game, audio: AudioApi): void {
   if (game.shuffledLastRound) {
     audio.say(narrateShuffle());
   }
   for (const seat of game.seats) {
     for (const hand of seat.hands) {
-      if (hand.cards[0]) audio.sayFull(narrateCard(hand.cards[0], cardDetail));
+      if (hand.cards[0]) audio.sayFull(narrateCard(hand.cards[0], 'rank'));
     }
   }
   if (game.dealerCards[0]) {
@@ -196,7 +195,7 @@ function narrateDeal(game: Game, audio: AudioApi, cardDetail: CardDetail): void 
   }
   for (const seat of game.seats) {
     for (const hand of seat.hands) {
-      if (hand.cards[1]) audio.sayFull(narrateCard(hand.cards[1], cardDetail));
+      if (hand.cards[1]) audio.sayFull(narrateCard(hand.cards[1], 'rank'));
     }
   }
   if (game.phase === 'insurance') {
@@ -214,12 +213,12 @@ function narrateDeal(game: Game, audio: AudioApi, cardDetail: CardDetail): void 
  * already spoken by `narrateDeal`/the bot-action pacing effect), each
  * hand's result, and the count-check prompt + attention chime if one is due.
  */
-function narrateSettlement(game: Game, audio: AudioApi, cardDetail: CardDetail): void {
+function narrateSettlement(game: Game, audio: AudioApi): void {
   if (game.phase !== 'settled') return;
 
   if (game.holeRevealed) {
     for (const card of game.dealerCards.slice(1)) {
-      audio.sayFull(narrateCard(card, cardDetail));
+      audio.sayFull(narrateCard(card, 'rank'));
     }
   }
 
@@ -245,7 +244,7 @@ function narrateSettlement(game: Game, audio: AudioApi, cardDetail: CardDetail):
  * spread, bankrollStart, countCheckEvery, rules) — Cycle-1 Task 13: every
  * grading/payout/dealer-behavior surface reads the active profile, not
  * Settings. Settings only supplies non-game fields (feedbackMode here;
- * countPeek/dealSpeedMs/drill.* are read directly by the screens). The
+ * dealSpeedMs/drill.* are read directly by the screens). The
  * `?seed=` override remains for deterministic e2e/test runs.
  */
 export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
@@ -277,11 +276,11 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const deal = useCallback(
     (betUnits?: number | number[]) => {
       game.startRound(betUnits);
-      narrateDeal(game, audio, settings.audio.cardDetail);
-      narrateSettlement(game, audio, settings.audio.cardDetail); // instant dealer-blackjack / all-naturals rounds settle inside startRound()
+      narrateDeal(game, audio);
+      narrateSettlement(game, audio); // instant dealer-blackjack / all-naturals rounds settle inside startRound()
       bump();
     },
-    [game, bump, audio, settings.audio.cardDetail],
+    [game, bump, audio],
   );
 
   const sitOut = useCallback(() => {
@@ -293,17 +292,17 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     game.sitOut();
     if (game.shuffledLastRound) audio.say(narrateShuffle());
     audio.say(narrateSitOut());
-    narrateSettlement(game, audio, settings.audio.cardDetail);
+    narrateSettlement(game, audio);
     bump();
-  }, [game, bump, audio, settings.audio.cardDetail]);
+  }, [game, bump, audio]);
 
   const insure = useCallback(
     (take: boolean) => {
       game.insuranceDecision(take);
-      narrateSettlement(game, audio, settings.audio.cardDetail);
+      narrateSettlement(game, audio);
       bump();
     },
-    [game, bump, audio, settings.audio.cardDetail],
+    [game, bump, audio],
   );
 
   const act = useCallback(
@@ -337,10 +336,10 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
           });
         }
       }
-      narrateSettlement(game, audio, settings.audio.cardDetail);
+      narrateSettlement(game, audio);
       bump();
     },
-    [game, bump, settings.feedbackMode, audio, settings.audio.cardDetail],
+    [game, bump, settings.feedbackMode, audio],
   );
 
   const dismissOverlay = useCallback(() => setOverlay(null), []);

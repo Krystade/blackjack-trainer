@@ -23,7 +23,6 @@ export interface Settings {
   bankrollStart: number;
   countCheckEvery: number;
   penetration: number;
-  countPeek: boolean;
   dealSpeedMs: number;
   drill: {
     flashCategory: 'all' | 'hard' | 'soft' | 'pairs';
@@ -174,20 +173,6 @@ export interface Settings {
      * gesture to hold both meanings.
      */
     wheelMode: 'answer' | 'talk';
-    /**
-     * How long the push-to-talk window listens, once the microphone is live.
-     *
-     * Settable because only driving settles it, and because the window cannot
-     * be ended by a second press -- while the microphone is open the car owns
-     * the buttons. Five seconds was sized when the window was counted from the
-     * press and had to cover the Bluetooth handshake too; it does not any more
-     * (ui/voiceSession.ts), so this is purely how long one word needs. Two,
-     * asked for directly (operator, 2026-10-02).
-     *
-     * A recognised word closes the window early regardless, so this is the
-     * ceiling rather than the cost.
-     */
-    pushToTalkMs: number;
   };
   audio: AudioSettings;
 }
@@ -224,26 +209,24 @@ export interface AudioSettings {
    */
   muted: boolean;
   voiceURI: string; // 'default' or a SpeechSynthesisVoice.voiceURI
-  chimes: boolean;
   answerPauseMs: number; // 0..5000, the eyes-free self-check pause
   // Eyes-free ZonePad presentation: false (default) shows the five labeled
   // zones so the layout can be learned before it's used blind. true dims
   // the pad back to transparent-but-tappable, for genuine hands-on-wheel /
   // eyes-on-road driving use. Opt-in only — never the default.
   dimZones: boolean;
-  // How much detail spoken cards carry. 'full' = "queen of hearts" (suit
-  // included); 'rank' = "queen" (suit dropped, default — suit is irrelevant
-  // to counting and roughly doubles every utterance); 'face' = 'rank' but
-  // every ten-value card (10/J/Q/K) collapses to "ten", matching how a
-  // Hi-Lo counter actually subvocalises (all four share the same -1 tag).
-  cardDetail: 'full' | 'rank' | 'face';
   // Play pre-rendered neural-voice clips (public/clips/) instead of live
   // speechSynthesis whenever a segmentForClips cascade match exists for the
-  // spoken text -- a whole-utterance clip, or several per-sentence/per-item
-  // clips concatenated in sequence (see src/audio/clips.ts) -- falling back
-  // to live TTS otherwise. Defaults to false: the operator has not yet
-  // validated clip audio on their phone, so the shipped default keeps
-  // today's live-TTS-only behavior unchanged; a Settings toggle opts in.
+  // spoken text (see src/audio/clips.ts), falling back to live TTS for
+  // anything unrecorded or any clip that fails to play.
+  //
+  // NOT A USER SETTING ANY MORE. Off was strictly worse: live speech opens no
+  // media element, so the car never sees the app and no wheel button reaches
+  // it (audio/carControls.ts), and a clip that fails already falls back on its
+  // own. The field stays only because the field test switches it off for the
+  // steps that measure live speech, and restores it after. `mergeSettings`
+  // forces it back on at load, so a `false` saved under the old default (or
+  // by a field test interrupted mid-step) cannot strand an install on it.
   useClips: boolean;
   // Which recorded voice's clips to use (an id from public/clips/index.json's
   // "voices" list). '' (default) means "use index.json's own `default`" --
@@ -251,36 +234,6 @@ export interface AudioSettings {
   // the Settings clip-voice picker only renders once loadClipIndex() (see
   // src/audio/clips.ts) actually resolves more than a bare default.
   clipVoice: string;
-  // How a two-card drill hand is announced. 'cards' (default) speaks a SOFT
-  // hand card by card -- "ace, three" rather than "soft fourteen" -- because
-  // the composition is what selects the chart row (A-3 and A-7 play nothing
-  // alike), and "soft fourteen" is the exact phrase that gets misheard as a
-  // hard total. Hard hands and pairs are unaffected either way; see
-  // narrateHandPhrase in audio/narrate.ts. 'total' restores the old wording.
-  handStyle: 'cards' | 'total';
-  /**
-   * What to do about the earpiece, now that there turns out to be something
-   * to do about it.
-   *
-   * Opening a microphone moves iOS output to the receiver -- the quiet
-   * earpiece at the top of the phone -- for the rest of the page load, which
-   * Jack confirmed on the road on 2026-10-03. I said that was unfixable
-   * because Safari exposes no audio session to a page. That was wrong:
-   * `navigator.audioSession` shipped in Safari 17 / iOS 17 and its `type` is
-   * the category intent. See audio/audioSession.ts for what each value does.
-   *
-   * 'playback' IS SETTLED, AND IT DOES NOT WORK. The 2026-10-04 drive asked
-   * for it and got it -- `audio-session was=auto wanted=playback got=playback
-   * ok=true`, then `session-at-mic-open type=playback` and
-   * `session-at-mic-close type=playback` -- and the sound was on the earpiece
-   * the whole way. The category a page DECLARES and the category the session
-   * is IN are different things once something is capturing.
-   *
-   * 'switch' (close capture, declare playback, then speak) was tried next
-   * and failed the same way, and is gone; store/persist.ts still rewrites a
-   * stored 'switch' to 'auto' on load.
-   */
-  outputRoute: 'auto' | 'playback';
   /**
    * Extra words the operator wants heard as commands, phrase -> action.
    *
@@ -317,14 +270,9 @@ export const DEFAULT_AUDIO: AudioSettings = {
   volume: 1,
   muted: false,
   voiceURI: 'default',
-  chimes: true,
   answerPauseMs: 3000,
   dimZones: false,
-  // 'auto': never touch the audio session. See store/persist.ts for why the
-  // alternatives are retired on load.
-  outputRoute: 'auto',
   voiceAliases: {},
-  cardDetail: 'rank',
   /*
    * ON, now that a real drive has played them.
    *
@@ -342,7 +290,6 @@ export const DEFAULT_AUDIO: AudioSettings = {
   // how a new voice becomes the default by shipping rather than by editing a
   // constant here. See clips.ts's `activeClipVoice`.
   clipVoice: '',
-  handStyle: 'cards',
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -354,7 +301,6 @@ export const DEFAULT_SETTINGS: Settings = {
   bankrollStart: 100,
   countCheckEvery: 5,
   penetration: 0.75,
-  countPeek: true,
   dealSpeedMs: 300,
   drill: {
     flashCategory: 'all',
@@ -378,7 +324,6 @@ export const DEFAULT_SETTINGS: Settings = {
     masteryDistractionFreq: 'off',
     shotClockMs: 0,
     wheelMode: 'talk',
-    pushToTalkMs: 2000,
   },
   audio: { ...DEFAULT_AUDIO },
 };

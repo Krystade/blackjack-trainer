@@ -194,11 +194,11 @@ export function ProduceTcDrillView({
     if (!g) return;
     if (eyesFree) {
       speak(
-        narrateCards(g, settings.audio.cardDetail),
+        narrateCards(g, 'rank'),
         speechOptsFrom(settings.audio, { interrupt: true }),
       );
     } else {
-      audio.sayFull(narrateCards(g, settings.audio.cardDetail));
+      audio.sayFull(narrateCards(g, 'rank'));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, shownIndex, groups, eyesFree]);
@@ -418,7 +418,7 @@ export function ProduceTcDrillView({
   useWheelCommand((command) => {
     if (settings.drill.wheelMode === 'talk') {
       if (command === 'forward') {
-        startPushToTalk('produce-tc-drill', settings.drill.pushToTalkMs);
+        startPushToTalk('produce-tc-drill');
         audio.ding('attention');
       } else {
         handleVoiceCommand('repeat');

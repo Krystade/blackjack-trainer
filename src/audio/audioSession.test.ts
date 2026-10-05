@@ -1,15 +1,11 @@
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 import {
   audioSessionSupported,
-  claimSpeakerForPlayback,
   readAudioSessionType,
   requestAudioSessionType,
-  setOutputRoutePreference,
   _resetAudioSessionForTest,
-  outputRoutePreference,
 } from './audioSession';
 import { clearDiagnosticLog, readDiagnosticLog } from '../diag/diagnosticLog';
-import { DEFAULT_AUDIO } from '../store/types';
 
 /**
  * THE API I SAID DID NOT EXIST.
@@ -126,92 +122,3 @@ describe('the audio session type', () => {
   });
 });
 
-
-/**
- * THE SETTINGS, and why there was more than one.
- *
- * Nothing specifies what WebKit does with a page that asks for 'playback'
- * while a recogniser is capturing, and it cannot be found out from this
- * machine -- no desktop browser here implements the API at all. The plausible
- * outcomes are: it works (sound returns to the loud speaker), it is ignored
- * (nothing changes), or it works and takes the microphone down with it. Those
- * want different answers, and each costs a drive to tell apart.
- *
- * So the choice is Jack's to make in the car in one sitting, not mine to guess
- * across three builds: 'auto' leaves the session alone, 'playback' pins the
- * media intent and never asks for the recording one. ('switch', which
- * alternated, is gone -- see audio/audioSession.ts.)
- */
-describe('the output-route preference', () => {
-  const realNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
-
-  function installSession(initial: string): { type: string } {
-    const s = { type: initial };
-    Object.defineProperty(globalThis, 'navigator', {
-      value: { audioSession: s },
-      configurable: true,
-      writable: true,
-    });
-    return s;
-  }
-
-  beforeEach(() => {
-    clearDiagnosticLog();
-    _resetAudioSessionForTest();
-  });
-
-  afterEach(() => {
-    if (realNavigator) Object.defineProperty(globalThis, 'navigator', realNavigator);
-    else delete (globalThis as { navigator?: unknown }).navigator;
-  });
-
-  it('leaves the session alone on auto, which is the behaviour that shipped', () => {
-    const s = installSession('play-and-record');
-    setOutputRoutePreference('auto');
-    claimSpeakerForPlayback();
-    expect(s.type).toBe('play-and-record');
-  });
-
-  it('claims the speaker before speaking on playback', () => {
-    const s = installSession('play-and-record');
-    setOutputRoutePreference('playback');
-    claimSpeakerForPlayback();
-    expect(s.type).toBe('playback');
-  });
-
-});
-
-
-describe('the shipped default', () => {
-  it('is Auto, because both of the other two were disproved on the road', () => {
-    // THE MOST CONSEQUENTIAL LINE IN THIS FILE, and for a long time nothing
-    // asserted it: changing it broke no test, while deciding what every
-    // drive actually does.
-    //
-    // It was 'playback' until 2026-10-04, when a drive settled that
-    // declaring the category while capturing does nothing -- `got=playback
-    // ok=true` with the sound on the earpiece throughout. It was then
-    // 'switch' for one evening, which was the untried order the WebKit bug
-    // thread recommends: stop capturing, declare playback, then speak. That
-    // evening's 17:00 log ran it exactly -- `mic stop`, then
-    // `session-at-mic-close type=playback`, then a 3089ms clip to its
-    // natural end with nothing capturing -- and Jack still could not hear
-    // the app on the loud speaker. So both are dead, and 'switch' costs a
-    // recogniser restart per line on top of not working.
-    expect(DEFAULT_AUDIO.outputRoute).toBe('auto');
-  });
-
-  it('agrees with the preference this module starts in', () => {
-    /*
-     * TWO DECLARATIONS OF ONE DEFAULT, in two files, and they can drift.
-     *
-     * `DEFAULT_AUDIO` seeds the stored settings and is what the screen shows.
-     * This module's own initial value is what the audio path uses before any
-     * settings have loaded -- so the first utterance after a cold launch runs
-     * on it. If they disagree, the app spends that utterance in a mode the
-     * screen is not showing, which is unreportable from a car.
-     */
-    _resetAudioSessionForTest();
-    expect(outputRoutePreference()).toBe(DEFAULT_AUDIO.outputRoute);
-  });
-});

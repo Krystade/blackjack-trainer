@@ -1666,27 +1666,27 @@ test('leaving a measurement running does not kill the measure button', async ({ 
  *
  * `startFieldTestRun` prefers a stored `before` over the live settings — right
  * after a mid-drive reload, wrong once the snapshot has actually been handed
- * back. Turning the recorded voice on between the car-park leg and the freeway
- * leg is the ordinary case, not the exception.
+ * back. Turning the volume up between the car-park leg and the freeway leg is
+ * the ordinary case, not the exception.
  */
 test('a setting changed between two runs survives the second run', async ({ page }) => {
-  await withSettings(page, { audio: { useClips: false } });
+  await withSettings(page, { audio: { volume: 0.6 } });
   const stored = () =>
     page.evaluate(() => JSON.parse(window.localStorage.getItem('bjtrainer.settings.v1') ?? '{}'));
 
   await openTest(page, 'Car, parked');
   await endRun(page);
   await expect
-    .poll(async () => (await stored()).audio?.useClips, { timeout: 3_000 })
-    .toBe(false);
+    .poll(async () => (await stored()).audio?.volume, { timeout: 3_000 })
+    .toBe(0.6);
 
-  // The operator turns the recorded voice on between the two legs. The harness
+  // The operator turns the volume up between the two legs. The harness
   // re-seeds settings on every navigation, so it is told not to: the whole
   // point is that this change is the operator's and survives.
   await page.evaluate(() => {
     window.localStorage.setItem('e2e.noReseed', '1');
     const raw = JSON.parse(window.localStorage.getItem('bjtrainer.settings.v1') ?? '{}');
-    raw.audio = { ...raw.audio, useClips: true };
+    raw.audio = { ...raw.audio, volume: 0.8 };
     window.localStorage.setItem('bjtrainer.settings.v1', JSON.stringify(raw));
   });
   await page.reload();
@@ -1698,11 +1698,11 @@ test('a setting changed between two runs survives the second run', async ({ page
   await endRun(page);
 
   await expect
-    .poll(async () => (await stored()).audio?.useClips, {
+    .poll(async () => (await stored()).audio?.volume, {
       timeout: 3_000,
       message: 'the second run reverted a change the operator made between the two',
     })
-    .toBe(true);
+    .toBe(0.8);
 });
 
 /**

@@ -19,7 +19,7 @@ import { withProfile, withSettings, resolveInsurance } from './helpers';
  * the full suite for exactly that reason.
  */
 async function dealARound(page: import('@playwright/test').Page): Promise<void> {
-  await withSettings(page, { countCheckEvery: 0, countPeek: true });
+  await withSettings(page, { countCheckEvery: 0 });
   await page.goto('/?seed=102&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(page.locator('.table-screen')).toBeVisible();

@@ -205,7 +205,7 @@ describe('store/persist', () => {
       expect(loaded.audio.enabled).toBe(true);
       expect(loaded.audio.rate).toBe(1.3);
       expect(loaded.audio.verbosity).toBe('results'); // filled from defaults
-      expect(loaded.audio.chimes).toBe(true); // filled from defaults
+      expect(loaded.audio.answerPauseMs).toBe(3000); // filled from defaults
     });
 
     /**

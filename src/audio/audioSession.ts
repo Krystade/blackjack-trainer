@@ -23,7 +23,6 @@
  * ASKED FOR would let me make the same confident claim a second time. Every
  * row carries `wanted` and `got`, and `got` is read from the browser.
  */
-import { DEFAULT_AUDIO } from '../store/types';
 import { diag } from '../diag/diagnosticLog';
 
 /** The values the spec defines. 'auto' means "stop declaring anything". */
@@ -103,50 +102,25 @@ export function requestAudioSessionType(wanted: AudioSessionType): boolean {
   return ok;
 }
 
-/**
- * WHAT THE APP SHOULD DO ABOUT THE ROUTE.
- *
- *   'auto'     -- never touch the session. The behaviour that shipped, and the
- *                 one where the earpiece wins.
- *   'playback' -- claim the media intent before speaking and NEVER hand it
- *                 back, because handing it back is the thing that costs the
- *                 loud speaker.
- *
- * There was a third, 'switch' -- close the microphone to speak, reopen it to
- * listen -- with a whole handoff behind it. The 2026-10-04 evening drive
- * showed the ORDER does not bring the loud speaker back either, and it put a
- * prompt round a repeat loop; store/persist.ts has rewritten a stored
- * 'switch' to 'auto' on every load since, so choosing it could only ever
- * last until the next reload. It is gone, handoff and all.
- */
-export type OutputRoutePreference = 'auto' | 'playback';
-
 /*
- * ONE DECLARATION OF THE DEFAULT, taken from the stored defaults themselves.
+ * WHAT IS NO LONGER HERE: the app never asks for a category on its own.
  *
- * There were three: this, `DEFAULT_AUDIO.outputRoute`, and a literal inside
- * `_resetAudioSessionForTest`. The last one disagreed with the other two for
- * a while, so every unit test ran in a mode the app did not ship -- which is
- * how a default nothing asserts goes wrong.
+ * There used to be a route setting ("Sound with the mic on") with two modes
+ * that did: 'playback' declared the media intent before every sound, and
+ * 'switch' took the microphone down while the app spoke, declared playback,
+ * waited out the route's settle time and reopened it afterwards -- the order
+ * WebKit bug 218012's thread reports as the workaround. Both were run on the
+ * road on 2026-10-04 and neither moved the sound off the earpiece; 'switch'
+ * also looped a prompt round its reopen. Every load had been migrating both
+ * back to 'auto' already, so the setting and the handoff machinery behind it
+ * were retired in the 2026-10-05 settings cull.
+ *
+ * What stays is the READING side -- `readAudioSessionType`, logged at every
+ * mic open and close -- and `requestAudioSessionType` for the car check that
+ * still asks the question by hand, so the day WebKit changes is noticed.
  */
-let preference: OutputRoutePreference = DEFAULT_AUDIO.outputRoute;
 
-export function setOutputRoutePreference(next: OutputRoutePreference): void {
-  preference = next;
-}
-
-export function outputRoutePreference(): OutputRoutePreference {
-  return preference;
-}
-
-/** About to make a sound: ask for the category that belongs on a speaker. */
-export function claimSpeakerForPlayback(): void {
-  if (preference === 'auto') return;
-  requestAudioSessionType('playback');
-}
-
-/** Test-only: forget what has been logged, and the preference. */
+/** Test-only: forget what has been logged. */
 export function _resetAudioSessionForTest(): void {
   lastLogged = null;
-  preference = DEFAULT_AUDIO.outputRoute;
 }

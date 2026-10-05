@@ -16,10 +16,10 @@ declare global {
   }
 }
 
-/** narrateCard's exact format, e.g. "queen of hearts" -- never matches the
- * differently-shaped "Dealer shows ten." (narrateDealerUp) line. */
-const CARD_RE =
-  /^(ace|two|three|four|five|six|seven|eight|nine|ten|jack|queen|king) of (spades|hearts|diamonds|clubs)$/;
+/** A dealt card as the table and the count drill speak it: the bare rank,
+ * e.g. "queen" -- never matches the differently-shaped "Dealer shows ten."
+ * (narrateDealerUp) line. */
+const CARD_RE = /^(ace|two|three|four|five|six|seven|eight|nine|ten|jack|queen|king)$/;
 /** narrateBotAction's exact format, e.g. "Player one hits, ten of clubs." / "Player one stands." */
 const BOT_ACTION_RE = /^Player (one|two|three|four|five) (hits|stands|doubles|splits|surrenders)/;
 /** narrateHandResult's exact format, e.g. "Win, plus two." / "Hand one: Lose, minus one." */
@@ -59,11 +59,9 @@ interface DealOpts {
  * (still async -- see waitForSpeechLogMatch) without disabling it.
  */
 async function dealToDecision(page: Page, opts: DealOpts): Promise<boolean> {
-  // cardDetail defaults to 'rank' now (bare "queen"); these table specs match
-  // on CARD_RE's full "<rank> of <suit>" format, so pin 'full' explicitly.
   await withSettings(page, {
     dealSpeedMs: 0,
-    audio: { enabled: true, verbosity: opts.verbosity, cardDetail: 'full' },
+    audio: { enabled: true, verbosity: opts.verbosity },
   });
   await withProfile(page, {
     name: 'Audio E2E Profile',
@@ -181,7 +179,7 @@ test('training correction: a wrong play speaks "Wrong. ..." and chimes bad', asy
 test('eyes-free count drill: cards, then the count prompt, then the spoken answer', async ({ page }) => {
   test.setTimeout(30_000);
   await withSettings(page, {
-    audio: { enabled: true, verbosity: 'results', answerPauseMs: 2000, cardDetail: 'full' },
+    audio: { enabled: true, verbosity: 'results', answerPauseMs: 2000 },
     drill: { countLengthCards: 13, countGroup: 1, countManual: true },
   });
   await withProfile(page, { name: 'Audio Count Drill Profile' });
@@ -233,7 +231,7 @@ test('eyes-free AUTO count drill: every card is spoken before the count prompt, 
 }) => {
   test.setTimeout(30_000);
   await withSettings(page, {
-    audio: { enabled: true, verbosity: 'results', answerPauseMs: 500, cardDetail: 'full' },
+    audio: { enabled: true, verbosity: 'results', answerPauseMs: 500 },
     drill: { countManual: false, countLengthCards: 5, countGroup: 1, countIntervalMs: 0 },
   });
   await withProfile(page, { name: 'Audio Count Drill Auto Profile' });
@@ -273,48 +271,6 @@ test('eyes-free AUTO count drill: every card is spoken before the count prompt, 
 
   const answerIndex = log.findIndex((l, i) => i > promptIndex && /^The count is .+\.$/.test(l));
   expect(answerIndex, `expected the spoken count answer in ${JSON.stringify(log)}`).toBeGreaterThanOrEqual(0);
-});
-
-/* ---------------------------------------------------------------- */
-/* Case 4c: cardDetail 'face' actually changes count-drill narration */
-/* -- locks in the Job 1 wiring (narrateCards call sites now pass    */
-/* settings.audio.cardDetail) so the setting can't silently go dead   */
-/* again. A single 52-card, group-1 deck always contains exactly 16   */
-/* ten-value cards (4 each of 10/J/Q/K -- see engine/cards.ts RANKS), */
-/* so this is deterministic, not probabilistic.                       */
-/* ---------------------------------------------------------------- */
-
-test("cardDetail 'face': ten-value cards are spoken as \"ten\", never king/queen/jack", async ({ page }) => {
-  test.setTimeout(30_000);
-  await withSettings(page, {
-    audio: { enabled: true, verbosity: 'results', cardDetail: 'face', answerPauseMs: 300 },
-    drill: { countManual: false, countLengthCards: 52, countGroup: 1, countIntervalMs: 0 },
-  });
-  await withProfile(page, { name: 'Audio Card Detail Face Profile' });
-
-  await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
-
-  await page.getByLabel('Eyes-free audio').check();
-  await page.getByRole('button', { name: 'Start', exact: true }).click();
-
-  await answerSelfReportIfPresent(page);
-  await expect(page.locator('.drill-result')).toBeVisible({ timeout: 15_000 });
-
-  const log = await readSpeechLog(page);
-
-  // 'face' detail never speaks "of <suit>" or the bare rank word for a
-  // ten-value card -- no king/queen/jack should ever appear.
-  expect(
-    log.some((l) => /\b(king|queen|jack)\b/i.test(l)),
-    `expected no king/queen/jack entries with cardDetail 'face', got ${JSON.stringify(log)}`,
-  ).toBe(false);
-
-  // Positive check: a single 52-card deck has exactly 16 ten-value cards
-  // (4x 10, 4x J, 4x Q, 4x K), all collapsed to the bare word "ten".
-  const tenCount = log.filter((l) => l === 'ten').length;
-  expect(tenCount, `expected exactly 16 "ten" entries in ${JSON.stringify(log)}`).toBe(16);
 });
 
 /* ---------------------------------------------------------------- */
@@ -478,19 +434,12 @@ async function openSettingsWithAudioOn(page: Page): Promise<void> {
   await page.getByLabel('Audio enabled').check();
 }
 
-test('settings: "Use recorded voice" reveals the clip-voice picker; both persist', async ({ page }) => {
-  // The recorded voice ships ON now, and this test is about REVEALING the
-  // picker by turning it on -- so it has to start from off.
-  await withSettings(page, { audio: { enabled: false, useClips: false } });
+test('settings: the clip-voice picker lists the recorded voices and persists a choice', async ({ page }) => {
   await openSettingsWithAudioOn(page);
-
-  const clipVoiceRow = settingsRow(page, 'Clip voice');
-  await expect(clipVoiceRow).toHaveCount(0);
-
-  await page.getByLabel('Use recorded voice (higher quality)').check();
 
   // loadClipIndex() (Settings' Audio-section effect) is a real fetch of
   // public/clips/index.json -- give it a moment to resolve.
+  const clipVoiceRow = settingsRow(page, 'Clip voice');
   await expect(clipVoiceRow).toBeVisible({ timeout: 10_000 });
   const select = clipVoiceRow.locator('select');
   const optionTexts = await select.locator('option').allInnerTexts();
@@ -502,7 +451,6 @@ test('settings: "Use recorded voice" reveals the clip-voice picker; both persist
   await select.selectOption('bf_emma');
 
   const saved = await readSettingsBlob(page);
-  expect(saved?.audio?.useClips).toBe(true);
   expect(saved?.audio?.clipVoice).toBe('bf_emma');
 });
 
@@ -541,21 +489,6 @@ test('settings: answer-pause stepper reaches its 0s minimum and persists', async
 
   const saved = await readSettingsBlob(page);
   expect(saved?.audio?.answerPauseMs).toBe(0);
-});
-
-test('settings: card-detail segmented drives and persists all three values', async ({ page }) => {
-  await openSettingsWithAudioOn(page);
-
-  const cardDetailRow = settingsRow(page, 'Card detail');
-
-  await cardDetailRow.getByRole('button', { name: 'Rank', exact: true }).click();
-  expect((await readSettingsBlob(page))?.audio?.cardDetail).toBe('rank');
-
-  await cardDetailRow.getByRole('button', { name: 'Face', exact: true }).click();
-  expect((await readSettingsBlob(page))?.audio?.cardDetail).toBe('face');
-
-  await cardDetailRow.getByRole('button', { name: 'Full', exact: true }).click();
-  expect((await readSettingsBlob(page))?.audio?.cardDetail).toBe('full');
 });
 
 test('settings: voice-picker change fires a live preview into __speechLog and persists', async ({ page }) => {

@@ -3,7 +3,7 @@ import { _resetQuietWaitersForTest } from './speechActivity';
 import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 import { _resetClipsForTest } from './clips';
 import { _resetToneCacheForTest } from './tone';
-import { setOutputRoutePreference, _resetAudioSessionForTest } from './audioSession';
+import { _resetAudioSessionForTest } from './audioSession';
 import {
   speak, speakAsync, chime, chimeFrequencyForTest, isSpeechSupported, listVoices, cancelSpeech, pickBestVoice,
   getLastSpoken, repeatLast, _resetLastSpokenForTest, _resetSharedAudioContextForTest,
@@ -1506,14 +1506,13 @@ describe('the voice list is warm before the first drill line', () => {
 
 
 /**
- * THE WIRING, which is the part that can silently not be there.
+ * THE APP NEVER ASKS FOR A CATEGORY ON ITS OWN.
  *
- * `audioSession.ts` can be perfect and the earpiece stays exactly where it is
- * if nothing calls it. These assert the three sounds the app makes -- a line,
- * an awaited line, and a cue -- each ask for the speaker BEFORE they play, and
- * that they ask through the preference rather than around it.
+ * It used to, under two route settings that were both disproved on the road
+ * and retired (see audio/audioSession.ts). What is left to pin is that nothing
+ * the app says or plays reaches for the session any more.
  */
-describe('claiming the speaker before making a sound', () => {
+describe('making a sound leaves the audio session alone', () => {
   const realNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
 
   function installSession(): { type: string } {
@@ -1528,11 +1527,6 @@ describe('claiming the speaker before making a sound', () => {
 
   beforeEach(() => {
     _resetAudioSessionForTest();
-    // THE CLAIM IS A NO-OP UNDER THE SHIPPED DEFAULT, which is now 'auto' --
-    // defined as never touching the session, because both modes that did
-    // touch it were disproved on the road. These tests are about the claim
-    // being MADE where it is wanted, so they select a mode that wants it.
-    setOutputRoutePreference('playback');
     (globalThis as any).window = { location: { search: '?e2e=1' } };
   });
 
@@ -1543,31 +1537,10 @@ describe('claiming the speaker before making a sound', () => {
     else delete (globalThis as { navigator?: unknown }).navigator;
   });
 
-  it('speak() asks for the media category first', () => {
+  it('speak, speakAsync and chime never touch it', () => {
     const session = installSession();
     speak('You have sixteen. Dealer shows ten.');
-    expect(session.type).toBe('playback');
-  });
-
-  it('speakAsync() asks too, since the field test speaks only through it', () => {
-    const session = installSession();
     void speakAsync('Correct.');
-    expect(session.type).toBe('playback');
-  });
-
-  it('chime() asks, because the cue is the sound most easily lost', () => {
-    const session = installSession();
-    chime('ready');
-    expect(session.type).toBe('playback');
-  });
-
-  it('leaves the session alone when the setting says to', () => {
-    // The comparison arm. If this ever stops working, the "Leave it" setting
-    // silently becomes a second copy of "Speaker" and the one measurement
-    // that could tell them apart is gone.
-    const session = installSession();
-    setOutputRoutePreference('auto');
-    speak('You have sixteen. Dealer shows ten.');
     chime('ready');
     expect(session.type).toBe('play-and-record');
   });

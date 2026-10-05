@@ -123,7 +123,7 @@ function attachClipHarness(page: Page): ClipHarness {
  * never reaches the fallback branch once a real voice id is set). Since this
  * harness pins `clipVoice: 'af_bella'` for deterministic filenames (matrix
  * spec step 1), a real user reaches that same state by visiting Settings and
- * toggling "Use recorded voice" -- so a brief Settings visit here is both
+ * picking a clip voice -- so a brief Settings visit here is both
  * how `index.json` actually gets fetched AND a realistic path to this state,
  * not a workaround.
  */
@@ -150,7 +150,6 @@ async function seedClipDrillSettings(page: Page, audioPatch: Record<string, unkn
       enabled: true,
       useClips: true,
       verbosity: 'full',
-      cardDetail: 'full',
       clipVoice: 'af_bella',
       answerPauseMs: 500,
       ...audioPatch,
@@ -467,7 +466,6 @@ test('a bot turn plays from clips, both halves of it', async ({ page }) => {
       enabled: true,
       useClips: true,
       verbosity: 'full',
-      cardDetail: 'full',
       clipVoice: 'af_bella',
       answerPauseMs: 500,
     },
