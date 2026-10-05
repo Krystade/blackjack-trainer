@@ -20,7 +20,7 @@ const SHORT_RUN = {
 async function openCountDrill(page: Page) {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 }
 
@@ -104,11 +104,11 @@ test('RT#12: a wrong checkpoint under a RIGHT final count is called out as error
   await advanceUntil(page, () => ok(page).isVisible(), 12);
   await ok(page).click();
   const detail = await page.locator('.result-detail').innerText();
-  const actual = Number(/actual was (-?\d+)/.exec(detail)?.[1]);
+  const actual = Number(/running count was (-?\d+)/.exec(detail)?.[1]);
   expect(Number.isFinite(actual), `unparsed result detail: ${detail}`).toBe(true);
 
   // Pass two, same shoe: drift at the checkpoint, then land the final count.
-  await page.getByRole('button', { name: 'Replay', exact: true }).click();
+  await page.getByRole('button', { name: 'New run', exact: true }).click();
   await advanceUntil(page, () => checkpointArea(page).isVisible(), 12);
   await enterNumber(page, 99);
   await advanceUntil(page, () => ok(page).isVisible(), 12);

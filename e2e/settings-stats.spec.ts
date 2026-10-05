@@ -383,7 +383,7 @@ test('settings: the Drills copies of flashcard category and count group reach th
   await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
-  const inline = page.locator('.settings-row', { hasText: 'Category' });
+  const inline = page.locator('.settings-row', { hasText: 'Hands' });
   await expect(inline.getByRole('button', { name: 'Pairs', exact: true })).toHaveClass(
     /segmented-btn-active/,
   );
@@ -393,7 +393,7 @@ test('settings: the Drills copies of flashcard category and count group reach th
 
   // ...and the count drill flashes three cards at a time.
   await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await expect(page.locator('.settings-row', { hasText: 'Group size' }).getByRole('button', { name: '3', exact: true })).toHaveClass(
     /segmented-btn-active/,
   );

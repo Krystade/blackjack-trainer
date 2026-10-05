@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState, type CSSProperties } from 'react';
+﻿import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { strategyRulesFor } from '../../store/profiles';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
@@ -44,7 +44,7 @@ import { narrateAction, narrateCorrection, narrateFlashcardPrompt, narrateQuizPr
   narrateAnswerEcho,
   DID_YOU_HAVE_IT,
 } from '../../audio/narrate';
-import { useVoiceControl } from '../useVoiceControl';
+import { useVoiceControl, type VoiceStatus } from '../useVoiceControl';
 import { autoAdvanceDelayMs, spokenPauseFor } from '../../drills/answerPause';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../audio/voiceRecognition';
 import { BLIND_TAP_CHANNEL, SCREEN_CHANNEL, VOICE_CHANNEL } from '../../drills/spacedRepetition';
@@ -151,6 +151,133 @@ function useControlStripBottom() {
 
 function drillScreenStyle(padTop: number): CSSProperties {
   return { ['--zone-pad-top']: `${padTop}px` } as CSSProperties;
+}
+
+/* ---------------------------------------------------------------- */
+/* Answer-mode switches + Options, shared by the three hand drills.  */
+/* ---------------------------------------------------------------- */
+
+/**
+ * How you answer (Eyes-free audio, Voice answers), the listening line, and an
+ * "Options" disclosure for everything that is set once rather than every hand.
+ *
+ * Shared by Flashcards, Deviation Quiz and Mixed. The three had grown five
+ * stacked full-width checkboxes plus a three-line listening panel each, which
+ * on a 375x812 phone pushed the action bar below the fold -- you had to scroll
+ * to answer, and the scroll tucked the top controls under the status bar.
+ *
+ * - The two answer modes stay in view: they are the first taps of a driving
+ *   session and the only way into it.
+ * - "Dim screen" only does anything while eyes-free is on, so it appears only
+ *   then, inside Options, instead of sitting disabled on every visit.
+ * - The listening line is one row: state + what was last heard. The command
+ *   list is dropped here because the five plays are already the buttons on
+ *   screen, and the earpiece explanation is dropped because Settings carries
+ *   its own copy (`.settings-earpiece`) and the setting it pointed to cannot
+ *   bring the loud speaker back (see ec67e35).
+ *
+ * Options is a native <details>, closed by default (also under ?e2e=1 -- a
+ * layout test has to see what a real visitor sees).
+ */
+function DrillModeControls({
+  settings,
+  onSettingsChange,
+  eyesFree,
+  onEyesFreeChange,
+  voiceSupported,
+  voiceOn,
+  onVoiceChange,
+  voiceStatus,
+  options,
+}: {
+  settings: Settings;
+  onSettingsChange: (settings: Settings) => void;
+  eyesFree: boolean;
+  onEyesFreeChange: (on: boolean) => void;
+  voiceSupported: boolean;
+  voiceOn: boolean;
+  onVoiceChange: (on: boolean) => void;
+  voiceStatus: VoiceStatus;
+  options?: ReactNode;
+}) {
+  const hasOptions = Boolean(options) || eyesFree;
+  return (
+    <>
+      <div className="drill-mode-row">
+        <label className="count-toggle">
+          <input
+            type="checkbox"
+            checked={eyesFree}
+            onChange={(e) => {
+              // Tapping this IS a request for audio, so honour it instead of
+              // refusing: the control used to sit disabled whenever
+              // `audio.enabled` was false -- which is the shipped default --
+              // making the app's whole driving mode a dead checkbox curable
+              // only from another screen. See ui/audioGate.ts.
+              if (e.target.checked && !settings.audio.enabled) {
+                enableAudioNow(settings, onSettingsChange);
+              }
+              onEyesFreeChange(e.target.checked);
+            }}
+          />
+          Eyes-free audio
+        </label>
+        {/* Hidden rather than disabled where there is no speech API at all:
+            an inert control invites the operator to keep tapping it. */}
+        {voiceSupported && (
+          <label className="count-toggle">
+            <input
+              type="checkbox"
+              checked={voiceOn}
+              onChange={(e) => {
+                // Answering out loud is worthless without hearing the reply,
+                // so this turns audio on the way Eyes-free does.
+                if (e.target.checked && !settings.audio.enabled) {
+                  enableAudioNow(settings, onSettingsChange);
+                }
+                onVoiceChange(e.target.checked);
+              }}
+            />
+            Voice answers
+          </label>
+        )}
+      </div>
+      {/* What the microphone last heard, whether or not it meant anything:
+          a misheard word and a dead microphone look identical without it. */}
+      {voiceOn && (
+        <div className="drill-voice-line">
+          <VoiceStatusBar status={voiceStatus} />
+        </div>
+      )}
+      {hasOptions && (
+        <details className="drill-options">
+          <summary>Options</summary>
+          <div className="drill-options-body">
+            {options}
+            {/* The ZonePad is labelled by default so its layout can be
+                learned; this blanks it (still tappable) for real driving. */}
+            {eyesFree && (
+              <label className="count-toggle">
+                <input
+                  type="checkbox"
+                  checked={settings.audio.dimZones}
+                  onChange={(e) => {
+                    const nextSettings: Settings = {
+                      ...settings,
+                      audio: { ...settings.audio, dimZones: e.target.checked },
+                    };
+                    saveSettings(nextSettings);
+                    onSettingsChange(nextSettings);
+                  }}
+                />
+                Dim screen (tap zones stay live)
+              </label>
+            )}
+          </div>
+        </details>
+      )}
+    </>
+  );
 }
 
 /* ---------------------------------------------------------------- */
@@ -355,15 +482,6 @@ function FlashcardsView({
     saveSettings(nextSettings);
     onSettingsChange(nextSettings);
     next(category);
-  };
-
-  // "Dim screen" (opt-in): the ZonePad is visible-with-labels by default so
-  // its layout can be learned; this switches it back to the transparent-
-  // but-tappable presentation for genuine eyes-free driving use.
-  const toggleDimZones = (dim: boolean) => {
-    const nextSettings: Settings = { ...settings, audio: { ...settings.audio, dimZones: dim } };
-    saveSettings(nextSettings);
-    onSettingsChange(nextSettings);
   };
 
   const handleBack = () => {
@@ -759,7 +877,7 @@ function FlashcardsView({
 
       <div className="drill-inline-controls" ref={controlsRef}>
         <div className="settings-row">
-          <span className="settings-label">Category</span>
+          <span className="settings-label">Hands</span>
           <Segmented
             options={[
               { value: 'all', label: 'All' },
@@ -772,99 +890,67 @@ function FlashcardsView({
           />
         </div>
 
-        {/* V4-1 (docs/BACKLOG.md): the draw weighted cells by schedule alone,
-            so the 16 v 10 you face most shoes and the hard 5 v 7 you face once
-            a month got the same reps. Off by default -- reallocating practice
-            time is the user's call. */}
-        <label className="count-toggle">
-          <input
-            type="checkbox"
-            checked={settings.drill.flashByFrequency}
-            onChange={(e) => {
-              const nextSettings: Settings = {
-                ...settings,
-                drill: { ...settings.drill, flashByFrequency: e.target.checked },
-              };
-              saveSettings(nextSettings);
-              onSettingsChange(nextSettings);
-            }}
-          />
-          <span>Favour hands you&apos;ll actually see</span>
-        </label>
-
-        {/* V5-1 (docs/BACKLOG.md): interleaving pays most when confusable items
-            land back to back, and the SR/frequency draw is blind to what came
-            before -- so the 16 v 10 followed by the 15 v 10 happened only by
-            luck. Off by default, like the frequency term above. */}
-        <label className="count-toggle">
-          <input
-            type="checkbox"
-            checked={settings.drill.flashByConfusability}
-            onChange={(e) => {
-              const nextSettings: Settings = {
-                ...settings,
-                drill: { ...settings.drill, flashByConfusability: e.target.checked },
-              };
-              saveSettings(nextSettings);
-              onSettingsChange(nextSettings);
-            }}
-          />
-          <span>Follow each hand with one you&apos;d mix it up with</span>
-        </label>
-
-        <label className="count-toggle">
-          <input
-            type="checkbox"
-            checked={eyesFree}
-            onChange={(e) => {
-              // Tapping this IS a request for audio, so honour it instead of
-              // refusing: the control used to sit disabled whenever
-              // `audio.enabled` was false -- which is the shipped default --
-              // making the app's whole driving mode a dead checkbox curable
-              // only from another screen. See ui/audioGate.ts.
-              if (e.target.checked && !settings.audio.enabled) {
-                enableAudioNow(settings, onSettingsChange);
-              }
-              // A pending auto-advance is an eyes-free affordance; leaving
-              // eyes-free must cancel it, or the correction vanishes and a new
-              // card appears on its own in visual mode.
-              if (!e.target.checked) clearAdvanceTimer();
-              setEyesFree(e.target.checked);
-            }}
-          />
-          Eyes-free audio
-        </label>
-        <label className="count-toggle">
-          <input
-            type="checkbox"
-            checked={settings.audio.dimZones}
-            disabled={!eyesFree}
-            onChange={(e) => toggleDimZones(e.target.checked)}
-          />
-          Dim screen
-        </label>
-        {voiceSupported && (
-          <label className="count-toggle">
-            <input
-              type="checkbox"
-              checked={voiceOn}
-              onChange={(e) => {
-                // Answering out loud is worthless without hearing the reply,
-                // so this turns audio on the way Eyes-free does rather than
-                // sitting dead when audio happens to be off.
-                if (e.target.checked && !settings.audio.enabled) {
-                  enableAudioNow(settings, onSettingsChange);
-                }
-                setVoiceOn(e.target.checked);
-              }}
-            />
-            Voice answers
-          </label>
-        )}
-        {/* What the microphone last heard, whether or not it meant anything.
-            Without it a misheard word and a dead microphone look identical,
-            and neither can be diagnosed while driving. */}
-        {voiceOn && <VoiceStatusBar status={voice.status} />}
+        <DrillModeControls
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+          eyesFree={eyesFree}
+          onEyesFreeChange={(on) => {
+            // A pending auto-advance is an eyes-free affordance; leaving
+            // eyes-free must cancel it, or the correction vanishes and a new
+            // card appears on its own in visual mode.
+            if (!on) clearAdvanceTimer();
+            setEyesFree(on);
+          }}
+          voiceSupported={voiceSupported}
+          voiceOn={voiceOn}
+          onVoiceChange={setVoiceOn}
+          voiceStatus={voice.status}
+          options={
+            <>
+              {/* V4-1 (docs/BACKLOG.md): the draw weighted cells by schedule
+                  alone, so the 16 v 10 you face most shoes and the hard 5 v 7
+                  you face once a month got the same reps. Off by default --
+                  reallocating practice time is the user's call. Kept: a
+                  mistake costs in proportion to how often the hand comes up,
+                  so weighting reps by frequency is the direct lever on it. */}
+              <label className="count-toggle">
+                <input
+                  type="checkbox"
+                  checked={settings.drill.flashByFrequency}
+                  onChange={(e) => {
+                    const nextSettings: Settings = {
+                      ...settings,
+                      drill: { ...settings.drill, flashByFrequency: e.target.checked },
+                    };
+                    saveSettings(nextSettings);
+                    onSettingsChange(nextSettings);
+                  }}
+                />
+                <span>Show common hands more often</span>
+              </label>
+              {/* V5-1 (docs/BACKLOG.md): interleaving pays most when
+                  confusable items land back to back, and the SR/frequency
+                  draw is blind to what came before. Off by default, like the
+                  frequency term above. Kept on the evidence cited there
+                  (Brunmair & Richter 2019). */}
+              <label className="count-toggle">
+                <input
+                  type="checkbox"
+                  checked={settings.drill.flashByConfusability}
+                  onChange={(e) => {
+                    const nextSettings: Settings = {
+                      ...settings,
+                      drill: { ...settings.drill, flashByConfusability: e.target.checked },
+                    };
+                    saveSettings(nextSettings);
+                    onSettingsChange(nextSettings);
+                  }}
+                />
+                <span>Follow each hand with a look-alike</span>
+              </label>
+            </>
+          }
+        />
       </div>
 
       <div className="dealer-area">
@@ -878,6 +964,11 @@ function FlashcardsView({
               <PlayingCard key={i} card={c} />
             ))}
           </div>
+          {/* The hand in words, for a screen reader: the same sentence the
+              eyes-free prompt speaks ("a pair of eights", not two images). */}
+          <span className="u-sr-only">
+            {narrateFlashcardPrompt(card.cards, card.up, 'total')}
+          </span>
         </div>
       </div>
 
@@ -941,6 +1032,7 @@ function FlashcardsView({
             onAnswer={handleZoneAnswer}
             onRepeat={handleRepeat}
             visible={!settings.audio.dimZones}
+            legal={drillLegalActions(card.cards, activeProfile.rules)}
           />
         ) : (
           <ActionBar
@@ -1176,15 +1268,6 @@ function DeviationQuizView({
     saveSettings(nextSettings);
     onSettingsChange(nextSettings);
     next(activeFilter, quizDistractorPct);
-  };
-
-  // "Dim screen" (opt-in): the ZonePad is visible-with-labels by default so
-  // its layout can be learned; this switches it back to the transparent-
-  // but-tappable presentation for genuine eyes-free driving use.
-  const toggleDimZones = (dim: boolean) => {
-    const nextSettings: Settings = { ...settings, audio: { ...settings.audio, dimZones: dim } };
-    saveSettings(nextSettings);
-    onSettingsChange(nextSettings);
   };
 
   const handleBack = () => {
@@ -1522,7 +1605,7 @@ function DeviationQuizView({
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
         </button>
-        <div className="drill-heading">Deviation Quiz</div>
+        <div className="drill-heading">Deviation quiz</div>
         {settings.audio.enabled && (
           <button type="button" className="repeat-btn" onClick={audio.replay}>
             Repeat
@@ -1556,68 +1639,36 @@ function DeviationQuizView({
           </select>
         </label>
 
-        <div className="settings-row">
-          <span className="settings-label">Mix in fakes</span>
-          <Segmented
-            options={[
-              { value: '0', label: '0%' },
-              { value: '25', label: '25%' },
-              { value: '50', label: '50%' },
-            ]}
-            value={String(settings.drill.quizDistractorPct) as '0' | '25' | '50'}
-            onChange={(v) => changeDistractorPct(Number(v))}
-          />
-        </div>
-
-        <label className="count-toggle">
-          <input
-            type="checkbox"
-            checked={eyesFree}
-            onChange={(e) => {
-              // Tapping this IS a request for audio, so honour it instead of
-              // refusing: the control used to sit disabled whenever
-              // `audio.enabled` was false -- which is the shipped default --
-              // making the app's whole driving mode a dead checkbox curable
-              // only from another screen. See ui/audioGate.ts.
-              if (e.target.checked && !settings.audio.enabled) {
-                enableAudioNow(settings, onSettingsChange);
-              }
-              // A pending auto-advance is an eyes-free affordance; leaving
-              // eyes-free must cancel it, or the correction vanishes and a new
-              // card appears on its own in visual mode.
-              if (!e.target.checked) clearAdvanceTimer();
-              setEyesFree(e.target.checked);
-            }}
-          />
-          Eyes-free audio
-        </label>
-        <label className="count-toggle">
-          <input
-            type="checkbox"
-            checked={settings.audio.dimZones}
-            disabled={!eyesFree}
-            onChange={(e) => toggleDimZones(e.target.checked)}
-          />
-          Dim screen
-        </label>
-        {voiceSupported && (
-          <label className="count-toggle">
-            <input
-              type="checkbox"
-              checked={voiceOn}
-              onChange={(e) => {
-                if (e.target.checked && !settings.audio.enabled) {
-                  enableAudioNow(settings, onSettingsChange);
-                }
-                setVoiceOn(e.target.checked);
-              }}
-            />
-            Voice answers
-          </label>
-        )}
-        {/* What the microphone last heard, whether or not it meant anything:
-            a misheard word and a dead microphone look identical without it. */}
-        {voiceOn && <VoiceStatusBar status={voice.status} />}
+        <DrillModeControls
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+          eyesFree={eyesFree}
+          onEyesFreeChange={(on) => {
+            // A pending auto-advance is an eyes-free affordance; leaving
+            // eyes-free must cancel it, or the correction vanishes and a new
+            // card appears on its own in visual mode.
+            if (!on) clearAdvanceTimer();
+            setEyesFree(on);
+          }}
+          voiceSupported={voiceSupported}
+          voiceOn={voiceOn}
+          onVoiceChange={setVoiceOn}
+          voiceStatus={voice.status}
+          options={
+            <div className="settings-row">
+              <span className="settings-label">Off-index hands</span>
+              <Segmented
+                options={[
+                  { value: '0', label: '0%' },
+                  { value: '25', label: '25%' },
+                  { value: '50', label: '50%' },
+                ]}
+                value={String(settings.drill.quizDistractorPct) as '0' | '25' | '50'}
+                onChange={(v) => changeDistractorPct(Number(v))}
+              />
+            </div>
+          }
+        />
       </div>
 
       <div className="quiz-tc">TC {formatSigned(item.tc)}</div>
@@ -1692,14 +1743,15 @@ function DeviationQuizView({
             onAnswer={handleZoneAnswer}
             onRepeat={handleRepeat}
             visible={!settings.audio.dimZones}
+            legal={quizLegalActions(item, strategyRulesFor(activeProfile))}
           />
         ) : item.cards === null ? (
           <div className="action-bar">
             <button type="button" className="action-btn" onClick={() => handleAnswer('take-insurance')}>
-              Take Insurance
+              Take insurance
             </button>
             <button type="button" className="action-btn" onClick={() => handleAnswer('decline-insurance')}>
-              Decline Insurance
+              Decline insurance
             </button>
           </div>
         ) : (
@@ -1923,12 +1975,6 @@ function MixedSessionView({
     setCurrent(drawFor(pickMixedType(sessionSeed(), idx)));
     setFeedback(null);
     promptShownAtRef.current = performance.now();
-  };
-
-  const toggleDimZones = (dim: boolean) => {
-    const nextSettings: Settings = { ...settings, audio: { ...settings.audio, dimZones: dim } };
-    saveSettings(nextSettings);
-    onSettingsChange(nextSettings);
   };
 
   const handleBack = () => {
@@ -2202,56 +2248,22 @@ function MixedSessionView({
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
-        <div className="settings-row settings-note-row">
-          Basic-strategy and count-dependent hands, interleaved.
-        </div>
-        <label className="count-toggle">
-          <input
-            type="checkbox"
-            checked={eyesFree}
-            onChange={(e) => {
-              // Tapping this IS a request for audio, so honour it instead of
-              // refusing: the control used to sit disabled whenever
-              // `audio.enabled` was false -- which is the shipped default --
-              // making the app's whole driving mode a dead checkbox curable
-              // only from another screen. See ui/audioGate.ts.
-              if (e.target.checked && !settings.audio.enabled) {
-                enableAudioNow(settings, onSettingsChange);
-              }
-              // A pending auto-advance is an eyes-free affordance; leaving
-              // eyes-free must cancel it, or the correction vanishes and a new
-              // card appears on its own in visual mode.
-              if (!e.target.checked) clearAdvanceTimer();
-              setEyesFree(e.target.checked);
-            }}
-          />
-          Eyes-free audio
-        </label>
-        <label className="count-toggle">
-          <input
-            type="checkbox"
-            checked={settings.audio.dimZones}
-            disabled={!eyesFree}
-            onChange={(e) => toggleDimZones(e.target.checked)}
-          />
-          Dim screen
-        </label>
-        {voiceSupported && (
-          <label className="count-toggle">
-            <input
-              type="checkbox"
-              checked={voiceOn}
-              onChange={(e) => {
-                if (e.target.checked && !settings.audio.enabled) {
-                  enableAudioNow(settings, onSettingsChange);
-                }
-                setVoiceOn(e.target.checked);
-              }}
-            />
-            Voice answers
-          </label>
-        )}
-        {voiceOn && <VoiceStatusBar status={voice.status} />}
+        <DrillModeControls
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+          eyesFree={eyesFree}
+          onEyesFreeChange={(on) => {
+            // A pending auto-advance is an eyes-free affordance; leaving
+            // eyes-free must cancel it, or the correction vanishes and a new
+            // card appears on its own in visual mode.
+            if (!on) clearAdvanceTimer();
+            setEyesFree(on);
+          }}
+          voiceSupported={voiceSupported}
+          voiceOn={voiceOn}
+          onVoiceChange={setVoiceOn}
+          voiceStatus={voice.status}
+        />
       </div>
 
       {/* A quiz item shows its true count; a flashcard item shows none -- the
@@ -2316,14 +2328,19 @@ function MixedSessionView({
             onAnswer={handleZoneAnswer}
             onRepeat={handleRepeat}
             visible={!settings.audio.dimZones}
+            legal={
+              current.type === 'quiz'
+                ? quizLegalActions(current.item, strategyRulesFor(activeProfile))
+                : drillLegalActions(handCards ?? [], activeProfile.rules)
+            }
           />
         ) : isInsuranceItem ? (
           <div className="action-bar">
             <button type="button" className="action-btn" onClick={() => handleAnswer('take-insurance')}>
-              Take Insurance
+              Take insurance
             </button>
             <button type="button" className="action-btn" onClick={() => handleAnswer('decline-insurance')}>
-              Decline Insurance
+              Decline insurance
             </button>
           </div>
         ) : (
@@ -2375,21 +2392,21 @@ function MixedSessionView({
 /* Picker                                                             */
 /* ---------------------------------------------------------------- */
 
+type DrillMode =
+  | 'count'
+  | 'truecount'
+  | 'deckest'
+  | 'flash'
+  | 'quiz'
+  | 'mixed'
+  | 'paircancel'
+  | 'betsitleave'
+  | 'downswing'
+  | 'producetc'
+  | 'mastery';
+
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
-  const [mode, setMode] = useState<
-    | 'picker'
-    | 'count'
-    | 'truecount'
-    | 'deckest'
-    | 'flash'
-    | 'quiz'
-    | 'mixed'
-    | 'paircancel'
-    | 'betsitleave'
-    | 'downswing'
-    | 'producetc'
-    | 'mastery'
-  >('picker');
+  const [mode, setMode] = useState<'picker' | DrillMode>('picker');
 
   if (mode === 'count') {
     return (
@@ -2489,12 +2506,39 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   }
 
   // V3-4: SOFT competence gating — advanced pressure modes still work, but show
-  // a "build your fluency first" nudge until the learner has demonstrated basic
+  // a "get fluent first" nudge until the learner has demonstrated basic
   // count-drill competence. Read once here (only the picker branch reaches this).
   const fluent = isCountFluent(loadStats().countDrill.history);
-  const advancedNote = fluent ? null : (
-    <div className="drills-nav-note">Advanced — build your count fluency first</div>
-  );
+
+  // One line per drill: what you practise, and why it matters at the table.
+  // The name stays the button's accessible name (aria-label) so a screen
+  // reader -- and every spec that clicks a drill by name -- hears the drill,
+  // with the line attached as its description.
+  const entry = (
+    target: DrillMode,
+    name: string,
+    description: string,
+    advanced = false,
+  ) => {
+    const descId = `drill-desc-${target}`;
+    const gated = advanced && !fluent;
+    return (
+      <button
+        key={target}
+        type="button"
+        className={`drills-nav-btn${gated ? ' drills-nav-btn-advanced' : ''}`}
+        aria-label={name}
+        aria-describedby={descId}
+        onClick={() => setMode(target)}
+      >
+        <span className="drills-nav-name">{name}</span>
+        <span className="drills-nav-desc" id={descId}>
+          {description}
+        </span>
+        {gated && <span className="drills-nav-note">Advanced — get fluent at the count drill first</span>}
+      </button>
+    );
+  };
 
   return (
     <div className="drills-picker">
@@ -2505,62 +2549,25 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
           are three different abilities you build in roughly that order. */}
       <div className="drills-nav">
         <h2 className="drills-group-title">Keeping the count</h2>
-        <button type="button" className="drills-nav-btn" onClick={() => setMode('count')}>
-          Count Drill
-        </button>
-        <button type="button" className="drills-nav-btn" onClick={() => setMode('paircancel')}>
-          Pair Cancellation
-        </button>
-        <button type="button" className="drills-nav-btn" onClick={() => setMode('deckest')}>
-          Deck Estimation
-        </button>
-        <button type="button" className="drills-nav-btn" onClick={() => setMode('truecount')}>
-          True Count Drill
-        </button>
-        <button type="button" className="drills-nav-btn" onClick={() => setMode('producetc')}>
-          Produce the True Count
-        </button>
+        {entry('count', 'Count drill', 'Keep the running count as cards are dealt. Every bet and play starts from it.')}
+        {entry('paircancel', 'Pair cancellation', 'Read two cards as one net value and skip pairs that cancel, to keep up with a fast dealer.')}
+        {entry('deckest', 'Deck estimation', 'Judge decks remaining from the discard tray. It is what you divide by.')}
+        {entry('truecount', 'True count drill', 'Turn a running count and decks remaining into the true count, which sets your bet.')}
+        {entry('producetc', 'Produce the true count', 'Count the cards, read the tray, give the true count: the whole job, as at the table.')}
 
         <h2 className="drills-group-title">Knowing the plays</h2>
-        <button type="button" className="drills-nav-btn" onClick={() => setMode('flash')}>
-          Flashcards
-        </button>
-        <button type="button" className="drills-nav-btn" onClick={() => setMode('quiz')}>
-          Deviation Quiz
-        </button>
+        {entry('flash', 'Flashcards', 'Basic strategy, one hand at a time. It decides most of your hands.')}
+        {entry('quiz', 'Deviation quiz', 'Index plays: when the true count says to leave basic strategy.')}
         {/* R2/R4: interleaving is a DESIRABLE difficulty -- it helps once the
             base skill is there and costs accuracy before it. Soft, like every
             other gate here (V3-4, operator's explicit choice): the mode still
             works, it just says what it is. */}
-        <button
-          type="button"
-          className={`drills-nav-btn${fluent ? '' : ' drills-nav-btn-advanced'}`}
-          onClick={() => setMode('mixed')}
-        >
-          Mixed
-        </button>
-        {advancedNote}
-        <button type="button" className="drills-nav-btn" onClick={() => setMode('mastery')}>
-          Mastery Challenge
-        </button>
+        {entry('mixed', 'Mixed', 'Basic-strategy and index hands shuffled together, so you learn when the count matters.', true)}
+        {entry('mastery', 'Mastery challenge', 'Every basic-strategy hand once, with no mistakes. One miss starts the sweep over.')}
 
         <h2 className="drills-group-title">Under pressure</h2>
-        <button
-          type="button"
-          className={`drills-nav-btn${fluent ? '' : ' drills-nav-btn-advanced'}`}
-          onClick={() => setMode('betsitleave')}
-        >
-          Bet / Sit / Leave
-        </button>
-        {advancedNote}
-        <button
-          type="button"
-          className={`drills-nav-btn${fluent ? '' : ' drills-nav-btn-advanced'}`}
-          onClick={() => setMode('downswing')}
-        >
-          Downswing
-        </button>
-        {advancedNote}
+        {entry('betsitleave', 'Bet / sit / leave', 'From the true count and the shoe, choose to bet, sit out or leave the table.', true)}
+        {entry('downswing', 'Downswing', 'A run of losing hands. Keep your count and bet your ramp without chasing losses.', true)}
       </div>
       <button type="button" className="drills-back-btn" onClick={() => onNavigate('home')}>
         Back to Home

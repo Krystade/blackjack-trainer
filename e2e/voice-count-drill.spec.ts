@@ -79,7 +79,7 @@ async function openCountDrill(page: Page, opts: { eyesFree: boolean }): Promise<
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   if (opts.eyesFree) {
     await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
   }
@@ -265,7 +265,7 @@ test('a number spoken mid-flash is not taken as an answer', async ({ page }) => 
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await page.locator('label', { hasText: 'Voice answers' }).locator('input').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.manual-tap-zone')).toBeVisible();
@@ -320,7 +320,7 @@ test('a distraction can be answered out loud', async ({ page }) => {
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
   await page.locator('label', { hasText: 'Voice answers' }).locator('input').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();

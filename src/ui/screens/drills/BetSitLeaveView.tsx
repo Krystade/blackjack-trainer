@@ -20,7 +20,7 @@ function formatSigned(n: number): string {
 
 const ACTIONS: { key: TableAction; label: string }[] = [
   { key: 'bet', label: 'Bet' },
-  { key: 'sit', label: 'Sit Out' },
+  { key: 'sit', label: 'Sit out' },
   { key: 'leave', label: 'Leave' },
 ];
 
@@ -105,11 +105,11 @@ export function BetSitLeaveView({
         <button type="button" className="drill-back-btn" onClick={onBack}>
           Back
         </button>
-        <div className="drill-heading">Bet / Sit / Leave</div>
+        <div className="drill-heading">Bet / sit / leave</div>
       </div>
 
       <div className="settings-row settings-note-row">
-        Given the count, how deep the shoe is, and whether another table is open — what do you do?
+        From the true count, how much shoe is left, and whether another table is open: bet, sit out or leave?
       </div>
 
       <div className="bsl-snapshot">

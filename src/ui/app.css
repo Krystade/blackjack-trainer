@@ -469,7 +469,7 @@ button {
 .action-bar {
   margin-top: auto;
   display: flex;
-  gap: 0.35rem;
+  gap: 0.25rem; /* 0.35rem left "Surrender" a pixel short on a 375px phone */
   padding: 0.6rem max(0.5rem, env(safe-area-inset-left)) calc(0.6rem + env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-right));
   background: var(--bg-sunken);
   border-top: 1px solid var(--raised);
@@ -489,12 +489,16 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   cursor: pointer;
-  font-size: clamp(0.65rem, 3.2vw, 0.85rem);
+  /* Sized so "Surrender", the longest label, fits whole in a five-button bar
+     on a 375px phone (it was cut to "Surren…"): 2.9vw and a 2px side
+     padding. The ellipsis stays as the last resort for narrower screens.
+     Asserted by e2e/drill-layout.spec.ts. */
+  font-size: clamp(0.65rem, 2.9vw, 0.85rem);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 0 max(4px, 0.35rem);
+  padding: 0 2px;
 }
 
 .action-btn:disabled {
@@ -772,10 +776,25 @@ button {
   font-size: 1.05rem;
   font-weight: 600;
   cursor: pointer;
+  /* Name over a one-line description of what the drill trains. */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.6rem 0.9rem;
+  text-align: left;
 }
 
 .drills-nav-btn:hover {
   background: var(--raised);
+}
+
+.drills-nav-desc {
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--ink-dim);
 }
 
 /* V3-4 soft gate: advanced pressure modes stay clickable but read as advanced. */
@@ -785,10 +804,9 @@ button {
 }
 
 .drills-nav-note {
-  margin: -0.4rem 0 0.2rem;
   font-size: 0.75rem;
+  font-weight: 400;
   color: var(--accent-dim);
-  text-align: center;
 }
 
 .drills-back-btn {
@@ -1163,6 +1181,89 @@ button {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+/* Read by a screen reader, not drawn. Still in the page text, so it also
+   gives tests a way to read what the cards are. */
+.u-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The hand drills' answer modes (Eyes-free audio, Voice answers) share one
+   row, and everything set once rather than every hand sits in a closed
+   "Options" disclosure -- so on a 375x812 phone the dealer card, the hand and
+   the action bar all fit without scrolling (e2e/drill-layout.spec.ts). */
+.drill-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+}
+
+.drill-options > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.9rem;
+  color: var(--ink-dim);
+}
+
+.drill-options > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Same chevron as the collapsible Settings sections, on the left here because
+   this is a single inline row rather than a list of headings. */
+.drill-options > summary::before {
+  content: '\203A'; /* › */
+  font-size: 1.2rem;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.drill-options[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drill-options > summary::before {
+    transition: none;
+  }
+}
+
+.drill-options-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* The listening strip, cut to one line: state and what was last heard. The
+   command list and the earpiece note are left to Settings and the buttons. */
+.drill-voice-line .voice-status {
+  flex-wrap: nowrap;
+  padding: 0.3rem 0.6rem;
+}
+
+.drill-voice-line .voice-status-heard {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drill-voice-line .voice-status-words,
+.drill-voice-line .voice-status-earpiece {
+  display: none;
 }
 
 .quiz-index-select {
@@ -2209,6 +2310,12 @@ button {
   -webkit-tap-highlight-color: transparent;
   background: var(--bg);
   transition: opacity 0.2s ease;
+  /* The circle is sized in this box's own units (cqmin), so it is drawn
+     exactly where hitTestZone puts it: radius 0.22 * min(w, h) of THE PAD.
+     It used to be 44vmin of the VIEWPORT, which is larger than the pad once
+     the control strip takes the top of the screen -- so the drawn circle was
+     bigger than the zone it stood for, and sat on the quadrant labels. */
+  container-type: size;
 }
 
 .zone-pad-hidden {
@@ -2223,10 +2330,11 @@ button {
   grid-template-rows: 1fr 1fr;
 }
 
+/* Each label sits in its quadrant's OUTER corner, as far from the centre
+   circle as the quadrant allows, so the two cannot meet on any phone the pad
+   fits (e2e/drill-layout.spec.ts measures it at 375x812). */
 .zone-pad-quad {
   display: flex;
-  align-items: center;
-  justify-content: center;
   font-size: clamp(1.6rem, 8vmin, 2.4rem);
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -2239,26 +2347,46 @@ button {
 
 .zone-pad-quad-hit {
   background: var(--surface);
+  align-items: flex-start;
+  justify-content: flex-start;
 }
 
 .zone-pad-quad-stand {
   background: var(--surface);
+  align-items: flex-start;
+  justify-content: flex-end;
 }
 
 .zone-pad-quad-double {
   background: var(--surface);
+  align-items: flex-end;
+  justify-content: flex-start;
 }
 
 .zone-pad-quad-split {
   background: var(--bg);
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+/* Not an option on this hand. Still tappable -- the drill says why it was
+   refused -- but it must not look like an answer. */
+.zone-pad-quad-disabled {
+  color: var(--ink-faint);
+  background: var(--bg);
+}
+
+.zone-pad-quad-disabled .zone-pad-label {
+  text-decoration: line-through;
+  opacity: 0.45;
 }
 
 .zone-pad-circle {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 44vmin;
-  height: 44vmin;
+  width: 44cqmin;
+  height: 44cqmin;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background: var(--raised);
@@ -2267,11 +2395,12 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(1rem, 5vmin, 1.4rem);
+  font-size: clamp(0.85rem, 4.5cqmin, 1.4rem);
   font-weight: 800;
   letter-spacing: 0.02em;
   text-align: center;
-  padding: 0 0.5rem;
+  padding: 0 0.25rem;
+  overflow: hidden;
   pointer-events: none;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
 }

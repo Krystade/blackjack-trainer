@@ -91,7 +91,7 @@ async function openCountDrillListening(page: Page): Promise<void> {
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   // Eyes-free, then the microphone: the voice status bar does not exist until
   // both are on, and nor does the thing under test.
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();

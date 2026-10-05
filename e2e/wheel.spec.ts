@@ -66,7 +66,7 @@ function spoken(page: Page): Promise<string[]> {
 async function openTrueCountDrill(page: Page): Promise<void> {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'True count drill', exact: true }).click();
 }
 
 test('forward starts the drill', async ({ page }) => {
@@ -169,7 +169,7 @@ test('the count drill takes a running count from the wheel too', async ({ page }
 
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await press(page, 'forward'); // Start
 
   await expect(page.getByText('Enter the running count')).toBeVisible({ timeout: 10_000 });
@@ -271,7 +271,7 @@ test('a distraction is answered with the same two buttons the count is', async (
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   await expect(page.locator('.distraction-area')).toBeVisible({ timeout: 15_000 });
@@ -337,7 +337,7 @@ test('the wheel answer to a distraction is the answer that gets graded', async (
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   /** Walk the entry to `target` from nothing, then let the quiet commit it. */
@@ -409,7 +409,7 @@ async function openQuiz(page: Page, index = '16v10'): Promise<void> {
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
   await expect(page.locator('.quiz-tc')).toBeVisible();
 }
 

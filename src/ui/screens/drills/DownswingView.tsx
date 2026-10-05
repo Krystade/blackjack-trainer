@@ -31,6 +31,25 @@ const ACTION_LABEL: Record<Action, string> = {
   surrender: 'Surrender',
 };
 
+/** The settled hand in words. It used to print the raw result key ("push"). */
+function settledLabel(result: PlayerHand['result'], net: number): string {
+  const units = Math.abs(net);
+  switch (result) {
+    case 'lose':
+      return `Lost ${units}u`;
+    case 'surrender':
+      return `Surrendered: lost ${units}u`;
+    case 'win':
+      return `Won ${units}u`;
+    case 'blackjack':
+      return `Blackjack: won ${units}u`;
+    case 'push':
+      return 'Push';
+    default:
+      return '';
+  }
+}
+
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
@@ -242,8 +261,8 @@ export function DownswingView({
                 : 'You held your discipline.'}
           </div>
           <div className="result-detail">
-            Spread-conformity through the drawdown: <strong>{conformPct}%</strong> ({conform.correct}/
-            {conform.total} bets matched your ramp).
+            Spread-conformity: <strong>{conformPct}%</strong> ({conform.correct} of {conform.total}{' '}
+            bets matched your ramp)
           </div>
           {/*
             V3-7: the two halves of tilt, reported apart. Chasing with the bet
@@ -257,16 +276,15 @@ export function DownswingView({
               <strong>no decisions dealt</strong>
             ) : (
               <>
-                <strong>{playPct}%</strong> ({playTally.correct}/{playTally.total} stiff hands
+                <strong>{playPct}%</strong> ({playTally.correct} of {playTally.total} stiff hands
                 played correctly)
               </>
             )}
           </div>
           <div className="result-detail">
-            You rode out a {drawdown}-unit downswing over {ROUNDS} hands — through negative counts
-            where the play was to bet the minimum, and positive counts where the ramp called for a big
-            bet that lost anyway. The disciplined play was to keep betting your ramp for the count, the
-            whole way down.
+            A {drawdown}-unit downswing over {ROUNDS} hands. The disciplined play was to bet your ramp
+            the whole way down: the minimum at negative counts, the big bet at positive counts, even
+            though it lost.
           </div>
           <button type="button" className="drill-back-btn" onClick={onBack}>
             Back to Drills
@@ -321,12 +339,12 @@ export function DownswingView({
         */}
         {lastPlay && (
           <div className="result-wrong">
-            You played {lastPlay.taken} — the correct play was {lastPlay.expected}.
+            You played {lastPlay.taken}; the correct play was {lastPlay.expected}.
           </div>
         )}
         {phase === 'settled' && activeHand && (
           <div className="result-wrong">
-            {activeHand.result === 'lose' ? `Lost ${Math.abs(activeHand.net ?? 0)}u` : String(activeHand.result)}
+            {settledLabel(activeHand.result, activeHand.net ?? 0)}
           </div>
         )}
       </div>
@@ -334,8 +352,8 @@ export function DownswingView({
       {phase === 'bet' && (
         <div className="action-bar action-bar-bet">
           <div className="settings-row settings-note-row">
-            Keep your own count through the losses and bet your ramp for it — the count is NOT shown.
-            Don’t chase, and don’t shrink from a big bet at a good count.
+            The count isn’t shown: keep your own and bet your ramp for it. Don’t chase losses, and
+            don’t back off a big bet when the count is good.
           </div>
           <div className="bet-chips">
             {betChips.map((units) => (

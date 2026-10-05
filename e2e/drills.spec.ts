@@ -77,7 +77,7 @@ test('count drill: flash 4 cards fast, submit RC, see result', async ({ page }) 
   await expect(page.locator('.drills-title')).toHaveText('Drills');
   await shot(page, '12-drills-picker');
 
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
   await shot(page, '13-count-drill-setup');
 
@@ -110,7 +110,7 @@ test('count drill: Count bias control persists and a biased shoe drills to a gra
   await withSettings(page, { drill: { countIntervalMs: 200, countLengthCards: 6, countGroup: 1 } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
 
   // Default is None; switch to Neg-first via the setup control.
@@ -149,9 +149,9 @@ test('count drill: timed challenge auto-advances and reports elapsed time + spee
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
 
-  await page.getByLabel('Timed challenge (speed ramp)').check();
+  await page.getByLabel('Timed challenge (gets faster every card)').check();
   await expect(page.getByText('Starting pace')).toBeVisible();
   await shot(page, '59-timed-challenge-setup');
 
@@ -239,9 +239,9 @@ test('count drill: adaptive difficulty picks a faster start after a history of a
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
 
-  await page.getByLabel('Timed challenge (speed ramp)').check();
+  await page.getByLabel('Timed challenge (gets faster every card)').check();
   // Adaptive difficulty defaults to true -- left unchecked/untouched here to
   // exercise the shipped default rather than forcing it.
   await expect(page.getByLabel('Adaptive difficulty')).toBeChecked();
@@ -273,7 +273,7 @@ test('count drill: adaptive difficulty picks a faster start after a history of a
 test('true count drill: answering a question persists a trueCount history entry', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'True count drill', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
 
   expect(await readStats(page)).toBeNull(); // nothing persisted before the first attempt
@@ -328,7 +328,7 @@ test('true count drill: answering a question persists a trueCount history entry'
 test('deck estimation drill: answering a question persists a deckEstimation history entry', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deck Estimation', exact: true }).click();
+  await page.getByRole('button', { name: 'Deck estimation', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
 
   expect(await readStats(page)).toBeNull(); // nothing persisted before the first attempt
@@ -519,7 +519,7 @@ test('count drill: typed digit + Enter submits the running-count answer via keyb
   await withSettings(page, { drill: { countIntervalMs: 300, countLengthCards: 4, countGroup: 1 } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
@@ -565,7 +565,7 @@ test('count drill: relentless distractions interrupt mid-stream and grade countK
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
 
   // The setup screen's own control reflects the forced setting.
@@ -638,7 +638,7 @@ test('count drill: distractionFreq off (default) never shows a distraction, even
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
 
   const freqRow = page.locator('.settings-row', { hasText: 'Distractions' });
   await expect(freqRow.getByRole('button', { name: 'Off', exact: true })).toHaveClass(/segmented-btn-active/);
@@ -661,13 +661,13 @@ test('count drill: distractionFreq off (default) never shows a distraction, even
 test('deviation quiz: answer shows feedback with the index/label text', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Deviation Quiz');
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation quiz');
   await shot(page, '19-quiz-question');
 
   const insurancePrompt = page.locator('.quiz-insurance-prompt');
   if (await insurancePrompt.isVisible().catch(() => false)) {
-    await page.getByRole('button', { name: 'Decline Insurance', exact: true }).click();
+    await page.getByRole('button', { name: 'Decline insurance', exact: true }).click();
   } else {
     await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
   }
@@ -681,12 +681,13 @@ test('deviation quiz: answer shows feedback with the index/label text', async ({
   await page.getByRole('button', { name: 'Next', exact: true }).click();
 });
 
-test('deviation quiz: "Mix in fakes" segmented control persists quizDistractorPct across reload', async ({ page }) => {
+test('deviation quiz: "Off-index hands" segmented control persists quizDistractorPct across reload', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
 
-  const mixRow = page.locator('.settings-row', { hasText: 'Mix in fakes' });
+  await page.locator('details.drill-options > summary').click();
+  const mixRow = page.locator('.settings-row', { hasText: 'Off-index hands' });
   await expect(mixRow.getByRole('button', { name: '0%', exact: true })).toHaveClass(/segmented-btn-active/);
 
   await mixRow.getByRole('button', { name: '50%', exact: true }).click();
@@ -694,8 +695,9 @@ test('deviation quiz: "Mix in fakes" segmented control persists quizDistractorPc
 
   await page.reload();
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
-  const mixRowAfterReload = page.locator('.settings-row', { hasText: 'Mix in fakes' });
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+  await page.locator('details.drill-options > summary').click();
+  const mixRowAfterReload = page.locator('.settings-row', { hasText: 'Off-index hands' });
   await expect(mixRowAfterReload.getByRole('button', { name: '50%', exact: true })).toHaveClass(/segmented-btn-active/);
 });
 
@@ -710,15 +712,15 @@ test('deviation quiz distractors: quizDistractorPct 100 always shows the "no ind
   await withSettings(page, { drill: { quizDistractorPct: 100 } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Deviation Quiz');
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation quiz');
 
-  await expect(page.locator('.settings-row', { hasText: 'Mix in fakes' })).toBeVisible();
+  await expect(page.locator('.settings-row', { hasText: 'Off-index hands' })).toHaveCount(1);
   await shot(page, '61-quiz-distractor-question');
 
   const insurancePrompt = page.locator('.quiz-insurance-prompt');
   if (await insurancePrompt.isVisible().catch(() => false)) {
-    await page.getByRole('button', { name: 'Decline Insurance', exact: true }).click();
+    await page.getByRole('button', { name: 'Decline insurance', exact: true }).click();
   } else {
     await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
   }
@@ -742,7 +744,7 @@ test('count drill: manual mode advances via Space, Enter, and ArrowRight, matchi
   await withSettings(page, { drill: { countManual: true, countLengthCards: 4, countGroup: 1 } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   const tapZone = page.locator('.manual-tap-zone');
@@ -767,7 +769,7 @@ test('count drill: manual mode advances via Space, Enter, and ArrowRight, matchi
 test('deck estimation: typed digit + "." + Enter submits a half-deck guess via keyboard', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deck Estimation', exact: true }).click();
+  await page.getByRole('button', { name: 'Deck estimation', exact: true }).click();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.deck-guess-grid')).toBeVisible();
 
@@ -880,8 +882,8 @@ test('deviation quiz: keyboard action key grades identically to clicking the mat
 
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Deviation Quiz');
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation quiz');
 
   await page.keyboard.press('1'); // KEY_TO_ACTION['1'] = 'hit'
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
@@ -894,8 +896,8 @@ test('deviation quiz: keyboard action key grades identically to clicking the mat
   });
   await page.reload();
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Deviation Quiz');
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation quiz');
 
   await page.locator('.action-bar button.action-btn', { hasText: 'Hit' }).click();
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
@@ -912,7 +914,7 @@ test('deviation quiz: keyboard "1" takes insurance identically to clicking Take 
 
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
   await expect(page.locator('.quiz-insurance-prompt')).toBeVisible();
 
   await page.keyboard.press('1');
@@ -922,10 +924,10 @@ test('deviation quiz: keyboard "1" takes insurance identically to clicking Take 
   await page.evaluate(() => window.localStorage.removeItem('bjtrainer.stats.v1'));
   await page.reload();
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
   await expect(page.locator('.quiz-insurance-prompt')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Take Insurance', exact: true }).click();
+  await page.getByRole('button', { name: 'Take insurance', exact: true }).click();
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
   const clickResult = await stripText(page);
 
@@ -940,7 +942,7 @@ test('deviation quiz: keyboard "2" declines insurance identically to clicking De
 
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
   await expect(page.locator('.quiz-insurance-prompt')).toBeVisible();
 
   await page.keyboard.press('2');
@@ -950,10 +952,10 @@ test('deviation quiz: keyboard "2" declines insurance identically to clicking De
   await page.evaluate(() => window.localStorage.removeItem('bjtrainer.stats.v1'));
   await page.reload();
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
   await expect(page.locator('.quiz-insurance-prompt')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Decline Insurance', exact: true }).click();
+  await page.getByRole('button', { name: 'Decline insurance', exact: true }).click();
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
   const clickResult = await stripText(page);
 
@@ -971,7 +973,7 @@ test('count drill: Countdown mode reaches the tag-guess result and records a 52-
   await withSettings(page, { drill: { countManual: true } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
 
   await page
@@ -1021,10 +1023,10 @@ test('count drill: eyes-free Strict mode grades via NumPad and speaks the verdic
 
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
 
   await page.getByLabel('Eyes-free audio').check();
-  await page.getByLabel('Strict mode (keypad entry, graded)').check();
+  await page.getByLabel('Strict mode (enter the answer; graded)').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   // Strict mode still shows the graded NumPad -- the honor-system
@@ -1068,7 +1070,7 @@ test('count drill: occasional distractions interrupt mid-stream (jittered, spars
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
 
   const freqRow = page.locator('.settings-row', { hasText: 'Distractions' });
   await expect(freqRow.getByRole('button', { name: 'Occasional', exact: true })).toHaveClass(/segmented-btn-active/);
@@ -1121,7 +1123,7 @@ test('count drill: distraction type "Generic" poses plain arithmetic unrelated t
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
 
   const typeRow = page.locator('.settings-row', { hasText: 'Distraction type' });
   await expect(typeRow.getByRole('button', { name: 'Generic', exact: true })).toHaveClass(/segmented-btn-active/);
@@ -1165,7 +1167,7 @@ test('count drill: group size 2 and 3 flash multiple cards per flash step', asyn
   await withSettings(page, { drill: { countManual: true, countLengthCards: 6, countGroup: 3 } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
 
   const groupRow = page.locator('.settings-row', { hasText: 'Group size' });
   await expect(groupRow.getByRole('button', { name: '3', exact: true })).toHaveClass(/segmented-btn-active/);
@@ -1180,7 +1182,7 @@ test('count drill: group size 2 and 3 flash multiple cards per flash step', asyn
   // an in-place phase reset.
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
 
   await groupRow.getByRole('button', { name: '2', exact: true }).click();
@@ -1210,7 +1212,7 @@ test('true count drill: eyes-free self-check asks and records; strict mode grade
 
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'True count drill', exact: true }).click();
 
   await page.getByLabel('Eyes-free audio').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
@@ -1241,10 +1243,10 @@ test('true count drill: eyes-free self-check asks and records; strict mode grade
   // Fresh setup (component remount resets the local eyesFree/strictMode
   // state) -- this time with Strict mode on too.
   await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'True count drill', exact: true }).click();
 
   await page.getByLabel('Eyes-free audio').check();
-  await page.getByLabel('Strict mode (keypad entry, graded)').check();
+  await page.getByLabel('Strict mode (enter the answer; graded)').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   await expect(page.locator('.numpad')).toBeVisible();
@@ -1280,7 +1282,7 @@ test('eyes-free deviation quiz: action ZonePad (non-insurance item), quadrant ta
 
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
   await expect(page.locator('.dealer-area')).toBeVisible(); // non-insurance: cards render, not the insurance prompt
 
   await page.getByLabel('Eyes-free audio').check();
@@ -1347,8 +1349,10 @@ test('flashcards: Dim screen toggle switches the ZonePad to hidden-but-tappable 
   // A REAL mouse/touch .check() -- no force -- must reach the toggle. Before
   // the T0-BUG1 fix this timed out with the ZonePad's opaque overlay
   // "intercepts pointer events"; now the pad starts below the control strip,
-  // so the pointer hit-test lands on the checkbox itself.
-  await page.getByLabel('Dim screen').check();
+  // so the pointer hit-test lands on the checkbox itself. (It lives under
+  // Options now, which is also above the pad.)
+  await page.locator('details.drill-options > summary').click();
+  await page.getByLabel(/Dim screen/).check();
 
   await expect(zonePad).toHaveClass(/zone-pad-hidden/);
   await expect(zonePad).toBeAttached(); // still attached/tappable, just visually dimmed
@@ -1374,7 +1378,7 @@ test('flashcards: inline Category segmented redraws from the chosen category and
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
 
-  const categoryRow = page.locator('.settings-row', { hasText: 'Category' });
+  const categoryRow = page.locator('.settings-row', { hasText: 'Hands' });
   await expect(categoryRow.getByRole('button', { name: 'All', exact: true })).toHaveClass(/segmented-btn-active/);
 
   await categoryRow.getByRole('button', { name: 'Pairs', exact: true }).click();
@@ -1435,7 +1439,7 @@ test('mixed session: interleaves flashcard + quiz items, grading each through it
     // items get Decline; everything else gets Stand.
     const insurancePrompt = page.locator('.quiz-insurance-prompt');
     if (await insurancePrompt.isVisible().catch(() => false)) {
-      await page.getByRole('button', { name: 'Decline Insurance', exact: true }).click();
+      await page.getByRole('button', { name: 'Decline insurance', exact: true }).click();
     } else {
       await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
     }
@@ -1486,8 +1490,8 @@ test('pair cancellation: answering a pair grades it and records self-consistent 
 }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Pair Cancellation', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Pair Cancellation');
+  await page.getByRole('button', { name: 'Pair cancellation', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Pair cancellation');
   await expect(page.locator('.pair-cancel-cards .card')).toHaveCount(2);
   await shot(page, '90-pair-cancel');
 
@@ -1519,7 +1523,7 @@ test('count drill: Messy cards applies a per-card transform to the flashed cards
   await withSettings(page, { drill: { countIntervalMs: 500, countLengthCards: 4, countGroup: 1 } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
 
   await page.getByRole('checkbox', { name: /Messy cards/ }).check();
@@ -1542,7 +1546,7 @@ test('count drill: Pace pressure toggle persists and a pressured run drills to a
   await withSettings(page, { drill: { countIntervalMs: 150, countLengthCards: 6, countGroup: 1 } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
 
   const paceToggle = page.getByRole('checkbox', { name: /Pace pressure/ });
@@ -1571,8 +1575,8 @@ test('bet/sit/leave: answering a scenario grades it and records self-consistent 
 }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Bet / Sit / Leave', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Bet / Sit / Leave');
+  await page.getByRole('button', { name: 'Bet / sit / leave', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Bet / sit / leave');
   await expect(page.locator('.bsl-tc')).toBeVisible();
   await shot(page, '95-bet-sit-leave');
 
@@ -1639,8 +1643,8 @@ test('produce the true count: flash then produce a TC, graded within tolerance a
   await withSettings(page, { drill: { countIntervalMs: 120, countLengthCards: 6, countGroup: 1 } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Produce the True Count', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Produce the True Count');
+  await page.getByRole('button', { name: 'Produce the true count', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Produce the true count');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.count-flash-area')).toBeVisible();
 
@@ -1726,13 +1730,13 @@ test('count drill: turning distractions on before fluency says so, and still tur
 }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
 
   const distractions = page.locator('.settings-row', { hasText: 'Distractions' });
-  await expect(page.locator('.count-setup')).not.toContainText('build your count fluency first');
+  await expect(page.locator('.count-setup')).not.toContainText('get fluent at the plain count drill first');
 
   await distractions.getByRole('button', { name: 'Occasional', exact: true }).click();
-  await expect(page.locator('.count-setup')).toContainText('build your count fluency first');
+  await expect(page.locator('.count-setup')).toContainText('get fluent at the plain count drill first');
   // Soft: the setting took effect regardless.
   await expect(distractions.getByRole('button', { name: 'Occasional', exact: true })).toHaveClass(
     /segmented-btn-active/,
@@ -1749,13 +1753,13 @@ test('count drill: a fluent learner gets no distraction nudge', async ({ page })
   await withStats(page, { countDrill: { history } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
 
   await page
     .locator('.settings-row', { hasText: 'Distractions' })
     .getByRole('button', { name: 'Occasional', exact: true })
     .click();
-  await expect(page.locator('.count-setup')).not.toContainText('build your count fluency first');
+  await expect(page.locator('.count-setup')).not.toContainText('get fluent at the plain count drill first');
 });
 
 /* ==================================================================== */
@@ -1770,15 +1774,16 @@ test('deviation quiz: Dim screen hides its own ZonePad while leaving it tappable
   await withSettings(page, { audio: { enabled: true } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Deviation Quiz');
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation quiz');
 
   await page.getByLabel('Eyes-free audio').check();
   const zonePad = page.locator('.zone-pad');
   await expect(zonePad).toBeAttached();
   await expect(zonePad).not.toHaveClass(/zone-pad-hidden/);
 
-  await page.getByLabel('Dim screen').check();
+  await page.locator('details.drill-options > summary').click();
+  await page.getByLabel(/Dim screen/).check();
   await expect(zonePad).toHaveClass(/zone-pad-hidden/);
 
   // Dimmed, not gone: a tap still answers, which is the whole point of the
@@ -1885,8 +1890,8 @@ test('deviation quiz: the shot clock grades an unanswered item as a timeout', as
   await withSettings(page, { drill: { shotClockMs: 3000 } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Deviation Quiz');
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation quiz');
 
   await expect(page.getByTestId('shot-clock')).toBeVisible();
   await expect(page.locator('.message-strip .mistake-card')).toBeVisible({ timeout: 8000 });
@@ -1906,7 +1911,9 @@ test('flashcards: the frequency toggle is off by default and persists when set',
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
 
-  const row = page.locator('.count-toggle', { hasText: "Favour hands you'll actually see" });
+  // Under the collapsed Options disclosure: set once, not every hand.
+  await page.locator('details.drill-options > summary').click();
+  const row = page.locator('.count-toggle', { hasText: 'Show common hands more often' });
   await expect(row).toBeVisible();
   const box = row.locator('input[type="checkbox"]');
   await expect(box).not.toBeChecked();
@@ -1917,7 +1924,7 @@ test('flashcards: the frequency toggle is off by default and persists when set',
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
   await expect(
-    page.locator('.count-toggle', { hasText: "Favour hands you'll actually see" })
+    page.locator('.count-toggle', { hasText: 'Show common hands more often' })
       .locator('input[type="checkbox"]'),
   ).toBeChecked();
 });
@@ -1939,7 +1946,7 @@ test('true count drill: the answer pause starts when the question stops, not whe
 
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'True count drill', exact: true }).click();
   await page.getByLabel('Eyes-free audio').check();
 
   const started = Date.now();
@@ -1960,7 +1967,7 @@ test('true count drill: it asks the next question on its own', async ({ page }) 
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'True count drill', exact: true }).click();
   await page.getByLabel('Eyes-free audio').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 

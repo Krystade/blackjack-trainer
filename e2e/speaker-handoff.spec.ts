@@ -141,7 +141,7 @@ async function listenInCountDrill(page: Page, outputRoute: string): Promise<void
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
   await page.locator('label', { hasText: 'Voice answers' }).locator('input').check();
   await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');

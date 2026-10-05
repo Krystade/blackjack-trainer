@@ -15,7 +15,7 @@ import { withSettings } from './helpers';
  * because the default is the whole bug.
  */
 
-const DRILLS = ['Flashcards', 'Deviation Quiz', 'Count Drill', 'True Count Drill'];
+const DRILLS = ['Flashcards', 'Deviation quiz', 'Count drill', 'True count drill'];
 
 for (const drill of DRILLS) {
   test(`${drill}: eyes-free turns on from a cold default`, async ({ page }) => {
@@ -82,15 +82,22 @@ test('enabling audio this way changes nothing else', async ({ page }) => {
   expect(audio).toMatchObject({ enabled: true, volume: 0.3, rate: 1.7, useClips: true });
 });
 
-/** The "Dim screen" companion follows eyes-free, and must come alive with it. */
-test('the dim-screen companion becomes usable once eyes-free is on', async ({ page }) => {
+/**
+ * The "Dim screen" companion follows eyes-free, and must come alive with it.
+ * It only does anything while eyes-free is on, so it is offered (under
+ * Options) only then, rather than sitting disabled on every visit.
+ */
+test('the dim-screen companion appears, usable, once eyes-free is on', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
 
   const dim = page.locator('label', { hasText: 'Dim screen' }).locator('input');
-  await expect(dim).toBeDisabled();
+  await expect(dim).toHaveCount(0);
 
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
+  await page.locator('details.drill-options > summary').click();
   await expect(dim).toBeEnabled();
+  await dim.check();
+  await expect(page.locator('.zone-pad')).toHaveClass(/zone-pad-hidden/);
 });

@@ -16,7 +16,7 @@ async function answerTrueCountDrill(page: import('@playwright/test').Page): Prom
   await withSettings(page, { audio: { enabled: false } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'True count drill', exact: true }).click();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   // Any answer reaches a result; the specs below are about what it SHOWS.
   await page.locator('.numpad-btn').first().click();

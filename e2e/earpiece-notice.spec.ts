@@ -59,12 +59,18 @@ async function openTab(page: Page, name: 'Drills' | 'Settings'): Promise<void> {
   await page.locator('.tab-bar').getByRole('button', { name, exact: true }).click();
 }
 
-test('the strip says where the sound went, once the microphone has opened', async ({ page }) => {
+/**
+ * The hand drills cut the listening strip to one line (state + last heard) so
+ * the action bar fits the screen -- see e2e/drill-layout.spec.ts. The earpiece
+ * line is left to Settings, which shows it for the rest of the page load (the
+ * test below); the drill strip no longer repeats it on every card.
+ */
+test('the Flashcards strip leaves the earpiece note to Settings', async ({ page }) => {
   await openFlashcards(page);
   const strip = page.locator('.voice-status');
   await page.getByRole('checkbox', { name: 'Voice answers' }).check();
   await expect(strip).toHaveAttribute('data-voice-state', 'listening');
-  await expect(page.locator('.voice-status-earpiece')).toContainText('earpiece');
+  await expect(page.locator('.voice-status-earpiece')).toBeHidden();
 });
 
 test('Settings keeps saying so after voice is switched back off', async ({ page }) => {

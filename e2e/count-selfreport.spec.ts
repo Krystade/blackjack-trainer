@@ -22,7 +22,7 @@ async function startEyesFreeCountDrill(page: import('@playwright/test').Page): P
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 }
@@ -34,7 +34,7 @@ test('the eyes-free drill asks whether you had it', async ({ page }) => {
   await expect(yes).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('button', { name: 'I missed it' })).toBeVisible();
   // The answer is shown as well as spoken, for a glance at a red light.
-  await expect(page.locator('.selfreport-question')).toContainText('The count was');
+  await expect(page.locator('.selfreport-question')).toContainText('The running count was');
 });
 
 test('reporting a hit gives a verdict instead of "no grade recorded"', async ({ page }) => {

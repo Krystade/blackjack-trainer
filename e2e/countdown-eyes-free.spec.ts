@@ -60,7 +60,7 @@ async function openCountdown(page: Page, opts: { voice?: boolean } = {}): Promis
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await page.locator('label', { hasText: 'Countdown' }).locator('input').check();
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
   if (opts.voice) {
@@ -77,7 +77,7 @@ test('eyes-free is offered in Countdown at all', async ({ page }) => {
   await withSettings(page, { audio: { enabled: true } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await page.locator('label', { hasText: 'Countdown' }).locator('input').check();
 
   await expect(page.locator('label', { hasText: 'Eyes-free audio' })).toBeVisible();

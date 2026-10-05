@@ -139,7 +139,7 @@ async function warmSettingsForClipIndex(page: Page): Promise<void> {
  * except real clip playback runs here because there's no `?e2e=1`. */
 async function startEyesFreeCountDrill(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await page.getByLabel('Eyes-free audio').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 }

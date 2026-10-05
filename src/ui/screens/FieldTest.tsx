@@ -671,14 +671,12 @@ function StartGate({
 
       <div className="fieldtest-body">
       <p className="u-note">
-        This condition runs {fieldTestStepCount({ condition: run.condition })} steps. The three{' '}
-        <strong>Drill</strong> legs are the ones still worth running: they measure whether the words
-        can be made out at speed, whether a wheel press answers a question, and how the car
-        microphone compares with the phone&rsquo;s. The four below them are the older routing
-        protocol, kept so its runs still open — its questions are answered, so running one collects
-        nothing new. A condition with no Bluetooth skips the wheel steps, since there is nothing to
-        press into. Pick where you are, press start, and it will talk to you. When you are done, send
-        the diagnostic log.
+        This condition runs {fieldTestStepCount({ condition: run.condition })} steps. Pick where you
+        are, press Start, and it talks you through them. When you are done, send the diagnostic log.
+        Only the three <strong>Drill</strong> legs still collect anything new: whether the words can
+        be made out at speed, whether a wheel press answers a question, and how the car microphone
+        compares with the phone&rsquo;s. The four below them are the old routing protocol, kept so
+        past runs still open. Without Bluetooth the wheel steps are skipped.
       </p>
 
       {/*
@@ -736,8 +734,8 @@ function StartGate({
       */}
       {motionForCondition(run.condition) === 'driving' && (
         <p className="u-note" data-testid="fieldtest-motion-warning">
-          This condition is driven. Start it while you are still stopped — everything after this
-          button is spoken, and the first thing it does is take over the volume.
+          This condition is driven. Start it while you are stopped: everything after this button is
+          spoken, and the first thing it does is take over the volume.
         </p>
       )}
 
@@ -792,9 +790,9 @@ function StartGate({
               Saying so on the switch is what stops an
               operator waiting for an answer that nothing is listening for. */}
           <span className="u-note">
-            Say the answer instead of finding the button, on the steps that
-            already have the microphone open. The other steps keep it shut on
-            purpose and stay tap-only; the screen says which is which.
+            Say the answer instead of tapping it, on steps where the microphone is
+            already open. The other steps keep it shut on purpose and are tap-only;
+            the screen shows which is which.
           </span>
         </span>
       </label>

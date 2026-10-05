@@ -120,7 +120,7 @@ test('a drill speaking eyes-free is silent when muted', async ({ page }) => {
   await page.locator(MUTE).click();
 
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'True count drill', exact: true }).click();
   await page.getByLabel('Eyes-free audio').check();
   await page.evaluate(() => {
     window.__speechOptsLog = [];

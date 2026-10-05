@@ -469,7 +469,7 @@ export function ProduceTcDrillView({
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
         </button>
-        <div className="drill-heading">Produce the True Count</div>
+        <div className="drill-heading">Produce the true count</div>
       </div>
 
       {(voiceOn || pushToTalkOpen) && <VoiceStatusBar status={voice.status} />}
@@ -497,7 +497,7 @@ export function ProduceTcDrillView({
                   checked={strictMode}
                   onChange={(e) => setStrictMode(e.target.checked)}
                 />
-                Strict mode (entry, graded)
+                Strict mode (enter the answer; graded)
               </label>
               <label className="count-toggle">
                 <input
@@ -510,9 +510,9 @@ export function ProduceTcDrillView({
               {/* Stated rather than left to be discovered: the tray is the one
                   third of this drill that cannot survive the eyes shutting. */}
               <div className="settings-row settings-note-row u-note">
-                The cards are read out and the depth is told to you, so what is being
-                drilled is holding the count and converting it — not judging the tray.
-                Graded exactly, with no estimation slack, because nothing was estimated.
+                Eyes-free, the cards are read out and you are told the decks remaining, so
+                this drills keeping the count and converting it, not reading the tray.
+                Graded exactly, since nothing is estimated.
               </div>
             </>
           )}
@@ -535,7 +535,7 @@ export function ProduceTcDrillView({
       {phase === 'flashing' && (
         <div className="count-flash-area">
           {eyesFree ? (
-            <div className="count-flash-progress">Listen for the cards — keep the count</div>
+            <div className="count-flash-progress">Listen to the cards and keep the running count</div>
           ) : (
             <>
               <div className="count-flash-cards">
@@ -560,7 +560,7 @@ export function ProduceTcDrillView({
       {(phase === 'answering' || phase === 'result') && !eyesFree && (
         <>
           <div className="settings-row settings-note-row">
-            Judge the tray for decks remaining, then produce the TRUE count.
+            Read decks remaining from the tray, then enter the true count.
           </div>
           <div className="table-discard-tray" aria-label="Discard tray">
             <span className="table-discard-label">Discard</span>
@@ -592,7 +592,7 @@ export function ProduceTcDrillView({
 
       {phase === 'selfreport' && (
         <div className="drill-result">
-          <div className="result-detail">True count was {formatSigned(round.correctTc)}.</div>
+          <div className="result-detail">The true count was {formatSigned(round.correctTc)}.</div>
           <button type="button" className="drill-replay-btn" onClick={() => handleSelfReport(true)}>
             I had it
           </button>
@@ -605,18 +605,18 @@ export function ProduceTcDrillView({
       {phase === 'result' && answer && (
         <div className="drill-result">
           <div className={answer.correct ? 'result-correct' : 'result-wrong'}>
-            {answer.correct ? 'Correct!' : 'Off'}
+            {answer.correct ? 'Correct!' : 'Wrong'}
           </div>
           <div className="result-detail">
             {honorCheck ? (
               <>
-                Self-reported, and recorded. True count was {formatSigned(round.correctTc)} (running
+                Self-reported, and recorded. The true count was {formatSigned(round.correctTc)} (running
                 count {formatSigned(round.round.finalRc)} ÷ {formatDecks(round.decksRemaining)}{' '}
                 decks).
               </>
             ) : (
               <>
-                You produced {formatSigned(answer.produced)}; true count was{' '}
+                You entered {formatSigned(answer.produced)}; the true count was{' '}
                 {formatSigned(round.correctTc)} (running count {formatSigned(round.round.finalRc)} ÷{' '}
                 {formatDecks(round.decksRemaining)} decks).
                 {(() => {

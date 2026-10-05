@@ -300,7 +300,7 @@ async function openQuizWithVoice(page: Page, index = '16v10'): Promise<void> {
   }, index);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Voice answers' }).check();
   await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');
 }
