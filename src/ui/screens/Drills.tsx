@@ -319,7 +319,7 @@ function FlashcardsView({
     // answering out loud is not watching the screen, and an unspoken prompt
     // would leave them waiting for a question that never comes.
     if (!eyesFree && !voiceOn) return;
-    speak(narrateFlashcardPrompt(card.cards, card.up, settings.audio.handStyle), speechOptsFrom(settings.audio, { interrupt: true }));
+    speak(narrateFlashcardPrompt(card.cards, card.up), speechOptsFrom(settings.audio, { interrupt: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card, eyesFree, voiceOn]);
 
@@ -377,7 +377,7 @@ function FlashcardsView({
   };
 
   const handleRepeat = () => {
-    speak(narrateFlashcardPrompt(card.cards, card.up, settings.audio.handStyle), speechOptsFrom(settings.audio, { interrupt: true }));
+    speak(narrateFlashcardPrompt(card.cards, card.up), speechOptsFrom(settings.audio, { interrupt: true }));
   };
 
   // `spokenMs` is how long the correction will occupy the speaker. The next
@@ -636,7 +636,7 @@ function FlashcardsView({
     // a few seconds, back still repeats. See ui/voiceSession.ts.
     if (settings.drill.wheelMode === 'talk') {
       if (command === 'forward') {
-        startPushToTalk('flashcards', settings.drill.pushToTalkMs);
+        startPushToTalk('flashcards');
         audio.ding('attention');
       } else {
         handleRepeat();
@@ -672,8 +672,7 @@ function FlashcardsView({
     onAction: handleVoiceAction,
     // Eyes-free, a rejection is silence, and silence looks the same as a dead
     // microphone. A short cue says "say it again" without costing a sentence
-    // of narration mid-drill; it respects the chimes setting like every other
-    // tone, so it can be turned off.
+    // of narration mid-drill; Mute silences it like every other tone.
     onNotUnderstood: () => audio.ding('attention'),
     // Bias the engine toward the words it should be hearing. Reported from
     // real use: "stand" came back as "Stant" and was rejected -- unbiased,
@@ -1122,9 +1121,9 @@ function DeviationQuizView({
   // branches are mutually exclusive so nothing double-speaks.
   useEffect(() => {
     if (eyesFree) {
-      speak(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle), speechOptsFrom(settings.audio, { interrupt: true }));
+      speak(narrateQuizPrompt(item.cards, item.up, item.tc), speechOptsFrom(settings.audio, { interrupt: true }));
     } else {
-      audio.sayFull(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle));
+      audio.sayFull(narrateQuizPrompt(item.cards, item.up, item.tc));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item, eyesFree]);
@@ -1198,7 +1197,7 @@ function DeviationQuizView({
   };
 
   const handleRepeat = () => {
-    speak(narrateQuizPrompt(item.cards, item.up, item.tc, settings.audio.handStyle), speechOptsFrom(settings.audio, { interrupt: true }));
+    speak(narrateQuizPrompt(item.cards, item.up, item.tc), speechOptsFrom(settings.audio, { interrupt: true }));
   };
 
   // `spokenMs` is how long the correction will occupy the speaker. The next
@@ -1416,7 +1415,7 @@ function DeviationQuizView({
     // ui/voiceSession.ts.
     if (settings.drill.wheelMode === 'talk') {
       if (command === 'forward') {
-        startPushToTalk('deviation-quiz', settings.drill.pushToTalkMs);
+        startPushToTalk('deviation-quiz');
         audio.ding('attention');
       } else {
         handleRepeat();
@@ -1878,8 +1877,8 @@ function MixedSessionView({
 
   const promptFor = (c: MixedCurrent): string =>
     c.type === 'flash'
-      ? narrateFlashcardPrompt(c.card.cards, c.card.up, settings.audio.handStyle)
-      : narrateQuizPrompt(c.item.cards, c.item.up, c.item.tc, settings.audio.handStyle);
+      ? narrateFlashcardPrompt(c.card.cards, c.card.up)
+      : narrateQuizPrompt(c.item.cards, c.item.up, c.item.tc);
 
   // Narrate each new item. Eyes-free speaks every item (its primary output
   // channel); visual mode mirrors each drill's standalone behavior -- the
@@ -1890,7 +1889,7 @@ function MixedSessionView({
     if (eyesFree) {
       speak(promptFor(current), speechOptsFrom(settings.audio, { interrupt: true }));
     } else if (current.type === 'quiz') {
-      audio.sayFull(narrateQuizPrompt(current.item.cards, current.item.up, current.item.tc, settings.audio.handStyle));
+      audio.sayFull(narrateQuizPrompt(current.item.cards, current.item.up, current.item.tc));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, eyesFree]);
@@ -2085,7 +2084,7 @@ function MixedSessionView({
   useWheelCommand((command) => {
     if (settings.drill.wheelMode === 'talk') {
       if (command === 'forward') {
-        startPushToTalk('mixed-session', settings.drill.pushToTalkMs);
+        startPushToTalk('mixed-session');
         audio.ding('attention');
       } else {
         handleRepeat();

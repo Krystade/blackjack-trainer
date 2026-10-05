@@ -117,15 +117,11 @@ function everyPromptAndCommentary(): string[] {
   for (let seed = 0; seed < 400; seed++) {
     for (const category of ['all', 'hard', 'soft', 'pairs'] as const) {
       const fc = drawFlashcard(category, {}, 0, seed, DEFAULT_RULES);
-      for (const style of ['cards', 'total'] as const) {
-        texts.add(narrateFlashcardPrompt(fc.cards, fc.up, style));
-      }
+      texts.add(narrateFlashcardPrompt(fc.cards, fc.up));
     }
     const quiz = drawQuizItem(seed, undefined, DEFAULT_RULES, 50);
     for (const tc of [-6, -1, 0, 2, 7]) {
-      for (const style of ['cards', 'total'] as const) {
-        texts.add(narrateQuizPrompt(quiz.cards, quiz.up, tc, style));
-      }
+      texts.add(narrateQuizPrompt(quiz.cards, quiz.up, tc));
     }
   }
   return [...texts];
@@ -143,7 +139,7 @@ function everyCardUtterance(): string[] {
   const deck: Card[] = [];
   for (const rank of RANKS) for (const suit of SUITS) deck.push({ rank, suit });
 
-  for (const detail of ['full', 'rank', 'face'] as const) {
+  for (const detail of ['full', 'rank'] as const) {
     // useGame.ts speaks one card alone, as it is dealt.
     for (const card of deck) texts.add(narrateCard(card, detail));
     // CountDrillView speaks a flashed group as one comma list.

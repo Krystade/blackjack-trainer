@@ -1,5 +1,4 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withMicOpenWhileSpeaking } from './helpers';
 
 /**
  * The answer given over the tail of a prompt.
@@ -47,20 +46,6 @@ async function withFakeEngine(page: Page): Promise<void> {
 }
 
 async function openFlashcardsWithVoice(page: Page): Promise<void> {
-  /*
-   * IN THE MODE WHERE THIS BEHAVIOUR EXISTS AT ALL.
-   *
-   * Everything below is about a word spoken OVER the app -- the suppression
-   * window, the cue that replaces the silence, the app hearing its own voice
-   * come back. All of it requires a live recognition session during an
-   * utterance, and the shipped 'switch' route now takes the microphone down
-   * for the length of every spoken line instead, so under the default there
-   * is no such word to suppress.
-   *
-   * 'auto' is what a user who declines the handoff's cost actually runs, so
-   * this is a real configuration rather than a test fixture.
-   */
-  await withMicOpenWhileSpeaking(page);
   await withFakeEngine(page);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();

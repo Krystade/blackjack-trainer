@@ -13,7 +13,6 @@ import {
   speak,
 } from '../../audio';
 import {
-  setClipsEnabled,
   setClipVoice,
   loadClipIndex,
   prewarmClips,
@@ -42,11 +41,6 @@ import {
 } from '../../diag/selfTest';
 import { CarCheckPanel } from '../components/CarCheckPanel';
 import { readFieldTestRun, subscribeFieldTestRun } from '../../diag/fieldTestRun';
-import {
-  PUSH_TO_TALK_MAX_MS,
-  PUSH_TO_TALK_MIN_MS,
-  PUSH_TO_TALK_STEP_MS,
-} from '../voiceSession';
 import { detectVoiceSupport } from '../../audio/voiceRecognition';
 import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
 import {
@@ -203,18 +197,8 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
   };
 
   // Settings renders without calling useAudio() (unlike Table/Drills/Stats),
-  // so it has to update speech.ts's clip-enable flag directly on toggle
-  // rather than relying on useAudio's effect -- see clips.ts's header
-  // comment for the full wiring picture.
-  const updateUseClips = (v: boolean) => {
-    setClipsEnabled(v);
-    if (v) void prewarmClips();
-    updateAudio({ useClips: v });
-  };
-
-  // Same wiring rationale as updateUseClips above -- Settings renders
-  // without calling useAudio(), so it drives clips.ts's module-level clip
-  // voice directly on change too.
+  // so it drives clips.ts's module-level clip voice directly on change --
+  // see clips.ts's header comment for the full wiring picture.
   const updateClipVoice = (v: string) => {
     setClipVoice(v);
     void prewarmClips();
@@ -280,12 +264,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           checked={settings.audio.enabled}
           onChange={(v) => updateAudio({ enabled: v })}
         />
-        <Toggle
-          label="Use recorded voice (higher quality)"
-          checked={settings.audio.useClips}
-          onChange={updateUseClips}
-          disabled={audioDisabled}
-        />
         {/* A Stepper rather than a range input, matching Speech rate: the
             eyes-free use case is a phone in a car mount, where a discrete +/-
             target is hittable without looking and a thin slider thumb is not.
@@ -321,15 +299,10 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
            * what iOS does here and why no part of it is callable from a page.
            */
           <div className="settings-note-row u-note settings-earpiece">
-            Voice was used, so iOS may have moved the sound to the earpiece.{' '}
-            <strong>Sound with the mic on</strong>, under <strong>Audio</strong>, is the
-            control for it; reopening the app also clears it.
+            Voice was used, so iOS may have moved the sound to the earpiece. Nothing in
+            the app moves it back; reopening the app does.
           </div>
         )}
-
-        <div className="settings-note-row u-note">
-          How much it says, how fast, and which voice: under <strong>Audio</strong>.
-        </div>
 
         <div className="settings-row">
           <span className="settings-label">The two wheel buttons</span>
@@ -342,22 +315,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             onChange={(wheelMode) => updateDrill({ wheelMode })}
           />
         </div>
-        {settings.drill.wheelMode === 'talk' && (
-          <>
-            <Stepper
-              label="Listen for"
-              value={settings.drill.pushToTalkMs}
-              min={PUSH_TO_TALK_MIN_MS}
-              max={PUSH_TO_TALK_MAX_MS}
-              step={PUSH_TO_TALK_STEP_MS}
-              format={(v) => `${(v / 1000).toFixed(2)} s`}
-              onChange={(pushToTalkMs) => updateDrill({ pushToTalkMs })}
-            />
-            <div className="settings-note-row u-note">
-              A ceiling, not a cost: a recognised word closes the window at once.
-            </div>
-          </>
-        )}
         {settings.drill.wheelMode === 'answer' ? (
           <div className="settings-note-row u-note">
             No microphone at all. Where one button cannot pick one of five plays, forward
@@ -406,13 +363,15 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           </div>
       </CollapsibleSection>
 
+      {/* PLAY AND DRILLS, ONE SECTION. "Drills" used to hold six rows, five of
+          them second copies of controls each drill already shows on its own
+          setup screen: category on Flashcards; length, group size and speed on
+          the count drill; depth resolution on Deck Estimation. The shot clock
+          is the one drill setting with no other home. */}
       <CollapsibleSection
         title={<>Play</>}
         defaultOpen={false}
       >
-          {/* Was a section of its own holding this one switch, unlabelled and
-              unexplained -- a heading to collapse, for a control that fits on
-              a line among the others that decide how a hand plays. */}
           <div className="settings-row">
             <span className="settings-label">Feedback</span>
             <Segmented
@@ -427,11 +386,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           <div className="settings-note-row u-note">
             <strong>Training</strong> corrects as you go. <strong>Test</strong> scores at the end.
           </div>
-          <Toggle
-            label="Count peek"
-            checked={settings.countPeek}
-            onChange={(v) => update({ countPeek: v })}
-          />
           <Stepper
             label="Deal speed"
             value={settings.dealSpeedMs}
@@ -441,71 +395,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             format={(v) => `${v}ms`}
             onChange={(v) => update({ dealSpeedMs: v })}
           />
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title={<>Drills</>}
-        defaultOpen={false}
-      >
-          <div className="settings-row">
-            <span className="settings-label">Flashcard category</span>
-            <Segmented
-              options={[
-                { value: 'all', label: 'All' },
-                { value: 'hard', label: 'Hard' },
-                { value: 'soft', label: 'Soft' },
-                { value: 'pairs', label: 'Pairs' },
-              ]}
-              value={settings.drill.flashCategory}
-              onChange={(v) => updateDrill({ flashCategory: v })}
-            />
-          </div>
-          <div className="settings-row">
-            <span className="settings-label">Count group size</span>
-            <Segmented
-              options={[
-                { value: '1', label: '1' },
-                { value: '2', label: '2' },
-                { value: '3', label: '3' },
-              ]}
-              value={String(settings.drill.countGroup)}
-              onChange={(v) => updateDrill({ countGroup: Number(v) as 1 | 2 | 3 })}
-            />
-          </div>
-          <Stepper
-            label="Count interval"
-            value={settings.drill.countIntervalMs}
-            min={300}
-            max={3000}
-            step={100}
-            format={(v) => `${v}ms`}
-            onChange={(v) => updateDrill({ countIntervalMs: v })}
-          />
-          <Stepper
-            label="Count length"
-            value={settings.drill.countLengthCards}
-            min={13}
-            max={312}
-            step={13}
-            format={(v) => `${v} cards`}
-            onChange={(v) => updateDrill({ countLengthCards: v })}
-          />
-          <div className="settings-row">
-            <span className="settings-label">Depth resolution</span>
-            <Segmented
-              options={[
-                { value: 'half', label: 'Half' },
-                { value: 'last-deck', label: 'Last deck' },
-                { value: 'quarter', label: 'Quarter' },
-              ]}
-              value={settings.drill.depthResolution}
-              onChange={(v) => updateDrill({ depthResolution: v })}
-            />
-          </div>
-          <p className="settings-note">
-            How finely you read the discard tray. &ldquo;Last deck&rdquo; asks for quarters
-            in the last deck only, which is where the precision pays.
-          </p>
           <div className="settings-row">
             <span className="settings-label">Shot clock</span>
             <Segmented
@@ -523,40 +412,11 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           </p>
       </CollapsibleSection>
 
-
       <CollapsibleSection
         title={<>Audio &mdash; the app speaking</>}
         defaultOpen={false}
       >
-          <div className="settings-note-row u-note">
-            The on switch and the recorded voice are in <strong>In the car</strong> at the
-            top, with the rest of what a drive needs. This is the detail behind them.
-          </div>
-
-          {/* HERE RATHER THAN "In the car": that section opens by default and
-              is held to under two phone screens by
-              e2e/collapsible-sections.spec.ts, which this one row broke on its
-              own. "In the car" points here once voice has been used. */}
-          <div className="settings-row">
-            <span className="settings-label">Sound with the mic on</span>
-            <Segmented
-              options={[
-                { value: 'playback', label: 'Speaker' },
-                { value: 'switch', label: 'Switch' },
-                { value: 'auto', label: 'Auto' },
-              ]}
-              value={settings.audio.outputRoute}
-              onChange={(outputRoute) => updateAudio({ outputRoute })}
-            />
-          </div>
-          <div className="settings-note-row u-note">
-            Opening the microphone moves iOS output to the earpiece. <strong>Speaker</strong>
-            declares media mode and never asks to record. <strong>Switch</strong> closes the
-            microphone while the app talks &mdash; about a second of deafness per line, and
-            the only lever so far that moves the sound back. <strong>Auto</strong> leaves
-            iOS alone.
-          </div>
-          {settings.audio.useClips && clipVoices.length > 0 && (
+          {clipVoices.length > 0 && (
             <div className="settings-row">
               <span className="settings-label">Clip voice</span>
               <select
@@ -587,31 +447,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
               disabled={audioDisabled}
             />
           </div>
-          <div className="settings-row">
-            <span className="settings-label">Card detail</span>
-            <Segmented
-              options={[
-                { value: 'full', label: 'Full' },
-                { value: 'rank', label: 'Rank' },
-                { value: 'face', label: 'Face' },
-              ]}
-              value={settings.audio.cardDetail}
-              onChange={(v) => updateAudio({ cardDetail: v })}
-              disabled={audioDisabled}
-            />
-          </div>
-          <div className="settings-row">
-            <span className="settings-label">Hand announcement</span>
-            <Segmented
-              options={[
-                { value: 'cards', label: 'Cards' },
-                { value: 'total', label: 'Total' },
-              ]}
-              value={settings.audio.handStyle}
-              onChange={(v) => updateAudio({ handStyle: v })}
-              disabled={audioDisabled}
-            />
-          </div>
           <Stepper
             label="Speech rate"
             value={settings.audio.rate}
@@ -622,25 +457,9 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             onChange={(v) => updateAudio({ rate: v })}
             disabled={audioDisabled}
           />
-          {/* Volume itself lives under "In the car": it was asked for from
-              the driver's seat (2026-10-02) while sitting four collapsed
-              sections above here. Mute stays, because there is a Mute button
-              in the app chrome on every screen -- so the argument that paired
-              them, that mute must be findable without reading, is already
-              answered without opening Settings at all. It does NOT touch
-              `volume` -- see AudioSettings.muted. */}
-          <Toggle
-            label="Mute"
-            checked={settings.audio.muted}
-            onChange={(v) => updateAudio({ muted: v })}
-            disabled={audioDisabled}
-          />
-          {settings.audio.muted && (
-            <div className="settings-note-row u-note">
-              Everything is silent, including the test button. Your volume is still{' '}
-              {Math.round(settings.audio.volume * 100)}% and comes back when you unmute.
-            </div>
-          )}
+          {/* For the lines no recording covers. The automatic pick is a
+              heuristic over voice names that once landed on Apple's bleating
+              novelty voice (2026-09-29); this is the way out of a bad pick. */}
           <div className="settings-row">
             <span className="settings-label">Voice</span>
             {speechSupported ? (
@@ -672,12 +491,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
               </select>
             )}
           </div>
-          <Toggle
-            label="Chimes"
-            checked={settings.audio.chimes}
-            onChange={(v) => updateAudio({ chimes: v })}
-            disabled={audioDisabled}
-          />
           <Stepper
             label="Answer pause"
             value={settings.audio.answerPauseMs}
@@ -688,6 +501,9 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             onChange={(v) => updateAudio({ answerPauseMs: v })}
             disabled={audioDisabled}
           />
+          <div className="settings-note-row u-note">
+            Thinking time in an eyes-free drill before the answer is said.
+          </div>
           <div className="settings-row">
             <button
               type="button"
@@ -700,9 +516,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
                   voiceURI: settings.audio.voiceURI,
                   volume: effectiveVolume(settings.audio),
                 });
-                if (settings.audio.chimes) {
-                  chime('good', { volume: effectiveVolume(settings.audio) });
-                }
+                chime('good', { volume: effectiveVolume(settings.audio) });
               }}
             >
               Test audio

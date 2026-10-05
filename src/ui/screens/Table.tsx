@@ -515,7 +515,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // repeats, which is the one meaning worth keeping in every mode.
     if (settings.drill.wheelMode === 'talk') {
       if (command === 'forward') {
-        startPushToTalk('table', settings.drill.pushToTalkMs);
+        startPushToTalk('table');
         // A cue, because the window is invisible and the Bluetooth route
         // takes a moment to flip: without it there is no way to tell
         // "listening now" from "pressed nothing".
@@ -536,8 +536,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     onTranscript: interpretCountSpeech,
     // Eyes-free, a rejection is silence, and silence looks the same as a dead
     // microphone. A short cue says "say it again" without costing a sentence
-    // of narration mid-drill; it respects the chimes setting like every other
-    // tone, so it can be turned off.
+    // of narration mid-drill; Mute silences it like every other tone.
     onNotUnderstood: () => audio.ding('attention'),
     // ...and the state before that one. The table is played eyes-free too, and
     // the microphone can take seconds to come up on the first ask of a page.
@@ -718,18 +717,18 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           </span>
         </div>
         <div className="topbar-stat">Round {game.roundNo}</div>
-        {settings.countPeek && (
-          <button
-            type="button"
-            className="tc-peek-btn"
-            // A plain click: see togglePeek for why this replaced the
-            // pointer-event hold, and why it needs no dedup.
-            aria-pressed={peeking}
-            onClick={togglePeek}
-          >
-            {peeking ? `RC ${formatSigned(game.runningCount)} / TC ${formatSigned(game.trueCountNow)}` : 'TC'}
-          </button>
-        )}
+        <button
+          type="button"
+          className="tc-peek-btn"
+          // A plain click: see togglePeek for why this replaced the
+          // pointer-event hold, and why it needs no dedup. Always shown: every
+          // peek is recorded against the session as "assisted", which polices
+          // it better than the old switch that hid the button did.
+          aria-pressed={peeking}
+          onClick={togglePeek}
+        >
+          {peeking ? `RC ${formatSigned(game.runningCount)} / TC ${formatSigned(game.trueCountNow)}` : 'TC'}
+        </button>
         {settings.audio.enabled && (
           <button type="button" className="repeat-btn" onClick={audio.replay}>
             Repeat

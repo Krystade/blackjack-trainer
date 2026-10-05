@@ -174,7 +174,7 @@ def build_vocabulary() -> list[str]:
     phrases: list[str] = []
 
     # Bare card items — used as per-comma-item segments in card lists.
-    # Single-card narration in 'rank'/'face' detail (default): bare rank word.
+    # Single-card narration in 'rank' detail (default): bare rank word.
     phrases.extend(RANK_NAMES)
 
     # Single-card narration in 'full' detail: "<rank> of <suit>".

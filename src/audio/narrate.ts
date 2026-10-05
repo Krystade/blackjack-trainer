@@ -78,19 +78,16 @@ export function narrateRank(rank: Rank): string {
   return RANK_NAMES[rank];
 }
 
-/** Card-detail narration level: see `AudioSettings.cardDetail` in store/types.ts. */
-export type CardDetail = 'full' | 'rank' | 'face';
-
-// Every rank worth ten in Hi-Lo — 10/J/Q/K all carry the identical -1 tag,
-// so 'face' detail collapses them all to "ten" (what a counter subvocalises).
-const TEN_VALUE_RANKS: ReadonlySet<Rank> = new Set(['10', 'J', 'Q', 'K']);
+/**
+ * How much of a card is spoken. 'rank' ("queen") is what every drill and the
+ * table use: suit is irrelevant to the count and roughly doubles every line.
+ * 'full' ("queen of hearts") survives for the bot-action lines only.
+ */
+export type CardDetail = 'full' | 'rank';
 
 export function narrateCard(card: Card, detail: CardDetail = 'full'): string {
   if (detail === 'full') {
     return `${narrateRank(card.rank)} of ${SUIT_NAMES[card.suit]}`;
-  }
-  if (detail === 'face' && TEN_VALUE_RANKS.has(card.rank)) {
-    return 'ten';
   }
   return narrateRank(card.rank);
 }
@@ -429,58 +426,41 @@ function narrateHandTotalPhrase(cards: [Card, Card]): string {
   return narrateTotal(hv.total, hv.soft);
 }
 
-/** How a two-card hand is announced: see `AudioSettings.handStyle` in
- * store/types.ts. */
-export type HandStyle = 'cards' | 'total';
-
 /**
  * The spoken form of a drill hand, for both prompt builders.
  *
- * `'cards'` (the default) speaks SOFT non-pair hands card by card — "ace,
- * three" rather than "soft fourteen". A soft total alone forces the learner
- * to re-derive the composition that actually decides the play (A-3 vs A-7
- * are different rows of the chart), and "soft fourteen" is the exact phrase
- * beginners mishear as a hard total. Hard hands and pairs deliberately do
- * NOT change:
+ * SOFT non-pair hands are spoken card by card — "ace, three" rather than
+ * "soft fourteen". A soft total alone forces the learner to re-derive the
+ * composition that actually decides the play (A-3 vs A-7 are different rows
+ * of the chart), and "soft fourteen" is the exact phrase beginners mishear as
+ * a hard total. (A setting once offered the total instead; it was retired in
+ * the 2026-10-05 settings cull for exactly that reason.) Hard hands and pairs
+ * deliberately do NOT change:
  *  - a hard hand's play depends only on its total, so "ten, six" is more
  *    syllables for no teaching value over "sixteen";
  *  - a pair already names its own composition ("a pair of eights"), and the
  *    pair-splitting row is the one being drilled.
- * Suits are never spoken here regardless of `cardDetail` — composition, not
- * suit, is the whole point of this phrasing, and lowercase bare rank words
- * ("ace", "three") are also what the clip manifests key on (see clips.ts's
- * comma-split cascade), so this phrasing stays clip-playable.
- *
- * `'total'` reproduces the pre-existing behavior exactly.
- *
- * Pure like the rest of this module: the caller passes the style down from
- * `AudioSettings.handStyle` — narrate.ts never reads the store itself.
+ * Suits are never spoken here — composition, not suit, is the whole point of
+ * this phrasing, and lowercase bare rank words ("ace", "three") are also what
+ * the clip manifests key on (see clips.ts's comma-split cascade), so this
+ * phrasing stays clip-playable.
  */
-export function narrateHandPhrase(cards: [Card, Card], style: HandStyle = 'cards'): string {
-  if (style === 'cards' && !isPair(cards) && handValue(cards).soft) {
+export function narrateHandPhrase(cards: [Card, Card]): string {
+  if (!isPair(cards) && handValue(cards).soft) {
     return cards.map((card) => narrateRank(card.rank)).join(', ');
   }
   return narrateHandTotalPhrase(cards);
 }
 
-export function narrateFlashcardPrompt(
-  cards: [Card, Card],
-  up: Rank,
-  handStyle: HandStyle = 'cards',
-): string {
-  return `You have ${narrateHandPhrase(cards, handStyle)}. ${narrateDealerUp(up)}`;
+export function narrateFlashcardPrompt(cards: [Card, Card], up: Rank): string {
+  return `You have ${narrateHandPhrase(cards)}. ${narrateDealerUp(up)}`;
 }
 
-export function narrateQuizPrompt(
-  cards: [Card, Card] | null,
-  up: Rank,
-  tc: number,
-  handStyle: HandStyle = 'cards',
-): string {
+export function narrateQuizPrompt(cards: [Card, Card] | null, up: Rank, tc: number): string {
   if (cards === null) {
     return `${narrateDealerUp(up)} ${narrateInsuranceOffer()} True count ${narrateTc(tc)}.`;
   }
-  return `You have ${narrateHandPhrase(cards, handStyle)}. ${narrateDealerUp(up)} True count ${narrateTc(tc)}.`;
+  return `You have ${narrateHandPhrase(cards)}. ${narrateDealerUp(up)} True count ${narrateTc(tc)}.`;
 }
 
 /**

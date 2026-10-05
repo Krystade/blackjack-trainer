@@ -558,10 +558,10 @@ export function settingsCases(
           return 'the saved settings have no audio section, so the voice settings were lost';
         }
         if (live && typeof live.audio === 'object' && live.audio !== null) {
-          const want = (live.audio as Record<string, unknown>).outputRoute;
-          const got = (stored.audio as Record<string, unknown>).outputRoute;
+          const want = (live.audio as Record<string, unknown>).voiceURI;
+          const got = (stored.audio as Record<string, unknown>).voiceURI;
           if (want !== got) {
-            return `the screen says the route is "${String(want)}" but storage says "${String(got)}"`;
+            return `the screen says the voice is "${String(want)}" but storage says "${String(got)}"`;
           }
         }
         return null;

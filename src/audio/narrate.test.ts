@@ -50,29 +50,7 @@ describe('narrateCard / narrateCards — detail levels', () => {
     expect(narrateCards([c('Q', 'h'), c('4', 's')], 'rank')).toBe('queen, four');
   });
 
-  it('detail "face" collapses every ten-value rank (10/J/Q/K) to "ten"', () => {
-    expect(narrateCard(c('10', 'd'), 'face')).toBe('ten');
-    expect(narrateCard(c('J', 'c'), 'face')).toBe('ten');
-    expect(narrateCard(c('Q', 'h'), 'face')).toBe('ten');
-    expect(narrateCard(c('K', 's'), 'face')).toBe('ten');
-  });
-
-  it('detail "face" leaves non-ten ranks the same as "rank"', () => {
-    expect(narrateCard(c('A', 's'), 'face')).toBe('ace');
-    expect(narrateCard(c('7', 'h'), 'face')).toBe('seven');
-    expect(narrateCard(c('2', 'd'), 'face')).toBe('two');
-    expect(narrateCard(c('9', 'c'), 'face')).toBe('nine');
-  });
-
-  it('"rank" and "face" remain distinct for ten-value cards', () => {
-    expect(narrateCard(c('K', 'h'), 'rank')).toBe('king');
-    expect(narrateCard(c('K', 'h'), 'face')).toBe('ten');
-    expect(narrateCard(c('J', 'h'), 'rank')).toBe('jack');
-    expect(narrateCard(c('J', 'h'), 'face')).toBe('ten');
-  });
-
   it('narrateCards forwards the detail level to every card', () => {
-    expect(narrateCards([c('K', 'h'), c('J', 's'), c('7', 'd')], 'face')).toBe('ten, ten, seven');
     expect(narrateCards([c('K', 'h'), c('J', 's'), c('7', 'd')], 'rank')).toBe('king, jack, seven');
   });
 });
@@ -147,44 +125,29 @@ describe('narrateBotAction', () => {
 });
 
 /* ------------------------------------------------------------------------ */
-/* narrateHandPhrase — 'cards' vs 'total' hand announcement                 */
+/* narrateHandPhrase — soft hands card by card                             */
 /* ------------------------------------------------------------------------ */
 
-describe("narrateHandPhrase — 'cards' (the default)", () => {
+describe('narrateHandPhrase', () => {
   it('speaks a soft non-pair hand card by card, not as a soft total', () => {
     // "ace, three" tells the learner WHICH soft hand it is; "soft fourteen"
     // makes them re-derive the composition that decides the play.
-    expect(narrateHandPhrase([c('A', 's'), c('3', 'h')], 'cards')).toBe('ace, three');
-  });
-  it('speaks the cards in the order they were dealt', () => {
-    expect(narrateHandPhrase([c('7', 'd'), c('A', 'c')], 'cards')).toBe('seven, ace');
-  });
-  it('never includes suits, even though the cards carry them', () => {
-    expect(narrateHandPhrase([c('A', 's'), c('6', 's')], 'cards')).toBe('ace, six');
-  });
-  it('leaves a hard hand as its total — composition changes nothing there', () => {
-    expect(narrateHandPhrase([c('10', 's'), c('6', 'h')], 'cards')).toBe('sixteen');
-  });
-  it('leaves a pair as "a pair of ..." — pairs already name their composition', () => {
-    expect(narrateHandPhrase([c('8', 's'), c('8', 'h')], 'cards')).toBe('a pair of eights');
-  });
-  it('treats a pair of aces as a pair, not as a soft card list', () => {
-    expect(narrateHandPhrase([c('A', 's'), c('A', 'h')], 'cards')).toBe('a pair of aces');
-  });
-  it('defaults to the cards style when no style is passed', () => {
     expect(narrateHandPhrase([c('A', 's'), c('3', 'h')])).toBe('ace, three');
   });
-});
-
-describe("narrateHandPhrase — 'total' (the pre-existing behavior)", () => {
-  it('speaks a soft hand as a soft total', () => {
-    expect(narrateHandPhrase([c('A', 's'), c('3', 'h')], 'total')).toBe('soft fourteen');
+  it('speaks the cards in the order they were dealt', () => {
+    expect(narrateHandPhrase([c('7', 'd'), c('A', 'c')])).toBe('seven, ace');
   });
-  it('speaks a hard hand as its total', () => {
-    expect(narrateHandPhrase([c('10', 's'), c('6', 'h')], 'total')).toBe('sixteen');
+  it('never includes suits, even though the cards carry them', () => {
+    expect(narrateHandPhrase([c('A', 's'), c('6', 's')])).toBe('ace, six');
   });
-  it('speaks a pair as a pair', () => {
-    expect(narrateHandPhrase([c('8', 's'), c('8', 'h')], 'total')).toBe('a pair of eights');
+  it('leaves a hard hand as its total — composition changes nothing there', () => {
+    expect(narrateHandPhrase([c('10', 's'), c('6', 'h')])).toBe('sixteen');
+  });
+  it('leaves a pair as "a pair of ..." — pairs already name their composition', () => {
+    expect(narrateHandPhrase([c('8', 's'), c('8', 'h')])).toBe('a pair of eights');
+  });
+  it('treats a pair of aces as a pair, not as a soft card list', () => {
+    expect(narrateHandPhrase([c('A', 's'), c('A', 'h')])).toBe('a pair of aces');
   });
 });
 
@@ -197,10 +160,6 @@ describe('drill prompts', () => {
     expect(narrateFlashcardPrompt([c('A', 's'), c('7', 'h')], '9'))
       .toBe('You have ace, seven. Dealer shows nine.');
   });
-  it("speaks a soft flashcard total as soft under the 'total' style", () => {
-    expect(narrateFlashcardPrompt([c('A', 's'), c('7', 'h')], '9', 'total'))
-      .toBe('You have soft eighteen. Dealer shows nine.');
-  });
   it('speaks a pair as a pair', () => {
     expect(narrateFlashcardPrompt([c('8', 's'), c('8', 'h')], '10'))
       .toBe('You have a pair of eights. Dealer shows ten.');
@@ -209,15 +168,9 @@ describe('drill prompts', () => {
     expect(narrateQuizPrompt([c('10', 's'), c('6', 'h')], '10', 4))
       .toBe('You have sixteen. Dealer shows ten. True count plus four.');
   });
-  it('threads the hand style through the quiz prompt too', () => {
+  it('speaks a soft quiz hand card by card too', () => {
     expect(narrateQuizPrompt([c('A', 's'), c('7', 'h')], '10', 4))
       .toBe('You have ace, seven. Dealer shows ten. True count plus four.');
-    expect(narrateQuizPrompt([c('A', 's'), c('7', 'h')], '10', 4, 'total'))
-      .toBe('You have soft eighteen. Dealer shows ten. True count plus four.');
-  });
-  it('ignores the hand style for the insurance quiz variant (no player cards)', () => {
-    expect(narrateQuizPrompt(null, 'A', 3, 'cards'))
-      .toBe('Dealer shows ace. Insurance offered. True count plus three.');
   });
   it('speaks the insurance quiz variant (no player cards)', () => {
     expect(narrateQuizPrompt(null, 'A', 3))

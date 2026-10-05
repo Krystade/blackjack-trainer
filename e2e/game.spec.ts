@@ -330,12 +330,12 @@ test('count-check modal: RC then TC two-stage prompt on the 2nd trigger (askTcTo
 });
 
 test('TC peek button latches RC/TC on a tap and clears on the next tap', async ({ page }) => {
-  // T0 gap #26: settings.countPeek gates the `.tc-peek-btn` in Table.tsx's
+  // T0 gap #26: the `.tc-peek-btn` in Table.tsx's
   // topbar. This was press-and-hold; the operator asked for a toggle ("make
   // the rc tc count reveal a toggle instead of having to hold it"), so the
   // label now LATCHES on a tap and clears on the next one. Updated
   // deliberately for that behaviour change, not weakened.
-  await withSettings(page, { countCheckEvery: 0, countPeek: true });
+  await withSettings(page, { countCheckEvery: 0 });
   await page.goto('/?seed=102&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
@@ -364,7 +364,7 @@ test('R7: peeks are counted once per reveal and flag a test-mode session as assi
   // problem -- a click fires exactly once per interaction -- so what is pinned
   // now is the accounting rule itself: one increment per REVEAL, and turning
   // the readout back off is not a new peek.
-  await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0, countPeek: true });
+  await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
   await page.goto('/?seed=102&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByRole('button', { name: 'Deal', exact: true }).click();

@@ -3,12 +3,14 @@
  *
  * Two things have to be true, and neither is guessable from the wheel:
  *
- *   1. THE RECORDED VOICE MUST BE ON. `speechSynthesis` is not "media" as far
- *      as a phone OS is concerned -- it creates no media element, claims no
- *      audio focus, and never appears in the now-playing UI. There is nothing
- *      for Media Session to attach to, so no transport button can ever reach
- *      it. Only the pre-rendered clips play through a real HTMLAudioElement.
- *      See audio/mediaSession.ts.
+ *   1. AUDIO MUST BE ON, and the app must be speaking through the recorded
+ *      voice. `speechSynthesis` is not "media" as far as a phone OS is
+ *      concerned -- it creates no media element, claims no audio focus, and
+ *      never appears in the now-playing UI, so no transport button can ever
+ *      reach it. Only the pre-rendered clips play through a real
+ *      HTMLAudioElement (see audio/mediaSession.ts). The recorded voice used
+ *      to be a switch here and was the commonest blocker; it is always on now
+ *      (AudioSettings.useClips), so only the audio switch is left to report.
  *
  *   2. THE MICROPHONE MUST BE CLOSED. Opening it switches a Bluetooth link
  *      from A2DP (media) to HFP (hands-free) -- the car then treats the phone
@@ -26,13 +28,10 @@
 
 export type CarControlsBlocker =
   /** Nothing plays at all, so there is nothing for the car to control. */
-  | 'audio-off'
-  /** Live speech only: no media element exists for the car to attach to. */
-  | 'live-speech';
+  'audio-off';
 
 export interface CarAudioState {
   enabled: boolean;
-  useClips: boolean;
 }
 
 /**
@@ -44,7 +43,6 @@ export interface CarAudioState {
 export function carControlsBlockers(audio: CarAudioState): CarControlsBlocker[] {
   const blockers: CarControlsBlocker[] = [];
   if (!audio.enabled) blockers.push('audio-off');
-  if (!audio.useClips) blockers.push('live-speech');
   return blockers;
 }
 
@@ -52,8 +50,6 @@ export function describeCarControlsBlocker(blocker: CarControlsBlocker): string 
   switch (blocker) {
     case 'audio-off':
       return 'Audio is off, so nothing plays and the car has nothing to control. Turn on “Audio enabled” above.';
-    case 'live-speech':
-      return 'The recorded voice is off. Live speech is not “media” to the phone — it opens no player, so the car never sees this app and no wheel button can reach it. Turn on “Use recorded voice” above.';
   }
 }
 

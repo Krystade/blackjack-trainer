@@ -227,7 +227,7 @@ describe('the recorded-voice cases', () => {
 });
 
 describe('the settings cases', () => {
-  const live = { audio: { outputRoute: 'playback', volume: 1 } };
+  const live = { audio: { voiceURI: 'Samantha', volume: 1 } };
 
   /** A storage that behaves, unless told to misbehave in one specific way. */
   /** A plain working store. Misbehaving ones belong to the device suite. */
@@ -262,7 +262,7 @@ describe('the settings cases', () => {
     // The probe belongs to the device suite (diag/deviceChecks.ts), which is
     // where a question about THIS PHONE belongs. Two implementations of one
     // check is how they drift apart, so these cases must not write either.
-    const store = fakeStore(stored({ audio: { outputRoute: 'playback' } }));
+    const store = fakeStore(stored({ audio: { voiceURI: 'Samantha' } }));
     const wrote: string[] = [];
     const watched: SelfTestStorage = {
       getItem: (k) => store.getItem(k),
@@ -291,11 +291,11 @@ describe('the settings cases', () => {
     // The fault that looks like the app forgetting: the control moved, the
     // write silently did not land.
     const failures = summarise(
-      runCases(settingsCases(fakeStore(stored({ audio: { outputRoute: 'auto' } })), live)),
+      runCases(settingsCases(fakeStore(stored({ audio: { voiceURI: 'default' } })), live)),
     ).failures;
     expect(failures.map((f) => f.id)).toEqual(['settings-persisted']);
-    expect(failures[0].detail).toContain('"playback"');
-    expect(failures[0].detail).toContain('"auto"');
+    expect(failures[0].detail).toContain('"Samantha"');
+    expect(failures[0].detail).toContain('"default"');
   });
 
   it('fails when the stored blob will not parse', () => {
@@ -309,9 +309,9 @@ describe('the settings cases', () => {
   it('fails when a setting cannot survive being written', () => {
     const failures = summarise(
       runCases(
-        settingsCases(fakeStore(stored({ audio: { outputRoute: 'playback' } })), {
+        settingsCases(fakeStore(stored({ audio: { voiceURI: 'Samantha' } })), {
           // NaN serialises to null and comes back as a different value.
-          audio: { outputRoute: 'playback', volume: NaN },
+          audio: { voiceURI: 'Samantha', volume: NaN },
         }),
       ),
     ).failures;
@@ -340,20 +340,20 @@ describe('the settings cases', () => {
     // The other half. A check that flagged every nested object would catch
     // all the cases above and be worthless.
     const fat = {
-      audio: { volume: 0.8, outputRoute: 'playback', clipVoice: 'en-GB-1', enabled: true },
-      drill: { pushToTalkMs: 2500, wheelMode: 'answer', shotClockMs: 0 },
+      audio: { volume: 0.8, voiceURI: 'Samantha', clipVoice: 'en-GB-1', enabled: true },
+      drill: { wheelMode: 'answer', shotClockMs: 0 },
       rules: { decks: 6, h17: false, surrender: 'late' },
       profiles: [{ name: 'home', bankroll: 1000 }],
     };
     const failures = summarise(
-      runCases(settingsCases(fakeStore(stored({ audio: { outputRoute: 'playback' } })), fat)),
+      runCases(settingsCases(fakeStore(stored({ audio: { voiceURI: 'Samantha' } })), fat)),
     ).failures;
     expect(failures).toEqual([]);
   });
 
   it('passes when storage and the screen agree', () => {
     const results = runCases(
-      settingsCases(fakeStore(stored({ audio: { outputRoute: 'playback' } })), live),
+      settingsCases(fakeStore(stored({ audio: { voiceURI: 'Samantha' } })), live),
     );
     expect(summarise(results).failed).toBe(0);
   });

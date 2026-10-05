@@ -92,7 +92,7 @@ test('choosing quarter runs in quarters throughout', async ({ page }) => {
   ]);
 });
 
-test('the drill-local control persists, so it is the same setting Settings edits', async ({
+test('the drill-local control persists across a reload', async ({
   page,
 }) => {
   // `onSettingsChange` is App's React state only -- a control that forgets the
@@ -107,10 +107,11 @@ test('the drill-local control persists, so it is the same setting Settings edits
   });
   expect(stored?.drill?.depthResolution).toBe('quarter');
 
-  await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const row = page.locator('.settings-row', { hasText: 'Depth resolution' });
-  await expect(row.locator('.segmented-btn-active')).toHaveText('Quarter');
+  // And it survives a reload: the drill reopens on the stored value.
+  await openDrill(page, 'Deck Estimation');
+  await expect(
+    page.getByRole('button', { name: 'Quarter', exact: true }),
+  ).toHaveClass(/segmented-btn-active/);
 });
 
 test('the same estimate is right at half resolution and wrong at last-deck', async ({ page }) => {

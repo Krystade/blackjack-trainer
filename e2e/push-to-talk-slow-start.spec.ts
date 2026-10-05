@@ -125,9 +125,7 @@ test('a recognised word closes the window instead of running it out', async ({ p
   });
   await withSettings(page, {
     audio: { enabled: true },
-    // The longest window the setting allows, so a close inside it cannot be
-    // the timer finishing early.
-    drill: { wheelMode: 'talk', pushToTalkMs: 8000 },
+    drill: { wheelMode: 'talk' },
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();

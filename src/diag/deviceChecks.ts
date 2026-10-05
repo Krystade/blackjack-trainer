@@ -26,7 +26,6 @@ import { diag } from './diagnosticLog';
 import { isStale } from '../updateCheck';
 import {
   audioSessionSupported,
-  outputRoutePreference,
   readAudioSessionType,
   requestAudioSessionType,
 } from '../audio/audioSession';
@@ -53,13 +52,11 @@ const warn = (id: string, summary: string, detail?: Record<string, unknown>): Ch
 });
 
 /**
- * How long the microphone may take to come back before the handoff is too
- * expensive to use.
+ * How long the microphone may take to come back before it is worth a warning.
  *
- * The 2026-10-04 drive measured `confirmedInMs=1233` for a restart. Switch
- * pays that on every spoken line, so it is already the setting's whole cost;
- * at three seconds the drill would be deaf more often than not and the
- * setting is the wrong trade however well the speaker works.
+ * The 2026-10-04 drive measured `confirmedInMs=1233` for a restart. Every
+ * push-to-talk press pays a restart before the window can hear anything, so
+ * at three seconds a press is mostly waiting.
  */
 export const RESTART_BUDGET_MS = 3000;
 
@@ -100,7 +97,6 @@ export function handoffRouteCheck(playClip: () => Promise<string>): CheckDefinit
       const after = readAudioSessionType() ?? 'unknown';
       const how = await playClip();
       const detail = {
-        setting: outputRoutePreference(),
         sessionSupported: audioSessionSupported(),
         sessionWas: before,
         sessionType: after,
@@ -126,12 +122,10 @@ export function handoffRouteCheck(playClip: () => Promise<string>): CheckDefinit
 /**
  * How long the microphone takes to come back after being closed.
  *
- * This is the price of the handoff, measured rather than assumed, and it is
- * the number that decides whether Switch is usable at all: the app is deaf
- * for exactly this long after every line it speaks. A device where the
- * recogniser refuses to restart makes the setting actively dangerous -- the
- * drill would go permanently deaf -- so a failure here matters more than a
- * slow result.
+ * Measured rather than assumed, because every push-to-talk press reopens the
+ * microphone and the window cannot hear anything until it has. A device where
+ * the recogniser refuses to restart leaves voice answers deaf after the first
+ * press, so a failure here matters more than a slow result.
  */
 export function micRestartCheck(
   reopenMic: () => Promise<boolean>,
@@ -154,18 +148,18 @@ export function micRestartCheck(
       const ms = Date.now() - startedAt;
       if (!live) {
         // The worst outcome of the three, and the reason this check exists:
-        // with Switch on, a recogniser that cannot restart means the drill
-        // hears nothing for the rest of the session.
+        // a recogniser that cannot restart hears nothing after the first
+        // push-to-talk window.
         return fail(
           'mic-restart',
-          `The microphone did not come back within ${ms}ms. Switch would leave the drill deaf -- use Speaker or Auto.`,
+          `The microphone did not come back within ${ms}ms. Push to talk would go deaf after the first press -- use Answer on the wheel.`,
           { ms, budgetMs },
         );
       }
       if (ms > budgetMs) {
         return warn(
           'mic-restart',
-          `It came back, but took ${ms}ms. Switch costs that much deafness after every spoken line.`,
+          `It came back, but took ${ms}ms. Every push-to-talk press waits that long before it can hear.`,
           { ms, budgetMs },
         );
       }

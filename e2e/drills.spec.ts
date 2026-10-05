@@ -1015,7 +1015,7 @@ test('count drill: eyes-free Strict mode grades via NumPad and speaks the verdic
 }) => {
   test.setTimeout(30_000);
   await withSettings(page, {
-    audio: { enabled: true, verbosity: 'results', cardDetail: 'full' },
+    audio: { enabled: true, verbosity: 'results' },
     drill: { countManual: false, countLengthCards: 4, countGroup: 1, countIntervalMs: 0 },
   });
 

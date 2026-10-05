@@ -159,8 +159,8 @@ function hardLabel(lo: number, hi: number, maxTotal: number): string {
  *
  * Composition is what actually selects the row -- A,3 and A,7 share nothing
  * but an ace -- and "soft eighteen" is the exact phrase this app already
- * avoids elsewhere for being misheard as a hard total (see AudioSettings
- * handStyle in src/store/types.ts). The 2-deck and 1-deck source charts label
+ * avoids elsewhere for being misheard as a hard total (see narrateHandPhrase
+ * in src/audio/narrate.ts). The 2-deck and 1-deck source charts label
  * their soft rows this way too. Ranges keep both bounds ('A,9-10'); '+' would
  * read as a total here and mean nothing.
  */

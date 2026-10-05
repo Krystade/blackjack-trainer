@@ -112,8 +112,8 @@ export function _resetVoiceSessionForTest(): void {
  * because the window used to be counted from the button press. It is not any
  * more -- the wait has its own budget below -- so this is purely how long the
  * operator has to say one word, and two seconds is what that is worth
- * (operator, 2026-10-02). Adjustable, because only driving settles it:
- * `DrillSettings.pushToTalkMs`.
+ * (operator, 2026-10-02). It was a setting once; retired in the 2026-10-05
+ * settings cull, because a recognised word closes the window early anyway.
  *
  * It is a window rather than a toggle for the reason the wheel exists at all:
  * while the microphone is open the car owns the buttons, so a second press
@@ -123,11 +123,6 @@ export function _resetVoiceSessionForTest(): void {
  * rather than the whole window.
  */
 export const PUSH_TO_TALK_MS = 2000;
-
-/** The range the operator can set it to, in quarter seconds. */
-export const PUSH_TO_TALK_MIN_MS = 1000;
-export const PUSH_TO_TALK_MAX_MS = 8000;
-export const PUSH_TO_TALK_STEP_MS = 250;
 
 /**
  * How long the app will WAIT for the microphone before giving the press up.

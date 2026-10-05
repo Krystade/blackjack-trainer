@@ -24,7 +24,7 @@ import {
   STORAGE_PROBE_KEY,
   type ProbeStorage,
 } from './deviceChecks';
-import { _resetAudioSessionForTest, setOutputRoutePreference } from '../audio/audioSession';
+import { _resetAudioSessionForTest } from '../audio/audioSession';
 import { clearDiagnosticLog } from './diagnosticLog';
 import type { CheckDefinition } from './carCheck';
 
@@ -57,7 +57,6 @@ describe('the handoff check', () => {
     // drive proved does nothing, so a version of this that did not ask at all
     // would be measuring the old broken thing.
     const session = withAudioSession('play-and-record');
-    setOutputRoutePreference('switch');
     const result = await handoffRouteCheck(async () => 'ended').run();
     expect(session.type).toBe('playback');
     expect(result.detail).toMatchObject({ sessionWas: 'play-and-record', sessionType: 'playback' });
@@ -99,12 +98,12 @@ describe('the handoff check', () => {
 
 describe('the microphone restart check', () => {
   it('fails outright when the microphone does not come back', async () => {
-    // The dangerous outcome: with Switch on, a recogniser that will not
-    // restart leaves the drill deaf for the rest of the session.
+    // The dangerous outcome: a recogniser that will not restart leaves push
+    // to talk deaf after the first press.
     const result = await micRestartCheck(async () => false).run();
     expect(result.outcome).toBe('fail');
     expect(result.summary).toContain('deaf');
-    expect(result.summary).toMatch(/Speaker or Auto/);
+    expect(result.summary).toMatch(/use Answer on the wheel/);
   });
 
   it('fails when reopening throws', async () => {
@@ -124,7 +123,7 @@ describe('the microphone restart check', () => {
       });
       const result = await check.run();
       expect(result.outcome).toBe('warn');
-      expect(result.summary).toContain('after every spoken line');
+      expect(result.summary).toContain('Every push-to-talk press waits');
       expect(result.detail?.ms as number).toBeGreaterThan(RESTART_BUDGET_MS);
     } finally {
       vi.useRealTimers();
@@ -135,7 +134,7 @@ describe('the microphone restart check', () => {
     const result = await micRestartCheck(async () => true).run();
     expect(result.outcome).toBe('pass');
     // The number has to be carried, not just the verdict: it is what decides
-    // whether Switch is a reasonable setting on this phone.
+    // whether closing the microphone to speak could ever be affordable here.
     expect(typeof result.detail?.ms).toBe('number');
   });
 

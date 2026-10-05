@@ -81,7 +81,7 @@ test('the microphone-open cue goes through the held path, not a bare chime', asy
   await withFakeEngine(page);
   await withProfile(page);
   await withSettings(page, {
-    audio: { enabled: true, chimes: true, verbosity: 'full', answerPauseMs: 0 },
+    audio: { enabled: true, verbosity: 'full', answerPauseMs: 0 },
     drill: { countIntervalMs: 0, countManual: false, countLengthCards: 6 },
   });
   await page.goto('/?e2e=1');
@@ -98,25 +98,4 @@ test('the microphone-open cue goes through the held path, not a bare chime', asy
   // And it is the ready cue, not some other chime that happens to be held.
   const kinds = (await cueEvents(page)).map((e) => (e.detail as Record<string, unknown>).kind);
   expect(kinds, 'the held cue was not the microphone-open one').toContain('ready');
-});
-
-test('and not at all when chimes are off', async ({ page }) => {
-  test.setTimeout(60_000);
-  await withFakeEngine(page);
-  await withProfile(page);
-  await withSettings(page, {
-    audio: { enabled: true, chimes: false, verbosity: 'full', answerPauseMs: 0 },
-    drill: { countIntervalMs: 0, countManual: false, countLengthCards: 6 },
-  });
-  await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
-  await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
-  await page.locator('label', { hasText: 'Voice answers' }).locator('input').check();
-  await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');
-
-  // The gate moved into a new method, which is a new place to forget it. Held
-  // or not, a chime nobody asked for is a chime in a quiet car.
-  await page.waitForTimeout(2_000);
-  expect(await cueEvents(page), 'a cue was held although chimes are off').toEqual([]);
 });

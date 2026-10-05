@@ -330,22 +330,3 @@ export async function waitForMic(page: Page): Promise<void> {
   );
 }
 
-/**
- * Pin the route setting to the mode where the microphone STAYS OPEN while the
- * app talks.
- *
- * For the specs whose subject is what happens to a word spoken OVER the app:
- * the suppression window, the say-again cue, the app hearing its own voice
- * back. Every one of those behaviours exists only while a session is live
- * during an utterance, which is precisely what 'switch' now prevents -- it
- * takes the microphone down instead, so under the shipped default there is no
- * such thing as a word spoken over the app to suppress.
- *
- * So these specs are not being worked around; they are being run in the mode
- * their subject exists in. 'auto' is also what a user who declines the
- * handoff's cost actually gets, which makes this the real configuration
- * rather than a test-only one.
- */
-export async function withMicOpenWhileSpeaking(page: Page): Promise<void> {
-  await withSettings(page, { audio: { outputRoute: 'auto' } });
-}

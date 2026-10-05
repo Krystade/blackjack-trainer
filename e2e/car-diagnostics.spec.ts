@@ -92,30 +92,21 @@ async function openCarSection(page: import('@playwright/test').Page) {
   return page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'Car controls' }) });
 }
 
-test('with live speech, the panel says the wheel cannot reach the app, and why', async ({
-  page,
-}) => {
+test('with audio on, the settings side reports ready', async ({ page }) => {
+  // Even from a blob saved with live speech: the recorded voice is no longer a
+  // choice, and loading turns it back on.
   await withSettings(page, { audio: { enabled: true, useClips: false } });
   const section = await openCarSection(page);
 
-  await expect(section.locator('[data-car-ready]')).toHaveAttribute('data-car-ready', 'false');
-  await expect(section).toContainText('Use recorded voice');
-});
-
-test('with the recorded voice on, the settings side reports ready', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true, useClips: true } });
-  const section = await openCarSection(page);
-
   await expect(section.locator('[data-car-ready]')).toHaveAttribute('data-car-ready', 'true');
-  await expect(section).not.toContainText('Use recorded voice');
 });
 
-test('audio being off is named before anything else', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: false, useClips: false } });
+test('audio being off is named', async ({ page }) => {
+  await withSettings(page, { audio: { enabled: false } });
   const section = await openCarSection(page);
 
+  await expect(section.locator('[data-car-ready]')).toHaveAttribute('data-car-ready', 'false');
   await expect(section).toContainText('Audio enabled');
-  await expect(section).toContainText('Use recorded voice');
 });
 
 /**
