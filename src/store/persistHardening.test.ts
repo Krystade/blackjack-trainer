@@ -365,6 +365,8 @@ const NOT_BACKED_UP: Record<string, string> = {
   'bjtrainer.diagnostics.v1':
     'the diagnostic log: transient, capped, and the one store that carries cabin speech and Bluetooth device names -- it must not ride along in a file the user may hand to someone',
   'bjtrainer.diagnostics.dropped.v1': 'a counter belonging to the diagnostic buffer above',
+  'bjtrainer.testkit.progress.v1': 'test kit resume point across its own reload; one page, ten minutes',
+  'bjtrainer.testkit.startedAt.v1': 'when the current test kit run began, to scope its log copy',
   'bjtrainer.voiceHistory.v1': 'what the microphone heard: diagnostic, and speech',
   'bjtrainer.mediaSessionLog.v1': 'retired; deleted on load by dropRetiredKeys',
   'bjtrainer.voiceProbe.v1': 'retired; deleted on load by dropRetiredKeys',

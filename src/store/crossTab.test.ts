@@ -147,6 +147,8 @@ describe('OWNED_KEYS', () => {
     // can see -- and re-reading would splice a foreign session into a
     // per-load elapsed clock.
     'bjtrainer.diagnostics.v1': 'append-only, per page load',
+    'bjtrainer.testkit.progress.v1': 'test kit resume point across its own reload; one page, ten minutes',
+    'bjtrainer.testkit.startedAt.v1': 'when the current test kit run began, to scope its log copy',
     // The running total of entries those buffers discarded, written beside
     // them on every flush so the count survives the reload the entries already
     // survive. Same reasoning as the buffer itself: a tab folding in its own
