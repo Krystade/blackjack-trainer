@@ -17,7 +17,7 @@ import {
 import { _resetSharedAudioContextForTest } from './audioContext';
 import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 import { setSpeechActivityListener } from './speechActivity';
-import { setVoiceCaptureActive, _resetMicSessionCostForTest } from './micSessionCost';
+import { markMicSessionOpened, setVoiceCaptureActive, _resetMicSessionCostForTest } from './micSessionCost';
 
 /* ------------------------------------------------------------------------ */
 /* manifestLookup — pure exact-key matching, no browser needed              */
@@ -1383,5 +1383,52 @@ describe('clip output path while voice is on', () => {
     env.instances[0]!.onended?.();
     await expect(p).resolves.toBe(true);
     expect(readDiagnosticLog().some((e) => e.event === 'clip-webaudio-skip')).toBe(true);
+  });
+});
+
+describe('clip output path after voice is switched off', () => {
+  const realFetch = (globalThis as any).fetch;
+  afterEach(() => {
+    _resetClipsForTest();
+    _resetSharedAudioContextForTest();
+    _resetMicSessionCostForTest();
+    (globalThis as any).fetch = realFetch;
+    delete (globalThis as any).window;
+  });
+
+  it('stays on Web Audio for the rest of the page once the mic has been open', async () => {
+    _resetClipsForTest();
+    _resetSharedAudioContextForTest();
+    _resetMicSessionCostForTest();
+    const started: string[] = [];
+    const env = installFakeAudioEnv();
+    (globalThis as any).window.AudioContext = class {
+      state = 'running';
+      sampleRate = 48000;
+      destination = {};
+      async resume() {}
+      async decodeAudioData(bytes: ArrayBuffer) {
+        return { duration: 0.01, tag: new TextDecoder().decode(bytes) };
+      }
+      createGain() {
+        return { gain: { value: 1 }, connect() {}, disconnect() {} };
+      }
+      createBufferSource() {
+        const src: any = { buffer: null, playbackRate: { value: 1 }, onended: null, connect() {}, stop() {},
+          start() { started.push(src.buffer.tag); setTimeout(() => src.onended?.(), 0); } };
+        return src;
+      }
+    };
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url.includes('index.json')) return { ok: true, json: async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }) };
+      if (url.includes('manifest.json')) return { ok: true, json: async () => ({ clips: { 'Dealer shows ten.': 'b.mp3' } }) };
+      return { ok: true, arrayBuffer: async () => new TextEncoder().encode(url.split('/').pop()!).buffer };
+    });
+    // The mic was open earlier in this page load, and voice is now off.
+    markMicSessionOpened();
+    setVoiceCaptureActive(false);
+    await expect(playClipsAsync('Dealer shows ten.')).resolves.toBe(true);
+    expect(started).toEqual(['b.mp3']);
+    expect(env.instances.filter((a) => a.played)).toHaveLength(0);
   });
 });

@@ -32,7 +32,7 @@
 
 import { elementVolume } from './volume';
 import { getSharedAudioContext } from './audioContext';
-import { isVoiceCaptureActive } from './micSessionCost';
+import { isVoiceCaptureActive, micSessionCostPaid } from './micSessionCost';
 import { diag } from '../diag/diagnosticLog';
 import { notifySpeechEnded } from './speechActivity';
 
@@ -1012,7 +1012,13 @@ export function playClipsResumable(
         return segments.slice(segIndex).map((seg) => seg.text).join(' ');
       };
 
-      if (isVoiceCaptureActive()) {
+      // Once the microphone has been open in this page load, not just while it
+      // is: the <audio> element stays on the earpiece for the rest of the page
+      // after capture ends. Jack's 2026-10-05 Flashcards log has it -- voice
+      // toggled off at 01:36:04, and the next two prompts played on the
+      // element and came out of the earpiece. Web Audio after the mic closed
+      // was on the loud speaker in the first desk run.
+      if (isVoiceCaptureActive() || micSessionCostPaid()) {
         const viaWebAudio = await playChainThroughWebAudio(
           fileList.map((f) => `${base}clips/${voiceId}/${f.file}`),
           {

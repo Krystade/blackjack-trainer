@@ -57,7 +57,9 @@ export function micSessionCostPaid(): boolean {
  * 7 times out of 7, the <audio> element 2 out of 7. Web Audio also obeys the
  * ring switch when NO capture is live (silent twice with the switch on), but
  * not while it is -- so this is the window in which Web Audio is both audible
- * and on the right speaker, and the element path stays everywhere else.
+ * and on the right speaker. clips.ts also keeps Web Audio for the rest of the
+ * page once the mic has been opened at all, because the element stays on the
+ * earpiece after capture ends.
  */
 let voiceCaptureActive = false;
 
