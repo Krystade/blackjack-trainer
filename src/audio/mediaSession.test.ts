@@ -289,7 +289,7 @@ describe('initMediaSession', () => {
   });
 
   /**
-   * The button tester (audio/buttonTester.ts). Its whole value rests on a press
+   * The wheel probe the car check and field test arm. Its whole value rests on a press
    * being REPORTED and going no further: learning what the ring's left click is
    * called must not also repeat a prompt or answer a drill question.
    */

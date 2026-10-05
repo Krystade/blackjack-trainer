@@ -83,7 +83,19 @@ function isVersion1Object(parsed: unknown): parsed is Record<string, unknown> {
  * voice, rate and volume with it, which is a worse outcome than the setting
  * being fixed.
  */
-const DEAD_OUTPUT_ROUTES = new Set(['playback', 'switch']);
+const DEAD_OUTPUT_ROUTES = new Set<string>(['playback', 'switch']);
+
+/**
+ * Audio fields that no longer exist, dropped on load so a stored blob stops
+ * carrying them forward through every save.
+ *
+ * `micCueOn` and `voiceAlternatives` were the two arms of the 2026-10-04
+ * microphone experiments. Both shipped defaults dominate by construction, so
+ * they are now fixed behaviour in ui/useVoiceControl.ts and nothing reads the
+ * stored values -- including a stored control arm, which is deliberately not
+ * honoured.
+ */
+const RETIRED_AUDIO_KEYS = ['micCueOn', 'voiceAlternatives'] as const;
 
 function mergeSettings(parsed: Record<string, unknown>): Settings {
   const base = structuredClone(DEFAULT_SETTINGS);
@@ -97,6 +109,7 @@ function mergeSettings(parsed: Record<string, unknown>): Settings {
       ? { ...base.audio, ...p.audio }
       : base.audio;
   if (DEAD_OUTPUT_ROUTES.has(audio.outputRoute)) audio.outputRoute = 'auto';
+  for (const key of RETIRED_AUDIO_KEYS) delete (audio as unknown as Record<string, unknown>)[key];
   return { ...base, ...p, version: 1, drill, audio };
 }
 
@@ -314,6 +327,31 @@ function removeKey(key: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Storage keys whose only reader has been deleted, removed once per load.
+ *
+ * Each belonged to a Settings panel culled on 2026-10-05. Left alone they are
+ * inert, but two of them hold what the microphone heard (the old voice probe's
+ * transcripts) or what the car sent, and with their panels gone there would be
+ * no way left in the app to clear them.
+ *
+ *   mediaSessionLog -- the "Car controls" readout; every line it held is also
+ *                      written to the diagnostic log under `wheel`/`focus`.
+ *   voiceProbe      -- the standalone "Voice control" recognition probe.
+ *   voiceLocal(Probe) -- the on-device model opt-in and its crash guard, a
+ *                      Chrome-only API the operator's iPhone does not have.
+ */
+const RETIRED_KEYS = [
+  'bjtrainer.mediaSessionLog.v1',
+  'bjtrainer.voiceProbe.v1',
+  'bjtrainer.voiceLocal.v1',
+  'bjtrainer.voiceLocalProbe.v1',
+];
+
+export function dropRetiredKeys(): void {
+  for (const key of RETIRED_KEYS) removeKey(key);
 }
 
 export function saveSettings(s: Settings): boolean {

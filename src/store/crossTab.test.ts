@@ -153,14 +153,14 @@ describe('OWNED_KEYS', () => {
     // drops is additive, and re-reading another tab's total mid-flush would
     // double-count rather than correct anything.
     'bjtrainer.diagnostics.dropped.v1': 'append-only counter, follows the buffer',
-    'bjtrainer.mediaSessionLog.v1': 'append-only, per page load',
     // Per-device caches of what the speech engine offered THIS tab. Voices
     // are enumerated per document; another tab's list is not evidence about
     // this one.
     'bjtrainer.voiceHistory.v1': 'per-document voice enumeration',
-    'bjtrainer.voiceLocal.v1': 'per-document voice enumeration',
-    'bjtrainer.voiceLocalProbe.v1': 'per-document voice enumeration',
-    'bjtrainer.voiceProbe.v1': 'per-document voice enumeration',
+    'bjtrainer.mediaSessionLog.v1': 'retired; deleted on load by dropRetiredKeys',
+    'bjtrainer.voiceProbe.v1': 'retired; deleted on load by dropRetiredKeys',
+    'bjtrainer.voiceLocal.v1': 'retired; deleted on load by dropRetiredKeys',
+    'bjtrainer.voiceLocalProbe.v1': 'retired; deleted on load by dropRetiredKeys',
     // Written and deleted inside one run of the device check, purely to find
     // out whether this browser can store anything at all
     // (diag/deviceChecks.ts). It never holds state, and by the time any other

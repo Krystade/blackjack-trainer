@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { sayOnceListening } from './helpers';
 
 /**
- * The microphone log.
+ * The microphone history, end to end: heard in a drill, offered for teaching.
  *
  * It exists because the alias table only improves when a real mishearing is
  * caught, and the one caught so far -- "Stant" for "stand" -- was found by
@@ -10,9 +10,12 @@ import { sayOnceListening } from './helpers';
  * not work in a car, which is where road noise and a phone microphone produce
  * the substitutions worth knowing about.
  *
- * It is also a record of what an open microphone heard, so the specs below
- * cover the privacy affordances as seriously as the diagnostics: it must be
- * clearable, and clearing must actually clear.
+ * Its own read-back panel ("What the microphone heard") is gone: every phrase
+ * is in the diagnostic log, and the only thing worth doing with a rejection on
+ * the phone is teaching it, so the history surfaces in "Teach it your words".
+ * voice-aliases.spec.ts seeds storage directly; this spec owns the path from
+ * a real drill into that list, and the privacy half -- it is a record of what
+ * an open microphone heard, so it must be clearable, and clearing must clear.
  */
 
 async function withFakeEngine(page: Page): Promise<void> {
@@ -79,25 +82,25 @@ async function drillWithVoice(page: Page): Promise<void> {
 
 async function openHistory(page: Page) {
   // A drill hides the tab bar, so leave it first. Turning voice off on the
-  // way out is also what a person does, and it proves the log survives the
-  // microphone closing.
+  // way out is also what a person does, and it proves the history survives
+  // the microphone closing.
   const back = page.locator('.drill-back-btn');
   if (await back.count()) await back.first().click();
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const section = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'What the microphone heard' }) });
+  const section = page
+    .locator('.settings-section')
+    .filter({ has: page.locator('summary', { hasText: 'Teach it your words' }) });
   await expect(section).toBeVisible();
   return section;
 }
 
-test('nothing is recorded until the microphone is actually on', async ({ page }) => {
-  await withFakeEngine(page);
-  await page.goto('/?e2e=1');
-  const section = await openHistory(page);
-  await expect(section).toContainText('none yet');
-});
+/** The offered rejections, in the order the panel lists them. */
+function offers(section: ReturnType<Page['locator']>) {
+  return section.locator(`.settings-row:has(select[aria-label^='What "']) .settings-label`);
+}
 
-test('a misheard word is kept, so it can be taught later', async ({ page }) => {
+test('a word misheard in a drill is offered for teaching', async ({ page }) => {
   await drillWithVoice(page);
   // A word nothing can reach: not an alias, and far enough from every command
   // that the near-miss rule will not claim it either. "Stant" was the original
@@ -106,16 +109,15 @@ test('a misheard word is kept, so it can be taught later', async ({ page }) => {
   await say(page, 'wombat');
 
   const section = await openHistory(page);
-  await expect(section).toContainText('1 not');
-  await expect(section).toContainText('wombat');
+  await expect(offers(section)).toHaveText(['“wombat” ×1']);
 });
 
-test('understood speech is recorded too, not only the misses', async ({ page }) => {
+test('understood speech is not offered -- there is nothing to teach', async ({ page }) => {
   await drillWithVoice(page);
   await say(page, 'stand');
 
   const section = await openHistory(page);
-  await expect(section).toContainText('1 understood');
+  await expect(offers(section)).toHaveCount(0);
 });
 
 /**
@@ -133,77 +135,26 @@ test('a repeated miss outranks a one-off', async ({ page }) => {
   await sayWhenListening(page, 'what time is it');
 
   const section = await openHistory(page);
-  await expect(section).toContainText('Commonest miss');
-  await expect(section).toContainText('“wombat” ×2');
-});
-
-test('the full log can be read on screen', async ({ page }) => {
-  await drillWithVoice(page);
-  await say(page, 'wombat');
-
-  const section = await openHistory(page);
-  await section.getByRole('button', { name: 'Show' }).click();
-  await expect(section.locator('pre')).toContainText('candidate aliases');
-  await expect(section.locator('pre')).toContainText('[flashcards]');
+  await expect(offers(section)).toHaveText(['“wombat” ×2', '“what time is it” ×1']);
 });
 
 /**
- * It records what an open microphone heard, so deleting it has to be one tap
- * away and has to actually delete.
+ * It records what an open microphone heard, so forgetting it has to be one
+ * tap away and has to actually delete.
  */
-test('the recording can be deleted outright', async ({ page }) => {
+test('what it heard can be forgotten outright', async ({ page }) => {
   await drillWithVoice(page);
   await say(page, 'wombat');
 
   let section = await openHistory(page);
-  await expect(section).toContainText('wombat');
+  await expect(offers(section)).toHaveCount(1);
 
-  await section.getByRole('button', { name: 'Delete recording' }).click();
-  await expect(section).toContainText('none yet');
+  await section.getByRole('button', { name: 'Forget what it heard' }).click();
+  await expect(offers(section)).toHaveCount(0);
 
   // And it stays deleted, rather than reappearing from storage on reload.
   await page.reload();
   section = await openHistory(page);
-  await expect(section).toContainText('none yet');
-});
-
-test('the panel says plainly that nothing leaves the device', async ({ page }) => {
-  await withFakeEngine(page);
-  await page.goto('/?e2e=1');
-  const section = await openHistory(page);
-  await expect(section).toContainText('never uploaded');
-});
-
-/**
- * How much help the engine needed, broken out by kind.
- *
- * A word the engine ranked second and a word it never produced at all are
- * different facts about the microphone. Counting them together would leave
- * the log unable to say whether near-miss matching is earning its place or
- * quietly guessing, which is the question the next drive has to answer.
- */
-test('the log separates a word ranked second from one never said at all', async ({ page }) => {
-  await drillWithVoice(page);
-
-  // Verbatim from the drive: the engine had "Stand" and ranked it third.
-  await sayWhenListening(page, 'Band', ['Send', 'Stand']);
-  // And here it never produced the word at all -- reached by consonant
-  // skeleton. Said only once the app has stopped talking about the last
-  // answer, or it would be swallowed as the app hearing itself.
-  await sayWhenListening(page, 'send');
-
-  const section = await openHistory(page);
-  await expect(section).toContainText('Needed help');
-  await expect(section).toContainText('1 ranked second');
-  await expect(section).toContainText('1 near miss');
-});
-
-// A row of zeroes is noise on a screen read while driving.
-test('no help needed means no row about help', async ({ page }) => {
-  await drillWithVoice(page);
-  await say(page, 'stand');
-
-  const section = await openHistory(page);
-  await expect(section).toContainText('1 understood');
-  await expect(section).not.toContainText('Needed help');
+  await expect(offers(section)).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem('bjtrainer.voiceHistory.v1'))).toBeNull();
 });

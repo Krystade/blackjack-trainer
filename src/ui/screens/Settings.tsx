@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
@@ -7,7 +7,6 @@ import { aliasProblem, aliasTargets, normaliseAlias } from '../../audio/voiceAli
 import { saveSettings } from '../../store/persist';
 import {
   chime,
-  ensureMediaSessionHandlers,
   isSpeechSupported,
   listVoices,
   speak,
@@ -21,13 +20,7 @@ import {
   type ClipVoiceInfo,
   type ClipManifest,
 } from '../../audio/clips';
-import { carControlsBlockers, describeCarControlsBlocker } from '../../audio/carControls';
 import { probeMicSpectrum, type MicProbeResult } from '../../diag/micSpectrum';
-import { readLog, clearLog, formatLog } from '../../audio/mediaSessionLog';
-import { startButtonTest, unheardActions } from '../../audio/buttonTester';
-import type { ButtonPress, ButtonTesterHandle } from '../../audio/buttonTester';
-import { MEDIA_SESSION_LABEL } from '../../audio/mediaSession';
-import type { MediaSessionAction } from '../../audio/mediaSession';
 import { micSessionCostPaid } from '../../audio/micSessionCost';
 import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
 import { FIELD_TEST_CONDITIONS, FIELD_TEST_STEPS } from '../../diag/fieldTest';
@@ -47,13 +40,11 @@ import {
   PUSH_TO_TALK_MIN_MS,
   PUSH_TO_TALK_STEP_MS,
 } from '../voiceSession';
-import { detectVoiceSupport } from '../../audio/voiceRecognition';
 import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
 import {
   readVoiceHistory,
   clearVoiceHistory,
   summariseHistory,
-  formatVoiceHistory,
   type HeardEntry,
 } from '../../audio/voiceHistory';
 import {
@@ -66,19 +57,6 @@ import {
   diag,
   type DiagEntry,
 } from '../../diag/diagnosticLog';
-import {
-  clearOnDeviceProbeGuard,
-  onDeviceProbeCrashed,
-  onDeviceStatus,
-  installOnDevice,
-  prefersOnDevice,
-  setPrefersOnDevice,
-  describeOnDeviceStatus,
-  type OnDeviceStatus,
-} from '../../audio/onDeviceSpeech';
-import { startVoiceProbe, readProbeLog, clearProbeLog, formatProbeLog } from '../../audio/voiceProbe';
-import type { ProbeEntry, ProbeHandle } from '../../audio/voiceProbe';
-import type { LogEntry } from '../../audio/mediaSessionLog';
 
 interface SettingsProps {
   settings: SettingsData;
@@ -542,7 +520,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             <Segmented
               options={[
                 { value: 'playback', label: 'Speaker' },
-                { value: 'switch', label: 'Switch' },
                 { value: 'auto', label: 'Auto' },
               ]}
               value={settings.audio.outputRoute}
@@ -551,9 +528,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           </div>
           <div className="settings-note-row u-note">
             Opening the microphone moves iOS output to the earpiece. <strong>Speaker</strong>
-            declares media mode and never asks to record. <strong>Switch</strong> closes the
-            microphone while the app talks &mdash; about a second of deafness per line, and
-            the only lever so far that moves the sound back. <strong>Auto</strong> leaves
+            declares media mode and never asks to record. <strong>Auto</strong> leaves
             iOS alone.
           </div>
           {settings.audio.useClips && clipVoices.length > 0 && (
@@ -710,21 +685,14 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           </div>
       </CollapsibleSection>
 
-      <CarDiagnostics audio={settings.audio} />
-
       <CarCheckSection onNavigate={onNavigate} />
       <SelfTestSection live={settings} />
 
-      <MicExperimentsPanel
-        audio={settings.audio}
-        onChange={(patch) => updateAudio(patch)}
-      />
-      <VoiceProbePanel />
+      <MicProbePanel />
       <VoiceAliasPanel
         aliases={settings.audio.voiceAliases ?? {}}
         onChange={(voiceAliases) => updateAudio({ voiceAliases })}
       />
-      <VoiceHistoryPanel />
       <DiagnosticLogPanel />
     </div>
   );
@@ -895,467 +863,25 @@ function SelfTestSection({ live }: { live: SettingsData }) {
 }
 
 /**
- * The field test's door, and nothing more.
+ * Which microphone the recogniser is really listening through.
  *
- * THE STEPS ARE NOT HERE, and neither is the run. They were here once, and
- * following them meant walking back to this screen after every step -- which
- * threw the run away each time and stopped the first real run after four
- * (2026-09-19). Then they floated over a drill, which kept the run but left
- * the operator running a drill and a test at once (2026-09-22: "I don't know
- * why we have to go to a drill in the first place"). Now the protocol has its
- * own screen and its own voice; this is only the way in.
+ * The one voice question still open that only the car can answer. If the
+ * phone hands recognition the car's hands-free microphone over narrowband
+ * HFP, nothing above 4kHz reaches the engine and no alias, two-word form or
+ * matcher rule can put the consonants back -- so the answer decides whether
+ * further recognition work is worth doing at all. It is a hard spectral wall,
+ * so it cannot pass for the wrong reason, and the verdict is written to the
+ * diagnostic log as `mic spectrum`, so it rides along in the export.
+ *
+ * WHAT WENT. This section used to carry two A/B switches -- cue on `onstart`
+ * or on `onaudiostart`, and three or ten readings per answer. Both defaults
+ * dominate by construction (the audio gate fails open after a grace period,
+ * and the rescue guards are on length, not rank), and the log records the
+ * start-to-audio gap and how many readings were offered either way, so the
+ * control arms bought nothing. They are now simply the behaviour; see
+ * useVoiceControl.ts.
  */
-/**
- * Press a wheel button; be told what it is called.
- *
- * The one question a drive cannot otherwise answer. A ring selector with five
- * directions plus volume and call keys is nine physical controls, the browser
- * can hear at most eight Media Session names, and which physical button emits
- * which name is decided inside the head unit. Guessing produced a mapping that
- * looped for five minutes on the last drive.
- *
- * WHILE THE TEST RUNS, EVERY BUTTON IS INERT. A press reports its name and does
- * nothing else -- learning that the ring's left click is `previoustrack` must
- * not simultaneously repeat a prompt or answer a drill question. Normal
- * behaviour comes back on Stop, and on unmount, so leaving Settings mid-test
- * cannot strand the app with dead controls.
- *
- * The silent loop that keeps the car listening is audio/buttonTester.ts's, and
- * its header says why it has to be there.
- */
-function ButtonTester({ onPressed }: { onPressed: () => void }) {
-  const [running, setRunning] = useState(false);
-  const [presses, setPresses] = useState<ButtonPress[]>([]);
-  const handleRef = useRef<ButtonTesterHandle | null>(null);
-
-  // Stop on unmount. Without this, navigating away mid-test leaves the probe
-  // armed and every wheel button silently dead for the rest of the session.
-  useEffect(() => {
-    return () => {
-      handleRef.current?.stop();
-      handleRef.current = null;
-    };
-  }, []);
-
-  const start = () => {
-    setPresses([]);
-    // Claim the transport controls first. They are normally registered by the
-    // first clip that plays, and a driver can easily reach this panel before
-    // the app has said anything -- in which case there is nothing listening,
-    // and every button would report as dead.
-    ensureMediaSessionHandlers();
-    handleRef.current = startButtonTest((press) => {
-      setPresses((prev) => [press, ...prev].slice(0, 40));
-      // Spoken, because the whole point is to work from the driver's seat.
-      // Live speech deliberately: the clip library has no recording of
-      // "Skip forward. Answers yes." and never should -- this is a diagnostic
-      // sentence, not something a drill says.
-      const label = MEDIA_SESSION_LABEL[press.action as MediaSessionAction];
-      speak(label ?? press.action, { interrupt: true });
-      onPressed();
-    });
-    setRunning(true);
-  };
-
-  const stop = () => {
-    handleRef.current?.stop();
-    handleRef.current = null;
-    setRunning(false);
-  };
-
-  const heard = [...new Set(presses.map((p) => p.action))];
-  const unheard = unheardActions(heard);
-
-  return (
-    <>
-      <div className="settings-row">
-        <span className="settings-label">Test the wheel buttons</span>
-        <button type="button" className="settings-mini-btn" onClick={running ? stop : start}>
-          {running ? 'Stop test' : 'Start test'}
-        </button>
-      </div>
-
-      {!running && presses.length === 0 && (
-        <div className="settings-note-row u-note">
-          Press every wheel button one at a time. Each one that reaches the app says its own
-          name out loud, and does nothing else while the test runs.
-        </div>
-      )}
-
-      {running && (
-        <div className="settings-note-row u-note">
-          Listening. A silent track is playing to keep the car pointed at this app — that is
-          what makes the buttons reach it at all. Press one.
-        </div>
-      )}
-
-      {presses.length > 0 && (
-        <>
-          <div className="settings-row">
-            <span className="settings-label">Heard so far</span>
-            <span className="settings-value">{heard.join(', ')}</span>
-          </div>
-          <div className="settings-row">
-            <span className="settings-label">Never arrived</span>
-            <span className="settings-value">{unheard.length ? unheard.join(', ') : 'none — all eight reached the app'}</span>
-          </div>
-          <ul className="car-press-list">
-            {presses.map((press, i) => (
-              <li className="car-press-row" key={`${press.at}-${i}`}>
-                <span className="car-press-action">{press.action}</span>
-                <span className="car-press-label">
-                  {MEDIA_SESSION_LABEL[press.action as MediaSessionAction] ?? 'Unknown action'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </>
-  );
-}
-
-/**
- * What the car actually did, read back after the drive.
- *
- * Media Session is the one feature here that cannot be verified from a desk,
- * and the only person who can observe it is driving -- no console, no
- * devtools. So the app records every transport action the head unit sends
- * (see audio/mediaSessionLog.ts) and this panel reads it back once parked.
- *
- * Deliberately last in Settings and empty-by-default: it is diagnostic, not
- * a control, and it says nothing at all until there is something to report.
- */
-function CarDiagnostics({ audio }: { audio: AudioSettings }) {
-  const [entries, setEntries] = useState<LogEntry[]>(() => readLog());
-  const [shown, setShown] = useState(false);
-  const blockers = carControlsBlockers(audio);
-
-  const invoked = [...new Set(entries.filter((e) => e.kind === 'invoke').map((e) => e.action))];
-  const accepted = [...new Set(entries.filter((e) => e.kind === 'register' && e.ok).map((e) => e.action))];
-  const refused = [...new Set(entries.filter((e) => e.kind === 'register' && !e.ok).map((e) => e.action))];
-
-  return (
-    <CollapsibleSection
-      title={<>Car controls</>}
-      defaultOpen={false}
-    >
-
-        <div className="settings-note-row u-note">
-          Records which steering-wheel buttons your car sends, so the mapping can be
-          matched to it. Fills in by itself while you drive.
-        </div>
-
-        {/* Why the readout below can stay empty forever. Both conditions are
-            invisible from the driver's seat, and the first drive met neither:
-            the wheel did nothing, and the car showed the app as a phone call. */}
-        <div className="settings-row">
-          <span className="settings-label">Can the wheel reach this app?</span>
-          <span className="settings-value" data-car-ready={blockers.length === 0}>
-            {blockers.length === 0 ? 'Yes — settings are right' : 'Not yet'}
-          </span>
-        </div>
-        {blockers.map((b) => (
-          <div key={b} className="settings-note-row u-note">
-            {describeCarControlsBlocker(b)}
-          </div>
-        ))}
-        {/* This paragraph used to say "leave the microphone off", which was
-            right when the wheel always answered and is wrong now that it opens
-            the microphone by default. The route fact behind it is unchanged
-            and still belongs here, next to the readout it explains; the choice
-            it was attached to has moved to "In the car", and the phone-mic
-            answer (asked directly, 2026-09-16) moved with it rather than being
-            said twice on one screen. */}
-        <div className="settings-note-row u-note">
-          An open microphone flips the car to its hands-free route &mdash; the app shows up
-          as a <strong>phone call</strong> &mdash; and the wheel&rsquo;s buttons go to that
-          call. Which of the two the buttons do is set under <strong>In the car</strong>.
-        </div>
-
-        {/* Asked directly (2026-09-16): "can we use my phone mic". Kept because
-            it is a platform fact that looks like a missing feature; cut to one
-            line because the paragraph it used to be gets read once. */}
-        <div className="settings-note-row u-note">
-          <strong>The phone&rsquo;s own microphone?</strong> Not while the car is connected
-          &mdash; recognition uses whatever the phone is routing through, and nothing in a
-          page can override it.
-        </div>
-
-        {/* The wheel's own MODE lives in "In the car" at the top, beside the
-            other switches a drive needs. What is left here is the mapping
-            diagnostic: which buttons this car actually sends. */}
-        <ButtonTester onPressed={() => setEntries(readLog())} />
-
-        <div className="settings-row">
-          <span className="settings-label">Buttons your car sent</span>
-          <span className="settings-value">{invoked.length ? invoked.join(', ') : 'none yet'}</span>
-        </div>
-        {/* What those buttons now do, stated because the mapping is no longer a
-            guess: the 2026-09-11 drive showed this car sends skip and pause on a
-            press, and sends `play` on its own every time a clip ends. */}
-        <div className="settings-note-row u-note">
-          <strong>Skip forward goes forward</strong>, <strong>skip back goes back</strong>.
-          Where a drill wants a number the two walk it and read it back. Play, pause and
-          stop are ignored on purpose &mdash; this car sends them unprompted.
-        </div>
-        <div className="settings-row">
-          <span className="settings-label">Accepted by this phone</span>
-          <span className="settings-value">{accepted.length ? accepted.join(', ') : 'none yet'}</span>
-        </div>
-        {refused.length > 0 && (
-          <div className="settings-row">
-            <span className="settings-label">Refused</span>
-            <span className="settings-value">{refused.join(', ')}</span>
-          </div>
-        )}
-
-        <div className="settings-row">
-          <button type="button" className="settings-mini-btn" onClick={() => setEntries(readLog())}>
-            Refresh
-          </button>
-          <button type="button" className="settings-mini-btn" onClick={() => setShown((v) => !v)}>
-            {shown ? 'Hide detail' : 'Show detail'}
-          </button>
-          <button
-            type="button"
-            className="settings-mini-btn"
-            onClick={() => {
-              clearLog();
-              setEntries([]);
-            }}
-          >
-            Clear
-          </button>
-        </div>
-
-        {shown && (
-          <>
-            <div className="settings-row">
-              <button
-                type="button"
-                className="settings-mini-btn"
-                onClick={() => {
-                  // Clipboard can be unavailable or denied; the text is on
-                  // screen regardless, so a failure needs no alarm.
-                  void navigator.clipboard?.writeText(formatLog(entries)).catch(() => {});
-                }}
-              >
-                Copy report
-              </button>
-            </div>
-            <pre className="car-log">{formatLog(entries)}</pre>
-          </>
-        )}
-    </CollapsibleSection>
-  );
-}
-
-/**
- * The voice-recognition spike.
- *
- * Whether voice input is buildable at all cannot be settled from a
- * development machine: Playwright's Chromium exposes the whole
- * SpeechRecognition surface and then fires no events, because there is no
- * microphone and no speech backend behind it. So this panel exists to be RUN
- * BY THE OPERATOR on the devices that matter -- an iPhone in a car, and a
- * backgrounded Chrome tab -- and to record what happened for reading
- * afterwards, since in both cases they cannot watch a screen while it runs.
- */
-/**
- * The offline speech model.
- *
- * Recognition normally streams audio to Google's servers, which is why it is
- * accurate and also why it has the two failures that hurt in a car: a
- * server-side session limit that kills listening roughly every ninety seconds
- * -- each restart deaf, and each one re-opening the microphone, which is the
- * crackle heard on every cycle -- and a hard dependency on signal, so a
- * tunnel stops it.
- *
- * A local model has no server and so, in principle, neither problem. It has
- * to be downloaded first, which is a decision for the operator and their data
- * plan, not something to start behind their back.
- *
- * Nothing here claims success on its own say-so. `install()` was measured
- * resolving FALSE immediately, with a real user gesture, without throwing and
- * without a reason -- so what gets reported is what `available()` says
- * afterwards, and a refusal is described as a refusal.
- *
- * AND NOTHING HERE ASKS UNTIL ASKED. The capability query kills the renderer
- * outright on some builds of Chrome -- measured, and with an identical API
- * surface to the builds where it works, so there is nothing to feature-detect.
- * Opening Settings must not be able to close the app, so the query sits
- * behind a button. Someone who never presses it is never exposed to it.
- */
-function OnDeviceModelPanel() {
-  const [status, setStatus] = useState<OnDeviceStatus | null>(null);
-  const [preferred, setPreferred] = useState(() => prefersOnDevice());
-  const [busy, setBusy] = useState(false);
-  const [refused, setRefused] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const crashedBefore = onDeviceProbeCrashed();
-
-  const refresh = () => {
-    setChecking(true);
-    void onDeviceStatus().then((next) => {
-      setStatus(next);
-      setChecking(false);
-    });
-  };
-
-  // A download continues in the background and reports no progress, so the
-  // only way to notice it finishing is to keep asking. Safe to poll: getting
-  // here at all means the query already returned once on this browser.
-  useEffect(() => {
-    if (status !== 'downloading') return;
-    const timer = window.setInterval(refresh, 5000);
-    return () => window.clearInterval(timer);
-  }, [status]);
-
-  const download = () => {
-    setBusy(true);
-    setRefused(false);
-    // Called straight from the click: this needs the user gesture, and
-    // awaiting anything before it would spend it.
-    void installOnDevice().then((outcome) => {
-      setStatus(outcome.status);
-      // Refused AND still not installed. Either alone is not a failure: a
-      // browser that already holds the model declines and is ready anyway.
-      setRefused(!outcome.accepted && outcome.status !== 'available');
-      setBusy(false);
-    });
-  };
-
-  // Not asked yet. The query is the dangerous part, so it waits to be asked
-  // for by name rather than happening because a screen was opened.
-  if (status === null) {
-    return (
-      <>
-        <div className="settings-row">
-          <button
-            type="button"
-            className="settings-mini-btn"
-            onClick={refresh}
-            disabled={checking || crashedBefore}
-          >
-            {checking ? 'Checking…' : 'Check for an offline model'}
-          </button>
-        </div>
-        <div className="settings-note-row u-note">
-          {crashedBefore ? (
-            <>
-              This browser closed the app the last time it was asked, so it is not asked
-              again here. Voice still works over the network.
-            </>
-          ) : (
-            <>
-              Asks whether this browser can install a speech model that runs on the device
-              &mdash; worth having in a tunnel.
-            </>
-          )}
-        </div>
-        {crashedBefore && (
-          <div className="settings-row">
-            <button
-              type="button"
-              className="settings-mini-btn"
-              onClick={() => {
-                clearOnDeviceProbeGuard();
-                refresh();
-              }}
-            >
-              Ask this browser again
-            </button>
-          </div>
-        )}
-      </>
-    );
-  }
-
-  return (
-    <>
-      <div className="settings-row">
-        <span className="settings-label">Offline model</span>
-        <span className="settings-value">{status}</span>
-      </div>
-
-      <div className="settings-note-row u-note">{describeOnDeviceStatus(status)}</div>
-
-      {(status === 'downloadable' || status === 'downloading') && (
-        <div className="settings-row">
-          <button
-            type="button"
-            className="settings-mini-btn"
-            onClick={download}
-            disabled={busy || status === 'downloading'}
-          >
-            {busy ? 'Asking…' : 'Download offline model'}
-          </button>
-        </div>
-      )}
-
-      {refused && (
-        <div className="settings-note-row u-note">
-          The browser declined to install it, without saying why. That is what this
-          build does when it cannot fetch the model &mdash; on a phone it usually
-          means Wi-Fi, storage or a battery-saver restriction. Voice keeps working
-          over the network either way.
-        </div>
-      )}
-
-      {status === 'available' && (
-        <Toggle
-          label="Use the offline model"
-          checked={preferred}
-          onChange={(on) => {
-            setPrefersOnDevice(on);
-            setPreferred(on);
-          }}
-        />
-      )}
-    </>
-  );
-}
-
-/**
- * Words the operator teaches the app, taken from what it actually misheard.
- *
- * WHY IT IS SEEDED RATHER THAN A BLANK BOX. Jack asked for "a setting where I
- * can put in a bunch of different aliases for the different words just to help
- * so I can say something that's easier for it to pick out." A free-text field
- * would make him guess what the engine returns, and the engine's guesses are
- * not guessable -- his 2026-10-04 log has `heard=Strength`, `heard=Touch`,
- * `heard=Definitely`, `heard="That's for sure"`, none of which anyone would
- * think to type. The app already keeps every rejection, so the list offers
- * them and he says what each one meant. One tap per word, no typing.
- *
- * It is also the only honest way to find out whether any of this helps. The
- * log records what the ENGINE returned and never what was said, so nothing in
- * it can score recognition -- I claimed from those lines that multi-word
- * commands "graded correctly every time" and Jack's reply was "This is
- * straight up wrong", with `heard="That's for sure" verdict=rejected` sitting
- * in the log twice. Binding a rejection to an action is the first record of
- * intent this app has ever had.
- */
-/**
- * The two microphone experiments, and the probe that says which microphone.
- *
- * SEPARATE SWITCHES ON PURPOSE. Each of these is an independent hypothesis
- * about why single words come back wrong, and a drive that changes both at
- * once produces a number that cannot be attributed. The operator asked to
- * test them separately; this is what that means in the car.
- *
- * Every drive's log records which arm was live, because the settings go into
- * the export -- so an exported log is self-describing and a drive done a week
- * ago can still be read.
- */
-function MicExperimentsPanel({
-  audio,
-  onChange,
-}: {
-  audio: AudioSettings;
-  onChange: (patch: Partial<AudioSettings>) => void;
-}) {
+function MicProbePanel() {
   const [probing, setProbing] = useState(false);
   const [result, setResult] = useState<MicProbeResult | null>(null);
 
@@ -1384,52 +910,9 @@ function MicExperimentsPanel({
   };
 
   return (
-    <CollapsibleSection title={<>Microphone experiments</>} defaultOpen={false}>
-      <div className="settings-note-row u-note">
-        Three separate things to try, so a drive can test <strong>one at a time</strong>.
-        Each drive&rsquo;s log records which were on.
-      </div>
-
+    <CollapsibleSection title={<>Which microphone?</>} defaultOpen={false}>
       <div className="settings-row">
-        <span className="settings-label">Cue when the mic is</span>
-        <Segmented
-          options={[
-            { value: 'audiostart', label: 'Recording' },
-            { value: 'start', label: 'Started' },
-          ]}
-          value={audio.micCueOn}
-          onChange={(micCueOn) => onChange({ micCueOn })}
-        />
-      </div>
-      <div className="settings-note-row u-note">
-        The engine says &ldquo;started&rdquo; <em>before</em> the microphone is recording, and
-        over Bluetooth that gap is the time it takes the car to switch to hands-free. A word
-        spoken in it is not clipped &mdash; it was never recorded.
-        <strong> Recording</strong> waits for real audio before telling you to speak.
-        <strong> Started</strong> is the old behaviour, kept so you have something to compare
-        against.
-      </div>
-
-      <div className="settings-row">
-        <span className="settings-label">Readings per answer</span>
-        <Segmented
-          options={[
-            { value: '3', label: '3' },
-            { value: '10', label: '10' },
-          ]}
-          value={String(audio.voiceAlternatives)}
-          onChange={(v) => onChange({ voiceAlternatives: Number(v) })}
-        />
-      </div>
-      <div className="settings-note-row u-note">
-        The engine ranks several readings of the same audio and the right word is often
-        behind a wrong one &mdash; &ldquo;Band&rdquo;, then &ldquo;Send&rdquo;, then
-        &ldquo;Stand&rdquo;. Nothing has ever asked this phone for more than three, so
-        whether it offers more is unknown. Asking costs nothing where fewer exist.
-      </div>
-
-      <div className="settings-row">
-        <span className="settings-label">Which microphone?</span>
+        <span className="settings-label">Car or phone microphone</span>
         <button className="btn" onClick={runProbe} disabled={probing}>
           {probing ? 'Listening\u2026' : 'Test mic'}
         </button>
@@ -1459,6 +942,26 @@ function MicExperimentsPanel({
   );
 }
 
+/**
+ * Words the operator teaches the app, taken from what it actually misheard.
+ *
+ * WHY IT IS SEEDED RATHER THAN A BLANK BOX. Jack asked for "a setting where I
+ * can put in a bunch of different aliases for the different words just to help
+ * so I can say something that's easier for it to pick out." A free-text field
+ * would make him guess what the engine returns, and the engine's guesses are
+ * not guessable -- his 2026-10-04 log has `heard=Strength`, `heard=Touch`,
+ * `heard=Definitely`, `heard="That's for sure"`, none of which anyone would
+ * think to type. The app already keeps every rejection, so the list offers
+ * them and he says what each one meant. One tap per word, no typing.
+ *
+ * It is also the only honest way to find out whether any of this helps. The
+ * log records what the ENGINE returned and never what was said, so nothing in
+ * it can score recognition -- I claimed from those lines that multi-word
+ * commands "graded correctly every time" and Jack's reply was "This is
+ * straight up wrong", with `heard="That's for sure" verdict=rejected` sitting
+ * in the log twice. Binding a rejection to an action is the first record of
+ * intent this app has ever had.
+ */
 function VoiceAliasPanel({
   aliases,
   onChange,
@@ -1607,6 +1110,10 @@ function VoiceAliasPanel({
         ))
       )}
 
+      {/* The only control left over the stored list of what the microphone
+          heard (the panel that read it back is gone -- every phrase is in the
+          diagnostic log too). Forgetting it empties the offers above, and is
+          the privacy half: it is a record of what an open microphone heard. */}
       <div className="settings-row">
         <button
           type="button"
@@ -1615,117 +1122,18 @@ function VoiceAliasPanel({
         >
           Refresh what it heard
         </button>
+        <button
+          type="button"
+          className="settings-mini-btn"
+          onClick={() => {
+            clearVoiceHistory();
+            setEntries([]);
+          }}
+          disabled={entries.length === 0}
+        >
+          Forget what it heard
+        </button>
       </div>
-    </CollapsibleSection>
-  );
-}
-
-/**
- * Everything the microphone heard, read back.
- *
- * The alias table only improves when a real mishearing is caught, and the
- * one that has been caught so far -- "Stant" for "stand" -- was found because
- * the operator happened to glance at the screen mid-drill. That does not work
- * in a car, which is exactly where road noise and a phone microphone produce
- * substitutions nobody would think to invent. So the app writes them all down
- * and this reads them back, commonest rejection first: a substitution the
- * engine keeps making is worth adding to the table, a one-off usually is not.
- *
- * It is also, plainly, a record of what an open microphone heard. Text only,
- * on this device only, capped, and clearable right here.
- */
-function VoiceHistoryPanel() {
-  const [entries, setEntries] = useState<HeardEntry[]>(() => readVoiceHistory());
-  const [shown, setShown] = useState(false);
-
-  const summary = summariseHistory(entries);
-
-  return (
-    <CollapsibleSection
-      title={<>What the microphone heard</>}
-      defaultOpen={false}
-    >
-
-        <div className="settings-note-row u-note">
-          Every phrase heard while voice is on, with what the app made of it.{' '}
-          <strong>Text only, on this device, never uploaded.</strong>
-        </div>
-
-        <div className="settings-row">
-          <span className="settings-label">Phrases recorded</span>
-          <span className="settings-value">
-            {summary.total === 0
-              ? 'none yet'
-              : `${summary.matched} understood, ${summary.rejected} not`}
-          </span>
-        </div>
-
-        {/* How many needed help, and of what kind. A drive full of rescues says
-            the engine hears fine and only ranks badly; a drive full of near
-            misses says that rule is carrying real weight and is worth checking
-            for false positives. Hidden when neither happened, because a row of
-            zeroes is noise. */}
-        {summary.rescued + summary.approximate > 0 && (
-          <div className="settings-row">
-            <span className="settings-label">Needed help</span>
-            <span className="settings-value">
-              {summary.rescued} ranked second, {summary.approximate} near miss
-            </span>
-          </div>
-        )}
-
-        {/* The ranked rejections are the actionable part, so they get a row of
-            their own rather than being buried in the timeline. */}
-        {summary.candidates.length > 0 && (
-          <div className="settings-row">
-            <span className="settings-label">Commonest miss</span>
-            <span className="settings-value">
-              &ldquo;{summary.candidates[0]!.heard}&rdquo; &times;{summary.candidates[0]!.count}
-            </span>
-          </div>
-        )}
-
-        <div className="settings-row">
-          <button
-            type="button"
-            className="settings-mini-btn"
-            onClick={() => setEntries(readVoiceHistory())}
-          >
-            Refresh
-          </button>
-          <button
-            type="button"
-            className="settings-mini-btn"
-            onClick={() => setShown((v) => !v)}
-            disabled={summary.total === 0}
-          >
-            {shown ? 'Hide' : 'Show'}
-          </button>
-          <button
-            type="button"
-            className="settings-mini-btn"
-            onClick={() => {
-              void navigator.clipboard?.writeText(formatVoiceHistory(entries)).catch(() => {});
-            }}
-            disabled={summary.total === 0}
-          >
-            Copy
-          </button>
-          <button
-            type="button"
-            className="settings-mini-btn"
-            onClick={() => {
-              clearVoiceHistory();
-              setEntries([]);
-              setShown(false);
-            }}
-            disabled={summary.total === 0}
-          >
-            Delete recording
-          </button>
-        </div>
-
-        {shown && <pre className="car-log">{formatVoiceHistory(entries)}</pre>}
     </CollapsibleSection>
   );
 }
@@ -1889,131 +1297,6 @@ function DiagnosticLogPanel() {
       )}
 
       {shown && <pre className="car-log">{text}</pre>}
-    </CollapsibleSection>
-  );
-}
-
-function VoiceProbePanel() {
-  const [entries, setEntries] = useState<ProbeEntry[]>(() => readProbeLog());
-  const [running, setRunning] = useState(false);
-  const [shown, setShown] = useState(false);
-  const [autoRestart, setAutoRestart] = useState(true);
-  const handleRef = useRef<ProbeHandle | null>(null);
-
-  const support = detectVoiceSupport();
-
-  // Tearing the session down on unmount matters more than usual here: a live
-  // recognition session holds the microphone, and leaving one running after
-  // the operator navigates away is both a battery cost and a privacy one.
-  useEffect(() => {
-    return () => {
-      handleRef.current?.stop();
-      handleRef.current = null;
-    };
-  }, []);
-
-  const start = () => {
-    handleRef.current?.stop();
-    clearProbeLog();
-    handleRef.current = startVoiceProbe({ autoRestart });
-    setRunning(true);
-    setEntries(readProbeLog());
-  };
-
-  const stop = () => {
-    handleRef.current?.stop();
-    handleRef.current = null;
-    setRunning(false);
-    setEntries(readProbeLog());
-  };
-
-  const heard = entries.filter((e) => e.kind === 'result');
-  const matched = heard.filter((e) => !e.detail.includes('REJECTED')).length;
-  const hiddenEnds = entries.filter(
-    (e) => e.kind === 'end' && e.detail.includes('visibility=hidden'),
-  ).length;
-
-  return (
-    <CollapsibleSection
-      title={<>Voice control</>}
-      defaultOpen={false}
-    >
-
-        <div className="settings-note-row u-note">
-          Say <strong>hit</strong>, <strong>stand</strong>, <strong>double</strong>,{' '}
-          <strong>split</strong>, <strong>surrender</strong>, <strong>yes</strong>,{' '}
-          <strong>no</strong> or <strong>repeat</strong>, then come back and read what it heard.
-        </div>
-
-        <div className="settings-row">
-          <span className="settings-label">This browser</span>
-          <span className="settings-value">
-            {support.api ? `supported (${support.flavour})` : 'not supported'}
-            {support.media ? '' : ' · no microphone'}
-          </span>
-        </div>
-
-        <OnDeviceModelPanel />
-
-        <Toggle
-          label="Keep restarting when it stops"
-          checked={autoRestart}
-          onChange={setAutoRestart}
-          disabled={running}
-        />
-
-        <div className="settings-row">
-          <span className="settings-label">Heard</span>
-          <span className="settings-value">
-            {heard.length === 0 ? 'nothing yet' : `${matched} matched of ${heard.length}`}
-          </span>
-        </div>
-        {hiddenEnds > 0 && (
-          <div className="settings-row">
-            <span className="settings-label">Stopped while backgrounded</span>
-            <span className="settings-value">{hiddenEnds}&times;</span>
-          </div>
-        )}
-
-        <div className="settings-row">
-          {running ? (
-            <button type="button" className="settings-mini-btn" onClick={stop}>
-              Stop listening
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="settings-mini-btn"
-              onClick={start}
-              disabled={!support.api}
-            >
-              Start listening
-            </button>
-          )}
-          <button type="button" className="settings-mini-btn" onClick={() => setEntries(readProbeLog())}>
-            Refresh
-          </button>
-          <button type="button" className="settings-mini-btn" onClick={() => setShown((v) => !v)}>
-            {shown ? 'Hide log' : 'Show log'}
-          </button>
-        </div>
-
-        {shown && (
-          <>
-            <div className="settings-row">
-              <button
-                type="button"
-                className="settings-mini-btn"
-                onClick={() => {
-                  void navigator.clipboard?.writeText(formatProbeLog(entries)).catch(() => {});
-                }}
-              >
-                Copy report
-              </button>
-            </div>
-            <pre className="car-log">{formatProbeLog(entries)}</pre>
-          </>
-        )}
     </CollapsibleSection>
   );
 }

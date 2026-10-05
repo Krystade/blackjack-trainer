@@ -8,7 +8,7 @@ import { diag } from '../diag/diagnosticLog';
  *   - microphone ON  -> answering by voice works, but opening the mic switches
  *     the car from its media profile to its hands-free CALL profile, so the
  *     wheel's buttons go to that "call" and not to this app. (The car even
- *     displays the app as a phone call. See audio/carControls.ts.)
+ *     displays the app as a phone call.)
  *   - microphone OFF -> the wheel reaches the app, but nothing could answer.
  *
  * The 2026-09-11 drive settled the half that could not be settled from a desk:

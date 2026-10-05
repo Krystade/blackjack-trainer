@@ -587,19 +587,6 @@ function isSpeakingNow(): boolean {
 }
 
 /**
- * The same question, for the microphone.
- *
- * Exported because the voice controller must not open a session over the
- * app's own voice -- the 2026-10-04 drive opened one 7ms into a 4489ms prompt
- * and spent the whole prompt on the earpiece. Both paths have to count: the
- * recorded voice ships on by default, so a predicate that knew only about
- * live TTS would answer "quiet" through every prompt Jack actually hears.
- */
-export function appIsSpeaking(): boolean {
-  return isSpeakingNow();
-}
-
-/**
  * Sound a chime once the app has stopped talking.
  *
  * WHY, from Jack's 2026-10-02 log with the car off Bluetooth:

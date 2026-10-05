@@ -30,7 +30,6 @@
  */
 
 import { diag } from '../diag/diagnosticLog';
-import { appendLog } from './mediaSessionLog';
 
 /** Who wants the app to stay the active media app. */
 export type AudioFocusKey = 'speech' | 'button-test' | 'car-check';
@@ -177,13 +176,11 @@ export function holdAudioFocus(key: AudioFocusKey): void {
         diag('focus', 'holding', { key, paused: el.paused, holders: held.size });
       })
       .catch((e: unknown) => {
-        appendLog({ kind: 'note', action: 'audio-focus-refused', ok: false });
         // The silent failure that makes every wheel button dead. iOS refuses
         // `play()` with no gesture behind it, and before this line the only
         // symptom was a car that ignored the app.
         diag('focus', 'refused', { key, why: e instanceof Error ? e.name : String(e) });
       });
-    appendLog({ kind: 'note', action: `audio-focus-hold:${key}`, ok: true });
     // THE ELEMENT WAS STARTED, which is the fact this line reports. `restart`
     // separates the retry after a refusal — the path that brings a dead
     // media slot back — from the session's first acquisition.
@@ -214,7 +211,6 @@ export function releaseAudioFocus(key: AudioFocusKey): void {
     diag('focus', 'release', { key, holders: held.size, remaining: true });
     return;
   }
-  appendLog({ kind: 'note', action: `audio-focus-release:${key}`, ok: true });
   diag('focus', 'release', { key, holders: held.size });
   if (!element) return;
   try {

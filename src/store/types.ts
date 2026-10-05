@@ -155,7 +155,7 @@ export interface Settings {
      * minus one, "I had it". No microphone is involved, so nothing can take
      * the wheel away mid-session: opening the mic flips the car to its
      * hands-free CALL route and every button goes to that call instead of to
-     * this app (audio/carControls.ts).
+     * this app.
      *
      * 'talk' (DEFAULT): forward OPENS THE MICROPHONE for a window and then
      * closes it again -- push to talk. Saying "plus four" is one gesture
@@ -276,13 +276,11 @@ export interface AudioSettings {
    * the whole way. The category a page DECLARES and the category the session
    * is IN are different things once something is capturing.
    *
-   * So 'switch' is the default: close capture, declare playback, then speak,
-   * which is the order the thread on WebKit bug 218012 reports as the only
-   * thing that moves the route. It costs about 1.2 seconds of deafness per
-   * spoken line. 'playback' and 'auto' stay as the two cheaper answers for
-   * whoever would rather keep the microphone and lose the speaker.
+   * 'switch' (close capture, declare playback, then speak) was tried next
+   * and failed the same way, and is gone; store/persist.ts still rewrites a
+   * stored 'switch' to 'auto' on load.
    */
-  outputRoute: 'auto' | 'playback' | 'switch';
+  outputRoute: 'auto' | 'playback';
   /**
    * Extra words the operator wants heard as commands, phrase -> action.
    *
@@ -295,27 +293,6 @@ export interface AudioSettings {
    * command. See the note on ECHO_MIN_WORDS.
    */
   voiceAliases: Record<string, string>;
-  /**
-   * What counts as "the microphone is open": the engine saying it started, or
-   * the capture source actually coming up.
-   *
-   * 'audiostart' is the fix and the default. WebKit fires `onstart` and THEN
-   * calls `startCapture()`, so a cue on `onstart` invites an answer into a
-   * microphone that is not recording yet -- and the lost syllable is not
-   * clipped, it was never captured. 'start' is the old behaviour, kept
-   * because a control drive is the only thing that turns this into a number.
-   */
-  micCueOn: 'start' | 'audiostart';
-  /**
-   * How many readings of one utterance to ask the engine for.
-   *
-   * Three until now, which is also the most anyone has ever asked iOS for --
-   * so whether it offers more is unknown rather than settled. Deepening is
-   * safe because resolveSpoken's guards are on LENGTH, not rank: both the
-   * winner and the rescuing reading must be short, so a longer list cannot
-   * turn a sentence into a played hand.
-   */
-  voiceAlternatives: number;
 }
 
 export const DEFAULT_AUDIO: AudioSettings = {
@@ -343,30 +320,10 @@ export const DEFAULT_AUDIO: AudioSettings = {
   chimes: true,
   answerPauseMs: 3000,
   dimZones: false,
-  // 'switch', because the two cheaper answers are both known to leave the
-  // sound on the earpiece and that was called unacceptable (2026-10-04:
-  // "Speaker with voice not working isn't acceptable"). It is the only mode
-  // that actually takes the microphone down, which is the only lever reported
-  // to work. Costs ~1.2s of deafness per line; both other modes remain.
+  // 'auto': never touch the audio session. See store/persist.ts for why the
+  // alternatives are retired on load.
   outputRoute: 'auto',
   voiceAliases: {},
-  /*
-   * 'audiostart', because `onstart` is measurably not the microphone.
-   *
-   * The 2026-10-04 log has `heard=It` for "hit" and `heard=Strength` for
-   * "stand" -- both the shape of a word whose onset is missing. WebKit's
-   * `SpeechRecognizer::start()` dispatches Start and only afterwards calls
-   * `startCapture()`, and over Bluetooth that second step waits on the
-   * hands-free SCO link. Anything said in between never reached the buffer.
-   *
-   * Safe as a default because the gate fails OPEN: an engine that never fires
-   * the event cues anyway after AUDIOSTART_GRACE_MS, logged under its own
-   * name. The worst case is the behaviour of the old default.
-   */
-  micCueOn: 'audiostart',
-  // Ten, to find out what iOS will actually offer. Nothing has ever asked for
-  // more than three, so the ceiling is unmeasured rather than known.
-  voiceAlternatives: 10,
   cardDetail: 'rank',
   /*
    * ON, now that a real drive has played them.

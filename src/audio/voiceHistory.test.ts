@@ -4,7 +4,6 @@ import {
   readVoiceHistory,
   clearVoiceHistory,
   summariseHistory,
-  formatVoiceHistory,
   MAX_ENTRIES,
 } from './voiceHistory';
 
@@ -178,29 +177,3 @@ describe('summarising', () => {
   });
 });
 
-describe('the pasteable report', () => {
-  it('leads with the candidates rather than the raw timeline', () => {
-    recordHeard('stant', 'rejected', 'flashcards');
-    const out = formatVoiceHistory();
-    expect(out.indexOf('candidate aliases')).toBeLessThan(out.indexOf('everything, in order'));
-    expect(out).toContain('1x  "stant"');
-  });
-
-  it('says so plainly when nothing was rejected', () => {
-    recordHeard('stand', 'stand', 'flashcards');
-    expect(formatVoiceHistory()).toContain('(nothing was rejected)');
-  });
-
-  it('breaks out how much help was needed', () => {
-    recordHeard('Band', 'stand (rescued)', 'flashcards');
-    recordHeard('send', 'stand (approximate)', 'flashcards');
-    const out = formatVoiceHistory();
-    expect(out).toContain('ranked second by the engine: 1');
-    expect(out).toContain('reached by near miss:        1');
-  });
-
-  it('names the screen each utterance was heard on', () => {
-    recordHeard('yes', 'yes', 'count check');
-    expect(formatVoiceHistory()).toContain('[count check]');
-  });
-});

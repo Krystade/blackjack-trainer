@@ -33,7 +33,6 @@
 import { elementVolume } from './volume';
 import { diag } from '../diag/diagnosticLog';
 import { notifySpeechEnded } from './speechActivity';
-import { routeSettleWaitMs } from './audioSession';
 
 function hasWindow(): boolean {
   return typeof window !== 'undefined';
@@ -970,37 +969,7 @@ export function playClipsResumable(
           }
         };
 
-        /*
-         * LET THE ROUTE ARRIVE BEFORE THE FIRST WORD.
-         *
-         * Having closed the microphone to win the loud speaker back, the app
-         * has to let iOS actually hand it over, and that does not happen on
-         * the close -- the route is re-decided per sound, about a second and
-         * a half later. A chain that starts immediately therefore spends its
-         * first clip on the earpiece. Jack's 2026-10-04 log, 62ms from
-         * `mic stop` to the chain:
-         *
-         *   17:17:02.071  mic   stop
-         *   17:17:02.133  speak clip-chain files="you-have-ace-eight.mp3, dealer-shows-ace.mp3"
-         *
-         * and what he heard was the dealer but not the hand.
-         *
-         * Once per CHAIN, not per clip: `routeSettleWaitMs` is consumed on
-         * read, so the clips after the first follow gaplessly, and a route
-         * that never moved -- any setting but Switch -- waits for nothing.
-         * The watchdog is armed inside `playNext`, so nothing is counting
-         * against the chain while it waits.
-         */
-        const settle = routeSettleWaitMs(Date.now());
-        if (settle > 0) {
-          setTimeout(() => {
-            // The operator may have left, or asked for something else, in the
-            // time that took; `settleChain` has already run if so.
-            if (!chain.settled) playNext();
-          }, settle);
-        } else {
-          playNext();
-        }
+        playNext();
       });
     } catch (e) {
       // The outer catch: a manifest fetch that rejected, a bad JSON body, a

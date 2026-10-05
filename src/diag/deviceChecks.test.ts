@@ -57,7 +57,7 @@ describe('the handoff check', () => {
     // drive proved does nothing, so a version of this that did not ask at all
     // would be measuring the old broken thing.
     const session = withAudioSession('play-and-record');
-    setOutputRoutePreference('switch');
+    setOutputRoutePreference('playback');
     const result = await handoffRouteCheck(async () => 'ended').run();
     expect(session.type).toBe('playback');
     expect(result.detail).toMatchObject({ sessionWas: 'play-and-record', sessionType: 'playback' });

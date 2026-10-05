@@ -1,113 +1,30 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /**
- * The three microphone experiments, on the phone screen they are set from.
+ * The microphone probe, on the phone screen it is run from.
  *
- * WHY E2E AND NOT ONLY UNIT TESTS. The gate, the classifier and the settings
- * are all unit-tested, and all of that can be green while this panel is
- * unreachable, mis-wired, or three screens tall on a 375px phone in a car
- * park. Two things here cannot be tested anywhere else:
+ * WHY E2E AND NOT ONLY UNIT TESTS. The classifier is unit-tested, and all of
+ * that can be green while this panel is unreachable or mis-wired. What cannot
+ * be tested anywhere else is that the spectrum probe actually OPENS A
+ * MICROPHONE and returns a verdict. `probeMicSpectrum` resolves with an error
+ * object when `getUserMedia` rejects, so a test run without a microphone
+ * device would exercise only the rejection path and could not fail for the
+ * thing it is named after. The chromium project launches with
+ * `--use-fake-device-for-media-stream`, which is a generated tone, so the
+ * measuring path runs for real. Nothing is recorded and nothing is heard.
  *
- *   1. That the spectrum probe actually OPENS A MICROPHONE and returns a
- *      verdict. `probeMicSpectrum` resolves with an error object when
- *      `getUserMedia` rejects, so a test run without a microphone device
- *      would exercise only the rejection path and could not fail for the
- *      thing it is named after. The chromium project launches with
- *      `--use-fake-device-for-media-stream`, which is a generated tone, so
- *      the measuring path runs for real. Nothing is recorded and nothing is
- *      heard.
- *   2. That choosing an arm sticks, because the whole point is separating the
- *      arms across drives.
+ * The two A/B switches that used to share this section (cue on start or on
+ * audio, three or ten readings) are gone -- their defaults are now simply the
+ * behaviour -- and so are their tests.
  */
-/**
- * The buttons of one setting row, found by that row's label.
- *
- * Scoped rather than page-wide because this screen carries several segmented
- * controls and the labels collide -- "Test" appears on another one, and "3"
- * is a plausible option anywhere. A page-wide locator here matched two
- * elements and failed in strict mode, which is the good version of the
- * failure: the silent version picks the wrong control and passes.
- */
-function row(page: Page, label: string) {
-  return page.locator('.settings-row', { has: page.getByText(label, { exact: true }) });
-}
-
-/**
- * Which option of a segmented control is selected.
- *
- * Read from the class, because `Segmented` marks the active option with
- * `segmented-btn-active` and sets no `aria-pressed` -- so there is no
- * accessible state to assert on. Noted rather than fixed here: that component
- * backs around twenty controls across the app and changing it is not this
- * change's business.
- */
-async function selected(page: Page, label: string): Promise<string | null> {
-  return row(page, label).locator('.segmented-btn-active').first().textContent();
-}
-
 async function openPanel(page: Page): Promise<void> {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).click();
   // No click on the summary: `?e2e=1` force-opens every CollapsibleSection
   // (see e2eForcesOpen), so clicking would CLOSE this one.
-  await expect(page.getByText('Microphone experiments')).toBeVisible();
+  await expect(page.locator('summary', { hasText: 'Which microphone?' })).toBeVisible();
 }
-
-function storedAudio(page: Page): Promise<Record<string, unknown>> {
-  return page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.settings.v1');
-    const parsed = raw ? (JSON.parse(raw) as { audio?: Record<string, unknown> }) : null;
-    return parsed?.audio ?? {};
-  });
-}
-
-test('ships gated on real audio, and says why', async ({ page }) => {
-  await openPanel(page);
-
-  // The shipped default is the fix, not the control arm.
-  expect(await selected(page, 'Cue when the mic is')).toBe('Recording');
-  expect(await selected(page, 'Readings per answer')).toBe('10');
-
-  const text = await page.evaluate(() => document.body.innerText);
-  // The explanation has to carry the mechanism, because the setting is
-  // meaningless without it and he reads this in a car park.
-  expect(text).toContain('before the microphone is recording');
-
-  await page.getByText('Microphone experiments').scrollIntoViewIfNeeded();
-  await page.screenshot({ path: 'e2e/screenshots/mic-experiments.png' });
-});
-
-test('switching to the control arm sticks', async ({ page }) => {
-  await openPanel(page);
-  const cue = row(page, 'Cue when the mic is');
-  await cue.getByText('Started', { exact: true }).click();
-
-  await expect.poll(() => storedAudio(page).then((a) => a.micCueOn)).toBe('start');
-
-  // And back, so a drive can be re-armed without a reinstall.
-  await cue.getByText('Recording', { exact: true }).click();
-  await expect.poll(() => storedAudio(page).then((a) => a.micCueOn)).toBe('audiostart');
-});
-
-test('asking for ten readings sticks', async ({ page }) => {
-  await openPanel(page);
-  /*
-   * NOT asserted against storage before a change. A fresh install has
-   * written nothing, so the stored value is `undefined` and the default
-   * lives only in `DEFAULT_AUDIO` -- which `mergeSettings` spreads under
-   * whatever was stored. The shipped default is asserted in the unit suite
-   * and, on screen, in the first test here; what this one owns is the round
-   * trip, because an arm that will not come back is an arm he can only use
-   * once.
-   */
-  const readings = row(page, 'Readings per answer');
-  await readings.getByText('3', { exact: true }).click();
-  await expect.poll(() => storedAudio(page).then((a) => a.voiceAlternatives)).toBe(3);
-
-  await readings.getByText('10', { exact: true }).click();
-  await expect.poll(() => storedAudio(page).then((a) => a.voiceAlternatives)).toBe(10);
-});
 
 test('the spectrum probe opens a microphone and reaches a verdict', async ({ page }) => {
   /*
