@@ -371,6 +371,13 @@ export interface VoiceController {
    */
   suppressFor: (ms: number, said?: string) => void;
   /**
+   * The app has really stopped talking: deaf for the tail only, from now --
+   * even if that SHORTENS a window. Paired with a generous `suppressFor` at
+   * the start of each utterance, so the window is bounded by the real ending
+   * rather than by a text estimate that recorded clips routinely overrun.
+   */
+  releaseSuppression: () => void;
+  /**
    * Cycle the session now if it is old, so its deaf window lands here --
    * during answer feedback, say -- instead of in the middle of the next
    * answer. This is the only mitigation available, since a second recogniser
@@ -883,6 +890,9 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       // transcript of that correction is still in flight -- so letting it
       // clear this would undo the check at the one moment it is needed.
       if (said !== undefined) lastSaid = said;
+    },
+    releaseSuppression: () => {
+      suppressedUntil = deps.now() + SPEECH_TAIL_MS;
     },
     cycleIfStale: () => {
       if (!running) return;

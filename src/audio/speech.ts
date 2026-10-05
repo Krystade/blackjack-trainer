@@ -581,6 +581,10 @@ export const CUE_WAIT_CEILING_MS = 6000;
 let e2eUtterancesSounding = 0;
 
 /** Is the app making a noise right now, by any path? */
+export function isAppSpeaking(): boolean {
+  return isSpeakingNow();
+}
+
 function isSpeakingNow(): boolean {
   return pendingSpeeches.length > 0 || isClipChainActive() || e2eUtterancesSounding > 0;
 }
@@ -1289,9 +1293,17 @@ export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
   if (isE2eAudioMode()) {
     pushSpeechLog(text, opts);
     const delay = hasWindow() ? window.__e2eSpeechDelayMs : undefined;
-    return typeof delay === "number" && delay > 0
-      ? new Promise<void>((resolve) => setTimeout(resolve, delay))
-      : Promise.resolve();
+    // And the ending, as `speak` does: the microphone now stays deaf until an
+    // utterance REPORTS that it stopped, so a harness path that never reports
+    // would hold it shut for the whole safety margin.
+    e2eUtterancesSounding += 1;
+    return new Promise<void>((resolve) =>
+      setTimeout(() => {
+        e2eUtterancesSounding = Math.max(0, e2eUtterancesSounding - 1);
+        notifySpeechEnded();
+        resolve();
+      }, typeof delay === "number" && delay > 0 ? delay : 0),
+    );
   }
 
   // RECORDED HERE TOO, and it was not until 2026-09-23. `speak` has logged
@@ -1408,7 +1420,7 @@ export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
  * that, because a duplicate would silently undo the distinction this table
  * exists for.
  */
-export type ChimeKind = "good" | "bad" | "attention" | "mark" | "blocked" | "ready";
+export type ChimeKind = "good" | "bad" | "attention" | "mark" | "blocked" | "ready" | "turn" | "heard";
 
 const CHIME_FREQUENCY_HZ: Record<ChimeKind, number> = {
   good: 880,
@@ -1417,6 +1429,13 @@ const CHIME_FREQUENCY_HZ: Record<ChimeKind, number> = {
   mark: 660,
   blocked: 110,
   ready: 523,
+  // "Your turn" after each prompt: the same pitch as the live cue, because it
+  // means the same thing -- speak now -- but its own kind, so the live cue
+  // stays countable as the once-per-request event it is.
+  turn: 523,
+  // "Got it" -- below "ready" and well above "bad", so the pair a listener
+  // must tell apart (your turn / got it) are a fourth apart, not a semitone.
+  heard: 392,
 };
 
 /**
@@ -1450,7 +1469,11 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
   // `ready` fires at most once per time the operator asks for the microphone
   // and never in response to a transcript, so it cannot sustain that loop; the
   // worst case is one stray `attention`, which does deafen and ends it.
-  if (kind !== 'ready') notifyActivityMs(CHIME_ACTIVITY_MS);
+  // 'turn' and 'heard' are exempt for the same reason (2026-10-05): each fires
+  // at most once per prompt or per ACCEPTED answer, never in response to a
+  // rejection, so neither can feed the loop -- and deafening the microphone
+  // for "got it" swallowed the next word said straight after it.
+  if (kind !== 'ready' && kind !== 'turn' && kind !== 'heard') notifyActivityMs(CHIME_ACTIVITY_MS);
 
   /**
    * EVERY CHIME, LOGGED. The only line this used to write was

@@ -6,7 +6,7 @@ import {
   type HeardVerdict,
   type VoiceController,
 } from '../audio/voiceControl';
-import { setSpeechActivityListener } from '../audio/speech';
+import { chime, isAppSpeaking, setSpeechActivityListener } from '../audio/speech';
 import { recordHeard } from '../audio/voiceHistory';
 import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition';
 import { looksLikeSelfEcho } from '../audio/selfEcho';
@@ -23,6 +23,11 @@ import {
   markPushToTalkLive,
   endPushToTalk,
 } from './voiceSession';
+
+/** Safety margin on the deaf window for a spoken line, used only if its real ending is never reported. */
+const SPEECH_END_MARGIN_MS = 4000;
+/** How long the app must stay quiet after a line before the "your turn" tone. */
+const READY_SETTLE_MS = 350;
 
 /**
  * Speech recognition, wired to a screen.
@@ -194,6 +199,10 @@ export function useVoiceControl({
    * 6033ms and made no sound at either end of it.
    */
   const cuedLiveRef = useRef(false);
+  // Which spoken line the "your turn" tone has been given for, so a line
+  // that ends twice (a stop, then a settle) never chimes twice.
+  const readyGenRef = useRef(0);
+  const readyCuedGenRef = useRef(-1);
 
   const controllerRef = useRef<VoiceController | null>(null);
 
@@ -356,6 +365,13 @@ export function useVoiceControl({
         // sound at all, which is exactly what a dead microphone does. The one
         // suppressed utterance that must stay silent is the app hearing
         // itself -- hence the echo check rather than a blanket cue.
+        // "Got it": the answer is taken and the app is about to talk, so the
+        // microphone is effectively closed. A distinct, lower tone than "your
+        // turn", played the moment the answer lands.
+        if (verdict !== 'rejected' && verdict !== 'suppressed') {
+          diag('speak', 'turn-cue', { kind: 'got-it', context: contextRef.current });
+          chime('heard');
+        }
         const attempt = attemptRef.current?.(heard) ?? looksLikeAnAttempt(heard);
         if (verdict === 'rejected' && attempt) unheardRef.current?.('rejected');
         else if (
@@ -371,6 +387,26 @@ export function useVoiceControl({
     });
     controllerRef.current = controller;
 
+    /**
+     * "Your turn": one tone once the app has finished talking and nothing
+     * else follows within READY_SETTLE_MS -- so "Correct." followed at once by
+     * the next hand chimes once, after the hand, not between the two.
+     * Asked for by Jack on 2026-10-05, with its partner in onHeard below.
+     */
+    let readyTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReadyCue = () => {
+      if (readyTimer !== null) clearTimeout(readyTimer);
+      const gen = readyGenRef.current;
+      readyTimer = setTimeout(() => {
+        readyTimer = null;
+        if (gen !== readyGenRef.current || isAppSpeaking()) return;
+        if (gen === readyCuedGenRef.current) return;
+        readyCuedGenRef.current = gen;
+        diag('speak', 'turn-cue', { kind: 'your-turn', context: contextRef.current });
+        chime('turn');
+      }, READY_SETTLE_MS);
+    };
+
     // Deafen the microphone whenever the app talks. Registered only while
     // listening, so nothing pays for this when voice is off.
     setSpeechActivityListener((ms, text, phase) => {
@@ -379,8 +415,12 @@ export function useVoiceControl({
       // it started. `suppressFor` never shortens, so this cannot cut a window
       // short -- it only stops one ending early.
       if (phase === 'end') {
-        controller.suppressFor(0, undefined);
+        // Something else may still be sounding (the table starts several
+        // lines at once); only the LAST ending opens the microphone.
+        if (isAppSpeaking()) return;
+        controller.releaseSuppression();
         diag('speak', 'deafen-until-now', { context: contextRef.current });
+        scheduleReadyCue();
         return;
       }
       diag('speak', 'deafen', { ms, said: text, context: contextRef.current });
@@ -398,7 +438,18 @@ export function useVoiceControl({
       // already shut -- long enough for the app to grade its own correction as
       // a HIT. `text` is undefined for a chime, and `suppressFor` leaves the
       // stored sentence alone in that case on purpose.
-      controller.suppressFor(ms, text);
+      //
+      // FOR WORDS, DEAF UNTIL THE REAL ENDING. The estimate is a text guess and
+      // recorded clips overrun it by seconds (2375ms estimated, 5223ms real, on
+      // 2026-10-04), which left the microphone open under the tail of every
+      // long prompt: the operator could answer over the app, and in a loud car
+      // the app could hear itself. Jack, 2026-10-05: "In the car it will be
+      // very loud so I don't want that happening." So the start buys a window
+      // with a generous margin, and `releaseSuppression` on the real ending is
+      // what actually opens the microphone. The margin only matters if an
+      // ending is ever lost.
+      controller.suppressFor(text !== undefined ? ms + SPEECH_END_MARGIN_MS : ms, text);
+      if (text !== undefined) readyGenRef.current += 1;
     });
     setVoiceCaptureActive(true);
     controller.start();
@@ -480,6 +531,7 @@ export function useVoiceControl({
       window.removeEventListener('online', onOnline);
       media?.removeEventListener?.('devicechange', onDeviceChange);
       setSpeechActivityListener(null);
+      if (readyTimer !== null) clearTimeout(readyTimer);
       controller.stop();
       setVoiceCaptureActive(false);
       controllerRef.current = null;

@@ -114,7 +114,9 @@ test('a transcript of the app’s own voice is refused on its words, not on the 
   await expect
     .poll(
       async () => {
-        const said = (await spoken(page)).at(-1) ?? '';
+        // The last LINE, not the last entry: the log also records tones, and
+        // a "your turn" tone now follows every prompt.
+        const said = (await spoken(page)).filter((s) => !s.startsWith('chime:')).at(-1) ?? '';
         if (said.trim().split(/\s+/).length > 2) await say(page, said.replace(/[.,!?]/g, ''));
         return (await diagEvents(page, 'suppressed-echo')).length;
       },
