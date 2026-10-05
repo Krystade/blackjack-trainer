@@ -228,6 +228,7 @@ test('voice stays on across a navigation, because forgetting it looks like a fai
   // which is exactly what the operator does between shoes.
   await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
+  await page.locator('.report-done-btn').click();
   await page.getByRole('button', { name: 'Play a shoe' }).click();
 
   await expect(page.locator('.voice-btn')).toHaveAttribute('aria-pressed', 'true');
@@ -243,6 +244,7 @@ test('turning it off stays off across a navigation too', async ({ page }) => {
 
   await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
+  await page.locator('.report-done-btn').click();
   await page.getByRole('button', { name: 'Play a shoe' }).click();
 
   // Vacuity guard for the test above: if the toggle simply reported "on"

@@ -55,6 +55,7 @@ test('mute button clears every control: Home, Table, drills', async ({ page }) =
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await expect(page.locator('.action-bar')).toBeVisible();
   await expectClear(page, 'Table (dealt)');
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-screen')).toBeVisible();
   await expectClear(page, 'Session report');

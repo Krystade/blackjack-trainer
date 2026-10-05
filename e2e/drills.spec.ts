@@ -1403,7 +1403,7 @@ test('flashcards: inline Category segmented redraws from the chosen category and
   // pair cell (drills/flashcards.ts: "pair-<rank>-v-<up>"), never hard/soft.
   await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
   await expect(page.locator('.feedback-cell')).toBeVisible();
-  const cellId = await page.locator('.feedback-cell').innerText();
+  const cellId = (await page.locator('.feedback-cell').getAttribute('data-cell-id')) ?? '';
   expect(cellId.startsWith('pair-'), `expected a pair cell, got "${cellId}"`).toBe(true);
 
   const settings = await readSettings(page);

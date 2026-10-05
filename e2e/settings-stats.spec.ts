@@ -29,6 +29,7 @@ test('a short session shows up on the stats screen', async ({ page }) => {
   await playRoundByAdvice(page);
   await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
+  await page.locator('.report-done-btn').click();
   await expect(page.locator('.home-title')).toBeVisible();
 
   await page.locator('.home-stats-link').click();
@@ -174,6 +175,7 @@ test('CVCX profile header renders score/EV/ROR/note plus actual accuracy from a 
   await playRoundByAdvice(page);
   await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
+  await page.locator('.report-done-btn').click();
   await expect(page.locator('.home-title')).toBeVisible();
 
   await page.locator('.home-stats-link').click();

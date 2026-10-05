@@ -1,6 +1,7 @@
 import { playLabel } from '../playLabel';
 import type { Action } from '../../engine/deviations';
 import type { MistakeClass } from '../../engine/grade';
+import { plainCellLabel } from '../../drills/cellLabel';
 
 /**
  * The shared "here is what you got wrong" panel, used by the table overlay
@@ -132,9 +133,9 @@ export function MistakeCard({
     seen.add(value);
     return value;
   };
-  const handLine = once(hand);
-  const reasonLine = once(reason);
-  const footnoteLine = once(footnote);
+  const handLine = once(hand && plainCellLabel(hand));
+  const reasonLine = once(reason && plainCellLabel(reason));
+  const footnoteLine = once(footnote && plainCellLabel(footnote));
 
   // Eyes-free: the spoken correction is the real channel. Anything that
   // needs reading is dropped rather than shrunk, leaving only what survives

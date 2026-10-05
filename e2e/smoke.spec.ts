@@ -107,6 +107,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
 
   await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
+  await page.locator('.report-done-btn').click();
   await expect(page.locator('.home-title')).toBeVisible();
 
   // ---------------------------------------------------------------
