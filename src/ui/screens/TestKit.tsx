@@ -15,6 +15,8 @@ import {
 } from '../../diag/testKit';
 import {
   exportRecordings,
+  listInputsAfterGrant,
+  openChosenInput,
   openMic,
   playThrough,
   routeClipUrl,
@@ -22,9 +24,25 @@ import {
   startRecording,
   tick,
   unlockWebAudio,
+  type HeldInput,
   type HeldMic,
   type Recording,
 } from '../../diag/testKitIO';
+import {
+  accuracyOf,
+  fingerVerdict,
+  phoneMicSummary,
+  pickCarInput,
+  pickPhoneInput,
+  recogniseVerdict,
+  routeVerdict,
+  wheelArrived,
+  type InputDevice,
+  type PhoneRun,
+  type RouteRow,
+} from '../../diag/phoneMic';
+import { setMediaSessionProbe } from '../../audio/mediaSession';
+import { readAudioSessionType } from '../../audio/audioSession';
 import { diag, formatDiagnosticLog, readDiagnosticLog } from '../../diag/diagnosticLog';
 import { listMicrophones, probeMicSpectrum, type MicProbeResult } from '../../diag/micSpectrum';
 import { FIELD_TEST_STEPS } from '../../diag/fieldTest';
@@ -72,15 +90,49 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
   const [done, setDone] = useState(false);
   const recordings = useRef<Array<{ name: string; rec: Recording }>>([]);
   const mic = useRef<HeldMic | null>(null);
+  // The phone-mic kit: one stream held on the chosen input across steps, and
+  // what the steps measured, for the summary.
+  const input = useRef<HeldInput | null>(null);
+  const phoneRun = useRef<PhoneRun>({ answers: {} });
   const [fieldRun, setFieldRun] = useState(() => readFieldTestRun());
   useEffect(() => subscribeFieldTestRun(() => setFieldRun(readFieldTestRun())), []);
 
   useEffect(() => {
     if (resumed.current) diag('test', 'kit-resumed', { kit: resumed.current.kit, step: resumed.current.stepIndex });
     return () => {
-      void mic.current?.close();
+      void releaseAll();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Every microphone this screen holds: the recogniser and the chosen-input stream. */
+  const releaseAll = async (): Promise<void> => {
+    const m = mic.current;
+    const i = input.current;
+    mic.current = null;
+    input.current = null;
+    setMediaSessionProbe(null);
+    await Promise.all([m?.close(), i?.close()]);
+  };
+
+  /** The chosen phone input, opened once and held until releaseAll. */
+  const ensureInput = async (): Promise<HeldInput | { error: string }> => {
+    if (input.current) return input.current;
+    const want = phoneRun.current.phone?.deviceId ?? 'default';
+    const held = await openChosenInput(want);
+    if ('error' in held) {
+      diag('test', 'kit-phone-stream-open', { deviceId: want, error: held.error });
+      return held;
+    }
+    input.current = held;
+    diag('test', 'kit-phone-stream-open', {
+      deviceId: want,
+      label: held.label,
+      trackSampleRate: held.trackSampleRate,
+      session: readAudioSessionType(),
+    });
+    return held;
+  };
 
   const steps = kit ? KITS[kit].steps : [];
   const step = steps[index];
@@ -102,8 +154,7 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
     if (!kit) return;
     const next = index + 1;
     if (next >= steps.length) {
-      void mic.current?.close();
-      mic.current = null;
+      void releaseAll();
       clearProgress();
       diag('test', 'kit-finished', { kit });
       setDone(true);
@@ -116,6 +167,7 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
   const answer = (value: string, extra: Record<string, unknown> = {}) => {
     if (!step) return;
     diag('test', 'kit-answer', { kit, step: step.id, answer: value, ...extra });
+    phoneRun.current.answers[step.id] = value;
     advance();
   };
 
@@ -165,6 +217,10 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
             <li>
               <strong>Audible at speed, and the wheel after voice.</strong> Can you make out the words on the
               freeway, and does the wheel still work after the mic closes? <em>Freeway drive.</em>
+            </li>
+            <li>
+              <strong>Phone mic with Bluetooth on.</strong> Can the app listen through the phone while the car plays
+              the sound? <em>Bluetooth: phone mic?</em>
             </li>
           </ul>
           <p className="testkit-lede">
@@ -216,8 +272,7 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
           type="button"
           className="u-btn"
           onClick={() => {
-            void mic.current?.close();
-            mic.current = null;
+            void releaseAll();
             clearProgress();
             diag('test', 'kit-abandoned', { kit, step: step.id });
             setKit(null);
@@ -239,6 +294,10 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
           kit={kit}
           ensureMic={ensureMic}
           mic={mic}
+          input={input}
+          ensureInput={ensureInput}
+          run={phoneRun}
+          releaseAll={releaseAll}
           onAnswer={answer}
           onRecording={(name, rec) => recordings.current.push({ name, rec })}
           onReload={() => {
@@ -260,6 +319,10 @@ interface StepProps {
   kit: KitId;
   ensureMic: (want: 'open' | 'closed') => Promise<string | null>;
   mic: React.MutableRefObject<HeldMic | null>;
+  input: React.MutableRefObject<HeldInput | null>;
+  ensureInput: () => Promise<HeldInput | { error: string }>;
+  run: React.MutableRefObject<PhoneRun>;
+  releaseAll: () => Promise<void>;
   onAnswer: (value: string, extra?: Record<string, unknown>) => void;
   onRecording: (name: string, rec: Recording) => void;
   onReload: () => void;
@@ -296,6 +359,20 @@ function StepView(props: StepProps) {
       return <CalibrateStep {...props} />;
     case 'record':
       return <RecordStep {...props} step={step} />;
+    case 'phone-inputs':
+      return <PhoneInputsStep {...props} />;
+    case 'phone-probe':
+      return <PhoneProbeStep {...props} />;
+    case 'phone-finger':
+      return <PhoneFingerStep {...props} />;
+    case 'phone-route':
+      return <PhoneRouteStep {...props} step={step} />;
+    case 'phone-recognise':
+      return <PhoneRecogniseStep {...props} />;
+    case 'wheel-press':
+      return <WheelPressStep {...props} step={step} />;
+    case 'phone-summary':
+      return <PhoneSummaryStep {...props} />;
   }
 }
 
@@ -637,6 +714,604 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
       </ul>
       <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => onAnswer('done')}>
         Next
+      </button>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------------ */
+/* "Bluetooth: phone mic?" kit                                                */
+/* ------------------------------------------------------------------------ */
+
+const FINGER_WINDOW_MS = 3000;
+const FINGER_WORD = 'hello';
+
+function PhoneInputsStep({ run, onAnswer }: StepProps) {
+  const [devices, setDevices] = useState<InputDevice[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+
+  const go = async () => {
+    setBusy(true);
+    const r = await listInputsAfterGrant();
+    const phone = pickPhoneInput(r.devices);
+    const car = pickCarInput(r.devices, phone);
+    run.current.phone = phone;
+    run.current.car = car;
+    run.current.inputCount = r.devices.length;
+    diag('test', 'kit-inputs', {
+      count: r.devices.length,
+      labels: r.devices.map((d) => d.label || '(no label)').join(' | '),
+      ids: r.devices.map((d) => d.deviceId || '(no id)').join(' | '),
+      permissionError: r.error ?? '',
+      chosen: phone.label,
+      chosenId: phone.deviceId,
+      matchedIphone: phone.matched,
+      car: car?.label ?? '',
+      carId: car?.deviceId ?? '',
+      session: readAudioSessionType(),
+    });
+    setDevices(r.devices);
+    setNote(r.error ? `The microphone permission failed (${r.error}).` : '');
+    setBusy(false);
+  };
+
+  const phone = run.current.phone;
+  return (
+    <>
+      <p className="testkit-instruction">
+        Press List. The app asks for the microphone once, reads the names of every input, and picks the iPhone one on
+        its own.
+      </p>
+      {!devices && (
+        <button type="button" className="u-btn u-btn-primary testkit-go" disabled={busy} onClick={() => void go()}>
+          List inputs
+        </button>
+      )}
+      {note && <p className="testkit-note">{note}</p>}
+      {devices && (
+        <>
+          <ul className="testkit-results" data-testid="testkit-inputs">
+            {devices.map((d) => (
+              <li key={d.deviceId + d.label}>
+                <strong>{d.label || '(no label)'}</strong> · {d.deviceId.slice(0, 10) || 'no id'}
+                {phone && d.deviceId === phone.deviceId ? ' · chosen' : ''}
+                {run.current.car && d.deviceId === run.current.car.deviceId ? ' · car' : ''}
+              </li>
+            ))}
+            {devices.length === 0 && <li>No inputs listed.</li>}
+          </ul>
+          <p className="testkit-note">
+            {phone?.matched
+              ? `Using "${phone.label}".`
+              : 'No input is named iPhone, so "default" will be used. Later checks are weaker.'}
+          </p>
+          <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => onAnswer('done', { count: devices.length })}>
+            Next
+          </button>
+        </>
+      )}
+    </>
+  );
+}
+
+function PhoneProbeStep({ run, onAnswer }: StepProps) {
+  const [rows, setRows] = useState<Array<{ name: string; r: MicProbeResult }> | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const go = async () => {
+    setBusy(true);
+    const out: Array<{ name: string; r: MicProbeResult }> = [];
+    const phone = run.current.phone ?? { deviceId: 'default', label: 'default', matched: false };
+    const pr = await probeMicSpectrum({ deviceId: phone.deviceId, ms: 4000 });
+    run.current.phoneProbe = { verdict: pr.verdict, highRatio: pr.highRatio, error: pr.error };
+    diag('test', 'kit-phone-probe', {
+      which: 'phone',
+      deviceId: phone.deviceId,
+      verdict: pr.verdict,
+      highRatio: pr.highRatio,
+      highBins: pr.highBins,
+      label: pr.label,
+      trackSampleRate: pr.trackSampleRate,
+      contextSampleRate: pr.contextSampleRate,
+      error: pr.error ?? '',
+    });
+    out.push({ name: `Phone (${phone.label})`, r: pr });
+    setRows([...out]);
+    const car = run.current.car;
+    if (car) {
+      const cr = await probeMicSpectrum({ deviceId: car.deviceId, ms: 4000 });
+      run.current.carProbe = { verdict: cr.verdict, highRatio: cr.highRatio, error: cr.error };
+      diag('test', 'kit-phone-probe', {
+        which: 'car',
+        deviceId: car.deviceId,
+        verdict: cr.verdict,
+        highRatio: cr.highRatio,
+        highBins: cr.highBins,
+        label: cr.label,
+        trackSampleRate: cr.trackSampleRate,
+        error: cr.error ?? '',
+      });
+      out.push({ name: `Car (${car.label})`, r: cr });
+      setRows([...out]);
+    } else {
+      run.current.carProbe = null;
+      diag('test', 'kit-phone-probe', { which: 'car', skipped: 'no-car-input-listed' });
+    }
+    setBusy(false);
+  };
+
+  return (
+    <>
+      <p className="testkit-instruction">
+        Press Start, then count out loud from one to ten at normal volume until it says done. It measures the phone
+        input for four seconds{run.current.car ? ', then the car input for four more' : ''}.
+      </p>
+      {!rows && (
+        <button type="button" className="u-btn u-btn-primary testkit-go" disabled={busy} onClick={() => void go()}>
+          Start
+        </button>
+      )}
+      {rows && (
+        <ul className="testkit-results" data-testid="testkit-probe-rows">
+          {rows.map(({ name, r }) => (
+            <li key={name}>
+              <strong>{name}</strong>: {r.error ? `failed (${r.error})` : `${r.verdict} · high ${r.highRatio.toFixed(3)}`}
+            </li>
+          ))}
+        </ul>
+      )}
+      {busy && <p className="testkit-note">Measuring… keep counting.</p>}
+      {rows && !busy && (
+        <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => onAnswer('done', { probes: rows.length })}>
+          Next
+        </button>
+      )}
+    </>
+  );
+}
+
+function PhoneFingerStep({ run, ensureInput, onAnswer }: StepProps) {
+  type Phase = 'ready' | 'opening' | 'cover' | 'measuring-covered' | 'uncover' | 'measuring-open' | 'done' | 'failed';
+  const [phase, setPhase] = useState<Phase>('ready');
+  const [note, setNote] = useState('');
+  const covered = useRef(0);
+
+  const open = async () => {
+    setPhase('opening');
+    const held = await ensureInput();
+    if ('error' in held) {
+      setNote(`The input did not open (${held.error}).`);
+      setPhase('failed');
+      return;
+    }
+    setNote(`Holding "${held.label}" open.`);
+    setPhase('cover');
+  };
+
+  const measure = async (which: 'covered' | 'open') => {
+    const held = await ensureInput();
+    if ('error' in held) {
+      setNote(`The input did not open (${held.error}).`);
+      setPhase('failed');
+      return;
+    }
+    setPhase(which === 'covered' ? 'measuring-covered' : 'measuring-open');
+    tick();
+    const m = await held.measure(FINGER_WINDOW_MS);
+    tick();
+    diag('test', 'kit-finger-window', { which, rms: m.rms, peak: m.peak, frames: m.frames });
+    if (which === 'covered') {
+      covered.current = m.rms;
+      setPhase('uncover');
+      return;
+    }
+    run.current.finger = { coveredRms: covered.current, openRms: m.rms };
+    const f = fingerVerdict(covered.current, m.rms);
+    diag('test', 'kit-finger', {
+      coveredRms: covered.current,
+      openRms: m.rms,
+      ratio: f.ratio,
+      db: f.db,
+      verdict: f.verdict,
+    });
+    setNote(
+      f.verdict === 'no-signal'
+        ? 'Nothing was heard when uncovered.'
+        : `Covered was ${Math.round(f.ratio * 100)}% of uncovered (${f.db.toFixed(1)} dB): ${f.verdict}.`,
+    );
+    setPhase('done');
+  };
+
+  return (
+    <>
+      {phase === 'ready' && (
+        <>
+          <p className="testkit-instruction">
+            This opens the phone input and keeps it open for the next steps. You will cover the small holes on the
+            bottom edge of the phone with a fingertip for 3 seconds, then uncover them for 3 seconds, saying "{FINGER_WORD}"
+            over and over both times.
+          </p>
+          <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => void open()}>
+            Open the input
+          </button>
+        </>
+      )}
+      {phase === 'opening' && <p className="testkit-note">Opening…</p>}
+      {phase === 'cover' && (
+        <>
+          <p className="testkit-instruction">Cover the bottom mic holes now. Then press the button and say "{FINGER_WORD}" repeatedly.</p>
+          <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => void measure('covered')}>
+            Covered: start 3 seconds
+          </button>
+        </>
+      )}
+      {phase === 'measuring-covered' && <p className="testkit-word">covered: say "{FINGER_WORD}"</p>}
+      {phase === 'uncover' && (
+        <>
+          <p className="testkit-instruction">Uncover the holes. Press the button and say "{FINGER_WORD}" repeatedly again.</p>
+          <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => void measure('open')}>
+            Uncovered: start 3 seconds
+          </button>
+        </>
+      )}
+      {phase === 'measuring-open' && <p className="testkit-word">uncovered: say "{FINGER_WORD}"</p>}
+      {note && <p className="testkit-note" data-testid="testkit-finger-note">{note}</p>}
+      {(phase === 'done' || phase === 'failed') && (
+        <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => onAnswer(phase)}>
+          Next
+        </button>
+      )}
+    </>
+  );
+}
+
+function PhoneRouteStep({ step, run, ensureInput, onAnswer }: StepProps & { step: Extract<KitStep, { kind: 'phone-route' }> }) {
+  const order = useRef(blindOrder(step.trials));
+  const [trial, setTrial] = useState(0);
+  const [state, setState] = useState<'ready' | 'working' | 'played' | 'done'>('ready');
+  const [note, setNote] = useState('');
+  const results = useRef<RouteRow[]>([]);
+
+  const play = async () => {
+    unlockWebAudio();
+    setState('working');
+    setNote('');
+    // The chosen input stays open for every play; this only reopens it if an
+    // earlier step was skipped.
+    const held = await ensureInput();
+    if ('error' in held) setNote(`The input did not open (${held.error}). Answer what you hear anyway.`);
+    const url = await routeClipUrl();
+    if (!url) {
+      setNote('No recorded clip is available.');
+      setState('played');
+      return;
+    }
+    setNote('Playing…');
+    const result = await playThrough(order.current[trial]!, url);
+    setNote(result === 'ended' ? '' : `Playback failed (${result}).`);
+    setState('played');
+  };
+
+  const answer = (a: string) => {
+    const path = order.current[trial]!;
+    results.current.push({ path, answer: a });
+    diag('test', 'kit-blind', { step: step.id, trial: trial + 1, of: step.trials, path, answer: a, input: 'phone-held' });
+    if (trial + 1 >= step.trials) {
+      run.current.route = [...results.current];
+      diag('test', 'kit-phone-route', {
+        overall: routeVerdict(results.current),
+        element: routeVerdict(results.current.filter((r) => r.path === 'element')),
+        webaudio: routeVerdict(results.current.filter((r) => r.path === 'webaudio')),
+      });
+      setState('done');
+    } else {
+      setTrial(trial + 1);
+      setState('ready');
+    }
+  };
+
+  if (state === 'done') {
+    const tally = (path: string) => {
+      const rows = results.current.filter((r) => r.path === path);
+      return `${rows.filter((r) => r.answer === 'Car speakers').length} of ${rows.length} on the car speakers`;
+    };
+    return (
+      <>
+        <ul className="testkit-results" data-testid="testkit-phone-route-result">
+          <li>
+            Normal playback: <strong>{tally('element')}</strong>
+          </li>
+          <li>
+            Web Audio: <strong>{tally('webaudio')}</strong>
+          </li>
+        </ul>
+        <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => onAnswer('done', { element: tally('element'), webaudio: tally('webaudio') })}>
+          Next
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <p className="testkit-instruction">
+        Play {trial + 1} of {step.trials}. Press Play, listen, and tap where it came from. The phone input stays open
+        for all of them.
+      </p>
+      <button type="button" className="u-btn u-btn-primary testkit-go" disabled={state === 'working'} onClick={() => void play()}>
+        {state === 'played' ? 'Play again' : 'Play'}
+      </button>
+      {note && <p className="testkit-note">{note}</p>}
+      {state === 'played' && (
+        <div className="testkit-answers">
+          {step.answers.map((a) => (
+            <button key={a} type="button" className="u-btn testkit-answer" onClick={() => answer(a)}>
+              {a}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function PhoneRecogniseStep({ run, mic, ensureMic, ensureInput, onAnswer }: StepProps) {
+  type Phase = 'ready' | 'wait-covered' | 'listening' | 'wait-open' | 'scored' | 'failed';
+  const [phase, setPhase] = useState<Phase>('ready');
+  const [round, setRound] = useState<'covered' | 'uncovered'>('covered');
+  const [current, setCurrent] = useState(0);
+  const [last, setLast] = useState('');
+  const [retrying, setRetrying] = useState(false);
+  const [note, setNote] = useState('');
+  const schedule = useRef(calibrationSchedule(1));
+  const samples = useRef<{ covered: CalibrationSample[]; uncovered: CalibrationSample[] }>({ covered: [], uncovered: [] });
+  const cancelled = useRef(false);
+  const [acc, setAcc] = useState<{ covered: number; uncovered: number } | null>(null);
+
+  useEffect(() => () => void (cancelled.current = true), []);
+
+  const open = async () => {
+    // The phone-input stream first, then the recogniser on top of it: the
+    // recogniser captures from whatever the route input is by then.
+    const held = await ensureInput();
+    if ('error' in held) diag('test', 'kit-phone-recognise-note', { input: held.error });
+    const err = await ensureMic('open');
+    if (err || !mic.current) {
+      setNote(`The recogniser did not open (${err ?? 'unknown'}).`);
+      setPhase('failed');
+      return;
+    }
+    setPhase('wait-covered');
+  };
+
+  const listen = async (which: 'covered' | 'uncovered') => {
+    setRound(which);
+    setPhase('listening');
+    const got: CalibrationSample[] = [];
+    for (let i = 0; i < schedule.current.length && !cancelled.current; i++) {
+      const word = schedule.current[i]!;
+      setCurrent(i);
+      let heard: Array<{ transcript: string; confidence: number }> = [];
+      let attempt = 1;
+      for (; attempt <= 2 && heard.length === 0 && !cancelled.current; attempt++) {
+        setRetrying(attempt === 2);
+        tick();
+        heard = await new Promise((resolve) => {
+          const timer = setTimeout(() => resolve([]), WORD_SLOT_MS);
+          if (!mic.current) return resolve([]);
+          mic.current.onFinal = (alts) => {
+            clearTimeout(timer);
+            resolve(alts);
+          };
+        });
+        if (mic.current) mic.current.onFinal = null;
+      }
+      setRetrying(false);
+      const sample: CalibrationSample = {
+        word,
+        heard: heard.map((h) => h.transcript),
+        confidence: heard[0]?.confidence ?? null,
+      };
+      const { verdict, rescued } = scoreSample(sample);
+      diag('test', 'kit-phone-recognise', {
+        round: which,
+        say: word.say,
+        form: word.form,
+        heard: sample.heard[0] ?? '',
+        alternatives: sample.heard.slice(1).join(' | '),
+        confidence: sample.confidence,
+        verdict,
+        rescued,
+        attempt: attempt - 1,
+      });
+      got.push(sample);
+      setLast(sample.heard[0] ? `Heard “${sample.heard[0]}”, ${verdict === 'right' ? 'right' : 'wrong'}` : 'Heard nothing');
+      await wait(900);
+    }
+    samples.current[which] = got;
+    if (which === 'covered') {
+      setPhase('wait-open');
+      return;
+    }
+    await ensureMic('closed');
+    const c = accuracyOf(summariseCalibration(samples.current.covered));
+    const u = accuracyOf(summariseCalibration(samples.current.uncovered));
+    run.current.recognise = { covered: c, uncovered: u };
+    diag('test', 'kit-phone-recognise-summary', {
+      covered: c,
+      uncovered: u,
+      verdict: recogniseVerdict(c, u),
+    });
+    setAcc({ covered: c, uncovered: u });
+    setPhase('scored');
+  };
+
+  return (
+    <>
+      {phase === 'ready' && (
+        <>
+          <p className="testkit-instruction">
+            Ten words, twice. First with a fingertip over the phone’s bottom mic holes, then uncovered. A word appears
+            with a tick; say it once.
+          </p>
+          <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => void open()}>
+            Start
+          </button>
+        </>
+      )}
+      {phase === 'wait-covered' && (
+        <>
+          <p className="testkit-instruction">Round 1 of 2: COVER the phone’s mic holes, then press the button.</p>
+          <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => void listen('covered')}>
+            Covered: begin
+          </button>
+        </>
+      )}
+      {phase === 'wait-open' && (
+        <>
+          <p className="testkit-instruction">Round 2 of 2: UNCOVER the mic holes, then press the button.</p>
+          <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => void listen('uncovered')}>
+            Uncovered: begin
+          </button>
+        </>
+      )}
+      {phase === 'listening' && (
+        <>
+          <p className="testkit-note">{round === 'covered' ? 'Covered round' : 'Uncovered round'}</p>
+          <p className="testkit-word" data-testid="testkit-word">
+            {schedule.current[current]!.say}
+          </p>
+          <p className="testkit-listening">{retrying ? 'Didn’t catch that, say it again' : 'Listening… say it once'}</p>
+          {last && <p className="testkit-heard">Last word: {last}</p>}
+          <p className="testkit-note">
+            {current + 1} of {schedule.current.length}
+          </p>
+        </>
+      )}
+      {note && <p className="testkit-note">{note}</p>}
+      {phase === 'scored' && acc && (
+        <ul className="testkit-results" data-testid="testkit-phone-recognise-result">
+          <li>
+            Covered: <strong>{Math.round(acc.covered * 100)}%</strong> right
+          </li>
+          <li>
+            Uncovered: <strong>{Math.round(acc.uncovered * 100)}%</strong> right
+          </li>
+        </ul>
+      )}
+      {(phase === 'scored' || phase === 'failed') && (
+        <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => onAnswer(phase)}>
+          Next
+        </button>
+      )}
+    </>
+  );
+}
+
+function WheelPressStep({ step, run, ensureInput, onAnswer }: StepProps & { step: Extract<KitStep, { kind: 'wheel-press' }> }) {
+  const [phase, setPhase] = useState<'ready' | 'waiting' | 'done'>('ready');
+  const [left, setLeft] = useState(step.seconds);
+  const [arrived, setArrived] = useState<string[]>([]);
+  const cancelled = useRef(false);
+
+  useEffect(
+    () => () => {
+      cancelled.current = true;
+      // Restore: nothing else arms the probe on this screen.
+      setMediaSessionProbe(null);
+    },
+    [],
+  );
+
+  const go = async () => {
+    // The chosen input is what the car is reacting to; keep it open.
+    await ensureInput();
+    const actions: string[] = [];
+    const t0 = Date.now();
+    setMediaSessionProbe((action) => {
+      actions.push(action);
+      diag('test', 'kit-wheel-action', { action, atMs: Date.now() - t0 });
+    });
+    setPhase('waiting');
+    tick();
+    for (let s = step.seconds; s > 0 && !cancelled.current && !wheelArrived(actions); s--) {
+      setLeft(s);
+      await wait(1000);
+    }
+    setMediaSessionProbe(null);
+    if (cancelled.current) return;
+    run.current.wheel = { actions };
+    const ok = wheelArrived(actions);
+    const hasSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
+    diag('test', 'kit-wheel', {
+      arrived: ok,
+      actions: actions.join(',') || '(none)',
+      waitedMs: Date.now() - t0,
+      mediaSession: hasSession,
+    });
+    setArrived(actions);
+    setPhase('done');
+  };
+
+  return (
+    <>
+      {phase === 'ready' && (
+        <>
+          <p className="testkit-instruction">
+            Press the button below, then press skip-forward on the steering wheel within {step.seconds} seconds.
+          </p>
+          <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => void go()}>
+            Start
+          </button>
+        </>
+      )}
+      {phase === 'waiting' && (
+        <>
+          <p className="testkit-word">Press skip-forward on the wheel now</p>
+          <p className="testkit-note">{left}s left</p>
+        </>
+      )}
+      {phase === 'done' && (
+        <>
+          <p className="testkit-note" data-testid="testkit-wheel-result">
+            {wheelArrived(arrived) ? `Arrived: ${arrived.join(', ')}.` : `Nothing arrived${arrived.length ? ` except ${arrived.join(', ')}` : ''}.`}
+          </p>
+          <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => onAnswer(wheelArrived(arrived) ? 'arrived' : 'none')}>
+            Next
+          </button>
+        </>
+      )}
+    </>
+  );
+}
+
+function PhoneSummaryStep({ run, releaseAll, onAnswer }: StepProps) {
+  const [summary] = useState(() => phoneMicSummary(run.current));
+
+  useEffect(() => {
+    // Everything held is released the moment the verdicts are on screen.
+    void releaseAll();
+    const flat: Record<string, unknown> = { overall: summary.overall, overallText: summary.overallText };
+    for (const l of summary.lines) flat[l.id] = `${l.verdict}: ${l.text}`;
+    diag('test', 'kit-phone-summary', flat);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <>
+      <p className="testkit-instruction" data-testid="testkit-phone-overall">
+        <strong>{summary.overallText}</strong>
+      </p>
+      <ul className="testkit-results" data-testid="testkit-phone-summary">
+        {summary.lines.map((l) => (
+          <li key={l.id}>
+            {l.question}: <strong>{l.verdict}</strong>. {l.text}
+          </li>
+        ))}
+      </ul>
+      <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => onAnswer('done', { overall: summary.overall })}>
+        Finish
       </button>
     </>
   );

@@ -1,6 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import {
+  fingerVerdict,
+  phoneMicSummary,
+  pickCarInput,
+  pickPhoneInput,
+  recogniseVerdict,
+  routeVerdict,
+  wheelArrived,
+  type PhoneRun,
+} from './phoneMic';
+import {
   KITS,
+  PHONE_CALL_STEP_ID,
   blindOrder,
   type KitStep,
   KIT_RESUME_WINDOW_MS,
@@ -13,7 +24,10 @@ import {
 
 /** Any step that opens the microphone. */
 const opensMic = (s: KitStep) =>
-  (s.kind === 'route' && s.mic === 'open') || s.kind === 'route-blind' || s.kind === 'calibrate';
+  (s.kind === 'route' && s.mic === 'open') ||
+  s.kind === 'route-blind' ||
+  s.kind === 'calibrate' ||
+  s.kind === 'phone-inputs';
 
 const sample = (say: string, heard: string[]): CalibrationSample => {
   const word = calibrationSchedule().find((w) => w.say === say)!;
@@ -100,5 +114,95 @@ describe('test kit', () => {
     expect(parseProgress(JSON.stringify({ kit: 'desk', stepIndex: 999, savedAt: now }), now)).toBeNull();
     expect(parseProgress('{', now)).toBeNull();
     expect(parseProgress(null, now)).toBeNull();
+  });
+});
+
+describe('bt-phone-mic kit', () => {
+  it('runs inputs, probe, finger, route, call question, recognise, wheel, summary in that order', () => {
+    const kit = KITS['bt-phone-mic'];
+    expect(kit.label).toBe('Bluetooth: phone mic?');
+    expect(kit.steps.map((s) => s.kind)).toEqual([
+      'phone-inputs',
+      'phone-probe',
+      'phone-finger',
+      'phone-route',
+      'instruction',
+      'phone-recognise',
+      'wheel-press',
+      'phone-summary',
+    ]);
+    expect(kit.steps[4]!.id).toBe(PHONE_CALL_STEP_ID);
+    expect(new Set(kit.steps.map((s) => s.id)).size).toBe(kit.steps.length);
+  });
+
+  it('picks the iPhone input by label and falls back to default', () => {
+    const devs = [
+      { deviceId: 'default', label: 'Default - TOYOTA Corolla' },
+      { deviceId: 'a1', label: 'iPhone Microphone' },
+      { deviceId: 'b2', label: 'TOYOTA Corolla' },
+    ];
+    const phone = pickPhoneInput(devs);
+    expect(phone).toMatchObject({ deviceId: 'a1', matched: true });
+    expect(pickCarInput(devs, phone)?.deviceId).toBe('b2');
+    const none = pickPhoneInput([{ deviceId: 'default', label: 'Fake' }]);
+    expect(none).toMatchObject({ deviceId: 'default', matched: false });
+    expect(pickPhoneInput([])).toMatchObject({ deviceId: 'default', matched: false });
+    expect(pickCarInput([{ deviceId: 'default', label: 'Fake' }], none)).toBeNull();
+  });
+
+  it('reads a big drop under the finger as the phone mic, none as not, silence as no signal', () => {
+    expect(fingerVerdict(0.01, 0.1).verdict).toBe('phone-mic');
+    expect(fingerVerdict(0.09, 0.1).verdict).toBe('not-phone-mic');
+    expect(fingerVerdict(0.065, 0.1).verdict).toBe('unclear');
+    expect(fingerVerdict(0, 0.0001).verdict).toBe('no-signal');
+    expect(fingerVerdict(0.01, 0.1).db).toBeCloseTo(-20, 5);
+  });
+
+  it('takes the majority route answer', () => {
+    const rows = (answers: string[]) => answers.map((answer, i) => ({ path: i % 2 ? 'webaudio' : 'element', answer }));
+    expect(routeVerdict(rows(Array(6).fill('Car speakers')))).toBe('car-speakers');
+    expect(routeVerdict(rows(['Earpiece', 'Earpiece', 'Earpiece', 'Earpiece', 'Car speakers', 'Car speakers']))).toBe('earpiece');
+    expect(routeVerdict(rows(['Earpiece', 'Earpiece', 'Earpiece', 'Car speakers', 'Car speakers', 'Car speakers']))).toBe('mixed');
+    expect(routeVerdict([])).toBe('none');
+  });
+
+  it('calls recognition phone-following only when covering collapses it', () => {
+    expect(recogniseVerdict(0.1, 0.9)).toBe('follows-phone-mic');
+    expect(recogniseVerdict(0.8, 0.9)).toBe('not-following');
+    expect(recogniseVerdict(0.6, 0.9)).toBe('partial');
+    expect(recogniseVerdict(0, 0.3)).toBe('inconclusive');
+  });
+
+  it('counts skip-forward as arrival, and nothing else', () => {
+    expect(wheelArrived(['nexttrack'])).toBe(true);
+    expect(wheelArrived(['pause', 'seekforward'])).toBe(true);
+    expect(wheelArrived(['pause', 'previoustrack'])).toBe(false);
+    expect(wheelArrived([])).toBe(false);
+  });
+
+  it('summarises a clean success as yes, and a call-mode car as no', () => {
+    const good: PhoneRun = {
+      phone: { deviceId: 'a1', label: 'iPhone Microphone', matched: true },
+      inputCount: 2,
+      phoneProbe: { verdict: 'wideband', highRatio: 0.2 },
+      finger: { coveredRms: 0.005, openRms: 0.1 },
+      route: Array(6).fill({ path: 'element', answer: 'Car speakers' }),
+      recognise: { covered: 0.1, uncovered: 0.9 },
+      wheel: { actions: ['nexttrack'] },
+      answers: { [PHONE_CALL_STEP_ID]: 'No' },
+    };
+    const s = phoneMicSummary(good);
+    expect(s.overall).toBe('yes');
+    expect(s.lines.map((l) => l.verdict)).toEqual(['yes', 'yes', 'yes', 'yes', 'yes', 'yes', 'yes']);
+
+    const bad = phoneMicSummary({
+      ...good,
+      phoneProbe: { verdict: 'narrowband', highRatio: 0 },
+      wheel: { actions: [] },
+      answers: { [PHONE_CALL_STEP_ID]: 'Yes' },
+    });
+    expect(bad.overall).toBe('no');
+    expect(phoneMicSummary({ answers: {} }).overall).toBe('unclear');
+    expect(phoneMicSummary({ answers: {} }).lines.every((l) => l.verdict === 'skipped' || l.id === 'route')).toBe(true);
   });
 });

@@ -14,6 +14,7 @@ import { getSharedAudioContext } from '../audio/audioContext';
 import { readAudioSessionType } from '../audio/audioSession';
 import { toneDataUri } from '../audio/tone';
 import type { PlayPath } from './testKit';
+import type { InputDevice } from './phoneMic';
 
 /** The line every route step plays. Long enough to place by ear. */
 export const ROUTE_PHRASE = 'You have fourteen. Dealer shows ten.';
@@ -347,4 +348,105 @@ export async function exportRecordings(
     a.remove();
   }
   return 'downloaded';
+}
+
+/* ------------------------------------------------------------------------ */
+/* The phone-mic kit: a stream held open on one chosen input                  */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Ask for the microphone once so labels are filled in, release it at once,
+ * and return every audio input the browser names.
+ */
+export async function listInputsAfterGrant(): Promise<{ devices: InputDevice[]; error?: string }> {
+  const media = navigator.mediaDevices;
+  if (!media?.getUserMedia || !media.enumerateDevices) return { devices: [], error: 'no-mediadevices' };
+  let error: string | undefined;
+  try {
+    const s = await media.getUserMedia({ audio: true });
+    s.getTracks().forEach((t) => t.stop());
+  } catch (e) {
+    error = e instanceof Error ? e.name : 'getusermedia-failed';
+  }
+  const devices = (await media.enumerateDevices().catch(() => []))
+    .filter((d) => d.kind === 'audioinput')
+    .map((d) => ({ deviceId: d.deviceId, label: d.label }));
+  return { devices, error };
+}
+
+export interface HeldInput {
+  label: string;
+  trackSampleRate: number | null;
+  /** RMS and peak of the input over the next `ms`, not played anywhere. */
+  measure(ms: number): Promise<{ rms: number; peak: number; frames: number }>;
+  close(): Promise<void>;
+}
+
+/**
+ * Hold a getUserMedia stream open on one device, with nothing played back and
+ * no clean-up processing, so its level is the microphone's own. `exact` so a
+ * device that cannot be honoured fails instead of quietly giving another.
+ */
+export async function openChosenInput(deviceId: string): Promise<HeldInput | { error: string }> {
+  const media = navigator.mediaDevices;
+  if (!media?.getUserMedia) return { error: 'no-getusermedia' };
+  let stream: MediaStream | null = null;
+  let ctx: AudioContext | null = null;
+  try {
+    stream = await media.getUserMedia({
+      audio: {
+        deviceId: { exact: deviceId },
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+    });
+    const track = stream.getAudioTracks()[0] ?? null;
+    const Ctor: typeof AudioContext =
+      (window as unknown as { AudioContext: typeof AudioContext }).AudioContext ??
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    ctx = new Ctor();
+    if (ctx.state !== 'running') await ctx.resume().catch(() => {});
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+    // Deliberately not connected to the destination: mic to speaker is feedback.
+    const buf = new Float32Array(analyser.fftSize);
+    const s = stream;
+    const c = ctx;
+    const sr = track?.getSettings?.().sampleRate;
+    const input: HeldInput = {
+      label: track?.label ?? '',
+      trackSampleRate: typeof sr === 'number' ? sr : null,
+      measure: async (ms) => {
+        let sumSq = 0;
+        let n = 0;
+        let peak = 0;
+        let frames = 0;
+        const until = Date.now() + ms;
+        while (Date.now() < until) {
+          await new Promise((r) => setTimeout(r, 40));
+          analyser.getFloatTimeDomainData(buf);
+          frames += 1;
+          for (let i = 0; i < buf.length; i++) {
+            const v = buf[i]!;
+            sumSq += v * v;
+            n += 1;
+            if (Math.abs(v) > peak) peak = Math.abs(v);
+          }
+        }
+        return { rms: n ? Math.sqrt(sumSq / n) : 0, peak, frames };
+      },
+      close: async () => {
+        s.getTracks().forEach((t) => t.stop());
+        await c.close().catch(() => {});
+        diag('test', 'kit-phone-stream-closed', { label: track?.label ?? '' });
+      },
+    };
+    return input;
+  } catch (e) {
+    stream?.getTracks().forEach((t) => t.stop());
+    await ctx?.close().catch(() => {});
+    return { error: e instanceof Error ? e.name : 'failed' };
+  }
 }

@@ -249,6 +249,12 @@ One unblinded answer per step, so treat these as leads, not settled facts.
   - `highRatio` near 0 with no live bands above 4kHz means the car mic over HFP. A
     wideband reading means the phone mic.
   - Done when: two readings logged, one per condition.
+- [~] **G2-d · Can `getUserMedia({deviceId:{exact: iPhone mic}})` keep the session off HFP?**
+  - Method: Test kit → "Bluetooth: phone mic?" (built, desk-untested on the phone). Parked, engine
+    running, Bluetooth on. Probes the iPhone and car inputs, finger test, plays the route clip
+    with that stream held, asks whether the car showed a call, runs the 10 words covered and
+    uncovered, then waits for a wheel skip-forward.
+  - Done when: the kit's `kit-phone-summary` log line is pasted from a real drive.
 - [ ] **G2-b · Recheck "car speakerphone mic" feasibility** (Jack: "doesn't seem feasible,
   will need to recheck").
   - Method:
