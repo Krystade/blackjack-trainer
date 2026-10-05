@@ -61,6 +61,31 @@ function writeU16(bytes: Uint8Array, offset: number, value: number): void {
   bytes[offset + 1] = (value >> 8) & 0xff;
 }
 
+/** Sample rate of every generated tone (the clips' own rate). */
+export const TONE_SAMPLE_RATE = SAMPLE_RATE;
+
+/**
+ * The tone as float samples in [-peak, peak]: one faded sine. The single
+ * source of the waveform, shared by the WAV data URI (element path) and the
+ * AudioBuffer (Web Audio path) so the two can never drift apart.
+ */
+export function toneSamples(frequencyHz: number, peak = 1): Float32Array {
+  const frames = Math.round(SAMPLE_RATE * DURATION_S);
+  const fadeFrames = Math.max(1, Math.round(SAMPLE_RATE * FADE_S));
+  const safePeak = Math.min(1, Math.max(0, peak));
+  const out = new Float32Array(frames);
+  for (let i = 0; i < frames; i++) {
+    // The same shape the oscillator envelope had: up over FADE_S, flat, then
+    // down to nothing at the end. `Math.min` of the two ramps gives both
+    // without a branch, and handles a tone shorter than two fades.
+    const rampIn = i / fadeFrames;
+    const rampOut = (frames - 1 - i) / fadeFrames;
+    const envelope = Math.min(1, rampIn, rampOut);
+    out[i] = Math.sin((2 * Math.PI * frequencyHz * i) / SAMPLE_RATE) * envelope * safePeak;
+  }
+  return out;
+}
+
 /**
  * A 16-bit mono WAV of one faded sine, as a `data:` URI.
  *
@@ -90,19 +115,9 @@ export function toneDataUri(frequencyHz: number, peak = 1): string {
   writeAscii(bytes, 36, 'data');
   writeU32(bytes, 40, dataBytes);
 
-  const safePeak = Math.min(1, Math.max(0, peak));
+  const samples = toneSamples(frequencyHz, peak);
   for (let i = 0; i < frames; i++) {
-    // The same shape the oscillator envelope had: up over FADE_S, flat, then
-    // down to nothing at the end. `Math.min` of the two ramps gives both
-    // without a branch, and handles a tone shorter than two fades.
-    const rampIn = i / fadeFrames;
-    const rampOut = (frames - 1 - i) / fadeFrames;
-    const envelope = Math.min(1, rampIn, rampOut);
-    const sample = Math.sin((2 * Math.PI * frequencyHz * i) / SAMPLE_RATE);
-    // 32767 rather than 32768: the positive side of a signed 16-bit sample
-    // stops one short, and rounding into 32768 wraps to the largest NEGATIVE
-    // value -- an inverted spike at the loudest point of the waveform.
-    const value = Math.round(sample * envelope * safePeak * 32767);
+    const value = Math.round(samples[i]! * 32767);
     writeU16(bytes, 44 + i * 2, value < 0 ? value + 0x10000 : value);
   }
 

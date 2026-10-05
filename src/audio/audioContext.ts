@@ -10,6 +10,8 @@
  * imports clips.ts, and the cycle would be real rather than type-only.
  */
 
+import { diag } from '../diag/diagnosticLog';
+
 type AudioContextCtor = new () => AudioContext;
 
 let sharedAudioContext: AudioContext | null = null;
@@ -53,6 +55,33 @@ export function resumeSharedAudioContext(): void {
   } catch {
     /* never throw into a playback path */
   }
+}
+
+/** How long to wait for a resume() that iOS may never settle. */
+const RESUME_WAIT_MS = 1000;
+
+/**
+ * Bring the context to 'running' if it is not, and say whether it is.
+ *
+ * Web Audio is where the loud speaker is once a mic has been opened, so a
+ * context that is suspended or interrupted must not silently send a line back
+ * to the earpiece element. `resume()` can reject (no gesture) or never settle
+ * (iOS interrupted), hence the bounded wait. Every attempt is logged.
+ */
+export async function ensureContextRunning(ctx: AudioContext): Promise<boolean> {
+  if (ctx.state === 'running') return true;
+  const before = ctx.state;
+  try {
+    await Promise.race([
+      ctx.resume(),
+      new Promise<void>((resolve) => setTimeout(resolve, RESUME_WAIT_MS)),
+    ]);
+  } catch {
+    /* checked below */
+  }
+  const ok = (ctx.state as string) === 'running';
+  diag('speak', 'audio-resume', { from: before, to: ctx.state, ok });
+  return ok;
 }
 
 /**

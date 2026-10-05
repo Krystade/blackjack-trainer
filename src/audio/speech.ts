@@ -28,11 +28,11 @@ import {
   isClipChainActive,
   isClipsEnabled,
   playClipsResumable,
-  playPooledTone,
+  playChimeTone,
+  chimeWantsWebAudio,
   stopClips,
 } from "./clips";
 import { chimePeak, utteranceVolume } from "./volume";
-import { cachedToneDataUri } from "./tone";
 // Only the test reset is still wanted here: nothing in speech.ts touches the
 // Web Audio graph any more. The chimes were the last thing that did.
 import { _resetSharedAudioContextForTest } from "./audioContext";
@@ -1491,6 +1491,7 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
   diag("speak", "chime", {
     kind,
     ...(opts?.volume !== undefined ? { volume: opts.volume } : {}),
+    path: chimeWantsWebAudio() ? "webaudio" : "element",
   });
 
   if (isE2eAudioMode()) {
@@ -1525,7 +1526,7 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
    * in a car.
    */
   try {
-    playPooledTone(cachedToneDataUri(CHIME_FREQUENCY_HZ[kind]), chimePeak(opts?.volume ?? 1));
+    playChimeTone(CHIME_FREQUENCY_HZ[kind], chimePeak(opts?.volume ?? 1));
   } catch {
     // never throw
   }

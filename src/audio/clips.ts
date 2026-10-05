@@ -31,7 +31,8 @@
  */
 
 import { elementVolume } from './volume';
-import { getSharedAudioContext } from './audioContext';
+import { getSharedAudioContext, ensureContextRunning } from './audioContext';
+import { cachedToneDataUri, toneSamples, TONE_SAMPLE_RATE } from './tone';
 import { isVoiceCaptureActive, micSessionCostPaid } from './micSessionCost';
 import { diag } from '../diag/diagnosticLog';
 import { notifySpeechEnded } from './speechActivity';
@@ -602,6 +603,82 @@ export function playPooledTone(
 }
 
 /**
+ * Should a chime go through Web Audio rather than a pooled <audio> element?
+ * Same rule as the clip chains: once a microphone has been opened in this page
+ * load the element is on the quiet earpiece and Web Audio is on the loud
+ * speaker; before that, Web Audio would obey the ring switch and the element
+ * does not, so the element stays.
+ */
+export function chimeWantsWebAudio(): boolean {
+  return isVoiceCaptureActive() || micSessionCostPaid();
+}
+
+/** Decoded-equivalent tone buffers, per context and frequency. */
+const toneBuffers = new WeakMap<AudioContext, Map<number, AudioBuffer>>();
+
+function toneBuffer(ctx: AudioContext, frequencyHz: number): AudioBuffer {
+  let perCtx = toneBuffers.get(ctx);
+  if (!perCtx) {
+    perCtx = new Map();
+    toneBuffers.set(ctx, perCtx);
+  }
+  const hit = perCtx.get(frequencyHz);
+  if (hit) return hit;
+  const samples = toneSamples(frequencyHz);
+  const buffer = ctx.createBuffer(1, samples.length, TONE_SAMPLE_RATE);
+  buffer.getChannelData(0).set(samples);
+  perCtx.set(frequencyHz, buffer);
+  return buffer;
+}
+
+/**
+ * Play a chime tone. Through Web Audio when the mic has been opened (see
+ * {@link chimeWantsWebAudio}), otherwise, or if the context cannot run, on a
+ * pooled element exactly as before. `peak` is the chime level (`chimePeak`):
+ * the buffer is full scale and the gain node applies it, which is the same
+ * arithmetic the element's `volume` did. NOT a chain, so it never stops a
+ * prompt. Never throws.
+ */
+export function playChimeTone(frequencyHz: number, peak: number): void {
+  const onElement = () => {
+    void playPooledTone(cachedToneDataUri(frequencyHz), peak);
+  };
+  if (!chimeWantsWebAudio()) return onElement();
+  const ctx = getSharedAudioContext();
+  if (!ctx) {
+    diag('speak', 'chime-fallback', { why: 'no-context' });
+    return onElement();
+  }
+  const start = () => {
+    try {
+      const src = ctx.createBufferSource();
+      src.buffer = toneBuffer(ctx, frequencyHz);
+      const gain = ctx.createGain();
+      gain.gain.value = Math.min(1, Math.max(0, peak));
+      src.connect(gain);
+      gain.connect(ctx.destination);
+      src.onended = () => {
+        try {
+          gain.disconnect();
+        } catch {
+          /* already gone */
+        }
+      };
+      src.start();
+    } catch {
+      diag('speak', 'chime-fallback', { why: 'threw' });
+      onElement();
+    }
+  };
+  if (ctx.state === 'running') return start();
+  void ensureContextRunning(ctx).then((ok) => {
+    if (ok) return start();
+    diag('speak', 'chime-suspended', { state: ctx.state });
+    onElement();
+  });
+}
+
+/**
  * How a clip chain finished. `ended` is the only one that means the operator
  * heard the whole line -- the rest were indistinguishable from it in the log.
  */
@@ -820,14 +897,7 @@ async function playChainThroughWebAudio(
     diag('speak', 'clip-webaudio-skip', { why: 'no-context' });
     return null;
   }
-  if (ctx.state !== 'running') {
-    try {
-      await ctx.resume();
-    } catch {
-      /* checked below */
-    }
-  }
-  if (ctx.state !== 'running') {
+  if (!(await ensureContextRunning(ctx))) {
     diag('speak', 'clip-webaudio-skip', { why: 'context-' + ctx.state });
     return null;
   }
