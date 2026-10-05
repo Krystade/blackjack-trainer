@@ -324,6 +324,53 @@ export function narrateCountAnswer(rc: number): string {
 }
 
 /* ---------------------------------------------------------------- */
+/* DRILL AND TABLE LINES that used to be composed inline in views.   */
+/* Moved here so scripts/spokenPhrases.ts and the clip-coverage      */
+/* tests can see them (docs/research/2026-10-05-sound-paths.md 2d).  */
+/* ---------------------------------------------------------------- */
+
+/**
+ * The true-count drill's question. ENDS WITH A FULL STOP: the clip cascade
+ * splits on terminal punctuation and every sentence must be a manifest key,
+ * and "Two decks remaining" (no period) is not "Two decks remaining." -- so
+ * all 492 questions fell to live TTS for want of one character.
+ */
+export function narrateTcQuestion(runningCount: number, decksRemaining: number): string {
+  return `Running count ${narrateTc(runningCount)}. ${capitalizeSpoken(narrateDecksRemaining(decksRemaining))}.`;
+}
+
+/** The produce-the-true-count drill's second sentence. */
+export const PRODUCE_TC_PROMPT = 'Produce the true count.';
+
+export function narrateProduceTcPrompt(decksRemaining: number): string {
+  return `${capitalizeSpoken(narrateDecksRemaining(decksRemaining))}. ${PRODUCE_TC_PROMPT}`;
+}
+
+/**
+ * The flashcards wheel's self-check reveal: the answer echo, then the same
+ * "Did you have it?" the quiz and mixed drills say. Was "hit. Had it?", a
+ * sentence with no recording.
+ */
+export function narrateSelfCheckReveal(action: Action): string {
+  return `${narrateAnswerEcho(capitalizeSpoken(narrateAction(action)))} ${DID_YOU_HAVE_IT}`;
+}
+
+/** Legal at the table but outside the quiz question. */
+export function narrateActionNotAsked(action: Action): string {
+  return `${capitalizeSpoken(narrateAction(action))} isn't part of this question.`;
+}
+
+/** Countdown mode's verdict: three short sentences, each one a clip. */
+export function narrateCountdownVerdict(correct: boolean, hidden: Card, tag: number): string {
+  return `${correct ? 'Correct.' : 'Wrong.'} The card left over was ${narrateCards([hidden], 'rank')}. ${speakableCount(tag)}.`;
+}
+
+/** What the table asks when a count check is due. */
+export function narrateTableCountPrompt(stage: 'rc' | 'tc'): string {
+  return stage === 'rc' ? narrateCountPrompt() : "What's the true count?";
+}
+
+/* ---------------------------------------------------------------- */
 /* VOICE CONVERSATION (D2, docs/BACKLOG.md)                          */
 /*                                                                   */
 /* Every line the app says WHILE LISTENING -- the read-back it asks  */

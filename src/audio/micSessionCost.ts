@@ -20,6 +20,11 @@
  * hardware probe read 48000 on every `mic-open` and every `mic-closed` of that
  * same drive (diag/environment.ts). The only evidence is the operator's ears.
  *
+ * UPDATE 2026-10-05: Web Audio is NOT affected -- it reaches the loud speaker
+ * 7/7 with a mic open -- so recorded clips and chimes switch to it once this
+ * flag is set (clips.ts). Only <audio> elements and speech synthesis stay on
+ * the earpiece. The text below is the original analysis.
+ *
  * SO THE APP TELLS THE TRUTH INSTEAD. Closing the recogniser between prompts
  * was the obvious fix and it would not have worked: the session outlives the
  * recogniser, which is what "stuck" means. What is left is making the trade
@@ -41,8 +46,10 @@ export function markMicSessionOpened(): void {
 /**
  * Has anything opened the microphone during this page load?
  *
- * True means the audio is on the earpiece and will stay there until the app is
- * closed and reopened.
+ * True means <audio> elements are on the earpiece for the rest of this page
+ * load, so clips and chimes must use Web Audio instead (which stays on the
+ * loud speaker). Speech synthesis cannot be moved and may still use the
+ * earpiece.
  */
 export function micSessionCostPaid(): boolean {
   return micHasBeenLive;

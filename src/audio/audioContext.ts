@@ -10,6 +10,8 @@
  * imports clips.ts, and the cycle would be real rather than type-only.
  */
 
+import { diag } from '../diag/diagnosticLog';
+
 type AudioContextCtor = new () => AudioContext;
 
 let sharedAudioContext: AudioContext | null = null;
@@ -53,6 +55,77 @@ export function resumeSharedAudioContext(): void {
   } catch {
     /* never throw into a playback path */
   }
+}
+
+/** How long to wait for a resume() that iOS may never settle. */
+const RESUME_WAIT_MS = 1000;
+
+/**
+ * Bring the context to 'running' if it is not, and say whether it is.
+ *
+ * Web Audio is where the loud speaker is once a mic has been opened, so a
+ * context that is suspended or interrupted must not silently send a line back
+ * to the earpiece element. `resume()` can reject (no gesture) or never settle
+ * (iOS interrupted), hence the bounded wait. Every attempt is logged.
+ */
+export async function ensureContextRunning(ctx: AudioContext): Promise<boolean> {
+  if (ctx.state === 'running') return true;
+  const before = ctx.state;
+  try {
+    await Promise.race([
+      ctx.resume(),
+      new Promise<void>((resolve) => setTimeout(resolve, RESUME_WAIT_MS)),
+    ]);
+  } catch {
+    /* checked below */
+  }
+  const ok = (ctx.state as string) === 'running';
+  diag('speak', 'audio-resume', { from: before, to: ctx.state, ok });
+  return ok;
+}
+
+/**
+ * Keep the shared context alive for the rest of the page.
+ *
+ * The one-shot unlock (unlock.ts) resumes it inside the first gesture only.
+ * iOS later moves it to 'suspended'/'interrupted' around mic open/close,
+ * calls and backgrounding, and a steering-wheel session has no gestures to
+ * bring it back -- so every clip would silently fall back to the earpiece
+ * element. This listens for the moments it CAN be resumed: when the page
+ * comes back (visibilitychange/pageshow, may be refused without a gesture)
+ * and on every pointerdown (always a gesture). Only an existing context is
+ * touched. Returns a remover.
+ */
+export function installAudioContextKeepAlive(): () => void {
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return () => {};
+  const w = window;
+  const doc = typeof document !== 'undefined' ? document : undefined;
+  const nudge = (reason: string) => {
+    const ctx = sharedAudioContext;
+    if (!ctx || ctx.state === 'running' || ctx.state === 'closed') return;
+    const from = ctx.state;
+    try {
+      void ctx
+        .resume()
+        .then(() => diag('speak', 'audio-resume', { reason, from, to: ctx.state, ok: ctx.state === 'running' }))
+        .catch(() => diag('speak', 'audio-resume', { reason, from, to: ctx.state, ok: false }));
+    } catch {
+      /* never throw out of a listener */
+    }
+  };
+  const onPointer = () => nudge('gesture');
+  const onPageShow = () => nudge('pageshow');
+  const onVisibility = () => {
+    if (!doc || doc.visibilityState === 'visible') nudge('visibility');
+  };
+  w.addEventListener('pointerdown', onPointer, true);
+  w.addEventListener('pageshow', onPageShow);
+  doc?.addEventListener?.('visibilitychange', onVisibility);
+  return () => {
+    w.removeEventListener('pointerdown', onPointer, true);
+    w.removeEventListener('pageshow', onPageShow);
+    doc?.removeEventListener?.('visibilitychange', onVisibility);
+  };
 }
 
 /**

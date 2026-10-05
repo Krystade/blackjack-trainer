@@ -15,6 +15,8 @@ import { readAudioSessionType } from '../audio/audioSession';
 import { toneDataUri } from '../audio/tone';
 import type { PlayPath } from './testKit';
 import type { InputDevice } from './phoneMic';
+import { openMicStream } from '../audio/openMicStream';
+import { markMicSessionOpened } from '../audio/micSessionCost';
 
 /** The line every route step plays. Long enough to place by ear. */
 export const ROUTE_PHRASE = 'You have fourteen. Dealer shows ten.';
@@ -228,6 +230,8 @@ export async function openMic(): Promise<HeldMic | { error: string }> {
   } catch (e) {
     return { error: e instanceof Error ? e.name : 'start-failed' };
   }
+  // A recogniser start opens the mic just as getUserMedia does.
+  markMicSessionOpened();
   const heardAudio = await audioStarted;
   diag('test', 'kit-mic-open', {
     audiostart: heardAudio,
@@ -273,7 +277,7 @@ export async function startRecording(): Promise<ActiveRecorder | { error: string
   }
   let stream: MediaStream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
+    stream = await openMicStream({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
     });
   } catch (e) {
@@ -363,7 +367,7 @@ export async function listInputsAfterGrant(): Promise<{ devices: InputDevice[]; 
   if (!media?.getUserMedia || !media.enumerateDevices) return { devices: [], error: 'no-mediadevices' };
   let error: string | undefined;
   try {
-    const s = await media.getUserMedia({ audio: true });
+    const s = await openMicStream({ audio: true });
     s.getTracks().forEach((t) => t.stop());
   } catch (e) {
     error = e instanceof Error ? e.name : 'getusermedia-failed';
@@ -393,7 +397,7 @@ export async function openChosenInput(deviceId: string): Promise<HeldInput | { e
   let stream: MediaStream | null = null;
   let ctx: AudioContext | null = null;
   try {
-    stream = await media.getUserMedia({
+    stream = await openMicStream({
       audio: {
         deviceId: { exact: deviceId },
         echoCancellation: false,

@@ -28,11 +28,11 @@ import {
   isClipChainActive,
   isClipsEnabled,
   playClipsResumable,
-  playPooledTone,
+  playChimeTone,
+  chimeWantsWebAudio,
   stopClips,
 } from "./clips";
 import { chimePeak, utteranceVolume } from "./volume";
-import { cachedToneDataUri } from "./tone";
 // Only the test reset is still wanted here: nothing in speech.ts touches the
 // Web Audio graph any more. The chimes were the last thing that did.
 import { _resetSharedAudioContextForTest } from "./audioContext";
@@ -393,7 +393,7 @@ function resolveVoice(
  * promise (Safari does not fire `onend` after `cancel()`, so we can't rely
  * on the event to unblock an awaiting caller). No-op when unsupported. */
 export function cancelSpeech(): void {
-  // Clips play through HTMLAudioElement, which speechSynthesis.cancel() knows
+  // Clips play through HTMLAudioElement (or Web Audio), which speechSynthesis.cancel() knows
   // nothing about. `stopClips` existed for exactly this and had ZERO callers,
   // so leaving a screen mid-clip left the audio playing over whatever came
   // next, and an interrupting live-TTS line spoke ON TOP of the clip chain.
@@ -903,9 +903,9 @@ export function speak(text: string, opts?: SpeechOpts): void {
     // The log said what was said and never how, so a voice that changed
     // mid-drill was invisible in it -- the operator had to hear the change
     // and report it out loud into the microphone (2026-09-20, 7:16). The two
-    // paths are not interchangeable: a clip is an element the head unit can
-    // see and the volume boost can reach, while live speechSynthesis is
-    // neither, so which one spoke decides whether a line survives road noise
+    // paths are not interchangeable: a clip is audible on the loud speaker
+    // (an element, or Web Audio once a mic has opened) while live speechSynthesis
+    // can reach neither the head unit nor Web Audio, so which one spoke decides whether a line survives road noise
     // and whether the car even knows the app is talking.
     recordSpeechPath({
       path: "clip",
@@ -1491,6 +1491,7 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
   diag("speak", "chime", {
     kind,
     ...(opts?.volume !== undefined ? { volume: opts.volume } : {}),
+    path: chimeWantsWebAudio() ? "webaudio" : "element",
   });
 
   if (isE2eAudioMode()) {
@@ -1501,7 +1502,12 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
   }
 
   /**
-   * ON AN ELEMENT, NOT AN OSCILLATOR, since 2026-10-03.
+   * ON AN ELEMENT BY DEFAULT, NOT AN OSCILLATOR, since 2026-10-03. Once a
+   * microphone has been opened the same tone is played from a decoded-style
+   * AudioBuffer through the shared context instead (playChimeTone in
+   * clips.ts), because the element would come out of the earpiece; the element
+   * is also the fallback when that context cannot run.
+   *
    *
    * The graph version is in the history and its failure is in Jack's export:
    *
@@ -1525,7 +1531,7 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
    * in a car.
    */
   try {
-    playPooledTone(cachedToneDataUri(CHIME_FREQUENCY_HZ[kind]), chimePeak(opts?.volume ?? 1));
+    playChimeTone(CHIME_FREQUENCY_HZ[kind], chimePeak(opts?.volume ?? 1));
   } catch {
     // never throw
   }

@@ -30,6 +30,7 @@
 import { diag, flushDiagnostics } from './diagnosticLog';
 import { runningBuildId, runningBuiltAt } from '../updateCheck';
 import { markInputDeviceChanged } from './deviceChurn';
+import { openMicStream } from '../audio/openMicStream';
 
 /** Kept so a second mount (React strict mode, a remount) cannot double-log. */
 let installed = false;
@@ -299,7 +300,7 @@ export async function logSelectedInput(reason: string): Promise<void> {
       diag('route', 'input-selected', { reason, state: 'unavailable' });
       return;
     }
-    const stream = await md.getUserMedia({ audio: true });
+    const stream = await openMicStream({ audio: true });
     try {
       const track = stream.getAudioTracks()[0];
       diag('route', 'input-selected', {

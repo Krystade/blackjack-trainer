@@ -262,8 +262,8 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
            * what iOS does here and why no part of it is callable from a page.
            */
           <div className="settings-note-row u-note settings-earpiece">
-            Voice was used, so iOS may have moved the sound to the earpiece. Nothing in
-            the app moves it back; reopening the app does.
+            Voice was used. Recorded lines and alert tones stay on the loud speaker.
+            Lines spoken by the phone&rsquo;s own voice may still come from the earpiece.
           </div>
         )}
 
