@@ -4437,3 +4437,77 @@ details.stats-section > summary::after {
   display: grid;
   gap: 0.35rem;
 }
+
+/* ---------- Test kit ---------- */
+.testkit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+.testkit-lede,
+.testkit-instruction {
+  margin: 0;
+  line-height: 1.45;
+}
+.testkit-why,
+.testkit-note {
+  margin: 0;
+  color: var(--ink-muted, var(--ink));
+  opacity: 0.8;
+  font-size: 0.9rem;
+}
+.testkit-title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+.testkit-kit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding: 0.9rem 1rem;
+  text-align: left;
+}
+.testkit-kit-label {
+  font-size: 1.1rem;
+}
+.testkit-kit-where {
+  font-weight: 400;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+.testkit-go {
+  min-height: 3.25rem;
+  font-size: 1.1rem;
+}
+.testkit-answers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.testkit-answer {
+  min-height: 3.5rem;
+}
+.testkit-word {
+  margin: 1rem 0;
+  text-align: center;
+  font-size: 3rem;
+  font-weight: 800;
+}
+.testkit-results {
+  margin: 0;
+  padding-left: 1.1rem;
+  line-height: 1.5;
+}
+.testkit-skip {
+  margin-top: 1.5rem;
+  opacity: 0.7;
+}
+.testkit-count {
+  font-variant-numeric: tabular-nums;
+}
+.home-testkit-btn {
+  margin-top: 0.5rem;
+  width: 100%;
+}

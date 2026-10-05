@@ -10,6 +10,8 @@ import { Charts } from './screens/Charts';
 import { TabBar } from './components/TabBar';
 import { MuteButton } from './components/MuteButton';
 import { FieldTest } from './screens/FieldTest';
+import { TestKit } from './screens/TestKit';
+import { KIT_PROGRESS_KEY, parseProgress } from '../diag/testKit';
 import { fieldTestRunIsResumable } from '../diag/fieldTestRun';
 import { loadSettings } from '../store/persist';
 import { applyTheme, normalizeTheme } from './theme';
@@ -46,7 +48,8 @@ export type Screen =
   | 'settings'
   | 'profiles'
   | 'charts'
-  | 'fieldtest';
+  | 'fieldtest'
+  | 'testkit';
 
 /** Human names for the "Back to ..." affordance. */
 const SCREEN_LABEL: Record<Screen, string> = {
@@ -58,6 +61,7 @@ const SCREEN_LABEL: Record<Screen, string> = {
   profiles: 'Profiles',
   charts: 'Charts',
   fieldtest: 'the field test',
+  testkit: 'the test kit',
 };
 
 /**
@@ -89,9 +93,18 @@ function App() {
    * still restored as inactive, so this opens the start gate and Resume is
    * still a deliberate tap — see `coerce`.
    */
-  const [screen, setScreen] = useState<Screen>(() =>
-    fieldTestRunIsResumable() ? 'fieldtest' : 'home',
-  );
+  const [screen, setScreen] = useState<Screen>(() => {
+    // The test kit reloads the page on purpose (it is one of its experiments)
+    // and must land back on the step after the reload, not on Home.
+    let kitResumable = false;
+    try {
+      kitResumable = parseProgress(localStorage.getItem(KIT_PROGRESS_KEY), Date.now()) !== null;
+    } catch {
+      kitResumable = false;
+    }
+    if (kitResumable) return 'testkit';
+    return fieldTestRunIsResumable() ? 'fieldtest' : 'home';
+  });
   /**
    * Where a Charts visit came FROM, so reviewing a chart mid-session can hand
    * you back to what you were doing. Charts is reachable from the tab bar at
@@ -276,6 +289,8 @@ function App() {
         return (
           <FieldTest settings={settings} onSettingsChange={setSettings} onNavigate={navigate} />
         );
+      case 'testkit':
+        return <TestKit onNavigate={navigate} />;
       case 'charts':
         // Charts reads getChart(activeProfile.rules) at render time, so unlike
         // Table it needs no remount key -- there is no long-lived Game instance

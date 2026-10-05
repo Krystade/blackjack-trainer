@@ -82,6 +82,20 @@ Last updated: 2026-10-05 (first cloud session).
 
 ---
 
+## Test kit (Home → Test kit) — the one-button runner
+
+- [x] **Shipped 2026-10-05.** Three kits: at my desk, car with Bluetooth, car without
+  Bluetooth. Covers G1-a, G1-b, G1-e, G2-a, G3-a and the G3-e recordings in one guided run
+  each. Step data and scoring: `src/diag/testKit.ts`. I/O: `src/diag/testKitIO.ts`.
+  Screen: `src/ui/screens/TestKit.tsx`.
+  - Results go to the diagnostic log under `test kit-*`. "Copy results" copies only the
+    lines written since the kit started.
+  - Recordings stay in memory until "Save recordings" (share sheet or download). They are
+    never committed.
+- [ ] Jack runs the **desk kit**. Then read the log and update G1/G2/G3 below with what it
+  settled.
+- [ ] Jack runs the **car kits**: Bluetooth on first (that's how he drives), then off.
+
 ## G1 · Loud speaker + voice, no Bluetooth
 
 **Evidence so far (do not re-run):**

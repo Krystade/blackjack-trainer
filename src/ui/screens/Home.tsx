@@ -96,6 +96,9 @@ export function Home({ onNavigate, activeProfile }: HomeProps) {
         <button type="button" className="u-btn u-btn-primary home-play-btn" onClick={() => onNavigate('table')}>
           Play a shoe
         </button>
+        <button type="button" className="u-btn home-testkit-btn" data-testid="testkit-open" onClick={() => onNavigate('testkit')}>
+          Test kit
+        </button>
       </div>
 
       {/* The installed app can sit on a cached bundle without saying so. This
