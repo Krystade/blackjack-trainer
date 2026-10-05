@@ -97,7 +97,6 @@ export function toneSamples(frequencyHz: number, peak = 1): Float32Array {
  */
 export function toneDataUri(frequencyHz: number, peak = 1): string {
   const frames = Math.round(SAMPLE_RATE * DURATION_S);
-  const fadeFrames = Math.max(1, Math.round(SAMPLE_RATE * FADE_S));
   const dataBytes = frames * 2;
   const bytes = new Uint8Array(44 + dataBytes);
 
