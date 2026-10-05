@@ -61,15 +61,43 @@ export type VoiceAction = keyof typeof VOICE_ACTIONS;
  * conversation will eventually play a hand nobody asked for. The cost of a
  * missing alias is being asked to repeat a word; the cost of a common-word
  * alias is a wrong decision at the table. Those are not comparable.
+ *
+ * A TWO-WORD FORM FOR EVERY COMMAND, and the reason is in WebKit's source
+ * rather than in any guess about accents. `WebSpeechRecognizerTask.mm` sets
+ * `[_request setTaskHint:SFSpeechRecognitionTaskHintDictation]` and nothing on
+ * the web can change it: the whole set of knobs that crosses the process
+ * boundary is lang, continuous, interimResults and maxAlternatives.
+ * `.confirmation`, which the Speech framework provides for exactly this job,
+ * is unreachable.
+ *
+ * So the model decoding a one-word answer is a LONG-FORM PROSE model, and a
+ * bare monosyllable is its worst case -- it would rather produce a fluent
+ * English fragment than a stray imperative. The 2026-10-05 room test is the
+ * cleanest evidence yet: a quiet room, the phone's own wideband microphone
+ * (highRatio 0.28), and `audiostart afterStartMs=0` so nothing was clipped --
+ * and "hit" still came back as "Add" at confidence 0.737, the only error in
+ * five utterances and by far the lowest confidence of them.
+ *
+ * Both forms stay valid, deliberately. That makes the comparison something
+ * the operator can run WITHIN one session by alternating, rather than across
+ * two drives that differ in traffic, speed and fan setting as well as in
+ * vocabulary.
+ *
+ * All are two words, which is the ceiling: `selfEcho.ts` never dismisses a
+ * transcript shorter than ECHO_MIN_WORDS as the app's own voice, so a
+ * three-word command would stop the app being able to tell its own prompt
+ * from an answer. None of them is a phrase that occurs in the app's own
+ * speech, which is the rule above.
  */
 const ALIASES: Record<string, VoiceAction> = {
-  hit: 'hit', hid: 'hit', hits: 'hit',
+  hit: 'hit', hid: 'hit', hits: 'hit', 'hit me': 'hit',
   stand: 'stand', stan: 'stand', stant: 'stand', stands: 'stand', standing: 'stand',
+  'stand pat': 'stand',
   double: 'double', dubble: 'double', doubles: 'double', 'double down': 'double',
-  split: 'split', splits: 'split', spit: 'split',
-  surrender: 'surrender', surrenders: 'surrender',
-  yes: 'yes', yeah: 'yes', yep: 'yes', yup: 'yes',
-  no: 'no', nope: 'no', nah: 'no',
+  split: 'split', splits: 'split', spit: 'split', 'split them': 'split',
+  surrender: 'surrender', surrenders: 'surrender', 'surrender this': 'surrender',
+  yes: 'yes', yeah: 'yes', yep: 'yes', yup: 'yes', 'yes please': 'yes',
+  no: 'no', nope: 'no', nah: 'no', 'no thanks': 'no',
   repeat: 'repeat', again: 'repeat', 'say again': 'repeat',
 };
 

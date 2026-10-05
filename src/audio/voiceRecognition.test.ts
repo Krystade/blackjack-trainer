@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import type { VoiceAction } from './voiceRecognition';
 import { looksLikeAnAttempt, matchSpokenAlternatives, matchVoiceAction, nearestVoiceAction, resolveSpoken, detectVoiceSupport, setUserVoiceAliases, voicePhrases, VOICE_ACTIONS } from './voiceRecognition';
 
 /**
@@ -562,5 +563,54 @@ describe('the consonant skeleton cannot swallow ordinary words', () => {
     // tie-cancel in nearestVoiceAction would fire on every utterance.
     expect(nearestVoiceAction('surrenda')).toBe('surrender');
     expect(nearestVoiceAction('spalit')).toBe('split');
+  });
+});
+
+describe('a two-word form for every command', () => {
+  /*
+   * WHY THESE EXIST. iOS hardcodes `taskHint` to Dictation -- a long-form
+   * prose model -- and nothing on the web can change it. A bare monosyllable
+   * is that model's worst case. The room test of 2026-10-05 is the cleanest
+   * evidence: quiet room, the phone's own wideband microphone, and
+   * `audiostart afterStartMs=0` so nothing was clipped, and "hit" still came
+   * back as "Add". These give the model the shape it was built for.
+   */
+  const COMMANDS: VoiceAction[] = ['hit', 'stand', 'double', 'split', 'surrender', 'yes', 'no', 'repeat'];
+
+  it('offers one for every command, so none is left on a bare syllable', () => {
+    for (const command of COMMANDS) {
+      const twoWord = voicePhrases().filter(
+        (p) => p.includes(' ') && matchVoiceAction(p) === command,
+      );
+      expect(twoWord.length, `no two-word form for "${command}"`).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps every phrase inside the echo guard', () => {
+    /*
+     * `selfEcho.ts` never dismisses a transcript shorter than ECHO_MIN_WORDS
+     * as the app's own voice, so a three-word command would leave the app
+     * unable to tell its own prompt from an answer -- and it would then grade
+     * its own corrections. The cap is two words, and it is a correctness
+     * boundary rather than a style rule.
+     */
+    for (const phrase of voicePhrases()) {
+      expect(phrase.trim().split(/\s+/).length, `"${phrase}" is too long`).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it('matches the two-word forms as the command they stand for', () => {
+    // Through `matchVoiceAction`, the entry the drill screens actually call.
+    // An earlier draft asserted through `nearestVoiceAction`, which is the
+    // consonant-skeleton FUZZY matcher and only ever answers from
+    // FUZZY_TARGETS -- so it could not see an alias at all and the test
+    // failed for a reason that had nothing to do with the aliases.
+    expect(matchVoiceAction('hit me')).toBe('hit');
+    expect(matchVoiceAction('stand pat')).toBe('stand');
+    expect(matchVoiceAction('split them')).toBe('split');
+    expect(matchVoiceAction('yes please')).toBe('yes');
+    expect(matchVoiceAction('no thanks')).toBe('no');
+    expect(matchVoiceAction('double down')).toBe('double');
+    expect(matchVoiceAction('say again')).toBe('repeat');
   });
 });

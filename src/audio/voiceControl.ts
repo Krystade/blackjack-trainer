@@ -561,7 +561,8 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     fresh.lang = 'en-US';
     // Ask for runners-up. Harmless where unsupported: the list simply
     // arrives with one entry, which is what it was before.
-    fresh.maxAlternatives = deps.alternatives?.() ?? SPOKEN_ALTERNATIVES;
+    const wantAlternatives = deps.alternatives?.() ?? SPOKEN_ALTERNATIVES;
+    fresh.maxAlternatives = wantAlternatives;
     applyBias(fresh, deps.biasPhrases);
     if (deps.processLocally) {
       try {
@@ -745,10 +746,18 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       log('result', {
         heard,
         alternatives: offered.length - 1,
-        // How many readings arrived, against how many were asked for. The
-        // distribution of this is the whole answer to whether raising
-        // maxAlternatives past three buys anything on this phone.
+        /*
+         * HOW MANY ARRIVED, AND HOW MANY WERE ASKED FOR.
+         *
+         * `offered` alone was not enough, and the 2026-10-05 room test proved
+         * it: five utterances, `offered=1` every time, with the setting at
+         * ten. That reads as "iOS only ever returns one transcription", which
+         * would retire the whole N-best rescue -- but it reads identically to
+         * "the setting never reached the recogniser", which is a bug in this
+         * file. One number cannot tell those apart, so both are recorded.
+         */
         offered: offered.length,
+        asked: wantAlternatives,
         conf: confs[0] ?? SPOKEN_CONFIDENCE_UNKNOWN,
         confs,
         sessionMs: sessionStartedAt > 0 ? deps.now() - sessionStartedAt : 0,

@@ -315,6 +315,22 @@ describe('how many readings to ask for', () => {
     expect(h.current().maxAlternatives).toBe(10);
   });
 
+  it('records how many were ASKED for, not only how many arrived', () => {
+    /*
+     * The 2026-10-05 room test logged `offered=1` five times out of five with
+     * the setting at ten. That reads as "iOS returns one transcription and
+     * the whole N-best rescue is dead on this device" -- and it reads exactly
+     * the same as "the setting never reached the recogniser", which would be
+     * a bug here. A log that cannot separate a platform limit from my own
+     * wiring fault is not evidence, so both numbers go in.
+     */
+    const h = harness({ cueOn: 'start', alternatives: 10 });
+    h.controller.start();
+    h.current().sayAll([{ transcript: 'Add' }]);
+
+    expect(h.find('result')?.detail).toMatchObject({ asked: 10, offered: 1 });
+  });
+
   it('records how many the engine actually offered', () => {
     const h = harness({ cueOn: 'start', alternatives: 10 });
     h.controller.start();
