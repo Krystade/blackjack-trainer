@@ -10,6 +10,7 @@ import { PlayingCard } from '../../components/PlayingCard';
 import { useAudio } from '../../../audio/useAudio';
 import { loadStats, saveStats } from '../../../store/persist';
 import { strategyRulesFor } from '../../../store/profiles';
+import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
 
 const ROUNDS = 25; // length of a downswing session (v1)
 const SOLO_SEATS: SeatConfig = { bots: 0, playerHands: 1, playerPosition: 0, botMistakePct: 0 };
@@ -286,9 +287,7 @@ export function DownswingView({
             the whole way down: the minimum at negative counts, the big bet at positive counts, even
             though it lost.
           </div>
-          <button type="button" className="drill-back-btn" onClick={onBack}>
-            Back to Drills
-          </button>
+          <DrillPrimaryBar label="Back to Drills" onPrimary={onBack} />
         </div>
       </div>
     );

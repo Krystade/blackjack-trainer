@@ -4,6 +4,7 @@ import {
   withProfile,
   answerSelfReportIfPresent,
   resolveInsurance,
+  openCountOptions,
 } from './helpers';
 
 /**
@@ -140,6 +141,7 @@ async function warmSettingsForClipIndex(page: Page): Promise<void> {
 async function startEyesFreeCountDrill(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await page.getByLabel('Eyes-free audio').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 }

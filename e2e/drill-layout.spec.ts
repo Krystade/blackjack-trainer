@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { waitForMic, withProfile } from './helpers';
+import { waitForMic, withProfile, withSettings } from './helpers';
 
 /**
  * The flashcards screen on the phone it is actually used on.
@@ -320,4 +320,195 @@ test('ZonePad: illegal plays are disabled, and Surrender is gone without it', as
     await expect(page.locator(`.zone-pad-quad-${zone}`)).not.toHaveClass(/zone-pad-quad-disabled/);
   }
   await expect(page.locator('.zone-pad-circle')).toHaveCount(0);
+});
+
+/* ---------------------------------------------------------------------- */
+/* Screen-level layout at 375x812: the primary action is on screen, always. */
+/* ---------------------------------------------------------------------- */
+
+/** The element's box must sit wholly inside the 375x812 viewport, no scrolling. */
+async function expectInViewport(page: Page, selector: string, what: string): Promise<void> {
+  const el = page.locator(selector).first();
+  await expect(el, `${what} is not rendered`).toBeVisible();
+  const box = await el.boundingBox();
+  expect(box, `${what} has no box`).not.toBeNull();
+  expect(box!.y, `${what} starts above the screen`).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height, `${what} ends at y=${box!.y + box!.height}, below the ${PHONE.height}px fold`).toBeLessThanOrEqual(
+    PHONE.height,
+  );
+  expect(box!.x + box!.width, `${what} runs off the right edge`).toBeLessThanOrEqual(PHONE.width);
+}
+
+/** A shared primary: full width less the 16px gutters, 56px tall, and pinned. */
+async function expectPrimaryBar(page: Page, what: string): Promise<void> {
+  await expectInViewport(page, '.drill-primary-bar .drill-primary-btn', what);
+  const box = (await page.locator('.drill-primary-bar .drill-primary-btn').first().boundingBox())!;
+  expect(box.width, `${what} is not full width`).toBeGreaterThanOrEqual(PHONE.width - 40);
+  expect(box.height, `${what} is under 56px`).toBeGreaterThanOrEqual(55);
+}
+
+test('Count drill setup: Start is pinned and full width, Length and Eyes-free show, the rest is under Options', async ({
+  page,
+}) => {
+  await page.setViewportSize(PHONE);
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await expect(page.locator('.count-setup')).toBeVisible();
+
+  await expectPrimaryBar(page, 'Start');
+  await expectInViewport(page, '.count-setup >> text=Length', 'Length');
+  await expectInViewport(page, 'label:has-text("Eyes-free audio")', 'Eyes-free audio');
+  // Closed, and the other settings are not on screen.
+  await expect(page.locator('.count-setup .drill-options')).not.toHaveAttribute('open', '');
+  await expect(page.getByText('Time per card')).toBeHidden();
+  await expect(page.getByText('Pace pressure')).toBeHidden();
+
+  const dims = await page.evaluate(() => ({
+    scrollH: document.documentElement.scrollHeight,
+    clientH: document.documentElement.clientHeight,
+  }));
+  expect(dims.scrollH, 'Count setup scrolls').toBeLessThanOrEqual(dims.clientH + 1);
+
+  // Opening Options keeps Start on screen even though the form is now tall.
+  await page.locator('.count-setup .drill-options > summary').click();
+  await expect(page.getByText('Time per card')).toBeVisible();
+  await expectInViewport(page, '.drill-primary-bar .drill-primary-btn', 'Start with Options open');
+  await page.screenshot({ path: 'e2e/screenshots/count-setup-375.png' });
+});
+
+test('Count drill result: one obvious primary, New run, on screen; Back is the quiet secondary', async ({ page }) => {
+  await withSettings(page, { drill: { countIntervalMs: 300, countLengthCards: 4, countGroup: 1 } });
+  await page.setViewportSize(PHONE);
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
+  await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.locator('.drill-result')).toBeVisible();
+
+  await expectPrimaryBar(page, 'New run');
+  await expect(page.locator('.drill-primary-bar .drill-primary-btn')).toHaveText('New run');
+  await expect(page.locator('.drill-primary-bar .drill-secondary-btn')).toHaveText('Back to Drills');
+  await expectInViewport(page, '.drill-secondary-btn', 'Back to Drills');
+  await page.screenshot({ path: 'e2e/screenshots/count-result-375.png' });
+});
+
+test('Deck estimation and True count: Start is the same pinned primary', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await page.goto('/?e2e=1');
+  for (const name of ['Deck estimation', 'True count drill']) {
+    await page.getByRole('button', { name: 'Drills', exact: true }).click();
+    await page.getByRole('button', { name, exact: true }).click();
+    await expectPrimaryBar(page, `${name} Start`);
+    await page.locator('.drill-back-btn').first().click();
+  }
+});
+
+test('Test kit menu: the kit buttons come first, "Still unanswered" is a collapsed disclosure below them', async ({
+  page,
+}) => {
+  await page.setViewportSize(PHONE);
+  await page.goto('/?e2e=1');
+  await page.getByTestId('testkit-open').click();
+  await expect(page.getByTestId('testkit-screen')).toBeVisible();
+
+  await expectInViewport(page, '.testkit-kit >> nth=0', 'the first kit button');
+  await expectInViewport(page, '.testkit-kit >> nth=1', 'the second kit button');
+  const kitBottom = (await page.locator('.testkit-kit').last().boundingBox())!;
+  const summary = (await page.locator('.testkit-unanswered > summary').boundingBox())!;
+  expect(summary.y, 'the unanswered list sits above the kit buttons').toBeGreaterThan(kitBottom.y);
+  await expect(page.locator('.testkit-unanswered')).not.toHaveAttribute('open', '');
+  await expect(page.getByTestId('testkit-open-questions')).toBeHidden();
+  await page.locator('.testkit-unanswered > summary').click();
+  await expect(page.getByTestId('testkit-open-questions').locator('li')).toHaveCount(5);
+});
+
+test('Table End takes two taps, reverts after 3s, and always shows the session report', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  const end = page.locator('.end-btn');
+  await expect(end).toHaveText('End');
+
+  await end.click();
+  await expect(end).toHaveText('Tap again to end');
+  await expect(page.locator('.report-screen')).toHaveCount(0);
+  // Disarms by itself.
+  await expect(end).toHaveText('End', { timeout: 5000 });
+  await expect(page.locator('.report-screen')).toHaveCount(0);
+
+  // Training mode is the default: the report shows anyway.
+  await end.click();
+  await end.click();
+  await expect(page.locator('.report-screen')).toBeVisible();
+  await expectInViewport(page, '.report-done-btn', 'the report button');
+});
+
+test('Home: top-aligned, the full profile name, Test kit is a small link under the build line', async ({ page }) => {
+  await withProfile(page, { name: 'Default (6D H17 DAS, 3:2 payout, late surrender)' });
+  await page.setViewportSize(PHONE);
+  await page.goto('/?e2e=1');
+  const title = (await page.locator('.home-title').boundingBox())!;
+  expect(title.y, 'the content is still vertically centred').toBeLessThan(120);
+
+  const chip = page.locator('.home-profile-chip');
+  await expect(chip).toContainText('late surrender');
+  const overflow = await chip.evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(overflow, 'the profile name is truncated').toBeLessThanOrEqual(1);
+
+  await expectInViewport(page, '.home-play-btn', 'Play a shoe');
+  await expectInViewport(page, '[data-testid="testkit-open"]', 'the Test kit link');
+  const link = (await page.getByTestId('testkit-open').boundingBox())!;
+  const build = (await page.locator('.home-build').boundingBox())!;
+  expect(link.y, 'Test kit is not under the build line').toBeGreaterThanOrEqual(build.y + build.height - 1);
+  expect(link.width, 'Test kit is still a full-width button').toBeLessThan(200);
+  await page.screenshot({ path: 'e2e/screenshots/home-375.png' });
+  await page.getByTestId('testkit-open').click();
+  await expect(page.getByTestId('testkit-screen')).toBeVisible();
+});
+
+test('Deviation quiz: Next is on screen after a wrong answer, and the pill stays inside its card', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+
+  let sawMistake = false;
+  for (let i = 0; i < 12 && !sawMistake; i++) {
+    if (await page.locator('.quiz-insurance-prompt').isVisible().catch(() => false)) {
+      await page.getByRole('button', { name: 'Take insurance', exact: true }).click();
+    } else {
+      await page.locator('.action-bar button.action-btn:not([disabled])', { hasText: 'Double' }).click();
+    }
+    if ((await page.locator('.mistake-card').count()) > 0) {
+      sawMistake = true;
+      break;
+    }
+    await page.locator('.drill-next-btn').click();
+  }
+  expect(sawMistake, 'never got a wrong answer in twelve tries').toBe(true);
+
+  await expectInViewport(page, '.drill-next-btn', 'Next');
+  const geo = await page.evaluate(() => {
+    const card = document.querySelector('.mistake-card')!.getBoundingClientRect();
+    const pill = document.querySelector('.mistake-class')?.getBoundingClientRect();
+    return { cardRight: card.right, pillRight: pill?.right ?? 0 };
+  });
+  expect(geo.pillRight, 'the classification pill runs past the card').toBeLessThanOrEqual(geo.cardRight + 0.5);
+  await page.screenshot({ path: 'e2e/screenshots/quiz-feedback-375.png' });
+});
+
+test('Flashcards feedback says it in words: no raw cell id, no "Box n/5"', async ({ page }) => {
+  await intoFlashcards(page);
+  await page.getByRole('button', { name: 'Stand', exact: true }).click();
+  const cell = page.locator('.feedback-cell');
+  await expect(cell).toBeVisible();
+  await expect(cell).toHaveText(/^(Hard|Soft|Pair of) \w+ vs \w+$/);
+  const body = await page.evaluate(() => document.body.innerText);
+  expect(body).not.toMatch(/(hard|soft|pair)-\w+-v-\w+/);
+  expect(body).not.toMatch(/Box \d\/5/);
+  await expectInViewport(page, '.drill-next-btn', 'Next');
 });

@@ -61,6 +61,7 @@ import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../a
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
+import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -1574,6 +1575,65 @@ export function CountDrillView({
 
       {phase === 'setup' && (
         <div className="count-setup">
+          {!countdownMode && (
+              <Stepper
+                label="Length"
+                value={settings.drill.countLengthCards}
+                min={13}
+                max={312}
+                step={13}
+                format={(v) => `${v} cards`}
+                onChange={(v) => updateDrill({ countLengthCards: v })}
+              />
+          )}
+
+          <div className="drill-mode-row">
+          {/* D2: offered in Countdown as well now. That mode is fifty-one
+              cards read out one at a time with the count kept in your head,
+              which is the whole drill and the one shape of it that works from
+              a driver's seat. Strict mode stays out of it: it swaps in a
+              keypad, and Countdown's answer is three words. */}
+          <label className="count-toggle">
+            <input
+              type="checkbox"
+              checked={eyesFree}
+              onChange={(e) => {
+                // Tapping this IS a request for audio, so honour it rather
+                // than refusing. The control used to sit disabled whenever
+                // `audio.enabled` was false -- the shipped default -- which
+                // made the app's driving mode a dead checkbox curable only
+                // from another screen. See ui/audioGate.ts.
+                if (e.target.checked && !settings.audio.enabled) {
+                  enableAudioNow(settings, onSettingsChange);
+                }
+                setEyesFree(e.target.checked);
+              }}
+            />
+            Eyes-free audio
+          </label>
+          {voiceSupported && (
+            <label className="count-toggle">
+              <input
+                type="checkbox"
+                checked={voiceOn}
+                onChange={(e) => {
+                  // Answering out loud is worthless without hearing the
+                  // reply, so this turns audio on the way Eyes-free does
+                  // rather than sitting dead when audio happens to be off.
+                  if (e.target.checked && !settings.audio.enabled) {
+                    enableAudioNow(settings, onSettingsChange);
+                  }
+                  setVoiceOn(e.target.checked);
+                }}
+              />
+              Voice answers (say the count, and &ldquo;yes&rdquo; to start)
+            </label>
+          )}
+          </div>
+
+          <details className="drill-options">
+            <summary>Options</summary>
+            <div className="drill-options-body">
           <label className="count-toggle">
             <input
               type="checkbox"
@@ -1584,16 +1644,6 @@ export function CountDrillView({
           </label>
 
           {!countdownMode && (
-            <>
-              <Stepper
-                label="Length"
-                value={settings.drill.countLengthCards}
-                min={13}
-                max={312}
-                step={13}
-                format={(v) => `${v} cards`}
-                onChange={(v) => updateDrill({ countLengthCards: v })}
-              />
               <div className="settings-row">
                 <span className="settings-label">Group size</span>
                 <Segmented
@@ -1606,7 +1656,6 @@ export function CountDrillView({
                   onChange={(v) => updateDrill({ countGroup: Number(v) as 1 | 2 | 3 })}
                 />
               </div>
-            </>
           )}
 
           <Stepper
@@ -1679,29 +1728,6 @@ export function CountDrillView({
             </>
           )}
 
-          {/* D2: offered in Countdown as well now. That mode is fifty-one
-              cards read out one at a time with the count kept in your head,
-              which is the whole drill and the one shape of it that works from
-              a driver's seat. Strict mode stays out of it: it swaps in a
-              keypad, and Countdown's answer is three words. */}
-          <label className="count-toggle">
-            <input
-              type="checkbox"
-              checked={eyesFree}
-              onChange={(e) => {
-                // Tapping this IS a request for audio, so honour it rather
-                // than refusing. The control used to sit disabled whenever
-                // `audio.enabled` was false -- the shipped default -- which
-                // made the app's driving mode a dead checkbox curable only
-                // from another screen. See ui/audioGate.ts.
-                if (e.target.checked && !settings.audio.enabled) {
-                  enableAudioNow(settings, onSettingsChange);
-                }
-                setEyesFree(e.target.checked);
-              }}
-            />
-            Eyes-free audio
-          </label>
           {!countdownMode && eyesFree && settings.audio.enabled && (
             <label className="count-toggle">
               <input
@@ -1878,31 +1904,10 @@ export function CountDrillView({
             </div>
           )}
 
-          {/* Voice. Offered next to Start because that is where it has to be
-              turned on: the microphone needs a tap, and the whole point is
-              that it is the LAST tap of the session. */}
-          {voiceSupported && (
-            <label className="count-toggle">
-              <input
-                type="checkbox"
-                checked={voiceOn}
-                onChange={(e) => {
-                  // Answering out loud is worthless without hearing the
-                  // reply, so this turns audio on the way Eyes-free does
-                  // rather than sitting dead when audio happens to be off.
-                  if (e.target.checked && !settings.audio.enabled) {
-                    enableAudioNow(settings, onSettingsChange);
-                  }
-                  setVoiceOn(e.target.checked);
-                }}
-              />
-              Voice answers (say the count, and &ldquo;yes&rdquo; to start)
-            </label>
-          )}
+            </div>
+          </details>
 
-          <button type="button" className="drill-start-btn" onClick={start}>
-            Start
-          </button>
+          <DrillPrimaryBar label="Start" variant="start" onPrimary={start} />
         </div>
       )}
 
@@ -2059,12 +2064,7 @@ export function CountDrillView({
             The running count was {actualValue}. Self-reported, and recorded.
           </div>
           {checkpointBlock}
-          <button type="button" className="drill-replay-btn" onClick={start}>
-            New run
-          </button>
-          <button type="button" className="drill-back-btn" onClick={handleBack}>
-            Back to Drills
-          </button>
+          <DrillPrimaryBar label="New run" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
         </div>
       )}
 
@@ -2104,12 +2104,7 @@ export function CountDrillView({
                 </div>
               );
             })()}
-          <button type="button" className="drill-replay-btn" onClick={start}>
-            New run
-          </button>
-          <button type="button" className="drill-back-btn" onClick={handleBack}>
-            Back to Drills
-          </button>
+          <DrillPrimaryBar label="New run" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
         </div>
       )}
     </div>

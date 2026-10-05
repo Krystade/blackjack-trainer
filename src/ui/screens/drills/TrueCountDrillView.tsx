@@ -31,6 +31,7 @@ import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../a
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
+import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -701,9 +702,7 @@ export function TrueCountDrillView({
             </label>
           )}
 
-          <button type="button" className="drill-start-btn" onClick={start}>
-            Start
-          </button>
+          <DrillPrimaryBar label="Start" variant="start" onPrimary={start} />
         </div>
       )}
 
@@ -797,12 +796,7 @@ export function TrueCountDrillView({
           <div className="result-detail">
             The true count was {formatSigned(question.correctTc)} &mdash; self-reported, and recorded
           </div>
-          <button type="button" className="drill-replay-btn" onClick={start}>
-            Next
-          </button>
-          <button type="button" className="drill-back-btn" onClick={handleBack}>
-            Back to Drills
-          </button>
+          <DrillPrimaryBar label="Next" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
         </div>
       )}
 
@@ -818,12 +812,7 @@ export function TrueCountDrillView({
           <div className="result-detail">
             You entered {formatSigned(enteredValue)}; the true count was {formatSigned(question.correctTc)}.
           </div>
-          <button type="button" className="drill-replay-btn" onClick={start}>
-            Next
-          </button>
-          <button type="button" className="drill-back-btn" onClick={handleBack}>
-            Back to Drills
-          </button>
+          <DrillPrimaryBar label="Next" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
         </div>
       )}
     </div>

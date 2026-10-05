@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { withSettings, withProfile } from './helpers';
+import { withSettings, withProfile, openCountOptions } from './helpers';
 
 /**
  * "There's 0 feedback on if I get the running count correct."
@@ -23,6 +23,7 @@ async function startEyesFreeCountDrill(page: import('@playwright/test').Page): P
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 }

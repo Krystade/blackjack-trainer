@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { shot, withSettings, withStats, readStats, goHomeAndNavigate } from './helpers';
+import { shot, withSettings, withStats, readStats, goHomeAndNavigate, openCountOptions } from './helpers';
 import { tcConversionAccepted } from '../src/engine/count';
 
 /**
@@ -15,8 +15,8 @@ import { tcConversionAccepted } from '../src/engine/count';
  */
 async function stripText(page: Page): Promise<string> {
   return (await page.locator('.message-strip').innerText()).replace(
-    /due in [^\n]*/g,
-    'due in <time>',
+    /Next review[^\n]*/g,
+    'Next review <time>',
   );
 }
 
@@ -78,6 +78,8 @@ test('count drill: flash 4 cards fast, submit RC, see result', async ({ page }) 
   await shot(page, '12-drills-picker');
 
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+
+  await openCountOptions(page);
   await expect(page.locator('.count-setup')).toBeVisible();
   await shot(page, '13-count-drill-setup');
 
@@ -111,6 +113,7 @@ test('count drill: Count bias control persists and a biased shoe drills to a gra
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await expect(page.locator('.count-setup')).toBeVisible();
 
   // Default is None; switch to Neg-first via the setup control.
@@ -150,6 +153,7 @@ test('count drill: timed challenge auto-advances and reports elapsed time + spee
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
 
   await page.getByLabel('Timed challenge (gets faster every card)').check();
   await expect(page.getByText('Starting pace')).toBeVisible();
@@ -240,6 +244,7 @@ test('count drill: adaptive difficulty picks a faster start after a history of a
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
 
   await page.getByLabel('Timed challenge (gets faster every card)').check();
   // Adaptive difficulty defaults to true -- left unchecked/untouched here to
@@ -520,6 +525,7 @@ test('count drill: typed digit + Enter submits the running-count answer via keyb
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
@@ -566,6 +572,7 @@ test('count drill: relentless distractions interrupt mid-stream and grade countK
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await expect(page.locator('.count-setup')).toBeVisible();
 
   // The setup screen's own control reflects the forced setting.
@@ -639,6 +646,7 @@ test('count drill: distractionFreq off (default) never shows a distraction, even
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
 
   const freqRow = page.locator('.settings-row', { hasText: 'Distractions' });
   await expect(freqRow.getByRole('button', { name: 'Off', exact: true })).toHaveClass(/segmented-btn-active/);
@@ -745,6 +753,7 @@ test('count drill: manual mode advances via Space, Enter, and ArrowRight, matchi
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   const tapZone = page.locator('.manual-tap-zone');
@@ -974,6 +983,7 @@ test('count drill: Countdown mode reaches the tag-guess result and records a 52-
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await expect(page.locator('.count-setup')).toBeVisible();
 
   await page
@@ -1024,6 +1034,7 @@ test('count drill: eyes-free Strict mode grades via NumPad and speaks the verdic
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
 
   await page.getByLabel('Eyes-free audio').check();
   await page.getByLabel('Strict mode (enter the answer; graded)').check();
@@ -1071,6 +1082,7 @@ test('count drill: occasional distractions interrupt mid-stream (jittered, spars
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
 
   const freqRow = page.locator('.settings-row', { hasText: 'Distractions' });
   await expect(freqRow.getByRole('button', { name: 'Occasional', exact: true })).toHaveClass(/segmented-btn-active/);
@@ -1124,6 +1136,7 @@ test('count drill: distraction type "Generic" poses plain arithmetic unrelated t
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
 
   const typeRow = page.locator('.settings-row', { hasText: 'Distraction type' });
   await expect(typeRow.getByRole('button', { name: 'Generic', exact: true })).toHaveClass(/segmented-btn-active/);
@@ -1168,6 +1181,7 @@ test('count drill: group size 2 and 3 flash multiple cards per flash step', asyn
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
 
   const groupRow = page.locator('.settings-row', { hasText: 'Group size' });
   await expect(groupRow.getByRole('button', { name: '3', exact: true })).toHaveClass(/segmented-btn-active/);
@@ -1183,6 +1197,7 @@ test('count drill: group size 2 and 3 flash multiple cards per flash step', asyn
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await expect(page.locator('.count-setup')).toBeVisible();
 
   await groupRow.getByRole('button', { name: '2', exact: true }).click();
@@ -1524,6 +1539,7 @@ test('count drill: Messy cards applies a per-card transform to the flashed cards
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await expect(page.locator('.count-setup')).toBeVisible();
 
   await page.getByRole('checkbox', { name: /Messy cards/ }).check();
@@ -1547,6 +1563,7 @@ test('count drill: Pace pressure toggle persists and a pressured run drills to a
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await expect(page.locator('.count-setup')).toBeVisible();
 
   const paceToggle = page.getByRole('checkbox', { name: /Pace pressure/ });
@@ -1731,6 +1748,7 @@ test('count drill: turning distractions on before fluency says so, and still tur
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
 
   const distractions = page.locator('.settings-row', { hasText: 'Distractions' });
   await expect(page.locator('.count-setup')).not.toContainText('get fluent at the plain count drill first');
@@ -1754,6 +1772,7 @@ test('count drill: a fluent learner gets no distraction nudge', async ({ page })
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
 
   await page
     .locator('.settings-row', { hasText: 'Distractions' })

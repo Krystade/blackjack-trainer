@@ -200,7 +200,31 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
           <span />
         </header>
         <div className="testkit-body">
-          <h2 className="testkit-title">Still unanswered</h2>
+          <p className="testkit-lede">
+            Pick where you are. Each kit asks only what that place can answer; the answers go into the diagnostic log.
+          </p>
+          {(Object.keys(KITS) as KitId[]).map((id) => (
+            <button key={id} type="button" className="u-btn testkit-kit" onClick={() => start(id)}>
+              <span className="testkit-kit-label">{KITS[id].label}</span>
+              <span className="testkit-kit-where">{KITS[id].where}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            className="u-btn testkit-kit"
+            data-testid="fieldtest-open"
+            onClick={() => onNavigate('fieldtest')}
+          >
+            <span className="testkit-kit-label">
+              {fieldRun.active ? `Back to the freeway drive — step ${fieldRun.stepIndex + 1} of ${FIELD_TEST_STEPS.length}` : 'Freeway drive'}
+            </span>
+            <span className="testkit-kit-where">
+              Bluetooth on, at road speed. {FIELD_TEST_STEPS.length} steps, run by the wheel and your voice. Answer
+              the first two before you pull out.
+            </span>
+          </button>
+          <details className="drill-options testkit-unanswered">
+            <summary>Still unanswered (5)</summary>
           <ul className="testkit-open" data-testid="testkit-open-questions">
             <li>
               <strong>Phone speaker with voice on.</strong> Does any way of playing sound stay on the loud speaker
@@ -223,30 +247,7 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
               the sound? <em>Bluetooth: phone mic?</em>
             </li>
           </ul>
-          <p className="testkit-lede">
-            Pick where you are. Each one asks only what that place can answer, one step at a time. Everything goes
-            into the diagnostic log; at the end you copy it and save the recordings.
-          </p>
-          {(Object.keys(KITS) as KitId[]).map((id) => (
-            <button key={id} type="button" className="u-btn testkit-kit" onClick={() => start(id)}>
-              <span className="testkit-kit-label">{KITS[id].label}</span>
-              <span className="testkit-kit-where">{KITS[id].where}</span>
-            </button>
-          ))}
-          <button
-            type="button"
-            className="u-btn testkit-kit"
-            data-testid="fieldtest-open"
-            onClick={() => onNavigate('fieldtest')}
-          >
-            <span className="testkit-kit-label">
-              {fieldRun.active ? `Back to the freeway drive — step ${fieldRun.stepIndex + 1} of ${FIELD_TEST_STEPS.length}` : 'Freeway drive'}
-            </span>
-            <span className="testkit-kit-where">
-              Bluetooth on, at road speed. {FIELD_TEST_STEPS.length} steps, run by the wheel and your voice. Answer
-              the first two before you pull out.
-            </span>
-          </button>
+          </details>
         </div>
       </div>
     );

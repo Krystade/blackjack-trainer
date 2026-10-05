@@ -226,6 +226,7 @@ test('voice stays on across a navigation, because forgetting it looks like a fai
   // Away and back. The tab bar is stood down at the table -- it is an
   // immersive screen that owns its own bottom edge -- so leaving is End,
   // which is exactly what the operator does between shoes.
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await page.getByRole('button', { name: 'Play a shoe' }).click();
 
@@ -240,6 +241,7 @@ test('turning it off stays off across a navigation too', async ({ page }) => {
   await page.locator('.voice-btn').click();
   await page.locator('.voice-btn').click();
 
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await page.getByRole('button', { name: 'Play a shoe' }).click();
 

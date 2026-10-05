@@ -6,7 +6,7 @@ import type { Action, DeviationId } from '../../engine/deviations';
 import { isIndexActive, indexSetFor } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
 import { drawFlashcard } from '../../drills/flashcards';
-import { formatSrCard } from '../../drills/srStatus';
+import { formatReviewPlain } from '../../drills/srStatus';
 import { drillLegalActions } from '../../drills/legalActions';
 import { gateDrillAnswer, gateQuizAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
@@ -278,6 +278,19 @@ function DrillModeControls({
       )}
     </>
   );
+}
+
+/**
+ * "hard-13-v-3" as words: "Hard 13 vs 3". The raw id is what the grader and
+ * the specs key on (kept in `data-cell-id`); it is not something to put in
+ * front of a driver.
+ */
+function plainCellLabel(cellId: string): string {
+  const m = /^(hard|soft|pair)-(\w+)-v-(\w+)$/.exec(cellId);
+  if (!m) return cellId;
+  const kind = m[1] === 'hard' ? 'Hard' : m[1] === 'soft' ? 'Soft' : 'Pair of';
+  const value = m[1] === 'pair' ? `${m[2]}s` : m[2];
+  return `${kind} ${value} vs ${m[3]}`;
 }
 
 /* ---------------------------------------------------------------- */
@@ -1010,15 +1023,22 @@ function FlashcardsView({
             {/* The cell id names the chart row just drilled, and belongs to
                 the feedback state rather than to either outcome — it is
                 equally worth seeing after a hit or a miss. */}
-            <div className="feedback-cell">{card.cellId}</div>
+            <div className="feedback-cell" data-cell-id={card.cellId}>
+              {plainCellLabel(card.cellId)}
+            </div>
             {/* The schedule for the row just answered. It existed only in
                 aggregate -- the picker's "N due", the Stats histogram -- so
                 the one place it was invisible was the card you are actually
                 answering. Read AFTER grading, so a right answer visibly
                 pushes the next review out and a miss visibly collapses it. */}
             {(() => {
-              const sr = formatSrCard(srDeckRef.current[card.cellId], Date.now());
-              return sr ? <div className="feedback-sr">{sr}</div> : null;
+              const srCard = srDeckRef.current[card.cellId];
+              const sr = formatReviewPlain(srCard, Date.now());
+              return sr ? (
+                <div className="feedback-sr" data-box={srCard?.box}>
+                  {sr}
+                </div>
+              ) : null;
             })()}
           </>
         )}

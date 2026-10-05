@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, shot } from './helpers';
+import { withSettings, shot, openCountOptions } from './helpers';
 
 /**
  * RT#12 (docs/BACKLOG.md): the count drill graded ONE number at the end, so a
@@ -21,6 +21,7 @@ async function openCountDrill(page: Page) {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 }
 

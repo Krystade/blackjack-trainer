@@ -79,7 +79,7 @@ test('"I had it" grades as correct and "I missed it" does not', async ({ page })
   await expect(page.locator('.result-correct')).toBeVisible();
   // Graded, not merely displayed: the SR line only exists once the deck was
   // written for this cell.
-  await expect(page.locator('.feedback-sr')).toContainText(/Box \d\/5/);
+  await expect(page.locator('.feedback-sr')).toContainText(/Next review/);
 
   await page.locator('.drill-next-btn').click();
 

@@ -330,3 +330,17 @@ export async function waitForMic(page: Page): Promise<void> {
   );
 }
 
+
+/**
+ * Open the Count drill's "Options" disclosure. Everything past Length and
+ * Eyes-free audio / Voice answers lives under it, closed by default (also
+ * under ?e2e=1), so a spec that drives Countdown, Group size, Time per card,
+ * Distractions and the rest has to open it first. Safe to call when already
+ * open, or on a screen without one.
+ */
+export async function openCountOptions(page: Page): Promise<void> {
+  const details = page.locator('.count-setup .drill-options').first();
+  if ((await details.count()) === 0) return;
+  const open = await details.evaluate((el) => (el as HTMLDetailsElement).open);
+  if (!open) await details.locator('summary').click();
+}

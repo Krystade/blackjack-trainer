@@ -41,6 +41,7 @@ import {
   formatDepthSlack,
   isLastDeckTightened,
 } from '../../../drills/depthResolution';
+import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -526,9 +527,7 @@ export function ProduceTcDrillView({
               Voice answers
             </label>
           )}
-          <button type="button" className="drill-replay-btn" onClick={start}>
-            Start
-          </button>
+          <DrillPrimaryBar label="Start" variant="start" onPrimary={start} />
         </div>
       )}
 
@@ -642,12 +641,7 @@ export function ProduceTcDrillView({
               </>
             )}
           </div>
-          <button type="button" className="drill-replay-btn" onClick={start}>
-            Next
-          </button>
-          <button type="button" className="drill-back-btn" onClick={handleBack}>
-            Back to Drills
-          </button>
+          <DrillPrimaryBar label="Next" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
         </div>
       )}
     </div>

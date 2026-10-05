@@ -271,3 +271,23 @@ export function formatSrCard(card: SrCard | undefined, now: number): string | nu
 
   return parts.join(' · ');
 }
+
+/**
+ * The same schedule in plain words, for the feedback strip: "Next review:
+ * tomorrow". `formatSrCard`'s "Box 1/5 · due in 24h" is accurate, but it is
+ * scheduler vocabulary an operator glancing at a phone cannot use. Null for a
+ * card with no history, like `formatSrCard`.
+ */
+export function formatReviewPlain(card: SrCard | undefined, now: number): string | null {
+  if (!card || card.reviews === 0) return null;
+  const ms = card.dueAt - now;
+  if (ms <= 0) return 'Next review: now';
+  const hours = ms / (60 * 60 * 1000);
+  if (hours < 20) {
+    const h = Math.max(1, Math.round(hours));
+    return `Next review: in ${h} hour${h === 1 ? '' : 's'}`;
+  }
+  const days = Math.round(ms / DAY_MS);
+  if (days <= 1) return 'Next review: tomorrow';
+  return `Next review: in ${days} days`;
+}

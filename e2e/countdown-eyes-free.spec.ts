@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { sayOnceListening, withSettings, withProfile } from './helpers';
+import { sayOnceListening, withSettings, withProfile, openCountOptions } from './helpers';
 
 /**
  * D2: Countdown, from the driver's seat.
@@ -61,6 +61,7 @@ async function openCountdown(page: Page, opts: { voice?: boolean } = {}): Promis
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await page.locator('label', { hasText: 'Countdown' }).locator('input').check();
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
   if (opts.voice) {
@@ -78,6 +79,7 @@ test('eyes-free is offered in Countdown at all', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await page.locator('label', { hasText: 'Countdown' }).locator('input').check();
 
   await expect(page.locator('label', { hasText: 'Eyes-free audio' })).toBeVisible();

@@ -40,6 +40,7 @@ test('the Bluetooth phone-mic kit is listed and walks inputs, probe and finger t
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/?e2e=1');
   await page.getByTestId('testkit-open').click();
+  await page.locator('.testkit-unanswered > summary').click();
   await expect(page.getByTestId('testkit-open-questions').locator('li')).toHaveCount(5);
   await expect(page.getByTestId('testkit-open-questions')).toContainText('Phone mic with Bluetooth on.');
 
@@ -70,5 +71,5 @@ test('the Bluetooth phone-mic kit is listed and walks inputs, probe and finger t
 
   // Stop releases every stream and returns to the menu.
   await kit.getByRole('button', { name: 'Stop' }).click();
-  await expect(page.getByTestId('testkit-open-questions')).toBeVisible();
+  await expect(page.locator('.testkit-unanswered')).toBeVisible();
 });

@@ -208,8 +208,11 @@ function groupMistakes(mistakes: readonly GradedEvent[]): { mistake: GradedEvent
   return out;
 }
 
+/** How long the End button stays armed after its first tap. */
+const END_ARMED_MS = 3000;
+
 function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () => void }) {
-  // R7 (docs/BACKLOG.md): this screen only shows in TEST mode (see handleEnd),
+  // R7 (docs/BACKLOG.md): this screen shows after every End (see handleEnd),
   // so a peek-assisted session's accuracy is flagged right under the headline
   // number it qualifies — the number can't be mistaken for unassisted.
   const assisted = assistedFlag(report.peeks);
@@ -600,13 +603,25 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     setCountStage('rc');
   };
 
+  // End is two taps, like Finish in the field test: it sits at the top of the
+  // screen, and one thumb-slip while driving used to end the shoe (and, in
+  // Training mode, skip the report). The first tap arms it ("Tap again to
+  // end") and it disarms itself after 3s. The report is always shown now.
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  useEffect(() => {
+    if (!confirmEnd) return;
+    const t = setTimeout(() => setConfirmEnd(false), END_ARMED_MS);
+    return () => clearTimeout(t);
+  }, [confirmEnd]);
+
   const handleEnd = () => {
-    endSession(peeks);
-    if (settings.feedbackMode === 'test') {
-      setShowReport(true);
-    } else {
-      onNavigate('home');
+    if (!confirmEnd) {
+      setConfirmEnd(true);
+      return;
     }
+    setConfirmEnd(false);
+    endSession(peeks);
+    setShowReport(true);
   };
 
   const handleReportDone = () => {
@@ -754,11 +769,12 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         <button
           type="button"
           className="end-btn"
-          aria-label="End session"
+          aria-label={confirmEnd ? 'Tap again to end the session' : 'End session'}
           title="End session"
+          data-armed={confirmEnd ? 'true' : undefined}
           onClick={handleEnd}
         >
-          End
+          {confirmEnd ? 'Tap again to end' : 'End'}
         </button>
       </div>
 

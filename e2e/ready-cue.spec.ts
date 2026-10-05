@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile } from './helpers';
+import { withSettings, withProfile, openCountOptions } from './helpers';
 
 /**
  * "I didn't hear any chime indicating the mic was activated" -- Jack,
@@ -87,6 +87,7 @@ test('the microphone-open cue goes through the held path, not a bare chime', asy
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   // Eyes-free, then the microphone: `onListening` does not fire until the
   // recogniser reaches 'listening', and that is the cue's only trigger.
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();

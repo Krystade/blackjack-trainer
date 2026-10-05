@@ -38,6 +38,7 @@ test('it is reachable from every screen, including the immersive ones', async ({
   await page.getByRole('button', { name: 'Play a shoe' }).click();
   await expect(page.locator(MUTE)).toBeVisible();
 
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await page.getByRole('button', { name: 'Drills', exact: true }).first().click();
   await expect(page.locator(MUTE)).toBeVisible();

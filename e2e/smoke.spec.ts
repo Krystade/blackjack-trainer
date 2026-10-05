@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { shot, withProfile, withSettings, readStats, playRoundByAdvice, statsTab } from './helpers';
+import { shot, withProfile, withSettings, readStats, playRoundByAdvice, statsTab, openCountOptions } from './helpers';
 
 /**
  * T0 gap #2 (docs/research/2026-07-26-test-coverage-matrix.md, "SPEC — Single
@@ -105,6 +105,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   await expect(page.locator('.message-strip .message-result').first()).toBeVisible();
   await shot(page, 'smoke-04-table-result');
 
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await expect(page.locator('.home-title')).toBeVisible();
 
@@ -116,6 +117,8 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   await shot(page, 'smoke-05-drills-picker');
 
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+
+  await openCountOptions(page);
   await expect(page.locator('.count-setup')).toBeVisible();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { withSettings, openCountOptions } from './helpers';
 
 /**
  * The steering wheel, end to end.
@@ -170,6 +170,7 @@ test('the count drill takes a running count from the wheel too', async ({ page }
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await press(page, 'forward'); // Start
 
   await expect(page.getByText('Enter the running count')).toBeVisible({ timeout: 10_000 });
@@ -272,6 +273,7 @@ test('a distraction is answered with the same two buttons the count is', async (
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   await expect(page.locator('.distraction-area')).toBeVisible({ timeout: 15_000 });
@@ -338,6 +340,7 @@ test('the wheel answer to a distraction is the answer that gets graded', async (
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   /** Walk the entry to `target` from nothing, then let the quiet commit it. */

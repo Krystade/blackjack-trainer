@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { summarizeSrDeck, boxBarPercents, DUE_SOON_MS, MOST_LAPSED_LIMIT, MIN_NONZERO_BAR_PCT, formatSrCard } from './srStatus';
+import { summarizeSrDeck, boxBarPercents, DUE_SOON_MS, MOST_LAPSED_LIMIT, MIN_NONZERO_BAR_PCT, formatSrCard, formatReviewPlain } from './srStatus';
 import type { SrCard, SrDeck } from './spacedRepetition';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -355,5 +355,20 @@ describe('formatSrCard', () => {
     expect(formatSrCard(card({ box: 2, lapses: 2 }), NOW)).toContain('2 lapses');
     expect(formatSrCard(card({ box: 2, lapses: 1 }), NOW)).toContain('1 lapse');
     expect(formatSrCard(card({ box: 2, lapses: 0 }), NOW)).not.toContain('lapse');
+  });
+});
+
+describe('formatReviewPlain', () => {
+  const now = 1_000_000_000_000;
+  const DAY = 24 * 60 * 60 * 1000;
+  const c = (dueAt: number) => ({ box: 1, dueAt, lapses: 0, reviews: 1 }) as Parameters<typeof formatReviewPlain>[0];
+  it('says nothing for a card with no history', () => {
+    expect(formatReviewPlain(undefined, now)).toBeNull();
+  });
+  it('uses plain words, never box numbers', () => {
+    expect(formatReviewPlain(c(now - 1), now)).toBe('Next review: now');
+    expect(formatReviewPlain(c(now + 3 * 60 * 60 * 1000), now)).toBe('Next review: in 3 hours');
+    expect(formatReviewPlain(c(now + DAY), now)).toBe('Next review: tomorrow');
+    expect(formatReviewPlain(c(now + 7 * DAY), now)).toBe('Next review: in 7 days');
   });
 });

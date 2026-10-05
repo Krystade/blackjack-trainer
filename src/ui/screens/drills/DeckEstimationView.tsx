@@ -12,6 +12,7 @@ import {
 import type { DepthResolution } from '../../../drills/depthResolution';
 import { loadStats, saveStats, saveSettings } from '../../../store/persist';
 import { focusSwallowsKey } from '../../keyboardFocus';
+import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
 
 // This drill is deliberately visual-only (judging a physical card stack) --
 // unlike the other drills it has NO eyes-free/audio mode. See
@@ -254,9 +255,7 @@ export function DeckEstimationView({
             )}
             {resolution === 'quarter' && <> Answer to the quarter deck throughout. The hardest.</>}
           </div>
-          <button type="button" className="drill-start-btn" onClick={start}>
-            Start
-          </button>
+          <DrillPrimaryBar label="Start" variant="start" onPrimary={start} />
         </div>
       )}
 
@@ -314,12 +313,7 @@ export function DeckEstimationView({
             {question.cardsDealt} of {question.totalDecks * 52} cards dealt ({question.totalDecks}-deck
             shoe).
           </div>
-          <button type="button" className="drill-replay-btn" onClick={start}>
-            Next
-          </button>
-          <button type="button" className="drill-back-btn" onClick={handleBack}>
-            Back to Drills
-          </button>
+          <DrillPrimaryBar label="Next" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
         </div>
       )}
     </div>

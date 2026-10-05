@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { shot, withSettings, withProfile, playRoundByAdvice } from './helpers';
+import { shot, withSettings, withProfile, playRoundByAdvice, openCountOptions } from './helpers';
 
 test('manual countdown: tapping the zone through all groups reaches the answer/result screens', async ({ page }) => {
   await withSettings(page, {
@@ -8,6 +8,7 @@ test('manual countdown: tapping the zone through all groups reaches the answer/r
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
   await expect(page.locator('.count-setup')).toBeVisible();
 
   const modeRow = page.locator('.settings-row', { hasText: 'Next card' });
@@ -125,6 +126,7 @@ test('bet-spread grading against a profile ramp: a wrong bet is graded and shows
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
 
   await playRoundByAdvice(page);
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
 
   await expect(page.locator('.report-screen')).toBeVisible();

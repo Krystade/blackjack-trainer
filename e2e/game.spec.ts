@@ -134,6 +134,7 @@ test('test mode: a 3-round session reports categories and misses', async ({ page
     await playRoundWithOneMistake(page);
   }
 
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-screen')).toBeVisible();
   await expect(page.locator('.report-categories tbody tr')).not.toHaveCount(0);
@@ -174,6 +175,7 @@ test('bet spread: a deliberately bad bet is graded and shows in the test-mode re
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
 
   await playRoundByAdvice(page);
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
 
   await expect(page.locator('.report-screen')).toBeVisible();
@@ -207,6 +209,7 @@ test('wong-out (R5): Sit Out plays the round unstaked, keeps the bankroll flat, 
   // decision was graded: a 'wong' category row in the test-mode report, and
   // no 'bet' row (a sit-out never stakes, so it emits no bet event).
   await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-screen')).toBeVisible();
   await expect(page.locator('.report-categories tr', { hasText: 'Play or sit out' })).toBeVisible();
@@ -378,6 +381,7 @@ test('R7: peeks are counted once per reveal and flag a test-mode session as assi
   await peekBtn.click();
 
   await playRoundByAdvice(page);
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
 
   await expect(page.locator('.report-screen')).toBeVisible();
@@ -482,6 +486,7 @@ test('RV7: dealing in at a should-wong count is graded, not just the min bet', a
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await playRoundByAdvice(page);
 
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-screen')).toBeVisible();
 
@@ -514,6 +519,7 @@ test('RT#11: cover mode accepts one rung either side of the ramp', async ({ page
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await playRoundByAdvice(page);
 
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-screen')).toBeVisible();
   await expect(page.locator('.report-categories tr', { hasText: /^Bet sizing/ }).locator('td')).toHaveText([
@@ -565,6 +571,7 @@ test('RT#11: the report stays quiet below the sample floor, where a ratio is noi
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await playRoundByAdvice(page);
 
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-screen')).toBeVisible();
   // One round is not a pattern.
@@ -585,6 +592,7 @@ test('RT#11: eight rounds of exact ramp conformity are named as the tell', async
     await playRoundByAdvice(page);
   }
 
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-screen')).toBeVisible();
   await expect(page.locator('.report-tell')).toBeVisible();

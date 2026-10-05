@@ -93,9 +93,6 @@ export function Home({ onNavigate, activeProfile }: HomeProps) {
         <button type="button" className="u-btn u-btn-primary home-play-btn" onClick={() => onNavigate('table')}>
           Play a shoe
         </button>
-        <button type="button" className="u-btn home-testkit-btn" data-testid="testkit-open" onClick={() => onNavigate('testkit')}>
-          Test kit
-        </button>
       </div>
 
       {/* The installed app can sit on a cached bundle without saying so. This
@@ -105,6 +102,11 @@ export function Home({ onNavigate, activeProfile }: HomeProps) {
         build {buildLabel()}
         {formatBuiltAt() && <span className="home-build-at">{formatBuiltAt()}</span>}
       </p>
+      {/* Diagnostics, not play: a small link under the build line rather
+          than a second full-width button beside "Play a shoe". */}
+      <button type="button" className="home-testkit-link" data-testid="testkit-open" onClick={() => onNavigate('testkit')}>
+        Test kit
+      </button>
     </div>
   );
 }

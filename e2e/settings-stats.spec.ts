@@ -27,6 +27,7 @@ test('a short session shows up on the stats screen', async ({ page }) => {
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await playRoundByAdvice(page);
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await expect(page.locator('.home-title')).toBeVisible();
 
@@ -171,6 +172,7 @@ test('CVCX profile header renders score/EV/ROR/note plus actual accuracy from a 
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await playRoundByAdvice(page);
+  await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await expect(page.locator('.home-title')).toBeVisible();
 

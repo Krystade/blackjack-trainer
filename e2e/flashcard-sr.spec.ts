@@ -29,8 +29,7 @@ test('a graded card shows its box and when it is next due', async ({ page }) => 
   await answerAnything(page);
   const sr = page.locator('.feedback-sr');
   await expect(sr).toBeVisible();
-  await expect(sr).toContainText(/Box \d\/5/);
-  await expect(sr).toContainText(/due (now|in \d+)/);
+  await expect(sr).toContainText(/Next review: (now|tomorrow|in \d+)/);
 });
 
 /**
@@ -46,8 +45,7 @@ test('getting it right moves the card up a box', async ({ page }) => {
   for (let i = 0; i < 12 && box === null; i++) {
     await answerAnything(page);
     if ((await page.locator('.result-correct').count()) > 0) {
-      const text = await page.locator('.feedback-sr').innerText();
-      box = Number(/Box (\d)\//.exec(text)?.[1] ?? 'NaN');
+      box = Number(await page.locator('.feedback-sr').getAttribute('data-box'));
     }
     await page.locator('.drill-next-btn').click();
   }

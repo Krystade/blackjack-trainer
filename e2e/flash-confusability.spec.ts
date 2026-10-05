@@ -43,7 +43,7 @@ async function cellSequence(page: Page, rounds: number): Promise<string[]> {
   for (let i = 0; i < rounds; i++) {
     // Any action produces feedback; which one is irrelevant to the draw.
     await page.getByRole('button', { name: 'Stand', exact: true }).click();
-    const cell = await page.locator('.feedback-cell').innerText();
+    const cell = (await page.locator('.feedback-cell').getAttribute('data-cell-id')) ?? '';
     seen.push(cell.trim());
     await page.locator('.drill-next-btn').click();
   }
