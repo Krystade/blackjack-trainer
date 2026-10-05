@@ -35,6 +35,7 @@ import { formatInterval, hasCurve, retentionByGap, wilson } from '../../store/re
 import { Stepper } from './Settings';
 import './sr.css';
 import { strategyRulesFor } from '../../store/profiles';
+import { CATEGORY_LABELS } from './categoryLabels';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -54,19 +55,6 @@ interface StatsProps {
 
 const CATEGORY_ORDER: Category[] = ['hard', 'soft', 'pairs', 'surrender', 'insurance', 'bet', 'countCheck', 'wong'];
 
-const CATEGORY_LABELS: Record<Category, string> = {
-  hard: 'Hard totals',
-  soft: 'Soft totals',
-  pairs: 'Pairs',
-  surrender: 'Surrender',
-  insurance: 'Insurance',
-  bet: 'Bet sizing',
-  countCheck: 'Count checks',
-  // RV7: this covers the play-or-sit decision on EVERY round with a spread
-  // on, not only the rounds actually sat out -- so 'Wong-outs' would now name
-  // a subset of what it counts.
-  wong: 'Play or sit out' };
-
 const MISTAKE_ORDER: Exclude<MistakeClass, 'correct'>[] = [
   'basic-error',
   'missed-deviation',
@@ -77,11 +65,11 @@ const MISTAKE_ORDER: Exclude<MistakeClass, 'correct'>[] = [
 ];
 
 const MISTAKE_LABELS: Record<Exclude<MistakeClass, 'correct'>, string> = {
-  'basic-error': 'Basic-strategy errors',
+  'basic-error': 'Basic strategy errors',
   'missed-deviation': 'Missed deviations',
   'phantom-deviation': 'Phantom deviations',
   'wrong-anyway': 'Wrong either way',
-  timeout: 'Ran out of time',
+  timeout: 'Out of time',
   'self-report': 'Admitted misses (eyes-free)' };
 
 function formatSigned(n: number): string {
@@ -143,7 +131,7 @@ function SrStatusPanel({ deckLabel, summary, labelForKey }: SrStatusPanelProps) 
   // seven zero-height bars (which reads as "broken", not "nothing yet"),
   // no "Due now: 0" / "Due soon: 0" printed as meaningless zeroes.
   if (reviewed === 0) {
-    return <p className="stats-detail">No {deckLabel} studied yet — status will appear as you drill.</p>;
+    return <p className="stats-detail">No {deckLabel} studied yet. Progress shows up here as you drill.</p>;
   }
 
   // FIX (review round 1): the bar row shows ONLY the six Leitner boxes,
@@ -196,7 +184,7 @@ function SrStatusPanel({ deckLabel, summary, labelForKey }: SrStatusPanelProps) 
           )}
           {summary.dueSoon > 0 && (
             <li className="mistake-row">
-              <span>Due soon (24h)</span>
+              <span>Due in the next 24 hours</span>
               <span>{summary.dueSoon}</span>
             </li>
           )}
@@ -230,16 +218,16 @@ function SrStatusPanel({ deckLabel, summary, labelForKey }: SrStatusPanelProps) 
           </li>
           {summary.screenOnly > 0 && (
             <li className="mistake-row">
-              <span>On-screen only — capped at box {CHANNEL_BASE_CAP}</span>
+              <span>Answered only on screen (held at box {CHANNEL_BASE_CAP})</span>
               <span>{summary.screenOnly}</span>
             </li>
           )}
           {summary.medianPaceMs !== null && (
             <li className="mistake-row">
-              <span>Typical answer time</span>
+              <span>Median answer time</span>
               <span className="mistake-value">
                 {(summary.medianPaceMs / 1000).toFixed(1)}s
-                {summary.medianPaceMs >= FLUENT_MS ? ' — hesitant' : ''}
+                {summary.medianPaceMs >= FLUENT_MS ? ' (slow)' : ''}
               </span>
             </li>
           )}
@@ -254,7 +242,7 @@ function SrStatusPanel({ deckLabel, summary, labelForKey }: SrStatusPanelProps) 
               <li className="mistake-row" key={entry.key}>
                 <span>{labelForKey(entry.key)}</span>
                 <span>
-                  {entry.lapses} lapse{entry.lapses === 1 ? '' : 's'} (box {entry.box})
+                  forgotten {entry.lapses} {entry.lapses === 1 ? 'time' : 'times'} · box {entry.box}
                 </span>
               </li>
             ))}
@@ -290,7 +278,7 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Illustrious 18': 'play',
   'Mistake types': 'play',
   'Cost of mistakes': 'play',
-  'Bet / sit / leave': 'play',
+  'Bet, sit or leave': 'play',
   'Flashcards': 'drills',
   'Count drill': 'drills',
   'Timed count challenge': 'drills',
@@ -301,9 +289,9 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Spaced repetition — Flashcards': 'progress',
   'Spaced repetition — Deviation quiz': 'progress',
   'Retention': 'progress',
-  'Downswing (tilt inoculation)': 'progress',
-  'Endurance / fatigue': 'progress',
-  'Sessions': 'progress' };
+  'Downswing drill': 'progress',
+  'Fatigue': 'progress',
+  'Table sessions': 'progress' };
 
 /**
  * Turn whatever a GradedEvent carried as `hand` into something readable.
@@ -372,7 +360,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    setMessage('Exported.');
+    setMessage('Backup exported.');
   };
 
   const handleImportClick = () => {
@@ -405,12 +393,12 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
         // them straight back down as the `settings` prop. The old second call
         // existed only because this screen kept its own copy.
         onSettingsChange(loadSettings());
-        setMessage('Import successful.');
+        setMessage('Backup imported.');
       } else {
         setMessage(`Import failed: ${result.error ?? 'unknown error'}`);
       }
     };
-    reader.onerror = () => setMessage('Import failed: could not read file');
+    reader.onerror = () => setMessage('Import failed: couldn\'t read the file.');
     reader.readAsText(file);
   };
 
@@ -686,8 +674,8 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
         )}
         <p className="u-note">
           {range.id === 'all'
-            ? 'Lifetime totals. Category accuracy and the index table are lifetime — they are running tallies, not dated events.'
-            : 'Dated sections only. Category accuracy and the index table stay lifetime.'}
+            ? 'Showing all time.'
+            : 'The range applies to dated results only. Accuracy by category and the Illustrious 18 table always show all time.'}
         </p>
       </div>
 
@@ -702,7 +690,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
               <span>{cvcx?.score !== undefined ? cvcx.score : dash()}</span>
             </li>
             <li className="mistake-row">
-              <span>CVCX EV/hr</span>
+              <span>CVCX EV per hour</span>
               <span>{cvcx?.evPerHour !== undefined ? formatSigned(cvcx.evPerHour) : dash()}</span>
             </li>
             <li className="mistake-row">
@@ -714,11 +702,11 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
               <span>{cvcx?.simNote ? cvcx.simNote : dash()}</span>
             </li>
             <li className="mistake-row">
-              <span>Actual play accuracy{actualAccuracyAssisted ? ` (${actualAccuracyAssisted})` : ''}</span>
+              <span>Your play accuracy{actualAccuracyAssisted ? ` (${actualAccuracyAssisted})` : ''}</span>
               <span>{actualAccuracyPct === null ? dash() : `${Math.round(actualAccuracyPct)}%`}</span>
             </li>
             <li className="mistake-row">
-              <span>Actual units/hr (assumes 80 rounds/hr)</span>
+              <span>Your units per hour (at 80 rounds an hour)</span>
               <span>{unitsPerHourProxy === null ? dash() : formatSigned(Math.round(unitsPerHourProxy * 10) / 10)}</span>
             </li>
           </ul>
@@ -755,7 +743,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                   <div className="category-bar-track">
                     <div className="category-bar-fill" style={{ width: `${pctNum}%` }} />
                   </div>
-                  <div className="category-latency">Median decision: {formatLatency(latencyMs)}</div>
+                  <div className="category-latency">Median decision time: {formatLatency(latencyMs)}</div>
                 </div>
               );
             })}
@@ -835,7 +823,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
         exactly the wrong conclusion.
       */}
       <CollapsibleSection
-        title={<>Clock vs no clock</>}
+        title={<>Shot clock on vs off</>}
         className="stats-section"
         dataTab={SECTION_TAB['Flashcards']}
         defaultOpen={false}
@@ -849,9 +837,9 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
             if (tn === 0 || un === 0) {
               return (
                 <p className="stats-detail">
-                  Answer some hand drills both with the shot clock on and with it off, and this
-                  compares them. What you can produce under a deadline and what you know are
-                  different things, and only the second one keeps.
+                  Answer hand drills with the shot clock on and with it off to compare the two.
+                  Speed under a deadline and what you actually know are different things, and only
+                  what you know lasts.
                 </p>
               );
             }
@@ -865,8 +853,8 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
               <>
                 <div className="category-list">
                   {[
-                    { label: 'Under the clock', tally: t, total: tn },
-                    { label: 'No clock', tally: u, total: un },
+                    { label: 'Shot clock on', tally: t, total: tn },
+                    { label: 'Shot clock off', tally: u, total: un },
                   ].map((row) => (
                     <div className="category-row" key={row.label}>
                       <div className="category-row-top">
@@ -952,9 +940,8 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       >
           {evCost.priced === 0 ? (
             <p className="stats-detail">
-              No priced mistakes yet. Basic-strategy errors in the flashcard and deviation drills get
-              a price in units of your base bet; keep drilling and the expensive habits will show up
-              here.
+              No priced mistakes yet. Basic strategy errors in the flashcard and deviation drills are
+              priced in units of your base bet, so your most expensive habits show up here.
             </p>
           ) : (
             <>
@@ -975,13 +962,13 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                 ))}
               </ul>
               <p className="stats-detail">
-                Ranked by total cost, so a cheap habit repeated outranks one spectacular slip. Prices
-                are exact for an infinite deck at a neutral count.
+                Ranked by total cost, so a small mistake you repeat outranks one big slip. Prices are
+                exact for an infinite deck at a neutral count.
                 {unpricedMistakes > 0
-                  ? ` ${unpricedMistakes} further ${unpricedMistakes === 1 ? 'mistake is' : 'mistakes are'} counted above but unpriced: a missed or mistimed index has no honest number here, because this arithmetic cannot see the count.`
+                  ? ` ${unpricedMistakes} further ${unpricedMistakes === 1 ? 'mistake is' : 'mistakes are'} counted above but not priced: index mistakes depend on the count, which this pricing can't see.`
                   : ''}{' '}
                 {evCostUndated > 0
-                  ? ` ${evCostUndated} priced ${evCostUndated === 1 ? 'mistake predates' : 'mistakes predate'} decision dating and cannot be placed in this range; widen it to "All time" to include ${evCostUndated === 1 ? 'it' : 'them'}.`
+                  ? ` ${evCostUndated} priced ${evCostUndated === 1 ? 'mistake has' : 'mistakes have'} no date, so ${evCostUndated === 1 ? 'it shows' : 'they show'} only under "All time".`
                   : ''}
               </p>
             </>
@@ -1007,13 +994,13 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
               </p>
               <p className="stats-detail">
                 {cancelledRuns === 0
-                  ? 'No run has ended on the right count after drifting.'
-                  : `${cancelledRuns} ${cancelledRuns === 1 ? 'run' : 'runs'} ended on the RIGHT count after drifting — errors that cancelled out, which a final-count-only score would call perfect.`}
+                  ? 'No run has ended on the right count by luck.'
+                  : `${cancelledRuns} ${cancelledRuns === 1 ? 'run' : 'runs'} ended on the right count by luck: you missed a checkpoint, but the errors cancelled out by the end.`}
               </p>
             </>
           )}
           {recentRuns.length === 0 ? (
-            <p className="stats-detail">No count-drill runs yet.</p>
+            <p className="stats-detail">No count drill runs yet.</p>
           ) : (
             <ul className="count-history-list">
               {recentRuns.map((run, i) => (
@@ -1151,14 +1138,14 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       >
           {retentionReviews === 0 ? (
             <p className="stats-detail">
-              No spaced reviews yet — retention accrues as items come due again after a real gap
-              (come back tomorrow).
+              No spaced reviews yet. Items come back for review after a gap of a day or more, so
+              check back tomorrow.
             </p>
           ) : (
             <>
               <p className="stats-detail">
-                Accuracy on items recalled after a spaced gap — the honest read on what will still be
-                there at the table, distinct from in-drill accuracy.
+                Accuracy on items reviewed after a gap. This is the best guide to what you will
+                remember at a real table.
               </p>
               <ul className="mistake-list">
                 <li className="mistake-row">
@@ -1178,17 +1165,16 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                   footnote nobody reads.
                 */}
                 <li className="mistake-row">
-                  <span>Could honestly be</span>
+                  <span>Likely range</span>
                   <span className="mistake-value">{formatInterval(retentionPooled)}</span>
                 </li>
               </ul>
               {retentionHasCurve ? (
                 <>
-                  <h3 className="sr-lapses-title">By how long the gap was</h3>
+                  <h3 className="sr-lapses-title">By gap length</h3>
                   <p className="stats-detail">
-                    Retention is a decay curve. Pooling every gap length into one figure averages a
-                    three-day recall together with a five-week one, which is the one shape a single
-                    number cannot show.
+                    Memory fades with time, so a three-day gap and a five-week gap are shown
+                    separately rather than averaged together.
                   </p>
                   <ul className="mistake-list">
                     {retentionBands
@@ -1207,8 +1193,8 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                 </>
               ) : (
                 <p className="stats-detail">
-                  Every spaced review so far sits at one gap length, so there is no curve to draw
-                  yet — it appears once items start coming due at longer intervals.
+                  Every spaced review so far is at one gap length. A breakdown appears once items
+                  come due after longer gaps.
                 </p>
               )}
             </>
@@ -1216,13 +1202,13 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       </CollapsibleSection>
 
       <CollapsibleSection
-        title={<>Bet / sit / leave</>}
+        title={<>Bet, sit or leave</>}
         className="stats-section"
-        dataTab={SECTION_TAB['Bet / sit / leave']}
+        dataTab={SECTION_TAB['Bet, sit or leave']}
         defaultOpen={false}
       >
           {bslAttempts === 0 ? (
-            <p className="stats-detail">No bet/sit/leave decisions yet.</p>
+            <p className="stats-detail">No bet, sit or leave decisions yet.</p>
           ) : (
             <ul className="mistake-list">
               <li className="mistake-row">
@@ -1234,7 +1220,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                 <span>{pct(bslCorrect, bslAttempts)}</span>
               </li>
               <li className="mistake-row">
-                <span>Leave calls</span>
+                <span>Accuracy when it was time to leave</span>
                 <span>{bslLeaveRows.length === 0 ? dash() : pct(bslLeaveCorrect, bslLeaveRows.length)}</span>
               </li>
             </ul>
@@ -1242,21 +1228,21 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       </CollapsibleSection>
 
       <CollapsibleSection
-        title={<>Downswing (tilt inoculation)</>}
+        title={<>Downswing drill</>}
         className="stats-section"
-        dataTab={SECTION_TAB['Downswing (tilt inoculation)']}
+        dataTab={SECTION_TAB['Downswing drill']}
         defaultOpen={false}
       >
           {downswingSessions === 0 ? (
-            <p className="stats-detail">No downswing sessions yet.</p>
+            <p className="stats-detail">No downswing drill sessions yet.</p>
           ) : (
             <ul className="mistake-list">
               <li className="mistake-row">
-                <span>Sessions ridden out</span>
+                <span>Sessions completed</span>
                 <span>{downswingSessions}</span>
               </li>
               <li className="mistake-row">
-                <span>Spread-conformity (bets held to the ramp)</span>
+                <span>Bets that followed the ramp</span>
                 <span>{pct(downswingConformCorrect, downswingConformTotal)}</span>
               </li>
               {/*
@@ -1268,7 +1254,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
               */}
               {downswingPlayTotal > 0 && (
                 <li className="mistake-row">
-                  <span>Correct play (stiff hands under pressure)</span>
+                  <span>Stiff hands played correctly</span>
                   <span>
                     {pct(downswingPlayCorrect, downswingPlayTotal)} ({downswingPlayCorrect}/
                     {downswingPlayTotal})
@@ -1280,13 +1266,13 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       </CollapsibleSection>
 
       <CollapsibleSection
-        title={<>Endurance / fatigue</>}
+        title={<>Fatigue</>}
         className="stats-section"
-        dataTab={SECTION_TAB['Endurance / fatigue']}
+        dataTab={SECTION_TAB['Fatigue']}
         defaultOpen={false}
       >
           <Stepper
-            label="Session gap"
+            label="Break that starts a new session"
             value={fatigueGapMin}
             min={5}
             max={120}
@@ -1296,14 +1282,14 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
           />
           {fatigue.drift === null ? (
             <p className="stats-detail">
-              Not enough back-to-back counting runs yet — do several count / timed runs in one sitting
-              and this compares your early-session vs late-session accuracy.
+              Not enough back-to-back counting runs yet. Do several count drill or timed count runs
+              in one sitting to compare your early and late accuracy.
             </p>
           ) : (
             <>
               <p className="stats-detail">
-                Front-half vs back-half accuracy within a session — does your count hold up late, or
-                slip? ({fatigue.sessions} session{fatigue.sessions === 1 ? '' : 's'}, {fatigue.samples} runs)
+                Accuracy in the first vs second half of each session: does your count hold up late?
+                ({fatigue.sessions} session{fatigue.sessions === 1 ? '' : 's'}, {fatigue.samples} runs)
               </p>
               <ul className="mistake-list">
                 <li className="mistake-row">
@@ -1336,14 +1322,14 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
           */}
           {pace.driftMs === null ? (
             <p className="stats-detail">
-              No dated answer times in this range yet — pace drift needs several timed flashcard or
-              quiz answers in one sitting.
+              No dated answer times in this range yet. Pace drift needs several flashcard or
+              deviation quiz answers in one sitting.
             </p>
           ) : (
             <>
               <p className="stats-detail">
-                Early vs late ANSWER TIME within a session — the decrement that shows up before
-                accuracy does. ({pace.sessions} session{pace.sessions === 1 ? '' : 's'},{' '}
+                Answer time in the first vs second half of each session. Slowing down usually shows
+                up before accuracy drops. ({pace.sessions} session{pace.sessions === 1 ? '' : 's'},{' '}
                 {pace.samples} answers)
               </p>
               <ul className="mistake-list">
@@ -1375,7 +1361,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       >
           <p className="stats-detail">
             {trueCountSummary.attempts === 0
-              ? 'No true-count attempts yet.'
+              ? 'No true count drill attempts yet.'
               : `${trueCountSummary.correct}/${trueCountSummary.attempts} correct (${pct(trueCountSummary.correct, trueCountSummary.attempts)})`}
           </p>
           {trueCountSummary.attempts > 0 && (
@@ -1395,14 +1381,14 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
             </ul>
           )}
           {trueCountRecent.length === 0 ? (
-            <p className="stats-detail">No true-count attempts yet.</p>
+            <p className="stats-detail">No true count drill attempts yet.</p>
           ) : (
             <ul className="count-history-list">
               {trueCountRecent.map((run, i) => (
                 <li className="count-history-row" key={i}>
                   <span>{formatDate(run.date)}</span>
                   <span>
-                    RC {formatSigned(run.runningCount)} / {run.decksRemaining} decks
+                    RC {formatSigned(run.runningCount)} / {run.decksRemaining} decks remaining
                   </span>
                   <span>
                     {run.guess === undefined ? 'self-reported' : `guess ${formatSigned(run.guess)}`}
@@ -1424,11 +1410,11 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       >
           <p className="stats-detail">
             {deckEstSummary.attempts === 0
-              ? 'No deck-estimation attempts yet.'
+              ? 'No deck estimation attempts yet.'
               : `${deckEstSummary.correct}/${deckEstSummary.attempts} correct (${pct(deckEstSummary.correct, deckEstSummary.attempts)})`}
           </p>
           {deckEstRecent.length === 0 ? (
-            <p className="stats-detail">No deck-estimation attempts yet.</p>
+            <p className="stats-detail">No deck estimation attempts yet.</p>
           ) : (
             <ul className="count-history-list">
               {deckEstRecent.map((run, i) => (
@@ -1447,13 +1433,13 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       </CollapsibleSection>
 
       <CollapsibleSection
-        title={<>Sessions</>}
+        title={<>Table sessions</>}
         className="stats-section"
-        dataTab={SECTION_TAB['Sessions']}
+        dataTab={SECTION_TAB['Table sessions']}
         defaultOpen={false}
       >
           {sessions.length === 0 ? (
-            <p className="stats-detail">No sessions yet.</p>
+            <p className="stats-detail">No table sessions yet.</p>
           ) : (
             <ul className="session-list">
               {sessions.map((s, i) => (
@@ -1482,13 +1468,13 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       <section className="stats-section stats-actions">
         <div className="stats-action-row">
           <button type="button" className="stats-action-btn" onClick={handleExport}>
-            Export
+            Export backup
           </button>
           <button type="button" className="stats-action-btn" onClick={handleImportClick}>
-            Import
+            Import backup
           </button>
           <button type="button" className="stats-action-btn" onClick={handleSpeakSummary}>
-            Speak summary
+            Read summary aloud
           </button>
           <button type="button" className="stats-action-btn stats-danger-btn" onClick={handleReset}>
             Reset stats

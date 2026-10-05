@@ -3,22 +3,12 @@ import type { Profile } from '../../store/types';
 import { loadStats } from '../../store/persist';
 import { readiness, weakestCategories } from './readiness';
 import { buildLabel, formatBuiltAt, runningBuildId, runningBuiltAt } from '../../updateCheck';
+import { CATEGORY_LABELS } from './categoryLabels';
 
 interface HomeProps {
   onNavigate: (screen: Screen) => void;
   activeProfile: Profile;
 }
-
-const CATEGORY_LABEL: Record<string, string> = {
-  hard: 'hard totals',
-  soft: 'soft totals',
-  pairs: 'pairs',
-  surrender: 'surrender',
-  insurance: 'insurance',
-  bet: 'bet sizing',
-  countCheck: 'count checks',
-  wong: 'wong-outs',
-};
 
 function pct(n: number | null): string {
   return n === null ? '—' : `${Math.round(n)}%`;
@@ -48,7 +38,12 @@ export function Home({ onNavigate, activeProfile }: HomeProps) {
     <div className="home-screen">
       <header className="home-head">
         <h1 className="home-title">Blackjack Trainer</h1>
-        <button type="button" className="home-profile-chip" onClick={() => onNavigate('profiles')}>
+        <button
+          type="button"
+          className="home-profile-chip"
+          title="Switch or edit profiles"
+          onClick={() => onNavigate('profiles')}
+        >
           {activeProfile.name}
         </button>
       </header>
@@ -61,7 +56,7 @@ export function Home({ onNavigate, activeProfile }: HomeProps) {
           </div>
           <div className="readiness-stat">
             <span className="readiness-value">{secs(r.medianMs)}</span>
-            <span className="readiness-label">median decision</span>
+            <span className="readiness-label">median decision time</span>
           </div>
           <div className="readiness-stat">
             <span className="readiness-value">
@@ -73,19 +68,21 @@ export function Home({ onNavigate, activeProfile }: HomeProps) {
 
         {r.decisions === 0 ? (
           <p className="u-note">
-            No hands played yet. Start at the table, or drill the charts first.
+            No hands played yet. Play a shoe, or start with the drills.
           </p>
         ) : (
           <p className="u-note">
             {r.decisions} decisions graded
             {weak.length > 0 && (
-              <> · weakest: {weak.map((w) => CATEGORY_LABEL[w] ?? w).join(', ')}</>
+              <> · weakest: {weak
+                  .map((w) => (CATEGORY_LABELS[w as keyof typeof CATEGORY_LABELS] ?? w).toLowerCase())
+                  .join(', ')}</>
             )}
           </p>
         )}
 
         <button type="button" className="home-stats-link" onClick={() => onNavigate('stats')}>
-          Full stats
+          All stats
         </button>
       </section>
 

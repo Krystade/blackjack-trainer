@@ -44,28 +44,28 @@ const ACTION_CHART_LETTER: Record<Action, string> = {
  */
 const CLASS_COPY: Record<Exclude<MistakeClass, 'correct'>, { label: string; note: string }> = {
   'basic-error': {
-    label: 'Basic error',
-    note: 'The count was not involved — this one is pure basic strategy.',
+    label: 'Basic strategy error',
+    note: 'The count doesn\'t change this hand. It\'s pure basic strategy.',
   },
   'missed-deviation': {
     label: 'Missed deviation',
-    note: 'Basic strategy was right at neutral, but the count had moved past the index.',
+    note: 'Basic strategy is right at a neutral count, but the true count had passed the index for this hand.',
   },
   'phantom-deviation': {
     label: 'Phantom deviation',
-    note: 'You deviated, but the count had not reached the index yet. Basic strategy still applied.',
+    note: 'You deviated, but the true count hadn\'t reached the index yet. Basic strategy still applied.',
   },
   'wrong-anyway': {
-    label: 'Wrong anyway',
-    note: 'Neither basic strategy nor the index play — worth a slow look at this hand.',
+    label: 'Wrong either way',
+    note: 'Neither the basic strategy play nor the index play. Worth a slow look at this hand.',
   },
   timeout: {
     label: 'Out of time',
-    note: 'No answer inside the shot clock. Knowing this one slowly is not the same as knowing it.',
+    note: 'No answer before the shot clock ran out. Knowing it slowly isn\'t the same as knowing it.',
   },
   'self-report': {
     label: 'Admitted miss',
-    note: 'You heard the hand and said you did not have it — no play was made, so there is nothing to price. This one is straight retention: it goes back to the bottom of the box.',
+    note: 'You said you didn\'t know this one, so no play was graded. It goes back to box 0 and comes up again this session.',
   },
 };
 
@@ -197,7 +197,7 @@ export function MistakeCard({
         <div className="mistake-actions">
           {onShowTable && (
             <button type="button" className="mistake-table-btn" onClick={onShowTable}>
-              Show me the table
+              Show on chart
             </button>
           )}
           {onNext && (

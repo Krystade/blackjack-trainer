@@ -70,9 +70,9 @@ test('the Stats section stays quiet until both buckets have answers', async ({ p
   await page.locator('.home-stats-link').click();
   await statsTab(page, 'Drills');
 
-  const section = page.locator('.stats-section', { hasText: 'Clock vs no clock' });
+  const section = page.locator('.stats-section', { hasText: 'Shot clock on vs off' });
   await expect(section).toBeVisible();
-  await expect(section).toContainText('Answer some hand drills both with the shot clock on');
+  await expect(section).toContainText('Answer hand drills with the shot clock on and with it off');
   await expect(section.locator('.category-row')).toHaveCount(0);
 });
 
@@ -95,8 +95,8 @@ test('once both buckets have answers the comparison renders', async ({ page }) =
   await page.locator('.home-stats-link').click();
   await statsTab(page, 'Drills');
 
-  const section = page.locator('.stats-section', { hasText: 'Clock vs no clock' });
+  const section = page.locator('.stats-section', { hasText: 'Shot clock on vs off' });
   await expect(section.locator('.category-row')).toHaveCount(2);
-  await expect(section).toContainText('Under the clock');
-  await expect(section).toContainText('No clock');
+  await expect(section).toContainText('Shot clock on');
+  await expect(section).toContainText('Shot clock off');
 });

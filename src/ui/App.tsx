@@ -51,7 +51,7 @@ export type Screen =
 /** Human names for the "Back to ..." affordance. */
 const SCREEN_LABEL: Record<Screen, string> = {
   home: 'Home',
-  table: 'the Table',
+  table: 'the table',
   drills: 'Drills',
   stats: 'Stats',
   settings: 'Settings',

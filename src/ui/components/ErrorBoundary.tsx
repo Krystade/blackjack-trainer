@@ -112,8 +112,8 @@ export class ErrorBoundary extends Component<Props, State> {
       <div style={panel} role="alert" className="error-boundary">
         <h1 style={{ margin: 0, fontSize: '1.4rem' }}>Something broke on this screen.</h1>
         <p style={{ margin: 0, maxWidth: '32ch', color: 'var(--ink-dim, #b7d3c2)' }}>
-          Your saved profiles, stats and drill history are still on this device. Save a
-          backup first if you plan to reset anything.
+          Your profiles, stats and drill history are still saved on this device. Save a
+          backup before you reset anything.
         </p>
 
         <button type="button" style={primary} onClick={this.handleBackup}>

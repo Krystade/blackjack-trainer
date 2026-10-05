@@ -555,7 +555,7 @@ test('a correction plays from clips, whole', async ({ page }) => {
 
   // Answer until one is graded wrong -- always the first action button, which
   // is wrong often enough to land inside a dozen cards.
-  const showTable = page.getByRole('button', { name: 'Show me the table' });
+  const showTable = page.getByRole('button', { name: 'Show on chart' });
   for (let i = 0; i < 16; i += 1) {
     if (await showTable.isVisible().catch(() => false)) break;
     await page.locator('.action-bar button').first().click();

@@ -57,7 +57,7 @@ async function openTableAndRead(page: Page): Promise<Opened> {
   await expect(panel).toBeVisible();
   const expected = (await panel.locator('.mistake-cell').innerText()).trim();
 
-  await panel.getByRole('button', { name: 'Show me the table', exact: true }).click();
+  await panel.getByRole('button', { name: 'Show on chart', exact: true }).click();
   const overlay = page.locator('.study-chart-overlay');
   await expect(overlay).toBeVisible();
 

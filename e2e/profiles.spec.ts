@@ -22,7 +22,7 @@ async function openEditorForFirstProfile(page: Page): Promise<void> {
   await page.locator('.home-profile-chip').click();
   await expect(page.locator('.settings-heading')).toHaveText('Profiles');
   await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
-  await expect(page.locator('.settings-heading')).toHaveText('Edit Profile');
+  await expect(page.locator('.settings-heading')).toHaveText('Edit profile');
 }
 
 test('profile create + switch: a new S17 profile can be created, saved, and activated from Home', async ({ page }) => {
@@ -31,8 +31,8 @@ test('profile create + switch: a new S17 profile can be created, saved, and acti
   await expect(page.locator('.settings-heading')).toHaveText('Profiles');
   await shot(page, '26-profiles-list-initial');
 
-  await page.getByRole('button', { name: 'New Profile', exact: true }).click();
-  await expect(page.locator('.settings-heading')).toHaveText('New Profile');
+  await page.getByRole('button', { name: 'New profile', exact: true }).click();
+  await expect(page.locator('.settings-heading')).toHaveText('New profile');
   await shot(page, '27-profile-editor-new');
 
   const s17Row = page.locator('.settings-row', { hasText: 'Dealer soft 17' });
@@ -43,7 +43,7 @@ test('profile create + switch: a new S17 profile can be created, saved, and acti
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('.settings-heading')).toHaveText('Profiles');
 
-  const newRow = page.locator('.profile-row', { hasText: 'New Profile' });
+  const newRow = page.locator('.profile-row', { hasText: 'New profile' });
   await expect(newRow).toBeVisible();
   await shot(page, '29-profiles-list-after-save');
 
@@ -53,7 +53,7 @@ test('profile create + switch: a new S17 profile can be created, saved, and acti
 
   await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
   await expect(page.locator('.home-title')).toBeVisible();
-  await expect(page.locator('.home-profile-chip')).toHaveText('New Profile');
+  await expect(page.locator('.home-profile-chip')).toHaveText('New profile');
   await shot(page, '30-home-chip-active-profile');
 });
 
@@ -261,7 +261,7 @@ test('profile editor CVCX: score/EV/ROR/simNote entered + saved + surfaced on th
 
   const cvcxSection = page.locator('.settings-section').filter({ has: page.locator('summary', { hasText: 'CVCX' }) });
   await cvcxSection.locator('.settings-row', { hasText: 'Score' }).locator('input.profile-number-input').fill('55');
-  await cvcxSection.locator('.settings-row', { hasText: 'EV / hour' }).locator('input.profile-number-input').fill('12');
+  await cvcxSection.locator('.settings-row', { hasText: 'EV per hour' }).locator('input.profile-number-input').fill('12');
   await cvcxSection.locator('.settings-row', { hasText: 'Risk of ruin' }).locator('input.profile-number-input').fill('5');
   await cvcxSection.locator('.settings-row', { hasText: 'Sim note' }).locator('input.profile-text-input').fill('N0 400M sim');
   await shot(page, '35-profile-editor-cvcx-entered');
@@ -282,7 +282,7 @@ test('profile editor CVCX: score/EV/ROR/simNote entered + saved + surfaced on th
   await page.locator('.home-stats-link').click();
   await expect(page.locator('.stats-heading')).toBeVisible();
   await expect(page.locator('.mistake-row', { hasText: 'CVCX score' })).toContainText('55');
-  await expect(page.locator('.mistake-row', { hasText: 'CVCX EV/hr' })).toContainText('+12');
+  await expect(page.locator('.mistake-row', { hasText: 'CVCX EV per hour' })).toContainText('+12');
   await expect(page.locator('.mistake-row', { hasText: 'CVCX risk of ruin' })).toContainText('5%');
   await expect(page.locator('.mistake-row', { hasText: 'CVCX sim note' })).toContainText('N0 400M sim');
   await shot(page, '36-stats-header-cvcx');
@@ -316,7 +316,7 @@ test('profiles: Delete respects the canDelete guard (disabled at 1 profile, remo
 
   // With a single profile, the Delete button in the editor is disabled (canDelete=false).
   await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
-  await expect(page.locator('.settings-heading')).toHaveText('Edit Profile');
+  await expect(page.locator('.settings-heading')).toHaveText('Edit profile');
   await expect(page.getByRole('button', { name: 'Delete profile', exact: true })).toBeDisabled();
   await page.locator('.profile-cancel-btn').click();
   await expect(page.locator('.settings-heading')).toHaveText('Profiles');
@@ -327,7 +327,7 @@ test('profiles: Delete respects the canDelete guard (disabled at 1 profile, remo
 
   // Edit the copy and delete it (accept the confirm() dialog).
   await page.locator('.profile-row', { hasText: 'Keep Me (copy)' }).getByRole('button', { name: 'Edit', exact: true }).click();
-  await expect(page.locator('.settings-heading')).toHaveText('Edit Profile');
+  await expect(page.locator('.settings-heading')).toHaveText('Edit profile');
   const deleteBtn = page.getByRole('button', { name: 'Delete profile', exact: true });
   await expect(deleteBtn).toBeEnabled();
   page.once('dialog', (d) => d.accept());

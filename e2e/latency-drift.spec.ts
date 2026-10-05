@@ -40,7 +40,7 @@ async function openStats(page: Page, tab: string) {
 }
 
 const enduranceSection = (page: Page) =>
-  page.locator('.stats-section', { hasText: 'Endurance / fatigue' });
+  page.locator('.stats-section', { hasText: 'Fatigue' });
 
 test('a session that stays accurate but slows down is reported as pace drift', async ({ page }) => {
   await withStats(page, {
@@ -153,14 +153,14 @@ test('a bounded range says how many priced mistakes predate dating rather than d
   await expect(cost).toBeVisible();
   // All time: every priced mistake is listed and nothing is unplaceable.
   await expect(cost.locator('.mistake-row')).toHaveCount(3);
-  await expect(cost).not.toContainText('predate decision dating');
+  await expect(cost).not.toContainText('have no date');
 
   await page.getByRole('button', { name: 'Last 7 days', exact: true }).click();
   // The LIST narrows, not just the caveat -- this section used to sit at
   // lifetime values next to a range-filtered accuracy on the same screen.
   await expect(cost.locator('.mistake-row')).toHaveCount(1);
   await expect(cost.locator('.mistake-row')).toContainText('Hit instead of Stand');
-  await expect(cost).toContainText('2 priced mistakes predate decision dating');
+  await expect(cost).toContainText('2 priced mistakes have no date');
 });
 
 /**

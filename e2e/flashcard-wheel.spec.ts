@@ -112,7 +112,7 @@ test('an admitted miss is filed apart from wrong plays', async ({ page }) => {
   const admitted = page.locator('.mistake-row', { hasText: 'Admitted misses (eyes-free)' });
   await expect(admitted.locator('span').nth(1)).toHaveText('1');
   // And it did not land in the play taxonomy: no play was made.
-  const basic = page.locator('.mistake-row', { hasText: 'Basic-strategy errors' });
+  const basic = page.locator('.mistake-row', { hasText: 'Basic strategy errors' });
   await expect(basic.locator('span').nth(1)).toHaveText('0');
 });
 

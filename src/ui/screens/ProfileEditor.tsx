@@ -119,7 +119,7 @@ export function ProfileEditor({ onNavigate }: ProfileEditorProps) {
 
   const startNew = () => {
     const draft = makeDefaultProfile();
-    draft.name = 'New Profile';
+    draft.name = 'New profile';
     setMode({ kind: 'edit', draft, isNew: true });
   };
 
@@ -213,7 +213,7 @@ export function ProfileEditor({ onNavigate }: ProfileEditorProps) {
             ))}
           </div>
           <button type="button" className="profile-new-btn" onClick={startNew}>
-            New Profile
+            New profile
           </button>
         </section>
       </div>
@@ -321,7 +321,7 @@ function ProfileEditForm({
         <button type="button" className="settings-back-btn" onClick={onCancel}>
           Cancel
         </button>
-        <div className="settings-heading">{isNew ? 'New Profile' : 'Edit Profile'}</div>
+        <div className="settings-heading">{isNew ? 'New profile' : 'Edit profile'}</div>
       </div>
 
       <CollapsibleSection
@@ -387,7 +387,7 @@ function ProfileEditForm({
             own, since a live bot hand keeps the round unresolved.
           */}
           <Toggle
-            label="Dealer reveals hole on every round"
+            label="Dealer always shows the hole card"
             checked={draft.dealerAlwaysPlaysOut ?? false}
             onChange={(v) => update({ dealerAlwaysPlaysOut: v })}
           />
@@ -407,7 +407,7 @@ function ProfileEditForm({
         defaultOpen={false}
       >
           <div className="settings-row">
-            <span className="settings-label">Your hands</span>
+            <span className="settings-label">Your hands per round</span>
             <Segmented
               options={[
                 { value: '1', label: '1' },
@@ -451,7 +451,7 @@ function ProfileEditForm({
         defaultOpen={false}
       >
           <Toggle
-            label="Bet spread on"
+            label="Vary bets with the count"
             checked={draft.betSpreadOn}
             onChange={(v) => update({ betSpreadOn: v })}
           />
@@ -476,10 +476,10 @@ function ProfileEditForm({
             />
           </div>
           <p className="stats-detail">
-            How your system resolves the leftover when you divide. Floor and truncate agree on
-            every positive count and differ on every negative one &mdash; &minus;1.5 floors to
-            &minus;2 and truncates to &minus;1 &mdash; which straddles real indices like 12 v 4
-            and 13 v 2. Set it to match your book, or the table will mark those deviations wrong.
+            How your system rounds the true count after dividing. Floor and truncate agree on
+            positive counts but not negative ones: &minus;1.5 floors to &minus;2 and truncates to
+            &minus;1, which matters for indices like 12 v 4 and 13 v 2. Match your book, or the
+            trainer will mark those deviations wrong.
           </p>
 
           {/* RV3 (docs/BACKLOG.md). Sits beside true-count rounding because it is
@@ -496,15 +496,14 @@ function ProfileEditForm({
           <p className="stats-detail">
             {draft.rules.ls ? (
               <>
-                Vary surrender by the count instead of playing it flat. It cuts both ways: you
-                start surrendering 16 v 8 at +4 where basic hits, and you stop surrendering
-                15 v 10 below 0 where basic surrenders. {draft.rules.s17 ? 'Four' : 'Six'} cells
-                under {draft.rules.s17 ? 'S17' : 'H17'}; 16 v 10, 16 v A
-                {draft.rules.s17 ? '' : ' and 17 v A'} keep surrendering at every count. Sourced in{' '}
-                <code>docs/sources/verified-surrender-indices.md</code>.
+                Surrender by the true count instead of always following basic strategy. It works
+                both ways: you surrender 16 v 8 at +4 where basic strategy hits, and stop
+                surrendering 15 v 10 below 0 where basic strategy surrenders.{' '}
+                {draft.rules.s17 ? 'Four' : 'Six'} hands change under {draft.rules.s17 ? 'S17' : 'H17'};
+                16 v 10, 16 v A{draft.rules.s17 ? '' : ' and 17 v A'} are surrendered at every count.
               </>
             ) : (
-              <>Needs late surrender, which this profile&rsquo;s rules have switched off.</>
+              <>Needs late surrender, which is off in this profile&rsquo;s rules.</>
             )}
           </p>
           <Stepper
@@ -526,7 +525,7 @@ function ProfileEditForm({
             min={0}
             max={20}
             step={1}
-            format={(v) => (v === 0 ? 'off' : `${v} rounds`)}
+            format={(v) => (v === 0 ? 'Off' : `${v} rounds`)}
             onChange={(v) => update({ countCheckEvery: v })}
           />
       </CollapsibleSection>
@@ -603,21 +602,21 @@ function ProfileEditForm({
                 Paste from CVCX
               </button>
             </div>
-            <p className="stats-detail">Ramp is sorted by TC when you save.</p>
+            <p className="stats-detail">Rows are sorted by true count when you save.</p>
 
             {/* RT#11 (docs/BACKLOG.md): exact-conformity grading rewards the one
                 thing surveillance looks for. Off by default -- how you want to
                 be graded is a judgment, not a rule of the game. */}
             <Toggle
-              label="Cover: accept one rung either side"
+              label="Cover bets: allow one step off the ramp"
               checked={draft.coverBets ?? false}
               onChange={(v) => update({ coverBets: v })}
             />
             <p className="stats-detail">
-              Grades a bet correct on the ramp&apos;s expected rung or either neighbour, so a
-              deliberate over- or under-bet isn&apos;t scored as an error. A bet that tracks the
-              count exactly, every round, is the pattern that gets counters noticed &mdash; the
-              session report says how mechanical yours was either way.
+              Counts a bet as correct if it is on the ramp or one step either side, so a deliberate
+              over- or under-bet isn&apos;t marked wrong. Betting exactly to the count every round
+              is what gets counters noticed. The session report shows how closely you followed the
+              ramp either way.
             </p>
 
             {cvcxImport.kind !== 'closed' && (
@@ -655,7 +654,7 @@ function ProfileEditForm({
                     )}
                     <div className="cvcx-button-row">
                       <button type="button" className="cvcx-parse-btn" onClick={handleCvcxParse}>
-                        Parse
+                        Preview
                       </button>
                       <button type="button" className="cvcx-cancel-btn" onClick={handleCvcxCancel}>
                         Cancel
@@ -679,7 +678,7 @@ function ProfileEditForm({
                     </div>
                     <div className="cvcx-button-row">
                       <button type="button" className="cvcx-confirm-btn" onClick={handleCvcxConfirm}>
-                        Confirm
+                        Use this ramp
                       </button>
                       <button type="button" className="cvcx-cancel-btn" onClick={handleCvcxCancel}>
                         Cancel
@@ -702,7 +701,7 @@ function ProfileEditForm({
             onChange={(v) => updateCvcx({ score: v })}
           />
           <OptionalNumberField
-            label="EV / hour"
+            label="EV per hour"
             value={draft.cvcx?.evPerHour}
             onChange={(v) => updateCvcx({ evPerHour: v })}
           />
@@ -715,7 +714,7 @@ function ProfileEditForm({
             label="Sim note"
             value={draft.cvcx?.simNote ?? ''}
             onChange={(v) => updateCvcx({ simNote: v === '' ? undefined : v })}
-            placeholder="optional"
+            placeholder="Optional"
           />
       </CollapsibleSection>
 

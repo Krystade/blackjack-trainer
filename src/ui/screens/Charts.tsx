@@ -36,9 +36,9 @@ export { highlightForHand } from './chartRows';
 const CHART_ORDER_KEY = 'bjtrainer.chartOrder.v1';
 
 const SECTIONS: readonly { id: ChartSection; title: string; blurb: string }[] = [
-  { id: 'HARD', title: 'Hard totals', blurb: 'No ace, or an ace forced down to 1.' },
-  { id: 'SOFT', title: 'Soft totals', blurb: 'An ace still counting as 11.' },
-  { id: 'PAIRS', title: 'Pairs', blurb: 'Read before the totals — splitting decides first.' },
+  { id: 'HARD', title: 'Hard totals', blurb: 'No ace, or an ace that has to count as 1.' },
+  { id: 'SOFT', title: 'Soft totals', blurb: 'An ace counting as 11.' },
+  { id: 'PAIRS', title: 'Pairs', blurb: 'Check these first: decide whether to split before reading the totals.' },
 ];
 
 const LEGEND_TEXT = new Map(ACTION_LEGEND.map((entry) => [entry.code, entry.label]));
@@ -173,7 +173,7 @@ export function Charts({ onNavigate, activeProfile, highlight, note, onBack, bac
         <button type="button" className="charts-back-btn" onClick={() => (onBack ? onBack() : onNavigate('home'))}>
           Back to {backLabel ?? 'Home'}
         </button>
-        <div className="charts-heading">Strategy Charts</div>
+        <div className="charts-heading">Strategy charts</div>
       </div>
 
       <p className="charts-ruleset">{rulesetSummary(activeProfile.rules)}</p>
@@ -183,8 +183,8 @@ export function Charts({ onNavigate, activeProfile, highlight, note, onBack, bac
           reached from corrections, including the deviations that contradict
           the cell being rung. */}
       <p className="charts-provenance">
-        Exactly the basic-strategy chart the trainer grades you against. Count indices are not on
-        it.
+        The basic strategy chart the trainer grades you against. Count-based deviations (index
+        plays) are not shown.
       </p>
       {note && <p className="charts-note">{note}</p>}
 
@@ -199,14 +199,14 @@ export function Charts({ onNavigate, activeProfile, highlight, note, onBack, bac
               aria-pressed={order === value}
               onClick={() => chooseOrder(value)}
             >
-              {value === 'descending' ? 'Descending' : 'Ascending'}
+              {value === 'descending' ? 'Highest first' : 'Lowest first'}
             </button>
           ))}
         </div>
         <p className="charts-order-hint">
           {order === 'descending'
-            ? 'Highest totals at the top, the way the printed charts read.'
-            : 'Lowest totals at the top, counting up.'}
+            ? 'Highest totals at the top, like most printed charts.'
+            : 'Lowest totals at the top.'}
         </p>
       </div>
 
@@ -223,7 +223,8 @@ export function Charts({ onNavigate, activeProfile, highlight, note, onBack, bac
           ))}
         </ul>
         <p className="chart-legend-note">
-          A second letter is the fallback, marked by the sliver down the cell&rsquo;s left edge.
+          A second letter is the play to make when the first isn&rsquo;t allowed. Those cells have a
+          stripe down the left edge.
         </p>
       </div>
 
@@ -284,7 +285,7 @@ export function Charts({ onNavigate, activeProfile, highlight, note, onBack, bac
                               aria-current={hit ? 'true' : undefined}
                               ref={hit ? cellRef : undefined}
                               title={`${row.label} vs dealer ${up}: ${LEGEND_TEXT.get(action) ?? action}${
-                                hit ? ' — the hand under review' : ''
+                                hit ? ' — your hand' : ''
                               }`}
                             >
                               {action}
@@ -301,8 +302,8 @@ export function Charts({ onNavigate, activeProfile, highlight, note, onBack, bac
 
           {section.id === 'PAIRS' && (
             <p className="chart-section-note">
-              5,5 and 10,10 have no rows here on purpose: never split them. Play 5,5 as hard 10 and 10,10 as hard
-              20.
+              5,5 and 10,10 aren&rsquo;t listed because you never split them. Play 5,5 as hard 10 and 10,10 as
+              hard 20.
             </p>
           )}
         </section>

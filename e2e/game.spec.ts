@@ -42,7 +42,7 @@ test('dealer showing an ace triggers the insurance modal', async ({ page }) => {
     const modal = page.locator('.modal-backdrop', { hasText: 'Insurance?' });
     if (await modal.isVisible().catch(() => false)) {
       found = true;
-      await expect(modal).toContainText('Dealer shows an Ace');
+      await expect(modal).toContainText('The dealer shows an ace');
       await shot(page, '04-insurance-modal');
       await modal.getByRole('button', { name: 'Decline', exact: true }).click();
       await playRoundByAdvice(page);
@@ -77,7 +77,7 @@ test('training mode: a wrong action shows the mistake overlay', async ({ page })
 
   await bar.getByRole('button', { name: wrongLabel!, exact: true }).click();
 
-  const overlay = page.locator('.modal-backdrop', { hasText: 'Wrong Play' });
+  const overlay = page.locator('.modal-backdrop', { hasText: 'Wrong play' });
   await expect(overlay).toBeVisible();
   // The overlay now renders the shared MistakeCard, which labels the two
   // plays in a column ("You played" / "Correct") rather than the old inline
@@ -151,7 +151,7 @@ test('count-check modal appears after a round and grades a running-count entry',
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await playRoundByAdvice(page);
 
-  const modal = page.locator('.modal-backdrop', { hasText: 'Running Count?' });
+  const modal = page.locator('.modal-backdrop', { hasText: 'Running count?' });
   await expect(modal).toBeVisible();
   await expect(modal.locator('.numpad-label')).toHaveText('Enter running count');
   await shot(page, '07-count-check-numpad');
@@ -179,7 +179,7 @@ test('bet spread: a deliberately bad bet is graded and shows in the test-mode re
   await expect(page.locator('.report-screen')).toBeVisible();
   const betRow = page.locator('.report-categories tr', { hasText: 'bet' });
   await expect(betRow).toBeVisible();
-  await expect(betRow).toContainText('bet');
+  await expect(betRow).toContainText('Bet sizing');
   await shot(page, '09-bet-spread-report');
 });
 
@@ -192,7 +192,7 @@ test('wong-out (R5): Sit Out plays the round unstaked, keeps the bankroll flat, 
 
   // The Sit Out button appears beside Deal only when a spread is configured
   // (wong-out is meaningless flat-betting) — the same gate the engine grades on.
-  const sitOut = page.getByRole('button', { name: 'Sit Out', exact: true });
+  const sitOut = page.getByRole('button', { name: 'Sit out', exact: true });
   await expect(sitOut).toBeVisible();
   await sitOut.click();
 
@@ -209,8 +209,8 @@ test('wong-out (R5): Sit Out plays the round unstaked, keeps the bankroll flat, 
   await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-screen')).toBeVisible();
-  await expect(page.locator('.report-categories tr', { hasText: 'wong' })).toBeVisible();
-  await expect(page.locator('.report-categories tr', { hasText: /^bet/ })).toHaveCount(0);
+  await expect(page.locator('.report-categories tr', { hasText: 'Play or sit out' })).toBeVisible();
+  await expect(page.locator('.report-categories tr', { hasText: /^Bet sizing/ })).toHaveCount(0);
   await shot(page, '31-wong-report');
 });
 
@@ -304,7 +304,7 @@ test('count-check modal: RC then TC two-stage prompt on the 2nd trigger (askTcTo
   await playRoundByAdvice(page);
 
   const modal = page.locator('.modal-backdrop');
-  await expect(modal.locator('.modal-title')).toHaveText('Running Count?');
+  await expect(modal.locator('.modal-title')).toHaveText('Running count?');
   await modal.getByRole('button', { name: '5', exact: true }).click();
   await modal.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(modal).not.toBeVisible();
@@ -314,13 +314,13 @@ test('count-check modal: RC then TC two-stage prompt on the 2nd trigger (askTcTo
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await playRoundByAdvice(page);
 
-  await expect(modal.locator('.modal-title')).toHaveText('Running Count?');
+  await expect(modal.locator('.modal-title')).toHaveText('Running count?');
   await modal.getByRole('button', { name: '3', exact: true }).click();
   await modal.getByRole('button', { name: 'OK', exact: true }).click();
 
   // Still open -- now asking for TC, not settled yet.
   await expect(modal).toBeVisible();
-  await expect(modal.locator('.modal-title')).toHaveText('True Count?');
+  await expect(modal.locator('.modal-title')).toHaveText('True count?');
   await shot(page, '13-count-check-tc-stage');
 
   await modal.getByRole('button', { name: '1', exact: true }).click();
@@ -342,7 +342,7 @@ test('TC peek button latches RC/TC on a tap and clears on the next tap', async (
   await resolveInsurance(page, false);
 
   const peekBtn = page.locator('.tc-peek-btn');
-  await expect(peekBtn).toHaveText('TC');
+  await expect(peekBtn).toHaveText('Peek');
   await peekBtn.click();
   await expect(peekBtn).toHaveText(/^RC [+-]?\d+ \/ TC [+-]?\d+$/);
   // The point of a toggle: nothing is held, and it is still showing.
@@ -350,7 +350,7 @@ test('TC peek button latches RC/TC on a tap and clears on the next tap', async (
   await expect(peekBtn).toHaveText(/^RC [+-]?\d+ \/ TC [+-]?\d+$/);
   await shot(page, '14-tc-peek-revealed');
   await peekBtn.click();
-  await expect(peekBtn).toHaveText('TC');
+  await expect(peekBtn).toHaveText('Peek');
 });
 
 test('R7: peeks are counted once per reveal and flag a test-mode session as assisted', async ({ page }) => {
@@ -487,13 +487,13 @@ test('RV7: dealing in at a should-wong count is graded, not just the min bet', a
 
   // Both grades are there, and they disagree — which is the point. The bet
   // matched the spread; being in the hand at all did not.
-  const wongRow = page.locator('.report-categories tr', { hasText: 'wong' });
+  const wongRow = page.locator('.report-categories tr', { hasText: 'Play or sit out' });
   await expect(wongRow).toBeVisible();
   // Columns are right / wrong / percent, so the row reads "wong 0 1 0%".
-  await expect(wongRow.locator('td')).toHaveText(['wong', '0', '1', '0%']);
+  await expect(wongRow.locator('td')).toHaveText(['Play or sit out', '0', '1', '0%']);
   await expect(
-    page.locator('.report-categories tr', { hasText: /^bet/ }).locator('td'),
-  ).toHaveText(['bet', '1', '0', '100%']);
+    page.locator('.report-categories tr', { hasText: /^Bet sizing/ }).locator('td'),
+  ).toHaveText(['Bet sizing', '1', '0', '100%']);
 });
 
 /**
@@ -516,8 +516,8 @@ test('RT#11: cover mode accepts one rung either side of the ramp', async ({ page
 
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-screen')).toBeVisible();
-  await expect(page.locator('.report-categories tr', { hasText: /^bet/ }).locator('td')).toHaveText([
-    'bet',
+  await expect(page.locator('.report-categories tr', { hasText: /^Bet sizing/ }).locator('td')).toHaveText([
+    'Bet sizing',
     '1',
     '0',
     '100%',
@@ -536,7 +536,7 @@ test('RT#11: the cover toggle round-trips from the profile editor', async ({ pag
     .click();
 
   const row = page.locator('.settings-toggle-row', {
-    hasText: 'Cover: accept one rung either side',
+    hasText: 'Cover bets: allow one step off the ramp',
   });
   await expect(row).toBeVisible();
   const box = row.locator('input[type="checkbox"]');
@@ -550,7 +550,7 @@ test('RT#11: the cover toggle round-trips from the profile editor', async ({ pag
     .click();
   await expect(
     page
-      .locator('.settings-toggle-row', { hasText: 'Cover: accept one rung either side' })
+      .locator('.settings-toggle-row', { hasText: 'Cover bets: allow one step off the ramp' })
       .locator('input[type="checkbox"]'),
   ).toBeChecked();
 });

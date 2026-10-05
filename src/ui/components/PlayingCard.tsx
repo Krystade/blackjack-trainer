@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { Card, Suit } from '../../engine/cards';
+import type { Card, Rank, Suit } from '../../engine/cards';
 
 interface PlayingCardProps {
   card?: Card;
@@ -26,10 +26,19 @@ export const SUIT_GLYPH: Record<Suit, string> = {
 };
 
 const SUIT_NAME: Record<Suit, string> = {
-  s: 'Spades',
-  h: 'Hearts',
-  d: 'Diamonds',
-  c: 'Clubs',
+  s: 'spades',
+  h: 'hearts',
+  d: 'diamonds',
+  c: 'clubs',
+};
+
+/** Spoken-style rank names for the accessible label: "A of spades" reads as
+ * a letter, "Ace of spades" reads as a card. */
+const RANK_NAME: Partial<Record<Rank, string>> = {
+  A: 'Ace',
+  J: 'Jack',
+  Q: 'Queen',
+  K: 'King',
 };
 
 function isRed(suit: Suit): boolean {
@@ -51,7 +60,7 @@ export function PlayingCard({ card, faceDown, size = 'normal', dealIndex }: Play
   const style = dealIndex === undefined ? undefined : ({ ['--deal-i']: dealIndex } as CSSProperties);
 
   if (!card || faceDown) {
-    return <div className={`card card-back${sizeClass}`} aria-label="face-down card" style={style} />;
+    return <div className={`card card-back${sizeClass}`} aria-label="Face-down card" style={style} />;
   }
 
   const red = isRed(card.suit);
@@ -59,7 +68,7 @@ export function PlayingCard({ card, faceDown, size = 'normal', dealIndex }: Play
     <div
       className={`card ${red ? 'card-red' : 'card-black'}${sizeClass}`}
       data-card={`${card.rank}${card.suit}`}
-      aria-label={`${card.rank} of ${SUIT_NAME[card.suit]}`}
+      aria-label={`${RANK_NAME[card.rank] ?? card.rank} of ${SUIT_NAME[card.suit]}`}
       style={style}
     >
       <span className="card-rank">{card.rank}</span>

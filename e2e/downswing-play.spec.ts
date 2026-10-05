@@ -123,7 +123,7 @@ test('the play score reaches Stats alongside the bet score', async ({ page }) =>
   await page.locator('.home-stats-link').click();
   await page.locator('.stats-tabs').getByRole('tab', { name: 'Progress', exact: true }).click();
   const section = page.locator('.stats-section', { hasText: 'Downswing' });
-  await expect(section.locator('.mistake-row', { hasText: 'Correct play' })).toContainText('%');
+  await expect(section.locator('.mistake-row', { hasText: 'Stiff hands played correctly' })).toContainText('%');
 });
 
 /**

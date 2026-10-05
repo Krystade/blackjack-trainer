@@ -49,7 +49,7 @@ async function enterSignedNumber(page: Page, n: number) {
   for (const d of String(Math.abs(n)).split('')) {
     await page.getByRole('button', { name: d, exact: true }).click();
   }
-  if (n < 0) await page.getByRole('button', { name: '−', exact: true }).click();
+  if (n < 0) await page.getByRole('button', { name: 'Plus or minus', exact: true }).click();
   await ok(page).click();
 }
 
