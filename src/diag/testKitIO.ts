@@ -14,6 +14,8 @@ import { getSharedAudioContext } from '../audio/audioContext';
 import { readAudioSessionType } from '../audio/audioSession';
 import { toneDataUri } from '../audio/tone';
 import type { PlayPath } from './testKit';
+import { openMicStream } from '../audio/openMicStream';
+import { markMicSessionOpened } from '../audio/micSessionCost';
 
 /** The line every route step plays. Long enough to place by ear. */
 export const ROUTE_PHRASE = 'You have fourteen. Dealer shows ten.';
@@ -227,6 +229,8 @@ export async function openMic(): Promise<HeldMic | { error: string }> {
   } catch (e) {
     return { error: e instanceof Error ? e.name : 'start-failed' };
   }
+  // A recogniser start opens the mic just as getUserMedia does.
+  markMicSessionOpened();
   const heardAudio = await audioStarted;
   diag('test', 'kit-mic-open', {
     audiostart: heardAudio,
@@ -272,7 +276,7 @@ export async function startRecording(): Promise<ActiveRecorder | { error: string
   }
   let stream: MediaStream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
+    stream = await openMicStream({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
     });
   } catch (e) {

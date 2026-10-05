@@ -1,4 +1,5 @@
 import { diag } from './diagnosticLog';
+import { openMicStream } from '../audio/openMicStream';
 
 /**
  * Which microphone the recogniser is really listening through.
@@ -204,7 +205,7 @@ export async function probeMicSpectrum(
   let stream: MediaStream | null = null;
   let ctx: AudioContext | null = null;
   try {
-    stream = await media.getUserMedia({
+    stream = await openMicStream({
       // `exact`, so a device that cannot be honoured FAILS rather than
       // silently handing back the one we are trying to rule out.
       audio: opts.deviceId ? { deviceId: { exact: opts.deviceId } } : true,
