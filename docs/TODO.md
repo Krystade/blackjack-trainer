@@ -158,8 +158,13 @@ One unblinded answer per step, so treat these as leads, not settled facts.
 - [~] **e2e health**: fix the fake recogniser's missing `onaudiostart` (flaky voice-aliases:119 and
   voice-tc-drill:177), and root-cause field-test-round5:347, field-test:1973 and
   field-test-audio:441/507.
-- [~] Research: an in-browser recogniser limited to the command words (Vosk, sherpa-onnx,
-  Whisper-wasm, Picovoice, custom keyword spotting) on iOS Safari.
+- [x] Research: an in-browser recogniser limited to the command words. See
+  `docs/research/2026-10-05-constrained-recognizers.md`.
+  - Ranking: **Vosk with a grammar** (needs no SharedArrayBuffer, so GitHub Pages works;
+    ~40MB model) > sherpa-onnx keyword spotter > custom model on Jack's voice > Whisper
+    (crashes on iOS) > Picovoice (paid).
+  - Gate: it has to survive 3 minutes on the phone without a reload.
+  - Build only if the drive's numbers are poor (roadmap decision table).
 - [~] Audit: every sound path, which can still land on the earpiece, and lines with no clip.
 - [~] UX audit at 375×812, every screen, both themes.
 - [~] Roadmap: next car session (about 15 minutes) and a two-week plan.
