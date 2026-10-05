@@ -19,7 +19,6 @@
  * is relying on must not stop because a transport button was unavailable.
  */
 
-import { appendLog } from './mediaSessionLog';
 import { diag } from '../diag/diagnosticLog';
 import { reassertAudioFocus } from './audioFocus';
 
@@ -94,10 +93,9 @@ export function isWheelPress(action: string): boolean {
 }
 
 /**
- * What each action does, in words a driver would use.
- *
- * The tester speaks these, and the Settings panel prints them, so "what is this
- * button called and what will it do" has exactly one answer in the codebase.
+ * What each action does, in words a driver would use. The car check prints
+ * these, so "what is this button called and what will it do" has exactly one
+ * answer in the codebase.
  */
 export const MEDIA_SESSION_LABEL: Record<MediaSessionAction, string> = {
   play: 'Play. Never moves the drill — the car sends this by itself; it only re-plays a lapsed hold.',
@@ -113,7 +111,7 @@ export const MEDIA_SESSION_LABEL: Record<MediaSessionAction, string> = {
 /**
  * When set, EVERY action reports its name here instead of doing its job.
  *
- * This is the button tester (audio/buttonTester.ts). The point of it is that a
+ * Armed by the car check and by the field test's wheel steps. The point of it is that a
  * car's physical buttons and the Media Session names are related by a mapping
  * only the head unit knows: a ring selector with five directions plus volume
  * and call keys emits some unknown subset of eight action names, and the only
@@ -196,12 +194,9 @@ export function initMediaSession(handlers: MediaSessionHandlers): boolean {
   const set = (action: string, handler: () => void): void => {
     try {
       ms.setActionHandler(action, () => {
-        // Record what the CAR sent before doing anything with it. This is the
-        // half that cannot be discovered from a desk, and the driver cannot
-        // watch a console, so the evidence has to collect itself.
-        appendLog({ kind: 'invoke', action, ok: true });
-        // ...and into the log the operator actually exports. Without this
-        // line a press is invisible to every diagnosis made from a drive.
+        // Record what the CAR sent before doing anything with it, into the
+        // log the operator actually exports. This is the half that cannot be
+        // discovered from a desk, and the driver cannot watch a console.
         diag('wheel', 'invoke', { action, probed: probe !== null });
         // Under test, the press is REPORTED and goes no further. Doing both
         // would mean learning what the ring's left click is called by having it
@@ -216,7 +211,6 @@ export function initMediaSession(handlers: MediaSessionHandlers): boolean {
         if (action === 'play') reassertAudioFocus('play-request');
         if (!probe) handler();
       });
-      appendLog({ kind: 'register', action, ok: true });
       diag('wheel', 'register', { action, ok: true });
     } catch (e) {
       // This browser knows the action name but refuses it, or does not know
@@ -224,7 +218,6 @@ export function initMediaSession(handlers: MediaSessionHandlers): boolean {
       // refusal is itself worth recording, since it means that button can
       // never work here however the car behaves.
       const why = e instanceof Error ? e.name : 'refused';
-      appendLog({ kind: 'register', action, ok: false, detail: why });
       // A refusal means that button can never work here, whatever the car
       // does -- which is a different diagnosis from one that never arrives.
       diag('wheel', 'register', { action, ok: false, why });

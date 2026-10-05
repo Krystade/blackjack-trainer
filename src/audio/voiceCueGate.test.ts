@@ -249,7 +249,7 @@ describe('the cue waits for the microphone, not for the engine', () => {
 describe('what the engine thought of its own reading', () => {
   it('logs the winner’s confidence', () => {
     // Until now this was dropped on the floor in the drill path: `confidence`
-    // appears only in voiceProbe.ts. With no live distribution recorded,
+    // appeared only in the since-removed Settings voice probe. With no live distribution recorded,
     // "set a confidence threshold" is unanswerable -- so record it first.
     const h = harness({ cueOn: 'start' });
     h.controller.start();

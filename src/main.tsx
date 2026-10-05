@@ -4,6 +4,7 @@ import App from './ui/App.tsx';
 import { startUpdateWatch } from './updateCheck.ts';
 import { fieldTestRunIsLive } from './diag/fieldTestRun.ts';
 import { primeVoices } from './audio/speech.ts';
+import { dropRetiredKeys } from './store/persist.ts';
 
 // OPEN THE VOICE LIST BEFORE ANYTHING WANTS TO SPEAK.
 //
@@ -14,6 +15,9 @@ import { primeVoices } from './audio/speech.ts';
 // costs nothing and takes the drill out of that position; speech.ts primes
 // again on the first clip, because iOS may withhold the list until a gesture.
 primeVoices();
+
+// Storage nothing reads any more (see store/persist.ts).
+dropRetiredKeys();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

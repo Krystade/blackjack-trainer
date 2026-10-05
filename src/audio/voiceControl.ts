@@ -121,15 +121,6 @@ export interface VoiceControllerDeps {
    */
   biasPhrases?: string[];
   /**
-   * Run recognition on an installed local model instead of over the network.
-   *
-   * Only ever set when a model is confirmed INSTALLED -- see
-   * onDeviceSpeech.ts. Switching to local processing without one risks a
-   * recogniser that starts and then hears nothing, and failing silently in a
-   * car is worse than using the network path that already works.
-   */
-  processLocally?: boolean;
-  /**
    * Where the session's life story goes.
    *
    * A sink rather than a direct import, for the same reason every other side
@@ -564,14 +555,6 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     const wantAlternatives = deps.alternatives?.() ?? SPOKEN_ALTERNATIVES;
     fresh.maxAlternatives = wantAlternatives;
     applyBias(fresh, deps.biasPhrases);
-    if (deps.processLocally) {
-      try {
-        (fresh as unknown as { processLocally: boolean }).processLocally = true;
-      } catch {
-        /* an engine that will not go local still works over the network */
-      }
-    }
-
     fresh.onstart = () => {
       clearWatchdog();
       sessionStartedAt = deps.now();
@@ -713,7 +696,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       const offered: string[] = [];
       /**
        * WHAT THE ENGINE THOUGHT OF EACH READING, which the drill path threw
-       * away until now -- `confidence` appeared only in voiceProbe.ts, so
+       * away until now -- `confidence` appeared only in the since-removed Settings voice probe, so
        * there has never been a live distribution to threshold against and
        * "set a confidence threshold" was unanswerable by construction.
        *

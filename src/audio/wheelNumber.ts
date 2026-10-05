@@ -4,7 +4,7 @@
  * WHY THIS IS NEEDED. In a car the microphone and the steering wheel are
  * mutually exclusive: opening the mic flips the Bluetooth link from A2DP to
  * HFP, the car decides the phone is on a call, and every wheel button goes to
- * that call instead of to the browser (audio/carControls.ts). So a drill that
+ * that call instead of to the browser. So a drill that
  * is playable with the wheel is a drill playable with no microphone at all --
  * and the count drills ask for a number, which one affirmative button cannot
  * say. The request was explicit (operator, 2026-09-16): use the wheel buttons,

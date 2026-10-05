@@ -122,8 +122,8 @@ test('the route control reaches the setting, with no audioSession API present', 
   await row.getByRole('button', { name: 'Auto', exact: true }).click();
   await expect.poll(read).toBe('auto');
 
-  await row.getByRole('button', { name: 'Switch', exact: true }).click();
-  await expect.poll(read).toBe('switch');
+  // No Switch: it was retired on load by store/persist.ts and then deleted.
+  await expect(row.getByRole('button', { name: 'Switch', exact: true })).toHaveCount(0);
 
   await row.getByRole('button', { name: 'Speaker', exact: true }).click();
   await expect.poll(read).toBe('playback');

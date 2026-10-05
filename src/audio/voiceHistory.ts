@@ -149,35 +149,3 @@ export function summariseHistory(entries: HeardEntry[] = readVoiceHistory()): Hi
   };
 }
 
-/** The log as pasteable text, ranked rejections first. */
-export function formatVoiceHistory(entries: HeardEntry[] = readVoiceHistory()): string {
-  const summary = summariseHistory(entries);
-
-  const lines = [
-    'Blackjack Trainer — everything the microphone heard',
-    `captured: ${new Date().toISOString()}`,
-    '',
-    `utterances: ${summary.total}`,
-    `understood: ${summary.matched}`,
-    `  of those, ranked second by the engine: ${summary.rescued}`,
-    `  of those, reached by near miss:        ${summary.approximate}`,
-    `not understood: ${summary.rejected}`,
-    '',
-    '--- not understood, commonest first (candidate aliases) ---',
-  ];
-
-  if (summary.candidates.length === 0) {
-    lines.push('(nothing was rejected)');
-  } else {
-    // A repeat is the signal; a single stray phrase usually is not.
-    for (const c of summary.candidates) {
-      lines.push(`${String(c.count).padStart(4)}x  "${c.heard}"`);
-    }
-  }
-
-  lines.push('', '--- everything, in order ---');
-  for (const e of entries) {
-    lines.push(`${e.at}  [${e.context}]  "${e.heard}" -> ${e.verdict}`);
-  }
-  return lines.join('\n');
-}

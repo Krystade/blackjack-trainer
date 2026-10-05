@@ -64,3 +64,21 @@ describe('the output route, after both workarounds were disproved', () => {
     expect(s.audio.volume).toBe(0.5);
   });
 });
+
+/**
+ * The two microphone-experiment arms are fixed behaviour now, so a stored
+ * control arm must not ride along through every save -- and must not be
+ * mistaken for a live setting by anything that reads the blob.
+ */
+describe('retired microphone-experiment fields', () => {
+  it('drops a stored micCueOn and voiceAlternatives, keeping the rest', () => {
+    const s = mergeSettings({
+      version: 1,
+      audio: { micCueOn: 'start', voiceAlternatives: 3, rate: 1.2 },
+    });
+    const audio = s.audio as unknown as Record<string, unknown>;
+    expect('micCueOn' in audio).toBe(false);
+    expect('voiceAlternatives' in audio).toBe(false);
+    expect(s.audio.rate).toBe(1.2);
+  });
+});

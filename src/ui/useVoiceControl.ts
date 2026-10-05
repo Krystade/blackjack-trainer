@@ -6,31 +6,19 @@ import {
   type HeardVerdict,
   type VoiceController,
 } from '../audio/voiceControl';
-import {
-  appIsSpeaking,
-  setSpeechActivityListener,
-  whenSomethingFinishesSpeaking,
-} from '../audio/speech';
-import { onDeviceStatus, prefersOnDevice, shouldProcessLocally } from '../audio/onDeviceSpeech';
+import { setSpeechActivityListener } from '../audio/speech';
 import { recordHeard } from '../audio/voiceHistory';
 import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition';
 import { looksLikeSelfEcho } from '../audio/selfEcho';
 import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
-import { micCueOn, micAlternatives } from '../audio/micTuning';
 import { reassertAudioFocus } from '../audio/audioFocus';
 import { markMicSessionOpened } from '../audio/micSessionCost';
 import { markInputDeviceChanged } from '../diag/deviceChurn';
 import {
-  abandonSpeechHandoff,
   audioSessionSupported,
-  beginSpeechHandoff,
   claimSpeakerForPlayback,
-  declareRecordingIntent,
-  endSpeechHandoff,
-  openMicWhenQuiet,
   readAudioSessionType,
-  releaseSpeakerForListening,
 } from '../audio/audioSession';
 import { logAudioInputs, logHardwareRate, logMicPermission } from '../diag/environment';
 import {
@@ -60,16 +48,15 @@ export interface VoiceStatus {
 const IDLE: VoiceStatus = { state: 'off', heard: null, verdict: null };
 
 /**
- * How long past an utterance's own estimate to wait before giving the
- * microphone back regardless.
+ * How many readings of one utterance to ask the engine for.
  *
- * Only reached when the ending never arrives, so it is deliberately generous:
- * the real ending should win every ordinary time, and a reopen that raced a
- * still-talking app would put the recogniser back under the app's own voice.
- * Two seconds is longer than the gap between any estimate and its real
- * duration seen in the drive logs.
+ * Ten rather than three. Asking costs nothing where fewer exist -- WebKit
+ * breaks out of its transcription list at `_maxAlternatives` -- and deepening
+ * is safe because resolveSpoken's guards are on LENGTH, not rank. How many
+ * were actually offered is logged per utterance, so the ceiling is measured
+ * without a three-reading control arm.
  */
-const REOPEN_BACKSTOP_MS = 2000;
+const VOICE_ALTERNATIVES = 10;
 
 /**
  * How often to write a line saying nothing happened.
@@ -140,27 +127,6 @@ export function useVoiceControl({
    */
   context: string;
 }): { status: VoiceStatus; cycleIfStale: () => void } {
-  // Resolved once, asynchronously, then applied to every session this hook
-  // starts. Both halves are required: the operator asked for it AND a model
-  // is actually installed.
-  const [processLocally, setProcessLocally] = useState(false);
-  useEffect(() => {
-    if (!enabled) return;
-    // Nobody who has not opted in is worth asking about. The query kills the
-    // renderer on some builds (see onDeviceSpeech), and for someone who never
-    // turned this on the answer could only ever have been "stay on the
-    // network" -- which is what not asking already does.
-    if (!prefersOnDevice()) return;
-
-    let cancelled = false;
-    void onDeviceStatus().then((status) => {
-      if (!cancelled) setProcessLocally(shouldProcessLocally(status, true));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled]);
-
   const [status, setStatus] = useState<VoiceStatus>(IDLE);
 
   // The handler closes over drill state that changes every render. Holding
@@ -194,8 +160,6 @@ export function useVoiceControl({
    * manufacture the signal it is measuring.
    */
   const contextRef = useRef(context);
-  // The armed reopen deadline, so it can be cancelled from two places.
-  const reopenTimerRef = useRef<number | null>(null);
   contextRef.current = context;
 
   const unheardRef = useRef(onNotUnderstood);
@@ -236,15 +200,6 @@ export function useVoiceControl({
   const cuedLiveRef = useRef(false);
 
   const controllerRef = useRef<VoiceController | null>(null);
-
-  /**
-   * Call off a microphone open that is waiting for the app to shut up.
-   *
-   * A screen that leaves mid-prompt would otherwise open a session onto
-   * whatever is on screen next -- the same debt `abandonSpeechHandoff` pays
-   * for the other direction.
-   */
-  const deferredOpenRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -291,19 +246,16 @@ export function useVoiceControl({
       },
       onTranscript: (heard, offered) => transcriptRef.current?.(heard, offered) ?? null,
       biasPhrases,
-      processLocally,
       log: (event, detail) => diag('mic', event, { ...detail, context: contextRef.current }),
       /*
-       * READ PER SESSION, not captured here.
-       *
-       * This hook rebuilds its controller only when voice is toggled or the
-       * local-model decision resolves, so passing values would mean a
-       * setting change needed a reload before it applied -- and these two
-       * exist to be switched between hands, in a car park, without touching
-       * anything but the toggle.
+       * Cue on real audio, not on the engine saying it started: WebKit fires
+       * `onstart` and only then calls `startCapture()`, so over Bluetooth a
+       * word spoken on an `onstart` cue was never recorded. The gate fails
+       * open after AUDIOSTART_GRACE_MS, so its worst case is the old
+       * behaviour -- which is why the 'start' arm stopped being a setting.
        */
-      cueOn: micCueOn,
-      alternatives: micAlternatives,
+      cueOn: () => 'audiostart',
+      alternatives: () => VOICE_ALTERNATIVES,
       hasWorked: micHasWorked,
       onWorked: markMicWorked,
       onState: (state) => {
@@ -383,11 +335,7 @@ export function useVoiceControl({
            * reading the hardware-rate probe was built for and could not take.
            * The rate does not move when the output goes to the earpiece; the
            * session CATEGORY is what moves, and until now nothing asked it.
-           *
-           * `releaseSpeakerForListening` is a no-op unless the route setting
-           * is 'switch' -- see audio/audioSession.ts.
            */
-          releaseSpeakerForListening();
           diag('route', 'session-at-mic-open', {
             supported: audioSessionSupported(),
             type: readAudioSessionType() ?? 'unknown',
@@ -444,57 +392,6 @@ export function useVoiceControl({
     });
     controllerRef.current = controller;
 
-    /**
-     * Give the microphone back, once, whoever notices first.
-     *
-     * Idempotent by way of `endSpeechHandoff`, which returns 'none' unless
-     * this handoff is the thing that closed the recogniser -- so a chime's
-     * ending, or an utterance that began before the setting was switched on,
-     * cannot start a recogniser the operator never asked for.
-     */
-    /**
-     * START THE RECOGNISER, ONCE THE APP IS QUIET.
-     *
-     * Every path that opens the microphone goes through here, because the one
-     * that did not is the bug: on the 2026-10-04 drive the screen's own
-     * opening call ran 7ms after the prompt began and the app then spent
-     * 4489ms talking with capture live in `play-and-record`. Waiting costs
-     * nothing -- the recogniser is deafened for the length of every utterance
-     * regardless -- and it is what puts the prompt on the loud speaker.
-     */
-    const startMic = (why: string) => {
-      deferredOpenRef.current?.();
-      deferredOpenRef.current = openMicWhenQuiet({
-        speaking: appIsSpeaking,
-        whenQuiet: whenSomethingFinishesSpeaking,
-        open: () => {
-          deferredOpenRef.current = null;
-          /*
-           * SAY THE CAPTURE CATEGORY HERE, where it is finally true.
-           *
-           * `endSpeechHandoff` used to declare it, which meant a reopen that
-           * was owed but deferred flapped the session to 'play-and-record'
-           * and straight back to 'playback' while a clip was playing -- three
-           * times in Jack's 2026-10-04 log, each one a route change in the
-           * middle of a sentence he was trying to hear.
-           */
-          declareRecordingIntent();
-          controller.start();
-        },
-        why,
-      });
-    };
-
-    const reopenMic = (why: string) => {
-      if (reopenTimerRef.current !== null) {
-        clearTimeout(reopenTimerRef.current);
-        reopenTimerRef.current = null;
-      }
-      if (endSpeechHandoff() !== 'open-mic') return;
-      diag('route', 'handoff', { to: 'microphone', why });
-      startMic(why);
-    };
-
     // Deafen the microphone whenever the app talks. Registered only while
     // listening, so nothing pays for this when voice is off.
     setSpeechActivityListener((ms, text, phase) => {
@@ -505,49 +402,9 @@ export function useVoiceControl({
       if (phase === 'end') {
         controller.suppressFor(0, undefined);
         diag('speak', 'deafen-until-now', { context: contextRef.current });
-        // THE OTHER HALF OF THE HANDOFF, and the one that normally runs.
-        reopenMic('speech-ended');
         return;
       }
       diag('speak', 'deafen', { ms, said: text, context: contextRef.current });
-      /**
-       * TAKE THE MICROPHONE DOWN FIRST, under the 'switch' setting only.
-       *
-       * Deafening the recogniser is not enough to move the output: WebKit set
-       * the audio session's real category when capture started, and the
-       * 2026-10-04 drive held `type=playback` from end to end with the sound
-       * still on the earpiece. The only lever the thread on WebKit bug 218012
-       * reports as working is stopping capture outright and declaring playback
-       * before the sound. It costs about 1.2 seconds of deafness per line,
-       * which is why it is a setting rather than the default, and why a chime
-       * never triggers it.
-       */
-      if (beginSpeechHandoff(text !== undefined) === 'close-mic') {
-        diag('route', 'handoff', { to: 'speaker', said: text });
-        controller.stop();
-        /*
-         * A DEADLINE, because closing the microphone is a debt.
-         *
-         * The reopen above hangs off one event. Every production path that
-         * makes a sound does funnel into it -- `ended`, `error` and the
-         * watchdog all land in the same place in speech.ts -- but a silenced
-         * microphone that waits forever for a single event sounds exactly
-         * like the app being broken, and is the worst failure this setting
-         * could have. So whichever arrives first wins: the real ending, or
-         * this. `endSpeechHandoff` only ever acts once, so the loser is a
-         * no-op.
-         *
-         * `ms` is the same estimate the deaf window is already sized from.
-         * The margin on top is slack for an utterance that runs over its
-         * estimate, so the real ending wins in the ordinary case and this
-         * fires only when nothing else does.
-         */
-        if (reopenTimerRef.current !== null) clearTimeout(reopenTimerRef.current);
-        reopenTimerRef.current = window.setTimeout(
-          () => reopenMic('deadline'),
-          ms + REOPEN_BACKSTOP_MS,
-        );
-      }
       // A chime reports no text, and must not count as a new utterance: the
       // cue below IS a chime, so counting it would start the next generation
       // and re-arm the cue it just gave -- the same self-sustaining deafness
@@ -564,13 +421,7 @@ export function useVoiceControl({
       // stored sentence alone in that case on purpose.
       controller.suppressFor(ms, text);
     });
-    /*
-     * AND THE OPENING ITSELF WAITS, which is the fix for the drive that was
-     * still on the earpiece with 'switch' already selected. This call used to
-     * be a bare `controller.start()`, which is how a prompt that had begun
-     * seven milliseconds earlier ended up playing with capture live.
-     */
-    startMic('listen-on');
+    controller.start();
 
     // Everything below is a nudge from outside the controller, for the events
     // it cannot see: the page coming back, the network returning, the car's
@@ -649,16 +500,6 @@ export function useVoiceControl({
       window.removeEventListener('online', onOnline);
       media?.removeEventListener?.('devicechange', onDeviceChange);
       setSpeechActivityListener(null);
-      // A pending reopen must not outlive the screen that armed it: it would
-      // start a recogniser after voice was switched off, or on a drill the
-      // operator has already left.
-      if (reopenTimerRef.current !== null) {
-        clearTimeout(reopenTimerRef.current);
-        reopenTimerRef.current = null;
-      }
-      deferredOpenRef.current?.();
-      deferredOpenRef.current = null;
-      abandonSpeechHandoff();
       controller.stop();
       controllerRef.current = null;
       void releaseWakeLock('voice');
@@ -669,7 +510,7 @@ export function useVoiceControl({
     // a fresh array every render would tear the recogniser down and rebuild it
     // continuously. The vocabulary is fixed for a session's lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, processLocally]);
+  }, [enabled]);
 
   return {
     status,

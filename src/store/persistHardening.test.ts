@@ -365,16 +365,16 @@ const NOT_BACKED_UP: Record<string, string> = {
   'bjtrainer.diagnostics.v1':
     'the diagnostic log: transient, capped, and the one store that carries cabin speech and Bluetooth device names -- it must not ride along in a file the user may hand to someone',
   'bjtrainer.diagnostics.dropped.v1': 'a counter belonging to the diagnostic buffer above',
-  'bjtrainer.mediaSessionLog.v1': 'diagnostic, about this device’s head unit',
   'bjtrainer.voiceHistory.v1': 'what the microphone heard: diagnostic, and speech',
+  'bjtrainer.mediaSessionLog.v1': 'retired; deleted on load by dropRetiredKeys',
+  'bjtrainer.voiceProbe.v1': 'retired; deleted on load by dropRetiredKeys',
+  'bjtrainer.voiceLocal.v1': 'retired; deleted on load by dropRetiredKeys',
+  'bjtrainer.voiceLocalProbe.v1': 'retired; deleted on load by dropRetiredKeys',
   'bjtrainer.fieldTestRun.v1': 'progress through a field-test leg, meaningless off the drive',
   'bjtrainer.fieldTestDraft.v1': 'an unsent note inside a field-test leg',
   'bjtrainer.reloadedFor': 'a one-shot guard against a reload loop',
   'bjtrainer.devicecheck.probe':
     'written and deleted inside one run of the device check, to find out whether this browser can store anything at all -- it holds no state to back up',
-  'bjtrainer.voiceProbe.v1': 'what THIS device’s recogniser can do; restoring it onto another device would be a lie',
-  'bjtrainer.voiceLocal.v1': 'as above, for on-device recognition',
-  'bjtrainer.voiceLocalProbe.v1': 'as above',
   'bjtrainer.stats.v1.corrupt':
     'written by the reader, not the app, and already carried verbatim by exportAll when present',
 };
