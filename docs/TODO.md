@@ -14,7 +14,7 @@ operating goals and the work under them.
 - A claim about the phone is settled by the phone. Desk results are labelled as desk results.
 - Items are updated in the same commit as the work, never afterwards from memory.
 
-Last updated: 2026-10-05 (first cloud session).
+Last updated: 2026-10-05 (first cloud session). Plan for the next drive and two weeks: `docs/research/2026-10-05-roadmap.md`.
 
 ---
 
@@ -22,10 +22,10 @@ Last updated: 2026-10-05 (first cloud session).
 
 | # | Goal | Where it stands |
 |---|------|-----------------|
-| G1 | Phone alone, **no Bluetooth**: sound from the **loud speaker**, voice answers accepted | **Blocked in the browser.** Once the page has opened a mic, output goes to the earpiece for the rest of the page's life. Native is ruled out; three web/no-code probes are left (G1-a, G1-b, G1-e) |
-| G2 | **Bluetooth on**: sound through the **car speakers**, voice answers accepted | Car output **works**. The mic side is unresolved: iOS picks the car's hands-free mic and the call route, and a web page cannot choose otherwise |
-| G3 | Voice recognition that holds up at **freeway noise** | Misrecognises **even in a quiet room** ("hit" → "Add"). The cause is the recogniser model, not noise. Two-word commands and taught aliases shipped, but are **not yet measured** |
-| G4 | Ongoing UX/UI improvement | Settings cull, wording pass and Flashcards layout are **in flight** (agents) |
+| G1 | Phone alone, **no Bluetooth**: sound from the **loud speaker**, voice answers accepted | **Fixed in a real drill** (`8195254`, `7826a3e`): clips play through Web Audio once the mic has opened. Still on the earpiece: lines with no recording (spoken by the phone's own voice) and push-to-talk; being audited |
+| G2 | **Bluetooth on**: sound through the **car speakers**, voice answers accepted | Car output proven with `<audio>`. **Web Audio over Bluetooth with the mic open is untested.** It's the first parked check next drive. Which mic is used is unknown; the "Bluetooth: phone mic?" kit is being built |
+| G3 | Voice recognition that holds up at **freeway noise** | Quiet room 10/10. **Never measured in motion.** False accepts ("But" → split) being tightened. Turn-taking tones and real-end deafness shipped (`70b12d6`) |
+| G4 | Ongoing UX/UI improvement | Settings cull, wording passes and Flashcards layout shipped; UX audit at 375×812 running |
 
 ---
 
