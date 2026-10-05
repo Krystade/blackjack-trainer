@@ -264,18 +264,27 @@ export const KITS: Record<KitId, { label: string; where: string; steps: readonly
   },
   'car-bt': {
     label: 'In the car — Bluetooth ON',
-    where: 'Phone connected to the car as usual. Do the listening steps parked; the word steps can be done driving.',
+    where: 'Phone connected to the car as usual. Do the listening step parked; the word step can be done driving.',
     steps: [
-      ...routeSteps('bt', CAR_ROUTE).filter((s) => s.kind === 'route' && s.path === 'element'),
+      // The gate for G2 (roadmap 2026-10-05): drills now play through Web Audio
+      // once the mic has opened, and nobody has yet heard that over Bluetooth.
+      // Blind, both paths, mic on -- the never-opened baselines are settled.
+      {
+        ...BLIND,
+        id: 'bt-blind-mic-open',
+        title: 'Mic on, Bluetooth on — where does each play come from?',
+        answers: CAR_ROUTE,
+        why: 'Six plays with the mic on, two playback methods in a hidden order. The drills now use one of them; it has to reach the car speakers.',
+      },
       SPECTRUM,
       CALIBRATE,
     ],
   },
   'car-no-bt': {
     label: 'In the car — Bluetooth OFF',
-    where: 'Turn Bluetooth off on the phone first. Do the listening steps parked; the word steps can be done driving.',
+    where: 'Turn Bluetooth off on the phone first. Do the listening step parked; the word step can be done driving.',
     steps: [
-      ...routeSteps('nobt', DESK_ROUTE).filter((s) => s.kind === 'route' && s.mic !== 'closed-after-open'),
+      { ...BLIND, id: 'nobt-blind-mic-open' },
       SPECTRUM,
       CALIBRATE,
     ],
