@@ -71,7 +71,9 @@ async function openTest(page: import('@playwright/test').Page): Promise<void> {
   // section has to be opened the way a person opens it.
   // The way in moved into "Car check" when Field test lost its own section
   // (Settings was "full of junk", 2026-10-04). One button, no heading.
-  await page.locator('summary', { hasText: 'Car check' }).click();
+  // Tests live in the Test kit now; Settings keeps one link to it.
+  await page.locator('summary', { hasText: 'Tests' }).click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   // BOTH CONTROLS NEED TWO TAPS, and this used to give each of them one.
   // Finish arms on the first tap ("Tap again to end") and Start reads "Start

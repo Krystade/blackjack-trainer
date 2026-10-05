@@ -663,8 +663,8 @@ function StartGate({
   return (
     <div className="fieldtest-screen" data-testid="fieldtest-screen">
       <header className="fieldtest-topbar">
-        <button type="button" className="settings-back-btn" onClick={() => onNavigate('settings')}>
-          ← Settings
+        <button type="button" className="settings-back-btn" onClick={() => onNavigate('testkit')}>
+          ← Test kit
         </button>
         <h1 className="fieldtest-heading">Field test</h1>
       </header>
@@ -3197,7 +3197,7 @@ function RunningTest({
     releaseAudioFocus('speech');
     restoreSettings();
     stopFieldTestRun();
-    onNavigate('settings');
+    onNavigate('testkit');
   };
 
   const renderAnswer = (response: (typeof responses)[number], slot: number) =>
@@ -3279,7 +3279,7 @@ function RunningTest({
           onClick={() => {
             diag('test', 'run-paused', { step: step.id, condition: run.condition });
             pauseFieldTestRun();
-            onNavigate('settings');
+            onNavigate('testkit');
           }}
         >
           ← Pause

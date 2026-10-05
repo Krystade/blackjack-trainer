@@ -16,25 +16,10 @@ import {
   setClipVoice,
   loadClipIndex,
   prewarmClips,
-  loadVoiceManifest,
   type ClipVoiceInfo,
-  type ClipManifest,
 } from '../../audio/clips';
-import { probeMicSpectrum, type MicProbeResult } from '../../diag/micSpectrum';
 import { micSessionCostPaid } from '../../audio/micSessionCost';
 import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
-import { FIELD_TEST_CONDITIONS, FIELD_TEST_STEPS } from '../../diag/fieldTest';
-import {
-  clipCoverageCases,
-  pureCases,
-  runCases,
-  settingsCases,
-  summarise,
-  type SelfTestResult,
-  type SelfTestStorage,
-} from '../../diag/selfTest';
-import { CarCheckPanel } from '../components/CarCheckPanel';
-import { readFieldTestRun, subscribeFieldTestRun } from '../../diag/fieldTestRun';
 import {
   PUSH_TO_TALK_MAX_MS,
   PUSH_TO_TALK_MIN_MS,
@@ -685,260 +670,27 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
           </div>
       </CollapsibleSection>
 
-      <CarCheckSection onNavigate={onNavigate} />
-      <SelfTestSection live={settings} />
+      <CollapsibleSection title={<>Tests</>} defaultOpen={false}>
+        <div className="settings-note-row u-note">
+          Every test that still has an open question is in the Test kit, grouped by where you
+          are: at your desk, in the car with Bluetooth, or in the car without.
+        </div>
+        <button
+          type="button"
+          className="u-btn u-btn-primary"
+          data-testid="settings-testkit-open"
+          onClick={() => onNavigate('testkit')}
+        >
+          Open the Test kit
+        </button>
+      </CollapsibleSection>
 
-      <MicProbePanel />
       <VoiceAliasPanel
         aliases={settings.audio.voiceAliases ?? {}}
         onChange={(voiceAliases) => updateAudio({ voiceAliases })}
       />
       <DiagnosticLogPanel />
     </div>
-  );
-}
-
-function CarCheckSection({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const [run, setRun] = useState(() => readFieldTestRun());
-  useEffect(() => subscribeFieldTestRun(() => setRun(readFieldTestRun())), []);
-  const condition =
-    FIELD_TEST_CONDITIONS.find((c) => c.id === run.condition) ?? FIELD_TEST_CONDITIONS[0]!;
-
-  return (
-    <CollapsibleSection title={<>Car check</>} defaultOpen={false}>
-      <CarCheckPanel />
-
-      {/* The field test used to be its own section with its own paragraph.
-          The screen is kept -- it is the only thing that measures the
-          speaker-versus-wheel trade, and e2e/field-test-audio.spec.ts drives
-          it -- but the way in is one button, here with the rest of the
-          measuring, rather than a heading of its own. */}
-      <button
-        type="button"
-        className="fieldtest-stamp"
-        data-testid="fieldtest-open"
-        onClick={() => onNavigate('fieldtest')}
-      >
-        {run.active
-          ? `Back to the field test \u2014 step ${run.stepIndex + 1} of ${FIELD_TEST_STEPS.length}`
-          : `Open the field test (${FIELD_TEST_STEPS.length} steps) \u2014 ${condition.label}`}
-      </button>
-    </CollapsibleSection>
-  );
-}
-
-
-/**
- * THE TEST SUITE, ON THE PHONE.
- *
- * Asked for twice. Jack, 2026-10-03: "can you add all the tests you run to the
- * app itself? ... me using the app on my phone just doesn't equate", and again
- * on 2026-10-04 when the first answer -- device checks bolted onto the car
- * check -- turned out not to be it. What runs here are the invariants that
- * would make the app WRONG rather than merely broken: the strategy chart, the
- * count, the true-count rounding, the indices, the clip coverage, the settings
- * round trip. Nothing speaks, nothing records, nothing touches the car; it is
- * safe to press at a red light.
- *
- * The cases themselves are in diag/selfTest.ts, and the meta-tests in
- * diag/selfTest.test.ts break each subject in turn to prove a case can fail.
- */
-function selfTestStorage(): SelfTestStorage | null {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
-function SelfTestSection({ live }: { live: SettingsData }) {
-  const [results, setResults] = useState<SelfTestResult[] | null>(null);
-  const [running, setRunning] = useState(false);
-
-  const run = () => {
-    setRunning(true);
-    // The clip manifest is the one subject that needs a fetch, so the whole
-    // run is async even though every case itself is synchronous. The voice
-    // checked is the one the app would actually SPEAK with -- checking the
-    // default while a different voice is selected would report coverage the
-    // operator never hears.
-    void (async () => {
-      let manifest: ClipManifest | null = null;
-      try {
-        const index = await loadClipIndex();
-        const voiceId = live.audio.clipVoice || index?.default || '';
-        if (voiceId) manifest = await loadVoiceManifest(voiceId);
-      } catch {
-        manifest = null;
-      }
-      setResults(
-        runCases([
-          ...pureCases(),
-          ...clipCoverageCases(manifest),
-          ...settingsCases(
-            selfTestStorage(),
-            live as unknown as Record<string, unknown>,
-          ),
-        ]),
-      );
-      setRunning(false);
-    })();
-  };
-
-  const summary = results ? summarise(results) : null;
-  const groups = results
-    ? [...new Set(results.map((r) => r.group))].map((group) => ({
-        group,
-        total: results.filter((r) => r.group === group).length,
-        failed: results.filter((r) => r.group === group && r.outcome === 'fail').length,
-      }))
-    : [];
-
-  return (
-    <CollapsibleSection title={<>Strategy and counting check</>} defaultOpen={false}>
-      {/*
-        NAMED FOR WHAT IT IS, not "Test suite". Jack, 2026-10-04: "This wasn't
-        the main thing I wanted to test. Supposed to test functionality more
-        like the field test rather than the logic which can start testing on
-        the computer." He is right, and the device functionality now lives in
-        Car check above. What is left here is the arithmetic -- worth having on
-        the phone because it runs against the bundle that actually shipped,
-        but not the thing a drive depends on.
-      */}
-      <div className="settings-note-row u-note">
-        The chart, the count, the indices and the recorded voice, checked against the build
-        on this phone. Silent and instant. Device faults are under <strong>Car check</strong>.
-      </div>
-
-      <button
-        type="button"
-        className="fieldtest-stamp"
-        data-testid="selftest-run"
-        disabled={running}
-        onClick={run}
-      >
-        {running ? 'Running\u2026' : summary ? 'Run again' : 'Run the tests'}
-      </button>
-
-      {summary && (
-        <>
-          <div
-            className="settings-row"
-            data-testid={summary.failed === 0 ? 'selftest-pass' : 'selftest-fail'}
-          >
-            <span className="settings-label">
-              {summary.failed === 0 ? 'All passed' : `${summary.failed} failed`}
-            </span>
-            <span className="settings-value">
-              {summary.passed}/{summary.total}
-            </span>
-          </div>
-
-          {groups.map((g) => (
-            <div className="settings-row" key={g.group}>
-              <span className="settings-label">{g.group}</span>
-              <span className="settings-value">
-                {g.failed === 0 ? `${g.total} ok` : `${g.failed} of ${g.total} failed`}
-              </span>
-            </div>
-          ))}
-
-          {/* The whole point of the screen. A count of failures with no names
-              would leave the operator exactly where a green tick does. */}
-          {summary.failures.length > 0 && (
-            <ul className="selftest-failures" data-testid="selftest-failures">
-              {summary.failures.map((f) => (
-                <li key={f.id}>
-                  <strong>{f.label}</strong>
-                  <br />
-                  {f.detail}
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
-    </CollapsibleSection>
-  );
-}
-
-/**
- * Which microphone the recogniser is really listening through.
- *
- * The one voice question still open that only the car can answer. If the
- * phone hands recognition the car's hands-free microphone over narrowband
- * HFP, nothing above 4kHz reaches the engine and no alias, two-word form or
- * matcher rule can put the consonants back -- so the answer decides whether
- * further recognition work is worth doing at all. It is a hard spectral wall,
- * so it cannot pass for the wrong reason, and the verdict is written to the
- * diagnostic log as `mic spectrum`, so it rides along in the export.
- *
- * WHAT WENT. This section used to carry two A/B switches -- cue on `onstart`
- * or on `onaudiostart`, and three or ten readings per answer. Both defaults
- * dominate by construction (the audio gate fails open after a grace period,
- * and the rescue guards are on length, not rank), and the log records the
- * start-to-audio gap and how many readings were offered either way, so the
- * control arms bought nothing. They are now simply the behaviour; see
- * useVoiceControl.ts.
- */
-function MicProbePanel() {
-  const [probing, setProbing] = useState(false);
-  const [result, setResult] = useState<MicProbeResult | null>(null);
-
-  const runProbe = async () => {
-    setProbing(true);
-    setResult(null);
-    try {
-      setResult(await probeMicSpectrum());
-    } finally {
-      setProbing(false);
-    }
-  };
-
-  const verdictText = (r: MicProbeResult): string => {
-    if (r.error) return `Could not test the microphone (${r.error}).`;
-    switch (r.verdict) {
-      case 'narrowband':
-        return 'The car\u2019s hands-free microphone. This is the problem \u2014 it carries nothing above 4kHz, so consonants are gone before the recogniser sees them.';
-      case 'wideband':
-        return 'A full-bandwidth microphone. The input is not the bottleneck.';
-      case 'no-signal':
-        return 'Nothing was heard at all, so this says nothing about which microphone. Say a word while it runs.';
-      case 'unmeasurable':
-        return 'This device cannot show the difference, so the test is inconclusive rather than negative.';
-    }
-  };
-
-  return (
-    <CollapsibleSection title={<>Which microphone?</>} defaultOpen={false}>
-      <div className="settings-row">
-        <span className="settings-label">Car or phone microphone</span>
-        <button className="btn" onClick={runProbe} disabled={probing}>
-          {probing ? 'Listening\u2026' : 'Test mic'}
-        </button>
-      </div>
-      <div className="settings-note-row u-note">
-        <strong>Say a command out loud while this runs</strong>, in the car, with the engine
-        on. It opens the microphone for about two seconds and looks at the top of the
-        spectrum. Hands-free Bluetooth cannot carry anything above 4kHz, so the answer is a
-        wall or no wall &mdash; it cannot come out right by accident. Nothing is recorded or
-        kept, and no sound is played.
-      </div>
-      {result && (
-        <div className="settings-note-row u-note">
-          <strong>{verdictText(result)}</strong>
-          <br />
-          {result.label ? `Track: ${result.label}. ` : ''}
-          {result.error
-            ? ''
-            : `Energy above 4kHz: ${(result.highRatio * 100).toFixed(
-                2,
-              )}% across ${result.highBins} bands. Track rate: ${
-                result.trackSampleRate ?? 'unreported'
-              }. Context rate: ${result.contextSampleRate}.`}
-        </div>
-      )}
-    </CollapsibleSection>
   );
 }
 

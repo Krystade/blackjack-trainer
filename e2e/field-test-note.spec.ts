@@ -30,6 +30,7 @@ async function openTest(page: Page, condition = 'Car, parked'): Promise<void> {
   await selectFieldTestCondition(page, condition);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
   const start = page.getByTestId('fieldtest-start');
@@ -268,6 +269,7 @@ test('a draft from the previous run does not come back in the next run\u2019s bo
   // than to the run: walked in by hand, which is what the operator does.
   await page.reload();
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
   // A new run: same condition, same first step, different run id.

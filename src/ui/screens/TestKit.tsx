@@ -25,6 +25,8 @@ import {
 } from '../../diag/testKitIO';
 import { diag, formatDiagnosticLog, readDiagnosticLog } from '../../diag/diagnosticLog';
 import { listMicrophones, probeMicSpectrum, type MicProbeResult } from '../../diag/micSpectrum';
+import { FIELD_TEST_STEPS } from '../../diag/fieldTest';
+import { readFieldTestRun, subscribeFieldTestRun } from '../../diag/fieldTestRun';
 
 /**
  * One button per place; every open experiment that place can answer.
@@ -68,6 +70,8 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
   const [done, setDone] = useState(false);
   const recordings = useRef<Array<{ name: string; rec: Recording }>>([]);
   const mic = useRef<HeldMic | null>(null);
+  const [fieldRun, setFieldRun] = useState(() => readFieldTestRun());
+  useEffect(() => subscribeFieldTestRun(() => setFieldRun(readFieldTestRun())), []);
 
   useEffect(() => {
     if (resumed.current) diag('test', 'kit-resumed', { kit: resumed.current.kit, step: resumed.current.stepIndex });
@@ -142,8 +146,27 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
           <span />
         </header>
         <div className="testkit-body">
+          <h2 className="testkit-title">Still unanswered</h2>
+          <ul className="testkit-open" data-testid="testkit-open-questions">
+            <li>
+              <strong>Phone speaker with voice on.</strong> Does any way of playing sound stay on the loud speaker
+              once the mic is open? <em>Desk.</em>
+            </li>
+            <li>
+              <strong>Which mic, with Bluetooth on.</strong> Is the app listening through the car's call mic or
+              the phone's? <em>Car, Bluetooth on.</em>
+            </li>
+            <li>
+              <strong>How often words are heard right.</strong> Single words against two-word forms, in each
+              place. <em>All three.</em>
+            </li>
+            <li>
+              <strong>Audible at speed, and the wheel after voice.</strong> Can you make out the words on the
+              freeway, and does the wheel still work after the mic closes? <em>Freeway drive.</em>
+            </li>
+          </ul>
           <p className="testkit-lede">
-            Pick where you are. Each one runs every test that place can answer, one step at a time. Everything goes
+            Pick where you are. Each one asks only what that place can answer, one step at a time. Everything goes
             into the diagnostic log; at the end you copy it and save the recordings.
           </p>
           {(Object.keys(KITS) as KitId[]).map((id) => (
@@ -152,6 +175,20 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
               <span className="testkit-kit-where">{KITS[id].where}</span>
             </button>
           ))}
+          <button
+            type="button"
+            className="u-btn testkit-kit"
+            data-testid="fieldtest-open"
+            onClick={() => onNavigate('fieldtest')}
+          >
+            <span className="testkit-kit-label">
+              {fieldRun.active ? `Back to the freeway drive — step ${fieldRun.stepIndex + 1} of ${FIELD_TEST_STEPS.length}` : 'Freeway drive'}
+            </span>
+            <span className="testkit-kit-where">
+              Bluetooth on, at road speed. {FIELD_TEST_STEPS.length} steps, run by the wheel and your voice. Answer
+              the first two before you pull out.
+            </span>
+          </button>
         </div>
       </div>
     );

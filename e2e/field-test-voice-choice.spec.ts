@@ -28,6 +28,7 @@ test('the instruction is read in the chosen voice, like the measured line', asyn
   await selectFieldTestCondition(page, 'Car, parked');
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   const start = page.getByTestId('fieldtest-start');
   await start.click();
@@ -62,6 +63,7 @@ test('the pause cue and the lock verdict are read in the chosen voice too', asyn
   await selectFieldTestCondition(page, 'Car, parked');
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   const start = page.getByTestId('fieldtest-start');
   await start.click();

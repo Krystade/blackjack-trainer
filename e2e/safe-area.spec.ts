@@ -114,6 +114,7 @@ for (const where of ['gate', 'running'] as const) {
   test(`Field test (${where}): nothing paints under the status bar`, async ({ page }) => {
     await page.goto('/?e2e=1');
     await page.getByRole('button', { name: 'Settings' }).first().click();
+    await page.getByTestId('settings-testkit-open').click();
     await page.getByTestId('fieldtest-open').click();
     await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
     if (where === 'running') {
@@ -158,6 +159,7 @@ for (const where of ['gate', 'running'] as const) {
 test('the field-test check is discriminating', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
   await page.addStyleTag({

@@ -56,6 +56,7 @@ async function openTest(page: Page, condition: string = 'Car, parked'): Promise<
   if (condition) await selectFieldTestCondition(page, condition);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
   // A run left open by an earlier part of the same spec shows the step, not
@@ -371,6 +372,7 @@ test('the run is still there after a reload, which the update check can force mi
 
   await page.reload();
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
 
   /**
@@ -917,6 +919,7 @@ test('the settings come back even when the app reloads mid-run', async ({ page }
   await page.evaluate(() => window.localStorage.setItem('e2e.noReseed', '1'));
   await page.reload();
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await page.getByTestId('fieldtest-resume').click();
   await expect(page.getByTestId('fieldtest-title')).toBeVisible();
@@ -1402,6 +1405,7 @@ test('starting over after a reload does not adopt the protocol settings as the o
   await page.evaluate(() => window.localStorage.setItem('e2e.noReseed', '1'));
   await page.reload();
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
 
   // START OVER, not Resume -- the path that used to re-snapshot. Two taps,
@@ -1536,6 +1540,7 @@ test('a driven condition says so before the run starts', async ({ page }) => {
   await withSettings(page, {});
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   if ((await page.getByTestId('fieldtest-finish').count()) > 0) {
     await endRun(page);
@@ -1686,6 +1691,7 @@ test('a setting changed between two runs survives the second run', async ({ page
   });
   await page.reload();
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await page.getByTestId('fieldtest-start').click();
   await expect(page.getByTestId('fieldtest-title')).toBeVisible();
@@ -1876,6 +1882,7 @@ test('a second leg in the same page says so, on screen and in the log', async ({
   await withSettings(page, {});
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
 
@@ -2333,6 +2340,7 @@ test('a first visit to the gate stays quiet', async ({ page }) => {
     window.__speechLog = [];
   });
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-start')).toBeVisible();
   const said = await page.evaluate(() => window.__speechLog ?? []);

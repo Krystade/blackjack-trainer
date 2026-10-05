@@ -4463,3 +4463,11 @@ details.stats-section > summary::after {
   margin-top: 0.5rem;
   width: 100%;
 }
+.testkit-open {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  line-height: 1.4;
+}

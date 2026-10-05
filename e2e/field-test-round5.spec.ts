@@ -16,6 +16,7 @@ async function openTest(page: Page, condition: string): Promise<void> {
   await selectFieldTestCondition(page, condition);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
+  await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
   const start = page.getByTestId('fieldtest-start');
