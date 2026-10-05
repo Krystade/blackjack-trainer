@@ -283,6 +283,18 @@ export interface AudioSettings {
    * whoever would rather keep the microphone and lose the speaker.
    */
   outputRoute: 'auto' | 'playback' | 'switch';
+  /**
+   * Extra words the operator wants heard as commands, phrase -> action.
+   *
+   * Lives in settings rather than its own store so it is exported, backed up
+   * and restored with everything else -- an alias table rebuilt from a drive's
+   * worth of rejections is not something to lose to a reinstall.
+   *
+   * At most two words per phrase, enforced in audio/voiceAliases.ts: longer
+   * and audio/selfEcho.ts can no longer tell the app's own prompt from a
+   * command. See the note on ECHO_MIN_WORDS.
+   */
+  voiceAliases: Record<string, string>;
 }
 
 export const DEFAULT_AUDIO: AudioSettings = {
@@ -316,6 +328,7 @@ export const DEFAULT_AUDIO: AudioSettings = {
   // that actually takes the microphone down, which is the only lever reported
   // to work. Costs ~1.2s of deafness per line; both other modes remain.
   outputRoute: 'auto',
+  voiceAliases: {},
   cardDetail: 'rank',
   /*
    * ON, now that a real drive has played them.

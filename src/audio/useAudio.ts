@@ -1,4 +1,5 @@
 import { setOutputRoutePreference } from './audioSession';
+import { setUserVoiceAliases, type VoiceAction } from './voiceRecognition';
 import { useEffect, useMemo } from 'react';
 import type { AudioSettings } from '../store/types';
 import { speak, chime, chimeWhenQuiet, repeatLast } from './speech';
@@ -48,7 +49,7 @@ export interface AudioApi {
  * re-fire loop.
  */
 export function useAudio(audio: AudioSettings): AudioApi {
-  const { enabled, verbosity, rate, voiceURI, chimes, useClips, clipVoice, outputRoute } = audio;
+  const { enabled, verbosity, rate, voiceURI, chimes, useClips, clipVoice, outputRoute, voiceAliases } = audio;
   // Mute is folded in HERE, once, rather than at the four call sites below:
   // a path that forgot it would be a path that still makes noise in a
   // quiet room, which is the one failure this control exists to prevent.
@@ -73,6 +74,15 @@ export function useAudio(audio: AudioSettings): AudioApi {
   useEffect(() => {
     setOutputRoutePreference(outputRoute);
   }, [outputRoute]);
+
+  /*
+   * And the operator's own alias table, module-level for the same reason:
+   * seven screens match speech and the one that forgot to thread the map
+   * through would silently ignore his settings.
+   */
+  useEffect(() => {
+    setUserVoiceAliases((voiceAliases ?? {}) as Record<string, VoiceAction>);
+  }, [voiceAliases]);
 
   // Same pattern for the selected clip voice, warmed for the same reason --
   // switching voice empties the cache for the one now selected.

@@ -3,6 +3,7 @@ import { CollapsibleSection } from '../components/CollapsibleSection';
 import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
 import { THEMES, normalizeTheme } from '../theme';
+import { aliasProblem, aliasTargets, normaliseAlias } from '../../audio/voiceAliases';
 import { saveSettings } from '../../store/persist';
 import {
   chime,
@@ -714,6 +715,10 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
       <SelfTestSection live={settings} />
 
       <VoiceProbePanel />
+      <VoiceAliasPanel
+        aliases={settings.audio.voiceAliases ?? {}}
+        onChange={(voiceAliases) => updateAudio({ voiceAliases })}
+      />
       <VoiceHistoryPanel />
       <DiagnosticLogPanel />
     </div>
@@ -1304,6 +1309,187 @@ function OnDeviceModelPanel() {
         />
       )}
     </>
+  );
+}
+
+/**
+ * Words the operator teaches the app, taken from what it actually misheard.
+ *
+ * WHY IT IS SEEDED RATHER THAN A BLANK BOX. Jack asked for "a setting where I
+ * can put in a bunch of different aliases for the different words just to help
+ * so I can say something that's easier for it to pick out." A free-text field
+ * would make him guess what the engine returns, and the engine's guesses are
+ * not guessable -- his 2026-10-04 log has `heard=Strength`, `heard=Touch`,
+ * `heard=Definitely`, `heard="That's for sure"`, none of which anyone would
+ * think to type. The app already keeps every rejection, so the list offers
+ * them and he says what each one meant. One tap per word, no typing.
+ *
+ * It is also the only honest way to find out whether any of this helps. The
+ * log records what the ENGINE returned and never what was said, so nothing in
+ * it can score recognition -- I claimed from those lines that multi-word
+ * commands "graded correctly every time" and Jack's reply was "This is
+ * straight up wrong", with `heard="That's for sure" verdict=rejected` sitting
+ * in the log twice. Binding a rejection to an action is the first record of
+ * intent this app has ever had.
+ */
+function VoiceAliasPanel({
+  aliases,
+  onChange,
+}: {
+  aliases: Record<string, string>;
+  onChange: (next: Record<string, string>) => void;
+}) {
+  const [entries, setEntries] = useState<HeardEntry[]>(() => readVoiceHistory());
+  const [typed, setTyped] = useState('');
+  const [target, setTarget] = useState<string>('stand');
+
+  const summary = summariseHistory(entries);
+  const bound = (phrase: string) => normaliseAlias(phrase) in aliases;
+
+  // The rejections worth offering: ranked by how often they happened, and
+  // only the ones not already taught, so the list shrinks as he works.
+  const offers = summary.candidates.filter((c) => !bound(c.heard)).slice(0, 8);
+
+  const add = (phrase: string, action: string) => {
+    const key = normaliseAlias(phrase);
+    if (!key || aliasProblem(phrase)) return;
+    onChange({ ...aliases, [key]: action });
+  };
+
+  const remove = (phrase: string) => {
+    const next = { ...aliases };
+    delete next[phrase];
+    onChange(next);
+  };
+
+  const typedProblem = typed.trim() ? aliasProblem(typed) : null;
+  const taught = Object.entries(aliases);
+
+  return (
+    <CollapsibleSection title={<>Teach it your words</>} defaultOpen={false}>
+      <div className="settings-note-row u-note">
+        When the app mishears a command, tell it what you meant. It listens for
+        these on top of the words it already knows.{' '}
+        <strong>Two words at most</strong> — longer and it can no longer tell
+        your voice from its own.
+      </div>
+
+      {offers.length > 0 && (
+        <>
+          <div className="settings-note-row u-note">
+            Heard but not understood, commonest first:
+          </div>
+          {offers.map((c) => (
+            <div className="settings-row" key={c.heard}>
+              <span className="settings-label">
+                &ldquo;{c.heard}&rdquo; &times;{c.count}
+              </span>
+              <span className="settings-value">
+                <select
+                  className="settings-select"
+                  aria-label={`What "${c.heard}" meant`}
+                  defaultValue=""
+                  onChange={(e) => {
+                    if (e.target.value) add(c.heard, e.target.value);
+                  }}
+                >
+                  <option value="">meant…</option>
+                  {aliasTargets().map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* The typed route stays, for a word he has decided to use BEFORE the
+          engine has ever mangled it -- picking a command that survives a car
+          is the other half of what he asked for. */}
+      <div className="settings-row">
+        <span className="settings-label">
+          <input
+            className="settings-input"
+            type="text"
+            inputMode="text"
+            autoCapitalize="none"
+            autoCorrect="off"
+            placeholder="a word to listen for"
+            aria-label="A word to listen for"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+          />
+        </span>
+        <span className="settings-value">
+          <select
+            className="settings-select"
+            aria-label="What it should mean"
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+          >
+            {aliasTargets().map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="settings-mini-btn"
+            disabled={!typed.trim() || typedProblem !== null}
+            onClick={() => {
+              add(typed, target);
+              setTyped('');
+            }}
+          >
+            Add
+          </button>
+        </span>
+      </div>
+
+      {typedProblem && (
+        <div className="settings-note-row u-note" role="status">
+          {typedProblem}
+        </div>
+      )}
+
+      {taught.length === 0 ? (
+        <div className="settings-note-row u-note">
+          Nothing taught yet. Drive with voice on, then come back — whatever it
+          failed to understand will be listed above.
+        </div>
+      ) : (
+        taught.map(([phrase, action]) => (
+          <div className="settings-row" key={phrase}>
+            <span className="settings-label">
+              &ldquo;{phrase}&rdquo; means {action}
+            </span>
+            <span className="settings-value">
+              <button
+                type="button"
+                className="settings-mini-btn"
+                onClick={() => remove(phrase)}
+              >
+                Remove
+              </button>
+            </span>
+          </div>
+        ))
+      )}
+
+      <div className="settings-row">
+        <button
+          type="button"
+          className="settings-mini-btn"
+          onClick={() => setEntries(readVoiceHistory())}
+        >
+          Refresh what it heard
+        </button>
+      </div>
+    </CollapsibleSection>
   );
 }
 

@@ -86,6 +86,58 @@ const ALIASES: Record<string, VoiceAction> = {
 export const VOICE_PHRASES: readonly string[] = Object.keys(ALIASES);
 
 /**
+ * ALIASES THE OPERATOR ADDED, which the shipped table could not have guessed.
+ *
+ * Jack's drives are full of readings nothing here covers -- `heard=Strength`,
+ * `heard=Touch`, `heard=Definitely` -- and the mapping cannot be recovered
+ * from a log, because `heard=` records what the ENGINE returned and never
+ * what was said. Only the person who spoke can supply it, so these arrive
+ * from a setting rather than from a cleverer matcher.
+ *
+ * A module-level value set on load, like the output-route preference: the
+ * seven screens that match speech should not each have to thread a map
+ * through, and the one that forgot would silently ignore the operator's
+ * settings.
+ */
+let userAliases: Record<string, VoiceAction> = {};
+
+/**
+ * Replace the operator's alias map.
+ *
+ * SHIPPED COMMANDS ARE THE FLOOR. A user entry whose key is already a real
+ * command is dropped, because the alternative is that a typo in a settings
+ * field rebinds "hit" to STAND -- and then the operator says the commonest
+ * word in the game, watches the app do the opposite, and has nothing on
+ * screen telling him why.
+ */
+export function setUserVoiceAliases(next: Record<string, VoiceAction>): void {
+  const kept: Record<string, VoiceAction> = {};
+  for (const [phrase, action] of Object.entries(next)) {
+    if (phrase in VOICE_ACTIONS) continue;
+    kept[phrase] = action;
+  }
+  userAliases = kept;
+}
+
+/**
+ * Every phrase the operator can say right now, the added ones included.
+ *
+ * `VOICE_PHRASES` is the shipped list and is still what the self-echo length
+ * contract is checked against at build time. This is the live one, and
+ * audio/selfEcho.ts must use it: a user alias missing from the calculation
+ * would sit outside the "too long to be a command" rule, and the app could
+ * begin grading its own prompt as an answer.
+ */
+export function voicePhrases(): readonly string[] {
+  return [...VOICE_PHRASES, ...Object.keys(userAliases)];
+}
+
+/** The alias tables, shipped first so a user entry can never shadow one. */
+function lookupAlias(phrase: string): VoiceAction | undefined {
+  return ALIASES[phrase] ?? userAliases[phrase];
+}
+
+/**
  * The five that play a hand, as against the three that talk about one.
  *
  * The distinction earns its keep on sentences carrying both. A real drive
@@ -144,14 +196,14 @@ export function matchVoiceAction(transcript: string): VoiceAction | null {
 
   // Try the whole phrase first, so two-word aliases ("double down") win over
   // their own last token ("down", which means nothing).
-  const whole = ALIASES[cleaned];
+  const whole = lookupAlias(cleaned);
   if (whole) return whole;
 
   const tokens = cleaned.split(/\s+/);
   const metaAllowed = tokens.length <= META_MAX_TOKENS;
   let lastMeta: VoiceAction | null = null;
   for (let i = tokens.length - 1; i >= 0; i--) {
-    const hit = ALIASES[tokens[i]!];
+    const hit = lookupAlias(tokens[i]!);
     if (!hit) continue;
     if (ACTIONS.has(hit)) return hit;
     if (metaAllowed) lastMeta ??= hit;

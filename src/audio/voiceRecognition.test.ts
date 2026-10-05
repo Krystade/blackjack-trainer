@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { looksLikeAnAttempt, matchSpokenAlternatives, matchVoiceAction, nearestVoiceAction, resolveSpoken, detectVoiceSupport, VOICE_ACTIONS } from './voiceRecognition';
+import { looksLikeAnAttempt, matchSpokenAlternatives, matchVoiceAction, nearestVoiceAction, resolveSpoken, detectVoiceSupport, setUserVoiceAliases, voicePhrases, VOICE_ACTIONS } from './voiceRecognition';
 
 /**
  * Matching is the half of voice input that can be tested without a
@@ -444,5 +444,71 @@ describe('a meta-word only answers when the transcript is short', () => {
     // drill sit in silence, which is what a dead microphone sounds like.
     expect(matchVoiceAction('um I think I am going to have to stand')).toBe('stand');
     expect(matchVoiceAction('okay well in that case let us double down')).toBe('double');
+  });
+});
+
+/**
+ * The operator's own aliases, consulted alongside the shipped ones.
+ *
+ * The shipped table guesses which mishearings are likely; Jack's drives show
+ * it guessing wrong, and the true mapping is not recoverable from a log --
+ * `heard=` is the engine's output, never what was said. So these come from
+ * the person who spoke.
+ */
+describe('aliases the operator added', () => {
+  afterEach(() => {
+    setUserVoiceAliases({});
+  });
+
+  it('maps a word the shipped table has never heard of', () => {
+    // Straight from his log: `heard=Strength verdict=rejected`, twice. The
+    // consonant-skeleton fuzzer cannot save this one -- STRNGTH against STND
+    // is more than one edit -- so nothing but a person saying "that meant
+    // stand" will do.
+    expect(matchVoiceAction('strength')).toBeNull();
+    setUserVoiceAliases({ strength: 'stand' });
+    expect(matchVoiceAction('strength')).toBe('stand');
+  });
+
+  it('matches inside a sentence, as the shipped aliases do', () => {
+    setUserVoiceAliases({ strength: 'stand' });
+    expect(matchVoiceAction('I think strength')).toBe('stand');
+  });
+
+  it('prefers a two-word alias over its own last token', () => {
+    // The same rule the built-ins need for "double down": a phrase must win
+    // over a token inside it, or the phrase is unreachable.
+    setUserVoiceAliases({ 'stand pat': 'stand', pat: 'hit' });
+    expect(matchVoiceAction('stand pat')).toBe('stand');
+  });
+
+  it('does not let a stale alias outlive the setting', () => {
+    // A cleared setting must clear the behaviour, or the operator cannot undo
+    // a word that turned out to fire in conversation.
+    setUserVoiceAliases({ strength: 'stand' });
+    setUserVoiceAliases({});
+    expect(matchVoiceAction('strength')).toBeNull();
+  });
+
+  it('never lets a user alias shadow a shipped command', () => {
+    /*
+     * The asymmetry is deliberate. If "hit" could be rebound to STAND by a
+     * typo in a settings field, the operator would say the most common word
+     * in the game and watch the app do the opposite, with nothing on screen
+     * to explain it. The shipped vocabulary is the floor.
+     */
+    setUserVoiceAliases({ hit: 'stand' });
+    expect(matchVoiceAction('hit')).toBe('hit');
+  });
+
+  it('is reported in the phrase list, so the echo guard stays correct', () => {
+    /*
+     * audio/selfEcho.ts sizes its "too long to be a command" rule against
+     * VOICE_PHRASES. A user alias that the list did not know about would sit
+     * outside that calculation, and the app could start grading its own
+     * prompt as an answer -- so the list has to include them.
+     */
+    setUserVoiceAliases({ 'stand pat': 'stand' });
+    expect(voicePhrases()).toContain('stand pat');
   });
 });
