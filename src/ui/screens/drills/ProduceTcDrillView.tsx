@@ -18,6 +18,7 @@ import {
   narrateCards,
   narrateTc,
   narrateReadback,
+  narrateProduceTcPrompt,
   narrateDecksRemaining,
   capitalizeSpoken,
   NO_TRUE_COUNT_YET,
@@ -208,8 +209,8 @@ export function ProduceTcDrillView({
   // the answer.
   useEffect(() => {
     if (phase !== 'answering') return;
-    if (eyesFree) sayBack(`${decksSentence}. Produce the true count.`, true);
-    else audio.sayFull(`${decksSentence}. Produce the true count.`);
+    if (eyesFree) sayBack(narrateProduceTcPrompt(round.decksRemaining), true);
+    else audio.sayFull(narrateProduceTcPrompt(round.decksRemaining));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
@@ -220,7 +221,7 @@ export function ProduceTcDrillView({
   useEffect(() => {
     if (phase !== 'selfcheck') return undefined;
     const runId = runIdRef.current;
-    const asked = `${decksSentence}. Produce the true count.`;
+    const asked = narrateProduceTcPrompt(round.decksRemaining);
     sayBack(asked, true);
     const t = setTimeout(() => {
       if (runIdRef.current !== runId) return;
@@ -373,13 +374,13 @@ export function ProduceTcDrillView({
         }
         if (action === 'no') {
           setPendingTc(null);
-          sayBack(`${decksSentence}. Produce the true count.`, true);
+          sayBack(narrateProduceTcPrompt(round.decksRemaining), true);
           return;
         }
         if (action === 'repeat') {
           sayBack(
             pendingTc === null
-              ? `${decksSentence}. Produce the true count.`
+              ? narrateProduceTcPrompt(round.decksRemaining)
               : narrateReadback(pendingTc),
             true,
           );

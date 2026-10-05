@@ -38,6 +38,7 @@ import {
   narrateCards,
   narrateCountAnswer,
   narrateCountPrompt,
+  narrateCountdownVerdict,
   narrateNotATag,
   narrateReadback,
   COUNTDOWN_TAG_PROMPT,
@@ -1140,9 +1141,7 @@ export function CountDrillView({
 
   /** What the run comes to, said out loud. */
   const countdownVerdict = (correct: boolean, hidden: Card): string =>
-    `${correct ? 'Correct.' : 'Wrong.'} The card left over was ` +
-    `${narrateCards([hidden], 'rank')}, ` +
-    `${speakableCount(hiLoTag(hidden.rank))}.`;
+    narrateCountdownVerdict(correct, hidden, hiLoTag(hidden.rank));
 
   const handleTagGuess = (guess: -1 | 0 | 1) => {
     if (!countdownRound) return;
@@ -1168,9 +1167,7 @@ export function CountDrillView({
     if (countdownMode && countdownRound) {
       return `${countdownVerdict(wasCorrect, countdownRound.hidden)} Say yes to go again.`;
     }
-    return honorCheck
-      ? `${wasCorrect ? 'Correct.' : 'Wrong.'} The count was ${actualValue}. Say yes to go again.`
-      : `${wasCorrect ? 'Correct.' : 'Wrong.'} ${narrateCountAnswer(actualValue)} Say yes to go again.`;
+    return `${wasCorrect ? 'Correct.' : 'Wrong.'} ${narrateCountAnswer(actualValue)} Say yes to go again.`;
   };
 
   /**

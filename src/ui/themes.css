@@ -36,7 +36,7 @@
   --ink-dim: #b7d3c2;
   /* A third ink tier below --ink-dim, for labels that must recede
      entirely (the discard-tray caption, benchmark footnotes). */
-  --ink-faint: #7fa890;
+  --ink-faint: #8fb59f;
 
   /* One accent, reserved for the live decision and the correct answer */
   --accent: #d8b969;
@@ -95,12 +95,12 @@
   --line: #d8cdb8;
 
   --ink: #201c16;
-  --ink-dim: #6f6455;
+  --ink-dim: #5f5546;
   /* A third ink tier below --ink-dim, for labels that must recede
      entirely (the discard-tray caption, benchmark footnotes). */
-  --ink-faint: #8b8272;
+  --ink-faint: #625848;
 
-  --accent: #8a5a1e;
+  --accent: #82541a;
   --accent-ink: #ffffff;
   --accent-wash: rgb(138 90 30 / 13%);
 
@@ -158,7 +158,7 @@
   --ink-dim: #8b8b93;
   /* A third ink tier below --ink-dim, for labels that must recede
      entirely (the discard-tray caption, benchmark footnotes). */
-  --ink-faint: #6d6d75;
+  --ink-faint: #80808a;
 
   --accent: #f2c14e;
   --accent-ink: #000000;
@@ -216,7 +216,7 @@
   --ink-dim: #98a0a9;
   /* A third ink tier below --ink-dim, for labels that must recede
      entirely (the discard-tray caption, benchmark footnotes). */
-  --ink-faint: #7b838c;
+  --ink-faint: #8a929b;
 
   --accent: #d98a5a;
   --accent-ink: #15171a;

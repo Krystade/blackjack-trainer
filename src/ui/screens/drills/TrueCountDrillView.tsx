@@ -13,8 +13,7 @@ import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import {
   narrateTc,
   narrateReadback,
-  narrateDecksRemaining,
-  capitalizeSpoken,
+  narrateTcQuestion as narrateTcQuestionSentence,
   NO_TRUE_COUNT_YET,
   DID_YOU_HAVE_IT,
   DECLINED_NEXT,
@@ -46,7 +45,7 @@ function formatDecks(n: number): string {
 }
 
 function narrateTcQuestion(q: TrueCountQuestion): string {
-  return `Running count ${narrateTc(q.runningCount)}. ${capitalizeSpoken(narrateDecksRemaining(q.decksRemaining))}`;
+  return narrateTcQuestionSentence(q.runningCount, q.decksRemaining);
 }
 
 function narrateTcAnswer(correctTc: number): string {

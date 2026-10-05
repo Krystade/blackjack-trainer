@@ -31,7 +31,8 @@
  */
 
 import { elementVolume } from './volume';
-import { getSharedAudioContext } from './audioContext';
+import { getSharedAudioContext, ensureContextRunning } from './audioContext';
+import { cachedToneDataUri, toneSamples, TONE_SAMPLE_RATE } from './tone';
 import { isVoiceCaptureActive, micSessionCostPaid } from './micSessionCost';
 import { diag } from '../diag/diagnosticLog';
 import { notifySpeechEnded } from './speechActivity';
@@ -396,7 +397,9 @@ function getAudioCtor(): (new () => HTMLAudioElement) | undefined {
  * activation gate actually bites -- always gets the same unlocked element
  * back, and overlapping chains each get their own exactly as before.
  *
- * ONE POOL, because clips never touch Web Audio any more. There used to be a
+ * ONE ELEMENT POOL, because the element path never touches the graph. (Chains
+ * played after a microphone has opened skip the pool and use Web Audio
+ * decoding instead; see playChainThroughWebAudio.) There used to be a
  * second pool for elements routed through a GainNode, which was the only way
  * past 100% -- `HTMLMediaElement.volume` throws above 1. Measured on the phone
  * on 2026-10-02, that route DAMAGES playback, and the clip durations in the
@@ -602,6 +605,82 @@ export function playPooledTone(
 }
 
 /**
+ * Should a chime go through Web Audio rather than a pooled <audio> element?
+ * Same rule as the clip chains: once a microphone has been opened in this page
+ * load the element is on the quiet earpiece and Web Audio is on the loud
+ * speaker; before that, Web Audio would obey the ring switch and the element
+ * does not, so the element stays.
+ */
+export function chimeWantsWebAudio(): boolean {
+  return isVoiceCaptureActive() || micSessionCostPaid();
+}
+
+/** Decoded-equivalent tone buffers, per context and frequency. */
+const toneBuffers = new WeakMap<AudioContext, Map<number, AudioBuffer>>();
+
+function toneBuffer(ctx: AudioContext, frequencyHz: number): AudioBuffer {
+  let perCtx = toneBuffers.get(ctx);
+  if (!perCtx) {
+    perCtx = new Map();
+    toneBuffers.set(ctx, perCtx);
+  }
+  const hit = perCtx.get(frequencyHz);
+  if (hit) return hit;
+  const samples = toneSamples(frequencyHz);
+  const buffer = ctx.createBuffer(1, samples.length, TONE_SAMPLE_RATE);
+  buffer.getChannelData(0).set(samples);
+  perCtx.set(frequencyHz, buffer);
+  return buffer;
+}
+
+/**
+ * Play a chime tone. Through Web Audio when the mic has been opened (see
+ * {@link chimeWantsWebAudio}), otherwise, or if the context cannot run, on a
+ * pooled element exactly as before. `peak` is the chime level (`chimePeak`):
+ * the buffer is full scale and the gain node applies it, which is the same
+ * arithmetic the element's `volume` did. NOT a chain, so it never stops a
+ * prompt. Never throws.
+ */
+export function playChimeTone(frequencyHz: number, peak: number): void {
+  const onElement = () => {
+    void playPooledTone(cachedToneDataUri(frequencyHz), peak);
+  };
+  if (!chimeWantsWebAudio()) return onElement();
+  const ctx = getSharedAudioContext();
+  if (!ctx) {
+    diag('speak', 'chime-fallback', { why: 'no-context' });
+    return onElement();
+  }
+  const start = () => {
+    try {
+      const src = ctx.createBufferSource();
+      src.buffer = toneBuffer(ctx, frequencyHz);
+      const gain = ctx.createGain();
+      gain.gain.value = Math.min(1, Math.max(0, peak));
+      src.connect(gain);
+      gain.connect(ctx.destination);
+      src.onended = () => {
+        try {
+          gain.disconnect();
+        } catch {
+          /* already gone */
+        }
+      };
+      src.start();
+    } catch {
+      diag('speak', 'chime-fallback', { why: 'threw' });
+      onElement();
+    }
+  };
+  if (ctx.state === 'running') return start();
+  void ensureContextRunning(ctx).then((ok) => {
+    if (ok) return start();
+    diag('speak', 'chime-suspended', { state: ctx.state });
+    onElement();
+  });
+}
+
+/**
  * How a clip chain finished. `ended` is the only one that means the operator
  * heard the whole line -- the rest were indistinguishable from it in the log.
  */
@@ -792,7 +871,8 @@ function decodeClip(ctx: AudioContext, url: string): Promise<AudioBuffer> {
  * WHY: with a microphone open, iOS sends <audio> to the earpiece and Web
  * Audio to the loud speaker. Measured blind on Jack's phone on 2026-10-05:
  * Web Audio 7 of 7 on the loud speaker across three runs, the element 2 of 7.
- * Used only while a voice session is running (see micSessionCost.ts) because
+ * Used whenever a microphone is live or has been opened in this page load (see
+ * micSessionCost.ts), because
  * outside one, Web Audio obeys the ring switch and the element does not.
  *
  * Returns null if it could not start -- no context, still suspended, or the
@@ -820,14 +900,7 @@ async function playChainThroughWebAudio(
     diag('speak', 'clip-webaudio-skip', { why: 'no-context' });
     return null;
   }
-  if (ctx.state !== 'running') {
-    try {
-      await ctx.resume();
-    } catch {
-      /* checked below */
-    }
-  }
-  if (ctx.state !== 'running') {
+  if (!(await ensureContextRunning(ctx))) {
     diag('speak', 'clip-webaudio-skip', { why: 'context-' + ctx.state });
     return null;
   }

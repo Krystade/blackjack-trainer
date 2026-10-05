@@ -77,7 +77,7 @@ test('the check is discriminating: removing the reservation reintroduces the ove
   await page.getByRole('button', { name: 'Charts', exact: true }).click();
   await expect(page.locator('.charts-screen')).toBeVisible();
   await page.addStyleTag({
-    content: `:root { --safe-top: ${INSET}px; } .charts-screen { padding-top: 0 !important; }`,
+    content: `:root { --safe-top: ${INSET}px; } body { padding-top: 0 !important; } .charts-screen { padding-top: 0 !important; }`,
   });
 
   const topMost = await page.evaluate(() => {
@@ -163,7 +163,7 @@ test('the field-test check is discriminating', async ({ page }) => {
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
   await page.addStyleTag({
-    content: `:root { --safe-top: ${INSET}px; } .fieldtest-screen { padding-top: 0 !important; }`,
+    content: `:root { --safe-top: ${INSET}px; } body { padding-top: 0 !important; } .fieldtest-screen { padding-top: 0 !important; }`,
   });
   const topMost = await page.evaluate(() => {
     let min = Infinity;

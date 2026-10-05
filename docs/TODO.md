@@ -165,7 +165,16 @@ One unblinded answer per step, so treat these as leads, not settled facts.
     (crashes on iOS) > Picovoice (paid).
   - Gate: it has to survive 3 minutes on the phone without a reload.
   - Build only if the drive's numbers are poor (roadmap decision table).
-- [~] Audit: every sound path, which can still land on the earpiece, and lines with no clip.
+- [x] Audit + fixes merged (`docs/research/2026-10-05-sound-paths.md`). Changes:
+  - Tones play through Web Audio once the mic has opened.
+  - Every way the app opens the mic now counts as opening it.
+  - The audio context is kept awake after interruptions.
+  - The true-count question (492 lines) now matches its clips.
+  - The notices are corrected.
+- [x] **21 sentences per voice recorded** (Kokoro, generated in the cloud session on 2026-10-05; `NEEDS_RECORDING` is now empty). Was: ("Push.", "Produce the true count.", "What's
+  the true count?", "X isn't part of this question." ×5, "The card left over was …" ×13). They're
+  listed in `NEEDS_RECORDING` in `scripts/clipCoverage.test.ts` and already sit in
+  `spoken-phrases.json`, so the next Kokoro run generates them.
 - [~] UX audit at 375×812, every screen, both themes.
 - [~] Roadmap: next car session (about 15 minutes) and a two-week plan.
 

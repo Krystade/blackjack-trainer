@@ -77,8 +77,8 @@ export function unlockAudioNow(reason: string): void {
      * of them in real time, and if it reads 16000 or 8000 the open microphone
      * had already pulled the audio session into play-and-record or Bluetooth
      * HFP -- which is also the reason the sound comes out of the earpiece
-     * instead of the bottom speaker. Clips no longer go anywhere near the
-     * graph, but the chimes still do, and the rate still names the route.
+     * instead of the bottom speaker. Clips and chimes use the graph once a
+     * microphone has opened, and the rate still names the route.
      */
     rate = ctx?.sampleRate ?? 0;
     rate = ctx?.sampleRate ?? 0;
@@ -98,9 +98,9 @@ export function unlockAudioNow(reason: string): void {
    * had to infer it from clip durations instead. An AudioContext is fixed at
    * the rate it is built with. 48000 is the speaker. 16000 or 8000 means the
    * audio session had already been pulled into play-and-record or Bluetooth
-   * HFP by the open microphone -- which is also why the sound comes out of the
-   * earpiece at the top of the phone rather than the loud speaker at the
-   * bottom, and no amount of digital gain competes with that.
+   * HFP by the open microphone -- which is also why an <audio> element comes out
+   * of the earpiece at the top of the phone (Web Audio stays on the loud
+   * speaker).
    */
   diag('speak', 'audio-unlock', { reason, state, rate });
 }

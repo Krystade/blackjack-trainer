@@ -40,7 +40,7 @@ import { ShotClockBar } from '../components/ShotClockBar';
 import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
-import { narrateAction, narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt,
+import { narrateSelfCheckReveal, narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt,
   narrateAnswerEcho,
   DID_YOU_HAVE_IT,
 } from '../../audio/narrate';
@@ -738,7 +738,7 @@ function FlashcardsView({
     wheelPhaseRef.current = 'reporting';
     setSelfCheckOpen(true);
     speak(
-      `${narrateAction(card.correct)}. Had it?`,
+      narrateSelfCheckReveal(card.correct),
       speechOptsFrom(settings.audio, { interrupt: true }),
     );
   };

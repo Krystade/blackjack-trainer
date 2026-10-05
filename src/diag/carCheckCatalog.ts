@@ -20,6 +20,7 @@ import {
 import { getSharedAudioContext, resumeSharedAudioContext } from '../audio/audioContext';
 import { cachedToneDataUri } from '../audio/tone';
 import type { CheckDefinition, CheckResult } from './carCheck';
+import { openMicStream } from '../audio/openMicStream';
 
 /** How long to wait for a wheel button before calling it inconclusive. */
 export const WHEEL_WAIT_MS = 12_000;
@@ -648,7 +649,7 @@ export async function measureWithWebAudio(
   // level that an ambient reading IS. Left on, a loud cabin and a quiet one
   // converge toward the same number, and the figure's only use -- comparing
   // one condition against another -- is exactly what it cannot support.
-  const stream = await navigator.mediaDevices.getUserMedia({
+  const stream = await openMicStream({
     audio: {
       echoCancellation: false,
       noiseSuppression: false,

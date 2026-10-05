@@ -18,6 +18,8 @@ import {
   narrateSitOut,
   narrateAnswerEcho,
   ANSWER_ECHO_LABELS,
+  narrateTcQuestion,
+  narrateSelfCheckReveal,
 } from '../src/audio/narrate';
 import type { GradedEvent } from '../src/engine/grade';
 import type { Card, Rank, Suit } from '../src/engine/cards';
@@ -25,7 +27,7 @@ import type { Action } from '../src/engine/deviations';
 import { DEFAULT_RULES } from '../src/engine/ruleset';
 import { drawFlashcard } from '../src/drills/flashcards';
 import { drawQuizItem } from '../src/drills/deviationQuiz';
-import { reachableReasons } from './spokenPhrases';
+import { reachableReasons, drillSentences } from './spokenPhrases';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 import {
   narrateNotATag,
@@ -149,6 +151,16 @@ function everyCardUtterance(): string[] {
   }
   return [...texts];
 }
+
+/**
+ * Sentences the app now says that have no recording in any shipped voice.
+ * Each needs one synthesis run of scripts/generate-audio-clips.py (local
+ * Kokoro); scripts/spoken-phrases.json already lists them. Empty this as the
+ * clips land.
+ */
+// Recorded 2026-10-05 with the local Kokoro engine (all 21 lines, all three
+// voices). Keep this empty: a new entry means a sentence shipped unrecorded.
+const NEEDS_RECORDING: string[] = [];
 
 describe('shipped clip coverage', () => {
   const voices = voiceIds();
@@ -288,6 +300,39 @@ describe('shipped clip coverage', () => {
         (label) => segmentForClips(narrateAnswerEcho(label), manifest) === null,
       );
       expect(unresolved).toEqual([]);
+    });
+
+    /**
+     * The drill and table lines that were composed inline in views and so
+     * never reached this suite (2026-10-05 audit). Sentences with NO recording
+     * yet are pinned in NEEDS_RECORDING: the test fails both when a new gap
+     * appears and when a listed one gets recorded, so the list cannot rot.
+     */
+    it(`knows exactly which drill and table sentences still lack a recording (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      const missing = drillSentences().filter((t) => segmentForClips(t, manifest) === null);
+      expect(missing.sort()).toEqual([...NEEDS_RECORDING].sort());
+    });
+
+    it(`resolves every true-count drill question (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      const unresolved: string[] = [];
+      for (let rc = -20; rc <= 20; rc++) {
+        for (let d = 0.5; d <= 6; d += 0.5) {
+          const q = narrateTcQuestion(rc, d);
+          if (segmentForClips(q, manifest) === null) unresolved.push(q);
+        }
+      }
+      expect(unresolved).toEqual([]);
+    });
+
+    it(`resolves the flashcards self-check reveal and the count-drill result (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      const texts = [
+        ...ACTIONS.map((a) => narrateSelfCheckReveal(a)),
+        ...[-20, -5, 0, 12, 20].map((n) => `Correct. ${narrateCountAnswer(n)} Say yes to go again.`),
+      ];
+      expect(texts.filter((t) => segmentForClips(t, manifest) === null)).toEqual([]);
     });
 
     /** "Correct." was covered and "Wrong." was not, for a long time. */
