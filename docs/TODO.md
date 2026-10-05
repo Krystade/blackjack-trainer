@@ -22,7 +22,7 @@ Last updated: 2026-10-05 (first cloud session).
 
 | # | Goal | Where it stands |
 |---|------|-----------------|
-| G1 | Phone alone, **no Bluetooth**: sound from the **loud speaker**, voice answers accepted | **Blocked in the browser.** Once the page has opened a mic, output goes to the earpiece for the rest of the page's life (see G1 evidence) |
+| G1 | Phone alone, **no Bluetooth**: sound from the **loud speaker**, voice answers accepted | **Blocked in the browser.** Once the page has opened a mic, output goes to the earpiece for the rest of the page's life. Native is ruled out; three web/no-code probes are left (G1-a, G1-b, G1-e) |
 | G2 | **Bluetooth on**: sound through the **car speakers**, voice answers accepted | Car output **works**. The mic side is unresolved: iOS picks the car's hands-free mic and the call route, and a web page cannot choose otherwise |
 | G3 | Voice recognition that holds up at **freeway noise** | Misrecognises **even in a quiet room** ("hit" → "Add"). The cause is the recogniser model, not noise. Two-word commands and taught aliases shipped, but are **not yet measured** |
 | G4 | Ongoing UX/UI improvement | Settings cull, wording pass and Flashcards layout are **in flight** (agents) |
@@ -112,26 +112,17 @@ Last updated: 2026-10-05 (first cloud session).
     page takes to come back to a ready drill.
   - Probably unusable mid-drill. Worth knowing because it bounds what "page life" means.
   - Done when: one parked reading.
-- [?] **G1-c · Native iOS shell (Capacitor) with a small audio + speech plugin.** This is the
-  method that actually solves G1, and also G2 and most of G3 (see below).
-  - Method:
-    - Wrap the existing web app unchanged in Capacitor.
-    - Add one Swift plugin that sets `AVAudioSession` to `.playAndRecord` with
-      `[.defaultToSpeaker, .allowBluetoothA2DP]`.
-    - Run `SFSpeechRecognizer` natively with:
-      - `taskHint = .confirmation`, which the web path cannot reach (see G3);
-      - `contextualStrings = [hit, stand, double, split, surrender, yes, no, repeat, …]`;
-      - `requiresOnDeviceRecognition = true`, which removes network dropouts in tunnels.
-    - Expose it to the web layer as the same interface `voiceControl.ts` already consumes,
-      so the drills don't change.
-  - Needs Jack:
-    - Apple Developer account ($99/yr), or free provisioning, which needs a re-sign every
-      7 days.
-    - A Mac with Xcode, **or** a cloud build service (Codemagic, or GitHub Actions macOS
-      runners) plus TestFlight. This Linux cloud session can write the plugin and the
-      project, but cannot compile or sign it.
-  - Done when: a TestFlight build where Jack hears the prompt on the loud speaker with the
-    mic open, parked, no Bluetooth.
+- [-] **G1-c · Native iOS shell (Capacitor).** Dropped 2026-10-05. Jack: "no shot im making
+  this an app, especially in its current state." Everything below stays inside the browser.
+  Don't propose it again unless the web paths below are all exhausted *and* Jack raises it.
+- [ ] **G1-e · iOS "Call Audio Routing" = Speaker** (no code).
+  - Settings → Accessibility → Touch → Call Audio Routing → Speaker.
+  - Why it might work: the earpiece is iOS's receiver route for a record-capable session,
+    which is the same route a call uses. This setting forces call audio to the speaker
+    system-wide, and may cover WebKit's capture session too. Untested.
+  - Method: flip it, run one parked drill with voice on and no Bluetooth, and listen. Flip it
+    back afterwards if it breaks anything else.
+  - Done when: Jack reports "speaker" or "earpiece".
 - [ ] **G1-d · Fallback that works today: no-mic speaker mode.** Voice off, answers by tap
   or wheel. The loud speaker holds because nothing ever opens a mic.
   - Method: make sure this is a one-toggle state and that the app never opens a mic in it.
@@ -170,13 +161,16 @@ Last updated: 2026-10-05 (first cloud session).
     - If HFP is wideband in this car (mSBC, 16kHz), the car mic may be *better* than the
       phone in the cradle: it is closer to the mouth and has the car's own noise processing.
   - Done when: per-input accuracy on ≥20 labelled words each, at freeway speed.
-- [?] **G2-c · Native: A2DP output + phone mic.** Same shell as G1-c.
-  - Session options `[.allowBluetoothA2DP]` **without** `.allowBluetooth`, plus
-    `setPreferredInput(builtInMic)`. Output stays on the car's media path (music quality,
-    wheel still works as media buttons), and the mic is the phone's wideband one. No call
-    route, so the wheel/mic conflict goes away entirely.
-  - Or the reverse, if G2-b shows the car mic wins: prefer the HFP input explicitly.
-  - Done when: on a drive, voice answers are accepted while the wheel still skips.
+- [-] **G2-c · Native A2DP output + phone mic.** Dropped with G1-c (no native app). On the
+  web the input is whatever iOS picks. The only levers left are which Bluetooth profile the
+  car offers (G2-e) and when the mic is open (G2-d).
+- [ ] **G2-e · Car-side and phone-side settings** (no code).
+  - Check the car's Bluetooth phone settings for a "hands-free mic" or "phone audio" option.
+    Some Toyota units let media and phone profiles be paired separately.
+  - Check that iOS Bluetooth → the car → Device Type is "Car Stereo".
+  - Method: one parked session per setting change, with the spectral probe (G2-a) recording
+    which input was live.
+  - Done when: each setting has a probe reading against it.
 - [ ] **G2-d · Web-only mitigation: wheel push-to-talk.** Keep the mic closed by default,
   so the car stays on the media route. A wheel press opens the mic for one answer window,
   then it closes.
@@ -225,12 +219,11 @@ Last updated: 2026-10-05 (first cloud session).
   - Method: the rescoring exists in `resolveSpoken` with length guards. Confirm it is wired
     on every drill path.
   - Done when: a logged rescue (`rank>0` accepted) on the phone.
-- [ ] **G3-d · Constrained-vocabulary recogniser.** This is the real fix for noise: a
-  recogniser that can only answer with one of ~12 words cannot hear "Add".
-  - Native (with G1-c): `SFSpeechRecognizer` with `.confirmation`, `contextualStrings` and
-    on-device recognition. Optionally `setVoiceProcessingEnabled(true)` on the input node
-    for Apple's echo and noise suppression.
-  - Web alternative: `getUserMedia` (with `noiseSuppression`/`echoCancellation`) feeding a
+- [ ] **G3-d · Constrained-vocabulary recogniser in the browser.** This is the main lever
+  for G3 now that native is out: a recogniser that can only answer with one of ~12 words
+  cannot hear "Add".
+  - Native route: dropped (see G1-c).
+  - Web route: `getUserMedia` (with `noiseSuppression`/`echoCancellation`) feeding a
     WASM recogniser restricted to a grammar. Candidates: Vosk with a JSON grammar list, or
     a small custom keyword-spotting model.
     - Caveat: this still opens a page mic, so G1's earpiece problem stays on the web path.
@@ -278,9 +271,7 @@ Last updated: 2026-10-05 (first cloud session).
 
 ## Decisions waiting on Jack
 
-1. **Native shell (G1-c / G2-c / G3-d native)?** It is the only known route to the loud
-   speaker with the mic open, and to A2DP + phone mic. It needs an Apple Developer account
-   and either a Mac or a cloud macOS build. Yes / no / later?
+1. ~~Native shell?~~ **No** (2026-10-05). Web-only from here.
 2. **Unpushed local work** (`drill-layout.spec.ts`, `__probe2.spec.ts`, any uncommitted
    fixes): is it still on your Mac? Push it, or I rebuild it.
 3. **Voice recording for the noise bench (G3-e):** OK to record your command words once,
