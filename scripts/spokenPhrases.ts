@@ -38,7 +38,16 @@ import {
   narrateAnswerEcho,
   ANSWER_ECHO_LABELS,
   VOICE_CONVERSATION_LINES,
+  narrateTcQuestion,
+  narrateProduceTcPrompt,
+  narrateSelfCheckReveal,
+  narrateActionNotAsked,
+  narrateCountdownVerdict,
+  narrateTableCountPrompt,
+  narrateResult,
+  narrateCountAnswer,
 } from '../src/audio/narrate';
+import { hiLoTag } from '../src/engine/count';
 import type { GradedEvent } from '../src/engine/grade';
 
 const RANKS: Rank[] = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
@@ -233,6 +242,39 @@ export function answerEchoSentences(): string[] {
   return [...sentences];
 }
 
+/** Shoe depths the drills deal: half a deck to six, in half steps. */
+export const DECK_DEPTHS = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6];
+
+/**
+ * The drill and table lines that used to be composed inline in views
+ * (docs/research/2026-10-05-sound-paths.md section 2). Walking them here is
+ * what lets clipCoverage.test.ts hold them against the shipped manifests.
+ * Some of these sentences have no recording yet; the generator reads this
+ * list, so the next run records them.
+ */
+export function drillSentences(): string[] {
+  const sentences = new Set<string>();
+  const add = (text: string) => {
+    for (const part of splitIntoSentences(text)) sentences.add(part);
+  };
+  for (let rc = TC_MIN; rc <= TC_MAX; rc++) {
+    for (const decks of DECK_DEPTHS) add(narrateTcQuestion(rc, decks));
+    add(narrateCountAnswer(rc));
+  }
+  for (const decks of DECK_DEPTHS) add(narrateProduceTcPrompt(decks));
+  for (const action of ACTIONS) {
+    add(narrateSelfCheckReveal(action));
+    add(narrateActionNotAsked(action));
+  }
+  for (const rank of RANKS) {
+    for (const correct of [true, false]) add(narrateCountdownVerdict(correct, card(rank), hiLoTag(rank)));
+  }
+  add(narrateTableCountPrompt('rc'));
+  add(narrateTableCountPrompt('tc'));
+  add(narrateResult('push', 0));
+  return [...sentences];
+}
+
 /** The sorted, de-duplicated list the generator turns into clips. */
 export function spokenSentences(): string[] {
   return [
@@ -241,6 +283,7 @@ export function spokenSentences(): string[] {
       ...tableSentences(),
       ...voiceSentences(),
       ...answerEchoSentences(),
+      ...drillSentences(),
     ]),
   ].sort();
 }

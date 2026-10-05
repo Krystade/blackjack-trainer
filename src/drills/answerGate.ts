@@ -19,6 +19,7 @@
 
 import type { Card } from '../engine/cards';
 import type { Action } from '../engine/deviations';
+import { narrateActionNotAsked } from '../audio/narrate';
 import type { RuleSet, StrategyRules } from '../engine/ruleset';
 import { drillLegalActions } from './legalActions';
 import { quizLegalActions } from './deviationQuiz';
@@ -99,7 +100,7 @@ export function gateQuizAnswer(taken: string, item: QuizItem, rules: StrategyRul
  * teaching them something false about the game.
  */
 export function actionNotAsked(action: Action): string {
-  return `${ACTION_SPOKEN[action]} isn't part of this question.`;
+  return narrateActionNotAsked(action);
 }
 
 /**

@@ -62,7 +62,7 @@ test('forward reveals the right play and asks whether you had it', async ({ page
   await expect(banner).toBeVisible();
   // The play named on the banner is the one the card is for, not a placeholder.
   await expect(banner.locator('strong')).toHaveText(/Hit|Stand|Double|Split|Surrender/);
-  expect((await spoken(page)).join(' | ')).toContain('Had it?');
+  expect((await spoken(page)).join(' | ')).toContain('Did you have it?');
 });
 
 test('"I had it" grades as correct and "I missed it" does not', async ({ page }) => {

@@ -22,7 +22,7 @@ import {
   matchSpokenAlternatives,
 } from '../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../audio/voiceNumber';
-import { narrateReadback } from '../../audio/narrate';
+import { narrateReadback, narrateTableCountPrompt } from '../../audio/narrate';
 import type { VoiceAction } from '../../audio/voiceRecognition';
 import { actionUnavailable } from '../../drills/answerGate';
 import { enableAudioNow } from '../audioGate';
@@ -567,8 +567,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     setCountStage('rc');
   };
 
-  const countPromptText = (): string =>
-    countStage === 'rc' ? 'Running count?' : 'True count?';
+  const countPromptText = (): string => narrateTableCountPrompt(countStage === 'rc' ? 'rc' : 'tc');
 
   // Ask out loud when the prompt appears, and again if it moves on to the
   // true count. Without this the app simply goes quiet mid-drive and the
