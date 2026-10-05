@@ -31,6 +31,8 @@
  */
 
 import { elementVolume } from './volume';
+import { getSharedAudioContext } from './audioContext';
+import { isVoiceCaptureActive } from './micSessionCost';
 import { diag } from '../diag/diagnosticLog';
 import { notifySpeechEnded } from './speechActivity';
 
@@ -607,6 +609,8 @@ type ClipEndReason = 'ended' | 'watchdog' | 'stopped' | 'element-error' | 'play-
 
 interface ActiveChain {
   audio: HTMLAudioElement | null;
+  /** Stops a Web Audio chain's current source; null on the element path. */
+  stopSource: (() => void) | null;
   /** The pooled element to hand back on settle. */
   pooled: HTMLAudioElement | null;
   watchdog: ReturnType<typeof setTimeout> | null;
@@ -705,6 +709,7 @@ function stopActiveChain(): void {
   if (!chain) return;
   try {
     chain.audio?.pause();
+    chain.stopSource?.();
   } catch {
     // never throw
   }
@@ -755,6 +760,167 @@ export interface ClipPlayResult {
 
 /** No clip was reached at all, so the caller should speak the whole text. */
 const NOTHING_PLAYED: ClipPlayResult = { played: false, remainder: null };
+
+/**
+ * Decoded clips, by URL. Decoding resamples ONCE to the context's rate, which
+ * is the difference from the MediaElementSource route `caa5a73` removed: that
+ * one resampled 24kHz audio live into a graph whose hardware rate the open
+ * microphone moves, and stretched and chopped the clips. Jack, on the decoded
+ * path with the mic open, 2026-10-05: "they sounded identical".
+ */
+const decodedClips = new Map<string, Promise<AudioBuffer>>();
+
+function decodeClip(ctx: AudioContext, url: string): Promise<AudioBuffer> {
+  let p = decodedClips.get(url);
+  if (!p) {
+    p = fetch(url)
+      .then((r) => {
+        if (!r.ok) throw new Error(`http-${r.status}`);
+        return r.arrayBuffer();
+      })
+      .then((bytes) => ctx.decodeAudioData(bytes));
+    // A failed decode must not poison the cache for the next attempt.
+    p.catch(() => decodedClips.delete(url));
+    decodedClips.set(url, p);
+  }
+  return p;
+}
+
+/**
+ * Play a clip chain through Web Audio rather than an <audio> element.
+ *
+ * WHY: with a microphone open, iOS sends <audio> to the earpiece and Web
+ * Audio to the loud speaker. Measured blind on Jack's phone on 2026-10-05:
+ * Web Audio 7 of 7 on the loud speaker across three runs, the element 2 of 7.
+ * Used only while a voice session is running (see micSessionCost.ts) because
+ * outside one, Web Audio obeys the ring switch and the element does not.
+ *
+ * Returns null if it could not start -- no context, still suspended, or the
+ * first clip would not decode -- so the caller can fall back to the element
+ * with nothing yet spoken. After the first sound it owns the outcome.
+ *
+ * Rate is applied as `playbackRate`, which on an AudioBufferSourceNode moves
+ * pitch with speed (there is no preservesPitch). The default is 1; a rate
+ * other than 1 is logged so a drive can say whether it matters.
+ */
+async function playChainThroughWebAudio(
+  urls: string[],
+  opts: {
+    voiceId: string;
+    files: string[];
+    rate: number;
+    volume: number | undefined;
+    remainderFrom: (i: number) => string;
+    /** True once a later interrupt has replaced this line. */
+    superseded: () => boolean;
+  },
+): Promise<ClipPlayResult | null> {
+  const ctx = getSharedAudioContext();
+  if (!ctx) {
+    diag('speak', 'clip-webaudio-skip', { why: 'no-context' });
+    return null;
+  }
+  if (ctx.state !== 'running') {
+    try {
+      await ctx.resume();
+    } catch {
+      /* checked below */
+    }
+  }
+  if (ctx.state !== 'running') {
+    diag('speak', 'clip-webaudio-skip', { why: 'context-' + ctx.state });
+    return null;
+  }
+  let first: AudioBuffer;
+  try {
+    first = await decodeClip(ctx, urls[0]!);
+  } catch (e) {
+    diag('speak', 'clip-webaudio-skip', { why: 'decode', name: e instanceof Error ? e.message : String(e) });
+    return null;
+  }
+  if (opts.superseded()) {
+    diag('speak', 'clip-skip', { why: 'superseded' });
+    return { played: true, remainder: null };
+  }
+  // Warm the rest while the first plays.
+  for (const u of urls.slice(1)) void decodeClip(ctx, u).catch(() => {});
+
+  return new Promise<ClipPlayResult>((resolve) => {
+    let index = 0;
+    let current: AudioBufferSourceNode | null = null;
+    const gain = ctx.createGain();
+    gain.gain.value = opts.volume === undefined ? 1 : elementVolume(opts.volume);
+    gain.connect(ctx.destination);
+
+    const chain: ActiveChain = {
+      audio: null,
+      pooled: null,
+      stopSource: () => {
+        try {
+          if (current) current.onended = null;
+          current?.stop();
+        } catch {
+          /* already stopped */
+        }
+      },
+      watchdog: null,
+      settled: false,
+      startedAt: Date.now(),
+      settle: (ok) => {
+        try {
+          gain.disconnect();
+        } catch {
+          /* already gone */
+        }
+        if (ok) resolve({ played: true, remainder: null });
+        else resolve({ played: false, remainder: index > 0 ? opts.remainderFrom(index) : null });
+      },
+    };
+    activeChain = chain;
+
+    diag('speak', 'clip-chain', {
+      voiceId: opts.voiceId,
+      n: urls.length,
+      files: opts.files.join(', '),
+      path: 'webaudio',
+      ...(opts.rate !== 1 ? { rate: opts.rate } : {}),
+    });
+
+    const playBuffer = (buffer: AudioBuffer) => {
+      if (chain.settled) return;
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.playbackRate.value = opts.rate;
+      src.connect(gain);
+      current = src;
+      clearActiveWatchdog(chain);
+      chain.watchdog = setTimeout(
+        () => settleChain(chain, true, 'watchdog'),
+        (buffer.duration / Math.max(opts.rate, 0.1)) * 1000 + 3000,
+      );
+      src.onended = () => {
+        index += 1;
+        void next();
+      };
+      src.start();
+    };
+
+    const next = async () => {
+      if (chain.settled) return;
+      if (index >= urls.length) {
+        settleChain(chain, true, 'ended');
+        return;
+      }
+      try {
+        playBuffer(index === 0 ? first : await decodeClip(ctx, urls[index]!));
+      } catch {
+        diag('speak', 'clip-broke', { file: opts.files[index] ?? '(none)', index, of: urls.length, why: 'decode', path: 'webaudio' });
+        settleChain(chain, false, 'element-error');
+      }
+    };
+    void next();
+  });
+}
 
 /** Back-compat wrapper: the boolean half of {@link playClipsResumable}. */
 export function playClipsAsync(
@@ -846,6 +1012,23 @@ export function playClipsResumable(
         return segments.slice(segIndex).map((seg) => seg.text).join(' ');
       };
 
+      if (isVoiceCaptureActive()) {
+        const viaWebAudio = await playChainThroughWebAudio(
+          fileList.map((f) => `${base}clips/${voiceId}/${f.file}`),
+          {
+            voiceId,
+            files: fileList.map((f) => f.file),
+            rate,
+            volume,
+            remainderFrom,
+            superseded: () => epoch !== interruptEpoch,
+          },
+        );
+        if (viaWebAudio) return viaWebAudio;
+        // null: Web Audio could not start at all, so nothing has played --
+        // the element path below speaks the whole line instead.
+      }
+
       return await new Promise<ClipPlayResult>((resolve) => {
         // The chain settles with a bare boolean (stopClips and the watchdog
         // both use it), so translate that into a result here, consulting the
@@ -858,6 +1041,7 @@ export function playClipsResumable(
         const audio = takeIdleAudio(AudioCtor);
 
         const chain: ActiveChain = {
+          stopSource: null,
           audio,
           pooled: audio,
           watchdog: null,
@@ -1021,6 +1205,7 @@ export function _resetClipsForTest(): void {
   indexCache = null;
   voiceManifestPromises.clear();
   voiceManifestCache.clear();
+  decodedClips.clear();
   if (activeChain) {
     clearActiveWatchdog(activeChain);
   }

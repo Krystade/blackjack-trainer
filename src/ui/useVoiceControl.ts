@@ -13,7 +13,7 @@ import { looksLikeSelfEcho } from '../audio/selfEcho';
 import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
 import { reassertAudioFocus } from '../audio/audioFocus';
-import { markMicSessionOpened } from '../audio/micSessionCost';
+import { markMicSessionOpened, setVoiceCaptureActive } from '../audio/micSessionCost';
 import { markInputDeviceChanged } from '../diag/deviceChurn';
 import { audioSessionSupported, readAudioSessionType } from '../audio/audioSession';
 import { logAudioInputs, logHardwareRate, logMicPermission } from '../diag/environment';
@@ -400,6 +400,7 @@ export function useVoiceControl({
       // stored sentence alone in that case on purpose.
       controller.suppressFor(ms, text);
     });
+    setVoiceCaptureActive(true);
     controller.start();
 
     // Everything below is a nudge from outside the controller, for the events
@@ -480,6 +481,7 @@ export function useVoiceControl({
       media?.removeEventListener?.('devicechange', onDeviceChange);
       setSpeechActivityListener(null);
       controller.stop();
+      setVoiceCaptureActive(false);
       controllerRef.current = null;
       void releaseWakeLock('voice');
       diag('mic', 'listen-off', { context: contextRef.current });

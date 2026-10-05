@@ -17,6 +17,7 @@ import {
 import { _resetSharedAudioContextForTest } from './audioContext';
 import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 import { setSpeechActivityListener } from './speechActivity';
+import { setVoiceCaptureActive, _resetMicSessionCostForTest } from './micSessionCost';
 
 /* ------------------------------------------------------------------------ */
 /* manifestLookup — pure exact-key matching, no browser needed              */
@@ -1285,5 +1286,102 @@ describe('a clip chain says when it has stopped', () => {
     // A consumer's bookkeeping must never take out the utterance that was
     // trying to tell it something.
     await expect(play).resolves.toBe(true);
+  });
+});
+
+/**
+ * With a voice session running, clips go through Web Audio: on Jack's phone
+ * that is the loud speaker, where the <audio> element is the earpiece (7 of 7
+ * against 2 of 7, blind, 2026-10-05). Outside a voice session nothing changes.
+ */
+describe('clip output path while voice is on', () => {
+  const realFetch = (globalThis as any).fetch;
+  let started: string[];
+
+  function installFakeWebAudio(state: 'running' | 'suspended' = 'running') {
+    started = [];
+    class FakeCtx {
+      state = state;
+      sampleRate = 48000;
+      destination = {};
+      async resume() {}
+      async decodeAudioData(bytes: ArrayBuffer) {
+        return { duration: 0.01, tag: new TextDecoder().decode(bytes) };
+      }
+      createGain() {
+        return { gain: { value: 1 }, connect() {}, disconnect() {} };
+      }
+      createBufferSource() {
+        const src: any = {
+          buffer: null,
+          playbackRate: { value: 1 },
+          onended: null,
+          connect() {},
+          start() {
+            started.push(src.buffer.tag);
+            setTimeout(() => src.onended?.(), 0);
+          },
+          stop() {},
+        };
+        return src;
+      }
+    }
+    const env = installFakeAudioEnv();
+    (globalThis as any).window.AudioContext = FakeCtx;
+    (globalThis as any).fetch = vi.fn(async (url: string) => {
+      if (url.includes('index.json')) return { ok: true, json: async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }) };
+      if (url.includes('manifest.json')) return { ok: true, json: async () => ({ clips: { 'You have fourteen.': 'a.mp3', 'Dealer shows ten.': 'b.mp3' } }) };
+      return { ok: true, arrayBuffer: async () => new TextEncoder().encode(url.split('/').pop()!).buffer };
+    });
+    return env;
+  }
+
+  beforeEach(() => {
+    _resetClipsForTest();
+    _resetSharedAudioContextForTest();
+    _resetMicSessionCostForTest();
+    clearDiagnosticLog();
+  });
+  afterEach(() => {
+    _resetClipsForTest();
+    _resetSharedAudioContextForTest();
+    _resetMicSessionCostForTest();
+    (globalThis as any).fetch = realFetch;
+    delete (globalThis as any).window;
+  });
+
+  it('plays the whole chain through Web Audio, in order, and touches no <audio> element', async () => {
+    const env = installFakeWebAudio();
+    setVoiceCaptureActive(true);
+    await expect(playClipsAsync('You have fourteen. Dealer shows ten.')).resolves.toBe(true);
+    expect(started).toEqual(['a.mp3', 'b.mp3']);
+    expect(env.instances.filter((a) => a.played)).toHaveLength(0);
+    const chain = readDiagnosticLog().find((e) => e.event === 'clip-chain');
+    expect(chain?.detail?.path).toBe('webaudio');
+  });
+
+  it('stays on the <audio> element when no voice session is running', async () => {
+    const env = installFakeWebAudio();
+    const p = playClipsAsync('You have fourteen. Dealer shows ten.');
+    await vi.waitFor(() => expect(env.instances.some((a) => a.played)).toBe(true));
+    expect(started).toEqual([]);
+    env.instances[0]!.onended?.();
+    await vi.waitFor(() => expect(env.instances[0]!.src).toContain('b.mp3'));
+    env.instances[0]!.onended?.();
+    await expect(p).resolves.toBe(true);
+  });
+
+  it('falls back to the element, from the top, when the context will not run', async () => {
+    const env = installFakeWebAudio('suspended');
+    setVoiceCaptureActive(true);
+    const p = playClipsAsync('You have fourteen. Dealer shows ten.');
+    await vi.waitFor(() => expect(env.instances.some((a) => a.played)).toBe(true));
+    expect(started).toEqual([]);
+    expect(env.instances[0]!.src).toContain('a.mp3');
+    env.instances[0]!.onended?.();
+    await vi.waitFor(() => expect(env.instances[0]!.src).toContain('b.mp3'));
+    env.instances[0]!.onended?.();
+    await expect(p).resolves.toBe(true);
+    expect(readDiagnosticLog().some((e) => e.event === 'clip-webaudio-skip')).toBe(true);
   });
 });

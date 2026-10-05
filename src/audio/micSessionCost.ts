@@ -48,7 +48,29 @@ export function micSessionCostPaid(): boolean {
   return micHasBeenLive;
 }
 
+/**
+ * Is a voice session running right now -- the recogniser started and not yet
+ * torn down, including the moments it is deafened while the app talks?
+ *
+ * Clips read this to choose their output path. Measured on Jack's phone,
+ * 2026-10-05, three runs with the mic open: Web Audio reached the loud speaker
+ * 7 times out of 7, the <audio> element 2 out of 7. Web Audio also obeys the
+ * ring switch when NO capture is live (silent twice with the switch on), but
+ * not while it is -- so this is the window in which Web Audio is both audible
+ * and on the right speaker, and the element path stays everywhere else.
+ */
+let voiceCaptureActive = false;
+
+export function setVoiceCaptureActive(active: boolean): void {
+  voiceCaptureActive = active;
+}
+
+export function isVoiceCaptureActive(): boolean {
+  return voiceCaptureActive;
+}
+
 /** Test-only: a fresh page. */
 export function _resetMicSessionCostForTest(): void {
   micHasBeenLive = false;
+  voiceCaptureActive = false;
 }

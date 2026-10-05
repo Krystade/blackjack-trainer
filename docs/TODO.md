@@ -128,6 +128,19 @@ One unblinded answer per step, so treat these as leads, not settled facts.
       different path. Still, sound quality has to be asked about.
     - If the ring switch silences Web Audio whenever the mic is closed, Web Audio can only be
       used while capture is live, or the drill goes silent on a muted phone.
+- **Speaker check with the ring switch off, 08:11:** Web Audio 3/3 on the loud speaker,
+  element **0/3** (earpiece). Web Audio before any mic: loud speaker. So Web Audio while the mic
+  is open is **7/7**, the element 2/7, and the earlier "heard nothing" was the ring switch. With
+  the switch on silent, Web Audio with the mic open was still audible (08:09 run).
+- [x] **G1 fix shipped:** while a voice session is running, recorded clips play through Web
+  Audio (decoded buffers, not a MediaElementSource). Everywhere else they stay on `<audio>`.
+  `clip-chain path=webaudio` in the log marks each one, and `clip-webaudio-skip` marks a
+  fallback.
+  - Not covered: live-TTS fallback lines (`speechSynthesis`) and the chime tones still use
+    their own paths, so they may still come out of the earpiece. The same goes for
+    push-to-talk ("Talk" wheel mode), where the mic is closed between presses.
+  - Next: one voice drill on the phone with no Bluetooth, to confirm prompts are on the loud
+    speaker. Then a car run with Bluetooth on, to confirm nothing changed there.
 - **G1-e ruled out:** Jack already had Call Audio Routing = Speaker during this run, and
   normal playback with the mic open was still on the earpiece.
 - **Next:** the blind Speaker check (6 plays, hidden order). If Web Audio holds up, the fix
@@ -286,7 +299,7 @@ One unblinded answer per step, so treat these as leads, not settled facts.
     and latency.
   - Done when: in a desk test with recorded road noise mixed in at freeway SNR, the
     grammar recogniser beats Web Speech on the same labelled clips.
-- [ ] **G3-e · Recorded-noise test bench (desk).** Today every recognition change waits for
+- [-] **G3-e · Recorded-noise test bench (desk).** Parked 2026-10-05: Jack passed on sending recordings, and the recording steps are out of the kits. Revisit if freeway accuracy turns out poor. Today every recognition change waits for
   a drive.
   - Method:
     - Record Jack saying the command set once, parked (a calibration run that saves audio,

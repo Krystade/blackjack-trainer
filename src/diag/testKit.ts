@@ -146,14 +146,9 @@ const CALIBRATE: KitStep = {
   why: 'Scores how often each command is heard right — single words against the two-word forms.',
 };
 
-const RECORD_WORDS: KitStep = {
-  kind: 'record',
-  id: 'record-words',
-  title: 'Record the words',
-  what: 'words',
-  seconds: 0,
-  why: 'A recording of you saying every command here, for testing recognisers at the desk.',
-};
+// Recording steps (kind 'record') are still supported by the screen but are
+// in no kit: Jack passed on sending recordings (2026-10-05), and the quiet-room
+// 10/10 made the desk noise bench less urgent. See docs/TODO.md G3-e.
 
 export const KITS: Record<KitId, { label: string; where: string; steps: readonly KitStep[] }> = {
   speaker: {
@@ -197,7 +192,6 @@ export const KITS: Record<KitId, { label: string; where: string; steps: readonly
       },
       SPECTRUM,
       CALIBRATE,
-      RECORD_WORDS,
     ],
   },
   'car-bt': {
@@ -207,15 +201,6 @@ export const KITS: Record<KitId, { label: string; where: string; steps: readonly
       ...routeSteps('bt', CAR_ROUTE).filter((s) => s.kind === 'route' && s.path === 'element'),
       SPECTRUM,
       CALIBRATE,
-      RECORD_WORDS,
-      {
-        kind: 'record',
-        id: 'bt-record-noise',
-        title: 'Record road noise',
-        what: 'noise',
-        seconds: 60,
-        why: 'One minute of cabin noise at speed, to mix with the word recordings at the desk.',
-      },
     ],
   },
   'car-no-bt': {
@@ -225,15 +210,6 @@ export const KITS: Record<KitId, { label: string; where: string; steps: readonly
       ...routeSteps('nobt', DESK_ROUTE).filter((s) => s.kind === 'route' && s.mic !== 'closed-after-open'),
       SPECTRUM,
       CALIBRATE,
-      RECORD_WORDS,
-      {
-        kind: 'record',
-        id: 'nobt-record-noise',
-        title: 'Record road noise',
-        what: 'noise',
-        seconds: 60,
-        why: 'One minute of cabin noise through the phone mic at speed.',
-      },
     ],
   },
 };
