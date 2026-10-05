@@ -105,7 +105,7 @@ test('a counted correction explains why the ringed cell says something else', as
   await withProfile(page);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills' }).first().click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
 
   // 16 v 10: the index the chart cannot hold. The quiz grades it stand at
   // TC >= 0 and hit below, under a ctx with surrender off; the chart, drawn

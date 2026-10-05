@@ -7,11 +7,11 @@ test('manual countdown: tapping the zone through all groups reaches the answer/r
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
 
-  const modeRow = page.locator('.settings-row', { hasText: 'Mode' });
-  await expect(modeRow.getByRole('button', { name: 'Manual', exact: true })).toHaveClass(/segmented-btn-active/);
+  const modeRow = page.locator('.settings-row', { hasText: 'Next card' });
+  await expect(modeRow.getByRole('button', { name: 'On tap', exact: true })).toHaveClass(/segmented-btn-active/);
   await shot(page, '33-count-drill-manual-setup');
 
   await page.getByRole('button', { name: 'Start', exact: true }).click();
@@ -37,8 +37,8 @@ test('deviation quiz: an index filter of 16v10 keeps drawing the same scenario a
   await withSettings(page, { drill: { quizIndex: '16v10' } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Deviation Quiz');
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation quiz');
 
   const select = page.locator('.quiz-index-select');
   await expect(select).toHaveValue('16v10');

@@ -81,13 +81,14 @@ test('on, the toggle is present and persists', async ({ page }) => {
   await page.goto('/?e2e=1');
   await openFlashcards(page);
 
-  const toggle = page.locator('.count-toggle', { hasText: 'Follow each hand with one you' }).locator('input');
+  await page.locator('details.drill-options > summary').click();
+  const toggle = page.locator('.count-toggle', { hasText: 'Follow each hand with a look-alike' }).locator('input');
   await expect(toggle).not.toBeChecked();
   await toggle.check();
 
   await page.reload();
   await openFlashcards(page);
   await expect(
-    page.locator('.count-toggle', { hasText: 'Follow each hand with one you' }).locator('input'),
+    page.locator('.count-toggle', { hasText: 'Follow each hand with a look-alike' }).locator('input'),
   ).toBeChecked();
 });

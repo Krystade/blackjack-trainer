@@ -11,6 +11,14 @@ export interface ZonePadProps {
   // false => transparent but still tappable, for genuine eyes-free driving
   // ("Dim screen" opt-in).
   visible: boolean;
+  /**
+   * The actions this hand allows. Anything missing is drawn disabled, and
+   * Surrender is not drawn at all. A tap on a disabled zone is still passed
+   * to `onAnswer`: the drill refuses it OUT LOUD (answerGate.ts), which is
+   * the only feedback a blind tap can get -- swallowing it here would make
+   * the pad feel dead. Omitted = everything legal.
+   */
+  legal?: readonly ZoneId[];
 }
 
 const LONG_PRESS_MS = 600;
@@ -25,7 +33,10 @@ const INSURANCE_LABEL: Record<'take' | 'decline', string> = {
  * to `hitTestZone` (src/audio/zones.ts) — this component contains no
  * geometry of its own, only pointer-event plumbing and long-press timing.
  */
-export function ZonePad({ mode, onAnswer, onRepeat, visible }: ZonePadProps) {
+export function ZonePad({ mode, onAnswer, onRepeat, visible, legal }: ZonePadProps) {
+  const allowed = (zone: ZoneId) => !legal || legal.includes(zone);
+  const quadClass = (zone: ZoneId) =>
+    `zone-pad-quad zone-pad-quad-${zone}${allowed(zone) ? '' : ' zone-pad-quad-disabled'}`;
   const rootRef = useRef<HTMLDivElement | null>(null);
   const timerRef = useRef<number | null>(null);
   const longPressFiredRef = useRef(false);
@@ -86,12 +97,15 @@ export function ZonePad({ mode, onAnswer, onRepeat, visible }: ZonePadProps) {
       ) : (
         <>
           <div className="zone-pad-quadrants">
-            <div className="zone-pad-quad zone-pad-quad-hit">{ZONE_LABEL.hit}</div>
-            <div className="zone-pad-quad zone-pad-quad-stand">{ZONE_LABEL.stand}</div>
-            <div className="zone-pad-quad zone-pad-quad-double">{ZONE_LABEL.double}</div>
-            <div className="zone-pad-quad zone-pad-quad-split">{ZONE_LABEL.split}</div>
+            {(['hit', 'stand', 'double', 'split'] as const).map((zone) => (
+              <div key={zone} className={quadClass(zone)} aria-disabled={!allowed(zone) || undefined}>
+                {/* The label in its own box, so its bounds -- not the
+                    quadrant's -- can be kept clear of the circle. */}
+                <span className="zone-pad-label">{ZONE_LABEL[zone]}</span>
+              </div>
+            ))}
           </div>
-          <div className="zone-pad-circle">{ZONE_LABEL.surrender}</div>
+          {allowed('surrender') && <div className="zone-pad-circle">{ZONE_LABEL.surrender}</div>}
         </>
       )}
     </div>

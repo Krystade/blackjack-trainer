@@ -603,7 +603,7 @@ export function TrueCountDrillView({
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
         </button>
-        <div className="drill-heading">True Count Drill</div>
+        <div className="drill-heading">True count drill</div>
       </div>
 
       {/* Deliberately NOT the full command vocabulary: the play words do
@@ -658,7 +658,7 @@ export function TrueCountDrillView({
                 checked={strictMode}
                 onChange={(e) => setStrictMode(e.target.checked)}
               />
-              Strict mode (keypad entry, graded)
+              Strict mode (enter the answer; graded)
             </label>
           )}
           {eyesFree && settings.audio.enabled && !strictMode && (
@@ -816,7 +816,7 @@ export function TrueCountDrillView({
             {question.decksRemaining} {question.decksRemaining === 1 ? 'deck' : 'decks'} remaining
           </div>
           <div className="result-detail">
-            You entered {formatSigned(enteredValue)}, actual was {formatSigned(question.correctTc)}
+            You entered {formatSigned(enteredValue)}; the true count was {formatSigned(question.correctTc)}.
           </div>
           <button type="button" className="drill-replay-btn" onClick={start}>
             Next

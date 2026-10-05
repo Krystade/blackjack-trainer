@@ -170,12 +170,12 @@ export function MasteryChallengeView({
         <button type="button" className="drill-back-btn" onClick={onBack}>
           Back
         </button>
-        <div className="drill-heading">Mastery Challenge</div>
+        <div className="drill-heading">Mastery challenge</div>
       </div>
 
       <div className="drill-inline-controls">
         <div className="settings-row">
-          <span className="settings-label">Scope</span>
+          <span className="settings-label">Hands</span>
           <Segmented
             options={[
               { value: 'all', label: 'All' },
@@ -188,7 +188,7 @@ export function MasteryChallengeView({
           />
         </div>
         <div className="settings-row">
-          <span className="settings-label">Interruptions</span>
+          <span className="settings-label">Distractions</span>
           <Segmented
             options={[
               { value: 'off', label: 'Off' },
@@ -208,7 +208,7 @@ export function MasteryChallengeView({
       {complete ? (
         <div className="mastery-complete">
           <div className="result-correct">
-            Sweep complete! {run.order.length}/{run.order.length}, zero errors.
+            Sweep complete: all {run.order.length} hands, no mistakes.
           </div>
           <button
             type="button"
@@ -253,7 +253,7 @@ export function MasteryChallengeView({
                   ) : (
                     <>
                       <div className="mastery-reset-banner" role="alert">
-                        Wrong — progress reset. New sweep started.
+                        Wrong. Progress is back to zero and a new sweep has started.
                       </div>
                       <MistakeCard
                         taken={feedback.event.taken}

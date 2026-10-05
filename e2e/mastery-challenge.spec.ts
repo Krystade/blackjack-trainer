@@ -4,13 +4,13 @@ import { withSettings } from './helpers';
 test('mastery challenge: default scope is All, progress starts at 0', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Mastery Challenge', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Mastery Challenge');
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Mastery challenge');
 
-  const scopeRow = page.locator('.settings-row', { hasText: 'Scope' });
+  const scopeRow = page.locator('.settings-row', { hasText: 'Hands' });
   await expect(scopeRow.getByRole('button', { name: 'All', exact: true })).toHaveClass(/segmented-btn-active/);
 
-  const freqRow = page.locator('.settings-row', { hasText: 'Interruptions' });
+  const freqRow = page.locator('.settings-row', { hasText: 'Distractions' });
   await expect(freqRow.getByRole('button', { name: 'Off', exact: true })).toHaveClass(/segmented-btn-active/);
 
   await expect(page.locator('[data-testid="mastery-progress"]')).toContainText('0 / 330 cleared');
@@ -19,9 +19,9 @@ test('mastery challenge: default scope is All, progress starts at 0', async ({ p
 test('mastery challenge: switching scope resets progress and shows the new total', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Mastery Challenge', exact: true }).click();
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
 
-  const scopeRow = page.locator('.settings-row', { hasText: 'Scope' });
+  const scopeRow = page.locator('.settings-row', { hasText: 'Hands' });
   await scopeRow.getByRole('button', { name: 'Pairs', exact: true }).click();
   await expect(page.locator('[data-testid="mastery-progress"]')).toContainText('0 / 100 cleared');
 });
@@ -39,9 +39,9 @@ test('mastery challenge: a wrong answer resets progress to 0/N with a visible re
   await withSettings(page, { drill: { flashCategory: 'hard' } }); // unrelated setting, just a stable baseline
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Mastery Challenge', exact: true }).click();
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
 
-  const scopeRow = page.locator('.settings-row', { hasText: 'Scope' });
+  const scopeRow = page.locator('.settings-row', { hasText: 'Hands' });
   await scopeRow.getByRole('button', { name: 'Hard', exact: true }).click();
   await expect(page.locator('[data-testid="mastery-progress"]')).toContainText('0 / 150 cleared');
 
@@ -63,7 +63,7 @@ test('mastery challenge: a wrong answer resets progress to 0/N with a visible re
     // rather than looping indefinitely on an already-advanced run.
     await page.reload();
     await page.getByRole('button', { name: 'Drills', exact: true }).click();
-    await page.getByRole('button', { name: 'Mastery Challenge', exact: true }).click();
+    await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
   }
   expect(reset).toBe(true);
   await expect(page.locator('[data-testid="mastery-progress"]')).toContainText('0 / 150 cleared');
@@ -73,9 +73,9 @@ test('mastery challenge: an illegal action (disabled button aside) never advance
   await withSettings(page, {});
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Mastery Challenge', exact: true }).click();
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
 
-  const scopeRow = page.locator('.settings-row', { hasText: 'Scope' });
+  const scopeRow = page.locator('.settings-row', { hasText: 'Hands' });
   await scopeRow.getByRole('button', { name: 'Hard', exact: true }).click(); // no pair cells in scope
   await expect(page.locator('[data-testid="mastery-progress"]')).toContainText('0 / 150 cleared');
 
@@ -94,9 +94,9 @@ test('mastery challenge: progress survives a reload (persisted run, not lost on 
   });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Mastery Challenge', exact: true }).click();
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
 
-  const scopeRow = page.locator('.settings-row', { hasText: 'Scope' });
+  const scopeRow = page.locator('.settings-row', { hasText: 'Hands' });
   await scopeRow.getByRole('button', { name: 'Pairs', exact: true }).click();
 
   // Answer with the shown advice if the ActionBar exposes one; otherwise
@@ -107,7 +107,7 @@ test('mastery challenge: progress survives a reload (persisted run, not lost on 
 
   await page.reload();
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Mastery Challenge', exact: true }).click();
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
   const after = await page.locator('[data-testid="mastery-progress"]').innerText();
   expect(after).toBe(before); // merely navigating away/back is NOT a mistake
 
@@ -119,9 +119,9 @@ test('mastery challenge: progress survives a reload (persisted run, not lost on 
 test('mastery challenge: interruptions default to Off and can be switched to Relentless', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Mastery Challenge', exact: true }).click();
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
 
-  const freqRow = page.locator('.settings-row', { hasText: 'Interruptions' });
+  const freqRow = page.locator('.settings-row', { hasText: 'Distractions' });
   await expect(freqRow.getByRole('button', { name: 'Off', exact: true })).toHaveClass(/segmented-btn-active/);
 
   await freqRow.getByRole('button', { name: 'Relentless', exact: true }).click();

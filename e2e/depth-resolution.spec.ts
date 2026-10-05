@@ -53,7 +53,7 @@ function gridLabels(page: Page): Promise<string[]> {
 
 test('the deck-estimation grid runs in halves by default', async ({ page }) => {
   await withProfile(page, { rules: { decks: 2 } });
-  await openDrill(page, 'Deck Estimation');
+  await openDrill(page, 'Deck estimation');
   await expect(page.locator('.count-setup')).toBeVisible();
   // The control is there and starts where the app has always been.
   const row = page.locator('.settings-row', { hasText: 'Resolution' });
@@ -67,7 +67,7 @@ test('choosing last-deck adds the quarter steps -- but only inside the last deck
   page,
 }) => {
   await withProfile(page, { rules: { decks: 2 } });
-  await openDrill(page, 'Deck Estimation');
+  await openDrill(page, 'Deck estimation');
   await page.getByRole('button', { name: 'Last deck', exact: true }).click();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   // 1.25 is a quarter step that sits OUTSIDE the last deck, and must not appear
@@ -77,7 +77,7 @@ test('choosing last-deck adds the quarter steps -- but only inside the last deck
 
 test('choosing quarter runs in quarters throughout', async ({ page }) => {
   await withProfile(page, { rules: { decks: 2 } });
-  await openDrill(page, 'Deck Estimation');
+  await openDrill(page, 'Deck estimation');
   await page.getByRole('button', { name: 'Quarter', exact: true }).click();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   expect(await gridLabels(page)).toEqual([
@@ -98,7 +98,7 @@ test('the drill-local control persists across a reload', async ({
   // `onSettingsChange` is App's React state only -- a control that forgets the
   // explicit saveSettings looks correct until the next reload.
   await withProfile(page, { rules: { decks: 2 } });
-  await openDrill(page, 'Deck Estimation');
+  await openDrill(page, 'Deck estimation');
   await page.getByRole('button', { name: 'Quarter', exact: true }).click();
 
   const stored = await page.evaluate(() => {
@@ -122,7 +122,7 @@ test('the same estimate is right at half resolution and wrong at last-deck', asy
   await pinRandom(page);
   await withProfile(page, { rules: { decks: 1 } });
 
-  await openDrill(page, 'Deck Estimation');
+  await openDrill(page, 'Deck estimation');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await page.locator('.deck-guess-btn', { hasText: /^1\.0$/ }).click();
   await expect(page.locator('.result-correct')).toBeVisible();
@@ -131,7 +131,7 @@ test('the same estimate is right at half resolution and wrong at last-deck', asy
   // Same question, same answer, tighter rule. "Back to Drills" lands on the
   // picker, not this drill's setup, so the drill has to be re-entered.
   await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Deck Estimation', exact: true }).click();
+  await page.getByRole('button', { name: 'Deck estimation', exact: true }).click();
   await page.getByRole('button', { name: 'Last deck', exact: true }).click();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await page.locator('.deck-guess-btn', { hasText: /^1\.0$/ }).click();
@@ -149,7 +149,7 @@ test('the grade records the tolerance it was given, not a constant', async ({ pa
   await withProfile(page, { rules: { decks: 1 } });
   await withSettings(page, { drill: { depthResolution: 'last-deck' } });
 
-  await openDrill(page, 'Deck Estimation');
+  await openDrill(page, 'Deck estimation');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await page.locator('.deck-guess-btn', { hasText: /^0\.5$/ }).click();
   await expect(page.locator('.result-correct')).toBeVisible();
@@ -176,7 +176,7 @@ test('the produce-TC band tightens with the resolution too', async ({ browser })
     await withSettings(page, {
       drill: { countLengthCards: 13, countIntervalMs: 10, countGroup: 1, depthResolution },
     });
-    await openDrill(page, 'Produce the True Count');
+    await openDrill(page, 'Produce the true count');
     await page.getByRole('button', { name: 'Start', exact: true }).click();
     await expect(page.locator('.numpad')).toBeVisible();
     // +5 is the top of the half-deck band and one above the quarter-deck one.
@@ -215,7 +215,7 @@ test('a quarter-deck answer can be typed, not just tapped', async ({ page }) => 
   await withProfile(page, { rules: { decks: 1 } });
   await withSettings(page, { drill: { depthResolution: 'quarter' } });
 
-  await openDrill(page, 'Deck Estimation');
+  await openDrill(page, 'Deck estimation');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await page.keyboard.type('0.75');
   await expect(page.locator('.deck-typed-display')).toContainText('0.75');

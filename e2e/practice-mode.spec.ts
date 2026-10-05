@@ -41,7 +41,7 @@ const FAST_AUDIO = { enabled: true, verbosity: 'full' as const, answerPauseMs: 0
 
 test('the true-count drill asks, answers and asks again, untouched', async ({ page }) => {
   await withSettings(page, { audio: FAST_AUDIO });
-  await openDrill(page, 'True Count Drill');
+  await openDrill(page, 'True count drill');
 
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
   await page.locator('label', { hasText: 'Practice only' }).locator('input').check();
@@ -66,7 +66,7 @@ test('the true-count drill asks, answers and asks again, untouched', async ({ pa
 
 test('practice records nothing, which is what makes it practice', async ({ page }) => {
   await withSettings(page, { audio: FAST_AUDIO });
-  await openDrill(page, 'True Count Drill');
+  await openDrill(page, 'True count drill');
 
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
   await page.locator('label', { hasText: 'Practice only' }).locator('input').check();
@@ -88,7 +88,7 @@ test('the count drill practises the same way', async ({ page }) => {
     audio: FAST_AUDIO,
     drill: { countLengthCards: 4, countGroup: 1, countIntervalMs: 0, countManual: false },
   });
-  await openDrill(page, 'Count Drill');
+  await openDrill(page, 'Count drill');
 
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
   await page.locator('label', { hasText: 'Practice only' }).locator('input').check();
@@ -117,7 +117,7 @@ test('the count drill practises the same way', async ({ page }) => {
  */
 test('practice is not offered alongside strict mode', async ({ page }) => {
   await withSettings(page, { audio: FAST_AUDIO });
-  await openDrill(page, 'True Count Drill');
+  await openDrill(page, 'True count drill');
 
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
   await expect(page.locator('label', { hasText: 'Practice only' })).toBeVisible();

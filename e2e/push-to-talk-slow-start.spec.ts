@@ -67,7 +67,7 @@ test('a press whose microphone is slow to open still gets its window', async ({ 
   await withSettings(page, { audio: { enabled: true }, drill: { wheelMode: 'talk' } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'True count drill', exact: true }).click();
 
   const pressed = await page.evaluate(() => window.__wheelPress?.('forward') ?? false);
   expect(pressed, 'the wheel must reach the screen or this proves nothing').toBe(true);

@@ -220,7 +220,7 @@ export function DeckEstimationView({
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
         </button>
-        <div className="drill-heading">Deck Estimation Drill</div>
+        <div className="drill-heading">Deck estimation</div>
       </div>
 
       {phase === 'setup' && (
@@ -247,12 +247,12 @@ export function DeckEstimationView({
             />
           </div>
           <div className="settings-row settings-note-row">
-            Judge the discard tray by eye and estimate how many decks remain in the shoe. This
-            drill is visual only &mdash; no audio mode.
+            Judge decks remaining from the discard tray. Visual only: there is no eyes-free mode.
+            {resolution === 'half' && <> Answer to the half deck.</>}
             {resolution === 'last-deck' && (
-              <> Halves through the shoe, quarters once you are inside the last deck.</>
+              <> Answer to the half deck, then to the quarter inside the last deck.</>
             )}
-            {resolution === 'quarter' && <> Quarters throughout &mdash; hard mode.</>}
+            {resolution === 'quarter' && <> Answer to the quarter deck throughout. The hardest.</>}
           </div>
           <button type="button" className="drill-start-btn" onClick={start}>
             Start
@@ -296,8 +296,8 @@ export function DeckEstimationView({
             {wasCorrect ? 'Correct!' : 'Wrong'}
           </div>
           <div className="result-detail">
-            You guessed {formatGuess(guessValue)} decks &mdash; actual was{' '}
-            {formatExact(question.decksRemaining)} decks (off by {formatExact(errorDecks)})
+            You guessed {formatGuess(guessValue)} decks; {formatExact(question.decksRemaining)} were
+            left (off by {formatExact(errorDecks)}).
           </div>
           {/* V5-5: the tolerance is a setting now, so a grade that does not
               state it looks arbitrary -- and the last-deck rule tightens it
@@ -311,8 +311,8 @@ export function DeckEstimationView({
             )}
           </div>
           <div className="result-detail">
-            {question.cardsDealt} cards were dealt from the {question.totalDecks}-deck (
-            {question.totalDecks * 52}-card) shoe
+            {question.cardsDealt} of {question.totalDecks * 52} cards dealt ({question.totalDecks}-deck
+            shoe).
           </div>
           <button type="button" className="drill-replay-btn" onClick={start}>
             Next

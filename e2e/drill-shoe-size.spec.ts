@@ -21,7 +21,7 @@ async function openDrill(page: Page, name: string): Promise<void> {
 
 test('true count drill: the deck range opens on the profile shoe, not on six', async ({ page }) => {
   await withProfile(page, { rules: { decks: 2 } });
-  await openDrill(page, 'True Count Drill');
+  await openDrill(page, 'True count drill');
   await expect(page.locator('.count-setup')).toBeVisible();
   await expect(page.locator('.count-setup .stepper-value').first()).toHaveText('2 decks');
 });
@@ -32,13 +32,13 @@ test('true count drill: an eight-deck profile opens on eight, so it tracks the p
   // Guards against a view that hardcoded 2 to pass the test above, and against
   // one that merely clamps rather than reads.
   await withProfile(page, { rules: { decks: 8 } });
-  await openDrill(page, 'True Count Drill');
+  await openDrill(page, 'True count drill');
   await expect(page.locator('.count-setup .stepper-value').first()).toHaveText('8 decks');
 });
 
 test('deck estimation: shoe size opens on the profile, and the tray says so', async ({ page }) => {
   await withProfile(page, { rules: { decks: 2 } });
-  await openDrill(page, 'Deck Estimation');
+  await openDrill(page, 'Deck estimation');
   await expect(page.locator('.count-setup .stepper-value').first()).toHaveText('2 decks');
 
   await page.getByRole('button', { name: 'Start', exact: true }).click();
@@ -57,7 +57,7 @@ test('produce the true count: a one-deck profile never divides by more than one 
     audio: { enabled: false },
     drill: { countLengthCards: 4, countIntervalMs: 10, countGroup: 1 },
   });
-  await openDrill(page, 'Produce the True Count');
+  await openDrill(page, 'Produce the true count');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   const seen: number[] = [];
@@ -87,6 +87,6 @@ test('bet / sit / leave: the tray is labelled with the profile shoe', async ({ p
   // and it is also the reason the label had to exist: once the shoe varies, a
   // half-full tray means 1 deck left in a 2-deck shoe and 3 in a 6-deck one.
   await withProfile(page, { rules: { decks: 2 } });
-  await openDrill(page, 'Bet / Sit / Leave');
+  await openDrill(page, 'Bet / sit / leave');
   await expect(page.locator('.deck-tray-context')).toHaveText('2-deck shoe');
 });

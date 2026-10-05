@@ -31,7 +31,7 @@ Last updated: 2026-10-05 (first cloud session).
 
 ## G0 · Housekeeping carried over from the local session
 
-- [~] **Settings cull — preferences half** (In the car, Theme, Play, Drills, Audio, Car check).
+- [x] **Settings cull — preferences half** (merged `3eb495b`). (In the car, Theme, Play, Drills, Audio, Car check).
   - Method: agent in an isolated worktree. Each setting is presumed dead unless proven live
     and wanted. Deletions remove the control, the stored field (plus a migration), the
     consuming branch and any tests that exist only for it.
@@ -43,7 +43,7 @@ Last updated: 2026-10-05 (first cloud session).
   `speaker-handoff` specs that call `listenInCountDrill(page,'switch')` go with it.
 - [x] **Wording pass — core screens** (merged `df535fd`). (Home, Table, Charts, Stats, ProfileEditor, App,
   components). One term per concept; glossary in the report. Voice vocabulary is untouched.
-- [~] **Wording pass — drills + Field test**, now also covering the **Flashcards layout**
+- [x] **Wording pass — drills + Field test**, plus the Flashcards layout, the 375×812 fit and the ZonePad fix (merged after `8195254`)., now also covering the **Flashcards layout**
   from Jack's 2026-10-05 screenshots:
   - At 390×844 the action bar (Hit/Stand/Double/Split/Surrender) is below the fold.
     "Surrender" truncates to "Surren…".
@@ -52,7 +52,7 @@ Last updated: 2026-10-05 (first cloud session).
   - The Listening panel takes three lines plus a permanent earpiece hint. Make it one line.
   - Done when: an e2e assertion at 390×844 shows the dealer card, the hand and the full
     action bar all inside the viewport without scrolling.
-- [ ] **Merge the four agent branches**, resolve conflicts (`Settings.tsx` and `persist.ts`
+- [x] **Merge the four agent branches**, resolve conflicts (`Settings.tsx` and `persist.ts`
   are touched by two of them) and run the full suite once. Push only after that.
 - [x] **Clip-chain race fixed** (`9a8a51a`). Interrupts now carry an epoch.
 - [~] **Recover the local session's unpushed work.** Jack sent the local copy on

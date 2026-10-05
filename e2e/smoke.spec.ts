@@ -115,7 +115,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   await expect(page.locator('.drills-title')).toHaveText('Drills');
   await shot(page, 'smoke-05-drills-picker');
 
-  await page.getByRole('button', { name: 'Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
@@ -132,7 +132,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   // ---------------------------------------------------------------
   // 6. Drills -> True Count Drill: Start, submit, assert result
   // ---------------------------------------------------------------
-  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'True count drill', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
@@ -148,7 +148,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   // ---------------------------------------------------------------
   // 7. Drills -> Deck Estimation: Start, guess, assert result
   // ---------------------------------------------------------------
-  await page.getByRole('button', { name: 'Deck Estimation', exact: true }).click();
+  await page.getByRole('button', { name: 'Deck estimation', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
@@ -182,12 +182,12 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   //    conditional -- mirrors drills.spec.ts's own quiz specs), assert label,
   //    back to Home
   // ---------------------------------------------------------------
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Deviation Quiz');
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation quiz');
 
   const insurancePrompt = page.locator('.quiz-insurance-prompt');
   if (await insurancePrompt.isVisible().catch(() => false)) {
-    await page.getByRole('button', { name: 'Decline Insurance', exact: true }).click();
+    await page.getByRole('button', { name: 'Decline insurance', exact: true }).click();
   } else {
     await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
   }
@@ -203,8 +203,8 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   // ---------------------------------------------------------------
   // 9b. Pair Cancellation: answer the net, assert feedback, Next
   // ---------------------------------------------------------------
-  await page.getByRole('button', { name: 'Pair Cancellation', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Pair Cancellation');
+  await page.getByRole('button', { name: 'Pair cancellation', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Pair cancellation');
   await page.locator('.pair-cancel-answers .action-btn').first().click();
   await expect(page.locator('.drill-next-btn')).toBeVisible();
   await page.getByRole('button', { name: 'Next', exact: true }).click();
@@ -215,8 +215,8 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   // ---------------------------------------------------------------
   // 9c. Produce the True Count: flash through, then submit on the keypad
   // ---------------------------------------------------------------
-  await page.getByRole('button', { name: 'Produce the True Count', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Produce the True Count');
+  await page.getByRole('button', { name: 'Produce the true count', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Produce the true count');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.numpad')).toBeVisible({ timeout: 20_000 });
   await page.getByRole('button', { name: 'OK', exact: true }).click();
@@ -240,8 +240,8 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   // ---------------------------------------------------------------
   // 9e. Mastery Challenge: one cell answered, progress readout present
   // ---------------------------------------------------------------
-  await page.getByRole('button', { name: 'Mastery Challenge', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Mastery Challenge');
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Mastery challenge');
   await expect(page.getByTestId('mastery-progress')).toContainText('cleared');
   await page.locator('.action-bar button.action-btn').first().click();
   await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
@@ -252,8 +252,8 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   // ---------------------------------------------------------------
   // 9f. Bet / Sit / Leave: one scenario answered
   // ---------------------------------------------------------------
-  await page.getByRole('button', { name: 'Bet / Sit / Leave', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Bet / Sit / Leave');
+  await page.getByRole('button', { name: 'Bet / sit / leave', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Bet / sit / leave');
   await page.locator('.bsl-answers .action-btn').first().click();
   await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();

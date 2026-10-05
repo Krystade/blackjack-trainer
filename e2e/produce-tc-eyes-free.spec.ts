@@ -23,7 +23,7 @@ const SETTINGS = {
 async function open(page: import('@playwright/test').Page) {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Produce the True Count', exact: true }).click();
+  await page.getByRole('button', { name: 'Produce the true count', exact: true }).click();
 }
 
 function spoken(page: import('@playwright/test').Page): Promise<string[]> {
@@ -103,7 +103,7 @@ test('strict mode shows no tray and claims no accepted range', async ({ page }) 
   });
   await open(page);
   await page.getByLabel('Eyes-free audio').check();
-  await page.getByLabel('Strict mode (entry, graded)').check();
+  await page.getByLabel('Strict mode (enter the answer; graded)').check();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   let rounds = 0;

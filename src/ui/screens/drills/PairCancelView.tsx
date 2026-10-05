@@ -107,11 +107,11 @@ export function PairCancelView({ settings, onBack }: { settings: Settings; onBac
         <button type="button" className="drill-back-btn" onClick={onBack}>
           Back
         </button>
-        <div className="drill-heading">Pair Cancellation</div>
+        <div className="drill-heading">Pair cancellation</div>
       </div>
 
       <div className="settings-row settings-note-row">
-        Read the pair as one chunk — what&apos;s the net count?
+        Read both cards as one: what do they add to the running count?
       </div>
 
       <div className="pair-cancel-cards">

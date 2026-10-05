@@ -42,6 +42,10 @@ async function edgeFlushText(page: import('@playwright/test').Page): Promise<str
     const out: string[] = [];
     for (const el of document.querySelectorAll('body *')) {
       if (scrollable(el)) continue;
+      // Screen-reader-only text (`.u-sr-only`) lives in a clipped 1px box and
+      // is never drawn; its text range still reports the unclipped width.
+      const own = el.getBoundingClientRect();
+      if (own.width <= 1 && own.height <= 1) continue;
       for (const node of el.childNodes) {
         if (node.nodeType !== Node.TEXT_NODE || !node.textContent!.trim()) continue;
         const range = document.createRange();
@@ -61,14 +65,14 @@ async function edgeFlushText(page: import('@playwright/test').Page): Promise<str
 test.use({ viewport: { width: W, height: 812 } });
 
 const DRILLS = [
-  'Pair Cancellation',
-  'Count Drill',
-  'Deck Estimation',
-  'True Count Drill',
-  'Produce the True Count',
-  'Bet / Sit / Leave',
+  'Pair cancellation',
+  'Count drill',
+  'Deck estimation',
+  'True count drill',
+  'Produce the true count',
+  'Bet / sit / leave',
   'Downswing',
-  'Deviation Quiz',
+  'Deviation quiz',
   'Flashcards',
 ];
 

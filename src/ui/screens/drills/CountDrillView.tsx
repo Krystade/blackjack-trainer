@@ -1553,7 +1553,7 @@ export function CountDrillView({
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
         </button>
-        <div className="drill-heading">Count Drill</div>
+        <div className="drill-heading">Count drill</div>
       </div>
 
       {/* Deliberately NOT the full command vocabulary. The play words --
@@ -1580,7 +1580,7 @@ export function CountDrillView({
               checked={countdownMode}
               onChange={(e) => setCountdownMode(e.target.checked)}
             />
-            Countdown (52-card, guess the hidden card&apos;s tag)
+            Countdown (one deck with a card held back: name its tag)
           </label>
 
           {!countdownMode && (
@@ -1610,7 +1610,7 @@ export function CountDrillView({
           )}
 
           <Stepper
-            label="Speed"
+            label="Time per card"
             value={settings.drill.countIntervalMs}
             min={300}
             max={3000}
@@ -1620,11 +1620,11 @@ export function CountDrillView({
           />
 
           <div className="settings-row">
-            <span className="settings-label">Mode</span>
+            <span className="settings-label">Next card</span>
             <Segmented
               options={[
-                { value: 'timed', label: 'Timed' },
-                { value: 'manual', label: 'Manual' },
+                { value: 'timed', label: 'Auto' },
+                { value: 'manual', label: 'On tap' },
               ]}
               value={settings.drill.countManual ? 'manual' : 'timed'}
               onChange={(v) => updateDrill({ countManual: v === 'manual' })}
@@ -1639,12 +1639,12 @@ export function CountDrillView({
                   checked={timedChallenge}
                   onChange={(e) => setTimedChallenge(e.target.checked)}
                 />
-                Timed challenge (speed ramp)
+                Timed challenge (gets faster every card)
               </label>
               {timedChallenge && (
                 <>
                   <div className="settings-row settings-note-row">
-                    Auto-advances and speeds up each card, regardless of Mode above.
+                    Cards advance on their own and speed up, whatever Next card is set to.
                   </div>
                   <Stepper
                     label="Starting pace"
@@ -1669,8 +1669,8 @@ export function CountDrillView({
                       return (
                         <div className="settings-row settings-note-row">
                           Paces this run at your unlocked tier ({TIER_LABEL[gate.unlockedTier]},{' '}
-                          {tierStartIntervalMs(gate.unlockedTier)}ms/card) instead of the manual pace
-                          setting above -- speeds up only once accuracy holds there.
+                          {tierStartIntervalMs(gate.unlockedTier)}ms a card) instead of the pace you set
+                          above, and moves up a tier only once your accuracy holds there.
                         </div>
                       );
                     })()}
@@ -1709,7 +1709,7 @@ export function CountDrillView({
                 checked={strictMode}
                 onChange={(e) => setStrictMode(e.target.checked)}
               />
-              Strict mode (keypad entry, graded)
+              Strict mode (enter the answer; graded)
             </label>
           )}
           {!countdownMode && !timedChallenge && eyesFree && settings.audio.enabled && !strictMode && (
@@ -1749,15 +1749,15 @@ export function CountDrillView({
                   pace pressure below and the picker's pressure drills. */}
               {!countFluent && settings.drill.distractionFreq !== 'off' && (
                 <div className="settings-row settings-note-row">
-                  Advanced — build your count fluency first (it stays available).
+                  Advanced — get fluent at the plain count drill first. It still works.
                 </div>
               )}
               {settings.drill.distractionFreq !== 'off' && (
                 <>
                   <div className="settings-row settings-note-row">
-                    Pauses the count for a quick math interruption at{' '}
-                    {settings.drill.distractionFreq === 'relentless' ? 'unpredictable' : 'unpredictable, sparser'}{' '}
-                    moments, then resumes -- simulates table talk you can&apos;t time.
+                    Stops the cards at unpredictable moments
+                    {settings.drill.distractionFreq === 'relentless' ? '' : ' (now and then)'} for a quick
+                    question, then carries on, like table talk you can&apos;t time.
                   </div>
                   <div className="settings-row">
                     <span className="settings-label">Distraction type</span>
@@ -1776,7 +1776,7 @@ export function CountDrillView({
           )}
           {!countdownMode && timedChallenge && settings.drill.distractionFreq !== 'off' && (
             <div className="settings-row settings-note-row">
-              Distractions don&apos;t apply to Timed Challenge runs.
+              Distractions are off in a timed challenge.
             </div>
           )}
 
@@ -1807,7 +1807,7 @@ export function CountDrillView({
           )}
           {!countdownMode && timedChallenge && settings.drill.countCheckpoints !== 'off' && (
             <div className="settings-row settings-note-row">
-              Checkpoints don&apos;t apply to Timed Challenge runs.
+              Checkpoints are off in a timed challenge.
             </div>
           )}
 
@@ -1832,15 +1832,15 @@ export function CountDrillView({
               {settings.drill.countBias !== 'none' && (
                 <div className="settings-row settings-note-row">
                   Clusters same-sign cards so the count runs{' '}
-                  {settings.drill.countBias === 'negative' ? 'down then climbs back' : 'up then falls back'} —
-                  extra reps counting through zero and reversing sign.
+                  {settings.drill.countBias === 'negative' ? 'down, then climbs back' : 'up, then falls back'}: extra
+                  practice counting through zero.
                 </div>
               )}
             </>
           )}
           {!countdownMode && timedChallenge && settings.drill.countBias !== 'none' && (
             <div className="settings-row settings-note-row">
-              Count bias doesn&apos;t apply to Timed Challenge runs.
+              Count bias is off in a timed challenge.
             </div>
           )}
 
@@ -1853,7 +1853,7 @@ export function CountDrillView({
               checked={settings.drill.messyCards}
               onChange={(e) => updateDrill({ messyCards: e.target.checked })}
             />
-            Messy cards (rotated / offset, like a real table)
+            Messy cards (tilted and offset, as on a real table)
           </label>
 
           {/* ET7: adversarial dealer-pace pressure. Only meaningful for the
@@ -1869,12 +1869,12 @@ export function CountDrillView({
           </label>
           {!countFluent && settings.drill.pacePressure && (
             <div className="settings-row settings-note-row">
-              Advanced — build your count fluency first (it stays available).
+              Advanced — get fluent at the plain count drill first. It still works.
             </div>
           )}
           {settings.drill.pacePressure && (settings.drill.countManual || timedChallenge) && (
             <div className="settings-row settings-note-row">
-              Pace pressure applies to the auto-flash drill — not manual or Timed Challenge runs.
+              Pace pressure only works with Next card on Auto, and is off in a timed challenge.
             </div>
           )}
 
@@ -1912,7 +1912,7 @@ export function CountDrillView({
             {currentGroup?.map(renderFlashCard)}
           </div>
           <div className="manual-tap-hint">
-            tap to advance &middot; {shownIndex + 1}/{groups.length}
+            Tap for the next card &middot; {shownIndex + 1}/{groups.length}
           </div>
         </div>
       )}
@@ -1953,7 +1953,7 @@ export function CountDrillView({
 
       {phase === 'selfreport' && (
         <div className="selfreport-area">
-          <div className="selfreport-question">The count was {actualValue}. Did you have it?</div>
+          <div className="selfreport-question">The running count was {actualValue}. Did you have it?</div>
           {voiceOn && (
             <div className="selfreport-voice-hint">
               or say &ldquo;yes&rdquo; / &ldquo;no&rdquo;
@@ -1999,7 +1999,7 @@ export function CountDrillView({
 
       {phase === 'distraction' && distraction && (
         <div className="distraction-area">
-          <div className="distraction-label">Quick -- what&apos;s this?</div>
+          <div className="distraction-label">Quick: what&apos;s this?</div>
           <div className="distraction-prompt">{distraction.prompt}</div>
           <NumPad label="Answer" onSubmit={handleDistractionSubmit} />
         </div>
@@ -2056,11 +2056,11 @@ export function CountDrillView({
             {wasCorrect ? 'Correct!' : 'Wrong'}
           </div>
           <div className="result-detail">
-            The count was {actualValue} &mdash; self-reported, and recorded
+            The running count was {actualValue}. Self-reported, and recorded.
           </div>
           {checkpointBlock}
           <button type="button" className="drill-replay-btn" onClick={start}>
-            Replay
+            New run
           </button>
           <button type="button" className="drill-back-btn" onClick={handleBack}>
             Back to Drills
@@ -2074,7 +2074,7 @@ export function CountDrillView({
             {wasCorrect ? 'Correct!' : 'Wrong'}
           </div>
           <div className="result-detail">
-            You entered {enteredValue}, actual was {actualValue}
+            You entered {enteredValue}; the running count was {actualValue}.
           </div>
           {checkpointBlock}
           {timedResult &&
@@ -2105,7 +2105,7 @@ export function CountDrillView({
               );
             })()}
           <button type="button" className="drill-replay-btn" onClick={start}>
-            Replay
+            New run
           </button>
           <button type="button" className="drill-back-btn" onClick={handleBack}>
             Back to Drills

@@ -28,7 +28,7 @@ async function openProfileEditor(page: Page) {
 async function openDeviationQuiz(page: Page) {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills' }).first().click();
-  await page.getByRole('button', { name: 'Deviation Quiz', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
 }
 
 /** Every index the quiz offers, read off the <select> the drill is driven by. */

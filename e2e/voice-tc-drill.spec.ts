@@ -63,7 +63,7 @@ async function openTcDrill(page: Page, opts: { eyesFree: boolean }): Promise<voi
   await withSettings(page, { audio: { enabled: true, verbosity: 'full', answerPauseMs: 0 } });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'True Count Drill', exact: true }).click();
+  await page.getByRole('button', { name: 'True count drill', exact: true }).click();
   if (opts.eyesFree) await page.getByLabel('Eyes-free audio').check();
   await page.locator('label', { hasText: 'Voice answers' }).locator('input').check();
   await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');
