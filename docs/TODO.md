@@ -153,7 +153,7 @@ One unblinded answer per step, so treat these as leads, not settled facts.
 - [~] **Bluetooth: phone mic? kit**: built in a worktree. Covers the spectral probe on the iPhone
   input, the finger test, where the sound goes while that input is held, recognition with the mic
   covered and uncovered, and the wheel during capture.
-- [~] **Matcher false accepts**: "But" (confidence 0.35) was graded as SPLIT on 2026-10-05. Tighten
+- [x] **Matcher false accepts** (merged): runner-ups no longer fuzzy-match; double needs an exact match; several commands without a "no/sorry/wait" between them are rejected. Was: "But" (confidence 0.35) was graded as SPLIT on 2026-10-05. Tighten
   it without losing real rescues.
 - [~] **e2e health**: fix the fake recogniser's missing `onaudiostart` (flaky voice-aliases:119 and
   voice-tc-drill:177), and root-cause field-test-round5:347, field-test:1973 and
