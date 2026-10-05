@@ -175,8 +175,8 @@ One unblinded answer per step, so treat these as leads, not settled facts.
   the true count?", "X isn't part of this question." ×5, "The card left over was …" ×13). They're
   listed in `NEEDS_RECORDING` in `scripts/clipCoverage.test.ts` and already sit in
   `spoken-phrases.json`, so the next Kokoro run generates them.
-- [~] UX audit at 375×812, every screen, both themes.
-- [~] Roadmap: next car session (about 15 minutes) and a two-week plan.
+- [x] UX audit at 375×812 (`docs/research/2026-10-05-ux-audit.md`). The fixes are merged: mute strip, 44px targets, contrast, keypad gutter, pinned Start/Next, Count drill Options, two-tap End, Home top-aligned, Test kit buttons first, plain-word flashcard feedback.
+- [x] Roadmap: `docs/research/2026-10-05-roadmap.md`.
 
 ## Results — Flashcards drill, 2026-10-05 01:35 (build 8195254)
 
