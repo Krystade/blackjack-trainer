@@ -4471,3 +4471,20 @@ details.stats-section > summary::after {
   gap: 0.5rem;
   line-height: 1.4;
 }
+.testkit-listening {
+  margin: 0;
+  text-align: center;
+  font-weight: 700;
+  color: var(--accent);
+}
+.testkit-heard {
+  margin: 0;
+  text-align: center;
+  font-size: 1.05rem;
+}
+.testkit-heard-right {
+  color: var(--good, #4caf50);
+}
+.testkit-heard-wrong {
+  color: var(--bad, #e57373);
+}

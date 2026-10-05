@@ -36,9 +36,36 @@ export async function routeClipUrl(): Promise<string | null> {
   return `${import.meta.env.BASE_URL}clips/${voice}/${file}`;
 }
 
+/**
+ * Wake the shared AudioContext INSIDE the tap, before any await.
+ *
+ * iOS lets a context leave 'suspended' only during a user gesture, and the
+ * gesture's activation does not survive an await. The 2026-10-05 desk run
+ * answered "heard nothing" to the first Web Audio play, with the mic never
+ * opened -- either the ring switch (Web Audio obeys it, <audio> does not) or
+ * this. Resuming here, and logging the state, separates the two.
+ */
+export function unlockWebAudio(): void {
+  const ctx = getSharedAudioContext();
+  if (!ctx) return;
+  try {
+    if (ctx.state !== 'running') void ctx.resume().catch(() => {});
+    // A one-sample silent buffer started inside the gesture is what actually
+    // unlocks output on older WebKit; resume() alone was not always enough.
+    const b = ctx.createBuffer(1, 1, ctx.sampleRate);
+    const src = ctx.createBufferSource();
+    src.buffer = b;
+    src.connect(ctx.destination);
+    src.start();
+  } catch {
+    /* logged by the play that follows */
+  }
+}
+
 /** Resolves when the sound has finished, or with the reason it could not. */
 export async function playThrough(path: PlayPath, url: string): Promise<'ended' | string> {
-  diag('test', 'kit-play', { path, session: readAudioSessionType() });
+  const ctxState = getSharedAudioContext()?.state ?? 'none';
+  diag('test', 'kit-play', { path, session: readAudioSessionType(), audioContext: ctxState });
   try {
     if (path === 'element') {
       const audio = new Audio(url);

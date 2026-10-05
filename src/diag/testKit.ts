@@ -29,7 +29,7 @@
 
 import { matchVoiceAction, type VoiceAction } from '../audio/voiceRecognition';
 
-export type KitId = 'desk' | 'car-bt' | 'car-no-bt';
+export type KitId = 'speaker' | 'desk' | 'car-bt' | 'car-no-bt';
 
 /** How a sound is made. The two paths are routed by different parts of WebKit. */
 export type PlayPath = 'element' | 'webaudio';
@@ -48,6 +48,7 @@ export type KitStep =
       why: string;
     }
   | { kind: 'instruction'; id: string; title: string; body: string; answers: readonly string[]; why: string }
+  | { kind: 'route-blind'; id: string; title: string; trials: number; answers: readonly string[]; why: string }
   | { kind: 'reload'; id: string; title: string; why: string }
   | { kind: 'spectrum'; id: string; title: string; why: string }
   | { kind: 'calibrate'; id: string; title: string; why: string }
@@ -116,6 +117,21 @@ function routeSteps(prefix: string, answers: readonly string[], tag = ''): KitSt
   ];
 }
 
+/**
+ * The same clip, mic open, played several times by the two paths in an order
+ * the operator cannot see. One unblinded answer each is what the 2026-10-05
+ * desk run had, and it said Web Audio reached the loud speaker while <audio>
+ * did not -- worth building on only if it survives not knowing which is which.
+ */
+const BLIND: KitStep = {
+  kind: 'route-blind',
+  id: 'blind-mic-open',
+  title: 'Mic on — where does each play come from?',
+  trials: 6,
+  answers: DESK_ROUTE,
+  why: 'Six plays with the microphone on, two different playback methods in a hidden random order. Answer each one by ear.',
+};
+
 const SPECTRUM: KitStep = {
   kind: 'spectrum',
   id: 'mic-spectrum',
@@ -140,11 +156,21 @@ const RECORD_WORDS: KitStep = {
 };
 
 export const KITS: Record<KitId, { label: string; where: string; steps: readonly KitStep[] }> = {
+  speaker: {
+    label: 'Speaker check',
+    where: 'Ring switch ON (not silent). About 1 minute.',
+    steps: [
+      ...routeSteps('spk', DESK_ROUTE).filter((s) => s.kind === 'route' && s.mic === 'never-opened'),
+      BLIND,
+    ],
+  },
   desk: {
     label: 'At my desk',
-    where: 'Phone only, Bluetooth OFF, quiet room. About 6 minutes.',
+    where: 'Ring switch ON, quiet room. About 5 minutes.',
     steps: [
-      ...routeSteps('desk', DESK_ROUTE),
+      ...routeSteps('desk', DESK_ROUTE).filter((s) => s.kind === 'route' && s.mic === 'never-opened'),
+      BLIND,
+      ...routeSteps('desk', DESK_ROUTE).filter((s) => s.kind === 'route' && s.mic === 'closed-after-open'),
       {
         kind: 'reload',
         id: 'desk-reload',
@@ -158,21 +184,17 @@ export const KITS: Record<KitId, { label: string; where: string; steps: readonly
         path: 'element',
         mic: 'fresh-page',
         answers: DESK_ROUTE,
-        why: 'Answers the reload question. Compare it with the mic-open steps before the reload.',
+        why: 'Answers the reload question. On 2026-10-05 this said earpiece, which needs a second reading.',
       },
       {
-        kind: 'instruction',
-        id: 'desk-call-routing-on',
-        title: 'Change one iPhone setting',
-        body:
-          'Open the iPhone Settings app → Accessibility → Touch → Call Audio Routing → choose Speaker. ' +
-          'Then come back to this app.',
-        answers: ['Done — set to Speaker', "Couldn't find it"],
-        why: 'iOS may treat an open web mic like a phone call. This setting forces calls to the loud speaker.',
+        kind: 'route',
+        id: 'desk-fresh-webaudio',
+        title: 'Fresh page — Web Audio',
+        path: 'webaudio',
+        mic: 'fresh-page',
+        answers: DESK_ROUTE,
+        why: 'The same question for Web Audio.',
       },
-      ...routeSteps('desk-car-routing', DESK_ROUTE, 'Call Audio Routing = Speaker').filter(
-        (s) => s.kind === 'route' && s.mic === 'open',
-      ),
       SPECTRUM,
       CALIBRATE,
       RECORD_WORDS,
@@ -215,6 +237,19 @@ export const KITS: Record<KitId, { label: string; where: string; steps: readonly
     ],
   },
 };
+
+/**
+ * A hidden play order with each path used equally often. `random` is
+ * injectable so the order is testable; the screen passes Math.random.
+ */
+export function blindOrder(trials: number, random: () => number = Math.random): PlayPath[] {
+  const order: PlayPath[] = Array.from({ length: trials }, (_, i) => (i % 2 === 0 ? 'element' : 'webaudio'));
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [order[i], order[j]] = [order[j]!, order[i]!];
+  }
+  return order;
+}
 
 /* ------------------------------------------------------------------------ */
 /* Calibration schedule and scoring                                          */

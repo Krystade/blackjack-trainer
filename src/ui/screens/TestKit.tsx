@@ -3,6 +3,7 @@ import type { Screen } from '../App';
 import {
   KITS,
   KIT_PROGRESS_KEY,
+  blindOrder,
   calibrationAnnouncement,
   calibrationSchedule,
   parseProgress,
@@ -20,6 +21,7 @@ import {
   say,
   startRecording,
   tick,
+  unlockWebAudio,
   type HeldMic,
   type Recording,
 } from '../../diag/testKitIO';
@@ -268,6 +270,8 @@ function StepView(props: StepProps) {
   switch (step.kind) {
     case 'route':
       return <RouteStep {...props} step={step} />;
+    case 'route-blind':
+      return <BlindStep {...props} step={step} />;
     case 'instruction':
       return (
         <>
@@ -312,6 +316,7 @@ function RouteStep({ step, ensureMic, onAnswer }: StepProps & { step: Extract<Ki
   const [note, setNote] = useState('');
 
   const play = async () => {
+    unlockWebAudio();
     setState('working');
     setNote('');
     if (step.mic === 'open') {
@@ -346,6 +351,103 @@ function RouteStep({ step, ensureMic, onAnswer }: StepProps & { step: Extract<Ki
       </button>
       {note && <p className="testkit-note">{note}</p>}
       {state === 'played' && <Answers answers={step.answers} onAnswer={onAnswer} extra={{ path: step.path, mic: step.mic }} />}
+    </>
+  );
+}
+
+function BlindStep({ step, mic, ensureMic, onAnswer }: StepProps & { step: Extract<KitStep, { kind: 'route-blind' }> }) {
+  const order = useRef(blindOrder(step.trials));
+  const [trial, setTrial] = useState(0);
+  const [state, setState] = useState<'ready' | 'working' | 'played' | 'done'>('ready');
+  const [note, setNote] = useState('');
+  const results = useRef<Array<{ path: string; answer: string }>>([]);
+
+  const play = async () => {
+    unlockWebAudio();
+    setState('working');
+    setNote('');
+    // One session for the whole block: reopening between plays would make
+    // each one the first play after a mic open, which is a different state.
+    if (!mic.current) {
+      setNote('Opening the microphone…');
+      const err = await ensureMic('open');
+      if (err) setNote(`The microphone did not open (${err}). Answer what you hear anyway.`);
+    }
+    const url = await routeClipUrl();
+    if (!url) {
+      setNote('No recorded clip is available.');
+      setState('played');
+      return;
+    }
+    setNote('Playing…');
+    const result = await playThrough(order.current[trial]!, url);
+    setNote(result === 'ended' ? '' : `Playback failed (${result}).`);
+    setState('played');
+  };
+
+  const answer = (a: string) => {
+    const path = order.current[trial]!;
+    results.current.push({ path, answer: a });
+    diag('test', 'kit-blind', { step: step.id, trial: trial + 1, of: step.trials, path, answer: a });
+    if (trial + 1 >= step.trials) {
+      void ensureMic('closed');
+      setState('done');
+    } else {
+      setTrial(trial + 1);
+      setState('ready');
+    }
+  };
+
+  if (state === 'done') {
+    const tally = (path: string) => {
+      const rows = results.current.filter((r) => r.path === path);
+      return `${rows.filter((r) => r.answer === 'Loud speaker').length} of ${rows.length} on the loud speaker`;
+    };
+    return (
+      <>
+        <ul className="testkit-results" data-testid="testkit-blind-result">
+          <li>
+            Normal playback: <strong>{tally('element')}</strong>
+          </li>
+          <li>
+            Web Audio: <strong>{tally('webaudio')}</strong>
+          </li>
+        </ul>
+        <button
+          type="button"
+          className="u-btn u-btn-primary testkit-go"
+          onClick={() => onAnswer('done', { element: tally('element'), webaudio: tally('webaudio') })}
+        >
+          Next
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <p className="testkit-instruction">
+        Play {trial + 1} of {step.trials}. Press Play, listen, and tap where it came from. The microphone stays on for
+        all of them.
+      </p>
+      <button
+        type="button"
+        className="u-btn u-btn-primary testkit-go"
+        disabled={state === 'working'}
+        onClick={() => void play()}
+      >
+        {state === 'played' ? 'Play again' : 'Play'}
+      </button>
+      {note && <p className="testkit-note">{note}</p>}
+      {state === 'played' && (
+        <div className="testkit-answers">
+          {step.answers.map((a) => (
+            <button key={a} type="button" className="u-btn testkit-answer" onClick={() => answer(a)}>
+              {a}
+            </button>
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -405,6 +507,8 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
   const [phase, setPhase] = useState<'ready' | 'announcing' | 'listening' | 'scored'>('ready');
   const [current, setCurrent] = useState(0);
   const [last, setLast] = useState<string>('');
+  const [lastRight, setLastRight] = useState<boolean | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [samples, setSamples] = useState<CalibrationSample[]>([]);
   const cancelled = useRef(false);
 
@@ -425,15 +529,30 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
     for (let i = 0; i < schedule.current.length && !cancelled.current; i++) {
       const word = schedule.current[i]!;
       setCurrent(i);
-      tick();
-      const heard = await new Promise<Array<{ transcript: string; confidence: number }>>((resolve) => {
-        const timer = setTimeout(() => resolve([]), WORD_SLOT_MS);
-        mic.current!.onFinal = (alts) => {
-          clearTimeout(timer);
-          resolve(alts);
-        };
-      });
-      if (mic.current) mic.current.onFinal = null;
+      // Two tries per word. On 2026-10-05 a slot that heard nothing moved on
+      // silently, the operator repeated the word, and the repeat landed in the
+      // NEXT slot -- one silence became two misses. A retry on the same word,
+      // said out loud on screen, keeps the answer in its own slot.
+      let heard: Array<{ transcript: string; confidence: number }> = [];
+      let attempt = 0;
+      let tookMs = 0;
+      for (attempt = 1; attempt <= 2 && heard.length === 0 && !cancelled.current; attempt++) {
+        setRetrying(attempt === 2);
+        tick();
+        const t0 = Date.now();
+        heard = await new Promise<Array<{ transcript: string; confidence: number }>>((resolve) => {
+          const timer = setTimeout(() => resolve([]), WORD_SLOT_MS);
+          if (!mic.current) return resolve([]);
+          mic.current.onFinal = (alts) => {
+            clearTimeout(timer);
+            resolve(alts);
+          };
+        });
+        tookMs = Date.now() - t0;
+        if (mic.current) mic.current.onFinal = null;
+      }
+      attempt -= 1;
+      setRetrying(false);
       const sample: CalibrationSample = {
         word,
         heard: heard.map((h) => h.transcript),
@@ -449,11 +568,14 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
         offered: sample.heard.length,
         verdict,
         rescued,
+        attempt,
+        tookMs,
       });
       got.push(sample);
       setSamples([...got]);
-      setLast(sample.heard[0] ? `heard “${sample.heard[0]}” — ${verdict === 'right' ? 'right' : 'wrong'}` : 'heard nothing');
-      await wait(400);
+      setLast(sample.heard[0] ? `Heard “${sample.heard[0]}” — ${verdict === 'right' ? 'right' : 'wrong'}` : 'Heard nothing — moving on');
+      setLastRight(verdict === 'right');
+      await wait(1000);
     }
     await ensureMic('closed');
     const s = summariseCalibration(got);
@@ -487,8 +609,14 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
         <p className="testkit-word" data-testid="testkit-word">
           {word.say}
         </p>
+        <p className="testkit-listening">{retrying ? 'Didn’t catch that — say it again' : 'Listening… say it once'}</p>
+        {last && (
+          <p className={`testkit-heard ${lastRight ? 'testkit-heard-right' : 'testkit-heard-wrong'}`}>
+            Last word: {last}
+          </p>
+        )}
         <p className="testkit-note">
-          {current + 1} of {schedule.current.length} · {last}
+          {current + 1} of {schedule.current.length}
         </p>
       </>
     );

@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   KITS,
+  blindOrder,
+  type KitStep,
   KIT_RESUME_WINDOW_MS,
   calibrationSchedule,
   parseProgress,
@@ -8,6 +10,10 @@ import {
   summariseCalibration,
   type CalibrationSample,
 } from './testKit';
+
+/** Any step that opens the microphone. */
+const opensMic = (s: KitStep) =>
+  (s.kind === 'route' && s.mic === 'open') || s.kind === 'route-blind' || s.kind === 'calibrate';
 
 const sample = (say: string, heard: string[]): CalibrationSample => {
   const word = calibrationSchedule().find((w) => w.say === say)!;
@@ -17,7 +23,8 @@ const sample = (say: string, heard: string[]): CalibrationSample => {
 describe('test kit', () => {
   it('plays every never-opened baseline before any step that opens the mic', () => {
     for (const kit of Object.values(KITS)) {
-      const firstOpen = kit.steps.findIndex((s) => s.kind === 'route' && s.mic === 'open');
+      const firstOpen = kit.steps.findIndex(opensMic);
+      expect(firstOpen).toBeGreaterThanOrEqual(0);
       const lastBaseline = kit.steps.map((s) => s.kind === 'route' && s.mic === 'never-opened').lastIndexOf(true);
       expect(lastBaseline).toBeLessThan(firstOpen);
     }
@@ -26,10 +33,25 @@ describe('test kit', () => {
   it('reloads only after the mic has been opened, so the fresh page measures something', () => {
     const steps = KITS.desk.steps;
     const reload = steps.findIndex((s) => s.kind === 'reload');
-    const firstOpen = steps.findIndex((s) => s.kind === 'route' && s.mic === 'open');
+    const firstOpen = steps.findIndex(opensMic);
     expect(firstOpen).toBeGreaterThanOrEqual(0);
     expect(reload).toBeGreaterThan(firstOpen);
     expect(steps[reload + 1]).toMatchObject({ kind: 'route', mic: 'fresh-page' });
+  });
+
+  it('blinds the speaker check: each path equally often, in an order that varies', () => {
+    const order = blindOrder(6);
+    expect(order.filter((p) => p === 'element')).toHaveLength(3);
+    expect(order.filter((p) => p === 'webaudio')).toHaveLength(3);
+    const orders = new Set(Array.from({ length: 30 }, () => blindOrder(6).join(',')));
+    expect(orders.size).toBeGreaterThan(1);
+    expect(KITS.speaker.steps.some((s) => s.kind === 'route-blind')).toBe(true);
+  });
+
+  it('no longer asks about Call Audio Routing, which the 2026-10-05 run ruled out', () => {
+    for (const kit of Object.values(KITS)) {
+      expect(kit.steps.some((s) => s.id.includes('call-routing') || s.id.includes('car-routing'))).toBe(false);
+    }
   });
 
   it('has unique step ids within each kit', () => {

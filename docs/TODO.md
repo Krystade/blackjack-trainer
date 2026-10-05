@@ -99,6 +99,28 @@ Last updated: 2026-10-05 (first cloud session).
   settled.
 - [ ] Jack runs the **car kits**: Bluetooth on first (that's how he drives), then off.
 
+## Results — desk run 2026-10-05 (build 551ed72, iOS 18.7, installed app)
+
+One unblinded answer per step, so treat these as leads, not settled facts.
+
+| Step | Answer |
+|------|--------|
+| Mic never opened, normal playback | Loud speaker |
+| Mic never opened, Web Audio | **Heard nothing.** Ring switch, or the context not unlocked; now logged |
+| Mic open, normal playback | Earpiece (as on every drive) |
+| **Mic open, Web Audio** | **Loud speaker**: the first lead on G1 |
+| Mic closed again, both paths | Loud speaker |
+| Fresh page after reload, normal | Earpiece (odd: the mic was never opened in that page) |
+| Calibration, second round (quiet room) | **10/10**, one-word and two-word alike |
+| Calibration, first round | 3 slots heard nothing: `devicechange` ×2 right after the mic opened, then `audio-capture`. The first mic open of the page lost the mic |
+
+- **G1-e ruled out:** Jack already had Call Audio Routing = Speaker during this run, and
+  normal playback with the mic open was still on the earpiece.
+- **Next:** the blind Speaker check (6 plays, hidden order). If Web Audio holds up, the fix
+  for G1 is to play clips through Web Audio whenever the mic is open.
+- **New lead for G3:** the first mic session of a page load can lose its input to a route
+  change and go deaf for ~20s. Drills would lose their first answers the same way.
+
 ## G1 · Loud speaker + voice, no Bluetooth
 
 **Evidence so far (do not re-run):**
@@ -132,7 +154,7 @@ Last updated: 2026-10-05 (first cloud session).
 - [-] **G1-c · Native iOS shell (Capacitor).** Dropped 2026-10-05. Jack: "no shot im making
   this an app, especially in its current state." Everything below stays inside the browser.
   Don't propose it again unless the web paths below are all exhausted *and* Jack raises it.
-- [ ] **G1-e · iOS "Call Audio Routing" = Speaker** (no code).
+- [-] **G1-e · iOS "Call Audio Routing" = Speaker** (no code). **Ruled out 2026-10-05**: it was already on, and the earpiece persisted.
   - Settings → Accessibility → Touch → Call Audio Routing → Speaker.
   - Why it might work: the earpiece is iOS's receiver route for a record-capable session,
     which is the same route a call uses. This setting forces call audio to the speaker
