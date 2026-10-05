@@ -32,6 +32,7 @@ async function withFakeEngine(page: Page): Promise<void> {
       interimResults = true;
       lang = '';
       onstart: (() => void) | null = null;
+      onaudiostart: (() => void) | null = null;
       onend: (() => void) | null = null;
       onerror: ((e: { error?: string }) => void) | null = null;
       onresult: ((e: unknown) => void) | null = null;
@@ -40,7 +41,11 @@ async function withFakeEngine(page: Page): Promise<void> {
         (window as unknown as { __rec: FakeRecognition }).__rec = this;
       }
       start(): void {
-        setTimeout(() => this.onstart?.(), 0);
+        setTimeout(() => {
+          this.onstart?.();
+          // Safari fires audiostart right after start; without it the app waits out AUDIOSTART_GRACE_MS.
+          this.onaudiostart?.();
+        }, 0);
       }
       stop(): void {
         setTimeout(() => this.onend?.(), 0);

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { sayOnceListening } from './helpers';
 
 /**
  * Teaching the app a word it misheard.
@@ -135,6 +136,7 @@ test('a taught word is then heard as that command', async ({ page }) => {
       lang = '';
       phrases: unknown[] = [];
       onstart: (() => void) | null = null;
+      onaudiostart: (() => void) | null = null;
       onend: (() => void) | null = null;
       onerror: ((e: { error?: string }) => void) | null = null;
       onresult: ((e: unknown) => void) | null = null;
@@ -142,7 +144,11 @@ test('a taught word is then heard as that command', async ({ page }) => {
         (window as unknown as { __rec: FakeRecognition }).__rec = this;
       }
       start(): void {
-        setTimeout(() => this.onstart?.(), 0);
+        setTimeout(() => {
+          this.onstart?.();
+          // Safari fires audiostart right after start; without it the app waits out AUDIOSTART_GRACE_MS.
+          this.onaudiostart?.();
+        }, 0);
       }
       abort(): void {
         this.onend?.();
@@ -172,10 +178,12 @@ test('a taught word is then heard as that command', async ({ page }) => {
 
   // Say the taught word. Before this change it was rejected outright, which
   // is exactly what Jack's log shows happening twice in one drive.
-  await page.evaluate(() => {
-    const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
-    rec?.onresult?.({ results: [[{ transcript: 'strength' }]] });
-  });
+  // Through the shared helper, which waits for the microphone to be open and
+  // retries if the app began talking in the same tick. A bare onresult fired
+  // straight after Deal landed while the app was still speaking -- where the
+  // transcript is (correctly) suppressed -- so under load the test measured
+  // the race with the dealer's own voice, not the alias.
+  await sayOnceListening(page, 'strength');
 
   await expect(page.locator('.voice-status-heard')).toContainText('stand', {
     ignoreCase: true,

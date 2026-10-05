@@ -159,6 +159,7 @@ test('a spoken answer is recorded as both eyes-free and hands-free', async ({ pa
       interimResults = true;
       lang = '';
       onstart: (() => void) | null = null;
+      onaudiostart: (() => void) | null = null;
       onend: (() => void) | null = null;
       onerror: ((e: { error?: string }) => void) | null = null;
       onresult: ((e: unknown) => void) | null = null;
@@ -166,7 +167,11 @@ test('a spoken answer is recorded as both eyes-free and hands-free', async ({ pa
         (window as unknown as { __rec: FakeRecognition }).__rec = this;
       }
       start(): void {
-        setTimeout(() => this.onstart?.(), 0);
+        setTimeout(() => {
+          this.onstart?.();
+          // Safari fires audiostart right after start; without it the app waits out AUDIOSTART_GRACE_MS.
+          this.onaudiostart?.();
+        }, 0);
       }
       abort(): void {
         this.onend?.();

@@ -348,17 +348,32 @@ test('arming a mark sounds different from answering', async ({ page }) => {
 test('a tap the screen throws away is audible', async ({ page }) => {
   test.setTimeout(60_000);
   await openTest(page, 'Car, parked');
-  await expect(page.getByTestId('fieldtest-answers').locator('button').first()).toBeEnabled({
-    timeout: 20_000,
-  });
-  // INSIDE the bounce guard, deliberately: this is the window where a tap is
-  // discarded, and it used to be discarded in silence -- indistinguishable
-  // from having missed a 52px button at 70mph, so the reflex is to tap again.
+  // THE STEP BEFORE A SILENT ONE, not step one. The bounce guard is the 350ms
+  // after a step opens; on a step that has a line, the answers are held by
+  // `still-speaking` for longer than that, so a tap there is refused for a
+  // DIFFERENT reason (`answer-blocked`) and never reaches the guard at all.
+  // `wheel-back` declares no line, so its answers are live the moment it
+  // opens, and the only thing that can refuse a tap on it is the guard.
+  await goToStep(page, 'wheel-gap');
   await page.evaluate(() => {
     window.__speechLog = [];
   });
-  await page.getByTestId('fieldtest-skip').click();
-  await page.getByTestId('fieldtest-answers').locator('button').first().click({ force: true });
+  // ONE IN-PAGE STEP, not a Playwright click after the skip: the guard is
+  // 350ms wide, and a round trip per action under suite load can be longer
+  // than that, which would leave this test tapping after the window. The tap
+  // is made 30ms after the step is on screen (past the effect that stamps
+  // when it opened, well inside the guard).
+  await page.evaluate(async () => {
+    const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+    q('fieldtest-skip')!.click();
+    const deadline = Date.now() + 5000;
+    while (q('fieldtest-title')?.getAttribute('data-step') !== 'wheel-back') {
+      if (Date.now() > deadline) throw new Error('never reached wheel-back');
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    await new Promise((r) => setTimeout(r, 30));
+    q('fieldtest-answers')!.querySelector<HTMLElement>('button')!.click();
+  });
   await expect
     .poll(async () => (await speechLog(page)).join(' | '), { timeout: 5_000 })
     .toContain('chime:blocked');
@@ -368,3 +383,4 @@ test('a tap the screen throws away is audible', async ({ page }) => {
     'the tap was not actually refused, so this proves nothing',
   );
 });
+

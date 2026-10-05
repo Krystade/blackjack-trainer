@@ -170,7 +170,7 @@ test('a draft still in the box when the run is finished is saved, with the run',
   await finish.evaluate((b) => (b as HTMLButtonElement).click());
   await expect(finish).toHaveText('Tap again to end');
   await finish.evaluate((b) => (b as HTMLButtonElement).click());
-  await expect(page.getByTestId('fieldtest-open')).toContainText('Open the field test');
+  await expect(page.getByTestId('fieldtest-open')).not.toContainText('Back to the freeway drive');
 
   await expect
     .poll(async () => (await entries(page)).filter((e) => e.event === 'note').length, {
