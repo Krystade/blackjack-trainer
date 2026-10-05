@@ -633,6 +633,46 @@ describe('playClipsAsync — happy path (fake Audio + fetch)', () => {
     await expect(second).resolves.toBe(true);
   });
 
+  /**
+   * Two interrupting calls a few milliseconds apart, before either has a
+   * manifest. The interrupt used to run only at entry, ahead of the awaits:
+   * both calls found nothing to stop, both resolved their manifests, and both
+   * started a chain -- two prompts talking over each other, and the first one
+   * orphaned because `activeChain` now named the second.
+   */
+  it('a later interrupt supersedes an earlier call still loading its manifest', async () => {
+    const env = installFakeAudioEnv();
+    let releaseManifest: () => void = () => {};
+    const manifestGate = new Promise<void>((r) => (releaseManifest = r));
+    mockFetchRouter({
+      'index.json': async () => ({ voices: [{ id: 'aria', label: 'Aria' }], default: 'aria' }),
+      'manifest.json': async () => {
+        await manifestGate;
+        return { clips: { queen: 'queen.mp3', king: 'king.mp3' } };
+      },
+    });
+
+    const first = playClipsAsync('queen', { interrupt: true });
+    const second = playClipsAsync('king', { interrupt: true });
+    releaseManifest();
+
+    await vi.waitFor(() => expect(env.instances.some((a) => a.src.includes('king.mp3'))).toBe(true));
+    const sounding = env.instances.filter((a) => a.played && !a.paused).map((a) => a.src);
+    expect(sounding, 'more than one chain is making a noise').toHaveLength(1);
+    expect(sounding[0]).toContain('king.mp3');
+
+    // Superseded, not failed: `false` would send the caller to live TTS and
+    // speak the stale line anyway. And promptly -- not eight seconds later
+    // when the orphaned chain's watchdog finally gives up on it.
+    let firstSettled = false;
+    void first.then(() => (firstSettled = true));
+    await vi.waitFor(() => expect(firstSettled).toBe(true), { timeout: 500 });
+    await expect(first).resolves.toBe(true);
+
+    env.instances.find((a) => a.src.includes('king.mp3'))!.onended?.();
+    await expect(second).resolves.toBe(true);
+  });
+
   it('stopClips() stops the active chain and settles its promise true', async () => {
     const env = installFakeAudioEnv();
     mockFetchRouter({

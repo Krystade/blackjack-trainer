@@ -765,6 +765,18 @@ export function playClipsAsync(
   return playClipsResumable(text, opts).then((r) => r.played);
 }
 
+/**
+ * Bumped by every interrupting call, and read again after the awaits.
+ *
+ * Stopping the active chain at entry is not enough on its own: two calls a
+ * few milliseconds apart both find nothing to stop while their manifests are
+ * still loading, then both start a chain -- two prompts over each other, the
+ * first orphaned until its watchdog gives up. An interrupt has to supersede
+ * every call that STARTED before it, not just the chain that happened to be
+ * playing at that instant.
+ */
+let interruptEpoch = 0;
+
 export function playClipsResumable(
   text: string,
   opts?: { interrupt?: boolean; rate?: number; volume?: number },
@@ -772,8 +784,10 @@ export function playClipsResumable(
   return (async () => {
     try {
       if (opts?.interrupt) {
+        interruptEpoch++;
         stopActiveChain();
       }
+      const epoch = interruptEpoch;
 
       const voiceId = currentClipVoice || (await resolveDefaultVoiceId());
       if (!voiceId) {
@@ -800,6 +814,16 @@ export function playClipsResumable(
         diag('speak', 'clip-skip', { why: 'no-audio-element' });
         return NOTHING_PLAYED;
       }
+
+      if (epoch !== interruptEpoch) {
+        // Settled like a deliberate stop: the caller must not fall back to
+        // live TTS and speak a line that was replaced while it loaded.
+        diag('speak', 'clip-skip', { why: 'superseded' });
+        return { played: true, remainder: null };
+      }
+      // An interrupting call that is still current stops whatever started
+      // while it was loading -- a non-interrupting call that got there first.
+      if (opts?.interrupt) stopActiveChain();
 
       const rate = opts?.rate ?? 1;
       // Presence-checked, never `?? 1` on a truthiness test: volume 0 means
