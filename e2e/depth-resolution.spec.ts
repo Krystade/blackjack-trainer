@@ -108,7 +108,7 @@ test('the drill-local control persists across a reload', async ({
   expect(stored?.drill?.depthResolution).toBe('quarter');
 
   // And it survives a reload: the drill reopens on the stored value.
-  await openDrill(page, 'Deck Estimation');
+  await openDrill(page, 'Deck estimation');
   await expect(
     page.getByRole('button', { name: 'Quarter', exact: true }),
   ).toHaveClass(/segmented-btn-active/);

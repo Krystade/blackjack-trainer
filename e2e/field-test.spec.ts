@@ -118,7 +118,13 @@ async function logText(page: Page): Promise<string> {
   // which keeps the position and every stamp, unlike Finish.
   const pause = page.getByTestId('fieldtest-pause');
   if ((await pause.count()) > 0) await pause.click();
-  else await page.getByRole('button', { name: 'Settings' }).first().click();
+  // Pause and Finish both land on the Test kit now, not Settings (the tests
+  // moved out of Settings into the kit). The Diagnostic log is still a
+  // Settings section, so go Back out of the kit and open Settings the way a
+  // person would.
+  const back = page.getByRole('button', { name: 'Back' });
+  if ((await back.count()) > 0) await back.first().click();
+  await page.getByRole('button', { name: 'Settings' }).first().click();
   const section = diagPanel(page);
   const show = section.getByRole('button', { name: /^(Show|Hide)$/ });
   if ((await show.innerText()) === 'Show') await show.click();
@@ -466,8 +472,10 @@ test('finishing puts the test away and says so in the log', async ({ page }) => 
 
   await page.getByTestId('fieldtest-finish').click();
 
-  // Back on Settings, with the run closed rather than merely hidden.
-  await expect(page.getByTestId('fieldtest-open')).toContainText('Open the field test');
+  // Back on the Test kit, with the run closed rather than merely hidden: the
+  // entry offers a fresh drive, not a way back into this one.
+  await expect(page.getByTestId('fieldtest-open')).toContainText('Freeway drive');
+  await expect(page.getByTestId('fieldtest-open')).not.toContainText('Back to the freeway drive');
   const text = await logText(page);
   expect(text).toContain('run-end');
 });
@@ -1931,13 +1939,18 @@ async function withFakeRecognition(page: Page): Promise<void> {
       interimResults = true;
       lang = '';
       onstart: (() => void) | null = null;
+      onaudiostart: (() => void) | null = null;
       onend: (() => void) | null = null;
       onerror: ((e: { error?: string }) => void) | null = null;
       onresult: ((e: unknown) => void) | null = null;
       aborted = false;
       start(): void {
         this.aborted = false;
-        setTimeout(() => this.onstart?.(), 0);
+        setTimeout(() => {
+          this.onstart?.();
+          // Safari fires audiostart right after start; without it the app waits out AUDIOSTART_GRACE_MS.
+          this.onaudiostart?.();
+        }, 0);
       }
       stop(): void {
         this.onend?.();

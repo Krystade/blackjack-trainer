@@ -29,6 +29,7 @@ async function withSlowFirstEngine(page: Page): Promise<void> {
       interimResults = true;
       lang = '';
       onstart: (() => void) | null = null;
+      onaudiostart: (() => void) | null = null;
       onend: (() => void) | null = null;
       onerror: ((e: { error?: string }) => void) | null = null;
       onresult: ((e: unknown) => void) | null = null;
@@ -39,7 +40,11 @@ async function withSlowFirstEngine(page: Page): Promise<void> {
         // what iOS did while it established the permission. The controller's
         // own watchdog is what eventually tears it down and retries.
         if (attempt === 1) return;
-        setTimeout(() => this.onstart?.(), 0);
+        setTimeout(() => {
+          this.onstart?.();
+          // Safari fires audiostart right after start; without it the app waits out AUDIOSTART_GRACE_MS.
+          this.onaudiostart?.();
+        }, 0);
       }
 
       abort(): void {
@@ -103,6 +108,7 @@ test('a recognised word closes the window instead of running it out', async ({ p
       interimResults = true;
       lang = '';
       onstart: (() => void) | null = null;
+      onaudiostart: (() => void) | null = null;
       onend: (() => void) | null = null;
       onerror: ((e: { error?: string }) => void) | null = null;
       onresult: ((e: unknown) => void) | null = null;
@@ -112,7 +118,11 @@ test('a recognised word closes the window instead of running it out', async ({ p
       }
 
       start(): void {
-        setTimeout(() => this.onstart?.(), 0);
+        setTimeout(() => {
+          this.onstart?.();
+          // Safari fires audiostart right after start; without it the app waits out AUDIOSTART_GRACE_MS.
+          this.onaudiostart?.();
+        }, 0);
       }
 
       abort(): void {

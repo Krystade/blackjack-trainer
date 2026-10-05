@@ -450,10 +450,21 @@ test('the fallback-voice steps record their path attached to the run', async ({ 
   await expect(page.getByTestId('fieldtest-title')).toHaveAttribute('data-step', 'route-1t');
   await expect(page.getByTestId('fieldtest-path')).toBeVisible({ timeout: 20_000 });
 
-  const tts = (await allEvents(page)).filter(
-    (e) => e.category === 'speak' && e.event === 'path' && e.detail?.path === 'tts',
-  );
-  expect(tts.length, 'no TTS path record at all').toBeGreaterThan(0);
+  // POLLED, NOT READ ONCE: the panel renders from the settled path record, but
+  // the log buffers for a moment before it reaches storage, so the panel being
+  // up is not evidence that the log has the fact yet. (A one-shot read here
+  // measured the flush timer, not the stamps.)
+  const ttsRecords = async () =>
+    (await allEvents(page)).filter(
+      (e) => e.category === 'speak' && e.event === 'path' && e.detail?.path === 'tts',
+    );
+  await expect
+    .poll(async () => (await ttsRecords()).length, {
+      timeout: 20_000,
+      message: 'no TTS path record at all',
+    })
+    .toBeGreaterThan(0);
+  const tts = await ttsRecords();
   for (const e of tts) {
     expect(e.detail?.run, 'a TTS path record carries no run').toBeTruthy();
     expect(e.detail?.step, 'a TTS path record carries no step').toBeTruthy();
@@ -508,6 +519,27 @@ function press(page: import('@playwright/test').Page, action: string): Promise<b
  */
 test('a wheel press says whether the app was talking when it landed', async ({ page }) => {
   await captureWheel(page);
+  /*
+   * AN UTTERANCE THAT TAKES TIME, because headless Chromium ships no
+   * speechSynthesis voices: there `speak()` ends at once, so the instruction
+   * was "spoken" before the first press could land and the step's own
+   * premise (a press INSIDE the reading) was never reachable -- the test
+   * measured the sandbox's lack of a voice, not the app's marking. Only the
+   * engine is replaced; the app's own utterance handling, `speakingRef` and
+   * the arrival record are the real ones. Safari does not fire `onend`
+   * after `cancel()`, and neither does this.
+   */
+  await page.addInitScript(() => {
+    const synth = window.speechSynthesis;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    synth.speak = (u: SpeechSynthesisUtterance) => {
+      setTimeout(() => u.onstart?.(new Event('start') as SpeechSynthesisEvent), 0);
+      timer = setTimeout(() => u.onend?.(new Event('end') as SpeechSynthesisEvent), 3000);
+    };
+    synth.cancel = () => {
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  });
   await openTest(page);
   // Walked by id and bounded by the list, not by a count: the first route
   // block is skipped unanswered here, which scores it `short` and puts the

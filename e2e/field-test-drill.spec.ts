@@ -167,7 +167,11 @@ function diagPanel(page: Page) {
 async function logText(page: Page): Promise<string> {
   const pause = page.getByTestId('fieldtest-pause');
   if ((await pause.count()) > 0) await pause.click();
-  else await page.getByRole('button', { name: 'Settings' }).first().click();
+  // Pause lands on the Test kit now, not Settings; the Diagnostic log is still
+  // a Settings section, so go Back out of the kit and open Settings.
+  const back = page.getByRole('button', { name: 'Back' });
+  if ((await back.count()) > 0) await back.first().click();
+  await page.getByRole('button', { name: 'Settings' }).first().click();
   const section = diagPanel(page);
   const show = section.getByRole('button', { name: /^(Show|Hide)$/ });
   if ((await show.innerText()) === 'Show') await show.click();

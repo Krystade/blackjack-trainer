@@ -40,6 +40,7 @@ async function withFakeEngine(page: Page): Promise<void> {
       interimResults = true;
       lang = '';
       onstart: (() => void) | null = null;
+      onaudiostart: (() => void) | null = null;
       onend: (() => void) | null = null;
       onerror: ((e: { error?: string }) => void) | null = null;
       onresult: ((e: unknown) => void) | null = null;
@@ -54,7 +55,11 @@ async function withFakeEngine(page: Page): Promise<void> {
         // A stalled engine: `start()` accepted, `onstart` never delivered.
         // This is the recogniser between sessions on iOS, held there.
         if ((window as unknown as { __recStall?: boolean }).__recStall) return;
-        setTimeout(() => this.onstart?.(), 0);
+        setTimeout(() => {
+          this.onstart?.();
+          // Safari fires audiostart right after start; without it the app waits out AUDIOSTART_GRACE_MS.
+          this.onaudiostart?.();
+        }, 0);
       }
 
       stop(): void {
