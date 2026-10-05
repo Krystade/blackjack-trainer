@@ -228,7 +228,7 @@
 
 .charts-order-btn-active {
   background: var(--brass);
-  color: #16301f;
+  color: var(--accent-ink, #16301f);
 }
 
 .charts-order-btn:focus-visible,
@@ -587,7 +587,7 @@
   --surface: #faf6ee;
   --surface-raised: #ffffff;
   --hairline: #d8cdb8;
-  --brass: #8a5a1e;
+  --brass: #82541a;
   --ink: #201c16;
   --ink-dim: #6f6455;
 
