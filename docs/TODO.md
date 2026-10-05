@@ -37,11 +37,11 @@ Last updated: 2026-10-05 (first cloud session).
     consuming branch and any tests that exist only for it.
   - Done when: merged, `tsc -b` + lint + vitest green, e2e shows no new failures, and the
     keep/kill table is posted for Jack to veto.
-- [~] **Settings cull — voice/diagnostics half** (Car controls, mic panels, Diagnostic log,
+- [x] **Settings cull — voice/diagnostics half** (merged `17e5441`). (Car controls, mic panels, Diagnostic log,
   Voice control). Same method. Includes removing the dead **Switch** option: `persist.ts`
   rewrites `'switch'` to `'auto'` on every load, so picking it silently reverts. The three
   `speaker-handoff` specs that call `listenInCountDrill(page,'switch')` go with it.
-- [~] **Wording pass — core screens** (Home, Table, Charts, Stats, ProfileEditor, App,
+- [x] **Wording pass — core screens** (merged `df535fd`). (Home, Table, Charts, Stats, ProfileEditor, App,
   components). One term per concept; glossary in the report. Voice vocabulary is untouched.
 - [~] **Wording pass — drills + Field test**, now also covering the **Flashcards layout**
   from Jack's 2026-10-05 screenshots:
@@ -54,7 +54,10 @@ Last updated: 2026-10-05 (first cloud session).
     action bar all inside the viewport without scrolling.
 - [ ] **Merge the four agent branches**, resolve conflicts (`Settings.tsx` and `persist.ts`
   are touched by two of them) and run the full suite once. Push only after that.
-- [ ] **Recover the local session's unpushed work.** The local transcript shows
+- [x] **Clip-chain race fixed** (`9a8a51a`). Interrupts now carry an epoch.
+- [~] **Recover the local session's unpushed work.** Jack sent the local copy on
+  2026-10-05. Only `e2e/drill-layout.spec.ts` was new, and it went to the drills agent.
+  None of the fixes had been written yet. The local transcript shows
   `e2e/drill-layout.spec.ts` (+100) and `__probe2.spec.ts` (+36), which never reached the
   remote. Two findings came with them:
   - **ZonePad surrender circle covers the quadrant labels.** The circle is `44vmin`,
