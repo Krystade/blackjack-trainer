@@ -29,7 +29,7 @@
 
 import { matchVoiceAction, type VoiceAction } from '../audio/voiceRecognition';
 
-export type KitId = 'speaker' | 'desk' | 'car-bt' | 'car-no-bt';
+export type KitId = 'speaker' | 'desk' | 'car-bt' | 'car-no-bt' | 'bt-phone-mic';
 
 /** How a sound is made. The two paths are routed by different parts of WebKit. */
 export type PlayPath = 'element' | 'webaudio';
@@ -52,7 +52,16 @@ export type KitStep =
   | { kind: 'reload'; id: string; title: string; why: string }
   | { kind: 'spectrum'; id: string; title: string; why: string }
   | { kind: 'calibrate'; id: string; title: string; why: string }
-  | { kind: 'record'; id: string; title: string; what: 'words' | 'noise'; seconds: number; why: string };
+  | { kind: 'record'; id: string; title: string; what: 'words' | 'noise'; seconds: number; why: string }
+  // The 'bt-phone-mic' kit. Each one runs against the phone input chosen in
+  // its first step, held open across steps where the id says so.
+  | { kind: 'phone-inputs'; id: string; title: string; why: string }
+  | { kind: 'phone-probe'; id: string; title: string; why: string }
+  | { kind: 'phone-finger'; id: string; title: string; why: string }
+  | { kind: 'phone-route'; id: string; title: string; trials: number; answers: readonly string[]; why: string }
+  | { kind: 'phone-recognise'; id: string; title: string; why: string }
+  | { kind: 'wheel-press'; id: string; title: string; seconds: number; why: string }
+  | { kind: 'phone-summary'; id: string; title: string; why: string };
 
 const DESK_ROUTE = ['Loud speaker', 'Earpiece', 'Heard nothing', 'Not sure'] as const;
 const CAR_ROUTE = ['Car speakers', 'Phone loud speaker', 'Earpiece', 'Heard nothing', 'Not sure'] as const;
@@ -150,6 +159,65 @@ const CALIBRATE: KitStep = {
 // in no kit: Jack passed on sending recordings (2026-10-05), and the quiet-room
 // 10/10 made the desk noise bench less urgent. See docs/TODO.md G3-e.
 
+/** The step that asks about the car's screen; its answer is read by the summary. */
+export const PHONE_CALL_STEP_ID = 'phone-call-screen';
+
+const PHONE_MIC_STEPS: readonly KitStep[] = [
+  {
+    kind: 'phone-inputs',
+    id: 'phone-inputs',
+    title: 'Which microphones are offered',
+    why: 'Lists every input the phone names and picks the iPhone one by its label, with no choice needed from you.',
+  },
+  {
+    kind: 'phone-probe',
+    id: 'phone-probe',
+    title: 'Does the phone input carry high frequencies',
+    why: 'Energy above 4kHz cannot come through the car’s hands-free link, so finding it proves the phone’s own mic.',
+  },
+  {
+    kind: 'phone-finger',
+    id: 'phone-finger',
+    title: 'Finger test',
+    why: 'Covering the phone’s mic holes should silence a phone mic and change nothing for the car’s. The input stays open from here on.',
+  },
+  {
+    kind: 'phone-route',
+    id: 'phone-route',
+    title: 'Where does the sound come out',
+    trials: 6,
+    answers: CAR_ROUTE,
+    why: 'Six plays, two playback methods in a hidden order, while the phone input is held open.',
+  },
+  {
+    kind: 'instruction',
+    id: PHONE_CALL_STEP_ID,
+    title: 'The car’s screen',
+    body: 'Did the car’s screen show a phone call?',
+    answers: ['Yes', 'No', 'Not sure'],
+    why: 'A phone call on the car’s screen means the car has switched to call mode. The phone input is still open.',
+  },
+  {
+    kind: 'phone-recognise',
+    id: 'phone-recognise',
+    title: 'Does recognition follow the phone mic',
+    why: 'The ten command words twice, phone mic covered and then uncovered. If covering it breaks recognition, the recogniser is listening through it.',
+  },
+  {
+    kind: 'wheel-press',
+    id: 'phone-wheel',
+    title: 'Steering wheel button',
+    seconds: 8,
+    why: 'In call mode the car keeps the wheel buttons for itself. If skip-forward arrives, it is not in call mode.',
+  },
+  {
+    kind: 'phone-summary',
+    id: 'phone-summary',
+    title: 'What this says',
+    why: 'Plain-language verdicts for each check. Every microphone is released when this opens.',
+  },
+];
+
 export const KITS: Record<KitId, { label: string; where: string; steps: readonly KitStep[] }> = {
   speaker: {
     label: 'Speaker check',
@@ -211,6 +279,11 @@ export const KITS: Record<KitId, { label: string; where: string; steps: readonly
       SPECTRUM,
       CALIBRATE,
     ],
+  },
+  'bt-phone-mic': {
+    label: 'Bluetooth: phone mic?',
+    where: 'In the car, Bluetooth connected, parked with the engine running. About 3 minutes.',
+    steps: PHONE_MIC_STEPS,
   },
 };
 
