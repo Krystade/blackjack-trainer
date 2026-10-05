@@ -178,7 +178,7 @@
 }
 
 .tab-label {
-  font-size: 0.62rem;
+  font-size: 0.7rem;
   letter-spacing: 0.03em;
 }
 
@@ -263,6 +263,21 @@ body:has(.fieldtest-running) .fieldtest-screen {
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* The strip the global mute button lives in (see `.mute-btn`). */
+  --mute-h: 44px;
+  /* Everything above the screens: status-bar inset plus the mute strip. */
+  --chrome-top: calc(var(--safe-top) + var(--mute-h));
+}
+@media (max-height: 699px) {
+  :root {
+    --mute-h: 32px;
+  }
+}
+
+/* Reserve the status-bar inset AND the mute strip above every screen, once,
+   here. Screens therefore no longer pad `--safe-top` themselves (below). */
+body {
+  padding-top: var(--chrome-top);
 }
 
 /*
@@ -294,14 +309,13 @@ body:has(.fieldtest-running) .fieldtest-screen {
    sets itself -- the field test was simply not in its list either. */
 .fieldtest-screen,
 .charts-screen {
-  padding-top: var(--safe-top);
+  padding-top: 0;
 }
 
 /*
  * Full-viewport overlays are pinned with `inset: 0`, so they sit under the
  * status bar for the same reason and need the same reservation.
  */
-.study-chart-overlay,
 .zone-pad,
 .modal-backdrop {
   padding-top: var(--safe-top);

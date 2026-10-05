@@ -686,6 +686,9 @@ button {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  /* Same 16px gutter as the ActionBar; the keypad used to run to both screen
+     edges with its label flush left (audit P2-6). */
+  padding: 0 var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
 }
 
 .numpad-label {
@@ -2485,7 +2488,7 @@ button {
 }
 
 .table-discard-label {
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -3148,7 +3151,7 @@ button {
 }
 
 .readiness-label {
-  font-size: 0.62rem;
+  font-size: 0.7rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -3188,7 +3191,6 @@ button {
   font-size: 0.72rem;
   letter-spacing: 0.04em;
   color: var(--ink-faint, var(--ink-dim));
-  opacity: 0.75;
   user-select: text;
   -webkit-user-select: text;
 }
@@ -3338,7 +3340,7 @@ button {
 }
 
 .table-discard-label {
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -3362,7 +3364,7 @@ button {
 
 .drills-group-title {
   margin: var(--space-4) 0 var(--space-1);
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -3718,34 +3720,22 @@ details.stats-section > summary::after {
 
 /* The global mute button (ui/components/MuteButton.tsx).
 
-   Fixed to the top-right rather than placed in a layout: it is rendered by
-   the app shell for every screen, including the immersive ones that own
-   their whole viewport, so it cannot take part in any screen's flow. Top
-   RIGHT because the drill screens all put Back at the top left.
-
-   `env(safe-area-inset-*)` keeps it clear of the notch on an iPhone in a
-   car mount, which is the device this is for. */
+   RESERVED STRIP, NOT A FLOATING DISC. It used to float bottom-left at a
+   magic offset and landed on Deal, Back to Home, the numpad minus key and
+   the chip rows (docs/research/2026-10-05-ux-audit.md, P1-1). It is now
+   pinned top-right INSIDE a strip that `body` reserves
+   (`padding-top: --safe-top + --mute-h`), so every screen's content starts
+   below it by construction and no control can sit under it. The disc is
+   still rendered once by the app shell, so it exists on the immersive
+   screens and on a crashed one. `--mute-h` is the one number the layouts pad
+   around (see the min-height override in primitives.css). */
 .mute-btn {
   position: fixed;
-  /* BOTTOM LEFT, and arrived at by rendering it rather than by reasoning:
-     top-right put it straight on top of the drill screens' Repeat button and
-     the table's End button, which the e2e suite caught as an unclickable
-     Repeat. Every bar in this app -- drill top bar, table HUD, ActionBar,
-     TabBar -- owns a full-width edge, and controls inside them are pinned to
-     the corners. The one region consistently free of controls is the left
-     side above the bottom bar, and it is thumb-reachable on a phone in a
-     mount, which the top corners are not.
-
-     Flush to the edge, not inset: at 8px in, the disc landed on the first
-     characters of the correction panel's "you played" value, which is the
-     one thing on that screen you have to be able to read. The screen's own
-     content gutter is wider than the disc, so a button hard against the edge
-     clears it. */
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
-  left: env(safe-area-inset-left, 0px);
+  top: var(--safe-top, 0px);
+  right: calc(env(safe-area-inset-right, 0px) + 8px);
   z-index: 60;
-  width: 44px;
-  height: 44px;
+  width: var(--mute-h);
+  height: var(--mute-h);
   border-radius: 50%;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -3756,7 +3746,7 @@ details.stats-section > summary::after {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  opacity: 0.55;
+  opacity: 0.7;
   padding: 0;
 }
 
@@ -4616,4 +4606,68 @@ details.stats-section > summary::after {
 }
 .testkit-heard-wrong {
   color: var(--bad, #e57373);
+}
+
+/* ---------- Mute strip: take it out of screen heights ----------
+   Last in the cascade on purpose: the screens above each set their own
+   `min-height: 100svh`, and this has to win over all of them. */
+/* Screens are `min-height: 100svh`; with the strip above them that would make
+   every screen scroll by exactly the strip. Take it back out. Attribute
+   selectors on the class name so a new `*-screen` is covered automatically. */
+[class$='-screen'],
+[class*='-screen '],
+.drills-picker {
+  min-height: calc(100svh - var(--chrome-top));
+}
+.fieldtest-running {
+  height: calc(100svh - var(--chrome-top));
+  max-height: calc(100svh - var(--chrome-top));
+}
+.study-chart-overlay {
+  padding-top: var(--chrome-top);
+}
+
+/* ---------- One tap-target floor ----------
+   44px in both axes for everything a thumb has to find without looking
+   (docs/research/2026-10-05-ux-audit.md, P2-1). Last in the cascade so it
+   beats each control's own smaller `min-height`; add new small controls here
+   rather than giving each its own number. e2e/layout-guard.spec.ts measures
+   the rendered boxes. */
+.tc-peek-btn,
+.end-btn,
+.repeat-btn,
+.voice-btn,
+.home-stats-link,
+.stats-tab,
+.stats-range-btn,
+.settings-toggle {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Checkboxes are drawn at their own width/height, not min-*: size them.
+   Only the Settings/Profile toggles: the drill-setup checkboxes stay compact
+   (their whole label row is the target) so the setup screens still fit. */
+.settings-toggle {
+  width: 44px;
+  height: 44px;
+}
+
+/* An inline text link has no padding to grow into; give it hit area without
+   moving the text (it is `align-self: flex-start`, so it grows rightwards). */
+.home-stats-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  margin-left: calc(-1 * var(--space-3));
+}
+
+/* The mute disc is the same floor, except in a short viewport (Safari with
+   its toolbars up leaves ~635px): there the strip it lives in shrinks to 32px
+   so the drill screens, which are tuned to fit 635, still do. */
+@media (min-height: 700px) {
+  .mute-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
