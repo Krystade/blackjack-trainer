@@ -12,6 +12,9 @@ import {
   _resetAudioSessionForTest,
   outputRoutePreference,
   openMicWhenQuiet,
+  routeSettleWaitMs,
+  declareRecordingIntent,
+  ROUTE_SETTLE_MS,
 } from './audioSession';
 import { clearDiagnosticLog, readDiagnosticLog } from '../diag/diagnosticLog';
 import { DEFAULT_AUDIO } from '../store/types';
@@ -249,11 +252,17 @@ describe('handing the speaker back and forth', () => {
     expect(s.type).toBe('playback');
   });
 
-  it('gives the microphone back when the line ends', () => {
-    const s = installSession('play-and-record');
+  it('gives the microphone back when the line ends, without declaring it yet', () => {
+    // The declaration moved to `declareRecordingIntent`, which runs when a
+    // microphone is really being opened. Doing it here flapped the session
+    // mid-utterance whenever the reopen was owed but deferred -- three times
+    // in the 2026-10-04 log, with audio playing.
+    const s = installSession('playback');
     setOutputRoutePreference('switch');
     beginSpeechHandoff(true);
     expect(endSpeechHandoff()).toBe('open-mic');
+    expect(s.type).toBe('playback');
+    declareRecordingIntent();
     expect(s.type).toBe('play-and-record');
   });
 
@@ -515,5 +524,170 @@ describe('opening the microphone around the app talking', () => {
     const rows = readDiagnosticLog().filter((r) => r.event === 'mic-deferred');
     expect(rows).toHaveLength(1);
     expect(rows[0]?.detail).toMatchObject({ why: 'test' });
+  });
+});
+
+/**
+ * LETTING THE ROUTE SETTLE BEFORE THE WORDS START.
+ *
+ * Jack, 2026-10-04 evening, on build ec67e35cdd0f with Switch selected by
+ * hand: "often times it would go from being quiet to being loud within the
+ * same message ... anytime I said repeat I wouldn't hear what hand I had just
+ * what the dealer had."
+ *
+ * His log has it exactly. A prompt is a chain of two clips, and the words
+ * begin 62ms after capture ends:
+ *
+ *   17:17:02.071  mic   stop
+ *   17:17:02.133  speak clip-chain files="you-have-ace-eight.mp3, dealer-shows-ace.mp3"
+ *   17:17:07.356  speak clip-end   ms=5223
+ *
+ * Output routing does not come back the instant the microphone shuts -- the
+ * 2026-09-29 drive measured it returning to the car about 1.6 seconds later,
+ * because iOS re-decides the route for each new sound and the decision at
+ * 02.133 was still the capture one. So `you-have-ace-eight.mp3` played to the
+ * earpiece and `dealer-shows-ace.mp3`, starting after the route had moved,
+ * came out of the car. The hand is lost and the dealer survives, which is the
+ * symptom he reported word for word.
+ *
+ * The wait is therefore not padding, it is the cost of the handoff: having
+ * closed the microphone to get the speaker back, the app has to let iOS
+ * actually hand it over before saying anything worth hearing.
+ */
+describe('waiting for the route after closing the microphone', () => {
+  const realNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+
+  function installSession(initial: string): { type: string } {
+    const s = { type: initial };
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { audioSession: s },
+      configurable: true,
+      writable: true,
+    });
+    return s;
+  }
+
+  beforeEach(() => {
+    clearDiagnosticLog();
+    _resetAudioSessionForTest();
+    installSession('play-and-record');
+  });
+
+  afterEach(() => {
+    if (realNavigator) Object.defineProperty(globalThis, 'navigator', realNavigator);
+    else delete (globalThis as { navigator?: unknown }).navigator;
+  });
+
+  it('asks for the settle only after a handoff actually closed the mic', () => {
+    setOutputRoutePreference('switch');
+    // Nothing closed yet, so nothing to wait for: the common case must not
+    // pay 1.6 seconds for a route that never moved.
+    expect(routeSettleWaitMs(1000)).toBe(0);
+    beginSpeechHandoff(true, 1000);
+    expect(routeSettleWaitMs(1000)).toBe(ROUTE_SETTLE_MS);
+  });
+
+  it('counts down, so the wait is wall-clock and not a fixed sleep', () => {
+    // The handoff does bookkeeping between closing the mic and the first
+    // byte of audio; whatever that costs is time the route has already had.
+    setOutputRoutePreference('switch');
+    beginSpeechHandoff(true, 1000);
+    expect(routeSettleWaitMs(1000 + 600)).toBe(ROUTE_SETTLE_MS - 600);
+  });
+
+  it('is finished once the settle has elapsed', () => {
+    setOutputRoutePreference('switch');
+    beginSpeechHandoff(true, 1000);
+    expect(routeSettleWaitMs(1000 + ROUTE_SETTLE_MS + 1)).toBe(0);
+  });
+
+  it('is paid once per close, not once per clip in the chain', () => {
+    // A four-clip correction would otherwise wait six seconds. Only the
+    // FIRST sound after the close is routed wrong; by the second the route
+    // has moved, which is the whole shape of what Jack heard.
+    setOutputRoutePreference('switch');
+    beginSpeechHandoff(true, 1000);
+    expect(routeSettleWaitMs(1000)).toBe(ROUTE_SETTLE_MS);
+    expect(routeSettleWaitMs(1000)).toBe(0);
+  });
+
+  it('never waits under the routes that do not close the microphone', () => {
+    // 'auto' never takes the mic down, so there is no handover to wait for,
+    // and making it wait would add dead air for nothing.
+    for (const route of ['auto', 'playback'] as const) {
+      _resetAudioSessionForTest();
+      setOutputRoutePreference(route);
+      beginSpeechHandoff(true, 1000);
+      expect(routeSettleWaitMs(1000)).toBe(0);
+    }
+  });
+});
+
+/**
+ * NOT DECLARING THE RECORDING INTENT UNTIL THE MICROPHONE ACTUALLY OPENS.
+ *
+ * From the same log, three times, in the middle of an utterance:
+ *
+ *   17:17:06.462  route handoff      to=microphone why=deadline
+ *   17:17:06.462  route audio-session was=playback wanted=play-and-record got=play-and-record ok=true
+ *   17:17:06.462  route audio-session was=play-and-record wanted=playback got=playback ok=true
+ *   17:17:06.462  mic   mic-deferred why=deadline
+ *   17:17:07.356  speak clip-end     ms=5223
+ *
+ * The backstop fired while the app still had 894ms of clip left, because the
+ * deaf window is sized from a text estimate (2375ms) and the real recording
+ * ran 5223ms. The gate did its job and refused to open the microphone over
+ * the app's voice -- but `endSpeechHandoff` had ALREADY declared
+ * 'play-and-record', so the session flapped to the capture category and back
+ * inside one millisecond, mid-sentence, while audio was playing.
+ *
+ * The declaration belongs with the act it describes. Nothing is recording
+ * until something opens the microphone, so nothing should say it is.
+ */
+describe('declaring the recording intent', () => {
+  const realNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+
+  function installSession(initial: string): { type: string } {
+    const s = { type: initial };
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { audioSession: s },
+      configurable: true,
+      writable: true,
+    });
+    return s;
+  }
+
+  beforeEach(() => {
+    clearDiagnosticLog();
+    _resetAudioSessionForTest();
+  });
+
+  afterEach(() => {
+    if (realNavigator) Object.defineProperty(globalThis, 'navigator', realNavigator);
+    else delete (globalThis as { navigator?: unknown }).navigator;
+  });
+
+  it('leaves the session on playback when the reopen is only owed', () => {
+    // THE FLAP, made impossible. Ending the handoff is bookkeeping: it says
+    // the debt may be paid, not that a microphone is now live.
+    const session = installSession('playback');
+    setOutputRoutePreference('switch');
+    beginSpeechHandoff(true, 1000);
+    expect(endSpeechHandoff()).toBe('open-mic');
+    expect(session.type).toBe('playback');
+  });
+
+  it('declares it when the microphone is really being opened', () => {
+    const session = installSession('playback');
+    setOutputRoutePreference('switch');
+    declareRecordingIntent();
+    expect(session.type).toBe('play-and-record');
+  });
+
+  it('does not declare it under auto, which never touches the session', () => {
+    const session = installSession('playback');
+    setOutputRoutePreference('auto');
+    declareRecordingIntent();
+    expect(session.type).toBe('playback');
   });
 });

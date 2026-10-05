@@ -181,14 +181,92 @@ export function releaseSpeakerForListening(): void {
 let micClosedForSpeech = false;
 
 /**
+ * When the handoff last took the microphone down, so the route's handover can
+ * be waited out before anything worth hearing is played.
+ */
+let micClosedAt: number | null = null;
+
+/**
+ * HOW LONG iOS TAKES TO GIVE THE LOUD SPEAKER BACK after capture ends.
+ *
+ * The 2026-09-29 drive measured output routing returning to the car about 1.6
+ * seconds after the microphone shut, because iOS re-decides the route for each
+ * new sound rather than on a state change. Everything that starts inside that
+ * window is still routed as though something were recording.
+ *
+ * Jack's 2026-10-04 log is the cost of not waiting -- the words began 62ms
+ * after `mic stop`, so the first clip of the chain went to the earpiece and
+ * only the second arrived on the car: "anytime I said repeat I wouldn't hear
+ * what hand I had just what the dealer had."
+ *
+ * A measured figure rather than a guess, but one measurement on one phone in
+ * one car, so `route settle-wait` records every wait and the next drive's log
+ * says whether it is enough.
+ */
+export const ROUTE_SETTLE_MS = 1600;
+
+/**
+ * How much longer to wait before making a sound, having closed the microphone.
+ *
+ * Takes `now` rather than reading the clock so the wait is testable and so it
+ * is wall-clock: whatever the handoff spent on its own bookkeeping between
+ * closing capture and the first byte of audio is time the route has already
+ * had, and should not be charged twice.
+ *
+ * CONSUMED ON READ, which is what keeps a four-clip correction from waiting
+ * six seconds. Only the first sound after the close is routed wrong; by the
+ * second the route has moved, which is exactly the shape of what Jack heard.
+ */
+export function routeSettleWaitMs(now: number): number {
+  if (preference !== 'switch' || micClosedAt === null) return 0;
+  const elapsed = now - micClosedAt;
+  micClosedAt = null;
+  const remaining = ROUTE_SETTLE_MS - elapsed;
+  if (remaining <= 0) return 0;
+  diag('route', 'settle-wait', { ms: remaining, since: elapsed });
+  return remaining;
+}
+
+/**
+ * Say that something is about to record, at the moment it really is.
+ *
+ * SEPARATED FROM `endSpeechHandoff` because of a flap in Jack's 2026-10-04
+ * log, three times, mid-utterance:
+ *
+ *   17:17:06.462  route handoff       to=microphone why=deadline
+ *   17:17:06.462  route audio-session wanted=play-and-record got=play-and-record ok=true
+ *   17:17:06.462  route audio-session wanted=playback got=playback ok=true
+ *   17:17:06.462  mic   mic-deferred  why=deadline
+ *   17:17:07.356  speak clip-end      ms=5223
+ *
+ * The backstop fired with 894ms of clip still to play -- the deaf window is
+ * sized from a text estimate of 2375ms and the real recording ran 5223ms --
+ * and the gate rightly refused to open the microphone over the app's own
+ * voice. But ending the handoff had already declared the capture category, so
+ * the session went to 'play-and-record' and back inside one millisecond while
+ * audio was coming out. Ending the handoff is bookkeeping about a debt; it is
+ * not the microphone opening, and only the opening should say so.
+ */
+export function declareRecordingIntent(): void {
+  if (preference !== 'switch') return;
+  requestAudioSessionType('play-and-record');
+}
+
+/**
  * The app is about to speak. Returns whether the caller must close the
  * microphone first.
  *
  * `hasWords` is false for a chime -- see above.
  */
-export function beginSpeechHandoff(hasWords: boolean): 'close-mic' | 'none' {
+export function beginSpeechHandoff(
+  hasWords: boolean,
+  now: number = Date.now(),
+): 'close-mic' | 'none' {
   if (preference !== 'switch' || !hasWords || micClosedForSpeech) return 'none';
   micClosedForSpeech = true;
+  // The clock the settle is measured from. Taken here rather than at the
+  // close's call site so the two cannot drift apart.
+  micClosedAt = now;
   requestAudioSessionType('playback');
   return 'close-mic';
 }
@@ -204,7 +282,10 @@ export function beginSpeechHandoff(hasWords: boolean): 'close-mic' | 'none' {
 export function endSpeechHandoff(): 'open-mic' | 'none' {
   if (!micClosedForSpeech) return 'none';
   micClosedForSpeech = false;
-  requestAudioSessionType('play-and-record');
+  // NO DECLARATION HERE -- see `declareRecordingIntent`. This says the debt
+  // may now be paid, which is not the same as a microphone being live, and
+  // conflating the two flapped the session mid-utterance three times in the
+  // 2026-10-04 log.
   return 'open-mic';
 }
 
@@ -303,6 +384,7 @@ export function openMicWhenQuiet(deps: {
  */
 export function abandonSpeechHandoff(): void {
   micClosedForSpeech = false;
+  micClosedAt = null;
 }
 
 /** Test-only: forget what has been logged, and the preference. */
@@ -310,4 +392,5 @@ export function _resetAudioSessionForTest(): void {
   lastLogged = null;
   preference = DEFAULT_AUDIO.outputRoute;
   micClosedForSpeech = false;
+  micClosedAt = null;
 }

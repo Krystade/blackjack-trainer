@@ -25,6 +25,7 @@ import {
   audioSessionSupported,
   beginSpeechHandoff,
   claimSpeakerForPlayback,
+  declareRecordingIntent,
   endSpeechHandoff,
   openMicWhenQuiet,
   readAudioSessionType,
@@ -456,6 +457,16 @@ export function useVoiceControl({
         whenQuiet: whenSomethingFinishesSpeaking,
         open: () => {
           deferredOpenRef.current = null;
+          /*
+           * SAY THE CAPTURE CATEGORY HERE, where it is finally true.
+           *
+           * `endSpeechHandoff` used to declare it, which meant a reopen that
+           * was owed but deferred flapped the session to 'play-and-record'
+           * and straight back to 'playback' while a clip was playing -- three
+           * times in Jack's 2026-10-04 log, each one a route change in the
+           * middle of a sentence he was trying to hear.
+           */
+          declareRecordingIntent();
           controller.start();
         },
         why,
