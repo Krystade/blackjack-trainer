@@ -295,6 +295,27 @@ export interface AudioSettings {
    * command. See the note on ECHO_MIN_WORDS.
    */
   voiceAliases: Record<string, string>;
+  /**
+   * What counts as "the microphone is open": the engine saying it started, or
+   * the capture source actually coming up.
+   *
+   * 'audiostart' is the fix and the default. WebKit fires `onstart` and THEN
+   * calls `startCapture()`, so a cue on `onstart` invites an answer into a
+   * microphone that is not recording yet -- and the lost syllable is not
+   * clipped, it was never captured. 'start' is the old behaviour, kept
+   * because a control drive is the only thing that turns this into a number.
+   */
+  micCueOn: 'start' | 'audiostart';
+  /**
+   * How many readings of one utterance to ask the engine for.
+   *
+   * Three until now, which is also the most anyone has ever asked iOS for --
+   * so whether it offers more is unknown rather than settled. Deepening is
+   * safe because resolveSpoken's guards are on LENGTH, not rank: both the
+   * winner and the rescuing reading must be short, so a longer list cannot
+   * turn a sentence into a played hand.
+   */
+  voiceAlternatives: number;
 }
 
 export const DEFAULT_AUDIO: AudioSettings = {
@@ -329,6 +350,23 @@ export const DEFAULT_AUDIO: AudioSettings = {
   // to work. Costs ~1.2s of deafness per line; both other modes remain.
   outputRoute: 'auto',
   voiceAliases: {},
+  /*
+   * 'audiostart', because `onstart` is measurably not the microphone.
+   *
+   * The 2026-10-04 log has `heard=It` for "hit" and `heard=Strength` for
+   * "stand" -- both the shape of a word whose onset is missing. WebKit's
+   * `SpeechRecognizer::start()` dispatches Start and only afterwards calls
+   * `startCapture()`, and over Bluetooth that second step waits on the
+   * hands-free SCO link. Anything said in between never reached the buffer.
+   *
+   * Safe as a default because the gate fails OPEN: an engine that never fires
+   * the event cues anyway after AUDIOSTART_GRACE_MS, logged under its own
+   * name. The worst case is the behaviour of the old default.
+   */
+  micCueOn: 'audiostart',
+  // Ten, to find out what iOS will actually offer. Nothing has ever asked for
+  // more than three, so the ceiling is unmeasured rather than known.
+  voiceAlternatives: 10,
   cardDetail: 'rank',
   /*
    * ON, now that a real drive has played them.

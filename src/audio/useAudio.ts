@@ -1,5 +1,6 @@
 import { setOutputRoutePreference } from './audioSession';
 import { setUserVoiceAliases, type VoiceAction } from './voiceRecognition';
+import { setMicTuning } from './micTuning';
 import { useEffect, useMemo } from 'react';
 import type { AudioSettings } from '../store/types';
 import { speak, chime, chimeWhenQuiet, repeatLast } from './speech';
@@ -49,7 +50,19 @@ export interface AudioApi {
  * re-fire loop.
  */
 export function useAudio(audio: AudioSettings): AudioApi {
-  const { enabled, verbosity, rate, voiceURI, chimes, useClips, clipVoice, outputRoute, voiceAliases } = audio;
+  const {
+    enabled,
+    verbosity,
+    rate,
+    voiceURI,
+    chimes,
+    useClips,
+    clipVoice,
+    outputRoute,
+    voiceAliases,
+    micCueOn,
+    voiceAlternatives,
+  } = audio;
   // Mute is folded in HERE, once, rather than at the four call sites below:
   // a path that forgot it would be a path that still makes noise in a
   // quiet room, which is the one failure this control exists to prevent.
@@ -83,6 +96,15 @@ export function useAudio(audio: AudioSettings): AudioApi {
   useEffect(() => {
     setUserVoiceAliases((voiceAliases ?? {}) as Record<string, VoiceAction>);
   }, [voiceAliases]);
+
+  /*
+   * And the two microphone experiments, module-level for the same reason: the
+   * recogniser is started from nine screens and reads these per session, so
+   * flipping one applies to the next utterance rather than the next reload.
+   */
+  useEffect(() => {
+    setMicTuning({ cueOn: micCueOn, alternatives: voiceAlternatives });
+  }, [micCueOn, voiceAlternatives]);
 
   // Same pattern for the selected clip voice, warmed for the same reason --
   // switching voice empties the cache for the one now selected.

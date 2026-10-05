@@ -58,11 +58,24 @@ export interface RecognitionLike {
   start: () => void;
   abort: () => void;
   onstart: (() => void) | null;
+  /**
+   * The capture source coming up -- the microphone actually recording.
+   *
+   * Optional because not every engine dispatches it, and the controller must
+   * work where it is missing. WebKit does dispatch it, from
+   * `SpeechRecognitionCaptureSourceImpl::sourceStarted()`, which runs after
+   * the AVAudioSession input unit is up. That is strictly later than
+   * `onstart`: `SpeechRecognizer::start()` fires the Start update and only
+   * THEN calls `startCapture()`.
+   */
+  onaudiostart?: (() => void) | null;
   onend: (() => void) | null;
   onerror: ((e: { error?: string }) => void) | null;
   onresult:
     | ((e: {
-        results?: ArrayLike<ArrayLike<{ transcript?: string }> & { length?: number }>;
+        results?: ArrayLike<
+          ArrayLike<{ transcript?: string; confidence?: number }> & { length?: number }
+        >;
       }) => void)
     | null;
 }
@@ -138,6 +151,30 @@ export interface VoiceControllerDeps {
   hasWorked?: () => boolean;
   /** Told the first time a session demonstrably works, so the page can remember. */
   onWorked?: () => void;
+  /**
+   * What to treat as "the microphone is open": the engine's `onstart`, or the
+   * capture source's `onaudiostart`.
+   *
+   * A GETTER, not a value, so the operator flipping this between hands
+   * applies to the next session instead of needing a reload -- the controller
+   * itself is rebuilt only when voice is toggled.
+   *
+   * Defaults to 'start', which is what this controller has always done, so
+   * that the forty tests written against that behaviour still describe it and
+   * the control arm of the experiment is the original code path rather than a
+   * reconstruction of it. The app passes the operator's setting, whose
+   * default is 'audiostart'.
+   */
+  cueOn?: () => 'start' | 'audiostart';
+  /**
+   * How many readings of the same audio to ask the engine for.
+   *
+   * A getter for the same reason as `cueOn`. Nobody has ever asked iOS for
+   * more than three, so whether it offers more is unknown; WebKit's
+   * `callbackWithTranscriptions:` iterates SF's transcriptions and breaks at
+   * `_maxAlternatives`, so asking for more costs nothing where fewer exist.
+   */
+  alternatives?: () => number;
 }
 
 /**
@@ -205,6 +242,33 @@ export function restartDelayFor(consecutiveFailures: number): number {
  * can fix by talking louder.
  */
 export const START_TIMEOUT_MS = 5000;
+
+/**
+ * How long to wait for the microphone after the engine says it started.
+ *
+ * THIS TIMER EXISTS TO FAIL OPEN, and that is its whole point. Gating the cue
+ * on `onaudiostart` is an accuracy optimisation; an engine that never
+ * dispatches it would otherwise leave this controller in 'starting' for the
+ * whole drive -- no cue, no answer, no microphone. Strictly worse than the
+ * onset loss the gate is there to fix. So the wait gives up and cues anyway,
+ * under its own log name so a drive can tell the two apart.
+ *
+ * Longer than any plausible input-unit start, including a Bluetooth SCO
+ * negotiation, and well short of the three-second answer pause -- so where
+ * the event does arrive, this never fires.
+ */
+export const AUDIOSTART_GRACE_MS = 1500;
+
+/**
+ * What goes in the log when the engine attached no confidence at all.
+ *
+ * A missing number and a zero are different news, and one name for both is
+ * unreadable after a drive. iOS leaves segment confidence at 0 on
+ * hypotheses -- WebKit reports the MAXIMUM over word segments, per the
+ * `rdar://73629573` FIXME in `WebSpeechRecognizerTask.mm` -- so a real 0 is
+ * something the engine said, while an absent field is something it did not.
+ */
+export const SPOKEN_CONFIDENCE_UNKNOWN = 'not-reported';
 
 /**
  * How hard to bias the engine toward the vocabulary. Chrome accepts 0 to 10
@@ -349,6 +413,10 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
    */
   let lastSaid: string | null = null;
   let restartHandle: number | null = null;
+  /** The grace timer waiting for `onaudiostart`. Session-scoped. */
+  let audioWaitHandle: number | null = null;
+  /** Whether this session has already reached 'listening'. */
+  let cued = false;
   /** Sessions that have died in a row without doing any work. */
   let failedStreak = 0;
   /** Whether the CURRENT session ever heard anything. */
@@ -421,6 +489,27 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     }
   };
 
+  const clearAudioWait = (): void => {
+    if (audioWaitHandle !== null) {
+      deps.cancel(audioWaitHandle);
+      audioWaitHandle = null;
+    }
+  };
+
+  /**
+   * Reach 'listening' at most once per session.
+   *
+   * Three things race to call this -- `onaudiostart`, the grace timer, and
+   * `onstart` itself when the gate is off -- and a second cue would tell the
+   * operator to speak again mid-answer.
+   */
+  const cueListening = (): void => {
+    if (cued) return;
+    cued = true;
+    clearAudioWait();
+    setState('listening');
+  };
+
   const teardown = (): void => {
     const dying = recognition;
     recognition = null;
@@ -429,6 +518,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     // would read it as an unexpected death and schedule a restart of a
     // session we are deliberately ending.
     dying.onstart = null;
+    dying.onaudiostart = null;
     dying.onend = null;
     dying.onerror = null;
     dying.onresult = null;
@@ -442,6 +532,8 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
   const begin = (): void => {
     if (!running) return;
     clearRestart();
+    clearAudioWait();
+    cued = false;
     teardown();
     attempt++;
     beganAt = deps.now();
@@ -461,12 +553,15 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     }
 
     recognition = fresh;
+    // Read per session, not per controller: the controller is rebuilt only
+    // when voice is toggled, and this has to be switchable between hands.
+    const gateOnAudio = (deps.cueOn?.() ?? 'start') === 'audiostart';
     fresh.continuous = true;
     fresh.interimResults = false;
     fresh.lang = 'en-US';
     // Ask for runners-up. Harmless where unsupported: the list simply
     // arrives with one entry, which is what it was before.
-    fresh.maxAlternatives = SPOKEN_ALTERNATIVES;
+    fresh.maxAlternatives = deps.alternatives?.() ?? SPOKEN_ALTERNATIVES;
     applyBias(fresh, deps.biasPhrases);
     if (deps.processLocally) {
       try {
@@ -481,7 +576,49 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       sessionStartedAt = deps.now();
       heardThisSession = false;
       log('session-start', { n: attempt, confirmedInMs: sessionStartedAt - beganAt });
-      setState('listening');
+
+      /*
+       * `onstart` IS NOT THE MICROPHONE OPENING, and treating it as such is
+       * what loses the first syllable of every answer.
+       *
+       * `SpeechRecognizer::start()` sets its state, dispatches the Start
+       * update, and only afterwards calls `startCapture()`. So at this exact
+       * moment the capture source does not exist. Over Bluetooth, bringing it
+       * up means negotiating the hands-free SCO link, and that is not fast.
+       *
+       * Anything said before `onaudiostart` is not clipped by an endpointer:
+       * it was never in the buffer `SFSpeechAudioBufferRecognitionRequest`
+       * receives, because `dataCaptured` had nothing to feed it yet. A
+       * dictation language model given a word with its onset missing is how
+       * "hit" comes back as "It", which is in the 2026-10-04 log twice.
+       *
+       * `confirmedInMs` above measures start() -> onstart. That is the leg
+       * WITHOUT the microphone in it, which is why the number always looked
+       * reassuring. The second leg is logged in `onaudiostart` below,
+       * whichever way this setting is set, so the control drive produces the
+       * same measurement as the treatment drive.
+       */
+      if (gateOnAudio) {
+        audioWaitHandle = deps.schedule(() => {
+          audioWaitHandle = null;
+          // Failing open, deliberately. See AUDIOSTART_GRACE_MS: a gate that
+          // can cost the whole feature is worse than the loss it prevents.
+          log('audiostart-missing', { n: attempt, afterMs: AUDIOSTART_GRACE_MS });
+          cueListening();
+        }, AUDIOSTART_GRACE_MS);
+        return;
+      }
+      cueListening();
+    };
+
+    fresh.onaudiostart = () => {
+      // Logged either way, because this is the number that says whether the
+      // gate was worth having -- and nothing measured it until now.
+      log('audiostart', {
+        n: attempt,
+        afterStartMs: sessionStartedAt > 0 ? deps.now() - sessionStartedAt : 0,
+      });
+      cueListening();
     };
 
     fresh.onerror = (e) => {
@@ -573,10 +710,30 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       // Every reading the engine offered, best first. On a car microphone the
       // winner is often an ordinary word with the command ranked behind it.
       const offered: string[] = [];
+      /**
+       * WHAT THE ENGINE THOUGHT OF EACH READING, which the drill path threw
+       * away until now -- `confidence` appeared only in voiceProbe.ts, so
+       * there has never been a live distribution to threshold against and
+       * "set a confidence threshold" was unanswerable by construction.
+       *
+       * Recorded, and acted on by nothing. The number's definition on iOS is
+       * strange enough to earn that caution: WebKit cannot get
+       * transcription-level confidence (the `rdar://73629573` FIXME) and
+       * reports the MAXIMUM over word segments instead. For a one-word answer
+       * that is the word's own confidence and means something; for a sentence
+       * it is the single most confident word in it, which is biased upward
+       * and means nothing. Gating on it before seeing the two distributions
+       * separate would be inventing a threshold, which is the mistake this
+       * logging exists to avoid.
+       */
+      const confs: Array<number | string> = [];
       const count = last.length ?? 1;
       for (let i = 0; i < count; i++) {
         const text = (last[i]?.transcript ?? '').trim();
-        if (text) offered.push(text);
+        if (!text) continue;
+        offered.push(text);
+        const conf = last[i]?.confidence;
+        confs.push(typeof conf === 'number' ? conf : SPOKEN_CONFIDENCE_UNKNOWN);
       }
       const heard = offered[0] ?? '';
       if (!heard) return;
@@ -588,6 +745,12 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       log('result', {
         heard,
         alternatives: offered.length - 1,
+        // How many readings arrived, against how many were asked for. The
+        // distribution of this is the whole answer to whether raising
+        // maxAlternatives past three buys anything on this phone.
+        offered: offered.length,
+        conf: confs[0] ?? SPOKEN_CONFIDENCE_UNKNOWN,
+        confs,
         sessionMs: sessionStartedAt > 0 ? deps.now() - sessionStartedAt : 0,
       });
 
@@ -709,6 +872,10 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       running = false;
       clearRestart();
       clearWatchdog();
+      // Or the grace timer fires into a stopped controller and announces
+      // 'listening' with no microphone behind it -- which is the exact lie
+      // the gate was added to stop telling.
+      clearAudioWait();
       teardown();
       sessionStartedAt = 0;
       log('stop');

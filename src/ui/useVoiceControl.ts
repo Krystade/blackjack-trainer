@@ -17,6 +17,7 @@ import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition'
 import { looksLikeSelfEcho } from '../audio/selfEcho';
 import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
+import { micCueOn, micAlternatives } from '../audio/micTuning';
 import { reassertAudioFocus } from '../audio/audioFocus';
 import { markMicSessionOpened } from '../audio/micSessionCost';
 import { markInputDeviceChanged } from '../diag/deviceChurn';
@@ -292,6 +293,17 @@ export function useVoiceControl({
       biasPhrases,
       processLocally,
       log: (event, detail) => diag('mic', event, { ...detail, context: contextRef.current }),
+      /*
+       * READ PER SESSION, not captured here.
+       *
+       * This hook rebuilds its controller only when voice is toggled or the
+       * local-model decision resolves, so passing values would mean a
+       * setting change needed a reload before it applied -- and these two
+       * exist to be switched between hands, in a car park, without touching
+       * anything but the toggle.
+       */
+      cueOn: micCueOn,
+      alternatives: micAlternatives,
       hasWorked: micHasWorked,
       onWorked: markMicWorked,
       onState: (state) => {

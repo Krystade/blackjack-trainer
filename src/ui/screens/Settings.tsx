@@ -22,6 +22,7 @@ import {
   type ClipManifest,
 } from '../../audio/clips';
 import { carControlsBlockers, describeCarControlsBlocker } from '../../audio/carControls';
+import { probeMicSpectrum, type MicProbeResult } from '../../diag/micSpectrum';
 import { readLog, clearLog, formatLog } from '../../audio/mediaSessionLog';
 import { startButtonTest, unheardActions } from '../../audio/buttonTester';
 import type { ButtonPress, ButtonTesterHandle } from '../../audio/buttonTester';
@@ -714,6 +715,10 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
       <CarCheckSection onNavigate={onNavigate} />
       <SelfTestSection live={settings} />
 
+      <MicExperimentsPanel
+        audio={settings.audio}
+        onChange={(patch) => updateAudio(patch)}
+      />
       <VoiceProbePanel />
       <VoiceAliasPanel
         aliases={settings.audio.voiceAliases ?? {}}
@@ -1332,6 +1337,128 @@ function OnDeviceModelPanel() {
  * in the log twice. Binding a rejection to an action is the first record of
  * intent this app has ever had.
  */
+/**
+ * The two microphone experiments, and the probe that says which microphone.
+ *
+ * SEPARATE SWITCHES ON PURPOSE. Each of these is an independent hypothesis
+ * about why single words come back wrong, and a drive that changes both at
+ * once produces a number that cannot be attributed. The operator asked to
+ * test them separately; this is what that means in the car.
+ *
+ * Every drive's log records which arm was live, because the settings go into
+ * the export -- so an exported log is self-describing and a drive done a week
+ * ago can still be read.
+ */
+function MicExperimentsPanel({
+  audio,
+  onChange,
+}: {
+  audio: AudioSettings;
+  onChange: (patch: Partial<AudioSettings>) => void;
+}) {
+  const [probing, setProbing] = useState(false);
+  const [result, setResult] = useState<MicProbeResult | null>(null);
+
+  const runProbe = async () => {
+    setProbing(true);
+    setResult(null);
+    try {
+      setResult(await probeMicSpectrum());
+    } finally {
+      setProbing(false);
+    }
+  };
+
+  const verdictText = (r: MicProbeResult): string => {
+    if (r.error) return `Could not test the microphone (${r.error}).`;
+    switch (r.verdict) {
+      case 'narrowband':
+        return 'The car\u2019s hands-free microphone. This is the problem \u2014 it carries nothing above 4kHz, so consonants are gone before the recogniser sees them.';
+      case 'wideband':
+        return 'A full-bandwidth microphone. The input is not the bottleneck.';
+      case 'no-signal':
+        return 'Nothing was heard at all, so this says nothing about which microphone. Say a word while it runs.';
+      case 'unmeasurable':
+        return 'This device cannot show the difference, so the test is inconclusive rather than negative.';
+    }
+  };
+
+  return (
+    <CollapsibleSection title={<>Microphone experiments</>} defaultOpen={false}>
+      <div className="settings-note-row u-note">
+        Three separate things to try, so a drive can test <strong>one at a time</strong>.
+        Each drive&rsquo;s log records which were on.
+      </div>
+
+      <div className="settings-row">
+        <span className="settings-label">Cue when the mic is</span>
+        <Segmented
+          options={[
+            { value: 'audiostart', label: 'Recording' },
+            { value: 'start', label: 'Started' },
+          ]}
+          value={audio.micCueOn}
+          onChange={(micCueOn) => onChange({ micCueOn })}
+        />
+      </div>
+      <div className="settings-note-row u-note">
+        The engine says &ldquo;started&rdquo; <em>before</em> the microphone is recording, and
+        over Bluetooth that gap is the time it takes the car to switch to hands-free. A word
+        spoken in it is not clipped &mdash; it was never recorded.
+        <strong> Recording</strong> waits for real audio before telling you to speak.
+        <strong> Started</strong> is the old behaviour, kept so you have something to compare
+        against.
+      </div>
+
+      <div className="settings-row">
+        <span className="settings-label">Readings per answer</span>
+        <Segmented
+          options={[
+            { value: '3', label: '3' },
+            { value: '10', label: '10' },
+          ]}
+          value={String(audio.voiceAlternatives)}
+          onChange={(v) => onChange({ voiceAlternatives: Number(v) })}
+        />
+      </div>
+      <div className="settings-note-row u-note">
+        The engine ranks several readings of the same audio and the right word is often
+        behind a wrong one &mdash; &ldquo;Band&rdquo;, then &ldquo;Send&rdquo;, then
+        &ldquo;Stand&rdquo;. Nothing has ever asked this phone for more than three, so
+        whether it offers more is unknown. Asking costs nothing where fewer exist.
+      </div>
+
+      <div className="settings-row">
+        <span className="settings-label">Which microphone?</span>
+        <button className="btn" onClick={runProbe} disabled={probing}>
+          {probing ? 'Listening\u2026' : 'Test mic'}
+        </button>
+      </div>
+      <div className="settings-note-row u-note">
+        <strong>Say a command out loud while this runs</strong>, in the car, with the engine
+        on. It opens the microphone for about two seconds and looks at the top of the
+        spectrum. Hands-free Bluetooth cannot carry anything above 4kHz, so the answer is a
+        wall or no wall &mdash; it cannot come out right by accident. Nothing is recorded or
+        kept, and no sound is played.
+      </div>
+      {result && (
+        <div className="settings-note-row u-note">
+          <strong>{verdictText(result)}</strong>
+          <br />
+          {result.label ? `Track: ${result.label}. ` : ''}
+          {result.error
+            ? ''
+            : `Energy above 4kHz: ${(result.highRatio * 100).toFixed(
+                2,
+              )}% across ${result.highBins} bands. Track rate: ${
+                result.trackSampleRate ?? 'unreported'
+              }. Context rate: ${result.contextSampleRate}.`}
+        </div>
+      )}
+    </CollapsibleSection>
+  );
+}
+
 function VoiceAliasPanel({
   aliases,
   onChange,
