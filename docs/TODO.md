@@ -171,7 +171,7 @@ One unblinded answer per step, so treat these as leads, not settled facts.
   - The audio context is kept awake after interruptions.
   - The true-count question (492 lines) now matches its clips.
   - The notices are corrected.
-- [ ] **21 sentences per voice still need recordings** ("Push.", "Produce the true count.", "What's
+- [x] **21 sentences per voice recorded** (Kokoro, generated in the cloud session on 2026-10-05; `NEEDS_RECORDING` is now empty). Was: ("Push.", "Produce the true count.", "What's
   the true count?", "X isn't part of this question." ×5, "The card left over was …" ×13). They're
   listed in `NEEDS_RECORDING` in `scripts/clipCoverage.test.ts` and already sit in
   `spoken-phrases.json`, so the next Kokoro run generates them.

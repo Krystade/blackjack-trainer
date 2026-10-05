@@ -158,29 +158,9 @@ function everyCardUtterance(): string[] {
  * Kokoro); scripts/spoken-phrases.json already lists them. Empty this as the
  * clips land.
  */
-const NEEDS_RECORDING: string[] = [
-  "Double isn't part of this question.",
-  "Hit isn't part of this question.",
-  'Produce the true count.',
-  'Push.',
-  "Split isn't part of this question.",
-  "Stand isn't part of this question.",
-  "Surrender isn't part of this question.",
-  'The card left over was ace.',
-  'The card left over was eight.',
-  'The card left over was five.',
-  'The card left over was four.',
-  'The card left over was jack.',
-  'The card left over was king.',
-  'The card left over was nine.',
-  'The card left over was queen.',
-  'The card left over was seven.',
-  'The card left over was six.',
-  'The card left over was ten.',
-  'The card left over was three.',
-  'The card left over was two.',
-  "What's the true count?",
-];
+// Recorded 2026-10-05 with the local Kokoro engine (all 21 lines, all three
+// voices). Keep this empty: a new entry means a sentence shipped unrecorded.
+const NEEDS_RECORDING: string[] = [];
 
 describe('shipped clip coverage', () => {
   const voices = voiceIds();
