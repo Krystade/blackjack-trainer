@@ -219,6 +219,35 @@ const META_MAX_TOKENS = 3;
  * -- see ACTIONS above for the sentence that forced that.
  */
 export function matchVoiceAction(transcript: string): VoiceAction | null {
+  const r = classify(transcript);
+  return r === 'conflict' ? null : r;
+}
+
+/**
+ * Words that retract the command before them: "hit NO stand", "hit SORRY
+ * stand". A transcript naming two different actions is only a correction if
+ * one of these sits between them.
+ */
+const RETRACTIONS: ReadonlySet<string> = new Set([
+  'no', 'nope', 'sorry', 'wait', 'actually', 'mean', 'oops', 'rather', 'instead', 'scratch',
+]);
+
+/**
+ * MORE THAN ONE DIFFERENT COMMAND, and why last-wins is not enough.
+ *
+ * The 2026-10-05 phone log graded "Stand hit hit hit" as hit and "Split them
+ * surrender" as surrender. Last-wins is right for a correction and wrong for
+ * a stutter or a list, and a correction is distinguishable: the speaker puts a
+ * retraction word between the two ("hit no stand"). Without one the
+ * transcript does not say which command was meant, and rejecting costs the
+ * operator one repeated word where guessing plays a hand nobody chose.
+ * Rejected rather than taking the FIRST command either: nothing says the
+ * first is any likelier than the last.
+ *
+ * 'conflict' is distinct from null so resolveSpoken can refuse to rescue
+ * such a transcript from a runner-up as well.
+ */
+function classify(transcript: string): VoiceAction | 'conflict' | null {
   const cleaned = normalise(transcript);
   if (!cleaned) return null;
 
@@ -230,13 +259,25 @@ export function matchVoiceAction(transcript: string): VoiceAction | null {
   const tokens = cleaned.split(/\s+/);
   const metaAllowed = tokens.length <= META_MAX_TOKENS;
   let lastMeta: VoiceAction | null = null;
+  let lastAt = -1;
+  let found: VoiceAction | null = null;
   for (let i = tokens.length - 1; i >= 0; i--) {
     const hit = lookupAlias(tokens[i]!);
     if (!hit) continue;
-    if (ACTIONS.has(hit)) return hit;
+    if (ACTIONS.has(hit)) {
+      if (found === null) {
+        found = hit;
+        lastAt = i;
+        continue;
+      }
+      if (hit === found) continue;
+      // The nearest earlier DIFFERENT action: a retraction must sit between.
+      const between = tokens.slice(i + 1, lastAt);
+      return between.some((t) => RETRACTIONS.has(t)) ? found : 'conflict';
+    }
     if (metaAllowed) lastMeta ??= hit;
   }
-  return lastMeta;
+  return found ?? lastMeta;
 }
 
 /**
@@ -265,6 +306,12 @@ const FUZZY_TARGETS: readonly VoiceAction[] = ['stand', 'split', 'double', 'surr
 
 /** The shortest transcript worth comparing. Below this, everything is close to everything. */
 const MIN_FUZZY_LETTERS = 4;
+
+/**
+ * The shortest consonant skeleton one edit may be applied to. "But" and "bit"
+ * are BT; one edit on a skeleton that short reaches a whole dictionary.
+ */
+const MIN_FUZZY_SKELETON = 3;
 
 /** How far apart two skeletons may be. One edit: a dropped or swapped sound. */
 export const MAX_FUZZY_DISTANCE = 1;
@@ -332,15 +379,24 @@ export function nearestVoiceAction(transcript: string): VoiceAction | null {
   if (bare.length < MIN_FUZZY_LETTERS) return null;
 
   const heard = skeleton(transcript);
-  if (!heard) return null;
+  if (heard.length < MIN_FUZZY_SKELETON) return null;
 
   let best: VoiceAction | null = null;
   let bestAt = MAX_FUZZY_DISTANCE + 1;
   let tied = false;
 
   for (const target of FUZZY_TARGETS) {
-    const d = distanceWithin(heard, skeleton(target), MAX_FUZZY_DISTANCE);
-    if (d > MAX_FUZZY_DISTANCE) continue;
+    const want = skeleton(target);
+    /*
+     * A HAND-PLAYING COMMAND WHOSE SKELETON IS THREE LETTERS gets no edit at
+     * all. DBL is one edit from bill, deal, dial, able, dull, bold and build,
+     * and a double is a bet the operator never placed. REPEAT is exempt: it
+     * plays nothing, and "read it" -> RDT is the near-miss that earned this
+     * rule its place.
+     */
+    const cap = ACTIONS.has(target) && want.length <= 3 ? 0 : MAX_FUZZY_DISTANCE;
+    const d = distanceWithin(heard, want, cap);
+    if (d > cap) continue;
     if (d < bestAt) {
       best = target;
       bestAt = d;
@@ -453,8 +509,11 @@ export function resolveSpoken(transcripts: readonly string[]): SpokenMatch | nul
   const [top, ...rest] = transcripts;
   if (top === undefined) return null;
 
-  const direct = matchVoiceAction(top);
-  if (direct) return { action: direct, via: 'direct' };
+  const topRead = classify(top);
+  // Several different commands with no retraction: not evidence for any of
+  // them, and no runner-up may be allowed to pick one.
+  if (topRead === 'conflict') return null;
+  if (topRead) return { action: topRead, via: 'direct' };
 
   const cleanedTop = normalise(top);
   if (!isShort(cleanedTop)) return null;
@@ -466,13 +525,21 @@ export function resolveSpoken(transcripts: readonly string[]): SpokenMatch | nul
     if (exact) return { action: exact, via: 'alternative' };
   }
 
+  /*
+   * APPROXIMATION IS THE WINNER'S ALONE. This used to try every short
+   * runner-up too, and that is how heard="But" (conf 0.353) became SPLIT on
+   * 2026-10-05: the winner was too short to approximate anything, so the loop
+   * went on to a runner-up at 0.149 that was one consonant from SPLT. A
+   * runner-up is the engine's second opinion; it may rescue a word it SAYS
+   * (pass 2) but never one it merely resembles, because a resemblance
+   * between two weak guesses is not evidence of anything.
+   *
+   * No confidence floor: iOS reports the maximum word-segment confidence, and
+   * the genuine near-misses on record sit at 0.13 and 0.22, below the 0.35 the
+   * false accept had.
+   */
   const near = nearestVoiceAction(cleanedTop);
   if (near) return { action: near, via: 'approximate' };
-
-  for (const alt of shortRest) {
-    const alsoNear = nearestVoiceAction(alt);
-    if (alsoNear) return { action: alsoNear, via: 'approximate' };
-  }
 
   return null;
 }
