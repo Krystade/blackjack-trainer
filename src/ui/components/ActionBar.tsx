@@ -92,7 +92,7 @@ export function ActionBar({ mode }: ActionBarProps) {
             disabled={mode.disabled}
             onClick={mode.onSitOut}
           >
-            Sit Out
+            Sit out
           </button>
         )}
       </div>
@@ -118,7 +118,7 @@ export function ActionBar({ mode }: ActionBarProps) {
                   <button
                     type="button"
                     className="bet-step-btn"
-                    aria-label={`Hand ${i + 1} lower bet`}
+                    aria-label={`Lower bet on hand ${i + 1}`}
                     disabled={mode.disabled || !canDec}
                     onClick={() => hand.onSelectBet(BET_CHIPS[Math.max(0, idx - 1)])}
                   >
@@ -128,7 +128,7 @@ export function ActionBar({ mode }: ActionBarProps) {
                   <button
                     type="button"
                     className="bet-step-btn"
-                    aria-label={`Hand ${i + 1} raise bet`}
+                    aria-label={`Raise bet on hand ${i + 1}`}
                     disabled={mode.disabled || !canInc}
                     onClick={() => hand.onSelectBet(BET_CHIPS[Math.min(BET_CHIPS.length - 1, idx + 1)])}
                   >
@@ -145,7 +145,7 @@ export function ActionBar({ mode }: ActionBarProps) {
       </button>
       {mode.onSitOut && (
         <button type="button" className="sit-out-btn" disabled={mode.disabled} onClick={mode.onSitOut}>
-          Sit Out
+          Sit out
         </button>
       )}
     </div>

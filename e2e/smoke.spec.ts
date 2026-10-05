@@ -56,7 +56,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   await expect(page.locator('.settings-heading')).toHaveText('Profiles');
 
   await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
-  await expect(page.locator('.settings-heading')).toHaveText('Edit Profile');
+  await expect(page.locator('.settings-heading')).toHaveText('Edit profile');
   await shot(page, 'smoke-02-profile-editor');
 
   await page.locator('.profile-cancel-btn').click();

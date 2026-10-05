@@ -60,7 +60,7 @@ test('#7 flashcards: a wrong answer offers the table, which opens ringed on the 
   await expect(panel).toContainText('Correct');
   await expect(panel.locator('.mistake-class')).toBeVisible();
 
-  await panel.getByRole('button', { name: 'Show me the table', exact: true }).click();
+  await panel.getByRole('button', { name: 'Show on chart', exact: true }).click();
 
   const overlay = page.locator('.study-chart-overlay');
   await expect(overlay).toBeVisible();
@@ -84,7 +84,7 @@ test('#7 the chart is not offered until an answer is actually wrong', async ({ p
   await page.goto('/?e2e=1');
   await openFlashcards(page);
 
-  await expect(page.getByRole('button', { name: 'Show me the table', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Show on chart', exact: true })).toHaveCount(0);
   await expect(page.locator('.study-chart-overlay')).toHaveCount(0);
 });
 

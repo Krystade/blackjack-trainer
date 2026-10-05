@@ -274,11 +274,11 @@ export function CarCheckPanel() {
   return (
     <div className="carcheck" data-testid="carcheck">
       <div className="settings-note-row u-note">
-        Runs the parts of the field test the app can answer on its own, in two phases: the speakers
-        and the wheel first with the microphone shut, then the microphone alone to measure how loud
-        it is. They cannot share a phase — an open microphone flips the car to its call profile,
-        which takes the wheel and moves playback to the earpiece. You press one wheel button and
-        listen; everything else it works out itself, and writes to the log.
+        Runs the field-test checks the app can do on its own, in two parts. First the speakers and
+        the steering wheel, with the microphone off. Then the microphone alone, to measure how loud
+        the car is. They run separately because an open microphone switches the car to call mode,
+        which takes over the wheel and moves sound to the earpiece. You press one wheel button and
+        listen; the app checks everything else and saves the results to the log.
       </div>
 
       <button

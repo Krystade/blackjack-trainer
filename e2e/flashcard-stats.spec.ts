@@ -23,7 +23,7 @@ async function openFlashcardStats(page: import('@playwright/test').Page) {
   const drillBack = page.locator('.drill-back-btn').first();
   if (await drillBack.isVisible().catch(() => false)) await drillBack.click();
   await page.getByRole('button', { name: 'Home', exact: true }).click();
-  await page.getByRole('button', { name: 'Full stats', exact: true }).click();
+  await page.getByRole('button', { name: 'All stats', exact: true }).click();
   // The Stats view's own tablist -- NOT the bottom nav, which would leave
   // the screen entirely.
   await page.locator('.stats-tabs [role="tab"]', { hasText: 'Drills' }).click();

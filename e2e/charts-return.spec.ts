@@ -36,16 +36,16 @@ test('the chart opened over a mistake returns to the hand', async ({ page }) => 
 
   // Answer until one is graded wrong, so the correction panel appears.
   for (let i = 0; i < 12; i += 1) {
-    if (await page.getByRole('button', { name: 'Show me the table' }).isVisible().catch(() => false)) break;
+    if (await page.getByRole('button', { name: 'Show on chart' }).isVisible().catch(() => false)) break;
     await page.locator('.action-bar button').first().click();
     await page.waitForTimeout(120);
     if (await page.getByRole('button', { name: 'Next', exact: true }).isVisible().catch(() => false)) {
-      if (await page.getByRole('button', { name: 'Show me the table' }).isVisible().catch(() => false)) break;
+      if (await page.getByRole('button', { name: 'Show on chart' }).isVisible().catch(() => false)) break;
       await page.getByRole('button', { name: 'Next', exact: true }).click();
     }
   }
 
-  const show = page.getByRole('button', { name: 'Show me the table' });
+  const show = page.getByRole('button', { name: 'Show on chart' });
   await expect(show).toBeVisible();
   await show.click();
 
@@ -56,7 +56,7 @@ test('the chart opened over a mistake returns to the hand', async ({ page }) => 
   await back.click();
   await expect(page.locator('.study-chart-overlay')).toHaveCount(0);
   // And it lands back on the SAME correction, not a fresh card.
-  await expect(page.getByRole('button', { name: 'Show me the table' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Show on chart' })).toBeVisible();
 });
 
 test('still says Home when that is genuinely where you came from', async ({ page }) => {

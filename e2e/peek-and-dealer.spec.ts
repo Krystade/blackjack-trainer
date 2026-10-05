@@ -32,7 +32,7 @@ test('the count readout latches on a tap and stays without holding', async ({ pa
   await dealARound(page);
 
   const peek = page.locator('.tc-peek-btn');
-  await expect(peek).toHaveText('TC');
+  await expect(peek).toHaveText('Peek');
 
   await peek.click();
   await expect(peek).toContainText('RC');
@@ -44,7 +44,7 @@ test('the count readout latches on a tap and stays without holding', async ({ pa
   await expect(peek).toContainText('RC');
 
   await peek.click();
-  await expect(peek).toHaveText('TC');
+  await expect(peek).toHaveText('Peek');
   await expect(peek).toHaveAttribute('aria-pressed', 'false');
 });
 
@@ -85,9 +85,9 @@ test('the dealer-reveal rule is a per-profile setting that persists', async ({ p
   await page.locator('.home-profile-chip').click();
   await expect(page.locator('.settings-heading')).toHaveText('Profiles');
   await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
-  await expect(page.locator('.settings-heading')).toHaveText('Edit Profile');
+  await expect(page.locator('.settings-heading')).toHaveText('Edit profile');
 
-  const row = page.locator('.settings-toggle-row', { hasText: 'Dealer reveals hole on every round' });
+  const row = page.locator('.settings-toggle-row', { hasText: 'Dealer always shows the hole card' });
   await expect(row).toBeVisible();
 
   const box = row.locator('input[type="checkbox"]');
@@ -101,7 +101,7 @@ test('the dealer-reveal rule is a per-profile setting that persists', async ({ p
   await page.locator('.home-profile-chip').click();
   await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
   await expect(
-    page.locator('.settings-toggle-row', { hasText: 'Dealer reveals hole on every round' })
+    page.locator('.settings-toggle-row', { hasText: 'Dealer always shows the hole card' })
       .locator('input[type="checkbox"]'),
   ).toBeChecked();
 });

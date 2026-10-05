@@ -37,6 +37,8 @@ import { VoiceStatusBar } from '../components/VoiceStatusBar';
 import { VOICE_WORDS } from '../voiceLabels';
 import { assistedFlag } from '../peekFlag';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
+import { CATEGORY_LABELS } from './categoryLabels';
+import { playLabel } from '../playLabel';
 
 type BotActionLogEntry = Game['botActionLog'][number];
 
@@ -213,7 +215,7 @@ function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () =>
   const assisted = assistedFlag(report.peeks);
   return (
     <div className="report-screen">
-      <h1>Session Report</h1>
+      <h1>Session report</h1>
       <p className="report-summary">
         {report.correct} / {report.graded} correct &middot; bankroll {formatSigned(report.bankrollDelta)}
       </p>
@@ -228,7 +230,7 @@ function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () =>
           Bet cover: {report.cover.exact} of {report.cover.rounds} rounds bet the ramp
           exactly ({Math.round(report.cover.ratio * 100)}%)
           {report.cover.isTell
-            ? ' — a bet that tracks the count that closely is the pattern that gets counters noticed.'
+            ? '. Betting that close to the count is what gets counters noticed.'
             : '.'}
         </p>
       )}
@@ -244,7 +246,7 @@ function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () =>
         <tbody>
           {report.categories.map((c) => (
             <tr key={c.category}>
-              <td>{c.category}</td>
+              <td>{CATEGORY_LABELS[c.category] ?? c.category}</td>
               <td>{c.right}</td>
               <td>{c.wrong}</td>
               <td>{Math.round(c.accuracy * 100)}%</td>
@@ -259,7 +261,7 @@ function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () =>
         <ul className="report-mistakes">
           {groupMistakes(report.mistakes).map(({ mistake: m, count }, i) => (
             <li key={i}>
-              {m.hand ?? m.kind} &middot; TC {formatSigned(m.tc)} &middot; took {m.taken} &middot; correct {m.expected}
+              {m.hand ?? m.kind} &middot; TC {formatSigned(m.tc)} &middot; you played {playLabel(m.taken)} &middot; correct {playLabel(m.expected)}
               {' — '}
               {m.reason}
               {count > 1 && <span className="report-mistake-count"> &times;{count}</span>}
@@ -727,7 +729,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             aria-pressed={peeking}
             onClick={togglePeek}
           >
-            {peeking ? `RC ${formatSigned(game.runningCount)} / TC ${formatSigned(game.trueCountNow)}` : 'TC'}
+            {peeking ? `RC ${formatSigned(game.runningCount)} / TC ${formatSigned(game.trueCountNow)}` : 'Peek'}
           </button>
         )}
         {settings.audio.enabled && (
@@ -750,7 +752,13 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             Voice
           </button>
         )}
-        <button type="button" className="end-btn" onClick={handleEnd}>
+        <button
+          type="button"
+          className="end-btn"
+          aria-label="End session"
+          title="End session"
+          onClick={handleEnd}
+        >
           End
         </button>
       </div>
@@ -760,7 +768,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           status={voice.status}
           hint={
             <>
-              Say: {VOICE_WORDS} &mdash; &ldquo;yes&rdquo; deals the next hand and answers insurance
+              Say: {VOICE_WORDS}. &ldquo;Yes&rdquo; deals the next hand or takes insurance; &ldquo;no&rdquo; declines it.
             </>
           }
         />
@@ -778,7 +786,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         const fillPct = Math.min(98, Math.max(1, (dealt / totalCards) * 100));
         return (
           <div className="table-discard-tray" aria-label="Discard tray">
-            <span className="table-discard-label">Discard</span>
+            <span className="table-discard-label">Discards</span>
             <div className="table-discard-frame">
               <div className="table-discard-fill" style={{ width: `${fillPct}%` }} />
             </div>
@@ -905,7 +913,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         <button
           type="button"
           className="fast-forward-btn"
-          aria-label="Fast-forward bot actions and dealing"
+          aria-label="Skip ahead: finish dealing and other players' turns"
           onClick={skipEverything}
         >
           ⏩
@@ -916,7 +924,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
 
       {game.phase === 'insurance' && (
         <Modal title="Insurance?">
-          <p>Dealer shows an Ace. Take insurance?</p>
+          <p>The dealer shows an ace. Take insurance?</p>
           <div className="modal-actions">
             <button type="button" onClick={() => insure(true)}>
               Take
@@ -929,7 +937,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       )}
 
       {game.countCheckDue && (
-        <Modal title={countStage === 'rc' ? 'Running Count?' : 'True Count?'}>
+        <Modal title={countStage === 'rc' ? 'Running count?' : 'True count?'}>
           {/* The spoken proposal, shown as well as said. A driver glancing
               at the screen at a light should be able to see what the app
               thinks it heard, and a passenger should be able to correct it
@@ -938,15 +946,15 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             <div className="count-voice" data-pending={pendingCount !== null}>
               {pendingCount === null ? (
                 <span className="count-voice-hint">
-                  Say the count &mdash; &ldquo;minus three&rdquo;. Then &ldquo;plus&rdquo; or
-                  &ldquo;minus&rdquo; to nudge it by one, &ldquo;yes&rdquo; to submit.
+                  Say the count, like &ldquo;minus three&rdquo;. Say &ldquo;plus&rdquo; or
+                  &ldquo;minus&rdquo; to change it by one, then &ldquo;yes&rdquo; to submit.
                 </span>
               ) : (
                 <>
                   <span className="count-voice-value">{formatSigned(pendingCount)}</span>
                   <span className="count-voice-hint">
                     &ldquo;yes&rdquo; to submit &middot; &ldquo;no&rdquo; to start over &middot;
-                    &ldquo;plus&rdquo;/&ldquo;minus&rdquo; to nudge
+                    &ldquo;plus&rdquo; or &ldquo;minus&rdquo; to change by one
                   </span>
                 </>
               )}
@@ -964,7 +972,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       )}
 
       {overlay && (
-        <Modal title="Wrong Play">
+        <Modal title="Wrong play">
           {/* Same panel the drills use, so a correction reads identically
               wherever it is earned -- the table and the flashcards were
               previously two different vocabularies for the same event. */}

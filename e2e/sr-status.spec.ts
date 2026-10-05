@@ -51,7 +51,7 @@ async function openStatsProgressTab(page: Page): Promise<void> {
   const drillBack = page.locator('.drill-back-btn').first();
   if (await drillBack.isVisible().catch(() => false)) await drillBack.click();
   await page.getByRole('button', { name: 'Home', exact: true }).click();
-  await page.getByRole('button', { name: 'Full stats', exact: true }).click();
+  await page.getByRole('button', { name: 'All stats', exact: true }).click();
   // Stats' OWN tablist -- not the bottom nav, which would leave the screen.
   await page.locator('.stats-tabs [role="tab"]', { hasText: 'Progress' }).click();
 }
@@ -126,7 +126,7 @@ test('a lapsed item appears in "Most often forgotten", using the resolved label 
   // The raw id must be resolved to its human label, not printed verbatim.
   await expect(quiz).toContainText('16 v 10: stand at TC');
   await expect(quiz).not.toContainText('16v10');
-  await expect(quiz).toContainText('3 lapses');
+  await expect(quiz).toContainText('forgotten 3 times');
 });
 
 test('more than 5 lapsed items caps the list at 5 and prints an accurate "+N more" line (D4)', async ({ page }) => {
@@ -141,7 +141,7 @@ test('more than 5 lapsed items caps the list at 5 and prints an accurate "+N mor
 
   const flash = flashSection(page);
   await expect(flash.locator('.sr-lapses-title')).toBeVisible();
-  await expect(flash.locator('.mistake-row', { hasText: 'lapse' })).toHaveCount(5);
+  await expect(flash.locator('.mistake-row', { hasText: 'forgotten' })).toHaveCount(5);
   await expect(flash).toContainText('+2 more');
 });
 

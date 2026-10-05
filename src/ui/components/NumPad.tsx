@@ -69,13 +69,13 @@ export function NumPad({ label, onSubmit }: NumPadProps) {
             </button>
           )),
         )}
-        <button type="button" className="numpad-btn" onClick={toggleMinus}>
+        <button type="button" className="numpad-btn" aria-label="Plus or minus" onClick={toggleMinus}>
           −
         </button>
         <button type="button" className="numpad-btn" onClick={() => appendDigit('0')}>
           0
         </button>
-        <button type="button" className="numpad-btn" onClick={backspace}>
+        <button type="button" className="numpad-btn" aria-label="Delete last digit" onClick={backspace}>
           ⌫
         </button>
       </div>

@@ -132,9 +132,9 @@ test('multi-hand: two independent bets, two hands played out, per-hand results s
 
     const betHandRows = page.locator('.bet-hand-row');
     await expect(betHandRows).toHaveCount(2);
-    await page.getByRole('button', { name: 'Hand 1 raise bet' }).click(); // 1u -> 2u
-    await page.getByRole('button', { name: 'Hand 2 raise bet' }).click(); // 1u -> 2u
-    await page.getByRole('button', { name: 'Hand 2 raise bet' }).click(); // 2u -> 4u
+    await page.getByRole('button', { name: 'Raise bet on hand 1' }).click(); // 1u -> 2u
+    await page.getByRole('button', { name: 'Raise bet on hand 2' }).click(); // 1u -> 2u
+    await page.getByRole('button', { name: 'Raise bet on hand 2' }).click(); // 2u -> 4u
     await expect(page.locator('.bet-stepper-value').nth(0)).toHaveText('2u');
     await expect(page.locator('.bet-stepper-value').nth(1)).toHaveText('4u');
     await shot(page, '49-table-multihand-bets-set');
@@ -175,7 +175,7 @@ test('seats config round-trip: editing the active profile\'s Seats section reach
 
   const row = page.locator('.profile-row', { hasText: 'Seats RT Profile' });
   await row.getByRole('button', { name: 'Edit', exact: true }).click();
-  await expect(page.locator('.settings-heading')).toHaveText('Edit Profile');
+  await expect(page.locator('.settings-heading')).toHaveText('Edit profile');
 
   const handsRow = page.locator('.settings-row', { hasText: 'Your hands' });
   await handsRow.getByRole('button', { name: '2', exact: true }).click();

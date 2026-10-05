@@ -66,14 +66,14 @@ test('CVCX paste import: happy path parses/previews/saves a ramp, then a bad pas
 
   const row = page.locator('.profile-row', { hasText: 'CVCX Test Profile' });
   await row.getByRole('button', { name: 'Edit', exact: true }).click();
-  await expect(page.locator('.settings-heading')).toHaveText('Edit Profile');
+  await expect(page.locator('.settings-heading')).toHaveText('Edit profile');
 
   await page.getByRole('button', { name: 'Paste from CVCX', exact: true }).click();
   await expect(page.locator('.cvcx-textarea')).toBeVisible();
   await shot(page, '40-cvcx-import-panel-empty');
 
   await page.locator('.cvcx-textarea').fill('1\t2\n2\t4');
-  await page.getByRole('button', { name: 'Parse', exact: true }).click();
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
 
   await expect(page.locator('.cvcx-preview-row')).toHaveCount(2);
   await expect(page.locator('.cvcx-preview-row').nth(0)).toContainText('1');
@@ -82,7 +82,7 @@ test('CVCX paste import: happy path parses/previews/saves a ramp, then a bad pas
   await expect(page.locator('.cvcx-preview-row').nth(1)).toContainText('4');
   await shot(page, '41-cvcx-import-preview');
 
-  await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+  await page.getByRole('button', { name: 'Use this ramp', exact: true }).click();
   await expect(page.locator('.cvcx-import-panel')).not.toBeVisible();
   await expect(page.locator('.spread-row')).toHaveCount(2);
 
@@ -90,7 +90,7 @@ test('CVCX paste import: happy path parses/previews/saves a ramp, then a bad pas
   await expect(page.locator('.settings-heading')).toHaveText('Profiles');
 
   await row.getByRole('button', { name: 'Edit', exact: true }).click();
-  await expect(page.locator('.settings-heading')).toHaveText('Edit Profile');
+  await expect(page.locator('.settings-heading')).toHaveText('Edit profile');
   await expect(page.locator('.spread-row')).toHaveCount(2);
   await shot(page, '42-profile-editor-ramp-after-cvcx-confirm');
 
@@ -98,7 +98,7 @@ test('CVCX paste import: happy path parses/previews/saves a ramp, then a bad pas
   // leaves the panel open/editable (does not silently guess or discard input).
   await page.getByRole('button', { name: 'Paste from CVCX', exact: true }).click();
   await page.locator('.cvcx-textarea').fill('abc\txyz');
-  await page.getByRole('button', { name: 'Parse', exact: true }).click();
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
 
   await expect(page.locator('.cvcx-error')).toBeVisible();
   await expect(page.locator('.cvcx-error')).toContainText('Line 1');

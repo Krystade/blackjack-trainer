@@ -19,7 +19,7 @@ test('the rounding control is on the profile editor, defaults to floor, and save
   await page.locator('.home-profile-chip').click();
   await expect(page.locator('.settings-heading')).toHaveText('Profiles');
   await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
-  await expect(page.locator('.settings-heading')).toHaveText('Edit Profile');
+  await expect(page.locator('.settings-heading')).toHaveText('Edit profile');
 
   const row = page.locator('.settings-row', { hasText: 'True count rounding' });
   await expect(row).toBeVisible();
@@ -52,11 +52,11 @@ test('the control is reachable with the bet spread OFF -- it is not a ramp setti
   await page.goto('/?e2e=1');
   await page.locator('.home-profile-chip').click();
   await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
-  await expect(page.locator('.settings-heading')).toHaveText('Edit Profile');
+  await expect(page.locator('.settings-heading')).toHaveText('Edit profile');
 
   // The ramp section really is absent -- otherwise this proves nothing.
   await expect(page.locator('.settings-row', { hasText: 'True count rounding' })).toBeVisible();
-  await expect(page.getByText('Ramp is sorted by TC when you save.')).toHaveCount(0);
+  await expect(page.getByText('Rows are sorted by true count when you save.')).toHaveCount(0);
 });
 
 test('the convention reaches the live table count, not just the profile', async ({ browser }) => {

@@ -36,7 +36,7 @@ export function ShotClockBar({
     <div
       className="shot-clock"
       role="timer"
-      aria-label={`${limitMs / 1000} second shot clock`}
+      aria-label={`${limitMs / 1000}-second shot clock`}
       data-testid="shot-clock"
     >
       <div

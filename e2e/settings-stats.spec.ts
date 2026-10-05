@@ -44,7 +44,7 @@ test('export downloads bjtrainer-export.json', async ({ page }) => {
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Export', exact: true }).click(),
+    page.getByRole('button', { name: 'Export backup', exact: true }).click(),
   ]);
   expect(download.suggestedFilename()).toBe('bjtrainer-export.json');
 });
@@ -103,7 +103,7 @@ test('importing a valid export blob restores stats (success path)', async ({ pag
     buffer: Buffer.from(validExport),
   });
 
-  await expect(page.locator('.stats-message')).toContainText('Import successful');
+  await expect(page.locator('.stats-message')).toContainText('Backup imported');
   await statsTab(page, 'Progress');
   await expect(page.locator('.session-row', { hasText: 'Imported Profile' })).toBeVisible();
   await shot(page, '26-stats-import-success');
@@ -149,7 +149,7 @@ test('Speak summary narrates the session summary under ?e2e=1', async ({ page })
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
 
-  await page.locator('.stats-action-btn', { hasText: 'Speak summary' }).click();
+  await page.locator('.stats-action-btn', { hasText: 'Read summary aloud' }).click();
 
   const speechLog = await page.evaluate(
     () => (window as unknown as { __speechLog?: string[] }).__speechLog ?? [],
@@ -177,11 +177,11 @@ test('CVCX profile header renders score/EV/ROR/note plus actual accuracy from a 
 
   await page.locator('.home-stats-link').click();
   await expect(page.locator('.mistake-row', { hasText: 'CVCX score' })).toContainText('87');
-  await expect(page.locator('.mistake-row', { hasText: 'CVCX EV/hr' })).toContainText('+24');
+  await expect(page.locator('.mistake-row', { hasText: 'CVCX EV per hour' })).toContainText('+24');
   await expect(page.locator('.mistake-row', { hasText: 'CVCX risk of ruin' })).toContainText('3%');
   await expect(page.locator('.mistake-row', { hasText: 'CVCX sim note' })).toContainText('CVCX N0 sim, 500M rounds');
-  await expect(page.locator('.mistake-row', { hasText: 'Actual play accuracy' })).not.toContainText('—');
-  await expect(page.locator('.mistake-row', { hasText: 'Actual units/hr' })).not.toContainText('—');
+  await expect(page.locator('.mistake-row', { hasText: 'Your play accuracy' })).not.toContainText('—');
+  await expect(page.locator('.mistake-row', { hasText: 'Your units per hour' })).not.toContainText('—');
   await shot(page, '28-stats-cvcx-header-session');
 });
 
@@ -267,7 +267,7 @@ test('stats: the retention figure states how far off it could be, and the width 
   await withStats(page, { retention: { history: gapRows(4, 3, true) } });
   let retention = await openRetention(page);
   const few = await retention
-    .locator('.mistake-row', { hasText: 'Could honestly be' })
+    .locator('.mistake-row', { hasText: 'Likely range' })
     .locator('.mistake-value')
     .textContent();
   // Three-for-three is 100% on the row above; the interval is what stops that
@@ -282,7 +282,7 @@ test('stats: the retention figure states how far off it could be, and the width 
   await withStats(page, { retention: { history: gapRows(4, 300, true) } });
   retention = await openRetention(page);
   const many = await retention
-    .locator('.mistake-row', { hasText: 'Could honestly be' })
+    .locator('.mistake-row', { hasText: 'Likely range' })
     .locator('.mistake-value')
     .textContent();
   const manyLow = Number(/^(\d+)%/.exec(many ?? '')?.[1]);
@@ -324,7 +324,7 @@ test('stats: Endurance/fatigue shows front vs back-half drift from a declining s
 
   await statsTab(page, 'Progress');
 
-  const section = page.locator('.stats-section', { hasText: 'Endurance' });
+  const section = page.locator('.stats-section', { hasText: 'Fatigue' });
   await expect(section).toBeVisible();
   await expect(section.locator('.mistake-row', { hasText: 'Early-session' })).toContainText('100%');
   await expect(section.locator('.mistake-row', { hasText: 'Late-session' })).toContainText('0%');
@@ -336,7 +336,7 @@ test('stats: Endurance/fatigue shows the empty state before enough back-to-back 
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
   await statsTab(page, 'Progress');
-  const section = page.locator('.stats-section', { hasText: 'Endurance' });
+  const section = page.locator('.stats-section', { hasText: 'Fatigue' });
   await expect(section).toBeVisible();
   await expect(section).toContainText('Not enough back-to-back counting runs yet');
 });
@@ -456,7 +456,7 @@ test('the cost of mistakes is ranked by total units, not by how bad each one loo
 
   // And the list must not pass itself off as the whole account: nine missed
   // deviations were graded and cannot honestly be priced.
-  await expect(section).toContainText('9 further mistakes are counted above but unpriced');
+  await expect(section).toContainText('9 further mistakes are counted above but not priced');
 
   await shot(page, '29-stats-cost-of-mistakes');
 });
@@ -495,7 +495,7 @@ test('Stats reports checkpoints held, and the runs that only looked clean', asyn
 
   await expect(page.getByText(/Checkpoints held: 2\/4/)).toBeVisible();
   await expect(page.getByText(/over 2 runs/)).toBeVisible();
-  await expect(page.getByText(/1 run ended on the RIGHT count after drifting/)).toBeVisible();
+  await expect(page.getByText(/1 run ended on the right count by luck/)).toBeVisible();
 });
 
 test('a history with no checkpoints says nothing about them, rather than claiming a clean sweep', async ({
@@ -511,7 +511,7 @@ test('a history with no checkpoints says nothing about them, rather than claimin
   await statsTab(page, 'Drills');
 
   await expect(page.getByText(/Checkpoints held/)).toHaveCount(0);
-  await expect(page.getByText(/after drifting/)).toHaveCount(0);
+  await expect(page.getByText(/right count by luck/)).toHaveCount(0);
 });
 
 /* ---------------------------------------------------------------------- */
@@ -572,13 +572,13 @@ test('the range picker reaches the sections that were reading lifetime totals', 
   await expect(section(page, 'True count drill')).toContainText('1/2');
   await expect(rowValue(page, 'Distraction', 'Attempts')).toHaveText('2');
   await statsTab(page, 'Play');
-  await expect(rowValue(page, 'Bet / sit / leave', 'Decisions')).toHaveText('2');
+  await expect(rowValue(page, 'Bet, sit or leave', 'Decisions')).toHaveText('2');
 
   // ...and the same window has to reach all three, or the screen is showing
   // two different questions answered side by side with nothing saying which
   // figure is which.
   await page.getByRole('button', { name: 'Last 7 days', exact: true }).click();
-  await expect(rowValue(page, 'Bet / sit / leave', 'Decisions')).toHaveText('1');
+  await expect(rowValue(page, 'Bet, sit or leave', 'Decisions')).toHaveText('1');
   await statsTab(page, 'Drills');
   await expect(
     section(page, 'True count drill'),

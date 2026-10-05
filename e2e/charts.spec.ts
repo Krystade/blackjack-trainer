@@ -17,7 +17,7 @@ import { shot, withProfile } from './helpers';
 async function openCharts(page: Page, url = '/?e2e=1'): Promise<void> {
   await page.goto(url);
   await page.getByRole('button', { name: 'Charts', exact: true }).click();
-  await expect(page.locator('.charts-heading')).toHaveText('Strategy Charts');
+  await expect(page.locator('.charts-heading')).toHaveText('Strategy charts');
 }
 
 /** The visible row labels of one section, top to bottom. */
@@ -64,7 +64,7 @@ test('row order defaults to descending and the toggle flips every section', asyn
   await expect(rowLabels(page, 'SOFT').first()).toHaveText('A,9-10');
   await expect(rowLabels(page, 'PAIRS').first()).toHaveText('A,A');
 
-  await page.getByRole('button', { name: 'Ascending', exact: true }).click();
+  await page.getByRole('button', { name: 'Lowest first', exact: true }).click();
 
   await expect(rowLabels(page, 'HARD').first()).toHaveText('4-8');
   await expect(rowLabels(page, 'SOFT').first()).toHaveText('A,2');
@@ -74,7 +74,7 @@ test('row order defaults to descending and the toggle flips every section', asyn
 test('the chosen row order survives a reload in its own storage key', async ({ page }) => {
   await withProfile(page);
   await openCharts(page);
-  await page.getByRole('button', { name: 'Ascending', exact: true }).click();
+  await page.getByRole('button', { name: 'Lowest first', exact: true }).click();
   await expect(rowLabels(page, 'HARD').first()).toHaveText('4-8');
 
   expect(await page.evaluate(() => window.localStorage.getItem('bjtrainer.chartOrder.v1'))).toBe('ascending');
@@ -178,7 +178,9 @@ test('a PAIRS highlight lands on the pair row', async ({ page }) => {
 async function captureOrder(page: Page, order: 'Descending' | 'Ascending', file: string): Promise<void> {
   await withProfile(page);
   await openCharts(page);
-  await page.getByRole('button', { name: order, exact: true }).click();
+  await page
+    .getByRole('button', { name: order === 'Descending' ? 'Highest first' : 'Lowest first', exact: true })
+    .click();
   await expect(page.locator('[data-section="HARD"]')).toBeVisible();
   await expect(rowLabels(page, 'HARD').first()).toHaveText(order === 'Descending' ? '18+' : '4-8');
 
