@@ -114,6 +114,20 @@ One unblinded answer per step, so treat these as leads, not settled facts.
 | Calibration, second round (quiet room) | **10/10**, one-word and two-word alike |
 | Calibration, first round | 3 slots heard nothing: `devicechange` ×2 right after the mic opened, then `audio-capture`. The first mic open of the page lost the mic |
 
+- **Blind Speaker check, 2026-10-05 08:09 (build 668a6a5):** six plays, mic open, order hidden.
+  - **Web Audio: 3 of 3 on the loud speaker.** Counting the earlier run, that's 4 of 4.
+  - Normal playback: 2 of 3. The earpiece came on the first normal play after the mic opened
+    (the earlier run's single mic-open play was also earpiece).
+  - Web Audio with the mic never opened: "heard nothing" again, with `audioContext=running`.
+    So the context was unlocked, and the ring switch is the likely cause (Web Audio obeys it).
+    Asked Jack.
+  - **Before building on it, two cautions:**
+    - `caa5a73` removed a Web Audio route because a MediaElementSource stretched and chopped
+      clips with the mic open: 24kHz files resampled live into a graph whose hardware rate
+      the mic moves. The kit uses decoded buffers (resampled once, at decode), which is a
+      different path. Still, sound quality has to be asked about.
+    - If the ring switch silences Web Audio whenever the mic is closed, Web Audio can only be
+      used while capture is live, or the drill goes silent on a muted phone.
 - **G1-e ruled out:** Jack already had Call Audio Routing = Speaker during this run, and
   normal playback with the mic open was still on the earpiece.
 - **Next:** the blind Speaker check (6 plays, hidden order). If Web Audio holds up, the fix
