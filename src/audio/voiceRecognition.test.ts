@@ -89,7 +89,9 @@ describe('matchVoiceAction', () => {
       ['hit', 'hit'],
       ['stand hold', 'stand'],
       ['double', 'double'],
-      ['hit hit hit hit hit stand HIT stand hold double double', 'double'],
+      // A dictation dump naming three different commands with no retraction:
+      // it was graded 'double' (last wins) until 2026-10-05, and is rejected now.
+      ['hit hit hit hit hit stand HIT stand hold double double', null],
       ['Split', 'split'],
       ['surrender', 'surrender'],
       ['test', null],
@@ -612,5 +614,82 @@ describe('a two-word form for every command', () => {
     expect(matchVoiceAction('no thanks')).toBe('no');
     expect(matchVoiceAction('double down')).toBe('double');
     expect(matchVoiceAction('say again')).toBe('repeat');
+  });
+});
+
+/**
+ * 2026-10-05, Flashcards, a pair of sevens. The engine returned
+ *   heard="But" conf=0.353, six alternatives, the runners-up scoring 0.149 and below
+ * and the app played SPLIT ("split (approximate)"). The winner "But" is three
+ * letters and cannot approximate anything; the split came from a RUNNER-UP
+ * that was one consonant away from SPLT. A second opinion at 0.149 confidence
+ * must never be allowed to play a hand on consonants alone.
+ */
+describe('a runner-up cannot play a hand on consonants alone', () => {
+  it('rejects the real "But" utterance whatever its runners-up are', () => {
+    // Runners-up reduce to one edit from split / stand / double / surrender.
+    for (const alt of ['Plot', 'Spot', 'Slit', 'Sand', 'Bill', 'Spilt', 'Splat']) {
+      expect(resolveSpoken(['But', alt, 'Bud', 'Butt']), `alt "${alt}"`).toBe(null);
+      expect(matchSpokenAlternatives(['But', alt])).toBe(null);
+    }
+  });
+
+  it('still lets a runner-up that SAYS a command rescue the winner', () => {
+    expect(resolveSpoken(['But', 'Split'])).toEqual({ action: 'split', via: 'alternative' });
+    expect(resolveSpoken(['Band', 'Send', 'Stand'])).toEqual({ action: 'stand', via: 'alternative' });
+  });
+
+  it('still approximates from the winner itself', () => {
+    expect(resolveSpoken(['send', 'xyz'])).toEqual({ action: 'stand', via: 'approximate' });
+    expect(resolveSpoken(['selit'])).toEqual({ action: 'split', via: 'approximate' });
+  });
+});
+
+describe('ordinary words cannot approximate a hand-playing command', () => {
+  it('needs a skeleton long enough that one edit means something', () => {
+    // DBL is three letters, so one edit reaches all of these.
+    for (const word of ['bill', 'deal', 'dial', 'able', 'dull', 'bold', 'build', 'doll']) {
+      expect(nearestVoiceAction(word), `"${word}"`).toBe(null);
+    }
+    // A skeleton of two letters is never enough on its own.
+    // "upto" is PT, one edit from RPT; only the length floor stops it.
+    for (const word of ['upto', 'but', 'bat', 'beat', 'bait', 'boot']) {
+      expect(nearestVoiceAction(word), `"${word}"`).toBe(null);
+    }
+  });
+
+  it('keeps the exact-skeleton rescue for double, and the repeat near-miss', () => {
+    expect(nearestVoiceAction('doable')).toBe('double');
+    expect(nearestVoiceAction('read it')).toBe('repeat');
+  });
+});
+
+/**
+ * "Stand hit hit hit" was graded hit, "Split them surrender" surrender, and
+ * the 2026-10-05 phone log had both. Last-word-wins is right for a CORRECTION
+ * ("hit no stand") and wrong for a stutter or a list, and the two differ in
+ * one observable way: a correction carries a retraction word between the
+ * commands. No marker, no play: the cost is saying one word again.
+ */
+describe('a transcript naming several different commands', () => {
+  it('is rejected when nothing says one retracts the other', () => {
+    expect(matchVoiceAction('Stand hit hit hit')).toBe(null);
+    expect(matchVoiceAction('Split them surrender')).toBe(null);
+    expect(matchVoiceAction('hit stand')).toBe(null);
+    expect(resolveSpoken(['Stand hit hit hit'])).toBe(null);
+    expect(resolveSpoken(['Split them surrender', 'surrender'])).toBe(null);
+    expect(resolveSpoken(['hit stand', 'stand'])).toBe(null);
+  });
+
+  it('keeps the last command when a retraction sits between', () => {
+    expect(matchVoiceAction('hit no stand')).toBe('stand');
+    expect(matchVoiceAction('hit sorry stand')).toBe('stand');
+    expect(matchVoiceAction('stand no hit')).toBe('hit');
+    expect(matchVoiceAction('split wait surrender')).toBe('surrender');
+  });
+
+  it('does not touch repeats of the same command', () => {
+    expect(matchVoiceAction('hit hit hit')).toBe('hit');
+    expect(matchVoiceAction('Hit that again')).toBe('hit');
   });
 });
