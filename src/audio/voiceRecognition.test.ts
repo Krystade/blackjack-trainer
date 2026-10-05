@@ -512,3 +512,55 @@ describe('aliases the operator added', () => {
     expect(voicePhrases()).toContain('stand pat');
   });
 });
+
+/**
+ * THE CONSONANT SKELETON, pinned.
+ *
+ * `skeleton()` carried a line that read `.replace(/(.)+/g, '$1')` in every
+ * editor and was in fact `.replace(/(.)\x01+/g, '$1')` -- a raw 0x01 control
+ * byte where `\1` was meant. The byte made the line a no-op, which is the only
+ * reason the matcher worked: written as it APPEARED, the pattern matches the
+ * whole string greedily and `$1` is the last capture, so every skeleton
+ * collapses to its final consonant.
+ *
+ * Measured, before the line was removed:
+ *
+ *   stand -> d      good -> d      said -> d
+ *   well  -> l      double -> l
+ *   sure  -> r      surrender -> r
+ *
+ * which makes "good", "said" and "stand" an exact match for one another. That
+ * is the "it" bug -- an ordinary English word silently playing a hand -- for a
+ * whole family of words at once, one invisible keystroke away.
+ *
+ * So these cases exist to fail loudly if the collapse ever comes back, whether
+ * by a formatter, a paste, or somebody tidying a regex that looks redundant.
+ * They assert through the public matcher rather than the private helper,
+ * because what matters is the hand that gets played.
+ */
+describe('the consonant skeleton cannot swallow ordinary words', () => {
+  it('still reaches the command it was built for', () => {
+    // The near-miss rule earning its keep: the engine heard the consonants
+    // and landed one edit away.
+    expect(nearestVoiceAction('send')).toBe('stand');
+  });
+
+  it('does not take ordinary four-letter words as commands', () => {
+    // Each of these collapses to the same single letter as a real command
+    // under the broken pattern, and would be graded as a play.
+    expect(nearestVoiceAction('good')).toBeNull();
+    expect(nearestVoiceAction('said')).toBeNull();
+    expect(nearestVoiceAction('well')).toBeNull();
+    expect(nearestVoiceAction('food')).toBeNull();
+    expect(nearestVoiceAction('mind')).toBeNull();
+    expect(nearestVoiceAction('cool')).toBeNull();
+    expect(nearestVoiceAction('sure')).toBeNull();
+  });
+
+  it('keeps the long commands distinguishable from each other', () => {
+    // If skeletons collapsed, these would all be one letter and the
+    // tie-cancel in nearestVoiceAction would fire on every utterance.
+    expect(nearestVoiceAction('surrenda')).toBe('surrender');
+    expect(nearestVoiceAction('spalit')).toBe('split');
+  });
+});

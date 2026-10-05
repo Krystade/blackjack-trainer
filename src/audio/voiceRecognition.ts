@@ -242,12 +242,35 @@ const MIN_FUZZY_LETTERS = 4;
 export const MAX_FUZZY_DISTANCE = 1;
 
 function skeleton(text: string): string {
-  // Vowels carry least across a bad microphone, and doubled letters are noise.
+  /*
+   * Vowels carry least across a bad microphone, so the consonants are the
+   * skeleton. Nothing collapses doubled letters, deliberately -- see below.
+   *
+   * THE LINE THAT WAS HERE, and why it is not any more. It read
+   * `.replace(/(.)+/g, '$1')` in every editor and was really
+   * `.replace(/(.)<0x01>+/g, '$1')`: a raw 0x01 control byte where a backreference had
+   * been intended. The byte made it a no-op, and the no-op was the only
+   * reason this function worked. Written as it APPEARED, the pattern matches
+   * the whole string greedily and `$1` is the final capture, so every
+   * skeleton becomes its last consonant:
+   *
+   *   stand -> d     good -> d     said -> d     food -> d
+   *   double -> l    well -> l     surrender -> r    sure -> r
+   *
+   * which makes "good", "said" and "stand" exact matches for one another. It
+   * is the "it" bug -- an ordinary English word silently playing a hand --
+   * across a whole family of words, one invisible keystroke from happening.
+   *
+   * Removed rather than repaired to a backreference, because repairing it would CHANGE
+   * matching ("surrender" skeletons srrndr today, srndr with the collapse)
+   * and there is no evidence that is better. The behaviour the app has driven
+   * on is the behaviour kept; voiceRecognition.test.ts pins it so neither the
+   * trap nor a silent change can come back.
+   */
   return text
     .toLowerCase()
     .replace(/[^a-z]/g, '')
-    .replace(/[aeiou]/g, '')
-    .replace(/(.)+/g, '$1');
+    .replace(/[aeiou]/g, '');
 }
 
 /** Levenshtein, bailing out as soon as it cannot come in under the cap. */
