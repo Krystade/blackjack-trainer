@@ -320,6 +320,7 @@
     "Ace of diamonds.": "ace-of-diamonds.mp3",
     "Ace of hearts.": "ace-of-hearts.mp3",
     "Ace of spades.": "ace-of-spades.mp3",
+    "Again.": "again.mp3",
     "Basic double versus dealer ace.": "basic-double-versus-dealer-ace.mp3",
     "Basic double versus dealer eight.": "basic-double-versus-dealer-eight.mp3",
     "Basic double versus dealer five.": "basic-double-versus-dealer-five.mp3",
@@ -467,6 +468,7 @@
     "Queen of hearts.": "queen-of-hearts.mp3",
     "Queen of spades.": "queen-of-spades.mp3",
     "Running count so far?": "running-count-so-far-q.mp3",
+    "Say each word after the tick.": "say-each-word-after-the-tick.mp3",
     "Say yes for the next one.": "say-yes-for-the-next-one.mp3",
     "Say yes to go again.": "say-yes-to-go-again.mp3",
     "Seven of clubs.": "seven-of-clubs.mp3",
@@ -508,6 +510,7 @@
     "The card left over was ten.": "the-card-left-over-was-ten.mp3",
     "The card left over was three.": "the-card-left-over-was-three.mp3",
     "The card left over was two.": "the-card-left-over-was-two.mp3",
+    "The order is: hit, hit me.": "the-order-is-hit-hit-me.mp3",
     "Thirteen versus three: hit at true count minus three or lower.": "thirteen-versus-three-hit-at-true-count-minus-three-or-lower.mp3",
     "Thirteen versus two: hit at true count minus two or lower.": "thirteen-versus-two-hit-at-true-count-minus-two-or-lower.mp3",
     "Three of clubs.": "three-of-clubs.mp3",
@@ -566,6 +569,7 @@
     "Two of hearts.": "two-of-hearts.mp3",
     "Two of spades.": "two-of-spades.mp3",
     "What's the true count?": "whats-the-true-count-q.mp3",
+    "double, double down.": "double-double-down.mp3",
     "minus 1.": "minus-1.mp3",
     "minus 10.": "minus-10.mp3",
     "minus 11.": "minus-11.mp3",
@@ -606,6 +610,9 @@
     "plus 7.": "plus-7.mp3",
     "plus 8.": "plus-8.mp3",
     "plus 9.": "plus-9.mp3",
+    "split, split them.": "split-split-them.mp3",
+    "stand, stand pat.": "stand-stand-pat.mp3",
+    "surrender, surrender this.": "surrender-surrender-this.mp3",
     "zero.": "zero.mp3"
   }
 }

@@ -22,6 +22,7 @@
  * This module is build tooling. Nothing in the app imports it.
  */
 
+import { CALIBRATION_INTRO, CALIBRATION_RETRY, calibrationOrderLine } from '../src/diag/testKit';
 import { correctPlay } from '../src/engine/strategy';
 import { DEFAULT_RULES } from '../src/engine/ruleset';
 import type { RuleSet } from '../src/engine/ruleset';
@@ -272,6 +273,10 @@ export function drillSentences(): string[] {
   add(narrateTableCountPrompt('rc'));
   add(narrateTableCountPrompt('tc'));
   add(narrateResult('push', 0));
+  // The Test kit's word step: its intro, order and spoken retry.
+  add(CALIBRATION_INTRO);
+  add(calibrationOrderLine());
+  add(CALIBRATION_RETRY);
   return [...sentences];
 }
 

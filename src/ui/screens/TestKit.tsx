@@ -5,6 +5,9 @@ import {
   KIT_PROGRESS_KEY,
   blindOrder,
   calibrationAnnouncement,
+  calibrationOrderLine,
+  CALIBRATION_INTRO,
+  CALIBRATION_RETRY,
   calibrationSchedule,
   parseProgress,
   scoreSample,
@@ -20,7 +23,7 @@ import {
   openMic,
   playThrough,
   routeClipUrl,
-  say,
+  sayRecorded,
   startRecording,
   tick,
   unlockWebAudio,
@@ -236,7 +239,7 @@ export function TestKit({ onNavigate }: { onNavigate: (s: Screen) => void }) {
             </li>
             <li>
               <strong>How often words are heard right.</strong> Single words against two-word forms, in each
-              place. <em>All three.</em>
+              place. <em>Words at speed, or any kit.</em>
             </li>
             <li>
               <strong>Audible at speed, and the wheel after voice.</strong> Can you make out the words on the
@@ -595,7 +598,8 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
   const run = async () => {
     setPhase('announcing');
     await ensureMic('closed');
-    await say(`Say each word when it appears. The order is: ${calibrationAnnouncement()}`);
+    await sayRecorded(CALIBRATION_INTRO);
+    await sayRecorded(calibrationOrderLine());
     const err = await ensureMic('open');
     if (err || !mic.current) {
       setLast(`The microphone did not open (${err ?? 'unknown'}).`);
@@ -616,12 +620,21 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
       let tookMs = 0;
       for (attempt = 1; attempt <= 2 && heard.length === 0 && !cancelled.current; attempt++) {
         setRetrying(attempt === 2);
+        if (attempt === 2) {
+          // Said out loud, not just shown: a retry only on screen is invisible
+          // while driving, and the repeat then lands one word late.
+          diag('test', 'kit-calibrate-retry', { say: word.say });
+          await sayRecorded(CALIBRATION_RETRY);
+          await wait(250);
+        }
         tick();
         const t0 = Date.now();
         heard = await new Promise<Array<{ transcript: string; confidence: number }>>((resolve) => {
           const timer = setTimeout(() => resolve([]), WORD_SLOT_MS);
           if (!mic.current) return resolve([]);
           mic.current.onFinal = (alts) => {
+            // The kit's own "Again." heard back by the open mic is not an answer.
+            if (/^\s*again\W*$/i.test(alts[0]?.transcript ?? '')) return;
             clearTimeout(timer);
             resolve(alts);
           };
@@ -671,7 +684,7 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
       <>
         <p className="testkit-instruction">
           A word appears with a tick. Say it. Twenty words, in pairs: <em>{calibrationAnnouncement()}</em> Then the same
-          again. If you can't look, just say the next word in that order after each tick.
+          again. If it says &ldquo;Again&rdquo;, say the same word once more. If you can't look, just say the next word in that order after each tick.
         </p>
         <button type="button" className="u-btn u-btn-primary testkit-go" onClick={() => void run()}>
           Start

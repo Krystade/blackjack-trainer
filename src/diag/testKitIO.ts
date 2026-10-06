@@ -9,10 +9,9 @@
  */
 
 import { diag } from './diagnosticLog';
-import { activeClipVoice, loadVoiceManifest, manifestLookup } from '../audio/clips';
+import { activeClipVoice, loadVoiceManifest, manifestLookup, playChimeTone, playClipsAsync } from '../audio/clips';
 import { getSharedAudioContext } from '../audio/audioContext';
 import { readAudioSessionType } from '../audio/audioSession';
-import { toneDataUri } from '../audio/tone';
 import type { PlayPath } from './testKit';
 import type { InputDevice } from './phoneMic';
 import { openMicStream } from '../audio/openMicStream';
@@ -104,10 +103,21 @@ export async function playThrough(path: PlayPath, url: string): Promise<'ended' 
 /** A short tick so a word slot can be followed without looking. */
 export function tick(): void {
   try {
-    void new Audio(toneDataUri(880, 0.6)).play().catch(() => {});
+    // The chime path: Web Audio once a mic has opened (loud speaker / car),
+    // the element before. A tick on the earpiece is a tick nobody hears.
+    playChimeTone(880, 0.6);
   } catch {
     /* a missing tick costs nothing */
   }
+}
+
+/**
+ * Say a fixed kit line from its recording, through the same path drills use;
+ * the phone's own voice only if no recording exists.
+ */
+export async function sayRecorded(text: string): Promise<void> {
+  const played = await playClipsAsync(text, { interrupt: true });
+  if (!played) await say(text);
 }
 
 /** Speak a line with the system voice. Used before any mic has been opened. */

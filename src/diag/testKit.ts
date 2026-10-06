@@ -29,7 +29,7 @@
 
 import { matchVoiceAction, type VoiceAction } from '../audio/voiceRecognition';
 
-export type KitId = 'speaker' | 'desk' | 'car-bt' | 'car-no-bt' | 'bt-phone-mic';
+export type KitId = 'speaker' | 'desk' | 'car-bt' | 'car-no-bt' | 'bt-phone-mic' | 'words-at-speed';
 
 /** How a sound is made. The two paths are routed by different parts of WebKit. */
 export type PlayPath = 'element' | 'webaudio';
@@ -289,6 +289,21 @@ export const KITS: Record<KitId, { label: string; where: string; steps: readonly
       CALIBRATE,
     ],
   },
+  'words-at-speed': {
+    label: 'Words at speed',
+    where: 'Driving. Start it while stopped; after the first tap it runs by ear, about 3 minutes.',
+    steps: [
+      {
+        kind: 'instruction',
+        id: 'speed-bluetooth',
+        title: 'Bluetooth on or off?',
+        body: 'Tap which, then start the words. Everything after this is spoken and needs no looking.',
+        answers: ['Bluetooth on', 'Bluetooth off'],
+        why: "The same twenty words mean something different through the car's call mic and the phone's own.",
+      },
+      { ...CALIBRATE, id: 'speed-calibrate' },
+    ],
+  },
   'bt-phone-mic': {
     label: 'Bluetooth: phone mic?',
     where: 'In the car, Bluetooth connected, parked with the engine running. About 3 minutes.',
@@ -346,6 +361,19 @@ export function calibrationSchedule(rounds = CALIBRATION_ROUNDS): CalibrationWor
     }
   }
   return out;
+}
+
+/**
+ * The spoken lines of the word step, recorded as clips (scripts/spokenPhrases.ts
+ * drillSentences) so they play through Web Audio -- the loud speaker or the car
+ * -- rather than the phone's own voice, which can land on the earpiece once a
+ * mic has opened. Jack, 2026-10-06: a retry shown only on screen is invisible
+ * while driving, so "Again." is said out loud.
+ */
+export const CALIBRATION_INTRO = 'Say each word after the tick.';
+export const CALIBRATION_RETRY = 'Again.';
+export function calibrationOrderLine(): string {
+  return `The order is: ${calibrationAnnouncement()}`;
 }
 
 /** The order spoken once at the start, before any microphone is opened. */

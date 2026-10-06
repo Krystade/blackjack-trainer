@@ -148,6 +148,16 @@ One unblinded answer per step, so treat these as leads, not settled facts.
 - **New lead for G3:** the first mic session of a page load can lose its input to a route
   change and go deaf for ~20s. Drills would lose their first answers the same way.
 
+## Test kit: Words at speed (2026-10-06)
+
+- [x] **Words at speed kit**: one tap for Bluetooth on or off, then only the 20-word step,
+  run by ear. Start it while stopped.
+- [x] **The retry is spoken.** "Again." plays as a recording, and the open mic ignores its own
+  "again". The intro and the order are recorded too, and the tick uses the Web Audio path, so
+  nothing in the step relies on the phone's own voice or on the earpiece.
+- [ ] Jack drives it twice (Bluetooth off, then on). The two numbers go into the roadmap's
+  decision table (`docs/research/2026-10-05-roadmap.md`).
+
 ## Swarm, 2026-10-05 (Sonnet agents; Claude orchestrates, merges and deploys)
 
 - [~] **Bluetooth: phone mic? kit**: built in a worktree. Covers the spectral probe on the iPhone

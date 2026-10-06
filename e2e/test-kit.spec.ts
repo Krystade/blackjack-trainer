@@ -73,3 +73,14 @@ test('the Bluetooth phone-mic kit is listed and walks inputs, probe and finger t
   await kit.getByRole('button', { name: 'Stop' }).click();
   await expect(page.locator('.testkit-unanswered')).toBeVisible();
 });
+
+test('Words at speed opens on the Bluetooth question, then the word step', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/?e2e=1');
+  await page.getByTestId('testkit-open').click();
+  await page.getByRole('button', { name: /Words at speed/ }).click();
+  const kit = page.getByTestId('testkit-screen');
+  await kit.getByRole('button', { name: 'Bluetooth off' }).click();
+  await expect(page.locator('[data-step="speed-calibrate"]')).toBeVisible();
+  await expect(kit).toContainText('If it says “Again”, say the same word once more.');
+});

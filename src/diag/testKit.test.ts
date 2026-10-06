@@ -206,3 +206,10 @@ describe('bt-phone-mic kit', () => {
     expect(phoneMicSummary({ answers: {} }).lines.every((l) => l.verdict === 'skipped' || l.id === 'route')).toBe(true);
   });
 });
+
+describe('Words at speed', () => {
+  it('asks Bluetooth on or off once, then runs only the word step', () => {
+    const steps = KITS['words-at-speed'].steps;
+    expect(steps.map((s) => s.kind)).toEqual(['instruction', 'calibrate']);
+  });
+});
