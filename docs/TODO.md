@@ -99,6 +99,84 @@ Last updated: 2026-10-06. Session handoff: `docs/HANDOFF.md`. Plan for the next 
   settled.
 - [ ] Jack runs the **car kits**: Bluetooth on first (that's how he drives), then off.
 
+## Results — CAR, Bluetooth ON, parked, 2026-10-06 09:05 (build f209d54, iOS 18.7, installed app)
+
+The first measurement ever taken in the car. Jack ran the `car-bt` kit end to end.
+
+**Read the per-trial lines, not the summary.** The on-screen summary said
+`element="0 of 3 on the loud speaker"` and `webaudio="0 of 3 on the loud speaker"` on both
+paths. That was a scoring fault, fixed in `7071ee0`: `BlindStep` compared against the DESK
+answer set's `'Loud speaker'`, and the car kits offer `'Car speakers'` / `'Phone loud speaker'`,
+so it could not match whatever he tapped.
+
+### G2 gate: FAILED, and the pre-registered fix is ruled out with it
+
+| Path | Trials | Where the sound came from |
+|------|--------|---------------------------|
+| `<audio>` (element) | 3 | Earpiece, Phone loud speaker, Phone loud speaker |
+| Web Audio | 3 | Phone loud speaker ×3 |
+
+**Car speakers: 0 of 6.** Nothing reached the car with a microphone open.
+
+The handoff's planned remedy was "if Web Audio does not reach the car, restore the `<audio>`
+path when Bluetooth is connected". **This log kills that fix**: `<audio>` did not reach the car
+either. With a mic open the phone takes the audio on BOTH paths, so the choice is not between
+the two playback paths. It is G2-d (speaker-through-phone + wheel) against G2-e (chase the car
+setting). **Waiting on Jack.**
+
+### The 4kHz wall is real in the car, on both microphones
+
+| Probe | Label | track rate | highRatio | high bands |
+|-------|-------|-----------|-----------|-----------|
+| 1 | TOYOTA Corolla | 48000 | 0.0000031 | 28 / 199 |
+| 2 | TOYOTA Corolla | 8000 | 0.0000111 | 26 / 197 |
+| 3 | iPhone Microphone | **8000** | 0.0015 | 369 / 540 |
+
+All three **narrowband**. The decisive one is the third: once the Corolla is connected, the
+**iPhone's own microphone also opens at 8kHz**. Selecting the phone mic does not escape HFP, so
+the "Bluetooth: phone mic?" kit's premise is weaker than it looked. Indoors on 2026-10-05 that
+same mic measured wideband (highRatio 0.28 then 0.977) — so the HFP hypothesis, eliminated at
+the desk, holds in the car.
+
+### Vocabulary (G3-b): two-word wins, 8/10 against 3/10 — SETTLED, shipped in `4e2d3e0`
+
+`kit-calibrate-summary oneWord=3/10 twoWord=8/10 wrongAction=1 rescuable=2`
+
+| Command | one-word | two-word |
+|---------|----------|----------|
+| hit | **0/2** — `nothing-heard`, `offered=0`, both rounds, each after a retry | 2/2 |
+| stand | 1/2 ("Send", rescued) | 2/2 ("Stand back", "Stand pad" — both matched) |
+| double | 0/2 ("No" → wrong-action, "Devil") | 1/2 ("Fell down" missed) |
+| split | 1/2 ("Flat", rescued) | 1/2 ("Sweater" missed) |
+| surrender | 1/2 ("Trainer", "Turner") | 2/2 |
+
+Two-word is at least as good on every command. `split` is the one tie, so it rides the uniform
+rule rather than its own evidence. `yes`/`no`/`repeat` were never asked and are unchanged.
+
+**"hit" alone returned nothing at all** — not a wrong word, `offered=0`. That is the single
+clearest recognition finding to date.
+
+### Confidence is dead as a gate, again and harder
+
+Wrong readings scored **0.862** ("Devil") and **0.868** ("Fell down"); correct ones scored
+**0.105** ("Stand pad") and **0.057** ("Hit me", "Stand back"). The two distributions are
+inverted, not merely overlapping. Nothing gates on confidence, which is correct; nothing
+should start.
+
+### Still open from this run
+
+- `kit-mic-open audiostart=true afterMs=1430` on the first open against `afterMs=21` later. R1
+  (slow/lost first mic open) is visible here but was not the 20s of the desk run.
+- `devicechange` fired at every mic open (09:05:26, 09:06:25, 09:06:35, 09:09:41): the route
+  flips each time the microphone opens.
+- **The backoff is blind to device churn.** `sinceDeviceChangeMs` is logged and acted on by
+  nothing, so a `devicechange` burst counts as genuine mic failure and `restartDelayFor` climbs
+  to the 8s ceiling (250+500+1000+2000+4000+8000 ≈ 16s, plus the attempts ≈ the ~20s of
+  deafness in the desk log). Candidate root fix for R1: a failure that lands within a short
+  window of a device change must not count against `failedStreak`. Not yet written.
+
+---
+
 ## Results — desk run 2026-10-05 (build 551ed72, iOS 18.7, installed app)
 
 One unblinded answer per step, so treat these as leads, not settled facts.
