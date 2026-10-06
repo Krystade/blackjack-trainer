@@ -1,5 +1,5 @@
 import type { ListenState, HeardVerdict } from '../audio/voiceControl';
-import { VOICE_ACTIONS } from '../audio/voiceRecognition';
+import { SPOKEN_FORM } from '../audio/voiceRecognition';
 
 /**
  * The words the voice status strip is written in.
@@ -26,8 +26,15 @@ export const VOICE_STATE_LABEL: Record<ListenState, string> = {
   error: 'No response from the microphone — switch it off and on',
 };
 
-/** The whole vocabulary, so there is nothing to guess at while driving. */
-export const VOICE_WORDS = Object.keys(VOICE_ACTIONS).join(' · ');
+/**
+ * The whole vocabulary, so there is nothing to guess at while driving.
+ *
+ * The two-word forms, which is what the car measured as working: 8/10 against
+ * 3/10 for the bare words on 2026-10-06. The bare words still work -- every
+ * alias does -- but this strip is read at the wheel, so it shows the form most
+ * likely to be heard. See `SPOKEN_FORM`.
+ */
+export const VOICE_WORDS = Object.values(SPOKEN_FORM).join(' · ');
 
 export function describeVerdict(verdict: HeardVerdict | null): string {
   if (verdict === null) return '';

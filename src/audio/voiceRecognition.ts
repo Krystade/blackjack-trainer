@@ -102,6 +102,43 @@ const ALIASES: Record<string, VoiceAction> = {
 };
 
 /**
+ * THE FORM THE APP ASKS FOR, per action.
+ *
+ * Every alias above is accepted; this is the one the operator is TOLD to say.
+ * Measured in the car on 2026-10-06, parked, Bluetooth on, through the
+ * Corolla's own microphone at 8kHz -- two rounds of ten words:
+ *
+ *   one-word 3/10        two-word 8/10
+ *
+ * Per command the two-word form was at least as good every time: "hit me" 2/2
+ * against "hit" 0/2, "stand pat" 2/2 against 1/2, "double down" 1/2 against
+ * 0/2, "surrender this" 2/2 against 1/2. "hit" alone is the striking one --
+ * `verdict=nothing-heard offered=0` on both rounds, each after a retry, so the
+ * engine returned nothing at all rather than the wrong word.
+ *
+ * "split them" and "split" tied at 1/2. That one is carried by the uniform
+ * rule, not by its own evidence; a later measurement may split them again.
+ *
+ * `yes`, `no` and `repeat` are unchanged because the calibrate step asks for
+ * the five hand actions only, and changing an unmeasured word on the strength
+ * of a result about other words would be inventing evidence.
+ *
+ * Nothing about MATCHING changes here -- both forms resolve through `ALIASES`
+ * exactly as before. This is what the screen prints and what the voice lines
+ * teach, which is the whole of "the documented default".
+ */
+export const SPOKEN_FORM: Record<VoiceAction, string> = {
+  hit: 'hit me',
+  stand: 'stand pat',
+  double: 'double down',
+  split: 'split them',
+  surrender: 'surrender this',
+  yes: 'yes',
+  no: 'no',
+  repeat: 'repeat',
+};
+
+/**
  * Every phrase the operator can actually say, aliases included.
  *
  * Exported for one reason: audio/selfEcho.ts dismisses a late transcript as

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { VoiceAction } from './voiceRecognition';
-import { looksLikeAnAttempt, matchSpokenAlternatives, matchVoiceAction, nearestVoiceAction, resolveSpoken, detectVoiceSupport, setUserVoiceAliases, voicePhrases, VOICE_ACTIONS } from './voiceRecognition';
+import { SPOKEN_FORM, looksLikeAnAttempt, matchSpokenAlternatives, matchVoiceAction, nearestVoiceAction, resolveSpoken, detectVoiceSupport, setUserVoiceAliases, voicePhrases, VOICE_ACTIONS } from './voiceRecognition';
 
 /**
  * Matching is the half of voice input that can be tested without a
@@ -565,6 +565,54 @@ describe('the consonant skeleton cannot swallow ordinary words', () => {
     // tie-cancel in nearestVoiceAction would fire on every utterance.
     expect(nearestVoiceAction('surrenda')).toBe('surrender');
     expect(nearestVoiceAction('spalit')).toBe('split');
+  });
+});
+
+describe('the form the app asks for', () => {
+  /*
+   * MEASURED IN THE CAR, 2026-10-06, parked with Bluetooth on and the Corolla's
+   * own microphone at 8kHz. Two rounds of ten:
+   *
+   *   one-word 3/10   two-word 8/10
+   *
+   * Per command, two-word was at least as good every time: "hit me" 2/2
+   * against "hit" 0/2 (which was never heard AT ALL -- `offered=0`, twice,
+   * each after a retry), "stand pat" 2/2 against 1/2, "double down" 1/2
+   * against 0/2, "surrender this" 2/2 against 1/2. "split them" and "split"
+   * tied at 1/2, so that one is a coin flip at this sample size and is carried
+   * by the uniform rule rather than by its own evidence.
+   *
+   * The roadmap's decision table pre-registered this outcome: two-word becomes
+   * the documented default, one-word stays as an alias. Nothing about matching
+   * changes -- both still work -- only what the app tells him to say.
+   */
+  it('asks for the two-word form of every action it measured', () => {
+    expect(SPOKEN_FORM.hit).toBe('hit me');
+    expect(SPOKEN_FORM.stand).toBe('stand pat');
+    expect(SPOKEN_FORM.double).toBe('double down');
+    expect(SPOKEN_FORM.split).toBe('split them');
+    expect(SPOKEN_FORM.surrender).toBe('surrender this');
+  });
+
+  it('leaves yes, no and repeat alone, because the car never measured them', () => {
+    // The calibrate step asks for the five hand actions only. Changing an
+    // unmeasured word on the strength of a result about other words would be
+    // inventing evidence.
+    expect(SPOKEN_FORM.yes).toBe('yes');
+    expect(SPOKEN_FORM.no).toBe('no');
+    expect(SPOKEN_FORM.repeat).toBe('repeat');
+  });
+
+  it('never asks for a phrase its own matcher would reject', () => {
+    /*
+     * THE ONE INVARIANT THAT MUST HOLD. This record is printed on the drill
+     * screen as "Say: ..." -- an eyes-free instruction at the wheel. A phrase
+     * here that the matcher does not accept would have him repeating a word
+     * the app itself cannot take, with no way to tell why.
+     */
+    for (const [action, phrase] of Object.entries(SPOKEN_FORM)) {
+      expect(matchVoiceAction(phrase), `the app asks for "${phrase}" and rejects it`).toBe(action);
+    }
   });
 });
 
