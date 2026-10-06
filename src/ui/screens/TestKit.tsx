@@ -482,7 +482,13 @@ function BlindStep({ step, mic, ensureMic, onAnswer }: StepProps & { step: Extra
   if (state === 'done') {
     const tally = (path: string) => {
       const rows = results.current.filter((r) => r.path === path);
-      return `${rows.filter((r) => r.answer === 'Loud speaker').length} of ${rows.length} on the loud speaker`;
+      const hit = rows.filter((r) => r.answer === step.target).length;
+      // WHERE IT ACTUALLY WENT, not just how often it went right. `0 of 3`
+      // alone was the whole report Jack got from his first car run, and it
+      // cannot say whether the sound came from the phone, the earpiece or
+      // nowhere -- which is the only thing the step was asked to find out.
+      const where = rows.map((r) => r.answer).join(', ');
+      return `${hit} of ${rows.length} on the ${step.target.toLowerCase()}${where ? ` (${where})` : ''}`;
     };
     return (
       <>
@@ -1028,7 +1034,9 @@ function PhoneRouteStep({ step, run, ensureInput, onAnswer }: StepProps & { step
   if (state === 'done') {
     const tally = (path: string) => {
       const rows = results.current.filter((r) => r.path === path);
-      return `${rows.filter((r) => r.answer === 'Car speakers').length} of ${rows.length} on the car speakers`;
+      const hit = rows.filter((r) => r.answer === step.target).length;
+      const where = rows.map((r) => r.answer).join(', ');
+      return `${hit} of ${rows.length} on the ${step.target.toLowerCase()}${where ? ` (${where})` : ''}`;
     };
     return (
       <>

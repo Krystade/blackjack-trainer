@@ -48,7 +48,26 @@ export type KitStep =
       why: string;
     }
   | { kind: 'instruction'; id: string; title: string; body: string; answers: readonly string[]; why: string }
-  | { kind: 'route-blind'; id: string; title: string; trials: number; answers: readonly string[]; why: string }
+  | {
+      kind: 'route-blind';
+      id: string;
+      title: string;
+      trials: number;
+      answers: readonly string[];
+      /**
+       * The answer that means the sound went where it was supposed to.
+       *
+       * HERE RATHER THAN IN THE COMPONENT, because it differs per kit and the
+       * component had it hardcoded to the desk kit's 'Loud speaker'. The car
+       * kits offer 'Car speakers' and 'Phone loud speaker', so the comparison
+       * never matched and every car run summarised as `0 of 3` no matter what
+       * Jack answered -- while its own per-trial log lines said five of six
+       * plays came from the phone. A step that asks a question owns what
+       * counts as the right answer to it.
+       */
+      target: string;
+      why: string;
+    }
   | { kind: 'reload'; id: string; title: string; why: string }
   | { kind: 'spectrum'; id: string; title: string; why: string }
   | { kind: 'calibrate'; id: string; title: string; why: string }
@@ -58,7 +77,16 @@ export type KitStep =
   | { kind: 'phone-inputs'; id: string; title: string; why: string }
   | { kind: 'phone-probe'; id: string; title: string; why: string }
   | { kind: 'phone-finger'; id: string; title: string; why: string }
-  | { kind: 'phone-route'; id: string; title: string; trials: number; answers: readonly string[]; why: string }
+  | {
+      kind: 'phone-route';
+      id: string;
+      title: string;
+      trials: number;
+      answers: readonly string[];
+      /** As on `route-blind`: the answer that means it went where it should. */
+      target: string;
+      why: string;
+    }
   | { kind: 'phone-recognise'; id: string; title: string; why: string }
   | { kind: 'wheel-press'; id: string; title: string; seconds: number; why: string }
   | { kind: 'phone-summary'; id: string; title: string; why: string };
@@ -138,6 +166,7 @@ const BLIND: KitStep = {
   title: 'Mic on — where does each play come from?',
   trials: 6,
   answers: DESK_ROUTE,
+  target: 'Loud speaker',
   why: 'Six plays with the microphone on, two different playback methods in a hidden random order. Answer each one by ear.',
 };
 
@@ -187,6 +216,7 @@ const PHONE_MIC_STEPS: readonly KitStep[] = [
     title: 'Where does the sound come out',
     trials: 6,
     answers: CAR_ROUTE,
+    target: 'Car speakers',
     why: 'Six plays, two playback methods in a hidden order, while the phone input is held open.',
   },
   {
@@ -274,6 +304,9 @@ export const KITS: Record<KitId, { label: string; where: string; steps: readonly
         id: 'bt-blind-mic-open',
         title: 'Mic on, Bluetooth on — where does each play come from?',
         answers: CAR_ROUTE,
+        // The car speakers are the whole point of this kit; the phone's own
+        // loud speaker is a failure here even though it is a pass at the desk.
+        target: 'Car speakers',
         why: 'Six plays with the mic on, two playback methods in a hidden order. The drills now use one of them; it has to reach the car speakers.',
       },
       SPECTRUM,

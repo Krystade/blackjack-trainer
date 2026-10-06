@@ -53,6 +53,36 @@ describe('test kit', () => {
     expect(steps[reload + 1]).toMatchObject({ kind: 'route', mic: 'fresh-page' });
   });
 
+  it('every blind step scores against an answer it actually offers', () => {
+    /*
+     * THE CAR KIT SCORED 0 OF 3 WHATEVER JACK TAPPED.
+     *
+     * `BlindStep` counted `answer === 'Loud speaker'`, which is the DESK
+     * answer set. The car kits offer 'Phone loud speaker' and 'Car speakers'
+     * instead, so the comparison could never match and the summary read
+     * "0 of 3 on the loud speaker" on both paths -- while the per-trial log
+     * lines said five of six plays came out of the phone's loud speaker.
+     * Jack's 2026-10-06 car-bt run is that log.
+     *
+     * The step now says what success is, because success is a property of the
+     * question asked, not of the component that renders it. This asserts the
+     * one thing that was false: the target is an answer the operator can
+     * actually give.
+     */
+    const blind = Object.values(KITS)
+      .flatMap((k) => k.steps)
+      .filter(
+        (s): s is Extract<KitStep, { kind: 'route-blind' | 'phone-route' }> =>
+          s.kind === 'route-blind' || s.kind === 'phone-route',
+      );
+    expect(blind.length).toBeGreaterThan(0);
+    for (const step of blind) {
+      expect(step.answers, `${step.id} scores against ${step.target}, which it never offers`).toContain(
+        step.target,
+      );
+    }
+  });
+
   it('blinds the speaker check: each path equally often, in an order that varies', () => {
     const order = blindOrder(6);
     expect(order.filter((p) => p === 'element')).toHaveLength(3);
