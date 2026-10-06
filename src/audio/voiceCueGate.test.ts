@@ -272,6 +272,28 @@ describe('what the engine thought of its own reading', () => {
     expect(h.find('result')?.detail?.confs).toEqual([0.13, 0.11, 0.09]);
   });
 
+  it('logs the runner-up readings themselves, not just how many there were', () => {
+    /*
+     * THE LIST OF POTENTIALS. Until now the log carried the winner, a COUNT of
+     * the readings and their confidences -- so a line reading `offered=7`
+     * could not say what those seven readings were, and the one question the
+     * N-best rescue exists to answer ("was the command in the list at all?")
+     * was unanswerable from a field log. Jack's 2026-10-05 drive log is
+     * exactly this: `offered=7` at conf 0.185, contents unknown.
+     */
+    const h = harness({ cueOn: 'start' });
+    h.controller.start();
+    h.current().sayAll([
+      { transcript: 'Band', confidence: 0.13 },
+      { transcript: 'Send', confidence: 0.11 },
+      { transcript: 'Stand', confidence: 0.09 },
+    ]);
+
+    // All three, in the engine's own order. The winner alone is already in
+    // `heard`, so a log that repeated only that would add nothing.
+    expect(h.find('result')?.detail?.readings).toEqual(['Band', 'Send', 'Stand']);
+  });
+
   it('says so plainly when the engine reports no confidence', () => {
     // A missing number and a zero are different news: iOS leaves segment
     // confidence at 0 on hypotheses, and a log that renders both as 0 cannot

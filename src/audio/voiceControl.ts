@@ -747,6 +747,12 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
          * file. One number cannot tell those apart, so both are recorded.
          */
         offered: offered.length,
+        /*
+         * AND WHAT THEY ACTUALLY WERE. The count alone cannot answer the one
+         * question the N-best rescue exists for -- was the command anywhere in
+         * the list? -- so a drive log reading `offered=7` was unreadable.
+         */
+        readings: offered,
         asked: wantAlternatives,
         conf: confs[0] ?? SPOKEN_CONFIDENCE_UNKNOWN,
         confs,

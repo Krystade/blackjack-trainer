@@ -767,7 +767,18 @@ function renderValue(v: unknown): string {
   if (typeof v === 'string') return quoteIfNeeded(v);
   try {
     const json = JSON.stringify(v);
-    return json === undefined ? quoteIfNeeded(String(v)) : json;
+    /*
+     * THE JSON IS QUOTED TOO, by the same rule as every other value.
+     *
+     * It was emitted raw, which held only while the sole array in the log was
+     * `confs` -- numbers, no delimiters. `readings` carries what the engine
+     * heard, and an alias like "hit me" puts a space INSIDE the JSON: the
+     * field ends at that space, everything after it reads as further keys, and
+     * the readings past the first are lost to any parser of the export. The
+     * rule this file states about itself is that a value must never be able to
+     * end its own field; an array of free text is a value like any other.
+     */
+    return quoteIfNeeded(json === undefined ? String(v) : json);
   } catch {
     // Circular, or a value with a throwing toJSON. Still must not emit a
     // newline.

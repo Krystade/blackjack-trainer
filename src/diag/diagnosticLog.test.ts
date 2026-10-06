@@ -333,6 +333,31 @@ describe('the export as an artefact', () => {
     expect(line).toContain(DQ + 'he said ' + BS + DQ + 'double' + BS + DQ + ' then' + DQ);
   });
 
+  it('quotes a list of transcripts, which carry spaces inside the JSON', async () => {
+    /*
+     * ARRAYS WENT OUT AS RAW JSON. That was safe only while the only array in
+     * the log was `confs`, which holds numbers. `readings` holds what the
+     * engine heard, and an alias like "hit me" puts a space inside the JSON --
+     * which ends the field early, so the rest of the line reads as its own
+     * keys and the readings after the first are lost to any parser.
+     */
+    const log = await fresh();
+    log.diag('mic', 'result', { readings: ['hit me', 'stand'], asked: 3 });
+    const line = log
+      .formatDiagnosticLog(log.readDiagnosticLog())
+      .split(NL)
+      .find((l) => l.includes('result'))!;
+
+    // One field, quoted as a whole, with the inner quotes escaped -- so the
+    // key that follows it is still the next key.
+    expect(line).toContain(
+      'readings=' + DQ + '[' + BS + DQ + 'hit me' + BS + DQ + ',' + BS + DQ + 'stand' + BS + DQ + ']' + DQ,
+    );
+    expect(line).toContain('asked=3');
+    // And nothing after the list reads as a stray field.
+    expect(line.split(' ').filter((t) => t === 'me').length).toBe(0);
+  });
+
   it('quotes exactly the values that would be ambiguous bare', async () => {
     const log = await fresh();
     log.diag('test', 'x', { a: 'Correct?', b: 'two words', c: 'hit=stand' });
@@ -357,7 +382,10 @@ describe('the export as an artefact', () => {
       .split(NL)
       .find((l) => l.includes('obj'))!;
     expect(line).not.toContain('[object Object]');
-    expect(line).toContain('"lat":1');
+    // The content survives. It now rides inside a quoted field -- JSON always
+    // carries a double quote, which is a delimiter here -- so the inner quotes
+    // come back escaped, and the whole object is one field a parser can take.
+    expect(line).toContain(BS + DQ + 'lat' + BS + DQ + ':1');
   });
 
   it('keeps close to MAX_ENTRIES of ordinary traffic, not half of it', async () => {
