@@ -14,7 +14,7 @@ operating goals and the work under them.
 - A claim about the phone is settled by the phone. Desk results are labelled as desk results.
 - Items are updated in the same commit as the work, never afterwards from memory.
 
-Last updated: 2026-10-05 (first cloud session). Plan for the next drive and two weeks: `docs/research/2026-10-05-roadmap.md`.
+Last updated: 2026-10-06. Session handoff: `docs/HANDOFF.md`. Plan for the next drive and two weeks: `docs/research/2026-10-05-roadmap.md`.
 
 ---
 
@@ -22,10 +22,10 @@ Last updated: 2026-10-05 (first cloud session). Plan for the next drive and two 
 
 | # | Goal | Where it stands |
 |---|------|-----------------|
-| G1 | Phone alone, **no Bluetooth**: sound from the **loud speaker**, voice answers accepted | **Fixed in a real drill** (`8195254`, `7826a3e`): clips play through Web Audio once the mic has opened. Still on the earpiece: lines with no recording (spoken by the phone's own voice) and push-to-talk; being audited |
-| G2 | **Bluetooth on**: sound through the **car speakers**, voice answers accepted | Car output proven with `<audio>`. **Web Audio over Bluetooth with the mic open is untested.** It's the first parked check next drive. Which mic is used is unknown; the "Bluetooth: phone mic?" kit is being built |
-| G3 | Voice recognition that holds up at **freeway noise** | Quiet room 10/10. **Never measured in motion.** False accepts ("But" → split) being tightened. Turn-taking tones and real-end deafness shipped (`70b12d6`) |
-| G4 | Ongoing UX/UI improvement | Settings cull, wording passes and Flashcards layout shipped; UX audit at 375×812 running |
+| G1 | Phone alone, **no Bluetooth**: sound from the **loud speaker**, voice answers accepted | **Fixed** (`8195254`, `7826a3e`, `79405cd`). Once the mic has opened, clips and tones play through Web Audio and the open mic is deaf until a line really ends. All drill lines are recorded (`d4e6145`). Left over: settlement lines with amounts, and push-to-talk |
+| G2 | **Bluetooth on**: sound through the **car speakers**, voice answers accepted | Car output proven with `<audio>`. **Web Audio over Bluetooth with the mic open is untested.** It's the first step of the "In the car — Bluetooth ON" kit. Which mic is used: the "Bluetooth: phone mic?" kit (`a23e887`), not yet run |
+| G3 | Voice recognition that holds up at **freeway noise** | Quiet room 10/10; never measured in motion. The **Words at speed** kit (`f209d54`) measures it. False accepts tightened (`cf9bf33`). If the road number is poor, the next build is Vosk (`docs/research/2026-10-05-constrained-recognizers.md`) |
+| G4 | Ongoing UX/UI improvement | UX audit fixes shipped (`2343d33`, `b93282d`, `20339f0`). Open question for Jack: the 44px mute strip at the top of every screen |
 
 ---
 
