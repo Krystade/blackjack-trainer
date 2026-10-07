@@ -86,7 +86,7 @@ export interface MicBandVerdict {
    * 'no-signal'  -- nothing anywhere; says nothing about the route.
    * 'unmeasurable' -- the spectrum cannot represent the wall at all.
    */
-  verdict: 'narrowband' | 'wideband' | 'no-signal' | 'unmeasurable';
+  verdict: 'narrowband' | 'wideband' | 'no-signal' | 'unmeasurable' | 'narrowband-by-rate';
   /** Share of total linear energy sitting above the wall, 0 to 1. */
   highRatio: number;
   /** Bins that carried any signal, so a thin verdict can be spotted. */
@@ -170,6 +170,36 @@ export function classifyMicBand(bins: Float32Array, sampleRate: number): MicBand
     highBins,
     peakDbfs,
   };
+}
+
+/**
+ * Does the TRACK's own sample rate already settle the question?
+ *
+ * EVERY CAR VERDICT BEFORE THIS WAS INVALID, and the reason was one number.
+ * `classifyMicBand` correctly short-circuits when the Nyquist is at or below the
+ * wall -- "nothing above it could ever have shown up, so narrowband would be
+ * true by construction" -- but it is handed the AudioContext's rate (48000,
+ * Nyquist 24000), while the track runs at 8000, a true Nyquist of 4000: exactly
+ * the wall. Every bin above 4kHz was therefore an artifact of upsampling 8kHz
+ * audio to 48kHz, and the ratio computed across them was noise.
+ *
+ * That is why the readings contradicted each other. The 2026-10-06 18:01 run
+ * scored the iPhone mic `wideband highRatio=0.287` WHILE DRIVING -- road noise
+ * upsampled into a band that cannot carry signal -- and the parked run scored
+ * the same microphone `narrowband highRatio=1.6e-8` with a clear voice at
+ * -25 dBFS. Neither number meant anything: the track was 8000 in both, and in
+ * every other car probe taken on either day.
+ *
+ * `trackSampleRate=8000` IS the proof of the wall. It needs no spectral
+ * inference, and the inference it was given was worthless. Returns null when the
+ * rate is unknown or high enough that the band above the wall could really carry
+ * something, so the spectrum still decides in the cases where it can.
+ */
+export function verdictFromTrackRate(
+  trackSampleRate: number | null,
+): 'narrowband-by-rate' | null {
+  if (typeof trackSampleRate !== 'number' || !Number.isFinite(trackSampleRate)) return null;
+  return trackSampleRate / 2 <= HFP_WALL_HZ ? 'narrowband-by-rate' : null;
 }
 
 /**
@@ -285,10 +315,21 @@ export async function probeMicSpectrum(
       best = preferFrame(best, classifyMicBand(spectrum, ctx.sampleRate));
     }
 
+    const trackSampleRate = typeof settings.sampleRate === 'number' ? settings.sampleRate : null;
+    /*
+     * THE RATE OVERRIDES THE SPECTRUM, where the rate can settle it. An 8kHz
+     * track cannot carry anything above 4kHz, so the measured share up there is
+     * an upsampling artifact and must not be presented as a finding -- it was,
+     * and it produced two opposite verdicts for the same microphone on one day.
+     * The ratio is still reported, so an old log can be re-read, but the verdict
+     * no longer rests on it.
+     */
+    const byRate = verdictFromTrackRate(trackSampleRate);
     const result: MicProbeResult = {
       ...best,
+      ...(byRate && best.verdict !== 'no-signal' ? { verdict: byRate } : {}),
       label: track?.label ?? '',
-      trackSampleRate: typeof settings.sampleRate === 'number' ? settings.sampleRate : null,
+      trackSampleRate,
       contextSampleRate: ctx.sampleRate,
       frames,
     };

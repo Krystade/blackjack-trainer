@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyMicBand,
   preferFrame,
+  verdictFromTrackRate,
   HFP_WALL_HZ,
   NARROWBAND_RATIO,
   SILENCE_DBFS,
@@ -58,6 +59,47 @@ function narrowband(bins = 512, sampleRate = 48_000): Float32Array {
   }
   return out;
 }
+
+describe('when the track rate already settles it', () => {
+  /*
+   * EVERY CAR VERDICT SO FAR WAS INVALID, and the module already knew why --
+   * it just applied the test to the wrong number.
+   *
+   * `classifyMicBand` short-circuits when "a Nyquist at or below the wall:
+   * nothing above it could ever have shown up, so 'narrowband' would be true by
+   * construction". Correct. But it was handed `ctx.sampleRate` (48000, Nyquist
+   * 24000), while the TRACK ran at 8000 -- true Nyquist 4000, exactly the wall.
+   * So every bin above 4kHz was an artifact of upsampling 8kHz audio to 48kHz,
+   * and the ratio computed from it was noise.
+   *
+   * That is why the readings contradicted each other: Jack's 2026-10-06 18:01
+   * run scored the iPhone mic "wideband highRatio=0.287" while DRIVING (road
+   * noise upsampled into the empty band), and his parked run scored the same mic
+   * "narrowband highRatio=1.6e-8" with a clear voice at -25 dBFS. Neither
+   * number meant anything, because the track was 8000 in both.
+   *
+   * `trackSampleRate=8000` is itself the proof of the wall. It needs no spectral
+   * inference, and the spectral inference it was given was worthless.
+   */
+  it('calls 8kHz narrowband on the strength of the rate alone', () => {
+    expect(verdictFromTrackRate(8000)).toBe('narrowband-by-rate');
+  });
+
+  it('settles nothing for a rate that could show energy above the wall', () => {
+    expect(verdictFromTrackRate(48000)).toBeNull();
+    expect(verdictFromTrackRate(16000)).toBeNull();
+  });
+
+  it('settles nothing when the rate is unknown, rather than guessing', () => {
+    expect(verdictFromTrackRate(null)).toBeNull();
+  });
+
+  it('treats exactly twice the wall as already band-limited', () => {
+    // Nyquist == the wall: nothing ABOVE it can appear, which is the whole test.
+    expect(verdictFromTrackRate(HFP_WALL_HZ * 2)).toBe('narrowband-by-rate');
+    expect(verdictFromTrackRate(HFP_WALL_HZ * 2 + 2)).toBeNull();
+  });
+});
 
 describe('how loud the probe actually was', () => {
   /*
