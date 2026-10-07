@@ -160,6 +160,24 @@ async function withFakeEngine(page: Page): Promise<void> {
   });
 }
 
+/*
+ * A SUB-PIXEL IS NOT A CUT-OFF BUTTON, and treating it as one made this test
+ * permanently red for 0.97 of a pixel.
+ *
+ * At the 635px height the drill screen's six rows measured 603.96875px inside a
+ * 603px box. Three of them (the topbar, the inline controls, the action bar)
+ * take their height from `line-height: normal` on button text, so their heights
+ * are font-metric fractions -- 68.1875, 219.59375, 68.1875 -- and no author can
+ * make six such rows sum to a whole number on every platform. `scrollHeight` is
+ * an integer and rounds the total UP, so 603.96875 is reported as 604 and the
+ * page is declared to need scrolling.
+ *
+ * The tolerance is therefore exactly one pixel and no more: anything a reader
+ * could actually see cut off -- a row that does not fit, a button pushed under
+ * the fold -- is a whole pixel or many, and still fails.
+ */
+const SUBPIXEL = 1;
+
 /** Everything that has to be on screen to answer, measured without scrolling. */
 async function expectAnswerableWithoutScrolling(page: Page): Promise<void> {
   const m = await page.evaluate(() => {
@@ -172,6 +190,13 @@ async function expectAnswerableWithoutScrolling(page: Page): Promise<void> {
       innerHeight: window.innerHeight,
       scrollY: window.scrollY,
       scrollHeight: document.documentElement.scrollHeight,
+      // The fractional truth behind `scrollHeight`, so a real overflow is still
+      // told apart from a rounded one.
+      contentBottom: Math.max(
+        ...[...document.querySelectorAll<HTMLElement>('body *')].map((el) =>
+          el.getBoundingClientRect().bottom,
+        ),
+      ),
       dealer: box(document.querySelector('.dealer-area > *')!),
       hand: box(document.querySelector('.hand-cards')!),
       buttons: buttons.map((b) => ({
@@ -183,13 +208,15 @@ async function expectAnswerableWithoutScrolling(page: Page): Promise<void> {
   });
 
   expect(m.scrollY).toBe(0);
-  expect(m.scrollHeight, 'the page should not need scrolling').toBeLessThanOrEqual(m.innerHeight);
+  expect(m.contentBottom, 'the page should not need scrolling').toBeLessThan(
+    m.innerHeight + SUBPIXEL,
+  );
   expect(m.dealer.top).toBeGreaterThanOrEqual(0);
-  expect(m.dealer.bottom).toBeLessThanOrEqual(m.innerHeight);
-  expect(m.hand.bottom).toBeLessThanOrEqual(m.innerHeight);
+  expect(m.dealer.bottom).toBeLessThan(m.innerHeight + SUBPIXEL);
+  expect(m.hand.bottom).toBeLessThan(m.innerHeight + SUBPIXEL);
   expect(m.buttons.length).toBeGreaterThan(0);
   for (const b of m.buttons) {
-    expect(b.bottom, `${b.label} below the fold`).toBeLessThanOrEqual(m.innerHeight);
+    expect(b.bottom, `${b.label} below the fold`).toBeLessThan(m.innerHeight + SUBPIXEL);
     expect(b.truncated, `${b.label} is cut off`).toBe(false);
   }
 }
