@@ -160,6 +160,17 @@ type Rec = {
 export interface HeldMic {
   /** Set while results are wanted; called with every final result. */
   onFinal: ((alternatives: Array<{ transcript: string; confidence: number }>) => void) | null;
+  /**
+   * How many engine sessions have started since this mic was opened.
+   *
+   * A step records this when it opens a listening window and again when it
+   * closes, so a window that heard nothing can be told apart from a window that
+   * spanned a restart. Jack's car run of 2026-10-06 lost 7 of 20 windows to
+   * `offered=0`, every one of them after a retry -- and a 6-second window with
+   * no speech always ends the session, so a restart always sat between the two
+   * attempts. Nothing recorded it, so the deafness was undiagnosable.
+   */
+  sessions(): number;
   close(): Promise<void>;
 }
 
@@ -188,10 +199,13 @@ export async function openMic(): Promise<HeldMic | { error: string }> {
   rec.lang = 'en-US';
 
   let alive = true;
+  // Counts STARTS THAT SUCCEEDED, so a throwing restart does not inflate it.
+  let sessions = 0;
   let ended: () => void = () => {};
   const endedP = new Promise<void>((r) => (ended = r));
   const held: HeldMic = {
     onFinal: null,
+    sessions: () => sessions,
     close: async () => {
       if (!alive) return;
       alive = false;
@@ -224,8 +238,31 @@ export async function openMic(): Promise<HeldMic | { error: string }> {
     if (alive) {
       try {
         rec.start();
-      } catch {
+        sessions += 1;
+        /*
+         * SAID OUT LOUD, which it was not.
+         *
+         * The restart was always correct; the silence about it was the problem.
+         * A window that hears nothing for 6 seconds ALWAYS ends the session, so
+         * a restart always sits between a failed attempt and its retry -- and a
+         * word said during the gap is simply gone. In Jack's 2026-10-06 car run
+         * every one of the 7 `offered=0` windows followed a retry, and the
+         * export held no trace of a single restart, so "he said nothing" and
+         * "the engine was between sessions" read identically.
+         */
+        diag('test', 'kit-mic-restart', { n: sessions, why: 'engine-ended' });
+      } catch (e) {
         alive = false;
+        /*
+         * AND THE DEAD CASE LOUDEST OF ALL. If this throws, nothing ever opens
+         * the microphone again and every remaining window of the run reads as
+         * "heard nothing" -- which is indistinguishable from a vocabulary that
+         * does not work, and would have been believed as one.
+         */
+        diag('test', 'kit-mic-dead', {
+          after: sessions,
+          why: e instanceof Error ? e.name : String(e),
+        });
       }
     }
   };
@@ -240,6 +277,7 @@ export async function openMic(): Promise<HeldMic | { error: string }> {
   } catch (e) {
     return { error: e instanceof Error ? e.name : 'start-failed' };
   }
+  sessions = 1;
   // A recogniser start opens the mic just as getUserMedia does.
   markMicSessionOpened();
   const heardAudio = await audioStarted;

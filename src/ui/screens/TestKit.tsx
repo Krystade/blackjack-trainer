@@ -635,6 +635,13 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
         }
         tick();
         const t0 = Date.now();
+        // WHICH ENGINE SESSION THIS WINDOW RAN IN. A window that hears nothing
+        // for 6 seconds always ends the session, so a restart always sits
+        // between a failed attempt and its retry -- and a word said in the gap
+        // is gone. Without these two numbers, "he said nothing" and "the engine
+        // was between sessions" are the same line in the export, which is why
+        // the 7 dead windows of 2026-10-06 could not be explained.
+        const sessionsAtOpen = mic.current?.sessions() ?? 0;
         heard = await new Promise<Array<{ transcript: string; confidence: number }>>((resolve) => {
           const timer = setTimeout(() => resolve([]), WORD_SLOT_MS);
           if (!mic.current) return resolve([]);
@@ -647,6 +654,23 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
         });
         tookMs = Date.now() - t0;
         if (mic.current) mic.current.onFinal = null;
+        /*
+         * EVERY ATTEMPT, NOT JUST THE LAST ONE. `kit-calibrate` logs the
+         * outcome of the word, so a first attempt that heard nothing left no
+         * line at all -- and a word scored from attempt 2 read as a single
+         * clean measurement. Both attempts of all 20 words of the 2026-10-06
+         * run are missing from its export for this reason.
+         */
+        diag('test', 'kit-calibrate-attempt', {
+          say: word.say,
+          form: word.form,
+          attempt,
+          offered: heard.length,
+          heard: heard[0]?.transcript ?? '',
+          tookMs,
+          sessionsAtOpen,
+          sessionsAtClose: mic.current?.sessions() ?? 0,
+        });
       }
       attempt -= 1;
       setRetrying(false);
