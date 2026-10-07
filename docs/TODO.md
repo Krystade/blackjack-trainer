@@ -99,6 +99,79 @@ Last updated: 2026-10-06. Session handoff: `docs/HANDOFF.md`. Plan for the next 
   settled.
 - [ ] Jack runs the **car kits**: Bluetooth on first (that's how he drives), then off.
 
+## Results — CAR, Bluetooth ON, parked, 2026-10-06 17:59 and 18:01 (build 49b277f)
+
+Two car-bt runs **90 seconds apart in the same page load** (`[q16]`), with opposite results.
+That is the headline: the route is not a function of the playback path, it is a function of which
+Bluetooth profile state the phone is in when the run starts.
+
+| | Run A (17:59:36) | Run C (18:01:25) |
+|--|------------------|------------------|
+| `kit-mic-open` | `afterMs=3447` | `afterMs=14` |
+| `<audio>` blind | Earpiece ×3 | **Car speakers ×3** |
+| Web Audio blind | Phone loud speaker ×2, Earpiece | **Car speakers ×3** |
+| `bt-closed-element` | **Earpiece** | Car speakers |
+| `bt-closed-webaudio` | **Earpiece** | Car speakers |
+| iPhone mic spectrum | narrowband, highRatio **0.0021** | **wideband, highRatio 0.287** |
+
+### G2: "close the mic while the app speaks" is DEAD — answered in the car
+
+Run A is the informative one: it was in the bad state, and with the mic **closed again** both paths
+still came out of the **earpiece**. Closing the mic does not recover the route. This matches the
+2026-10-03 finding on Jack's ears and what `micSessionCost.ts` already states in as many words
+("Closing the recogniser between prompts was the obvious fix and it would not have worked").
+
+Run C cannot speak to recovery: everything was already on the car, so "Car speakers" after closing
+is not evidence of coming back.
+
+**Do not build the mic-close architecture.** What is left for G2 is G2-d (accept the phone's loud
+speaker + wheel) or G2-e (chase the car/iOS setting). Waiting on Jack.
+
+### NEW: the app can detect which state it is in — the phone mic's spectrum
+
+Three for three, across both days:
+
+| Run | iPhone mic highRatio | verdict | Where sound went |
+|-----|---------------------|---------|------------------|
+| 2026-10-06 09:06 | 0.0015 | narrowband | phone / earpiece |
+| 2026-10-06 17:59 (A) | 0.0021 | narrowband | earpiece |
+| 2026-10-06 18:01 (C) | **0.287** | **wideband** | **car speakers** |
+
+`trackSampleRate` was **8000 in all three**, so the declared rate separates nothing — exactly as
+`micSessionCost.ts` says ("not even a rate change, so the app cannot detect it either"). The
+**measured spectrum does**. `afterMs` on the first mic open is a second tell (3447 against 14).
+
+This is the first in-app signal for the route state, and it is worth building on: a probe at drill
+start could tell Jack he is in the bad state before he spends a drive in it, instead of him finding
+out by ear. **Not yet built.** Two states per side is a thin sample — confirm on the next run
+before shipping anything that acts on it.
+
+### Recognition: 7 of 20 windows heard NOTHING, and the cause was unlogged
+
+`oneWord=3/10 twoWord=6/10` — but 7 windows returned `offered=0`, never a wrong word, and **every
+one of them followed a retry** (7/7, both directions). A 6-second window with no speech always ends
+the engine's session, so a restart always sat between a failed attempt and its retry, and
+`rec.onend` restarted it **with no log line**. "He said nothing" and "the engine was between
+sessions" were the same line in the export.
+
+Fixed in `3f7bcbf` (instrumentation only, no behaviour change): `kit-mic-restart` with a session
+count, `kit-mic-dead` when a restart throws, and `kit-calibrate-attempt` per attempt with
+`sessionsAtOpen`/`sessionsAtClose`. The next run will say which it is.
+
+**This weakens the vocabulary evidence.** Both days' figures are contaminated by dead windows:
+combined, one-word 6/20 and two-word 14/20. Same direction, less solid than 8/10 vs 3/10 looked.
+The two-word default stays (it is free, and one-word remains an alias), but do not treat the
+margin as measured until a run with no dead windows reproduces it.
+
+### Also: the "missing" log was not missing
+
+Jack: "I did two Bluetooth on tests and got completely different results and neither show in
+diagnostics log." Both were there. The kit's "Copy results" filters to the lines since that kit
+started and printed the ordinary full-log header, so a scoped copy was indistinguishable from the
+whole log. Fixed in `bce87b6`: a scoped export now says so, and says where the rest is.
+
+---
+
 ## Results — CAR, Bluetooth ON, parked, 2026-10-06 09:05 (build f209d54, iOS 18.7, installed app)
 
 The first measurement ever taken in the car. Jack ran the `car-bt` kit end to end.
