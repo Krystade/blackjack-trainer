@@ -53,6 +53,45 @@ describe('test kit', () => {
     expect(steps[reload + 1]).toMatchObject({ kind: 'route', mic: 'fresh-page' });
   });
 
+  it('the Bluetooth kit asks whether closing the mic gives the car back', () => {
+    /*
+     * THE ASSUMPTION THE WHOLE G2 PLAN RESTS ON, and it is contradicted.
+     *
+     * Nothing reached the car speakers on either path with a mic open
+     * (2026-10-06, 0 of 6). The remaining idea is to hold the mic CLOSED while
+     * the app speaks and open it only to listen -- which only works if closing
+     * it gives the car route back.
+     *
+     *   - In the car, 2026-10-03, Jack's ears: it does NOT. Asked directly
+     *     whether turning voice off restores the loud speaker, the answer was
+     *     no, it stays stuck for the rest of the session. `micSessionCost.ts`
+     *     is written around that finding.
+     *   - At the desk, 2026-10-05: it DOES. "Mic closed again, both paths ->
+     *     Loud speaker".
+     *
+     * One is the car and one is not, and the car kit had no step that asks,
+     * because the never-opened baselines were dropped from it as settled --
+     * these are not those. Until this is answered, building the mic-close
+     * architecture would be building on a coin flip.
+     */
+    const ids = KITS['car-bt'].steps.map((s) => s.id);
+    expect(ids).toContain('bt-closed-element');
+    expect(ids).toContain('bt-closed-webaudio');
+
+    // After the step that opens the microphone, or they measure nothing: a mic
+    // that was never opened cannot have been closed again.
+    const opensMicAt = KITS['car-bt'].steps.findIndex((s) => s.kind === 'route-blind');
+    expect(opensMicAt).toBeGreaterThanOrEqual(0);
+    expect(ids.indexOf('bt-closed-element')).toBeGreaterThan(opensMicAt);
+
+    // Asked with the car's own answers, so 'Car speakers' is sayable at all.
+    for (const step of KITS['car-bt'].steps) {
+      if (step.id.startsWith('bt-closed-') && 'answers' in step) {
+        expect(step.answers).toContain('Car speakers');
+      }
+    }
+  });
+
   it('every blind step scores against an answer it actually offers', () => {
     /*
      * THE CAR KIT SCORED 0 OF 3 WHATEVER JACK TAPPED.

@@ -309,6 +309,28 @@ export const KITS: Record<KitId, { label: string; where: string; steps: readonly
         target: 'Car speakers',
         why: 'Six plays with the mic on, two playback methods in a hidden order. The drills now use one of them; it has to reach the car speakers.',
       },
+      /*
+       * DOES CLOSING THE MIC GIVE THE CAR BACK? The question the whole
+       * remaining G2 plan rests on, and the evidence is split:
+       *
+       *   - Car, 2026-10-03, Jack's ears: NO. Turning voice off did not restore
+       *     the loud speaker; it stayed stuck for the rest of the session.
+       *     `micSessionCost.ts` is written around that finding.
+       *   - Desk, 2026-10-05: YES. "Mic closed again, both paths -> Loud
+       *     speaker".
+       *
+       * One of those is the car and one is not. With nothing reaching the car
+       * on either path while a mic is open (0 of 6, above), holding the mic
+       * closed between prompts is what is left to try -- and it is worth
+       * nothing if the route does not come back. These are NOT the
+       * never-opened baselines that were dropped from this kit as settled.
+       *
+       * Placed after the blind step so the microphone has actually been opened;
+       * a mic that was never opened cannot have been closed again.
+       */
+      ...routeSteps('bt', CAR_ROUTE).filter(
+        (s) => s.kind === 'route' && s.mic === 'closed-after-open',
+      ),
       SPECTRUM,
       CALIBRATE,
     ],
