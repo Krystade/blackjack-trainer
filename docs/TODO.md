@@ -127,24 +127,35 @@ is not evidence of coming back.
 **Do not build the mic-close architecture.** What is left for G2 is G2-d (accept the phone's loud
 speaker + wheel) or G2-e (chase the car/iOS setting). Waiting on Jack.
 
-### NEW: the app can detect which state it is in — the phone mic's spectrum
+### RETRACTED: "the phone mic's spectrum names the route state"
 
-Three for three, across both days:
+Written here on 2026-10-06 and **wrong**. The claim was that `highRatio` separated the good route
+from the bad, three times out of three. It was confounded, and Jack supplied the confound:
 
-| Run | iPhone mic highRatio | verdict | Where sound went |
-|-----|---------------------|---------|------------------|
-| 2026-10-06 09:06 | 0.0015 | narrowband | phone / earpiece |
-| 2026-10-06 17:59 (A) | 0.0021 | narrowband | earpiece |
-| 2026-10-06 18:01 (C) | **0.287** | **wideband** | **car speakers** |
+> "I was talking about the step where it tells me to count from one to 10 out loud and automatically
+> ends. I forgot to count out loud during that step on the first run."
 
-`trackSampleRate` was **8000 in all three**, so the declared rate separates nothing — exactly as
-`micSessionCost.ts` says ("not even a rate change, so the app cannot detect it either"). The
-**measured spectrum does**. `afterMs` on the first mic open is a second tell (3447 against 14).
+So Run A's three probes measured an **empty cabin** — engine noise, no voice — and still returned a
+confident `verdict=narrowband`, because engine noise clears the silence floor. Run A was silent AND
+on the earpiece; Run C was spoken AND on the car. Two variables moved together, so the comparison
+says nothing about the route. `micSpectrum.ts` had already warned in a comment: "A wall seen while
+nobody was speaking is not evidence of a wall."
 
-This is the first in-app signal for the route state, and it is worth building on: a probe at drill
-start could tell Jack he is in the bad state before he spends a drive in it, instead of him finding
-out by ear. **Not yet built.** Two states per side is a thin sample — confirm on the next run
-before shipping anything that acts on it.
+Two real faults found while retracting it, both fixed:
+
+- **No level was ever recorded**, so a probe of nobody speaking was indistinguishable in the export
+  from a probe of speech. `peakDbfs` is now on every snapshot and in the log. Nothing gates on it —
+  what counts as "loud enough to be speech" in a Corolla at 8kHz is not measured, and inventing that
+  threshold is the mistake the field exists to prevent.
+- **The loop did not do what its own comment said.** It claimed "the loudest moment decides" and
+  selected on `highRatio`, the SHARE of energy above the wall, which is not loudness: a quiet frame
+  of hiss beat a loud frame of speech, so the reported ratio could come from a moment nobody spoke
+  in. `preferFrame` now selects by level, and is a pure function with its own tests.
+
+**What is still true:** every probe in both days' runs reported `trackSampleRate=8000` once the
+Corolla was connected, the iPhone's own mic included. The 8kHz wall is real. What the spectrum
+*ratio* means is unsettled, and a probe is only worth reading if `peakDbfs` shows someone spoke
+into it.
 
 ### Recognition: 7 of 20 windows heard NOTHING, and the cause was unlogged
 
@@ -152,8 +163,11 @@ before shipping anything that acts on it.
 one of them followed a retry** (7/7, both directions).
 
 **Jack was speaking in those windows.** Asked directly: "The 'dead windows' were me saying the word
-or words and them not being recognized I think. I don't know if it was a mic issue." So these are
-**lost attempts, not absent ones**, and the innocent reading is ruled out. Two failures remain, and
+or words and them not being recognized I think. I don't know if it was a mic issue." He later
+confirmed this covers the WORD step specifically — he spoke every word, up to twice (the first ask
+and the retry); the step he forgot to speak in was the *spectrum* step, which is a different
+problem (retracted above). So all 7 are **lost attempts, not absent ones**, and the innocent reading
+is ruled out. Two failures remain, and
 they want opposite fixes:
 
 | | Signature in the next export | Meaning |

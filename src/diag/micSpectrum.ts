@@ -101,6 +101,23 @@ export interface MicBandVerdict {
    * instead of re-driven.
    */
   highBins: number;
+  /**
+   * The loudest bin in this snapshot, in dBFS, or `SILENCE_DBFS` if nothing
+   * cleared the floor.
+   *
+   * RECORDED BECAUSE A SILENT PROBE LOOKED LIKE A MEASUREMENT. Jack ran the
+   * car-bt kit twice on 2026-10-06 and forgot to count out loud during this
+   * step on the first run. Those probes measured an empty cabin and still
+   * returned a confident `narrowband` -- engine noise clears the silence floor
+   * -- and with no level in the log a probe of nobody speaking read exactly
+   * like a probe of speech. It was then taken (by me) as evidence about the
+   * Bluetooth route, which it could not be.
+   *
+   * Nothing gates on this number: what counts as "loud enough to be speech" in
+   * a Corolla at 8kHz is not measured yet, and inventing that threshold is the
+   * mistake this field exists to prevent, not to commit.
+   */
+  peakDbfs: number;
 }
 
 /**
@@ -116,17 +133,19 @@ export function classifyMicBand(bins: Float32Array, sampleRate: number): MicBand
   // No bins, or a Nyquist at or below the wall: nothing above it could ever
   // have shown up, so "narrowband" would be true by construction.
   if (bins.length === 0 || nyquist <= HFP_WALL_HZ) {
-    return { verdict: 'unmeasurable', highRatio: 0, bins: bins.length, highBins: 0 };
+    return { verdict: 'unmeasurable', highRatio: 0, bins: bins.length, highBins: 0, peakDbfs: SILENCE_DBFS };
   }
 
   let low = 0;
   let high = 0;
   let live = 0;
   let highBins = 0;
+  let peakDbfs = SILENCE_DBFS;
   for (let i = 0; i < bins.length; i++) {
     const db = bins[i]!;
     if (!Number.isFinite(db) || db <= SILENCE_DBFS) continue;
     live += 1;
+    if (db > peakDbfs) peakDbfs = db;
     // dB back to linear power, so the shares are comparable.
     const power = 10 ** (db / 10);
     const hz = (i / bins.length) * nyquist;
@@ -140,7 +159,7 @@ export function classifyMicBand(bins: Float32Array, sampleRate: number): MicBand
   const total = low + high;
   if (live === 0 || total <= 0) {
     // A microphone that never opened. Must not read as narrowband.
-    return { verdict: 'no-signal', highRatio: 0, bins: live, highBins };
+    return { verdict: 'no-signal', highRatio: 0, bins: live, highBins, peakDbfs: SILENCE_DBFS };
   }
 
   const highRatio = high / total;
@@ -149,7 +168,26 @@ export function classifyMicBand(bins: Float32Array, sampleRate: number): MicBand
     highRatio,
     bins: live,
     highBins,
+    peakDbfs,
   };
+}
+
+/**
+ * Which of two snapshots better represents the microphone: THE LOUDER ONE.
+ *
+ * The loop already claimed "the loudest moment decides" and then selected on
+ * `highRatio`, which is the SHARE of energy above the wall and not loudness at
+ * all. A quiet frame of hiss has a high share and beat a loud frame of speech,
+ * so the ratio finally reported could come from a moment nobody spoke in --
+ * the exact failure the comment was written to prevent.
+ *
+ * Any signal still beats none, so a probe that caught one word among silent
+ * frames reports the word.
+ */
+export function preferFrame(best: MicBandVerdict, next: MicBandVerdict): MicBandVerdict {
+  if (next.verdict === 'no-signal') return best;
+  if (best.verdict === 'no-signal') return next;
+  return next.peakDbfs > best.peakDbfs ? next : best;
 }
 
 export interface MicProbeResult extends MicBandVerdict {
@@ -191,6 +229,7 @@ export async function probeMicSpectrum(
     highRatio: 0,
     bins: 0,
     highBins: 0,
+    peakDbfs: SILENCE_DBFS,
     label: '',
     trackSampleRate: null,
     contextSampleRate: 0,
@@ -227,18 +266,23 @@ export async function probeMicSpectrum(
     // to the speaker in a car is feedback, and this probe runs while driving.
 
     const spectrum = new Float32Array(analyser.frequencyBinCount);
-    let best: MicBandVerdict = { verdict: 'no-signal', highRatio: 0, bins: 0, highBins: 0 };
+    let best: MicBandVerdict = {
+      verdict: 'no-signal',
+      highRatio: 0,
+      bins: 0,
+      highBins: 0,
+      peakDbfs: SILENCE_DBFS,
+    };
     let frames = 0;
     const until = Date.now() + ms;
     while (Date.now() < until) {
       await new Promise((r) => setTimeout(r, 50));
       analyser.getFloatFrequencyData(spectrum);
       frames += 1;
-      const now = classifyMicBand(spectrum, ctx.sampleRate);
-      // The loudest moment decides. A wall seen while nobody was speaking is
-      // not evidence of a wall.
-      if (now.verdict !== 'no-signal' && now.highRatio >= best.highRatio) best = now;
-      else if (best.verdict === 'no-signal' && now.verdict !== 'no-signal') best = now;
+      // The loudest moment decides -- by LEVEL, which is what that means, and
+      // which this loop previously did not do. A wall seen while nobody was
+      // speaking is not evidence of a wall.
+      best = preferFrame(best, classifyMicBand(spectrum, ctx.sampleRate));
     }
 
     const result: MicProbeResult = {

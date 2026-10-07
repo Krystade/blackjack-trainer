@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   classifyMicBand,
+  preferFrame,
   HFP_WALL_HZ,
   NARROWBAND_RATIO,
+  SILENCE_DBFS,
   type MicBandVerdict,
 } from './micSpectrum';
 
@@ -56,6 +58,57 @@ function narrowband(bins = 512, sampleRate = 48_000): Float32Array {
   }
   return out;
 }
+
+describe('how loud the probe actually was', () => {
+  /*
+   * WHY THIS EXISTS. Jack ran the car-bt kit twice on 2026-10-06 and forgot to
+   * count out loud during the spectrum step on the first run. Those three
+   * probes measured an empty cabin -- engine noise, no voice -- and still
+   * returned a confident `verdict=narrowband`, because engine noise clears the
+   * silence floor. The log recorded the ratio and not one number saying how
+   * loud it had been, so a probe of nobody speaking was indistinguishable from
+   * a probe of speech, and it was read (by me) as evidence about the Bluetooth
+   * route. The module's own comment already warned: "A wall seen while nobody
+   * was speaking is not evidence of a wall."
+   *
+   * The level is now recorded, so that confound is visible in the export
+   * instead of being invisible in it. No threshold is invented here -- the
+   * number is reported and nothing gates on it, because what counts as "loud
+   * enough to be speech" in a Corolla at 8kHz is not yet measured.
+   */
+  it('reports the loudest bin it saw, not just the share above the wall', () => {
+    const bins = new Float32Array([-30, -40, -50, -60]);
+    expect(classifyMicBand(bins, 16000).peakDbfs).toBe(-30);
+  });
+
+  it('reports silence as silence rather than as a quiet measurement', () => {
+    // Every bin at or below the floor: there was nothing to be loud.
+    const bins = new Float32Array([-200, -200, -200, -200]);
+    const v = classifyMicBand(bins, 16000);
+    expect(v.verdict).toBe('no-signal');
+    expect(v.peakDbfs).toBe(SILENCE_DBFS);
+  });
+
+  it('prefers the louder frame, which is what "the loudest moment" means', () => {
+    /*
+     * The loop said "the loudest moment decides" and then selected on
+     * `highRatio` -- the SHARE of energy above 4kHz, which is not loudness. A
+     * quiet frame of hiss has a high share and would beat a loud frame of
+     * speech, so the reported ratio could come from a moment nobody spoke in.
+     */
+    const loudNarrow = { verdict: 'narrowband' as const, highRatio: 0.001, bins: 4, highBins: 1, peakDbfs: -20 };
+    const quietWide = { verdict: 'wideband' as const, highRatio: 0.9, bins: 4, highBins: 3, peakDbfs: -85 };
+    expect(preferFrame(quietWide, loudNarrow)).toBe(loudNarrow);
+    expect(preferFrame(loudNarrow, quietWide)).toBe(loudNarrow);
+  });
+
+  it('takes any signal over no signal at all', () => {
+    const nothing = { verdict: 'no-signal' as const, highRatio: 0, bins: 0, highBins: 0, peakDbfs: SILENCE_DBFS };
+    const something = { verdict: 'narrowband' as const, highRatio: 0.001, bins: 4, highBins: 1, peakDbfs: -70 };
+    expect(preferFrame(nothing, something)).toBe(something);
+    expect(preferFrame(something, nothing)).toBe(something);
+  });
+});
 
 describe('telling a narrowband car microphone from the phone’s own', () => {
   it('calls a full spectrum wideband', () => {
