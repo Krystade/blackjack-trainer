@@ -185,6 +185,32 @@ Fixed in `3f7bcbf` and the follow-up (instrumentation only, no behaviour change)
 many times the engine reported speech during that window). The next run distinguishes (a), (b) and
 (c) by the table above.
 
+### The two failures must be scored apart — recognition is NOT the weak link
+
+`oneWord=3/10 twoWord=6/10` lumps together two unrelated things: a word the recogniser got WRONG,
+and a word that never reached it (`offered=0`). Split by whether audio arrived at all, across both
+days' car runs:
+
+| Form | Windows that produced a reading | Right |
+|------|-------------------------------|-------|
+| two-word | 16 | **14 (88%)** |
+| one-word | 15 | 6 (40%) |
+
+In the 2026-10-06 18:01 run, **every two-word window that produced a reading was correct — 6 of 6.**
+
+So recognition of what reaches the engine is not the problem: 10/10 in a quiet room, ~88% on
+two-word forms in a car at 8kHz. The dominant failure is **audio not arriving**, which is capture,
+not vocabulary. Two consequences:
+
+1. The vocabulary decision is **better** supported than the raw ratios suggested — 88% against 40%
+   like-for-like, not 6/10 against 3/10. Two-word stays the default.
+2. **Spend the effort on the lost windows, not on the word list.** A fix that makes capture reliable
+   is worth more than any further vocabulary change, and the instrumentation to classify them is in
+   (`sessionsAtOpen`/`sessionsAtClose`, `speech`, `offered`).
+
+Sample sizes are 16 and 15 windows, parked, one voice, one car — not freeway noise. Do not treat
+88% as the road number.
+
 **This weakens the vocabulary evidence, and more than first thought** — the lost windows were real
 attempts. Both days' figures are contaminated by them:
 combined, one-word 6/20 and two-word 14/20. Same direction, less solid than 8/10 vs 3/10 looked.
