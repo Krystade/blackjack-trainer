@@ -31,7 +31,7 @@
  */
 
 import { elementVolume } from './volume';
-import { getSharedAudioContext, ensureContextRunning } from './audioContext';
+import { getLiveAudioContext, liveAudioContextNow, markAudioClockSuspect, onAudioContextReplaced } from './audioContext';
 import { cachedToneDataUri, toneSamples, TONE_SAMPLE_RATE } from './tone';
 import { isVoiceCaptureActive, micSessionCostPaid } from './micSessionCost';
 import { diag } from '../diag/diagnosticLog';
@@ -646,12 +646,7 @@ export function playChimeTone(frequencyHz: number, peak: number): void {
     void playPooledTone(cachedToneDataUri(frequencyHz), peak);
   };
   if (!chimeWantsWebAudio()) return onElement();
-  const ctx = getSharedAudioContext();
-  if (!ctx) {
-    diag('speak', 'chime-fallback', { why: 'no-context' });
-    return onElement();
-  }
-  const start = () => {
+  const startTone = (ctx: AudioContext) => {
     try {
       const src = ctx.createBufferSource();
       src.buffer = toneBuffer(ctx, frequencyHz);
@@ -672,11 +667,15 @@ export function playChimeTone(frequencyHz: number, peak: number): void {
       onElement();
     }
   };
-  if (ctx.state === 'running') return start();
-  void ensureContextRunning(ctx).then((ok) => {
-    if (ok) return start();
-    diag('speak', 'chime-suspended', { state: ctx.state });
-    onElement();
+  // Same tick when the clock is known good; otherwise check it first.
+  const now = liveAudioContextNow();
+  if (now) return startTone(now);
+  void getLiveAudioContext().then((ctx) => {
+    if (!ctx) {
+      diag('speak', 'chime-suspended', { why: 'no-live-context' });
+      return onElement();
+    }
+    startTone(ctx);
   });
 }
 
@@ -848,6 +847,8 @@ const NOTHING_PLAYED: ClipPlayResult = { played: false, remainder: null };
  * path with the mic open, 2026-10-05: "they sounded identical".
  */
 const decodedClips = new Map<string, Promise<AudioBuffer>>();
+// Decoded buffers were made by the context that is being replaced.
+onAudioContextReplaced(() => decodedClips.clear());
 
 function decodeClip(ctx: AudioContext, url: string): Promise<AudioBuffer> {
   let p = decodedClips.get(url);
@@ -895,13 +896,9 @@ async function playChainThroughWebAudio(
     superseded: () => boolean;
   },
 ): Promise<ClipPlayResult | null> {
-  const ctx = getSharedAudioContext();
+  const ctx = await getLiveAudioContext();
   if (!ctx) {
-    diag('speak', 'clip-webaudio-skip', { why: 'no-context' });
-    return null;
-  }
-  if (!(await ensureContextRunning(ctx))) {
-    diag('speak', 'clip-webaudio-skip', { why: 'context-' + ctx.state });
+    diag('speak', 'clip-webaudio-skip', { why: 'no-live-context' });
     return null;
   }
   let first: AudioBuffer;
@@ -968,7 +965,14 @@ async function playChainThroughWebAudio(
       current = src;
       clearActiveWatchdog(chain);
       chain.watchdog = setTimeout(
-        () => settleChain(chain, true, 'watchdog'),
+        () => {
+          // onended never came: on 2026-10-07 this was a context whose clock
+          // had stopped while it still reported 'running'. The next line
+          // probes the clock instead of trusting it.
+          diag('speak', 'clip-webaudio-stall', { file: opts.files[index] ?? '(none)', ctxTime: ctx.currentTime });
+          markAudioClockSuspect('watchdog');
+          settleChain(chain, true, 'watchdog');
+        },
         (buffer.duration / Math.max(opts.rate, 0.1)) * 1000 + 3000,
       );
       src.onended = () => {

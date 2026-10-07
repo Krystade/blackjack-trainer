@@ -43,6 +43,29 @@ Also watch for, anywhere in the run:
 
 ---
 
+### Run 1 results — 2026-10-07 14:09, parked, engine on, Bluetooth on (build 4f0611d)
+
+| # | Line | Result | Reading |
+|---|---|---|---|
+| A1 | `kit-route-state` | `never-reached-target`, 6/6 **Earpiece** (both paths) | **The bad state, while parked.** So the bad state is not caused by driving. A `route devicechange` (inputs `iPhone Microphone \| TOYOTA Corolla`) fired 1.4s after the mic opened, as the first play started. |
+| A2 | `bt-closed-element`, `bt-closed-webaudio` | Earpiece, Earpiece | **Closing the mic does not give the car back.** That's n=2 now, with run A of 2026-10-06. The mic-close architecture is ruled out. In the bad state even Web Audio is on the earpiece, so G2 cannot be fixed from the playback path. |
+| A3 | `kit-calibrate-summary` | **oneWord 10/10, twoWord 10/10** | Parked recognition is perfect, through the car's 8kHz mic. The driving losses are noise and capture, not the recogniser or the vocabulary. |
+| A4 | `kit-calibrate-attempt` | 1 dead window of 21: the first one ("hit", attempt 1), `offered=0`, same session | It opened into the input swap: a `route devicechange` came 1.1s after `kit-mic-open`. Every later window heard. **`speech=0` on all 21 attempts, including the 20 that heard the word**, so iOS never fires `speechstart` and the field cannot classify A4. Treat it as unsupported. |
+| A5 | `mic spectrum` | `peakDbfs=-120` on all three probes (car ×2, iPhone ×1), track 8000 | Exact silence. Either nobody counted out loud, or capture delivered zeros. Asked Jack. |
+
+Found in the same run, and fixed after it:
+
+- **Web Audio clock stopped after the app was backgrounded** (hidden 14:11:03, visible 14:11:49).
+  - Every Web Audio line in the word step ended on its watchdog (`clip-end reason=watchdog`) with
+    `audioContext=running`: "Say each word after the tick.", the order line, "Again.". The ticks
+    were most likely silent too.
+  - Fix: `getLiveAudioContext()` checks the clock is actually advancing, nudges it, and replaces
+    the context if it stays stopped. Logged as `audio-clock-stopped`, `audio-clock-restarted` and
+    `audio-context-replaced`, and a Web Audio watchdog now logs `clip-webaudio-stall`.
+- **The first word window opened into the route swap.** The word step now waits for
+  `devicechange` to go quiet (1.5s, max 4s) before the first tick, logged as
+  `kit-route-settle waitedMs=… changes=…`.
+
 ## Run 2 — driving, same road as 2026-10-06
 
 Kit: **Words at speed** → *Bluetooth on*. One tap, then it runs by ear, about 3

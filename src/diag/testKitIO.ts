@@ -10,7 +10,7 @@
 
 import { diag } from './diagnosticLog';
 import { activeClipVoice, loadVoiceManifest, manifestLookup, playChimeTone, playClipsAsync } from '../audio/clips';
-import { getSharedAudioContext } from '../audio/audioContext';
+import { getLiveAudioContext, getSharedAudioContext } from '../audio/audioContext';
 import { readAudioSessionType } from '../audio/audioSession';
 import type { PlayPath } from './testKit';
 import type { InputDevice } from './phoneMic';
@@ -79,9 +79,8 @@ export async function playThrough(path: PlayPath, url: string): Promise<'ended' 
       });
       return 'ended';
     }
-    const ctx = getSharedAudioContext();
-    if (!ctx) return 'no-audio-context';
-    if (ctx.state !== 'running') await ctx.resume();
+    const ctx = await getLiveAudioContext();
+    if (!ctx) return 'no-live-audio-context';
     const bytes = await (await fetch(url)).arrayBuffer();
     const buffer = await ctx.decodeAudioData(bytes);
     const source = ctx.createBufferSource();
@@ -536,4 +535,37 @@ export async function openChosenInput(deviceId: string): Promise<HeldInput | { e
     await ctx?.close().catch(() => {});
     return { error: e instanceof Error ? e.name : 'failed' };
   }
+}
+
+/**
+ * Wait for the audio route to stop changing after a mic opens.
+ *
+ * 2026-10-07, parked with the Corolla connected: the mic opened, iOS swapped
+ * the input 1.1s later (`route devicechange`, "TOYOTA Corolla | iPhone
+ * Microphone"), and the first word window -- which started at once -- heard
+ * nothing (`offered=0`, same session). Every later window heard fine. So the
+ * first tick waits until no devicechange has fired for `quietMs`, capped at
+ * `maxMs` so a route that never settles cannot stall the step.
+ */
+export async function waitForRouteQuiet(quietMs = 1500, maxMs = 4000): Promise<{ waitedMs: number; changes: number }> {
+  const media = typeof navigator !== 'undefined' ? navigator.mediaDevices : undefined;
+  const t0 = Date.now();
+  if (!media?.addEventListener) return { waitedMs: 0, changes: 0 };
+  let changes = 0;
+  let last = t0;
+  const onChange = () => {
+    changes += 1;
+    last = Date.now();
+  };
+  media.addEventListener('devicechange', onChange);
+  try {
+    while (Date.now() - last < quietMs && Date.now() - t0 < maxMs) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  } finally {
+    media.removeEventListener('devicechange', onChange);
+  }
+  const result = { waitedMs: Date.now() - t0, changes };
+  diag('test', 'kit-route-settle', result);
+  return result;
 }

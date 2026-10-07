@@ -25,6 +25,7 @@ import {
   routeClipUrl,
   sayRecorded,
   startRecording,
+  waitForRouteQuiet,
   tick,
   unlockWebAudio,
   type HeldInput,
@@ -658,6 +659,9 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
       setPhase('scored');
       return;
     }
+    // Let the route finish switching before the first word (2026-10-07: the
+    // first window opened into an input swap and heard nothing).
+    await waitForRouteQuiet();
     setPhase('listening');
     const got: CalibrationSample[] = [];
     for (let i = 0; i < schedule.current.length && !cancelled.current; i++) {
