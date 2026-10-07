@@ -573,7 +573,18 @@ function SpectrumStep({ ensureMic, onAnswer }: StepProps) {
         <ul className="testkit-results">
           {rows.map(({ name, r }) => (
             <li key={name}>
-              <strong>{name}</strong>: {r.error ? `failed (${r.error})` : `${r.verdict} · high ${r.highRatio.toFixed(3)}`}
+              {/*
+               * THE LEVEL IS SHOWN, not only the verdict. On 2026-10-06 Jack
+               * forgot to count out loud during this step, and the screen
+               * reported a confident "narrowband" from engine noise alone -- so
+               * a wasted probe looked like a result, and was read as one. The
+               * peak says whether there was a voice to measure, while he is
+               * still sitting there and can just run it again.
+               */}
+              <strong>{name}</strong>:{' '}
+              {r.error
+                ? `failed (${r.error})`
+                : `${r.verdict} · high ${r.highRatio.toFixed(3)} · peak ${Math.round(r.peakDbfs)} dBFS`}
               {r.label && ` · ${r.label}`}
             </li>
           ))}
