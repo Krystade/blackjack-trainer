@@ -1413,8 +1413,22 @@ function DoneView({ kit, recordings, onBack }: { kit: KitId; recordings: Array<{
     }
     const entries = readDiagnosticLog().filter((e) => !since || e.at >= since);
     try {
-      await navigator.clipboard.writeText(formatDiagnosticLog(entries));
-      setCopied(`Copied ${entries.length} lines. Paste them to Claude.`);
+      // NAMED AS A SUBSET. This button copies only the lines since this kit
+      // started, so without the scope line the file reads as the whole log and
+      // an earlier run looks lost -- which is exactly how it was read on
+      // 2026-10-06, after two car runs gave opposite results.
+      // Only when something was ACTUALLY filtered out. With no start mark the
+      // filter above keeps every line, and a full log must not carry a scope
+      // warning it has not earned -- a header that always warns gets skipped.
+      const scope = since
+        ? `the ${KITS[kit].label} run started at ${since.slice(11, 19)}`
+        : undefined;
+      await navigator.clipboard.writeText(formatDiagnosticLog(entries, scope));
+      setCopied(
+        scope
+          ? `Copied ${entries.length} lines from THIS run only. Earlier runs are in Settings → Diagnostic log.`
+          : `Copied ${entries.length} lines. Paste them to Claude.`,
+      );
     } catch {
       setCopied('Copy failed. Use Settings → Diagnostic log → Copy instead.');
     }

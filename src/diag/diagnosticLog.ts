@@ -870,7 +870,19 @@ function clockResyncs(entries: readonly DiagEntry[]): { session: string; ms: num
  * category is repeating" -- are answered by scanning a column, not by reading
  * sentences.
  */
-export function formatDiagnosticLog(entries: readonly DiagEntry[]): string {
+/**
+ * @param scope When these entries are only PART of the log, a phrase naming
+ * what they were narrowed to -- e.g. 'the car-bt kit run'. The header then says
+ * so, because the file travels without the screen that produced it.
+ *
+ * Jack, 2026-10-06: "I did two Bluetooth on tests and got completely different
+ * results and neither show in diagnostics log." Both runs were in the log. The
+ * Test kit's "Copy results" filters to the lines since that kit started and
+ * called this formatter, which printed the ordinary header -- `# 79 entries,
+ * 1 page load(s)` -- so a scoped copy was indistinguishable from the whole log,
+ * and "1 page load(s)" actively suggested there was only one run to have.
+ */
+export function formatDiagnosticLog(entries: readonly DiagEntry[], scope?: string): string {
   if (entries.length === 0) return 'Diagnostic log is empty.';
   // TIME ORDER, not flush order.
   //
@@ -938,6 +950,14 @@ export function formatDiagnosticLog(entries: readonly DiagEntry[]): string {
   return [
     `# Blackjack Trainer diagnostic log`,
     `# ${entries.length} entries, ${sessions} page load(s)`,
+    // Before anything else a reader might act on, because every count and
+    // timestamp below is a count of the SUBSET when this is set.
+    ...(scope
+      ? [
+          `# SCOPED: only the lines since ${scope} — this is NOT the whole log.`,
+          `# The rest is in Settings → Diagnostic log → Copy.`,
+        ]
+      : []),
     // Said out loud, because the alternative is a reader who cannot tell a
     // missing entry from a discarded one.
     //

@@ -333,6 +333,44 @@ describe('the export as an artefact', () => {
     expect(line).toContain(DQ + 'he said ' + BS + DQ + 'double' + BS + DQ + ' then' + DQ);
   });
 
+  it('says when it is only part of the log, because a scoped copy looked whole', async () => {
+    /*
+     * JACK, 2026-10-06: "I did two Bluetooth on tests and got completely
+     * different results and neither show in diagnostics log."
+     *
+     * Both runs WERE in the log. The Test kit's "Copy results" filters to the
+     * lines written since that kit started and then calls this formatter, which
+     * printed the ordinary full-log header -- `# 79 entries, 1 page load(s)`.
+     * Nothing on the page or in the file said the other run had been filtered
+     * out, and "1 page load(s)" positively suggests the log holds only one. He
+     * read it as the log having lost his first run.
+     *
+     * A partial export has to say so in the artefact itself. The screen cannot
+     * carry it: the file is what gets pasted, hours later, somewhere else.
+     */
+    const log = await fresh();
+    log.diag('test', 'kit-start', { kit: 'car-bt' });
+    const header = log
+      .formatDiagnosticLog(log.readDiagnosticLog(), 'the car-bt kit run')
+      .split(NL)
+      .slice(0, 6)
+      .join(NL);
+
+    expect(header).toContain('SCOPED');
+    expect(header).toContain('the car-bt kit run');
+    // And it must point at where the rest actually is, or the reader is left
+    // believing the missing lines do not exist anywhere.
+    expect(header).toMatch(/not the whole log/i);
+  });
+
+  it('keeps the plain header when nothing was filtered out', async () => {
+    // The full export must not grow a scare line it has not earned; a header
+    // that always warns teaches the reader to skip it.
+    const log = await fresh();
+    log.diag('test', 'kit-start', { kit: 'car-bt' });
+    expect(log.formatDiagnosticLog(log.readDiagnosticLog())).not.toContain('SCOPED');
+  });
+
   it('quotes a list of transcripts, which carry spaces inside the JSON', async () => {
     /*
      * ARRAYS WENT OUT AS RAW JSON. That was safe only while the only array in
