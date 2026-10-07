@@ -99,7 +99,22 @@ Last updated: 2026-10-06. Session handoff: `docs/HANDOFF.md`. Plan for the next 
   settled.
 - [ ] Jack runs the **car kits**: Bluetooth on first (that's how he drives), then off.
 
-## Results — CAR, Bluetooth ON, parked, 2026-10-06 17:59 and 18:01 (build 49b277f)
+## Results — CAR, Bluetooth ON, **DRIVING**, 2026-10-06 17:59 and 18:01 (build 49b277f)
+
+> **Both runs were made WHILE DRIVING.** Jack, 2026-10-06: "I've actually been doing all my
+> Bluetooth runs while driving." Earlier revisions of this file said "parked" — that was my
+> assumption and it was wrong. Two consequences, pulling in opposite directions:
+>
+> - **The recognition numbers are ROAD numbers.** Two-word at 14/16 (88%) of the windows that
+>   produced a reading was measured with road noise, not in a quiet cabin. That is far better news
+>   than "parked 6/10" and it is close to the roadmap's D2. The caveat written below about this not
+>   being freeway noise is withdrawn.
+> - **The listening (blind) step is less trustworthy than the word step.** The kit's own instruction
+>   is "Do the listening step parked; the word step can be done driving", and the blind step was done
+>   driving. Telling the earpiece from the phone's loud speaker needs the phone at your ear, which he
+>   would not do at the wheel — so 'Earpiece' answers may really mean "quiet, and not the car".
+>   **The G2 conclusion survives this**, because every one of those answers was "not the car
+>   speakers" either way, which is the only distinction G2 turns on.
 
 Two car-bt runs **90 seconds apart in the same page load** (`[q16]`), with opposite results.
 That is the headline: the route is not a function of the playback path, it is a function of which
@@ -208,8 +223,9 @@ not vocabulary. Two consequences:
    is worth more than any further vocabulary change, and the instrumentation to classify them is in
    (`sessionsAtOpen`/`sessionsAtClose`, `speech`, `offered`).
 
-Sample sizes are 16 and 15 windows, parked, one voice, one car — not freeway noise. Do not treat
-88% as the road number.
+Sample sizes are 16 and 15 windows, one voice, one car. **These ARE road numbers** — both runs were
+driving (see the note above) — so 88% is the best estimate of two-word accuracy at speed that
+exists. It is not yet confirmed at sustained freeway speed, and one more run would settle it.
 
 **This weakens the vocabulary evidence, and more than first thought** — the lost windows were real
 attempts. Both days' figures are contaminated by them:
@@ -226,7 +242,7 @@ whole log. Fixed in `bce87b6`: a scoped export now says so, and says where the r
 
 ---
 
-## Results — CAR, Bluetooth ON, parked, 2026-10-06 09:05 (build f209d54, iOS 18.7, installed app)
+## Results — CAR, Bluetooth ON, **DRIVING**, 2026-10-06 09:05 (build f209d54, iOS 18.7, installed app)
 
 The first measurement ever taken in the car. Jack ran the `car-bt` kit end to end.
 
