@@ -631,7 +631,21 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
   const [samples, setSamples] = useState<CalibrationSample[]>([]);
   const cancelled = useRef(false);
 
-  useEffect(() => () => void (cancelled.current = true), []);
+  /*
+   * THE FLAG IS CLEARED ON SETUP, not only set on teardown.
+   *
+   * StrictMode runs setup, cleanup, setup on the same component instance, and
+   * the ref survives all three -- so a teardown-only handler left
+   * `cancelled.current` true before the step had run once. The word loop
+   * (`i < length && !cancelled.current`) then exited before its first
+   * iteration and the step reported 0/0 having opened no window at all.
+   * Production builds do not double-invoke, which is why Jack's car runs
+   * produce real numbers while nothing in the suite had ever reached this step.
+   */
+  useEffect(() => {
+    cancelled.current = false;
+    return () => void (cancelled.current = true);
+  }, []);
 
   const run = async () => {
     setPhase('announcing');
@@ -1155,7 +1169,13 @@ function PhoneRecogniseStep({ run, mic, ensureMic, ensureInput, onAnswer }: Step
   const cancelled = useRef(false);
   const [acc, setAcc] = useState<{ covered: number; uncovered: number } | null>(null);
 
-  useEffect(() => () => void (cancelled.current = true), []);
+  // Cleared on setup as well as set on teardown: see the note in
+  // CalibrateStep. StrictMode's second setup would otherwise find the flag
+  // already raised and the word loop would never run.
+  useEffect(() => {
+    cancelled.current = false;
+    return () => void (cancelled.current = true);
+  }, []);
 
   const open = async () => {
     // The phone-input stream first, then the recogniser on top of it: the
@@ -1301,14 +1321,15 @@ function WheelPressStep({ step, run, ensureInput, onAnswer }: StepProps & { step
   const [arrived, setArrived] = useState<string[]>([]);
   const cancelled = useRef(false);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // Cleared on setup too: see the note in CalibrateStep.
+    cancelled.current = false;
+    return () => {
       cancelled.current = true;
       // Restore: nothing else arms the probe on this screen.
       setMediaSessionProbe(null);
-    },
-    [],
-  );
+    };
+  }, []);
 
   const go = async () => {
     // The chosen input is what the car is reacting to; keep it open.
