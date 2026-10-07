@@ -99,6 +99,68 @@ Last updated: 2026-10-06. Session handoff: `docs/HANDOFF.md`. Plan for the next 
   settled.
 - [ ] Jack runs the **car kits**: Bluetooth on first (that's how he drives), then off.
 
+## Results — CAR, Bluetooth ON, **PARKED**, 2026-10-06 18:36 (build 7791d25)
+
+The first properly parked run, which is the condition the kit asks for on the listening step.
+
+### G2 WORKS PARKED — and that reframes the whole goal
+
+| Step | Answer |
+|------|--------|
+| Blind, mic open, `<audio>` | **Car speakers ×3** |
+| Blind, mic open, Web Audio | **Car speakers ×3** |
+| `bt-closed-element` | Car speakers |
+| `bt-closed-webaudio` | Car speakers |
+
+Six of six on the car speakers with the microphone OPEN, on both paths. **So the mic does not
+categorically steal the car.** G2 is intermittent, not broken, and the leading hypothesis is now
+that the bad state correlates with **driving** rather than with opening the mic:
+
+| Run | Condition | Reached the car? |
+|-----|-----------|------------------|
+| 2026-10-06 09:05 | driving | No — 0 of 6 |
+| 2026-10-06 17:59 (A) | driving | No |
+| 2026-10-06 18:01 (C) | driving | **Yes — 6 of 6** |
+| 2026-10-06 18:36 | **parked** | **Yes — 6 of 6** |
+
+Driving is not deterministic either (run C worked), so this is a correlation across 4 runs, not a
+law. **Revision to an earlier claim here:** "closing the mic does not recover the route" rests on
+run A alone — the only run that was in the bad state when those steps ran — and run A was driving,
+where Jack cannot hold the phone to his ear to tell the earpiece from the phone's loud speaker. It
+was still *not the car* either way, which is the distinction G2 turns on, so the conclusion stands
+but on **n=1**. Do not spend a build on the mic-close architecture on that basis.
+
+### The spectral verdicts were all invalid — fixed in `4c1b5b6`
+
+`peakDbfs` did its job on the first outing: −21 to −25 dBFS across the three probes, so Jack
+definitely counted out loud this time. And that is what exposed the real bug.
+
+| Probe | label | track rate | highRatio | peak |
+|-------|-------|-----------|-----------|------|
+| 1 | TOYOTA Corolla | 8000 | 1.4e-7 | −21.2 |
+| 2 | TOYOTA Corolla | 8000 | 4.3e-8 | −24.5 |
+| 3 | iPhone Microphone | 8000 | 1.6e-8 | −25.0 |
+
+An 8000 Hz track has a true Nyquist of **4000 Hz — exactly the HFP wall** — so nothing above it can
+be real and every bin up there is an upsampling artifact. `classifyMicBand` guards for precisely
+this but was handed the *context* rate (48000). So the ratio was always noise, which is why one
+microphone scored `wideband 0.287` while driving (road noise upsampled into an empty band) and
+`narrowband 1.6e-8` parked with a clear voice.
+
+**`trackSampleRate=8000` is itself the proof of the wall** — it needs no spectral inference, and
+every car probe on both days reported it. The verdict is now taken from the rate
+(`narrowband-by-rate`). Treat every `narrowband`/`wideband` verdict in logs before this build as
+meaningless.
+
+### Unverified claim to check
+
+Jack, on the words he skipped here: "I'm pretty sure it would be 100% accurate without the driving
+noise, I can double check later." **Not measured.** The parked word step is still outstanding and is
+the cheapest remaining measurement: it would separate "recognition is fine and road noise is the
+whole problem" from "there is a capture bug independent of noise".
+
+---
+
 ## Results — CAR, Bluetooth ON, **DRIVING**, 2026-10-06 17:59 and 18:01 (build 49b277f)
 
 > **Both runs were made WHILE DRIVING.** Jack, 2026-10-06: "I've actually been doing all my
