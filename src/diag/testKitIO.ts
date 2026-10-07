@@ -148,6 +148,7 @@ type Rec = {
   onstart: (() => void) | null;
   onaudiostart: (() => void) | null;
   onend: (() => void) | null;
+  onspeechstart: (() => void) | null;
   onerror: ((e: { error?: string }) => void) | null;
   onresult:
     | ((e: {
@@ -171,6 +172,18 @@ export interface HeldMic {
    * attempts. Nothing recorded it, so the deafness was undiagnosable.
    */
   sessions(): number;
+  /**
+   * How many times the engine has reported SPEECH since this mic was opened.
+   *
+   * Jack, 2026-10-06, on the windows that returned `offered=0`: "The 'dead
+   * windows' were me saying the word or words and them not being recognized."
+   * He was speaking, so a lost window is one of two failures that want opposite
+   * fixes: the engine was up and dropped live audio (`speechstart` fired, no
+   * final followed), or audio never reached it at all (`speechstart` silent
+   * while the API said the mic was open -- the lost-capture failure). Session
+   * counts alone cannot separate those.
+   */
+  speechDetected(): number;
   close(): Promise<void>;
 }
 
@@ -201,11 +214,13 @@ export async function openMic(): Promise<HeldMic | { error: string }> {
   let alive = true;
   // Counts STARTS THAT SUCCEEDED, so a throwing restart does not inflate it.
   let sessions = 0;
+  let speechSeen = 0;
   let ended: () => void = () => {};
   const endedP = new Promise<void>((r) => (ended = r));
   const held: HeldMic = {
     onFinal: null,
     sessions: () => sessions,
+    speechDetected: () => speechSeen,
     close: async () => {
       if (!alive) return;
       alive = false;
@@ -267,8 +282,14 @@ export async function openMic(): Promise<HeldMic | { error: string }> {
     }
   };
 
+  rec.onspeechstart = () => {
+    speechSeen += 1;
+  };
+
   const started = Date.now();
   const audioStarted = new Promise<boolean>((resolve) => {
+    // Assigned once and left in place, so it still fires on every RESTART and
+    // not only on the first start -- the handler must survive `onend`.
     rec.onaudiostart = () => resolve(true);
     setTimeout(() => resolve(false), 4000);
   });

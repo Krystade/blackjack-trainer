@@ -23,6 +23,7 @@ class FakeRec {
   onstart: (() => void) | null = null;
   onaudiostart: (() => void) | null = null;
   onend: (() => void) | null = null;
+  onspeechstart: (() => void) | null = null;
   onerror: ((e: { error?: string }) => void) | null = null;
   onresult:
     | ((e: {
@@ -134,6 +135,34 @@ describe('the kit microphone', () => {
     expect(fake.starts, 'the throwing start must not be counted as a session').toBe(1);
     expect(events()).toContain('kit-mic-dead');
 
+    await held.close();
+  });
+
+  it('counts the speech the engine detected, not just the sessions it opened', async () => {
+    /*
+     * JACK, 2026-10-06: "The 'dead windows' were me saying the word or words and
+     * them not being recognized I think. I don't know if it was a mic issue."
+     *
+     * That rules out the innocent reading. He was speaking, so `offered=0` means
+     * a real attempt was lost, and there are exactly two ways:
+     *
+     *   (a) the engine was between sessions -- `sessionsAtOpen` differs from
+     *       `sessionsAtClose`, already recorded.
+     *   (b) the engine was up for the whole window and still returned nothing.
+     *
+     * Only (b) needs this: if WebKit fired `speechstart` and no final followed,
+     * the capture was live and the recogniser dropped it. If it never fired,
+     * audio was not reaching the engine at all -- the lost-capture failure --
+     * even though the API said the mic was open. Those two want opposite fixes,
+     * and nothing in the export could tell them apart.
+     */
+    const held = await open();
+    expect(held.speechDetected()).toBe(0);
+
+    fake.onspeechstart?.();
+    fake.onspeechstart?.();
+
+    expect(held.speechDetected()).toBe(2);
     await held.close();
   });
 

@@ -642,6 +642,7 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
         // was between sessions" are the same line in the export, which is why
         // the 7 dead windows of 2026-10-06 could not be explained.
         const sessionsAtOpen = mic.current?.sessions() ?? 0;
+        const speechAtOpen = mic.current?.speechDetected() ?? 0;
         heard = await new Promise<Array<{ transcript: string; confidence: number }>>((resolve) => {
           const timer = setTimeout(() => resolve([]), WORD_SLOT_MS);
           if (!mic.current) return resolve([]);
@@ -670,6 +671,13 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
           tookMs,
           sessionsAtOpen,
           sessionsAtClose: mic.current?.sessions() ?? 0,
+          /*
+           * DID THE ENGINE HEAR ANYTHING AT ALL? Jack was speaking in the
+           * windows that returned nothing, so `speech=0` means audio never
+           * reached the recogniser (lost capture) while `speech>0` with
+           * `offered=0` means it had live audio and dropped it. Opposite fixes.
+           */
+          speech: (mic.current?.speechDetected() ?? 0) - speechAtOpen,
         });
       }
       attempt -= 1;

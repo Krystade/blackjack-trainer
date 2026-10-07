@@ -149,16 +149,30 @@ before shipping anything that acts on it.
 ### Recognition: 7 of 20 windows heard NOTHING, and the cause was unlogged
 
 `oneWord=3/10 twoWord=6/10` — but 7 windows returned `offered=0`, never a wrong word, and **every
-one of them followed a retry** (7/7, both directions). A 6-second window with no speech always ends
-the engine's session, so a restart always sat between a failed attempt and its retry, and
-`rec.onend` restarted it **with no log line**. "He said nothing" and "the engine was between
-sessions" were the same line in the export.
+one of them followed a retry** (7/7, both directions).
 
-Fixed in `3f7bcbf` (instrumentation only, no behaviour change): `kit-mic-restart` with a session
-count, `kit-mic-dead` when a restart throws, and `kit-calibrate-attempt` per attempt with
-`sessionsAtOpen`/`sessionsAtClose`. The next run will say which it is.
+**Jack was speaking in those windows.** Asked directly: "The 'dead windows' were me saying the word
+or words and them not being recognized I think. I don't know if it was a mic issue." So these are
+**lost attempts, not absent ones**, and the innocent reading is ruled out. Two failures remain, and
+they want opposite fixes:
 
-**This weakens the vocabulary evidence.** Both days' figures are contaminated by dead windows:
+| | Signature in the next export | Meaning |
+|--|------------------------------|---------|
+| (a) Between sessions | `sessionsAtOpen` ≠ `sessionsAtClose` | The engine restarted mid-window; the words went nowhere |
+| (b) Live but dropped | counts equal, `speech>0`, `offered=0` | Capture was flowing and the recogniser returned nothing |
+| (c) Deaf while "open" | counts equal, `speech=0` | Audio never reached the engine though the API said the mic was open — the lost-capture failure |
+
+`rec.onend` restarted the session **with no log line at all**, which is why none of this could be
+separated.
+
+Fixed in `3f7bcbf` and the follow-up (instrumentation only, no behaviour change):
+`kit-mic-restart` with a session count, `kit-mic-dead` when a restart throws, and
+`kit-calibrate-attempt` per attempt carrying `sessionsAtOpen`/`sessionsAtClose` and `speech` (how
+many times the engine reported speech during that window). The next run distinguishes (a), (b) and
+(c) by the table above.
+
+**This weakens the vocabulary evidence, and more than first thought** — the lost windows were real
+attempts. Both days' figures are contaminated by them:
 combined, one-word 6/20 and two-word 14/20. Same direction, less solid than 8/10 vs 3/10 looked.
 The two-word default stays (it is free, and one-word remains an alias), but do not treat the
 margin as measured until a run with no dead windows reproduces it.
