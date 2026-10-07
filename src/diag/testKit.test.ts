@@ -92,6 +92,26 @@ describe('test kit', () => {
     }
   });
 
+  it('asks for the words before the spectrum, because the words keep getting skipped', () => {
+    /*
+     * Jack skipped the word step on 2026-10-06 twice, and both times it was
+     * LAST: once by abandoning the run, once by tapping skip. It is also the
+     * scarcest measurement we have -- the only one that produces a recognition
+     * number -- while the spectrum step is now nearly settled by the track rate
+     * alone (`verdictFromTrackRate`), so it costs little to do second.
+     *
+     * The blind step stays first: it is what classifies the route state, and
+     * every later step wants to be read against that state.
+     */
+    const ids = KITS['car-bt'].steps.map((s) => s.id);
+    const blind = ids.indexOf('bt-blind-mic-open');
+    const words = ids.indexOf('calibrate');
+    const spectrum = ids.indexOf('mic-spectrum');
+    expect(blind).toBe(0);
+    expect(words).toBeGreaterThan(blind);
+    expect(words, 'the word step must come before the spectrum step').toBeLessThan(spectrum);
+  });
+
   it('every blind step scores against an answer it actually offers', () => {
     /*
      * THE CAR KIT SCORED 0 OF 3 WHATEVER JACK TAPPED.

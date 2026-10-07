@@ -294,7 +294,7 @@ export const KITS: Record<KitId, { label: string; where: string; steps: readonly
   },
   'car-bt': {
     label: 'In the car — Bluetooth ON',
-    where: 'Phone connected to the car as usual. Do the listening step parked; the word step can be done driving.',
+    where: 'Phone connected to the car as usual. Do the listening step PARKED — judging the earpiece needs the phone at your ear. The word step can be done driving, and is the one worth finishing.',
     steps: [
       // The gate for G2 (roadmap 2026-10-05): drills now play through Web Audio
       // once the mic has opened, and nobody has yet heard that over Bluetooth.
@@ -331,8 +331,15 @@ export const KITS: Record<KitId, { label: string; where: string; steps: readonly
       ...routeSteps('bt', CAR_ROUTE).filter(
         (s) => s.kind === 'route' && s.mic === 'closed-after-open',
       ),
-      SPECTRUM,
+      /*
+       * WORDS BEFORE SPECTRUM. Jack skipped the word step twice on 2026-10-06
+       * and both times it was last -- once by abandoning the run, once by
+       * tapping skip -- while it is the only step that produces a recognition
+       * number. The spectrum step is now all but settled by the track rate
+       * alone (`verdictFromTrackRate`), so it is the cheaper one to lose.
+       */
       CALIBRATE,
+      SPECTRUM,
     ],
   },
   'car-no-bt': {

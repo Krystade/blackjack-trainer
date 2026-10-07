@@ -245,7 +245,21 @@ export async function openMic(): Promise<HeldMic | { error: string }> {
       held.onFinal?.(alts);
     }
   };
-  rec.onerror = (e) => diag('test', 'kit-mic-error', { error: e.error ?? 'unknown' });
+  rec.onerror = (e) => {
+    /*
+     * A DELIBERATE CLOSE IS NOT AN ERROR. `close()` calls `rec.stop()`, which
+     * makes WebKit fire `onerror` with `aborted` -- so every single clean
+     * shutdown wrote `kit-mic-error error=aborted` into the log, right beside
+     * `kit-mic-closed`. Jack's runs are full of them. A log that cries error on
+     * every normal close teaches its reader to skip error lines, which is the
+     * opposite of what this log is for.
+     */
+    if (!alive && (e.error ?? '') === 'aborted') {
+      diag('test', 'kit-mic-abort-on-close', { expected: true });
+      return;
+    }
+    diag('test', 'kit-mic-error', { error: e.error ?? 'unknown' });
+  };
   rec.onend = () => {
     ended();
     // The engine ends sessions on its own after silence. Keep it open for as

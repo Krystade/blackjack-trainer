@@ -503,7 +503,28 @@ function BlindStep({ step, mic, ensureMic, onAnswer }: StepProps & { step: Extra
         <button
           type="button"
           className="u-btn u-btn-primary testkit-go"
-          onClick={() => onAnswer('done', { element: tally('element'), webaudio: tally('webaudio') })}
+          onClick={() => {
+            /*
+             * ONE LINE THAT CLASSIFIES THE WHOLE RUN.
+             *
+             * The route state is intermittent -- four car runs on 2026-10-06
+             * gave two states -- and every later step in the run (the words, the
+             * closed-mic recovery, the spectrum) only means something when read
+             * against which state it happened in. Reading that off six scattered
+             * `kit-blind` lines is work a reader should not have to do, and I got
+             * it wrong once already by conflating two runs.
+             */
+            const hits = results.current.filter((r) => r.answer === step.target).length;
+            diag('test', 'kit-route-state', {
+              step: step.id,
+              target: step.target,
+              hits,
+              trials: results.current.length,
+              state: hits === 0 ? 'never-reached-target' : hits === results.current.length ? 'always' : 'mixed',
+              answers: results.current.map((r) => r.answer),
+            });
+            onAnswer('done', { element: tally('element'), webaudio: tally('webaudio') });
+          }}
         >
           Next
         </button>
