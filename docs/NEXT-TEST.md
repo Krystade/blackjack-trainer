@@ -51,7 +51,7 @@ Also watch for, anywhere in the run:
 | A2 | `bt-closed-element`, `bt-closed-webaudio` | Earpiece, Earpiece | **Closing the mic does not give the car back.** That's n=2 now, with run A of 2026-10-06. The mic-close architecture is ruled out. In the bad state even Web Audio is on the earpiece, so G2 cannot be fixed from the playback path. |
 | A3 | `kit-calibrate-summary` | **oneWord 10/10, twoWord 10/10** | Parked recognition is perfect, through the car's 8kHz mic. The driving losses are noise and capture, not the recogniser or the vocabulary. |
 | A4 | `kit-calibrate-attempt` | 1 dead window of 21: the first one ("hit", attempt 1), `offered=0`, same session | It opened into the input swap: a `route devicechange` came 1.1s after `kit-mic-open`. Every later window heard. **`speech=0` on all 21 attempts, including the 20 that heard the word**, so iOS never fires `speechstart` and the field cannot classify A4. Treat it as unsupported. |
-| A5 | `mic spectrum` | `peakDbfs=-120` on all three probes (car ×2, iPhone ×1), track 8000 | Exact silence. Either nobody counted out loud, or capture delivered zeros. Asked Jack. |
+| A5 | `mic spectrum` | `peakDbfs=-120` on all three probes (car ×2, iPhone ×1), track 8000 | **Unusable, and the probe's own fault.** `-120` is `SILENCE_DBFS`, the sentinel the no-signal path writes — not a measurement. The probe borrowed the shared `AudioContext`, and iOS creates one `suspended` unless it was built inside a user gesture; a suspended context renders nothing, so the `AnalyserNode` returned its initial fill while the loop counted frames off the wall clock. So this row cannot distinguish "nobody spoke" from "capture delivered zeros" from "the probe never ran", and the third is the likeliest. Fixed in `bcdbe16`: the probe starts its own context, resumes it, and on failure writes `error=context-suspended contextState=…` instead of a number. |
 
 Found in the same run, and fixed after it:
 
@@ -80,6 +80,41 @@ Run 2 is only worth doing after Run 1, because its numbers mean nothing without
 Run 1's `kit-route-state` to read them against.
 
 ---
+
+### Run 2 results — 2026-10-07 18:47–19:03, driving (build 3f51ef3)
+
+Not the kit: this was a real flashcards drill, exported whole. Jack turned
+Bluetooth off part way, which makes the log a natural experiment.
+
+**Bluetooth off helped, and the margin is large.** The split is at 18:52:45.781,
+where `route inputs count=1 labels="iPhone Microphone"` records the car dropping
+off. Hand tally of `mic verdict` lines either side:
+
+| | resolved to a command | rejected | suppressed | rate |
+|---|---|---|---|---|
+| Bluetooth on | 12 | 8 | 1 | **60%** |
+| Bluetooth off | 41 | 8 | 1 | **84%** |
+
+Jack's impression is confirmed. It is **not** a controlled comparison, though:
+the Bluetooth-on stretch also held 3 `clip-webaudio-stall`s inside a
+`visibility=hidden` window, one `session-error error=not-allowed`, and the
+device-change failures — so some of those 20 prompts he may never have heard.
+
+**The volume breakage cannot be read out of this log.** He left the app to change
+the volume at about 19:03 and came back to the quiet earpiece. `route
+hardware-rate` — the only instrument that names the output route — had taken its
+24th and last reading at 19:02:48.605, seconds earlier: `MAX_RATE_PROBES` was 24
+and a drill spends two per prompt. Fixed in `a7c07c4`: a pair costs a reading at
+most once per 30s, the budget is 120, and running out now writes
+`state=budget-spent` instead of just going quiet. Re-run the drive to get the
+reading.
+
+**The backgrounded-clock stall is narrower than "the clock stops".**
+`clip-webaudio-stall` fired 3× (ctxTime 5.72 → 10.528 → 10.976), all inside one
+`visibility=hidden` window (18:48:06 → 18:48:37), and recovered on return to
+visible. `audio-clock-stopped`, `audio-clock-restarted` and
+`audio-context-replaced` never fired, so the 120ms liveness probe found the clock
+moving every time it asked. The stall is confined to the hidden window.
 
 ## Not in the kit, and still open
 
