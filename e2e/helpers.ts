@@ -178,11 +178,37 @@ export async function statsTab(page: Page, tab: 'Play' | 'Drills' | 'Progress'):
  * it. Reporting a hit is arbitrary but harmless: these specs assert on
  * speech and playback, not on the verdict.
  */
+/*
+ * WAIT FOR A DEFINITE SIGNAL, NOT FOR A CLOCK.
+ *
+ * This asked for the button with a 20s timeout and swallowed the failure, so
+ * "there is no self-report in this run" and "the self-report has not arrived
+ * yet" were the same thing to it. Under a full-suite run the second one
+ * happens: a drill speaking every line through live speechSynthesis takes
+ * longer than 20s to get there, the helper gave up, nothing ever answered the
+ * question, and the caller then failed 20s later on a missing `.drill-result`
+ * -- which reads like a drill that hung rather than a prompt nobody pressed.
+ * It cost three full-suite runs, each blaming a different test, and waiting
+ * longer at the caller would not have helped: the prompt needs answering, not
+ * more time.
+ *
+ * So wait for whichever arrives first -- the question, or the result that
+ * means there was no question -- and act on what actually appeared. Absence is
+ * still tolerated, because some callers' runs end another way, but it is now
+ * distinguished from lateness by a signal instead of a guess.
+ */
 export async function answerSelfReportIfPresent(page: Page): Promise<void> {
   const yes = page.getByRole('button', { name: 'I had it' });
-  await yes.click({ timeout: 20_000 }).catch(() => {
-    /* Not an eyes-free run, or it ended some other way. */
-  });
+  const ended = page.locator('.drill-result');
+
+  const appeared = await yes
+    .or(ended)
+    .first()
+    .waitFor({ state: 'visible', timeout: 120_000 })
+    .then(() => true)
+    .catch(() => false);
+
+  if (appeared && (await yes.isVisible())) await yes.click();
 }
 
 /**
