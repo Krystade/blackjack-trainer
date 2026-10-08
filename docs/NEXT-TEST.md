@@ -116,9 +116,76 @@ visible. `audio-clock-stopped`, `audio-clock-restarted` and
 `audio-context-replaced` never fired, so the 120ms liveness probe found the clock
 moving every time it asked. The stall is confined to the hidden window.
 
+## Run 3 — what the fixes of 2026-10-07 evening left to measure
+
+Three instruments were repaired after the two runs above, and **not one of them
+has produced a reading on the phone yet.** In priority order, cheapest first.
+
+### 3A — the volume breakage. Parked, 2 minutes, no driving.
+
+The only completely unmeasured failure left, and it needs no road.
+
+1. Car on, Bluetooth connected, start an ordinary drill. Let it ask 3–4 questions
+   so the log has `route hardware-rate` pairs from the good state.
+2. **Do exactly what broke it:** leave the app, change the volume the way you did
+   (Settings, or the side buttons), come back.
+3. Keep drilling for at least a minute. The probe now spends a reading at most
+   once per 30s, so the reading after your return takes up to 30s to land —
+   quitting straight away loses it.
+
+| Line | What each answer means |
+|---|---|
+| `route hardware-rate rate=48000` before, `rate=16000` or `8000` after | The output moved to the earpiece / HFP path, and we have the moment it happened. This is the reading the last run could not produce. |
+| `rate=48000` on both sides | The route did **not** move, and the quiet is a volume level, not a route — a completely different fix. |
+| `state=budget-spent` | The instrument ran out again. It should not at 120 readings; if it does, say so and the budget is wrong. |
+
+### 3B — the ~20s of deafness on the first drill after a connect. Driving.
+
+Fixed in `d720b9e`, unverified. It only shows up on a **fresh connect**, so:
+
+1. Start with Bluetooth off or the car off. Connect it.
+2. Start a drill **immediately** — within a few seconds, while the inputs are
+   still settling. That is the window that used to go deaf.
+3. Answer normally for a minute.
+
+| Line | What each answer means |
+|---|---|
+| `voice session-end excused=true sinceDeviceChangeMs=…` with `restartInMs=250` | The fix is working: the route flip no longer counts against the backoff. |
+| `restartInMs` climbing 500 → 1000 → … → 8000 with no `excused` | The failures are landing more than 3s after the device change, so `DEVICE_SETTLE_MS` is too short. The numbers in the log say by how much. |
+| No `session-error` at all in the first 20s | Better still — and then the deafness was never the backoff. |
+| `excused=true` on a long run of failures | The car is flapping. Expect the bound to kick in after 8 and the backoff to resume. |
+
+Subjective half, worth as much as the log: **does it hear you in the first 20
+seconds now?**
+
+### 3C — the Bluetooth A/B, controlled this time. Driving.
+
+The 60% → 84% above is real but confounded: the Bluetooth-on stretch also had
+three backgrounded clock stalls and a permission error, so some of those prompts
+may never have reached you. Use the kit, which says the same words both ways:
+
+1. **Words at speed → Bluetooth on**, same road, phone in the cradle, **screen on
+   and the app in front the whole time** (backgrounding is what confounded it).
+2. Turn Bluetooth off, repeat on the same stretch.
+
+Read `kit-calibrate-summary oneWord=n/10 twoWord=n/10` from each. Two runs of the
+same twenty words, nothing backgrounded, is a number worth building on.
+
+### 3D — the spectrum probe, if 3A leaves a spare minute. Parked.
+
+`mic spectrum` has never returned a real measurement: every reading so far was
+`peakDbfs=-120`, which is the silence sentinel, from a probe borrowing a
+suspended `AudioContext`. It now starts its own. Count 1→10 out loud in the
+listening step and expect **either** a real `peakDbfs` **or**
+`error=context-suspended contextState=…`. Both are informative; a third
+`-120` would mean the fix missed.
+
+---
+
 ## Not in the kit, and still open
 
-- **The ~20s deafness on the first mic open after a device change.** `voiceControl.ts` logs `sinceDeviceChangeMs` and then acts on nothing, so `restartDelayFor` escalates 250 → 500 → 1000 → 2000 → 4000 → 8000 ≈ 16 s after a device-change burst. To see it, start a drill *immediately* after the car connects and read the two lines together: `voice session-error error=audio-capture sinceDeviceChangeMs=…` (the field is omitted entirely when nothing changed) followed by `voice session-end failedStreak=… restartInMs=…` with `restartInMs` climbing to 8000. Fixing it means not counting a failure that lands right after a device change against `failedStreak`.
+- **The `chromium-audio` e2e flake.** Two full suite runs each failed a different test in that project (`drill-layout.spec.ts:197` + `table-seats.spec.ts:117`, then `clip-playback.spec.ts:221`); each passes in isolation. It is the only project using real `speechSynthesis`, with `workers: 1, retries: 0`, so the likeliest cause is state leaking between specs rather than anything in the app. Not chased — it has never pointed at a real defect.
+- **The dead "Switch" output-route option.** Nothing reads it; it offers the operator a choice that does nothing.
 
 ## Already settled — do not re-measure
 
