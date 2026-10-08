@@ -1173,3 +1173,26 @@ describe('a failure that lands while the audio route is changing', () => {
     expect(last?.detail?.failedStreak).toBe(0);
   });
 });
+
+/**
+ * WILL THE MICROPHONE WORK ON A PLANE?
+ *
+ * Unknown, and not answerable from a desk: Safari's recogniser is a service,
+ * and whether iOS 18.7 falls back to the on-device dictation model when there
+ * is no network is not documented anywhere that can be trusted. What the log
+ * must not do is leave the question open after the flight -- `error=network`
+ * with no note of whether the phone had a connection reads the same whether it
+ * was airplane mode or a dead cell.
+ */
+describe('a session that fails with no network', () => {
+  it('records whether the phone was online, so the plane question gets answered', () => {
+    _resetDeviceChurnForTest();
+    const h = harness();
+    h.controller.start();
+    h.current().fail('network');
+
+    const err = h.logs.filter((l) => l.event === 'session-error').pop();
+    expect(err?.detail?.error).toBe('network');
+    expect(err?.detail, 'the log cannot say whether there was a connection').toHaveProperty('online');
+  });
+});

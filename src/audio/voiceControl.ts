@@ -705,9 +705,17 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
        * field present on every line correlates with nothing.
        */
       const sinceDeviceChangeMs = msSinceInputDeviceChanged(deps.now());
+      /*
+       * AND WHETHER THERE WAS A CONNECTION AT ALL. Safari's recogniser is a
+       * service, so `error=network` in an export reads the same whether the
+       * phone was in airplane mode or in a tunnel with one bar -- and "can I
+       * drill on a plane" is a question only the log can settle, after the
+       * flight, when nobody can be asked.
+       */
       log('session-error', {
         error,
         sessionMs: sessionStartedAt > 0 ? deps.now() - sessionStartedAt : 0,
+        online: typeof navigator === 'undefined' ? null : navigator.onLine,
         ...(sinceDeviceChangeMs === null ? {} : { sinceDeviceChangeMs }),
       });
       // Everything else is left to `onend`, which always follows it, so one
