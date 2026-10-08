@@ -249,11 +249,52 @@ export async function logAudioInputs(reason: string): Promise<void> {
  * capped, because a drill that opens the microphone every few seconds would
  * otherwise build hundreds of them over a drive.
  */
-const MAX_RATE_PROBES = 24;
+/*
+ * SPACED OUT, AND LOUD WHEN IT RUNS DRY.
+ *
+ * Jack's drive of 2026-10-07 spent all 24 readings in fourteen minutes: a
+ * flashcards drill opens and closes the recogniser every few seconds, and each
+ * pair cost two. The last reading was at 19:02:48. Seconds later he went to
+ * Settings to change the volume, came back, and the output was no longer on the
+ * loud speaker -- the exact event this probe exists to catch, with the probe
+ * already silent. Worse, a measurement that simply stops appearing reads like a
+ * route that stopped changing, so the log did not even admit the gap.
+ *
+ * Two changes. A pair is spent at most once per cooldown, which makes the same
+ * budget cover a whole drive instead of its first quarter hour; and running out
+ * is itself a line in the log. The open/close PAIR is kept together, because
+ * the reading before the microphone opens and the one after are what say
+ * whether the session moved -- one on its own says nothing.
+ */
+const MAX_RATE_PROBES = 120;
+const PAIR_COOLDOWN_MS = 30_000;
 let rateProbes = 0;
+let lastPairAt = -Infinity;
+let pairOpen = false;
+let spentAnnounced = false;
 
-export function logHardwareRate(reason: string): void {
-  if (rateProbes >= MAX_RATE_PROBES) return;
+export function logHardwareRate(reason: string, now: () => number = Date.now): void {
+  // The close half of a pair whose open half was skipped has nothing to pair
+  // with, so it is skipped too rather than spending a reading on half a
+  // measurement.
+  if (reason === 'mic-closed') {
+    if (!pairOpen) return;
+    pairOpen = false;
+  } else if (reason === 'mic-open') {
+    if (now() - lastPairAt < PAIR_COOLDOWN_MS) return;
+    lastPairAt = now();
+    pairOpen = true;
+  }
+
+  if (rateProbes >= MAX_RATE_PROBES) {
+    // Said once: the reader must be able to tell a quiet instrument from a
+    // stable route.
+    if (!spentAnnounced) {
+      spentAnnounced = true;
+      diag('route', 'hardware-rate', { reason, state: 'budget-spent', probes: rateProbes });
+    }
+    return;
+  }
   rateProbes += 1;
   try {
     const Ctor =
@@ -276,6 +317,9 @@ export function logHardwareRate(reason: string): void {
 /** Test-only: let a suite take more than one drive's worth of readings. */
 export function _resetRateProbesForTest(): void {
   rateProbes = 0;
+  lastPairAt = -Infinity;
+  pairOpen = false;
+  spentAnnounced = false;
 }
 
 /**

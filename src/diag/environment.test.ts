@@ -176,6 +176,58 @@ describe('logHardwareRate', () => {
     expect(counts.built).toBeGreaterThan(0);
   });
 
+  it('is still taking readings a quarter of an hour into a drive', () => {
+    /*
+     * JACK'S DRIVE, 2026-10-07 18:47-19:03. A flashcards drill opens and closes
+     * the recogniser every few seconds, which spent all 24 readings in fourteen
+     * minutes -- the last at 19:02:48. Seconds later he went to Settings to
+     * change the volume, came back, and the output was no longer on the loud
+     * speaker. The one instrument built to detect exactly that had stopped
+     * reporting two lines earlier, so the log cannot say what the route did.
+     *
+     * A budget spent on back-to-back readings of an unchanged rate buys
+     * nothing. Spacing them out makes the same 24 cover the whole drive.
+     */
+    const counts = installFakeContexts(48_000);
+    let t = Date.parse('2026-10-07T18:48:00Z');
+    const now = () => t;
+
+    // The drill's own rhythm: open and close, every five seconds, for 20 min.
+    for (let i = 0; i < 240; i++) {
+      t = Date.parse('2026-10-07T18:48:00Z') + i * 5_000;
+      logHardwareRate('mic-open', now);
+      logHardwareRate('mic-closed', now);
+    }
+
+    const builtByTheEnd = counts.built;
+    t = Date.parse('2026-10-07T18:48:00Z') + 20 * 60_000 + 60_000;
+    logHardwareRate('mic-open', now);
+    expect(counts.built, 'the probe had nothing left after 20 minutes').toBeGreaterThan(
+      builtByTheEnd,
+    );
+  });
+
+  it('says when it has stopped reading, instead of just going quiet', () => {
+    /*
+     * A measurement that stops appearing reads exactly like a route that
+     * stopped changing. That is the same fault as a probe reporting its own
+     * silence as a finding, and it cost the 19:02 reading.
+     */
+    installFakeContexts(48_000);
+    let t = Date.parse('2026-10-07T18:48:00Z');
+    const now = () => t;
+    for (let i = 0; i < 400; i++) {
+      t = Date.parse('2026-10-07T18:48:00Z') + i * 60_000;
+      logHardwareRate('mic-open', now);
+      logHardwareRate('mic-closed', now);
+    }
+
+    const spent = readDiagnosticLog().filter(
+      (e) => e.event === 'hardware-rate' && e.detail?.state === 'budget-spent',
+    );
+    expect(spent, 'the log must say the instrument went quiet').toHaveLength(1);
+  });
+
   it('says so rather than throwing where there is no AudioContext', () => {
     (globalThis as { window?: unknown }).window = {};
 
