@@ -210,6 +210,40 @@ export const MAX_RESTART_DELAY_MS = 8000;
 export const PRODUCTIVE_SESSION_MS = 10_000;
 
 /**
+ * How recently the inputs must have changed for a dead session to be the
+ * route's fault rather than the microphone's.
+ *
+ * THE BACKOFF ABOVE PROTECTS A DEAD MICROPHONE, and a session that dies while
+ * the car is re-plugging the audio route is not evidence of one. On the
+ * 2026-10-07 drive the car connected, `devicechange` fired, and the sessions
+ * that opened into the flip died with `audio-capture` -- so the streak climbed
+ * and `restartDelayFor` reached 8000ms just as the route finished settling.
+ * That is the ~20s of deafness on the first drill after a connect: the
+ * microphone was fine the whole time, and the only seconds that mattered were
+ * spent waiting out a penalty for someone else's fault.
+ *
+ * Three seconds, because the churn this covers is one route flip: the
+ * 2026-10-04 reading that named the problem was `audio-capture` 2.2s after the
+ * input list changed, and the kit's own settle wait is 1.5s quiet with a 4s
+ * ceiling.
+ */
+export const DEVICE_SETTLE_MS = 3000;
+
+/**
+ * How many failures one spell of churn may excuse before the backoff applies
+ * anyway.
+ *
+ * A Bluetooth unit that connects and drops in a loop refreshes the excuse
+ * every time, and an unbounded exception would re-open the microphone every
+ * 250ms for the rest of the drive -- the battery and route-crackle cost the
+ * backoff exists to avoid. Eight covers a single flip generously (the window
+ * is 3s and the quickest retry is 250ms) and still reaches the backoff within
+ * a couple of seconds of a device that will not settle. One working session
+ * clears it, as it clears the streak.
+ */
+export const MAX_EXCUSED_FAILURES = 8;
+
+/**
  * How long to wait before the next attempt, given how many have just failed.
  *
  * The first retry is immediate in human terms: a single dropped session is
@@ -417,10 +451,33 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
   let cued = false;
   /** Sessions that have died in a row without doing any work. */
   let failedStreak = 0;
+  /**
+   * Failures this spell of device churn has already excused. Bounded by
+   * `MAX_EXCUSED_FAILURES` and cleared by a session that works.
+   */
+  let excusedFailures = 0;
   /** Whether the CURRENT session ever heard anything. */
   let heardThisSession = false;
   let watchdogHandle: number | null = null;
   let state: ListenState = 'off';
+  /**
+   * Count a dead session against the backoff -- unless the audio route was
+   * changing underneath it.
+   *
+   * Returns the age of that device change when the failure is excused, and
+   * null when it was counted, so the caller can say which in the log. A run of
+   * failures with a flat retry delay and no reason given reads like a broken
+   * backoff, which is the wrong thing for a reader to go and look at.
+   */
+  const excuseOrCount = (): number | null => {
+    const since = msSinceInputDeviceChanged(deps.now());
+    if (since !== null && since <= DEVICE_SETTLE_MS && excusedFailures < MAX_EXCUSED_FAILURES) {
+      excusedFailures += 1;
+      return since;
+    }
+    failedStreak += 1;
+    return null;
+  };
   /**
    * Whether the microphone has demonstrably been OPEN since start().
    *
@@ -669,15 +726,17 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       // neither counts against the streak.
       const lasted = sessionStartedAt > 0 ? deps.now() - sessionStartedAt : 0;
       const worked = heardThisSession || lasted >= PRODUCTIVE_SESSION_MS;
+      let excused: number | null = null;
       if (worked) {
         failedStreak = 0;
+        excusedFailures = 0;
         markWorked();
         // Cleared HERE and not in `onstart`: some engines fire onstart and
         // then refuse, so clearing on start would mean the retry cap could
         // never be reached and a real revocation would retry forever.
         permissionStreak = 0;
       } else {
-        failedStreak++;
+        excused = excuseOrCount();
       }
 
       const delay = restartDelayFor(failedStreak);
@@ -687,6 +746,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
         heard: heardThisSession,
         failedStreak,
         restartInMs: delay,
+        ...(excused === null ? {} : { excused: true, sinceDeviceChangeMs: excused }),
       });
       setState('restarting');
       restartHandle = deps.schedule(begin, delay);
@@ -841,9 +901,15 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     watchdogHandle = deps.schedule(() => {
       watchdogHandle = null;
       if (state !== 'starting') return;
-      failedStreak++;
+      const excused = excuseOrCount();
       const delay = restartDelayFor(failedStreak);
-      log('start-timeout', { n: attempt, afterMs: START_TIMEOUT_MS, failedStreak, restartInMs: delay });
+      log('start-timeout', {
+        n: attempt,
+        afterMs: START_TIMEOUT_MS,
+        failedStreak,
+        restartInMs: delay,
+        ...(excused === null ? {} : { excused: true, sinceDeviceChangeMs: excused }),
+      });
       teardown();
       if (!running) return;
       setState('restarting');
@@ -868,6 +934,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       running = true;
       attempt = 0;
       failedStreak = 0;
+      excusedFailures = 0;
       permissionStreak = 0;
       everWorked = false;
       log('start');
@@ -921,6 +988,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       }
       log('resume', { reason, state, failedStreak });
       failedStreak = 0;
+      excusedFailures = 0;
       permissionStreak = 0;
       begin();
     },

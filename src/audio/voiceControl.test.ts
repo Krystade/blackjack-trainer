@@ -12,6 +12,8 @@ import {
   SPEECH_TAIL_MS,
   START_TIMEOUT_MS,
   MAX_PERMISSION_RETRIES,
+  DEVICE_SETTLE_MS,
+  MAX_EXCUSED_FAILURES,
   type ListenState,
   type HeardVerdict,
   type RecognitionLike,
@@ -1044,5 +1046,130 @@ describe('the diagnostic log', () => {
     expect(() => controller.start()).not.toThrow();
     expect(controller.state()).toBe('listening');
     expect(() => made[0]!.say('stand')).not.toThrow();
+  });
+});
+
+/**
+ * A FAILURE WITH A KNOWN CAUSE IS NOT EVIDENCE OF A BROKEN MICROPHONE.
+ *
+ * From the 2026-10-07 drive: the car connects, `devicechange` fires, and the
+ * next sessions die with `audio-capture` while the route is still being
+ * re-plugged. Each one counted against `failedStreak`, so `restartDelayFor`
+ * escalated 250 -> 500 -> 1000 -> 2000 -> 4000 -> 8000 and by the time the
+ * route had settled the controller was eight seconds from its next attempt.
+ * That is the ~20s of deafness on the first drill after a connect: the
+ * microphone was fine, and the backoff built to protect a dead microphone was
+ * spending the only seconds that mattered.
+ *
+ * The backoff still exists, and the existing suite above proves a failure out
+ * of a clear sky still escalates. This is the exception, and it is bounded:
+ * a device that flaps forever has to reach the backoff eventually, or the
+ * controller re-opens the microphone every quarter second for the whole drive.
+ */
+describe('a failure that lands while the audio route is changing', () => {
+  it('does not escalate the backoff, so the first prompts after a connect are heard', () => {
+    _resetDeviceChurnForTest();
+    const h = harness();
+    h.controller.start();
+    // The car connecting: the input list changes, and the sessions that open
+    // into the flip cannot read the microphone.
+    markInputDeviceChanged(h.now());
+
+    for (let i = 0; i < 5; i++) {
+      h.current().onstart?.();
+      h.current().fail('audio-capture');
+      h.advance(RESTART_DELAY_MS);
+    }
+
+    const ends = h.logs.filter((l) => l.event === 'session-end');
+    expect(ends.length).toBeGreaterThanOrEqual(5);
+    for (const end of ends) {
+      expect(end.detail?.failedStreak, 'the route flip counted against the streak').toBe(0);
+      expect(end.detail?.restartInMs, 'the retry backed off anyway').toBe(RESTART_DELAY_MS);
+    }
+  });
+
+  it('says in the log why the streak did not move', () => {
+    // Otherwise the export shows a run of failures with a flat retry delay and
+    // no reason, which reads like the backoff is broken.
+    _resetDeviceChurnForTest();
+    const h = harness();
+    h.controller.start();
+    markInputDeviceChanged(h.now() - 500);
+    h.current().onstart?.();
+    h.current().fail('audio-capture');
+
+    const end = h.logs.find((l) => l.event === 'session-end');
+    expect(end?.detail?.excused).toBe(true);
+    expect(end?.detail?.sinceDeviceChangeMs).toBe(500);
+  });
+
+  it('still escalates for a failure long after the last device change', () => {
+    // The other half: a stale `devicechange` must not excuse the rest of the
+    // drive. Without this the exception swallows the backoff entirely after
+    // the car's first connect.
+    _resetDeviceChurnForTest();
+    const h = harness();
+    h.controller.start();
+    markInputDeviceChanged(h.now());
+    h.advance(DEVICE_SETTLE_MS + 1_000);
+
+    h.current().onstart?.();
+    h.current().fail('audio-capture');
+
+    const end = h.logs.filter((l) => l.event === 'session-end').pop();
+    expect(end?.detail?.failedStreak).toBe(1);
+    expect(end?.detail?.excused).toBeUndefined();
+  });
+
+  it('reaches the backoff anyway when the device never stops flapping', () => {
+    /*
+     * The bound. A Bluetooth unit that connects and drops in a loop keeps
+     * refreshing the excuse, and an unbounded exception would re-open the
+     * microphone every 250ms for the whole drive -- the exact battery and
+     * route-crackle cost the backoff was built to avoid.
+     */
+    _resetDeviceChurnForTest();
+    const h = harness();
+    h.controller.start();
+
+    for (let i = 0; i < MAX_EXCUSED_FAILURES + 4; i++) {
+      markInputDeviceChanged(h.now());
+      h.current().onstart?.();
+      h.current().fail('audio-capture');
+      h.advance(MAX_RESTART_DELAY_MS);
+    }
+
+    const last = h.logs.filter((l) => l.event === 'session-end').pop();
+    expect(last?.detail?.failedStreak).toBeGreaterThan(0);
+    expect(last?.detail?.restartInMs).toBeGreaterThan(RESTART_DELAY_MS);
+  });
+
+  it('forgives the flapping once a session works', () => {
+    // The reset, so a drive that had a bad connect at the start is not left
+    // with its exception already spent an hour later.
+    _resetDeviceChurnForTest();
+    const h = harness();
+    h.controller.start();
+
+    for (let i = 0; i < MAX_EXCUSED_FAILURES; i++) {
+      markInputDeviceChanged(h.now());
+      h.current().onstart?.();
+      h.current().fail('audio-capture');
+      h.advance(RESTART_DELAY_MS);
+    }
+    // One session that heard something: the microphone is demonstrably fine.
+    h.current().onstart?.();
+    h.current().say('stand');
+    h.current().die();
+    h.advance(RESTART_DELAY_MS);
+
+    markInputDeviceChanged(h.now());
+    h.current().onstart?.();
+    h.current().fail('audio-capture');
+
+    const last = h.logs.filter((l) => l.event === 'session-end').pop();
+    expect(last?.detail?.excused, 'the exception was still spent').toBe(true);
+    expect(last?.detail?.failedStreak).toBe(0);
   });
 });
