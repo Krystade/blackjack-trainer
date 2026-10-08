@@ -211,7 +211,8 @@ export function segmentsForClips(text: string, manifest: ClipManifest): ClipSegm
 /* Index + per-voice manifest loading                                       */
 /* ------------------------------------------------------------------------ */
 
-function clipsBaseUrl(): string {
+/** Exported for the offline download, which must ask for the same urls. */
+export function clipsBaseUrl(): string {
   const base = (import.meta.env.BASE_URL as string | undefined) ?? '/';
   return base;
 }

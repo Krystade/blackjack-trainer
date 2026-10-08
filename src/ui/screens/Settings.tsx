@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CollapsibleSection } from '../components/CollapsibleSection';
+import { OfflineSection } from './OfflineSection';
 import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
 import { THEMES, normalizeTheme } from '../theme';
@@ -486,6 +487,8 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             </button>
           </div>
       </CollapsibleSection>
+
+      <OfflineSection clipVoice={settings.audio.clipVoice} />
 
       <CollapsibleSection title={<>Tests</>} defaultOpen={false}>
         <div className="settings-note-row u-note">

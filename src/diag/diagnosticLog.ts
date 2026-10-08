@@ -166,6 +166,14 @@ export type DiagCategory =
   | 'nav'
   /** One-off environment facts, written once per page load. */
   | 'env'
+  /**
+   * The saved-for-offline cache: the service worker, and what was downloaded.
+   *
+   * Its own category because "it did not work on the plane" has three causes
+   * that look identical from the seat -- the worker never registered, the
+   * download was short, or the recogniser wanted a server it could not reach.
+   */
+  | 'offline'
   /** Something threw where it should not have. */
   | 'err'
   /**

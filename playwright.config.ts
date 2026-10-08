@@ -5,6 +5,18 @@ import { defineConfig, devices } from '@playwright/test';
 // unchanged.
 const PORT = Number(process.env.E2E_PORT ?? 4173);
 const BASE_URL = `http://localhost:${PORT}`;
+/*
+ * A SECOND SERVER, SERVING THE REAL BUILD.
+ *
+ * The offline spec is about the service worker, which is registered only in a
+ * production build (see offline/registerOffline.ts: a worker in front of the
+ * dev server would answer HMR out of a cache and would carry one spec's cached
+ * page into the next across the 716 specs that share the dev server). So that
+ * one spec talks to `vite preview` over `dist/`, which is the artefact that
+ * actually ships.
+ */
+const PREVIEW_PORT = Number(process.env.E2E_PREVIEW_PORT ?? PORT + 1);
+const PREVIEW_URL = `http://localhost:${PREVIEW_PORT}`;
 
 export default defineConfig({
   testDir: './e2e',
@@ -23,7 +35,7 @@ export default defineConfig({
       // The default project runs every spec EXCEPT the real-audio clip-playback
       // harness (that one needs a different Chromium launch and must not use
       // ?e2e=1, so it lives in its own project below).
-      testIgnore: /(clip-playback|field-test-audio)\.spec\.ts/,
+      testIgnore: /(clip-playback|field-test-audio|offline)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 390, height: 844 },
@@ -98,11 +110,31 @@ export default defineConfig({
         launchOptions: { args: ['--autoplay-policy=no-user-gesture-required', '--mute-audio'] },
       },
     },
+    {
+      // The only project pointed at the built app, because the service worker
+      // it tests is registered only there.
+      name: 'offline',
+      testMatch: /offline\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 390, height: 844 },
+        baseURL: PREVIEW_URL,
+      },
+    },
   ],
-  webServer: {
-    command: `npm run dev -- --port ${PORT} --strictPort`,
-    url: BASE_URL,
-    reuseExistingServer: true,
-    timeout: 30_000,
-  },
+  webServer: [
+    {
+      command: `npm run dev -- --port ${PORT} --strictPort`,
+      url: BASE_URL,
+      reuseExistingServer: true,
+      timeout: 30_000,
+    },
+    {
+      // Built fresh, so the spec can never pass against a stale `dist/`.
+      command: `npm run build && npm run preview -- --port ${PREVIEW_PORT} --strictPort`,
+      url: PREVIEW_URL,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+  ],
 });

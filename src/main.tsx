@@ -5,6 +5,7 @@ import { startUpdateWatch } from './updateCheck.ts';
 import { fieldTestRunIsLive } from './diag/fieldTestRun.ts';
 import { primeVoices } from './audio/speech.ts';
 import { dropRetiredKeys } from './store/persist.ts';
+import { registerOfflineWorker } from './offline/registerOffline.ts';
 
 // OPEN THE VOICE LIST BEFORE ANYTHING WANTS TO SPEAK.
 //
@@ -18,6 +19,10 @@ primeVoices();
 
 // Storage nothing reads any more (see store/persist.ts).
 dropRetiredKeys();
+
+// Serve the app from a cache when there is no network -- a plane, a tunnel, a
+// car park. Production only; see offline/registerOffline.ts.
+registerOfflineWorker();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
