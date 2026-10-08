@@ -229,6 +229,15 @@ export interface MicProbeResult extends MicBandVerdict {
   contextSampleRate: number;
   /** How many snapshots were folded into the verdict. */
   frames: number;
+  /**
+   * What the probe's OWN context was doing while it measured.
+   *
+   * A suspended context renders nothing, so the analyser hands back its
+   * initial fill and every frame reads as silence -- which is exactly what
+   * three probes reported on 2026-10-07. Without this field a probe that never
+   * ran is indistinguishable in the log from a microphone delivering zeros.
+   */
+  contextState: string;
   /** Present instead of a verdict when the probe could not run at all. */
   error?: string;
 }
@@ -264,6 +273,7 @@ export async function probeMicSpectrum(
     trackSampleRate: null,
     contextSampleRate: 0,
     frames: 0,
+    contextState: 'none',
   };
 
   const media = navigator.mediaDevices;
@@ -285,6 +295,39 @@ export async function probeMicSpectrum(
       (window as unknown as { AudioContext: typeof AudioContext }).AudioContext ??
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     ctx = new Ctor();
+    /*
+     * STARTED, which it never was. iOS gives a context created outside a user
+     * gesture `state: 'suspended'`, and this one is built after
+     * `await openMicStream(...)` -- long after the tap that began the step. A
+     * suspended context renders nothing at all, so the loop below would count
+     * its frames and read the analyser's initial fill as silence on every one.
+     */
+    if (ctx.state !== 'running') {
+      try {
+        await ctx.resume();
+      } catch {
+        /* reported below rather than thrown */
+      }
+    }
+    const trackRateEarly = typeof settings.sampleRate === 'number' ? settings.sampleRate : null;
+    if (ctx.state !== 'running') {
+      /*
+       * AND IT SAYS SO INSTEAD OF MEASURING. A probe that could not run must
+       * not come back with a confident `no-signal`: that reads as "the
+       * microphone delivered nothing" and sends the reader after a capture bug
+       * that may not exist. 2026-10-07 lost a reading to exactly that.
+       */
+      const dead: MicProbeResult = {
+        ...base,
+        error: 'context-suspended',
+        contextState: ctx.state,
+        label: track?.label ?? '',
+        trackSampleRate: trackRateEarly,
+        contextSampleRate: ctx.sampleRate,
+      };
+      diag('mic', 'spectrum', { ...dead });
+      return dead;
+    }
     const analyser = ctx.createAnalyser();
     // 2048 gives ~23Hz bins at 48kHz: far finer than needed to see a wall at
     // 4kHz, and still cheap enough to run every frame.
@@ -332,6 +375,7 @@ export async function probeMicSpectrum(
       trackSampleRate,
       contextSampleRate: ctx.sampleRate,
       frames,
+      contextState: ctx.state,
     };
     diag('mic', 'spectrum', { ...result });
     return result;

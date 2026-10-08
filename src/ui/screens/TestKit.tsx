@@ -693,6 +693,7 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
         // the 7 dead windows of 2026-10-06 could not be explained.
         const sessionsAtOpen = mic.current?.sessions() ?? 0;
         const speechAtOpen = mic.current?.speechDetected() ?? 0;
+        const partialsAtOpen = mic.current?.partials() ?? 0;
         heard = await new Promise<Array<{ transcript: string; confidence: number }>>((resolve) => {
           const timer = setTimeout(() => resolve([]), WORD_SLOT_MS);
           if (!mic.current) return resolve([]);
@@ -728,6 +729,15 @@ function CalibrateStep({ ensureMic, mic, onAnswer }: StepProps) {
            * `offered=0` means it had live audio and dropped it. Opposite fixes.
            */
           speech: (mic.current?.speechDetected() ?? 0) - speechAtOpen,
+          /*
+           * AND THE FIELD THAT ACTUALLY ANSWERS IT. `speech` was 0 on all 21
+           * attempts of 2026-10-07, 20 of them with a correct final, so iOS
+           * never fires `speechstart` and the field above measures nothing on
+           * the device. A partial transcript is the proof it does give:
+           * `offered=0 partials>0` means live audio the recogniser dropped,
+           * `partials=0` means nothing reached it at all.
+           */
+          partials: (mic.current?.partials() ?? 0) - partialsAtOpen,
         });
       }
       attempt -= 1;

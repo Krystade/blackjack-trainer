@@ -183,6 +183,17 @@ export interface HeldMic {
    * counts alone cannot separate those.
    */
   speechDetected(): number;
+  /**
+   * How many PARTIAL transcripts the engine offered.
+   *
+   * The working version of `speechDetected()`, which iOS leaves at 0 forever:
+   * Jack's run of 2026-10-07 had `speech=0` on all 21 attempts, 20 of them
+   * with a correct final, so Safari does not fire `speechstart` at all. An
+   * interim result is the signal it does give, and it answers the same
+   * question -- did audio reach the recogniser -- without depending on an
+   * event this engine never sends.
+   */
+  partials(): number;
   close(): Promise<void>;
 }
 
@@ -206,7 +217,13 @@ export async function openMic(): Promise<HeldMic | { error: string }> {
   if (!Ctor) return { error: 'no-recogniser' };
   const rec = new Ctor();
   rec.continuous = true;
-  rec.interimResults = false;
+  /*
+   * PARTIALS ARE ASKED FOR, because they are the only evidence iOS gives that
+   * audio reached the engine (`speechstart` never fires). They are counted and
+   * never delivered as an answer -- `onresult` below still skips anything that
+   * is not final, so scoring is untouched.
+   */
+  rec.interimResults = true;
   rec.maxAlternatives = 5;
   rec.lang = 'en-US';
 
@@ -214,12 +231,14 @@ export async function openMic(): Promise<HeldMic | { error: string }> {
   // Counts STARTS THAT SUCCEEDED, so a throwing restart does not inflate it.
   let sessions = 0;
   let speechSeen = 0;
+  let partialsSeen = 0;
   let ended: () => void = () => {};
   const endedP = new Promise<void>((r) => (ended = r));
   const held: HeldMic = {
     onFinal: null,
     sessions: () => sessions,
     speechDetected: () => speechSeen,
+    partials: () => partialsSeen,
     close: async () => {
       if (!alive) return;
       alive = false;
@@ -236,7 +255,10 @@ export async function openMic(): Promise<HeldMic | { error: string }> {
   rec.onresult = (e) => {
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const r = e.results[i]!;
-      if (!r.isFinal) continue;
+      if (!r.isFinal) {
+        partialsSeen += 1;
+        continue;
+      }
       const alts = Array.from({ length: r.length }, (_, k) => ({
         transcript: r[k]!.transcript.trim(),
         confidence: r[k]!.confidence,

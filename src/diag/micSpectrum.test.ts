@@ -3,6 +3,7 @@ import {
   classifyMicBand,
   preferFrame,
   verdictFromTrackRate,
+  probeMicSpectrum,
   HFP_WALL_HZ,
   NARROWBAND_RATIO,
   SILENCE_DBFS,
@@ -241,5 +242,124 @@ describe('telling a narrowband car microphone from the phone’s own', () => {
     expect(classifyMicBand(new Float32Array(0), 48_000).verdict).toBe<
       MicBandVerdict['verdict']
     >('unmeasurable');
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+
+/**
+ * The probe's own audio context, which it never started.
+ *
+ * JACK'S PARKED RUN, 2026-10-07: three probes in a row -- the Corolla twice
+ * and the iPhone's own microphone once -- came back `verdict=no-signal bins=0
+ * highBins=0 peakDbfs=-120 frames=78`. Identical, absolute silence on every
+ * input. In the same session, minutes earlier, the word step scored 20 of 20
+ * through that same car microphone, so audio was certainly reaching the
+ * speech engine.
+ *
+ * `probeMicSpectrum` builds its own `new AudioContext()` and never resumes it.
+ * On iOS a context created outside a user gesture starts SUSPENDED -- and this
+ * one is constructed after `await openMicStream(...)`, by which point the
+ * gesture that opened the step is long gone. A suspended context renders
+ * nothing, so the analyser hands back its initial fill on every frame while
+ * the loop, which is driven by the wall clock, keeps counting frames.
+ *
+ * That is this file's own recurring sin: an instrument that cannot tell its
+ * own failure from its finding. `peakDbfs=-120` is the no-signal SENTINEL, not
+ * a measurement, so the reading was unreadable in both directions -- it could
+ * not show that nobody spoke, and it could not show that the probe never ran.
+ */
+describe('the probe says whether its own context ever ran', () => {
+  class FakeAnalyser {
+    fftSize = 2048;
+    minDecibels = -140;
+    smoothingTimeConstant = 0;
+    frequencyBinCount = 1024;
+    readonly ctx: { state: string };
+    constructor(ctx: { state: string }) {
+      this.ctx = ctx;
+    }
+    getFloatFrequencyData(out: Float32Array): void {
+      // A suspended context renders nothing, so the array keeps its fill.
+      out.fill(this.ctx.state === 'running' ? -30 : -Infinity);
+    }
+  }
+
+  class FakeCtx {
+    state = 'suspended';
+    currentTime = 0;
+    sampleRate = 48000;
+    resumes = 0;
+    /** Set to model iOS refusing to resume without a gesture. */
+    refuseResume = false;
+    async resume(): Promise<void> {
+      this.resumes += 1;
+      if (!this.refuseResume) this.state = 'running';
+    }
+    async close(): Promise<void> {
+      this.state = 'closed';
+    }
+    createAnalyser(): FakeAnalyser {
+      return new FakeAnalyser(this);
+    }
+    createMediaStreamSource(): { connect: () => void } {
+      return { connect: () => {} };
+    }
+  }
+
+  let made: FakeCtx[] = [];
+
+  function install(refuseResume: boolean): void {
+    made = [];
+    const track = {
+      label: 'TOYOTA Corolla',
+      getSettings: () => ({ sampleRate: 8000 }),
+      stop: () => {},
+    };
+    // `navigator` is getter-only in the node environment vitest runs in.
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: {
+        mediaDevices: {
+          getUserMedia: async () => ({
+            getAudioTracks: () => [track],
+            getTracks: () => [track],
+          }),
+        },
+      },
+    });
+    (globalThis as unknown as { window: unknown }).window = {
+      AudioContext: function () {
+        const c = new FakeCtx();
+        c.refuseResume = refuseResume;
+        made.push(c);
+        return c;
+      },
+    };
+  }
+
+  it('resumes a suspended context, so there is something to measure', async () => {
+    install(false);
+    const r = await probeMicSpectrum({ ms: 120 });
+
+    expect(made[0]?.resumes, 'the probe never started its own context').toBeGreaterThan(0);
+    expect(r.contextState).toBe('running');
+    // -30 dBFS across the band: a real reading, not the silence sentinel.
+    expect(r.peakDbfs).toBeGreaterThan(SILENCE_DBFS);
+    expect(r.verdict).not.toBe('no-signal');
+  });
+
+  it('says the context would not start, rather than reporting silence', async () => {
+    install(true);
+    const r = await probeMicSpectrum({ ms: 120 });
+
+    /*
+     * THE WHOLE POINT. A probe that could not run must not come back with a
+     * confident `no-signal`, because that reads as "the microphone delivered
+     * nothing" and sends the reader after a capture bug that may not exist.
+     */
+    expect(r.error).toBe('context-suspended');
+    expect(r.contextState).toBe('suspended');
+    expect(r.verdict).toBe('unmeasurable');
   });
 });

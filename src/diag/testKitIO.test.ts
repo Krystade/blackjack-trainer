@@ -59,6 +59,12 @@ class FakeRec {
   endBySilence(): void {
     this.onend?.();
   }
+
+  /** A partial transcript: the engine has audio but has not committed to it. */
+  partial(transcript: string): void {
+    const result = Object.assign([{ transcript, confidence: 0 }], { isFinal: false, length: 1 });
+    this.onresult?.({ resultIndex: 0, results: Object.assign([result], { length: 1 }) });
+  }
 }
 
 let fake: FakeRec;
@@ -164,6 +170,43 @@ describe('the kit microphone', () => {
 
     expect(held.speechDetected()).toBe(2);
     await held.close();
+  });
+
+  it('counts partial transcripts, the only proof iOS gives that audio arrived', async () => {
+    /*
+     * BECAUSE `speechDetected()` IS DEAD ON THE DEVICE. Jack's parked run of
+     * 2026-10-07 logged `speech=0` on all 21 attempts -- including the 20 that
+     * came back with a correct final transcript, which cannot happen unless
+     * audio reached the engine. iOS Safari simply does not fire `speechstart`,
+     * so the field that was supposed to separate "deaf while open" from "live
+     * audio, dropped" measures nothing at all.
+     *
+     * An interim result is the signal it does give: a partial transcript means
+     * the recogniser is hearing. A window that ends `offered=0 partials>0` had
+     * live audio and lost it; `partials=0` never got any. Opposite fixes, which
+     * is the whole reason to measure it.
+     */
+    const held = await open();
+    expect(held.partials()).toBe(0);
+
+    fake.partial('hi');
+    fake.partial('hit');
+
+    expect(held.partials()).toBe(2);
+    // And a partial must NOT be delivered as an answer.
+    let finals = 0;
+    held.onFinal = () => void (finals += 1);
+    fake.partial('hit me');
+    expect(finals, 'a partial was scored as a spoken word').toBe(0);
+
+    await held.close();
+  });
+
+  it('asks the engine for partials, or there are none to count', async () => {
+    // `interimResults = false` yields no partials at all, so the counter above
+    // would read 0 for every window and look exactly like a deaf microphone.
+    await open();
+    expect(fake.interimResults).toBe(true);
   });
 
   it('does not restart after a deliberate close', async () => {
