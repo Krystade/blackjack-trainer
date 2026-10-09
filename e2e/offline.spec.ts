@@ -1,4 +1,10 @@
 import { test, expect } from '@playwright/test';
+import {
+  withSettings,
+  withProfile,
+  openCountOptions,
+  answerSelfReportIfPresent,
+} from './helpers';
 
 /**
  * CAN HE TRAIN ON A PLANE?
@@ -163,4 +169,64 @@ test('the update file is never saved, so a new build can still arrive', async ({
     }
   });
   expect(reachable, 'version.json answered offline, so it came from a cache').toBe(false);
+});
+
+test('a whole drill runs with the network pulled out', async ({ page, context }) => {
+  /*
+   * THE ACTUAL CLAIM. The tests above prove the app comes up offline and that
+   * clip audio is retrievable; neither proves a drill RUNS. On a plane the
+   * difference is everything -- a shell that boots and then stalls waiting for
+   * a recording it never saved fails in the middle of a hand, which is the one
+   * place it cannot be recovered from.
+   *
+   * So this is the flight: save on the ground, pull the network, reload, and
+   * play an eyes-free count drill to its result with nothing but what is on
+   * the phone.
+   */
+  test.setTimeout(SAVE_TIMEOUT + 120_000);
+
+  await withSettings(page, {
+    audio: {
+      enabled: true,
+      useClips: true,
+      verbosity: 'full',
+      clipVoice: 'af_bella',
+      answerPauseMs: 500,
+    },
+    drill: {
+      countManual: false,
+      countLengthCards: 5,
+      countGroup: 1,
+      countIntervalMs: 0,
+      wheelMode: 'answer',
+    },
+  });
+  await withProfile(page, { name: 'Offline Flight Profile' });
+
+  await page.goto('/');
+  await workerReady(page);
+  await saveForOffline(page);
+
+  await context.setOffline(true);
+  await page.reload();
+
+  // Every request from here on can only be answered out of the cache.
+  const failed: string[] = [];
+  page.on('requestfailed', (r) => failed.push(r.url()));
+
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
+  await page.getByLabel('Eyes-free audio').check();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  await answerSelfReportIfPresent(page);
+  await expect(page.locator('.drill-result'), 'the drill never reached a result offline').toBeVisible({
+    timeout: 60_000,
+  });
+
+  // The recordings really came off the phone. version.json is the one request
+  // that is SUPPOSED to fail offline -- it is deliberately never cached.
+  const unexpected = failed.filter((u) => !u.includes('version.json'));
+  expect(unexpected, `requests failed offline: ${JSON.stringify(unexpected.slice(0, 5))}`).toEqual([]);
 });

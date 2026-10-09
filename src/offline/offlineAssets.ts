@@ -12,6 +12,30 @@
 /** The file `updateCheck` polls. It must never be cached -- see below. */
 export const VERSION_FILE = 'version.json';
 
+/**
+ * Files that belong to the app whether or not the page has fetched them yet.
+ *
+ * The rest of the list is read off `performance.getEntriesByType('resource')`,
+ * which names what has ALREADY loaded -- and these load late, or not from the
+ * page at all. `icon-192.png` is the car's now-playing artwork, fetched by
+ * mediaSession.ts the first time a drill speaks, which is after Save was
+ * pressed in Settings; the offline drill test caught it 404ing with the
+ * network out. The manifest and the other icons are the installed app's own
+ * identity, requested by iOS rather than by the page.
+ *
+ * Fixed names in `public/`, so they are stated rather than discovered.
+ */
+const ALWAYS_SAVED = [
+  'manifest.webmanifest',
+  'icon-192.png',
+  'icon-512.png',
+  'icon-maskable-512.png',
+  'apple-touch-icon.png',
+  'favicon.svg',
+  'icon.svg',
+  'icons.svg',
+] as const;
+
 export interface ShellInput {
   /** `location.href` of the running page. */
   documentUrl: string;
@@ -40,6 +64,14 @@ export function shellUrls(input: ShellInput): string[] {
     add(doc.toString());
   } catch {
     /* A document url that will not parse is not one we can cache. */
+  }
+
+  for (const name of ALWAYS_SAVED) {
+    try {
+      add(new URL(name, input.documentUrl).toString());
+    } catch {
+      /* Only possible if the document url did not parse, handled above. */
+    }
   }
 
   for (const raw of input.resources) {

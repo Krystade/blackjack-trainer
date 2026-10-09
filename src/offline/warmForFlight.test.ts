@@ -56,8 +56,10 @@ describe('warmForFlight', () => {
       fetchFn: ok,
     });
 
-    expect(result.cached).toBe(2);
+    expect(result.cached).toBeGreaterThanOrEqual(2);
+    expect(result.failed).toEqual([]);
     expect(cache.stored).toContain('https://x.test/app/');
+    expect(cache.stored).toContain('https://x.test/app/assets/index-abc.js');
   });
 
   it('leaves the update file out of the saved set', async () => {

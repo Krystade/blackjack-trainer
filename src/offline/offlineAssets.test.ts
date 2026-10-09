@@ -24,7 +24,10 @@ describe('shellUrls', () => {
       resources: [],
       origin,
     });
-    expect(urls).toEqual([`${origin}/blackjack-trainer/`]);
+    // The document comes first and bare; the fixed app files follow it, so the
+    // claim here is about the query, not about the length of the list.
+    expect(urls[0]).toBe(`${origin}/blackjack-trainer/`);
+    expect(urls.filter((u) => u.includes('?'))).toEqual([]);
   });
 
   it('leaves other origins alone', () => {
@@ -60,7 +63,11 @@ describe('shellUrls', () => {
       resources: [`${origin}/app/a.js`, `${origin}/app/a.js`, `${origin}/app/`],
       origin,
     });
-    expect(urls).toEqual([`${origin}/app/`, `${origin}/app/a.js`]);
+    // A url listed twice is downloaded twice and makes the progress total a
+    // lie, so the claim is uniqueness rather than an exact list.
+    expect(new Set(urls).size).toBe(urls.length);
+    expect(urls.filter((u) => u === `${origin}/app/a.js`)).toHaveLength(1);
+    expect(urls.filter((u) => u === `${origin}/app/`)).toHaveLength(1);
   });
 });
 
@@ -87,5 +94,50 @@ describe('clipUrlsFor', () => {
     // reported "2 files, done" on that would send Jack onto a plane with
     // nothing but live speech.
     expect(clipUrlsFor('v', {}, './')).toEqual(['./clips/index.json', './clips/v/manifest.json']);
+  });
+});
+
+describe('the files the page may not have asked for yet', () => {
+  const origin = 'https://x.test';
+
+  it('saves the app icons and manifest even when nothing has fetched them', () => {
+    /*
+     * FOUND BY THE OFFLINE DRILL TEST, which pulled the network out and caught
+     * `icon-192.png` failing.
+     *
+     * The url list is read off `performance.getEntriesByType('resource')`,
+     * which names what the page has ALREADY loaded -- and these are loaded
+     * late or not by the page at all. `icon-192.png` is the car's now-playing
+     * artwork, fetched by mediaSession.ts the first time a drill speaks, which
+     * is after the operator pressed Save in Settings. The manifest and the
+     * other icons are the installed app's own identity.
+     *
+     * They are fixed names in `public/`, so they are stated rather than
+     * discovered.
+     */
+    const urls = shellUrls({
+      documentUrl: `${origin}/app/`,
+      resources: [],
+      origin,
+    });
+
+    for (const name of [
+      'manifest.webmanifest',
+      'icon-192.png',
+      'icon-512.png',
+      'icon-maskable-512.png',
+      'apple-touch-icon.png',
+    ]) {
+      expect(urls, `${name} would 404 offline`).toContain(`${origin}/app/${name}`);
+    }
+  });
+
+  it('still lists each of them only once when the page did fetch them', () => {
+    const urls = shellUrls({
+      documentUrl: `${origin}/app/`,
+      resources: [`${origin}/app/manifest.webmanifest`],
+      origin,
+    });
+    expect(urls.filter((u) => u.endsWith('manifest.webmanifest'))).toHaveLength(1);
   });
 });

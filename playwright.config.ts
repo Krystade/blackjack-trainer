@@ -119,6 +119,9 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         viewport: { width: 390, height: 844 },
         baseURL: PREVIEW_URL,
+        // A drill offline has to actually play, and a clip waiting on a user
+        // gesture is indistinguishable from a clip that was never cached.
+        launchOptions: { args: ['--autoplay-policy=no-user-gesture-required', '--mute-audio'] },
       },
     },
   ],
