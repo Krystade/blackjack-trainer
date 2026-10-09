@@ -4,6 +4,9 @@ import {
   withProfile,
   openCountOptions,
   answerSelfReportIfPresent,
+  resolveInsurance,
+  readStats,
+  statsTab,
 } from './helpers';
 
 /**
@@ -229,4 +232,225 @@ test('a whole drill runs with the network pulled out', async ({ page, context })
   // that is SUPPOSED to fail offline -- it is deliberately never cached.
   const unexpected = failed.filter((u) => !u.includes('version.json'));
   expect(unexpected, `requests failed offline: ${JSON.stringify(unexpected.slice(0, 5))}`).toEqual([]);
+});
+
+/**
+ * EVERY DRILL, PLAY INCLUDED, WITH THE NETWORK OUT.
+ *
+ * Asked for in those words: "check all drills offline and check actual play
+ * and counting offline too." The tests above prove the shell boots and that
+ * one eyes-free count drill runs; neither says anything about the other ten
+ * modes or about playing a hand, and a drill that needs one uncached file
+ * fails in the air with no way to fix it.
+ *
+ * This is `smoke.spec.ts`'s full journey, run offline against the built app.
+ * Two things make it a different test rather than a copy:
+ *
+ *   - It carries NO `?e2e=1`, so speech is not stubbed out. Every line goes
+ *     through the real clip path, out of the cache, which is what the phone
+ *     will do -- the dev-server smoke test never exercises that at all.
+ *   - It fails on any request that failed after take-off, so a file nobody
+ *     thought to save is caught here rather than at 35,000 feet. That is how
+ *     the car's now-playing artwork was found.
+ *
+ * The tie-together assertion at the end is the counting half: it reads the
+ * persisted stats and requires that the count drill, the true count, the deck
+ * estimation and Produce-the-TC each actually SCORED a run, so "it rendered"
+ * cannot pass for "it counted".
+ */
+test('every drill, a played hand and the counting all work offline', async ({ page, context }) => {
+  test.setTimeout(SAVE_TIMEOUT + 300_000);
+
+  await withProfile(page);
+  await withSettings(page, {
+    countCheckEvery: 0,
+    audio: { enabled: true, useClips: true, verbosity: 'results', clipVoice: 'af_bella' },
+    drill: { countLengthCards: 4, countGroup: 1, countIntervalMs: 300 },
+  });
+
+  await page.goto('/');
+  await workerReady(page);
+  await saveForOffline(page);
+
+  await context.setOffline(true);
+  await page.reload();
+
+  const failed: string[] = [];
+  page.on('requestfailed', (r) => failed.push(r.url()));
+  /*
+   * AND COUNT WHAT WAS SERVED. Without this the test passes just as well
+   * when no audio was ever requested -- 'nothing failed' is true of a walk
+   * that never asked for a recording, which is precisely the silent-drill
+   * failure this is supposed to catch.
+   */
+  const servedMp3 = new Set<string>();
+  page.on('response', (r) => {
+    if (r.url().endsWith('.mp3') && r.ok()) servedMp3.add(r.url());
+  });
+  await expect(page.locator('.home-title')).toBeVisible({ timeout: 20_000 });
+
+  // --- Play: deal a hand and play it out by the advice the app gives -------
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(page.locator('.table-screen')).toBeVisible();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  /*
+   * STAND, rather than `playRoundByAdvice`. That helper returns as soon as
+   * `.action-bar[data-advice]` is absent, and without `?e2e=1` the advice
+   * attribute is not there the instant the cards land -- so it walked away
+   * from a live hand and the result never came. The claim here is that a
+   * hand can be PLAYED and SETTLED with no network, not that the advice
+   * engine was consulted; `game.spec.ts` owns that online.
+   */
+  await resolveInsurance(page, false);
+  await page.locator('.action-bar .action-btn', { hasText: 'Stand' }).first().click();
+  await expect(
+    page.locator('.message-strip .message-result').first(),
+    'a hand could not be played and settled offline',
+  ).toBeVisible({ timeout: 30_000 });
+  await page.locator('.end-btn').click();
+  await page.locator('.end-btn').click();
+  await page.locator('.report-done-btn').click();
+  await expect(page.locator('.home-title')).toBeVisible();
+
+  // --- Count drill: run it and submit a count on the keypad ---------------
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await expect(page.locator('.drills-title')).toHaveText('Drills');
+
+  await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+  await openCountOptions(page);
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.numpad'), 'the count drill never dealt offline').toBeVisible({
+    timeout: 30_000,
+  });
+  await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+
+  // --- True count drill ---------------------------------------------------
+  await page.getByRole('button', { name: 'True count drill', exact: true }).click();
+  await expect(page.locator('.count-setup')).toBeVisible();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+
+  // --- Deck estimation ----------------------------------------------------
+  await page.getByRole('button', { name: 'Deck estimation', exact: true }).click();
+  await expect(page.locator('.count-setup')).toBeVisible();
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.deck-guess-grid')).toBeVisible({ timeout: 30_000 });
+  await page.locator('.deck-guess-btn').first().click();
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+
+  // --- Flashcards ---------------------------------------------------------
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
+  await expect(page.locator('.feedback-cell')).toBeVisible();
+  await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
+
+  // --- Deviation quiz -----------------------------------------------------
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Deviation quiz');
+  const insurance = page.locator('.quiz-insurance-prompt');
+  if (await insurance.isVisible().catch(() => false)) {
+    await page.getByRole('button', { name: 'Decline insurance', exact: true }).click();
+  } else {
+    await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
+  }
+  await expect(page.locator('.quiz-label')).not.toHaveText('');
+  await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
+
+  // --- Pair cancellation --------------------------------------------------
+  await page.getByRole('button', { name: 'Pair cancellation', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Pair cancellation');
+  await page.locator('.pair-cancel-answers .action-btn').first().click();
+  await expect(page.locator('.drill-next-btn')).toBeVisible();
+  await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
+
+  // --- Produce the true count ---------------------------------------------
+  await page.getByRole('button', { name: 'Produce the true count', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Produce the true count');
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.numpad')).toBeVisible({ timeout: 40_000 });
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.locator('.drill-result')).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+
+  // --- Mixed --------------------------------------------------------------
+  await page.getByRole('button', { name: 'Mixed', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Mixed');
+  await page.locator('.action-bar button.action-btn').first().click();
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
+  await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
+
+  // --- Mastery challenge --------------------------------------------------
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Mastery challenge');
+  await page.locator('.action-bar button.action-btn').first().click();
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
+  await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
+
+  // --- Bet / sit / leave --------------------------------------------------
+  await page.getByRole('button', { name: 'Bet / sit / leave', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Bet / sit / leave');
+  await page.locator('.bsl-answers .action-btn').first().click();
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
+  await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
+
+  // --- Downswing: bet, deal, settle one hand ------------------------------
+  await page.getByRole('button', { name: 'Downswing', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Downswing');
+  await page.locator('.chip-btn').first().click();
+  await page.locator('.deal-btn').click();
+  await page.locator('.action-bar .action-btn', { hasText: 'Stand' }).click();
+  await expect(page.locator('.drill-next-btn')).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.locator('.drills-picker')).toBeVisible();
+
+  /*
+   * THE COUNTING HALF. "It rendered" must not pass for "it counted", so the
+   * persisted stats are read back: each counting drill has to have scored a
+   * run, and the played hand has to have left a session behind.
+   */
+  await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
+  await page.locator('.home-stats-link').click();
+  await expect(page.locator('.stats-heading')).toHaveText('Stats');
+  await statsTab(page, 'Drills');
+  // The history sections are collapsed <details>; only `?e2e=1` forces them
+  // open, and this spec cannot carry it (the worker skips registration).
+  await page.locator('summary', { hasText: 'Count drill' }).first().click();
+  await expect(
+    page.locator('.count-history-row').first(),
+    'the count drill left no history to show',
+  ).toBeVisible();
+
+  const stats = await readStats(page);
+  expect(stats).not.toBeNull();
+  const history = (key: string): unknown[] =>
+    (stats?.[key] as { history?: unknown[] } | undefined)?.history ?? [];
+
+  expect(
+    (stats?.sessions as unknown[] | undefined) ?? [],
+    'the played hand scored nothing',
+  ).not.toHaveLength(0);
+  expect(history('countDrill'), 'the count drill scored nothing offline').not.toHaveLength(0);
+  expect(history('trueCount'), 'the true count drill scored nothing offline').not.toHaveLength(0);
+  expect(history('deckEstimation'), 'deck estimation scored nothing offline').not.toHaveLength(0);
+  expect(history('produceTc'), 'produce-the-true-count scored nothing offline').not.toHaveLength(0);
+  expect(
+    (stats?.latencyHistory as unknown[] | undefined) ?? [],
+    'the graded drills recorded no answers offline',
+  ).not.toHaveLength(0);
+
+  // Nothing may have failed after take-off except the update file, which is
+  // deliberately never cached.
+  const unexpected = failed.filter((u) => !u.includes('version.json'));
+  expect(unexpected, `requests failed offline: ${JSON.stringify(unexpected.slice(0, 8))}`).toEqual([]);
+
+  // The app really spoke, out of the cache, with no network to fetch from.
+  expect(servedMp3.size, 'no recording was played offline at all').toBeGreaterThan(0);
 });
