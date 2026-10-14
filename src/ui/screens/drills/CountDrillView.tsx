@@ -63,6 +63,7 @@ import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
+import './countDrillView.css';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);

@@ -1,0 +1,9 @@
+/* #45: the checkpoint and distraction keypads match the count-answer keypad.
+   Both areas pad their prompt text by 1rem, and the NumPad already carries
+   its own 16px gutter, so a stretched keypad inside them was 32px narrower
+   than the answer keypad, which sits straight in `.drill-screen`. Cancel the
+   area's inline padding for the keypad alone; the prompt keeps its gutter. */
+.checkpoint-area > .numpad,
+.distraction-area > .numpad {
+  margin-inline: -1rem;
+}

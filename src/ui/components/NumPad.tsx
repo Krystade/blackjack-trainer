@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { focusSwallowsKey } from '../keyboardFocus';
+import './numPad.css';
 
 interface NumPadProps {
   label: string;
