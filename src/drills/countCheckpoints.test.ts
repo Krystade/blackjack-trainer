@@ -172,6 +172,8 @@ describe('summarizeCheckpoints: adjusted grading (#46)', () => {
   it('no final stretch without checkpoints or without a final answer', () => {
     expect(summarizeCheckpoints([], true, { cardsShown: 52, actual: 0, answer: 0 }).finalStretch).toBeNull();
     expect(summarizeCheckpoints([row(10, 11, 4, 4)], true).finalStretch).toBeNull();
+    // A checkpoint on the final card leaves an empty last stretch: nothing to grade.
+    expect(summarizeCheckpoints([row(10, 52, 4, 4)], false, { cardsShown: 52, actual: 4, answer: 3 }).finalStretch).toBeNull();
   });
 
   it('cancellation stays an ABSOLUTE judgement', () => {

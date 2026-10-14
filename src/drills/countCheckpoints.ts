@@ -179,6 +179,7 @@ export function summarizeCheckpoints(
     firstDriftSegment: firstWrong
       ? { fromCard: (priorClean?.cardsShown ?? 0) + 1, toCard: firstWrong.cardsShown }
       : null,
-    finalStretch: final && last ? gradeStretch(final, last) : null,
+    // A checkpoint on the last card leaves no stretch after it to grade.
+    finalStretch: final && last && final.cardsShown > last.cardsShown ? gradeStretch(final, last) : null,
   };
 }
