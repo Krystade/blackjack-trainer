@@ -39,10 +39,19 @@ test('dealer showing an ace triggers the insurance modal', async ({ page }) => {
     await page.goto(`/?seed=${seed}&e2e=1`);
     await page.getByRole('button', { name: 'Play', exact: true }).click();
     await page.getByRole('button', { name: 'Deal', exact: true }).click();
-    const modal = page.locator('.modal-backdrop', { hasText: 'Insurance?' });
+    const modal = page.locator('.bottom-sheet', { hasText: 'Insurance?' });
     if (await modal.isVisible().catch(() => false)) {
       found = true;
       await expect(modal).toContainText('The dealer shows an ace');
+      // #37: a sheet under the felt, so the up-card ace and the player's
+      // hand stay visible while deciding.
+      await expect(page.locator('.modal-backdrop')).toHaveCount(0);
+      const top = (await modal.boundingBox())!.y;
+      const bottoms = await page
+        .locator('.dealer-area .card[data-card], .hands-row .card[data-card]')
+        .evaluateAll((els) => els.map((e) => e.getBoundingClientRect().bottom));
+      expect(bottoms.length).toBeGreaterThanOrEqual(3);
+      for (const b of bottoms) expect(b).toBeLessThanOrEqual(top + 0.5);
       await shot(page, '04-insurance-modal');
       await modal.getByRole('button', { name: 'Decline', exact: true }).click();
       await playRoundByAdvice(page);
@@ -162,7 +171,7 @@ test('#36: the count check is posed when Deal is pressed, over the settled hand,
   await playRoundByAdvice(page);
 
   // Settled: the result is the screen. Nothing is asked yet.
-  const prompt = page.locator('.modal-backdrop', { hasText: 'Running count?' });
+  const prompt = page.locator('.bottom-sheet', { hasText: 'Running count?' });
   const round = page.locator('.topbar-stat', { hasText: /^Round / });
   await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
   await expect(prompt).toHaveCount(0);
@@ -177,6 +186,21 @@ test('#36: the count check is posed when Deal is pressed, over the settled hand,
   expect(await feltCards(page)).toEqual(settled);
   await expect(round).toHaveText('Round 1');
   await shot(page, '07-count-check-numpad');
+
+  // #37: the check is a sheet in the action-bar slot, not a modal over the
+  // board. Nothing covers the felt, and every hand card sits fully above it.
+  await expect(page.locator('.modal-backdrop')).toHaveCount(0);
+  const sheet = await prompt.boundingBox();
+  const cardBoxes = await page
+    .locator('.dealer-area .card[data-card], .hands-row .card[data-card]')
+    .evaluateAll((els) => els.map((e) => e.getBoundingClientRect().bottom));
+  for (const bottom of cardBoxes) expect(bottom).toBeLessThanOrEqual(sheet!.y + 0.5);
+  for (const key of await prompt.locator('.numpad-btn, .numpad-ok').all()) {
+    expect((await key.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+  ).toBeLessThanOrEqual(0);
 
   // The answer deals the next round straight away.
   await prompt.getByRole('button', { name: '5', exact: true }).click();
@@ -297,7 +321,7 @@ test('dealer showing an ace: taking insurance settles and shows an insurance-net
     await page.goto(`/?seed=${seed}&e2e=1`);
     await page.getByRole('button', { name: 'Play', exact: true }).click();
     await page.getByRole('button', { name: 'Deal', exact: true }).click();
-    const modal = page.locator('.modal-backdrop', { hasText: 'Insurance?' });
+    const modal = page.locator('.bottom-sheet', { hasText: 'Insurance?' });
     if (await modal.isVisible().catch(() => false)) {
       found = true;
       await modal.getByRole('button', { name: 'Take', exact: true }).click();
@@ -330,8 +354,8 @@ test('count-check modal: RC then TC two-stage prompt on the 2nd trigger (askTcTo
   await playRoundByAdvice(page);
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
 
-  const modal = page.locator('.modal-backdrop');
-  await expect(modal.locator('.modal-title')).toHaveText('Running count?');
+  const modal = page.locator('.bottom-sheet');
+  await expect(modal.locator('.bottom-sheet-title')).toHaveText('Running count?');
   await modal.getByRole('button', { name: '5', exact: true }).click();
   await modal.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(modal).not.toBeVisible();
@@ -341,13 +365,13 @@ test('count-check modal: RC then TC two-stage prompt on the 2nd trigger (askTcTo
   await playRoundByAdvice(page);
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
 
-  await expect(modal.locator('.modal-title')).toHaveText('Running count?');
+  await expect(modal.locator('.bottom-sheet-title')).toHaveText('Running count?');
   await modal.getByRole('button', { name: '3', exact: true }).click();
   await modal.getByRole('button', { name: 'OK', exact: true }).click();
 
   // Still open -- now asking for TC, not settled yet.
   await expect(modal).toBeVisible();
-  await expect(modal.locator('.modal-title')).toHaveText('True count?');
+  await expect(modal.locator('.bottom-sheet-title')).toHaveText('True count?');
   await shot(page, '13-count-check-tc-stage');
 
   await modal.getByRole('button', { name: '1', exact: true }).click();

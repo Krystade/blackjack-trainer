@@ -31,6 +31,7 @@ import { PlayingCard, formatCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import type { ActionBarMode } from '../components/ActionBar';
 import { Modal } from '../components/Modal';
+import { BottomSheet } from '../components/BottomSheet';
 import { MistakeCard } from '../components/MistakeCard';
 import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { NumPad } from '../components/NumPad';
@@ -950,9 +951,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       <ActionBar mode={barMode} />
 
       {game.phase === 'insurance' && (
-        <Modal title="Insurance?">
+        <BottomSheet title="Insurance?">
           <p>The dealer shows an ace. Take insurance?</p>
-          <div className="modal-actions">
+          <div className="bottom-sheet-actions">
             <button type="button" onClick={() => insure(true)}>
               Take
             </button>
@@ -960,11 +961,11 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
               Decline
             </button>
           </div>
-        </Modal>
+        </BottomSheet>
       )}
 
       {game.countCheckOpen && (
-        <Modal title={countStage === 'rc' ? 'Running count?' : 'True count?'}>
+        <BottomSheet title={countStage === 'rc' ? 'Running count?' : 'True count?'}>
           {/* The spoken proposal, shown as well as said. A driver glancing
               at the screen at a light should be able to see what the app
               thinks it heard, and a passenger should be able to correct it
@@ -995,7 +996,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             label={countStage === 'rc' ? 'Enter running count' : 'Enter true count'}
             onSubmit={handleCountSubmit}
           />
-        </Modal>
+        </BottomSheet>
       )}
 
       {overlay && (
