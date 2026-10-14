@@ -19,12 +19,39 @@
  * physically unreachable and grade the learner wrong for the UI's mistake.
  */
 
-import type { Card } from '../engine/cards';
+import type { Card, Rank } from '../engine/cards';
 import type { Action } from '../engine/deviations';
 import type { RuleSet } from '../engine/ruleset';
-import { isPair } from '../engine/hand';
+import { handValue, isPair } from '../engine/hand';
+import { chartLookup } from '../engine/basicStrategy';
 
-export function drillLegalActions(cards: Card[], rules: RuleSet): Action[] {
+/**
+ * #11: may a DRILL offer surrender on this hand?
+ *
+ * Hard hands: whenever the table offers late surrender, as before.
+ *
+ * Soft hands and pairs: only where the active chart actually surrenders.
+ * No chart surrenders a soft hand, and the pair cells that do are a handful
+ * (7,7 v 10 single deck, 8,8 v A six-deck H17, ...), so on every other pair
+ * and soft hand the button was a play that could never be right. Derived from
+ * the chart, not listed: `chartLookup` routes a pair to its PAIRS row first,
+ * and `getChart` has already resolved Rp by DAS and stripped every R cell
+ * when surrender is off. No deviation index surrenders a pair or a soft hand
+ * (the Fab 4 are hard 14-16); legalActions.test.ts checks that across every
+ * ruleset and count rather than trusting this comment.
+ *
+ * Drills only. At the table surrender stays a legal choice on A,2, and taking
+ * it is a graded mistake rather than a dark button.
+ */
+function drillOffersSurrender(cards: Card[], up: Rank, rules: RuleSet): boolean {
+  if (!rules.ls) return false;
+  const pair = isPair(cards);
+  if (!pair && !handValue(cards).soft) return true;
+  const cell = chartLookup(cards, up, rules);
+  return cell === 'Rh' || cell === 'Rs' || cell === 'Rp';
+}
+
+export function drillLegalActions(cards: Card[], rules: RuleSet, up: Rank): Action[] {
   // Hit and stand are unconditional -- there is no two-card hand that forbids
   // either (a dealt blackjack is settled before the player ever acts, so it
   // never reaches a drill prompt).
@@ -42,8 +69,9 @@ export function drillLegalActions(cards: Card[], rules: RuleSet): Action[] {
 
   // `getChart()` runs `stripLs`, resolving every Rh/Rs cell to its fallback
   // when late surrender is off -- so with ls:false, surrender is not merely
-  // discouraged, it is unreachable in the graded answer set.
-  if (rules.ls) actions.push('surrender');
+  // discouraged, it is unreachable in the graded answer set. With it on, soft
+  // hands and most pairs still never surrender (#11, see above).
+  if (drillOffersSurrender(cards, up, rules)) actions.push('surrender');
 
   return actions;
 }

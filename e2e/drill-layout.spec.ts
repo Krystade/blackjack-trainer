@@ -304,6 +304,9 @@ async function zoneBoxes(page: Page) {
 }
 
 test('ZonePad: the Surrender circle never covers a quadrant label', async ({ page }) => {
+  // Hard hands only: a soft hand or a pair has no surrender in a drill
+  // (#11), so the circle is not drawn for them.
+  await withSettings(page, { drill: { flashCategory: 'hard' } });
   await page.setViewportSize(PHONE);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();

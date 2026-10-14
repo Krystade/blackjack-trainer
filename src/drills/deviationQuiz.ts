@@ -107,7 +107,7 @@ export function quizCtxFor(item: QuizItem, rules: StrategyRules): PlayContext {
 export function quizLegalActions(item: QuizItem, rules: StrategyRules): Action[] {
   if (!item.cards) return [];
   const ctx = quizCtxFor(item, rules);
-  const legal = drillLegalActions(item.cards, rules);
+  const legal = drillLegalActions(item.cards, rules, item.up);
   return ctx.canSurrender ? legal : legal.filter((a) => a !== 'surrender');
 }
 

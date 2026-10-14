@@ -1996,3 +1996,22 @@ test('true count drill: it asks the next question on its own', async ({ page }) 
   const log = await page.evaluate(() => window.__speechLog ?? []);
   expect(log.filter((l) => l.startsWith('Running count')).length).toBeGreaterThan(1);
 });
+
+/**
+ * #11: in a drill, Surrender is dark on soft hands (no chart surrenders one)
+ * while hard hands keep it at a table that offers late surrender.
+ */
+for (const { category, enabled } of [
+  { category: 'soft', enabled: false },
+  { category: 'hard', enabled: true },
+] as const) {
+  test(`flashcards: Surrender is ${enabled ? 'live' : 'disabled'} on a ${category} hand`, async ({ page }) => {
+    await withSettings(page, { drill: { flashCategory: category } });
+    await page.goto('/?e2e=1');
+    await page.getByRole('button', { name: 'Drills', exact: true }).click();
+    await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+    const surrender = page.locator('.action-bar button.action-btn', { hasText: 'Surrender' });
+    if (enabled) await expect(surrender).toBeEnabled();
+    else await expect(surrender).toBeDisabled();
+  });
+}

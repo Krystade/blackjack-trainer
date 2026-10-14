@@ -14,56 +14,65 @@ const PAIR = [c('8', 's'), c('8', 'h')];
 const NO_SURRENDER = { ...DEFAULT_RULES, ls: false };
 
 describe('gateDrillAnswer', () => {
+  it('#11: refuses surrender on a soft hand out loud, since the ZonePad cannot grey it', () => {
+    const gate = gateDrillAnswer('surrender', [c('A'), c('2')], DEFAULT_RULES, '2');
+    expect(gate.accepted).toBe(false);
+    expect(gate.announcement).toBe("Surrender isn't available on this hand.");
+    // ...but not on the pair cell the chart surrenders.
+    expect(gateDrillAnswer('surrender', PAIR, DEFAULT_RULES, 'A').accepted).toBe(true);
+    expect(gateDrillAnswer('surrender', PAIR, DEFAULT_RULES, '10').accepted).toBe(false);
+  });
+
   it('accepts an action the hand actually allows', () => {
-    expect(gateDrillAnswer('hit', NON_PAIR, DEFAULT_RULES).accepted).toBe(true);
+    expect(gateDrillAnswer('hit', NON_PAIR, DEFAULT_RULES, '10').accepted).toBe(true);
   });
 
   it('refuses a split on a non-pair', () => {
-    expect(gateDrillAnswer('split', NON_PAIR, DEFAULT_RULES).accepted).toBe(false);
+    expect(gateDrillAnswer('split', NON_PAIR, DEFAULT_RULES, '10').accepted).toBe(false);
   });
 
   it('accepts a split on a pair', () => {
-    expect(gateDrillAnswer('split', PAIR, DEFAULT_RULES).accepted).toBe(true);
+    expect(gateDrillAnswer('split', PAIR, DEFAULT_RULES, '10').accepted).toBe(true);
   });
 
   it('refuses surrender when the ruleset has none', () => {
-    expect(gateDrillAnswer('surrender', NON_PAIR, NO_SURRENDER).accepted).toBe(false);
+    expect(gateDrillAnswer('surrender', NON_PAIR, NO_SURRENDER, '10').accepted).toBe(false);
   });
 
   it('says WHY it refused, so an eyes-free tap is never silent', () => {
     // The whole point of A1: the zone pad has no disabled affordance, so a
     // refusal that produces no sound is indistinguishable from a dead app.
-    const gate = gateDrillAnswer('split', NON_PAIR, DEFAULT_RULES);
+    const gate = gateDrillAnswer('split', NON_PAIR, DEFAULT_RULES, '10');
     expect(gate.announcement).toBe("Split isn't available on this hand.");
   });
 
   it('names the refused action, not a generic error', () => {
-    expect(gateDrillAnswer('surrender', NON_PAIR, NO_SURRENDER).announcement).toBe(
+    expect(gateDrillAnswer('surrender', NON_PAIR, NO_SURRENDER, '10').announcement).toBe(
       "Surrender isn't available on this hand.",
     );
   });
 
   it('announces nothing when the action is accepted', () => {
-    expect(gateDrillAnswer('hit', NON_PAIR, DEFAULT_RULES).announcement).toBeNull();
+    expect(gateDrillAnswer('hit', NON_PAIR, DEFAULT_RULES, '10').announcement).toBeNull();
   });
 
   it('uses only clip-friendly words — no symbols the voice cannot say', () => {
     // Corrections fall back to robot-voice live TTS whenever a string cannot
     // match the clip cascade (see narrateReason); a refusal spoken mid-drive
     // deserves the same care.
-    const gate = gateDrillAnswer('split', NON_PAIR, DEFAULT_RULES);
+    const gate = gateDrillAnswer('split', NON_PAIR, DEFAULT_RULES, '10');
     expect(gate.announcement).not.toMatch(/[^a-zA-Z'. ]/);
   });
 
   it('accepts insurance answers, which have no hand to gate against', () => {
     // The deviation quiz's insurance items pass no cards at all; gating them
     // as "illegal" would make the insurance prompt unanswerable.
-    expect(gateDrillAnswer('take-insurance', null, DEFAULT_RULES).accepted).toBe(true);
-    expect(gateDrillAnswer('decline-insurance', null, DEFAULT_RULES).accepted).toBe(true);
+    expect(gateDrillAnswer('take-insurance', null, DEFAULT_RULES, '10').accepted).toBe(true);
+    expect(gateDrillAnswer('decline-insurance', null, DEFAULT_RULES, '10').accepted).toBe(true);
   });
 
   it('accepts any action when there is no hand to judge against', () => {
-    expect(gateDrillAnswer('split', null, DEFAULT_RULES).accepted).toBe(true);
+    expect(gateDrillAnswer('split', null, DEFAULT_RULES, '10').accepted).toBe(true);
   });
 });
 

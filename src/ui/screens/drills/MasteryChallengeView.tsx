@@ -116,7 +116,7 @@ export function MasteryChallengeView({
 
   const handleAction = (taken: Action) => {
     if (!cell || complete || !cellCorrectAction) return;
-    const gate = gateDrillAnswer(taken, cell.cards, activeProfile.rules);
+    const gate = gateDrillAnswer(taken, cell.cards, activeProfile.rules, cell.up);
     if (!gate.accepted) return; // D3: refused answers never reach grading or the run
 
     const elapsedMs = performance.now() - promptShownAtRef.current;
@@ -155,7 +155,7 @@ export function MasteryChallengeView({
         const action = KEY_TO_ACTION[e.key];
         if (!action || !cell) return;
         e.preventDefault();
-        if (gateDrillAnswer(action, cell.cards, activeProfile.rules).accepted) handleAction(action);
+        if (gateDrillAnswer(action, cell.cards, activeProfile.rules, cell.up).accepted) handleAction(action);
         return;
       }
       if (e.key === 'Enter' || e.key === ' ') {
@@ -276,7 +276,7 @@ export function MasteryChallengeView({
 
             {!feedback ? (
               <ActionBar
-                mode={{ kind: 'actions', legal: drillLegalActions(cell.cards, activeProfile.rules), onAction: handleAction }}
+                mode={{ kind: 'actions', legal: drillLegalActions(cell.cards, activeProfile.rules, cell.up), onAction: handleAction }}
               />
             ) : (
               <div className="action-bar">

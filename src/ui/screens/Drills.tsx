@@ -589,7 +589,7 @@ function FlashcardsView({
     // REFUSED and said out loud. Silence is indistinguishable from a dead app,
     // and letting it through would grade a play that cannot exist -- into
     // Stats and the spaced-repetition deck both.
-    const gate = gateDrillAnswer(zone, card.cards, activeProfile.rules);
+    const gate = gateDrillAnswer(zone, card.cards, activeProfile.rules, card.up);
     if (!gate.accepted) {
       speak(gate.announcement!, speechOptsFrom(settings.audio, { interrupt: true }));
       return;
@@ -834,7 +834,7 @@ function FlashcardsView({
         // silent because the button is already visibly dark.
         if (eyesFree) {
           handleZoneAnswer(action);
-        } else if (gateDrillAnswer(action, card.cards, activeProfile.rules).accepted) {
+        } else if (gateDrillAnswer(action, card.cards, activeProfile.rules, card.up).accepted) {
           handleAction(action);
         }
         return;
@@ -1039,13 +1039,13 @@ function FlashcardsView({
             onAnswer={handleZoneAnswer}
             onRepeat={handleRepeat}
             visible={!settings.audio.dimZones}
-            legal={drillLegalActions(card.cards, activeProfile.rules)}
+            legal={drillLegalActions(card.cards, activeProfile.rules, card.up)}
           />
         ) : (
           <ActionBar
             mode={{
               kind: 'actions',
-              legal: drillLegalActions(card.cards, activeProfile.rules),
+              legal: drillLegalActions(card.cards, activeProfile.rules, card.up),
               onAction: handleAction }}
           />
         )
@@ -2238,7 +2238,7 @@ function MixedSessionView({
   const gateCurrent = (taken: string) =>
     current.type === 'quiz'
       ? gateQuizAnswer(taken, current.item, strategyRulesFor(activeProfile))
-      : gateDrillAnswer(taken, handCards, activeProfile.rules);
+      : gateDrillAnswer(taken, handCards, activeProfile.rules, dealerUp);
 
   return (
     <div className="drill-screen" style={drillScreenStyle(padTop)}>
@@ -2338,7 +2338,7 @@ function MixedSessionView({
             legal={
               current.type === 'quiz'
                 ? quizLegalActions(current.item, strategyRulesFor(activeProfile))
-                : drillLegalActions(handCards ?? [], activeProfile.rules)
+                : drillLegalActions(handCards ?? [], activeProfile.rules, dealerUp)
             }
           />
         ) : isInsuranceItem ? (
@@ -2363,7 +2363,7 @@ function MixedSessionView({
               legal:
                 current.type === 'quiz'
                   ? quizLegalActions(current.item, strategyRulesFor(activeProfile))
-                  : drillLegalActions(handCards ?? [], activeProfile.rules),
+                  : drillLegalActions(handCards ?? [], activeProfile.rules, dealerUp),
               onAction: handleAnswer }}
           />
         )
