@@ -75,3 +75,22 @@ export function drillLegalActions(cards: Card[], rules: RuleSet, up: Rank): Acti
 
   return actions;
 }
+
+/**
+ * #26: the rules chip shown on every drill and quiz prompt, BEFORE the
+ * answer, so "is surrender even on the table here?" is never a guess.
+ *
+ * It states the CONTEXT the prompt is graded under, not which buttons are
+ * live: a hand where surrender is merely never right (#11 greys it) is still
+ * asked at a table that offers it, and a chip that tracked the button would
+ * hint the answer on the few pair cells that do surrender.
+ *
+ * - `canSurrender`: the grader's ctx says surrender is available AND the
+ *   rules offer it (with `ls` off the chart has no R cells at all).
+ * - `canDouble`: false only for a hand that cannot double ("No double").
+ */
+export function rulesChipLabels(ctx: { canSurrender: boolean; canDouble: boolean }, rules: Pick<RuleSet, 'ls'>): string[] {
+  const labels = [ctx.canSurrender && rules.ls ? 'Surrender OK' : 'No surrender'];
+  if (!ctx.canDouble) labels.push('No double');
+  return labels;
+}

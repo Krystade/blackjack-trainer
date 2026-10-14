@@ -8,10 +8,10 @@ import type { GradedEvent } from '../../engine/grade';
 import { drawFlashcard } from '../../drills/flashcards';
 import { plainCellLabel } from '../../drills/cellLabel';
 import { formatReviewPlain } from '../../drills/srStatus';
-import { drillLegalActions } from '../../drills/legalActions';
+import { drillLegalActions, rulesChipLabels } from '../../drills/legalActions';
 import { gateDrillAnswer, gateQuizAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
-import { drawQuizItem, quizLegalActions, tableMaskNote } from '../../drills/deviationQuiz';
+import { drawQuizItem, quizLegalActions, quizRulesChip, tableMaskNote } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
 // R4 (docs/BACKLOG.md, interleaved mixed-session mode): the ONE shared grade
 // path -- gradeFlashcardAnswer/gradeQuizAnswer back the standalone
@@ -40,6 +40,7 @@ import { MistakeCard } from '../components/MistakeCard';
 import { ShotClockBar } from '../components/ShotClockBar';
 import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { HandResultStrip } from '../components/HandResultStrip';
+import { RulesChip } from '../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../handResult';
 import type { Card, Rank } from '../../engine/cards';
 import { Segmented } from './Settings';
@@ -1041,6 +1042,10 @@ function FlashcardsView({
         />
       </div>
 
+      {/* #26: the rules this card is graded under, before the answer. A
+          flashcard is a fresh two-card hand at the profile's table. */}
+      <RulesChip labels={rulesChipLabels({ canSurrender: true, canDouble: true }, activeProfile.rules)} />
+
       <div className="dealer-area">
         <PlayingCard card={{ rank: card.up, suit: 's' }} />
       </div>
@@ -1815,6 +1820,9 @@ function DeviationQuizView({
       </div>
 
       <div className="quiz-tc">TC {formatSigned(item.tc)}</div>
+      {/* #26: the item's OWN context -- most indices are asked with
+          surrender off, even at a table that offers it. */}
+      <RulesChip labels={quizRulesChip(item, strategyRulesFor(activeProfile))} />
 
       {item.cards !== null ? (
         <>
@@ -2471,6 +2479,14 @@ function MixedSessionView({
       {/* A quiz item shows its true count; a flashcard item shows none -- the
           visible cue that tells the learner which regime applies. */}
       {current.type === 'quiz' && <div className="quiz-tc">TC {formatSigned(current.item.tc)}</div>}
+      {/* #26: the rules this item is graded under, before the answer. */}
+      <RulesChip
+        labels={
+          current.type === 'quiz'
+            ? quizRulesChip(current.item, strategyRulesFor(activeProfile))
+            : rulesChipLabels({ canSurrender: true, canDouble: true }, activeProfile.rules)
+        }
+      />
 
       {handCards !== null ? (
         <>

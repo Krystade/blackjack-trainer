@@ -373,3 +373,22 @@ test('an index the operator table overrules says so, and one it does not stays q
   await expect(page.locator('[data-testid="result-strip"]')).toBeVisible();
   await expect(page.locator('.quiz-table-note')).toHaveCount(0);
 });
+
+/**
+ * #26. "16 v 9 at +4 marked stand, with no surrender signal." The quiz asks
+ * a stand index with surrender OFF at a table that offers it, so the prompt
+ * has to say so before the answer -- and a Fab 4 item has to say the reverse.
+ */
+test('the quiz prompt shows the rules it is asked under, before any answer', async ({ page }) => {
+  await withProfile(page, { surrenderIndices: true });
+  await withSettings(page, { drill: { quizIndex: '16v9' } });
+  await openDeviationQuiz(page);
+  const chip = page.getByTestId('rules-chip');
+  await expect(chip).toHaveText('No surrender');
+  await expect(page.locator('[data-testid="result-strip"]')).toHaveCount(0);
+
+  await withProfile(page, { surrenderIndices: true });
+  await withSettings(page, { drill: { quizIndex: 'sur15v10' } });
+  await openDeviationQuiz(page);
+  await expect(chip).toHaveText('Surrender OK');
+});

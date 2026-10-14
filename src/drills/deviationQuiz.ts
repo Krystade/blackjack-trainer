@@ -5,7 +5,7 @@ import type { PlayContext } from '../engine/strategy';
 import type { Action, Deviation, DeviationId } from '../engine/deviations';
 import { indexSetFor } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
-import { drillLegalActions } from './legalActions';
+import { drillLegalActions, rulesChipLabels } from './legalActions';
 import type { StrategyRules } from '../engine/ruleset';
 import { makeHardHand } from './buildHand';
 import { weightedIndex } from './weightedDraw';
@@ -85,6 +85,17 @@ export function quizCtxFor(item: QuizItem, rules: StrategyRules): PlayContext {
   if (!item.deviationId) return QUIZ_CTX;
   const entry = indexSetFor(rules).find((d) => d.id === item.deviationId);
   return entry ? ctxFor(entry) : QUIZ_CTX;
+}
+
+/**
+ * #26: the rules chip for a quiz item, from the ctx it is actually graded
+ * under. Every non-surrender index is asked with surrender OFF, so the chip
+ * says "No surrender" there even at a table that offers it; a Fab 4 item says
+ * "Surrender OK". An insurance item has no hand to play, so no chip.
+ */
+export function quizRulesChip(item: QuizItem, rules: StrategyRules): string[] {
+  if (!item.cards) return [];
+  return rulesChipLabels(quizCtxFor(item, rules), rules);
 }
 
 /**

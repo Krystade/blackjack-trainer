@@ -15,7 +15,7 @@ import {
 import type { MasteryRun, MasteryScope } from '../../../drills/masteryChallenge';
 import { gradeMasteryAnswer } from '../../../drills/gradeAnswer';
 import { gateDrillAnswer } from '../../../drills/answerGate';
-import { drillLegalActions } from '../../../drills/legalActions';
+import { drillLegalActions, rulesChipLabels } from '../../../drills/legalActions';
 import { isDistractionPoint, makeDistraction } from '../../../drills/distraction';
 import type { Distraction } from '../../../drills/distraction';
 import { correctPlay } from '../../../engine/strategy';
@@ -23,6 +23,7 @@ import { saveSettings } from '../../../store/persist';
 import { PlayingCard } from '../../components/PlayingCard';
 import { ActionBar } from '../../components/ActionBar';
 import { HandResultStrip } from '../../components/HandResultStrip';
+import { RulesChip } from '../../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../../handResult';
 import { StudyChartOverlay } from '../../components/StudyChartOverlay';
 import { Segmented } from '../Settings';
@@ -247,6 +248,8 @@ export function MasteryChallengeView({
       ) : (
         cell && (
           <>
+            {/* #26: graded with surrender available wherever the rules offer it. */}
+            <RulesChip labels={rulesChipLabels({ canSurrender: true, canDouble: true }, activeProfile.rules)} />
             <div className="dealer-area">
               <PlayingCard card={{ rank: cell.up, suit: 's' }} />
             </div>
