@@ -4711,11 +4711,11 @@ details.stats-section > summary::after {
 [class$='-screen'],
 [class*='-screen '],
 .drills-picker {
-  min-height: calc(100svh - var(--chrome-top));
+  min-height: calc(var(--app-h) - var(--chrome-top));
 }
 .fieldtest-running {
-  height: calc(100svh - var(--chrome-top));
-  max-height: calc(100svh - var(--chrome-top));
+  height: calc(var(--app-h) - var(--chrome-top));
+  max-height: calc(var(--app-h) - var(--chrome-top));
 }
 .study-chart-overlay {
   padding-top: var(--chrome-top);
@@ -4770,4 +4770,65 @@ details.stats-section > summary::after {
    for the disc on the right instead. */
 body[data-screen='fieldtest'] .fieldtest-topbar {
   padding-right: calc(var(--mute-disc, 44px) + 16px);
+}
+
+/* ---------- The installed app: the screen is taller than svh says ----------
+   Items #4, #5 and #7 (docs/superpowers/specs/2026-10-13-53-item-change-list-design.md),
+   reported from Jack's iPhone 13 mini running the home-screen app.
+
+   With `viewport-fit=cover` and a black-translucent status bar, a standalone
+   web app draws under the status bar, and WebKit then mis-sizes the viewport:
+   `svh`/`dvh` leave the top inset out (about 47px here), and `position: fixed;
+   bottom: 0` -- and sticky `bottom: 0` -- resolve against that short box
+   rather than the screen (WebKit bugs 237961, 316008). Every screen was
+   47px short, so Play's answer bar and Deal sat that far above the bottom
+   edge with an empty band under them, and the tab bar floated likewise.
+   In standalone mode `vh` is the one unit that does include the inset.
+
+   `--vp-gap` is the size of that error: `100svh - 100vh` is zero wherever the
+   two agree (every browser tab, and the headless suite, which never runs
+   standalone), and minus the top inset in the installed app. Pinned bars are
+   moved down by it instead of re-anchored, so if a future iOS fixes the
+   viewport the correction quietly becomes zero. */
+:root {
+  --app-h: 100svh;
+  --vp-gap: 0px;
+}
+
+@media (display-mode: standalone) {
+  :root {
+    --app-h: 100vh;
+    --vp-gap: calc(100svh - 100vh);
+  }
+
+  /* Rubber-band overscroll drags fixed bars with the page in a standalone
+     app (the session report's tab bar rode up mid-scroll). */
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+
+  .tab-bar {
+    bottom: var(--vp-gap);
+  }
+
+  .action-bar:has(> .drill-next-btn),
+  .drill-primary-bar {
+    bottom: var(--vp-gap);
+  }
+}
+
+/* An opaque strip behind the status bar. The page scrolls under it, and
+   without one the clock printed straight over "Back to Home" and the chart
+   rows. Zero tall wherever there is no top inset. */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top, 0px);
+  background: var(--bg-sunken);
+  z-index: 55;
+  pointer-events: none;
 }

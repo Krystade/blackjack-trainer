@@ -17,3 +17,6 @@ models/
 # The whole directory is ignored rather than a glob, so a log saved under any
 # name is covered.
 field-logs/
+
+# Lane worktrees for parallel agents (Claude Code).
+.claude/worktrees/
