@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { TabSettingsButton } from '../components/TabSettingsButton';
 import './charts.css';
 import type { Screen } from '../App';
 import type { Profile } from '../../store/types';
@@ -184,6 +185,7 @@ export function Charts({
           </button>
         )}
         <div className="charts-heading">Strategy charts</div>
+        <TabSettingsButton tab="charts" />
       </div>
       {backPlacement === 'floating' && <FloatingBackPill label={backText} onClick={goBack} />}
 

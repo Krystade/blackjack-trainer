@@ -1,4 +1,5 @@
 import { strategyRulesFor } from '../../store/profiles';
+import { TabSettingsButton } from '../components/TabSettingsButton';
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Screen } from '../App';
@@ -727,6 +728,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           </span>
         </div>
         <div className="topbar-stat">Round {game.roundNo}</div>
+        <TabSettingsButton tab="play" />
         {settings.audio.enabled && (
           <button type="button" className="repeat-btn" onClick={audio.replay}>
             Repeat

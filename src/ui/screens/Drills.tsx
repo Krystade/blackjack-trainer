@@ -1,4 +1,5 @@
 ﻿import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { TabSettingsButton } from '../components/TabSettingsButton';
 import { strategyRulesFor } from '../../store/profiles';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
@@ -2817,6 +2818,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   return (
     <div className="drills-picker">
       <h1 className="drills-title">Drills</h1>
+      <TabSettingsButton tab="drills" />
       {/* Grouped by the SKILL each drill trains (C8). Ten identical buttons in
           one list said nothing about what to do next, or about the fact that
           keeping the count, knowing the plays, and holding up under pressure

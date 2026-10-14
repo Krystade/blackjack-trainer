@@ -387,6 +387,25 @@ export interface Profile {
    * "Reset bankroll").
    */
   bankrollNow?: number;
+  /**
+   * #3: what a Play count check asks for. Absent = 'alternate' (running
+   * count, then the true count on every second check -- the behaviour before
+   * this field). `countCheckEvery` 0 still means no checks at all.
+   */
+  countCheckAsk?: 'running' | 'true' | 'alternate' | 'both';
+  /**
+   * #34: grade Play with count deviations (correctPlay) or basic strategy
+   * only (basicPlay). Insurance follows it. Absent = true.
+   */
+  gradeDeviations?: boolean;
+  /**
+   * #39: the cut card, as decks left behind it (0.5-3, step 0.25), replacing
+   * `penetration` as the setting. Absent = derived from `penetration`
+   * (decks * (1 - penetration)) so stored profiles keep their depth.
+   * `cutVary` moves each shoe's cut by up to ±0.5 decks.
+   */
+  cutDecks?: number;
+  cutVary?: boolean;
   cvcx?: {
     score?: number;
     evPerHour?: number;
@@ -428,6 +447,9 @@ export interface Stats {
   // #22: answers withdrawn with "Wrong tap". The graded event itself is
   // removed; this counter keeps the habit visible. Absent = 0.
   misclicks?: number;
+  // B3 (spec 2026-10-13): per-cell accuracy, keyed by chart cellId, written
+  // by every hand drill and Play. `lastAt` is an ISO date. Absent = no data.
+  cellStats?: Record<string, { right: number; wrong: number; lastAt: string }>;
   countDrill: {
     history: {
       date: string;
