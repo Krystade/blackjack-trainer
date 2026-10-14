@@ -1,0 +1,25 @@
+/* B1 result strip. It keeps its box when faded so the hand below never
+   jumps when a correct result disappears. */
+.result-strip {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.95rem;
+  line-height: 1.3;
+  transition: opacity 300ms ease, visibility 0s linear 300ms;
+}
+.result-strip--ok { border-color: var(--good); }
+.result-strip--miss {
+  background: var(--bad-surface);
+  border-color: var(--bad-line);
+}
+.result-strip--faded {
+  opacity: 0;
+  visibility: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .result-strip { transition: none; }
+}
