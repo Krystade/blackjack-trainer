@@ -2791,12 +2791,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   }
   if (mode === 'mastery') {
     return (
-      <MasteryChallengeView
-        settings={settings}
-        activeProfile={activeProfile}
-        onBack={() => setMode('picker')}
-        onSettingsChange={onSettingsChange}
-      />
+      <MasteryChallengeView activeProfile={activeProfile} onBack={() => setMode('picker')} />
     );
   }
   if (mode === 'paircancel') {

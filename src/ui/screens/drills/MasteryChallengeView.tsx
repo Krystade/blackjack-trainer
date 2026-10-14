@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Settings, Profile } from '../../../store/types';
+import type { Profile } from '../../../store/types';
 import type { Action } from '../../../engine/deviations';
 import {
   startMasteryRun,
@@ -16,10 +16,7 @@ import type { MasteryRun, MasteryScope } from '../../../drills/masteryChallenge'
 import { gradeMasteryAnswer } from '../../../drills/gradeAnswer';
 import { gateDrillAnswer } from '../../../drills/answerGate';
 import { drillLegalActions, rulesChipLabels } from '../../../drills/legalActions';
-import { isDistractionPoint, makeDistraction } from '../../../drills/distraction';
-import type { Distraction } from '../../../drills/distraction';
 import { correctPlay } from '../../../engine/strategy';
-import { saveSettings } from '../../../store/persist';
 import { PlayingCard } from '../../components/PlayingCard';
 import { ActionBar } from '../../components/ActionBar';
 import { HandResultStrip } from '../../components/HandResultStrip';
@@ -49,15 +46,11 @@ function scopeLabel(scope: MasteryScope): string {
  * narration, matching PairCancelView's precedent.
  */
 export function MasteryChallengeView({
-  settings,
   activeProfile,
   onBack,
-  onSettingsChange,
 }: {
-  settings: Settings;
   activeProfile: Profile;
   onBack: () => void;
-  onSettingsChange: (settings: Settings) => void;
 }) {
   const [run, setRun] = useState<MasteryRun>(() => {
     const persisted = loadMasteryRun();
@@ -95,7 +88,6 @@ export function MasteryChallengeView({
   // as it stood before that answer.
   const [wrongTap, setWrongTap] = useState<WrongTapRecord | null>(null);
   const resultIdRef = useRef(0);
-  const [distraction, setDistraction] = useState<Distraction | null>(null);
   const [chartFor, setChartFor] = useState<HandResult | null>(null);
   const promptShownAtRef = useRef(performance.now());
 
@@ -104,22 +96,7 @@ export function MasteryChallengeView({
     setRun(fresh);
     setLastResult(null);
     setWrongTap(null);
-    setDistraction(null);
     promptShownAtRef.current = performance.now();
-  };
-
-  const changeDistractionFreq = (masteryDistractionFreq: Settings['drill']['masteryDistractionFreq']) => {
-    const next: Settings = { ...settings, drill: { ...settings.drill, masteryDistractionFreq } };
-    saveSettings(next);
-    onSettingsChange(next);
-  };
-
-  const maybeTriggerDistraction = (nextRun: MasteryRun) => {
-    // D4a: always 'generic' -- there is no running count in this drill for a
-    // 'near-count' distraction to be near.
-    if (isDistractionPoint(nextRun.index, settings.drill.masteryDistractionFreq)) {
-      setDistraction(makeDistraction(0, 'generic', randomSeed()));
-    }
   };
 
   const handleAction = (taken: Action) => {
@@ -149,7 +126,6 @@ export function MasteryChallengeView({
             // position, and the same hand back on screen to answer again.
             revert: () => {
               setRun(prevRun);
-              setDistraction(null);
               promptShownAtRef.current = performance.now();
             },
           }
@@ -171,7 +147,6 @@ export function MasteryChallengeView({
     setRun(nextRun);
     promptShownAtRef.current = performance.now();
     releaseAnswerFocus();
-    if (correct && !isMasteryRunComplete(nextRun)) maybeTriggerDistraction(nextRun);
   };
 
   const closeChart = () => {
@@ -180,18 +155,10 @@ export function MasteryChallengeView({
     promptShownAtRef.current = performance.now();
   };
 
-  const answerDistraction = (_guess: number) => {
-    // The distraction's own right/wrong is telemetry only (D4b) -- it never
-    // touches `run`. Recording into Stats.distraction.history is a follow-up
-    // nicety, not required for this plan's minimum scope.
-    setDistraction(null);
-    promptShownAtRef.current = performance.now();
-  };
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (focusSwallowsKey(e.key)) return;
-      if (chartFor || distraction) return;
+      if (chartFor) return;
       const action = KEY_TO_ACTION[e.key];
       if (!action || !cell) return;
       e.preventDefault();
@@ -200,7 +167,7 @@ export function MasteryChallengeView({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run, cell, chartFor, distraction]);
+  }, [run, cell, chartFor]);
 
   return (
     <div className="drill-screen">
@@ -225,18 +192,6 @@ export function MasteryChallengeView({
             onChange={changeScope}
           />
         </div>
-        <div className="settings-row">
-          <span className="settings-label">Distractions</span>
-          <Segmented
-            options={[
-              { value: 'off', label: 'Off' },
-              { value: 'occasional', label: 'Occasional' },
-              { value: 'relentless', label: 'Relentless' },
-            ]}
-            value={settings.drill.masteryDistractionFreq}
-            onChange={changeDistractionFreq}
-          />
-        </div>
         {/* "Check progress" (operator ask): always-visible, live count. */}
         <div className="mastery-progress" data-testid="mastery-progress">
           {run.index} / {run.order.length} cleared &middot; {scopeLabel(run.scope)}
@@ -259,13 +214,6 @@ export function MasteryChallengeView({
             }}
           >
             Start a new sweep
-          </button>
-        </div>
-      ) : distraction ? (
-        <div className="distraction-area">
-          <div className="distraction-prompt">{distraction.prompt}</div>
-          <button type="button" className="drill-next-btn" onClick={() => answerDistraction(distraction.answer)}>
-            Continue
           </button>
         </div>
       ) : (
