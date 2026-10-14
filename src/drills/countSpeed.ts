@@ -7,6 +7,8 @@
  * milliseconds in.
  */
 
+import { IDLE_CAP_MS } from './idleCap';
+
 /**
  * Speed tier for a count-down run, in the vocabulary poker/blackjack
  * counting communities actually use.
@@ -131,4 +133,62 @@ export function tierStartIntervalMs(tier: SpeedTier): number {
     case 'expert':
       return msPerCardForDeckSeconds(12);
   }
+}
+
+/**
+ * #20/#30: the mean gap between a manual run's taps, in whole ms.
+ *
+ * A manual run used to record the AUTO interval setting as its pace, so a
+ * self-paced run showed whatever the slider happened to say. This is the pace
+ * the user actually kept. Any gap over the idle cap is left out -- that is the
+ * user stopping, not counting -- and with nothing left there is no pace to
+ * report, so the result is undefined rather than 0.
+ */
+export function meanTapGapMs(gaps: readonly number[], capMs: number = IDLE_CAP_MS): number | undefined {
+  const kept = gaps.filter((g) => g <= capMs);
+  if (kept.length === 0) return undefined;
+  return Math.round(kept.reduce((a, b) => a + b, 0) / kept.length);
+}
+
+/** The pace fields a count-drill history row carries. */
+export interface CountRunPace {
+  cards: number;
+  intervalMs: number;
+  manual?: boolean;
+  meanTapMs?: number;
+}
+
+/**
+ * One count-drill run's length and pace, for Stats: "52 cards · 700ms", or
+ * "52 cards · manual · 840ms avg" for a self-paced run.
+ */
+export function formatCountRun(run: CountRunPace): string {
+  if (run.manual) {
+    return run.meanTapMs === undefined
+      ? `${run.cards} cards · manual`
+      : `${run.cards} cards · manual · ${run.meanTapMs}ms avg`;
+  }
+  return `${run.cards} cards · ${run.intervalMs}ms`;
+}
+
+/**
+ * The fastest correct run of each kind. Auto runs rank by the interval they
+ * were dealt at, manual runs by their measured mean tap gap; the two are
+ * never compared, and a manual run with no measured taps ranks in neither.
+ */
+export function bestCleanCountRuns<T extends CountRunPace & { correct: boolean }>(
+  history: readonly T[],
+): { auto: T | null; manual: T | null } {
+  let auto: T | null = null;
+  let manual: T | null = null;
+  for (const run of history) {
+    if (!run.correct) continue;
+    if (run.manual) {
+      if (run.meanTapMs === undefined) continue;
+      if (manual === null || run.meanTapMs < (manual.meanTapMs ?? Infinity)) manual = run;
+    } else if (auto === null || run.intervalMs < auto.intervalMs) {
+      auto = run;
+    }
+  }
+  return { auto, manual };
 }

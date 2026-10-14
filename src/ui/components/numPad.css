@@ -1,0 +1,12 @@
+/* #45: a NumPad is always the full width of whatever holds it.
+   `.numpad` in app.css is a flex column with its own 16px gutter, but it
+   had no width of its own: inside a centred flex column (the count drill's
+   checkpoint and distraction areas) it shrink-wrapped to its content, and
+   the digit keys came out about 36px wide on a 375px phone. Stretching it
+   here fixes every container, not just the two that were found. */
+.numpad {
+  align-self: stretch;
+  /* A centred parent would otherwise centre the "Count" label too, unlike
+     every other keypad label. */
+  text-align: left;
+}

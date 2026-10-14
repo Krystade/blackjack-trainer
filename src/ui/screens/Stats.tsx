@@ -34,8 +34,10 @@ import { CHANNEL_BASE_CAP, FLUENT_MS } from '../../drills/spacedRepetition';
 import { formatInterval, hasCurve, retentionByGap, wilson } from '../../store/retentionCurve';
 import { Stepper } from './Settings';
 import './sr.css';
+import './countHistory.css';
 import { strategyRulesFor } from '../../store/profiles';
 import { CATEGORY_LABELS } from './categoryLabels';
+import { bestCleanCountRuns, formatCountRun } from '../../drills/countSpeed';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -410,11 +412,9 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   };
 
   const countHistory = inRange(stats.countDrill.history);
-  const correctHistory = countHistory.filter((h) => h.correct);
-  const bestCleanRun =
-    correctHistory.length === 0
-      ? null
-      : correctHistory.reduce((best, cur) => (cur.intervalMs < best.intervalMs ? cur : best));
+  // #20: auto and manual runs are ranked apart -- a manual run was never
+  // dealt at an interval, so its pace is its measured mean tap gap.
+  const bestCleanRun = bestCleanCountRuns(countHistory);
   const recentRuns = countHistory.slice(-5).reverse();
   // RT#12: runs that were actually MEASURED mid-count. A run with checkpoints
   // off carries neither field, and is left out rather than counted as clean --
@@ -983,8 +983,13 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       >
           <p className="stats-detail">
             Best clean run:{' '}
-            {bestCleanRun === null ? '—' : `${bestCleanRun.cards} cards @ ${bestCleanRun.intervalMs}ms`}
+            {bestCleanRun.auto === null && bestCleanRun.manual === null
+              ? '—'
+              : formatCountRun((bestCleanRun.auto ?? bestCleanRun.manual)!)}
           </p>
+          {bestCleanRun.auto !== null && bestCleanRun.manual !== null && (
+            <p className="stats-detail">Best clean manual run: {formatCountRun(bestCleanRun.manual)}</p>
+          )}
           {checkpointsAsked > 0 && (
             <>
               <p className="stats-detail">
@@ -1006,8 +1011,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
               {recentRuns.map((run, i) => (
                 <li className="count-history-row" key={i}>
                   <span>{formatDate(run.date)}</span>
-                  <span>{run.cards} cards</span>
-                  <span>{run.intervalMs}ms</span>
+                  <span className="count-history-pace">{formatCountRun(run)}</span>
                   <span className={run.correct ? 'result-correct' : 'result-wrong'}>
                     {run.correct ? 'correct' : 'wrong'}
                   </span>

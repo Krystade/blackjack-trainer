@@ -110,7 +110,9 @@ test('"yes" submits the proposal, and the graded row is what was said', async ({
   await expect(page.locator('.count-voice-value')).toHaveText('-2');
   await sayWhenListening(page, 'yes');
 
-  await expect(page.locator('.drill-result')).toBeVisible();
+  // #54: eyes-on answers fast-advance; the verdict is the B1 strip.
+  const strip = page.getByTestId('result-strip');
+  await expect(strip).toBeVisible();
   const history = await page.evaluate(
     () =>
       JSON.parse(window.localStorage.getItem('bjtrainer.stats.v1') ?? '{}')?.trueCount?.history ?? [],
@@ -118,7 +120,7 @@ test('"yes" submits the proposal, and the graded row is what was said', async ({
   expect(history).toHaveLength(1);
   expect(history[0].guess).toBe(-2);
   expect(history[0].correct).toBe(history[0].guess === history[0].correctTc);
-  await expect(page.locator(history[0].correct ? '.result-correct' : '.result-wrong')).toBeVisible();
+  await expect(strip).toHaveAttribute('data-tone', history[0].correct ? 'ok' : 'miss');
 });
 
 test('"yes" with nothing proposed submits nothing', async ({ page }) => {

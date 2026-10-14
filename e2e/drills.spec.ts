@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
 import { shot, withSettings, withStats, readStats, goHomeAndNavigate, openCountOptions } from './helpers';
-import { tcConversionAccepted } from '../src/engine/count';
 
 /**
  * The feedback strip, with the spaced-repetition due time masked out.
@@ -291,8 +290,9 @@ test('true count drill: answering a question persists a trueCount history entry'
   // happens, not exercising every guess value.
   await page.getByRole('button', { name: 'OK', exact: true }).click();
 
-  await expect(page.locator('.drill-result')).toBeVisible();
-  await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
+  // #54: fast advance -- the B1 strip carries the result, no result screen.
+  await expect(page.getByTestId('result-strip')).toBeVisible();
+  await expect(page.locator('.drill-result')).toHaveCount(0);
 
   const stats = await readStats(page);
   const history = (stats?.trueCount as { history: unknown[] } | undefined)?.history ?? [];
@@ -310,23 +310,9 @@ test('true count drill: answering a question persists a trueCount history entry'
   expect(typeof entry.decksRemaining).toBe('number');
   expect(typeof entry.correctTc).toBe('number');
   expect(typeof entry.correct).toBe('boolean');
-  // Graded against the rule the engine actually uses, not against equality.
-  //
-  // This asserted `correct === (guess === correctTc)`, which is a rule the app
-  // deliberately does not follow: from a STATED depth there is still no single
-  // right integer, because flooring, rounding to nearest and truncating toward
-  // zero are all conventions real counters use, and marking two of them wrong
-  // teaches only which one the author preferred (see tcRoundings). So a guess
-  // of 0 is graded correct whenever 0 is any of those quotients.
-  //
-  // The question is drawn at random and unseeded, so for most draws the two
-  // rules agree and the old assertion passed -- until a draw where 0 was an
-  // accepted alternative rather than the canonical value, and then it failed
-  // for being wrong rather than for anything regressing. Flaky by
-  // construction: it encoded a stricter contract than the code has.
-  expect(entry.correct).toBe(
-    tcConversionAccepted(entry.guess, entry.runningCount, entry.decksRemaining),
-  );
+  // #54: graded against the profile's convention only (default floor), so
+  // this is exact equality with the stated answer.
+  expect(entry.correct).toBe(entry.guess === entry.correctTc);
   expect(new Date(entry.date).toString()).not.toBe('Invalid Date');
 });
 
@@ -1672,8 +1658,10 @@ test('produce the true count: flash then produce a TC, graded within tolerance a
   await page.locator('.numpad-btn', { hasText: /^0$/ }).click();
   await page.getByRole('button', { name: 'OK', exact: true }).click();
 
-  await expect(page.locator('.drill-result')).toBeVisible();
-  await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
+  // #54: fast advance -- straight into the next flash, result in the strip.
+  const strip = page.getByTestId('result-strip');
+  await expect(strip).toBeVisible();
+  await expect(page.locator('.drill-result')).toHaveCount(0);
 
   const stats = await readStats(page);
   const history = (stats?.produceTc as { history: Record<string, number>[] } | undefined)?.history ?? [];
@@ -1681,24 +1669,20 @@ test('produce the true count: flash then produce a TC, graded within tolerance a
   const row = history[0]!;
   expect(row.produced).toBe(0);
 
-  // Correctness is consistent with what the RESULT SCREEN said, and with the
-  // accepted range that screen names. Deliberately not recomputed from a
-  // tolerance rule here: the rule is the depth band (engine/count.ts's
-  // `tcBand`), it is unit-tested there, and a second copy of it in an e2e
-  // would only ever agree with itself. This asserts the three things the
-  // spec can actually see are the same thing.
-  const shownCorrect = (await page.locator('.result-correct').count()) > 0;
+  // Correctness is consistent with what the STRIP said, and with the
+  // accepted range it names. Not recomputed from the tolerance rule here --
+  // that is unit-tested; this asserts the visible things agree.
+  const shownCorrect = (await strip.getAttribute('data-tone')) === 'ok';
   expect(row.correct).toBe(shownCorrect as unknown as number);
 
-  const detail = await page.locator('.result-detail').innerText();
-  const range = /between ([+-]?\d+) and ([+-]?\d+)/.exec(detail);
-  if (range) {
-    const lo = Number(range[1]);
-    const hi = Number(range[2]);
-    expect(shownCorrect).toBe(0 >= lo && 0 <= hi);
-  } else {
-    // A degenerate band prints no range, and then only the exact answer counts.
-    expect(shownCorrect).toBe(0 === (row.correctTc as number));
+  const text = await strip.innerText();
+  const range = /, ([+−]?\d+) to ([+−]?\d+) counts/.exec(text);
+  if (!shownCorrect && range) {
+    const lo = Number(range[1]!.replace('−', '-'));
+    const hi = Number(range[2]!.replace('−', '-'));
+    expect(0 >= lo && 0 <= hi).toBe(false);
+  } else if (!shownCorrect) {
+    expect(0 === (row.correctTc as number)).toBe(false);
   }
 });
 

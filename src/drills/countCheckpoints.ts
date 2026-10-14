@@ -86,13 +86,34 @@ export interface CheckpointResult {
   answer: number;
 }
 
+/**
+ * #46: a checkpoint graded on the stretch since the previous answer.
+ *
+ * Absolute grading punished one slip at every later stop: miss a single card
+ * early, count the rest perfectly, and every checkpoint after it read as
+ * wrong -- the report then pointed at stretches that were counted cleanly.
+ * So each stop after the first is graded on its own stretch: the user's
+ * PREVIOUS answer plus the true change since then. The first stop has no
+ * previous answer and is graded absolutely.
+ */
+export interface GradedCheckpoint extends Omit<CheckpointResult, 'atGroup'> {
+  /** What the answer should have been, given the user's previous answer. */
+  expected: number;
+  /** answer === expected. */
+  correct: boolean;
+  /** The previous answer this stretch was graded from; null when absolute. */
+  from: { answer: number; cardsShown: number } | null;
+}
+
 export interface CheckpointReport {
-  results: readonly CheckpointResult[];
+  results: readonly (CheckpointResult & GradedCheckpoint)[];
+  /** Checkpoints right under the adjusted grading. */
   correct: number;
   total: number;
   /**
    * The run ended on the right number but did not stay on it. This is RT#12
    * itself: two errors that cancelled, which the old grading called perfect.
+   * An ABSOLUTE judgement -- some checkpoint was off the true count.
    */
   cancelled: boolean;
   /**
@@ -101,6 +122,28 @@ export interface CheckpointReport {
    * when every checkpoint was right.
    */
   firstDriftSegment: { fromCard: number; toCard: number } | null;
+  /**
+   * The last stretch, from the final checkpoint to the end of the run, graded
+   * the same adjusted way. Shown beside the run's verdict, which stays
+   * absolute. Null when the run had no checkpoints or no final answer.
+   */
+  finalStretch: GradedCheckpoint | null;
+}
+
+/** Grade one stop against the previous one (or absolutely, with none). */
+function gradeStretch(
+  stop: { cardsShown: number; actual: number; answer: number },
+  prev: { cardsShown: number; actual: number; answer: number } | undefined,
+): GradedCheckpoint {
+  const expected = prev ? prev.answer + (stop.actual - prev.actual) : stop.actual;
+  return {
+    cardsShown: stop.cardsShown,
+    actual: stop.actual,
+    answer: stop.answer,
+    expected,
+    correct: stop.answer === expected,
+    from: prev ? { answer: prev.answer, cardsShown: prev.cardsShown } : null,
+  };
 }
 
 /**
@@ -108,26 +151,35 @@ export interface CheckpointReport {
  *
  * `finalCorrect` is the ordinary end-of-run verdict, passed in rather than
  * recomputed: this module never sees the cards, and the two numbers must agree
- * about the same run.
+ * about the same run. `final` is the end-of-run answer itself, when there was
+ * one, so the last stretch can be graded too.
  */
 export function summarizeCheckpoints(
   results: readonly CheckpointResult[],
   finalCorrect: boolean,
+  final?: { cardsShown: number; actual: number; answer: number },
 ): CheckpointReport {
-  const correct = results.filter((r) => r.answer === r.actual).length;
-  const firstWrong = results.find((r) => r.answer !== r.actual);
-  const firstWrongIndex = firstWrong ? results.indexOf(firstWrong) : -1;
+  const graded = results.map((r, i) => ({ ...gradeStretch(r, results[i - 1]), atGroup: r.atGroup }));
+  const correct = graded.filter((r) => r.correct).length;
+  // Up to the first miss every earlier answer was the true count, so the
+  // adjusted and absolute grades agree there: the first adjusted miss is
+  // where the count first went wrong.
+  const firstWrongIndex = graded.findIndex((r) => !r.correct);
+  const firstWrong = firstWrongIndex >= 0 ? graded[firstWrongIndex] : undefined;
   // The drift entered somewhere between the last clean checkpoint and the
   // first wrong one. With no clean checkpoint before it, the segment opens at
   // the first card of the run.
-  const priorClean = firstWrongIndex > 0 ? results[firstWrongIndex - 1] : undefined;
+  const priorClean = firstWrongIndex > 0 ? graded[firstWrongIndex - 1] : undefined;
+  const last = results[results.length - 1];
   return {
-    results,
+    results: graded,
     correct,
     total: results.length,
-    cancelled: finalCorrect && correct < results.length,
+    cancelled: finalCorrect && results.some((r) => r.answer !== r.actual),
     firstDriftSegment: firstWrong
       ? { fromCard: (priorClean?.cardsShown ?? 0) + 1, toCard: firstWrong.cardsShown }
       : null,
+    // A checkpoint on the last card leaves no stretch after it to grade.
+    finalStretch: final && last && final.cardsShown > last.cardsShown ? gradeStretch(final, last) : null,
   };
 }

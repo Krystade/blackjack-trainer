@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Settings } from '../../../store/types';
 import type { Card } from '../../../engine/cards';
 import { hiLoTag } from '../../../engine/count';
@@ -11,6 +11,7 @@ import {
   summarizeCheckpoints,
   type CheckpointResult,
   type CheckpointReport,
+  type GradedCheckpoint,
 } from '../../../drills/countCheckpoints';
 import {
   classifySpeed,
@@ -19,6 +20,7 @@ import {
   secondsPerDeck,
   tierStartIntervalMs,
   RAMP_FLOOR_MS,
+  meanTapGapMs,
 } from '../../../drills/countSpeed';
 import type { SpeedTier } from '../../../drills/countSpeed';
 import { computeUnlockedTier, tierAbove, SPEED_TIER_ORDER } from '../../../drills/competenceGate';
@@ -63,6 +65,11 @@ import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
+import './countDrillView.css';
+
+function formatSigned(n: number): string {
+  return n > 0 ? `+${n}` : String(n);
+}
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -313,6 +320,13 @@ export function CountDrillView({
   // reproducible given only its outer seed (matching the seeded idiom used
   // throughout drills/*.ts).
   const runSeedRef = useRef(0);
+  // #20: a manual run's own pace. Whether THIS run is self-paced is fixed at
+  // start(); each tap that moves to the next card adds the time the previous
+  // card was up. A checkpoint or distraction clears `lastCardAtRef`, so the
+  // time spent answering one is never counted as a gap between cards.
+  const runManualRef = useRef(false);
+  const tapGapsRef = useRef<number[]>([]);
+  const lastCardAtRef = useRef<number | null>(null);
   // performance.now() at the moment the current distraction was posed --
   // read (never displayed) to compute its elapsedMs on answer. null when no
   // distraction is currently pending.
@@ -389,7 +403,8 @@ export function CountDrillView({
   /** The eyes-free verdict: recorded exactly like a keypad run. */
   const handleSelfReport = (correct: boolean) => {
     speak(correct ? 'Correct.' : 'Wrong.', speechOptsFrom(settings.audio, { interrupt: true }));
-    finishRun(correct, actualValue, actualValue);
+    // No number was given, so there is no last stretch to grade (#46).
+    finishRun(correct, actualValue, actualValue, false);
   };
 
   const updateDrill = (patch: Partial<Settings['drill']>) => {
@@ -424,6 +439,7 @@ export function CountDrillView({
   // display or speak it (the whole point of the drill is testing whether
   // the user can keep it in their own head through the interruption).
   const triggerDistraction = (idxAtTrigger: number, isLast: boolean) => {
+    lastCardAtRef.current = null;
     const rc = runningCountThrough(groups, idxAtTrigger);
     const seed = runSeedRef.current + idxAtTrigger;
     const d = makeDistraction(rc, settings.drill.distractionMode, seed);
@@ -451,6 +467,7 @@ export function CountDrillView({
    * that had actually been shown, not against wherever the run got to.
    */
   const triggerCheckpoint = (idxAtTrigger: number, isLast: boolean) => {
+    lastCardAtRef.current = null;
     checkpointAtRef.current = idxAtTrigger;
     checkpointResumeRef.current = isLast ? 'finish' : idxAtTrigger + 1;
     setPhase('checkpoint');
@@ -817,6 +834,11 @@ export function CountDrillView({
 
   const advanceManual = () => {
     const isLast = shownIndex >= groups.length - 1;
+    // #20: the gap this tap closes. Read before any interruption is posed --
+    // the card was up until now whatever happens next.
+    const now = performance.now();
+    if (lastCardAtRef.current !== null) tapGapsRef.current.push(now - lastCardAtRef.current);
+    lastCardAtRef.current = now;
     // D1 part 2: this tap zone is shared with Countdown mode's manual
     // advance (see the JSX below), which is out of scope for distractions --
     // guard it out explicitly rather than relying on distractionFreq alone.
@@ -907,6 +929,10 @@ export function CountDrillView({
       }
     }
     setShownIndex(0);
+    // #20: Timed Challenge ignores Next card, so it is never a manual run.
+    runManualRef.current = settings.drill.countManual && !timedChallenge;
+    tapGapsRef.current = [];
+    lastCardAtRef.current = runManualRef.current ? performance.now() : null;
     setHonorCheck(false);
     setTimedResult(null);
     setGateOutcome(null);
@@ -951,12 +977,27 @@ export function CountDrillView({
     onBack();
   };
 
-  const finishRun = (correct: boolean, actual: number, entered: number) => {
+  /**
+   * `answered` is false for the eyes-free self-report, which takes a verdict
+   * but no number: `entered` there is a stand-in, not something the user said.
+   */
+  const finishRun = (correct: boolean, actual: number, entered: number, answered = true) => {
     // RT#12: read the checkpoints back now that the final verdict exists --
     // "cancelled" is only meaningful against it. Empty on a run with
     // checkpoints off, which reports as null rather than as a clean sweep.
+    // #46: the final answer goes in too, so the last stretch is graded from
+    // the last checkpoint the same way each checkpoint is graded from the one
+    // before. The run's own verdict (`correct`) stays absolute.
     const checkpointRows = checkpointRowsRef.current;
-    const report = checkpointRows.length > 0 ? summarizeCheckpoints(checkpointRows, correct) : null;
+    const totalCards = groups.reduce((n, g) => n + g.length, 0);
+    const report =
+      checkpointRows.length > 0
+        ? summarizeCheckpoints(
+            checkpointRows,
+            correct,
+            answered ? { cardsShown: totalCards, actual, answer: entered } : undefined,
+          )
+        : null;
     setCheckpointReport(report);
     setWasCorrect(correct);
     setActualValue(actual);
@@ -1022,6 +1063,13 @@ export function CountDrillView({
     }
 
     const cardsInRun = countdownMode ? 52 : settings.drill.countLengthCards;
+    // #20/#30: a manual run was never dealt at the auto interval, so it records
+    // the pace the user actually kept -- the mean tap gap, idle gaps left out
+    // -- and says it was manual. `intervalMs` is required by the stored shape;
+    // on a manual row it carries the same measured mean (0 if none), and
+    // readers rank manual runs by `meanTapMs` only (countSpeed.ts).
+    const manual = runManualRef.current;
+    const meanTapMs = manual ? meanTapGapMs(tapGapsRef.current) : undefined;
     const updated = {
       ...statsWithDistraction,
       countDrill: {
@@ -1030,8 +1078,9 @@ export function CountDrillView({
           {
             date: new Date().toISOString(),
             cards: cardsInRun,
-            intervalMs: settings.drill.countIntervalMs,
+            intervalMs: manual ? (meanTapMs ?? 0) : settings.drill.countIntervalMs,
             correct,
+            ...(manual ? { manual: true, ...(meanTapMs !== undefined ? { meanTapMs } : {}) } : {}),
             // RT#12: omitted entirely when the run had no checkpoints, so a
             // reader can tell "not measured" from "got none right".
             ...(report ? { checkpointsCorrect: report.correct, checkpointsTotal: report.total } : {}),
@@ -1075,6 +1124,8 @@ export function CountDrillView({
     if (resume === 'finish') {
       enterAnswerPhase();
     } else if (typeof resume === 'number') {
+      // #20: the resumed card goes up now; the pause is not a tap gap.
+      lastCardAtRef.current = performance.now();
       setShownIndex(resume);
       setPhase('flashing');
     }
@@ -1111,6 +1162,8 @@ export function CountDrillView({
     if (resume === 'finish') {
       enterAnswerPhase();
     } else if (typeof resume === 'number') {
+      // #20: the resumed card goes up now; the pause is not a tap gap.
+      lastCardAtRef.current = performance.now();
       setShownIndex(resume);
       setPhase('flashing');
     }
@@ -1516,6 +1569,20 @@ export function CountDrillView({
    * null on a run with no checkpoints. An empty block would read as a clean
    * sweep of nothing.
    */
+  /**
+   * #46: how a stretch after the first was graded, said in full. An adjusted
+   * grade that did not say so would read as a contradiction whenever it
+   * disagrees with "it was N" beside it.
+   */
+  const stretchNote = (g: GradedCheckpoint): ReactNode =>
+    g.from && (
+      <span className="checkpoint-adjusted">
+        {' '}
+        &mdash; expected {formatSigned(g.expected)}, graded from your {formatSigned(g.from.answer)} at card{' '}
+        {g.from.cardsShown} (adjusted)
+      </span>
+    );
+
   const checkpointBlock = checkpointReport && (
     <div className="checkpoint-result">
       <div className="checkpoint-result-score">
@@ -1534,14 +1601,25 @@ export function CountDrillView({
       )}
       <ul className="checkpoint-result-list">
         {checkpointReport.results.map((r) => (
-          <li
-            key={r.atGroup}
-            className={r.answer === r.actual ? 'checkpoint-hit' : 'checkpoint-miss'}
-          >
+          <li key={r.atGroup} className={r.correct ? 'checkpoint-hit' : 'checkpoint-miss'}>
             After {r.cardsShown} cards: you said {r.answer}, it was {r.actual}
+            {stretchNote(r)}
           </li>
         ))}
       </ul>
+      {/* #46: the last stretch, graded from the last checkpoint. The verdict
+          above stays absolute; this says whether the cards after the last
+          stop were counted right, whatever the count was coming into them. */}
+      {checkpointReport.finalStretch && (
+        <div
+          className={`checkpoint-result-final ${
+            checkpointReport.finalStretch.correct ? 'checkpoint-hit' : 'checkpoint-miss'
+          }`}
+        >
+          Last stretch: {checkpointReport.finalStretch.correct ? 'right' : 'wrong'}
+          {stretchNote(checkpointReport.finalStretch)}
+        </div>
+      )}
     </div>
   );
 

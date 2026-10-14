@@ -46,7 +46,7 @@ test('deck estimation: shoe size opens on the profile, and the tray says so', as
 });
 
 test('produce the true count: a one-deck profile never divides by more than one deck', async ({ page }) => {
-  // The strongest available signal: the result screen prints the divisor it
+  // The strongest available signal: the result strip prints the divisor it
   // graded against. On the old hardcoded 6 this ran up to "6 decks" for
   // everyone; a 1-deck profile can only ever legitimately print 0.5 or 1.
   await withProfile(page, { rules: { decks: 1 } });
@@ -66,15 +66,14 @@ test('produce the true count: a one-deck profile never divides by more than one 
     await expect(page.locator('.deck-tray-context')).toHaveText('1-deck shoe');
     await page.getByRole('button', { name: 'OK', exact: true }).click();
 
-    const detail = await page.locator('.result-detail').innerText();
-    const m = /÷ ([\d.]+) decks/.exec(detail);
+    // #54: fast advance; the strip prints the working "rc ÷ decks = q".
+    const detail = await page.getByTestId('result-strip').innerText();
+    const m = /÷ ([\d.]+) =/.exec(detail);
     expect(m, `no divisor printed in: ${detail}`).not.toBeNull();
     const decks = Number(m![1]);
     expect(decks, `round ${round} divided by ${decks} decks in a 1-deck shoe`).toBeLessThanOrEqual(1);
     expect(decks).toBeGreaterThanOrEqual(0.5);
     seen.push(decks);
-
-    await page.getByRole('button', { name: 'Next', exact: true }).click();
   }
 
   // Vacuity guard: the drill must actually be varying the depth, or the bound

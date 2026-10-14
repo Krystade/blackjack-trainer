@@ -6,7 +6,11 @@ import {
   rampIntervalMs,
   RAMP_FLOOR_MS,
   tierStartIntervalMs,
+  meanTapGapMs,
+  formatCountRun,
+  bestCleanCountRuns,
 } from './countSpeed';
+import { IDLE_CAP_MS } from './idleCap';
 import type { SpeedTier } from './countSpeed';
 
 describe('classifySpeed', () => {
@@ -203,5 +207,75 @@ describe('tierStartIntervalMs', () => {
     for (const tier of ['learning', 'table-ready', 'pro', 'expert'] as SpeedTier[]) {
       expect(tierStartIntervalMs(tier)).toBeGreaterThanOrEqual(RAMP_FLOOR_MS);
     }
+  });
+});
+
+describe('meanTapGapMs (#20/#30: a manual run measures your own pace)', () => {
+  it('is the mean gap between taps, rounded to whole ms', () => {
+    expect(meanTapGapMs([800, 900, 820])).toBe(840);
+    expect(meanTapGapMs([1000, 1001])).toBe(1001); // 1000.5 rounds up
+  });
+
+  it('leaves out any gap over the 30s idle cap', () => {
+    // Stopped to answer the phone: that gap is not a pace.
+    expect(meanTapGapMs([800, 45_000, 880])).toBe(840);
+    expect(meanTapGapMs([800, IDLE_CAP_MS + 1, 880])).toBe(840);
+    // Exactly the cap is still a tap.
+    expect(meanTapGapMs([IDLE_CAP_MS])).toBe(IDLE_CAP_MS);
+  });
+
+  it('is undefined when nothing was measured', () => {
+    expect(meanTapGapMs([])).toBeUndefined();
+    expect(meanTapGapMs([31_000, 60_000])).toBeUndefined();
+  });
+
+  it('uses the shared 30s idle cap', () => {
+    expect(IDLE_CAP_MS).toBe(30_000);
+  });
+});
+
+describe('formatCountRun (#20: Stats says how a run was paced)', () => {
+  it('a manual run shows "manual" and its measured average, never the auto interval', () => {
+    expect(formatCountRun({ cards: 52, intervalMs: 700, manual: true, meanTapMs: 840 })).toBe(
+      '52 cards · manual · 840ms avg',
+    );
+  });
+
+  it('a manual run with no measured taps says manual and nothing else', () => {
+    expect(formatCountRun({ cards: 52, intervalMs: 0, manual: true })).toBe('52 cards · manual');
+  });
+
+  it('an auto run shows its interval', () => {
+    expect(formatCountRun({ cards: 52, intervalMs: 700 })).toBe('52 cards · 700ms');
+  });
+});
+
+describe('bestCleanCountRuns (#20)', () => {
+  const run = (correct: boolean, intervalMs: number, manual?: boolean, meanTapMs?: number) => ({
+    cards: 52,
+    correct,
+    intervalMs,
+    ...(manual ? { manual } : {}),
+    ...(meanTapMs !== undefined ? { meanTapMs } : {}),
+  });
+
+  it('keeps the auto and manual bests apart', () => {
+    // A manual run's intervalMs is not a pace it was dealt at, so it must
+    // never win the auto comparison -- not even with a tiny number in it.
+    const best = bestCleanCountRuns([
+      run(true, 900),
+      run(true, 700),
+      run(true, 10, true, 1200),
+      run(true, 10, true, 840),
+      run(false, 300),
+      run(false, 10, true, 400),
+    ]);
+    expect(best.auto?.intervalMs).toBe(700);
+    expect(best.manual?.meanTapMs).toBe(840);
+  });
+
+  it('a manual run with no measured taps has no pace to rank', () => {
+    expect(bestCleanCountRuns([run(true, 700, true)]).manual).toBeNull();
+    expect(bestCleanCountRuns([run(true, 700, true)]).auto).toBeNull();
   });
 });

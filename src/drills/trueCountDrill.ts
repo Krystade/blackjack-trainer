@@ -3,13 +3,15 @@ import { trueCount } from '../engine/count';
 import type { TcRounding } from '../engine/count';
 
 export interface TrueCountQuestion {
-  runningCount: number; // -6 .. +20
+  runningCount: number; // -15 .. +15
   decksRemaining: number; // half-deck granularity, >= 0.5
   correctTc: number; // computed by the engine's trueCount() -- never reimplemented here
 }
 
-const RC_MIN = -6;
-const RC_MAX = 20;
+// #54: symmetric. -6..+20 left negative counts -- where floor and truncate
+// disagree -- under-trained.
+const RC_MIN = -15;
+const RC_MAX = 15;
 const DEFAULT_MAX_DECKS = 6;
 
 /**
@@ -40,9 +42,8 @@ export function makeTrueCountQuestion(
   const stepIndex = Math.floor(rng() * halfDeckSteps);
   const decksRemaining = (stepIndex + 1) * 0.5;
 
-  // V5-4: the stated answer follows the PLAYER'S convention. Grading is
-  // already convention-agnostic (tcConversionAccepted accepts all three), but
-  // the result screen was printing floor's answer at everyone.
+  // V5-4 / #54: the answer follows the PLAYER'S convention, and so does the
+  // grade (drills/tcFeedback.ts gradeTcConversion).
   const correctTc = trueCount(runningCount, decksRemaining, opts?.rounding);
 
   return { runningCount, decksRemaining, correctTc };

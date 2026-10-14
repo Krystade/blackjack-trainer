@@ -1,0 +1,4 @@
+/* #54: the B1 strip on the true-count drills, inset to the page gutter. */
+.tc-strip-wrap {
+  margin: 8px 16px 0;
+}

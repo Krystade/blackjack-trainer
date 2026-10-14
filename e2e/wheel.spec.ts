@@ -86,6 +86,11 @@ test('forward starts the drill', async ({ page }) => {
 test('back says the result again once the question is answered', async ({ page }) => {
   await inAnswerMode(page, { audio: { enabled: true, verbosity: 'full' } });
   await openTrueCountDrill(page);
+  // #54: eyes-on answers fast-advance, so the result screen -- and "back" on
+  // it -- is the eyes-free strict path's. Keep-going off so it stays put.
+  await page.getByLabel('Eyes-free audio').check();
+  await page.getByLabel('Strict mode (enter the answer; graded)').check();
+  await page.locator('label', { hasText: 'Keep going' }).locator('input').uncheck();
   await press(page, 'forward'); // Start
   // One press, then silence: the proposal submits itself, which is how every
   // wheel answer is confirmed.
@@ -116,8 +121,9 @@ test('the two buttons walk a true count and quiet submits it', async ({ page }) 
   await expect
     .poll(async () => await spoken(page), { timeout: 4000 })
     .toContain('plus 3. Correct?');
-  await expect(page.locator('.drill-result')).toBeVisible({ timeout: 6000 });
-  await expect(page.locator('.result-detail')).toContainText('+3');
+  // #54: eyes-on, the answer fast-advances; the strip says what was entered.
+  await expect(page.getByTestId('result-strip')).toBeVisible({ timeout: 6000 });
+  await expect(page.getByTestId('result-strip')).toContainText('+3');
 });
 
 test('a press during the correction window pushes the submission back', async ({ page }) => {
@@ -128,16 +134,16 @@ test('a press during the correction window pushes the submission back', async ({
   await press(page, 'forward', 2);
   // Long enough to have been read back, nowhere near long enough to submit.
   await page.waitForTimeout(READBACK_MS + 300);
-  await expect(page.locator('.drill-result')).toHaveCount(0);
+  await expect(page.getByTestId('result-strip')).toHaveCount(0);
 
   await press(page, 'forward');
   await page.waitForTimeout(COMMIT_MS - 800);
   // Still open: the third press restarted the clock rather than arriving after
   // an answer had already been graded.
-  await expect(page.locator('.drill-result')).toHaveCount(0);
+  await expect(page.getByTestId('result-strip')).toHaveCount(0);
 
-  await expect(page.locator('.drill-result')).toBeVisible({ timeout: 6000 });
-  await expect(page.locator('.result-detail')).toContainText('+3');
+  await expect(page.getByTestId('result-strip')).toBeVisible({ timeout: 6000 });
+  await expect(page.getByTestId('result-strip')).toContainText('+3');
 });
 
 /**
