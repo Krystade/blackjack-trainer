@@ -446,6 +446,12 @@ export interface Stats {
       // means "not measured", never "zero right".
       checkpointsCorrect?: number;
       checkpointsTotal?: number;
+      // #20: a manual (self-paced) run has no deal interval, so `intervalMs`
+      // is meaningless there. `manual` marks it; `meanTapMs` is the measured
+      // mean gap between the operator's taps. Both absent on paced runs and
+      // on every run recorded before the field shipped.
+      manual?: boolean;
+      meanTapMs?: number;
     }[];
   };
   // Cycle-4 (docs/research/2026-07-21-priority-list.md item 8): per-drill
