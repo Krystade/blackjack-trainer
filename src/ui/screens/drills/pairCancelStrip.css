@@ -1,0 +1,18 @@
+/* #21: the last pair's result, one line under the next pair. */
+.pair-result {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+}
+
+.pair-result-hand {
+  color: var(--ink-dim);
+  font-size: 0.9rem;
+}
+
+.pair-result .result-correct,
+.pair-result .result-wrong {
+  font-size: 1rem;
+  font-weight: 700;
+}

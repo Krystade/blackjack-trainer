@@ -368,7 +368,7 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
   await page.getByRole('button', { name: 'Pair cancellation', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Pair cancellation');
   await page.locator('.pair-cancel-answers .action-btn').first().click();
-  await expect(page.locator('.drill-next-btn')).toBeVisible();
+  await expect(page.getByTestId('pair-result')).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
 
   // --- Produce the true count ---------------------------------------------

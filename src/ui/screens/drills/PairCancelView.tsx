@@ -4,6 +4,7 @@ import {
   makePairCancel,
   isCancellingPair,
   pairCancelBias,
+  pairResultText,
   PAIR_CANCEL_NETS,
 } from '../../../drills/pairCancellation';
 import type { PairCancelRound } from '../../../drills/pairCancellation';
@@ -12,6 +13,9 @@ import { cardJitter, jitterTransform } from '../../../drills/cardJitter';
 import { useAudio } from '../../../audio/useAudio';
 import { loadStats, saveStats } from '../../../store/persist';
 import { focusSwallowsKey } from '../../keyboardFocus';
+import { ResultStrip } from '../../components/ResultStrip';
+import { releaseAnswerFocus } from '../../handResult';
+import './pairCancelStrip.css';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -28,7 +32,9 @@ function formatSigned(n: number): string {
  * high "cancel" to 0 and are skipped) rather than adding each card serially.
  * Deliberately VISUAL-ONLY (no eyes-free): the whole point is gestalt pair
  * recognition, which serial audio would defeat (see the red-team's item 10).
- * Continuous flow like Flashcards — answer, see feedback, Next — for rapid reps.
+ * Continuous flow for rapid reps (#21): an answer deals the next pair at once,
+ * and a one-line strip under it says how the last one went. No Next tap, no
+ * Enter.
  */
 export function PairCancelView({ settings, onBack }: { settings: Settings; onBack: () => void }) {
   const audio = useAudio(settings.audio);
@@ -39,16 +45,18 @@ export function PairCancelView({ settings, onBack }: { settings: Settings; onBac
   const [round, setRound] = useState<PairCancelRound>(() =>
     makePairCancel(randomSeed(), pairCancelBias(0)),
   );
-  const [feedback, setFeedback] = useState<{ correct: boolean; guess: number } | null>(null);
+  // #21: the answered pair, frozen, shown under the next one. `id` restarts
+  // the strip's fade even when two answers in a row read the same.
+  const [last, setLast] = useState<{ id: number; cards: PairCancelRound['cards']; correct: boolean; text: string } | null>(
+    null,
+  );
   // R1-style latency: prompt-shown → answered, captured in the component (never
   // a pure helper) so telemetry can track chunk-recognition speed over time.
   const shownAtRef = useRef(performance.now());
 
   const answer = (guess: number) => {
-    if (feedback) return; // already answered; wait for Next
     const correct = guess === round.net;
     const elapsedMs = performance.now() - shownAtRef.current;
-    setFeedback({ correct, guess });
     audio.ding(correct ? 'good' : 'bad');
 
     const stats = loadStats();
@@ -68,38 +76,41 @@ export function PairCancelView({ settings, onBack }: { settings: Settings; onBac
         ],
       },
     });
+
+    setLast((prev) => ({
+      id: (prev?.id ?? 0) + 1,
+      cards: round.cards,
+      correct,
+      text: pairResultText(round.net, guess, isCancellingPair(round)),
+    }));
+    // The answer buttons stay put for the next pair, so a focused one would
+    // turn a stray Enter into an answer on a pair not yet looked at.
+    releaseAnswerFocus();
+    next();
   };
 
   const next = () => {
     roundIndexRef.current += 1;
     setRound(makePairCancel(randomSeed(), pairCancelBias(roundIndexRef.current)));
-    setFeedback(null);
     shownAtRef.current = performance.now();
   };
 
-  // Keyboard: 1–5 map to the five nets in ascending order (1 → −2 … 5 → +2);
-  // Enter/Space advances once feedback is showing. Skipped while a native
-  // input has focus (none here, but consistent with the other drills).
+  // Keyboard: 1–5 map to the five nets in ascending order (1 → −2 … 5 → +2).
+  // Skipped while a native input has focus (none here, but consistent with
+  // the other drills).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (focusSwallowsKey(e.key)) return;
-      if (!feedback) {
-        const idx = ['1', '2', '3', '4', '5'].indexOf(e.key);
-        if (idx >= 0) {
-          e.preventDefault();
-          answer(PAIR_CANCEL_NETS[idx]);
-        }
-        return;
-      }
-      if (e.key === 'Enter' || e.key === ' ') {
+      const idx = ['1', '2', '3', '4', '5'].indexOf(e.key);
+      if (idx >= 0) {
         e.preventDefault();
-        next();
+        answer(PAIR_CANCEL_NETS[idx]);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feedback, round]);
+  }, [round]);
 
   return (
     <div className="drill-screen">
@@ -136,35 +147,23 @@ export function PairCancelView({ settings, onBack }: { settings: Settings; onBac
       </div>
 
       <div className="message-strip">
-        {feedback && (
-          <>
-            <div className={feedback.correct ? 'result-correct' : 'result-wrong'}>
-              {feedback.correct ? 'Correct!' : `Wrong — net ${formatSigned(round.net)}`}
+        {last && (
+          <ResultStrip id={last.id} tone={last.correct ? 'ok' : 'miss'}>
+            <div className="pair-result" data-testid="pair-result">
+              <span className="pair-result-hand">{last.cards.map((c) => c.rank).join(',')}</span>
+              <span className={last.correct ? 'result-correct' : 'result-wrong'}>{last.text}</span>
             </div>
-            <div className="pair-cancel-detail">
-              {isCancellingPair(round)
-                ? 'These cancel — skip the pair.'
-                : `Net ${formatSigned(round.net)}.`}
-            </div>
-          </>
+          </ResultStrip>
         )}
       </div>
 
-      {!feedback ? (
-        <div className="action-bar pair-cancel-answers">
-          {PAIR_CANCEL_NETS.map((net) => (
-            <button key={net} type="button" className="action-btn" onClick={() => answer(net)}>
-              {formatSigned(net)}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="action-bar">
-          <button type="button" className="drill-next-btn" onClick={next}>
-            Next
+      <div className="action-bar pair-cancel-answers">
+        {PAIR_CANCEL_NETS.map((net) => (
+          <button key={net} type="button" className="action-btn" onClick={() => answer(net)}>
+            {formatSigned(net)}
           </button>
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 }

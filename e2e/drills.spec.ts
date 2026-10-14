@@ -1486,6 +1486,12 @@ test('mixed session: interleaves flashcard + quiz items, grading each through it
 test('pair cancellation: answering a pair grades it and records self-consistent telemetry', async ({
   page,
 }) => {
+  // A fixed stepping sequence, so each pair's seed differs and the pair after
+  // the first is known to be a different one.
+  await page.addInitScript(() => {
+    let i = 0;
+    Math.random = () => ((i++ * 0.37) % 1);
+  });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Pair cancellation', exact: true }).click();
@@ -1494,8 +1500,12 @@ test('pair cancellation: answering a pair grades it and records self-consistent 
   await shot(page, '90-pair-cancel');
 
   // Answer "0" (a fixed choice from the five −2..+2 buttons).
+  const firstPair = await page.locator('.pair-cancel-cards .card-rank').allInnerTexts();
+  const cardTexts = () => page.locator('.pair-cancel-cards .card').allTextContents();
+  const firstShown = await cardTexts();
   await page.locator('.pair-cancel-answers button.action-btn', { hasText: /^0$/ }).click();
-  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+  const strip = page.getByTestId('pair-result');
+  await expect(strip).toBeVisible();
 
   const stats = await readStats(page);
   const history = (stats?.pairCancel as { history: Record<string, number | boolean>[] } | undefined)?.history ?? [];
@@ -1507,10 +1517,21 @@ test('pair cancellation: answering a pair grades it and records self-consistent 
   expect(row.cancelling).toBe(row.net === 0 ? row.cancelling : false);
   expect(row.elapsedMs as number).toBeGreaterThanOrEqual(0);
 
-  // Next draws a fresh pair and clears the feedback.
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toHaveCount(0);
+  // #21: no Next. The strip names the ANSWERED pair and its verdict, while the
+  // answer buttons are already up for the next pair.
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toHaveCount(0);
+  await expect(strip.locator('.pair-result-hand')).toHaveText(firstPair.join(','));
+  await expect(strip).toContainText(row.correct ? '✓' : '✗ was');
+  if (row.cancelling) await expect(strip).toContainText('these cancel');
   await expect(page.locator('.pair-cancel-cards .card')).toHaveCount(2);
+  await expect.poll(cardTexts).not.toEqual(firstShown);
+  await expect(page.locator('.pair-cancel-answers button.action-btn')).toHaveCount(5);
+
+  // The keyboard answers the next pair straight away; no Enter in between.
+  await page.keyboard.press('3');
+  await expect
+    .poll(async () => ((await readStats(page))?.pairCancel as { history: unknown[] }).history.length)
+    .toBe(2);
 });
 
 /* R9 / red-team #7: "messy" card presentation applies a small per-card         */

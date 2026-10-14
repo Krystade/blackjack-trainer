@@ -85,3 +85,21 @@ export function isCancellingPair(round: PairCancelRound): boolean {
   const [a, b] = round.cards;
   return round.net === 0 && hiLoTag(a.rank) !== 0 && hiLoTag(b.rank) !== 0;
 }
+
+/** A net tag as the result strip prints it: "+1", "0", "−1" (a real minus). */
+function signedNet(n: number): string {
+  if (n > 0) return `+${n}`;
+  if (n < 0) return `\u2212${-n}`;
+  return '0';
+}
+
+/**
+ * #21 (spec 2026-10-13): the one-line result of an answered pair, shown while
+ * the next pair is already up. "−1 ✓" on a hit; "✗ was 0 — these cancel" on a
+ * miss. A genuine cancel says so either way, because skipping it as a unit is
+ * the habit the drill exists to build.
+ */
+export function pairResultText(net: number, guess: number, cancelling: boolean): string {
+  const cancel = cancelling ? ' \u2014 these cancel' : '';
+  return guess === net ? `${signedNet(net)} \u2713${cancel}` : `\u2717 was ${signedNet(net)}${cancel}`;
+}

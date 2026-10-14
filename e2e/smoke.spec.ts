@@ -203,13 +203,13 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   await expect(page.locator('.drills-picker')).toBeVisible();
 
   // ---------------------------------------------------------------
-  // 9b. Pair Cancellation: answer the net, assert feedback, Next
+  // 9b. Pair Cancellation: answer the net, the result strip shows, and
+  // the next pair is already up (#21: no Next)
   // ---------------------------------------------------------------
   await page.getByRole('button', { name: 'Pair cancellation', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Pair cancellation');
   await page.locator('.pair-cancel-answers .action-btn').first().click();
-  await expect(page.locator('.drill-next-btn')).toBeVisible();
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByTestId('pair-result')).toBeVisible();
   await expect(page.locator('.pair-cancel-answers')).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();
