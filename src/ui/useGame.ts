@@ -1,6 +1,6 @@
 import { strategyRulesFor } from '../store/profiles';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Game } from '../engine/game';
+import { Game, handPlayNumber } from '../engine/game';
 import type { GameConfig } from '../engine/game';
 import type { Action } from '../engine/deviations';
 import type { Card, Rank } from '../engine/cards';
@@ -211,7 +211,8 @@ function narrateDeal(game: Game, audio: AudioApi): void {
  * settle the round. Speaks: the dealer's hole card plus any cards drawn
  * during dealer play (full only -- the up-card and player/bot cards were
  * already spoken by `narrateDeal`/the bot-action pacing effect), each
- * hand's result, and the count-check prompt + attention chime if one is due.
+ * hand's result. The count check is NOT asked here any more (#36): it is
+ * posed when the next deal is asked for -- see `poseCountCheckBeforeDeal`.
  */
 function narrateSettlement(game: Game, audio: AudioApi): void {
   if (game.phase !== 'settled') return;
@@ -222,17 +223,21 @@ function narrateSettlement(game: Game, audio: AudioApi): void {
     }
   }
 
-  game.hands.forEach((hand, i) => {
+  // In order of play (#1): the rightmost hand is played first and is "hand
+  // one", so results are read from the right.
+  for (let i = game.hands.length - 1; i >= 0; i--) {
+    const hand = game.hands[i];
     if (hand.result) {
-      audio.say(narrateHandResult(i, game.hands.length, hand.result, hand.net ?? 0));
+      audio.say(
+        narrateHandResult(handPlayNumber(i, game.hands.length) - 1, game.hands.length, hand.result, hand.net ?? 0),
+      );
     }
-  });
-
-  if (game.countCheckDue) {
-    audio.ding('attention');
-    audio.say(narrateCountPrompt());
   }
 }
+
+/** What the player asked for when an owed count check interrupted it (#36).
+ * It runs as soon as the check is answered. */
+type PendingDeal = { kind: 'deal'; bets?: number | number[] } | { kind: 'sitOut' };
 
 /**
  * Holds a single Game instance in a ref (so mutating engine calls don't
@@ -273,28 +278,65 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const [overlay, setOverlay] = useState<OverlayInfo | null>(null);
   const [report, setReport] = useState<SessionReport | null>(null);
 
-  const deal = useCallback(
+  /**
+   * #36: the deal asked for, held while an owed count check is answered.
+   * A ref, not state: it is read and cleared in the same handler that
+   * submits the answer, and nothing renders from it.
+   */
+  const pendingDealRef = useRef<PendingDeal | null>(null);
+
+  const runDeal = useCallback(
     (betUnits?: number | number[]) => {
       game.startRound(betUnits);
       narrateDeal(game, audio);
       narrateSettlement(game, audio); // instant dealer-blackjack / all-naturals rounds settle inside startRound()
-      bump();
     },
-    [game, bump, audio],
+    [game, audio],
   );
 
-  const sitOut = useCallback(() => {
+  const runSitOut = useCallback(() => {
     // Wong-out: the engine plays the whole round (bots + dealer) synchronously,
     // so the shuffle line (if the shoe rolled over), the sit-out announcement,
-    // and any settlement narration (dealer draws + count-check prompt) all
-    // resolve in one pass -- exactly like an instant dealer-blackjack deal. No
-    // player cards to narrate: the player was dealt none. R5.
+    // and any settlement narration (dealer draws) all resolve in one pass --
+    // exactly like an instant dealer-blackjack deal. No player cards to
+    // narrate: the player was dealt none. R5.
     game.sitOut();
     if (game.shuffledLastRound) audio.say(narrateShuffle());
     audio.say(narrateSitOut());
     narrateSettlement(game, audio);
+  }, [game, audio]);
+
+  /**
+   * #36: if a count check is owed, ask it now -- on the way to the next
+   * deal, with the settled hand still on the felt -- and hold the deal until
+   * it is answered. Returns true when the deal must wait.
+   */
+  const poseCountCheckBeforeDeal = useCallback(
+    (pending: PendingDeal): boolean => {
+      if (!game.poseCountCheck()) return false;
+      pendingDealRef.current = pending;
+      audio.ding('attention');
+      audio.say(narrateCountPrompt());
+      bump();
+      return true;
+    },
+    [game, audio, bump],
+  );
+
+  const deal = useCallback(
+    (betUnits?: number | number[]) => {
+      if (poseCountCheckBeforeDeal({ kind: 'deal', bets: betUnits })) return;
+      runDeal(betUnits);
+      bump();
+    },
+    [poseCountCheckBeforeDeal, runDeal, bump],
+  );
+
+  const sitOut = useCallback(() => {
+    if (poseCountCheckBeforeDeal({ kind: 'sitOut' })) return;
+    runSitOut();
     bump();
-  }, [game, bump, audio]);
+  }, [poseCountCheckBeforeDeal, runSitOut, bump]);
 
   const insure = useCallback(
     (take: boolean) => {
@@ -491,9 +533,14 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       const result = game.submitCountCheck(rc, tcGuess);
       audio.say(narrateCountAnswer(result.actualRc));
       audio.ding(result.rcCorrect ? 'good' : 'bad');
+      // #36: the deal that was asked for happens right after the answer.
+      const pending = pendingDealRef.current;
+      pendingDealRef.current = null;
+      if (pending?.kind === 'deal') runDeal(pending.bets);
+      else if (pending?.kind === 'sitOut') runSitOut();
       bump();
     },
-    [game, bump, audio],
+    [game, bump, audio, runDeal, runSitOut],
   );
 
   const endSession = useCallback(

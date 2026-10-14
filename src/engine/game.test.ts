@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Card, Rank } from './cards';
 import { hiLoTag, tcBand, trueCount } from './count';
-import { Game, DEFAULT_SPREAD, botRngSeed } from './game';
+import { Game, DEFAULT_SPREAD, botRngSeed, handPlayNumber } from './game';
 import type { GameConfig, SeatConfig } from './game';
 import { basicPlay } from './strategy';
 import { DEFAULT_RULES } from './ruleset';
@@ -356,10 +356,13 @@ describe('split', () => {
 
     game.act('split');
     expect(game.hands.length).toBe(2);
-    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['8', '2']);
-    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['8', '3']);
+    // #1: the right-hand half (index 1) is played first, so it is dealt
+    // first too, and play starts there.
+    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['8', '2']);
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['8', '3']);
     expect(game.hands[0].fromSplit).toBe(true);
     expect(game.hands[1].fromSplit).toBe(true);
+    expect(game.active).toBe(1);
   });
 
   it('resplit chain (8,8,8,8,...) reaches 4 hands, then split is no longer legal', () => {
@@ -388,17 +391,18 @@ describe('split aces', () => {
 
     game.act('split');
     expect(game.hands.length).toBe(2);
-    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['A', 'K']);
-    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['A', '2']);
+    // The right-hand ace (index 1) is dealt first (#1).
+    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['A', 'K']);
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['A', '2']);
     expect(game.hands[0].done).toBe(true);
     expect(game.hands[1].done).toBe(true);
-    expect(game.hands[0].splitAces).toBe(true);
+    expect(game.hands[1].splitAces).toBe(true);
     expect(game.legalActions()).toEqual([]); // no hit legal for a split-ace hand
 
     // Round auto-completes (both hands done): dealer (6,2) hits H17 to 18.
     expect(game.phase).toBe('settled');
-    expect(game.hands[0].result).toBe('win'); // 21 beats 18
-    expect(game.hands[0].net).toBe(1); // 1x, NOT blackjack 1.5x
+    expect(game.hands[1].result).toBe('win'); // 21 beats 18
+    expect(game.hands[1].net).toBe(1); // 1x, NOT blackjack 1.5x
   });
 
   describe('resplit aces (RSA)', () => {
@@ -426,21 +430,22 @@ describe('split aces', () => {
 
       game.act('split'); // Split initial A,A
       expect(game.hands.length).toBe(2);
-      // hand0 got A (A,A), hand1 got K
-      expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['A', 'A']);
-      expect(game.hands[0].done).toBe(false); // NOT done; can resplit
-      expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['A', 'K']);
-      expect(game.hands[1].done).toBe(true);
+      // The right hand (index 1) is dealt first and got A (A,A); hand0 got K.
+      expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['A', 'A']);
+      expect(game.hands[1].done).toBe(false); // NOT done; can resplit
+      expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['A', 'K']);
+      expect(game.hands[0].done).toBe(true);
+      expect(game.active).toBe(1);
 
-      // hand0 is A,A and rsa:true, so split is legal
+      // hand1 is A,A and rsa:true, so split is legal
       expect(game.legalActions()).toContain('split');
 
-      game.act('split'); // Resplit hand0: draws 2 to hand0, 3 to new hand1
+      game.act('split'); // Resplit hand1: new hand2 draws 2, hand1 draws 3
       expect(game.hands.length).toBe(3);
-      // After resplit: hand0 [A, 2], hand1 [A, 3] (new), hand2 [A, K] (original hand1)
-      expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['A', '2']);
+      // The resplit lands next to the hand split, not at the end.
+      expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['A', 'K']);
       expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['A', '3']);
-      expect(game.hands[2].cards.map((c) => c.rank)).toEqual(['A', 'K']);
+      expect(game.hands[2].cards.map((c) => c.rank)).toEqual(['A', '2']);
       // All done after resplit
       expect(game.hands[0].done).toBe(true);
       expect(game.hands[1].done).toBe(true);
@@ -456,15 +461,17 @@ describe('split aces', () => {
 
       game.act('split'); // Split 8,8
       expect(game.hands.length).toBe(2);
-      // hand0 got 8 (8,8), hand1 got 3 (8,3)
-      expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['8', '8']);
-      expect(game.hands[0].splitAces).toBe(false);
+      // hand1 (right, dealt first) got 8 (8,8), hand0 got 3 (8,3)
+      expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['8', '8']);
+      expect(game.hands[1].splitAces).toBe(false);
+      expect(game.active).toBe(1);
       expect(game.legalActions()).toContain('split'); // Can resplit the 8,8 pair
 
-      game.act('split'); // Resplit hand0 (8,8)
-      // After resplit: hand0 [8,2], hand1 [8,3] (new from resplit), hand2 [8,3] (original)
+      game.act('split'); // Resplit hand1 (8,8)
+      // After resplit: hand0 [8,3], hand1 [8,3], hand2 [8,2] (new, played next)
       expect(game.hands.length).toBe(3);
-      expect(game.hands[0].splitAces).toBe(false); // Still not a split-aces hand
+      expect(game.active).toBe(2);
+      expect(game.hands[2].splitAces).toBe(false); // Still not a split-aces hand
     });
 
     it('rsa:true: resplit-ace hand that draws an ace stays open but no hit/double legal', () => {
@@ -478,13 +485,14 @@ describe('split aces', () => {
 
       game.act('split'); // Split initial A,A
       expect(game.hands.length).toBe(2);
-      expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['A', 'A']);
-      expect(game.hands[0].done).toBe(false); // Can resplit
-      expect(game.hands[0].splitAces).toBe(true);
-      expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['A', 'K']);
-      expect(game.hands[1].done).toBe(true);
+      expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['A', 'A']);
+      expect(game.hands[1].done).toBe(false); // Can resplit
+      expect(game.hands[1].splitAces).toBe(true);
+      expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['A', 'K']);
+      expect(game.hands[0].done).toBe(true);
+      expect(game.active).toBe(1);
 
-      // hand0 is active and open (A,A pair with rsa:true)
+      // hand1 is active and open (A,A pair with rsa:true)
       // Legal actions must be exactly ['stand', 'split'] — NO hit, NO double
       const actions = game.legalActions();
       expect(actions).toContain('stand');
@@ -901,6 +909,36 @@ describe('wong-out / sit-out (R5)', () => {
 });
 
 describe('count check', () => {
+  it('#36: an owed check is posed by asking to deal, not by the settle, and the answer closes it', () => {
+    const game = new Game(cfg({ countCheckEvery: 1, seed: 42 }));
+    // Nothing owed before any round: asking to deal deals.
+    expect(game.poseCountCheck()).toBe(false);
+    expect(game.countCheckOpen).toBe(false);
+
+    game.startRound();
+    if (game.phase === 'insurance') game.insuranceDecision(false);
+    while (game.phase === 'player') game.act('stand');
+
+    // Settled: owed but NOT asked -- the round's result is still the screen.
+    expect(game.phase).toBe('settled');
+    expect(game.countCheckDue).toBe(true);
+    expect(game.countCheckOpen).toBe(false);
+
+    const rcAtSettle = game.runningCount;
+    const cardsAtSettle = game.shoe.cardsDealt;
+    expect(game.poseCountCheck()).toBe(true);
+    expect(game.poseCountCheck()).toBe(true); // idempotent while open
+    expect(game.countCheckOpen).toBe(true);
+    // Posing moves nothing: the hand on the felt is the one being counted.
+    expect(game.phase).toBe('settled');
+    expect(game.shoe.cardsDealt).toBe(cardsAtSettle);
+
+    game.submitCountCheck(rcAtSettle);
+    expect(game.countCheckDue).toBe(false);
+    expect(game.countCheckOpen).toBe(false);
+    expect(game.poseCountCheck()).toBe(false);
+  });
+
   it('countCheckEvery:2 triggers after the 2nd round settles; 2nd trigger also asks TC', () => {
     const game = new Game(cfg({ countCheckEvery: 2, seed: 42 }));
 
@@ -1064,15 +1102,16 @@ describe('reshuffle', () => {
 
 describe('grading wiring', () => {
   it('rigged split hand (9,7) v 10 at tc 0: hit vs correct-stand -> missed-deviation 16v10', () => {
-    // (9,9) v 10, split -> hand0 draws 7 -> hard 16 v 10, fromSplit (surrender
+    // (9,9) v 10, split -> the right hand, played first, draws 7 -> hard 16 v 10, fromSplit (surrender
     // unavailable) so the 16v10 stand-at-tc>=0 deviation is reachable.
     const game = Game.withRiggedShoe(cfg(), rig('9', '10', '9', '7', '7', '2', '5'));
     game.startRound();
     expect(game.phase).toBe('player');
 
     game.act('split');
-    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['9', '7']);
-    expect(game.hands[0].fromSplit).toBe(true);
+    expect(game.active).toBe(1);
+    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['9', '7']);
+    expect(game.hands[1].fromSplit).toBe(true);
     expect(game.trueCountNow).toBe(0);
 
     game.act('hit');
@@ -1153,7 +1192,8 @@ describe('multi-seat dealing (Cycle-2 Task 2)', () => {
     expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['3', '5']);
     expect(game.dealerCards[0].rank).toBe('9');
     expect(game.dealerCards[1].rank).toBe('6');
-    expect(game.active).toBe(0);
+    // #1: dealt in hand order, but PLAYED from the right.
+    expect(game.active).toBe(1);
   });
 
   it('bots autoplay to completion and settle for display, without touching bankroll (Cycle-2 Task 3)', () => {
@@ -1207,9 +1247,10 @@ describe('multi-hand player (Cycle-2 Task 4)', () => {
     expect(game.hands[1].bet).toBe(5);
 
     const initialBankroll = game.bankroll;
-    game.act('stand'); // hand0 stands at 19
-    expect(game.active).toBe(1);
+    expect(game.active).toBe(1); // #1: the right hand plays first
     game.act('hit'); // hand1 draws K -> bust (26)
+    expect(game.active).toBe(0);
+    game.act('stand'); // hand0 stands at 19
     expect(game.phase).toBe('settled');
 
     expect(game.hands[0].result).toBe('win');
@@ -1246,13 +1287,14 @@ describe('multi-hand player (Cycle-2 Task 4)', () => {
     expect(game.hands[1].bet).toBe(2);
   });
 
-  it('split inside hand 0 does not consume hand 1s split budget (per-origin 4-hand cap)', () => {
+  it('split inside hand 1 does not consume hand 0s split budget (per-origin 4-hand cap)', () => {
     const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
     // Deal: hand0=[8,8], hand1=[8,8], dealer 5/6 (irrelevant, never reached).
-    // Chain-split hand0's lineage up to 3 hands (still < 4, its own cap), while
-    // hand1 (a completely separate original hand / origin) has split 0 times.
-    // Total array length reaches 4 at that point -- a GLOBAL hands.length<4 cap
-    // would (wrongly) block hand1 from ever splitting; a PER-ORIGIN cap must not.
+    // Play starts on the RIGHT (#1), so chain-split hand1's lineage up to 3
+    // hands (still < 4, its own cap), while hand0 (a completely separate
+    // original hand / origin) has split 0 times. Total array length reaches 4
+    // at that point -- a GLOBAL hands.length<4 cap would (wrongly) block hand0
+    // from ever splitting; a PER-ORIGIN cap must not.
     const game = Game.withRiggedShoe(
       cfg({ seats }),
       rig('8', '8', '5', '8', '8', '6', '8', '2', '8', '3', '8', '3'),
@@ -1260,36 +1302,41 @@ describe('multi-hand player (Cycle-2 Task 4)', () => {
     game.startRound();
     expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['8', '8']);
     expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['8', '8']);
+    expect(game.active).toBe(1);
 
-    game.act('split'); // hand0 -> hand0a[8,8] hand0b[8,2]; hands=[hand0a,hand0b,hand1]
+    game.act('split'); // hand1 -> hand1[8,2] + new hand1b[8,8] to its right; hands=[hand0,hand1,hand1b]
     expect(game.hands).toHaveLength(3);
-    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['8', '8']);
-    expect(game.active).toBe(0); // still on hand0a (re-formed pair)
+    expect(game.hands[2].cards.map((c) => c.rank)).toEqual(['8', '8']);
+    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['8', '2']);
+    expect(game.active).toBe(2); // the new right-hand half (re-formed pair)
 
-    game.act('split'); // hand0a -> hand0a2[8,8] hand0a-split[8,3]; hands=[hand0a2,hand0a-split,hand0b,hand1]
+    game.act('split'); // hand1b -> hand1b[8,3] + new hand1c[8,8]; hands=[hand0,hand1,hand1b,hand1c]
     expect(game.hands).toHaveLength(4);
-    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['8', '8']);
+    expect(game.hands[3].cards.map((c) => c.rank)).toEqual(['8', '8']);
+    expect(game.hands[2].cards.map((c) => c.rank)).toEqual(['8', '3']);
+    expect(game.active).toBe(3);
 
-    // Total hands.length is now 4 -- exactly the GLOBAL cap. hand0's own
+    // Total hands.length is now 4 -- exactly the GLOBAL cap. hand1's own
     // lineage (origin) has only 3 hands, so ONE more split must still be
     // legal for it under a correct per-origin cap.
     expect(game.legalActions()).toContain('split');
 
-    game.act('stand'); // hand0a2 done -> advance to hand0a-split
-    expect(game.active).toBe(1);
-    game.act('stand'); // hand0a-split done -> advance to hand0b
+    game.act('stand'); // hand1c done -> advance left to hand1b
     expect(game.active).toBe(2);
-    game.act('stand'); // hand0b done -> advance to hand1
-    expect(game.active).toBe(3);
+    game.act('stand'); // hand1b done -> hand1
+    expect(game.active).toBe(1);
+    game.act('stand'); // hand1 done -> hand0
+    expect(game.active).toBe(0);
 
-    // hand1 has never split -- its own origin group has exactly 1 hand, so
-    // split must be legal for it regardless of hand0's lineage already
+    // hand0 has never split -- its own origin group has exactly 1 hand, so
+    // split must be legal for it regardless of hand1's lineage already
     // sitting at the global total of 4.
     expect(game.legalActions()).toContain('split');
     game.act('split');
     expect(game.hands).toHaveLength(5);
-    expect(game.hands[3].cards.map((c) => c.rank)).toEqual(['8', '8']);
-    expect(game.hands[4].cards.map((c) => c.rank)).toEqual(['8', '3']);
+    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['8', '8']);
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['8', '3']);
+    expect(game.active).toBe(1);
   });
 
   it('bets array length !== playerHands -> throws Error', () => {
@@ -1381,9 +1428,10 @@ describe('insurance across all player hands (Cycle-2 Task 5)', () => {
     expect(game.insuranceNet).toBe(-2);
     expect(game.bankroll).toBe(initialBankroll - 2);
 
-    game.act('stand'); // hand0 19 vs dealer 20 -> lose
-    expect(game.active).toBe(1);
+    expect(game.active).toBe(1); // #1: right hand first
     game.act('stand'); // hand1 15 vs dealer 20 -> lose
+    expect(game.active).toBe(0);
+    game.act('stand'); // hand0 19 vs dealer 20 -> lose
     expect(game.phase).toBe('settled');
 
     expect(game.hands[0].result).toBe('lose');
@@ -1963,5 +2011,92 @@ describe('V5-4: the table grades against the profile rounding convention', () =>
       throw new Error('unreachable');
     };
     expect(run({})).toBe(run({ tcRounding: 'floor' }));
+  });
+});
+
+/**
+ * #1 split order. A casino plays the hand on the dealer's left -- the
+ * player's RIGHT -- first. Hands are stored and drawn left to right, so play
+ * runs from the highest index down, and a split's new hand goes in right
+ * next to the hand split and is played next.
+ */
+describe('casino play order: right to left (#1)', () => {
+  it('three dealt hands are played rightmost first, then leftwards', () => {
+    const seats: SeatConfig = { playerHands: 3, bots: 0, botMistakePct: 0, playerPosition: 0 };
+    // Pass 1: h0 10, h1 9, h2 8, up 7. Pass 2: h0 2, h1 3, h2 4, hole 10.
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', '9', '8', '7', '2', '3', '4', '10'));
+    game.startRound();
+    const visited: string[] = [];
+    while (game.phase === 'player') {
+      visited.push(`${game.active}:${game.hands[game.active].cards.map((c) => c.rank).join(',')}`);
+      game.act('stand');
+    }
+    expect(visited).toEqual(['2:8,4', '1:9,3', '0:10,2']);
+    // The graded actions come out in the same order.
+    expect(game.events.filter((e) => e.kind === 'action').map((e) => e.hand)).toEqual([
+      '8,4 v 7',
+      '9,3 v 7',
+      '10,2 v 7',
+    ]);
+  });
+
+  it('every resplit is played before the hands to its left, and descending index is play order', () => {
+    // P(8,8) v 6. Split: right gets 8 (8,8), left gets 2. Resplit the right:
+    // its new right half gets 3, it gets 9. Then stand everything.
+    const game = Game.withRiggedShoe(cfg(), rig('8', '6', '8', '10', '8', '2', '3', '9', '10'));
+    game.startRound();
+    const visited: number[] = [];
+    let guard = 0;
+    while (game.phase === 'player' && guard++ < 20) {
+      visited.push(game.active);
+      game.act(game.legalActions().includes('split') ? 'split' : 'stand');
+    }
+    // split at 0 -> play 1 (split again) -> play 2, then 1, then 0.
+    expect(visited).toEqual([0, 1, 2, 1, 0]);
+    expect(game.hands.map((h) => h.cards.map((c) => c.rank).join(','))).toEqual(['8,2', '8,9', '8,3']);
+    // The hand played first is "hand 1".
+    expect(game.hands.map((_, i) => handPlayNumber(i, game.hands.length))).toEqual([3, 2, 1]);
+  });
+
+  it('bots play their splits right to left too, and their log still names the right hands', () => {
+    // Bot at first base, player after it, so the bot plays inside startRound.
+    const seats: SeatConfig = { playerHands: 1, bots: 1, botMistakePct: 0, playerPosition: 1 };
+    // Deal: bot 8, player 10, up 6, bot 8, player 7, hole 10.
+    // Split #1 (bot hand 0): new right half draws 8 (8,8), hand 0 draws 8 (8,8).
+    // Right half resplits (#2): its new right half draws 3 (8,3 -> double, 10),
+    // it draws 9 (17, stand). Then hand 0 splits (#3): new right half draws 2
+    // (8,2 -> double, 5), hand 0 draws 9 (stand). Player stands; dealer 16 hits K.
+    const game = Game.withRiggedShoe(
+      cfg({ seats }),
+      rig('8', '10', '6', '8', '7', '10', '8', '8', '3', '9', '10', '2', '9', '5', 'K'),
+    );
+    const order: number[] = [];
+    game.onBotDecision = (info) => order.push(info.handIndex);
+    game.startRound();
+
+    expect(order).toEqual([0, 1, 2, 1, 0, 1, 0]);
+    const bot = game.seats[0].hands;
+    expect(bot.map((h) => h.cards.map((c) => c.rank).join(','))).toEqual(['8,9', '8,2,5', '8,9', '8,3,10']);
+    // The third split pushed the already-played hands one place right; their
+    // logged entries moved with them.
+    expect(game.botActionLog.map((e) => `${e.action}@${e.handIndex}${e.card ? `:${e.card.rank}` : ''}`)).toEqual([
+      'split@0',
+      'split@2',
+      'double@3:10',
+      'stand@2',
+      'split@0',
+      'double@1:5',
+      'stand@0',
+    ]);
+    for (const e of game.botActionLog) {
+      if (e.card) expect(bot[e.handIndex].cards).toContain(e.card);
+    }
+  });
+
+  it('handPlayNumber counts from the right', () => {
+    expect(handPlayNumber(0, 1)).toBe(1);
+    expect(handPlayNumber(0, 2)).toBe(2);
+    expect(handPlayNumber(1, 2)).toBe(1);
+    expect(handPlayNumber(2, 4)).toBe(2);
   });
 });

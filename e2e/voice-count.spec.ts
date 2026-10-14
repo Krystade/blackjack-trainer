@@ -80,6 +80,11 @@ async function openCountCheck(page: Page): Promise<void> {
 
   await page.locator('.deal-btn').click();
   await page.getByRole('button', { name: 'Stand', exact: true }).click();
+  // #36: the check is owed from the settle but asked on the way to the next
+  // deal -- here the eyes-free way, "yes" between rounds.
+  await expect(page.locator('.deal-btn')).toBeVisible();
+  await expect(page.locator('.count-voice')).toHaveCount(0);
+  await sayWhenListening(page, 'yes');
   await expect(page.locator('.count-voice')).toBeVisible();
 }
 
@@ -154,6 +159,8 @@ test('"yes" submits the proposal and the prompt closes', async ({ page }) => {
 
   await sayWhenListening(page, 'yes');
   await expect(page.locator('.count-voice')).toHaveCount(0);
+  // ...and the deal that was asked for follows the answer.
+  await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 2');
 });
 
 /**

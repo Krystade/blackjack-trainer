@@ -120,7 +120,7 @@ export async function goHomeAndNavigate(page: Page, url: string, button: 'Play' 
 
 /** If the insurance modal is currently showing, resolve it (Take/Decline) and return true. */
 export async function resolveInsurance(page: Page, take: boolean): Promise<boolean> {
-  const modal = page.locator('.modal-backdrop', { hasText: 'Insurance?' });
+  const modal = page.locator('.bottom-sheet', { hasText: 'Insurance?' });
   if (await modal.isVisible().catch(() => false)) {
     await modal.getByRole('button', { name: take ? 'Take' : 'Decline', exact: true }).click();
     return true;

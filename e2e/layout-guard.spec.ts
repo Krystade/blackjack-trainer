@@ -222,6 +222,7 @@ for (const theme of THEMES) {
     await page.getByRole('button', { name: 'Home', exact: true }).first().click();
     await page.getByRole('button', { name: 'Play', exact: true }).first().click();
     await run('.table-discard-label');
+    await run('.discard-tick-label');
     await run('.repeat-btn');
     await run('.voice-btn');
     const bad = checks.filter((c) => c.ratio < 4.5).map((c) => `${c.sel} ${c.ratio.toFixed(2)}`);

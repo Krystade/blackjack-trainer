@@ -7,6 +7,7 @@ import type { Card } from '../../engine/cards';
 import { TELL_MIN_ROUNDS } from '../../engine/coverBets';
 import type { GradedEvent } from '../../engine/grade';
 import type { DealSlot, Game, PlayerHand, Seat } from '../../engine/game';
+import { handPlayNumber } from '../../engine/game';
 import type { Action } from '../../engine/deviations';
 import type { PlayContext } from '../../engine/strategy';
 import { correctPlay } from '../../engine/strategy';
@@ -30,6 +31,8 @@ import { PlayingCard, formatCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import type { ActionBarMode } from '../components/ActionBar';
 import { Modal } from '../components/Modal';
+import { BottomSheet } from '../components/BottomSheet';
+import { DiscardTray } from '../components/DiscardTray';
 import { MistakeCard } from '../components/MistakeCard';
 import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { NumPad } from '../components/NumPad';
@@ -158,8 +161,9 @@ function isE2E(): boolean {
   return new URLSearchParams(window.location.search).get('e2e') === '1';
 }
 
-function resultMessage(hand: PlayerHand, idx: number, multi: boolean): string {
-  const prefix = multi ? `Hand ${idx + 1}: ` : '';
+/** `playNumber` is the hand's place in the order of play (#1), counted from 1. */
+function resultMessage(hand: PlayerHand, playNumber: number, multi: boolean): string {
+  const prefix = multi ? `Hand ${playNumber}: ` : '';
   switch (hand.result) {
     case 'win':
       return `${prefix}Win +${hand.net}`;
@@ -405,7 +409,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // interpretCountSpeech, which claims every transcript before this runs.
     // Reaching here with it open would mean a stray word playing a hand
     // behind the prompt.
-    if (game.countCheckDue) return;
+    if (game.countCheckOpen) return;
 
     if (game.phase === 'insurance') {
       if (command === 'yes') insure(true);
@@ -451,7 +455,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
    * operator was in the middle of giving.
    */
   const interpretCountSpeech = (heard: string, offered: readonly string[] = [heard]): string | null => {
-    if (!game.countCheckDue) return null;
+    if (!game.countCheckOpen) return null;
 
     // A spoken number is ranked over a car microphone exactly as a spoken
     // word is, and "minus three" behind "minus tree" is the same failure with
@@ -575,7 +579,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   // Ask out loud when the prompt appears, and again if it moves on to the
   // true count. Without this the app simply goes quiet mid-drive and the
   // round looks frozen: the modal is the only thing saying an answer is due.
-  const countDue = game.countCheckDue;
+  const countDue = game.countCheckOpen;
   useEffect(() => {
     if (!voiceOn || !countDue) return;
     audio.say(countPromptText());
@@ -648,14 +652,19 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   let barMode: ActionBarMode;
   if (game.phase === 'player') {
     barMode = { kind: 'actions', legal, onAction: act, advice };
-  } else if ((game.phase === 'idle' || game.phase === 'settled') && !game.countCheckDue) {
+  } else if ((game.phase === 'idle' || game.phase === 'settled') && !game.countCheckOpen) {
     barMode = {
       kind: 'bet',
       betSpreadOn: activeProfile.betSpreadOn,
-      hands: selectedBets.map((units, i) => ({
-        selectedBet: units,
-        onSelectBet: (u: number) => setBetForHand(i, u),
-      })),
+      // Listed in order of play (#1): row "Hand 1" stakes the rightmost hand,
+      // the one dealt to and played first, so it names the same hand as the
+      // felt's label and the result line.
+      hands: selectedBets
+        .map((units, i) => ({
+          selectedBet: units,
+          onSelectBet: (u: number) => setBetForHand(i, u),
+        }))
+        .reverse(),
       onDeal: handleDeal,
       // Wong-out only makes sense against a spread (the same gate the engine
       // uses to grade it); a flat-bet table hides the Sit Out button entirely.
@@ -793,20 +802,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           referent to ESTIMATE decks-remaining from, stranding the deck-
           estimation drill as an island. Shows only the fill (deliberately NO
           exact number) so the count-check still requires a real by-eye
-          estimate — connecting that drill to its point of use. */}
-      {(() => {
-        const dealt = game.shoe.cardsDealt;
-        const totalCards = activeProfile.rules.decks * 52;
-        const fillPct = Math.min(98, Math.max(1, (dealt / totalCards) * 100));
-        return (
-          <div className="table-discard-tray" aria-label="Discard tray">
-            <span className="table-discard-label">Discards</span>
-            <div className="table-discard-frame">
-              <div className="table-discard-fill" style={{ width: `${fillPct}%` }} />
-            </div>
-          </div>
-        );
-      })()}
+          estimate — connecting that drill to its point of use. #38 adds a mark
+          per whole deck, labelled decks dealt, so depth reads like a real tray. */}
+      <DiscardTray cardsDealt={game.shoe.cardsDealt} decks={activeProfile.rules.decks} />
 
       <div className="dealer-area">
         {game.dealerCards.map((c, i) => (
@@ -871,7 +869,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             key={i}
             className={`player-hand${i === game.active && game.phase === 'player' ? ' hand-active' : ''}`}
           >
-            {playerHandsCount > 1 && <div className="hand-label">Hand {i + 1}</div>}
+            {playerHandsCount > 1 && (
+              <div className="hand-label">Hand {handPlayNumber(i, game.hands.length)}</div>
+            )}
             <div className="hand-cards">
               {hand.cards.map((c, j) => (
                 <PlayingCard
@@ -909,11 +909,15 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             {game.hands.length === 0 && (
               <div className="message-result message-sat-out">Sat out — no bet.</div>
             )}
-            {game.hands.map((h, i) => (
-              <div key={i} className="message-result">
-                {resultMessage(h, i, multiHand)}
-              </div>
-            ))}
+            {/* In order of play (#1): rightmost hand first, as "Hand 1". */}
+            {game.hands
+              .map((h, i) => ({ h, i }))
+              .reverse()
+              .map(({ h, i }) => (
+                <div key={i} className="message-result">
+                  {resultMessage(h, handPlayNumber(i, game.hands.length), multiHand)}
+                </div>
+              ))}
             {game.insuranceNet !== null && (
               <div className="message-result">
                 Insurance {formatSigned(game.insuranceNet)}
@@ -937,9 +941,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       <ActionBar mode={barMode} />
 
       {game.phase === 'insurance' && (
-        <Modal title="Insurance?">
+        <BottomSheet title="Insurance?">
           <p>The dealer shows an ace. Take insurance?</p>
-          <div className="modal-actions">
+          <div className="bottom-sheet-actions">
             <button type="button" onClick={() => insure(true)}>
               Take
             </button>
@@ -947,11 +951,11 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
               Decline
             </button>
           </div>
-        </Modal>
+        </BottomSheet>
       )}
 
-      {game.countCheckDue && (
-        <Modal title={countStage === 'rc' ? 'Running count?' : 'True count?'}>
+      {game.countCheckOpen && (
+        <BottomSheet title={countStage === 'rc' ? 'Running count?' : 'True count?'}>
           {/* The spoken proposal, shown as well as said. A driver glancing
               at the screen at a light should be able to see what the app
               thinks it heard, and a passenger should be able to correct it
@@ -982,7 +986,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             label={countStage === 'rc' ? 'Enter running count' : 'Enter true count'}
             onSubmit={handleCountSubmit}
           />
-        </Modal>
+        </BottomSheet>
       )}
 
       {overlay && (
