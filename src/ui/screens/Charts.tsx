@@ -144,7 +144,6 @@ export function Charts({
   );
 
   const cellRef = useRef<HTMLTableCellElement | null>(null);
-  const scrollerRefs = useRef(new Map<ChartSection, HTMLDivElement | null>());
 
   const chooseOrder = (next: RowOrder) => {
     setOrder(next);
@@ -156,25 +155,14 @@ export function Charts({
     }
   };
 
-  // Horizontal centring is done by hand rather than via scrollIntoView's
-  // `inline` option: the row-label column is position:sticky, so the browser
-  // considers a cell "visible" while it is actually sitting UNDER the label.
-  // Centring the cell in the scroller sidesteps that entirely, and then the
-  // vertical scrollIntoView is asked for `inline: 'nearest'` so it does not
-  // undo the centring it cannot reason about.
+  // B4: the grid fits the screen width, so only the vertical position needs
+  // finding -- every column of the ringed cell's row is already on screen.
   const highlightKey = activeHighlight
     ? `${activeHighlight.section}:${activeHighlight.row}:${activeHighlight.dealerUp}`
     : '';
   useEffect(() => {
     const cell = cellRef.current;
     if (!cell || !activeHighlight) return;
-
-    const scroller = scrollerRefs.current.get(activeHighlight.section);
-    if (scroller) {
-      const frame = scroller.getBoundingClientRect();
-      const target = cell.getBoundingClientRect();
-      scroller.scrollLeft += target.left - frame.left - (frame.width - target.width) / 2;
-    }
     cell.scrollIntoView({ block: 'center', inline: 'nearest' });
     // highlightKey is the value identity of activeHighlight; re-running on the
     // object reference alone would re-scroll on every unrelated render.
@@ -259,19 +247,20 @@ export function Charts({
           </h2>
 
           <div className="chart-frame">
-            <div
-              className="chart-scroller"
-              tabIndex={0}
-              role="region"
-              aria-label={`${section.title} chart, scrolls sideways`}
-              ref={(el) => {
-                scrollerRefs.current.set(section.id, el);
-              }}
-            >
+            {/* B4: ten dealer columns and the row label fit the width of the
+                phone (fixed layout, percentage columns), so nothing scrolls
+                sideways and no column hides behind a fade. */}
+            <div className="chart-grid">
               <table className="chart-table">
                 <caption className="chart-caption">
                   {section.title} — {rulesetSummary(activeProfile.rules)}
                 </caption>
+                <colgroup>
+                  <col className="chart-col-label" />
+                  {DEALER_UPCARDS.map((up) => (
+                    <col className="chart-col-up" key={up} />
+                  ))}
+                </colgroup>
                 <thead>
                   <tr>
                     <th scope="col" className="chart-corner">

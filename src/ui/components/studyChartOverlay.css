@@ -1,0 +1,31 @@
+/*
+ * The study chart overlay's own layout (StudyChartOverlay.tsx). Its base
+ * rule (fixed, opaque, scrolls) is in app.css; these adjust it for the
+ * floating Back pill (#2) and the chart's sticky header bar (#24).
+ */
+
+/* The chart's header bar is sticky at the status-bar inset and carries the
+   mute disc (charts.css), so the overlay does not also reserve the shell's
+   mute strip above it -- that left an empty band, with the disc floating in
+   it, above a header that then slid up under the disc. */
+body .study-chart-overlay {
+  padding-top: var(--safe-top, 0px);
+}
+
+/* Room to scroll the last rows (PAIRS, and its note) out from under the pill:
+   48px of pill, 12px of lift, and a little air. Doubled class because the
+   shell's `body:has(.tab-bar) .charts-screen` still matches here (the tab
+   bar is hidden, not unmounted) and would reserve a tab bar's height. */
+.study-chart-overlay .charts-screen.charts-screen {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 88px);
+}
+
+/* The overlay is `position: fixed; inset: 0`, which the installed app sizes
+   to the same short viewport -- so it stopped `--vp-gap` above the bottom
+   edge, with the drill showing through underneath. Stretched by the same
+   correction as the pill it now carries. */
+@media (display-mode: standalone) {
+  body .study-chart-overlay {
+    bottom: var(--vp-gap);
+  }
+}

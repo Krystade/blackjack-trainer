@@ -1,3 +1,4 @@
+import './studyChartOverlay.css';
 import type { Card, Rank } from '../../engine/cards';
 import type { Profile } from '../../store/types';
 import { Charts, highlightForHand } from '../screens/Charts';
@@ -17,8 +18,8 @@ import type { ChartHighlight } from '../screens/Charts';
  * wrong sitting among its neighbours, then landing back on it; a round trip
  * through the router breaks both halves.
  *
- * Rendered as a fixed, opaque layer so the chart's own scrolling (it has a
- * horizontally scrollable table with a sticky label column) is unaffected by
+ * Rendered as a fixed, opaque layer with its own vertical scroll, so the
+ * chart's sticky header and note pin against the overlay rather than against
  * whatever it happens to be covering.
  */
 

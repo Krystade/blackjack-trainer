@@ -59,7 +59,8 @@
   color: var(--ink);
 
   /*
-   * Requirement: the PAGE never scrolls sideways. Only .chart-scroller does.
+   * Requirement: the PAGE never scrolls sideways, and since B4 (#24) nothing
+   * on it does -- the grids fit the width.
    *
    * `clip`, not `hidden`, and the difference is load-bearing. `hidden` makes
    * this element a scroll container in BOTH axes, and it is the nearest one
@@ -97,15 +98,63 @@
 
 /* ---------- header ---------- */
 
+/*
+ * #24: THE MUTE DISC GETS A SEAT IN THIS BAR. Everywhere else it sits in a
+ * reserved strip above the screen (primitives.css, `--mute-h`) -- but that
+ * strip is transparent, and the page scrolls under it, so on this screen the
+ * grids slid straight under the disc and it covered chart cells. Here the
+ * strip is dropped (see the `body` rules below) and the header becomes a
+ * sticky, opaque bar the disc sits in, with its right-hand end reserved for
+ * it. Cells scroll under the bar, never under the disc, and Back stays in
+ * reach while scrolling.
+ *
+ * The disc itself is still the shell's fixed `.mute-btn`; it is only nudged
+ * down to the bar's centre line while a chart is on screen.
+ */
+.charts-screen {
+  --charts-bar-h: 56px;
+}
+
 .charts-topbar {
+  position: sticky;
+  top: var(--safe-top, 0px);
+  z-index: 12;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem 0.9rem;
+  height: var(--charts-bar-h);
+  padding: 0 calc(var(--mute-disc, 44px) + 16px) 0 1rem;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--felt);
+}
+
+/* Covers the status-bar inset above the bar once it is stuck, so nothing
+   scrolled past shows through the clock (the overlay sits above the shell's
+   own status-bar strip, so it needs its own). */
+.charts-topbar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: var(--safe-top, 0px);
+  background: var(--felt);
+}
+
+body[data-screen='charts'] {
+  --mute-h: 0px;
+  /* Restated, not inherited: --chrome-top is resolved where it is declared
+     (same as the field test's rule in primitives.css). */
+  --chrome-top: var(--safe-top);
+}
+
+body:has(.charts-screen) .mute-btn {
+  top: calc(var(--safe-top, 0px) + (56px - var(--mute-disc, 44px)) / 2);
 }
 
 .charts-back-btn {
-  min-height: 48px;
+  min-height: 44px;
   padding: 0 1rem;
   border-radius: 8px;
   border: 1px solid var(--hairline);
@@ -132,7 +181,7 @@
  * and underlined with the one brass hairline on the page.
  */
 .charts-ruleset {
-  margin: 0 0.9rem;
+  margin: 0.75rem 1rem 0;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid rgba(216, 185, 105, 0.45);
   font-family: var(--mono);
@@ -143,7 +192,7 @@
 }
 
 .charts-provenance {
-  margin: 0.5rem 0.9rem 0;
+  margin: 0.5rem 1rem 0;
   font-size: 0.72rem;
   line-height: 1.4;
   color: var(--ink-dim);
@@ -172,13 +221,14 @@
  */
 .charts-note {
   position: sticky;
-  top: 0;
+  /* Under the sticky header bar (#24), not behind it. */
+  top: calc(var(--safe-top, 0px) + var(--charts-bar-h));
   z-index: 10;
   /* Full-bleed rather than an inset card: pinned at top: 0 a card touches
      the edge of the screen on one side and floats on the other three, which
      reads as a rendering fault. A bar owns the edge on purpose. */
   margin: 0.6rem 0 0;
-  padding: 0.6rem 0.9rem;
+  padding: 0.6rem 1rem;
   border-bottom: 2px solid var(--brass);
   background: var(--surface-raised);
   box-shadow: 0 6px 12px -6px rgba(0, 0, 0, 0.55);
@@ -194,7 +244,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.9rem;
+  padding: 0.9rem 1rem;
 }
 
 .charts-order-label {
@@ -232,8 +282,7 @@
 }
 
 .charts-order-btn:focus-visible,
-.charts-back-btn:focus-visible,
-.chart-scroller:focus-visible {
+.charts-back-btn:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 2px;
 }
@@ -254,7 +303,7 @@
  * legend nobody reads.
  */
 .chart-legend {
-  margin: 0 0.9rem 1.25rem;
+  margin: 0 1rem 1.25rem;
   padding: 0.8rem;
   border: 1px solid var(--hairline);
   border-radius: 10px;
@@ -308,7 +357,7 @@
 /* ---------- sections ---------- */
 
 .chart-section {
-  margin: 0 0.9rem 1.5rem;
+  margin: 0 1rem 1.5rem;
 }
 
 .chart-section-title {
@@ -339,53 +388,44 @@
 }
 
 /*
- * The frame owns the right-edge fade. Ten dealer columns plus a row label do
- * not fit a 320px phone at any legible size, so the grid scrolls sideways --
- * and a scroll affordance the reader can't see is a column they never find.
- * The fade sits over the table's own trailing padding, so it never lands on a
- * letter.
+ * B4 (#24): THE GRID FITS THE PHONE. Ten dealer columns and the row label fit
+ * 343px (a 375 screen less 16px gutters) with no sideways scroll, no fade and
+ * nothing clipped -- the odds designer's layout. `table-layout: fixed` makes
+ * the <col> percentages the column widths, whatever the cells contain, so a
+ * wide label can never push a column off the edge. At 343px that is a 50px
+ * label column and ten 28px dealer columns: room for a two-letter code and
+ * its fallback sliver at 11.5px.
  */
 .chart-frame {
-  position: relative;
   border: 1px solid var(--hairline);
   border-radius: 10px;
   background: var(--surface);
-  overflow: hidden;
 }
 
-.chart-frame::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 14px;
-  pointer-events: none;
-  /* Follows the frame's own surface, so the fade still reads as the grid
-     running out of room in every theme rather than as a dark smear. */
-  background: linear-gradient(to right, transparent, var(--surface) 92%);
-}
-
-.chart-scroller {
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  padding: 0.45rem;
-  padding-right: 1.1rem;
+.chart-grid {
+  padding: 0.3rem;
 }
 
 /*
- * Tile gaps come from per-cell borders in the surface colour, NOT from
- * border-spacing. border-spacing also inserts a gutter BEFORE the first
- * column, which the sticky row label cannot pin past -- the label visibly
- * jumped a couple of pixels the moment the grid started scrolling. Borders
- * give the same separated-tile look and leave the sticky column dead still.
+ * Tile gaps come from per-cell borders in the surface colour rather than
+ * border-spacing, which would also insert a gutter before the first column
+ * and eat into the width budget above.
  */
 .chart-table {
+  table-layout: fixed;
+  width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
+}
+
+.chart-col-label {
+  width: 15%;
+}
+
+.chart-col-up {
+  width: 8.5%;
 }
 
 .chart-table th,
@@ -406,43 +446,31 @@
 }
 
 .chart-up {
-  min-width: 2.15rem;
   padding: 0.25rem 0;
   font-size: 0.72rem;
   font-weight: 700;
   color: var(--ink-dim);
 }
 
-/*
- * Sticky row labels: the operator must always know WHICH total they are
- * looking at, however far right the grid is scrolled. The drop shadow is the
- * lift that says "this column is floating over the rest".
- */
 .chart-rowlabel,
 .chart-corner {
-  position: sticky;
-  left: 0;
-  width: 4rem;
-  min-width: 4rem;
-  padding: 0 0.35rem;
+  padding: 0 0.3rem 0 0;
   text-align: right;
+  white-space: nowrap;
   background: var(--surface);
-  box-shadow: 7px 0 9px -5px rgba(0, 0, 0, 0.8);
 }
 
 .chart-rowlabel {
-  z-index: 3;
-  height: 2.05rem;
-  font-size: 0.72rem;
+  height: 2rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: var(--ink);
 }
 
 .chart-corner {
-  z-index: 4;
-  font-size: 0.6rem;
+  font-size: 0.56rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ink-dim);
 }
@@ -451,8 +479,7 @@
 
 .chart-cell {
   position: relative;
-  min-width: 2.15rem;
-  height: 2.05rem;
+  height: 2rem;
   padding: 0;
   border-radius: 3px;
   text-align: center;
@@ -537,8 +564,7 @@
  * White appears nowhere else in this palette, so the ring cannot be mistaken
  * for another action colour. Drawn on a pseudo-element rather than as an
  * outline so it does not fight the cell's own fallback-sliver box-shadow, and
- * sat BELOW the sticky label's z-index so the label still occludes it when the
- * grid is scrolled -- a ring floating over the row label would look broken.
+ * sat below the sticky header and note, which the grid scrolls under.
  *
  * Nothing else is dimmed. Anchoring a correction against the decisions either
  * side of it is the entire point of opening the chart here.
