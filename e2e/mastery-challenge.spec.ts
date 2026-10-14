@@ -135,3 +135,40 @@ test('mastery challenge: interruptions default to Off and can be switched to Rel
   // distractionFreq (D4) -- confirm it's still the untouched default.
   expect(settings?.drill?.distractionFreq ?? 'off').toBe('off');
 });
+
+/**
+ * #10 regression. The miss used to call setRun(nextRun) before the feedback
+ * rendered, so the chart (and the correction) read the RESHUFFLED run's first
+ * cell. A miss on 4,4 v 4 must open the chart on the PAIRS row of the
+ * answered hand, whatever the reset deals next.
+ *
+ * Seed 12345 puts pair-4-v-4 at index 110 of the All scope (startMasteryRun);
+ * the first assertion fails loudly if that ever stops being true.
+ */
+test('mastery challenge #10: a miss on 4,4 v 4 opens the chart on PAIRS, and the strip names the lost progress', async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+    window.localStorage.setItem('bjtrainer.masteryrun.v1', JSON.stringify({ scope: 'all', seed: 12345, index: 110 }));
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
+  await expect(page.locator('[data-testid="mastery-progress"]')).toContainText('110 / 330 cleared');
+
+  // Stand on 4,4 v 4 is wrong under every rule set.
+  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
+
+  // B1: no Next tap; the run reset and the next hand is already up.
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-testid="mastery-progress"]')).toContainText('0 / 330 cleared');
+  const strip = page.locator('[data-testid="result-strip"]');
+  await expect(strip.getByTestId('hand-result-hand')).toHaveText('4,4 v 4');
+  await expect(strip).toContainText('Run reset at 110/330');
+  await expect(strip.getByTestId('hand-result-taken')).toHaveText('Stand');
+
+  await strip.getByRole('button', { name: 'Show on chart', exact: true }).click();
+  const overlay = page.locator('.study-chart-overlay');
+  const highlighted = overlay.locator('[data-highlight="true"]');
+  await expect(highlighted).toHaveCount(1);
+  await expect(highlighted.locator('xpath=ancestor::section[1]')).toHaveAttribute('data-section', 'PAIRS');
+});

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, readStats, statsTab } from './helpers';
+import { answerAndReadStrip, withSettings, readStats, statsTab } from './helpers';
 
 /**
  * V5-2 (docs/BACKLOG.md): hand-drill accuracy is recorded separately for
@@ -19,8 +19,8 @@ async function openFlashcards(page: Page): Promise<void> {
 
 async function answerSome(page: Page, n: number): Promise<void> {
   for (let i = 0; i < n; i++) {
-    await page.getByRole('button', { name: 'Stand', exact: true }).click();
-    await page.locator('.drill-next-btn').click();
+    // B1: answering deals the next card; there is no Next step.
+    await answerAndReadStrip(page, page.getByRole('button', { name: 'Stand', exact: true }));
   }
 }
 

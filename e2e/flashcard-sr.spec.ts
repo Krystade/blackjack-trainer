@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { withSettings } from './helpers';
+import { answerAndReadStrip, withSettings } from './helpers';
 
 /**
  * The spaced-repetition schedule, on the card.
@@ -43,11 +43,11 @@ test('getting it right moves the card up a box', async ({ page }) => {
   // Play until a correct answer lands, then read the box off the card.
   let box: number | null = null;
   for (let i = 0; i < 12 && box === null; i++) {
-    await answerAnything(page);
-    if ((await page.locator('.result-correct').count()) > 0) {
-      box = Number(await page.locator('.feedback-sr').getAttribute('data-box'));
+    // B1: the strip holds the answered card's SR line; the next card is up.
+    const tone = await answerAndReadStrip(page, page.locator('.action-bar button:not([disabled])').first());
+    if (tone === 'ok') {
+      box = Number(await page.locator('[data-testid="result-strip"] .feedback-sr').getAttribute('data-box'));
     }
-    await page.locator('.drill-next-btn').click();
   }
 
   expect(box, 'no correct answer in twelve tries').not.toBeNull();

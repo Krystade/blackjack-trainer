@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { waitForMic, withProfile, withSettings } from './helpers';
+import { answerAndReadStrip, waitForMic, withProfile, withSettings } from './helpers';
 
 /**
  * The flashcards screen on the phone it is actually used on.
@@ -50,14 +50,9 @@ test('Split is offered when the hand is a pair', async ({ page }) => {
       await page.screenshot({ path: 'e2e/screenshots/drill-pair.png' });
       break;
     }
-    // A flashcard offers Next only once it has been answered, so answer the
-    // non-pair first. Stand is always legal; the grade is not the subject.
-    if ((await page.getByRole('button', { name: /Next|Deal/ }).count()) === 0) {
-      await page.getByRole('button', { name: 'Stand', exact: true }).click();
-    }
-    const next = page.getByRole('button', { name: /Next|Deal/ });
-    if ((await next.count()) === 0) break;
-    await next.first().click();
+    // B1: answering deals the next card at once. Stand is always legal; the
+    // grade is not the subject.
+    await answerAndReadStrip(page, page.getByRole('button', { name: 'Stand', exact: true }));
   }
   expect(sawPair, 'never dealt a pair in 40 tries, so nothing was tested').toBe(true);
 });
@@ -505,7 +500,7 @@ test('Home: top-aligned, the full profile name, Test kit is a small link under t
   await expect(page.getByTestId('testkit-screen')).toBeVisible();
 });
 
-test('Deviation quiz: Next is on screen after a wrong answer, and the pill stays inside its card', async ({ page }) => {
+test('Deviation quiz: after a wrong answer the miss strip and the answer buttons both fit the phone', async ({ page }) => {
   await page.setViewportSize(PHONE);
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
@@ -513,37 +508,34 @@ test('Deviation quiz: Next is on screen after a wrong answer, and the pill stays
 
   let sawMistake = false;
   for (let i = 0; i < 12 && !sawMistake; i++) {
-    if (await page.locator('.quiz-insurance-prompt').isVisible().catch(() => false)) {
-      await page.getByRole('button', { name: 'Take insurance', exact: true }).click();
-    } else {
-      await page.locator('.action-bar button.action-btn:not([disabled])', { hasText: 'Double' }).click();
-    }
-    if ((await page.locator('.mistake-card').count()) > 0) {
-      sawMistake = true;
-      break;
-    }
-    await page.locator('.drill-next-btn').click();
+    const btn = (await page.locator('.quiz-insurance-prompt').isVisible().catch(() => false))
+      ? page.getByRole('button', { name: 'Take insurance', exact: true })
+      : page.locator('.action-bar button.action-btn:not([disabled])', { hasText: 'Double' });
+    if ((await answerAndReadStrip(page, btn)) === 'miss') sawMistake = true;
   }
   expect(sawMistake, 'never got a wrong answer in twelve tries').toBe(true);
 
-  await expectInViewport(page, '.drill-next-btn', 'Next');
-  const geo = await page.evaluate(() => {
-    const card = document.querySelector('.mistake-card')!.getBoundingClientRect();
-    const pill = document.querySelector('.mistake-class')?.getBoundingClientRect();
-    return { cardRight: card.right, pillRight: pill?.right ?? 0 };
-  });
-  expect(geo.pillRight, 'the classification pill runs past the card').toBeLessThanOrEqual(geo.cardRight + 0.5);
+  // B1: no Next button; the next item's answers and the miss both fit.
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toHaveCount(0);
+  await expectInViewport(page, '.action-bar', 'the answer buttons');
+  await expectInViewport(page, '[data-testid="result-strip"]', 'the miss strip');
+  const geo = await page.evaluate(() => ({
+    strip: document.querySelector('[data-testid="result-strip"]')!.getBoundingClientRect().right,
+    scroll: document.documentElement.scrollWidth,
+    width: window.innerWidth,
+  }));
+  expect(geo.strip, 'the strip runs off the screen').toBeLessThanOrEqual(geo.width + 0.5);
+  expect(geo.scroll, 'sideways scroll').toBeLessThanOrEqual(geo.width);
   await page.screenshot({ path: 'e2e/screenshots/quiz-feedback-375.png' });
 });
 
 test('Flashcards feedback says it in words: no raw cell id, no "Box n/5"', async ({ page }) => {
   await intoFlashcards(page);
-  await page.getByRole('button', { name: 'Stand', exact: true }).click();
-  const cell = page.locator('.feedback-cell');
-  await expect(cell).toBeVisible();
-  await expect(cell).toHaveText(/^(Hard|Soft|Pair of) \w+ vs \w+$/);
+  await answerAndReadStrip(page, page.getByRole('button', { name: 'Stand', exact: true }));
+  const strip = page.locator('[data-testid="result-strip"]');
+  await expect(strip).toContainText(/\d|A/);
   const body = await page.evaluate(() => document.body.innerText);
   expect(body).not.toMatch(/(hard|soft|pair)-\w+-v-\w+/);
   expect(body).not.toMatch(/Box \d\/5/);
-  await expectInViewport(page, '.drill-next-btn', 'Next');
+  await expectInViewport(page, '.action-bar', 'the answer buttons');
 });

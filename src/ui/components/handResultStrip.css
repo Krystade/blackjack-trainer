@@ -1,0 +1,105 @@
+/* B1 HandResultStrip, inside the shared .result-strip box. Compact on
+   purpose: it sits between the next hand and the action bar on a 375x812
+   phone, so a miss must not push the answer buttons off the screen. */
+.hand-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+}
+
+.hand-result-ok.result-correct {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--good);
+}
+
+.hand-result-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 8px;
+}
+
+.hand-result-verdict.result-wrong {
+  font-size: 1rem;
+}
+
+.hand-result-hand {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.hand-result-lost.mastery-reset-banner {
+  margin: 0;
+  padding: 2px 8px;
+  align-self: flex-start;
+  font-size: 0.9rem;
+}
+
+.hand-result-plays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 16px;
+  color: var(--ink-soft);
+}
+
+.hand-result-plays strong {
+  color: var(--ink);
+}
+
+.hand-result-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hand-result-reason {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--ink-dim);
+}
+
+.hand-result-class {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.hand-result-chart-btn {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hand-result-chart-btn:active {
+  background: var(--accent-wash);
+}
+
+.hand-result .hand-result-label {
+  font-size: 0.8rem;
+  color: var(--ink-dim);
+}
+
+.hand-result .hand-result-note {
+  padding: 0;
+  border: 0;
+  background: none;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-dim);
+}
+
+.hand-result-sr {
+  font-size: 0.8rem;
+  color: var(--ink-dim);
+}

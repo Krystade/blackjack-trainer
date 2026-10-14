@@ -370,6 +370,6 @@ test('an index the operator table overrules says so, and one it does not stays q
   await withSettings(page, { drill: { quizIndex: '12v3' } });
   await openDeviationQuiz(page);
   await page.locator('.action-bar button.action-btn:not([disabled])').first().click();
-  await expect(page.locator('.quiz-label')).toBeVisible();
+  await expect(page.locator('[data-testid="result-strip"]')).toBeVisible();
   await expect(page.locator('.quiz-table-note')).toHaveCount(0);
 });

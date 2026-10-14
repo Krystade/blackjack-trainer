@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { answerAndReadStrip, withSettings } from './helpers';
 
 /**
  * Operator items #7 ("check the correct table" from a mistake) and #2
@@ -12,24 +12,15 @@ import { withSettings } from './helpers';
  * you back to a fresh unrelated hand is not an anchor.
  */
 
-/** Answer the current flashcard wrongly by clicking any enabled action that
- * is not the graded-correct one. Returns the label clicked. */
+/** Answer flashcards until one is graded wrong, clicking any enabled
+ * action. Returns the label clicked. B1: every answer deals the next card at
+ * once, and the miss is described by the result strip. */
 async function answerWrong(page: Page): Promise<string> {
   for (let attempt = 0; attempt < 12; attempt++) {
     const buttons = page.locator('.action-bar button.action-btn:not([disabled])');
     await expect(buttons.first()).toBeVisible();
     const label = (await buttons.first().innerText()).trim();
-    await buttons.first().click();
-
-    // Wait for the graded outcome to actually render before reading it. A
-    // bare isVisible() does not retry, so it can sample the DOM before React
-    // has committed and mistake a miss for a hit.
-    await expect(page.locator('.mistake-card, .message-strip .result-correct').first()).toBeVisible();
-    if (await page.locator('.mistake-card').count()) return label;
-
-    // That card happened to be answered correctly -- advance and try again.
-    await page.locator('.drill-next-btn').click();
-    await expect(page.locator('.message-strip .result-correct')).toHaveCount(0);
+    if ((await answerAndReadStrip(page, buttons.first())) === 'miss') return label;
   }
   throw new Error('could not produce a wrong answer in 12 cards');
 }
@@ -48,19 +39,18 @@ test('#7 flashcards: a wrong answer offers the table, which opens ringed on the 
 
   await answerWrong(page);
 
-  // Captured AFTER the wrong answer lands: answerWrong may advance past cards
-  // that happened to be answered correctly, so the hand under correction is
-  // not necessarily the one first dealt.
-  const handUnderCorrection = await page.locator('.hand-cards').innerText();
+  // B1: the next card is already up. The strip describes the ANSWERED one,
+  // and the chart must open on that, not on the card now on screen.
+  const strip = page.locator('[data-testid="result-strip"][data-tone="miss"]');
+  await expect(strip).toBeVisible();
+  const answered = await strip.getByTestId('hand-result-hand').innerText();
+  const liveHand = await page.locator('.hand-cards').innerText();
 
-  const panel = page.locator('.mistake-card');
-  await expect(panel).toBeVisible();
+  // The miss names the right play and classifies the error.
+  await expect(strip.getByTestId('hand-result-expected')).toBeVisible();
+  await expect(strip.locator('.hand-result-class')).toBeVisible();
 
-  // The correction names the correct play AND classifies the error.
-  await expect(panel).toContainText('Correct');
-  await expect(panel.locator('.mistake-class')).toBeVisible();
-
-  await panel.getByRole('button', { name: 'Show on chart', exact: true }).click();
+  await strip.getByRole('button', { name: 'Show on chart', exact: true }).click();
 
   const overlay = page.locator('.study-chart-overlay');
   await expect(overlay).toBeVisible();
@@ -73,11 +63,11 @@ test('#7 flashcards: a wrong answer offers the table, which opens ringed on the 
   const row = highlighted.locator('xpath=ancestor::tr[1]');
   expect(await row.locator('td').count()).toBeGreaterThan(1);
 
-  // Closing returns to the very same card, still showing its correction.
+  // Closing returns to the same unanswered card, with the miss still up.
   await overlay.getByRole('button', { name: /back/i }).click();
   await expect(overlay).toHaveCount(0);
-  await expect(page.locator('.mistake-card')).toBeVisible();
-  expect(await page.locator('.hand-cards').innerText()).toBe(handUnderCorrection);
+  await expect(strip.getByTestId('hand-result-hand')).toHaveText(answered);
+  expect(await page.locator('.hand-cards').innerText()).toBe(liveHand);
 });
 
 test('#7 the chart is not offered until an answer is actually wrong', async ({ page }) => {

@@ -2,6 +2,7 @@ import { playLabel } from '../playLabel';
 import type { Action } from '../../engine/deviations';
 import type { MistakeClass } from '../../engine/grade';
 import { plainCellLabel } from '../../drills/cellLabel';
+import { CLASS_COPY } from '../mistakeCopy';
 
 /**
  * The shared "here is what you got wrong" panel, used by the table overlay
@@ -36,38 +37,6 @@ const ACTION_CHART_LETTER: Record<Action, string> = {
   double: 'D',
   split: 'P',
   surrender: 'R',
-};
-
-/**
- * What each classification actually means, in the second person. These are
- * the sentences that turn a verdict into a lesson, so they name the fix
- * rather than restating the error.
- */
-const CLASS_COPY: Record<Exclude<MistakeClass, 'correct'>, { label: string; note: string }> = {
-  'basic-error': {
-    label: 'Basic strategy error',
-    note: 'The count doesn\'t change this hand. It\'s pure basic strategy.',
-  },
-  'missed-deviation': {
-    label: 'Missed deviation',
-    note: 'Basic strategy is right at a neutral count, but the true count had passed the index for this hand.',
-  },
-  'phantom-deviation': {
-    label: 'Phantom deviation',
-    note: 'You deviated, but the true count hadn\'t reached the index yet. Basic strategy still applied.',
-  },
-  'wrong-anyway': {
-    label: 'Wrong either way',
-    note: 'Neither the basic strategy play nor the index play. Worth a slow look at this hand.',
-  },
-  timeout: {
-    label: 'Out of time',
-    note: 'No answer before the shot clock ran out. Knowing it slowly isn\'t the same as knowing it.',
-  },
-  'self-report': {
-    label: 'Admitted miss',
-    note: 'You said you didn\'t know this one, so no play was graded. It goes back to box 0 and comes up again this session.',
-  },
 };
 
 function letterFor(value: string): string | null {

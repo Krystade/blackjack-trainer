@@ -10,8 +10,8 @@ import { withProfile } from './helpers';
  * sentence promising the two agree.
  *
  * The property under test is a RELATION between two things the app renders
- * independently, not a copy check: the correction names the play the trainer
- * expected (`.mistake-cell`, one letter), the chart rings the cell it prints
+ * independently, not a copy check: the B1 result strip names the play the
+ * trainer expected (`hand-result-expected`, a word), the chart rings the cell it prints
  * for the same hand (`data-action`, its code), and the note must appear
  * exactly when those two disagree. Neither side is computed here from the
  * feature's own helper, so a note that is always on and a note that is never
@@ -48,14 +48,26 @@ interface Opened {
   noteText: string | null;
 }
 
+const WORD_LETTER: Record<string, string> = {
+  Hit: 'H',
+  Stand: 'S',
+  Double: 'D',
+  Split: 'P',
+  Surrender: 'R',
+};
+
+/** The B1 strip's miss panel (the answered hand, the next one already up). */
+const MISS = '[data-testid="result-strip"][data-tone="miss"]';
+
 /**
- * From a rendered correction: open the table, read both plays and the note,
+ * From a rendered miss strip: open the table, read both plays and the note,
  * then close the overlay again.
  */
 async function openTableAndRead(page: Page): Promise<Opened> {
-  const panel = page.locator('.mistake-card');
+  const panel = page.locator(MISS);
   await expect(panel).toBeVisible();
-  const expected = (await panel.locator('.mistake-cell').innerText()).trim();
+  const word = (await panel.getByTestId('hand-result-expected').innerText()).trim();
+  const expected = WORD_LETTER[word] ?? word;
 
   await panel.getByRole('button', { name: 'Show on chart', exact: true }).click();
   const overlay = page.locator('.study-chart-overlay');
@@ -119,15 +131,12 @@ test('a counted correction explains why the ringed cell says something else', as
     const double = page.locator('.action-bar button.action-btn', { hasText: 'Double' });
     if (!(await double.isEnabled().catch(() => false))) break;
     await double.click();
-    await expect(page.locator('.mistake-card, .message-strip .result-correct').first()).toBeVisible();
-    if (!(await page.locator('.mistake-card').count())) {
-      await page.locator('.drill-next-btn').first().click();
-      continue;
-    }
+    // B1: the next item is already up; the strip holds the answered one.
+    await expect(page.locator('[data-testid="result-strip"]')).toBeVisible();
+    if (!(await page.locator(MISS).count())) continue;
 
     const seen = await openTableAndRead(page);
     if (checkRelation(seen, `quiz item ${i}`) === 'differ') differ += 1;
-    await page.locator('.drill-next-btn').first().click();
   }
 
   expect(
@@ -154,12 +163,11 @@ test('a plain basic-strategy correction gets no note, because there is nothing t
     const buttons = page.locator('.action-bar button.action-btn:not([disabled])');
     await expect(buttons.first()).toBeVisible();
     await buttons.first().click();
-    await expect(page.locator('.mistake-card, .message-strip .result-correct').first()).toBeVisible();
-    if (await page.locator('.mistake-card').count()) {
+    await expect(page.locator('[data-testid="result-strip"]')).toBeVisible();
+    if (await page.locator(MISS).count()) {
       const seen = await openTableAndRead(page);
       if (checkRelation(seen, `flashcard ${i}`) === 'agree') agree += 1;
     }
-    await page.locator('.drill-next-btn').first().click();
   }
 
   expect(

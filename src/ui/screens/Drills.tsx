@@ -39,6 +39,9 @@ import { ZonePad } from '../components/ZonePad';
 import { MistakeCard } from '../components/MistakeCard';
 import { ShotClockBar } from '../components/ShotClockBar';
 import { StudyChartOverlay } from '../components/StudyChartOverlay';
+import { HandResultStrip } from '../components/HandResultStrip';
+import { releaseAnswerFocus, snapshotResult, type HandResult } from '../handResult';
+import type { Card, Rank } from '../../engine/cards';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
 import { narrateSelfCheckReveal, narrateCorrection, narrateFlashcardPrompt, narrateQuizPrompt,
@@ -152,6 +155,46 @@ function useControlStripBottom() {
 
 function drillScreenStyle(padTop: number): CSSProperties {
   return { ['--zone-pad-top']: `${padTop}px` } as CSSProperties;
+}
+
+/* ---------------------------------------------------------------- */
+/* B1 fast advance (#8, #10, #14, #17), shared by the three views.   */
+/* ---------------------------------------------------------------- */
+
+/** What the study chart is opened on: always a FROZEN hand, never the live
+ *  card prop, so it cannot follow the drill onto the next hand (#10). */
+interface ChartTarget {
+  cards: Card[] | null;
+  up: Rank;
+  graded?: { expected?: string; reason?: string; tc?: number };
+}
+
+function chartTargetFrom(result: HandResult): ChartTarget {
+  return {
+    cards: result.cards,
+    up: result.up,
+    graded: { expected: result.expected, reason: result.reason, tc: result.tc ?? 0 },
+  };
+}
+
+/**
+ * The last answered hand's result and the chart it can open.
+ *
+ * In visual mode an answer no longer waits on a Next tap: the view grades,
+ * freezes the result here, and draws the next hand in the same handler. The
+ * strip shows the frozen result; "Show on chart" opens that frozen hand.
+ * Eyes-free, voice and the wheel keep their timed auto-advance and the
+ * full correction panel -- nobody is looking at a strip while driving.
+ */
+function useHandResult() {
+  const [lastResult, setLastResult] = useState<HandResult | null>(null);
+  const [chartTarget, setChartTarget] = useState<ChartTarget | null>(null);
+  const idRef = useRef(0);
+  const nextResultId = () => {
+    idRef.current += 1;
+    return idRef.current;
+  };
+  return { lastResult, setLastResult, chartTarget, setChartTarget, nextResultId };
 }
 
 /* ---------------------------------------------------------------- */
@@ -317,6 +360,8 @@ function FlashcardsView({
   const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action; event: GradedEvent } | null>(null);
   // #7: the chart opened over this correction, closed back onto the same card.
   const [showChart, setShowChart] = useState(false);
+  // B1: the last answered card, frozen, and the hand the chart opens on.
+  const { lastResult, setLastResult, chartTarget, setChartTarget, nextResultId } = useHandResult();
   const audio = useAudio(settings.audio);
 
   // Eyes-free audio (Task 9): a per-session choice, shared across screens for
@@ -560,14 +605,34 @@ function FlashcardsView({
     return spokenPauseFor(text, settings.audio.rate);
   };
 
+  /**
+   * B1 (#8/#14/#17): freeze the answered card into the result strip and deal
+   * the next one in the same handler. The SR line is read here, after the
+   * grade wrote the deck, so a right answer visibly pushes the review out.
+   */
+  const advanceWithResult = (event: GradedEvent) => {
+    const srCard = srDeckRef.current[card.cellId];
+    const srText = formatReviewPlain(srCard, Date.now());
+    setLastResult(
+      snapshotResult(
+        nextResultId(),
+        event,
+        { cards: card.cards, up: card.up, tc: null },
+        { cellId: card.cellId, sr: srText ? { text: srText, box: srCard?.box } : null },
+      ),
+    );
+    releaseAnswerFocus();
+    next();
+  };
+
   const handleAction = (taken: Action) => {
     // An ActionBar click: the hand is on screen and a finger is on the button.
-    const { event, correctAction } = gradeFlashcardAnswer(taken, SCREEN_CHANNEL);
+    const { event } = gradeFlashcardAnswer(taken, SCREEN_CHANNEL);
 
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
 
-    showFeedback({ correct: event.correct, correctAction, event });
+    advanceWithResult(event);
   };
 
   // Eyes-free zone tap: ZoneId and Action are the identical five-member
@@ -646,6 +711,13 @@ function FlashcardsView({
         : audio.say(text, { interrupt: true }),
     );
     audio.ding('bad');
+    // Visual mode: a timeout is a miss like any other, so it goes to the
+    // strip and the next card is dealt. The timed correction screen is for
+    // eyes-free, where nobody is reading a strip.
+    if (!eyesFree && !voiceOn) {
+      advanceWithResult(result.event);
+      return;
+    }
     showFeedback({ correct: false, correctAction: result.correctAction, event: result.event });
     scheduleAutoAdvance(spokenMs);
   };
@@ -861,6 +933,22 @@ function FlashcardsView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedback, eyesFree, card, showChart]);
 
+  const openChartOn = (result: HandResult) => {
+    setChartTarget(chartTargetFrom(result));
+    setShowChart(true);
+  };
+
+  // Closing the chart over a strip lands on a card that has been waiting,
+  // unanswered, the whole time the chart was up. Its clock restarts so that
+  // time is not charged to the answer (latency, shot clock).
+  const closeChart = () => {
+    setShowChart(false);
+    if (!feedbackRef.current) {
+      runIdRef.current += 1;
+      promptShownAtRef.current = performance.now();
+    }
+  };
+
   return (
     <div className="drill-screen" style={drillScreenStyle(padTop)}>
       <div className="drill-topbar">
@@ -1005,7 +1093,20 @@ function FlashcardsView({
                 hand={feedback.event.hand}
                 classification={feedback.event.classification}
                 eyesFree={eyesFree}
-                onShowTable={() => setShowChart(true)}
+                onShowTable={() => {
+                  // No advance happened on this path, so the card on screen
+                  // IS the answered one. Frozen anyway, like the strip.
+                  setChartTarget({
+                    cards: card.cards,
+                    up: card.up,
+                    graded: {
+                      expected: feedback.event.expected,
+                      reason: feedback.event.reason,
+                      tc: feedback.event.tc,
+                    },
+                  });
+                  setShowChart(true);
+                }}
               />
             )}
             {/* The cell id names the chart row just drilled, and belongs to
@@ -1029,6 +1130,10 @@ function FlashcardsView({
               ) : null;
             })()}
           </>
+        )}
+        {/* B1: the previous card's result, under the card now being asked. */}
+        {!feedback && !selfCheckOpen && !eyesFree && lastResult && (
+          <HandResultStrip result={lastResult} onShowChart={openChartOn} />
         )}
       </div>
 
@@ -1056,21 +1161,13 @@ function FlashcardsView({
           </button>
         </div>
       )}
-      {showChart && (
+      {showChart && chartTarget && (
         <StudyChartOverlay
           activeProfile={activeProfile}
-          cards={card.cards}
-          dealerUp={card.up}
-          graded={
-            feedback
-              ? {
-                  expected: feedback.event.expected,
-                  reason: feedback.event.reason,
-                  tc: feedback.event.tc,
-                }
-              : undefined
-          }
-          onClose={() => setShowChart(false)}
+          cards={chartTarget.cards}
+          dealerUp={chartTarget.up}
+          graded={chartTarget.graded}
+          onClose={closeChart}
         />
       )}
     </div>
@@ -1127,6 +1224,8 @@ function DeviationQuizView({
   const [feedback, setFeedback] = useState<{ correct: boolean; event: GradedEvent } | null>(null);
   // #7: the chart opened over this correction, closed back onto the same card.
   const [showChart, setShowChart] = useState(false);
+  // B1: the last answered item, frozen, and the hand the chart opens on.
+  const { lastResult, setLastResult, chartTarget, setChartTarget, nextResultId } = useHandResult();
   const audio = useAudio(settings.audio);
 
   // Eyes-free audio (Task 9): a per-session choice, shared across screens for
@@ -1344,13 +1443,31 @@ function DeviationQuizView({
     return spokenPauseFor(text, settings.audio.rate);
   };
 
+  /**
+   * B1 (#8/#14/#17): freeze the answered item -- its cards, its count, the
+   * table it was asked for -- into the result strip, and draw the next item
+   * in the same handler.
+   */
+  const advanceWithResult = (event: GradedEvent) => {
+    setLastResult(
+      snapshotResult(
+        nextResultId(),
+        event,
+        { cards: item.cards, up: item.up, tc: item.tc },
+        { label: item.label, note: tableMaskNote(item, strategyRulesFor(activeProfile)) },
+      ),
+    );
+    releaseAnswerFocus();
+    next();
+  };
+
   const handleAnswer = (taken: string) => {
     const event = gradeQuizAnswer(taken);
 
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
 
-    showFeedback({ correct: event.correct, event });
+    advanceWithResult(event);
   };
 
   /**
@@ -1368,6 +1485,11 @@ function DeviationQuizView({
       eyesFree ? speak(text, speechOptsFrom(settings.audio)) : audio.say(text, { interrupt: true }),
     );
     audio.ding('bad');
+    // Visual mode: to the strip, next item at once -- see FlashcardsView.
+    if (!eyesFree && !voiceOn) {
+      advanceWithResult(event);
+      return;
+    }
     showFeedback({ correct: false, event });
     scheduleAutoAdvance(spokenMs);
   };
@@ -1606,6 +1728,20 @@ function DeviationQuizView({
 
   const indexList = indexSetFor(strategyRulesFor(activeProfile));
 
+  const openChartOn = (result: HandResult) => {
+    setChartTarget(chartTargetFrom(result));
+    setShowChart(true);
+  };
+
+  // See FlashcardsView: the item behind the chart restarts its clock.
+  const closeChart = () => {
+    setShowChart(false);
+    if (!feedbackRef.current) {
+      runIdRef.current += 1;
+      promptShownAtRef.current = performance.now();
+    }
+  };
+
   return (
     <div className="drill-screen" style={drillScreenStyle(padTop)}>
       <div className="drill-topbar">
@@ -1730,7 +1866,22 @@ function DeviationQuizView({
                 hand={feedback.event.hand}
                 classification={feedback.event.classification}
                 eyesFree={eyesFree}
-                onShowTable={item.cards ? () => setShowChart(true) : undefined}
+                onShowTable={
+                  item.cards
+                    ? () => {
+                        setChartTarget({
+                          cards: item.cards,
+                          up: item.up,
+                          graded: {
+                            expected: feedback.event.expected,
+                            reason: feedback.event.reason,
+                            tc: feedback.event.tc,
+                          },
+                        });
+                        setShowChart(true);
+                      }
+                    : undefined
+                }
               />
             )}
             <div className="quiz-label">{item.label}</div>
@@ -1740,6 +1891,14 @@ function DeviationQuizView({
                 car has to listen to. */}
             {maskNote && <div className="quiz-table-note">{maskNote}</div>}
           </>
+        )}
+        {/* B1: the previous item's result, under the item now being asked.
+            An insurance question has no chart cell to open. */}
+        {!feedback && !selfCheckOpen && !eyesFree && lastResult && (
+          <HandResultStrip
+            result={lastResult}
+            onShowChart={lastResult.cards ? openChartOn : undefined}
+          />
         )}
       </div>
 
@@ -1776,21 +1935,13 @@ function DeviationQuizView({
           </button>
         </div>
       )}
-      {showChart && (
+      {showChart && chartTarget && (
         <StudyChartOverlay
           activeProfile={activeProfile}
-          cards={item.cards}
-          dealerUp={item.up}
-          graded={
-            feedback
-              ? {
-                  expected: feedback.event.expected,
-                  reason: feedback.event.reason,
-                  tc: feedback.event.tc,
-                }
-              : undefined
-          }
-          onClose={() => setShowChart(false)}
+          cards={chartTarget.cards}
+          dealerUp={chartTarget.up}
+          graded={chartTarget.graded}
+          onClose={closeChart}
         />
       )}
     </div>
@@ -1884,6 +2035,8 @@ function MixedSessionView({
   const [feedback, setFeedback] = useState<{ correct: boolean; correctAction?: Action; event: GradedEvent } | null>(null);
   // #7: the chart opened over this correction, closed back onto the same card.
   const [showChart, setShowChart] = useState(false);
+  // B1: the last answered item, frozen, and the hand the chart opens on.
+  const { lastResult, setLastResult, chartTarget, setChartTarget, nextResultId } = useHandResult();
   const audio = useAudio(settings.audio);
 
   const [eyesFree, setEyesFree] = useEyesFreeToggle('mixed-session');
@@ -2042,11 +2195,39 @@ function MixedSessionView({
     return spokenPauseFor(text, settings.audio.rate);
   };
 
+  /**
+   * B1 (#8/#14/#17): freeze the answered item into the result strip and draw
+   * the next one in the same handler. A quiz item keeps its count and index
+   * label; a flashcard has neither, exactly as it was asked.
+   */
+  const advanceWithResult = (event: GradedEvent) => {
+    const snapshot =
+      current.type === 'flash'
+        ? snapshotResult(
+            nextResultId(),
+            event,
+            { cards: current.card.cards, up: current.card.up, tc: null },
+            { cellId: current.card.cellId },
+          )
+        : snapshotResult(
+            nextResultId(),
+            event,
+            { cards: current.item.cards, up: current.item.up, tc: current.item.tc },
+            {
+              label: current.item.label,
+              note: tableMaskNote(current.item, strategyRulesFor(activeProfile)),
+            },
+          );
+    setLastResult(snapshot);
+    releaseAnswerFocus();
+    next();
+  };
+
   const handleAnswer = (taken: string) => {
-    const { correct, correctAction, event } = gradeCurrent(taken);
+    const { correct, event } = gradeCurrent(taken);
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(correct ? 'good' : 'bad');
-    showFeedback({ correct, correctAction, event });
+    advanceWithResult(event);
   };
 
   const handleZoneAnswer = (zone: ZoneId | 'take' | 'decline') => {
@@ -2240,6 +2421,20 @@ function MixedSessionView({
       ? gateQuizAnswer(taken, current.item, strategyRulesFor(activeProfile))
       : gateDrillAnswer(taken, handCards, activeProfile.rules, dealerUp);
 
+  const openChartOn = (result: HandResult) => {
+    setChartTarget(chartTargetFrom(result));
+    setShowChart(true);
+  };
+
+  // See FlashcardsView: the item behind the chart restarts its clock.
+  const closeChart = () => {
+    setShowChart(false);
+    if (!feedbackRef.current) {
+      runIdRef.current += 1;
+      promptShownAtRef.current = performance.now();
+    }
+  };
+
   return (
     <div className="drill-screen" style={drillScreenStyle(padTop)}>
       <div className="drill-topbar">
@@ -2316,7 +2511,22 @@ function MixedSessionView({
                 hand={feedback.event.hand}
                 classification={feedback.event.classification}
                 eyesFree={eyesFree}
-                onShowTable={handCards ? () => setShowChart(true) : undefined}
+                onShowTable={
+                  handCards
+                    ? () => {
+                        setChartTarget({
+                          cards: handCards,
+                          up: dealerUp,
+                          graded: {
+                            expected: feedback.event.expected,
+                            reason: feedback.event.reason,
+                            tc: feedback.event.tc,
+                          },
+                        });
+                        setShowChart(true);
+                      }
+                    : undefined
+                }
               />
             )}
             {current.type === 'flash' ? (
@@ -2325,6 +2535,13 @@ function MixedSessionView({
               <div className="quiz-label">{current.item.label}</div>
             )}
           </>
+        )}
+        {/* B1: the previous item's result, under the item now being asked. */}
+        {!feedback && !selfCheckOpen && !eyesFree && lastResult && (
+          <HandResultStrip
+            result={lastResult}
+            onShowChart={lastResult.cards ? openChartOn : undefined}
+          />
         )}
       </div>
 
@@ -2374,21 +2591,13 @@ function MixedSessionView({
           </button>
         </div>
       )}
-      {showChart && (
+      {showChart && chartTarget && (
         <StudyChartOverlay
           activeProfile={activeProfile}
-          cards={handCards}
-          dealerUp={dealerUp}
-          graded={
-            feedback
-              ? {
-                  expected: feedback.event.expected,
-                  reason: feedback.event.reason,
-                  tc: feedback.event.tc,
-                }
-              : undefined
-          }
-          onClose={() => setShowChart(false)}
+          cards={chartTarget.cards}
+          dealerUp={chartTarget.up}
+          graded={chartTarget.graded}
+          onClose={closeChart}
         />
       )}
     </div>
