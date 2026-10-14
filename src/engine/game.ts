@@ -1,6 +1,7 @@
 import { Shoe, rankValue, mulberry32 } from './cards';
 import { makeRiggedShoe, botRngSeed, type RiggedShoe } from './riggedShoe';
 import { betWithinStep } from './coverBets';
+import { cutCardsFor, cutRngSeed, usesCutCards } from './cut';
 import type { Card, Rank } from './cards';
 import { handValue, isBust, isBlackjack, isPair } from './hand';
 import { hiLoTag, trueCount, tcWithinEye } from './count';
@@ -53,6 +54,11 @@ export const DEFAULT_SPREAD: SpreadRow[] = [
 
 export interface GameConfig {
   penetration: number; // 0.5..0.9
+  /** #39: decks left behind the cut, and whether each shoe moves it by up to
+   * ±0.5 decks (see engine/cut.ts). With neither set the cut sits at
+   * `penetration`, exactly as before. A rigged shoe ignores both. */
+  cutDecks?: number;
+  cutVary?: boolean;
   betSpreadOn: boolean;
   /** RT#11: accept a bet one spread rung either side of the expected size. */
   coverBets?: boolean;
@@ -275,7 +281,20 @@ export class Game {
   constructor(cfg: GameConfig) {
     this.cfg = cfg;
     this.rules = cfg.rules ?? DEFAULT_RULES;
-    this.shoe = new Shoe({ decks: this.rules.decks, penetration: cfg.penetration, seed: cfg.seed });
+    const cutSpec = {
+      penetration: cfg.penetration,
+      cutDecks: cfg.cutDecks,
+      cutVary: cfg.cutVary,
+      rules: { decks: this.rules.decks },
+    };
+    let cutCards: (() => number) | undefined;
+    if (usesCutCards(cutSpec)) {
+      // Its own seeded stream: placing the cut must not move a single card
+      // of the shuffle, so a seed replays the same cards with or without it.
+      const cutRng = mulberry32(cutRngSeed(cfg.seed ?? Date.now()));
+      cutCards = () => cutCardsFor(cutSpec, cutRng);
+    }
+    this.shoe = new Shoe({ decks: this.rules.decks, penetration: cfg.penetration, seed: cfg.seed, cutCards });
     this.bankroll = cfg.bankrollStart;
     this.rng = mulberry32(botRngSeed(cfg.seed ?? Date.now()));
   }

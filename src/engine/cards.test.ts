@@ -278,3 +278,38 @@ describe('Shoe', () => {
     expect(cards1).not.toEqual(cards2);
   });
 });
+
+describe('Shoe cutCards (#39)', () => {
+  test('the cut sits cutCards() from the back, asked again for every shoe', () => {
+    const behind = [52, 26, 78];
+    let calls = 0;
+    const shoe = new Shoe({ decks: 6, seed: 1, cutCards: () => behind[calls++] });
+    expect(calls).toBe(1);
+    expect(shoe.cutCardPosition).toBe(312 - 52);
+    shoe.shuffle();
+    expect(calls).toBe(2);
+    expect(shoe.cutCardPosition).toBe(312 - 26);
+    shoe.shuffle();
+    expect(shoe.cutCardPosition).toBe(312 - 78);
+  });
+
+  test('cutCardReached fires exactly at that position', () => {
+    const shoe = new Shoe({ decks: 1, seed: 1, cutCards: () => 13 });
+    for (let i = 0; i < 38; i++) shoe.draw();
+    expect(shoe.cutCardReached).toBe(false);
+    shoe.draw();
+    expect(shoe.cutCardReached).toBe(true);
+  });
+
+  test('without cutCards the cut is the penetration fraction, as before', () => {
+    expect(new Shoe({ decks: 6, penetration: 0.75, seed: 1 }).cutCardPosition).toBe(234);
+    expect(new Shoe({ decks: 6, penetration: 0.8, seed: 1 }).cutCardPosition).toBe(249);
+  });
+
+  test('placing the cut does not change the cards', () => {
+    const a = new Shoe({ decks: 2, seed: 9 });
+    const b = new Shoe({ decks: 2, seed: 9, cutCards: () => 40 });
+    const draw = (s: Shoe) => Array.from({ length: 104 }, () => s.draw().rank).join();
+    expect(draw(b)).toBe(draw(a));
+  });
+});

@@ -2262,3 +2262,68 @@ describe('casino play order: right to left (#1)', () => {
     expect(handPlayNumber(2, 4)).toBe(2);
   });
 });
+
+describe('#39 cut card from cutDecks / cutVary', () => {
+  it('cutDecks puts the cut that many decks from the back', () => {
+    const game = new Game(cfg({ cutDecks: 1 }));
+    expect(game.shoe.cutCardPosition).toBe(312 - 52);
+  });
+
+  it('neither field set keeps the penetration cut', () => {
+    expect(new Game(cfg({ penetration: 0.8 })).shoe.cutCardPosition).toBe(249);
+  });
+
+  it('cutVary moves the cut from shoe to shoe, within ±0.5 decks, reproducibly per seed', () => {
+    const cuts = (seed: number) => {
+      const game = new Game(cfg({ cutDecks: 1.5, cutVary: true, seed }));
+      const out = [game.shoe.cutCardPosition];
+      for (let i = 0; i < 9; i++) {
+        game.shoe.shuffle();
+        out.push(game.shoe.cutCardPosition);
+      }
+      return out;
+    };
+    const a = cuts(5);
+    expect(new Set(a).size).toBeGreaterThan(5);
+    for (const pos of a) {
+      expect(312 - pos).toBeGreaterThanOrEqual(52);
+      expect(312 - pos).toBeLessThanOrEqual(104);
+    }
+    expect(cuts(5)).toEqual(a);
+  });
+
+  it('the cut never moves a card: the same seed deals the same rounds with or without it', () => {
+    const ranks = (game: Game) => {
+      const out: string[] = [];
+      for (let r = 0; r < 5; r++) {
+        game.startRound();
+        if (game.phase === 'insurance') game.insuranceDecision(false);
+        while (game.phase === 'player') game.act('stand');
+        out.push([...game.hands.flatMap((h) => h.cards), ...game.dealerCards].map((c) => c.rank).join());
+      }
+      return out;
+    };
+    expect(ranks(new Game(cfg({ seed: 77, cutDecks: 2, cutVary: true })))).toEqual(ranks(new Game(cfg({ seed: 77 }))));
+  });
+
+  it('the shoe reshuffles at the varied cut', () => {
+    // A 1-deck cut with vary on: reaching the shoe's own cut position is what
+    // triggers the pre-deal reshuffle.
+    const game = new Game(cfg({ cutDecks: 1, cutVary: true, seed: 3 }));
+    const pos = game.shoe.cutCardPosition;
+    let rounds = 0;
+    while (!game.shuffledLastRound && rounds < 200) {
+      const dealtBefore = game.shoe.cardsDealt;
+      game.startRound();
+      rounds += 1;
+      if (game.shuffledLastRound) {
+        expect(dealtBefore).toBeGreaterThanOrEqual(pos);
+        break;
+      }
+      expect(dealtBefore).toBeLessThan(pos);
+      if (game.phase === 'insurance') game.insuranceDecision(false);
+      while (game.phase === 'player') game.act('stand');
+    }
+    expect(game.shuffledLastRound).toBe(true);
+  });
+});

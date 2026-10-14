@@ -18,6 +18,9 @@ export function playConfigFor(
 ): GameConfig {
   return {
     penetration: profile.penetration,
+    // #39: the cut as decks behind it; neither set keeps `penetration`.
+    ...(profile.cutDecks === undefined ? {} : { cutDecks: profile.cutDecks }),
+    ...(profile.cutVary === undefined ? {} : { cutVary: profile.cutVary }),
     betSpreadOn: profile.betSpreadOn,
     ...(profile.coverBets === undefined ? {} : { coverBets: profile.coverBets }),
     ...(profile.tcRounding === undefined ? {} : { tcRounding: profile.tcRounding }),

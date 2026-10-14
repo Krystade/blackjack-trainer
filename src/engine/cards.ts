@@ -47,16 +47,36 @@ export class Shoe {
   private deckCount: number;
   private penetration: number;
   private rng: () => number;
+  /** #39: cards left behind the cut, asked afresh for every shoe. Absent =
+   * the cut sits at `penetration`, the same place every shoe. */
+  private cutCards?: () => number;
+  private cutPosition: number;
 
-  constructor(opts: { decks?: number; penetration?: number; seed?: number } = {}) {
+  constructor(
+    opts: { decks?: number; penetration?: number; seed?: number; cutCards?: () => number } = {},
+  ) {
     this.deckCount = opts.decks ?? 6;
     this.penetration = opts.penetration ?? 0.75;
+    this.cutCards = opts.cutCards;
     this.cardsDealtCount = 0;
 
     const seed = opts.seed ?? Date.now();
     this.rng = mulberry32(seed);
 
     this.cards = this.buildShoe();
+    this.cutPosition = this.placeCut();
+  }
+
+  /** Cards dealt before the cut card comes out, for the shoe just built. */
+  private placeCut(): number {
+    const total = this.deckCount * 52;
+    if (this.cutCards) return total - this.cutCards();
+    return Math.floor(total * this.penetration);
+  }
+
+  /** Cards dealt before the cut card comes out, in this shoe. */
+  get cutCardPosition(): number {
+    return this.cutPosition;
   }
 
   private buildShoe(): Card[] {
@@ -100,12 +120,12 @@ export class Shoe {
   }
 
   get cutCardReached(): boolean {
-    const cutCardPosition = Math.floor(this.deckCount * 52 * this.penetration);
-    return this.cardsDealtCount >= cutCardPosition;
+    return this.cardsDealtCount >= this.cutPosition;
   }
 
   shuffle(): void {
     this.cardsDealtCount = 0;
     this.cards = this.buildShoe();
+    this.cutPosition = this.placeCut();
   }
 }
