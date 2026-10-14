@@ -2,6 +2,7 @@ import { Shoe, rankValue, mulberry32 } from './cards';
 import { makeRiggedShoe, botRngSeed, type RiggedShoe } from './riggedShoe';
 import { betWithinStep } from './coverBets';
 import { cutCardsFor, cutRngSeed, usesCutCards } from './cut';
+import { priceMistake } from './mistakeCost';
 import type { Card, Rank } from './cards';
 import { handValue, isBust, isBlackjack, isPair } from './hand';
 import { hiLoTag, trueCount, tcWithinEye } from './count';
@@ -714,6 +715,9 @@ export class Game {
       this.cfg.gradeDeviations === false ? basicOnly : correctPlay(hand.cards, up, tc, ctx, this.rules);
     const { classification, correct } = classifyAction(action, withCount, basicOnly, hand.cards, up, tc, this.rules);
     const category = actionCategory(hand.cards, withCount.action);
+    // #25: a basic error is priced, on the hand as it stood at the decision,
+    // exactly as the hand drills price theirs.
+    const evCost = priceMistake(hand.cards, up, ctx, this.rules, withCount, action, classification);
 
     this.events.push({
       source: 'table',
@@ -727,6 +731,7 @@ export class Game {
       deviationId: withCount.deviationId,
       tc,
       hand: describeHand(hand.cards, up),
+      ...(evCost === undefined ? {} : { evCost }),
     });
 
     switch (action) {

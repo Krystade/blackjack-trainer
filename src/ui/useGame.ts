@@ -8,6 +8,7 @@ import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
 import { resumeBankroll, storeBankrollNow } from './playBankroll';
 import { playConfigFor } from './playConfig';
+import { datedSessionEvents } from './sessionEvents';
 import { makePlayGame, realignLosingShoe, type PlayGame } from './losingShoe';
 import type { AudioApi } from '../audio/useAudio';
 import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverBets';
@@ -579,14 +580,17 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
 
   const endSession = useCallback(
     (peeks = 0): SessionReport => {
-      const events = game.events;
+      const now = new Date().toISOString();
+      // #25: dated with the session, so Play's priced mistakes land in the
+      // cost-of-mistakes history inside a Stats time range, not only "all".
+      const events = datedSessionEvents(game.events, now);
       // From where THIS session started (#42), not the profile's original stake.
       const bankrollDelta = game.bankroll - game.cfg.bankrollStart;
 
       const stats = loadStats();
       const updated = applyEvents(stats, events);
       updated.sessions.push({
-        date: new Date().toISOString(),
+        date: now,
         rounds: game.roundNo,
         graded: events.length,
         correct: events.filter((e) => e.correct).length,
