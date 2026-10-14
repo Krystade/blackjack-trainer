@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withProfile, withSettings } from './helpers';
+import { answerAndReadStrip, withProfile, withSettings } from './helpers';
 
 /**
  * RV3. The engine side is covered exhaustively by
@@ -358,7 +358,15 @@ test('an index the operator table overrules says so, and one it does not stays q
   await withProfile(page, { surrenderIndices: true });
   await withSettings(page, { drill: { quizIndex: '16v9' } });
   await openDeviationQuiz(page);
-  await page.locator('.action-bar button.action-btn:not([disabled])').first().click();
+  // B1: the note rides on the result strip of a RIGHT answer (on a miss the
+  // chart overlay's own note reconciles the two, see chart-note.spec.ts).
+  // Every item is 16 v 9, so cycling the plays finds the right one.
+  const plays = ['Hit', 'Stand', 'Double'];
+  for (let i = 0; i < 9; i++) {
+    const btn = page.locator('.action-bar button.action-btn', { hasText: plays[i % plays.length] });
+    if ((await answerAndReadStrip(page, btn)) === 'ok') break;
+  }
+  await expect(page.locator('[data-testid="result-strip"]')).toHaveAttribute('data-tone', 'ok');
 
   const note = page.locator('.quiz-table-note');
   await expect(note, 'the quiz taught a play the table overrules, silently').toBeVisible();

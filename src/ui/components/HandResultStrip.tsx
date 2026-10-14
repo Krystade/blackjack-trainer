@@ -92,7 +92,11 @@ export function HandResultStrip({
             </button>
           )}
         </div>
-        {result.note && <p className="hand-result-note quiz-table-note">{result.note}</p>}
+        {/* No table note on a miss: at 375x812 it pushed the next hand's
+            answer buttons below the fold. The rules chip (#26) has already
+            said, before the answer, that surrender was off, and "Show on
+            chart" opens the overlay's own note reconciling the graded play
+            with the chart cell. */}
         {sr}
       </div>
     </ResultStrip>

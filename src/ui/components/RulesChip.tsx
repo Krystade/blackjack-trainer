@@ -9,12 +9,14 @@ import './rulesChip.css';
 export function RulesChip({ labels }: { labels: string[] }) {
   if (labels.length === 0) return null;
   return (
-    <div className="rules-chip-row" data-testid="rules-chip">
-      {labels.map((l) => (
-        <span key={l} className={`rules-chip${l.startsWith('No ') ? ' rules-chip--off' : ''}`}>
-          {l}
-        </span>
-      ))}
+    <div className="rules-chip-row">
+      <div className="rules-chip-stack" data-testid="rules-chip">
+        {labels.map((l) => (
+          <span key={l} className={`rules-chip${l.startsWith('No ') ? ' rules-chip--off' : ''}`}>
+            {l}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
