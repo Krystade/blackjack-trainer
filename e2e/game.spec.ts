@@ -145,22 +145,45 @@ test('test mode: a 3-round session reports categories and misses', async ({ page
   await expect(page.locator('.home-title')).toBeVisible();
 });
 
-test('count-check modal appears after a round and grades a running-count entry', async ({ page }) => {
+/** The cards on the felt, dealer then player, as `data-card` strings. */
+async function feltCards(page: Page): Promise<string[]> {
+  return page
+    .locator('.dealer-area .card[data-card], .hands-row .card[data-card]')
+    .evaluateAll((els) => els.map((e) => e.getAttribute('data-card') ?? ''));
+}
+
+test('#36: the count check is posed when Deal is pressed, over the settled hand, and the deal follows the answer', async ({
+  page,
+}) => {
   await withSettings(page, { countCheckEvery: 1 });
   await page.goto('/?seed=5&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await playRoundByAdvice(page);
 
-  const modal = page.locator('.modal-backdrop', { hasText: 'Running count?' });
-  await expect(modal).toBeVisible();
-  await expect(modal.locator('.numpad-label')).toHaveText('Enter running count');
+  // Settled: the result is the screen. Nothing is asked yet.
+  const prompt = page.locator('.modal-backdrop', { hasText: 'Running count?' });
+  const round = page.locator('.topbar-stat', { hasText: /^Round / });
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
+  await expect(prompt).toHaveCount(0);
+  await expect(round).toHaveText('Round 1');
+  const settled = await feltCards(page);
+  expect(settled.length).toBeGreaterThan(2);
+
+  // Deal asks the count first; the settled hand is still what is on the felt.
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await expect(prompt).toBeVisible();
+  await expect(prompt.locator('.numpad-label')).toHaveText('Enter running count');
+  expect(await feltCards(page)).toEqual(settled);
+  await expect(round).toHaveText('Round 1');
   await shot(page, '07-count-check-numpad');
 
-  await modal.getByRole('button', { name: '5', exact: true }).click();
-  await modal.getByRole('button', { name: 'OK', exact: true }).click();
-  await expect(modal).not.toBeVisible();
-  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
+  // The answer deals the next round straight away.
+  await prompt.getByRole('button', { name: '5', exact: true }).click();
+  await prompt.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(prompt).not.toBeVisible();
+  await expect(round).toHaveText('Round 2');
+  expect(await feltCards(page)).not.toEqual(settled);
 });
 
 test('bet spread: a deliberately bad bet is graded and shows in the test-mode report', async ({ page }) => {
@@ -302,20 +325,21 @@ test('count-check modal: RC then TC two-stage prompt on the 2nd trigger (askTcTo
   await page.goto('/?seed=101&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
-  // Round 1: first trigger -> RC-only.
+  // Round 1: first trigger -> RC-only, asked when the next deal is.
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await playRoundByAdvice(page);
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
 
   const modal = page.locator('.modal-backdrop');
   await expect(modal.locator('.modal-title')).toHaveText('Running count?');
   await modal.getByRole('button', { name: '5', exact: true }).click();
   await modal.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(modal).not.toBeVisible();
-  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
 
-  // Round 2: second trigger -> RC stage, then (without closing) TC stage.
-  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  // The answer dealt round 2. Second trigger -> RC stage, then (without
+  // closing) TC stage.
   await playRoundByAdvice(page);
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
 
   await expect(modal.locator('.modal-title')).toHaveText('Running count?');
   await modal.getByRole('button', { name: '3', exact: true }).click();
@@ -329,7 +353,7 @@ test('count-check modal: RC then TC two-stage prompt on the 2nd trigger (askTcTo
   await modal.getByRole('button', { name: '1', exact: true }).click();
   await modal.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(modal).not.toBeVisible();
-  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
+  await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 3');
 });
 
 test('TC peek button latches RC/TC on a tap and clears on the next tap', async ({ page }) => {

@@ -407,7 +407,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // interpretCountSpeech, which claims every transcript before this runs.
     // Reaching here with it open would mean a stray word playing a hand
     // behind the prompt.
-    if (game.countCheckDue) return;
+    if (game.countCheckOpen) return;
 
     if (game.phase === 'insurance') {
       if (command === 'yes') insure(true);
@@ -453,7 +453,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
    * operator was in the middle of giving.
    */
   const interpretCountSpeech = (heard: string, offered: readonly string[] = [heard]): string | null => {
-    if (!game.countCheckDue) return null;
+    if (!game.countCheckOpen) return null;
 
     // A spoken number is ranked over a car microphone exactly as a spoken
     // word is, and "minus three" behind "minus tree" is the same failure with
@@ -577,7 +577,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   // Ask out loud when the prompt appears, and again if it moves on to the
   // true count. Without this the app simply goes quiet mid-drive and the
   // round looks frozen: the modal is the only thing saying an answer is due.
-  const countDue = game.countCheckDue;
+  const countDue = game.countCheckOpen;
   useEffect(() => {
     if (!voiceOn || !countDue) return;
     audio.say(countPromptText());
@@ -650,7 +650,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   let barMode: ActionBarMode;
   if (game.phase === 'player') {
     barMode = { kind: 'actions', legal, onAction: act, advice };
-  } else if ((game.phase === 'idle' || game.phase === 'settled') && !game.countCheckDue) {
+  } else if ((game.phase === 'idle' || game.phase === 'settled') && !game.countCheckOpen) {
     barMode = {
       kind: 'bet',
       betSpreadOn: activeProfile.betSpreadOn,
@@ -963,7 +963,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         </Modal>
       )}
 
-      {game.countCheckDue && (
+      {game.countCheckOpen && (
         <Modal title={countStage === 'rc' ? 'Running count?' : 'True count?'}>
           {/* The spoken proposal, shown as well as said. A driver glancing
               at the screen at a light should be able to see what the app

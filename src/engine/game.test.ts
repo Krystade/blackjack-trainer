@@ -909,6 +909,36 @@ describe('wong-out / sit-out (R5)', () => {
 });
 
 describe('count check', () => {
+  it('#36: an owed check is posed by asking to deal, not by the settle, and the answer closes it', () => {
+    const game = new Game(cfg({ countCheckEvery: 1, seed: 42 }));
+    // Nothing owed before any round: asking to deal deals.
+    expect(game.poseCountCheck()).toBe(false);
+    expect(game.countCheckOpen).toBe(false);
+
+    game.startRound();
+    if (game.phase === 'insurance') game.insuranceDecision(false);
+    while (game.phase === 'player') game.act('stand');
+
+    // Settled: owed but NOT asked -- the round's result is still the screen.
+    expect(game.phase).toBe('settled');
+    expect(game.countCheckDue).toBe(true);
+    expect(game.countCheckOpen).toBe(false);
+
+    const rcAtSettle = game.runningCount;
+    const cardsAtSettle = game.shoe.cardsDealt;
+    expect(game.poseCountCheck()).toBe(true);
+    expect(game.poseCountCheck()).toBe(true); // idempotent while open
+    expect(game.countCheckOpen).toBe(true);
+    // Posing moves nothing: the hand on the felt is the one being counted.
+    expect(game.phase).toBe('settled');
+    expect(game.shoe.cardsDealt).toBe(cardsAtSettle);
+
+    game.submitCountCheck(rcAtSettle);
+    expect(game.countCheckDue).toBe(false);
+    expect(game.countCheckOpen).toBe(false);
+    expect(game.poseCountCheck()).toBe(false);
+  });
+
   it('countCheckEvery:2 triggers after the 2nd round settles; 2nd trigger also asks TC', () => {
     const game = new Game(cfg({ countCheckEvery: 2, seed: 42 }));
 

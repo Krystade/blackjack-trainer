@@ -186,7 +186,14 @@ export class Game {
   bankroll: number;
   roundNo = 0;
   events: GradedEvent[] = [];
+  /** A count check is OWED: set when a round settles on a check interval,
+   * cleared by `submitCountCheck`. Owed is not asked -- see `countCheckOpen`. */
   countCheckDue = false;
+  /** #36: the owed check has been POSED, which happens when the player asks
+   * for the next deal (`poseCountCheck`), not when the round settles. The
+   * settled hand stays on the felt while it is answered, and the deal follows
+   * the answer. */
+  countCheckOpen = false;
   askTcToo = false;
   shuffledLastRound = false;
   insuranceNet: number | null = null;
@@ -365,6 +372,7 @@ export class Game {
   private beginRound(): void {
     this.roundNo += 1;
     this.countCheckDue = false;
+    this.countCheckOpen = false;
     this.insuranceNet = null;
     this.botActionLog = [];
     this.dealOrder = [];
@@ -730,7 +738,23 @@ export class Game {
     }
 
     this.countCheckDue = false;
+    this.countCheckOpen = false;
     return { rcCorrect, actualRc, tcCorrect, actualTc };
+  }
+
+  /**
+   * #36: the player asked for the next deal. If a count check is owed, pose
+   * it now and return true -- the caller must collect the answer
+   * (`submitCountCheck`) before dealing. Returns false when nothing is owed,
+   * so the deal can go ahead. Idempotent while the check is open.
+   *
+   * Nothing moves between the settle and this call, so the count being
+   * graded is exactly the one at the end of the round.
+   */
+  poseCountCheck(): boolean {
+    if (!this.countCheckDue) return false;
+    this.countCheckOpen = true;
+    return true;
   }
 
   // ---- internal helpers ----
