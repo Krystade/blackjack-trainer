@@ -384,7 +384,6 @@ function FlashcardsView({
       Date.now(),
       randomSeed(),
       activeProfile.rules,
-      settings.drill.flashByFrequency,
       settings.drill.flashByConfusability,
       null,
     ),
@@ -543,7 +542,6 @@ function FlashcardsView({
       Date.now(),
       randomSeed(),
       activeProfile.rules,
-      settings.drill.flashByFrequency,
       settings.drill.flashByConfusability,
       lastCellRef.current,
     );
@@ -1040,32 +1038,9 @@ function FlashcardsView({
           voiceStatus={voice.status}
           options={
             <>
-              {/* V4-1 (docs/BACKLOG.md): the draw weighted cells by schedule
-                  alone, so the 16 v 10 you face most shoes and the hard 5 v 7
-                  you face once a month got the same reps. Off by default --
-                  reallocating practice time is the user's call. Kept: a
-                  mistake costs in proportion to how often the hand comes up,
-                  so weighting reps by frequency is the direct lever on it. */}
-              <label className="count-toggle">
-                <input
-                  type="checkbox"
-                  checked={settings.drill.flashByFrequency}
-                  onChange={(e) => {
-                    const nextSettings: Settings = {
-                      ...settings,
-                      drill: { ...settings.drill, flashByFrequency: e.target.checked },
-                    };
-                    saveSettings(nextSettings);
-                    onSettingsChange(nextSettings);
-                  }}
-                />
-                <span>Show common hands more often</span>
-              </label>
-              {/* V5-1 (docs/BACKLOG.md): interleaving pays most when
-                  confusable items land back to back, and the SR/frequency
-                  draw is blind to what came before. Off by default, like the
-                  frequency term above. Kept on the evidence cited there
-                  (Brunmair & Richter 2019). */}
+              {/* V5-1/#52: interleaving pays most when confusable items land
+                  back to back (Brunmair & Richter 2019). On, half the cards
+                  are drawn only from the last hand's look-alikes. */}
               <label className="count-toggle">
                 <input
                   type="checkbox"
@@ -2068,7 +2043,6 @@ function MixedSessionView({
       Date.now(),
       randomSeed(),
       activeProfile.rules,
-      settings.drill.flashByFrequency,
       settings.drill.flashByConfusability,
       mixedLastCellRef.current,
     );

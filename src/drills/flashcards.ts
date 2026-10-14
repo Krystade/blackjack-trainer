@@ -7,7 +7,6 @@ import type { StrategyRules } from '../engine/ruleset';
 import { makeHardHand } from './buildHand';
 import { weightedIndex } from './weightedDraw';
 import { srWeight } from './spacedRepetition';
-import { frequencyWeight } from './handFrequency';
 import { confusabilityWeight } from './confusability';
 import type { SrDeck } from './spacedRepetition';
 
@@ -105,12 +104,10 @@ export function filterCellsByCategory<T extends { id: string }>(
  * @param srDeck - RV4 spaced-repetition deck (cellId -> SrCard); draw prefers DUE cells
  * @param now - wall-clock epoch ms, used to weight cells by SR due-ness
  * @param seed - Optional seed for reproducibility
- * @param byFrequency - V4-1: also weight by how often the cell actually comes
- *   up at a table (drills/handFrequency.ts). Off by default, so the draw is
- *   byte-identical to before unless the user asks for it.
- * @param byConfusability - V5-1: also weight by how easily each cell is mixed
- *   up with `previousCellId` (drills/confusability.ts). Off by default. Needs
- *   `previousCellId` to do anything -- with no previous cell every term is 1.
+ * @param byConfusability - #52 forced follow: with probability 0.5 the cell
+ *   is drawn ONLY from `previousCellId`'s confusable set (confusabilityWeight
+ *   > 1, within the category), SR-weighted; otherwise the plain SR draw. Off,
+ *   or with no previous cell, the draw is byte-identical to before.
  * @param previousCellId - The cell just answered, for the term above.
  * @param rules - Optional ruleset (defaults to DEFAULT_RULES); selects the
  *   chart/deviations the correct action is graded against — additive param,
@@ -124,7 +121,6 @@ export function drawFlashcard(
   now: number,
   seed?: number,
   rules: StrategyRules = DEFAULT_RULES,
-  byFrequency = false,
   byConfusability = false,
   previousCellId: string | null = null,
 ): Flashcard {
@@ -138,23 +134,18 @@ export function drawFlashcard(
 
   // RV4 (docs/BACKLOG.md, spaced-repetition): weight each cell by its SR due-ness
   // (unseen/overdue-low-box heaviest), shared with the deviation quiz via srWeight.
-  // V4-1: frequency is a SEPARATE axis and multiplies in rather than
-  // replacing the schedule -- how often you meet a hand and how well you know
-  // it are different questions. Off, the term is a flat 1 and the draw is
-  // exactly what it always was.
-  // V5-1: confusability with the cell just answered is a THIRD axis and
-  // multiplies in the same way -- what you are due for, how often you meet it,
-  // and what you will mix it up with are three different questions. Off, the
-  // term is a flat 1 and the draw is exactly what it always was.
-  const weights = cells.map(
-    (c) =>
-      srWeight(srDeck[c.id], now) *
-      (byFrequency ? frequencyWeight(c.id) : 1) *
-      (byConfusability ? confusabilityWeight(c.id, previousCellId) : 1),
-  );
+  // #52: "Follow with a look-alike" is a forced follow, not a soft bias. The
+  // coin is only tossed when the option is on AND there is a previous cell, so
+  // with it off the rng sequence -- and so the draw -- is exactly as before.
+  let pool = cells;
+  if (byConfusability && previousCellId) {
+    const followers = cells.filter((c) => confusabilityWeight(c.id, previousCellId) > 1);
+    if (rng() < 0.5 && followers.length > 0) pool = followers;
+  }
+  const weights = pool.map((c) => srWeight(srDeck[c.id], now));
 
   const selectedIndex = weightedIndex(rng, weights);
-  const baseCell = cells[selectedIndex];
+  const baseCell = pool[selectedIndex];
 
   // V4-2 (docs/BACKLOG.md): the cell fixes the TOTAL; the cards that make it
   // up are drawn fresh. Hard 16 used to be 6+10 every time it was ever shown,

@@ -1924,32 +1924,14 @@ test('deviation quiz: the shot clock grades an unanswered item as a timeout', as
   expect((stats!.mistakes as Record<string, number>).timeout).toBe(1);
 });
 
-/**
- * V4-1: the flashcard draw weighted cells by schedule alone, so a hand faced
- * most shoes and one faced once a month got the same reps. Off by default --
- * reallocating practice time is the user's call.
- */
-test('flashcards: the frequency toggle is off by default and persists when set', async ({ page }) => {
+/** #52: "Show common hands more often" is gone. */
+test('flashcards: there is no "Show common hands more often" option', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
-
-  // Under the collapsed Options disclosure: set once, not every hand.
   await page.locator('details.drill-options > summary').click();
-  const row = page.locator('.count-toggle', { hasText: 'Show common hands more often' });
-  await expect(row).toBeVisible();
-  const box = row.locator('input[type="checkbox"]');
-  await expect(box).not.toBeChecked();
-
-  await box.check();
-  // Persisted, not just React state: come back through a full reload.
-  await page.reload();
-  await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
-  await expect(
-    page.locator('.count-toggle', { hasText: 'Show common hands more often' })
-      .locator('input[type="checkbox"]'),
-  ).toBeChecked();
+  await expect(page.locator('.count-toggle', { hasText: 'Follow each hand with a look-alike' })).toBeVisible();
+  await expect(page.getByText('Show common hands more often')).toHaveCount(0);
 });
 
 /**

@@ -237,7 +237,7 @@ test('Flashcards with voice on: dealer card, hand and answers fit one screen', a
 
   // Set-once options start folded away.
   await expect(page.locator('details.drill-options')).not.toHaveAttribute('open', /.*/);
-  await expect(page.getByText('Show common hands more often')).toBeHidden();
+  await expect(page.getByText('Follow each hand with a look-alike')).toBeHidden();
 
   await expectAnswerableWithoutScrolling(page);
   await expect(page.getByRole('button', { name: 'Surrender', exact: true })).toBeVisible();
