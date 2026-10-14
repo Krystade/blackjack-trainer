@@ -24,6 +24,9 @@ export interface Settings {
   countCheckEvery: number;
   penetration: number;
   dealSpeedMs: number;
+  // #48-51 (spec 2026-10-13): Play deals from the rigged losing shoe
+  // (drills/downswingShoe.ts) instead of a fair one. Absent = off.
+  losingShoe?: boolean;
   drill: {
     flashCategory: 'all' | 'hard' | 'soft' | 'pairs';
     countGroup: 1 | 2 | 3;
@@ -396,6 +399,12 @@ export interface Profile {
    */
   dealerAlwaysPlaysOut?: boolean;
   seats: SeatConfig;
+  /**
+   * #42: the Play bankroll carried between sessions. Absent = start from
+   * `bankrollStart` (every profile stored before this shipped, and after
+   * "Reset bankroll").
+   */
+  bankrollNow?: number;
   cvcx?: {
     score?: number;
     evPerHour?: number;
@@ -434,6 +443,9 @@ export interface Stats {
    */
   shotClockSplit?: { timed: TallyRW; untimed: TallyRW };
   mistakes: Record<MistakeClass, number>;
+  // #22: answers withdrawn with "Wrong tap". The graded event itself is
+  // removed; this counter keeps the habit visible. Absent = 0.
+  misclicks?: number;
   countDrill: {
     history: {
       date: string;
