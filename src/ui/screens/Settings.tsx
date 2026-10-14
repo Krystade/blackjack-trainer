@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import { OfflineSection } from './OfflineSection';
+import { ResetBankrollRow } from '../components/ResetBankrollRow';
 import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
 import { THEMES, normalizeTheme } from '../theme';
@@ -359,6 +360,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             format={(v) => `${v}ms`}
             onChange={(v) => update({ dealSpeedMs: v })}
           />
+          <ResetBankrollRow />
           <div className="settings-row">
             <span className="settings-label">Shot clock</span>
             <Segmented

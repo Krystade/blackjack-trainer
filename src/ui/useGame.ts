@@ -8,6 +8,7 @@ import type { Category, GradedEvent, MistakeClass } from '../engine/grade';
 import type { Profile, Settings } from '../store/types';
 import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
+import { resumeBankroll, storeBankrollNow } from './playBankroll';
 import type { AudioApi } from '../audio/useAudio';
 import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverBets';
 import {
@@ -261,7 +262,10 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       ...(profile.coverBets === undefined ? {} : { coverBets: profile.coverBets }),
       ...(profile.tcRounding === undefined ? {} : { tcRounding: profile.tcRounding }),
       spread: profile.spread,
-      bankrollStart: profile.bankrollStart,
+      // #42: the bankroll carries over from the last session on this
+      // profile. `cfg.bankrollStart` is therefore THIS SESSION's start, which
+      // is what the session report's delta is measured from.
+      bankrollStart: resumeBankroll(profile),
       countCheckEvery: profile.countCheckEvery,
       rules: strategyRulesFor(profile),
       seats: profile.seats,
@@ -274,6 +278,22 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
 
   const [, setVersion] = useState(0);
   const bump = useCallback(() => setVersion((v) => v + 1), []);
+
+  /**
+   * #42: write the bankroll back to the profile whenever an engine call has
+   * moved it -- in practice, as each round settles. To STORAGE ONLY: see
+   * playBankroll.ts for why the app's copy of the profile is left alone (it
+   * keys the Table, and a remount would reshuffle the shoe mid-session).
+   * Runs after every render, which is after every engine call; the
+   * comparison makes the common case free.
+   */
+  const storedBankrollRef = useRef(game.bankroll);
+  const profileId = profile.id;
+  useEffect(() => {
+    if (game.bankroll === storedBankrollRef.current) return;
+    storedBankrollRef.current = game.bankroll;
+    storeBankrollNow(profileId, game.bankroll);
+  });
 
   const [overlay, setOverlay] = useState<OverlayInfo | null>(null);
   const [report, setReport] = useState<SessionReport | null>(null);
@@ -546,7 +566,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const endSession = useCallback(
     (peeks = 0): SessionReport => {
       const events = game.events;
-      const bankrollDelta = game.bankroll - profile.bankrollStart;
+      // From where THIS session started (#42), not the profile's original stake.
+      const bankrollDelta = game.bankroll - game.cfg.bankrollStart;
 
       const stats = loadStats();
       const updated = applyEvents(stats, events);
@@ -568,7 +589,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       setReport(rep);
       return rep;
     },
-    [game, profile.bankrollStart, profile.id, profile.name],
+    [game, profile.id, profile.name],
   );
 
   return {
