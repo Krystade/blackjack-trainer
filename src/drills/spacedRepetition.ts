@@ -274,3 +274,17 @@ export function srWeight(card: SrCard | undefined, now: number): number {
   }
   return SR_NOT_DUE_FLOOR;
 }
+
+/**
+ * #22 "Wrong tap": put one item's schedule back to what it was before the
+ * answer that is being withdrawn. `prev` is the card as it stood before
+ * `reviewCard` ran; `undefined` means the item had never been reviewed, so it
+ * leaves the deck entirely and is drawn as new again. Pure; the input deck is
+ * not mutated.
+ */
+export function restoreSrCard(deck: SrDeck, key: string, prev: SrCard | undefined): SrDeck {
+  const next = { ...deck };
+  if (prev === undefined) delete next[key];
+  else next[key] = prev;
+  return next;
+}

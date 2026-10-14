@@ -929,6 +929,13 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                 <span>{stats.mistakes[cls]}</span>
               </li>
             ))}
+            {/* #22: answers withdrawn with "Wrong tap". Not mistakes -- they
+                were taken out of every tally above -- but counted, so a
+                habit of mis-tapping stays visible. */}
+            <li className="mistake-row" data-testid="stats-misclicks">
+              <span>Wrong taps (not counted)</span>
+              <span>{stats.misclicks ?? 0}</span>
+            </li>
           </ul>
       </CollapsibleSection>
 

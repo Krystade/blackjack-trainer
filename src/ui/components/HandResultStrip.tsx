@@ -7,9 +7,11 @@ import {
   progressLostLine,
   resultHandLine,
   resultPlayLabel,
+  undoneLine,
   type HandResult,
 } from '../handResult';
 import './handResultStrip.css';
+import './wrongTap.css';
 
 /**
  * B1 `HandResultStrip`: the previous hand's result, shown while the next hand
@@ -26,12 +28,28 @@ import './handResultStrip.css';
 export function HandResultStrip({
   result,
   onShowChart,
+  onWrongTap,
 }: {
   result: HandResult;
   /** Opens the chart on the ANSWERED hand. Omitted when there is no chart
    *  cell for it (an insurance question). */
   onShowChart?: (result: HandResult) => void;
+  /** #22: withdraws this miss. Passed only while it can still be withdrawn,
+   *  i.e. until the next answer, and never in Play's test mode. */
+  onWrongTap?: () => void;
 }) {
+  if (result.undone) {
+    return (
+      <ResultStrip id={result.id} tone="ok">
+        <div className="hand-result" data-cell-id={result.cellId} data-result-id={result.id}>
+          <div className="hand-result-undone" data-testid="hand-result-undone">
+            {undoneLine(result)}
+          </div>
+        </div>
+      </ResultStrip>
+    );
+  }
+
   const sr = result.sr ? (
     <div className="feedback-sr hand-result-sr" data-box={result.sr.box}>
       {result.sr.text}
@@ -67,6 +85,11 @@ export function HandResultStrip({
           <span className="hand-result-hand" data-testid="hand-result-hand">
             {resultHandLine(result)}
           </span>
+          {onWrongTap && (
+            <button type="button" className="hand-result-wrongtap" onClick={onWrongTap}>
+              Wrong tap
+            </button>
+          )}
         </div>
         {result.progressLost && (
           <div className="hand-result-lost mastery-reset-banner" role="alert">

@@ -25,6 +25,7 @@ import { ActionBar } from '../../components/ActionBar';
 import { HandResultStrip } from '../../components/HandResultStrip';
 import { RulesChip } from '../../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../../handResult';
+import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../../wrongTap';
 import { StudyChartOverlay } from '../../components/StudyChartOverlay';
 import { Segmented } from '../Settings';
 import { KEY_TO_ACTION } from '../Drills';
@@ -90,6 +91,9 @@ export function MasteryChallengeView({
   // the chart reading the live `cell` after setRun(nextRun) had replaced it,
   // so a miss on 4,4 v 4 opened whatever the reshuffle dealt next.
   const [lastResult, setLastResult] = useState<HandResult | null>(null);
+  // #22: the miss on the strip while it can still be withdrawn, with the run
+  // as it stood before that answer.
+  const [wrongTap, setWrongTap] = useState<WrongTapRecord | null>(null);
   const resultIdRef = useRef(0);
   const [distraction, setDistraction] = useState<Distraction | null>(null);
   const [chartFor, setChartFor] = useState<HandResult | null>(null);
@@ -99,6 +103,7 @@ export function MasteryChallengeView({
     const fresh = startMasteryRun(scope, randomSeed());
     setRun(fresh);
     setLastResult(null);
+    setWrongTap(null);
     setDistraction(null);
     promptShownAtRef.current = performance.now();
   };
@@ -133,9 +138,26 @@ export function MasteryChallengeView({
     );
 
     resultIdRef.current += 1;
+    const resultId = resultIdRef.current;
+    const prevRun = run;
+    setWrongTap(
+      wrongTapOffered(event)
+        ? {
+            resultId,
+            event,
+            // The run as it was before the miss reset it: same sweep, same
+            // position, and the same hand back on screen to answer again.
+            revert: () => {
+              setRun(prevRun);
+              setDistraction(null);
+              promptShownAtRef.current = performance.now();
+            },
+          }
+        : null,
+    );
     setLastResult(
       snapshotResult(
-        resultIdRef.current,
+        resultId,
         event,
         { cards: cell.cards, up: cell.up, tc: null },
         {
@@ -233,6 +255,7 @@ export function MasteryChallengeView({
               const fresh = startMasteryRun(run.scope, randomSeed());
               setRun(fresh);
               setLastResult(null);
+              setWrongTap(null);
             }}
           >
             Start a new sweep
@@ -264,7 +287,21 @@ export function MasteryChallengeView({
             </div>
 
             <div className="message-strip">
-              {lastResult && <HandResultStrip result={lastResult} onShowChart={setChartFor} />}
+              {lastResult && (
+                <HandResultStrip
+                  result={lastResult}
+                  onShowChart={setChartFor}
+                  onWrongTap={
+                    wrongTap && wrongTap.resultId === lastResult.id
+                      ? () => {
+                          withdrawAnswer(wrongTap);
+                          setWrongTap(null);
+                          setLastResult({ ...lastResult, undone: true });
+                        }
+                      : undefined
+                  }
+                />
+              )}
             </div>
 
             <ActionBar

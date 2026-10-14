@@ -39,6 +39,8 @@ export interface HandResult {
   label?: string;
   /** Flashcards only: the spaced-repetition line, read after grading. */
   sr?: { text: string; box?: number } | null;
+  /** #22: withdrawn with "Wrong tap", so it no longer counts anywhere. */
+  undone?: boolean;
 }
 
 function formatSigned(n: number): string {
@@ -74,6 +76,11 @@ export function correctLine(r: HandResult): string {
 /** #17: "Run reset at 120/150". */
 export function progressLostLine(lost: { at: number; of: number }): string {
   return `Run reset at ${lost.at}/${lost.of}`;
+}
+
+/** #22: "Not counted: 9,7 v 10" -- a withdrawn answer. */
+export function undoneLine(r: Pick<HandResult, 'cards' | 'up' | 'tc'>): string {
+  return `Not counted: ${resultHandLine(r)}`;
 }
 
 export function isTimeout(r: Pick<HandResult, 'taken'>): boolean {
