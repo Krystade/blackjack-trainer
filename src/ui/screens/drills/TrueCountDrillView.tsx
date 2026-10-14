@@ -747,7 +747,7 @@ export function TrueCountDrillView({
             </div>
           )}
           <div className="count-flash-area">
-            <div className="quiz-tc">Running count {formatSigned(question.runningCount)}</div>
+            <div className="quiz-tc">Running count {signedTc(question.runningCount)}</div>
             <div className="tag-guess-label">Decks remaining {formatDecks(question.decksRemaining)}</div>
           </div>
           {/* The spoken proposal, shown as well as said. The keypad stays:
@@ -822,7 +822,7 @@ export function TrueCountDrillView({
             {wasCorrect ? 'Correct!' : 'Wrong'}
           </div>
           <div className="result-question">
-            Running count {formatSigned(question.runningCount)} &middot;{' '}
+            Running count {signedTc(question.runningCount)} &middot;{' '}
             {question.decksRemaining} {question.decksRemaining === 1 ? 'deck' : 'decks'} remaining
           </div>
           <div className="result-detail">
@@ -838,7 +838,7 @@ export function TrueCountDrillView({
             {wasCorrect ? 'Correct!' : 'Wrong'}
           </div>
           <div className="result-question">
-            Running count {formatSigned(question.runningCount)} &middot;{' '}
+            Running count {signedTc(question.runningCount)} &middot;{' '}
             {question.decksRemaining} {question.decksRemaining === 1 ? 'deck' : 'decks'} remaining
           </div>
           <div className="result-detail">

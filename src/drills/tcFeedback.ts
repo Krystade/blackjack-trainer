@@ -40,7 +40,13 @@ export function gradeTcConversion(
   decksRemaining: number,
   rounding: TcRounding,
 ): boolean {
-  return guess === trueCount(runningCount, decksRemaining, rounding);
+  if (guess === trueCount(runningCount, decksRemaining, rounding)) return true;
+  // 'round' on an exact half (−3 ÷ 2 = −1.5) is a tie the profile's rule does
+  // not settle: Math.round sends it up to −1, half-away-from-zero to −2, and a
+  // counter's book may mean either. Both neighbours are right there.
+  if (rounding !== 'round') return false;
+  const exact = runningCount / Math.max(0.5, decksRemaining);
+  return Math.abs(exact - Math.trunc(exact)) === 0.5 && Math.abs(guess - exact) === 0.5;
 }
 
 /** The exact working: "−6 ÷ 5.5 = −1.09 → floor −2" (the count signed, "+7 ÷ …"). */
@@ -68,6 +74,7 @@ export function tcConventionNote(
   eyeError = 0,
 ): string | null {
   if (tcWithinEye(guess, runningCount, decksRemaining, eyeError, rounding)) return null;
+  if (eyeError === 0 && gradeTcConversion(guess, runningCount, decksRemaining, rounding)) return null;
   const others = ROUNDINGS.filter(
     (r) => r !== rounding && tcWithinEye(guess, runningCount, decksRemaining, eyeError, r),
   );

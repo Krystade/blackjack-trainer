@@ -12,6 +12,19 @@ describe('gradeTcConversion (#54)', () => {
     expect(gradeTcConversion(3, 7, 2.5, 'floor')).toBe(false);
     expect(gradeTcConversion(3, 7, 2.5, 'round')).toBe(true);
   });
+
+  it("accepts either neighbour on an exact half under 'round', and nothing else", () => {
+    // −3 ÷ 2 = −1.5: Math.round gives −1, half-away-from-zero −2.
+    expect(gradeTcConversion(-1, -3, 2, 'round')).toBe(true);
+    expect(gradeTcConversion(-2, -3, 2, 'round')).toBe(true);
+    expect(gradeTcConversion(-3, -3, 2, 'round')).toBe(false);
+    expect(tcConventionNote(-2, -3, 2, 'round')).toBeNull();
+    // Not a tie: −6 ÷ 5.5 = −1.09 rounds to −1 only.
+    expect(gradeTcConversion(-2, -6, 5.5, 'round')).toBe(false);
+    // Floor and truncate stay strict on the same tie.
+    expect(gradeTcConversion(-1, -3, 2, 'floor')).toBe(false);
+    expect(gradeTcConversion(-2, -3, 2, 'truncate')).toBe(false);
+  });
 });
 
 describe('tcWorking (#54)', () => {
