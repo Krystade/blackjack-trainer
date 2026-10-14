@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hardCompositions, makeHardHand } from './buildHand';
+import { hardCompositions, makeHardHand, pickComposition, rankPairsForTotal } from './buildHand';
 import { mulberry32 } from '../engine/cards';
 import { handValue } from '../engine/hand';
 import { correctPlay } from '../engine/strategy';
@@ -82,8 +82,9 @@ describe('makeHardHand', () => {
   it('with an rng the composition actually varies', () => {
     const seen = new Set<string>();
     for (let seed = 1; seed <= 60; seed++) {
+      // Order is cosmetic (#18), so the shape is the sorted ranks.
       const [a, b] = makeHardHand(16, mulberry32(seed))!;
-      seen.add(`${a.rank}+${b.rank}`);
+      seen.add([a.rank, b.rank].sort().join('+'));
     }
     // Vacuity guard: a broken rng path would give exactly one.
     expect(seen.size).toBeGreaterThan(1);
@@ -115,6 +116,92 @@ describe('makeHardHand', () => {
           }
         }
       }
+    }
+  });
+});
+
+describe('pickComposition (#18)', () => {
+  const shapeOf = (cards: [{ rank: string }, { rank: string }]) => {
+    const values = cards.map((c) => handValue([c as never]).total).sort((a, b) => a - b);
+    return values.join('+');
+  };
+
+  it('lists rank pairs with the ten-value cards as one rank', () => {
+    expect(rankPairsForTotal(16)).toEqual([
+      [6, 10],
+      [7, 9],
+    ]);
+    expect(rankPairsForTotal(5)).toEqual([[2, 3]]);
+    expect(rankPairsForTotal(4)).toEqual([]);
+    expect(rankPairsForTotal(20)).toEqual([]);
+  });
+
+  it('hard 16 is 10+6 or 9+7, each about half the time', () => {
+    const counts = new Map<string, number>();
+    const N = 4000;
+    for (let seed = 1; seed <= N; seed++) {
+      const shape = shapeOf(pickComposition(16, mulberry32(seed))!);
+      counts.set(shape, (counts.get(shape) ?? 0) + 1);
+    }
+    expect([...counts.keys()].sort()).toEqual(['6+10', '7+9']);
+    // Uniform over FACES (the old draw) puts 6+10 at 4 in 5.
+    const share = counts.get('6+10')! / N;
+    expect(share).toBeGreaterThan(0.45);
+    expect(share).toBeLessThan(0.55);
+  });
+
+  it('is uniform over rank pairs for every total', () => {
+    for (const total of TOTALS) {
+      const pairs = rankPairsForTotal(total);
+      const counts = new Map<string, number>();
+      const N = 600 * pairs.length;
+      for (let seed = 1; seed <= N; seed++) {
+        const shape = shapeOf(pickComposition(total, mulberry32(seed * 7 + total))!);
+        counts.set(shape, (counts.get(shape) ?? 0) + 1);
+      }
+      expect(counts.size, `total ${total}`).toBe(pairs.length);
+      for (const n of counts.values()) {
+        expect(n / N, `total ${total}`).toBeGreaterThan(1 / pairs.length - 0.06);
+        expect(n / N, `total ${total}`).toBeLessThan(1 / pairs.length + 0.06);
+      }
+    }
+  });
+
+  it('is always that hard total, never an ace, never a pair', () => {
+    for (const total of TOTALS) {
+      for (let seed = 1; seed <= 200; seed++) {
+        const cards = pickComposition(total, mulberry32(seed))!;
+        const v = handValue(cards);
+        expect(v.total).toBe(total);
+        expect(v.soft).toBe(false);
+        expect(cards.some((c) => c.rank === 'A')).toBe(false);
+        expect(handValue([cards[0]]).total).not.toBe(handValue([cards[1]]).total);
+      }
+    }
+  });
+
+  it('face, suit and order are cosmetic and do vary', () => {
+    const faces = new Set<string>();
+    const suits = new Set<string>();
+    const firsts = new Set<string>();
+    for (let seed = 1; seed <= 400; seed++) {
+      const cards = pickComposition(16, mulberry32(seed))!;
+      for (const c of cards) {
+        if (handValue([c]).total === 10) faces.add(c.rank);
+        suits.add(c.suit);
+      }
+      firsts.add(String(handValue([cards[0]]).total > handValue([cards[1]]).total));
+    }
+    expect([...faces].sort()).toEqual(['10', 'J', 'K', 'Q']);
+    expect(suits.size).toBe(4);
+    expect(firsts.size).toBe(2);
+  });
+
+  it('has no composition for 4 or 20, and makeHardHand with an rng is pickComposition', () => {
+    expect(pickComposition(4, mulberry32(1))).toBeNull();
+    expect(pickComposition(20, mulberry32(1))).toBeNull();
+    for (let seed = 1; seed <= 50; seed++) {
+      expect(makeHardHand(15, mulberry32(seed))).toEqual(pickComposition(15, mulberry32(seed)));
     }
   });
 });

@@ -634,3 +634,33 @@ describe('RV4 spaced-repetition scheduling (draw integration)', () => {
     });
   });
 });
+
+describe('#18: flashcards and the quiz deal hard totals uniformly over rank pairs', () => {
+  const lowValue = (cards: { rank: string }[]) =>
+    Math.min(...cards.map((c) => handValue([c as never]).total));
+
+  it('a flashcard hard 16 is 9+7 about half the time, not one time in five', () => {
+    let sixteen = 0;
+    let nineSeven = 0;
+    for (let seed = 1; seed <= 8000; seed++) {
+      const card = drawFlashcard('hard', {}, 0, seed);
+      if (!card.cellId.startsWith('hard-16-')) continue;
+      sixteen++;
+      if (lowValue(card.cards) === 7) nineSeven++;
+    }
+    expect(sixteen).toBeGreaterThan(300);
+    expect(nineSeven / sixteen).toBeGreaterThan(0.4);
+    expect(nineSeven / sixteen).toBeLessThan(0.6);
+  });
+
+  it('a quiz 16 v 10 is 9+7 about half the time', () => {
+    let nineSeven = 0;
+    const N = 2000;
+    for (let seed = 1; seed <= N; seed++) {
+      const item = drawQuizItem(seed, '16v10');
+      if (lowValue(item.cards!) === 7) nineSeven++;
+    }
+    expect(nineSeven / N).toBeGreaterThan(0.44);
+    expect(nineSeven / N).toBeLessThan(0.56);
+  });
+});

@@ -11,6 +11,7 @@ import {
   loadMasteryRun,
   saveMasteryRun,
   hydrateMasteryRun,
+  presentedCards,
 } from '../../../drills/masteryChallenge';
 import type { MasteryRun, MasteryScope } from '../../../drills/masteryChallenge';
 import { gradeMasteryAnswer } from '../../../drills/gradeAnswer';
@@ -71,7 +72,10 @@ export function MasteryChallengeView({
   }, [run.scope]);
 
   const cellId = currentCellId(run);
-  const cell = cellId ? cellMap.current.get(cellId) : undefined;
+  const storedCell = cellId ? cellMap.current.get(cellId) : undefined;
+  // #18: a hard cell's cards are drawn for this position of the run, not the
+  // one fixed composition the cell universe stores.
+  const cell = storedCell ? { ...storedCell, cards: presentedCards(storedCell, run) } : undefined;
   const complete = isMasteryRunComplete(run);
 
   const cellCorrectAction: Action | undefined = cell
