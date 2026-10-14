@@ -1,0 +1,9 @@
+/* #20: a count-drill history row's pace ("52 cards · manual · 840ms avg") is
+   too long to share a 343px line with the date and the verdict, and wrapping
+   it mid-row dropped the verdict onto a line of its own. The pace gets its own
+   second line instead, under the date, with the verdict kept on the first. */
+.count-history-row .count-history-pace {
+  order: 3;
+  flex-basis: 100%;
+  color: var(--ink-dim);
+}

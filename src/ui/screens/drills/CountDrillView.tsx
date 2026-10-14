@@ -20,6 +20,7 @@ import {
   secondsPerDeck,
   tierStartIntervalMs,
   RAMP_FLOOR_MS,
+  meanTapGapMs,
 } from '../../../drills/countSpeed';
 import type { SpeedTier } from '../../../drills/countSpeed';
 import { computeUnlockedTier, tierAbove, SPEED_TIER_ORDER } from '../../../drills/competenceGate';
@@ -319,6 +320,13 @@ export function CountDrillView({
   // reproducible given only its outer seed (matching the seeded idiom used
   // throughout drills/*.ts).
   const runSeedRef = useRef(0);
+  // #20: a manual run's own pace. Whether THIS run is self-paced is fixed at
+  // start(); each tap that moves to the next card adds the time the previous
+  // card was up. A checkpoint or distraction clears `lastCardAtRef`, so the
+  // time spent answering one is never counted as a gap between cards.
+  const runManualRef = useRef(false);
+  const tapGapsRef = useRef<number[]>([]);
+  const lastCardAtRef = useRef<number | null>(null);
   // performance.now() at the moment the current distraction was posed --
   // read (never displayed) to compute its elapsedMs on answer. null when no
   // distraction is currently pending.
@@ -431,6 +439,7 @@ export function CountDrillView({
   // display or speak it (the whole point of the drill is testing whether
   // the user can keep it in their own head through the interruption).
   const triggerDistraction = (idxAtTrigger: number, isLast: boolean) => {
+    lastCardAtRef.current = null;
     const rc = runningCountThrough(groups, idxAtTrigger);
     const seed = runSeedRef.current + idxAtTrigger;
     const d = makeDistraction(rc, settings.drill.distractionMode, seed);
@@ -458,6 +467,7 @@ export function CountDrillView({
    * that had actually been shown, not against wherever the run got to.
    */
   const triggerCheckpoint = (idxAtTrigger: number, isLast: boolean) => {
+    lastCardAtRef.current = null;
     checkpointAtRef.current = idxAtTrigger;
     checkpointResumeRef.current = isLast ? 'finish' : idxAtTrigger + 1;
     setPhase('checkpoint');
@@ -824,6 +834,11 @@ export function CountDrillView({
 
   const advanceManual = () => {
     const isLast = shownIndex >= groups.length - 1;
+    // #20: the gap this tap closes. Read before any interruption is posed --
+    // the card was up until now whatever happens next.
+    const now = performance.now();
+    if (lastCardAtRef.current !== null) tapGapsRef.current.push(now - lastCardAtRef.current);
+    lastCardAtRef.current = now;
     // D1 part 2: this tap zone is shared with Countdown mode's manual
     // advance (see the JSX below), which is out of scope for distractions --
     // guard it out explicitly rather than relying on distractionFreq alone.
@@ -914,6 +929,10 @@ export function CountDrillView({
       }
     }
     setShownIndex(0);
+    // #20: Timed Challenge ignores Next card, so it is never a manual run.
+    runManualRef.current = settings.drill.countManual && !timedChallenge;
+    tapGapsRef.current = [];
+    lastCardAtRef.current = runManualRef.current ? performance.now() : null;
     setHonorCheck(false);
     setTimedResult(null);
     setGateOutcome(null);
@@ -1044,6 +1063,13 @@ export function CountDrillView({
     }
 
     const cardsInRun = countdownMode ? 52 : settings.drill.countLengthCards;
+    // #20/#30: a manual run was never dealt at the auto interval, so it records
+    // the pace the user actually kept -- the mean tap gap, idle gaps left out
+    // -- and says it was manual. `intervalMs` is required by the stored shape;
+    // on a manual row it carries the same measured mean (0 if none), and
+    // readers rank manual runs by `meanTapMs` only (countSpeed.ts).
+    const manual = runManualRef.current;
+    const meanTapMs = manual ? meanTapGapMs(tapGapsRef.current) : undefined;
     const updated = {
       ...statsWithDistraction,
       countDrill: {
@@ -1052,8 +1078,9 @@ export function CountDrillView({
           {
             date: new Date().toISOString(),
             cards: cardsInRun,
-            intervalMs: settings.drill.countIntervalMs,
+            intervalMs: manual ? (meanTapMs ?? 0) : settings.drill.countIntervalMs,
             correct,
+            ...(manual ? { manual: true, ...(meanTapMs !== undefined ? { meanTapMs } : {}) } : {}),
             // RT#12: omitted entirely when the run had no checkpoints, so a
             // reader can tell "not measured" from "got none right".
             ...(report ? { checkpointsCorrect: report.correct, checkpointsTotal: report.total } : {}),
@@ -1097,6 +1124,8 @@ export function CountDrillView({
     if (resume === 'finish') {
       enterAnswerPhase();
     } else if (typeof resume === 'number') {
+      // #20: the resumed card goes up now; the pause is not a tap gap.
+      lastCardAtRef.current = performance.now();
       setShownIndex(resume);
       setPhase('flashing');
     }
@@ -1133,6 +1162,8 @@ export function CountDrillView({
     if (resume === 'finish') {
       enterAnswerPhase();
     } else if (typeof resume === 'number') {
+      // #20: the resumed card goes up now; the pause is not a tap gap.
+      lastCardAtRef.current = performance.now();
       setShownIndex(resume);
       setPhase('flashing');
     }
