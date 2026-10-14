@@ -76,8 +76,11 @@ test('the check is discriminating: removing the reservation reintroduces the ove
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Charts', exact: true }).click();
   await expect(page.locator('.charts-screen')).toBeVisible();
+  // The header bar is also sticky at `--safe-top` since #24, which on its own
+  // keeps it out of the strip -- so that goes too, or this control would pass
+  // without the check ever seeing text in the status bar.
   await page.addStyleTag({
-    content: `:root { --safe-top: ${INSET}px; } body { padding-top: 0 !important; } .charts-screen { padding-top: 0 !important; }`,
+    content: `:root { --safe-top: ${INSET}px; } body { padding-top: 0 !important; } .charts-screen { padding-top: 0 !important; } .charts-topbar { position: static !important; }`,
   });
 
   const topMost = await page.evaluate(() => {

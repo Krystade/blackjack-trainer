@@ -3,6 +3,7 @@ import './charts.css';
 import type { Screen } from '../App';
 import type { Profile } from '../../store/types';
 import { getChart } from '../../engine/charts';
+import { FloatingBackPill } from '../components/FloatingBackPill';
 import {
   ACTION_LEGEND,
   DEALER_UPCARDS,
@@ -93,9 +94,25 @@ interface ChartsProps {
   onBack?: () => void;
   /** Names the return target, e.g. "the Table". Defaults to Home. */
   backLabel?: string;
+  /**
+   * Where Back sits. 'topbar' (the default) is the Charts screen's own
+   * header. 'floating' is the study overlay's (#2): a pill pinned
+   * bottom-centre that stays on screen however far the grids are scrolled,
+   * because the cell being studied is often PAIRS, a long way below a header
+   * Back.
+   */
+  backPlacement?: 'topbar' | 'floating';
 }
 
-export function Charts({ onNavigate, activeProfile, highlight, note, onBack, backLabel }: ChartsProps) {
+export function Charts({
+  onNavigate,
+  activeProfile,
+  highlight,
+  note,
+  onBack,
+  backLabel,
+  backPlacement = 'topbar',
+}: ChartsProps) {
   const [order, setOrder] = useState<RowOrder>(() => {
     if (typeof window === 'undefined') return 'descending';
     try {
@@ -127,7 +144,6 @@ export function Charts({ onNavigate, activeProfile, highlight, note, onBack, bac
   );
 
   const cellRef = useRef<HTMLTableCellElement | null>(null);
-  const scrollerRefs = useRef(new Map<ChartSection, HTMLDivElement | null>());
 
   const chooseOrder = (next: RowOrder) => {
     setOrder(next);
@@ -139,30 +155,22 @@ export function Charts({ onNavigate, activeProfile, highlight, note, onBack, bac
     }
   };
 
-  // Horizontal centring is done by hand rather than via scrollIntoView's
-  // `inline` option: the row-label column is position:sticky, so the browser
-  // considers a cell "visible" while it is actually sitting UNDER the label.
-  // Centring the cell in the scroller sidesteps that entirely, and then the
-  // vertical scrollIntoView is asked for `inline: 'nearest'` so it does not
-  // undo the centring it cannot reason about.
+  // B4: the grid fits the screen width, so only the vertical position needs
+  // finding -- every column of the ringed cell's row is already on screen.
   const highlightKey = activeHighlight
     ? `${activeHighlight.section}:${activeHighlight.row}:${activeHighlight.dealerUp}`
     : '';
   useEffect(() => {
     const cell = cellRef.current;
     if (!cell || !activeHighlight) return;
-
-    const scroller = scrollerRefs.current.get(activeHighlight.section);
-    if (scroller) {
-      const frame = scroller.getBoundingClientRect();
-      const target = cell.getBoundingClientRect();
-      scroller.scrollLeft += target.left - frame.left - (frame.width - target.width) / 2;
-    }
     cell.scrollIntoView({ block: 'center', inline: 'nearest' });
     // highlightKey is the value identity of activeHighlight; re-running on the
     // object reference alone would re-scroll on every unrelated render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [highlightKey]);
+
+  const goBack = () => (onBack ? onBack() : onNavigate('home'));
+  const backText = `Back to ${backLabel ?? 'Home'}`;
 
   return (
     <div className="charts-screen">
@@ -170,11 +178,14 @@ export function Charts({ onNavigate, activeProfile, highlight, note, onBack, bac
         {/* Named after where you actually came from: Charts is reachable at
             any moment, and a hardcoded "Back to Home" threw away whatever
             drill or table you left to go and check a cell. */}
-        <button type="button" className="charts-back-btn" onClick={() => (onBack ? onBack() : onNavigate('home'))}>
-          Back to {backLabel ?? 'Home'}
-        </button>
+        {backPlacement === 'topbar' && (
+          <button type="button" className="charts-back-btn" onClick={goBack}>
+            {backText}
+          </button>
+        )}
         <div className="charts-heading">Strategy charts</div>
       </div>
+      {backPlacement === 'floating' && <FloatingBackPill label={backText} onClick={goBack} />}
 
       <p className="charts-ruleset">{rulesetSummary(activeProfile.rules)}</p>
       {/* WHAT IT IS, rather than a promise it cannot keep. The old line --
@@ -236,19 +247,20 @@ export function Charts({ onNavigate, activeProfile, highlight, note, onBack, bac
           </h2>
 
           <div className="chart-frame">
-            <div
-              className="chart-scroller"
-              tabIndex={0}
-              role="region"
-              aria-label={`${section.title} chart, scrolls sideways`}
-              ref={(el) => {
-                scrollerRefs.current.set(section.id, el);
-              }}
-            >
+            {/* B4: ten dealer columns and the row label fit the width of the
+                phone (fixed layout, percentage columns), so nothing scrolls
+                sideways and no column hides behind a fade. */}
+            <div className="chart-grid">
               <table className="chart-table">
                 <caption className="chart-caption">
                   {section.title} — {rulesetSummary(activeProfile.rules)}
                 </caption>
+                <colgroup>
+                  <col className="chart-col-label" />
+                  {DEALER_UPCARDS.map((up) => (
+                    <col className="chart-col-up" key={up} />
+                  ))}
+                </colgroup>
                 <thead>
                   <tr>
                     <th scope="col" className="chart-corner">

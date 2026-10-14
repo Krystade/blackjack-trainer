@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { shot, withProfile } from './helpers';
+import { answerAndReadStrip, shot, withProfile, withSettings } from './helpers';
 
 /**
  * Operator item #6: viewable strategy charts.
@@ -8,10 +8,10 @@ import { shot, withProfile } from './helpers';
  * The screen renders getChart(activeProfile.rules) -- the SAME assembled chart
  * src/engine/strategy.ts grades against -- so most correctness lives in
  * src/ui/screens/chartRows.test.ts (pure, 37 cases). What only a browser can
- * prove is asserted here: the row-order toggle and its persistence, the sticky
- * row-label column under horizontal scroll, that the page body itself never
- * scrolls sideways on a 390px phone, and the highlight API opening scrolled to
- * one ringed cell with its neighbours still on screen.
+ * prove is asserted here: the row-order toggle and its persistence, that every
+ * grid fits a 375px phone with nothing scrolling sideways (B4), the mute disc
+ * sitting in the header bar rather than over cells (#24), and the highlight
+ * API opening scrolled to one ringed cell with its neighbours still on screen.
  */
 
 async function openCharts(page: Page, url = '/?e2e=1'): Promise<void> {
@@ -107,29 +107,168 @@ test('cells are colour-coded by action and always keep their letter', async ({ p
   );
 });
 
-test('the page body never scrolls sideways, but the grid does, with a sticky row label', async ({ page }) => {
-  await withProfile(page);
-  await openCharts(page);
+/**
+ * B4 / #24: every chart fits the phone. Measured per section at Jack's
+ * iPhone 13 mini width: nothing scrolls sideways (page or grid), the ace
+ * column sits inside the frame on screen, no row label is clipped, and the
+ * codes stay at a legible size.
+ */
+async function expectGridsFit(page: Page, root: string): Promise<void> {
+  const sections = await page.evaluate((rootSel) => {
+    const d = document.documentElement;
+    const scope = document.querySelector(rootSel)!;
+    // The screen-reader caption is a 1px clipped box by design; skip it.
+    const sideScrollers = [...scope.querySelectorAll('.charts-screen, .charts-screen *:not(.chart-caption)')].filter((el) => {
+      const ox = getComputedStyle(el).overflowX;
+      return el.scrollWidth > el.clientWidth + 1 && ox !== 'visible' && ox !== 'clip';
+    });
+    return {
+      pageOverflow: d.scrollWidth - d.clientWidth,
+      viewport: window.innerWidth,
+      sideScrollers: sideScrollers.map((el) => el.className),
+      list: [...scope.querySelectorAll('[data-section]')].map((sec) => {
+        const frame = sec.querySelector('.chart-frame')!.getBoundingClientRect();
+        const table = sec.querySelector('.chart-table')!.getBoundingClientRect();
+        const ace = sec.querySelector('.chart-cell[data-up="A"]')!.getBoundingClientRect();
+        const cell = sec.querySelector('.chart-cell')!;
+        return {
+          id: (sec as HTMLElement).dataset.section,
+          frameLeft: frame.left,
+          frameRight: frame.right,
+          tableRight: table.right,
+          aceRight: ace.right,
+          aceWidth: ace.width,
+          // The TEXT must sit inside its box. (Not scrollWidth: the ringed
+          // cell's highlight ring deliberately overhangs its own box.)
+          clipped: [...sec.querySelectorAll('.chart-rowlabel, .chart-corner, .chart-up, .chart-cell')]
+            .filter((el) => {
+              const range = document.createRange();
+              range.selectNodeContents(el);
+              const text = range.getBoundingClientRect();
+              const box = el.getBoundingClientRect();
+              return text.left < box.left - 0.5 || text.right > box.right + 0.5;
+            })
+            .map((el) => el.textContent),
+          cellFont: parseFloat(getComputedStyle(cell).fontSize),
+          labelFont: parseFloat(getComputedStyle(sec.querySelector('.chart-rowlabel')!).fontSize),
+        };
+      }),
+    };
+  }, root);
 
-  const bodyOverflows = await page.evaluate(
-    () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
-  );
-  expect(bodyOverflows).toBe(false);
+  expect(sections.pageOverflow, 'the page scrolls sideways').toBeLessThanOrEqual(1);
+  expect(sections.sideScrollers, 'something on the chart scrolls sideways').toEqual([]);
+  expect(sections.list.map((s) => s.id)).toEqual(['HARD', 'SOFT', 'PAIRS']);
+  for (const s of sections.list) {
+    // 16px gutters: the frame is 343 wide on a 375 screen.
+    expect(s.frameLeft, `${s.id}: left gutter`).toBeGreaterThanOrEqual(16);
+    expect(sections.viewport - s.frameRight, `${s.id}: right gutter`).toBeGreaterThanOrEqual(16);
+    expect(s.tableRight, `${s.id}: the grid overruns its frame`).toBeLessThanOrEqual(s.frameRight);
+    expect(s.aceRight, `${s.id}: the ace column is off the frame`).toBeLessThanOrEqual(s.frameRight);
+    expect(s.aceWidth, `${s.id}: the ace column is squeezed`).toBeGreaterThanOrEqual(26);
+    expect(s.clipped, `${s.id}: clipped text`).toEqual([]);
+    expect(s.cellFont, `${s.id}: cell codes too small to read`).toBeGreaterThanOrEqual(11);
+    expect(s.labelFont, `${s.id}: row labels too small to read`).toBeGreaterThanOrEqual(11);
+  }
+}
 
-  const scroller = page.locator('[data-section="HARD"] .chart-scroller');
-  const overflows = await scroller.evaluate((el) => el.scrollWidth > el.clientWidth);
-  expect(overflows).toBe(true);
+test.describe('at 375x812', () => {
+  test.use({ viewport: { width: 375, height: 812 } });
 
-  const label = page.locator('[data-section="HARD"] .chart-rowlabel').first();
-  const before = (await label.boundingBox())!.x;
-  await scroller.evaluate((el) => {
-    el.scrollLeft = el.scrollWidth;
+  test('B4: every chart section fits the width, with no sideways scroll and nothing clipped', async ({ page }) => {
+    await withProfile(page);
+    await openCharts(page);
+    await expectGridsFit(page, 'body');
+    // Every column is on screen at once: the ace cell of a mid-grid row is in
+    // the viewport without any horizontal scrolling.
+    const ace = page.locator('[data-section="HARD"] [data-row="HARD:16"] [data-up="A"]');
+    await ace.scrollIntoViewIfNeeded();
+    await expect(ace).toBeInViewport({ ratio: 1 });
   });
-  const after = (await label.boundingBox())!.x;
-  expect(Math.abs(after - before)).toBeLessThan(2);
 
-  // The ace column is only reachable by scrolling; it must be reachable.
-  await expect(page.locator('[data-section="HARD"] [data-row="HARD:16"] [data-up="A"]')).toBeInViewport();
+  test('B4: the study overlay fits the width too', async ({ page }) => {
+    await page.goto('/?e2e=1');
+    await page.getByRole('button', { name: 'Drills', exact: true }).click();
+    await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+    const buttons = page.locator('.action-bar button.action-btn:not([disabled])');
+    let tone: 'ok' | 'miss' = 'ok';
+    for (let i = 0; i < 12 && tone !== 'miss'; i += 1) tone = await answerAndReadStrip(page, buttons.first());
+    expect(tone, 'no wrong answer in 12 cards').toBe('miss');
+    await page
+      .locator('[data-testid="result-strip"][data-tone="miss"]')
+      .getByRole('button', { name: 'Show on chart', exact: true })
+      .click();
+    await expect(page.locator('.study-chart-overlay')).toBeVisible();
+    await expectGridsFit(page, '.study-chart-overlay');
+  });
+
+  /**
+   * #24: the mute disc sat in a transparent strip the page scrolled under, so
+   * chart cells slid beneath it. On Charts it has a seat in a sticky, opaque
+   * header bar: whatever the scroll position, the thing directly under the
+   * disc is that bar, never a chart cell.
+   */
+  test('#24: the mute disc sits in the header bar, never over chart cells', async ({ page }) => {
+    await withSettings(page, { audio: { enabled: true } });
+    await withProfile(page);
+    await openCharts(page);
+    await expect(page.locator('.mute-btn')).toBeVisible();
+
+    const underDisc = () =>
+      page.evaluate(() => {
+        const r = document.querySelector('.mute-btn')!.getBoundingClientRect();
+        const bar = document.querySelector('.charts-topbar')!.getBoundingClientRect();
+        // Every corner of the disc as well as its centre.
+        const points = [
+          [r.left + 2, r.top + 2],
+          [r.right - 2, r.top + 2],
+          [r.left + 2, r.bottom - 2],
+          [r.right - 2, r.bottom - 2],
+          [r.left + r.width / 2, r.top + r.height / 2],
+        ];
+        const beneath = points.map(([x, y]) => {
+          const el = document.elementsFromPoint(x, y).find((e) => !e.closest('.mute-btn'));
+          return el?.closest('.charts-topbar') ? 'bar' : String(el?.className ?? 'nothing');
+        });
+        return { beneath, inside: r.top >= bar.top - 0.5 && r.bottom <= bar.bottom + 0.5 };
+      });
+
+    const atRest = await underDisc();
+    expect(atRest.beneath, 'top of the page: what the disc covers').toEqual(['bar', 'bar', 'bar', 'bar', 'bar']);
+    expect(atRest.inside, 'top of the page: the disc sits within the header bar').toBe(true);
+
+    for (const section of ['HARD', 'SOFT', 'PAIRS']) {
+      // Scroll the section's grid up to where the disc is.
+      await page.locator(`[data-section="${section}"] .chart-frame`).evaluate((el) => {
+        window.scrollBy(0, el.getBoundingClientRect().top + 30);
+      });
+      const seen = await underDisc();
+      expect(seen.beneath, `${section}: what the disc covers`).toEqual(['bar', 'bar', 'bar', 'bar', 'bar']);
+      expect(seen.inside, `${section}: the disc sits within the header bar`).toBe(true);
+    }
+    // Back is still there at the bottom of the page: the bar is sticky.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(page.locator('.charts-back-btn')).toBeInViewport({ ratio: 1 });
+  });
+
+  test('#24: the disc is not moved on other screens', async ({ page }) => {
+    await withSettings(page, { audio: { enabled: true } });
+    await page.goto('/?e2e=1');
+    // Elsewhere it stays at the very top of its reserved strip (no status-bar
+    // inset in a headless browser, so that is y = 0); only a chart nudges it
+    // down to the centre of the header bar.
+    const discTop = async () => (await page.locator('.mute-btn').boundingBox())!.y;
+    expect(await discTop(), 'Home').toBe(0);
+    await page.getByRole('button', { name: 'Drills', exact: true }).click();
+    await expect(page.locator('.drills-picker')).toBeVisible();
+    expect(await discTop(), 'Drills').toBe(0);
+    await page.getByRole('button', { name: 'Charts', exact: true }).click();
+    await expect(page.locator('.charts-topbar')).toBeVisible();
+    expect(await discTop(), 'Charts').toBeGreaterThan(0);
+    await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+    await expect(page.locator('.drills-picker')).toBeVisible();
+    expect(await discTop(), 'back on Drills').toBe(0);
+  });
 });
 
 test('the highlight API opens on one ringed cell with its neighbours still visible', async ({ page }) => {
