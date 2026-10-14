@@ -89,15 +89,6 @@ export interface Settings {
     // distractions: the standard count drill only, never Countdown or a
     // Timed Challenge run.
     countCheckpoints: CheckpointFreq;
-    // V4-1 (docs/BACKLOG.md): weight the flashcard draw by how often each
-    // chart cell actually comes up at a table, not by schedule alone. The 16
-    // v 10 you face most shoes and the hard 5 v 7 you face once a month were
-    // getting the same share of reps once their schedules lined up.
-    // Multiplies into the spaced-repetition weight rather than replacing it,
-    // and is compressed (see handFrequency.ts) so no cell effectively leaves
-    // the deck. Off by default: it reallocates practice time, which is the
-    // user's call to make.
-    flashByFrequency: boolean;
     // V5-1 (docs/BACKLOG.md): bias the next flashcard toward the cells most
     // easily confused with the one just answered. Brunmair & Richter's
     // interleaving meta-analysis finds the effect strongest when categories
@@ -129,13 +120,6 @@ export interface Settings {
     // Only the ordinary auto-flash count drill applies it; Countdown and Timed
     // Challenge (which owns pacing) ignore it, same scoping as messyCards.
     pacePressure: boolean;
-    // Mastery Challenge's own interruption-difficulty knob (see docs/superpowers/
-    // plans/2026-08-31-B-mastery-challenge.md, Design Decision D4). Deliberately
-    // SEPARATE from `distractionFreq`, which is scoped to the standard count
-    // drill's card stream -- sharing one field would mean changing the difficulty
-    // on one screen silently changes the other. Defaults to 'off' ("none"),
-    // matching the operator's explicit ask.
-    masteryDistractionFreq: DistractionFreq;
     // R1 (docs/BACKLOG.md, decision-latency telemetry + optional shot clock):
     // how long you get to answer a hand drill, in ms; 0 is off, which is the
     // default. Running out grades the card as a `timeout` mistake (its own
@@ -319,12 +303,10 @@ export const DEFAULT_SETTINGS: Settings = {
     distractionMode: 'near-count',
     countBias: 'none',
     countCheckpoints: 'off',
-    flashByFrequency: false,
     flashByConfusability: false,
     depthResolution: 'half',
     messyCards: false,
     pacePressure: false,
-    masteryDistractionFreq: 'off',
     shotClockMs: 0,
     wheelMode: 'talk',
   },

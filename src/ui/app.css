@@ -1139,24 +1139,6 @@ button {
   letter-spacing: 0.02em;
 }
 
-.bsl-freshshoe {
-  font-size: 0.9rem;
-  font-weight: 700;
-  padding: 0.25rem 0.6rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-}
-
-.bsl-fresh-yes {
-  color: var(--good);
-  background: rgba(60, 140, 90, 0.15);
-}
-
-.bsl-fresh-no {
-  color: var(--ink-dim);
-  background: rgba(120, 120, 120, 0.12);
-}
-
 .bsl-answers {
   gap: 0.4rem;
 }
@@ -1165,25 +1147,6 @@ button {
   font-size: 0.85rem;
   color: var(--ink-dim);
   text-align: center;
-}
-
-/* ---------- Downswing / tilt-inoculation session (ET1) ---------- */
-
-.downswing-hud {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.4rem max(0.6rem, env(safe-area-inset-left)) 0.4rem max(0.6rem, env(safe-area-inset-right));
-  font-weight: 700;
-  font-size: 0.95rem;
-}
-
-.downswing-bankroll {
-  color: var(--accent);
-}
-
-.downswing-count {
-  color: color-mix(in srgb, var(--card-back) 45%, var(--ink));
 }
 
 /* ---------- Distraction interruption (D1 part 2) ---------- */

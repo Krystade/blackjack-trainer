@@ -78,18 +78,6 @@ describe('saveStats — never throws on a full quota', () => {
   });
 });
 
-describe('masteryDistractionFreq default and merge', () => {
-  it('defaults to off for a fresh install', () => {
-    expect(loadSettings().drill.masteryDistractionFreq).toBe('off');
-  });
-
-  it('a partial persisted blob backfills the field from defaults', () => {
-    store.map.set('bjtrainer.settings.v1', JSON.stringify({ version: 1, drill: { flashCategory: 'hard' } }));
-    expect(loadSettings().drill.masteryDistractionFreq).toBe('off');
-    expect(loadSettings().drill.flashCategory).toBe('hard');
-  });
-});
-
 describe('exportAll — is actually a backup', () => {
   it('includes profiles and both spaced-repetition decks', () => {
     // Stats.tsx offers this as a download and warns only that import
