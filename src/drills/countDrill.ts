@@ -24,7 +24,7 @@ export type CountDrillBias = 'none' | 'negative' | 'positive';
  * Generate a count drill round with the specified number of cards, grouped by groupSize.
  * Uses a seeded Shoe to ensure deterministic generation.
  *
- * @param cards - Total number of cards to generate (up to 312 for 6-deck shoe)
+ * @param cards - Total number of cards to draw (from a shoe one deck larger than the run)
  * @param groupSize - Size of each group (1, 2, or 3)
  * @param seed - Optional seed for reproducibility
  * @param bias - Adversarial same-sign clustering (R8/CM#1); 'none' = unbiased
@@ -36,7 +36,11 @@ export function makeCountDrill(
   seed?: number,
   bias: CountDrillBias = 'none',
 ): CountDrillRound {
-  const shoe = new Shoe({ decks: Math.ceil(cards / 52), seed });
+  // #44: one deck MORE than the run needs. Drawn from exactly ceil(N/52)
+  // decks, a whole-deck run used every card in the shoe and so always counted
+  // to 0 -- an answer you could give without counting. From a larger shoe the
+  // run is a random slice, and its end count is whatever that slice holds.
+  const shoe = new Shoe({ decks: Math.ceil(cards / 52) + 1, seed });
 
   const allCards: Card[] = [];
   for (let i = 0; i < cards; i++) {

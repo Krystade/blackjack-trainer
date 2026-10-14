@@ -103,3 +103,45 @@ describe('makeCountDrill bias (R8/CM#1 — adversarial same-sign clustering)', (
     }
   });
 });
+
+describe('makeCountDrill shoe size (#44: a whole-deck run must not always end at 0)', () => {
+  const rankCounts = (round: { groups: Card[][] }) => {
+    const m = new Map<string, number>();
+    for (const c of round.groups.flat()) {
+      const k = `${c.rank}${c.suit}`;
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  };
+
+  it('a 52-card run does not always count to zero', () => {
+    // Drawn from exactly one deck, every 52-card run summed to 0 by
+    // construction. From a two-deck shoe the end count is a random slice's.
+    const finals = Array.from({ length: 40 }, (_, seed) => makeCountDrill(52, 1, seed).finalRc);
+    expect(finals.some((rc) => rc !== 0)).toBe(true);
+    // ...and not by accident: well over half the runs end off zero.
+    expect(finals.filter((rc) => rc !== 0).length).toBeGreaterThan(20);
+  });
+
+  it('a 104-card run does not always count to zero either', () => {
+    const finals = Array.from({ length: 40 }, (_, seed) => makeCountDrill(104, 2, seed).finalRc);
+    expect(finals.filter((rc) => rc !== 0).length).toBeGreaterThan(20);
+  });
+
+  it('draws exactly the run length, from a shoe one deck larger than the run', () => {
+    for (const cards of [13, 52, 65, 104, 312]) {
+      const round = makeCountDrill(cards, 1, 99);
+      expect(round.groups.flat()).toHaveLength(cards);
+      // No card appears more often than the shoe holds copies of it:
+      // ceil(cards/52) + 1 decks.
+      const decks = Math.ceil(cards / 52) + 1;
+      const most = Math.max(...rankCounts(round).values());
+      expect(most).toBeLessThanOrEqual(decks);
+    }
+    // A 52-card run really does reach a second deck: some card shows twice.
+    const repeats = Array.from({ length: 20 }, (_, s) => makeCountDrill(52, 1, s)).some(
+      (r) => Math.max(...rankCounts(r).values()) > 1,
+    );
+    expect(repeats).toBe(true);
+  });
+});
