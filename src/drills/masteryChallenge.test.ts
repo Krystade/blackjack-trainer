@@ -6,7 +6,9 @@ import {
   isMasteryRunComplete,
   currentCellId,
   hydrateMasteryRun,
+  presentedCards,
 } from './masteryChallenge';
+import { handValue } from '../engine/hand';
 import type { MasteryScope } from './masteryChallenge';
 
 const SCOPES: { scope: MasteryScope; count: number }[] = [
@@ -113,5 +115,47 @@ describe('hydrateMasteryRun', () => {
     const bad = hydrateMasteryRun({ scope: 'pairs', seed: 1, index: 99999 });
     expect(bad).not.toBeNull();
     expect(bad!.index).toBe(0);
+  });
+});
+
+describe('presentedCards (#18): a hard cell is dealt as any of its compositions', () => {
+  const cells = new Map(cellsForScope('all').map((c) => [c.id, c]));
+  const hard16 = cells.get('hard-16-v-10')!;
+
+  it('hard 16 comes up as 10+6 and 9+7 about equally across positions and sweeps', () => {
+    let nineSeven = 0;
+    const N = 2000;
+    for (let i = 0; i < N; i++) {
+      const cards = presentedCards(hard16, { seed: 1000 + (i % 40), index: Math.floor(i / 40) });
+      const values = cards.map((c) => handValue([c]).total).sort((a, b) => a - b);
+      expect(values[0] + values[1]).toBe(16);
+      if (values[0] === 7) nineSeven++;
+    }
+    // The stored representative is always 6+10, so a view that ignored this
+    // would score 0 here.
+    expect(nineSeven / N).toBeGreaterThan(0.42);
+    expect(nineSeven / N).toBeLessThan(0.58);
+  });
+
+  it('is stable for one position of one run, so a re-render shows the same hand', () => {
+    for (let index = 0; index < 30; index++) {
+      expect(presentedCards(hard16, { seed: 77, index })).toEqual(presentedCards(hard16, { seed: 77, index }));
+    }
+  });
+
+  it('every hard cell keeps its total and stays hard', () => {
+    const run = startMasteryRun('hard', 31337);
+    for (let index = 0; index < run.order.length; index++) {
+      const cell = cells.get(run.order[index]!)!;
+      const v = handValue(presentedCards(cell, { seed: run.seed, index }));
+      expect(v.total, cell.id).toBe(Number(cell.id.split('-')[1]));
+      expect(v.soft).toBe(false);
+    }
+  });
+
+  it('pairs and soft cells are shown exactly as stored', () => {
+    for (const cell of cellsForScope('pairs').concat(cellsForScope('soft'))) {
+      expect(presentedCards(cell, { seed: 5, index: 3 })).toBe(cell.cards);
+    }
   });
 });

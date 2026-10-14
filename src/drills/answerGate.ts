@@ -17,7 +17,7 @@
  * cascade (see clips.ts / narrateReason) instead of dropping to robot voice.
  */
 
-import type { Card } from '../engine/cards';
+import type { Card, Rank } from '../engine/cards';
 import type { Action } from '../engine/deviations';
 import { narrateActionNotAsked } from '../audio/narrate';
 import type { RuleSet, StrategyRules } from '../engine/ruleset';
@@ -44,18 +44,20 @@ const ACCEPTED: AnswerGate = { accepted: true, announcement: null };
 /**
  * `cards` is `null` for prompts with no hand to judge -- the deviation quiz's
  * insurance items -- which are always accepted; gating them would make the
- * insurance prompt unanswerable.
+ * insurance prompt unanswerable. `up` is the dealer's card: whether a pair
+ * may surrender depends on it (#11, drills/legalActions.ts).
  */
 export function gateDrillAnswer(
   taken: string,
   cards: Card[] | null,
   rules: RuleSet,
+  up: Rank,
 ): AnswerGate {
   if (cards === null) return ACCEPTED;
   if (!(taken in ACTION_SPOKEN)) return ACCEPTED;
 
   const action = taken as Action;
-  if (drillLegalActions(cards, rules).includes(action)) return ACCEPTED;
+  if (drillLegalActions(cards, rules, up).includes(action)) return ACCEPTED;
 
   return { accepted: false, announcement: actionUnavailable(action) };
 }
@@ -87,7 +89,7 @@ export function gateQuizAnswer(taken: string, item: QuizItem, rules: StrategyRul
   if (quizLegalActions(item, rules).includes(action)) return ACCEPTED;
 
   // Playable at the table, just not part of this question.
-  if (drillLegalActions(item.cards, rules).includes(action)) {
+  if (drillLegalActions(item.cards, rules, item.up).includes(action)) {
     return { accepted: false, announcement: actionNotAsked(action) };
   }
   return { accepted: false, announcement: actionUnavailable(action) };

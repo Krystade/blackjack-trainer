@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { shot, withSettings, withStats, readStats, goHomeAndNavigate, openCountOptions } from './helpers';
+import { answerAndReadStrip, shot, withSettings, withStats, readStats, goHomeAndNavigate, openCountOptions } from './helpers';
 
 /**
  * The feedback strip, with the spaced-repetition due time masked out.
@@ -349,20 +349,21 @@ test('deck estimation drill: answering a question persists a deckEstimation hist
   expect(new Date(entry.date).toString()).not.toBe('Invalid Date');
 });
 
-test('flashcards: answer shows feedback, Next draws a new card', async ({ page }) => {
+test('flashcards: answer shows the result strip and the next card at once', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
   await shot(page, '17-flashcard-question');
 
+  // B1: the answer deals the next card at once; the strip holds the
+  // answered card's cell, and there is no Next to tap.
   await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-  await expect(page.locator('.feedback-cell')).toBeVisible();
+  await expect(page.locator('[data-testid="result-strip"] .hand-result')).toHaveAttribute('data-cell-id', /-v-/);
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toHaveCount(0);
+  await expect(page.locator('.action-bar button.action-btn', { hasText: 'Stand' })).toBeEnabled();
   await shot(page, '18-flashcard-feedback');
-
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.locator('.feedback-cell')).not.toBeVisible();
 });
 
 /**
@@ -666,13 +667,13 @@ test('deviation quiz: answer shows feedback with the index/label text', async ({
     await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
   }
 
+  // B1: the label rides in the result strip (under a hit, or as the reason
+  // for a miss), the next item already dealt and no Next button.
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-  const label = page.locator('.quiz-label');
-  await expect(label).toBeVisible();
-  await expect(label).not.toHaveText('');
+  const strip = page.locator('[data-testid="result-strip"]');
+  await expect(strip.locator('.quiz-label, .hand-result-reason')).not.toHaveText('');
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toHaveCount(0);
   await shot(page, '20-quiz-feedback');
-
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
 });
 
 test('deviation quiz: "Off-index hands" segmented control persists quizDistractorPct across reload', async ({ page }) => {
@@ -720,10 +721,8 @@ test('deviation quiz distractors: quizDistractorPct 100 always shows the "no ind
   }
 
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-  await expect(page.locator('.quiz-label')).toContainText('No index applies here');
+  await expect(page.locator('[data-testid="result-strip"]')).toContainText('No index applies here');
   await shot(page, '62-quiz-distractor-feedback');
-
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
 });
 
 /* ==================================================================== */
@@ -848,21 +847,22 @@ test('flashcards: keyboard 3/4/5 answer Double/Split/Surrender, grading identica
   }
 });
 
-test('flashcards: Enter and Space both advance past feedback via keyboard, same as clicking Next', async ({ page }) => {
+test('flashcards: with no Next step, Enter and Space neither grade nor skip the card on screen', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
 
-  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
-  await expect(page.locator('.feedback-cell')).toBeVisible();
-  await page.keyboard.press('Enter');
-  await expect(page.locator('.feedback-cell')).not.toBeVisible();
+  // B1: the answer itself deals the next card.
+  await answerAndReadStrip(page, page.locator('.action-bar button.action-btn', { hasText: 'Stand' }));
+  const resultId = await page.locator('[data-testid="result-strip"] .hand-result').getAttribute('data-result-id');
+  const hand = await page.locator('.hand-cards').innerText();
 
-  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
-  await expect(page.locator('.feedback-cell')).toBeVisible();
+  await page.keyboard.press('Enter');
   await page.keyboard.press('Space');
-  await expect(page.locator('.feedback-cell')).not.toBeVisible();
+  // A grade would replace the strip's result; a skip would redeal.
+  await expect(page.locator('[data-testid="result-strip"] .hand-result')).toHaveAttribute('data-result-id', resultId!);
+  expect(await page.locator('.hand-cards').innerText()).toBe(hand);
 });
 
 test('deviation quiz: keyboard action key grades identically to clicking the matching button', async ({ page }) => {
@@ -1387,9 +1387,9 @@ test('flashcards: inline Category segmented redraws from the chosen category and
 
   // Redraw actually respected the filter -- the graded answer's cellId is a
   // pair cell (drills/flashcards.ts: "pair-<rank>-v-<up>"), never hard/soft.
-  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
-  await expect(page.locator('.feedback-cell')).toBeVisible();
-  const cellId = (await page.locator('.feedback-cell').getAttribute('data-cell-id')) ?? '';
+  await answerAndReadStrip(page, page.locator('.action-bar button.action-btn', { hasText: 'Stand' }));
+  const cellId =
+    (await page.locator('[data-testid="result-strip"] .hand-result').getAttribute('data-cell-id')) ?? '';
   expect(cellId.startsWith('pair-'), `expected a pair cell, got "${cellId}"`).toBe(true);
 
   const settings = await readSettings(page);
@@ -1439,21 +1439,18 @@ test('mixed session: interleaves flashcard + quiz items, grading each through it
     // Answer via the SAME surfaces the standalone views expose: insurance
     // items get Decline; everything else gets Stand.
     const insurancePrompt = page.locator('.quiz-insurance-prompt');
-    if (await insurancePrompt.isVisible().catch(() => false)) {
-      await page.getByRole('button', { name: 'Decline insurance', exact: true }).click();
-    } else {
-      await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
-    }
+    const btn = (await insurancePrompt.isVisible().catch(() => false))
+      ? page.getByRole('button', { name: 'Decline insurance', exact: true })
+      : page.locator('.action-bar button.action-btn', { hasText: 'Stand' });
+    await answerAndReadStrip(page, btn);
 
-    // Feedback renders per item -- reusing the standalone feedback surfaces:
-    // flashcards show .feedback-cell (the chart cell), quiz items .quiz-label.
-    await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-    if (await page.locator('.feedback-cell').isVisible().catch(() => false)) sawFlash = true;
-    if (await page.locator('.quiz-label').isVisible().catch(() => false)) sawQuiz = true;
+    // B1: the strip holds the answered item and the next one is already up.
+    // A flashcard result carries its chart cell id; a quiz result its count.
+    const result = page.locator('[data-testid="result-strip"] .hand-result');
+    if (await result.getAttribute('data-cell-id')) sawFlash = true;
+    else if (/at TC|Insurance/.test(await result.innerText())) sawQuiz = true;
 
     if (i === 0) await shot(page, '81-mixed-quiz-item-feedback');
-    await page.getByRole('button', { name: 'Next', exact: true }).click();
-    await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toHaveCount(0);
   }
 
   // BOTH item types appeared and were graded across the seeded run.
@@ -1825,7 +1822,8 @@ test('flashcards: the shot clock grades an unanswered card as a timeout', async 
   expect(await readStats(page)).toBeNull();
 
   // Say nothing. The clock should grade it on its own -- no tap, no key.
-  await expect(page.locator('.message-strip .mistake-card')).toBeVisible({ timeout: 8000 });
+  // B1: a timeout is a miss like any other -- to the strip, next card dealt.
+  await expect(page.locator('[data-testid="result-strip"][data-tone="miss"]')).toBeVisible({ timeout: 8000 });
   await expect(page.locator('.message-strip')).toContainText('Out of time');
 
   const stats = await readStats(page);
@@ -1859,11 +1857,12 @@ test('flashcards: answering in time cancels the clock, and it never fires behind
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
 
-  await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
-  await expect(page.locator('.message-strip .result-correct, .message-strip .mistake-card')).toBeVisible();
-
-  // Sit on the correction for longer than the limit. Nothing more may be graded.
-  await page.waitForTimeout(4000);
+  // B1: the answer deals the next card, whose own clock starts then. Answer
+  // late-ish, then wait past the FIRST card's deadline but short of the
+  // second's: a first-card timer left running would fire in that gap.
+  await page.waitForTimeout(1500);
+  await answerAndReadStrip(page, page.locator('.action-bar button.action-btn', { hasText: 'Stand' }));
+  await page.waitForTimeout(2000);
 
   const stats = await readStats(page);
   expect(stats, 'the answered card must have persisted a stats blob').not.toBeNull();
@@ -1884,7 +1883,7 @@ test('flashcards: no shot clock is shown or enforced by default', async ({ page 
 
   // Longer than the longest limit on offer, and still awaiting an answer.
   await page.waitForTimeout(4000);
-  await expect(page.locator('.message-strip .mistake-card')).toHaveCount(0);
+  await expect(page.locator('.message-strip .mistake-card, [data-testid="result-strip"]')).toHaveCount(0);
   expect(await readStats(page)).toBeNull();
 });
 
@@ -1897,7 +1896,7 @@ test('deviation quiz: the shot clock grades an unanswered item as a timeout', as
   await expect(page.locator('.drill-heading')).toHaveText('Deviation quiz');
 
   await expect(page.getByTestId('shot-clock')).toBeVisible();
-  await expect(page.locator('.message-strip .mistake-card')).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('[data-testid="result-strip"][data-tone="miss"]')).toBeVisible({ timeout: 8000 });
 
   const stats = await readStats(page);
   expect(stats).not.toBeNull();
@@ -1980,3 +1979,22 @@ test('true count drill: it asks the next question on its own', async ({ page }) 
   const log = await page.evaluate(() => window.__speechLog ?? []);
   expect(log.filter((l) => l.startsWith('Running count')).length).toBeGreaterThan(1);
 });
+
+/**
+ * #11: in a drill, Surrender is dark on soft hands (no chart surrenders one)
+ * while hard hands keep it at a table that offers late surrender.
+ */
+for (const { category, enabled } of [
+  { category: 'soft', enabled: false },
+  { category: 'hard', enabled: true },
+] as const) {
+  test(`flashcards: Surrender is ${enabled ? 'live' : 'disabled'} on a ${category} hand`, async ({ page }) => {
+    await withSettings(page, { drill: { flashCategory: category } });
+    await page.goto('/?e2e=1');
+    await page.getByRole('button', { name: 'Drills', exact: true }).click();
+    await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+    const surrender = page.locator('.action-bar button.action-btn', { hasText: 'Surrender' });
+    if (enabled) await expect(surrender).toBeEnabled();
+    else await expect(surrender).toBeDisabled();
+  });
+}

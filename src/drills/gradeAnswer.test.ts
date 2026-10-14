@@ -769,7 +769,7 @@ describe('the grader asks the same question the draw asked', () => {
         const item = drawQuizItem(seed, undefined, rules, 40);
         if (!item.cards) continue;
         const ctx = quizCtxFor(item, rules);
-        const offered = drillLegalActions(item.cards, rules).filter(
+        const offered = drillLegalActions(item.cards, rules, item.up).filter(
           (a) => ctx.canSurrender || a !== 'surrender',
         );
         expect(

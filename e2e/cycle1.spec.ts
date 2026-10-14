@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { shot, withSettings, withProfile, playRoundByAdvice, openCountOptions } from './helpers';
+import { answerAndReadStrip, shot, withSettings, withProfile, playRoundByAdvice, openCountOptions } from './helpers';
 
 test('manual countdown: tapping the zone through all groups reaches the answer/result screens', async ({ page }) => {
   await withSettings(page, {
@@ -48,11 +48,12 @@ test('deviation quiz: an index filter of 16v10 keeps drawing the same scenario a
   const expectedLabel = '16 v 10: stand at TC ≥ 0';
   for (let cycle = 0; cycle < 3; cycle++) {
     await expect(select).toHaveValue('16v10');
-    await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
-    await expect(page.locator('.quiz-label')).toHaveText(expectedLabel);
+    // B1: no Next; the next item is dealt at once and the strip names the
+    // answered one's index, right or wrong.
+    await answerAndReadStrip(page, page.locator('.action-bar button.action-btn', { hasText: 'Stand' }));
+    await expect(page.locator('[data-testid="result-strip"]')).toContainText(expectedLabel);
     if (cycle === 0) await shot(page, '38-quiz-16v10-feedback');
     if (cycle === 2) await shot(page, '39-quiz-16v10-cycle3-feedback');
-    await page.getByRole('button', { name: 'Next', exact: true }).click();
   }
 });
 

@@ -167,17 +167,16 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   await expect(page.locator('.drills-picker')).toBeVisible();
 
   // ---------------------------------------------------------------
-  // 8. Drills -> Flashcards: answer, feedback, Next
+  // 8. Drills -> Flashcards: answer, result strip, next card
   // ---------------------------------------------------------------
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
 
+  // B1: the answer goes to the result strip and the next card is dealt.
   await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
-  await expect(page.locator('.feedback-cell')).toBeVisible();
+  await expect(page.locator('[data-testid="result-strip"]')).toBeVisible();
   await shot(page, 'smoke-09-flashcards-feedback');
-
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.locator('.feedback-cell')).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toHaveCount(0);
 
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();
@@ -197,9 +196,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
     await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
   }
 
-  const quizLabel = page.locator('.quiz-label');
-  await expect(quizLabel).toBeVisible();
-  await expect(quizLabel).not.toHaveText('');
+  await expect(page.locator('[data-testid="result-strip"]')).not.toHaveText('');
   await shot(page, 'smoke-10-quiz-feedback');
 
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
@@ -239,7 +236,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   await page.getByRole('button', { name: 'Mixed', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Mixed');
   await page.locator('.action-bar button.action-btn').first().click();
-  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
+  await expect(page.locator('[data-testid="result-strip"]')).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();
 
@@ -250,7 +247,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   await expect(page.locator('.drill-heading')).toHaveText('Mastery challenge');
   await expect(page.getByTestId('mastery-progress')).toContainText('cleared');
   await page.locator('.action-bar button.action-btn').first().click();
-  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
+  await expect(page.locator('[data-testid="result-strip"]')).toBeVisible();
   await shot(page, 'smoke-09e-mastery');
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Settings, Profile } from '../../../store/types';
 import type { Action } from '../../../engine/deviations';
-import type { GradedEvent } from '../../../engine/grade';
 import {
   startMasteryRun,
   advanceMasteryRun,
@@ -11,18 +10,21 @@ import {
   loadMasteryRun,
   saveMasteryRun,
   hydrateMasteryRun,
+  presentedCards,
 } from '../../../drills/masteryChallenge';
 import type { MasteryRun, MasteryScope } from '../../../drills/masteryChallenge';
 import { gradeMasteryAnswer } from '../../../drills/gradeAnswer';
 import { gateDrillAnswer } from '../../../drills/answerGate';
-import { drillLegalActions } from '../../../drills/legalActions';
+import { drillLegalActions, rulesChipLabels } from '../../../drills/legalActions';
 import { isDistractionPoint, makeDistraction } from '../../../drills/distraction';
 import type { Distraction } from '../../../drills/distraction';
 import { correctPlay } from '../../../engine/strategy';
 import { saveSettings } from '../../../store/persist';
 import { PlayingCard } from '../../components/PlayingCard';
 import { ActionBar } from '../../components/ActionBar';
-import { MistakeCard } from '../../components/MistakeCard';
+import { HandResultStrip } from '../../components/HandResultStrip';
+import { RulesChip } from '../../components/RulesChip';
+import { releaseAnswerFocus, snapshotResult, type HandResult } from '../../handResult';
 import { StudyChartOverlay } from '../../components/StudyChartOverlay';
 import { Segmented } from '../Settings';
 import { KEY_TO_ACTION } from '../Drills';
@@ -71,7 +73,10 @@ export function MasteryChallengeView({
   }, [run.scope]);
 
   const cellId = currentCellId(run);
-  const cell = cellId ? cellMap.current.get(cellId) : undefined;
+  const storedCell = cellId ? cellMap.current.get(cellId) : undefined;
+  // #18: a hard cell's cards are drawn for this position of the run, not the
+  // one fixed composition the cell universe stores.
+  const cell = storedCell ? { ...storedCell, cards: presentedCards(storedCell, run) } : undefined;
   const complete = isMasteryRunComplete(run);
 
   const cellCorrectAction: Action | undefined = cell
@@ -79,19 +84,21 @@ export function MasteryChallengeView({
         .action
     : undefined;
 
-  const [feedback, setFeedback] = useState<{
-    correct: boolean;
-    event: GradedEvent;
-    reset: boolean; // true when this wrong answer just wiped the run
-  } | null>(null);
+  // B1 (#8, #10, #17): the answered hand, frozen when it was graded. The run
+  // moves on in the same handler, so the hand on screen is already the next
+  // one; the strip and "Show on chart" read ONLY this snapshot. #10's bug was
+  // the chart reading the live `cell` after setRun(nextRun) had replaced it,
+  // so a miss on 4,4 v 4 opened whatever the reshuffle dealt next.
+  const [lastResult, setLastResult] = useState<HandResult | null>(null);
+  const resultIdRef = useRef(0);
   const [distraction, setDistraction] = useState<Distraction | null>(null);
-  const [showChart, setShowChart] = useState(false);
+  const [chartFor, setChartFor] = useState<HandResult | null>(null);
   const promptShownAtRef = useRef(performance.now());
 
   const changeScope = (scope: MasteryScope) => {
     const fresh = startMasteryRun(scope, randomSeed());
     setRun(fresh);
-    setFeedback(null);
+    setLastResult(null);
     setDistraction(null);
     promptShownAtRef.current = performance.now();
   };
@@ -112,7 +119,7 @@ export function MasteryChallengeView({
 
   const handleAction = (taken: Action) => {
     if (!cell || complete || !cellCorrectAction) return;
-    const gate = gateDrillAnswer(taken, cell.cards, activeProfile.rules);
+    const gate = gateDrillAnswer(taken, cell.cards, activeProfile.rules, cell.up);
     if (!gate.accepted) return; // D3: refused answers never reach grading or the run
 
     const elapsedMs = performance.now() - promptShownAtRef.current;
@@ -125,14 +132,29 @@ export function MasteryChallengeView({
       Date.now(),
     );
 
+    resultIdRef.current += 1;
+    setLastResult(
+      snapshotResult(
+        resultIdRef.current,
+        event,
+        { cards: cell.cards, up: cell.up, tc: null },
+        {
+          cellId: cell.id,
+          // #17: what the miss threw away, counted before the reset.
+          progressLost: correct ? undefined : { at: run.index, of: run.order.length },
+        },
+      ),
+    );
     const nextRun = advanceMasteryRun(run, correct, randomSeed());
-    setFeedback({ correct, event, reset: !correct });
     setRun(nextRun);
+    promptShownAtRef.current = performance.now();
+    releaseAnswerFocus();
     if (correct && !isMasteryRunComplete(nextRun)) maybeTriggerDistraction(nextRun);
   };
 
-  const next = () => {
-    setFeedback(null);
+  const closeChart = () => {
+    setChartFor(null);
+    // The hand behind the chart was waiting unanswered; restart its clock.
     promptShownAtRef.current = performance.now();
   };
 
@@ -141,28 +163,22 @@ export function MasteryChallengeView({
     // touches `run`. Recording into Stats.distraction.history is a follow-up
     // nicety, not required for this plan's minimum scope.
     setDistraction(null);
+    promptShownAtRef.current = performance.now();
   };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (focusSwallowsKey(e.key)) return;
-      if (showChart || distraction) return;
-      if (!feedback) {
-        const action = KEY_TO_ACTION[e.key];
-        if (!action || !cell) return;
-        e.preventDefault();
-        if (gateDrillAnswer(action, cell.cards, activeProfile.rules).accepted) handleAction(action);
-        return;
-      }
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        next();
-      }
+      if (chartFor || distraction) return;
+      const action = KEY_TO_ACTION[e.key];
+      if (!action || !cell) return;
+      e.preventDefault();
+      if (gateDrillAnswer(action, cell.cards, activeProfile.rules, cell.up).accepted) handleAction(action);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feedback, cell, showChart, distraction]);
+  }, [run, cell, chartFor, distraction]);
 
   return (
     <div className="drill-screen">
@@ -216,7 +232,7 @@ export function MasteryChallengeView({
             onClick={() => {
               const fresh = startMasteryRun(run.scope, randomSeed());
               setRun(fresh);
-              setFeedback(null);
+              setLastResult(null);
             }}
           >
             Start a new sweep
@@ -232,6 +248,8 @@ export function MasteryChallengeView({
       ) : (
         cell && (
           <>
+            {/* #26: graded with surrender available wherever the rules offer it. */}
+            <RulesChip labels={rulesChipLabels({ canSurrender: true, canDouble: true }, activeProfile.rules)} />
             <div className="dealer-area">
               <PlayingCard card={{ rank: cell.up, suit: 's' }} />
             </div>
@@ -246,54 +264,25 @@ export function MasteryChallengeView({
             </div>
 
             <div className="message-strip">
-              {feedback && (
-                <>
-                  {feedback.correct ? (
-                    <div className="result-correct">Correct!</div>
-                  ) : (
-                    <>
-                      <div className="mastery-reset-banner" role="alert">
-                        Wrong. Progress is back to zero and a new sweep has started.
-                      </div>
-                      <MistakeCard
-                        taken={feedback.event.taken}
-                        expected={feedback.event.expected}
-                        reason={feedback.event.reason}
-                        tc={feedback.event.tc}
-                        hand={feedback.event.hand}
-                        classification={feedback.event.classification}
-                        onShowTable={() => setShowChart(true)}
-                      />
-                    </>
-                  )}
-                </>
-              )}
+              {lastResult && <HandResultStrip result={lastResult} onShowChart={setChartFor} />}
             </div>
 
-            {!feedback ? (
-              <ActionBar
-                mode={{ kind: 'actions', legal: drillLegalActions(cell.cards, activeProfile.rules), onAction: handleAction }}
-              />
-            ) : (
-              <div className="action-bar">
-                <button type="button" className="drill-next-btn" onClick={next}>
-                  Next
-                </button>
-              </div>
-            )}
+            <ActionBar
+              mode={{ kind: 'actions', legal: drillLegalActions(cell.cards, activeProfile.rules, cell.up), onAction: handleAction }}
+            />
           </>
         )
       )}
 
-      {showChart && cell && (
+      {chartFor && (
         <StudyChartOverlay
           activeProfile={activeProfile}
-          cards={cell.cards}
-          dealerUp={cell.up}
+          cards={chartFor.cards}
+          dealerUp={chartFor.up}
           // No `graded`: this drill asks every cell at true count zero, so
           // the expectation IS the chart and there is never anything to
           // reconcile. Passing one would only ever produce silence.
-          onClose={() => setShowChart(false)}
+          onClose={closeChart}
         />
       )}
     </div>

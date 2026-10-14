@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { answerAndReadStrip, withSettings } from './helpers';
 
 /**
  * V5-1 (docs/BACKLOG.md): the flashcard draw is biased toward the cells most
@@ -21,8 +21,8 @@ import { withSettings } from './helpers';
  * cell and must match. Up to the first divergence both runs have seen the same
  * seeds and the same SR history, so if the sequences differ AT ALL the only
  * input that could have caused it is the previous-cell term -- which is
- * exactly the chain being tested. `.feedback-cell` is existing production
- * markup that renders the cellId, so nothing here is a test-only affordance.
+ * exactly the chain being tested. The result strip's `data-cell-id` is
+ * existing production markup that renders the cellId, so nothing here is a test-only affordance.
  */
 
 async function pinRandom(page: Page): Promise<void> {
@@ -42,10 +42,12 @@ async function cellSequence(page: Page, rounds: number): Promise<string[]> {
   const seen: string[] = [];
   for (let i = 0; i < rounds; i++) {
     // Any action produces feedback; which one is irrelevant to the draw.
-    await page.getByRole('button', { name: 'Stand', exact: true }).click();
-    const cell = (await page.locator('.feedback-cell').getAttribute('data-cell-id')) ?? '';
+    // B1: the answer deals the next card; the strip carries the answered
+    // card's cellId.
+    await answerAndReadStrip(page, page.getByRole('button', { name: 'Stand', exact: true }));
+    const cell =
+      (await page.locator('[data-testid="result-strip"] .hand-result').getAttribute('data-cell-id')) ?? '';
     seen.push(cell.trim());
-    await page.locator('.drill-next-btn').click();
   }
   return seen;
 }

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withProfile, withSettings } from './helpers';
+import { answerAndReadStrip, withProfile, withSettings } from './helpers';
 
 /**
  * RV3. The engine side is covered exhaustively by
@@ -358,7 +358,15 @@ test('an index the operator table overrules says so, and one it does not stays q
   await withProfile(page, { surrenderIndices: true });
   await withSettings(page, { drill: { quizIndex: '16v9' } });
   await openDeviationQuiz(page);
-  await page.locator('.action-bar button.action-btn:not([disabled])').first().click();
+  // B1: the note rides on the result strip of a RIGHT answer (on a miss the
+  // chart overlay's own note reconciles the two, see chart-note.spec.ts).
+  // Every item is 16 v 9, so cycling the plays finds the right one.
+  const plays = ['Hit', 'Stand', 'Double'];
+  for (let i = 0; i < 9; i++) {
+    const btn = page.locator('.action-bar button.action-btn', { hasText: plays[i % plays.length] });
+    if ((await answerAndReadStrip(page, btn)) === 'ok') break;
+  }
+  await expect(page.locator('[data-testid="result-strip"]')).toHaveAttribute('data-tone', 'ok');
 
   const note = page.locator('.quiz-table-note');
   await expect(note, 'the quiz taught a play the table overrules, silently').toBeVisible();
@@ -370,6 +378,25 @@ test('an index the operator table overrules says so, and one it does not stays q
   await withSettings(page, { drill: { quizIndex: '12v3' } });
   await openDeviationQuiz(page);
   await page.locator('.action-bar button.action-btn:not([disabled])').first().click();
-  await expect(page.locator('.quiz-label')).toBeVisible();
+  await expect(page.locator('[data-testid="result-strip"]')).toBeVisible();
   await expect(page.locator('.quiz-table-note')).toHaveCount(0);
+});
+
+/**
+ * #26. "16 v 9 at +4 marked stand, with no surrender signal." The quiz asks
+ * a stand index with surrender OFF at a table that offers it, so the prompt
+ * has to say so before the answer -- and a Fab 4 item has to say the reverse.
+ */
+test('the quiz prompt shows the rules it is asked under, before any answer', async ({ page }) => {
+  await withProfile(page, { surrenderIndices: true });
+  await withSettings(page, { drill: { quizIndex: '16v9' } });
+  await openDeviationQuiz(page);
+  const chip = page.getByTestId('rules-chip');
+  await expect(chip).toHaveText('No surrender');
+  await expect(page.locator('[data-testid="result-strip"]')).toHaveCount(0);
+
+  await withProfile(page, { surrenderIndices: true });
+  await withSettings(page, { drill: { quizIndex: 'sur15v10' } });
+  await openDeviationQuiz(page);
+  await expect(chip).toHaveText('Surrender OK');
 });

@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { FIELD_TEST_CONDITIONS } from '../src/diag/fieldTest';
 
 /** Screenshot to e2e/screenshots/<name>.png (gitignored; reviewed set lives in e2e/screenshots-reviewed/). */
@@ -369,4 +369,26 @@ export async function openCountOptions(page: Page): Promise<void> {
   if ((await details.count()) === 0) return;
   const open = await details.evaluate((el) => (el as HTMLDetailsElement).open);
   if (!open) await details.locator('summary').click();
+}
+
+/**
+ * B1: answer by clicking `button`, then wait for the result strip to show a
+ * NEW result (the strip persists between answers, so mere visibility is not
+ * proof the click landed). Returns the strip's tone.
+ */
+export async function answerAndReadStrip(
+  page: Page,
+  button: Locator,
+): Promise<'ok' | 'miss'> {
+  const result = page.locator('[data-testid="result-strip"] .hand-result');
+  const before = (await result.count()) ? await result.getAttribute('data-result-id') : null;
+  await button.click();
+  await page.waitForFunction(
+    (prev) => {
+      const el = document.querySelector('[data-testid="result-strip"] .hand-result');
+      return !!el && el.getAttribute('data-result-id') !== prev;
+    },
+    before,
+  );
+  return (await page.locator('[data-testid="result-strip"]').getAttribute('data-tone')) as 'ok' | 'miss';
 }

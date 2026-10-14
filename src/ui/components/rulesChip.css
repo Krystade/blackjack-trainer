@@ -1,0 +1,36 @@
+/* #26 rules chip. It floats beside the dealer card instead of taking a row:
+   the drill screens are sized to fit a 635px-tall Safari viewport with voice
+   on, and a full-height row pushed the answer buttons below the fold. The
+   row is zero-height; the chips hang to the right of the centred up-card. */
+.rules-chip-row {
+  position: relative;
+  height: 0;
+  z-index: 1;
+}
+
+.rules-chip-stack {
+  position: absolute;
+  top: 6px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  max-width: calc(50% - 48px);
+}
+
+.rules-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: var(--accent);
+}
+
+.rules-chip--off {
+  border-color: var(--ink-dim);
+  color: var(--ink-soft);
+}

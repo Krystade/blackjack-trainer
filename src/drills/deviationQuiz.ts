@@ -5,7 +5,7 @@ import type { PlayContext } from '../engine/strategy';
 import type { Action, Deviation, DeviationId } from '../engine/deviations';
 import { indexSetFor } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
-import { drillLegalActions } from './legalActions';
+import { drillLegalActions, rulesChipLabels } from './legalActions';
 import type { StrategyRules } from '../engine/ruleset';
 import { makeHardHand } from './buildHand';
 import { weightedIndex } from './weightedDraw';
@@ -88,6 +88,17 @@ export function quizCtxFor(item: QuizItem, rules: StrategyRules): PlayContext {
 }
 
 /**
+ * #26: the rules chip for a quiz item, from the ctx it is actually graded
+ * under. Every non-surrender index is asked with surrender OFF, so the chip
+ * says "No surrender" there even at a table that offers it; a Fab 4 item says
+ * "Surrender OK". An insurance item has no hand to play, so no chip.
+ */
+export function quizRulesChip(item: QuizItem, rules: StrategyRules): string[] {
+  if (!item.cards) return [];
+  return rulesChipLabels(quizCtxFor(item, rules), rules);
+}
+
+/**
  * The actions an item may be answered with.
  *
  * Not `drillLegalActions` alone: that answers "what can this HAND do at this
@@ -107,7 +118,7 @@ export function quizCtxFor(item: QuizItem, rules: StrategyRules): PlayContext {
 export function quizLegalActions(item: QuizItem, rules: StrategyRules): Action[] {
   if (!item.cards) return [];
   const ctx = quizCtxFor(item, rules);
-  const legal = drillLegalActions(item.cards, rules);
+  const legal = drillLegalActions(item.cards, rules, item.up);
   return ctx.canSurrender ? legal : legal.filter((a) => a !== 'surrender');
 }
 

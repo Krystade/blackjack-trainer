@@ -14,6 +14,8 @@
 import { generateAllCells, filterCellsByCategory } from './flashcards';
 import type { Cell } from './flashcards';
 import { fisherYatesShuffle, mulberry32 } from '../engine/cards';
+import type { Card } from '../engine/cards';
+import { pickComposition } from './buildHand';
 
 export type MasteryScope = 'all' | 'hard' | 'soft' | 'pairs';
 
@@ -70,6 +72,23 @@ export function isMasteryRunComplete(run: MasteryRun): boolean {
  * complete (nothing left to present). */
 export function currentCellId(run: MasteryRun): string | null {
   return isMasteryRunComplete(run) ? null : run.order[run.index];
+}
+
+/**
+ * The cards a cell is SHOWN with at this point of the run (#18).
+ *
+ * `generateAllCells` stores one fixed representative per hard total (6+10
+ * for every hard 16, forever), which teaches a card pair rather than a
+ * total. A hard cell's cards are therefore drawn at presentation time with
+ * the shared `pickComposition`. Seeded from the run's seed and position, so
+ * the hand on screen is stable across re-renders and reloads but differs
+ * between sweeps. Pairs and soft cells keep their stored cards.
+ */
+export function presentedCards(cell: Cell, run: Pick<MasteryRun, 'seed' | 'index'>): [Card, Card] {
+  if (!cell.id.startsWith('hard-')) return cell.cards;
+  const total = Number(cell.id.split('-')[1]);
+  const seed = (run.seed ^ Math.imul(run.index + 1, 0x9e3779b1)) | 0;
+  return pickComposition(total, mulberry32(seed)) ?? cell.cards;
 }
 
 /* ------------------------------------------------------------------ */
