@@ -3,7 +3,7 @@ import { withSettings, withProfile } from './helpers';
 
 const BOTS = { bots: 2, playerHands: 1, playerPosition: 0, botMistakePct: 0 };
 
-/** #48-51: the Losing shoe toggle in Settings, and its badge at the table. */
+/** #48-51: the Losing shoe toggle (the Play gear sheet since #33), and its badge at the table. */
 test('Losing shoe is off by default, and turning it on badges the table', async ({ page }) => {
   await withSettings(page, { countCheckEvery: 0 });
   await withProfile(page, { countCheckEvery: 0, seats: BOTS });
@@ -14,16 +14,14 @@ test('Losing shoe is off by default, and turning it on badges the table', async 
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await expect(page.locator('.bot-seat')).toHaveCount(2);
 
-  await page.locator('.end-btn').click();
-  await page.locator('.end-btn').click();
-  await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
-  await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
-  const toggle = page.getByRole('checkbox', { name: 'Losing shoe' });
+  await page.getByRole('button', { name: 'Play settings' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  const toggle = sheet.getByRole('checkbox', { name: 'Losing shoe' });
   await expect(toggle).not.toBeChecked();
   await toggle.check();
-  await page.getByRole('button', { name: 'Back to Home' }).first().click();
+  // Closing deals the new (rigged) shoe.
+  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
 
-  await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(page.getByTestId('losing-shoe-badge')).toHaveText('Losing shoe');
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   // The rig is a solo script: the profile's bots sit this one out.

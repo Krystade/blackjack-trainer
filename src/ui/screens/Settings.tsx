@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import { OfflineSection } from './OfflineSection';
-import { ResetBankrollRow } from '../components/ResetBankrollRow';
 import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
 import { THEMES, normalizeTheme } from '../theme';
@@ -21,7 +20,6 @@ import {
 } from '../../audio/clips';
 import { micSessionCostPaid } from '../../audio/micSessionCost';
 import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
-import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
 import {
   readVoiceHistory,
   clearVoiceHistory,
@@ -211,19 +209,38 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
       </div>
 
       {/*
-        THE SWITCHES A DRIVE NEEDS, IN ONE PLACE.
+        #35 (spec 2026-10-13): ONLY THE GLOBAL SETTINGS, GENERAL FIRST.
 
-        They were spread from the Audio section to the bottom of Car controls:
-        the on switch, the recorded voice, and -- 1700px further down, past a
-        button-mapping diagnostic and five hundred words -- the one control
-        that decides what the wheel does at all. Setting the phone up in a
-        parked car meant scrolling a six-thousand-pixel page twice.
-
-        First and open by default, because this is the screen's purpose. The
-        explanation that used to be its own section four headings above the
-        controls now sits beside them.
+        What Play, the drills and the charts read now sits behind each tab's
+        gear (TabSettingsButton), next to the thing it changes. What is left
+        here applies everywhere: General -- the look, and whether and how
+        loud the app speaks -- open by default, then the rest closed.
       */}
-      <CollapsibleSection title={<>In the car</>} defaultOpen={true}>
+      <CollapsibleSection title={<>General</>} defaultOpen={true}>
+          {/* Picked by PURPOSE, not by swatch: which one you want depends on
+              where you are using the app -- a dark car, bright daylight, or a
+              chart-study session -- so each option states its deciding factor. */}
+          <div className="theme-picker">
+            {THEMES.map((t) => {
+              const selected = normalizeTheme(settings.theme) === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`theme-option${selected ? ' theme-option-selected' : ''}`}
+                  aria-pressed={selected}
+                  data-theme-id={t.id}
+                  onClick={() => update({ theme: t.id })}
+                >
+                  <span className="theme-option-head">
+                    <span className="theme-swatch" data-swatch={t.id} aria-hidden="true" />
+                    <span className="theme-option-name">{t.name}</span>
+                  </span>
+                  <span className="theme-option-note">{t.note}</span>
+                </button>
+              );
+            })}
+          </div>
         <Toggle
           label="Audio enabled"
           checked={settings.audio.enabled}
@@ -268,7 +285,22 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             Lines spoken by the phone&rsquo;s own voice may still come from the earpiece.
           </div>
         )}
+          <Stepper
+            label="Speech rate"
+            value={settings.audio.rate}
+            min={0.5}
+            max={3.0}
+            step={0.1}
+            format={(v) => `${v.toFixed(1)}×`}
+            onChange={(v) => updateAudio({ rate: v })}
+            disabled={audioDisabled}
+          />
+      </CollapsibleSection>
 
+      {/* The wheel, and what each button does. It was first and open while
+          it shared a section with the on switch and the volume; those are
+          General now, and this is the one choice that is only about a drive. */}
+      <CollapsibleSection title={<>In the car</>} defaultOpen={false}>
         <div className="settings-row">
           <span className="settings-label">The two wheel buttons</span>
           <Segmented
@@ -299,96 +331,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
       </CollapsibleSection>
 
       <CollapsibleSection
-        title={<>Theme</>}
-        defaultOpen={false}
-      >
-          {/* Picked by PURPOSE, not by swatch: which one you want depends on
-              where you are using the app -- a dark car, bright daylight, or a
-              chart-study session -- so each option states its deciding factor. */}
-          <div className="theme-picker">
-            {THEMES.map((t) => {
-              const selected = normalizeTheme(settings.theme) === t.id;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  className={`theme-option${selected ? ' theme-option-selected' : ''}`}
-                  aria-pressed={selected}
-                  data-theme-id={t.id}
-                  onClick={() => update({ theme: t.id })}
-                >
-                  <span className="theme-option-head">
-                    <span className="theme-swatch" data-swatch={t.id} aria-hidden="true" />
-                    <span className="theme-option-name">{t.name}</span>
-                  </span>
-                  <span className="theme-option-note">{t.note}</span>
-                </button>
-              );
-            })}
-          </div>
-      </CollapsibleSection>
-
-      {/* PLAY AND DRILLS, ONE SECTION. "Drills" used to hold six rows, five of
-          them second copies of controls each drill already shows on its own
-          setup screen: category on Flashcards; length, group size and speed on
-          the count drill; depth resolution on Deck Estimation. The shot clock
-          is the one drill setting with no other home. */}
-      <CollapsibleSection
-        title={<>Play</>}
-        defaultOpen={false}
-      >
-          <div className="settings-row">
-            <span className="settings-label">Feedback</span>
-            <Segmented
-              options={[
-                { value: 'training', label: 'Training' },
-                { value: 'test', label: 'Test' },
-              ]}
-              value={settings.feedbackMode}
-              onChange={(v) => update({ feedbackMode: v })}
-            />
-          </div>
-          <div className="settings-note-row u-note">
-            <strong>Training</strong> corrects as you go. <strong>Test</strong> scores at the end.
-          </div>
-          <Stepper
-            label="Deal speed"
-            value={settings.dealSpeedMs}
-            min={0}
-            max={1000}
-            step={100}
-            format={(v) => `${v}ms`}
-            onChange={(v) => update({ dealSpeedMs: v })}
-          />
-          <ResetBankrollRow />
-          <Toggle
-            label="Losing shoe"
-            checked={settings.losingShoe === true}
-            onChange={(v) => update({ losingShoe: v })}
-          />
-          <div className="settings-note-row u-note">
-            Deals a rigged run of losing hands, graded on your bet ramp. Plays solo. Off returns
-            to a fair shoe next session.
-          </div>
-          <div className="settings-row">
-            <span className="settings-label">Shot clock</span>
-            <Segmented
-              options={SHOT_CLOCK_OPTIONS.map((ms) => ({
-                value: String(ms),
-                label: shotClockLabel(ms),
-              }))}
-              value={String(settings.drill.shotClockMs)}
-              onChange={(v) => updateDrill({ shotClockMs: Number(v) })}
-            />
-          </div>
-          <p className="settings-note">
-            A time limit on flashcard and deviation-quiz answers. Running out counts the card
-            as missed and puts it back in the review deck.
-          </p>
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title={<>Audio &mdash; the app speaking</>}
+        title={<>Audio detail</>}
         defaultOpen={false}
       >
           {clipVoices.length > 0 && (
@@ -422,16 +365,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
               disabled={audioDisabled}
             />
           </div>
-          <Stepper
-            label="Speech rate"
-            value={settings.audio.rate}
-            min={0.5}
-            max={3.0}
-            step={0.1}
-            format={(v) => `${v.toFixed(1)}×`}
-            onChange={(v) => updateAudio({ rate: v })}
-            disabled={audioDisabled}
-          />
           {/* For the lines no recording covers. The automatic pick is a
               heuristic over voice names that once landed on Apple's bleating
               novelty voice (2026-09-29); this is the way out of a bad pick. */}
@@ -501,6 +434,11 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
 
       <OfflineSection clipVoice={settings.audio.clipVoice} />
 
+      <VoiceAliasPanel
+        aliases={settings.audio.voiceAliases ?? {}}
+        onChange={(voiceAliases) => updateAudio({ voiceAliases })}
+      />
+
       <CollapsibleSection title={<>Tests</>} defaultOpen={false}>
         <div className="settings-note-row u-note">
           Every test that still has an open question is in the Test kit, grouped by where you
@@ -516,10 +454,6 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
         </button>
       </CollapsibleSection>
 
-      <VoiceAliasPanel
-        aliases={settings.audio.voiceAliases ?? {}}
-        onChange={(voiceAliases) => updateAudio({ voiceAliases })}
-      />
       <DiagnosticLogPanel />
     </div>
   );

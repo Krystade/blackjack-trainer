@@ -44,20 +44,46 @@ test('a collapsed section genuinely hides its content, and the summary reveals i
 }) => {
   await openSettings(page);
 
-  const theme = page.locator('details.settings-section', { hasText: 'Theme' }).first();
-  const body = theme.locator('.settings-section-body');
+  const detail = page.locator('details.settings-section', { hasText: 'Audio detail' }).first();
+  const body = detail.locator('.settings-section-body');
 
   // Closed: not merely short — not visible. (A CSS `display` that overrode the
   // UA's hiding would leave this visible while still looking collapsed.)
   await expect(body).toBeHidden();
 
-  await theme.locator('summary').click();
+  await detail.locator('summary').click();
   await expect(body).toBeVisible();
-  await expect(page.getByText('Midnight Felt')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Test audio' })).toBeVisible();
 
   // ...and closes again, so the control is a toggle rather than a one-way door.
-  await theme.locator('summary').click();
+  await detail.locator('summary').click();
   await expect(body).toBeHidden();
+});
+
+test('#35: General comes first and open, then the rest closed, in order', async ({ page }) => {
+  await openSettings(page);
+  await expect(page.locator('details.settings-section > summary')).toHaveText([
+    'General',
+    'In the car',
+    'Audio detail',
+    /^Offline/,
+    'Teach it your words',
+    'Tests',
+    'Diagnostic log',
+  ]);
+  const sections = page.locator('details.settings-section');
+  await expect(sections.first()).toHaveAttribute('open', '');
+  for (const i of [1, 2, 3, 4, 5, 6]) await expect(sections.nth(i)).not.toHaveAttribute('open', '');
+  // General holds theme, audio on/off, volume and speech rate.
+  const general = sections.first();
+  await expect(general.getByText('Midnight Felt')).toBeVisible();
+  await expect(general.getByRole('checkbox', { name: 'Audio enabled' })).toBeVisible();
+  await expect(general.locator('.settings-row', { hasText: 'Volume' })).toBeVisible();
+  await expect(general.locator('.settings-row', { hasText: 'Speech rate' })).toBeVisible();
+  // What moved to the tab gears is gone from here.
+  for (const moved of ['Feedback', 'Deal speed', 'Shot clock', 'Losing shoe', 'Bankroll']) {
+    await expect(page.locator('.settings-screen').getByText(moved, { exact: true })).toHaveCount(0);
+  }
 });
 
 test('opening a section makes the page taller — the height win is real, not clipping', async ({
@@ -66,8 +92,9 @@ test('opening a section makes the page taller — the height win is real, not cl
   await openSettings(page);
   const before = await pageHeight(page);
 
-  for (const s of await page.locator('details.settings-section summary').all()) {
-    await s.click();
+  // Only the closed ones: General starts open (#35), and a click would shut it.
+  for (const d of await page.locator('details.settings-section').all()) {
+    if ((await d.getAttribute('open')) === null) await d.locator('> summary').click();
   }
   const after = await pageHeight(page);
 
@@ -95,6 +122,6 @@ test('the e2e flag forces sections open, which is what the other specs rely on',
   // for a reason that has nothing to do with what they test.
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Settings' }).first().click();
-  const theme = page.locator('details.settings-section', { hasText: 'Theme' }).first();
-  await expect(theme.locator('.settings-section-body')).toBeVisible();
+  const detail = page.locator('details.settings-section', { hasText: 'Audio detail' }).first();
+  await expect(detail.locator('.settings-section-body')).toBeVisible();
 });

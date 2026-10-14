@@ -67,18 +67,16 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all ten D
   await expect(page.locator('.home-title')).toBeVisible();
 
   // ---------------------------------------------------------------
-  // 3. Settings: flip Feedback to Test and back (leaves state clean),
-  //    confirm the Audio section (Test audio button) is present
+  // 3. Settings: only global settings since #35 -- General first, and no
+  //    Play settings (they are behind the Play gear); the Audio detail
+  //    section (Test audio button) is present
   // ---------------------------------------------------------------
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.locator('.settings-heading')).toHaveText('Settings');
 
-  const feedback = page.locator('.settings-row', { hasText: 'Feedback' });
-  await expect(feedback.locator('.segmented-btn-active')).toHaveText('Training');
-  await feedback.getByRole('button', { name: 'Test', exact: true }).click();
-  await expect(feedback.locator('.segmented-btn-active')).toHaveText('Test');
-  await feedback.getByRole('button', { name: 'Training', exact: true }).click();
-  await expect(feedback.locator('.segmented-btn-active')).toHaveText('Training');
+  await expect(page.locator('details.settings-section summary').first()).toHaveText('General');
+  await expect(page.locator('.settings-row', { hasText: 'Volume' })).toBeVisible();
+  await expect(page.locator('.settings-row', { hasText: 'Feedback' })).toHaveCount(0);
 
   await expect(page.locator('.settings-test-audio-btn')).toBeVisible();
   await shot(page, 'smoke-03-settings');

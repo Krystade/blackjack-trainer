@@ -3,7 +3,7 @@ import { withSettings, resolveInsurance, playRoundByAdvice } from './helpers';
 
 /**
  * #42: the Play bankroll carries over per profile (Profile.bankrollNow), and
- * Settings can reset it.
+ * the Play gear sheet (#33) can reset it.
  *
  * No withProfile() here on purpose: it re-seeds the profile on EVERY
  * navigation, including the reload this spec exists to survive. The first-run
@@ -108,23 +108,27 @@ test('the session report measures the bankroll from where the session started', 
   );
 });
 
-test('Reset bankroll in Settings puts Play back to the starting bankroll', async ({ page }) => {
+test('Reset bankroll in the Play sheet puts Play back to the starting bankroll', async ({ page }) => {
   await withSettings(page, { countCheckEvery: 0, bankrollStart: 100 });
   await page.goto('/?seed=2&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   const moved = await playUntilBankrollMoves(page, 100);
 
-  await leavePlay(page);
-  await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
-  const value = page.getByTestId('play-bankroll');
+  // #33: from the table's own gear, without leaving Play.
+  await page.getByRole('button', { name: 'Play settings' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  const value = sheet.getByTestId('play-bankroll');
   await expect(value).toHaveText(`${moved} (starts at 100)`);
-  const reset = page.getByRole('button', { name: 'Reset bankroll', exact: true });
+  const reset = sheet.getByRole('button', { name: 'Reset bankroll', exact: true });
   await reset.click();
   await expect(value).toHaveText('100');
   await expect(reset).toBeDisabled();
   expect(await storedBankrollNow(page)).toBeUndefined();
 
-  await page.getByRole('button', { name: 'Back to Home' }).first().click();
+  // Closing deals a new table at the starting bankroll, and it stays there.
+  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  expect(await readBankroll(page)).toBe(100);
+  await leavePlay(page);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   expect(await readBankroll(page)).toBe(100);
 });
