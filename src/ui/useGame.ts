@@ -9,6 +9,7 @@ import type { Profile, Settings } from '../store/types';
 import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
 import { resumeBankroll, storeBankrollNow } from './playBankroll';
+import { makePlayGame, realignLosingShoe, type PlayGame } from './losingShoe';
 import type { AudioApi } from '../audio/useAudio';
 import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverBets';
 import {
@@ -254,8 +255,8 @@ type PendingDeal = { kind: 'deal'; bets?: number | number[] } | { kind: 'sitOut'
  * `?seed=` override remains for deterministic e2e/test runs.
  */
 export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
-  const gameRef = useRef<Game | null>(null);
-  if (gameRef.current === null) {
+  const playRef = useRef<PlayGame | null>(null);
+  if (playRef.current === null) {
     const cfg: GameConfig = {
       penetration: profile.penetration,
       betSpreadOn: profile.betSpreadOn,
@@ -272,9 +273,12 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       dealerAlwaysPlaysOut: profile.dealerAlwaysPlaysOut,
       seed: readSeed(),
     };
-    gameRef.current = new Game(cfg);
+    // #48-51: the Losing shoe setting picks the rig at build time.
+    playRef.current = makePlayGame(cfg, settings.losingShoe === true);
   }
-  const game = gameRef.current;
+  const playGame = playRef.current;
+  const game = playGame.game;
+  const losingShoe = playGame.boundaries !== null;
 
   const [, setVersion] = useState(0);
   const bump = useCallback(() => setVersion((v) => v + 1), []);
@@ -307,11 +311,12 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
 
   const runDeal = useCallback(
     (betUnits?: number | number[]) => {
+      realignLosingShoe(playGame);
       game.startRound(betUnits);
       narrateDeal(game, audio);
       narrateSettlement(game, audio); // instant dealer-blackjack / all-naturals rounds settle inside startRound()
     },
-    [game, audio],
+    [game, playGame, audio],
   );
 
   const runSitOut = useCallback(() => {
@@ -320,11 +325,12 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     // and any settlement narration (dealer draws) all resolve in one pass --
     // exactly like an instant dealer-blackjack deal. No player cards to
     // narrate: the player was dealt none. R5.
+    realignLosingShoe(playGame);
     game.sitOut();
     if (game.shuffledLastRound) audio.say(narrateShuffle());
     audio.say(narrateSitOut());
     narrateSettlement(game, audio);
-  }, [game, audio]);
+  }, [game, playGame, audio]);
 
   /**
    * #36: if a count check is owed, ask it now -- on the way to the next
@@ -594,6 +600,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
 
   return {
     game,
+    losingShoe,
     deal,
     sitOut,
     act,

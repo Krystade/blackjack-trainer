@@ -43,6 +43,7 @@ import { assistedFlag, peekReadout } from '../peekFlag';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
 import { CATEGORY_LABELS } from './categoryLabels';
 import { playLabel } from '../playLabel';
+import { LosingShoeBadge } from '../components/LosingShoeBadge';
 
 type BotActionLogEntry = Game['botActionLog'][number];
 
@@ -309,6 +310,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const [pendingCount, setPendingCount] = useState<number | null>(null);
   const {
     game,
+    losingShoe,
     deal,
     act,
     insure,
@@ -754,6 +756,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           {confirmEnd ? 'Tap again to end' : 'End'}
         </button>
       </div>
+      {losingShoe && <LosingShoeBadge />}
 
       {voiceOn && (
         <VoiceStatusBar

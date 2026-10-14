@@ -361,6 +361,15 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             onChange={(v) => update({ dealSpeedMs: v })}
           />
           <ResetBankrollRow />
+          <Toggle
+            label="Losing shoe"
+            checked={settings.losingShoe === true}
+            onChange={(v) => update({ losingShoe: v })}
+          />
+          <div className="settings-note-row u-note">
+            Deals a rigged run of losing hands, graded on your bet ramp. Plays solo. Off returns
+            to a fair shoe next session.
+          </div>
           <div className="settings-row">
             <span className="settings-label">Shot clock</span>
             <Segmented
