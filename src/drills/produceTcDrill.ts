@@ -87,8 +87,11 @@ export function gradeProducedTc(
   produced: number,
   round: ProduceTcRound,
   eyeError: number = EYE_DECK_ERROR,
+  rounding?: TcRounding,
 ): boolean {
-  return tcWithinEye(produced, round.round.finalRc, round.decksRemaining, eyeError);
+  // #54: the band is built with the profile's convention, so a guess only
+  // another convention produces is wrong (and tcConventionNote says why).
+  return tcWithinEye(produced, round.round.finalRc, round.decksRemaining, eyeError, rounding);
 }
 
 /**
@@ -100,8 +103,12 @@ export function gradeProducedTc(
  * the same slack; a result screen that states a wider range than the grader used
  * is worse than one that says nothing.
  */
-export function producedTcBand(round: ProduceTcRound, eyeError: number = EYE_DECK_ERROR) {
-  return tcBand(round.round.finalRc, round.decksRemaining, eyeError);
+export function producedTcBand(
+  round: ProduceTcRound,
+  eyeError: number = EYE_DECK_ERROR,
+  rounding?: TcRounding,
+) {
+  return tcBand(round.round.finalRc, round.decksRemaining, eyeError, rounding);
 }
 
 /**

@@ -143,10 +143,11 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   await expect(page.locator('.numpad')).toBeVisible();
   await page.getByRole('button', { name: 'OK', exact: true }).click();
 
-  await expect(page.locator('.drill-result')).toBeVisible();
+  // #54: fast advance -- the result is the strip above the next question.
+  await expect(page.getByTestId('result-strip')).toBeVisible();
   await shot(page, 'smoke-07-true-count-result');
 
-  await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();
 
   // ---------------------------------------------------------------
@@ -224,7 +225,8 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.numpad')).toBeVisible({ timeout: 20_000 });
   await page.getByRole('button', { name: 'OK', exact: true }).click();
-  await expect(page.locator('.drill-result')).toBeVisible();
+  // #54: fast advance -- the result is the strip over the next flash.
+  await expect(page.getByTestId('result-strip')).toBeVisible();
   await shot(page, 'smoke-09c-produce-tc');
   // Exact: the result screen also carries a "Back to Drills", and both match
   // a substring filter.

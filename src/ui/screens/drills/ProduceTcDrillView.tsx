@@ -7,6 +7,11 @@ import {
   produceTcSlack,
 } from '../../../drills/produceTcDrill';
 import type { ProduceTcRound } from '../../../drills/produceTcDrill';
+import { DEFAULT_TC_ROUNDING } from '../../../engine/count';
+import type { TcRounding } from '../../../engine/count';
+import { tcWorking, tcConventionNote, signedTc } from '../../../drills/tcFeedback';
+import { ResultStrip } from '../../components/ResultStrip';
+import './tcResultStrip.css';
 import { PlayingCard } from '../../components/PlayingCard';
 import { NumPad } from '../../components/NumPad';
 import { useAudio } from '../../../audio/useAudio';
@@ -129,6 +134,9 @@ export function ProduceTcDrillView({
   const [shownIndex, setShownIndex] = useState(0);
   const [answer, setAnswer] = useState<{ produced: number; correct: boolean } | null>(null);
   const [honorCheck, setHonorCheck] = useState(false);
+  const rounding = activeProfile.tcRounding ?? DEFAULT_TC_ROUNDING;
+  /** #54: the last graded answer for the B1 strip, with its own round. */
+  const [lastResult, setLastResult] = useState<StripResult | null>(null);
   const runIdRef = useRef(0);
 
   const [eyesFree, setEyesFree] = useEyesFreeToggle('produce-tc-drill');
@@ -293,10 +301,10 @@ export function ProduceTcDrillView({
     // Eyes-free there is no slack to grant: the depth was stated, not read off
     // a tray, so nothing was estimated and nothing needs forgiving.
     const slack = produceTcSlack(eyesFree, round.decksRemaining, resolution);
-    const correct = gradeProducedTc(produced, round, slack);
+    const correct = gradeProducedTc(produced, round, slack, rounding);
     setAnswer({ produced, correct });
     setHonorCheck(false);
-    setPhase('result');
+    setLastResult((prev) => ({ id: (prev?.id ?? 0) + 1, correct, produced, round, slack }));
     audio.ding(correct ? 'good' : 'bad');
 
     const verdict = `${correct ? 'Correct.' : 'Wrong.'} ${narrateAnswer()}`;
@@ -304,6 +312,11 @@ export function ProduceTcDrillView({
     else audio.sayFull(verdict);
 
     recordResult(produced, correct);
+    // #54: eyes-on, straight on to the next round; the strip holds the result.
+    // Eyes-free keeps the result phase, whose timers pace the next question
+    // from the end of the spoken verdict.
+    if (eyesFree) setPhase('result');
+    else start();
   };
 
   const handleSelfReport = (correct: boolean) => {
@@ -528,7 +541,22 @@ export function ProduceTcDrillView({
               Voice answers
             </label>
           )}
-          <DrillPrimaryBar label="Start" variant="start" onPrimary={start} />
+          <DrillPrimaryBar
+            label="Start"
+            variant="start"
+            onPrimary={() => {
+              setLastResult(null);
+              start();
+            }}
+          />
+        </div>
+      )}
+
+      {lastResult && !eyesFree && (phase === 'flashing' || phase === 'answering') && (
+        <div className="tc-strip-wrap">
+          <ResultStrip id={lastResult.id} tone={lastResult.correct ? 'ok' : 'miss'}>
+            <ProduceResultLine result={lastResult} rounding={rounding} />
+          </ResultStrip>
         </div>
       )}
 
@@ -616,9 +644,14 @@ export function ProduceTcDrillView({
               </>
             ) : (
               <>
-                You entered {formatSigned(answer.produced)}; the true count was{' '}
-                {formatSigned(round.correctTc)} (running count {formatSigned(round.round.finalRc)} ÷{' '}
-                {formatDecks(round.decksRemaining)} decks).
+                You entered {signedTc(answer.produced)}.{' '}
+                {tcWorking(round.round.finalRc, round.decksRemaining, rounding)}.
+                {(() => {
+                  const note = answer.correct
+                    ? null
+                    : tcConventionNote(answer.produced, round.round.finalRc, round.decksRemaining, rounding, 0);
+                  return note ? <> {note}.</> : null;
+                })()}
                 {(() => {
                   // Say what was actually accepted, or the grade looks arbitrary:
                   // the range comes from reading the tray a resolution's worth
@@ -626,7 +659,7 @@ export function ProduceTcDrillView({
                   // Eyes-free there is no range at all -- the depth was stated.
                   if (eyesFree) return null;
                   const slack = eyesFree ? 0 : depthTolerance(round.decksRemaining, resolution);
-                  const band = producedTcBand(round, slack);
+                  const band = producedTcBand(round, slack, rounding);
                   return band.min === band.max ? null : (
                     <>
                       {' '}
@@ -646,5 +679,41 @@ export function ProduceTcDrillView({
         </div>
       )}
     </div>
+  );
+}
+
+interface StripResult {
+  id: number;
+  correct: boolean;
+  produced: number;
+  round: ProduceTcRound;
+  slack: number;
+}
+
+/** The B1 strip's text for a produced true count. */
+function ProduceResultLine({ result, rounding }: { result: StripResult; rounding: TcRounding }) {
+  const { round, produced, correct, slack } = result;
+  const rc = round.round.finalRc;
+  const working = tcWorking(rc, round.decksRemaining, rounding);
+  // The same accepted-range sentence the old result screen carried: without
+  // it the grade looks arbitrary, since the band is far wider late in a shoe.
+  const band = producedTcBand(round, slack, rounding);
+  const range =
+    band.min === band.max
+      ? ''
+      : ` Reading the tray ${formatDepthSlack(slack)} either way, ${signedTc(band.min)} to ${signedTc(band.max)} counts.`;
+  if (correct) {
+    return (
+      <span data-testid="tc-strip-text">
+        Correct! {working}.{range}
+      </span>
+    );
+  }
+  const note = tcConventionNote(produced, rc, round.decksRemaining, rounding, slack);
+  return (
+    <span data-testid="tc-strip-text">
+      Wrong: you entered {signedTc(produced)} &mdash; {working}.{range}
+      {note ? ` ${note}.` : ''}
+    </span>
   );
 }

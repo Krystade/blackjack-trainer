@@ -62,3 +62,20 @@ describe('makeTrueCountQuestion', () => {
     expect(seen.size).toBeGreaterThan(3);
   });
 });
+
+describe('runningCount range (#54)', () => {
+  it('is symmetric -15..+15 and reaches both ends', () => {
+    let min = Infinity;
+    let max = -Infinity;
+    let neg = 0;
+    for (let i = 0; i < 2000; i++) {
+      const rc = makeTrueCountQuestion(700000 + i).runningCount;
+      min = Math.min(min, rc);
+      max = Math.max(max, rc);
+      if (rc < 0) neg++;
+    }
+    expect(min).toBe(-15);
+    expect(max).toBe(15);
+    expect(neg / 2000).toBeGreaterThan(0.4);
+  });
+});

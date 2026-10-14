@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Profile, Settings } from '../../../store/types';
 import { makeTrueCountQuestion } from '../../../drills/trueCountDrill';
-import { tcConversionAccepted } from '../../../engine/count';
+import { DEFAULT_TC_ROUNDING } from '../../../engine/count';
+import type { TcRounding } from '../../../engine/count';
+import { gradeTcConversion, tcWorking, tcConventionNote, signedTc } from '../../../drills/tcFeedback';
+import { ResultStrip } from '../../components/ResultStrip';
+import './tcResultStrip.css';
 import type { TrueCountQuestion } from '../../../drills/trueCountDrill';
 import { NumPad } from '../../components/NumPad';
 import { Stepper } from '../Settings';
@@ -147,6 +151,18 @@ export function TrueCountDrillView({
   const [question, setQuestion] = useState<TrueCountQuestion | null>(null);
   const [wasCorrect, setWasCorrect] = useState(false);
   const [enteredValue, setEnteredValue] = useState(0);
+  /**
+   * #54: the last graded answer, snapshotted for the B1 strip. Eyes-on, an
+   * answer goes straight to the next question and this is all that is left
+   * of it -- so it holds its own copy of the question, never the live one.
+   */
+  const [lastResult, setLastResult] = useState<{
+    id: number;
+    correct: boolean;
+    guess: number;
+    q: TrueCountQuestion;
+  } | null>(null);
+  const rounding = activeProfile.tcRounding ?? DEFAULT_TC_ROUNDING;
   const [maxDecks, setMaxDecks] = useState<number>(activeProfile.rules.decks);
   const audio = useAudio(settings.audio);
 
@@ -332,15 +348,18 @@ export function TrueCountDrillView({
 
   const handleSubmit = (value: number) => {
     if (!question) return;
-    // The depth is STATED here, so there is no estimation slack to forgive --
-    // but the leftover still has no single right convention, and marking "+3"
-    // wrong on a quotient of 2.8 grades a preference rather than the division
-    // (engine/count.ts's `tcConversionAccepted`).
-    const correct = tcConversionAccepted(value, question.runningCount, question.decksRemaining);
+    // #54: the profile's convention ONLY. Accepting floor, round or truncate
+    // put "Correct!" above a different stated answer and trained no rule.
+    const correct = gradeTcConversion(value, question.runningCount, question.decksRemaining, rounding);
     setWasCorrect(correct);
     setEnteredValue(value);
     setHonorCheck(false);
-    setPhase('result');
+    setLastResult((prev) => ({ id: (prev?.id ?? 0) + 1, correct, guess: value, q: question }));
+    // Eyes-on: fast advance -- the strip carries the result, no Next tap.
+    // Eyes-free keeps the result phase: its timers and voice "yes" pace the
+    // next question from the end of the spoken verdict.
+    if (!eyesFree) start();
+    else setPhase('result');
 
     // Graded attempt (unlike the honor-system self-check path above, which
     // never reaches here) -- record telemetry so Stats can show accuracy
@@ -701,7 +720,14 @@ export function TrueCountDrillView({
             </label>
           )}
 
-          <DrillPrimaryBar label="Start" variant="start" onPrimary={start} />
+          <DrillPrimaryBar
+            label="Start"
+            variant="start"
+            onPrimary={() => {
+              setLastResult(null);
+              start();
+            }}
+          />
         </div>
       )}
 
@@ -713,6 +739,13 @@ export function TrueCountDrillView({
 
       {phase === 'answering' && question && (
         <>
+          {lastResult && !eyesFree && (
+            <div className="tc-strip-wrap">
+              <ResultStrip id={lastResult.id} tone={lastResult.correct ? 'ok' : 'miss'}>
+                <TcResultLine result={lastResult} rounding={rounding} />
+              </ResultStrip>
+            </div>
+          )}
           <div className="count-flash-area">
             <div className="quiz-tc">Running count {formatSigned(question.runningCount)}</div>
             <div className="tag-guess-label">Decks remaining {formatDecks(question.decksRemaining)}</div>
@@ -809,11 +842,37 @@ export function TrueCountDrillView({
             {question.decksRemaining} {question.decksRemaining === 1 ? 'deck' : 'decks'} remaining
           </div>
           <div className="result-detail">
-            You entered {formatSigned(enteredValue)}; the true count was {formatSigned(question.correctTc)}.
+            You entered {signedTc(enteredValue)}.{' '}
+            {tcWorking(question.runningCount, question.decksRemaining, rounding)}.
+            {(() => {
+              const note = wasCorrect
+                ? null
+                : tcConventionNote(enteredValue, question.runningCount, question.decksRemaining, rounding);
+              return note ? <> {note}.</> : null;
+            })()}
           </div>
           <DrillPrimaryBar label="Next" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
         </div>
       )}
     </div>
+  );
+}
+
+/** The B1 strip's text: verdict, the exact working, and any convention slip. */
+function TcResultLine({
+  result,
+  rounding,
+}: {
+  result: { correct: boolean; guess: number; q: TrueCountQuestion };
+  rounding: TcRounding;
+}) {
+  const { q, guess, correct } = result;
+  const working = tcWorking(q.runningCount, q.decksRemaining, rounding);
+  if (correct) return <span data-testid="tc-strip-text">Correct! {working}</span>;
+  const note = tcConventionNote(guess, q.runningCount, q.decksRemaining, rounding);
+  return (
+    <span data-testid="tc-strip-text">
+      Wrong: you entered {signedTc(guess)} &mdash; {working}.{note ? ` ${note}.` : ''}
+    </span>
   );
 }

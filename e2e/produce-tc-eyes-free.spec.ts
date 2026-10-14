@@ -118,7 +118,10 @@ test('strict mode shows no tray and claims no accepted range', async ({ page }) 
     await expect(page.locator('.drill-result')).toBeVisible();
 
     const detail = await page.locator('.result-detail').innerText();
-    const actual = Number(/true count was ([+-]?\d+)/i.exec(detail)?.[1] ?? 'NaN');
+    // #54: the detail is the exact working, "rc ÷ decks = q → floor tc".
+    const actual = Number(
+      (/→ \w+ ([+−]?\d+)/.exec(detail)?.[1] ?? 'NaN').replace('−', '-'),
+    );
     expect(Number.isFinite(actual)).toBe(true);
     const wrong = (await page.locator('.result-wrong').count()) > 0;
     rounds++;

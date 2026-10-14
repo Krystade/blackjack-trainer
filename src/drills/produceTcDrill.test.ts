@@ -237,3 +237,19 @@ describe('produceTcSlack', () => {
     }
   });
 });
+
+describe('gradeProducedTc rounding (#54)', () => {
+  it('grades with the profile convention, not floor for everyone', () => {
+    // Find a seeded round with a negative non-integer quotient.
+    for (let s = 1; s < 5000; s++) {
+      const r = makeProduceTcRound(20, 1, s, 6, 'truncate');
+      const q = r.round.finalRc / r.decksRemaining;
+      if (q < 0 && !Number.isInteger(q)) {
+        expect(gradeProducedTc(Math.trunc(q), r, 0, 'truncate')).toBe(true);
+        expect(gradeProducedTc(Math.floor(q), r, 0, 'truncate')).toBe(false);
+        return;
+      }
+    }
+    throw new Error('no negative fractional round found');
+  });
+});

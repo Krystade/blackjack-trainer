@@ -27,13 +27,14 @@ const PINNED = 0.00009;
 
 /**
  * A second pin, for the produce-TC drill, chosen the same way and just as load
- * bearing: it puts that drill's round at running count +5 with 1.5 decks left,
- * where a half-deck read accepts +2..+5 and a quarter-deck read accepts +2..+4.
+ * bearing: it puts that drill's round at running count +5 with half a deck
+ * left (seed 1150; re-picked after #44 changed how runs are drawn), where a
+ * half-deck read accepts +5..+10 and a quarter-deck read accepts +6..+10.
  * Answering +5 is therefore right under one resolution and wrong under the
  * other -- which is the only assertion that can tell a grader that reads the
  * setting from one that merely prints it.
  */
-const PINNED_PRODUCE = 0.000023;
+const PINNED_PRODUCE = 1150.5 / 1_000_000_000;
 
 async function pinRandom(page: Page, value = PINNED): Promise<void> {
   await page.addInitScript((v) => {
@@ -179,13 +180,15 @@ test('the produce-TC band tightens with the resolution too', async ({ browser })
     await openDrill(page, 'Produce the true count');
     await page.getByRole('button', { name: 'Start', exact: true }).click();
     await expect(page.locator('.numpad')).toBeVisible();
-    // +5 is the top of the half-deck band and one above the quarter-deck one.
+    // +5 is the bottom of the half-deck band and one below the quarter-deck one.
     await page.getByRole('button', { name: '5', exact: true }).click();
     await page.getByRole('button', { name: 'OK', exact: true }).click();
-    const text = await page.locator('.drill-result .result-detail').first().innerText();
-    const correct = await page.locator('.result-correct').count();
+    // #54: fast advance -- the verdict and band live in the B1 strip.
+    const strip = page.getByTestId('result-strip');
+    const text = await strip.innerText();
+    const correct = (await strip.getAttribute('data-tone')) === 'ok';
     await page.close();
-    return { text, correct: correct > 0 };
+    return { text, correct };
   };
 
   const half = await runOnce('half');
