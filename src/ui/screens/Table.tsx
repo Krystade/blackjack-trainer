@@ -39,7 +39,7 @@ import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { NumPad } from '../components/NumPad';
 import { VoiceStatusBar } from '../components/VoiceStatusBar';
 import { VOICE_WORDS } from '../voiceLabels';
-import { assistedFlag } from '../peekFlag';
+import { assistedFlag, peekReadout } from '../peekFlag';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
 import { CATEGORY_LABELS } from './categoryLabels';
 import { playLabel } from '../playLabel';
@@ -654,6 +654,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   }
 
   const multiHand = game.hands.length > 1;
+  // #41: built every render, but only drawn while the peek is held.
+  const peek = peekReadout(game.runningCount, game.exactDecksRemaining);
 
   // Cycle-2 Task 6: bot seats/narration/fast-forward are a strict no-op when
   // the profile has no bots (v1-solo parity — `game.seats` holds just the
@@ -903,9 +905,13 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           onHide={hidePeek}
           dataTc={game.trueCountNow}
           readout={
-            <span className="peek-counts">
-              RC {formatSigned(game.runningCount)} / TC {formatSigned(game.trueCountNow)}
-            </span>
+            <>
+              <span className="peek-counts">{peek.counts}</span>
+              <span className="peek-depth">
+                <span className="peek-sep"> · </span>
+                {peek.depth}
+              </span>
+            </>
           }
         />
         {((hasBots && pacingPending) || dealAnimating) && (

@@ -1068,6 +1068,28 @@ describe('rules.decks wired into the shoe (Cycle-1 closing fix)', () => {
   });
 });
 
+describe('exactDecksRemaining (#41)', () => {
+  it('is the real shoe to the card, not the half-deck estimate', () => {
+    const game = new Game(cfg({ countCheckEvery: 0 }));
+    expect(game.exactDecksRemaining).toBe(6);
+    game.startRound();
+    if (game.phase === 'insurance') game.insuranceDecision(false);
+    while ((game.phase as string) === 'player') game.act('stand');
+    const dealt = game.shoe.cardsDealt;
+    expect(dealt).toBeGreaterThanOrEqual(4);
+    expect(game.exactDecksRemaining).toBeCloseTo((312 - dealt) / 52, 10);
+    expect(game.exactDecksRemaining).toBeCloseTo(game.shoe.cardsRemaining / 52, 10);
+  });
+
+  it("reads a rigged shoe as the ruleset's shoe, not the script length", () => {
+    // An 8-card script in a 6-deck game: 2 cards dealt leaves 310 of 312.
+    const game = Game.withRiggedShoe(cfg(), rig('10', '9', '7', '8', '2', '3', '4', '5'));
+    game.shoe.draw();
+    game.shoe.draw();
+    expect(game.exactDecksRemaining).toBeCloseTo(310 / 52, 10);
+  });
+});
+
 describe('reshuffle', () => {
   it('penetration 0.5: reaching cutCardReached triggers a reshuffle on the next startRound', () => {
     // 8-card rig at penetration 0.5 -> cut card at 4 cards dealt, i.e. exactly
