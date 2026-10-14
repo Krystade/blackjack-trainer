@@ -241,9 +241,10 @@ export class Game {
   botActionLog: { seat: number; handIndex: number; action: Action; card?: Card }[] = [];
 
   /** Casino order of the CURRENT round's opening two-pass deal, one entry per
-   * card in the exact order dealTwoPassRound() deals it: every seat's hands in
-   * seat order for pass 1, then the dealer's up-card, then every seat's hands
-   * again for pass 2, then the dealer's hole card. Reset in beginRound().
+   * card in the exact order dealTwoPassRound() deals it: every seat in seat
+   * order (first base first), each seat's hands rightmost first, for pass 1,
+   * then the dealer's up-card, then the same sweep for pass 2, then the
+   * dealer's hole card. Reset in beginRound().
    *
    * PRESENTATION-ONLY, read by Table.tsx to time the opening deal's CSS
    * entrance animation (Table Realism, Request B) -- grading, the running
@@ -878,7 +879,12 @@ export class Game {
   /** Deal the two-pass casino sequence -- one card to every hand of every seat
    * (in seat order; the player's own hands wherever they sit among them),
    * then the dealer's up-card; then the same seat sweep for card two, then
-   * the dealer's hole card. Shared by startRound() and sitOut() so both a
+   * the dealer's hole card.
+   *
+   * A dealer deals from their own left -- the player's RIGHT -- so the sweep
+   * runs right to left: seat 0 (first base) first, and within a seat the
+   * rightmost hand first. That is also the order of play (#1, see
+   * handPlayNumber), so the hand dealt first is the hand played first. Shared by startRound() and sitOut() so both a
    * staked round and a wong-out round burn the shoe/count in EXACTLY the same
    * order (R5, docs/BACKLOG.md) -- and now also so both populate `dealOrder`
    * (Table Realism, Request B) identically, rather than keeping two
@@ -889,7 +895,7 @@ export class Game {
     for (let s = 0; s < this.seats.length; s++) {
       const seat = this.seats[s];
       const isPlayerSeat = s === this.playerSeatIndex;
-      for (let h = 0; h < seat.hands.length; h++) {
+      for (let h = seat.hands.length - 1; h >= 0; h--) {
         this.drawToHand(seat.hands[h]);
         this.dealOrder.push(
           isPlayerSeat
@@ -906,7 +912,7 @@ export class Game {
     for (let s = 0; s < this.seats.length; s++) {
       const seat = this.seats[s];
       const isPlayerSeat = s === this.playerSeatIndex;
-      for (let h = 0; h < seat.hands.length; h++) {
+      for (let h = seat.hands.length - 1; h >= 0; h--) {
         this.drawToHand(seat.hands[h]);
         this.dealOrder.push(
           isPlayerSeat
@@ -1032,11 +1038,11 @@ export class Game {
    * before the player (casino seat order) autoplay right away, then check
    * EVERY initial player hand for a natural blackjack. With multi-hand play,
    * one hand having a natural must not skip the others' turns: it settles
-   * immediately (real casino timing) and play proceeds left-to-right to the
-   * first hand that didn't (Cycle-2 Task 4). No splits exist yet at this
+   * immediately (real casino timing) and play starts at the rightmost hand
+   * that didn't (Cycle-2 Task 4, #1). No splits exist yet at this
    * point, so `this.hands` is exactly the round's initial hands. If any hand
    * has a natural, it is marked done with result 'blackjack' and bankroll
-   * credited; the phase then moves to 'player' on the first non-settled hand,
+   * credited; the phase then moves to 'player' on the rightmost non-settled hand,
    * or directly to settlement if all hands are naturals. */
   private resolveAfterPeek(): void {
     this.resolveBotsBefore();

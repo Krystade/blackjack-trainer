@@ -162,12 +162,12 @@ describe('payout audit — table-driven settlement paths', () => {
     // Cycle-2 Task 4: multi-hand player -- mixed win/lose/push settle independently, bankroll delta = sum
     {
       description: 'multi-hand (3 hands, distinct bets): win + lose + push sums to -1',
-      // Deal order (playerHands 3, bots 0): pass1 hand0c1,hand1c1,hand2c1,dealerUp;
-      // pass2 hand0c2,hand1c2,hand2c2,dealerHole.
+      // Deal order (playerHands 3, bots 0), right to left: pass1
+      // hand2c1,hand1c1,hand0c1,dealerUp; pass2 hand2c2,hand1c2,hand0c2,dealerHole.
       // hand0 = 10,9=19 (bet 1) win vs dealer 18 -> +1
       // hand1 = 10,7=17 (bet 2) lose vs dealer 18 -> -2
       // hand2 = 10,8=18 (bet 3) push vs dealer 18 -> 0
-      shoe: ['10', '10', '10', '9', '9', '7', '8', '9'],
+      shoe: ['10', '10', '10', '9', '8', '7', '9', '9'],
       actions: ['stand', 'stand', 'stand'],
       expectedDelta: -1,
       rules: { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false },

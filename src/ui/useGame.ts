@@ -173,8 +173,10 @@ function botLabelFor(game: Game, seatIndex: number): string {
 /**
  * Phase-A ("full" verbosity) narration of the just-completed deal: shuffle
  * announcement, every dealt card in true casino dealing order (pass 1 --
- * one card per hand, seat order, bots included -- then the dealer's
- * up-card, then pass 2), and the insurance offer if the up-card is an ace.
+ * one card per hand, seat order from first base, bots included, and within
+ * a seat from the rightmost hand, as the engine deals it -- then the
+ * dealer's up-card, then pass 2), and the insurance offer if the up-card is
+ * an ace.
  * The deal is fully synchronous in the engine (`startRound` returns with
  * every hand already dealt), and the table already renders all of this
  * instantly with no pacing of its own -- so speaking it synchronously,
@@ -182,12 +184,12 @@ function botLabelFor(game: Game, seatIndex: number): string {
  * the mid-round bot HIT/DOUBLE cards get paced (see the narration-reveal
  * effect below), because those are the only cards the UI itself paces.
  */
-function narrateDeal(game: Game, audio: AudioApi): void {
+export function narrateDeal(game: Game, audio: Pick<AudioApi, 'say' | 'sayFull'>): void {
   if (game.shuffledLastRound) {
     audio.say(narrateShuffle());
   }
   for (const seat of game.seats) {
-    for (const hand of seat.hands) {
+    for (const hand of [...seat.hands].reverse()) {
       if (hand.cards[0]) audio.sayFull(narrateCard(hand.cards[0], 'rank'));
     }
   }
@@ -195,7 +197,7 @@ function narrateDeal(game: Game, audio: AudioApi): void {
     audio.sayFull(narrateDealerUp(game.dealerCards[0].rank));
   }
   for (const seat of game.seats) {
-    for (const hand of seat.hands) {
+    for (const hand of [...seat.hands].reverse()) {
       if (hand.cards[1]) audio.sayFull(narrateCard(hand.cards[1], 'rank'));
     }
   }

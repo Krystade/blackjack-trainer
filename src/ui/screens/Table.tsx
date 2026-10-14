@@ -45,6 +45,7 @@ import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession'
 import { CATEGORY_LABELS } from './categoryLabels';
 import { playLabel } from '../playLabel';
 import { LosingShoeBadge } from '../components/LosingShoeBadge';
+import './tableSeats.css';
 
 type BotActionLogEntry = Game['botActionLog'][number];
 
@@ -659,8 +660,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       kind: 'bet',
       betSpreadOn: activeProfile.betSpreadOn,
       // Listed in order of play (#1): row "Hand 1" stakes the rightmost hand,
-      // the one dealt to and played first, so it names the same hand as the
-      // felt's label and the result line.
+      // which is dealt first and played first (the dealer deals from their
+      // left, the player's right), so it names the same hand as the felt's
+      // label and the result line.
       hands: selectedBets
         .map((units, i) => ({
           selectedBet: units,

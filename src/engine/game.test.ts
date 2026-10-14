@@ -1342,20 +1342,29 @@ describe('multi-seat dealing (Cycle-2 Task 2)', () => {
     expect(game.runningCount).toBe(expectedRc);
   });
 
-  it('playerHands 2, solo (bots:0) -> both player hands dealt in hand order across both passes', () => {
+  it('playerHands 2, solo (bots:0) -> both player hands dealt right to left across both passes', () => {
     const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
-    // Pass 1: hand0 c1, hand1 c1, dealer up. Pass 2: hand0 c2, hand1 c2, dealer hole.
+    // Pass 1: hand1 c1, hand0 c1, dealer up. Pass 2: hand1 c2, hand0 c2, dealer hole.
     const game = Game.withRiggedShoe(cfg({ seats }), rig('2', '3', '9', '4', '5', '6'));
     game.startRound();
 
     expect(game.seats).toHaveLength(1);
     expect(game.hands).toHaveLength(2);
-    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['2', '4']);
-    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['3', '5']);
+    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['2', '4']);
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['3', '5']);
     expect(game.dealerCards[0].rank).toBe('9');
     expect(game.dealerCards[1].rank).toBe('6');
-    // #1: dealt in hand order, but PLAYED from the right.
+    // Casinos deal from the dealer's left -- the player's right -- so the
+    // rightmost hand is dealt first, as it is played first (#1).
     expect(game.active).toBe(1);
+    expect(game.dealOrder).toEqual([
+      { kind: 'player', handIndex: 1, cardIndex: 0 },
+      { kind: 'player', handIndex: 0, cardIndex: 0 },
+      { kind: 'dealer', cardIndex: 0 },
+      { kind: 'player', handIndex: 1, cardIndex: 1 },
+      { kind: 'player', handIndex: 0, cardIndex: 1 },
+      { kind: 'dealer', cardIndex: 1 },
+    ]);
   });
 
   it('bots autoplay to completion and settle for display, without touching bankroll (Cycle-2 Task 3)', () => {
@@ -1394,12 +1403,12 @@ describe('multi-seat dealing (Cycle-2 Task 2)', () => {
 describe('multi-hand player (Cycle-2 Task 4)', () => {
   it('2 hands, betSpreadOn off, distinct rigged outcomes -> independent nets, bankroll delta = sum', () => {
     const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
-    // Pass1: hand0c1(8) hand1c1(8) dealerUp(5); Pass2: hand0c2(9) hand1c2(6) dealerHole(6).
-    // hand0 = 8,9=17->hit to... wait, keep it simple: hand0 stands at 19 (win),
-    // hand1 hits into a bust (lose). Dealer 5,6=11 must hit; give it a 6 -> 17 stand.
+    // Dealt right to left: Pass1: hand1c1(10) hand0c1(10) dealerUp(5); Pass2:
+    // hand1c2(6) hand0c2(9) dealerHole(6). hand0 stands at 19 (win), hand1
+    // hits into a bust (lose). Dealer 5,6=11 must hit; give it a 6 -> 17 stand.
     const game = Game.withRiggedShoe(
       cfg({ seats }),
-      rig('10', '10', '5', '9', '6', '6', 'K', '6'),
+      rig('10', '10', '5', '6', '9', '6', 'K', '6'),
     );
     game.startRound([1, 5]);
     expect(game.hands).toHaveLength(2);
@@ -1513,11 +1522,11 @@ describe('multi-hand player (Cycle-2 Task 4)', () => {
 
   it('hand0 live (10,6=16), hand1 natural (A,K=BJ): BJ settled immediately, player completes hand0, outcomes summed', () => {
     const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
-    // Deal order: hand0c1, hand1c1, dealerUp, hand0c2, hand1c2, dealerHole, dealerDraws...
+    // Deal order (right to left): hand1c1, hand0c1, dealerUp, hand1c2, hand0c2, dealerHole, dealerDraws...
     // To get hand0=(10,6)=16, hand1=(A,K)=BJ, dealer=(9,7)=16 then hits K->bust:
     const game = Game.withRiggedShoe(
       cfg({ seats }),
-      rig('10', 'A', '9', '6', 'K', '7', 'K'),
+      rig('A', '10', '9', 'K', '6', '7', 'K'),
     );
     const initialBankroll = game.bankroll;
 
@@ -1606,9 +1615,9 @@ describe('insurance across all player hands (Cycle-2 Task 5)', () => {
 
   it('hand0 normal (10,6=16), hand1 natural (A,K), insurance taken + dealer BJ -> natural pushes, hand0 loses, insurance pays 2:1 on summed stake', () => {
     const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
-    // Deal order: hand0c1, hand1c1, dealerUp, hand0c2, hand1c2, dealerHole.
+    // Deal order (right to left): hand1c1, hand0c1, dealerUp, hand1c2, hand0c2, dealerHole.
     // hand0=(10,6)=16 (non-natural), hand1=(A,K)=natural BJ. dealer=(A,K)=BJ.
-    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', 'A', 'A', '6', 'K', 'K'));
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('A', '10', 'A', 'K', '6', 'K'));
     game.startRound([2, 5]);
     expect(game.phase).toBe('insurance');
     const initialBankroll = game.bankroll;
@@ -2185,8 +2194,9 @@ describe('V5-4: the table grades against the profile rounding convention', () =>
 describe('casino play order: right to left (#1)', () => {
   it('three dealt hands are played rightmost first, then leftwards', () => {
     const seats: SeatConfig = { playerHands: 3, bots: 0, botMistakePct: 0, playerPosition: 0 };
-    // Pass 1: h0 10, h1 9, h2 8, up 7. Pass 2: h0 2, h1 3, h2 4, hole 10.
-    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', '9', '8', '7', '2', '3', '4', '10'));
+    // Dealt right to left too: Pass 1: h2 8, h1 9, h0 10, up 7. Pass 2: h2 4,
+    // h1 3, h0 2, hole 10.
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('8', '9', '10', '7', '4', '3', '2', '10'));
     game.startRound();
     const visited: string[] = [];
     while (game.phase === 'player') {
