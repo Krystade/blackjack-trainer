@@ -1,3 +1,4 @@
+import { mulberry32 } from '../engine/cards';
 import { describe, it, expect } from 'vitest';
 import { generateAllCells, filterCellsByCategory, drawFlashcard } from './flashcards';
 import { confusabilityWeight } from './confusability';
@@ -86,111 +87,64 @@ describe('V4-2: the cards vary, the cell does not', () => {
   });
 });
 
-describe('V4-1: frequency weighting is opt-in and actually reallocates', () => {
-  const draw = (seed: number, byFrequency: boolean) =>
-    drawFlashcard('all', {}, 0, seed, undefined, byFrequency).cellId;
-
-  it('off, the draw is exactly what it always was', () => {
-    for (let seed = 1; seed <= 50; seed++) {
-      // The default arg and an explicit false must agree, and both must match
-      // the pre-feature call shape.
-      expect(draw(seed, false)).toBe(drawFlashcard('all', {}, 0, seed).cellId);
-    }
-  });
-
-  // Sample sizes are held to what the assertion actually needs: each
-  // drawFlashcard call rebuilds all 330 cells and their weights, and the
-  // original 3000/6000 passed locally while timing out CI's 5s per-test
-  // limit -- which failed the V4-1 deploy outright. The explicit timeout is
-  // belt-and-braces so a slow runner degrades to slow, not red.
-  it('on, common cells get more of the reps than rare ones', () => {
-    const tally = (byFrequency: boolean) => {
-      let tenUp = 0;
-      for (let seed = 1; seed <= 1500; seed++) {
-        if (draw(seed, byFrequency).endsWith('-v-10')) tenUp += 1;
-      }
-      return tenUp;
-    };
-    const flat = tally(false);
-    const weighted = tally(true);
-    // A ten upcard is 4/13 of real deals and 1/10 of the flat cell universe.
-    expect(weighted).toBeGreaterThan(flat);
-    // Vacuity guard: if the weighting did nothing these would be equal.
-    expect(weighted - flat).toBeGreaterThan(100);
-  });
-
-  it('on, no cell becomes unreachable -- a rare hand is still one you must know', () => {
-    const seen = new Set<string>();
-    for (let seed = 1; seed <= 2000; seed++) seen.add(draw(seed, true));
-    // The compression exists precisely so the tail keeps showing up.
-    expect(seen.size).toBeGreaterThan(300);
-  });
-});
-
-describe('V5-1: the draw follows a hand with one you would mix it up with', () => {
-  const draw = (seed: number, on: boolean, prev: string | null) =>
-    drawFlashcard('all', {}, 0, seed, undefined, false, on, prev).cellId;
+describe('#52: "Follow with a look-alike" is a forced follow', () => {
+  const draw = (seed: number, on: boolean, prev: string | null, category: 'all' | 'hard' | 'soft' | 'pairs' = 'all') =>
+    drawFlashcard(category, {}, 0, seed, undefined, on, prev).cellId;
+  const prev = 'hard-16-v-10';
+  const isFollower = (id: string) => confusabilityWeight(id, prev) > 1;
 
   it('off, the draw is exactly what it always was -- even with a previous cell', () => {
     for (let seed = 1; seed <= 60; seed++) {
-      expect(draw(seed, false, 'hard-16-v-10')).toBe(drawFlashcard('all', {}, 0, seed).cellId);
+      expect(draw(seed, false, prev)).toBe(drawFlashcard('all', {}, 0, seed).cellId);
     }
   });
 
   it('on but with no previous cell, the draw is also unchanged', () => {
-    // The first card of a session has nothing to be confusable WITH, so the
-    // feature must be inert rather than doing something arbitrary.
     for (let seed = 1; seed <= 60; seed++) {
       expect(draw(seed, true, null)).toBe(drawFlashcard('all', {}, 0, seed).cellId);
     }
   });
 
-  it('on, neighbours of the last hand come up far more often', () => {
-    const prev = 'hard-16-v-10';
-    const isNeighbour = (id: string) => confusabilityWeight(id, prev) > 1;
-    const tally = (on: boolean) => {
-      let n = 0;
-      for (let seed = 1; seed <= 1500; seed++) if (isNeighbour(draw(seed, on, prev))) n += 1;
-      return n;
-    };
-    const off = tally(false);
-    const on = tally(true);
-    expect(on).toBeGreaterThan(off);
-    // Vacuity guard: if the term did nothing these would be within noise.
-    expect(on - off).toBeGreaterThan(50);
-  });
-
-  it('on, the last hand itself is not simply repeated back', () => {
-    // Massed practice is the thing being avoided; a term that boosted the
-    // previous cell would produce exactly that.
-    const prev = 'hard-16-v-10';
-    let repeats = 0;
-    let total = 0;
-    for (let seed = 1; seed <= 1500; seed++) {
-      if (draw(seed, true, prev) === prev) repeats += 1;
-      total += 1;
+  it('on, about half the cards come only from the previous cell confusable set', () => {
+    // Off, followers are a small slice of 330 cells; on, the forced half plus
+    // whatever the free half lands on by chance.
+    let offHits = 0;
+    let onHits = 0;
+    const N = 2000;
+    for (let seed = 1; seed <= N; seed++) {
+      if (isFollower(draw(seed, false, prev))) offHits += 1;
+      if (isFollower(draw(seed, true, prev))) onHits += 1;
     }
-    // 1/330 by chance; anything near that is fine, a boost would not be.
-    expect(repeats / total).toBeLessThan(0.02);
+    const offRate = offHits / N;
+    const onRate = onHits / N;
+    expect(offRate).toBeLessThan(0.1);
+    // 0.5 forced + 0.5 * offRate by chance.
+    expect(onRate).toBeGreaterThan(0.5 + 0.5 * offRate - 0.05);
+    expect(onRate).toBeLessThan(0.5 + 0.5 * offRate + 0.05);
   });
 
-  it('on, no cell becomes unreachable -- the chart stays complete', () => {
+  it('the forced half is drawn from nothing but followers (which exclude the previous cell itself)', () => {
+    // The coin is the seed's first rng value; recompute it here and check
+    // every heads draw is a follower.
+    let forced = 0;
+    for (let seed = 1; seed <= 600; seed++) {
+      if (mulberry32(seed)() >= 0.5) continue;
+      forced += 1;
+      const on = draw(seed, true, prev);
+      expect(isFollower(on), `seed ${seed} drew ${on}`).toBe(true);
+    }
+    expect(forced).toBeGreaterThan(200);
+  });
+
+  it('respects the category: a forced follow never leaves it', () => {
+    for (let seed = 1; seed <= 400; seed++) {
+      expect(draw(seed, true, prev, 'soft').startsWith('soft-')).toBe(true);
+    }
+  });
+
+  it('on, no cell becomes unreachable -- the free half keeps the chart complete', () => {
     const seen = new Set<string>();
-    for (let seed = 1; seed <= 2500; seed++) seen.add(draw(seed, true, 'hard-16-v-10'));
+    for (let seed = 1; seed <= 4000; seed++) seen.add(draw(seed, true, prev));
     expect(seen.size).toBeGreaterThan(300);
-  });
-
-  it('composes with the frequency term rather than replacing it', () => {
-    // Both on must differ from either alone, or one axis is silently winning.
-    const both = [];
-    const freqOnly = [];
-    const confOnly = [];
-    for (let seed = 1; seed <= 200; seed++) {
-      both.push(drawFlashcard('all', {}, 0, seed, undefined, true, true, 'hard-16-v-10').cellId);
-      freqOnly.push(drawFlashcard('all', {}, 0, seed, undefined, true, false, 'hard-16-v-10').cellId);
-      confOnly.push(drawFlashcard('all', {}, 0, seed, undefined, false, true, 'hard-16-v-10').cellId);
-    }
-    expect(both).not.toEqual(freqOnly);
-    expect(both).not.toEqual(confOnly);
   });
 });

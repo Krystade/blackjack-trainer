@@ -23,12 +23,15 @@ import {
   gradeQuizAnswer as gradeQuiz,
   loadFlashSr,
   loadQuizSr,
+  saveFlashSr,
+  saveQuizSr,
   TIMEOUT_ANSWER,
   SELF_REPORT_HAD,
   SELF_REPORT_MISSED } from '../../drills/gradeAnswer';
 import type { DrillAnswer } from '../../drills/gradeAnswer';
 import { shotClockExpired, shotClockOn } from '../../drills/shotClock';
-import type { SrDeck } from '../../drills/spacedRepetition';
+import type { SrCard, SrDeck } from '../../drills/spacedRepetition';
+import { restoreSrCard } from '../../drills/spacedRepetition';
 import { pickMixedType } from '../../drills/mixedSession';
 import type { MixedItemType } from '../../drills/mixedSession';
 import { saveSettings, loadStats } from '../../store/persist';
@@ -42,6 +45,7 @@ import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { HandResultStrip } from '../components/HandResultStrip';
 import { RulesChip } from '../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../handResult';
+import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../wrongTap';
 import type { Card, Rank } from '../../engine/cards';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
@@ -66,7 +70,6 @@ import { TrueCountDrillView } from './drills/TrueCountDrillView';
 import { ProduceTcDrillView } from './drills/ProduceTcDrillView';
 import { PairCancelView } from './drills/PairCancelView';
 import { BetSitLeaveView } from './drills/BetSitLeaveView';
-import { DownswingView } from './drills/DownswingView';
 import { DeckEstimationView } from './drills/DeckEstimationView';
 import { MasteryChallengeView } from './drills/MasteryChallengeView';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
@@ -190,12 +193,39 @@ function chartTargetFrom(result: HandResult): ChartTarget {
 function useHandResult() {
   const [lastResult, setLastResult] = useState<HandResult | null>(null);
   const [chartTarget, setChartTarget] = useState<ChartTarget | null>(null);
+  // #22: the miss now on the strip, while it can still be withdrawn. Cleared
+  // by every graded answer (`clearWrongTap`), on every channel, so the link
+  // never outlives the next answer.
+  const [wrongTap, setWrongTap] = useState<WrongTapRecord | null>(null);
   const idRef = useRef(0);
   const nextResultId = () => {
     idRef.current += 1;
     return idRef.current;
   };
-  return { lastResult, setLastResult, chartTarget, setChartTarget, nextResultId };
+  /** Freeze an answered hand into the strip, offering "Wrong tap" on a miss. */
+  const showResult = (result: HandResult, event: GradedEvent, revert: () => void) => {
+    setLastResult(result);
+    setWrongTap(wrongTapOffered(event) ? { resultId: result.id, event, revert } : null);
+  };
+  const clearWrongTap = () => setWrongTap(null);
+  /** The strip's onWrongTap for `result`, or undefined when not offered. */
+  const wrongTapFor = (result: HandResult): (() => void) | undefined => {
+    if (!wrongTap || wrongTap.resultId !== result.id) return undefined;
+    return () => {
+      withdrawAnswer(wrongTap);
+      setWrongTap(null);
+      setLastResult((r) => (r && r.id === wrongTap.resultId ? { ...r, undone: true } : r));
+    };
+  };
+  return {
+    lastResult,
+    chartTarget,
+    setChartTarget,
+    nextResultId,
+    showResult,
+    clearWrongTap,
+    wrongTapFor,
+  };
 }
 
 /* ---------------------------------------------------------------- */
@@ -353,7 +383,6 @@ function FlashcardsView({
       Date.now(),
       randomSeed(),
       activeProfile.rules,
-      settings.drill.flashByFrequency,
       settings.drill.flashByConfusability,
       null,
     ),
@@ -362,7 +391,8 @@ function FlashcardsView({
   // #7: the chart opened over this correction, closed back onto the same card.
   const [showChart, setShowChart] = useState(false);
   // B1: the last answered card, frozen, and the hand the chart opens on.
-  const { lastResult, setLastResult, chartTarget, setChartTarget, nextResultId } = useHandResult();
+  const { lastResult, chartTarget, setChartTarget, nextResultId, showResult, clearWrongTap, wrongTapFor } =
+    useHandResult();
   const audio = useAudio(settings.audio);
 
   // Eyes-free audio (Task 9): a per-session choice, shared across screens for
@@ -511,7 +541,6 @@ function FlashcardsView({
       Date.now(),
       randomSeed(),
       activeProfile.rules,
-      settings.drill.flashByFrequency,
       settings.drill.flashByConfusability,
       lastCellRef.current,
     );
@@ -567,8 +596,11 @@ function FlashcardsView({
   const gradeFlashcardAnswer = (
     taken: DrillAnswer,
     channel: AnswerChannel,
-  ): { event: GradedEvent; correctAction: Action } => {
+  ): { event: GradedEvent; correctAction: Action; prevSr: SrCard | undefined } => {
     const elapsedMs = performance.now() - promptShownAtRef.current;
+    // #22: the card's schedule before this answer, for "Wrong tap".
+    const prevSr = srDeckRef.current[card.cellId];
+    clearWrongTap();
     const result = gradeFlashcard(
       card,
       taken,
@@ -584,7 +616,7 @@ function FlashcardsView({
       settings.drill.shotClockMs > 0,
     );
     srDeckRef.current = result.nextDeck;
-    return { event: result.event, correctAction: result.correctAction };
+    return { event: result.event, correctAction: result.correctAction, prevSr };
   };
 
   // Gates the SPOKEN "Correct." text (never the chime, never wrong-answer
@@ -611,16 +643,23 @@ function FlashcardsView({
    * the next one in the same handler. The SR line is read here, after the
    * grade wrote the deck, so a right answer visibly pushes the review out.
    */
-  const advanceWithResult = (event: GradedEvent) => {
+  const advanceWithResult = (event: GradedEvent, prevSr: SrCard | undefined) => {
     const srCard = srDeckRef.current[card.cellId];
     const srText = formatReviewPlain(srCard, Date.now());
-    setLastResult(
+    const cellId = card.cellId;
+    showResult(
       snapshotResult(
         nextResultId(),
         event,
         { cards: card.cards, up: card.up, tc: null },
-        { cellId: card.cellId, sr: srText ? { text: srText, box: srCard?.box } : null },
+        { cellId, sr: srText ? { text: srText, box: srCard?.box } : null },
       ),
+      event,
+      // #22: a withdrawn answer puts the card's schedule back as well.
+      () => {
+        srDeckRef.current = restoreSrCard(srDeckRef.current, cellId, prevSr);
+        saveFlashSr(srDeckRef.current);
+      },
     );
     releaseAnswerFocus();
     next();
@@ -628,12 +667,12 @@ function FlashcardsView({
 
   const handleAction = (taken: Action) => {
     // An ActionBar click: the hand is on screen and a finger is on the button.
-    const { event } = gradeFlashcardAnswer(taken, SCREEN_CHANNEL);
+    const { event, prevSr } = gradeFlashcardAnswer(taken, SCREEN_CHANNEL);
 
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
 
-    advanceWithResult(event);
+    advanceWithResult(event, prevSr);
   };
 
   // Eyes-free zone tap: ZoneId and Action are the identical five-member
@@ -696,6 +735,8 @@ function FlashcardsView({
     const elapsedMs = performance.now() - promptShownAtRef.current;
     if (!shotClockExpired(elapsedMs, shotClockMs)) return;
 
+    const prevSr = srDeckRef.current[card.cellId];
+    clearWrongTap();
     const result = gradeFlashcard(
       card,
       TIMEOUT_ANSWER,
@@ -716,7 +757,7 @@ function FlashcardsView({
     // strip and the next card is dealt. The timed correction screen is for
     // eyes-free, where nobody is reading a strip.
     if (!eyesFree && !voiceOn) {
-      advanceWithResult(result.event);
+      advanceWithResult(result.event, prevSr);
       return;
     }
     showFeedback({ correct: false, correctAction: result.correctAction, event: result.event });
@@ -996,32 +1037,9 @@ function FlashcardsView({
           voiceStatus={voice.status}
           options={
             <>
-              {/* V4-1 (docs/BACKLOG.md): the draw weighted cells by schedule
-                  alone, so the 16 v 10 you face most shoes and the hard 5 v 7
-                  you face once a month got the same reps. Off by default --
-                  reallocating practice time is the user's call. Kept: a
-                  mistake costs in proportion to how often the hand comes up,
-                  so weighting reps by frequency is the direct lever on it. */}
-              <label className="count-toggle">
-                <input
-                  type="checkbox"
-                  checked={settings.drill.flashByFrequency}
-                  onChange={(e) => {
-                    const nextSettings: Settings = {
-                      ...settings,
-                      drill: { ...settings.drill, flashByFrequency: e.target.checked },
-                    };
-                    saveSettings(nextSettings);
-                    onSettingsChange(nextSettings);
-                  }}
-                />
-                <span>Show common hands more often</span>
-              </label>
-              {/* V5-1 (docs/BACKLOG.md): interleaving pays most when
-                  confusable items land back to back, and the SR/frequency
-                  draw is blind to what came before. Off by default, like the
-                  frequency term above. Kept on the evidence cited there
-                  (Brunmair & Richter 2019). */}
+              {/* V5-1/#52: interleaving pays most when confusable items land
+                  back to back (Brunmair & Richter 2019). On, half the cards
+                  are drawn only from the last hand's look-alikes. */}
               <label className="count-toggle">
                 <input
                   type="checkbox"
@@ -1138,7 +1156,7 @@ function FlashcardsView({
         )}
         {/* B1: the previous card's result, under the card now being asked. */}
         {!feedback && !selfCheckOpen && !eyesFree && lastResult && (
-          <HandResultStrip result={lastResult} onShowChart={openChartOn} />
+          <HandResultStrip result={lastResult} onShowChart={openChartOn} onWrongTap={wrongTapFor(lastResult)} />
         )}
       </div>
 
@@ -1215,6 +1233,8 @@ function DeviationQuizView({
   // R3 (docs/BACKLOG.md, spaced-repetition): per-index miss-weight map,
   // loaded once per mount exactly like FlashcardsView's srDeckRef.
   const srDeckRef = useRef<SrDeck>(loadQuizSr());
+  // #22: the answered index's card before its review, set at the grade.
+  const prevSrRef = useRef<{ key: string; prev: SrCard | undefined } | null>(null);
 
   const [item, setItem] = useState<QuizItem>(() =>
     drawQuizItem(
@@ -1230,7 +1250,8 @@ function DeviationQuizView({
   // #7: the chart opened over this correction, closed back onto the same card.
   const [showChart, setShowChart] = useState(false);
   // B1: the last answered item, frozen, and the hand the chart opens on.
-  const { lastResult, setLastResult, chartTarget, setChartTarget, nextResultId } = useHandResult();
+  const { lastResult, chartTarget, setChartTarget, nextResultId, showResult, clearWrongTap, wrongTapFor } =
+    useHandResult();
   const audio = useAudio(settings.audio);
 
   // Eyes-free audio (Task 9): a per-session choice, shared across screens for
@@ -1415,6 +1436,11 @@ function DeviationQuizView({
   // no setState -- callers layer their own feedback on top.
   const gradeQuizAnswer = (taken: string, channel: AnswerChannel = SCREEN_CHANNEL): GradedEvent => {
     const elapsedMs = performance.now() - promptShownAtRef.current;
+    // #22: the index's schedule before this answer, for "Wrong tap". A
+    // distractor has no index and nothing scheduled to put back.
+    const srKey = item.deviationId;
+    prevSrRef.current = srKey ? { key: srKey, prev: srDeckRef.current[srKey] } : null;
+    clearWrongTap();
     const result = gradeQuiz(
       item,
       taken,
@@ -1454,13 +1480,20 @@ function DeviationQuizView({
    * in the same handler.
    */
   const advanceWithResult = (event: GradedEvent) => {
-    setLastResult(
+    const prevSr = prevSrRef.current;
+    showResult(
       snapshotResult(
         nextResultId(),
         event,
         { cards: item.cards, up: item.up, tc: item.tc },
         { label: item.label, note: tableMaskNote(item, strategyRulesFor(activeProfile)) },
       ),
+      event,
+      () => {
+        if (!prevSr) return;
+        srDeckRef.current = restoreSrCard(srDeckRef.current, prevSr.key, prevSr.prev);
+        saveQuizSr(srDeckRef.current);
+      },
     );
     releaseAnswerFocus();
     next();
@@ -1906,6 +1939,7 @@ function DeviationQuizView({
           <HandResultStrip
             result={lastResult}
             onShowChart={lastResult.cards ? openChartOn : undefined}
+            onWrongTap={wrongTapFor(lastResult)}
           />
         )}
       </div>
@@ -1984,6 +2018,8 @@ function MixedSessionView({
   // so a mixed session's misses/decays feed the same persisted weighting.
   const flashSrRef = useRef<SrDeck>(loadFlashSr());
   const quizSrRef = useRef<SrDeck>(loadQuizSr());
+  // #22: the answered item's card before its review, set at the grade.
+  const prevSrRef = useRef<{ deck: 'flash' | 'quiz'; key: string; prev: SrCard | undefined } | null>(null);
 
   // Seeded interleave: the session seed is drawn once (lazily, StrictMode-
   // safe) and each position's type comes from pickMixedType(seed, index) --
@@ -2006,7 +2042,6 @@ function MixedSessionView({
       Date.now(),
       randomSeed(),
       activeProfile.rules,
-      settings.drill.flashByFrequency,
       settings.drill.flashByConfusability,
       mixedLastCellRef.current,
     );
@@ -2044,7 +2079,8 @@ function MixedSessionView({
   // #7: the chart opened over this correction, closed back onto the same card.
   const [showChart, setShowChart] = useState(false);
   // B1: the last answered item, frozen, and the hand the chart opens on.
-  const { lastResult, setLastResult, chartTarget, setChartTarget, nextResultId } = useHandResult();
+  const { lastResult, chartTarget, setChartTarget, nextResultId, showResult, clearWrongTap, wrongTapFor } =
+    useHandResult();
   const audio = useAudio(settings.audio);
 
   const [eyesFree, setEyesFree] = useEyesFreeToggle('mixed-session');
@@ -2176,11 +2212,17 @@ function MixedSessionView({
   // R1 latency captured here; R3 weights + Stats write happen inside.
   const gradeCurrent = (taken: string): { correct: boolean; correctAction?: Action; event: GradedEvent } => {
     const elapsedMs = performance.now() - promptShownAtRef.current;
+    clearWrongTap();
     if (current.type === 'flash') {
+      // #22: the card's schedule before this answer, for "Wrong tap".
+      const key = current.card.cellId;
+      prevSrRef.current = { deck: 'flash', key, prev: flashSrRef.current[key] };
       const result = gradeFlashcard(current.card, taken as Action, activeProfile.rules, elapsedMs, flashSrRef.current, Date.now());
       flashSrRef.current = result.nextDeck;
       return { correct: result.event.correct, correctAction: result.correctAction, event: result.event };
     }
+    const quizKey = current.item.deviationId;
+    prevSrRef.current = quizKey ? { deck: 'quiz', key: quizKey, prev: quizSrRef.current[quizKey] } : null;
     // ...AND GRADED AGAINST THEM TOO. The standalone quiz grades with
     // `strategyRulesFor`; grading a surrender index with the bare rules
     // marks a correct surrender wrong.
@@ -2226,7 +2268,17 @@ function MixedSessionView({
               note: tableMaskNote(current.item, strategyRulesFor(activeProfile)),
             },
           );
-    setLastResult(snapshot);
+    const prevSr = prevSrRef.current;
+    showResult(snapshot, event, () => {
+      if (!prevSr) return;
+      if (prevSr.deck === 'flash') {
+        flashSrRef.current = restoreSrCard(flashSrRef.current, prevSr.key, prevSr.prev);
+        saveFlashSr(flashSrRef.current);
+      } else {
+        quizSrRef.current = restoreSrCard(quizSrRef.current, prevSr.key, prevSr.prev);
+        saveQuizSr(quizSrRef.current);
+      }
+    });
     releaseAnswerFocus();
     next();
   };
@@ -2557,6 +2609,7 @@ function MixedSessionView({
           <HandResultStrip
             result={lastResult}
             onShowChart={lastResult.cards ? openChartOn : undefined}
+            onWrongTap={wrongTapFor(lastResult)}
           />
         )}
       </div>
@@ -2633,7 +2686,6 @@ type DrillMode =
   | 'mixed'
   | 'paircancel'
   | 'betsitleave'
-  | 'downswing'
   | 'producetc'
   | 'mastery';
 
@@ -2711,12 +2763,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   }
   if (mode === 'mastery') {
     return (
-      <MasteryChallengeView
-        settings={settings}
-        activeProfile={activeProfile}
-        onBack={() => setMode('picker')}
-        onSettingsChange={onSettingsChange}
-      />
+      <MasteryChallengeView activeProfile={activeProfile} onBack={() => setMode('picker')} />
     );
   }
   if (mode === 'paircancel') {
@@ -2729,11 +2776,6 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         activeProfile={activeProfile}
         onBack={() => setMode('picker')}
       />
-    );
-  }
-  if (mode === 'downswing') {
-    return (
-      <DownswingView settings={settings} activeProfile={activeProfile} onBack={() => setMode('picker')} />
     );
   }
 
@@ -2798,8 +2840,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         {entry('mastery', 'Mastery challenge', 'Every basic-strategy hand once, with no mistakes. One miss starts the sweep over.')}
 
         <h2 className="drills-group-title">Under pressure</h2>
-        {entry('betsitleave', 'Bet / sit / leave', 'From the true count and the shoe, choose to bet, sit out or leave the table.', true)}
-        {entry('downswing', 'Downswing', 'A run of losing hands. Keep your count and bet your ramp without chasing losses.', true)}
+        {entry('betsitleave', 'Bet or sit', 'From the true count and the shoe, choose to bet or sit out.', true)}
       </div>
       <button type="button" className="drills-back-btn" onClick={() => onNavigate('home')}>
         Back to Home

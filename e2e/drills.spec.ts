@@ -1486,6 +1486,12 @@ test('mixed session: interleaves flashcard + quiz items, grading each through it
 test('pair cancellation: answering a pair grades it and records self-consistent telemetry', async ({
   page,
 }) => {
+  // A fixed stepping sequence, so each pair's seed differs and the pair after
+  // the first is known to be a different one.
+  await page.addInitScript(() => {
+    let i = 0;
+    Math.random = () => ((i++ * 0.37) % 1);
+  });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Pair cancellation', exact: true }).click();
@@ -1494,8 +1500,12 @@ test('pair cancellation: answering a pair grades it and records self-consistent 
   await shot(page, '90-pair-cancel');
 
   // Answer "0" (a fixed choice from the five −2..+2 buttons).
+  const firstPair = await page.locator('.pair-cancel-cards .card-rank').allInnerTexts();
+  const cardTexts = () => page.locator('.pair-cancel-cards .card').allTextContents();
+  const firstShown = await cardTexts();
   await page.locator('.pair-cancel-answers button.action-btn', { hasText: /^0$/ }).click();
-  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
+  const strip = page.getByTestId('pair-result');
+  await expect(strip).toBeVisible();
 
   const stats = await readStats(page);
   const history = (stats?.pairCancel as { history: Record<string, number | boolean>[] } | undefined)?.history ?? [];
@@ -1507,10 +1517,21 @@ test('pair cancellation: answering a pair grades it and records self-consistent 
   expect(row.cancelling).toBe(row.net === 0 ? row.cancelling : false);
   expect(row.elapsedMs as number).toBeGreaterThanOrEqual(0);
 
-  // Next draws a fresh pair and clears the feedback.
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toHaveCount(0);
+  // #21: no Next. The strip names the ANSWERED pair and its verdict, while the
+  // answer buttons are already up for the next pair.
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toHaveCount(0);
+  await expect(strip.locator('.pair-result-hand')).toHaveText(firstPair.join(','));
+  await expect(strip).toContainText(row.correct ? '✓' : '✗ was');
+  if (row.cancelling) await expect(strip).toContainText('these cancel');
   await expect(page.locator('.pair-cancel-cards .card')).toHaveCount(2);
+  await expect.poll(cardTexts).not.toEqual(firstShown);
+  await expect(page.locator('.pair-cancel-answers button.action-btn')).toHaveCount(5);
+
+  // The keyboard answers the next pair straight away; no Enter in between.
+  await page.keyboard.press('3');
+  await expect
+    .poll(async () => ((await readStats(page))?.pairCancel as { history: unknown[] } | undefined)?.history.length)
+    .toBe(2);
 });
 
 /* R9 / red-team #7: "messy" card presentation applies a small per-card         */
@@ -1575,9 +1596,12 @@ test('bet/sit/leave: answering a scenario grades it and records self-consistent 
 }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Bet / sit / leave', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Bet / sit / leave');
+  await page.getByRole('button', { name: 'Bet or sit', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Bet or sit');
   await expect(page.locator('.bsl-tc')).toBeVisible();
+  // #48-51: two answers only; no "Leave", no fresh-table line.
+  await expect(page.locator('.bsl-answers .action-btn')).toHaveText(['Bet', 'Sit out']);
+  await expect(page.getByText('table is open')).toHaveCount(0);
   await shot(page, '95-bet-sit-leave');
 
   await page.locator('.bsl-answers').getByRole('button', { name: 'Bet', exact: true }).click();
@@ -1588,50 +1612,12 @@ test('bet/sit/leave: answering a scenario grades it and records self-consistent 
   expect(history).toHaveLength(1);
   const row = history[0]!;
   expect(row.taken).toBe('bet');
-  expect(['bet', 'sit', 'leave']).toContain(row.correctAction);
+  expect(['bet', 'sit']).toContain(row.correctAction);
   expect(row.correct).toBe(row.taken === row.correctAction); // grading is consistent
 
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toHaveCount(0);
   await expect(page.locator('.bsl-tc')).toBeVisible();
-});
-
-/* ET1: the tilt-inoculation Downswing session. The count is now HIDDEN (operator */
-/* choice): you must keep your OWN count through the losing arc and bet the ramp  */
-/* for it. This e2e can't read a hidden count, so it just plays the session       */
-/* through (min bet each hand) and asserts it completes, reports a conformity     */
-/* figure + drawdown, and PERSISTS the session to Stats. Grading correctness      */
-/* (betting the ramp => 100%) is proven in-engine in downswingShoe.test.ts. */
-test('downswing: plays the rigged losing session to a graded report and persists it to Stats', async ({
-  page,
-}) => {
-  test.setTimeout(30_000);
-  await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Downswing', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Downswing');
-  // The count is NOT shown — this is a count-through-the-tilt drill.
-  await expect(page.locator('.downswing-count')).toHaveCount(0);
-  await shot(page, '96-downswing');
-
-  for (let r = 0; r < 25; r++) {
-    await page.getByRole('button', { name: 'Deal', exact: true }).click(); // default = min bet
-    const stand = page.getByRole('button', { name: 'Stand', exact: true });
-    if (await stand.isVisible().catch(() => false)) await stand.click();
-    await page.getByRole('button', { name: r < 24 ? 'Next hand' : 'See result', exact: true }).click();
-  }
-
-  await expect(page.locator('.drill-result')).toBeVisible();
-  await expect(page.locator('.drill-result')).toContainText('%'); // a spread-conformity figure
-  await expect(page.locator('.drill-result')).toContainText('downswing');
-  await shot(page, '97-downswing-report');
-
-  // V3-1: the session is PERSISTED to Stats (it used to vanish on Back).
-  const stats = await readStats(page);
-  const dsHistory = (stats?.downswing as { history: Record<string, number>[] } | undefined)?.history ?? [];
-  expect(dsHistory).toHaveLength(1);
-  expect(dsHistory[0]!.total).toBe(25);
-  expect(dsHistory[0]!.drawdown).toBeGreaterThan(0);
 });
 
 /* V3-2: the "produce a true count" drill — flash (maintain RC), judge the tray */
@@ -1694,16 +1680,18 @@ test('drills picker: advanced modes show a soft fluency nudge until fluent, but 
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await expect(page.locator('.drills-title')).toHaveText('Drills');
-  // Fresh profile: not fluent -> advisory on Mixed, Bet/Sit/Leave, Downswing.
-  await expect(page.locator('.drills-nav-note')).toHaveCount(3);
+  // Fresh profile: not fluent -> advisory on Mixed and Bet or sit.
+  await expect(page.locator('.drills-nav-note')).toHaveCount(2);
+  // #48-51: the Downswing drill is gone.
+  await expect(page.getByRole('button', { name: 'Downswing', exact: true })).toHaveCount(0);
   // Mixed carries it too, and is still reachable.
   await expect(
     page.getByRole('button', { name: 'Mixed', exact: true }),
   ).toHaveClass(/drills-nav-btn-advanced/);
   await shot(page, '99-soft-gate');
   // Soft, not locked: the mode still opens.
-  await page.getByRole('button', { name: 'Downswing', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Downswing');
+  await page.getByRole('button', { name: 'Bet or sit', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Bet or sit');
 });
 
 test('drills picker: no fluency nudge once the learner is fluent', async ({ page }) => {
@@ -1903,32 +1891,14 @@ test('deviation quiz: the shot clock grades an unanswered item as a timeout', as
   expect((stats!.mistakes as Record<string, number>).timeout).toBe(1);
 });
 
-/**
- * V4-1: the flashcard draw weighted cells by schedule alone, so a hand faced
- * most shoes and one faced once a month got the same reps. Off by default --
- * reallocating practice time is the user's call.
- */
-test('flashcards: the frequency toggle is off by default and persists when set', async ({ page }) => {
+/** #52: "Show common hands more often" is gone. */
+test('flashcards: there is no "Show common hands more often" option', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
-
-  // Under the collapsed Options disclosure: set once, not every hand.
   await page.locator('details.drill-options > summary').click();
-  const row = page.locator('.count-toggle', { hasText: 'Show common hands more often' });
-  await expect(row).toBeVisible();
-  const box = row.locator('input[type="checkbox"]');
-  await expect(box).not.toBeChecked();
-
-  await box.check();
-  // Persisted, not just React state: come back through a full reload.
-  await page.reload();
-  await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
-  await expect(
-    page.locator('.count-toggle', { hasText: 'Show common hands more often' })
-      .locator('input[type="checkbox"]'),
-  ).toBeChecked();
+  await expect(page.locator('.count-toggle', { hasText: 'Follow each hand with a look-alike' })).toBeVisible();
+  await expect(page.getByText('Show common hands more often')).toHaveCount(0);
 });
 
 /**

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { hiLoTag } from '../engine/count';
-import { makePairCancel, isCancellingPair, pairCancelBias, PAIR_CANCEL_NETS } from './pairCancellation';
+import { makePairCancel, isCancellingPair, pairCancelBias, pairResultText, PAIR_CANCEL_NETS } from './pairCancellation';
 
 describe('makePairCancel (R8 pair-cancellation drill)', () => {
   it('is deterministic for a seed: same seed -> identical pair and net', () => {
@@ -106,5 +106,26 @@ describe('pairCancelBias schedule (TS#6)', () => {
 
   it('negative round indices clamp to the starting bias (never above it)', () => {
     expect(pairCancelBias(-5)).toBe(0.6);
+  });
+});
+
+describe('pairResultText (#21 result strip)', () => {
+  it('a hit prints the net and a tick, with a real minus sign', () => {
+    expect(pairResultText(-1, -1, false)).toBe('\u22121 \u2713');
+    expect(pairResultText(2, 2, false)).toBe('+2 \u2713');
+  });
+
+  it('a miss prints a cross and what the net was', () => {
+    expect(pairResultText(1, 0, false)).toBe('\u2717 was +1');
+    expect(pairResultText(-2, -1, false)).toBe('\u2717 was \u22122');
+  });
+
+  it('a genuine cancel says so, right or wrong', () => {
+    expect(pairResultText(0, 1, true)).toBe('\u2717 was 0 \u2014 these cancel');
+    expect(pairResultText(0, 0, true)).toBe('0 \u2713 \u2014 these cancel');
+  });
+
+  it('a zero from two neutral cards is not called a cancel', () => {
+    expect(pairResultText(0, 0, false)).toBe('0 \u2713');
   });
 });

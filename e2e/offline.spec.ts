@@ -368,7 +368,7 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
   await page.getByRole('button', { name: 'Pair cancellation', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Pair cancellation');
   await page.locator('.pair-cancel-answers .action-btn').first().click();
-  await expect(page.locator('.drill-next-btn')).toBeVisible();
+  await expect(page.getByTestId('pair-result')).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
 
   // --- Produce the true count ---------------------------------------------
@@ -394,21 +394,13 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
   await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
 
-  // --- Bet / sit / leave --------------------------------------------------
-  await page.getByRole('button', { name: 'Bet / sit / leave', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Bet / sit / leave');
+  // --- Bet or sit ---------------------------------------------------------
+  await page.getByRole('button', { name: 'Bet or sit', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Bet or sit');
   await page.locator('.bsl-answers .action-btn').first().click();
   await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
 
-  // --- Downswing: bet, deal, settle one hand ------------------------------
-  await page.getByRole('button', { name: 'Downswing', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Downswing');
-  await page.locator('.chip-btn').first().click();
-  await page.locator('.deal-btn').click();
-  await page.locator('.action-bar .action-btn', { hasText: 'Stand' }).click();
-  await expect(page.locator('.drill-next-btn')).toBeVisible();
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();
 
   /*

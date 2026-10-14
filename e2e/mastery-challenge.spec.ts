@@ -10,9 +10,6 @@ test('mastery challenge: default scope is All, progress starts at 0', async ({ p
   const scopeRow = page.locator('.settings-row', { hasText: 'Hands' });
   await expect(scopeRow.getByRole('button', { name: 'All', exact: true })).toHaveClass(/segmented-btn-active/);
 
-  const freqRow = page.locator('.settings-row', { hasText: 'Distractions' });
-  await expect(freqRow.getByRole('button', { name: 'Off', exact: true })).toHaveClass(/segmented-btn-active/);
-
   await expect(page.locator('[data-testid="mastery-progress"]')).toContainText('0 / 330 cleared');
 });
 
@@ -116,24 +113,13 @@ test('mastery challenge: progress survives a reload (persisted run, not lost on 
   expect(JSON.parse(stored!).scope).toBe('pairs');
 });
 
-test('mastery challenge: interruptions default to Off and can be switched to Relentless', async ({ page }) => {
+test('mastery challenge #6: there is no Distractions control, and answering never interrupts', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
-
-  const freqRow = page.locator('.settings-row', { hasText: 'Distractions' });
-  await expect(freqRow.getByRole('button', { name: 'Off', exact: true })).toHaveClass(/segmented-btn-active/);
-
-  await freqRow.getByRole('button', { name: 'Relentless', exact: true }).click();
-  const settings = await page.evaluate(() => {
-    const json = window.localStorage.getItem('bjtrainer.settings.v1');
-    return json ? JSON.parse(json) : null;
-  });
-  expect(settings?.drill?.masteryDistractionFreq).toBe('relentless');
-
-  // Changing THIS drill's difficulty must not touch the count drill's own
-  // distractionFreq (D4) -- confirm it's still the untouched default.
-  expect(settings?.drill?.distractionFreq ?? 'off').toBe('off');
+  await expect(page.locator('[data-testid="mastery-progress"]')).toBeVisible();
+  await expect(page.locator('.settings-row', { hasText: 'Distractions' })).toHaveCount(0);
+  await expect(page.locator('.distraction-area')).toHaveCount(0);
 });
 
 /**

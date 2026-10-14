@@ -73,13 +73,6 @@ test('mute button clears every control: Home, Table, drills', async ({ page }) =
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.deck-guess-btn').first()).toBeVisible();
   await expectClear(page, 'Deck estimation');
-
-  // Downswing.
-  await page.goto('/?e2e=1');
-  await openDrill(page, 'Downswing');
-  await expectClear(page, 'Downswing (start)');
-  await page.getByRole('button', { name: 'Deal', exact: true }).click();
-  await expectClear(page, 'Downswing (dealt)');
 });
 
 test('mute button clears controls on the scrolling tab screens too', async ({ page }) => {

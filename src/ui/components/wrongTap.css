@@ -1,0 +1,21 @@
+/* #22: "Wrong tap" sits at the end of the verdict line. A link, not a
+   button, so it reads as an aside rather than a second answer; the tap
+   area is 44px tall, pulled back out of the line height so the strip does
+   not grow. */
+.hand-result-wrongtap {
+  margin: -12px 0 -12px auto;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.hand-result-undone {
+  font-size: 0.9rem;
+  color: var(--ink-dim);
+}

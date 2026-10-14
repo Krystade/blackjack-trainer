@@ -70,8 +70,7 @@ const DRILLS = [
   'Deck estimation',
   'True count drill',
   'Produce the true count',
-  'Bet / sit / leave',
-  'Downswing',
+  'Bet or sit',
   'Deviation quiz',
   'Flashcards',
 ];

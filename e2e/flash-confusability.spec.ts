@@ -1,36 +1,25 @@
 import { test, expect, type Page } from '@playwright/test';
 import { answerAndReadStrip, withSettings } from './helpers';
+import { confusabilityWeight } from '../src/drills/confusability';
 
 /**
- * V5-1 (docs/BACKLOG.md): the flashcard draw is biased toward the cells most
- * easily confused with the one just answered.
+ * #52: "Follow each hand with a look-alike" is a forced follow -- with
+ * probability 0.5 the next card comes ONLY from the previous cell's
+ * confusable set. The coin is the seed's first rng value (unit-tested in
+ * flashcards.test.ts). What only a browser can check is the CHAIN: the view
+ * must hand the cell it just showed to the next draw.
  *
- * The weighting itself is unit-tested. What only a browser can check is the
- * CHAIN: the view has to remember the cell it just showed and hand it back to
- * the next draw. If `lastCellRef` is never updated the feature is silently
- * inert -- every draw sees `null`, every weight collapses to 1, and every unit
- * test still passes because they pass the previous cell in by hand.
- *
- * Pinning Math.random removes the seed as a variable. It does NOT make the
- * draw constant -- the SR deck mutates on every answer, so the weights move
- * even with the toggle off (a first version of this spec asserted otherwise
- * and failed, which is why the comparison below is structured the way it is).
- *
- * So the test runs the SAME pinned session twice, once with the toggle off and
- * once on, answering identically both times. Card 1 is drawn with no previous
- * cell and must match. Up to the first divergence both runs have seen the same
- * seeds and the same SR history, so if the sequences differ AT ALL the only
- * input that could have caused it is the previous-cell term -- which is
- * exactly the chain being tested. The result strip's `data-cell-id` is
- * existing production markup that renders the cellId, so nothing here is a test-only affordance.
+ * Math.random pinned to 0.1 gives seed 100000000, whose coin is 0.119 --
+ * heads on every draw. So with the option on, every card after the first must
+ * be a look-alike of the one before it. The same pinned session with it off is
+ * the vacuity guard: there the chain must break somewhere.
  */
 
 async function pinRandom(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    Math.random = () => 0.4242;
+    Math.random = () => 0.1;
   });
 }
-
 async function openFlashcards(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
@@ -60,24 +49,20 @@ async function runSession(page: Page, byConfusability: boolean): Promise<string[
   return cellSequence(page, 8);
 }
 
-test('the previous cell reaches the draw and changes it', async ({ browser }) => {
-  const offPage = await browser.newPage();
-  const off = await runSession(offPage, false);
-  await offPage.close();
+const chained = (cells: string[]) => cells.slice(1).every((c, i) => confusabilityWeight(c, cells[i]!) > 1);
 
+test('on, a heads coin forces every card to be a look-alike of the one before', async ({ browser }) => {
   const onPage = await browser.newPage();
   const on = await runSession(onPage, true);
   await onPage.close();
+  expect(chained(on), `not a look-alike chain: ${on.join(', ')}`).toBe(true);
 
-  // Sanity: the first card is drawn with no previous cell, so the two runs
-  // must start identically. If this fails the comparison below is meaningless
-  // -- something other than the toggle differs between the runs.
-  expect(on[0], `runs started differently: ${off.join(', ')} vs ${on.join(', ')}`).toBe(off[0]);
-
-  // And then they must part company. Identical throughout would mean the
-  // previous cell never reached the weights.
-  expect(on, `sequences identical, so the term did nothing: ${on.join(', ')}`).not.toEqual(off);
+  const offPage = await browser.newPage();
+  const off = await runSession(offPage, false);
+  await offPage.close();
+  expect(chained(off), `off also chained, so the check proves nothing: ${off.join(', ')}`).toBe(false);
 });
+
 
 test('on, the toggle is present and persists', async ({ page }) => {
   await page.goto('/?e2e=1');
