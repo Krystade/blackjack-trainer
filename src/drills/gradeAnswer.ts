@@ -28,6 +28,7 @@ import type { Flashcard } from './flashcards';
 import type { QuizItem } from './deviationQuiz';
 import { quizCtxFor } from './deviationQuiz';
 import { reviewCard, isGapReview, SCREEN_CHANNEL } from './spacedRepetition';
+import { trackedElapsedMs } from './idleAnswer';
 import type { AnswerChannel } from './spacedRepetition';
 import type { SrCard, SrDeck } from './spacedRepetition';
 import { loadStats, saveStats } from '../store/persist';
@@ -188,6 +189,16 @@ function priceMistake(
 }
 
 /**
+ * #30: the event's `elapsedMs` field, or no field at all for an answer slower
+ * than IDLE_ANSWER_MS (the answer is still graded; only its timing is
+ * dropped, so latency stats skip it). Shot-clock timeouts keep theirs.
+ */
+function elapsedField(elapsedMs: number | undefined, taken: string): { elapsedMs?: number } {
+  const tracked = trackedElapsedMs(elapsedMs, taken === TIMEOUT_ANSWER);
+  return tracked === undefined ? {} : { elapsedMs: tracked };
+}
+
+/**
  * Build the GradedEvent + correct action for a flashcard answer. Pure: no
  * weight/stats writes, no audio. `elapsedMs` (R1) is captured by the caller
  * via performance.now() and passed in, so this stays deterministic and the
@@ -232,7 +243,8 @@ export function buildFlashcardEvent(
     reason: withCount.reason,
     tc: 0,
     hand: card.cellId,
-    elapsedMs,
+    // #30: omitted, not zeroed, for an idle answer -- see idleAnswer.ts.
+    ...elapsedField(elapsedMs, taken),
     evCost: priceMistake(card.cards, card.up, ctx, rules, withCount, taken, classification),
   };
 
@@ -281,7 +293,7 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: StrategyRul
       deviationId: item.deviationId,
       tc: item.tc,
       hand: 'dealer A',
-      elapsedMs,
+      ...elapsedField(elapsedMs, taken),
     };
   }
 
@@ -332,7 +344,7 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: StrategyRul
     deviationId: item.deviationId,
     tc: item.tc,
     hand: item.label,
-    elapsedMs,
+    ...elapsedField(elapsedMs, taken),
     evCost: priceMistake(item.cards, item.up, ctx, rules, withCount, taken, classification),
   };
 }
@@ -391,7 +403,7 @@ export function gradeFlashcardAnswer(
   // advance its Leitner schedule.
   const prev = deck[card.cellId];
   const retention = prev && isGapReview(prev, now) ? retentionRow(card.cellId, prev, correct, now) : null;
-  const nextDeck = { ...deck, [card.cellId]: reviewCard(prev, correct, now, { elapsedMs, channel }) };
+  const nextDeck = { ...deck, [card.cellId]: reviewCard(prev, correct, now, { elapsedMs: trackedElapsedMs(elapsedMs, taken === TIMEOUT_ANSWER), channel }) };
   saveFlashSr(nextDeck);
 
   persistGrade(event, retention);
@@ -463,7 +475,7 @@ export function gradeQuizAnswer(
     retention = prev && isGapReview(prev, now) ? retentionRow(item.deviationId, prev, event.correct, now) : null;
     nextDeck = {
       ...deck,
-      [item.deviationId]: reviewCard(prev, event.correct, now, { elapsedMs, channel }),
+      [item.deviationId]: reviewCard(prev, event.correct, now, { elapsedMs: trackedElapsedMs(elapsedMs, taken === TIMEOUT_ANSWER), channel }),
     };
     saveQuizSr(nextDeck);
   }
