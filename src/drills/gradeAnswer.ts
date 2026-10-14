@@ -34,6 +34,8 @@ import type { SrCard, SrDeck } from './spacedRepetition';
 import { loadStats, saveStats } from '../store/persist';
 import type { Stats } from '../store/types';
 import { applyEvents } from '../store/stats';
+import { cellIdForEvent } from '../store/cellStats';
+import type { CellTally } from '../store/cellStats';
 
 type RetentionRow = Stats['retention']['history'][number];
 
@@ -96,13 +98,26 @@ function retentionRow(key: string, prev: SrCard, correct: boolean, now: number):
 }
 
 /** Persist a graded event and, when the review was a gap review, its retention
- * row -- one load/save so the two writes can't race. */
-export function persistGrade(event: GradedEvent, retention: RetentionRow | null): void {
-  let stats = applyEvents(loadStats(), [event]);
+ * row -- one load/save so the two writes can't race.
+ *
+ * Returns the event's B3 chart cell as it was BEFORE this answer (null when
+ * the cell had no tally yet), which "Wrong tap" hands back to the undo so the
+ * cell's date is restored exactly, not just its count. */
+export function persistGrade(event: GradedEvent, retention: RetentionRow | null): CellTally | null {
+  const before = loadStats();
+  const cellId = cellIdForEvent(event);
+  const cellBefore = cellId === null ? null : (before.cellStats?.[cellId] ?? null);
+  let stats = applyEvents(before, [event]);
   if (retention) {
     stats = { ...stats, retention: { history: [...stats.retention.history, retention] } };
   }
   saveStats(stats);
+  return cellBefore;
+}
+
+/** A hand in table notation, "9,7 v 10" -- the form Play's events carry. */
+function tableHand(cards: Card[], up: Rank): string {
+  return `${cards.map((c) => c.rank).join(',')} v ${up}`;
 }
 
 /* ---------------------------------------------------------------- */
@@ -343,7 +358,10 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: StrategyRul
     reason: item.label,
     deviationId: item.deviationId,
     tc: item.tc,
-    hand: item.label,
+    // B3: the dealt cards, as Play writes them, so the answer is tallied
+    // against its chart cell and its priced mistakes group with Play's. The
+    // index label is already carried as `reason`.
+    hand: tableHand(item.cards, item.up),
     ...elapsedField(elapsedMs, taken),
     evCost: priceMistake(item.cards, item.up, ctx, rules, withCount, taken, classification),
   };
@@ -362,6 +380,8 @@ export interface FlashGradeResult {
   /** The SR deck after this answer's Leitner review. Callers hold this in a ref
    * so the NEXT draw's scheduling reflects it. */
   nextDeck: SrDeck;
+  /** B3: the answered cell's tally before this answer, for "Wrong tap". */
+  cellBefore: CellTally | null;
 }
 
 /**
@@ -406,9 +426,9 @@ export function gradeFlashcardAnswer(
   const nextDeck = { ...deck, [card.cellId]: reviewCard(prev, correct, now, { elapsedMs: trackedElapsedMs(elapsedMs, taken === TIMEOUT_ANSWER), channel }) };
   saveFlashSr(nextDeck);
 
-  persistGrade(event, retention);
+  const cellBefore = persistGrade(event, retention);
 
-  return { event, correctAction, nextDeck };
+  return { event, correctAction, nextDeck, cellBefore };
 }
 
 /**
@@ -426,15 +446,15 @@ export function gradeMasteryAnswer(
   rules: StrategyRules,
   elapsedMs: number,
   now: number,
-): { event: GradedEvent; correctAction: Action; correct: boolean } {
+): { event: GradedEvent; correctAction: Action; correct: boolean; cellBefore: CellTally | null } {
   const built = buildFlashcardEvent(cell, taken, rules, elapsedMs, 'mastery');
   // V3-5: dated like every other graded answer. A mastery run is exactly the
   // kind of long unbroken sitting the session analysis exists to look at, so
   // leaving it undated would blind the drift readout to the drill most likely
   // to show one.
   const event: GradedEvent = { ...built.event, at: new Date(now).toISOString() };
-  persistGrade(event, null);
-  return { ...built, event };
+  const cellBefore = persistGrade(event, null);
+  return { ...built, event, cellBefore };
 }
 
 export interface QuizGradeResult {
@@ -442,6 +462,8 @@ export interface QuizGradeResult {
   /** The SR deck after this answer's Leitner review (unchanged for a distractor,
    * which carries no deviationId and is never scheduled). */
   nextDeck: SrDeck;
+  /** B3: the answered cell's tally before this answer, for "Wrong tap". */
+  cellBefore: CellTally | null;
 }
 
 /**
@@ -480,7 +502,7 @@ export function gradeQuizAnswer(
     saveQuizSr(nextDeck);
   }
 
-  persistGrade(event, retention);
+  const cellBefore = persistGrade(event, retention);
 
-  return { event, nextDeck };
+  return { event, nextDeck, cellBefore };
 }

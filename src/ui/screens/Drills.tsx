@@ -47,6 +47,7 @@ import { HandResultStrip } from '../components/HandResultStrip';
 import { RulesChip } from '../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../handResult';
 import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../wrongTap';
+import type { CellTally } from '../../store/cellStats';
 import type { Card, Rank } from '../../engine/cards';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
@@ -204,9 +205,14 @@ function useHandResult() {
     return idRef.current;
   };
   /** Freeze an answered hand into the strip, offering "Wrong tap" on a miss. */
-  const showResult = (result: HandResult, event: GradedEvent, revert: () => void) => {
+  const showResult = (
+    result: HandResult,
+    event: GradedEvent,
+    revert: () => void,
+    cellBefore: CellTally | null | undefined,
+  ) => {
     setLastResult(result);
-    setWrongTap(wrongTapOffered(event) ? { resultId: result.id, event, revert } : null);
+    setWrongTap(wrongTapOffered(event) ? { resultId: result.id, event, revert, cellBefore } : null);
   };
   const clearWrongTap = () => setWrongTap(null);
   /** The strip's onWrongTap for `result`, or undefined when not offered. */
@@ -597,7 +603,7 @@ function FlashcardsView({
   const gradeFlashcardAnswer = (
     taken: DrillAnswer,
     channel: AnswerChannel,
-  ): { event: GradedEvent; correctAction: Action; prevSr: SrCard | undefined } => {
+  ): { event: GradedEvent; correctAction: Action; prevSr: SrCard | undefined; cellBefore: CellTally | null } => {
     const elapsedMs = performance.now() - promptShownAtRef.current;
     // #22: the card's schedule before this answer, for "Wrong tap".
     const prevSr = srDeckRef.current[card.cellId];
@@ -617,7 +623,7 @@ function FlashcardsView({
       settings.drill.shotClockMs > 0,
     );
     srDeckRef.current = result.nextDeck;
-    return { event: result.event, correctAction: result.correctAction, prevSr };
+    return { event: result.event, correctAction: result.correctAction, prevSr, cellBefore: result.cellBefore };
   };
 
   // Gates the SPOKEN "Correct." text (never the chime, never wrong-answer
@@ -644,7 +650,7 @@ function FlashcardsView({
    * the next one in the same handler. The SR line is read here, after the
    * grade wrote the deck, so a right answer visibly pushes the review out.
    */
-  const advanceWithResult = (event: GradedEvent, prevSr: SrCard | undefined) => {
+  const advanceWithResult = (event: GradedEvent, prevSr: SrCard | undefined, cellBefore: CellTally | null) => {
     const srCard = srDeckRef.current[card.cellId];
     const srText = formatReviewPlain(srCard, Date.now());
     const cellId = card.cellId;
@@ -661,6 +667,7 @@ function FlashcardsView({
         srDeckRef.current = restoreSrCard(srDeckRef.current, cellId, prevSr);
         saveFlashSr(srDeckRef.current);
       },
+      cellBefore,
     );
     releaseAnswerFocus();
     next();
@@ -668,12 +675,12 @@ function FlashcardsView({
 
   const handleAction = (taken: Action) => {
     // An ActionBar click: the hand is on screen and a finger is on the button.
-    const { event, prevSr } = gradeFlashcardAnswer(taken, SCREEN_CHANNEL);
+    const { event, prevSr, cellBefore } = gradeFlashcardAnswer(taken, SCREEN_CHANNEL);
 
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
 
-    advanceWithResult(event, prevSr);
+    advanceWithResult(event, prevSr, cellBefore);
   };
 
   // Eyes-free zone tap: ZoneId and Action are the identical five-member
@@ -758,7 +765,7 @@ function FlashcardsView({
     // strip and the next card is dealt. The timed correction screen is for
     // eyes-free, where nobody is reading a strip.
     if (!eyesFree && !voiceOn) {
-      advanceWithResult(result.event, prevSr);
+      advanceWithResult(result.event, prevSr, result.cellBefore);
       return;
     }
     showFeedback({ correct: false, correctAction: result.correctAction, event: result.event });
@@ -1236,6 +1243,8 @@ function DeviationQuizView({
   const srDeckRef = useRef<SrDeck>(loadQuizSr());
   // #22: the answered index's card before its review, set at the grade.
   const prevSrRef = useRef<{ key: string; prev: SrCard | undefined } | null>(null);
+  // B3: the answered cell's tally before the answer, for "Wrong tap".
+  const cellBeforeRef = useRef<CellTally | null>(null);
 
   const [item, setItem] = useState<QuizItem>(() =>
     drawQuizItem(
@@ -1453,6 +1462,7 @@ function DeviationQuizView({
       settings.drill.shotClockMs > 0, // V5-2: see the flashcard grader above.
     );
     srDeckRef.current = result.nextDeck;
+    cellBeforeRef.current = result.cellBefore;
     return result.event;
   };
 
@@ -1495,6 +1505,7 @@ function DeviationQuizView({
         srDeckRef.current = restoreSrCard(srDeckRef.current, prevSr.key, prevSr.prev);
         saveQuizSr(srDeckRef.current);
       },
+      cellBeforeRef.current,
     );
     releaseAnswerFocus();
     next();
@@ -2021,6 +2032,8 @@ function MixedSessionView({
   const quizSrRef = useRef<SrDeck>(loadQuizSr());
   // #22: the answered item's card before its review, set at the grade.
   const prevSrRef = useRef<{ deck: 'flash' | 'quiz'; key: string; prev: SrCard | undefined } | null>(null);
+  // B3: the answered cell's tally before the answer, for "Wrong tap".
+  const cellBeforeRef = useRef<CellTally | null>(null);
 
   // Seeded interleave: the session seed is drawn once (lazily, StrictMode-
   // safe) and each position's type comes from pickMixedType(seed, index) --
@@ -2220,6 +2233,7 @@ function MixedSessionView({
       prevSrRef.current = { deck: 'flash', key, prev: flashSrRef.current[key] };
       const result = gradeFlashcard(current.card, taken as Action, activeProfile.rules, elapsedMs, flashSrRef.current, Date.now());
       flashSrRef.current = result.nextDeck;
+      cellBeforeRef.current = result.cellBefore;
       return { correct: result.event.correct, correctAction: result.correctAction, event: result.event };
     }
     const quizKey = current.item.deviationId;
@@ -2229,6 +2243,7 @@ function MixedSessionView({
     // marks a correct surrender wrong.
     const result = gradeQuiz(current.item, taken, strategyRulesFor(activeProfile), elapsedMs, quizSrRef.current, Date.now());
     quizSrRef.current = result.nextDeck;
+    cellBeforeRef.current = result.cellBefore;
     return { correct: result.event.correct, event: result.event };
   };
 
@@ -2279,7 +2294,7 @@ function MixedSessionView({
         quizSrRef.current = restoreSrCard(quizSrRef.current, prevSr.key, prevSr.prev);
         saveQuizSr(quizSrRef.current);
       }
-    });
+    }, cellBeforeRef.current);
     releaseAnswerFocus();
     next();
   };

@@ -106,7 +106,7 @@ export function MasteryChallengeView({
 
     const elapsedMs = performance.now() - promptShownAtRef.current;
     const flashcardShapedCell = { cards: cell.cards, up: cell.up, correct: cellCorrectAction, cellId: cell.id };
-    const { event, correct } = gradeMasteryAnswer(
+    const { event, correct, cellBefore } = gradeMasteryAnswer(
       flashcardShapedCell,
       taken,
       activeProfile.rules,
@@ -122,6 +122,7 @@ export function MasteryChallengeView({
         ? {
             resultId,
             event,
+            cellBefore,
             // The run as it was before the miss reset it: same sweep, same
             // position, and the same hand back on screen to answer again.
             revert: () => {

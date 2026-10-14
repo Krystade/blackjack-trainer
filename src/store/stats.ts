@@ -1,5 +1,6 @@
 import type { Category, GradedEvent } from '../engine/grade';
 import type { Stats, TallyRW } from './types';
+import { cellAfter, cellIdForEvent } from './cellStats';
 
 /**
  * Apply graded events to stats, returning a new Stats object (pure function).
@@ -19,8 +20,12 @@ import type { Stats, TallyRW } from './types';
  * to the whole history. src/store/statsSharing.test.ts pins both properties,
  * including the sharing itself, so a future refactor cannot quietly
  * reintroduce a deep copy.
+ *
+ * `fallbackAt` (B3) dates the per-cell tallies of events that carry no `at`
+ * of their own -- table play stamps none -- so the caller's clock is used
+ * and this function still has none.
  */
-export function applyEvents(stats: Stats, events: GradedEvent[]): Stats {
+export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: string): Stats {
   if (events.length === 0) return { ...stats };
 
   // Shallow copy of the root, then copy-on-write each branch we touch. Every
@@ -37,6 +42,7 @@ export function applyEvents(stats: Stats, events: GradedEvent[]): Stats {
   let bySourceCopied = false;
   let evCostCopied = false;
   let shotClockCopied = false;
+  let cellStatsCopied = false;
 
   for (const event of events) {
     // Update category tallies. The tally object itself is copied, not
@@ -106,6 +112,17 @@ export function applyEvents(stats: Stats, events: GradedEvent[]): Stats {
         : result.shotClockSplit!.untimed;
       if (event.correct) bucket.right += 1;
       else bucket.wrong += 1;
+    }
+
+    // B3: the chart cell this hand decision was asked on. Insurance, bets,
+    // count checks and anything that names no cell are skipped.
+    const cellId = cellIdForEvent(event);
+    if (cellId !== null) {
+      if (!cellStatsCopied) {
+        result.cellStats = { ...stats.cellStats };
+        cellStatsCopied = true;
+      }
+      result.cellStats![cellId] = cellAfter(result.cellStats![cellId], event, fallbackAt);
     }
 
     // Update mistakes tally by classification
