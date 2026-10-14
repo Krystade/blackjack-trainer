@@ -975,6 +975,68 @@ describe('count check', () => {
     expect(result2.actualTc).toBe(tc2);
   });
 
+  describe('#3 countCheckAsk', () => {
+    /** Play four checks (countCheckEvery 1), answering each correctly, and
+     * record what each one asked and which countCheck events it graded. */
+    function fourChecks(ask: GameConfig['countCheckAsk']) {
+      const game = new Game(cfg({ countCheckEvery: 1, seed: 42, ...(ask ? { countCheckAsk: ask } : {}) }));
+      const asked: { rc: boolean; tc: boolean; reasons: string[]; rcCorrect?: boolean }[] = [];
+      for (let i = 0; i < 4; i++) {
+        game.startRound();
+        if (game.phase === 'insurance') game.insuranceDecision(false);
+        while (game.phase === 'player') game.act('stand');
+        expect(game.countCheckDue).toBe(true);
+        const before = game.events.length;
+        const rc = game.askRc ? game.runningCount : null;
+        const res = game.submitCountCheck(rc, game.askTcToo ? game.trueCountNow : undefined);
+        asked.push({
+          rc: game.askRc,
+          tc: game.askTcToo,
+          reasons: game.events.slice(before).map((e) => e.reason),
+          rcCorrect: res.rcCorrect,
+        });
+      }
+      return asked;
+    }
+
+    it('absent = alternate: RC every check, TC as well on every second', () => {
+      const a = fourChecks(undefined);
+      expect(a.map((x) => [x.rc, x.tc])).toEqual([[true, false], [true, true], [true, false], [true, true]]);
+      expect(a[1].reasons).toEqual(['Running count check', 'True count check']);
+      expect(fourChecks('alternate')).toEqual(a);
+    });
+
+    it("'running' asks the running count only, every time", () => {
+      const a = fourChecks('running');
+      expect(a.every((x) => x.rc && !x.tc)).toBe(true);
+      expect(a.flatMap((x) => x.reasons)).toEqual(new Array(4).fill('Running count check'));
+    });
+
+    it("'true' asks the true count only: no running-count event, rcCorrect undefined", () => {
+      const a = fourChecks('true');
+      expect(a.every((x) => !x.rc && x.tc)).toBe(true);
+      expect(a.flatMap((x) => x.reasons)).toEqual(new Array(4).fill('True count check'));
+      expect(a.every((x) => x.rcCorrect === undefined)).toBe(true);
+    });
+
+    it("'both' asks RC then TC on every check", () => {
+      const a = fourChecks('both');
+      expect(a.every((x) => x.rc && x.tc)).toBe(true);
+      expect(a[0].reasons).toEqual(['Running count check', 'True count check']);
+    });
+
+    it('countCheckEvery 0 still means off, whatever it asks', () => {
+      const game = new Game(cfg({ countCheckEvery: 0, countCheckAsk: 'both', seed: 42 }));
+      for (let i = 0; i < 3; i++) {
+        game.startRound();
+        if (game.phase === 'insurance') game.insuranceDecision(false);
+        while (game.phase === 'player') game.act('stand');
+        expect(game.countCheckDue).toBe(false);
+        expect(game.poseCountCheck()).toBe(false);
+      }
+    });
+  });
+
   /**
    * THE TRUE COUNT IS GRADED BY EYE, THE RUNNING COUNT IS NOT.
    *

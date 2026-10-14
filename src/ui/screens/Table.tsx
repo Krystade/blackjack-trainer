@@ -338,7 +338,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const setBetForHand = (i: number, units: number) => {
     setSelectedBets((prev) => prev.map((v, idx) => (idx === i ? units : v)));
   };
-  const [countStage, setCountStage] = useState<'rc' | 'tc'>('rc');
+  const [rcStage, setCountStage] = useState<'rc' | 'tc'>('rc');
+  // #3: a true-count-only check (Profile.countCheckAsk 'true') has no
+  // running-count stage, so it opens straight on the true count.
+  const countStage: 'rc' | 'tc' = game.askRc ? rcStage : 'tc';
   const [pendingRc, setPendingRc] = useState(0);
   const [peeking, setPeeking] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -577,12 +580,13 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   }, [countDue, countStage]);
 
   const handleCountSubmit = (n: number) => {
-    if (game.askTcToo && countStage === 'rc') {
+    if (!game.askRc) {
+      submitCount(null, n);
+    } else if (game.askTcToo && countStage === 'rc') {
       setPendingRc(n);
       setCountStage('tc');
       return;
-    }
-    if (game.askTcToo) {
+    } else if (game.askTcToo) {
       submitCount(pendingRc, n);
     } else {
       submitCount(n);

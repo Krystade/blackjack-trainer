@@ -17,12 +17,12 @@ import {
   narrateCard,
   narrateCorrection,
   narrateCountAnswer,
-  narrateCountPrompt,
   narrateDealerUp,
   narrateHandResult,
   narrateInsuranceOffer,
   narrateShuffle,
   narrateSitOut,
+  narrateTableCountPrompt,
 } from '../audio/narrate';
 
 export interface OverlayInfo {
@@ -268,6 +268,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       // is what the session report's delta is measured from.
       bankrollStart: resumeBankroll(profile),
       countCheckEvery: profile.countCheckEvery,
+      ...(profile.countCheckAsk === undefined ? {} : { countCheckAsk: profile.countCheckAsk }),
       rules: strategyRulesFor(profile),
       seats: profile.seats,
       dealerAlwaysPlaysOut: profile.dealerAlwaysPlaysOut,
@@ -342,7 +343,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       if (!game.poseCountCheck()) return false;
       pendingDealRef.current = pending;
       audio.ding('attention');
-      audio.say(narrateCountPrompt());
+      // #3: a true-count-only check opens on the true-count question.
+      audio.say(narrateTableCountPrompt(game.askRc ? 'rc' : 'tc'));
       bump();
       return true;
     },
@@ -555,10 +557,16 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   }, [clearDealAnimTimer]);
 
   const submitCount = useCallback(
-    (rc: number, tcGuess?: number) => {
+    (rc: number | null, tcGuess?: number) => {
       const result = game.submitCountCheck(rc, tcGuess);
-      audio.say(narrateCountAnswer(result.actualRc));
-      audio.ding(result.rcCorrect ? 'good' : 'bad');
+      if (result.rcCorrect !== undefined) {
+        audio.say(narrateCountAnswer(result.actualRc));
+        audio.ding(result.rcCorrect ? 'good' : 'bad');
+      } else if (result.actualTc !== undefined) {
+        // #3: a true-count-only check answers with the true count.
+        audio.say(narrateCountAnswer(result.actualTc));
+        audio.ding(result.tcCorrect ? 'good' : 'bad');
+      }
       // #36: the deal that was asked for happens right after the answer.
       const pending = pendingDealRef.current;
       pendingDealRef.current = null;

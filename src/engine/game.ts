@@ -61,6 +61,9 @@ export interface GameConfig {
   spread: SpreadRow[];
   bankrollStart: number; // units
   countCheckEvery: number; // rounds; 0 = off
+  /** #3: what each count check asks for. Absent = 'alternate' (the running
+   * count every time, the true count as well on every second check). */
+  countCheckAsk?: CountCheckAsk;
   seed?: number;
   rules?: StrategyRules; // defaults to DEFAULT_RULES (v1's game); C1.13 wires this to the active profile
   seats?: SeatConfig; // defaults to DEFAULT_SEATS (v1 solo parity) when absent
@@ -79,6 +82,11 @@ export interface GameConfig {
    */
   dealerAlwaysPlaysOut?: boolean;
 }
+
+/** #3: what a Play count check asks. 'running' = RC only, 'true' = TC only,
+ * 'alternate' = RC, plus the TC on every second check, 'both' = RC then TC on
+ * every check. */
+export type CountCheckAsk = 'running' | 'true' | 'alternate' | 'both';
 
 export type Phase = 'idle' | 'insurance' | 'player' | 'settled';
 
@@ -194,6 +202,10 @@ export class Game {
    * settled hand stays on the felt while it is answered, and the deal follows
    * the answer. */
   countCheckOpen = false;
+  /** #3: what the owed check asks, set as the round settles. `askRc` is false
+   * only for a TC-only check; `askTcToo` is true whenever the true count is
+   * asked (alone, or after the running count). */
+  askRc = true;
   askTcToo = false;
   shuffledLastRound = false;
   insuranceNet: number | null = null;
@@ -713,24 +725,34 @@ export class Game {
     this.advance();
   }
 
+  /**
+   * Grade the owed count check. `rc` is the running-count answer; it is
+   * ignored (pass null) when the check asks the true count only (`askRc`
+   * false), and `tcGuess` is read only when the true count is asked
+   * (`askTcToo`). `rcCorrect` is undefined when the running count was not
+   * asked.
+   */
   submitCountCheck(
-    rc: number,
+    rc: number | null,
     tcGuess?: number,
-  ): { rcCorrect: boolean; actualRc: number; tcCorrect?: boolean; actualTc?: number } {
+  ): { rcCorrect?: boolean; actualRc: number; tcCorrect?: boolean; actualTc?: number } {
     const actualRc = this.runningCount;
-    const rcCorrect = rc === actualRc;
     const tc = this.trueCountNow;
-    this.events.push({
-      source: 'table',
-      kind: 'countCheck',
-      category: 'countCheck',
-      correct: rcCorrect,
-      classification: rcCorrect ? 'correct' : 'basic-error',
-      taken: String(rc),
-      expected: String(actualRc),
-      reason: 'Running count check',
-      tc,
-    });
+    let rcCorrect: boolean | undefined;
+    if (this.askRc) {
+      rcCorrect = rc === actualRc;
+      this.events.push({
+        source: 'table',
+        kind: 'countCheck',
+        category: 'countCheck',
+        correct: rcCorrect,
+        classification: rcCorrect ? 'correct' : 'basic-error',
+        taken: rc === null ? '' : String(rc),
+        expected: String(actualRc),
+        reason: 'Running count check',
+        tc,
+      });
+    }
 
     let tcCorrect: boolean | undefined;
     let actualTc: number | undefined;
@@ -1231,7 +1253,10 @@ export class Game {
     if (this.cfg.countCheckEvery > 0 && this.roundNo % this.cfg.countCheckEvery === 0) {
       this.countCheckDue = true;
       this.countCheckPromptCount += 1;
-      this.askTcToo = this.countCheckPromptCount % 2 === 0;
+      const ask = this.cfg.countCheckAsk ?? 'alternate';
+      this.askRc = ask !== 'true';
+      this.askTcToo =
+        ask === 'true' || ask === 'both' || (ask === 'alternate' && this.countCheckPromptCount % 2 === 0);
     }
   }
 }

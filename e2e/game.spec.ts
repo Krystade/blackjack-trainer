@@ -380,6 +380,44 @@ test('count-check modal: RC then TC two-stage prompt on the 2nd trigger (askTcTo
   await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 3');
 });
 
+test('#3: count checks set to "true" ask the true count alone, and one answer deals', async ({ page }) => {
+  await withProfile(page, { countCheckEvery: 1, countCheckAsk: 'true' });
+  await page.goto('/?seed=101&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  // The answer deals the next round, so each pass starts mid-round.
+  for (const round of [2, 3]) {
+    await playRoundByAdvice(page);
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    const modal = page.locator('.bottom-sheet');
+    // No running-count stage at all, on the first check or the second.
+    await expect(modal.locator('.bottom-sheet-title')).toHaveText('True count?');
+    await modal.getByRole('button', { name: '1', exact: true }).click();
+    await modal.getByRole('button', { name: 'OK', exact: true }).click();
+    await expect(modal).not.toBeVisible();
+    await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText(`Round ${round}`);
+  }
+});
+
+test('#3: count checks set to "both" ask RC then TC on the first check', async ({ page }) => {
+  await withProfile(page, { countCheckEvery: 1, countCheckAsk: 'both' });
+  await page.goto('/?seed=101&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await playRoundByAdvice(page);
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  const modal = page.locator('.bottom-sheet');
+  await expect(modal.locator('.bottom-sheet-title')).toHaveText('Running count?');
+  await modal.getByRole('button', { name: '3', exact: true }).click();
+  await modal.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(modal.locator('.bottom-sheet-title')).toHaveText('True count?');
+  await modal.getByRole('button', { name: '1', exact: true }).click();
+  await modal.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(modal).not.toBeVisible();
+  await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 2');
+});
+
 /** Press and hold the peek with a real pointer (mouse down, no release). */
 async function holdPeek(page: Page): Promise<void> {
   const box = await page.locator('.tc-peek-btn').boundingBox();
