@@ -61,7 +61,7 @@ test('the control is reachable with the bet spread OFF -- it is not a ramp setti
 
 test('the convention reaches the live table count, not just the profile', async ({ browser }) => {
   // Deal the same seeded shoe under both conventions and read the TC the TABLE
-  // itself reports, off the peek button. Under the real rule truncate is
+  // itself reports, off the peek button's graded TC. Under the real rule truncate is
   // floor's reading or one above it, never below; a table that ignored the
   // profile would report identical readings throughout.
   const readCounts = async (tcRounding: 'floor' | 'truncate') => {
@@ -79,11 +79,14 @@ test('the convention reaches the live table count, not just the profile', async 
       await deal.click();
       await resolveInsurance(page, false);
 
-      await peek.click();
-      const text = await peek.innerText();
-      const m = /TC ([+-]?\d+)/.exec(text);
-      if (m) seen.push(Number(m[1]));
-      await peek.click();
+      // #40/#41: the peek is held, and its text shows the exact quotient
+      // (one decimal); the GRADED integer -- the convention under test --
+      // rides on data-tc while it is held.
+      await peek.focus();
+      await page.keyboard.down('Enter');
+      const tc = await peek.getAttribute('data-tc');
+      if (tc !== null) seen.push(Number(tc));
+      await page.keyboard.up('Enter');
 
       await playRoundByAdvice(page);
     }

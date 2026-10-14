@@ -4,7 +4,10 @@ import { withProfile, withSettings, resolveInsurance } from './helpers';
 /**
  * Two operator requests on the table screen.
  *
- * 1. "make the rc tc count reveal a toggle instead of having to hold it"
+ * 1. The count peek. It was a toggle on request ("make the rc tc count reveal a
+ *    toggle instead of having to hold it"); #40 (spec 2026-10-13) moved it to
+ *    the bottom-left above the action bar and made it a HOLD again: show while
+ *    pressed, hide on release, fixed width so revealing moves nothing.
  * 2. "If that's on purpose that's fine but should be a setting, most of the
  *    time I'm playing at a table with others so I want to emulate that"
  *    -- about a player blackjack ending the round without the dealer's hole
@@ -27,46 +30,83 @@ async function dealARound(page: import('@playwright/test').Page): Promise<void> 
   await resolveInsurance(page, false);
 }
 
-test('the count readout latches on a tap and stays without holding', async ({ page }) => {
+async function holdPeek(page: import('@playwright/test').Page): Promise<void> {
+  const box = await page.locator('.tc-peek-btn').boundingBox();
+  if (!box) throw new Error('peek button not laid out');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+}
+
+test('the count readout shows while held and hides on release', async ({ page }) => {
   await withProfile(page);
   await dealARound(page);
 
   const peek = page.locator('.tc-peek-btn');
-  await expect(peek).toHaveText('Peek');
+  await expect(peek).toHaveText('Hold to peek');
 
-  await peek.click();
+  await holdPeek(page);
   await expect(peek).toContainText('RC');
   await expect(peek).toHaveAttribute('aria-pressed', 'true');
-
-  // The heart of the request: nothing is held, so it must still be showing.
-  // A press-and-hold implementation would have cleared on pointerup.
+  // Still held, so still showing.
   await page.waitForTimeout(600);
   await expect(peek).toContainText('RC');
 
-  await peek.click();
-  await expect(peek).toHaveText('Peek');
+  await page.mouse.up();
+  await expect(peek).toHaveText('Hold to peek');
   await expect(peek).toHaveAttribute('aria-pressed', 'false');
 });
 
-/**
- * The readout must survive a new round, or a "toggle" that silently clears
- * every deal is really still a hold with extra steps.
- */
-test('the latched readout survives dealing the next round', async ({ page }) => {
+test('releasing off the button still ends the peek', async ({ page }) => {
   await withProfile(page);
   await dealARound(page);
 
   const peek = page.locator('.tc-peek-btn');
-  await peek.click();
+  await holdPeek(page);
   await expect(peek).toContainText('RC');
-
-  // Play the hand out and deal again.
-  await page.getByRole('button', { name: 'Stand', exact: true }).click();
-  const deal = page.getByRole('button', { name: 'Deal', exact: true });
-  await expect(deal).toBeVisible({ timeout: 10_000 });
-  await deal.click();
-
+  // A thumb sliding off before lifting: the captured pointer still reports
+  // the release to the button.
+  await page.mouse.move(200, 300, { steps: 4 });
   await expect(peek).toContainText('RC');
+  await page.mouse.up();
+  await expect(peek).toHaveText('Hold to peek');
+});
+
+test('the keyboard holds the peek too', async ({ page }) => {
+  await withProfile(page);
+  await dealARound(page);
+
+  const peek = page.locator('.tc-peek-btn');
+  await peek.focus();
+  await page.keyboard.down('Enter');
+  await expect(peek).toContainText('RC');
+  await page.keyboard.up('Enter');
+  await expect(peek).toHaveText('Hold to peek');
+});
+
+test('the peek sits bottom-left above the action bar and revealing moves nothing', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await withProfile(page);
+  await dealARound(page);
+
+  const peek = page.locator('.tc-peek-btn');
+  // Out of the topbar, into the thumb's corner.
+  await expect(page.locator('.topbar .tc-peek-btn')).toHaveCount(0);
+  const bar = await page.locator('.action-bar').boundingBox();
+  const idle = await peek.boundingBox();
+  if (!bar || !idle) throw new Error('not laid out');
+  expect(idle.x).toBeLessThan(40);
+  expect(idle.y + idle.height).toBeLessThanOrEqual(bar.y + 1);
+  expect(bar.y - (idle.y + idle.height)).toBeLessThan(20);
+  expect(idle.height).toBeGreaterThanOrEqual(44);
+
+  const watched = ['.tc-peek-btn', '.dealer-area', '.hands-row', '.message-strip', '.action-bar', '.topbar'];
+  const before = await Promise.all(watched.map((sel) => page.locator(sel).boundingBox()));
+  await holdPeek(page);
+  await expect(peek).toContainText('RC');
+  const during = await Promise.all(watched.map((sel) => page.locator(sel).boundingBox()));
+  await page.mouse.up();
+  watched.forEach((sel, i) => expect(during[i], sel).toEqual(before[i]));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });
 
 /**

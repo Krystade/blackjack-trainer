@@ -33,6 +33,7 @@ import type { ActionBarMode } from '../components/ActionBar';
 import { Modal } from '../components/Modal';
 import { BottomSheet } from '../components/BottomSheet';
 import { DiscardTray } from '../components/DiscardTray';
+import { PeekButton } from '../components/PeekButton';
 import { MistakeCard } from '../components/MistakeCard';
 import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { NumPad } from '../components/NumPad';
@@ -339,43 +340,21 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   // #7: the strategy chart opened over a wrong play, ringed on its cell.
   const [showChart, setShowChart] = useState(false);
 
-  // R7 (docs/BACKLOG.md, count-peek accountability): tally each peek-button
-  // activation so the session report / Stats can flag a peek-assisted accuracy.
-  // The button fires BOTH onTouchStart and (synthesized) onMouseDown for a
-  // single tap on touch devices, so a naive per-handler increment would
-  // double-count. `peekingRef` mirrors the `peeking` state synchronously and is
-  // the rising-edge guard: only the press that transitions hidden->revealed
-  // increments; the trailing synthesized event finds the ref already true and
-  // is a no-op. A genuinely separate peek requires a release (mouseup/
-  // touchend/mouseleave clears the ref) in between, so it counts as a new one.
+  // R7 (docs/BACKLOG.md, count-peek accountability): one per reveal, so the
+  // session report / Stats can flag a peek-assisted accuracy.
   const [peeks, setPeeks] = useState(0);
   /**
-   * TOGGLE, not press-and-hold (operator request). Holding a button steady
-   * while reading two numbers is awkward one-handed and impossible while the
-   * hand is doing anything else, so a tap now latches the readout on and a
-   * second tap clears it.
-   *
-   * This also deletes a whole class of bug rather than working around it. The
-   * hold version had to dedup input: a single tap on a phone produced
-   * touchstart -> touchend -> synthesized mousedown, which double-counted every
-   * peek, and the fix was to move to pointer events (one per physical
-   * interaction). A click handler fires exactly once by construction, so no
-   * rising-edge guard and no ref mirror are needed at all.
-   *
-   * R7 accountability is preserved and arguably sharpened: one increment per
-   * REVEAL. Turning the readout off is not a peek, so a peek still means
-   * "a moment the operator chose to be shown the count".
+   * #40: HOLD to show, release to hide (spec 2026-10-13). It was a toggle,
+   * which left the count latched on screen; a hold makes every look at the
+   * count a deliberate, bounded act, and each one still counts. The press
+   * dedup (one pointerdown per physical press, a rising-edge guard for key
+   * repeat) lives in PeekButton.
    */
-  const togglePeek = () => {
-    // The increment is deliberately OUTSIDE the setPeeking updater. Nesting it
-    // there double-counted every reveal: React invokes state updaters twice in
-    // StrictMode to surface impure ones, so a side effect inside the updater
-    // ran twice per tap and the assisted-session flag overstated every peek.
-    // Updaters must be pure; this reads the rendered value instead, which a
-    // click handler can rely on.
-    if (!peeking) setPeeks((n) => n + 1);
-    setPeeking((on) => !on);
+  const revealPeek = () => {
+    setPeeks((n) => n + 1);
+    setPeeking(true);
   };
+  const hidePeek = () => setPeeking(false);
 
   /**
    * A spoken command at the table.
@@ -742,18 +721,6 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           </span>
         </div>
         <div className="topbar-stat">Round {game.roundNo}</div>
-        <button
-          type="button"
-          className="tc-peek-btn"
-          // A plain click: see togglePeek for why this replaced the
-          // pointer-event hold, and why it needs no dedup. Always shown: every
-          // peek is recorded against the session as "assisted", which polices
-          // it better than the old switch that hid the button did.
-          aria-pressed={peeking}
-          onClick={togglePeek}
-        >
-          {peeking ? `RC ${formatSigned(game.runningCount)} / TC ${formatSigned(game.trueCountNow)}` : 'Peek'}
-        </button>
         {settings.audio.enabled && (
           <button type="button" className="repeat-btn" onClick={audio.replay}>
             Repeat
@@ -927,16 +894,31 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         )}
       </div>
 
-      {((hasBots && pacingPending) || dealAnimating) && (
-        <button
-          type="button"
-          className="fast-forward-btn"
-          aria-label="Skip ahead: finish dealing and other players' turns"
-          onClick={skipEverything}
-        >
-          ⏩
-        </button>
-      )}
+      {/* #40: the peek under the left thumb, just above the bar. The skip
+          control shares the row, so the dock costs no height when it shows. */}
+      <div className="peek-dock">
+        <PeekButton
+          revealed={peeking}
+          onReveal={revealPeek}
+          onHide={hidePeek}
+          dataTc={game.trueCountNow}
+          readout={
+            <span className="peek-counts">
+              RC {formatSigned(game.runningCount)} / TC {formatSigned(game.trueCountNow)}
+            </span>
+          }
+        />
+        {((hasBots && pacingPending) || dealAnimating) && (
+          <button
+            type="button"
+            className="fast-forward-btn"
+            aria-label="Skip ahead: finish dealing and other players' turns"
+            onClick={skipEverything}
+          >
+            ⏩
+          </button>
+        )}
+      </div>
 
       <ActionBar mode={barMode} />
 

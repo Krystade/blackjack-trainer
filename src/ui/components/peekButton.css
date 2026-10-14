@@ -1,0 +1,83 @@
+/* #40: the row just above the action bar, where the peek sits under the left
+   thumb. It takes the free space above it (margin-top: auto), so the bar and
+   any docked sheet below it keep their place at the bottom; the bar's own
+   auto margin is cancelled here so the free space is not split between them. */
+.peek-dock {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 56px;
+  padding: 4px max(16px, env(safe-area-inset-left)) 4px max(16px, env(safe-area-inset-right));
+  box-sizing: border-box;
+}
+
+.peek-dock ~ .action-bar,
+.peek-dock ~ .bottom-sheet {
+  margin-top: 0;
+}
+
+.peek-dock > .peek-hold-btn {
+  grid-column: 1;
+  justify-self: start;
+}
+
+.peek-dock > .fast-forward-btn {
+  grid-column: 2;
+  margin: 0;
+}
+
+/* FIXED in both axes: the reveal is two lines and the idle label one, and a
+   button that grew to fit either would move the table while it is read. */
+.peek-dock .peek-hold-btn {
+  width: 8.75rem;
+  height: 48px;
+  min-height: 48px;
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  /* The press is the gesture: no pan or zoom may claim it mid-hold. */
+  touch-action: none;
+}
+
+.peek-dock .peek-hold-btn[aria-pressed='true'] {
+  background: var(--raised);
+  border-color: var(--accent);
+}
+
+.peek-label {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+.peek-counts {
+  display: block;
+  font-weight: 700;
+}
+
+.peek-depth {
+  display: block;
+  color: var(--ink-dim);
+}
+
+/* Kept in the text (screen readers, textContent) but not drawn: the depth
+   sits on its own line, so the separator would dangle. */
+.peek-sep {
+  display: none;
+}

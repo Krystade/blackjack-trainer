@@ -380,12 +380,18 @@ test('count-check modal: RC then TC two-stage prompt on the 2nd trigger (askTcTo
   await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 3');
 });
 
-test('TC peek button latches RC/TC on a tap and clears on the next tap', async ({ page }) => {
-  // T0 gap #26: the `.tc-peek-btn` in Table.tsx's
-  // topbar. This was press-and-hold; the operator asked for a toggle ("make
-  // the rc tc count reveal a toggle instead of having to hold it"), so the
-  // label now LATCHES on a tap and clears on the next one. Updated
-  // deliberately for that behaviour change, not weakened.
+/** Press and hold the peek with a real pointer (mouse down, no release). */
+async function holdPeek(page: Page): Promise<void> {
+  const box = await page.locator('.tc-peek-btn').boundingBox();
+  if (!box) throw new Error('peek button not laid out');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+}
+
+test('TC peek shows RC/TC only while held and hides on release', async ({ page }) => {
+  // T0 gap #26, then #40 (spec 2026-10-13): the peek was a toggle; it is a
+  // HOLD now, so it must stay up for as long as the press lasts and drop the
+  // moment the press ends.
   await withSettings(page, { countCheckEvery: 0 });
   await page.goto('/?seed=102&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -393,28 +399,23 @@ test('TC peek button latches RC/TC on a tap and clears on the next tap', async (
   await resolveInsurance(page, false);
 
   const peekBtn = page.locator('.tc-peek-btn');
-  await expect(peekBtn).toHaveText('Peek');
-  await peekBtn.click();
-  await expect(peekBtn).toHaveText(/^RC [+-]?\d+ \/ TC [+-]?\d+$/);
-  // The point of a toggle: nothing is held, and it is still showing.
+  await expect(peekBtn).toHaveText('Hold to peek');
+  await holdPeek(page);
+  await expect(peekBtn).toContainText(/RC [+-]?\d+/);
   await page.waitForTimeout(400);
-  await expect(peekBtn).toHaveText(/^RC [+-]?\d+ \/ TC [+-]?\d+$/);
+  await expect(peekBtn).toContainText(/RC [+-]?\d+/);
   await shot(page, '14-tc-peek-revealed');
-  await peekBtn.click();
-  await expect(peekBtn).toHaveText('Peek');
+  await page.mouse.up();
+  await expect(peekBtn).toHaveText('Hold to peek');
 });
 
-test('R7: peeks are counted once per reveal and flag a test-mode session as assisted', async ({ page }) => {
+test('R7: peeks are counted once per press and flag a test-mode session as assisted', async ({ page }) => {
   // R7 (docs/BACKLOG.md, RT#5): the RC/TC peek is a legit training aid kept in
   // both modes, but a peek-assisted test-mode accuracy must be labelled so it
   // can't be read as unassisted.
   //
-  // This used to need dedup: press-and-hold on a phone produced
-  // touchstart -> touchend -> a SYNTHESIZED mousedown, counting one tap as two
-  // peeks, and the fix was pointer events. The toggle deletes that whole
-  // problem -- a click fires exactly once per interaction -- so what is pinned
-  // now is the accounting rule itself: one increment per REVEAL, and turning
-  // the readout back off is not a new peek.
+  // #40 made it a hold. Two presses are two peeks, and a held key -- whose
+  // keydown auto-repeats -- is ONE press, not one per repeat.
   await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
   await page.goto('/?seed=102&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -422,11 +423,15 @@ test('R7: peeks are counted once per reveal and flag a test-mode session as assi
   await resolveInsurance(page, false);
 
   const peekBtn = page.locator('.tc-peek-btn');
-  // Reveal, hide, reveal again == exactly two peeks. If hiding also counted,
-  // this would report three and the assisted label would overstate the session.
-  await peekBtn.click();
-  await peekBtn.click();
-  await peekBtn.click();
+  await holdPeek(page);
+  await page.mouse.up();
+  await peekBtn.focus();
+  await page.keyboard.down(' ');
+  await page.keyboard.down(' '); // auto-repeat: still the same press
+  await page.keyboard.down(' ');
+  await expect(peekBtn).toContainText('RC');
+  await page.keyboard.up(' ');
+  await expect(peekBtn).toHaveText('Hold to peek');
 
   await playRoundByAdvice(page);
   await page.locator('.end-btn').click(); // arms: the second tap ends
