@@ -11,7 +11,7 @@ import type { DealSlot, Game, PlayerHand, Seat } from '../../engine/game';
 import { handPlayNumber } from '../../engine/game';
 import type { Action } from '../../engine/deviations';
 import type { PlayContext } from '../../engine/strategy';
-import { correctPlay } from '../../engine/strategy';
+import { basicPlay, correctPlay } from '../../engine/strategy';
 import { isBust } from '../../engine/hand';
 import { useGame } from '../useGame';
 import type { SessionReport } from '../useGame';
@@ -634,7 +634,12 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       canSplit: legal.includes('split'),
       canSurrender: legal.includes('surrender'),
     };
-    advice = correctPlay(activeHand.cards, game.dealerCards[0].rank, game.trueCountNow, ctx, strategyRulesFor(activeProfile)).action;
+    const rules = strategyRulesFor(activeProfile);
+    // #34: the advice follows what the table grades against.
+    advice =
+      game.cfg.gradeDeviations === false
+        ? basicPlay(activeHand.cards, game.dealerCards[0].rank, ctx, rules).action
+        : correctPlay(activeHand.cards, game.dealerCards[0].rank, game.trueCountNow, ctx, rules).action;
   }
 
   let barMode: ActionBarMode;

@@ -64,6 +64,10 @@ export interface GameConfig {
   /** #3: what each count check asks for. Absent = 'alternate' (the running
    * count every time, the true count as well on every second check). */
   countCheckAsk?: CountCheckAsk;
+  /** #34: grade plays with the count's index plays (correctPlay) or with
+   * basic strategy alone (basicPlay). Insurance follows it: off, basic
+   * strategy never insures. Absent = true. */
+  gradeDeviations?: boolean;
   seed?: number;
   rules?: StrategyRules; // defaults to DEFAULT_RULES (v1's game); C1.13 wires this to the active profile
   seats?: SeatConfig; // defaults to DEFAULT_SEATS (v1 solo parity) when absent
@@ -610,8 +614,14 @@ export class Game {
 
   insuranceDecision(take: boolean): void {
     const tc = this.trueCountNow;
-    const advice = insuranceCorrect(tc, this.rules);
-    const { classification, correct } = classifyInsurance(take, tc, this.rules);
+    // #34: without deviations, insurance is basic strategy's call -- never.
+    const withIndex = this.cfg.gradeDeviations !== false;
+    const advice = withIndex ? insuranceCorrect(tc, this.rules) : false;
+    const { classification, correct } = withIndex
+      ? classifyInsurance(take, tc, this.rules)
+      : take
+        ? ({ classification: 'basic-error', correct: false } as const)
+        : ({ classification: 'correct', correct: true } as const);
     const up = this.dealerCards[0].rank;
     // Cycle-2 Task 5: ONE insurance decision covers every player hand. Stake
     // is the summed bet across all player hands (playerHands=1 reduces to
@@ -631,7 +641,8 @@ export class Game {
       taken: take ? 'take' : 'decline',
       expected: advice ? 'take' : 'decline',
       reason: `Insurance vs dealer ${up} at tc ${tc}`,
-      deviationId: 'ins',
+      // Only an index decision when indexes are being graded.
+      ...(withIndex ? { deviationId: 'ins' as const } : {}),
       tc,
       hand: `dealer ${up}`,
     });
@@ -676,8 +687,11 @@ export class Game {
       canSplit: options.canSplit,
       canSurrender: options.canSurrender,
     };
-    const withCount: Advice = correctPlay(hand.cards, up, tc, ctx, this.rules);
     const basicOnly: Advice = basicPlay(hand.cards, up, ctx, this.rules);
+    // #34: with deviations off, the right play is basic strategy at every
+    // count; correctPlay's index plays are never asked for.
+    const withCount: Advice =
+      this.cfg.gradeDeviations === false ? basicOnly : correctPlay(hand.cards, up, tc, ctx, this.rules);
     const { classification, correct } = classifyAction(action, withCount, basicOnly, hand.cards, up, tc, this.rules);
     const category = actionCategory(hand.cards, withCount.action);
 

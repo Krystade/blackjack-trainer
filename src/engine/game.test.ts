@@ -1203,6 +1203,84 @@ describe('grading wiring', () => {
     expect(ev.classification).toBe('missed-deviation');
     expect(ev.deviationId).toBe('16v10');
   });
+
+  describe('#34 gradeDeviations', () => {
+    /** The same split 16 v 10 at tc 0 as above, where the 16v10 index says
+     * stand and basic strategy says hit. */
+    function at16v10(gradeDeviations?: boolean): Game {
+      const game = Game.withRiggedShoe(
+        cfg(gradeDeviations === undefined ? {} : { gradeDeviations }),
+        rig('9', '10', '9', '7', '7', '2', '5'),
+      );
+      game.startRound();
+      game.act('split');
+      expect(game.hands[game.active].cards.map((c) => c.rank)).toEqual(['9', '7']);
+      expect(game.trueCountNow).toBe(0);
+      return game;
+    }
+
+    it('true behaves exactly like absent: the index play is the right one', () => {
+      const game = at16v10(true);
+      game.act('hit');
+      const ev = game.events[game.events.length - 1];
+      expect(ev.classification).toBe('missed-deviation');
+      expect(ev.expected).toBe('stand');
+    });
+
+    it('off: basic strategy is right at every count, with no index attached', () => {
+      const hit = at16v10(false);
+      hit.act('hit');
+      const ok = hit.events[hit.events.length - 1];
+      expect(ok.correct).toBe(true);
+      expect(ok.expected).toBe('hit');
+      expect(ok.deviationId).toBeUndefined();
+
+      const stand = at16v10(false);
+      stand.act('stand');
+      const wrong = stand.events[stand.events.length - 1];
+      expect(wrong.correct).toBe(false);
+      expect(wrong.expected).toBe('hit');
+    });
+
+    /** Single deck, tc >= 3 at a dealer-ace offer: the insurance index says take. */
+    function atHighCountInsurance(gradeDeviations: boolean): Game {
+      const filler: Rank[] = ['3', '2', '2', '2', '2', '2', '2', '2', '2', '2', '2'];
+      const round2: Rank[] = ['2', 'A', '3', '2'];
+      const padding: Rank[] = ['2', '2', '2', '2', '2'];
+      const game = Game.withRiggedShoe(
+        cfg({ rules: { ...DEFAULT_RULES, decks: 1 }, gradeDeviations }),
+        rig(...filler, ...round2, ...padding),
+      );
+      game.startRound();
+      game.act('stand');
+      game.startRound();
+      expect(game.phase).toBe('insurance');
+      expect(game.trueCountNow).toBeGreaterThanOrEqual(3);
+      return game;
+    }
+
+    it('off: insurance is never right, even where the index would take it', () => {
+      const declined = atHighCountInsurance(false);
+      declined.insuranceDecision(false);
+      const ok = declined.events[declined.events.length - 1];
+      expect(ok.correct).toBe(true);
+      expect(ok.expected).toBe('decline');
+      expect(ok.deviationId).toBeUndefined();
+
+      const taken = atHighCountInsurance(false);
+      taken.insuranceDecision(true);
+      const wrong = taken.events[taken.events.length - 1];
+      expect(wrong.correct).toBe(false);
+      expect(wrong.classification).toBe('basic-error');
+      expect(wrong.expected).toBe('decline');
+    });
+
+    it('on: the same offer still grades the insurance index', () => {
+      const game = atHighCountInsurance(true);
+      game.insuranceDecision(false);
+      expect(game.events[game.events.length - 1].classification).toBe('missed-deviation');
+    });
+  });
 });
 
 describe('multi-seat dealing (Cycle-2 Task 2)', () => {

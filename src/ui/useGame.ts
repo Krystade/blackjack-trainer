@@ -1,7 +1,5 @@
-import { strategyRulesFor } from '../store/profiles';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Game, handPlayNumber } from '../engine/game';
-import type { GameConfig } from '../engine/game';
 import type { Action } from '../engine/deviations';
 import type { Card, Rank } from '../engine/cards';
 import type { Category, GradedEvent, MistakeClass } from '../engine/grade';
@@ -9,6 +7,7 @@ import type { Profile, Settings } from '../store/types';
 import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
 import { resumeBankroll, storeBankrollNow } from './playBankroll';
+import { playConfigFor } from './playConfig';
 import { makePlayGame, realignLosingShoe, type PlayGame } from './losingShoe';
 import type { AudioApi } from '../audio/useAudio';
 import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverBets';
@@ -257,23 +256,8 @@ type PendingDeal = { kind: 'deal'; bets?: number | number[] } | { kind: 'sitOut'
 export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const playRef = useRef<PlayGame | null>(null);
   if (playRef.current === null) {
-    const cfg: GameConfig = {
-      penetration: profile.penetration,
-      betSpreadOn: profile.betSpreadOn,
-      ...(profile.coverBets === undefined ? {} : { coverBets: profile.coverBets }),
-      ...(profile.tcRounding === undefined ? {} : { tcRounding: profile.tcRounding }),
-      spread: profile.spread,
-      // #42: the bankroll carries over from the last session on this
-      // profile. `cfg.bankrollStart` is therefore THIS SESSION's start, which
-      // is what the session report's delta is measured from.
-      bankrollStart: resumeBankroll(profile),
-      countCheckEvery: profile.countCheckEvery,
-      ...(profile.countCheckAsk === undefined ? {} : { countCheckAsk: profile.countCheckAsk }),
-      rules: strategyRulesFor(profile),
-      seats: profile.seats,
-      dealerAlwaysPlaysOut: profile.dealerAlwaysPlaysOut,
-      seed: readSeed(),
-    };
+    // #42: the bankroll carries over from the last session on this profile.
+    const cfg = playConfigFor(profile, resumeBankroll(profile), readSeed());
     // #48-51: the Losing shoe setting picks the rig at build time.
     playRef.current = makePlayGame(cfg, settings.losingShoe === true);
   }
