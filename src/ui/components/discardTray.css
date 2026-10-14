@@ -1,0 +1,33 @@
+/* #38: deck marks on the discard tray. The frame keeps its look from app.css;
+   the marks sit on a scale wrapper so they can overhang the frame's clip. */
+.discard-scale {
+  position: relative;
+  flex: 1 1 auto;
+  padding-bottom: 13px; /* room for the deck numbers under the frame */
+}
+
+.discard-tray--ticked .table-discard-frame {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.discard-tick {
+  position: absolute;
+  top: -2px;
+  width: 0;
+  height: 14px;
+  border-left: 1.5px solid var(--ink-dim);
+  transform: translateX(-0.75px);
+  pointer-events: none;
+}
+
+.discard-tick-label {
+  position: absolute;
+  top: 14px;
+  left: 0;
+  transform: translateX(-50%);
+  font-size: 0.6rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}

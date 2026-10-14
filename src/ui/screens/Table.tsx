@@ -32,6 +32,7 @@ import { ActionBar } from '../components/ActionBar';
 import type { ActionBarMode } from '../components/ActionBar';
 import { Modal } from '../components/Modal';
 import { BottomSheet } from '../components/BottomSheet';
+import { DiscardTray } from '../components/DiscardTray';
 import { MistakeCard } from '../components/MistakeCard';
 import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { NumPad } from '../components/NumPad';
@@ -801,20 +802,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           referent to ESTIMATE decks-remaining from, stranding the deck-
           estimation drill as an island. Shows only the fill (deliberately NO
           exact number) so the count-check still requires a real by-eye
-          estimate — connecting that drill to its point of use. */}
-      {(() => {
-        const dealt = game.shoe.cardsDealt;
-        const totalCards = activeProfile.rules.decks * 52;
-        const fillPct = Math.min(98, Math.max(1, (dealt / totalCards) * 100));
-        return (
-          <div className="table-discard-tray" aria-label="Discard tray">
-            <span className="table-discard-label">Discards</span>
-            <div className="table-discard-frame">
-              <div className="table-discard-fill" style={{ width: `${fillPct}%` }} />
-            </div>
-          </div>
-        );
-      })()}
+          estimate — connecting that drill to its point of use. #38 adds a mark
+          per whole deck, labelled decks dealt, so depth reads like a real tray. */}
+      <DiscardTray cardsDealt={game.shoe.cardsDealt} decks={activeProfile.rules.decks} />
 
       <div className="dealer-area">
         {game.dealerCards.map((c, i) => (

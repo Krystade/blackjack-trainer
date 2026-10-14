@@ -484,6 +484,25 @@ test('R6: the discard tray fills as the shoe burns through a round', async ({ pa
   await expect.poll(widthOf).toBeGreaterThan(before);
 });
 
+/* #38: a mark per whole deck dealt, labelled, so depth reads by eye. */
+test('#38: the discard tray marks every whole deck, labelled with decks dealt', async ({ page }) => {
+  await page.goto('/?seed=2&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  const decks = parseInt(
+    (await page.locator('.topbar').innerText()).match(/(\d+)D [HS]17/)![1],
+    10,
+  );
+  const ticks = page.locator('.table-discard-tray .discard-tick');
+  await expect(ticks).toHaveCount(decks - 1);
+  expect(await ticks.allInnerTexts()).toEqual(
+    Array.from({ length: decks - 1 }, (_, i) => String(i + 1)),
+  );
+  // Mark k sits k/decks of the way along the tray frame.
+  const frame = (await page.locator('.table-discard-tray .table-discard-frame').boundingBox())!;
+  const first = (await ticks.first().boundingBox())!;
+  expect(Math.abs(first.x - (frame.x + frame.width / decks))).toBeLessThan(3);
+});
+
 /**
  * The last gap on the table row of the coverage matrix (2026-07-26, "Shuffle
  * message"): `.message-shuffle` was never asserted anywhere.
