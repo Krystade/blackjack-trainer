@@ -21,7 +21,7 @@ async function openDrill(page: Page): Promise<void> {
 }
 
 async function readQuestion(page: Page): Promise<{ rc: number; decks: number }> {
-  const rc = Number((await page.locator('.quiz-tc').innerText()).replace(/[^\d+-]/g, ''));
+  const rc = Number((await page.locator('.quiz-tc').innerText()).replace(/−/g, '-').replace(/[^\d+-]/g, ''));
   const decks = Number((await page.locator('.tag-guess-label').innerText()).replace(/[^\d.]/g, ''));
   return { rc, decks };
 }
