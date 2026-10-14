@@ -185,7 +185,9 @@ export function Charts({
           </button>
         )}
         <div className="charts-heading">Strategy charts</div>
-        <TabSettingsButton tab="charts" />
+        {/* Only on the Charts screen itself. Over a live drill or table (the
+            study overlay) a rules change would rebuild the game underneath. */}
+        {backPlacement === 'topbar' && <TabSettingsButton tab="charts" />}
       </div>
       {backPlacement === 'floating' && <FloatingBackPill label={backText} onClick={goBack} />}
 

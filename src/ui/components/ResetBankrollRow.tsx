@@ -7,7 +7,7 @@ import { resumeBankroll, storeBankrollNow } from '../playBankroll';
  * its starting stake. Reads storage when shown, because the table writes the
  * bankroll there and nowhere else (see playBankroll.ts).
  */
-export function ResetBankrollRow() {
+export function ResetBankrollRow({ onReset }: { onReset?: () => void } = {}) {
   const [profile] = useState(() => getActiveProfile());
   const [bankroll, setBankroll] = useState(() => resumeBankroll(profile));
   const carried = bankroll !== profile.bankrollStart;
@@ -15,6 +15,7 @@ export function ResetBankrollRow() {
   const reset = () => {
     storeBankrollNow(profile.id, undefined);
     setBankroll(resumeBankroll(profile));
+    onReset?.();
   };
 
   return (

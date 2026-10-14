@@ -81,7 +81,7 @@ export function Segmented<T extends string>({
   );
 }
 
-function Toggle({
+export function Toggle({
   label,
   checked,
   onChange,

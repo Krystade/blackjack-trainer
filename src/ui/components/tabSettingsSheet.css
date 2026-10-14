@@ -1,0 +1,140 @@
+/* #33: a tab's settings, in a sheet fixed to the bottom of the screen. */
+
+/* Clear, not dimmed: the board behind stays exactly as readable. It is only
+   there so a tap above the sheet closes it rather than playing a hand. */
+.tab-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: transparent;
+}
+
+.tab-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  /* --vp-gap: see app.css, the installed app's short viewport. */
+  bottom: var(--vp-gap, 0px);
+  z-index: 71;
+  box-sizing: border-box;
+  max-width: 480px;
+  margin: 0 auto;
+  /* Never the whole board: at most the lower ~60% of the screen. */
+  max-height: 62vh;
+  max-height: 62dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-sunken);
+  border-top: 1px solid var(--line);
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -10px 24px -8px rgb(0 0 0 / 55%);
+  outline: none;
+}
+
+.tab-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-1) var(--space-4);
+  border-bottom: 1px solid var(--raised);
+}
+
+.tab-sheet-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.tab-sheet-done {
+  min-width: 64px;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tab-sheet-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-1) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+}
+
+.tab-sheet-group {
+  margin: var(--space-3) 0 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* The note under a group that says when its changes take effect. */
+.tab-sheet-when {
+  margin: var(--space-1) 0 var(--space-2);
+  font-size: 0.85rem;
+  color: var(--ink-dim);
+}
+
+.tab-sheet-when-pending {
+  color: var(--accent);
+}
+
+.tab-sheet-all {
+  width: 100%;
+  margin-top: var(--space-4);
+}
+
+/* The Settings screen's notes are body-sized; under a control in a sheet
+   they read as the explanation they are. */
+.tab-sheet-body .settings-note {
+  margin: 0 0 var(--space-2);
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+
+/* The gear itself, in each tab's topbar. */
+.tab-gear {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tab-gear:active {
+  background: var(--raised);
+}
+
+.tab-gear:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The Drills picker is a centred column with no topbar, so its gear goes to
+   the picker's top-right corner rather than into the column under the title. */
+.drills-picker:has(> .tab-gear) {
+  position: relative;
+}
+
+.drills-picker > .tab-gear {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+}

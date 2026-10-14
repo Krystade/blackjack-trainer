@@ -15,6 +15,8 @@ import {
 import { parseCvcxRamp } from '../../store/cvcxParse';
 import { Segmented, Stepper } from './Settings';
 import type { TcRounding } from '../../engine/count';
+import { CountCheckControls, CutCardControl, DeviationsControl } from '../components/ProfilePlayControls';
+import { syncPenetration } from '../profileOptions';
 
 interface ProfileEditorProps {
   onNavigate: (screen: Screen) => void;
@@ -151,11 +153,13 @@ export function ProfileEditor({ onNavigate }: ProfileEditorProps) {
   };
 
   const saveDraft = (draft: Profile) => {
-    const cleaned: Profile = {
+    // syncPenetration: the cut is kept in decks (#39), so a deck-count change
+    // keeps the same decks behind the cut, and penetration follows it.
+    const cleaned: Profile = syncPenetration({
       ...draft,
       name: draft.name.trim() === '' ? 'Unnamed profile' : draft.name,
       spread: sortSpread(draft.spread),
-    };
+    });
     const wasNew = mode.kind === 'edit' && mode.isNew;
     const next = wasNew
       ? [...profiles, cleaned]
@@ -391,15 +395,8 @@ function ProfileEditForm({
             checked={draft.dealerAlwaysPlaysOut ?? false}
             onChange={(v) => update({ dealerAlwaysPlaysOut: v })}
           />
-          <Stepper
-            label="Penetration"
-            value={draft.penetration}
-            min={0.5}
-            max={0.9}
-            step={0.05}
-            format={(v) => `${Math.round(v * 100)}%`}
-            onChange={(v) => update({ penetration: v })}
-          />
+          {/* #39: the cut card in decks, the same control as Play's gear sheet. */}
+          <CutCardControl profile={draft} onChange={update} />
       </CollapsibleSection>
 
       <CollapsibleSection
@@ -519,15 +516,10 @@ function ProfileEditForm({
             value={draft.unitDollars}
             onChange={(v) => update({ unitDollars: v })}
           />
-          <Stepper
-            label="Count check every"
-            value={draft.countCheckEvery}
-            min={0}
-            max={20}
-            step={1}
-            format={(v) => (v === 0 ? 'Off' : `${v} rounds`)}
-            onChange={(v) => update({ countCheckEvery: v })}
-          />
+          {/* #3 and #34, beside the count-check frequency: the same controls
+              as Play's gear sheet, on the same profile fields. */}
+          <CountCheckControls profile={draft} onChange={update} />
+          <DeviationsControl profile={draft} onChange={update} />
       </CollapsibleSection>
 
       {draft.betSpreadOn && (

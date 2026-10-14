@@ -13,12 +13,14 @@ import { FieldTest } from './screens/FieldTest';
 import { TestKit } from './screens/TestKit';
 import { KIT_PROGRESS_KEY, parseProgress } from '../diag/testKit';
 import { fieldTestRunIsResumable } from '../diag/fieldTestRun';
-import { loadSettings } from '../store/persist';
+import { loadSettings, saveSettings } from '../store/persist';
 import { applyTheme, normalizeTheme } from './theme';
 import { getActiveProfile } from '../store/profiles';
 import { subscribeToExternalWrites, OWNED_KEYS } from '../store/crossTab';
 import type { Settings as SettingsData, Profile } from '../store/types';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { TabSettingsContext, type TabSettingsContextValue } from './tabSettingsContext';
+import { patchActiveProfile } from './profileOptions';
 import { startDiagnostics } from '../diag/environment';
 import { diag } from '../diag/diagnosticLog';
 import { invokeWheelCommand, type WheelCommand } from '../audio/wheelCommands';
@@ -115,6 +117,13 @@ function App() {
   const [chartsReturn, setChartsReturn] = useState<Screen>('home');
   const [settings, setSettings] = useState<SettingsData>(() => loadSettings());
   const [activeProfile, setActiveProfileState] = useState<Profile>(() => getActiveProfile());
+  /**
+   * Bumped to deal a new table on purpose (#33). The Table's key already
+   * changes with the profile's content, but a bankroll reset or the losing
+   * shoe can leave the shell's copy of the profile byte-identical while the
+   * table still has to be rebuilt to read them.
+   */
+  const [tableEpoch, setTableEpoch] = useState(0);
 
   // Navigating away from the profiles screen re-reads the active profile,
   // since the picker/editor there can change it (select / save-while-active).
@@ -234,6 +243,32 @@ function App() {
     setScreen(next);
   };
 
+  /**
+   * What a tab's gear sheet edits (#33): these same two objects.
+   *
+   * `applyProfile` refreshes the shell's copy of the profile, and on Play
+   * that copy keys the Table -- a new table and a new shoe. That is the
+   * point: the cut card, count-check prompt and deviation grading are built
+   * into the game at mount, so the Play sheet holds its profile edits and
+   * applies them once, when it closes, and says so. (The carried bankroll is
+   * the opposite case: the table writes it every round, so it goes to
+   * storage only and never through here -- see playBankroll.ts.)
+   */
+  const tabSettings: TabSettingsContextValue = {
+    settings,
+    commitSettings: (next) => {
+      saveSettings(next);
+      setSettings(next);
+    },
+    activeProfile,
+    applyProfile: (patch) => {
+      if (patch) patchActiveProfile(patch);
+      setActiveProfileState(getActiveProfile());
+      setTableEpoch((e) => e + 1);
+    },
+    navigate: (next) => navigate(next),
+  };
+
   // See CrashOnDemand above: an opt-in seam so the boundary can be proven.
   const crashRequested =
     typeof window !== 'undefined' &&
@@ -261,7 +296,7 @@ function App() {
         // "you changed the game definition": a new table, not a spliced-in change.
         return (
           <Table
-            key={`${activeProfile.id}:${JSON.stringify(activeProfile)}`}
+            key={`${tableEpoch}:${activeProfile.id}:${JSON.stringify(activeProfile)}`}
             settings={settings}
             onNavigate={navigate}
             onSettingsChange={setSettings}
@@ -325,7 +360,9 @@ function App() {
           broken screen leaves the tab bar below it alive, so the user can
           simply navigate somewhere else. */}
       <ErrorBoundary key={screen} onReset={() => navigate('home')}>
-        {crashRequested ? <CrashOnDemand /> : body}
+        <TabSettingsContext.Provider value={tabSettings}>
+          {crashRequested ? <CrashOnDemand /> : body}
+        </TabSettingsContext.Provider>
       </ErrorBoundary>
       {/* Rendered for every screen; app.css stands it down in the
           immersive modes, which own the bottom edge with their own

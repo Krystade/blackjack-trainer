@@ -138,10 +138,10 @@ test('migration: a v1-only settings blob (no profiles keys) migrates to "Default
 // and asserted against the persisted blob (and, for CVCX, the Stats header).
 // ---------------------------------------------------------------------------
 
-test('profile editor rules: DAS/LS/RSA/bj65 toggles, decks segmented, and penetration stepper all flip + persist', async ({ page }) => {
+test('profile editor rules: DAS/LS/RSA/bj65 toggles, decks segmented, and cut card stepper all flip + persist', async ({ page }) => {
   // Seed a profile with KNOWN starting rules so each flip is unambiguous:
   // das/ls true -> we turn them OFF; rsa/bj65 false -> we turn them ON;
-  // decks 6 -> set to 2; penetration 0.75 -> step up to 0.80.
+  // decks 6 -> set to 2; cut card (#39) derived from 75% -> step up a quarter deck.
   await withProfile(page, {
     name: 'Rules Profile',
     rules: { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false },
@@ -176,11 +176,17 @@ test('profile editor rules: DAS/LS/RSA/bj65 toggles, decks segmented, and penetr
   await expect(rsaToggle).toBeChecked();
   await expect(bj65Toggle).toBeChecked();
 
-  // Penetration stepper 0.75 -> 0.80 (the '+' button; '−' is U+2212, not '+').
-  const penRow = page.locator('.settings-row', { hasText: 'Penetration' });
-  await expect(penRow.locator('.stepper-value')).toHaveText('75%');
-  await penRow.getByRole('button', { name: '+', exact: true }).click();
-  await expect(penRow.locator('.stepper-value')).toHaveText('80%');
+  // #39: the cut card in decks. 75% of the now-2-deck shoe leaves 0.5 decks
+  // behind; step it up a quarter deck (the '+' button; '−' is U+2212, not '+').
+  const cutRow = page.locator('.settings-row', { hasText: 'Cut card' });
+  await expect(cutRow.locator('.stepper-value')).toHaveText('0.5 decks behind');
+  await cutRow.getByRole('button', { name: '+', exact: true }).click();
+  await expect(cutRow.locator('.stepper-value')).toHaveText('0.75 decks behind');
+  // Half a 2-deck shoe is the most there is.
+  await cutRow.getByRole('button', { name: '+', exact: true }).click();
+  await expect(cutRow.locator('.stepper-value')).toHaveText('1 deck behind');
+  await expect(cutRow.getByRole('button', { name: '+', exact: true })).toBeDisabled();
+  await cutRow.getByRole('button', { name: '−', exact: true }).click();
   await shot(page, '33-profile-editor-rules-flipped');
 
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -195,7 +201,9 @@ test('profile editor rules: DAS/LS/RSA/bj65 toggles, decks segmented, and penetr
   expect(saved.rules.ls).toBe(false);
   expect(saved.rules.rsa).toBe(true);
   expect(saved.rules.bj65).toBe(true);
-  expect(saved.penetration).toBeCloseTo(0.8, 5);
+  expect(saved.cutDecks).toBe(0.75);
+  // Penetration follows the cut, for whatever still reads it.
+  expect(saved.penetration).toBeCloseTo(1 - 0.75 / 2, 5);
 });
 
 test('profile editor bet ramp: manual add-row / edit minTc & units / remove-row persists (independent of CVCX paste)', async ({ page }) => {
