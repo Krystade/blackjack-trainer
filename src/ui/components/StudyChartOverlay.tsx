@@ -79,7 +79,10 @@ export function StudyChartOverlay({
         // destination it never went to.
         onBack={onClose}
         onNavigate={onClose}
-        backLabel="the hand"
+        // #2: "Back to hand", on a pill pinned bottom-centre, so it is in
+        // reach wherever the ringed cell has scrolled the overlay to.
+        backLabel="hand"
+        backPlacement="floating"
       />
     </div>
   );

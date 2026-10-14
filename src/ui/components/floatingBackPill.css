@@ -1,0 +1,64 @@
+/*
+ * #2: the study overlay's Back, pinned bottom-centre above the home indicator.
+ *
+ * `--vp-gap` (app.css) is zero in a browser tab and negative in the installed
+ * app, where iOS resolves `bottom: 0` against a viewport short by the top
+ * inset; adding it moves the pill down to the real bottom edge exactly as the
+ * tab bar and the drill bars are moved.
+ */
+.floating-back-pill {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--vp-gap, 0px) + env(safe-area-inset-bottom, 0px) + 12px);
+  transform: translateX(-50%);
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 48px;
+  max-width: calc(100vw - 32px);
+  padding: 0 1.4rem 0 1.1rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 1rem;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 25%),
+    0 8px 20px -4px rgb(0 0 0 / 55%);
+  cursor: pointer;
+}
+
+.floating-back-pill:active {
+  transform: translateX(-50%) scale(0.97);
+}
+
+.floating-back-pill:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.floating-back-pill-arrow {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* Room to scroll the last rows (PAIRS, and its note) out from under the pill:
+   48px of pill, 12px of lift, and a little air. Doubled class because the
+   shell's `body:has(.tab-bar) .charts-screen` still matches here (the tab
+   bar is hidden, not unmounted) and would reserve a tab bar's height. */
+.study-chart-overlay .charts-screen.charts-screen {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 88px);
+}
+
+/* The overlay is `position: fixed; inset: 0`, which the installed app sizes
+   to the same short viewport -- so it stopped `--vp-gap` above the bottom
+   edge, with the drill showing through underneath. Stretched by the same
+   correction as the pill it now carries. */
+@media (display-mode: standalone) {
+  body .study-chart-overlay {
+    bottom: var(--vp-gap);
+  }
+}
