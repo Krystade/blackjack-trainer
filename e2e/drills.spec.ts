@@ -1530,7 +1530,7 @@ test('pair cancellation: answering a pair grades it and records self-consistent 
   // The keyboard answers the next pair straight away; no Enter in between.
   await page.keyboard.press('3');
   await expect
-    .poll(async () => ((await readStats(page))?.pairCancel as { history: unknown[] }).history.length)
+    .poll(async () => ((await readStats(page))?.pairCancel as { history: unknown[] } | undefined)?.history.length)
     .toBe(2);
 });
 
