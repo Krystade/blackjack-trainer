@@ -237,8 +237,9 @@ function narrateSettlement(game: Game, audio: AudioApi): void {
 }
 
 /** What the player asked for when an owed count check interrupted it (#36).
- * It runs as soon as the check is answered. */
-type PendingDeal = { kind: 'deal'; bets?: number | number[] } | { kind: 'sitOut' };
+ * It runs as soon as the check is answered. Ending the session is one of
+ * them: the last round's check is asked before the report, not dropped. */
+type PendingDeal = { kind: 'deal'; bets?: number | number[] } | { kind: 'sitOut' } | { kind: 'end' };
 
 /**
  * Holds a single Game instance in a ref (so mutating engine calls don't
@@ -540,8 +541,20 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     setDealAnimating(false);
   }, [clearDealAnimTimer]);
 
+  /**
+   * The player asked to end the session. Returns true when it may end now;
+   * false when a count check was owed, which is posed instead -- the caller
+   * ends the session once `submitCount` reports the answer released it.
+   */
+  const requestEnd = useCallback(
+    (): boolean => !poseCountCheckBeforeDeal({ kind: 'end' }),
+    [poseCountCheckBeforeDeal],
+  );
+
+  /** Grade the count check. Returns true when the answer released an End
+   * that was waiting on it (see `requestEnd`): the caller ends the session. */
   const submitCount = useCallback(
-    (rc: number | null, tcGuess?: number) => {
+    (rc: number | null, tcGuess?: number): boolean => {
       const result = game.submitCountCheck(rc, tcGuess);
       if (result.rcCorrect !== undefined) {
         audio.say(narrateCountAnswer(result.actualRc));
@@ -557,6 +570,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       if (pending?.kind === 'deal') runDeal(pending.bets);
       else if (pending?.kind === 'sitOut') runSitOut();
       bump();
+      return pending?.kind === 'end';
     },
     [game, bump, audio, runDeal, runSitOut],
   );
@@ -598,6 +612,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     act,
     insure,
     submitCount,
+    requestEnd,
     overlay,
     dismissOverlay,
     report,

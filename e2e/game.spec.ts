@@ -418,6 +418,26 @@ test('#3: count checks set to "both" ask RC then TC on the first check', async (
   await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 2');
 });
 
+test('a count check owed on the last round is asked before End shows the report', async ({ page }) => {
+  await withProfile(page, { countCheckEvery: 1 });
+  await page.goto('/?seed=101&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await playRoundByAdvice(page);
+
+  await page.locator('.end-btn').click(); // arms: the second tap ends
+  await page.locator('.end-btn').click();
+  const modal = page.locator('.bottom-sheet');
+  await expect(modal.locator('.bottom-sheet-title')).toHaveText('Running count?');
+  await expect(page.locator('.report-screen')).toHaveCount(0);
+
+  await modal.getByRole('button', { name: '2', exact: true }).click();
+  await modal.getByRole('button', { name: 'OK', exact: true }).click();
+  // The answer ends the session rather than dealing another round.
+  await expect(page.locator('.report-screen')).toBeVisible();
+  await expect(page.locator('.report-categories tr', { hasText: 'Count checks' })).toBeVisible();
+});
+
 /** Press and hold the peek with a real pointer (mouse down, no release). */
 async function holdPeek(page: Page): Promise<void> {
   const box = await page.locator('.tc-peek-btn').boundingBox();

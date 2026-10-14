@@ -316,6 +316,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     act,
     insure,
     submitCount,
+    requestEnd,
     overlay,
     dismissOverlay,
     report,
@@ -580,18 +581,19 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   }, [countDue, countStage]);
 
   const handleCountSubmit = (n: number) => {
-    if (!game.askRc) {
-      submitCount(null, n);
-    } else if (game.askTcToo && countStage === 'rc') {
+    if (game.askRc && game.askTcToo && countStage === 'rc') {
       setPendingRc(n);
       setCountStage('tc');
       return;
-    } else if (game.askTcToo) {
-      submitCount(pendingRc, n);
-    } else {
-      submitCount(n);
     }
+    const endNow = !game.askRc
+      ? submitCount(null, n)
+      : game.askTcToo
+        ? submitCount(pendingRc, n)
+        : submitCount(n);
     setCountStage('rc');
+    // The answer released an End that was waiting on it.
+    if (endNow) finishSession();
   };
 
   // End is two taps, like Finish in the field test: it sits at the top of the
@@ -611,9 +613,16 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       return;
     }
     setConfirmEnd(false);
+    // A count check owed on the last round is asked first; answering it ends
+    // the session (handleCountSubmit).
+    if (!requestEnd()) return;
+    finishSession();
+  };
+
+  function finishSession() {
     endSession(peeks);
     setShowReport(true);
-  };
+  }
 
   const handleReportDone = () => {
     setShowReport(false);
