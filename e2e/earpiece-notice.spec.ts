@@ -67,6 +67,12 @@ async function openFlashcards(page: Page): Promise<void> {
  * would clear the very flag it is here to check and pass for the wrong reason.
  */
 async function openTab(page: Page, name: 'Drills' | 'Settings'): Promise<void> {
+  // Settings has no tab since #32: it hangs off Home.
+  if (name === 'Settings') {
+    await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
+    await page.locator('.home-settings-btn').click();
+    return;
+  }
   await page.locator('.tab-bar').getByRole('button', { name, exact: true }).click();
 }
 

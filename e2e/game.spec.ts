@@ -5,11 +5,12 @@ import { shot, withSettings, withProfile, resolveInsurance, playRoundByAdvice } 
 test('home renders and navigates to the table', async ({ page }) => {
   await page.goto('/?e2e=1');
   await expect(page.locator('.home-title')).toHaveText('Blackjack Trainer');
-  // Navigation is the persistent tab bar since C4; Stats hangs off the Home
-  // dashboard rather than taking a tab from Settings.
-  for (const label of ['Home', 'Play', 'Drills', 'Charts', 'Settings']) {
+  // Navigation is the persistent tab bar since C4; since #32 Stats has a tab
+  // and Settings hangs off Home instead.
+  for (const label of ['Home', 'Play', 'Drills', 'Charts', 'Stats']) {
     await expect(page.locator('.tab-bar').getByRole('button', { name: label, exact: true })).toBeVisible();
   }
+  await expect(page.locator('.tab-bar').getByRole('button', { name: 'Settings' })).toHaveCount(0);
   await expect(page.locator('.home-stats-link')).toBeVisible();
   await shot(page, '01-home');
 
