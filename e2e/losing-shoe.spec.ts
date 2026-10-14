@@ -37,3 +37,20 @@ test('a stored losingShoe: false deals a fair table with no badge', async ({ pag
   await expect(page.locator('.topbar')).toBeVisible();
   await expect(page.getByTestId('losing-shoe-badge')).toHaveCount(0);
 });
+
+test('a multi-hand profile with the bet ramp deals one hand on the losing shoe', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await withSettings(page, { countCheckEvery: 0, losingShoe: true });
+  await withProfile(page, {
+    countCheckEvery: 0,
+    betSpreadOn: true,
+    seats: { bots: 0, playerHands: 2, playerPosition: 0, botMistakePct: 0 },
+  });
+  await page.goto('/?seed=2&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(page.getByTestId('losing-shoe-badge')).toBeVisible();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await expect(page.locator('.player-hand')).toHaveCount(1);
+  expect(errors).toEqual([]);
+});

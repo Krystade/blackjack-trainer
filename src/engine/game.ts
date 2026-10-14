@@ -291,6 +291,11 @@ export class Game {
     return game;
   }
 
+  /** True when this game deals from a rigged (scripted) shoe. */
+  get isRigged(): boolean {
+    return this.shoeIsRigged;
+  }
+
   /**
    * Bin the next `n` cards of a RIGGED shoe without dealing them -- see
    * `RiggedShoe.discard`. They are never seen and never counted, so the running
@@ -301,11 +306,6 @@ export class Game {
    * against, and a caller reaching for this on one has made a mistake worth
    * hearing about.
    */
-  /** True when this game deals from a rigged (scripted) shoe. */
-  get isRigged(): boolean {
-    return this.shoeIsRigged;
-  }
-
   discardRiggedCards(n: number): void {
     if (!this.shoeIsRigged) {
       throw new Error('discardRiggedCards is only valid on a rigged shoe');

@@ -329,8 +329,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   // comes from the PROFILE's seat config, not `game.hands.length` — the
   // latter still reflects the *previous* round's (possibly split-grown)
   // hand count while we're sitting in the bet phase, before `startRound`
-  // rebuilds the seat.
-  const playerHandsCount = activeProfile.seats.playerHands;
+  // rebuilds the seat. The game's own seat config, not the profile's: the
+  // Losing shoe (#48-51) deals solo whatever the profile says, and a bets
+  // array sized to the profile would make startRound throw.
+  const playerHandsCount = game.cfg.seats?.playerHands ?? activeProfile.seats.playerHands;
   const [selectedBets, setSelectedBets] = useState<number[]>(() => new Array(playerHandsCount).fill(1));
   const setBetForHand = (i: number, units: number) => {
     setSelectedBets((prev) => prev.map((v, idx) => (idx === i ? units : v)));
