@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import { OfflineSection } from './OfflineSection';
+import { ResetBankrollRow } from '../components/ResetBankrollRow';
 import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
 import { THEMES, normalizeTheme } from '../theme';
@@ -359,6 +360,16 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             format={(v) => `${v}ms`}
             onChange={(v) => update({ dealSpeedMs: v })}
           />
+          <ResetBankrollRow />
+          <Toggle
+            label="Losing shoe"
+            checked={settings.losingShoe === true}
+            onChange={(v) => update({ losingShoe: v })}
+          />
+          <div className="settings-note-row u-note">
+            Deals a rigged run of losing hands, graded on your bet ramp. Plays solo. Off returns
+            to a fair shoe next session.
+          </div>
           <div className="settings-row">
             <span className="settings-label">Shot clock</span>
             <Segmented

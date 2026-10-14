@@ -291,6 +291,11 @@ export class Game {
     return game;
   }
 
+  /** True when this game deals from a rigged (scripted) shoe. */
+  get isRigged(): boolean {
+    return this.shoeIsRigged;
+  }
+
   /**
    * Bin the next `n` cards of a RIGGED shoe without dealing them -- see
    * `RiggedShoe.discard`. They are never seen and never counted, so the running
@@ -314,6 +319,20 @@ export class Game {
     // and the wong decision -- so a counter whose system truncates was being
     // marked wrong on every negative-count index play.
     return trueCount(this.runningCount, this.shoe.decksRemaining, this.cfg.tcRounding);
+  }
+
+  /**
+   * #41: decks left in the shoe, EXACT -- not the half-deck estimate the
+   * graded true count divides by (see `trueCountNow`). The peek shows this to
+   * two decimals, so it is measured from what has actually left the shoe.
+   *
+   * Counted from the ruleset's shoe size rather than `cardsRemaining`, which
+   * for a rigged shoe is the length of a script (see riggedShoe.ts) and not
+   * the shoe a player at that table would be looking at. For a real `Shoe`
+   * the two are the same number.
+   */
+  get exactDecksRemaining(): number {
+    return Math.max(0, this.rules.decks * 52 - this.shoe.cardsDealt) / 52;
   }
 
   /** How many hands in `hands` share `originIndex` -- i.e. how many of the

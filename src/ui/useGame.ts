@@ -8,6 +8,8 @@ import type { Category, GradedEvent, MistakeClass } from '../engine/grade';
 import type { Profile, Settings } from '../store/types';
 import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
+import { resumeBankroll, storeBankrollNow } from './playBankroll';
+import { makePlayGame, realignLosingShoe, type PlayGame } from './losingShoe';
 import type { AudioApi } from '../audio/useAudio';
 import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverBets';
 import {
@@ -253,27 +255,49 @@ type PendingDeal = { kind: 'deal'; bets?: number | number[] } | { kind: 'sitOut'
  * `?seed=` override remains for deterministic e2e/test runs.
  */
 export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
-  const gameRef = useRef<Game | null>(null);
-  if (gameRef.current === null) {
+  const playRef = useRef<PlayGame | null>(null);
+  if (playRef.current === null) {
     const cfg: GameConfig = {
       penetration: profile.penetration,
       betSpreadOn: profile.betSpreadOn,
       ...(profile.coverBets === undefined ? {} : { coverBets: profile.coverBets }),
       ...(profile.tcRounding === undefined ? {} : { tcRounding: profile.tcRounding }),
       spread: profile.spread,
-      bankrollStart: profile.bankrollStart,
+      // #42: the bankroll carries over from the last session on this
+      // profile. `cfg.bankrollStart` is therefore THIS SESSION's start, which
+      // is what the session report's delta is measured from.
+      bankrollStart: resumeBankroll(profile),
       countCheckEvery: profile.countCheckEvery,
       rules: strategyRulesFor(profile),
       seats: profile.seats,
       dealerAlwaysPlaysOut: profile.dealerAlwaysPlaysOut,
       seed: readSeed(),
     };
-    gameRef.current = new Game(cfg);
+    // #48-51: the Losing shoe setting picks the rig at build time.
+    playRef.current = makePlayGame(cfg, settings.losingShoe === true);
   }
-  const game = gameRef.current;
+  const playGame = playRef.current;
+  const game = playGame.game;
+  const losingShoe = playGame.boundaries !== null;
 
   const [, setVersion] = useState(0);
   const bump = useCallback(() => setVersion((v) => v + 1), []);
+
+  /**
+   * #42: write the bankroll back to the profile whenever an engine call has
+   * moved it -- in practice, as each round settles. To STORAGE ONLY: see
+   * playBankroll.ts for why the app's copy of the profile is left alone (it
+   * keys the Table, and a remount would reshuffle the shoe mid-session).
+   * Runs after every render, which is after every engine call; the
+   * comparison makes the common case free.
+   */
+  const storedBankrollRef = useRef(game.bankroll);
+  const profileId = profile.id;
+  useEffect(() => {
+    if (game.bankroll === storedBankrollRef.current) return;
+    storedBankrollRef.current = game.bankroll;
+    storeBankrollNow(profileId, game.bankroll);
+  });
 
   const [overlay, setOverlay] = useState<OverlayInfo | null>(null);
   const [report, setReport] = useState<SessionReport | null>(null);
@@ -287,11 +311,12 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
 
   const runDeal = useCallback(
     (betUnits?: number | number[]) => {
+      realignLosingShoe(playGame);
       game.startRound(betUnits);
       narrateDeal(game, audio);
       narrateSettlement(game, audio); // instant dealer-blackjack / all-naturals rounds settle inside startRound()
     },
-    [game, audio],
+    [game, playGame, audio],
   );
 
   const runSitOut = useCallback(() => {
@@ -300,11 +325,12 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     // and any settlement narration (dealer draws) all resolve in one pass --
     // exactly like an instant dealer-blackjack deal. No player cards to
     // narrate: the player was dealt none. R5.
+    realignLosingShoe(playGame);
     game.sitOut();
     if (game.shuffledLastRound) audio.say(narrateShuffle());
     audio.say(narrateSitOut());
     narrateSettlement(game, audio);
-  }, [game, audio]);
+  }, [game, playGame, audio]);
 
   /**
    * #36: if a count check is owed, ask it now -- on the way to the next
@@ -546,7 +572,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const endSession = useCallback(
     (peeks = 0): SessionReport => {
       const events = game.events;
-      const bankrollDelta = game.bankroll - profile.bankrollStart;
+      // From where THIS session started (#42), not the profile's original stake.
+      const bankrollDelta = game.bankroll - game.cfg.bankrollStart;
 
       const stats = loadStats();
       const updated = applyEvents(stats, events);
@@ -568,11 +595,12 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       setReport(rep);
       return rep;
     },
-    [game, profile.bankrollStart, profile.id, profile.name],
+    [game, profile.id, profile.name],
   );
 
   return {
     game,
+    losingShoe,
     deal,
     sitOut,
     act,
