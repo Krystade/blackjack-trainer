@@ -265,3 +265,69 @@ test('screenshots: the checkpoint prompt and its read-back', async ({ page }) =>
   await expect(page.locator('.checkpoint-result')).toBeVisible();
   await shot(page, 'count-checkpoint-result');
 });
+
+/**
+ * #46: one early slip used to fail every later stop. Each stretch after the
+ * first is now graded from the user's own previous answer, and says so; the
+ * run's verdict stays absolute, and both are shown.
+ */
+test('#46: after an off-by-one checkpoint, a cleanly counted last stretch is graded right (adjusted)', async ({
+  page,
+}) => {
+  await pinShoe(page);
+  await withSettings(page, { drill: { ...SHORT_RUN, countCheckpoints: 'one' } });
+  await openCountDrill(page);
+
+  // Pass one: learn the true count at the checkpoint and at the end.
+  await advanceUntil(page, () => checkpointArea(page).isVisible(), 12);
+  await ok(page).click();
+  await advanceUntil(page, () => ok(page).isVisible(), 12);
+  await ok(page).click();
+  const rowText = await page.locator('.checkpoint-result-list li').innerText();
+  const atCheckpoint = Number(/it was (-?\d+)/.exec(rowText)?.[1]);
+  const seen = Number(/After (\d+) cards/.exec(rowText)?.[1]);
+  const final = Number(/running count was (-?\d+)/.exec(await page.locator('.result-detail').innerText())?.[1]);
+  expect(Number.isFinite(atCheckpoint) && Number.isFinite(final) && seen > 0).toBe(true);
+
+  // Pass two, same shoe: one high at the checkpoint, and the stretch after it
+  // counted perfectly from there, so the final answer is one high as well.
+  await page.getByRole('button', { name: 'New run', exact: true }).click();
+  await advanceUntil(page, () => checkpointArea(page).isVisible(), 12);
+  await enterSignedNumber(page, atCheckpoint + 1);
+  await advanceUntil(page, () => ok(page).isVisible(), 12);
+  await enterSignedNumber(page, final + 1);
+
+  // Absolute verdict: wrong.
+  await expect(page.locator('.result-wrong')).toBeVisible();
+  // Adjusted last stretch: right, and it says what it was graded from.
+  const fmt = (n: number) => (n > 0 ? `+${n}` : String(n));
+  const last = page.locator('.checkpoint-result-final');
+  await expect(last).toHaveClass(/checkpoint-hit/);
+  await expect(last).toContainText('Last stretch: right');
+  await expect(last).toContainText(`graded from your ${fmt(atCheckpoint + 1)} at card ${seen} (adjusted)`);
+});
+
+test('#46: a last stretch counted wrong is graded wrong, even when the final count is right', async ({
+  page,
+}) => {
+  await pinShoe(page);
+  await withSettings(page, { drill: { ...SHORT_RUN, countCheckpoints: 'one' } });
+  await openCountDrill(page);
+  await advanceUntil(page, () => checkpointArea(page).isVisible(), 12);
+  await ok(page).click();
+  await advanceUntil(page, () => ok(page).isVisible(), 12);
+  await ok(page).click();
+  const rowText = await page.locator('.checkpoint-result-list li').innerText();
+  const atCheckpoint = Number(/it was (-?\d+)/.exec(rowText)?.[1]);
+  const final = Number(/running count was (-?\d+)/.exec(await page.locator('.result-detail').innerText())?.[1]);
+
+  await page.getByRole('button', { name: 'New run', exact: true }).click();
+  await advanceUntil(page, () => checkpointArea(page).isVisible(), 12);
+  await enterSignedNumber(page, atCheckpoint + 2);
+  await advanceUntil(page, () => ok(page).isVisible(), 12);
+  await enterSignedNumber(page, final);
+
+  await expect(page.locator('.result-correct')).toBeVisible();
+  await expect(page.locator('.checkpoint-result-final')).toHaveClass(/checkpoint-miss/);
+  await expect(page.locator('.checkpoint-result-final')).toContainText('Last stretch: wrong');
+});

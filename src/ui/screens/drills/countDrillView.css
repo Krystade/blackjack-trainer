@@ -7,3 +7,8 @@
 .distraction-area > .numpad {
   margin-inline: -1rem;
 }
+
+/* #46: the last stretch's adjusted grade, under the checkpoint list. */
+.checkpoint-result-final {
+  margin-top: 0.4rem;
+}

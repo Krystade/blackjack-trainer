@@ -120,3 +120,65 @@ describe('summarizeCheckpoints', () => {
     expect(r.firstDriftSegment).toBeNull();
   });
 });
+
+describe('summarizeCheckpoints: adjusted grading (#46)', () => {
+  it('grades the first checkpoint absolutely', () => {
+    const r = summarizeCheckpoints([row(10, 11, 4, 5)], false);
+    expect(r.results[0]).toMatchObject({ expected: 4, correct: false, from: null });
+  });
+
+  it('grades a later checkpoint from the previous ANSWER plus the true change since', () => {
+    // Said +3 when it was +4 (one off), then counted the next stretch
+    // (true change -6) perfectly: +3 - 6 = -3. Absolutely wrong, adjusted right.
+    const r = summarizeCheckpoints([row(10, 11, 4, 3), row(30, 31, -2, -3)], false);
+    expect(r.results[1]).toMatchObject({
+      expected: -3,
+      correct: true,
+      from: { answer: 3, cardsShown: 11 },
+    });
+    expect(r.correct).toBe(1);
+  });
+
+  it('an absolutely right later checkpoint after a miss is an adjusted MISS', () => {
+    // Off by one at the first stop, then "right" at the second: the second
+    // stretch must have held a compensating error.
+    const r = summarizeCheckpoints([row(10, 11, 4, 3), row(30, 31, -2, -2)], false);
+    expect(r.results[1]).toMatchObject({ expected: -3, correct: false });
+    expect(r.correct).toBe(0);
+  });
+
+  it('chains from each previous answer, not from the first', () => {
+    const r = summarizeCheckpoints(
+      [row(5, 6, 2, 2), row(10, 11, 5, 4), row(20, 21, 1, 0)],
+      false,
+    );
+    // third: from the second answer (4) + (1 - 5) = 0
+    expect(r.results[2]).toMatchObject({ expected: 0, correct: true, from: { answer: 4, cardsShown: 11 } });
+  });
+
+  it('the final stretch is graded from the last checkpoint answer, alongside the absolute verdict', () => {
+    const r = summarizeCheckpoints([row(10, 11, 4, 3)], false, { cardsShown: 52, actual: 1, answer: 0 });
+    // Absolute: wrong (0 vs 1). Adjusted: 3 + (1 - 4) = 0, right.
+    expect(r.finalStretch).toEqual({
+      cardsShown: 52,
+      actual: 1,
+      answer: 0,
+      expected: 0,
+      correct: true,
+      from: { answer: 3, cardsShown: 11 },
+    });
+  });
+
+  it('no final stretch without checkpoints or without a final answer', () => {
+    expect(summarizeCheckpoints([], true, { cardsShown: 52, actual: 0, answer: 0 }).finalStretch).toBeNull();
+    expect(summarizeCheckpoints([row(10, 11, 4, 4)], true).finalStretch).toBeNull();
+  });
+
+  it('cancellation stays an ABSOLUTE judgement', () => {
+    // First checkpoint absolutely wrong, final count right: still cancelled,
+    // whatever the adjusted grades say.
+    const r = summarizeCheckpoints([row(10, 11, 4, 5), row(30, 31, -2, -1)], true);
+    expect(r.results[1]!.correct).toBe(true); // adjusted: 5 + (-6) = -1
+    expect(r.cancelled).toBe(true);
+  });
+});

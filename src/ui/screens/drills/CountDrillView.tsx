@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Settings } from '../../../store/types';
 import type { Card } from '../../../engine/cards';
 import { hiLoTag } from '../../../engine/count';
@@ -11,6 +11,7 @@ import {
   summarizeCheckpoints,
   type CheckpointResult,
   type CheckpointReport,
+  type GradedCheckpoint,
 } from '../../../drills/countCheckpoints';
 import {
   classifySpeed,
@@ -64,6 +65,10 @@ import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSessi
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
 import './countDrillView.css';
+
+function formatSigned(n: number): string {
+  return n > 0 ? `+${n}` : String(n);
+}
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -390,7 +395,8 @@ export function CountDrillView({
   /** The eyes-free verdict: recorded exactly like a keypad run. */
   const handleSelfReport = (correct: boolean) => {
     speak(correct ? 'Correct.' : 'Wrong.', speechOptsFrom(settings.audio, { interrupt: true }));
-    finishRun(correct, actualValue, actualValue);
+    // No number was given, so there is no last stretch to grade (#46).
+    finishRun(correct, actualValue, actualValue, false);
   };
 
   const updateDrill = (patch: Partial<Settings['drill']>) => {
@@ -952,12 +958,27 @@ export function CountDrillView({
     onBack();
   };
 
-  const finishRun = (correct: boolean, actual: number, entered: number) => {
+  /**
+   * `answered` is false for the eyes-free self-report, which takes a verdict
+   * but no number: `entered` there is a stand-in, not something the user said.
+   */
+  const finishRun = (correct: boolean, actual: number, entered: number, answered = true) => {
     // RT#12: read the checkpoints back now that the final verdict exists --
     // "cancelled" is only meaningful against it. Empty on a run with
     // checkpoints off, which reports as null rather than as a clean sweep.
+    // #46: the final answer goes in too, so the last stretch is graded from
+    // the last checkpoint the same way each checkpoint is graded from the one
+    // before. The run's own verdict (`correct`) stays absolute.
     const checkpointRows = checkpointRowsRef.current;
-    const report = checkpointRows.length > 0 ? summarizeCheckpoints(checkpointRows, correct) : null;
+    const totalCards = groups.reduce((n, g) => n + g.length, 0);
+    const report =
+      checkpointRows.length > 0
+        ? summarizeCheckpoints(
+            checkpointRows,
+            correct,
+            answered ? { cardsShown: totalCards, actual, answer: entered } : undefined,
+          )
+        : null;
     setCheckpointReport(report);
     setWasCorrect(correct);
     setActualValue(actual);
@@ -1517,6 +1538,20 @@ export function CountDrillView({
    * null on a run with no checkpoints. An empty block would read as a clean
    * sweep of nothing.
    */
+  /**
+   * #46: how a stretch after the first was graded, said in full. An adjusted
+   * grade that did not say so would read as a contradiction whenever it
+   * disagrees with "it was N" beside it.
+   */
+  const stretchNote = (g: GradedCheckpoint): ReactNode =>
+    g.from && (
+      <span className="checkpoint-adjusted">
+        {' '}
+        &mdash; expected {formatSigned(g.expected)}, graded from your {formatSigned(g.from.answer)} at card{' '}
+        {g.from.cardsShown} (adjusted)
+      </span>
+    );
+
   const checkpointBlock = checkpointReport && (
     <div className="checkpoint-result">
       <div className="checkpoint-result-score">
@@ -1535,14 +1570,25 @@ export function CountDrillView({
       )}
       <ul className="checkpoint-result-list">
         {checkpointReport.results.map((r) => (
-          <li
-            key={r.atGroup}
-            className={r.answer === r.actual ? 'checkpoint-hit' : 'checkpoint-miss'}
-          >
+          <li key={r.atGroup} className={r.correct ? 'checkpoint-hit' : 'checkpoint-miss'}>
             After {r.cardsShown} cards: you said {r.answer}, it was {r.actual}
+            {stretchNote(r)}
           </li>
         ))}
       </ul>
+      {/* #46: the last stretch, graded from the last checkpoint. The verdict
+          above stays absolute; this says whether the cards after the last
+          stop were counted right, whatever the count was coming into them. */}
+      {checkpointReport.finalStretch && (
+        <div
+          className={`checkpoint-result-final ${
+            checkpointReport.finalStretch.correct ? 'checkpoint-hit' : 'checkpoint-miss'
+          }`}
+        >
+          Last stretch: {checkpointReport.finalStretch.correct ? 'right' : 'wrong'}
+          {stretchNote(checkpointReport.finalStretch)}
+        </div>
+      )}
     </div>
   );
 
