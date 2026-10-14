@@ -81,11 +81,11 @@ test('produce the true count: a one-deck profile never divides by more than one 
   expect(new Set(seen).size).toBeGreaterThan(1);
 });
 
-test('bet / sit / leave: the tray is labelled with the profile shoe', async ({ page }) => {
+test('bet or sit: the tray is labelled with the profile shoe', async ({ page }) => {
   // This drill prints no divisor, so the tray label is the only observable --
   // and it is also the reason the label had to exist: once the shoe varies, a
   // half-full tray means 1 deck left in a 2-deck shoe and 3 in a 6-deck one.
   await withProfile(page, { rules: { decks: 2 } });
-  await openDrill(page, 'Bet / sit / leave');
+  await openDrill(page, 'Bet or sit');
   await expect(page.locator('.deck-tray-context')).toHaveText('2-deck shoe');
 });

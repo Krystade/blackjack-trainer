@@ -70,7 +70,6 @@ import { TrueCountDrillView } from './drills/TrueCountDrillView';
 import { ProduceTcDrillView } from './drills/ProduceTcDrillView';
 import { PairCancelView } from './drills/PairCancelView';
 import { BetSitLeaveView } from './drills/BetSitLeaveView';
-import { DownswingView } from './drills/DownswingView';
 import { DeckEstimationView } from './drills/DeckEstimationView';
 import { MasteryChallengeView } from './drills/MasteryChallengeView';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
@@ -2687,7 +2686,6 @@ type DrillMode =
   | 'mixed'
   | 'paircancel'
   | 'betsitleave'
-  | 'downswing'
   | 'producetc'
   | 'mastery';
 
@@ -2780,11 +2778,6 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       />
     );
   }
-  if (mode === 'downswing') {
-    return (
-      <DownswingView settings={settings} activeProfile={activeProfile} onBack={() => setMode('picker')} />
-    );
-  }
 
   // V3-4: SOFT competence gating — advanced pressure modes still work, but show
   // a "get fluent first" nudge until the learner has demonstrated basic
@@ -2847,8 +2840,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         {entry('mastery', 'Mastery challenge', 'Every basic-strategy hand once, with no mistakes. One miss starts the sweep over.')}
 
         <h2 className="drills-group-title">Under pressure</h2>
-        {entry('betsitleave', 'Bet / sit / leave', 'From the true count and the shoe, choose to bet, sit out or leave the table.', true)}
-        {entry('downswing', 'Downswing', 'A run of losing hands. Keep your count and bet your ramp without chasing losses.', true)}
+        {entry('betsitleave', 'Bet or sit', 'From the true count and the shoe, choose to bet or sit out.', true)}
       </div>
       <button type="button" className="drills-back-btn" onClick={() => onNavigate('home')}>
         Back to Home

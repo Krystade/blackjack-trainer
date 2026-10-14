@@ -3,61 +3,23 @@ import {
   correctAction,
   makeBetSitLeaveScenario,
   T_BET,
-  T_LEAVE_COUNT,
-  D_LEAVE,
   type BetSitLeaveScenario,
 } from './betSitLeave';
 
-const sc = (trueCount: number, decksRemaining: number, freshShoe: boolean): BetSitLeaveScenario => ({
-  trueCount,
-  decksRemaining,
-  freshShoe,
-});
+const sc = (trueCount: number, decksRemaining: number): BetSitLeaveScenario => ({ trueCount, decksRemaining });
 
-describe('correctAction (ET3 consensus rule)', () => {
-  it('TC >= 0 is always BET, regardless of depth or a fresh shoe', () => {
-    for (const tc of [0, 1, 3]) {
-      for (const d of [0.5, 3, 6]) {
-        for (const fresh of [true, false]) {
-          expect(correctAction(sc(tc, d, fresh))).toBe('bet');
-        }
-      }
-    }
+describe('correctAction (#48-51: bet vs sit only)', () => {
+  it('TC >= 0 is always BET, regardless of depth', () => {
+    for (const tc of [0, 1, 3]) for (const d of [0.5, 3, 6]) expect(correctAction(sc(tc, d))).toBe('bet');
   });
 
-  it('an early, mild-negative shoe (TC -1, plenty of decks) is SIT — it can still turn', () => {
-    expect(correctAction(sc(-1, 4, true))).toBe('sit');
-    expect(correctAction(sc(-1, 4, false))).toBe('sit');
+  it('any negative TC is SIT, early or late, mild or deep -- there is no LEAVE answer', () => {
+    for (const tc of [-1, -2, -4, -6]) for (const d of [0.5, 1, 2, 4, 6]) expect(correctAction(sc(tc, d))).toBe('sit');
   });
 
-  it('deep-negative (TC <= -2) with a fresh table open is LEAVE', () => {
-    expect(correctAction(sc(-2, 5, true))).toBe('leave');
-    expect(correctAction(sc(-4, 6, true))).toBe('leave');
-  });
-
-  it('late in a negative shoe (few decks left) with a fresh table is LEAVE, even at only TC -1', () => {
-    expect(correctAction(sc(-1, 2.0, true))).toBe('leave'); // decksRemaining <= D_LEAVE
-    expect(correctAction(sc(-1, 1.0, true))).toBe('leave');
-  });
-
-  it('leave is warranted but NO fresh table -> SIT (grind/wait; nowhere better to go)', () => {
-    expect(correctAction(sc(-4, 6, false))).toBe('sit'); // deep-negative but no fresh shoe
-    expect(correctAction(sc(-1, 1.0, false))).toBe('sit'); // late shoe but no fresh shoe
-  });
-
-  it('boundary: TC exactly T_BET (0) bets; one below sits/leaves per depth', () => {
-    expect(correctAction(sc(T_BET, 4, true))).toBe('bet');
-    expect(correctAction(sc(-1, 4, true))).toBe('sit'); // just-negative, early
-  });
-
-  it('boundary: decksRemaining exactly D_LEAVE counts as "late" (leave with fresh shoe)', () => {
-    expect(correctAction(sc(-1, D_LEAVE, true))).toBe('leave');
-    expect(correctAction(sc(-1, D_LEAVE + 0.5, true))).toBe('sit');
-  });
-
-  it('boundary: TC exactly T_LEAVE_COUNT (-2) is deep enough to leave (fresh shoe)', () => {
-    expect(correctAction(sc(T_LEAVE_COUNT, 6, true))).toBe('leave');
-    expect(correctAction(sc(T_LEAVE_COUNT + 1, 6, true))).toBe('sit'); // -1 early -> sit
+  it('boundary: TC exactly T_BET (0) bets; one below sits', () => {
+    expect(correctAction(sc(T_BET, 4))).toBe('bet');
+    expect(correctAction(sc(T_BET - 1, 4))).toBe('sit');
   });
 });
 
@@ -66,7 +28,7 @@ describe('makeBetSitLeaveScenario', () => {
     expect(makeBetSitLeaveScenario(42)).toEqual(makeBetSitLeaveScenario(42));
   });
 
-  it('draws an integer TC in [-6, 6], decks in 0.5..6 (half steps), and a boolean fresh shoe', () => {
+  it('draws an integer TC in [-6, 6] and decks in 0.5..6 (half steps), with no fresh-shoe field', () => {
     for (let seed = 0; seed < 500; seed++) {
       const s = makeBetSitLeaveScenario(seed);
       expect(s.trueCount).toBeGreaterThanOrEqual(-6);
@@ -75,7 +37,7 @@ describe('makeBetSitLeaveScenario', () => {
       expect(s.decksRemaining).toBeGreaterThanOrEqual(0.5);
       expect(s.decksRemaining).toBeLessThanOrEqual(6);
       expect((s.decksRemaining * 2) % 1).toBe(0); // half-deck increments
-      expect(typeof s.freshShoe).toBe('boolean');
+      expect(Object.keys(s).sort()).toEqual(['decksRemaining', 'trueCount']);
     }
   });
 
@@ -89,12 +51,10 @@ describe('makeBetSitLeaveScenario', () => {
     }
   });
 
-  it('surfaces all three correct actions across enough seeds (the drill trains all of bet/sit/leave)', () => {
+  it('surfaces exactly the two answers, bet and sit, across enough seeds', () => {
     const seen = new Set<string>();
     for (let seed = 0; seed < 500; seed++) seen.add(correctAction(makeBetSitLeaveScenario(seed)));
-    expect(seen.has('bet')).toBe(true);
-    expect(seen.has('sit')).toBe(true);
-    expect(seen.has('leave')).toBe(true);
+    expect([...seen].sort()).toEqual(['bet', 'sit']);
   });
 });
 
@@ -171,13 +131,12 @@ describe('makeBetSitLeaveScenario across shoe sizes (V4-3)', () => {
     expect(differs.length).toBeGreaterThan(50);
   });
 
-  it('a small shoe still trains all three actions', () => {
+  it('a small shoe still trains both actions', () => {
     for (const totalDecks of [1, 2]) {
       const seen = new Set();
       for (let seed = 0; seed < 600; seed++) seen.add(correctAction(makeBetSitLeaveScenario(seed, totalDecks)));
       expect(seen.has('bet'), `${totalDecks}-deck bet`).toBe(true);
       expect(seen.has('sit'), `${totalDecks}-deck sit`).toBe(true);
-      expect(seen.has('leave'), `${totalDecks}-deck leave`).toBe(true);
     }
   });
 });

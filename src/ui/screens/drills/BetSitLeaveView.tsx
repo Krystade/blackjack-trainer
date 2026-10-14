@@ -21,15 +21,12 @@ function formatSigned(n: number): string {
 const ACTIONS: { key: TableAction; label: string }[] = [
   { key: 'bet', label: 'Bet' },
   { key: 'sit', label: 'Sit out' },
-  { key: 'leave', label: 'Leave' },
 ];
 
 /**
- * ET3 (docs/BACKLOG.md): the bet / sit-out / leave decision drill. A snapshot
- * (true count, decks remaining, whether a fresh table is open) → pick the
- * consensus-correct table action. Adds the LEAVE axis R5's wong-out drill can't
- * express. Grading = drills/betSitLeave.ts (the researched consensus rule).
- * Continuous flow like the other decision drills; keyboard 1/2/3.
+ * ET3 (docs/BACKLOG.md): the bet / sit-out decision drill. A snapshot (true
+ * count, decks remaining) → bet or sit out. #48-51 dropped the "leave"
+ * answer. Grading = drills/betSitLeave.ts. Keyboard 1/2.
  */
 export function BetSitLeaveView({
   settings,
@@ -73,12 +70,12 @@ export function BetSitLeaveView({
     shownAtRef.current = performance.now();
   };
 
-  // Keyboard: 1=Bet, 2=Sit Out, 3=Leave; Enter/Space advances past feedback.
+  // Keyboard: 1=Bet, 2=Sit Out; Enter/Space advances past feedback.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (focusSwallowsKey(e.key)) return;
       if (!feedback) {
-        const idx = ['1', '2', '3'].indexOf(e.key);
+        const idx = ['1', '2'].indexOf(e.key);
         if (idx >= 0) {
           e.preventDefault();
           answer(ACTIONS[idx].key);
@@ -105,11 +102,11 @@ export function BetSitLeaveView({
         <button type="button" className="drill-back-btn" onClick={onBack}>
           Back
         </button>
-        <div className="drill-heading">Bet / sit / leave</div>
+        <div className="drill-heading">Bet or sit</div>
       </div>
 
       <div className="settings-row settings-note-row">
-        From the true count, how much shoe is left, and whether another table is open: bet, sit out or leave?
+        From the true count and how much shoe is left: bet, or sit out?
       </div>
 
       <div className="bsl-snapshot">
@@ -124,9 +121,6 @@ export function BetSitLeaveView({
             ambiguous -- a half-full tray is 1 deck left in a 2-deck shoe
             and 3 in a 6-deck one. Same line DeckEstimationView carries. */}
         <div className="deck-tray-context">{totalDecks}-deck shoe</div>
-        <div className={`bsl-freshshoe ${scenario.freshShoe ? 'bsl-fresh-yes' : 'bsl-fresh-no'}`}>
-          {scenario.freshShoe ? 'Another table is open' : 'No other table open'}
-        </div>
       </div>
 
       <div className="message-strip">

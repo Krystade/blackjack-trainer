@@ -511,13 +511,15 @@ test('the range picker reaches the sections that were reading lifetime totals', 
   await expect(section(page, 'True count drill')).toContainText('1/2');
   await expect(rowValue(page, 'Distraction', 'Attempts')).toHaveText('2');
   await statsTab(page, 'Play');
-  await expect(rowValue(page, 'Bet, sit or leave', 'Decisions')).toHaveText('2');
+  await expect(rowValue(page, 'Bet or sit', 'Decisions')).toHaveText('2');
+  // #48-51: the drill no longer asks "leave", but an old row that did still renders.
+  await expect(section(page, 'Bet or sit').locator('.mistake-row', { hasText: 'time to leave (old)' })).toHaveCount(1);
 
   // ...and the same window has to reach all three, or the screen is showing
   // two different questions answered side by side with nothing saying which
   // figure is which.
   await page.getByRole('button', { name: 'Last 7 days', exact: true }).click();
-  await expect(rowValue(page, 'Bet, sit or leave', 'Decisions')).toHaveText('1');
+  await expect(rowValue(page, 'Bet or sit', 'Decisions')).toHaveText('1');
   await statsTab(page, 'Drills');
   await expect(
     section(page, 'True count drill'),

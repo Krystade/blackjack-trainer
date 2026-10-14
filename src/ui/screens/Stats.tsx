@@ -280,7 +280,7 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Illustrious 18': 'play',
   'Mistake types': 'play',
   'Cost of mistakes': 'play',
-  'Bet, sit or leave': 'play',
+  'Bet or sit': 'play',
   'Flashcards': 'drills',
   'Count drill': 'drills',
   'Timed count challenge': 'drills',
@@ -291,7 +291,6 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Spaced repetition — Flashcards': 'progress',
   'Spaced repetition — Deviation quiz': 'progress',
   'Retention': 'progress',
-  'Downswing drill': 'progress',
   'Fatigue': 'progress',
   'Table sessions': 'progress' };
 
@@ -542,26 +541,15 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   const quizLabelFor = (key: string) =>
     indexSetFor(gradedRules).find((d) => d.id === key)?.label ?? key;
 
-  // ET3 (docs/BACKLOG.md, bet/sit/leave): overall accuracy + a dedicated LEAVE
-  // figure — leaving is the novel, hardest axis (R5's wong-out only covers
-  // bet vs sit), so it's worth seeing on its own.
+  // ET3 (docs/BACKLOG.md): overall accuracy. #48-51 dropped the "leave"
+  // answer; rows from before that still count, and their LEAVE figure is shown
+  // only while any are in range.
   const bslHistory = inRange(stats.betSitLeave.history);
   const bslAttempts = bslHistory.length;
   const bslCorrect = bslHistory.filter((h) => h.correct).length;
   const bslLeaveRows = bslHistory.filter((h) => h.correctAction === 'leave');
   const bslLeaveCorrect = bslLeaveRows.filter((h) => h.correct).length;
 
-  // ET1 (V3-1): downswing sessions ridden out + spread-conformity through them.
-  const downswingHistory = inRange(stats.downswing.history);
-  const downswingSessions = downswingHistory.length;
-  const downswingConformCorrect = downswingHistory.reduce((s, h) => s + h.correct, 0);
-  const downswingConformTotal = downswingHistory.reduce((s, h) => s + h.total, 0);
-  // V3-7: the play half. Sessions recorded before V3-7 have no play fields at
-  // all -- the drill was a stand-only wall then, with no decision to grade --
-  // so they are excluded from BOTH sides of this fraction rather than counted
-  // as a perfect or a failed session they never played.
-  const downswingPlayCorrect = downswingHistory.reduce((s, h) => s + (h.playCorrect ?? 0), 0);
-  const downswingPlayTotal = downswingHistory.reduce((s, h) => s + (h.playTotal ?? 0), 0);
 
   // ET5: fatigue drift over the COUNTING runs you've logged (count drill + timed
   // challenge — both dated per-run accuracy), grouped into sessions by the
@@ -1213,13 +1201,13 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       </CollapsibleSection>
 
       <CollapsibleSection
-        title={<>Bet, sit or leave</>}
+        title={<>Bet or sit</>}
         className="stats-section"
-        dataTab={SECTION_TAB['Bet, sit or leave']}
+        dataTab={SECTION_TAB['Bet or sit']}
         defaultOpen={false}
       >
           {bslAttempts === 0 ? (
-            <p className="stats-detail">No bet, sit or leave decisions yet.</p>
+            <p className="stats-detail">No bet or sit decisions yet.</p>
           ) : (
             <ul className="mistake-list">
               <li className="mistake-row">
@@ -1230,46 +1218,10 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                 <span>Accuracy</span>
                 <span>{pct(bslCorrect, bslAttempts)}</span>
               </li>
-              <li className="mistake-row">
-                <span>Accuracy when it was time to leave</span>
-                <span>{bslLeaveRows.length === 0 ? dash() : pct(bslLeaveCorrect, bslLeaveRows.length)}</span>
-              </li>
-            </ul>
-          )}
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title={<>Downswing drill</>}
-        className="stats-section"
-        dataTab={SECTION_TAB['Downswing drill']}
-        defaultOpen={false}
-      >
-          {downswingSessions === 0 ? (
-            <p className="stats-detail">No downswing drill sessions yet.</p>
-          ) : (
-            <ul className="mistake-list">
-              <li className="mistake-row">
-                <span>Sessions completed</span>
-                <span>{downswingSessions}</span>
-              </li>
-              <li className="mistake-row">
-                <span>Bets that followed the ramp</span>
-                <span>{pct(downswingConformCorrect, downswingConformTotal)}</span>
-              </li>
-              {/*
-                Reported apart from the bet, because chasing with your money and
-                chasing with your play are different failures with different
-                fixes. Hidden entirely when no session has graded a decision --
-                a 0% there would read as having played every stiff wrong, when
-                in fact none was ever dealt.
-              */}
-              {downswingPlayTotal > 0 && (
+              {bslLeaveRows.length > 0 && (
                 <li className="mistake-row">
-                  <span>Stiff hands played correctly</span>
-                  <span>
-                    {pct(downswingPlayCorrect, downswingPlayTotal)} ({downswingPlayCorrect}/
-                    {downswingPlayTotal})
-                  </span>
+                  <span>Accuracy when it was time to leave (old)</span>
+                  <span>{pct(bslLeaveCorrect, bslLeaveRows.length)}</span>
                 </li>
               )}
             </ul>

@@ -18,7 +18,7 @@ import { shot, withProfile, withSettings, readStats, playRoundByAdvice, statsTab
  * settings/profile state set before the single goto stays intact for the
  * whole walk, and nothing gets silently re-seeded mid-journey.
  */
-test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleven Drill modes -> Stats, one continuous session', async ({
+test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all ten Drill modes -> Stats, one continuous session', async ({
   page,
 }) => {
   test.setTimeout(180_000);
@@ -253,26 +253,13 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all eleve
   await expect(page.locator('.drills-picker')).toBeVisible();
 
   // ---------------------------------------------------------------
-  // 9f. Bet / Sit / Leave: one scenario answered
+  // 9f. Bet or sit: one scenario answered
   // ---------------------------------------------------------------
-  await page.getByRole('button', { name: 'Bet / sit / leave', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Bet / sit / leave');
+  await page.getByRole('button', { name: 'Bet or sit', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Bet or sit');
   await page.locator('.bsl-answers .action-btn').first().click();
   await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
-  await expect(page.locator('.drills-picker')).toBeVisible();
-
-  // ---------------------------------------------------------------
-  // 9g. Downswing: bet, deal, stand, settle one hand of the session
-  // ---------------------------------------------------------------
-  await page.getByRole('button', { name: 'Downswing', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Downswing');
-  await page.locator('.chip-btn').first().click();
-  await page.locator('.deal-btn').click();
-  await page.locator('.action-bar .action-btn', { hasText: 'Stand' }).click();
-  await expect(page.locator('.drill-next-btn')).toBeVisible();
-  await shot(page, 'smoke-09g-downswing');
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();
 
   await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
