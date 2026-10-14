@@ -1,6 +1,6 @@
 import { strategyRulesFor } from '../store/profiles';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Game } from '../engine/game';
+import { Game, handPlayNumber } from '../engine/game';
 import type { GameConfig } from '../engine/game';
 import type { Action } from '../engine/deviations';
 import type { Card, Rank } from '../engine/cards';
@@ -222,11 +222,16 @@ function narrateSettlement(game: Game, audio: AudioApi): void {
     }
   }
 
-  game.hands.forEach((hand, i) => {
+  // In order of play (#1): the rightmost hand is played first and is "hand
+  // one", so results are read from the right.
+  for (let i = game.hands.length - 1; i >= 0; i--) {
+    const hand = game.hands[i];
     if (hand.result) {
-      audio.say(narrateHandResult(i, game.hands.length, hand.result, hand.net ?? 0));
+      audio.say(
+        narrateHandResult(handPlayNumber(i, game.hands.length) - 1, game.hands.length, hand.result, hand.net ?? 0),
+      );
     }
-  });
+  }
 
   if (game.countCheckDue) {
     audio.ding('attention');

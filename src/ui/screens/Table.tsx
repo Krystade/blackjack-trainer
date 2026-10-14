@@ -7,6 +7,7 @@ import type { Card } from '../../engine/cards';
 import { TELL_MIN_ROUNDS } from '../../engine/coverBets';
 import type { GradedEvent } from '../../engine/grade';
 import type { DealSlot, Game, PlayerHand, Seat } from '../../engine/game';
+import { handPlayNumber } from '../../engine/game';
 import type { Action } from '../../engine/deviations';
 import type { PlayContext } from '../../engine/strategy';
 import { correctPlay } from '../../engine/strategy';
@@ -158,8 +159,9 @@ function isE2E(): boolean {
   return new URLSearchParams(window.location.search).get('e2e') === '1';
 }
 
-function resultMessage(hand: PlayerHand, idx: number, multi: boolean): string {
-  const prefix = multi ? `Hand ${idx + 1}: ` : '';
+/** `playNumber` is the hand's place in the order of play (#1), counted from 1. */
+function resultMessage(hand: PlayerHand, playNumber: number, multi: boolean): string {
+  const prefix = multi ? `Hand ${playNumber}: ` : '';
   switch (hand.result) {
     case 'win':
       return `${prefix}Win +${hand.net}`;
@@ -652,10 +654,15 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     barMode = {
       kind: 'bet',
       betSpreadOn: activeProfile.betSpreadOn,
-      hands: selectedBets.map((units, i) => ({
-        selectedBet: units,
-        onSelectBet: (u: number) => setBetForHand(i, u),
-      })),
+      // Listed in order of play (#1): row "Hand 1" stakes the rightmost hand,
+      // the one dealt to and played first, so it names the same hand as the
+      // felt's label and the result line.
+      hands: selectedBets
+        .map((units, i) => ({
+          selectedBet: units,
+          onSelectBet: (u: number) => setBetForHand(i, u),
+        }))
+        .reverse(),
       onDeal: handleDeal,
       // Wong-out only makes sense against a spread (the same gate the engine
       // uses to grade it); a flat-bet table hides the Sit Out button entirely.
@@ -871,7 +878,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             key={i}
             className={`player-hand${i === game.active && game.phase === 'player' ? ' hand-active' : ''}`}
           >
-            {playerHandsCount > 1 && <div className="hand-label">Hand {i + 1}</div>}
+            {playerHandsCount > 1 && (
+              <div className="hand-label">Hand {handPlayNumber(i, game.hands.length)}</div>
+            )}
             <div className="hand-cards">
               {hand.cards.map((c, j) => (
                 <PlayingCard
@@ -909,11 +918,15 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             {game.hands.length === 0 && (
               <div className="message-result message-sat-out">Sat out — no bet.</div>
             )}
-            {game.hands.map((h, i) => (
-              <div key={i} className="message-result">
-                {resultMessage(h, i, multiHand)}
-              </div>
-            ))}
+            {/* In order of play (#1): rightmost hand first, as "Hand 1". */}
+            {game.hands
+              .map((h, i) => ({ h, i }))
+              .reverse()
+              .map(({ h, i }) => (
+                <div key={i} className="message-result">
+                  {resultMessage(h, handPlayNumber(i, game.hands.length), multiHand)}
+                </div>
+              ))}
             {game.insuranceNet !== null && (
               <div className="message-result">
                 Insurance {formatSigned(game.insuranceNet)}

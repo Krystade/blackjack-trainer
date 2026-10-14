@@ -144,7 +144,10 @@ test('multi-hand: two independent bets, two hands played out, per-hand results s
     await resolveInsurance(page, false);
 
     await expect(page.locator('.player-hand')).toHaveCount(2);
-    await expect(page.locator('.hand-label')).toHaveText(['Hand 1', 'Hand 2']);
+    // #1: hands render left to right but are PLAYED from the right, so the
+    // rightmost is "Hand 1" -- and it carries the bet set on the "hand 1" row.
+    await expect(page.locator('.hand-label')).toHaveText(['Hand 2', 'Hand 1']);
+    await expect(page.locator('.player-hand .hand-bet')).toHaveText(['Bet: 4', 'Bet: 2']);
     await shot(page, '50-table-multihand-dealt');
 
     await playRoundByAdvice(page);

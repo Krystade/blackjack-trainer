@@ -144,6 +144,27 @@ function freshHand(bet: number, originIndex: number): PlayerHand {
 
 export { botRngSeed } from './riggedShoe';
 
+/**
+ * #1 split order: which hand this is IN PLAY ORDER, counting from 1.
+ *
+ * Hands are stored and rendered left to right, but a casino plays the hand on
+ * the dealer's left -- the player's RIGHT -- first, so play runs from the
+ * highest index down to 0. Because a split inserts the new hand immediately
+ * right of the hand being split and plays it next, descending index IS the
+ * order of play at every moment, and "hand 2" (on screen, in narration, in
+ * the result list) always means the second hand played.
+ */
+export function handPlayNumber(handIndex: number, handCount: number): number {
+  return handCount - handIndex;
+}
+
+/** Index of the hand to play now: the rightmost hand not yet done, or -1. All
+ * hands right of it are already finished, by construction (see
+ * handPlayNumber), so this is the whole of the play-order rule. */
+function nextLiveHand(hands: PlayerHand[]): number {
+  return hands.findLastIndex((h) => !h.done);
+}
+
 export class Game {
   readonly cfg: GameConfig;
   readonly rules: StrategyRules;
@@ -824,18 +845,14 @@ export class Game {
     }
   }
 
-  /** Resolve one bot seat's hands to completion, left to right, including
-   * any hands created by splitting along the way (the for-loop's bound
-   * re-reads seat.hands.length each iteration, so newly-inserted hands get
-   * their own turn -- same pattern as the player's own advance()). */
+  /** Resolve one bot seat's hands to completion in casino order (#1): the
+   * rightmost live hand first, so a split's right-hand half is played before
+   * its left -- the same rule as the player's own advance(). */
   private resolveBotSeat(seatIndex: number): void {
     const seat = this.seats[seatIndex];
     const up = this.dealerCards[0].rank;
-    for (let handIndex = 0; handIndex < seat.hands.length; handIndex++) {
-      const hand = seat.hands[handIndex];
-      while (!hand.done) {
-        this.playOneBotDecision(seatIndex, seat.hands, handIndex, up);
-      }
+    for (let handIndex = nextLiveHand(seat.hands); handIndex !== -1; handIndex = nextLiveHand(seat.hands)) {
+      this.playOneBotDecision(seatIndex, seat.hands, handIndex, up);
     }
   }
 
@@ -899,6 +916,13 @@ export class Game {
       }
       case 'split': {
         this.performSplit(hands, handIndex);
+        // The new hand goes in at handIndex + 1, so every hand to its right
+        // -- all already played, since play runs right to left (#1) -- moves
+        // up one. Their logged entries move with them, or the table's paced
+        // card reveal and bust lines would read the wrong hand.
+        for (const e of this.botActionLog) {
+          if (e.seat === seatIndex && e.handIndex > handIndex) e.handIndex += 1;
+        }
         break;
       }
     }
@@ -929,7 +953,9 @@ export class Game {
       }
     }
 
-    const firstLive = this.hands.findIndex((h) => h.result === undefined);
+    // #1: play starts at the RIGHTMOST live hand (dealer's left) and moves
+    // left. Naturals are already `done`, so they are skipped here.
+    const firstLive = nextLiveHand(this.hands);
     if (firstLive === -1) {
       this.finishAfterPlayerDone();
       return;
@@ -969,8 +995,9 @@ export class Game {
     this.finishRound();
   }
 
-  /** Split `hands[index]` in place, inserting the new hand right after it.
-   * Generalized over an arbitrary hands array (not just `this.hands`/
+  /** Split `hands[index]` in place, inserting the new hand right after it
+   * (immediately to its right on the felt, #1). The right-hand half is
+   * played first, so it is also dealt its second card first. Generalized over an arbitrary hands array (not just `this.hands`/
    * `this.active`) so bot seats can reuse the exact same split mechanics a
    * real player uses (Cycle-2 Task 3). */
   private performSplit(hands: PlayerHand[], index: number): void {
@@ -993,8 +1020,8 @@ export class Game {
 
     hands.splice(index + 1, 0, newHand);
 
-    this.drawToHand(hand);
     this.drawToHand(newHand);
+    this.drawToHand(hand);
 
     if (isAces) {
       // If RSA (resplit aces) is enabled, hands stay open if they draw an ace (forming A,A pair)
@@ -1010,17 +1037,15 @@ export class Game {
     }
   }
 
+  /** Move to the next hand in casino order (#1): the rightmost hand still
+   * live. That is the current hand while it is open, the new right-hand half
+   * straight after a split, and otherwise the next hand to the left. */
   private advance(): void {
-    const hand = this.hands[this.active];
-    if (!hand.done) return;
-
-    for (let i = this.active + 1; i < this.hands.length; i++) {
-      if (!this.hands[i].done) {
-        this._active = i;
-        return;
-      }
+    const next = nextLiveHand(this.hands);
+    if (next !== -1) {
+      this._active = next;
+      return;
     }
-
     this.finishAfterPlayerDone();
   }
 
