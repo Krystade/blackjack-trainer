@@ -20,6 +20,9 @@ for (const drill of ['Flashcards', 'Mastery challenge']) {
     await page.goto('/?e2e=1');
     await openDrill(page, drill);
 
+    // Flashcards fold the deal toggles under Options; mastery shows them.
+    const options = page.locator('details.drill-options > summary');
+    if (await options.count()) await options.click();
     const toggle = page.getByRole('button', { name: 'Fallbacks', exact: true });
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
     await toggle.click();
@@ -55,3 +58,15 @@ for (const drill of ['Flashcards', 'Mastery challenge']) {
     await answerRight(page.getByRole('button', { name: 'Hit', exact: true }));
   });
 }
+
+test('Mixed offers Fallbacks under Options, without With count', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await openDrill(page, 'Mixed');
+  await page.locator('details.drill-options > summary').click();
+  const toggle = page.getByRole('button', { name: 'Fallbacks', exact: true });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'With count', exact: true })).toHaveCount(0);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.settings.v1') ?? '{}').drill?.fallbacks);
+  expect(saved).toBe(true);
+});

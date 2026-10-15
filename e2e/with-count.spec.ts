@@ -14,6 +14,9 @@ test('flashcards With count: 12 v 4 graded at the shown TC, the strip names the 
 
   const tcBox = page.locator('.quiz-tc');
   await expect(tcBox).toHaveCount(0);
+  // Flashcards fold the deal toggles under Options; mastery shows them.
+  const options = page.locator('details.drill-options > summary');
+  if (await options.count()) await options.click();
   const toggle = page.getByRole('button', { name: 'With count', exact: true });
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');

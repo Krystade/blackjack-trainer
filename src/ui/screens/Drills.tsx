@@ -1063,7 +1063,6 @@ function FlashcardsView({
 
       <div className="drill-inline-controls" ref={controlsRef}>
         <HandDeckControls settings={settings} onChange={changeScopes} />
-        <DealToggles settings={settings} onChange={changeScopes} withCount />
 
         <DrillModeControls
           settings={settings}
@@ -1082,6 +1081,9 @@ function FlashcardsView({
           voiceStatus={voice.status}
           options={
             <>
+              {/* #27 / #53: set once, so folded with the other options --
+                  a row of its own pushed the answers off a 635px phone. */}
+              <DealToggles settings={settings} onChange={changeScopes} withCount />
               {/* V5-1/#52: interleaving pays most when confusable items land
                   back to back (Brunmair & Richter 2019). On, half the cards
                   are drawn only from the last hand's look-alikes. */}
@@ -2611,7 +2613,6 @@ function MixedSessionView({
 
       <div className="drill-inline-controls" ref={controlsRef}>
         <HandDeckControls settings={settings} onChange={changeScopes} />
-        <DealToggles settings={settings} onChange={changeScopes} />
         <DrillModeControls
           settings={settings}
           onSettingsChange={onSettingsChange}
@@ -2627,6 +2628,8 @@ function MixedSessionView({
           voiceOn={voiceOn}
           onVoiceChange={setVoiceOn}
           voiceStatus={voice.status}
+          // #27: set once, folded away like the flashcards' options.
+          options={<DealToggles settings={settings} onChange={changeScopes} />}
         />
       </div>
 
