@@ -390,3 +390,15 @@ export async function answerAndReadStrip(
   );
   return (await page.locator('[data-testid="result-strip"]').getAttribute('data-tone')) as 'ok' | 'miss';
 }
+
+/**
+ * #32: Settings left the tab bar and is reached from Home. From any tabbed
+ * screen, go Home first, then open Settings.
+ */
+export async function openSettingsScreen(page: Page): Promise<void> {
+  const btn = page.locator('.home-settings-btn');
+  if (!(await btn.isVisible().catch(() => false))) {
+    await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
+  }
+  await btn.click();
+}

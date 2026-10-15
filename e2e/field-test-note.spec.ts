@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, selectFieldTestCondition, switchFieldTestCondition} from './helpers';
+import { openSettingsScreen, withSettings, selectFieldTestCondition, switchFieldTestCondition} from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
@@ -29,7 +29,7 @@ async function openTest(page: Page, condition = 'Car, parked'): Promise<void> {
   await withSettings(page, {});
   await selectFieldTestCondition(page, condition);
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await openSettingsScreen(page);
   await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
@@ -268,7 +268,7 @@ test('a draft from the previous run does not come back in the next run\u2019s bo
   // The page dies on step one, so the app comes back to the tab bar rather
   // than to the run: walked in by hand, which is what the operator does.
   await page.reload();
-  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await openSettingsScreen(page);
   await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();

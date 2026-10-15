@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { shot } from './helpers';
+import { openSettingsScreen, shot } from './helpers';
 
 /**
  * The diagnostic log, end to end.
@@ -32,7 +32,7 @@ function panel(page: Page) {
 }
 
 async function openSettings(page: Page) {
-  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await openSettingsScreen(page);
   await expect(panel(page)).toBeVisible();
 }
 

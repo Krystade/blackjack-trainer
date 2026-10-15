@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { withSettings, openSettingsScreen } from './helpers';
 
 /**
  * Cross-cutting layout guards at 375x812 (iPhone 13 mini).
@@ -78,8 +78,9 @@ test('mute button clears every control: Home, Table, drills', async ({ page }) =
 test('mute button clears controls on the scrolling tab screens too', async ({ page }) => {
   await withSettings(page, { audio: { enabled: true } });
   await page.goto('/?e2e=1');
-  for (const tab of ['Drills', 'Charts', 'Settings']) {
-    await page.getByRole('button', { name: tab, exact: true }).first().click();
+  for (const tab of ['Drills', 'Charts', 'Stats', 'Settings']) {
+    if (tab === 'Settings') await openSettingsScreen(page);
+    else await page.locator('.tab-bar').getByRole('button', { name: tab, exact: true }).click();
     await expectClear(page, tab);
   }
   await page.getByRole('button', { name: 'Home', exact: true }).first().click();

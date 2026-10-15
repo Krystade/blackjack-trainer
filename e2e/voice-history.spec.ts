@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { sayOnceListening } from './helpers';
+import { openSettingsScreen, sayOnceListening } from './helpers';
 
 /**
  * The microphone history, end to end: heard in a drill, offered for teaching.
@@ -92,7 +92,7 @@ async function openHistory(page: Page) {
   const back = page.locator('.drill-back-btn');
   if (await back.count()) await back.first().click();
 
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openSettingsScreen(page);
   const section = page
     .locator('.settings-section')
     .filter({ has: page.locator('summary', { hasText: 'Teach it your words' }) });

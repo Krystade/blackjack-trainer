@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, selectFieldTestCondition, switchFieldTestCondition} from './helpers';
+import { openSettingsScreen, withSettings, selectFieldTestCondition, switchFieldTestCondition} from './helpers';
 
 /**
  * The field test, end to end.
@@ -55,7 +55,7 @@ async function endRun(page: Page): Promise<void> {
 async function openTest(page: Page, condition: string = 'Car, parked'): Promise<void> {
   if (condition) await selectFieldTestCondition(page, condition);
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await openSettingsScreen(page);
   await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
@@ -124,7 +124,7 @@ async function logText(page: Page): Promise<string> {
   // person would.
   const back = page.getByRole('button', { name: 'Back' });
   if ((await back.count()) > 0) await back.first().click();
-  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await openSettingsScreen(page);
   const section = diagPanel(page);
   const show = section.getByRole('button', { name: /^(Show|Hide)$/ });
   if ((await show.innerText()) === 'Show') await show.click();
@@ -377,7 +377,7 @@ test('the run is still there after a reload, which the update check can force mi
   await answerStep(page, 'fieldtest-answer-route-car');
 
   await page.reload();
-  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await openSettingsScreen(page);
   await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
 
@@ -926,7 +926,7 @@ test('the settings come back even when the app reloads mid-run', async ({ page }
   // protocol last wrote.
   await page.evaluate(() => window.localStorage.setItem('e2e.noReseed', '1'));
   await page.reload();
-  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await openSettingsScreen(page);
   await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await page.getByTestId('fieldtest-resume').click();
@@ -1412,7 +1412,7 @@ test('starting over after a reload does not adopt the protocol settings as the o
   // operator's settings back by itself.
   await page.evaluate(() => window.localStorage.setItem('e2e.noReseed', '1'));
   await page.reload();
-  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await openSettingsScreen(page);
   await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
 
@@ -1547,7 +1547,7 @@ test('the wait for the microphone to close is recorded with the sample', async (
 test('a driven condition says so before the run starts', async ({ page }) => {
   await withSettings(page, {});
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await openSettingsScreen(page);
   await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   if ((await page.getByTestId('fieldtest-finish').count()) > 0) {
@@ -1698,7 +1698,7 @@ test('a setting changed between two runs survives the second run', async ({ page
     window.localStorage.setItem('bjtrainer.settings.v1', JSON.stringify(raw));
   });
   await page.reload();
-  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await openSettingsScreen(page);
   await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await page.getByTestId('fieldtest-start').click();
@@ -1889,7 +1889,7 @@ test('a mark can be taken back with the same button', async ({ page }) => {
 test('a second leg in the same page says so, on screen and in the log', async ({ page }) => {
   await withSettings(page, {});
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await openSettingsScreen(page);
   await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
@@ -2352,7 +2352,7 @@ test('a first visit to the gate stays quiet', async ({ page }) => {
     window.localStorage.removeItem('bjtrainer.fieldTestRun.v1');
     window.__speechLog = [];
   });
-  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await openSettingsScreen(page);
   await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-start')).toBeVisible();

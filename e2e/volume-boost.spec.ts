@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { withSettings } from './helpers';
+import { openSettingsScreen, withSettings } from './helpers';
 
 /**
  * The volume slider runs to 200%, and above 100% it no longer touches either
@@ -27,7 +27,7 @@ import { withSettings } from './helpers';
  * wrong section passes it without reading anything.
  */
 
-const CAR = 'In the car';
+const CAR = 'General'; // #35: volume moved to General
 const CAVEAT = 'Above 100% raises the alert tones only';
 
 function section(page: import('@playwright/test').Page, title: string) {
@@ -38,7 +38,7 @@ function section(page: import('@playwright/test').Page, title: string) {
 
 async function openAudioSettings(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openSettingsScreen(page);
 }
 
 test('the slider goes past 100%', async ({ page }) => {
