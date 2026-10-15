@@ -1,0 +1,18 @@
+/* Four count-check choices do not fit beside their label at 375px, so the
+   control takes the whole row under it. */
+.count-ask-row > .segmented {
+  flex: 1 1 100%;
+}
+
+.count-ask-row .segmented-btn {
+  padding: 0 0.4rem;
+}
+
+/* The explanation under each control: quieter than the control it explains,
+   in the profile editor as in the gear sheet. */
+.profile-play-note.settings-note {
+  margin: 0 0 var(--space-2);
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}

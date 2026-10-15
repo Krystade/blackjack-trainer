@@ -26,8 +26,9 @@ function secs(ms: number | null): string {
  * can: answer "am I ready?" before you decide what to practise, and name the
  * hands you are actually worst at rather than a single blended percentage.
  *
- * Stats keeps no tab of its own precisely because this exists; the full
- * breakdown hangs off the summary that made you want it.
+ * Stats has its own tab since #32, and the summary still links to it. Home
+ * is also where the global Settings screen is reached from now that it has
+ * left the tab bar (#32): the per-tab settings sit behind each tab's gear.
  */
 export function Home({ onNavigate, activeProfile }: HomeProps) {
   const stats = loadStats();
@@ -86,12 +87,17 @@ export function Home({ onNavigate, activeProfile }: HomeProps) {
         </button>
       </section>
 
-      {/* Only the primary action lives here now. Drills and Charts are one
-          tap away in the tab bar, and repeating them would make Home a menu
-          again -- the exact thing the tab bar exists to replace. */}
+      {/* The primary action, and Settings (which has no tab). Drills and
+          Charts are one tap away in the tab bar, and repeating them would
+          make Home a menu again -- the exact thing the tab bar replaces. */}
       <div className="home-actions">
         <button type="button" className="u-btn u-btn-primary home-play-btn" onClick={() => onNavigate('table')}>
           Play a shoe
+        </button>
+        {/* #32: Settings left the tab bar. The accessible name is exactly
+            "Settings" -- the glyph is decoration. */}
+        <button type="button" className="u-btn home-settings-btn" onClick={() => onNavigate('settings')}>
+          <span aria-hidden="true">⚙ </span>Settings
         </button>
       </div>
 

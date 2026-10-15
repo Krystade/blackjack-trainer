@@ -2,22 +2,23 @@ import { test, expect, type Page } from '@playwright/test';
 import { shot, withSettings, withStats, withProfile, playRoundByAdvice, readStats, statsTab } from './helpers';
 
 test('a changed setting persists across reload', async ({ page }) => {
+  // Feedback lives in the Play gear sheet since #33.
+  const openPlaySheet = async () => {
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.getByRole('button', { name: 'Play settings' }).click();
+    return page.getByRole('dialog', { name: 'Play settings' }).locator('.settings-row', { hasText: 'Feedback' });
+  };
   await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.locator('.settings-heading')).toHaveText('Settings');
+  let feedback = await openPlaySheet();
   await shot(page, '21-settings-default');
-
-  const feedback = page.locator('.settings-row', { hasText: 'Feedback' });
   await expect(feedback.locator('.segmented-btn-active')).toHaveText('Training');
   await feedback.getByRole('button', { name: 'Test', exact: true }).click();
   await expect(feedback.locator('.segmented-btn-active')).toHaveText('Test');
   await shot(page, '22-settings-changed');
 
   await page.reload();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(
-    page.locator('.settings-row', { hasText: 'Feedback' }).locator('.segmented-btn-active'),
-  ).toHaveText('Test');
+  feedback = await openPlaySheet();
+  await expect(feedback.locator('.segmented-btn-active')).toHaveText('Test');
   await shot(page, '23-settings-persisted-after-reload');
 });
 
