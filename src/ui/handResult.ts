@@ -37,6 +37,8 @@ export interface HandResult {
   /** Quiz only: the index label, shown under a correct answer. A miss
    *  already prints it as the reason. */
   label?: string;
+  /** #53 With-count flashcards: "Index: ..." or "No index here". */
+  indexNote?: string;
   /** Flashcards only: the spaced-repetition line, read after grading. */
   sr?: { text: string; box?: number } | null;
   /** #22: withdrawn with "Wrong tap", so it no longer counts anywhere. */
@@ -92,7 +94,7 @@ export function snapshotResult(
   id: number,
   event: GradedEvent,
   hand: { cards: Card[] | null; up: Rank; tc: number | null },
-  extra: Pick<HandResult, 'cellId' | 'progressLost' | 'note' | 'sr' | 'label'> = {},
+  extra: Pick<HandResult, 'cellId' | 'progressLost' | 'note' | 'sr' | 'label' | 'indexNote'> = {},
 ): HandResult {
   return {
     id,

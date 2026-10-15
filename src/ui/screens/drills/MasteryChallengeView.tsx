@@ -31,6 +31,9 @@ import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../../wron
 import { answerTooSoon } from '../../answerBounce';
 import { StudyChartOverlay } from '../../components/StudyChartOverlay';
 import { HandDeckControls } from './HandDeckControls';
+import { DealToggles } from './DealToggles';
+import { mulberry32 } from '../../../engine/cards';
+import { maybeFallback, FULL_CTX } from '../../../drills/fallbackHand';
 import { KEY_TO_ACTION } from '../Drills';
 import { focusSwallowsKey } from '../../keyboardFocus';
 
@@ -91,12 +94,25 @@ export function MasteryChallengeView({
   const storedCell = cellId ? CELLS.get(cellId) : undefined;
   // #18: a hard cell's cards are drawn for this position of the run, not the
   // one fixed composition the cell universe stores.
-  const cell = storedCell ? { ...storedCell, cards: presentedCards(storedCell, run) } : undefined;
+  const presented = storedCell ? { ...storedCell, cards: presentedCards(storedCell, run) } : undefined;
+  // #27: with Fallbacks on, some double/surrender cells are dealt with the
+  // double or surrender gone. Seeded by the run position like the cards, so
+  // a re-render (or a Wrong-tap revert) deals the same hand.
+  const fallback = presented
+    ? maybeFallback(
+        presented.cards,
+        presented.up,
+        activeProfile.rules,
+        mulberry32((run.seed ^ Math.imul(run.index + 1, 0x85ebca6b) ^ 0x27) | 0),
+        settings.drill.fallbacks === true,
+      )
+    : null;
+  const cell = presented && fallback ? { ...presented, cards: fallback.cards } : presented;
+  const cellCtx = fallback?.ctx;
   const complete = isMasteryRunComplete(run);
 
   const cellCorrectAction: Action | undefined = cell
-    ? correctPlay(cell.cards, cell.up, 0, { canDouble: true, canSplit: true, canSurrender: true }, activeProfile.rules)
-        .action
+    ? correctPlay(cell.cards, cell.up, 0, cellCtx ?? FULL_CTX, activeProfile.rules).action
     : undefined;
 
   // B1 (#8, #10, #17): the answered hand, frozen when it was graded. The run
@@ -129,11 +145,17 @@ export function MasteryChallengeView({
     if (!cell || complete || !cellCorrectAction) return;
     // Review fix (c): the second touch of a bounce lands on the next hand.
     if (answerTooSoon(promptShownAtRef.current)) return;
-    const gate = gateDrillAnswer(taken, cell.cards, activeProfile.rules, cell.up);
+    const gate = gateDrillAnswer(taken, cell.cards, activeProfile.rules, cell.up, cellCtx);
     if (!gate.accepted) return; // D3: refused answers never reach grading or the run
 
     const elapsedMs = performance.now() - promptShownAtRef.current;
-    const flashcardShapedCell = { cards: cell.cards, up: cell.up, correct: cellCorrectAction, cellId: cell.id };
+    const flashcardShapedCell = {
+      cards: cell.cards,
+      up: cell.up,
+      correct: cellCorrectAction,
+      cellId: cell.id,
+      ...(cellCtx ? { ctx: cellCtx } : {}),
+    };
     const { event, correct, cellBefore } = gradeMasteryAnswer(
       flashcardShapedCell,
       taken,
@@ -192,7 +214,7 @@ export function MasteryChallengeView({
       const action = KEY_TO_ACTION[e.key];
       if (!action || !cell) return;
       e.preventDefault();
-      if (gateDrillAnswer(action, cell.cards, activeProfile.rules, cell.up).accepted) handleAction(action);
+      if (gateDrillAnswer(action, cell.cards, activeProfile.rules, cell.up, cellCtx).accepted) handleAction(action);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -210,6 +232,7 @@ export function MasteryChallengeView({
 
       <div className="drill-inline-controls">
         <HandDeckControls settings={settings} onChange={changeScopes} />
+        <DealToggles settings={settings} onChange={onSettingsChange} />
         {/* "Check progress" (operator ask): always-visible, live count. */}
         <div className="mastery-progress" data-testid="mastery-progress">
           {run.index} / {run.order.length} cleared &middot; {deckLabel(deck)}
@@ -238,7 +261,7 @@ export function MasteryChallengeView({
         cell && (
           <>
             {/* #26: graded with surrender available wherever the rules offer it. */}
-            <RulesChip labels={rulesChipLabels({ canSurrender: true, canDouble: true }, activeProfile.rules, cell)} />
+            <RulesChip labels={rulesChipLabels(cellCtx ?? FULL_CTX, activeProfile.rules, cell)} />
             <div className="dealer-area">
               <PlayingCard card={{ rank: cell.up, suit: 's' }} />
             </div>
@@ -277,7 +300,7 @@ export function MasteryChallengeView({
             </div>
 
             <ActionBar
-              mode={{ kind: 'actions', legal: drillLegalActions(cell.cards, activeProfile.rules, cell.up), onAction: handleAction }}
+              mode={{ kind: 'actions', legal: drillLegalActions(cell.cards, activeProfile.rules, cell.up, cellCtx), onAction: handleAction }}
             />
           </>
         )

@@ -7,7 +7,10 @@ import type { Profile, Settings } from '../../store/types';
 import type { Action, DeviationId } from '../../engine/deviations';
 import { isIndexActive, indexSetFor } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
-import { drawFlashcard } from '../../drills/flashcards';
+import { drawFlashcard, flashCtx } from '../../drills/flashcards';
+import { flashOptionsFor } from '../../drills/flashOptions';
+import { indexLine } from '../../drills/withCount';
+import { DealToggles } from './drills/DealToggles';
 import { plainCellLabel } from '../../drills/cellLabel';
 import { formatReviewPlain } from '../../drills/srStatus';
 import { drillLegalActions, rulesChipLabels } from '../../drills/legalActions';
@@ -391,6 +394,11 @@ function FlashcardsView({
   // be a render behind -- and a stale previous cell silently boosts the wrong
   // neighbours, which no test would catch.
   const lastCellRef = useRef<string | null>(null);
+  // Eyes-free audio (Task 9): a per-session choice, shared across screens for
+  // the life of this page load (ui/eyesFreeSession.ts) rather than owned by
+  // each drill -- it used to reset on every navigation, which in a car reads
+  // as the app having gone silent for no reason.
+  const [eyesFree, setEyesFree] = useEyesFreeToggle('flashcards');
   // B2: a card from the deck `drill` describes (scope and deck source), or
   // null when that deck is empty -- HandDeckGate then replaces this view.
   const drawFrom = (drill: Settings['drill'], previous: string | null): Flashcard | null => {
@@ -405,6 +413,7 @@ function FlashcardsView({
       drill.flashByConfusability,
       previous,
       deck.weights,
+      flashOptionsFor(drill, eyesFree),
     );
   };
   const [card, setCard] = useState<Flashcard>(
@@ -420,11 +429,6 @@ function FlashcardsView({
     useHandResult();
   const audio = useAudio(settings.audio);
 
-  // Eyes-free audio (Task 9): a per-session choice, shared across screens for
-  // the life of this page load (ui/eyesFreeSession.ts) rather than owned by
-  // each drill -- it used to reset on every navigation, which in a car reads
-  // as the app having gone silent for no reason.
-  const [eyesFree, setEyesFree] = useEyesFreeToggle('flashcards');
   // Voice input. Per-session like eyes-free, and deliberately NOT persisted:
   // a setting that survives a reload would open the microphone on load, which
   // browsers refuse without a gesture anyway and which nobody should have to
@@ -556,6 +560,13 @@ function FlashcardsView({
     // answering out loud is not watching the screen, and an unspoken prompt
     // would leave them waiting for a question that never comes.
     if (!eyesFree && !voiceOn) return;
+    // #27 / #53: eyes-free switched on over a card dealt with a count or as a
+    // fallback. The prompt says neither, so deal a plain card instead of
+    // grading at a count the listener never heard.
+    if (eyesFree && !feedbackRef.current && (card.tc !== undefined || card.ctx)) {
+      next();
+      return;
+    }
     speak(narrateFlashcardPrompt(card.cards, card.up), speechOptsFrom(settings.audio, { interrupt }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card, eyesFree, voiceOn]);
@@ -682,8 +693,13 @@ function FlashcardsView({
       snapshotResult(
         nextResultId(),
         event,
-        { cards: card.cards, up: card.up, tc: null },
-        { cellId, sr: srText ? { text: srText, box: srCard?.box } : null },
+        { cards: card.cards, up: card.up, tc: card.tc ?? null },
+        {
+          cellId,
+          sr: srText ? { text: srText, box: srCard?.box } : null,
+          // #53: a With-count card says whether an index applied.
+          ...(card.tc !== undefined ? { indexNote: indexLine(event, activeProfile.rules) } : {}),
+        },
       ),
       event,
       // #22: a withdrawn answer puts the card's schedule back as well.
@@ -738,7 +754,7 @@ function FlashcardsView({
     // REFUSED and said out loud. Silence is indistinguishable from a dead app,
     // and letting it through would grade a play that cannot exist -- into
     // Stats and the spaced-repetition deck both.
-    const gate = gateDrillAnswer(zone, card.cards, activeProfile.rules, card.up);
+    const gate = gateDrillAnswer(zone, card.cards, activeProfile.rules, card.up, card.ctx);
     if (!gate.accepted) {
       speak(gate.announcement!, speechOptsFrom(settings.audio, { interrupt: true }));
       return;
@@ -995,7 +1011,7 @@ function FlashcardsView({
         // silent because the button is already visibly dark.
         if (eyesFree) {
           handleZoneAnswer(action);
-        } else if (gateDrillAnswer(action, card.cards, activeProfile.rules, card.up).accepted) {
+        } else if (gateDrillAnswer(action, card.cards, activeProfile.rules, card.up, card.ctx).accepted) {
           handleAction(action);
         }
         return;
@@ -1072,6 +1088,9 @@ function FlashcardsView({
           voiceStatus={voice.status}
           options={
             <>
+              {/* #27 / #53: set once, so folded with the other options --
+                  a row of its own pushed the answers off a 635px phone. */}
+              <DealToggles settings={settings} onChange={changeScopes} withCount />
               {/* V5-1/#52: interleaving pays most when confusable items land
                   back to back (Brunmair & Richter 2019). On, half the cards
                   are drawn only from the last hand's look-alikes. */}
@@ -1096,10 +1115,11 @@ function FlashcardsView({
       </div>
 
       {/* #26: the rules this card is graded under, before the answer. A
-          flashcard is a fresh two-card hand at the profile's table. */}
-      <RulesChip
-        labels={rulesChipLabels({ canSurrender: true, canDouble: true }, activeProfile.rules, card)}
-      />
+          flashcard is a fresh two-card hand at the profile's table, unless
+          (#27) it was dealt as a fallback: then "No double" / "No surrender". */}
+      {/* #53: a With-count card plays at this count. */}
+      {card.tc !== undefined && <div className="quiz-tc">TC {formatSigned(card.tc)}</div>}
+      <RulesChip labels={rulesChipLabels(flashCtx(card), activeProfile.rules, card)} />
 
       <div className="dealer-area">
         <PlayingCard card={{ rank: card.up, suit: 's' }} />
@@ -1205,13 +1225,13 @@ function FlashcardsView({
             onAnswer={handleZoneAnswer}
             onRepeat={handleRepeat}
             visible={!settings.audio.dimZones}
-            legal={drillLegalActions(card.cards, activeProfile.rules, card.up)}
+            legal={drillLegalActions(card.cards, activeProfile.rules, card.up, card.ctx)}
           />
         ) : (
           <ActionBar
             mode={{
               kind: 'actions',
-              legal: drillLegalActions(card.cards, activeProfile.rules, card.up),
+              legal: drillLegalActions(card.cards, activeProfile.rules, card.up, card.ctx),
               onAction: handleAction }}
           />
         )
@@ -2088,6 +2108,7 @@ function MixedSessionView({
   };
   const itemIndexRef = useRef(0);
   const mixedLastCellRef = useRef<string | null>(null);
+  const [eyesFree, setEyesFree] = useEyesFreeToggle('mixed-session');
 
   // V5-1: same confusable-neighbour bias as the flashcards drill. The chain is
   // over FLASHCARDS only -- a quiz item in between does not reset it, since the
@@ -2105,6 +2126,8 @@ function MixedSessionView({
       drill.flashByConfusability,
       mixedLastCellRef.current,
       deck.weights,
+      // #27: fallbacks only -- a Mixed flashcard is the no-count half.
+      { fallbacks: flashOptionsFor(drill, eyesFree).fallbacks },
     );
     mixedLastCellRef.current = drawn.cellId;
     return drawn;
@@ -2143,7 +2166,6 @@ function MixedSessionView({
     useHandResult();
   const audio = useAudio(settings.audio);
 
-  const [eyesFree, setEyesFree] = useEyesFreeToggle('mixed-session');
   // Voice and the wheel, on the same terms as the two standalone views. A
   // mixed session is the one an operator runs in the car for twenty minutes,
   // and it had neither.
@@ -2566,7 +2588,7 @@ function MixedSessionView({
   const gateCurrent = (taken: string) =>
     current.type === 'quiz'
       ? gateQuizAnswer(taken, current.item, strategyRulesFor(activeProfile))
-      : gateDrillAnswer(taken, handCards, activeProfile.rules, dealerUp);
+      : gateDrillAnswer(taken, handCards, activeProfile.rules, dealerUp, current.card.ctx);
 
   const openChartOn = (result: HandResult) => {
     setChartTarget(chartTargetFrom(result));
@@ -2613,6 +2635,8 @@ function MixedSessionView({
           voiceOn={voiceOn}
           onVoiceChange={setVoiceOn}
           voiceStatus={voice.status}
+          // #27: set once, folded away like the flashcards' options.
+          options={<DealToggles settings={settings} onChange={changeScopes} />}
         />
       </div>
 
@@ -2624,7 +2648,7 @@ function MixedSessionView({
         labels={
           current.type === 'quiz'
             ? quizRulesChip(current.item, strategyRulesFor(activeProfile))
-            : rulesChipLabels({ canSurrender: true, canDouble: true }, activeProfile.rules, current.card)
+            : rulesChipLabels(flashCtx(current.card), activeProfile.rules, current.card)
         }
       />
 
@@ -2712,7 +2736,7 @@ function MixedSessionView({
             legal={
               current.type === 'quiz'
                 ? quizLegalActions(current.item, strategyRulesFor(activeProfile))
-                : drillLegalActions(handCards ?? [], activeProfile.rules, dealerUp)
+                : drillLegalActions(handCards ?? [], activeProfile.rules, dealerUp, current.card.ctx)
             }
           />
         ) : isInsuranceItem ? (
@@ -2737,7 +2761,7 @@ function MixedSessionView({
               legal:
                 current.type === 'quiz'
                   ? quizLegalActions(current.item, strategyRulesFor(activeProfile))
-                  : drillLegalActions(handCards ?? [], activeProfile.rules, dealerUp),
+                  : drillLegalActions(handCards ?? [], activeProfile.rules, dealerUp, current.card.ctx),
               onAction: handleAnswer }}
           />
         )

@@ -856,3 +856,73 @@ describe('a quiz item answered by self-report', () => {
     expect(missed.classification).toBe('self-report');
   });
 });
+
+describe('#27 a fallback flashcard grades under its ctx', () => {
+  it('hard 11 v 5 as 2,4,5: hit is right, the event says so', () => {
+    const card: Flashcard = {
+      cards: [
+        { rank: '2', suit: 's' },
+        { rank: '4', suit: 'h' },
+        { rank: '5', suit: 'd' },
+      ],
+      up: '5',
+      correct: 'hit',
+      cellId: 'hard-11-v-5',
+      ctx: { canDouble: false, canSplit: false, canSurrender: false },
+    };
+    const hit = buildFlashcardEvent(card, 'hit', DEFAULT_RULES, 100);
+    expect(hit.correct).toBe(true);
+    expect(hit.correctAction).toBe('hit');
+    expect(buildFlashcardEvent(card, 'stand', DEFAULT_RULES, 100).correct).toBe(false);
+  });
+
+  it('8,8 v A with surrender off (Rp): split is right', () => {
+    const card: Flashcard = {
+      cards: [
+        { rank: '8', suit: 's' },
+        { rank: '8', suit: 'h' },
+      ],
+      up: 'A',
+      correct: 'split',
+      cellId: 'pair-8-v-A',
+      ctx: { canDouble: true, canSplit: true, canSurrender: false },
+    };
+    expect(buildFlashcardEvent(card, 'split', DEFAULT_RULES, 100).correct).toBe(true);
+    expect(buildFlashcardEvent(card, 'surrender', DEFAULT_RULES, 100).correct).toBe(false);
+  });
+});
+
+describe('#53 a With-count flashcard grades at its TC', () => {
+  const NO_LS = { ...DEFAULT_RULES, ls: false };
+  const card = (tc: number): Flashcard => ({
+    cards: [
+      { rank: '10', suit: 's' },
+      { rank: '6', suit: 'h' },
+    ],
+    up: '10',
+    correct: tc >= 0 ? 'stand' : 'hit',
+    cellId: 'hard-16-v-10',
+    tc,
+  });
+  it('16 v 10 at TC +1: stand is right and counts toward the index; hit is a missed deviation', () => {
+    const right = buildFlashcardEvent(card(1), 'stand', NO_LS, 100);
+    expect(right.correct).toBe(true);
+    expect(right.event.tc).toBe(1);
+    expect(right.event.deviationId).toBe('16v10');
+    const wrong = buildFlashcardEvent(card(1), 'hit', NO_LS, 100);
+    expect(wrong.event.classification).toBe('missed-deviation');
+  });
+  it('16 v 10 at TC -2: standing is a phantom deviation', () => {
+    const ev = buildFlashcardEvent(card(-2), 'stand', NO_LS, 100);
+    expect(ev.correct).toBe(false);
+    expect(ev.event.classification).toBe('phantom-deviation');
+    expect(ev.event.deviationId).toBeUndefined();
+  });
+  it('a card without a TC records no deviation even where the engine applies one at 0', () => {
+    const { tc: _tc, ...noCount } = card(0);
+    void _tc;
+    const ev = buildFlashcardEvent(noCount, 'stand', NO_LS, 100);
+    expect(ev.event.tc).toBe(0);
+    expect(ev.event.deviationId).toBeUndefined();
+  });
+});

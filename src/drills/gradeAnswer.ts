@@ -23,6 +23,7 @@ import { correctPlay, basicPlay } from '../engine/strategy';
 import type { StrategyRules } from '../engine/ruleset';
 import type { Action } from '../engine/deviations';
 import type { Flashcard } from './flashcards';
+import { flashCtx } from './flashcards';
 import type { QuizItem } from './deviationQuiz';
 import { quizCtxFor } from './deviationQuiz';
 import { reviewCard, isGapReview, SCREEN_CHANNEL } from './spacedRepetition';
@@ -213,8 +214,11 @@ export function buildFlashcardEvent(
   elapsedMs: number,
   source: EventSource = 'flashcard',
 ): { event: GradedEvent; correctAction: Action; correct: boolean } {
-  const ctx: PlayContext = { canDouble: true, canSplit: true, canSurrender: true };
-  const withCount = correctPlay(card.cards, card.up, 0, ctx, rules);
+  // #27: a fallback hand is graded with double/surrender gone; #53: a
+  // "With count" card at the count it showed. Both absent = as before.
+  const ctx: PlayContext = flashCtx(card);
+  const tc = card.tc ?? 0;
+  const withCount = correctPlay(card.cards, card.up, tc, ctx, rules);
   const basicOnly = basicPlay(card.cards, card.up, ctx, rules);
   // A timeout never reaches classifyAction, and neither does a self-report:
   // that function asks which of the five plays was chosen, and the answer in
@@ -227,7 +231,7 @@ export function buildFlashcardEvent(
         ? ({ classification: 'correct', correct: true } as const)
         : taken === SELF_REPORT_MISSED
           ? ({ classification: 'self-report', correct: false } as const)
-          : classifyAction(taken, withCount, basicOnly, card.cards, card.up, 0, rules);
+          : classifyAction(taken, withCount, basicOnly, card.cards, card.up, tc, rules);
 
   const event: GradedEvent = {
     kind: 'action',
@@ -243,7 +247,9 @@ export function buildFlashcardEvent(
     // both reading out "soft-20-v-A" where an explanation belongs. The cell
     // id is still carried as `hand`, which is what it actually is.
     reason: withCount.reason,
-    tc: 0,
+    tc,
+    // #53: a With-count card that hit an index counts toward that index.
+    ...(card.tc !== undefined && withCount.deviationId ? { deviationId: withCount.deviationId } : {}),
     hand: card.cellId,
     // #30: omitted, not zeroed, for an idle answer -- see idleAnswer.ts.
     ...elapsedField(elapsedMs, taken),

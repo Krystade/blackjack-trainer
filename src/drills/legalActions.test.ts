@@ -138,3 +138,23 @@ describe('#11: surrender on soft hands and pairs', () => {
     expect(withheld).toBeGreaterThan(1000);
   });
 });
+
+describe('#27 drillLegalActions under a fallback ctx', () => {
+  it('a three-card hand offers only hit and stand; a no-surrender pair keeps split', () => {
+    const three = [
+      { rank: '2', suit: 's' },
+      { rank: '4', suit: 'h' },
+      { rank: '5', suit: 'd' },
+    ] as const;
+    expect(
+      drillLegalActions([...three], DEFAULT_RULES, '5', { canDouble: false, canSplit: false, canSurrender: false }),
+    ).toEqual(['hit', 'stand']);
+    const eights = [
+      { rank: '8', suit: 's' },
+      { rank: '8', suit: 'h' },
+    ] as const;
+    const noSur = drillLegalActions([...eights], DEFAULT_RULES, 'A', { canDouble: true, canSplit: true, canSurrender: false });
+    expect(noSur).toContain('split');
+    expect(noSur).not.toContain('surrender');
+  });
+});

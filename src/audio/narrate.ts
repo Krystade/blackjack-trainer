@@ -464,7 +464,7 @@ export function narrateShuffle(): string {
   return 'Shuffling.';
 }
 
-function narrateHandTotalPhrase(cards: [Card, Card]): string {
+function narrateHandTotalPhrase(cards: Card[]): string {
   if (isPair(cards)) {
     const rank = pairRank(cards)!;
     return `a pair of ${RANK_PLURAL[rank]}`;
@@ -492,14 +492,14 @@ function narrateHandTotalPhrase(cards: [Card, Card]): string {
  * the clip manifests key on (see clips.ts's comma-split cascade), so this
  * phrasing stays clip-playable.
  */
-export function narrateHandPhrase(cards: [Card, Card]): string {
+export function narrateHandPhrase(cards: Card[]): string {
   if (!isPair(cards) && handValue(cards).soft) {
     return cards.map((card) => narrateRank(card.rank)).join(', ');
   }
   return narrateHandTotalPhrase(cards);
 }
 
-export function narrateFlashcardPrompt(cards: [Card, Card], up: Rank): string {
+export function narrateFlashcardPrompt(cards: Card[], up: Rank): string {
   return `You have ${narrateHandPhrase(cards)}. ${narrateDealerUp(up)}`;
 }
 

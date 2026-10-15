@@ -1,6 +1,9 @@
 import type { Card, Rank } from '../engine/cards';
 import { mulberry32 } from '../engine/cards';
 import { correctPlay } from '../engine/strategy';
+import type { PlayContext } from '../engine/strategy';
+import { FULL_CTX, maybeFallback } from './fallbackHand';
+import { drawCountTc } from './withCount';
 import type { Action } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import type { StrategyRules } from '../engine/ruleset';
@@ -13,10 +16,26 @@ import { filterCellsByScopes } from './handScope';
 import type { HandScope } from './handScope';
 
 export interface Flashcard {
-  cards: [Card, Card];
+  /** Two cards, or (#27) three for a fallback hand. */
+  cards: Card[];
   up: Rank;
   correct: Action;
   cellId: string;
+  /** #27: what the hand may do. Absent = everything (a fresh two-card hand). */
+  ctx?: PlayContext;
+  /** #53: the true count shown and graded at. Absent = no count (TC 0). */
+  tc?: number;
+}
+
+/** The ctx a flashcard is graded and offered under. */
+export function flashCtx(card: Pick<Flashcard, 'ctx'>): PlayContext {
+  return card.ctx ?? FULL_CTX;
+}
+
+/** #27 / #53: optional extras for a draw. Both off = the draw is unchanged. */
+export interface FlashOptions {
+  fallbacks?: boolean;
+  withCount?: boolean;
 }
 
 /**
@@ -133,6 +152,7 @@ export function drawFlashcard(
   byConfusability = false,
   previousCellId: string | null = null,
   deckWeights: ReadonlyMap<string, number> | null = null,
+  options: FlashOptions = {},
 ): Flashcard {
   const rng = mulberry32(seed ?? Date.now());
 
@@ -170,23 +190,25 @@ export function drawFlashcard(
     : null;
   const cell: Cell = varied ? { ...baseCell, cards: varied } : baseCell;
 
+  // #27: sometimes the hand is dealt so double/surrender is gone. Draws
+  // nothing from the rng when off, so the rest of the draw is unchanged.
+  const fallback = maybeFallback(cell.cards, cell.up, rules, rng, options.fallbacks === true);
+  const cards = fallback ? fallback.cards : cell.cards;
+  const ctx = fallback ? fallback.ctx : FULL_CTX;
+
+  // #53: a count to play the hand at, biased toward its index. Drawn only
+  // when on, after everything else, so the rest of the draw is unchanged.
+  const tc = options.withCount ? drawCountTc(cards, cell.up, ctx, rules, rng) : undefined;
+
   // Get correct action
-  const advice = correctPlay(
-    cell.cards,
-    cell.up,
-    0,
-    {
-      canDouble: true,
-      canSplit: true,
-      canSurrender: true,
-    },
-    rules,
-  );
+  const advice = correctPlay(cards, cell.up, tc ?? 0, ctx, rules);
 
   return {
-    cards: cell.cards as [Card, Card],
+    cards,
     up: cell.up,
     correct: advice.action,
     cellId: cell.id,
+    ...(fallback ? { ctx } : {}),
+    ...(tc !== undefined ? { tc } : {}),
   };
 }

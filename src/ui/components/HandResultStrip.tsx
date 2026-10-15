@@ -12,6 +12,7 @@ import {
 } from '../handResult';
 import './handResultStrip.css';
 import './wrongTap.css';
+import './handResultIndex.css';
 
 /**
  * B1 `HandResultStrip`: the previous hand's result, shown while the next hand
@@ -56,12 +57,20 @@ export function HandResultStrip({
     </div>
   ) : null;
 
+  // #53: whether an index applied, right or wrong.
+  const indexNote = result.indexNote ? (
+    <div className="hand-result-index" data-testid="hand-result-index">
+      {result.indexNote}
+    </div>
+  ) : null;
+
   if (result.correct) {
     return (
       <ResultStrip id={result.id} tone="ok">
         <div className="hand-result" data-cell-id={result.cellId} data-result-id={result.id}>
           <div className="hand-result-ok result-correct">{correctLine(result)}</div>
           {result.label && <div className="hand-result-label quiz-label">{result.label}</div>}
+          {indexNote}
           {/* Right or wrong, the table this was asked for is worth saying. */}
           {result.note && <p className="hand-result-note quiz-table-note">{result.note}</p>}
           {sr}
@@ -104,6 +113,7 @@ export function HandResultStrip({
             Right play <strong data-testid="hand-result-expected">{resultPlayLabel(result.expected)}</strong>
           </span>
         </div>
+        {indexNote}
         <div className="hand-result-foot">
           <p className="hand-result-reason">
             {copy && <span className="hand-result-class">{copy.label}. </span>}
