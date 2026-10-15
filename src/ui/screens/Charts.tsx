@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { TabSettingsButton } from '../components/TabSettingsButton';
 import './charts.css';
 import './chartIndexes.css';
@@ -7,7 +8,7 @@ import type { Profile } from '../../store/types';
 import { getChart } from '../../engine/charts';
 import { FloatingBackPill } from '../components/FloatingBackPill';
 import { strategyRulesFor } from '../../store/profiles';
-import { indexList } from './indexChart';
+import { indexList, indexesAtCell } from './indexChart';
 import type { IndexEntry } from './indexChart';
 import {
   ACTION_LEGEND,
@@ -48,6 +49,35 @@ const SECTIONS: readonly { id: ChartSection; title: string; blurb: string }[] = 
 ];
 
 const LEGEND_TEXT = new Map(ACTION_LEGEND.map((entry) => [entry.code, entry.label]));
+
+/**
+ * Where a column's centre sits across the full table width, for the caret on
+ * the index note. Mirrors charts.css's B4 tracks: a 15% label column, then ten
+ * 8.5% dealer columns.
+ */
+function columnCentre(i: number): string {
+  return `${15 + (i + 0.5) * 8.5}%`;
+}
+
+/** One index line, as in the Indexes list: '16 v 10 · TC ≥ 0 · Stand'. */
+function IndexLine({ entry }: { entry: IndexEntry }) {
+  return (
+    <>
+      {/* The separators are real text, hidden from sight, so the line reads
+          (and copies) as "16 v 10 · TC ≥ 0 · Stand" while the eye gets three
+          aligned columns. */}
+      <span className="index-hand">
+        {entry.hand} <span className="index-v">v</span> {entry.dealer}
+      </span>
+      <span className="index-sep"> · </span>
+      <span className="index-tc">{entry.index}</span>
+      <span className="index-sep"> · </span>
+      <span className="index-play" data-family={entry.family}>
+        {entry.play}
+      </span>
+    </>
+  );
+}
 
 const INDEX_GROUPS: readonly { id: IndexEntry['group']; title: string }[] = [
   { id: 'illustrious', title: 'Illustrious 18' },
@@ -159,6 +189,45 @@ export function Charts({
 
   const cellRef = useRef<HTMLTableCellElement | null>(null);
 
+  /*
+   * #23: the one index note open on the grid, keyed `rowId:up`, or null.
+   *
+   * An inline row under the tapped cell's row rather than a floating popover:
+   * it pushes the rows below down instead of covering them, so the cells
+   * either side of the one being read stay visible -- the same reason the
+   * highlight never dims its neighbours. One open at a time.
+   */
+  const [openIndexCell, setOpenIndexCell] = useState<string | null>(null);
+  const indexNoteId = useId();
+
+  useEffect(() => {
+    if (!openIndexCell) return;
+    // Any tap outside the note and the marked cells closes it. Capture phase,
+    // so a tap that lands on something else (Back, the order toggle) still
+    // does its own job as well. A tap on another marked cell is left to that
+    // cell's click, which moves the note there.
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest('.chart-index-note, [data-index-cell]')) return;
+      setOpenIndexCell(null);
+    };
+    // Escape closes it and puts focus back on the cell that opened it.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const opener = [...document.querySelectorAll<HTMLElement>('[data-index-cell]')].find(
+        (el) => el.dataset.indexCell === openIndexCell,
+      );
+      setOpenIndexCell(null);
+      opener?.focus();
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [openIndexCell]);
+
   const chooseOrder = (next: RowOrder) => {
     setOrder(next);
     try {
@@ -211,8 +280,9 @@ export function Charts({
           reached from corrections, including the deviations that contradict
           the cell being rung. */}
       <p className="charts-provenance">
-        The basic strategy chart the trainer grades you against. Count-based deviations (index
-        plays) are listed under Indexes, below the charts.
+        The basic strategy chart the trainer grades you against. A cell with a corner mark has a
+        count index that can change it: tap the cell to see it. Every index is listed under
+        Indexes, below the charts.
       </p>
       {note && <p className="charts-note">{note}</p>}
 
@@ -254,6 +324,12 @@ export function Charts({
           A second letter is the play to make when the first isn&rsquo;t allowed. Those cells have a
           stripe down the left edge.
         </p>
+        <p className="chart-legend-note chart-legend-mark">
+          <span className="chart-code chart-code-indexed" data-action="S" aria-hidden="true">
+            S
+          </span>
+          <span>A corner mark means the count can change that cell. Tap it to see the index.</span>
+        </p>
       </div>
 
       {rowsBySection.map((section) => (
@@ -293,35 +369,82 @@ export function Charts({
                 <tbody>
                   {section.rows.map((row) => {
                     const rowHit = isHighlighted(row, section.id, activeHighlight);
+                    const noteUp = DEALER_UPCARDS.findIndex((up) => openIndexCell === `${row.id}:${up}`);
+                    const noteEntries =
+                      noteUp >= 0 ? indexesAtCell(indexes.entries, section.id, row, DEALER_UPCARDS[noteUp]) : [];
                     return (
-                      <tr key={row.id} data-row={row.id}>
-                        <th scope="row" className="chart-rowlabel">
-                          {row.label}
-                        </th>
-                        {row.actions.map((action, i) => {
-                          const up = DEALER_UPCARDS[i];
-                          const hit = rowHit && activeHighlight!.dealerUp === up;
-                          return (
-                            <td
-                              key={up}
-                              className="chart-cell"
-                              data-action={action}
-                              data-up={up}
-                              data-highlight={hit ? 'true' : undefined}
-                              // aria-current, not an extra hidden span: a cell's
-                              // text content must stay exactly its code, so any
-                              // reader (or test) can take it at face value.
-                              aria-current={hit ? 'true' : undefined}
-                              ref={hit ? cellRef : undefined}
-                              title={`${row.label} vs dealer ${up}: ${LEGEND_TEXT.get(action) ?? action}${
-                                hit ? ' — your hand' : ''
-                              }`}
-                            >
-                              {action}
+                      <Fragment key={row.id}>
+                        <tr data-row={row.id}>
+                          <th scope="row" className="chart-rowlabel">
+                            {row.label}
+                          </th>
+                          {row.actions.map((action, i) => {
+                            const up = DEALER_UPCARDS[i];
+                            const hit = rowHit && activeHighlight!.dealerUp === up;
+                            const cellKey = `${row.id}:${up}`;
+                            const indexed = indexesAtCell(indexes.entries, section.id, row, up).length > 0;
+                            const open = openIndexCell === cellKey;
+                            const description = `${row.label} vs dealer ${up}: ${LEGEND_TEXT.get(action) ?? action}`;
+                            return (
+                              <td
+                                key={up}
+                                className="chart-cell"
+                                data-action={action}
+                                data-up={up}
+                                data-highlight={hit ? 'true' : undefined}
+                                data-index={indexed ? 'true' : undefined}
+                                // aria-current, not an extra hidden span: a cell's
+                                // text content must stay exactly its code, so any
+                                // reader (or test) can take it at face value.
+                                aria-current={hit ? 'true' : undefined}
+                                ref={hit ? cellRef : undefined}
+                                title={`${description}${indexed ? ' — has a count index' : ''}${
+                                  hit ? ' — your hand' : ''
+                                }`}
+                              >
+                                {indexed ? (
+                                  // #23: only an indexed cell is a control, and its
+                                  // text is still exactly the code.
+                                  <button
+                                    type="button"
+                                    className="chart-cell-btn"
+                                    data-index-cell={cellKey}
+                                    aria-expanded={open}
+                                    aria-controls={open ? indexNoteId : undefined}
+                                    aria-label={`${description}. Show its count index`}
+                                    onClick={() => setOpenIndexCell(open ? null : cellKey)}
+                                  >
+                                    {action}
+                                  </button>
+                                ) : (
+                                  action
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                        {noteEntries.length > 0 && (
+                          <tr className="chart-index-note-row">
+                            <td colSpan={DEALER_UPCARDS.length + 1} className="chart-index-note-cell">
+                              <div
+                                className="chart-index-note"
+                                id={indexNoteId}
+                                role="note"
+                                data-testid="chart-index-note"
+                                style={{ '--caret': columnCentre(noteUp) } as CSSProperties}
+                              >
+                                <ul className="index-list">
+                                  {noteEntries.map((e) => (
+                                    <li className="index-item" key={e.id} data-index-id={e.id}>
+                                      <IndexLine entry={e} />
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
                             </td>
-                          );
-                        })}
-                      </tr>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -355,18 +478,7 @@ export function Charts({
               <ul className="index-list">
                 {entries.map((e) => (
                   <li className="index-item" key={e.id} data-index-id={e.id}>
-                    {/* The separators are real text, hidden from sight, so the
-                        line reads (and copies) as "16 v 10 · TC ≥ 0 · Stand"
-                        while the eye gets three aligned columns. */}
-                    <span className="index-hand">
-                      {e.hand} <span className="index-v">v</span> {e.dealer}
-                    </span>
-                    <span className="index-sep"> · </span>
-                    <span className="index-tc">{e.index}</span>
-                    <span className="index-sep"> · </span>
-                    <span className="index-play" data-family={e.family}>
-                      {e.play}
-                    </span>
+                    <IndexLine entry={e} />
                   </li>
                 ))}
               </ul>

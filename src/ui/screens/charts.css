@@ -574,6 +574,10 @@ body:has(.charts-screen) .mute-btn {
   position: absolute;
   inset: -2px;
   z-index: 1;
+  /* Decoration only. Sitting over the cell, it would otherwise swallow the
+     tap on an indexed cell (#23) -- and the ringed cell in the study overlay
+     is very often one (16 v 10). */
+  pointer-events: none;
   border: 2px solid #ffffff;
   border-radius: 5px;
   box-shadow:

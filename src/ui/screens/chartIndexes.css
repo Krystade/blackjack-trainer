@@ -123,3 +123,90 @@
   box-shadow: inset 0 0 0 1px var(--brass);
   color: var(--brass);
 }
+
+/* ---------- the index markers on the grid ---------- */
+
+/*
+ * A small triangle in the cell's top-right corner, in the cell's own ink
+ * (currentColor), so it reads on every action colour in every theme without a
+ * colour of its own. The left edge already carries the fallback sliver and the
+ * whole box the highlight ring; the corner was the free spot.
+ */
+.chart-cell[data-index='true']::before,
+.chart-code-indexed::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+  pointer-events: none;
+}
+
+.chart-code-indexed {
+  position: relative;
+}
+
+.chart-legend-mark {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+/* The indexed cell's control: the whole cell, looking exactly like the cell. */
+.chart-cell-btn {
+  display: block;
+  width: 100%;
+  height: 2rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* In the cell's own ink, like the marker: brass vanishes on a stand cell in
+   Bone & Ink, and the ink is the one colour every cell contrasts with. */
+.chart-cell-btn:focus-visible,
+.chart-cell-btn[aria-expanded='true'] {
+  outline: 2px solid currentColor;
+  outline-offset: -4px;
+}
+
+/* ---------- the note under a tapped cell's row ---------- */
+
+.chart-table td.chart-index-note-cell {
+  padding: 0 0 0.3rem;
+  background: var(--surface);
+}
+
+.chart-index-note {
+  position: relative;
+  margin-top: 7px;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid var(--brass);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  text-align: left;
+}
+
+/* Points up at the tapped column. */
+.chart-index-note::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: var(--caret, 50%);
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid var(--brass);
+  border-left: 1px solid var(--brass);
+  background: var(--surface-raised);
+  transform: translateX(-50%) rotate(45deg);
+}
