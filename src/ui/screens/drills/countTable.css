@@ -1,0 +1,12 @@
+/* #47: a count-drill table round, laid out like Play (dealer above, seats
+   below). Seats run right to left as at the table: P1 is first base. */
+.count-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.count-table .count-table-seats {
+  flex-direction: row-reverse;
+}
