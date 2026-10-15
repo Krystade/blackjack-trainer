@@ -588,7 +588,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       const bankrollDelta = game.bankroll - game.cfg.bankrollStart;
 
       const stats = loadStats();
-      const updated = applyEvents(stats, events);
+      const updated = applyEvents(stats, events, new Date().toISOString());
       updated.sessions.push({
         date: now,
         rounds: game.roundNo,

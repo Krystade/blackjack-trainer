@@ -14,12 +14,10 @@
  * top of the returned GradedEvent.
  */
 
-import type { GradedEvent, EventSource, MistakeClass } from '../engine/grade';
+import { priceMistake as enginePriceMistake } from '../engine/mistakeCost';
+import type { GradedEvent, EventSource } from '../engine/grade';
 import { classifyAction, actionCategory, classifyInsurance } from '../engine/grade';
-import { actionEvs, evCostBetween } from '../engine/handEv';
 import type { Card, Rank } from '../engine/cards';
-import type { Advice } from '../engine/strategy';
-import type { EvAction } from '../engine/handEv';
 import type { PlayContext } from '../engine/strategy';
 import { correctPlay, basicPlay } from '../engine/strategy';
 import type { StrategyRules } from '../engine/ruleset';
@@ -188,20 +186,9 @@ export function cellCategory(cellId: string, correct: Action): 'hard' | 'soft' |
  * threshold, and a count-blind engine prices that at neutral-count weights, which
  * overstates what it actually cost at the count they were at.
  */
-function priceMistake(
-  cards: Card[],
-  up: Rank,
-  ctx: PlayContext,
-  rules: StrategyRules,
-  expected: Advice,
-  taken: string,
-  classification: MistakeClass,
-): number | undefined {
-  if (classification !== 'basic-error') return undefined;
-  const evs = actionEvs(cards, up, ctx, rules);
-  const cost = evCostBetween(evs, expected.action as EvAction, taken as EvAction);
-  return cost ?? undefined;
-}
+// The engine owns the one implementation (engine/mistakeCost.ts), so Play
+// and the drills price a basic error identically (#25).
+const priceMistake = enginePriceMistake;
 
 /**
  * #30: the event's `elapsedMs` field, or no field at all for an answer slower
