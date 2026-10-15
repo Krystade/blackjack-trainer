@@ -54,6 +54,17 @@ export interface Settings {
     custom?: CustomSelection;
     // #31: a coloured dot per chart cell, set by long-pressing a card.
     markers?: Record<string, MarkerColour>;
+    // #27: deal 3-card versions of double/surrender cells (~15%) so the
+    // answer is the fallback (Dh -> hit, Ds -> stand, Rh/Rs/Rp). Absent = off.
+    fallbacks?: boolean;
+    // #53: flashcards show a true count and grade with correctPlay. Absent = off.
+    withCount?: boolean;
+    // #15/#19: the Speed drill's question. Absent = 'surrender'.
+    speedMode?: 'surrender' | 'deviation' | 'double' | 'split';
+    // #47: count drill "Table" mode -- whole rounds laid out like Play.
+    // Absent = off; run length then counts rounds (countTableRounds, default 10).
+    countTableMode?: boolean;
+    countTableRounds?: number;
     countGroup: 1 | 2 | 3;
     countIntervalMs: number;
     countLengthCards: number;

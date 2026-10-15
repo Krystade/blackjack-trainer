@@ -1,4 +1,5 @@
 ﻿import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { SpeedDrillView } from './drills/SpeedDrillView';
 import { TabSettingsButton } from '../components/TabSettingsButton';
 import { strategyRulesFor } from '../../store/profiles';
 import type { Screen } from '../App';
@@ -2775,7 +2776,8 @@ type DrillMode =
   | 'betsitleave'
   | 'producetc'
   | 'mastery'
-  | 'custom';
+  | 'custom'
+  | 'speed';
 
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
   const [mode, setMode] = useState<'picker' | DrillMode>('picker');
@@ -2879,6 +2881,12 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       />,
     );
   }
+  if (mode === 'speed') {
+    return (
+      <SpeedDrillView settings={settings} onSettingsChange={onSettingsChange} onBack={() => setMode('picker')} />
+    );
+  }
+
   if (mode === 'custom') {
     // #9 / B2: paint a selection, then run a hand drill on it.
     return (
@@ -2969,6 +2977,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         {entry('mixed', 'Mixed', 'Basic-strategy and index hands shuffled together, so you learn when the count matters.', true)}
         {entry('mastery', 'Mastery challenge', 'Every basic-strategy hand once, with no mistakes. One miss starts the sweep over.')}
         {entry('custom', 'Custom', 'Paint the chart cells you want, then drill just those in Flashcards, Mastery or Mixed.')}
+        {entry('speed', 'Speed', 'Yes or no, against the clock: Surrender? Deviation here? Double? Split?')}
 
         <h2 className="drills-group-title">Under pressure</h2>
         {entry('betsitleave', 'Bet or sit', 'From the true count and the shoe, choose to bet or sit out.', true)}
