@@ -1,7 +1,7 @@
 import type { Stats } from '../../store/types';
 import { ILLUSTRIOUS_18 } from '../../engine/deviations';
 import { hydrateMasteryRun, isMasteryRunComplete } from '../../drills/masteryChallenge';
-import type { PersistedMasteryRun } from '../../drills/masteryChallenge';
+import type { MasteryRun, PersistedMasteryRun } from '../../drills/masteryChallenge';
 import { generateAllCells } from '../../drills/flashcards';
 
 /**
@@ -53,7 +53,12 @@ const HAND_CATEGORIES = [
  */
 export function masterySweepDone(saved: PersistedMasteryRun | null): boolean {
   const run = hydrateMasteryRun(saved);
-  if (!run || !isMasteryRunComplete(run)) return false;
+  return run ? isWholeChartSweep(run) : false;
+}
+
+/** A finished run that covered every chart cell. */
+export function isWholeChartSweep(run: MasteryRun): boolean {
+  if (!isMasteryRunComplete(run)) return false;
   const all = generateAllCells().map((c) => c.id);
   const inRun = new Set(run.order);
   return all.length === inRun.size && all.every((id) => inRun.has(id));

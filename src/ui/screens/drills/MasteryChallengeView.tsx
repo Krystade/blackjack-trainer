@@ -36,6 +36,8 @@ import { mulberry32 } from '../../../engine/cards';
 import { maybeFallback, FULL_CTX } from '../../../drills/fallbackHand';
 import { KEY_TO_ACTION } from '../Drills';
 import { focusSwallowsKey } from '../../keyboardFocus';
+import { isWholeChartSweep } from '../nextStep';
+import { loadStats, saveStats } from '../../../store/persist';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -197,6 +199,12 @@ export function MasteryChallengeView({
     // #29: a miss reshuffles by the SR weights as they stand now.
     const nextRun = advanceMasteryRun(run, correct, randomSeed(), correct ? undefined : srWeightsNow());
     setRun(nextRun);
+    // #28: remember a finished whole-chart sweep; the saved run forgets it
+    // the moment the next sweep starts.
+    if (correct && isWholeChartSweep(nextRun)) {
+      const s = loadStats();
+      saveStats({ ...s, masterySweepsCompleted: (s.masterySweepsCompleted ?? 0) + 1 });
+    }
     promptShownAtRef.current = performance.now();
     releaseAnswerFocus();
   };

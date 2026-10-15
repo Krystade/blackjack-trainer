@@ -1,4 +1,5 @@
 ﻿import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { takeDrillLaunch } from '../drillLaunch';
 import { SpeedDrillView } from './drills/SpeedDrillView';
 import { TabSettingsButton } from '../components/TabSettingsButton';
 import { strategyRulesFor } from '../../store/profiles';
@@ -2804,7 +2805,9 @@ type DrillMode =
   | 'speed';
 
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
-  const [mode, setMode] = useState<'picker' | DrillMode>('picker');
+  // #28: Home's Next step can hand over the drill to open.
+  const [launch] = useState(() => takeDrillLaunch());
+  const [mode, setMode] = useState<'picker' | DrillMode>(() => launch ?? 'picker');
   // Every mode is a new screen: start it at the top, not at the picker's
   // scroll offset (the Custom editor opened mid-grid with its header hidden).
   useEffect(() => {
@@ -2907,7 +2910,12 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   }
   if (mode === 'speed') {
     return (
-      <SpeedDrillView settings={settings} onSettingsChange={onSettingsChange} onBack={() => setMode('picker')} />
+      <SpeedDrillView
+        settings={settings}
+        activeProfile={activeProfile}
+        onSettingsChange={onSettingsChange}
+        onBack={() => setMode('picker')}
+      />
     );
   }
 
@@ -2916,6 +2924,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     return (
       <CustomDrillEditor
         settings={settings}
+        autoOnOpen={launch === 'custom'}
         onSettingsChange={onSettingsChange}
         onStart={(drill) => {
           const next = settingsForCustomStart(settings);

@@ -39,7 +39,9 @@ export function Home({ onNavigate, activeProfile }: HomeProps) {
   const r = readiness(stats);
   const weak = weakestCategories(stats);
   // #28: one recommendation, with its reason.
-  const step = nextStep(stats, { sweepDone: masterySweepDone(loadMasteryRun()) });
+  const step = nextStep(stats, {
+    sweepDone: (stats.masterySweepsCompleted ?? 0) > 0 || masterySweepDone(loadMasteryRun()),
+  });
   const openStep = () => {
     if (step.kind === 'play') {
       onNavigate('table');

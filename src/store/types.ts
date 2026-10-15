@@ -483,6 +483,9 @@ export interface Stats {
   // #22: answers withdrawn with "Wrong tap". The graded event itself is
   // removed; this counter keeps the habit visible. Absent = 0.
   misclicks?: number;
+  // #28: whole-chart Mastery sweeps finished. The saved run alone forgets a
+  // finished sweep as soon as the next one starts. Absent = 0.
+  masterySweepsCompleted?: number;
   // B3 (spec 2026-10-13): per-cell accuracy, keyed by chart cellId, written
   // by every hand drill and Play. `lastAt` is an ISO date. Absent = no data.
   cellStats?: Record<string, { right: number; wrong: number; lastAt: string }>;

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './customDrillEditor.css';
 import type { CustomSelection, SelectionTier, Settings } from '../../store/types';
 import type { RuleSet } from '../../engine/ruleset';
@@ -59,6 +59,7 @@ export function CustomDrillEditor({
   onStart,
   onBack,
   rules,
+  autoOnOpen = false,
 }: {
   settings: Settings;
   onSettingsChange: (next: Settings) => void;
@@ -66,6 +67,8 @@ export function CustomDrillEditor({
   onBack: () => void;
   /** The chart the cells are coloured from; defaults to the active profile's. */
   rules?: RuleSet;
+  /** #28: opened from Home's "Fix weak cells" -- apply Auto once on open. */
+  autoOnOpen?: boolean;
 }) {
   const saved = settings.drill.custom;
   const base = useMemo<CustomSelection>(
@@ -117,6 +120,13 @@ export function CustomDrillEditor({
     const tiers = autoTiers(ALL_PAINT_CELL_IDS, loadStats().cellStats, selection.painted, selection.tiers);
     commit({ ...selection, tiers });
   };
+  const autoApplied = useRef(false);
+  useEffect(() => {
+    if (!autoOnOpen || autoApplied.current) return;
+    autoApplied.current = true;
+    auto();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on open
+  }, [autoOnOpen]);
 
   return (
     <div className="drill-screen cde">
