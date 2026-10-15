@@ -71,3 +71,30 @@ export function clockGap(
           : 'The clock is costing you nothing measurable.',
   };
 }
+
+/**
+ * #25: units of the base bet, to as many places as the number needs. Two
+ * places hide most basic-strategy mistakes (a soft 18 v 2 stand is 0.004 u),
+ * and a priced mistake printed as "0.00" reads as free.
+ */
+export function formatUnits(units: number): string {
+  if (units === 0) return '0';
+  if (units < 0.001) return '<0.001';
+  return units < 0.1 ? units.toFixed(3) : units.toFixed(2);
+}
+
+/**
+ * A priced mistake's hand, as the chart names it: "16 v 10", "Soft 18 v 2",
+ * "8,8 v 10". Anything that is not a cell id (an old quiz label) is printed
+ * as it was stored; a row with no hand says so.
+ */
+export function costHandLabel(hand: string | undefined): string {
+  if (!hand) return 'Unidentified hand';
+  const m = /^(hard|soft|pair)-([0-9]+|A)-v-([0-9]+|A)$/.exec(hand);
+  if (!m) return hand;
+  const [, kind, value, up] = m;
+  // "8,8 v 10" is how a pair is written everywhere else in the app, and it
+  // sidesteps pluralising "a pair of As".
+  if (kind === 'pair') return `${value},${value} v ${up}`;
+  return kind === 'soft' ? `Soft ${value} v ${up}` : `${value} v ${up}`;
+}

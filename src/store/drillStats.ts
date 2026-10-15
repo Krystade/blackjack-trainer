@@ -9,6 +9,8 @@
  * trivially unit-testable pure function of its argument.
  */
 
+import { cellIdForHand } from './cellStats';
+
 /** Accuracy summary for any drill history whose entries carry a `correct` flag. */
 export interface AccuracySummary {
   attempts: number;
@@ -197,13 +199,17 @@ export interface EvCostSummary {
 
 export function evCostSummary(
   history: { hand?: string; taken: string; expected: string; units: number }[],
-  limit = 5,
+  limit = Infinity,
 ): EvCostSummary {
   const groups = new Map<string, EvCostRow>();
   let unitsTotal = 0;
 
-  for (const entry of history) {
-    unitsTotal += entry.units;
+  for (const raw of history) {
+    unitsTotal += raw.units;
+    // #25: grouped by CHART CELL, so a 9,7 v 10 at the table, a 10,6 v 10 in
+    // the quiz and the hard-16-v-10 flashcard are one habit, not three rows.
+    // A hand that names no cell keeps its own identity.
+    const entry = { ...raw, hand: cellIdForHand(raw.hand) ?? raw.hand };
     const key = `${entry.hand ?? ''}|${entry.expected}|${entry.taken}`;
     const row = groups.get(key);
     if (row) {
@@ -237,6 +243,6 @@ export function evCostSummary(
     priced: history.length,
     unitsTotal,
     meanUnits: history.length === 0 ? null : unitsTotal / history.length,
-    worst: worst.slice(0, limit),
+    worst: Number.isFinite(limit) ? worst.slice(0, limit) : worst,
   };
 }

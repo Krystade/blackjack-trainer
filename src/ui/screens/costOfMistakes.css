@@ -1,0 +1,33 @@
+/* #25 Cost of mistakes: the header's running total and the "Show all" toggle.
+   The rows reuse .mistake-list / .mistake-row from app.css. */
+
+/* One flex child of the <summary>, so the total sits beside the title rather
+   than being spread to the middle by the summary's space-between. */
+.cost-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.6rem;
+  row-gap: 0.15rem;
+}
+
+.cost-head-meta {
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-show-all {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}

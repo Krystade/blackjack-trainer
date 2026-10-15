@@ -381,7 +381,7 @@ test('the cost of mistakes is ranked by total units, not by how bad each one loo
 
   const section = page.locator('.stats-section', { hasText: 'Cost of mistakes' });
   await expect(section).toBeVisible();
-  await expect(section).toContainText('21 priced mistakes');
+  await expect(section).toContainText('21 mistakes');
 
   const rows = section.locator('.mistake-row');
   await expect(rows).toHaveCount(2);
@@ -389,7 +389,10 @@ test('the cost of mistakes is ranked by total units, not by how bad each one loo
   await expect(rows.first()).toContainText('Soft 18 v 2');
   await expect(rows.first()).toContainText('×20');
   await expect(rows.first()).toContainText('0.088 u');
-  await expect(rows.nth(1)).toContainText('Hard 19 v 6');
+  await expect(rows.nth(1)).toContainText('19 v 6: Hit for Stand');
+  await expect(rows.nth(1)).toContainText('×1, 0.045 u');
+  // #25: the header carries the count and the total, so it reads collapsed.
+  await expect(section.getByTestId('cost-head')).toHaveText('21 mistakes · 0.13 units');
 
   // Cell ids must be humanised, never printed raw.
   await expect(section).not.toContainText('soft-18-v-2');
@@ -399,6 +402,37 @@ test('the cost of mistakes is ranked by total units, not by how bad each one loo
   await expect(section).toContainText('9 further mistakes are counted above but not priced');
 
   await shot(page, '29-stats-cost-of-mistakes');
+});
+
+test('#25: the cost of mistakes shows the five dearest rows, the rest behind "Show all"', async ({ page }) => {
+  const history = Array.from({ length: 7 }, (_, i) => ({
+    category: 'hard',
+    hand: `hard-${12 + i}-v-6`,
+    expected: 'stand',
+    taken: 'hit',
+    units: 0.1 * (i + 1),
+  }));
+  // Play writes the cards ("9,7 v 10"), a flashcard the cell id: one habit.
+  history.push(
+    { category: 'hard', hand: '9,7 v 10', expected: 'hit', taken: 'stand', units: 0.04 },
+    { category: 'hard', hand: 'hard-16-v-10', expected: 'hit', taken: 'stand', units: 0.04 },
+  );
+  await withStats(page, { evCost: { history } });
+  await page.goto('/?e2e=1');
+  await page.locator('.home-stats-link').click();
+  await statsTab(page, 'Play');
+
+  const section = page.locator('.stats-section', { hasText: 'Cost of mistakes' });
+  const rows = section.locator('.mistake-row');
+  await expect(rows).toHaveCount(5);
+  await expect(rows.first()).toContainText('18 v 6: Hit for Stand');
+  const toggle = section.getByRole('button', { name: 'Show all 8' });
+  await toggle.click();
+  await expect(rows).toHaveCount(8);
+  await expect(rows.last()).toContainText('16 v 10: Stand for Hit');
+  await expect(rows.last()).toContainText('×2, 0.080 u');
+  await section.getByRole('button', { name: 'Show top 5' }).click();
+  await expect(rows).toHaveCount(5);
 });
 
 test('the cost of mistakes says so plainly when nothing has been priced', async ({ page }) => {

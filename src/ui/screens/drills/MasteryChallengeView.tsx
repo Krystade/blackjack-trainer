@@ -23,6 +23,7 @@ import { HandResultStrip } from '../../components/HandResultStrip';
 import { RulesChip } from '../../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../../handResult';
 import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../../wrongTap';
+import { answerTooSoon } from '../../answerBounce';
 import { StudyChartOverlay } from '../../components/StudyChartOverlay';
 import { Segmented } from '../Settings';
 import { KEY_TO_ACTION } from '../Drills';
@@ -101,12 +102,14 @@ export function MasteryChallengeView({
 
   const handleAction = (taken: Action) => {
     if (!cell || complete || !cellCorrectAction) return;
+    // Review fix (c): the second touch of a bounce lands on the next hand.
+    if (answerTooSoon(promptShownAtRef.current)) return;
     const gate = gateDrillAnswer(taken, cell.cards, activeProfile.rules, cell.up);
     if (!gate.accepted) return; // D3: refused answers never reach grading or the run
 
     const elapsedMs = performance.now() - promptShownAtRef.current;
     const flashcardShapedCell = { cards: cell.cards, up: cell.up, correct: cellCorrectAction, cellId: cell.id };
-    const { event, correct } = gradeMasteryAnswer(
+    const { event, correct, cellBefore } = gradeMasteryAnswer(
       flashcardShapedCell,
       taken,
       activeProfile.rules,
@@ -122,6 +125,7 @@ export function MasteryChallengeView({
         ? {
             resultId,
             event,
+            cellBefore,
             // The run as it was before the miss reset it: same sweep, same
             // position, and the same hand back on screen to answer again.
             revert: () => {
@@ -220,7 +224,7 @@ export function MasteryChallengeView({
         cell && (
           <>
             {/* #26: graded with surrender available wherever the rules offer it. */}
-            <RulesChip labels={rulesChipLabels({ canSurrender: true, canDouble: true }, activeProfile.rules)} />
+            <RulesChip labels={rulesChipLabels({ canSurrender: true, canDouble: true }, activeProfile.rules, cell)} />
             <div className="dealer-area">
               <PlayingCard card={{ rank: cell.up, suit: 's' }} />
             </div>

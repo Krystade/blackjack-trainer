@@ -1,5 +1,7 @@
 import type { GradedEvent } from '../engine/grade';
 import type { Stats, TallyRW } from './types';
+import type { CellTally } from './cellStats';
+import { cellIdForEvent, cellUndone } from './cellStats';
 
 /**
  * #22 (spec 2026-10-13): "Wrong tap". The exact inverse of applying ONE graded
@@ -20,7 +22,7 @@ import type { Stats, TallyRW } from './types';
  * next answer, so the row is the last of its kind in practice, and matching
  * rather than popping means an unrelated row is never the one dropped.
  */
-export function undoGradedEvent(stats: Stats, event: GradedEvent): Stats {
+export function undoGradedEvent(stats: Stats, event: GradedEvent, cellBefore?: CellTally | null): Stats {
   const result: Stats = { ...stats };
 
   const dec = (t: TallyRW | undefined): TallyRW => {
@@ -60,6 +62,18 @@ export function undoGradedEvent(stats: Stats, event: GradedEvent): Stats {
     else result.shotClockSplit = split;
   }
 
+  // B3: `cellBefore` is the cell as the grader found it (null = absent), so
+  // the date is restored too; see cellStats.ts's cellUndone.
+  const cellId = cellIdForEvent(event);
+  if (cellId !== null && stats.cellStats) {
+    const cellStats = { ...stats.cellStats };
+    const cell = cellUndone(cellStats[cellId], event, cellBefore);
+    if (cell === null) delete cellStats[cellId];
+    else cellStats[cellId] = cell;
+    if (Object.keys(cellStats).length === 0) delete result.cellStats;
+    else result.cellStats = cellStats;
+  }
+
   result.mistakes = {
     ...stats.mistakes,
     [event.classification]: Math.max(0, stats.mistakes[event.classification] - 1),
@@ -95,8 +109,8 @@ export function undoGradedEvent(stats: Stats, event: GradedEvent): Stats {
  * wrote (gradeAnswer.ts's persistGrade stamps that row with the event's own
  * `at`), and count the misclick so the habit stays visible in Stats.
  */
-export function recordMisclick(stats: Stats, event: GradedEvent): Stats {
-  const result = undoGradedEvent(stats, event);
+export function recordMisclick(stats: Stats, event: GradedEvent, cellBefore?: CellTally | null): Stats {
+  const result = undoGradedEvent(stats, event, cellBefore);
   if (event.at !== undefined) {
     const keys = [event.hand, event.deviationId].filter((k): k is string => k !== undefined);
     const i = findLastIndex(stats.retention.history, (r) => r.date === event.at && keys.includes(r.key));

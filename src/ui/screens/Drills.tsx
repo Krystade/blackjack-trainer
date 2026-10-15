@@ -47,6 +47,8 @@ import { HandResultStrip } from '../components/HandResultStrip';
 import { RulesChip } from '../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../handResult';
 import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../wrongTap';
+import type { CellTally } from '../../store/cellStats';
+import { answerTooSoon } from '../answerBounce';
 import type { Card, Rank } from '../../engine/cards';
 import { Segmented } from './Settings';
 import { useAudio } from '../../audio/useAudio';
@@ -204,9 +206,14 @@ function useHandResult() {
     return idRef.current;
   };
   /** Freeze an answered hand into the strip, offering "Wrong tap" on a miss. */
-  const showResult = (result: HandResult, event: GradedEvent, revert: () => void) => {
+  const showResult = (
+    result: HandResult,
+    event: GradedEvent,
+    revert: () => void,
+    cellBefore: CellTally | null | undefined,
+  ) => {
     setLastResult(result);
-    setWrongTap(wrongTapOffered(event) ? { resultId: result.id, event, revert } : null);
+    setWrongTap(wrongTapOffered(event) ? { resultId: result.id, event, revert, cellBefore } : null);
   };
   const clearWrongTap = () => setWrongTap(null);
   /** The strip's onWrongTap for `result`, or undefined when not offered. */
@@ -433,6 +440,9 @@ function FlashcardsView({
   // wall-clock adjustments, and matches the elapsedMs contract on
   // GradedEvent.
   const promptShownAtRef = useRef(performance.now());
+  // Review fix (b): set when a spoken correction is still playing as the next
+  // card is dealt, so that card's prompt queues behind it.
+  const promptQueuesRef = useRef(false);
   // Spoken "Correct." is only wanted once per drill session -- after that,
   // correct answers still chime but skip the spoken text. `useRef(false)`
   // is fresh on every mount, and this view is unmounted/remounted each time
@@ -520,11 +530,16 @@ function FlashcardsView({
   // it IS the primary output channel in this mode, not decoration (same
   // precedent as CountDrillView's flashing-card narration).
   useEffect(() => {
+    // Review fix (b): a tap answer deals the next card at once, while its
+    // correction is still being spoken. That prompt queues behind the
+    // correction instead of cutting it off; every other prompt interrupts.
+    const interrupt = !promptQueuesRef.current;
+    promptQueuesRef.current = false;
     // Voice counts as eyes-free whether or not the ZonePad is up: someone
     // answering out loud is not watching the screen, and an unspoken prompt
     // would leave them waiting for a question that never comes.
     if (!eyesFree && !voiceOn) return;
-    speak(narrateFlashcardPrompt(card.cards, card.up), speechOptsFrom(settings.audio, { interrupt: true }));
+    speak(narrateFlashcardPrompt(card.cards, card.up), speechOptsFrom(settings.audio, { interrupt }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card, eyesFree, voiceOn]);
 
@@ -597,7 +612,7 @@ function FlashcardsView({
   const gradeFlashcardAnswer = (
     taken: DrillAnswer,
     channel: AnswerChannel,
-  ): { event: GradedEvent; correctAction: Action; prevSr: SrCard | undefined } => {
+  ): { event: GradedEvent; correctAction: Action; prevSr: SrCard | undefined; cellBefore: CellTally | null } => {
     const elapsedMs = performance.now() - promptShownAtRef.current;
     // #22: the card's schedule before this answer, for "Wrong tap".
     const prevSr = srDeckRef.current[card.cellId];
@@ -617,7 +632,7 @@ function FlashcardsView({
       settings.drill.shotClockMs > 0,
     );
     srDeckRef.current = result.nextDeck;
-    return { event: result.event, correctAction: result.correctAction, prevSr };
+    return { event: result.event, correctAction: result.correctAction, prevSr, cellBefore: result.cellBefore };
   };
 
   // Gates the SPOKEN "Correct." text (never the chime, never wrong-answer
@@ -640,11 +655,16 @@ function FlashcardsView({
   };
 
   /**
-   * B1 (#8/#14/#17): freeze the answered card into the result strip and deal
-   * the next one in the same handler. The SR line is read here, after the
-   * grade wrote the deck, so a right answer visibly pushes the review out.
+   * B1 (#8/#14/#17): freeze the answered card into the result strip. The SR
+   * line is read here, after the grade wrote the deck, so a right answer
+   * visibly pushes the review out.
+   *
+   * Called by EVERY grade site, including the ones that show the correction
+   * panel and auto-advance (voice, zone, wheel, timeout): the strip appears
+   * once that panel is gone, and it must describe the latest answer rather
+   * than one from several hands back (review fix a).
    */
-  const advanceWithResult = (event: GradedEvent, prevSr: SrCard | undefined) => {
+  const freezeResult = (event: GradedEvent, prevSr: SrCard | undefined, cellBefore: CellTally | null) => {
     const srCard = srDeckRef.current[card.cellId];
     const srText = formatReviewPlain(srCard, Date.now());
     const cellId = card.cellId;
@@ -661,19 +681,30 @@ function FlashcardsView({
         srDeckRef.current = restoreSrCard(srDeckRef.current, cellId, prevSr);
         saveFlashSr(srDeckRef.current);
       },
+      cellBefore,
     );
+  };
+
+  /** Visual mode: freeze the answer into the strip and deal the next card in
+   *  the same handler. */
+  const advanceWithResult = (event: GradedEvent, prevSr: SrCard | undefined, cellBefore: CellTally | null) => {
+    freezeResult(event, prevSr, cellBefore);
     releaseAnswerFocus();
     next();
   };
 
   const handleAction = (taken: Action) => {
+    // Review fix (c): the second touch of a bounce lands on the new card.
+    if (answerTooSoon(promptShownAtRef.current)) return;
     // An ActionBar click: the hand is on screen and a finger is on the button.
-    const { event, prevSr } = gradeFlashcardAnswer(taken, SCREEN_CHANNEL);
+    const { event, prevSr, cellBefore } = gradeFlashcardAnswer(taken, SCREEN_CHANNEL);
 
-    speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
+    const spokenMs = speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(event.correct ? 'good' : 'bad');
+    // Review fix (b): the next card's prompt must not cut this off.
+    if (spokenMs > 0) promptQueuesRef.current = true;
 
-    advanceWithResult(event, prevSr);
+    advanceWithResult(event, prevSr, cellBefore);
   };
 
   // Eyes-free zone tap: ZoneId and Action are the identical five-member
@@ -690,6 +721,8 @@ function FlashcardsView({
     channel: AnswerChannel = BLIND_TAP_CHANNEL,
   ) => {
     if (zone === 'take' || zone === 'decline') return;
+    // Review fix (c): a bounce on the pad, not an answer to this card.
+    if (answerTooSoon(promptShownAtRef.current)) return;
 
     // A1: the ZonePad has no disabled state, so an unavailable action must be
     // REFUSED and said out loud. Silence is indistinguishable from a dead app,
@@ -703,13 +736,14 @@ function FlashcardsView({
 
     speak(narrateAnswerEcho(zoneLabel(zone)), speechOptsFrom(settings.audio, { interrupt: true }));
 
-    const { event, correctAction } = gradeFlashcardAnswer(zone, channel);
+    const { event, correctAction, prevSr, cellBefore } = gradeFlashcardAnswer(zone, channel);
 
     const spokenMs = speakCorrectionOnceGated(event, (text) =>
       speak(text, speechOptsFrom(settings.audio)),
     );
     audio.ding(event.correct ? 'good' : 'bad');
 
+    freezeResult(event, prevSr, cellBefore);
     showFeedback({ correct: event.correct, correctAction, event });
     scheduleAutoAdvance(spokenMs);
   };
@@ -758,9 +792,10 @@ function FlashcardsView({
     // strip and the next card is dealt. The timed correction screen is for
     // eyes-free, where nobody is reading a strip.
     if (!eyesFree && !voiceOn) {
-      advanceWithResult(result.event, prevSr);
+      advanceWithResult(result.event, prevSr, result.cellBefore);
       return;
     }
+    freezeResult(result.event, prevSr, result.cellBefore);
     showFeedback({ correct: false, correctAction: result.correctAction, event: result.event });
     scheduleAutoAdvance(spokenMs);
   };
@@ -847,7 +882,7 @@ function FlashcardsView({
   };
 
   const submitSelfReport = (had: boolean) => {
-    const { event, correctAction } = gradeFlashcardAnswer(
+    const { event, correctAction, prevSr, cellBefore } = gradeFlashcardAnswer(
       had ? SELF_REPORT_HAD : SELF_REPORT_MISSED,
       // SCREEN_CHANNEL, and not the eyes-free/hands-free channel the press
       // physically was. The channel ceiling exists to stop an easy answer
@@ -861,6 +896,7 @@ function FlashcardsView({
       speak(text, speechOptsFrom(settings.audio)),
     );
     audio.ding(event.correct ? 'good' : 'bad');
+    freezeResult(event, prevSr, cellBefore);
     showFeedback({ correct: event.correct, correctAction, event });
     scheduleAutoAdvance(spokenMs);
   };
@@ -1063,7 +1099,9 @@ function FlashcardsView({
 
       {/* #26: the rules this card is graded under, before the answer. A
           flashcard is a fresh two-card hand at the profile's table. */}
-      <RulesChip labels={rulesChipLabels({ canSurrender: true, canDouble: true }, activeProfile.rules)} />
+      <RulesChip
+        labels={rulesChipLabels({ canSurrender: true, canDouble: true }, activeProfile.rules, card)}
+      />
 
       <div className="dealer-area">
         <PlayingCard card={{ rank: card.up, suit: 's' }} />
@@ -1236,6 +1274,8 @@ function DeviationQuizView({
   const srDeckRef = useRef<SrDeck>(loadQuizSr());
   // #22: the answered index's card before its review, set at the grade.
   const prevSrRef = useRef<{ key: string; prev: SrCard | undefined } | null>(null);
+  // B3: the answered cell's tally before the answer, for "Wrong tap".
+  const cellBeforeRef = useRef<CellTally | null>(null);
 
   const [item, setItem] = useState<QuizItem>(() =>
     drawQuizItem(
@@ -1453,6 +1493,7 @@ function DeviationQuizView({
       settings.drill.shotClockMs > 0, // V5-2: see the flashcard grader above.
     );
     srDeckRef.current = result.nextDeck;
+    cellBeforeRef.current = result.cellBefore;
     return result.event;
   };
 
@@ -1477,10 +1518,11 @@ function DeviationQuizView({
 
   /**
    * B1 (#8/#14/#17): freeze the answered item -- its cards, its count, the
-   * table it was asked for -- into the result strip, and draw the next item
-   * in the same handler.
+   * table it was asked for -- into the result strip. Called by every grade
+   * site, the auto-advancing ones too, so the strip always describes the
+   * latest answer (review fix a; see FlashcardsView's freezeResult).
    */
-  const advanceWithResult = (event: GradedEvent) => {
+  const freezeResult = (event: GradedEvent) => {
     const prevSr = prevSrRef.current;
     showResult(
       snapshotResult(
@@ -1495,12 +1537,20 @@ function DeviationQuizView({
         srDeckRef.current = restoreSrCard(srDeckRef.current, prevSr.key, prevSr.prev);
         saveQuizSr(srDeckRef.current);
       },
+      cellBeforeRef.current,
     );
+  };
+
+  /** Visual mode: freeze the answer and draw the next item at once. */
+  const advanceWithResult = (event: GradedEvent) => {
+    freezeResult(event);
     releaseAnswerFocus();
     next();
   };
 
   const handleAnswer = (taken: string) => {
+    // Review fix (c): the second touch of a bounce lands on the new item.
+    if (answerTooSoon(promptShownAtRef.current)) return;
     const event = gradeQuizAnswer(taken);
 
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
@@ -1529,6 +1579,7 @@ function DeviationQuizView({
       advanceWithResult(event);
       return;
     }
+    freezeResult(event);
     showFeedback({ correct: false, event });
     scheduleAutoAdvance(spokenMs);
   };
@@ -1562,6 +1613,8 @@ function DeviationQuizView({
   ) => {
     const isInsurance = item.cards === null;
     if (isInsurance !== (zone === 'take' || zone === 'decline')) return; // mode/zone mismatch guard
+    // Review fix (c): a bounce on the pad, not an answer to this item.
+    if (answerTooSoon(promptShownAtRef.current)) return;
 
     const taken = zone === 'take' ? 'take-insurance' : zone === 'decline' ? 'decline-insurance' : zone;
 
@@ -1590,6 +1643,7 @@ function DeviationQuizView({
     );
     audio.ding(event.correct ? 'good' : 'bad');
 
+    freezeResult(event);
     showFeedback({ correct: event.correct, event });
     scheduleAutoAdvance(spokenMs);
   };
@@ -1658,6 +1712,7 @@ function DeviationQuizView({
       speak(text, speechOptsFrom(settings.audio)),
     );
     audio.ding(event.correct ? 'good' : 'bad');
+    freezeResult(event);
     showFeedback({ correct: event.correct, event });
     scheduleAutoAdvance(spokenMs);
   };
@@ -2021,6 +2076,8 @@ function MixedSessionView({
   const quizSrRef = useRef<SrDeck>(loadQuizSr());
   // #22: the answered item's card before its review, set at the grade.
   const prevSrRef = useRef<{ deck: 'flash' | 'quiz'; key: string; prev: SrCard | undefined } | null>(null);
+  // B3: the answered cell's tally before the answer, for "Wrong tap".
+  const cellBeforeRef = useRef<CellTally | null>(null);
 
   // Seeded interleave: the session seed is drawn once (lazily, StrictMode-
   // safe) and each position's type comes from pickMixedType(seed, index) --
@@ -2220,6 +2277,7 @@ function MixedSessionView({
       prevSrRef.current = { deck: 'flash', key, prev: flashSrRef.current[key] };
       const result = gradeFlashcard(current.card, taken as Action, activeProfile.rules, elapsedMs, flashSrRef.current, Date.now());
       flashSrRef.current = result.nextDeck;
+      cellBeforeRef.current = result.cellBefore;
       return { correct: result.event.correct, correctAction: result.correctAction, event: result.event };
     }
     const quizKey = current.item.deviationId;
@@ -2229,6 +2287,7 @@ function MixedSessionView({
     // marks a correct surrender wrong.
     const result = gradeQuiz(current.item, taken, strategyRulesFor(activeProfile), elapsedMs, quizSrRef.current, Date.now());
     quizSrRef.current = result.nextDeck;
+    cellBeforeRef.current = result.cellBefore;
     return { correct: result.event.correct, event: result.event };
   };
 
@@ -2247,11 +2306,12 @@ function MixedSessionView({
   };
 
   /**
-   * B1 (#8/#14/#17): freeze the answered item into the result strip and draw
-   * the next one in the same handler. A quiz item keeps its count and index
-   * label; a flashcard has neither, exactly as it was asked.
+   * B1 (#8/#14/#17): freeze the answered item into the result strip. A quiz
+   * item keeps its count and index label; a flashcard has neither, exactly as
+   * it was asked. Called by every grade site, the auto-advancing ones too
+   * (review fix a; see FlashcardsView's freezeResult).
    */
-  const advanceWithResult = (event: GradedEvent) => {
+  const freezeResult = (event: GradedEvent) => {
     const snapshot =
       current.type === 'flash'
         ? snapshotResult(
@@ -2279,12 +2339,19 @@ function MixedSessionView({
         quizSrRef.current = restoreSrCard(quizSrRef.current, prevSr.key, prevSr.prev);
         saveQuizSr(quizSrRef.current);
       }
-    });
+    }, cellBeforeRef.current);
+  };
+
+  /** Visual mode: freeze the answer and draw the next item at once. */
+  const advanceWithResult = (event: GradedEvent) => {
+    freezeResult(event);
     releaseAnswerFocus();
     next();
   };
 
   const handleAnswer = (taken: string) => {
+    // Review fix (c): the second touch of a bounce lands on the new item.
+    if (answerTooSoon(promptShownAtRef.current)) return;
     const { correct, event } = gradeCurrent(taken);
     speakCorrectionOnceGated(event, (text) => audio.say(text, { interrupt: true }));
     audio.ding(correct ? 'good' : 'bad');
@@ -2296,6 +2363,8 @@ function MixedSessionView({
     // five action zones. Reject a mode/zone mismatch, exactly as the
     // standalone quiz view does.
     if (isInsuranceItem !== (zone === 'take' || zone === 'decline')) return;
+    // Review fix (c): a bounce on the pad, not an answer to this item.
+    if (answerTooSoon(promptShownAtRef.current)) return;
     const taken = zone === 'take' ? 'take-insurance' : zone === 'decline' ? 'decline-insurance' : zone;
 
     // A1: the ZonePad has no disabled state, so an unavailable action must be
@@ -2315,6 +2384,7 @@ function MixedSessionView({
       speak(text, speechOptsFrom(settings.audio)),
     );
     audio.ding(correct ? 'good' : 'bad');
+    freezeResult(event);
     showFeedback({ correct, correctAction, event });
     scheduleAutoAdvance(spokenMs);
   };
@@ -2373,6 +2443,7 @@ function MixedSessionView({
       speak(text, speechOptsFrom(settings.audio)),
     );
     audio.ding(correct ? 'good' : 'bad');
+    freezeResult(event);
     showFeedback({ correct, correctAction, event });
     scheduleAutoAdvance(spokenMs);
   };
@@ -2537,7 +2608,7 @@ function MixedSessionView({
         labels={
           current.type === 'quiz'
             ? quizRulesChip(current.item, strategyRulesFor(activeProfile))
-            : rulesChipLabels({ canSurrender: true, canDouble: true }, activeProfile.rules)
+            : rulesChipLabels({ canSurrender: true, canDouble: true }, activeProfile.rules, current.card)
         }
       />
 

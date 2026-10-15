@@ -314,6 +314,26 @@ describe('evCostSummary (V3-8: where the units went)', () => {
     expect(summary.worst[1]!.unitsTotal).toBe(0);
   });
 
+  it('#25: groups one chart cell however the hand was written', () => {
+    // A flashcard's cell id, Play's 9,7 and the quiz's 10,6 are one habit.
+    const summary = evCostSummary([
+      row('hard-16-v-10', 'hit', 'stand', 0.04),
+      row('9,7 v 10', 'hit', 'stand', 0.04),
+      row('10,6 v K', 'hit', 'stand', 0.04),
+      row('8,8 v 10', 'split', 'stand', 0.2),
+    ]);
+    expect(summary.worst.map((r) => [r.hand, r.times])).toEqual([
+      ['pair-8-v-10', 1],
+      ['hard-16-v-10', 3],
+    ]);
+  });
+
+  it('#25: lists every row unless asked for fewer', () => {
+    const history = Array.from({ length: 8 }, (_, i) => row(`hard-${i + 5}-v-6`, 'stand', 'hit', 0.1));
+    expect(evCostSummary(history).worst).toHaveLength(8);
+    expect(evCostSummary(history, 5).worst).toHaveLength(5);
+  });
+
   it('carries a row with no hand identity rather than inventing one', () => {
     const summary = evCostSummary([{ expected: 'stand', taken: 'hit', units: 0.3 }]);
     expect(summary.worst[0]!.hand).toBeUndefined();

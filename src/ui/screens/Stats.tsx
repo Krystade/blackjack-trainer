@@ -6,7 +6,8 @@ import type { Screen } from '../App';
 import type { Profile, Settings, Stats as StatsData } from '../../store/types';
 import { EMPTY_STATS } from '../../store/types';
 import { filterByRange, RANGE_LABEL } from '../../store/timeRange';
-import { pct, clockGap } from './statsFormat';
+import { pct, clockGap, formatUnits, costHandLabel } from './statsFormat';
+import './costOfMistakes.css';
 import type { RangeId, TimeRange } from '../../store/timeRange';
 import { loadStats, saveStats, loadSettings, exportAll, importAll } from '../../store/persist';
 import {
@@ -56,6 +57,9 @@ interface StatsProps {
 }
 
 const CATEGORY_ORDER: Category[] = ['hard', 'soft', 'pairs', 'surrender', 'insurance', 'bet', 'countCheck', 'wong'];
+
+/** #25: rows shown before "Show all". */
+const COST_ROWS_SHOWN = 5;
 
 const MISTAKE_ORDER: Exclude<MistakeClass, 'correct'>[] = [
   'basic-error',
@@ -294,27 +298,6 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Fatigue': 'progress',
   'Table sessions': 'progress' };
 
-/**
- * Turn whatever a GradedEvent carried as `hand` into something readable.
- *
- * The flashcard drill passes a cell id ("hard-19-v-6"); the deviation quiz
- * passes its own prose label, which is already readable and is left alone. A
- * shape this function does not recognise is printed verbatim rather than
- * mangled -- an unfamiliar id is better read raw than reformatted wrongly.
- */
-function handLabel(hand: string | undefined): string {
-  if (!hand) return 'Unidentified hand';
-  const m = /^(hard|soft|pair)-([0-9]+|A)-v-([0-9]+|A)$/.exec(hand);
-  if (!m) return hand;
-  const kind = m[1];
-  const value = m[2];
-  const up = m[3];
-  // "8,8 v 10" is how a pair is written everywhere else in the app, and it
-  // sidesteps pluralising "a pair of As".
-  if (kind === 'pair') return `${value},${value} v ${up}`;
-  return `${kind === 'hard' ? 'Hard' : 'Soft'} ${value} v ${up}`;
-}
-
 export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }: StatsProps) {
   const [stats, setStats] = useState<StatsData>(() => loadStats());
   const [message, setMessage] = useState<string | null>(null);
@@ -326,6 +309,8 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   // the clock and disagreeing at a boundary.
   const [tab, setTab] = useState<StatsTab>('play');
   const [range, setRange] = useState<TimeRange>({ id: 'all' });
+  // #25: the five dearest habits by default, the rest behind "Show all".
+  const [showAllCosts, setShowAllCosts] = useState(false);
   const now = Date.now();
   // The rules the app GRADES with, which is the profile's rules plus its
   // surrender-index flag. Read once so the sections below cannot disagree
@@ -928,34 +913,52 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       </CollapsibleSection>
 
       <CollapsibleSection
-        title={<>Cost of mistakes</>}
+        title={
+          <span className="cost-head">
+            <span>Cost of mistakes</span>
+            {evCost.priced > 0 && (
+              <span className="cost-head-meta" data-testid="cost-head">
+                {evCost.priced} {evCost.priced === 1 ? 'mistake' : 'mistakes'} · {formatUnits(evCost.unitsTotal)} units
+              </span>
+            )}
+          </span>
+        }
         className="stats-section"
         dataTab={SECTION_TAB['Cost of mistakes']}
         defaultOpen={false}
       >
           {evCost.priced === 0 ? (
             <p className="stats-detail">
-              No priced mistakes yet. Basic strategy errors in the flashcard and deviation drills are
-              priced in units of your base bet, so your most expensive habits show up here.
+              No priced mistakes yet. Basic strategy errors in Play and the hand drills are priced in
+              units of your base bet, so your most expensive habits show up here.
             </p>
           ) : (
             <>
               <p className="stats-detail">
-                {evCost.priced} priced {evCost.priced === 1 ? 'mistake' : 'mistakes'}, costing{' '}
-                <strong>{evCost.unitsTotal.toFixed(2)} units</strong> in total —{' '}
-                {evCost.meanUnits!.toFixed(3)} each on average.
+                In units of your base bet, {formatUnits(evCost.meanUnits!)} per mistake on average.
               </p>
               <ul className="mistake-list">
-                {evCost.worst.map((row) => (
+                {(showAllCosts ? evCost.worst : evCost.worst.slice(0, COST_ROWS_SHOWN)).map((row) => (
                   <li className="mistake-row" key={row.key}>
                     <span>
-                      {handLabel(row.hand)}: {playLabel(row.taken)} instead of {playLabel(row.expected)}
-                      {row.times > 1 ? ` (×${row.times})` : ''}
+                      {costHandLabel(row.hand)}: {playLabel(row.taken)} for {playLabel(row.expected)}
                     </span>
-                    <span className="mistake-value">{row.unitsTotal.toFixed(3)} u</span>
+                    <span className="mistake-value">
+                      ×{row.times}, {formatUnits(row.unitsTotal)} u
+                    </span>
                   </li>
                 ))}
               </ul>
+              {evCost.worst.length > COST_ROWS_SHOWN && (
+                <button
+                  type="button"
+                  className="cost-show-all"
+                  aria-expanded={showAllCosts}
+                  onClick={() => setShowAllCosts((v) => !v)}
+                >
+                  {showAllCosts ? `Show top ${COST_ROWS_SHOWN}` : `Show all ${evCost.worst.length}`}
+                </button>
+              )}
               <p className="stats-detail">
                 Ranked by total cost, so a small mistake you repeat outranks one big slip. Prices are
                 exact for an infinite deck at a neutral count.
