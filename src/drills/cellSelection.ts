@@ -18,6 +18,18 @@ export type CellStats = Stats['cellStats'];
 export type Brush = SelectionTier | 'off';
 
 export const TIERS: readonly SelectionTier[] = ['focus', 'regular', 'rare'];
+
+/** A selection is persisted data: a hand edit or a later version's tier
+ *  name must read as Off, not throw in the deck or the editor. */
+function isTier(t: unknown): t is SelectionTier {
+  return t === 'focus' || t === 'regular' || t === 'rare';
+}
+
+/** A tier's share of the session; the default for a missing or non-numeric one. */
+export function mixShare(mix: CustomSelection['mix'] | undefined, tier: SelectionTier): number {
+  const v = mix?.[tier];
+  return typeof v === 'number' && Number.isFinite(v) ? Math.max(0, v) : DEFAULT_MIX[tier];
+}
 export const DEFAULT_MIX: CustomSelection['mix'] = { focus: 60, regular: 30, rare: 10 };
 
 /** Auto's thresholds (spec #9): Focus below 78% accuracy, Regular below 92%. */
@@ -168,7 +180,8 @@ export function defaultSelection(cellIds: readonly string[] = ALL_PAINT_CELL_IDS
 
 /** The tier a cell is painted with, Off included. */
 export function tierOf(sel: CustomSelection, cellId: string): Brush {
-  return sel.tiers[cellId] ?? 'off';
+  const t = sel.tiers?.[cellId];
+  return isTier(t) ? t : 'off';
 }
 
 /**
@@ -245,19 +258,24 @@ export function autoTiers(
 /**
  * Set one tier's share and rebalance the other two so the three still sum
  * to 100: the remainder is split between them in proportion to their current
- * shares (evenly when both are 0). Whole percents.
+ * shares (evenly when both are 0). Whole percents, rounded to `step` -- a
+ * range input snaps a value off its step, so a share it cannot show would
+ * leave its thumb and its label disagreeing.
  */
 export function setMixShare(
   mix: CustomSelection['mix'],
   tier: SelectionTier,
   value: number,
+  step = 1,
 ): CustomSelection['mix'] {
-  const v = Math.max(0, Math.min(100, Math.round(Number.isFinite(value) ? value : 0)));
+  const q = Number.isFinite(step) && step >= 1 ? Math.round(step) : 1;
+  const snap = (x: number) => Math.round(x / q) * q;
+  const v = Math.max(0, Math.min(100, snap(Number.isFinite(value) ? value : 0)));
   const [a, b] = TIERS.filter((t) => t !== tier) as [SelectionTier, SelectionTier];
   const rest = 100 - v;
-  const pa = Math.max(0, mix[a]);
-  const pb = Math.max(0, mix[b]);
-  const shareA = pa + pb === 0 ? Math.round(rest / 2) : Math.round((rest * pa) / (pa + pb));
+  const pa = mixShare(mix, a);
+  const pb = mixShare(mix, b);
+  const shareA = Math.min(rest, pa + pb === 0 ? snap(rest / 2) : snap((rest * pa) / (pa + pb)));
   return { ...mix, [tier]: v, [a]: shareA, [b]: rest - shareA } as CustomSelection['mix'];
 }
 
@@ -287,11 +305,11 @@ export function customWeights(
 
   const byTier: Record<SelectionTier, string[]> = { focus: [], regular: [], rare: [] };
   for (const id of new Set(cellIds)) {
-    const tier = sel.tiers[id];
-    if (tier) byTier[tier].push(id);
+    const tier = sel.tiers?.[id];
+    if (isTier(tier)) byTier[tier].push(id);
   }
   const present = TIERS.filter((t) => byTier[t].length > 0);
-  const share = (t: SelectionTier) => Math.max(0, sel.mix?.[t] ?? DEFAULT_MIX[t]);
+  const share = (t: SelectionTier) => mixShare(sel.mix, t);
   const total = present.reduce((sum, t) => sum + share(t), 0);
 
   const out = new Map<string, number>();

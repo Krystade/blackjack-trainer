@@ -183,4 +183,34 @@ describe('setMixShare', () => {
       expect(Math.min(m.focus, m.regular, m.rare)).toBeGreaterThanOrEqual(0);
     }
   });
+
+  it('rebalances onto the slider step, so every share is a value its slider can show', () => {
+    // 65 leaves 35 to split 30:10 -- unrounded that is 26/9, which a step-5
+    // range input silently snaps to 25/10 while its label still reads 26%.
+    expect(setMixShare(DEFAULT_MIX, 'focus', 65, 5)).toEqual({ focus: 65, regular: 25, rare: 10 });
+    for (const v of [0, 5, 35, 65, 95, 100]) {
+      const m = setMixShare({ focus: 60, regular: 30, rare: 10 }, 'rare', v, 5);
+      expect(m.focus + m.regular + m.rare).toBe(100);
+      for (const share of [m.focus, m.regular, m.rare]) expect(share % 5).toBe(0);
+    }
+  });
+});
+
+describe('a saved selection from storage', () => {
+  // Persisted data: a hand edit or a later version's tier name must not
+  // throw in the deck or the editor.
+  const junk = { tiers: { a: 'focus', b: 'never' }, painted: {}, mix: { focus: 60, regular: 30, rare: 10 }, favourMissed: false } as unknown as CustomSelection;
+
+  it('treats an unknown tier as Off', () => {
+    expect(tierOf(junk, 'b')).toBe('off');
+    const w = customWeights(junk, ['a', 'b']);
+    expect([...w.keys()]).toEqual(['a']);
+  });
+
+  it('falls back to the default share for a missing or non-numeric mix entry', () => {
+    const broken = { ...junk, tiers: { a: 'focus', c: 'regular' }, mix: { focus: 'x', regular: 30 } } as unknown as CustomSelection;
+    const w = customWeights(broken, ['a', 'c']);
+    expect(w.get('a')).toBeCloseTo(60 / 90);
+    expect(w.get('c')).toBeCloseTo(30 / 90);
+  });
 });

@@ -6,14 +6,15 @@ import { loadStats } from '../../store/persist';
 import { getActiveProfile } from '../../store/profiles';
 import {
   ALL_PAINT_CELL_IDS,
-  DEFAULT_MIX,
   TIERS,
   autoTiers,
   clearSelection,
   customWeights,
   defaultSelection,
+  mixShare,
   paintCells,
   setMixShare,
+  tierOf,
 } from '../../drills/cellSelection';
 import type { Brush } from '../../drills/cellSelection';
 import { CellPaintGrid } from './CellPaintGrid';
@@ -42,6 +43,9 @@ const BRUSHES: readonly { brush: Brush; label: string }[] = [
 ];
 
 const TIER_LABEL: Record<SelectionTier, string> = { focus: 'Focus', regular: 'Regular', rare: 'Rare' };
+
+/** The mix sliders' step; the rebalance rounds to it so each thumb shows its label's value. */
+const MIX_STEP = 5;
 
 const STARTS: readonly { mode: Mode; label: string }[] = [
   { mode: 'flashcards', label: 'Flashcards' },
@@ -73,7 +77,7 @@ export function CustomDrillEditor({
             ...saved,
             tiers: saved.tiers ?? {},
             painted: saved.painted ?? {},
-            mix: saved.mix ?? { ...DEFAULT_MIX },
+            mix: { focus: mixShare(saved.mix, 'focus'), regular: mixShare(saved.mix, 'regular'), rare: mixShare(saved.mix, 'rare') },
             favourMissed: saved.favourMissed === true,
           }
         : defaultSelection(),
@@ -104,7 +108,7 @@ export function CustomDrillEditor({
 
   const counts = useMemo(() => {
     const c = { focus: 0, regular: 0, rare: 0, off: 0 };
-    for (const id of ALL_PAINT_CELL_IDS) c[selection.tiers[id] ?? 'off'] += 1;
+    for (const id of ALL_PAINT_CELL_IDS) c[tierOf(selection, id)] += 1;
     return c;
   }, [selection]);
   const drawable = useMemo(() => customWeights(selection, ALL_PAINT_CELL_IDS).size > 0, [selection]);
@@ -159,10 +163,10 @@ export function CustomDrillEditor({
                 type="range"
                 min={0}
                 max={100}
-                step={5}
+                step={MIX_STEP}
                 value={selection.mix[tier]}
                 aria-label={`${TIER_LABEL[tier]} share`}
-                onChange={(e) => commit({ ...selection, mix: setMixShare(selection.mix, tier, Number(e.target.value)) })}
+                onChange={(e) => commit({ ...selection, mix: setMixShare(selection.mix, tier, Number(e.target.value), MIX_STEP) })}
               />
             </label>
           ))}

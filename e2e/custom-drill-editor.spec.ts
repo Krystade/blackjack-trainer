@@ -122,6 +122,14 @@ test('the mix sliders keep summing to 100 and Favour missed persists', async ({ 
   await expect(page.getByLabel('Rare share')).toHaveValue('5');
   expect((await storedCustom(page))?.mix).toEqual({ focus: 80, regular: 15, rare: 5 });
 
+  // 65 leaves 35 to split 15:5. Unrounded that is 26/9, which the step-5
+  // sliders would snap to 25/10 while their labels still read 26% and 9%.
+  await page.getByLabel('Focus share').fill('65');
+  await expect(page.getByLabel('Regular share')).toHaveValue('25');
+  await expect(page.locator('.cde-slider', { hasText: 'Regular' })).toContainText('25%');
+  await expect(page.locator('.cde-slider', { hasText: 'Rare' })).toContainText('10%');
+  expect((await storedCustom(page))?.mix).toEqual({ focus: 65, regular: 25, rare: 10 });
+
   const toggle = page.getByRole('button', { name: /Favour missed cells/ });
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   await toggle.click();
@@ -130,7 +138,7 @@ test('the mix sliders keep summing to 100 and Favour missed persists', async ({ 
 
   await page.evaluate(() => window.localStorage.setItem('e2e.noReseed', '1'));
   await page.reload();
-  await expect(page.getByLabel('Focus share')).toHaveValue('80');
+  await expect(page.getByLabel('Focus share')).toHaveValue('65');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 });
 
