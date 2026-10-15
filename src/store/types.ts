@@ -10,6 +10,19 @@ import type { CheckpointFreq } from '../drills/countCheckpoints';
 import type { CountDrillBias } from '../drills/countDrill';
 import type { DepthResolution } from '../drills/depthResolution';
 
+/** B2 (#9): one painted Custom-drill selection. Cells not in `tiers` are Off. */
+export type SelectionTier = 'rare' | 'regular' | 'focus';
+export interface CustomSelection {
+  tiers: Record<string, SelectionTier>;
+  /** Cells the operator painted by hand (Auto leaves these alone). */
+  painted?: Record<string, true>;
+  /** Share of the session per tier, in percent; defaults 60 / 30 / 10. */
+  mix: { focus: number; regular: number; rare: number };
+  favourMissed: boolean;
+}
+/** #31: marker colours. */
+export type MarkerColour = 'red' | 'amber' | 'green' | 'blue';
+
 export interface Settings {
   version: 1;
   feedbackMode: 'training' | 'test';
@@ -29,6 +42,18 @@ export interface Settings {
   losingShoe?: boolean;
   drill: {
     flashCategory: 'all' | 'hard' | 'soft' | 'pairs';
+    // #13: multi-select scope for the hand drills (flashcards, mastery, Mixed,
+    // and later modes). Absent = derived from `flashCategory` ('all' = all
+    // three). Never empty once written.
+    scopes?: Array<'hard' | 'soft' | 'pairs'>;
+    // B2 (#9 #23 #31): which cells the hand drills draw from. 'chart' (or
+    // absent) = the scoped chart, 'custom' = the painted Custom selection,
+    // 'indexes' = cells with a deviation index in the active rules, 'marked' =
+    // cells carrying a marker.
+    deck?: 'chart' | 'custom' | 'indexes' | 'marked';
+    custom?: CustomSelection;
+    // #31: a coloured dot per chart cell, set by long-pressing a card.
+    markers?: Record<string, MarkerColour>;
     countGroup: 1 | 2 | 3;
     countIntervalMs: number;
     countLengthCards: number;
