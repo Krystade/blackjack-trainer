@@ -975,6 +975,68 @@ describe('count check', () => {
     expect(result2.actualTc).toBe(tc2);
   });
 
+  describe('#3 countCheckAsk', () => {
+    /** Play four checks (countCheckEvery 1), answering each correctly, and
+     * record what each one asked and which countCheck events it graded. */
+    function fourChecks(ask: GameConfig['countCheckAsk']) {
+      const game = new Game(cfg({ countCheckEvery: 1, seed: 42, ...(ask ? { countCheckAsk: ask } : {}) }));
+      const asked: { rc: boolean; tc: boolean; reasons: string[]; rcCorrect?: boolean }[] = [];
+      for (let i = 0; i < 4; i++) {
+        game.startRound();
+        if (game.phase === 'insurance') game.insuranceDecision(false);
+        while (game.phase === 'player') game.act('stand');
+        expect(game.countCheckDue).toBe(true);
+        const before = game.events.length;
+        const rc = game.askRc ? game.runningCount : null;
+        const res = game.submitCountCheck(rc, game.askTcToo ? game.trueCountNow : undefined);
+        asked.push({
+          rc: game.askRc,
+          tc: game.askTcToo,
+          reasons: game.events.slice(before).map((e) => e.reason),
+          rcCorrect: res.rcCorrect,
+        });
+      }
+      return asked;
+    }
+
+    it('absent = alternate: RC every check, TC as well on every second', () => {
+      const a = fourChecks(undefined);
+      expect(a.map((x) => [x.rc, x.tc])).toEqual([[true, false], [true, true], [true, false], [true, true]]);
+      expect(a[1].reasons).toEqual(['Running count check', 'True count check']);
+      expect(fourChecks('alternate')).toEqual(a);
+    });
+
+    it("'running' asks the running count only, every time", () => {
+      const a = fourChecks('running');
+      expect(a.every((x) => x.rc && !x.tc)).toBe(true);
+      expect(a.flatMap((x) => x.reasons)).toEqual(new Array(4).fill('Running count check'));
+    });
+
+    it("'true' asks the true count only: no running-count event, rcCorrect undefined", () => {
+      const a = fourChecks('true');
+      expect(a.every((x) => !x.rc && x.tc)).toBe(true);
+      expect(a.flatMap((x) => x.reasons)).toEqual(new Array(4).fill('True count check'));
+      expect(a.every((x) => x.rcCorrect === undefined)).toBe(true);
+    });
+
+    it("'both' asks RC then TC on every check", () => {
+      const a = fourChecks('both');
+      expect(a.every((x) => x.rc && x.tc)).toBe(true);
+      expect(a[0].reasons).toEqual(['Running count check', 'True count check']);
+    });
+
+    it('countCheckEvery 0 still means off, whatever it asks', () => {
+      const game = new Game(cfg({ countCheckEvery: 0, countCheckAsk: 'both', seed: 42 }));
+      for (let i = 0; i < 3; i++) {
+        game.startRound();
+        if (game.phase === 'insurance') game.insuranceDecision(false);
+        while (game.phase === 'player') game.act('stand');
+        expect(game.countCheckDue).toBe(false);
+        expect(game.poseCountCheck()).toBe(false);
+      }
+    });
+  });
+
   /**
    * THE TRUE COUNT IS GRADED BY EYE, THE RUNNING COUNT IS NOT.
    *
@@ -1141,6 +1203,84 @@ describe('grading wiring', () => {
     expect(ev.classification).toBe('missed-deviation');
     expect(ev.deviationId).toBe('16v10');
   });
+
+  describe('#34 gradeDeviations', () => {
+    /** The same split 16 v 10 at tc 0 as above, where the 16v10 index says
+     * stand and basic strategy says hit. */
+    function at16v10(gradeDeviations?: boolean): Game {
+      const game = Game.withRiggedShoe(
+        cfg(gradeDeviations === undefined ? {} : { gradeDeviations }),
+        rig('9', '10', '9', '7', '7', '2', '5'),
+      );
+      game.startRound();
+      game.act('split');
+      expect(game.hands[game.active].cards.map((c) => c.rank)).toEqual(['9', '7']);
+      expect(game.trueCountNow).toBe(0);
+      return game;
+    }
+
+    it('true behaves exactly like absent: the index play is the right one', () => {
+      const game = at16v10(true);
+      game.act('hit');
+      const ev = game.events[game.events.length - 1];
+      expect(ev.classification).toBe('missed-deviation');
+      expect(ev.expected).toBe('stand');
+    });
+
+    it('off: basic strategy is right at every count, with no index attached', () => {
+      const hit = at16v10(false);
+      hit.act('hit');
+      const ok = hit.events[hit.events.length - 1];
+      expect(ok.correct).toBe(true);
+      expect(ok.expected).toBe('hit');
+      expect(ok.deviationId).toBeUndefined();
+
+      const stand = at16v10(false);
+      stand.act('stand');
+      const wrong = stand.events[stand.events.length - 1];
+      expect(wrong.correct).toBe(false);
+      expect(wrong.expected).toBe('hit');
+    });
+
+    /** Single deck, tc >= 3 at a dealer-ace offer: the insurance index says take. */
+    function atHighCountInsurance(gradeDeviations: boolean): Game {
+      const filler: Rank[] = ['3', '2', '2', '2', '2', '2', '2', '2', '2', '2', '2'];
+      const round2: Rank[] = ['2', 'A', '3', '2'];
+      const padding: Rank[] = ['2', '2', '2', '2', '2'];
+      const game = Game.withRiggedShoe(
+        cfg({ rules: { ...DEFAULT_RULES, decks: 1 }, gradeDeviations }),
+        rig(...filler, ...round2, ...padding),
+      );
+      game.startRound();
+      game.act('stand');
+      game.startRound();
+      expect(game.phase).toBe('insurance');
+      expect(game.trueCountNow).toBeGreaterThanOrEqual(3);
+      return game;
+    }
+
+    it('off: insurance is never right, even where the index would take it', () => {
+      const declined = atHighCountInsurance(false);
+      declined.insuranceDecision(false);
+      const ok = declined.events[declined.events.length - 1];
+      expect(ok.correct).toBe(true);
+      expect(ok.expected).toBe('decline');
+      expect(ok.deviationId).toBeUndefined();
+
+      const taken = atHighCountInsurance(false);
+      taken.insuranceDecision(true);
+      const wrong = taken.events[taken.events.length - 1];
+      expect(wrong.correct).toBe(false);
+      expect(wrong.classification).toBe('basic-error');
+      expect(wrong.expected).toBe('decline');
+    });
+
+    it('on: the same offer still grades the insurance index', () => {
+      const game = atHighCountInsurance(true);
+      game.insuranceDecision(false);
+      expect(game.events[game.events.length - 1].classification).toBe('missed-deviation');
+    });
+  });
 });
 
 describe('multi-seat dealing (Cycle-2 Task 2)', () => {
@@ -1202,20 +1342,29 @@ describe('multi-seat dealing (Cycle-2 Task 2)', () => {
     expect(game.runningCount).toBe(expectedRc);
   });
 
-  it('playerHands 2, solo (bots:0) -> both player hands dealt in hand order across both passes', () => {
+  it('playerHands 2, solo (bots:0) -> both player hands dealt right to left across both passes', () => {
     const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
-    // Pass 1: hand0 c1, hand1 c1, dealer up. Pass 2: hand0 c2, hand1 c2, dealer hole.
+    // Pass 1: hand1 c1, hand0 c1, dealer up. Pass 2: hand1 c2, hand0 c2, dealer hole.
     const game = Game.withRiggedShoe(cfg({ seats }), rig('2', '3', '9', '4', '5', '6'));
     game.startRound();
 
     expect(game.seats).toHaveLength(1);
     expect(game.hands).toHaveLength(2);
-    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['2', '4']);
-    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['3', '5']);
+    expect(game.hands[1].cards.map((c) => c.rank)).toEqual(['2', '4']);
+    expect(game.hands[0].cards.map((c) => c.rank)).toEqual(['3', '5']);
     expect(game.dealerCards[0].rank).toBe('9');
     expect(game.dealerCards[1].rank).toBe('6');
-    // #1: dealt in hand order, but PLAYED from the right.
+    // Casinos deal from the dealer's left -- the player's right -- so the
+    // rightmost hand is dealt first, as it is played first (#1).
     expect(game.active).toBe(1);
+    expect(game.dealOrder).toEqual([
+      { kind: 'player', handIndex: 1, cardIndex: 0 },
+      { kind: 'player', handIndex: 0, cardIndex: 0 },
+      { kind: 'dealer', cardIndex: 0 },
+      { kind: 'player', handIndex: 1, cardIndex: 1 },
+      { kind: 'player', handIndex: 0, cardIndex: 1 },
+      { kind: 'dealer', cardIndex: 1 },
+    ]);
   });
 
   it('bots autoplay to completion and settle for display, without touching bankroll (Cycle-2 Task 3)', () => {
@@ -1254,12 +1403,12 @@ describe('multi-seat dealing (Cycle-2 Task 2)', () => {
 describe('multi-hand player (Cycle-2 Task 4)', () => {
   it('2 hands, betSpreadOn off, distinct rigged outcomes -> independent nets, bankroll delta = sum', () => {
     const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
-    // Pass1: hand0c1(8) hand1c1(8) dealerUp(5); Pass2: hand0c2(9) hand1c2(6) dealerHole(6).
-    // hand0 = 8,9=17->hit to... wait, keep it simple: hand0 stands at 19 (win),
-    // hand1 hits into a bust (lose). Dealer 5,6=11 must hit; give it a 6 -> 17 stand.
+    // Dealt right to left: Pass1: hand1c1(10) hand0c1(10) dealerUp(5); Pass2:
+    // hand1c2(6) hand0c2(9) dealerHole(6). hand0 stands at 19 (win), hand1
+    // hits into a bust (lose). Dealer 5,6=11 must hit; give it a 6 -> 17 stand.
     const game = Game.withRiggedShoe(
       cfg({ seats }),
-      rig('10', '10', '5', '9', '6', '6', 'K', '6'),
+      rig('10', '10', '5', '6', '9', '6', 'K', '6'),
     );
     game.startRound([1, 5]);
     expect(game.hands).toHaveLength(2);
@@ -1373,11 +1522,11 @@ describe('multi-hand player (Cycle-2 Task 4)', () => {
 
   it('hand0 live (10,6=16), hand1 natural (A,K=BJ): BJ settled immediately, player completes hand0, outcomes summed', () => {
     const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
-    // Deal order: hand0c1, hand1c1, dealerUp, hand0c2, hand1c2, dealerHole, dealerDraws...
+    // Deal order (right to left): hand1c1, hand0c1, dealerUp, hand1c2, hand0c2, dealerHole, dealerDraws...
     // To get hand0=(10,6)=16, hand1=(A,K)=BJ, dealer=(9,7)=16 then hits K->bust:
     const game = Game.withRiggedShoe(
       cfg({ seats }),
-      rig('10', 'A', '9', '6', 'K', '7', 'K'),
+      rig('A', '10', '9', 'K', '6', '7', 'K'),
     );
     const initialBankroll = game.bankroll;
 
@@ -1466,9 +1615,9 @@ describe('insurance across all player hands (Cycle-2 Task 5)', () => {
 
   it('hand0 normal (10,6=16), hand1 natural (A,K), insurance taken + dealer BJ -> natural pushes, hand0 loses, insurance pays 2:1 on summed stake', () => {
     const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
-    // Deal order: hand0c1, hand1c1, dealerUp, hand0c2, hand1c2, dealerHole.
+    // Deal order (right to left): hand1c1, hand0c1, dealerUp, hand1c2, hand0c2, dealerHole.
     // hand0=(10,6)=16 (non-natural), hand1=(A,K)=natural BJ. dealer=(A,K)=BJ.
-    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', 'A', 'A', '6', 'K', 'K'));
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('A', '10', 'A', 'K', '6', 'K'));
     game.startRound([2, 5]);
     expect(game.phase).toBe('insurance');
     const initialBankroll = game.bankroll;
@@ -2045,8 +2194,9 @@ describe('V5-4: the table grades against the profile rounding convention', () =>
 describe('casino play order: right to left (#1)', () => {
   it('three dealt hands are played rightmost first, then leftwards', () => {
     const seats: SeatConfig = { playerHands: 3, bots: 0, botMistakePct: 0, playerPosition: 0 };
-    // Pass 1: h0 10, h1 9, h2 8, up 7. Pass 2: h0 2, h1 3, h2 4, hole 10.
-    const game = Game.withRiggedShoe(cfg({ seats }), rig('10', '9', '8', '7', '2', '3', '4', '10'));
+    // Dealt right to left too: Pass 1: h2 8, h1 9, h0 10, up 7. Pass 2: h2 4,
+    // h1 3, h0 2, hole 10.
+    const game = Game.withRiggedShoe(cfg({ seats }), rig('8', '9', '10', '7', '4', '3', '2', '10'));
     game.startRound();
     const visited: string[] = [];
     while (game.phase === 'player') {
@@ -2120,5 +2270,70 @@ describe('casino play order: right to left (#1)', () => {
     expect(handPlayNumber(0, 2)).toBe(2);
     expect(handPlayNumber(1, 2)).toBe(1);
     expect(handPlayNumber(2, 4)).toBe(2);
+  });
+});
+
+describe('#39 cut card from cutDecks / cutVary', () => {
+  it('cutDecks puts the cut that many decks from the back', () => {
+    const game = new Game(cfg({ cutDecks: 1 }));
+    expect(game.shoe.cutCardPosition).toBe(312 - 52);
+  });
+
+  it('neither field set keeps the penetration cut', () => {
+    expect(new Game(cfg({ penetration: 0.8 })).shoe.cutCardPosition).toBe(249);
+  });
+
+  it('cutVary moves the cut from shoe to shoe, within ±0.5 decks, reproducibly per seed', () => {
+    const cuts = (seed: number) => {
+      const game = new Game(cfg({ cutDecks: 1.5, cutVary: true, seed }));
+      const out = [game.shoe.cutCardPosition];
+      for (let i = 0; i < 9; i++) {
+        game.shoe.shuffle();
+        out.push(game.shoe.cutCardPosition);
+      }
+      return out;
+    };
+    const a = cuts(5);
+    expect(new Set(a).size).toBeGreaterThan(5);
+    for (const pos of a) {
+      expect(312 - pos).toBeGreaterThanOrEqual(52);
+      expect(312 - pos).toBeLessThanOrEqual(104);
+    }
+    expect(cuts(5)).toEqual(a);
+  });
+
+  it('the cut never moves a card: the same seed deals the same rounds with or without it', () => {
+    const ranks = (game: Game) => {
+      const out: string[] = [];
+      for (let r = 0; r < 5; r++) {
+        game.startRound();
+        if (game.phase === 'insurance') game.insuranceDecision(false);
+        while (game.phase === 'player') game.act('stand');
+        out.push([...game.hands.flatMap((h) => h.cards), ...game.dealerCards].map((c) => c.rank).join());
+      }
+      return out;
+    };
+    expect(ranks(new Game(cfg({ seed: 77, cutDecks: 2, cutVary: true })))).toEqual(ranks(new Game(cfg({ seed: 77 }))));
+  });
+
+  it('the shoe reshuffles at the varied cut', () => {
+    // A 1-deck cut with vary on: reaching the shoe's own cut position is what
+    // triggers the pre-deal reshuffle.
+    const game = new Game(cfg({ cutDecks: 1, cutVary: true, seed: 3 }));
+    const pos = game.shoe.cutCardPosition;
+    let rounds = 0;
+    while (!game.shuffledLastRound && rounds < 200) {
+      const dealtBefore = game.shoe.cardsDealt;
+      game.startRound();
+      rounds += 1;
+      if (game.shuffledLastRound) {
+        expect(dealtBefore).toBeGreaterThanOrEqual(pos);
+        break;
+      }
+      expect(dealtBefore).toBeLessThan(pos);
+      if (game.phase === 'insurance') game.insuranceDecision(false);
+      while (game.phase === 'player') game.act('stand');
+    }
+    expect(game.shuffledLastRound).toBe(true);
   });
 });

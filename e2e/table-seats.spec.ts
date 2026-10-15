@@ -221,3 +221,22 @@ test('solo parity: bots:0/playerHands:1 renders no bot rows and no per-hand labe
   await expect(page.locator('.player-hand')).toHaveCount(1);
   await shot(page, '54-table-solo-parity-dealt');
 });
+
+test('first base is on the right: bot seats run right to left, like the deal and the play', async ({ page }) => {
+  await withSettings(page, { dealSpeedMs: 0 });
+  await withProfile(page, { seats: { playerHands: 2, bots: 3, botMistakePct: 0, playerPosition: 0 } });
+  await page.goto('/?seed=5&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  // P1 is seat 0, the dealer's left: the rightmost seat on the felt.
+  const xs = await page
+    .locator('.bot-seat-label')
+    .evaluateAll((els) => els.map((e) => [e.textContent, e.getBoundingClientRect().x] as const));
+  expect(xs.map(([label]) => label)).toEqual(['P1', 'P2', 'P3']);
+  expect(xs[0][1]).toBeGreaterThan(xs[1][1]);
+  expect(xs[1][1]).toBeGreaterThan(xs[2][1]);
+  // And the row still fits the phone.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    await page.evaluate(() => window.innerWidth),
+  );
+});

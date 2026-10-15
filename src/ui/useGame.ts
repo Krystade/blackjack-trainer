@@ -1,7 +1,5 @@
-import { strategyRulesFor } from '../store/profiles';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Game, handPlayNumber } from '../engine/game';
-import type { GameConfig } from '../engine/game';
 import type { Action } from '../engine/deviations';
 import type { Card, Rank } from '../engine/cards';
 import type { Category, GradedEvent, MistakeClass } from '../engine/grade';
@@ -9,6 +7,8 @@ import type { Profile, Settings } from '../store/types';
 import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
 import { resumeBankroll, storeBankrollNow } from './playBankroll';
+import { playConfigFor } from './playConfig';
+import { datedSessionEvents } from './sessionEvents';
 import { makePlayGame, realignLosingShoe, type PlayGame } from './losingShoe';
 import type { AudioApi } from '../audio/useAudio';
 import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverBets';
@@ -17,12 +17,12 @@ import {
   narrateCard,
   narrateCorrection,
   narrateCountAnswer,
-  narrateCountPrompt,
   narrateDealerUp,
   narrateHandResult,
   narrateInsuranceOffer,
   narrateShuffle,
   narrateSitOut,
+  narrateTableCountPrompt,
 } from '../audio/narrate';
 
 export interface OverlayInfo {
@@ -174,8 +174,10 @@ function botLabelFor(game: Game, seatIndex: number): string {
 /**
  * Phase-A ("full" verbosity) narration of the just-completed deal: shuffle
  * announcement, every dealt card in true casino dealing order (pass 1 --
- * one card per hand, seat order, bots included -- then the dealer's
- * up-card, then pass 2), and the insurance offer if the up-card is an ace.
+ * one card per hand, seat order from first base, bots included, and within
+ * a seat from the rightmost hand, as the engine deals it -- then the
+ * dealer's up-card, then pass 2), and the insurance offer if the up-card is
+ * an ace.
  * The deal is fully synchronous in the engine (`startRound` returns with
  * every hand already dealt), and the table already renders all of this
  * instantly with no pacing of its own -- so speaking it synchronously,
@@ -183,12 +185,12 @@ function botLabelFor(game: Game, seatIndex: number): string {
  * the mid-round bot HIT/DOUBLE cards get paced (see the narration-reveal
  * effect below), because those are the only cards the UI itself paces.
  */
-function narrateDeal(game: Game, audio: AudioApi): void {
+export function narrateDeal(game: Game, audio: Pick<AudioApi, 'say' | 'sayFull'>): void {
   if (game.shuffledLastRound) {
     audio.say(narrateShuffle());
   }
   for (const seat of game.seats) {
-    for (const hand of seat.hands) {
+    for (const hand of [...seat.hands].reverse()) {
       if (hand.cards[0]) audio.sayFull(narrateCard(hand.cards[0], 'rank'));
     }
   }
@@ -196,7 +198,7 @@ function narrateDeal(game: Game, audio: AudioApi): void {
     audio.sayFull(narrateDealerUp(game.dealerCards[0].rank));
   }
   for (const seat of game.seats) {
-    for (const hand of seat.hands) {
+    for (const hand of [...seat.hands].reverse()) {
       if (hand.cards[1]) audio.sayFull(narrateCard(hand.cards[1], 'rank'));
     }
   }
@@ -238,8 +240,9 @@ function narrateSettlement(game: Game, audio: AudioApi): void {
 }
 
 /** What the player asked for when an owed count check interrupted it (#36).
- * It runs as soon as the check is answered. */
-type PendingDeal = { kind: 'deal'; bets?: number | number[] } | { kind: 'sitOut' };
+ * It runs as soon as the check is answered. Ending the session is one of
+ * them: the last round's check is asked before the report, not dropped. */
+type PendingDeal = { kind: 'deal'; bets?: number | number[] } | { kind: 'sitOut' } | { kind: 'end' };
 
 /**
  * Holds a single Game instance in a ref (so mutating engine calls don't
@@ -257,22 +260,8 @@ type PendingDeal = { kind: 'deal'; bets?: number | number[] } | { kind: 'sitOut'
 export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const playRef = useRef<PlayGame | null>(null);
   if (playRef.current === null) {
-    const cfg: GameConfig = {
-      penetration: profile.penetration,
-      betSpreadOn: profile.betSpreadOn,
-      ...(profile.coverBets === undefined ? {} : { coverBets: profile.coverBets }),
-      ...(profile.tcRounding === undefined ? {} : { tcRounding: profile.tcRounding }),
-      spread: profile.spread,
-      // #42: the bankroll carries over from the last session on this
-      // profile. `cfg.bankrollStart` is therefore THIS SESSION's start, which
-      // is what the session report's delta is measured from.
-      bankrollStart: resumeBankroll(profile),
-      countCheckEvery: profile.countCheckEvery,
-      rules: strategyRulesFor(profile),
-      seats: profile.seats,
-      dealerAlwaysPlaysOut: profile.dealerAlwaysPlaysOut,
-      seed: readSeed(),
-    };
+    // #42: the bankroll carries over from the last session on this profile.
+    const cfg = playConfigFor(profile, resumeBankroll(profile), readSeed());
     // #48-51: the Losing shoe setting picks the rig at build time.
     playRef.current = makePlayGame(cfg, settings.losingShoe === true);
   }
@@ -342,7 +331,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       if (!game.poseCountCheck()) return false;
       pendingDealRef.current = pending;
       audio.ding('attention');
-      audio.say(narrateCountPrompt());
+      // #3: a true-count-only check opens on the true-count question.
+      audio.say(narrateTableCountPrompt(game.askRc ? 'rc' : 'tc'));
       bump();
       return true;
     },
@@ -554,31 +544,53 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     setDealAnimating(false);
   }, [clearDealAnimTimer]);
 
+  /**
+   * The player asked to end the session. Returns true when it may end now;
+   * false when a count check was owed, which is posed instead -- the caller
+   * ends the session once `submitCount` reports the answer released it.
+   */
+  const requestEnd = useCallback(
+    (): boolean => !poseCountCheckBeforeDeal({ kind: 'end' }),
+    [poseCountCheckBeforeDeal],
+  );
+
+  /** Grade the count check. Returns true when the answer released an End
+   * that was waiting on it (see `requestEnd`): the caller ends the session. */
   const submitCount = useCallback(
-    (rc: number, tcGuess?: number) => {
+    (rc: number | null, tcGuess?: number): boolean => {
       const result = game.submitCountCheck(rc, tcGuess);
-      audio.say(narrateCountAnswer(result.actualRc));
-      audio.ding(result.rcCorrect ? 'good' : 'bad');
+      if (result.rcCorrect !== undefined) {
+        audio.say(narrateCountAnswer(result.actualRc));
+        audio.ding(result.rcCorrect ? 'good' : 'bad');
+      } else if (result.actualTc !== undefined) {
+        // #3: a true-count-only check answers with the true count.
+        audio.say(narrateCountAnswer(result.actualTc));
+        audio.ding(result.tcCorrect ? 'good' : 'bad');
+      }
       // #36: the deal that was asked for happens right after the answer.
       const pending = pendingDealRef.current;
       pendingDealRef.current = null;
       if (pending?.kind === 'deal') runDeal(pending.bets);
       else if (pending?.kind === 'sitOut') runSitOut();
       bump();
+      return pending?.kind === 'end';
     },
     [game, bump, audio, runDeal, runSitOut],
   );
 
   const endSession = useCallback(
     (peeks = 0): SessionReport => {
-      const events = game.events;
+      const now = new Date().toISOString();
+      // #25: dated with the session, so Play's priced mistakes land in the
+      // cost-of-mistakes history inside a Stats time range, not only "all".
+      const events = datedSessionEvents(game.events, now);
       // From where THIS session started (#42), not the profile's original stake.
       const bankrollDelta = game.bankroll - game.cfg.bankrollStart;
 
       const stats = loadStats();
       const updated = applyEvents(stats, events);
       updated.sessions.push({
-        date: new Date().toISOString(),
+        date: now,
         rounds: game.roundNo,
         graded: events.length,
         correct: events.filter((e) => e.correct).length,
@@ -606,6 +618,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     act,
     insure,
     submitCount,
+    requestEnd,
     overlay,
     dismissOverlay,
     report,

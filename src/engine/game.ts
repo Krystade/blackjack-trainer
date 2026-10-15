@@ -1,6 +1,8 @@
 import { Shoe, rankValue, mulberry32 } from './cards';
 import { makeRiggedShoe, botRngSeed, type RiggedShoe } from './riggedShoe';
 import { betWithinStep } from './coverBets';
+import { cutCardsFor, cutRngSeed, usesCutCards } from './cut';
+import { priceMistake } from './mistakeCost';
 import type { Card, Rank } from './cards';
 import { handValue, isBust, isBlackjack, isPair } from './hand';
 import { hiLoTag, trueCount, tcWithinEye } from './count';
@@ -53,6 +55,11 @@ export const DEFAULT_SPREAD: SpreadRow[] = [
 
 export interface GameConfig {
   penetration: number; // 0.5..0.9
+  /** #39: decks left behind the cut, and whether each shoe moves it by up to
+   * ±0.5 decks (see engine/cut.ts). With neither set the cut sits at
+   * `penetration`, exactly as before. A rigged shoe ignores both. */
+  cutDecks?: number;
+  cutVary?: boolean;
   betSpreadOn: boolean;
   /** RT#11: accept a bet one spread rung either side of the expected size. */
   coverBets?: boolean;
@@ -61,6 +68,13 @@ export interface GameConfig {
   spread: SpreadRow[];
   bankrollStart: number; // units
   countCheckEvery: number; // rounds; 0 = off
+  /** #3: what each count check asks for. Absent = 'alternate' (the running
+   * count every time, the true count as well on every second check). */
+  countCheckAsk?: CountCheckAsk;
+  /** #34: grade plays with the count's index plays (correctPlay) or with
+   * basic strategy alone (basicPlay). Insurance follows it: off, basic
+   * strategy never insures. Absent = true. */
+  gradeDeviations?: boolean;
   seed?: number;
   rules?: StrategyRules; // defaults to DEFAULT_RULES (v1's game); C1.13 wires this to the active profile
   seats?: SeatConfig; // defaults to DEFAULT_SEATS (v1 solo parity) when absent
@@ -79,6 +93,11 @@ export interface GameConfig {
    */
   dealerAlwaysPlaysOut?: boolean;
 }
+
+/** #3: what a Play count check asks. 'running' = RC only, 'true' = TC only,
+ * 'alternate' = RC, plus the TC on every second check, 'both' = RC then TC on
+ * every check. */
+export type CountCheckAsk = 'running' | 'true' | 'alternate' | 'both';
 
 export type Phase = 'idle' | 'insurance' | 'player' | 'settled';
 
@@ -194,6 +213,10 @@ export class Game {
    * settled hand stays on the felt while it is answered, and the deal follows
    * the answer. */
   countCheckOpen = false;
+  /** #3: what the owed check asks, set as the round settles. `askRc` is false
+   * only for a TC-only check; `askTcToo` is true whenever the true count is
+   * asked (alone, or after the running count). */
+  askRc = true;
   askTcToo = false;
   shuffledLastRound = false;
   insuranceNet: number | null = null;
@@ -219,9 +242,10 @@ export class Game {
   botActionLog: { seat: number; handIndex: number; action: Action; card?: Card }[] = [];
 
   /** Casino order of the CURRENT round's opening two-pass deal, one entry per
-   * card in the exact order dealTwoPassRound() deals it: every seat's hands in
-   * seat order for pass 1, then the dealer's up-card, then every seat's hands
-   * again for pass 2, then the dealer's hole card. Reset in beginRound().
+   * card in the exact order dealTwoPassRound() deals it: every seat in seat
+   * order (first base first), each seat's hands rightmost first, for pass 1,
+   * then the dealer's up-card, then the same sweep for pass 2, then the
+   * dealer's hole card. Reset in beginRound().
    *
    * PRESENTATION-ONLY, read by Table.tsx to time the opening deal's CSS
    * entrance animation (Table Realism, Request B) -- grading, the running
@@ -259,7 +283,20 @@ export class Game {
   constructor(cfg: GameConfig) {
     this.cfg = cfg;
     this.rules = cfg.rules ?? DEFAULT_RULES;
-    this.shoe = new Shoe({ decks: this.rules.decks, penetration: cfg.penetration, seed: cfg.seed });
+    const cutSpec = {
+      penetration: cfg.penetration,
+      cutDecks: cfg.cutDecks,
+      cutVary: cfg.cutVary,
+      rules: { decks: this.rules.decks },
+    };
+    let cutCards: (() => number) | undefined;
+    if (usesCutCards(cutSpec)) {
+      // Its own seeded stream: placing the cut must not move a single card
+      // of the shuffle, so a seed replays the same cards with or without it.
+      const cutRng = mulberry32(cutRngSeed(cfg.seed ?? Date.now()));
+      cutCards = () => cutCardsFor(cutSpec, cutRng);
+    }
+    this.shoe = new Shoe({ decks: this.rules.decks, penetration: cfg.penetration, seed: cfg.seed, cutCards });
     this.bankroll = cfg.bankrollStart;
     this.rng = mulberry32(botRngSeed(cfg.seed ?? Date.now()));
   }
@@ -598,8 +635,14 @@ export class Game {
 
   insuranceDecision(take: boolean): void {
     const tc = this.trueCountNow;
-    const advice = insuranceCorrect(tc, this.rules);
-    const { classification, correct } = classifyInsurance(take, tc, this.rules);
+    // #34: without deviations, insurance is basic strategy's call -- never.
+    const withIndex = this.cfg.gradeDeviations !== false;
+    const advice = withIndex ? insuranceCorrect(tc, this.rules) : false;
+    const { classification, correct } = withIndex
+      ? classifyInsurance(take, tc, this.rules)
+      : take
+        ? ({ classification: 'basic-error', correct: false } as const)
+        : ({ classification: 'correct', correct: true } as const);
     const up = this.dealerCards[0].rank;
     // Cycle-2 Task 5: ONE insurance decision covers every player hand. Stake
     // is the summed bet across all player hands (playerHands=1 reduces to
@@ -619,7 +662,8 @@ export class Game {
       taken: take ? 'take' : 'decline',
       expected: advice ? 'take' : 'decline',
       reason: `Insurance vs dealer ${up} at tc ${tc}`,
-      deviationId: 'ins',
+      // Only an index decision when indexes are being graded.
+      ...(withIndex ? { deviationId: 'ins' as const } : {}),
       tc,
       hand: `dealer ${up}`,
     });
@@ -664,10 +708,16 @@ export class Game {
       canSplit: options.canSplit,
       canSurrender: options.canSurrender,
     };
-    const withCount: Advice = correctPlay(hand.cards, up, tc, ctx, this.rules);
     const basicOnly: Advice = basicPlay(hand.cards, up, ctx, this.rules);
+    // #34: with deviations off, the right play is basic strategy at every
+    // count; correctPlay's index plays are never asked for.
+    const withCount: Advice =
+      this.cfg.gradeDeviations === false ? basicOnly : correctPlay(hand.cards, up, tc, ctx, this.rules);
     const { classification, correct } = classifyAction(action, withCount, basicOnly, hand.cards, up, tc, this.rules);
     const category = actionCategory(hand.cards, withCount.action);
+    // #25: a basic error is priced, on the hand as it stood at the decision,
+    // exactly as the hand drills price theirs.
+    const evCost = priceMistake(hand.cards, up, ctx, this.rules, withCount, action, classification);
 
     this.events.push({
       source: 'table',
@@ -681,6 +731,7 @@ export class Game {
       deviationId: withCount.deviationId,
       tc,
       hand: describeHand(hand.cards, up),
+      ...(evCost === undefined ? {} : { evCost }),
     });
 
     switch (action) {
@@ -713,24 +764,34 @@ export class Game {
     this.advance();
   }
 
+  /**
+   * Grade the owed count check. `rc` is the running-count answer; it is
+   * ignored (pass null) when the check asks the true count only (`askRc`
+   * false), and `tcGuess` is read only when the true count is asked
+   * (`askTcToo`). `rcCorrect` is undefined when the running count was not
+   * asked.
+   */
   submitCountCheck(
-    rc: number,
+    rc: number | null,
     tcGuess?: number,
-  ): { rcCorrect: boolean; actualRc: number; tcCorrect?: boolean; actualTc?: number } {
+  ): { rcCorrect?: boolean; actualRc: number; tcCorrect?: boolean; actualTc?: number } {
     const actualRc = this.runningCount;
-    const rcCorrect = rc === actualRc;
     const tc = this.trueCountNow;
-    this.events.push({
-      source: 'table',
-      kind: 'countCheck',
-      category: 'countCheck',
-      correct: rcCorrect,
-      classification: rcCorrect ? 'correct' : 'basic-error',
-      taken: String(rc),
-      expected: String(actualRc),
-      reason: 'Running count check',
-      tc,
-    });
+    let rcCorrect: boolean | undefined;
+    if (this.askRc) {
+      rcCorrect = rc === actualRc;
+      this.events.push({
+        source: 'table',
+        kind: 'countCheck',
+        category: 'countCheck',
+        correct: rcCorrect,
+        classification: rcCorrect ? 'correct' : 'basic-error',
+        taken: rc === null ? '' : String(rc),
+        expected: String(actualRc),
+        reason: 'Running count check',
+        tc,
+      });
+    }
 
     let tcCorrect: boolean | undefined;
     let actualTc: number | undefined;
@@ -823,7 +884,12 @@ export class Game {
   /** Deal the two-pass casino sequence -- one card to every hand of every seat
    * (in seat order; the player's own hands wherever they sit among them),
    * then the dealer's up-card; then the same seat sweep for card two, then
-   * the dealer's hole card. Shared by startRound() and sitOut() so both a
+   * the dealer's hole card.
+   *
+   * A dealer deals from their own left -- the player's RIGHT -- so the sweep
+   * runs right to left: seat 0 (first base) first, and within a seat the
+   * rightmost hand first. That is also the order of play (#1, see
+   * handPlayNumber), so the hand dealt first is the hand played first. Shared by startRound() and sitOut() so both a
    * staked round and a wong-out round burn the shoe/count in EXACTLY the same
    * order (R5, docs/BACKLOG.md) -- and now also so both populate `dealOrder`
    * (Table Realism, Request B) identically, rather than keeping two
@@ -834,7 +900,7 @@ export class Game {
     for (let s = 0; s < this.seats.length; s++) {
       const seat = this.seats[s];
       const isPlayerSeat = s === this.playerSeatIndex;
-      for (let h = 0; h < seat.hands.length; h++) {
+      for (let h = seat.hands.length - 1; h >= 0; h--) {
         this.drawToHand(seat.hands[h]);
         this.dealOrder.push(
           isPlayerSeat
@@ -851,7 +917,7 @@ export class Game {
     for (let s = 0; s < this.seats.length; s++) {
       const seat = this.seats[s];
       const isPlayerSeat = s === this.playerSeatIndex;
-      for (let h = 0; h < seat.hands.length; h++) {
+      for (let h = seat.hands.length - 1; h >= 0; h--) {
         this.drawToHand(seat.hands[h]);
         this.dealOrder.push(
           isPlayerSeat
@@ -977,11 +1043,11 @@ export class Game {
    * before the player (casino seat order) autoplay right away, then check
    * EVERY initial player hand for a natural blackjack. With multi-hand play,
    * one hand having a natural must not skip the others' turns: it settles
-   * immediately (real casino timing) and play proceeds left-to-right to the
-   * first hand that didn't (Cycle-2 Task 4). No splits exist yet at this
+   * immediately (real casino timing) and play starts at the rightmost hand
+   * that didn't (Cycle-2 Task 4, #1). No splits exist yet at this
    * point, so `this.hands` is exactly the round's initial hands. If any hand
    * has a natural, it is marked done with result 'blackjack' and bankroll
-   * credited; the phase then moves to 'player' on the first non-settled hand,
+   * credited; the phase then moves to 'player' on the rightmost non-settled hand,
    * or directly to settlement if all hands are naturals. */
   private resolveAfterPeek(): void {
     this.resolveBotsBefore();
@@ -1231,7 +1297,10 @@ export class Game {
     if (this.cfg.countCheckEvery > 0 && this.roundNo % this.cfg.countCheckEvery === 0) {
       this.countCheckDue = true;
       this.countCheckPromptCount += 1;
-      this.askTcToo = this.countCheckPromptCount % 2 === 0;
+      const ask = this.cfg.countCheckAsk ?? 'alternate';
+      this.askRc = ask !== 'true';
+      this.askTcToo =
+        ask === 'true' || ask === 'both' || (ask === 'alternate' && this.countCheckPromptCount % 2 === 0);
     }
   }
 }

@@ -1,0 +1,7 @@
+/* Seat 0 is first base: the dealer's left, which is the player's RIGHT. So
+   the bot row runs right to left, like the player's own hands (#1): the seat
+   dealt to and played first is the rightmost one on the felt. The DOM stays
+   in seat order (P1 first) for screen readers and tests. */
+.table-screen .bot-seats-row {
+  flex-direction: row-reverse;
+}

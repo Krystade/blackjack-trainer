@@ -11,7 +11,7 @@ import type { DealSlot, Game, PlayerHand, Seat } from '../../engine/game';
 import { handPlayNumber } from '../../engine/game';
 import type { Action } from '../../engine/deviations';
 import type { PlayContext } from '../../engine/strategy';
-import { correctPlay } from '../../engine/strategy';
+import { basicPlay, correctPlay } from '../../engine/strategy';
 import { isBust } from '../../engine/hand';
 import { useGame } from '../useGame';
 import type { SessionReport } from '../useGame';
@@ -45,6 +45,7 @@ import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession'
 import { CATEGORY_LABELS } from './categoryLabels';
 import { playLabel } from '../playLabel';
 import { LosingShoeBadge } from '../components/LosingShoeBadge';
+import './tableSeats.css';
 
 type BotActionLogEntry = Game['botActionLog'][number];
 
@@ -316,6 +317,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     act,
     insure,
     submitCount,
+    requestEnd,
     overlay,
     dismissOverlay,
     report,
@@ -338,7 +340,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const setBetForHand = (i: number, units: number) => {
     setSelectedBets((prev) => prev.map((v, idx) => (idx === i ? units : v)));
   };
-  const [countStage, setCountStage] = useState<'rc' | 'tc'>('rc');
+  const [rcStage, setCountStage] = useState<'rc' | 'tc'>('rc');
+  // #3: a true-count-only check (Profile.countCheckAsk 'true') has no
+  // running-count stage, so it opens straight on the true count.
+  const countStage: 'rc' | 'tc' = game.askRc ? rcStage : 'tc';
   const [pendingRc, setPendingRc] = useState(0);
   const [peeking, setPeeking] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -577,17 +582,19 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   }, [countDue, countStage]);
 
   const handleCountSubmit = (n: number) => {
-    if (game.askTcToo && countStage === 'rc') {
+    if (game.askRc && game.askTcToo && countStage === 'rc') {
       setPendingRc(n);
       setCountStage('tc');
       return;
     }
-    if (game.askTcToo) {
-      submitCount(pendingRc, n);
-    } else {
-      submitCount(n);
-    }
+    const endNow = !game.askRc
+      ? submitCount(null, n)
+      : game.askTcToo
+        ? submitCount(pendingRc, n)
+        : submitCount(n);
     setCountStage('rc');
+    // The answer released an End that was waiting on it.
+    if (endNow) finishSession();
   };
 
   // End is two taps, like Finish in the field test: it sits at the top of the
@@ -607,9 +614,16 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       return;
     }
     setConfirmEnd(false);
+    // A count check owed on the last round is asked first; answering it ends
+    // the session (handleCountSubmit).
+    if (!requestEnd()) return;
+    finishSession();
+  };
+
+  function finishSession() {
     endSession(peeks);
     setShowReport(true);
-  };
+  }
 
   const handleReportDone = () => {
     setShowReport(false);
@@ -630,7 +644,12 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       canSplit: legal.includes('split'),
       canSurrender: legal.includes('surrender'),
     };
-    advice = correctPlay(activeHand.cards, game.dealerCards[0].rank, game.trueCountNow, ctx, strategyRulesFor(activeProfile)).action;
+    const rules = strategyRulesFor(activeProfile);
+    // #34: the advice follows what the table grades against.
+    advice =
+      game.cfg.gradeDeviations === false
+        ? basicPlay(activeHand.cards, game.dealerCards[0].rank, ctx, rules).action
+        : correctPlay(activeHand.cards, game.dealerCards[0].rank, game.trueCountNow, ctx, rules).action;
   }
 
   let barMode: ActionBarMode;
@@ -641,8 +660,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       kind: 'bet',
       betSpreadOn: activeProfile.betSpreadOn,
       // Listed in order of play (#1): row "Hand 1" stakes the rightmost hand,
-      // the one dealt to and played first, so it names the same hand as the
-      // felt's label and the result line.
+      // which is dealt first and played first (the dealer deals from their
+      // left, the player's right), so it names the same hand as the felt's
+      // label and the result line.
       hands: selectedBets
         .map((units, i) => ({
           selectedBet: units,
