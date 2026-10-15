@@ -560,6 +560,13 @@ function FlashcardsView({
     // answering out loud is not watching the screen, and an unspoken prompt
     // would leave them waiting for a question that never comes.
     if (!eyesFree && !voiceOn) return;
+    // #27 / #53: eyes-free switched on over a card dealt with a count or as a
+    // fallback. The prompt says neither, so deal a plain card instead of
+    // grading at a count the listener never heard.
+    if (eyesFree && !feedbackRef.current && (card.tc !== undefined || card.ctx)) {
+      next();
+      return;
+    }
     speak(narrateFlashcardPrompt(card.cards, card.up), speechOptsFrom(settings.audio, { interrupt }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card, eyesFree, voiceOn]);

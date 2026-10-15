@@ -50,3 +50,19 @@ test('flashcards With count: 12 v 4 graded at the shown TC, the strip names the 
   }
   throw new Error('no negative count in 30 hands');
 });
+
+/**
+ * Review fix: eyes-free never says the count, so switching it on over a
+ * With-count card deals a plain card rather than grading at an unheard TC.
+ */
+test('flashcards With count: switching eyes-free on drops the count', async ({ page }) => {
+  await withSettings(page, { drill: { withCount: true }, audio: { enabled: true, answerPauseMs: 0 } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.quiz-tc')).toHaveCount(1);
+  const options = page.locator('details.drill-options > summary');
+  if (await options.count()) await options.click();
+  await page.getByLabel('Eyes-free audio').check();
+  await expect(page.locator('.quiz-tc')).toHaveCount(0);
+});
