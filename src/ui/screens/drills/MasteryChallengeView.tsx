@@ -6,7 +6,6 @@ import {
   advanceMasteryRun,
   isMasteryRunComplete,
   currentCellId,
-  cellsForScope,
   loadMasteryRun,
   saveMasteryRun,
   hydrateMasteryRun,
@@ -15,7 +14,8 @@ import {
 } from '../../../drills/masteryChallenge';
 import type { MasteryRun } from '../../../drills/masteryChallenge';
 import { generateAllCells } from '../../../drills/flashcards';
-import { scopesFrom, scopesLabel } from '../../../drills/handScope';
+import { deckLabel } from '../../../drills/deckSource';
+import { handDeckFor } from './handDeckFor';
 import { gradeMasteryAnswer } from '../../../drills/gradeAnswer';
 import { gateDrillAnswer } from '../../../drills/answerGate';
 import { drillLegalActions, rulesChipLabels } from '../../../drills/legalActions';
@@ -28,7 +28,7 @@ import { releaseAnswerFocus, snapshotResult, type HandResult } from '../../handR
 import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../../wrongTap';
 import { answerTooSoon } from '../../answerBounce';
 import { StudyChartOverlay } from '../../components/StudyChartOverlay';
-import { ScopeChips } from './HandDeckControls';
+import { HandDeckControls } from './HandDeckControls';
 import { KEY_TO_ACTION } from '../Drills';
 import { focusSwallowsKey } from '../../keyboardFocus';
 
@@ -39,9 +39,10 @@ function randomSeed(): number {
 /** Every cell, by id: a run's order can hold any of them. */
 const CELLS = new Map(generateAllCells().map((c) => [c.id, c]));
 
-/** #13: the cells a sweep walks for the scope chosen now. */
-function universeFor(settings: Settings): string[] {
-  return cellsForScope(scopesFrom(settings.drill)).map((c) => c.id);
+/** #13 / B2: the cells a sweep walks: the deck (chart, Custom selection,
+ * index cells or marked cells) within the scope chosen now. */
+function universeFor(settings: Settings, profile: Profile): string[] {
+  return handDeckFor(settings.drill, profile).ids;
 }
 
 /**
@@ -64,7 +65,8 @@ export function MasteryChallengeView({
   onSettingsChange: (next: Settings) => void;
   onBack: () => void;
 }) {
-  const universe = useMemo(() => universeFor(settings), [settings]);
+  const deck = useMemo(() => handDeckFor(settings.drill, activeProfile), [settings.drill, activeProfile]);
+  const universe = deck.ids;
   // A saved run resumes only when it walks the cells chosen now: a scope
   // changed elsewhere (Flashcards shares it) starts a fresh sweep instead of
   // finishing one over hands that are no longer in scope.
@@ -102,10 +104,13 @@ export function MasteryChallengeView({
   const [chartFor, setChartFor] = useState<HandResult | null>(null);
   const promptShownAtRef = useRef(performance.now());
 
-  // #13: ScopeChips has already saved the new scope.
+  // #13 / B2: HandDeckControls has already saved the change. An
+  // empty deck starts nothing: HandDeckGate takes the screen.
   const changeScopes = (next: Settings) => {
     onSettingsChange(next);
-    const fresh = startMasteryRun(universeFor(next), randomSeed());
+    const cells = universeFor(next, activeProfile);
+    if (cells.length === 0) return;
+    const fresh = startMasteryRun(cells, randomSeed());
     setRun(fresh);
     setLastResult(null);
     setWrongTap(null);
@@ -195,10 +200,10 @@ export function MasteryChallengeView({
       </div>
 
       <div className="drill-inline-controls">
-        <ScopeChips settings={settings} onChange={changeScopes} />
+        <HandDeckControls settings={settings} onChange={changeScopes} />
         {/* "Check progress" (operator ask): always-visible, live count. */}
         <div className="mastery-progress" data-testid="mastery-progress">
-          {run.index} / {run.order.length} cleared &middot; {scopesLabel(scopesFrom(settings.drill))}
+          {run.index} / {run.order.length} cleared &middot; {deckLabel(deck)}
         </div>
       </div>
 
