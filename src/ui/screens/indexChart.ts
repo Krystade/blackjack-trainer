@@ -2,7 +2,7 @@ import type { Rank } from '../../engine/cards';
 import { indexSetFor } from '../../engine/deviations';
 import type { Deviation, DeviationId } from '../../engine/deviations';
 import type { StrategyRules } from '../../engine/ruleset';
-import { upcardColumn } from './chartRows';
+import { DEALER_UPCARDS, upcardColumn } from './chartRows';
 import type { ChartRow, ChartSection } from './chartRows';
 
 /**
@@ -111,6 +111,31 @@ export function indexList(rules: StrategyRules): IndexList {
     entries: set.filter((d) => d.active).map(toEntry),
     inactive: set.filter((d) => !d.active).map((d) => d.label),
   };
+}
+
+/**
+ * True when `entry` is a hit / stand / double / split index on a cell the
+ * chart surrenders (Rh, Rs, Rp) -- 16 v 10, 15 v 10 and 16 v 9 under H17 with
+ * late surrender.
+ *
+ * strategy.ts settles surrender (the basic Rh, or a Fab 4 index) BEFORE it
+ * looks at any hard-total index, so on such a cell a two-card hand surrenders
+ * at every count where the index would fire, and the index is only the play
+ * once surrender is off the table (after a hit, or no surrender at all). Bare,
+ * "16 v 10 · TC ≥ 0 · Stand" sitting under an Rh cell reads as "stand at +1",
+ * which the grader marks wrong.
+ */
+export function surrenderComesFirst(entry: IndexEntry, cellAction: string | null): boolean {
+  if (entry.family === 'surrender' || entry.family === 'insurance') return false;
+  return cellAction === 'Rh' || cellAction === 'Rs' || cellAction === 'Rp';
+}
+
+/** The HARD chart's play at the cell an index sits on, or null when it has none. */
+export function hardCellAction(entry: IndexEntry, hardRows: readonly ChartRow[]): string | null {
+  if (entry.hardTotal === null) return null;
+  const row = hardRows.find((r) => r.keys.includes(entry.hardTotal!));
+  const col = DEALER_UPCARDS.indexOf(entry.dealer);
+  return row && col >= 0 ? (row.actions[col] ?? null) : null;
 }
 
 /**

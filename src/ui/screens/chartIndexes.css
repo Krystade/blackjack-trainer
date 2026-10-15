@@ -210,3 +210,19 @@
   background: var(--surface-raised);
   transform: translateX(-50%) rotate(45deg);
 }
+
+/* Under an index on a surrender cell: surrender is settled first. Prose, so
+   the page's body face rather than the table's mono (the same stack as the
+   body rule in app.css). */
+.chart-index-aside {
+  margin: 0.2rem 0.45rem 0.25rem;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}

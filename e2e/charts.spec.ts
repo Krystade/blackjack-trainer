@@ -225,7 +225,7 @@ test.describe('at 375x812', () => {
     await cell.scrollIntoViewIfNeeded();
     await cell.click();
     const note = overlay.locator('[data-testid="chart-index-note"]');
-    await expect(note).toHaveText('16 v 10 · TC ≥ 0 · Stand');
+    await expect(note.locator('.index-item')).toHaveText('16 v 10 · TC ≥ 0 · Stand');
     await expectGridsFit(page, '.study-chart-overlay');
     // An outside tap closes the note and nothing else: the overlay stays.
     await overlay.locator('[data-section="HARD"] .chart-section-title').click();
@@ -356,7 +356,7 @@ test.describe('#23 indexes', () => {
     await expect(items(page).filter({ hasText: '16 v 10' })).toHaveText('16 v 10 · TC ≥ 0 · Stand');
     await expect(page.locator('[data-group="fab4"]')).toHaveCount(0);
     // H17 switches 11 v A off; the list says so rather than being one short.
-    await expect(page.locator('[data-testid="chart-indexes"] .chart-section-note')).toHaveText(expected.inactive);
+    await expect(page.locator('[data-testid="chart-indexes"] .chart-section-note:not([data-testid])')).toHaveText(expected.inactive);
   });
 
   test('marks exactly the cells that carry an index, and nothing else', async ({ page }) => {
@@ -413,7 +413,7 @@ test.describe('#23 indexes', () => {
     const cell16v10 = page.locator('[data-row="HARD:16"] [data-up="10"] button');
     await cell16v10.click();
     await expect(note).toHaveCount(1);
-    await expect(note).toHaveText('16 v 10 · TC ≥ 0 · Stand');
+    await expect(note.locator('.index-item')).toHaveText('16 v 10 · TC ≥ 0 · Stand');
     await expect(cell16v9).toHaveAttribute('aria-expanded', 'false');
     await cell16v10.click();
     await expect(note).toHaveCount(0);
@@ -430,7 +430,7 @@ test.describe('#23 indexes', () => {
     await openCharts(page, '/?e2e=1&cell=HARD:16:10');
     await expect(page.locator('[data-highlight="true"]')).toHaveAttribute('data-index', 'true');
     await page.locator('[data-row="HARD:16"] [data-up="10"] button').click({ timeout: 3000 });
-    await expect(page.locator('[data-testid="chart-index-note"]')).toHaveText(
+    await expect(page.locator('[data-testid="chart-index-note"] .index-item')).toHaveText(
       '16 v 10 · TC ≥ 0 · Stand',
     );
   });
@@ -461,6 +461,52 @@ test.describe('#23 indexes', () => {
     await withProfile(page, { rules: { ls: false }, surrenderIndices: true });
     await openCharts(page);
     await expect(page.locator('[data-group="fab4"]')).toHaveCount(0);
+  });
+
+  test('an index on a surrender cell says surrender comes first', async ({ page }) => {
+    await withProfile(page);
+    await openCharts(page);
+    // 16 v 10 is Rh: a two-card 16 surrenders at every count, so the stand
+    // index is only the play once surrender is gone.
+    await page.locator('[data-row="HARD:16"] [data-up="10"] button').click();
+    await expect(page.locator('[data-testid="chart-index-surrender-first"]')).toContainText('The stand index');
+    // 12 v 4 is a plain hit cell: no such line.
+    await page.locator('[data-row="HARD:12"] [data-up="4"] button').click();
+    await expect(page.locator('[data-testid="chart-index-note"]')).toHaveText('12 v 4 · TC ≤ −1 · Hit');
+    await expect(page.locator('[data-testid="chart-index-surrender-first"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="chart-indexes-surrender-first"]')).toContainText('16 v 10');
+  });
+
+  test.describe('on a touch screen', () => {
+    test.use({ hasTouch: true, isMobile: true, viewport: { width: 375, height: 812 } });
+
+    test('scrolling with the note open keeps it; a tap outside closes it', async ({ page, context }) => {
+      await withProfile(page);
+      await openCharts(page);
+      const cell = page.locator('[data-row="HARD:16"] [data-up="10"] button');
+      await cell.scrollIntoViewIfNeeded();
+      await cell.tap();
+      const note = page.locator('[data-testid="chart-index-note"]');
+      await expect(note).toHaveCount(1);
+
+      // A real touch pan, started on an unmarked cell: the browser scrolls
+      // and cancels the pointer, which is not a tap.
+      const box = (await page.locator('[data-row="HARD:14"] [data-up="2"]').boundingBox())!;
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      const before = await page.evaluate(() => window.scrollY);
+      const cdp = await context.newCDPSession(page);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let i = 1; i <= 10; i += 1) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - i * 20 }] });
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before);
+      await expect(note).toHaveCount(1);
+
+      await page.locator('[data-row="HARD:17"] [data-up="2"]').tap();
+      await expect(note).toHaveCount(0);
+    });
   });
 });
 

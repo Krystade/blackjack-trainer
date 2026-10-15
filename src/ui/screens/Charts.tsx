@@ -8,7 +8,7 @@ import type { Profile } from '../../store/types';
 import { getChart } from '../../engine/charts';
 import { FloatingBackPill } from '../components/FloatingBackPill';
 import { strategyRulesFor } from '../../store/profiles';
-import { indexList, indexesAtCell } from './indexChart';
+import { hardCellAction, indexList, indexesAtCell, surrenderComesFirst } from './indexChart';
 import type { IndexEntry } from './indexChart';
 import {
   ACTION_LEGEND,
@@ -77,6 +77,15 @@ function IndexLine({ entry }: { entry: IndexEntry }) {
       </span>
     </>
   );
+}
+
+/**
+ * The line under an index whose cell the chart surrenders: the grader settles
+ * surrender first, so the index is the play only once surrender is gone.
+ */
+function surrenderFirstLine(plays: readonly string[]): string {
+  const names = [...new Set(plays.map((p) => p.toLowerCase()))].join(' and ');
+  return `Surrender comes first while it’s allowed. The ${names} index is for when it isn’t, e.g. after a hit.`;
 }
 
 const INDEX_GROUPS: readonly { id: IndexEntry['group']; title: string }[] = [
@@ -186,6 +195,11 @@ export function Charts({
   // #23: the indexes the trainer GRADES with -- strategyRulesFor, not the bare
   // rules, because the Fab 4 are a profile choice and need surrender on.
   const indexes = useMemo(() => indexList(strategyRulesFor(activeProfile)), [activeProfile]);
+  // The list's entries that sit on a surrender cell (see surrenderComesFirst).
+  const surrenderFirst = useMemo(() => {
+    const hardRows = rowsBySection.find((s) => s.id === 'HARD')?.rows ?? [];
+    return indexes.entries.filter((e) => surrenderComesFirst(e, hardCellAction(e, hardRows)));
+  }, [indexes, rowsBySection]);
 
   const cellRef = useRef<HTMLTableCellElement | null>(null);
 
@@ -206,10 +220,23 @@ export function Charts({
     // so a tap that lands on something else (Back, the order toggle) still
     // does its own job as well. A tap on another marked cell is left to that
     // cell's click, which moves the note there.
+    //
+    // A TAP, not a touch: it closes on the pointerup. A finger put down to
+    // scroll gets a pointercancel instead once the page starts panning, so
+    // scrolling to read the rest of the note (or the rows it pushed down)
+    // leaves it open.
+    let outsidePointer: number | null = null;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Element | null;
-      if (target?.closest('.chart-index-note, [data-index-cell]')) return;
+      outsidePointer = target?.closest('.chart-index-note, [data-index-cell]') ? null : event.pointerId;
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      if (event.pointerId !== outsidePointer) return;
+      outsidePointer = null;
       setOpenIndexCell(null);
+    };
+    const onPointerCancel = (event: PointerEvent) => {
+      if (event.pointerId === outsidePointer) outsidePointer = null;
     };
     // Escape closes it and puts focus back on the cell that opened it.
     const onKeyDown = (event: KeyboardEvent) => {
@@ -221,9 +248,13 @@ export function Charts({
       opener?.focus();
     };
     document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('pointerup', onPointerUp, true);
+    document.addEventListener('pointercancel', onPointerCancel, true);
     document.addEventListener('keydown', onKeyDown);
     return () => {
       document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('pointerup', onPointerUp, true);
+      document.removeEventListener('pointercancel', onPointerCancel, true);
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [openIndexCell]);
@@ -372,6 +403,9 @@ export function Charts({
                     const noteUp = DEALER_UPCARDS.findIndex((up) => openIndexCell === `${row.id}:${up}`);
                     const noteEntries =
                       noteUp >= 0 ? indexesAtCell(indexes.entries, section.id, row, DEALER_UPCARDS[noteUp]) : [];
+                    const noteSurrenderFirst = noteEntries.filter((e) =>
+                      surrenderComesFirst(e, row.actions[noteUp] ?? null),
+                    );
                     return (
                       <Fragment key={row.id}>
                         <tr data-row={row.id}>
@@ -440,6 +474,11 @@ export function Charts({
                                     </li>
                                   ))}
                                 </ul>
+                                {noteSurrenderFirst.length > 0 && (
+                                  <p className="chart-index-aside" data-testid="chart-index-surrender-first">
+                                    {surrenderFirstLine(noteSurrenderFirst.map((e) => e.play))}
+                                  </p>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -485,6 +524,13 @@ export function Charts({
             </div>
           );
         })}
+        {surrenderFirst.length > 0 && (
+          <p className="chart-section-note" data-testid="chart-indexes-surrender-first">
+            {surrenderFirst.map((e) => `${e.hand} v ${e.dealer}`).join(', ')} sit on cells the chart
+            surrenders. Surrender comes first while it&rsquo;s allowed; those indexes are for when it
+            isn&rsquo;t, e.g. after a hit.
+          </p>
+        )}
         {indexes.inactive.map((line) => (
           <p className="chart-section-note" key={line}>
             {line}

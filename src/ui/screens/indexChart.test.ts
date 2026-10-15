@@ -5,7 +5,9 @@ import { DEFAULT_RULES } from '../../engine/ruleset';
 import type { StrategyRules } from '../../engine/ruleset';
 import { DEALER_UPCARDS, buildSectionRows } from './chartRows';
 import type { ChartSection } from './chartRows';
-import { formatIndex, indexList, indexesAtCell } from './indexChart';
+import { formatIndex, hardCellAction, indexList, indexesAtCell, surrenderComesFirst } from './indexChart';
+import { correctPlay } from '../../engine/strategy';
+import type { Card, Rank } from '../../engine/cards';
 
 const H17: StrategyRules = DEFAULT_RULES;
 const S17: StrategyRules = { ...DEFAULT_RULES, s17: true };
@@ -113,5 +115,50 @@ describe('indexesAtCell', () => {
     for (const up of DEALER_UPCARDS) expect(indexesAtCell(entries, 'HARD', hard17, up)).toEqual([]);
     const pair8 = buildSectionRows(chart, 'PAIRS', 'ascending').find((r) => r.id === 'PAIRS:8')!;
     expect(indexesAtCell(entries, 'PAIRS', pair8, '10')).toEqual([]);
+  });
+});
+
+describe('surrenderComesFirst', () => {
+  const card = (rank: Rank): Card => ({ rank, suit: 's' });
+  /** A two-card hand for the index: 10,10 for a ten-pair, else a hard total with no ace and no pair. */
+  function handFor(id: string, total: number): Card[] {
+    if (id.startsWith('TT')) return [card('10'), card('10')];
+    for (let a = 2; a <= 10; a += 1) {
+      const b = total - a;
+      if (b >= 2 && b <= 10 && b !== a) return [card(String(a) as Rank), card(String(b) as Rank)];
+    }
+    throw new Error(`no two-card hard ${total}`);
+  }
+
+  it('flags exactly the indexes the grader overrules with surrender while surrender is allowed', () => {
+    const NO_LS: StrategyRules = { ...DEFAULT_RULES, ls: false };
+    const flaggedBy = new Map<string, string[]>();
+    for (const [name, rules] of [['H17', H17], ['S17', S17], ['H17_FAB4', H17_FAB4], ['S17_FAB4', S17_FAB4], ['NO_LS', NO_LS]] as const) {
+      const hardRows = buildSectionRows(getChart(rules), 'HARD', 'ascending');
+      const set = indexSetFor(rules);
+      const flagged: string[] = [];
+      for (const e of indexList(rules).entries) {
+        if (e.hardTotal === null || e.family === 'surrender') continue;
+        const dev = set.find((d) => d.id === e.id)!;
+        const cards = handFor(e.id, e.hardTotal);
+        // At the index itself, two cards, everything on offer.
+        const withSurrender = correctPlay(cards, e.dealer, dev.threshold, { canDouble: true, canSplit: true, canSurrender: true }, rules);
+        const without = correctPlay(cards, e.dealer, dev.threshold, { canDouble: true, canSplit: true, canSurrender: false }, rules);
+        const first = surrenderComesFirst(e, hardCellAction(e, hardRows));
+        expect(first, `${name} ${e.id}`).toBe(withSurrender.action === 'surrender');
+        // Either way, once surrender is gone the index is the play.
+        expect(without.action, `${name} ${e.id}`).toBe(dev.action);
+        if (first) flagged.push(e.id);
+      }
+      flaggedBy.set(name, flagged);
+    }
+    expect(flaggedBy.get('H17')).toEqual(expect.arrayContaining(['16v10', '15v10', '16v9']));
+    expect(flaggedBy.get('NO_LS')).toEqual([]);
+  });
+
+  it('never flags a surrender index or insurance', () => {
+    for (const e of indexList(H17_FAB4).entries.filter((x) => x.family === 'surrender' || x.family === 'insurance')) {
+      expect(surrenderComesFirst(e, 'Rh')).toBe(false);
+    }
   });
 });
