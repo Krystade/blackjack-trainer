@@ -66,6 +66,9 @@ import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSessi
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
 import './countDrillView.css';
+import { makeCountTable, tableRounds, TABLE_ROUND_CHOICES } from '../../../drills/countTable';
+import type { TableRound } from '../../../drills/countTable';
+import './countTable.css';
 
 function formatSigned(n: number): string {
   return n > 0 ? `+${n}` : String(n);
@@ -209,6 +212,10 @@ export function CountDrillView({
   };
   const [drillRound, setDrillRound] = useState<CountDrillRound | null>(null);
   const [countdownRound, setCountdownRound] = useState<CountdownRound | null>(null);
+  // #47: the run's table layout when it was dealt in Table mode, else null.
+  // Each round is one entry of `groups` too, so pacing, checkpoints and
+  // grading run unchanged on rounds.
+  const [tableRun, setTableRun] = useState<TableRound[] | null>(null);
   const [shownIndex, setShownIndex] = useState(0);
   const [wasCorrect, setWasCorrect] = useState(false);
   const [actualValue, setActualValue] = useState(0);
@@ -413,6 +420,12 @@ export function CountDrillView({
     onSettingsChange(next);
   };
 
+  // #47: Table mode is visual-only (no spoken table), and neither Countdown
+  // nor a Timed Challenge is a run of rounds, so it is offered only outside
+  // all three; a stored "Table" under any of them deals ordinary cards.
+  const tableChoosable = !countdownMode && !eyesFree && !timedChallenge;
+  const tableOn = tableChoosable && settings.drill.countTableMode === true;
+
   const groups: Card[][] = countdownMode
     ? countdownRound
       ? countdownRound.shown.map((c) => [c])
@@ -516,7 +529,10 @@ export function CountDrillView({
       // ET7: adversarial dealer-pace pressure -- a seeded speed-up burst shortens
       // THIS card's interval, then recovers (paceMultiplier returns 1 off-burst,
       // and always 1 when the toggle is off, so default pacing is byte-identical).
-    }, settings.drill.countIntervalMs * (settings.drill.pacePressure ? paceMultiplier(runSeedRef.current, shownIndex) : 1));
+    }, settings.drill.countIntervalMs *
+      // #47: a table round stays up for the time its cards would take.
+      (tableRun ? (groups[shownIndex]?.length ?? 1) : 1) *
+      (settings.drill.pacePressure ? paceMultiplier(runSeedRef.current, shownIndex) : 1));
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -531,6 +547,7 @@ export function CountDrillView({
     strictMode,
     countdownMode,
     timedChallenge,
+    tableRun,
   ]);
 
   // Eyes-free AUTO (timed) mode: speech drives the pace instead of a fixed
@@ -907,14 +924,19 @@ export function CountDrillView({
     if (countdownMode) {
       setCountdownRound(makeCountdown(seed));
       setDrillRound(null);
+      setTableRun(null);
     } else {
       // R8/CM#1: apply the adversarial same-sign bias only to the ORDINARY
       // count drill, never a Timed Challenge run -- a biased shoe is harder in
       // the sign-traversal dimension, which would contaminate the speed-tier
       // grading the Timed Challenge feeds into R2's competence gate.
       const bias = timedChallenge ? 'none' : settings.drill.countBias;
-      const round = makeCountDrill(settings.drill.countLengthCards, settings.drill.countGroup, seed, bias);
+      const table = tableOn ? makeCountTable(tableRounds(settings.drill.countTableRounds), seed) : null;
+      const round = table
+        ? { groups: table.groups, finalRc: table.finalRc }
+        : makeCountDrill(settings.drill.countLengthCards, settings.drill.countGroup, seed, bias);
       setDrillRound(round);
+      setTableRun(table ? table.rounds : null);
       setCountdownRound(null);
       // RT#12: same scope as distractions -- the ordinary count drill only.
       // Countdown asks for a tag rather than a running count, and a Timed
@@ -1062,7 +1084,8 @@ export function CountDrillView({
       return;
     }
 
-    const cardsInRun = countdownMode ? 52 : settings.drill.countLengthCards;
+    // #47: a table run's length is whatever its rounds dealt.
+    const cardsInRun = countdownMode ? 52 : tableRun ? totalCards : settings.drill.countLengthCards;
     // #20/#30: a manual run was never dealt at the auto interval, so it records
     // the pace the user actually kept -- the mean tap gap, idle gaps left out
     // -- and says it was manual. `intervalMs` is required by the stored shape;
@@ -1542,6 +1565,32 @@ export function CountDrillView({
   }, [voiceOn, phase]);
 
   const currentGroup = shownIndex < groups.length ? groups[shownIndex] : null;
+  const currentTable = tableRun && shownIndex < tableRun.length ? tableRun[shownIndex] : null;
+
+  /** #47: the round laid out like Play -- dealer on top, seats below, read-only. */
+  const tableLayout = currentTable && (
+    <div className="count-table" data-testid="count-table">
+      <div className="dealer-area count-table-dealer">
+        {currentTable.dealer.map((c, i) => (
+          <PlayingCard key={i} card={c} />
+        ))}
+      </div>
+      <div className="bot-seats-row count-table-seats">
+        {currentTable.players.map((hand, seat) => (
+          <div key={seat} className="bot-seat">
+            <div className="bot-seat-label">P{seat + 1}</div>
+            <div className="bot-hand">
+              <div className="bot-hand-cards">
+                {hand.map((c, j) => (
+                  <PlayingCard key={j} card={c} size="compact" />
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   // R9 / red-team #7: render a flashed card, optionally with a small seeded
   // rotation/offset ("messy cards"). Seeded by this run's seed + the card's
@@ -1650,7 +1699,30 @@ export function CountDrillView({
 
       {phase === 'setup' && (
         <div className="count-setup">
-          {!countdownMode && (
+          {tableChoosable && (
+            <div className="settings-row">
+              <span className="settings-label">Deal</span>
+              <Segmented
+                options={[
+                  { value: 'cards', label: 'Cards' },
+                  { value: 'table', label: 'Table' },
+                ]}
+                value={tableOn ? 'table' : 'cards'}
+                onChange={(v) => updateDrill({ countTableMode: v === 'table' })}
+              />
+            </div>
+          )}
+          {tableOn && (
+            <div className="settings-row">
+              <span className="settings-label">Length (rounds)</span>
+              <Segmented
+                options={TABLE_ROUND_CHOICES.map((n) => ({ value: String(n), label: String(n) }))}
+                value={String(tableRounds(settings.drill.countTableRounds))}
+                onChange={(v) => updateDrill({ countTableRounds: Number(v) })}
+              />
+            </div>
+          )}
+          {!countdownMode && !tableOn && (
               <Stepper
                 label="Length"
                 value={settings.drill.countLengthCards}
@@ -1718,7 +1790,7 @@ export function CountDrillView({
             Countdown (one deck with a card held back: name its tag)
           </label>
 
-          {!countdownMode && (
+          {!countdownMode && !tableOn && (
               <div className="settings-row">
                 <span className="settings-label">Group size</span>
                 <Segmented
@@ -1755,7 +1827,7 @@ export function CountDrillView({
             />
           </div>
 
-          {!countdownMode && (
+          {!countdownMode && !tableOn && (
             <>
               <label className="count-toggle">
                 <input
@@ -1988,21 +2060,26 @@ export function CountDrillView({
 
       {phase === 'flashing' && settings.drill.countManual && !timedChallenge && (
         <div className="manual-tap-zone" onClick={advanceManual}>
-          <div className="count-flash-cards">
-            {currentGroup?.map(renderFlashCard)}
-          </div>
+          {tableLayout || (
+            <div className="count-flash-cards">
+              {currentGroup?.map(renderFlashCard)}
+            </div>
+          )}
           <div className="manual-tap-hint">
-            Tap for the next card &middot; {shownIndex + 1}/{groups.length}
+            Tap for the next {tableRun ? 'round' : 'card'} &middot; {shownIndex + 1}/{groups.length}
           </div>
         </div>
       )}
 
       {phase === 'flashing' && (!settings.drill.countManual || timedChallenge) && (
         <div className="count-flash-area">
-          <div className="count-flash-cards">
-            {currentGroup?.map(renderFlashCard)}
-          </div>
+          {tableLayout || (
+            <div className="count-flash-cards">
+              {currentGroup?.map(renderFlashCard)}
+            </div>
+          )}
           <div className="count-flash-progress">
+            {tableRun ? 'Round ' : ''}
             {shownIndex + 1} / {groups.length}
             {timedChallenge && <span className="count-timed-badge">speeding up&hellip;</span>}
           </div>
