@@ -2779,6 +2779,11 @@ type DrillMode =
 
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
   const [mode, setMode] = useState<'picker' | DrillMode>('picker');
+  // Every mode is a new screen: start it at the top, not at the picker's
+  // scroll offset (the Custom editor opened mid-grid with its header hidden).
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [mode]);
 
   if (mode === 'count') {
     return (
