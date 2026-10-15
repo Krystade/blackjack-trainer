@@ -4,6 +4,10 @@ import { loadStats } from '../../store/persist';
 import { readiness, weakestCategories } from './readiness';
 import { buildLabel, formatBuiltAt, runningBuildId, runningBuiltAt } from '../../updateCheck';
 import { CATEGORY_LABELS } from './categoryLabels';
+import { masterySweepDone, nextStep } from './nextStep';
+import { loadMasteryRun } from '../../drills/masteryChallenge';
+import { setDrillLaunch } from '../drillLaunch';
+import './nextStep.css';
 
 interface HomeProps {
   onNavigate: (screen: Screen) => void;
@@ -34,6 +38,16 @@ export function Home({ onNavigate, activeProfile }: HomeProps) {
   const stats = loadStats();
   const r = readiness(stats);
   const weak = weakestCategories(stats);
+  // #28: one recommendation, with its reason.
+  const step = nextStep(stats, { sweepDone: masterySweepDone(loadMasteryRun()) });
+  const openStep = () => {
+    if (step.kind === 'play') {
+      onNavigate('table');
+      return;
+    }
+    setDrillLaunch(step.kind);
+    onNavigate('drills');
+  };
 
   return (
     <div className="home-screen">
@@ -84,6 +98,15 @@ export function Home({ onNavigate, activeProfile }: HomeProps) {
 
         <button type="button" className="home-stats-link" onClick={() => onNavigate('stats')}>
           All stats
+        </button>
+      </section>
+
+      <section className="next-step" aria-label="Next step" data-step={step.kind}>
+        <span className="readiness-label">Next step</span>
+        <h2 className="next-step-title">{step.title}</h2>
+        <p className="next-step-why">{step.why}</p>
+        <button type="button" className="u-btn next-step-btn" onClick={openStep}>
+          Start
         </button>
       </section>
 
