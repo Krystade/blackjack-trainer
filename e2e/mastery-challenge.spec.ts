@@ -8,7 +8,7 @@ test('mastery challenge: default scope is All, progress starts at 0', async ({ p
   await expect(page.locator('.drill-heading')).toHaveText('Mastery challenge');
 
   const scopeRow = page.locator('.settings-row', { hasText: 'Hands' });
-  await expect(scopeRow.getByRole('button', { name: 'All', exact: true })).toHaveClass(/segmented-btn-active/);
+  await expect(scopeRow.getByRole('button', { name: 'All', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
   await expect(page.locator('[data-testid="mastery-progress"]')).toContainText('0 / 330 cleared');
 });
@@ -110,7 +110,10 @@ test('mastery challenge: progress survives a reload (persisted run, not lost on 
 
   const stored = await page.evaluate(() => window.localStorage.getItem('bjtrainer.masteryrun.v1'));
   expect(stored).not.toBeNull();
-  expect(JSON.parse(stored!).scope).toBe('pairs');
+  // #13: the run stores the cells it walks, not a scope name.
+  const order = JSON.parse(stored!).order as string[];
+  expect(order).toHaveLength(100);
+  expect(order.every((id) => id.startsWith('pair-'))).toBe(true);
 });
 
 test('mastery challenge #6: there is no Distractions control, and answering never interrupts', async ({ page }) => {
@@ -157,4 +160,38 @@ test('mastery challenge #10: a miss on 4,4 v 4 opens the chart on PAIRS, and the
   const highlighted = overlay.locator('[data-highlight="true"]');
   await expect(highlighted).toHaveCount(1);
   await expect(highlighted.locator('xpath=ancestor::section[1]')).toHaveAttribute('data-section', 'PAIRS');
+});
+
+/**
+ * #29: a new sweep is ordered by the flashcard SR schedule. Every Pairs cell
+ * is reviewed and not due except 8,8 v A, a month overdue: it is dealt among
+ * the first few hands instead of anywhere in the hundred. The seed is pinned,
+ * so this is one fixed shuffle; a uniform one deals the cell 96th.
+ */
+test('mastery #29: an overdue cell comes early in a new sweep', async ({ page }) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.42;
+    const DAY = 86_400_000;
+    const now = Date.now();
+    const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+    const deck: Record<string, unknown> = {};
+    for (const r of ranks) {
+      for (const up of ranks) {
+        deck[`pair-${r}-v-${up}`] = { box: 5, dueAt: now + 20 * DAY, lastSeenAt: now, lapses: 0, reviews: 4 };
+      }
+    }
+    deck['pair-8-v-A'] = { box: 0, dueAt: now - 30 * DAY, lastSeenAt: now - 30 * DAY, lapses: 1, reviews: 5 };
+    window.localStorage.setItem('bjtrainer.flashsr.v1', JSON.stringify(deck));
+    window.localStorage.setItem('bjtrainer.settings.v1', JSON.stringify({ version: 1, drill: { scopes: ['pairs'] } }));
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
+  await expect(page.getByTestId('mastery-progress')).toContainText('0 / 100 cleared');
+
+  const order = await page.evaluate(
+    () => JSON.parse(window.localStorage.getItem('bjtrainer.masteryrun.v1') ?? '{}').order as string[],
+  );
+  expect(order).toHaveLength(100);
+  expect(order.indexOf('pair-8-v-A')).toBeLessThan(5);
 });

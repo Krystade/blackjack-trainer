@@ -1,0 +1,94 @@
+/* #31: the hand a long press marks. No iOS callout, no text selection and no
+   double-tap zoom, so holding a finger on the cards opens the marker picker
+   and nothing else. */
+.markable-hand {
+  position: relative;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.markable-hand img {
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+/* The marked cell's dot, in the hand's top corner. An opaque ink rim keeps
+   it readable on every felt, whatever the colour. */
+.marker-dot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  box-sizing: content-box;
+  pointer-events: none;
+}
+
+.marker-red {
+  background: var(--bad);
+}
+
+.marker-amber {
+  background: var(--accent);
+}
+
+.marker-green {
+  background: var(--good);
+}
+
+.marker-blue {
+  background: var(--card-back-weave);
+}
+
+/* Over everything the drill shows, the answer bar included: the tap that
+   dismisses the picker must not answer the hand. */
+.marker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: transparent;
+}
+
+.marker-picker {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 41;
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--raised);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
+}
+
+.marker-swatch {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  cursor: pointer;
+  padding: 0;
+}
+
+.marker-swatch[aria-pressed='true'] {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.marker-none {
+  width: auto;
+  padding: 0 0.8rem;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+}

@@ -1,23 +1,28 @@
-import { useEffect, useRef, useState } from 'react';
-import type { Profile } from '../../../store/types';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import type { Profile, Settings } from '../../../store/types';
 import type { Action } from '../../../engine/deviations';
 import {
   startMasteryRun,
   advanceMasteryRun,
   isMasteryRunComplete,
   currentCellId,
-  cellsForScope,
   loadMasteryRun,
   saveMasteryRun,
   hydrateMasteryRun,
   presentedCards,
+  runCoversExactly,
+  srCellWeight,
 } from '../../../drills/masteryChallenge';
-import type { MasteryRun, MasteryScope } from '../../../drills/masteryChallenge';
-import { gradeMasteryAnswer } from '../../../drills/gradeAnswer';
+import type { MasteryRun } from '../../../drills/masteryChallenge';
+import { generateAllCells } from '../../../drills/flashcards';
+import { deckLabel } from '../../../drills/deckSource';
+import { handDeckFor } from './handDeckFor';
+import { gradeMasteryAnswer, loadFlashSr } from '../../../drills/gradeAnswer';
 import { gateDrillAnswer } from '../../../drills/answerGate';
 import { drillLegalActions, rulesChipLabels } from '../../../drills/legalActions';
 import { correctPlay } from '../../../engine/strategy';
 import { PlayingCard } from '../../components/PlayingCard';
+import { MarkableHand } from '../../components/MarkableHand';
 import { ActionBar } from '../../components/ActionBar';
 import { HandResultStrip } from '../../components/HandResultStrip';
 import { RulesChip } from '../../components/RulesChip';
@@ -25,7 +30,7 @@ import { releaseAnswerFocus, snapshotResult, type HandResult } from '../../handR
 import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../../wrongTap';
 import { answerTooSoon } from '../../answerBounce';
 import { StudyChartOverlay } from '../../components/StudyChartOverlay';
-import { Segmented } from '../Settings';
+import { HandDeckControls } from './HandDeckControls';
 import { KEY_TO_ACTION } from '../Drills';
 import { focusSwallowsKey } from '../../keyboardFocus';
 
@@ -33,42 +38,57 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
-function scopeLabel(scope: MasteryScope): string {
-  return scope === 'all' ? 'All' : scope.charAt(0).toUpperCase() + scope.slice(1);
+/** #29: each cell's flashcard spaced-repetition weight, read now, which
+ * orders a new sweep so the due and missed cells come first. */
+function srWeightsNow() {
+  return srCellWeight(loadFlashSr(), Date.now());
+}
+
+/** Every cell, by id: a run's order can hold any of them. */
+const CELLS = new Map(generateAllCells().map((c) => [c.id, c]));
+
+/** #13 / B2: the cells a sweep walks: the deck (chart, Custom selection,
+ * index cells or marked cells) within the scope chosen now. */
+function universeFor(settings: Settings, profile: Profile): string[] {
+  return handDeckFor(settings.drill, profile).ids;
 }
 
 /**
  * Mastery Challenge (operator request): walk EVERY cell in a chosen scope
- * (Hard / Soft / Pairs / All), in random order, exactly once, and get every
- * single one right. One wrong answer wipes the run -- back to zero, with a
+ * (#13: any of Hard / Soft / Pairs), exactly once (#29: due and missed cells
+ * first), and get every single one right. One wrong answer wipes the run -- back to zero, with a
  * fresh shuffle. All the sequencing logic lives in the pure
  * drills/masteryChallenge.ts state machine and is unit-tested there; this
  * view is wiring only. Visual-only (D7, plan doc) -- no eyes-free ZonePad or
  * narration, matching PairCancelView's precedent.
  */
 export function MasteryChallengeView({
+  settings,
   activeProfile,
+  onSettingsChange,
   onBack,
 }: {
+  settings: Settings;
   activeProfile: Profile;
+  onSettingsChange: (next: Settings) => void;
   onBack: () => void;
 }) {
+  const deck = useMemo(() => handDeckFor(settings.drill, activeProfile), [settings.drill, activeProfile]);
+  const universe = deck.ids;
+  // A saved run resumes only when it walks the cells chosen now: a scope
+  // changed elsewhere (Flashcards shares it) starts a fresh sweep instead of
+  // finishing one over hands that are no longer in scope.
   const [run, setRun] = useState<MasteryRun>(() => {
-    const persisted = loadMasteryRun();
-    return hydrateMasteryRun(persisted) ?? startMasteryRun('all', randomSeed());
+    const saved = hydrateMasteryRun(loadMasteryRun());
+    return saved && runCoversExactly(saved, universe) ? saved : startMasteryRun(universe, randomSeed(), srWeightsNow());
   });
 
   useEffect(() => {
     saveMasteryRun(run);
   }, [run]);
 
-  const cellMap = useRef(new Map(cellsForScope(run.scope).map((c) => [c.id, c])));
-  useEffect(() => {
-    cellMap.current = new Map(cellsForScope(run.scope).map((c) => [c.id, c]));
-  }, [run.scope]);
-
   const cellId = currentCellId(run);
-  const storedCell = cellId ? cellMap.current.get(cellId) : undefined;
+  const storedCell = cellId ? CELLS.get(cellId) : undefined;
   // #18: a hard cell's cards are drawn for this position of the run, not the
   // one fixed composition the cell universe stores.
   const cell = storedCell ? { ...storedCell, cards: presentedCards(storedCell, run) } : undefined;
@@ -92,8 +112,13 @@ export function MasteryChallengeView({
   const [chartFor, setChartFor] = useState<HandResult | null>(null);
   const promptShownAtRef = useRef(performance.now());
 
-  const changeScope = (scope: MasteryScope) => {
-    const fresh = startMasteryRun(scope, randomSeed());
+  // #13 / B2: HandDeckControls has already saved the change. An
+  // empty deck starts nothing: HandDeckGate takes the screen.
+  const changeScopes = (next: Settings) => {
+    onSettingsChange(next);
+    const cells = universeFor(next, activeProfile);
+    if (cells.length === 0) return;
+    const fresh = startMasteryRun(cells, randomSeed(), srWeightsNow());
     setRun(fresh);
     setLastResult(null);
     setWrongTap(null);
@@ -147,7 +172,8 @@ export function MasteryChallengeView({
         },
       ),
     );
-    const nextRun = advanceMasteryRun(run, correct, randomSeed());
+    // #29: a miss reshuffles by the SR weights as they stand now.
+    const nextRun = advanceMasteryRun(run, correct, randomSeed(), correct ? undefined : srWeightsNow());
     setRun(nextRun);
     promptShownAtRef.current = performance.now();
     releaseAnswerFocus();
@@ -183,22 +209,10 @@ export function MasteryChallengeView({
       </div>
 
       <div className="drill-inline-controls">
-        <div className="settings-row">
-          <span className="settings-label">Hands</span>
-          <Segmented
-            options={[
-              { value: 'all', label: 'All' },
-              { value: 'hard', label: 'Hard' },
-              { value: 'soft', label: 'Soft' },
-              { value: 'pairs', label: 'Pairs' },
-            ]}
-            value={run.scope}
-            onChange={changeScope}
-          />
-        </div>
+        <HandDeckControls settings={settings} onChange={changeScopes} />
         {/* "Check progress" (operator ask): always-visible, live count. */}
         <div className="mastery-progress" data-testid="mastery-progress">
-          {run.index} / {run.order.length} cleared &middot; {scopeLabel(run.scope)}
+          {run.index} / {run.order.length} cleared &middot; {deckLabel(deck)}
         </div>
       </div>
 
@@ -211,7 +225,7 @@ export function MasteryChallengeView({
             type="button"
             className="drill-next-btn"
             onClick={() => {
-              const fresh = startMasteryRun(run.scope, randomSeed());
+              const fresh = startMasteryRun(run.order, randomSeed(), srWeightsNow());
               setRun(fresh);
               setLastResult(null);
               setWrongTap(null);
@@ -229,13 +243,19 @@ export function MasteryChallengeView({
               <PlayingCard card={{ rank: cell.up, suit: 's' }} />
             </div>
             <div className="hands-row">
-              <div className="player-hand">
+              {/* #31: long-press the hand to mark its cell. */}
+              <MarkableHand
+                cellId={cell.id}
+                handKey={`${run.seed}:${run.index}`}
+                settings={settings}
+                onSettingsChange={onSettingsChange}
+              >
                 <div className="hand-cards">
                   {cell.cards.map((c, i) => (
                     <PlayingCard key={i} card={c} />
                   ))}
                 </div>
-              </div>
+              </MarkableHand>
             </div>
 
             <div className="message-strip">

@@ -9,6 +9,8 @@ import { weightedIndex } from './weightedDraw';
 import { srWeight } from './spacedRepetition';
 import { confusabilityWeight } from './confusability';
 import type { SrDeck } from './spacedRepetition';
+import { filterCellsByScopes } from './handScope';
+import type { HandScope } from './handScope';
 
 export interface Flashcard {
   cards: [Card, Card];
@@ -90,8 +92,10 @@ export function generateAllCells(): Cell[] {
  */
 export function filterCellsByCategory<T extends { id: string }>(
   cells: T[],
-  category: 'all' | 'hard' | 'soft' | 'pairs',
+  category: 'all' | 'hard' | 'soft' | 'pairs' | readonly HandScope[],
 ): T[] {
+  // #13: a multi-select scope is a set of categories.
+  if (typeof category !== 'string') return filterCellsByScopes(cells, category);
   if (category === 'all') return cells;
   if (category === 'pairs') return cells.filter((c) => c.id.startsWith('pair-'));
   return cells.filter((c) => c.id.startsWith(category + '-'));
@@ -100,7 +104,8 @@ export function filterCellsByCategory<T extends { id: string }>(
 /**
  * Draw a random flashcard from the specified category with weighted sampling.
  *
- * @param category - 'all', 'hard', 'soft', or 'pairs'
+ * @param category - 'all', 'hard', 'soft', or 'pairs', or (#13) a set of
+ *   the last three
  * @param srDeck - RV4 spaced-repetition deck (cellId -> SrCard); draw prefers DUE cells
  * @param now - wall-clock epoch ms, used to weight cells by SR due-ness
  * @param seed - Optional seed for reproducibility
@@ -113,24 +118,32 @@ export function filterCellsByCategory<T extends { id: string }>(
  *   chart/deviations the correct action is graded against — additive param,
  *   omitting it preserves v1 (H17 6-deck) behavior exactly. Note: which cell
  *   is drawn depends only on category/srDeck/now/seed, never on rules.
+ * @param deckWeights - B2 deck sources: when given, only cells in this map
+ *   are dealt, and each one's SR weight is multiplied by its value here (a
+ *   Custom tier, or 1). Omitted or null = the whole scoped chart, drawn
+ *   exactly as before. An empty deck throws; callers check first.
  * @returns A flashcard with correct action
  */
 export function drawFlashcard(
-  category: 'all' | 'hard' | 'soft' | 'pairs',
+  category: 'all' | 'hard' | 'soft' | 'pairs' | readonly HandScope[],
   srDeck: SrDeck,
   now: number,
   seed?: number,
   rules: StrategyRules = DEFAULT_RULES,
   byConfusability = false,
   previousCellId: string | null = null,
+  deckWeights: ReadonlyMap<string, number> | null = null,
 ): Flashcard {
   const rng = mulberry32(seed ?? Date.now());
 
   // Generate all cells
   const allCells = generateAllCells();
 
-  // Filter by category
-  const cells = filterCellsByCategory(allCells, category);
+  // Filter by category, then (B2) by the deck
+  const scoped = filterCellsByCategory(allCells, category);
+  const cells = deckWeights ? scoped.filter((c) => (deckWeights.get(c.id) ?? 0) > 0) : scoped;
+  if (cells.length === 0) throw new Error('drawFlashcard: the deck has no cells in this scope');
+  const deckWeight = (id: string) => (deckWeights ? deckWeights.get(id)! : 1);
 
   // RV4 (docs/BACKLOG.md, spaced-repetition): weight each cell by its SR due-ness
   // (unseen/overdue-low-box heaviest), shared with the deviation quiz via srWeight.
@@ -142,7 +155,7 @@ export function drawFlashcard(
     const followers = cells.filter((c) => confusabilityWeight(c.id, previousCellId) > 1);
     if (rng() < 0.5 && followers.length > 0) pool = followers;
   }
-  const weights = pool.map((c) => srWeight(srDeck[c.id], now));
+  const weights = pool.map((c) => srWeight(srDeck[c.id], now) * deckWeight(c.id));
 
   const selectedIndex = weightedIndex(rng, weights);
   const baseCell = pool[selectedIndex];

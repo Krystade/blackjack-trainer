@@ -75,6 +75,12 @@ import { PairCancelView } from './drills/PairCancelView';
 import { BetSitLeaveView } from './drills/BetSitLeaveView';
 import { DeckEstimationView } from './drills/DeckEstimationView';
 import { MasteryChallengeView } from './drills/MasteryChallengeView';
+import { HandDeckControls } from './drills/HandDeckControls';
+import { HandDeckGate } from './drills/HandDeckGate';
+import { handDeckFor } from './drills/handDeckFor';
+import { settingsForCustomStart } from '../../drills/deckSource';
+import { CustomDrillEditor } from '../components/CustomDrillEditor';
+import { MarkableHand } from '../components/MarkableHand';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
 import { enableAudioNow } from '../audioGate';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
@@ -384,16 +390,26 @@ function FlashcardsView({
   // be a render behind -- and a stale previous cell silently boosts the wrong
   // neighbours, which no test would catch.
   const lastCellRef = useRef<string | null>(null);
-  const [card, setCard] = useState<Flashcard>(() =>
-    drawFlashcard(
-      settings.drill.flashCategory,
+  // B2: a card from the deck `drill` describes (scope and deck source), or
+  // null when that deck is empty -- HandDeckGate then replaces this view.
+  const drawFrom = (drill: Settings['drill'], previous: string | null): Flashcard | null => {
+    const deck = handDeckFor(drill, activeProfile);
+    if (deck.ids.length === 0) return null;
+    return drawFlashcard(
+      deck.scopes,
       srDeckRef.current,
       Date.now(),
       randomSeed(),
       activeProfile.rules,
-      settings.drill.flashByConfusability,
-      null,
-    ),
+      drill.flashByConfusability,
+      previous,
+      deck.weights,
+    );
+  };
+  const [card, setCard] = useState<Flashcard>(
+    // The gate only mounts this view on a non-empty deck; the chart draw is
+    // a backstop, never the expected path.
+    () => drawFrom(settings.drill, null) ?? drawFlashcard('all', srDeckRef.current, Date.now(), randomSeed(), activeProfile.rules),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean; correctAction: Action; event: GradedEvent } | null>(null);
   // #7: the chart opened over this correction, closed back onto the same card.
@@ -543,7 +559,7 @@ function FlashcardsView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card, eyesFree, voiceOn]);
 
-  const next = (category: Settings['drill']['flashCategory'] = settings.drill.flashCategory) => {
+  const next = (drill: Settings['drill'] = settings.drill) => {
     runIdRef.current += 1;
     clearAdvanceTimer();
     // Advancing invalidates the correction the chart was opened for, so the
@@ -551,15 +567,9 @@ function FlashcardsView({
     // (its cards/dealerUp are live props), and the learner closed it onto a
     // hand they had never been asked about.
     setShowChart(false);
-    const drawn = drawFlashcard(
-      category,
-      srDeckRef.current,
-      Date.now(),
-      randomSeed(),
-      activeProfile.rules,
-      settings.drill.flashByConfusability,
-      lastCellRef.current,
-    );
+    const drawn = drawFrom(drill, lastCellRef.current);
+    // An empty deck: HandDeckGate takes the screen on this same render.
+    if (!drawn) return;
     lastCellRef.current = drawn.cellId;
     setCard(drawn);
     setFeedback(null);
@@ -569,11 +579,10 @@ function FlashcardsView({
     promptShownAtRef.current = performance.now();
   };
 
-  const changeCategory = (category: Settings['drill']['flashCategory']) => {
-    const nextSettings: Settings = { ...settings, drill: { ...settings.drill, flashCategory: category } };
-    saveSettings(nextSettings);
+  // #13 / B2: HandDeckControls has already saved the change.
+  const changeScopes = (nextSettings: Settings) => {
     onSettingsChange(nextSettings);
-    next(category);
+    next(nextSettings.drill);
   };
 
   const handleBack = () => {
@@ -1001,7 +1010,7 @@ function FlashcardsView({
     return () => window.removeEventListener('keydown', handleKeyDown);
     // `card` is a REQUIRED dep, not a convenience. The old comment assumed a
     // fresh card is always drawn in the same render that resets feedback to
-    // null, so `feedback` alone was a sufficient proxy. `changeCategory`
+    // null, so `feedback` alone was a sufficient proxy. `changeScopes`
     // breaks that: it calls next() while feedback is ALREADY null, React bails
     // on the no-op state write, the dep array never changes, and the listener
     // stays bound to the previous card. The next keypress then graded the hand
@@ -1043,19 +1052,7 @@ function FlashcardsView({
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
-        <div className="settings-row">
-          <span className="settings-label">Hands</span>
-          <Segmented
-            options={[
-              { value: 'all', label: 'All' },
-              { value: 'hard', label: 'Hard' },
-              { value: 'soft', label: 'Soft' },
-              { value: 'pairs', label: 'Pairs' },
-            ]}
-            value={settings.drill.flashCategory}
-            onChange={changeCategory}
-          />
-        </div>
+        <HandDeckControls settings={settings} onChange={changeScopes} />
 
         <DrillModeControls
           settings={settings}
@@ -1108,7 +1105,8 @@ function FlashcardsView({
       </div>
 
       <div className="hands-row">
-        <div className="player-hand">
+        {/* #31: long-press the hand to mark its cell. */}
+        <MarkableHand cellId={card.cellId} handKey={card} settings={settings} onSettingsChange={onSettingsChange}>
           <div className="hand-cards">
             {card.cards.map((c, i) => (
               <PlayingCard key={i} card={c} />
@@ -1119,7 +1117,7 @@ function FlashcardsView({
           <span className="u-sr-only">
             {narrateFlashcardPrompt(card.cards, card.up)}
           </span>
-        </div>
+        </MarkableHand>
       </div>
 
       {/* Between the hand and the answer, which is where the eye already is.
@@ -2093,29 +2091,32 @@ function MixedSessionView({
   // V5-1: same confusable-neighbour bias as the flashcards drill. The chain is
   // over FLASHCARDS only -- a quiz item in between does not reset it, since the
   // confusion being trained is between chart cells, not between drill types.
-  const drawMixedFlash = () => {
+  // B2: from the deck the settings describe; null when it is empty.
+  const drawMixedFlash = (drill: Settings['drill'] = settings.drill): Flashcard | null => {
+    const deck = handDeckFor(drill, activeProfile);
+    if (deck.ids.length === 0) return null;
     const drawn = drawFlashcard(
-      settings.drill.flashCategory,
+      deck.scopes,
       flashSrRef.current,
       Date.now(),
       randomSeed(),
       activeProfile.rules,
-      settings.drill.flashByConfusability,
+      drill.flashByConfusability,
       mixedLastCellRef.current,
+      deck.weights,
     );
     mixedLastCellRef.current = drawn.cellId;
     return drawn;
   };
 
   const drawFor = (type: MixedItemType): MixedCurrent => {
-    if (type === 'flash') {
-      return {
-        type,
-        card: drawMixedFlash() };
-    }
+    // An empty basic-strategy deck deals the index item instead; the gate
+    // replaces the screen on the same render anyway.
+    const card = type === 'flash' ? drawMixedFlash() : null;
+    if (card) return { type: 'flash', card };
     const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
     return {
-      type,
+      type: 'quiz',
       item: drawQuizItem(
         randomSeed(),
         quizFilterArg(activeFilter),
@@ -2237,6 +2238,19 @@ function MixedSessionView({
     setCurrent(drawFor(pickMixedType(sessionSeed(), idx)));
     setFeedback(null);
     promptShownAtRef.current = performance.now();
+  };
+
+  // #13: a basic-strategy hand still waiting for its answer is re-dealt
+  // from the new scope, as in Flashcards; a quiz item, or an answered hand,
+  // is left alone and the next draw follows the new scope.
+  const changeScopes = (nextSettings: Settings) => {
+    onSettingsChange(nextSettings);
+    if (current.type === 'flash' && !feedbackRef.current) {
+      const card = drawMixedFlash(nextSettings.drill);
+      if (!card) return; // empty deck: HandDeckGate takes the screen
+      setCurrent({ type: 'flash', card });
+      promptShownAtRef.current = performance.now();
+    }
   };
 
   const handleBack = () => {
@@ -2582,6 +2596,7 @@ function MixedSessionView({
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
+        <HandDeckControls settings={settings} onChange={changeScopes} />
         <DrillModeControls
           settings={settings}
           onSettingsChange={onSettingsChange}
@@ -2759,7 +2774,8 @@ type DrillMode =
   | 'paircancel'
   | 'betsitleave'
   | 'producetc'
-  | 'mastery';
+  | 'mastery'
+  | 'custom';
 
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
   const [mode, setMode] = useState<'picker' | DrillMode>('picker');
@@ -2803,14 +2819,27 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       />
     );
   }
+  // B2: the hand drills mount only on a deck with something in it.
+  const gate = (title: string, view: ReactNode) => (
+    <HandDeckGate
+      title={title}
+      settings={settings}
+      activeProfile={activeProfile}
+      onSettingsChange={onSettingsChange}
+      onBack={() => setMode('picker')}
+    >
+      {view}
+    </HandDeckGate>
+  );
   if (mode === 'flash') {
-    return (
+    return gate(
+      'Flashcards',
       <FlashcardsView
         settings={settings}
         activeProfile={activeProfile}
         onBack={() => setMode('picker')}
         onSettingsChange={onSettingsChange}
-      />
+      />,
     );
   }
   if (mode === 'quiz') {
@@ -2824,18 +2853,41 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     );
   }
   if (mode === 'mixed') {
-    return (
+    return gate(
+      'Mixed',
       <MixedSessionView
         settings={settings}
         activeProfile={activeProfile}
         onBack={() => setMode('picker')}
         onSettingsChange={onSettingsChange}
-      />
+      />,
     );
   }
   if (mode === 'mastery') {
+    return gate(
+      'Mastery challenge',
+      <MasteryChallengeView
+        settings={settings}
+        activeProfile={activeProfile}
+        onSettingsChange={onSettingsChange}
+        onBack={() => setMode('picker')}
+      />,
+    );
+  }
+  if (mode === 'custom') {
+    // #9 / B2: paint a selection, then run a hand drill on it.
     return (
-      <MasteryChallengeView activeProfile={activeProfile} onBack={() => setMode('picker')} />
+      <CustomDrillEditor
+        settings={settings}
+        onSettingsChange={onSettingsChange}
+        onStart={(drill) => {
+          const next = settingsForCustomStart(settings);
+          saveSettings(next);
+          onSettingsChange(next);
+          setMode(drill === 'flashcards' ? 'flash' : drill);
+        }}
+        onBack={() => setMode('picker')}
+      />
     );
   }
   if (mode === 'paircancel') {
@@ -2911,6 +2963,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
             works, it just says what it is. */}
         {entry('mixed', 'Mixed', 'Basic-strategy and index hands shuffled together, so you learn when the count matters.', true)}
         {entry('mastery', 'Mastery challenge', 'Every basic-strategy hand once, with no mistakes. One miss starts the sweep over.')}
+        {entry('custom', 'Custom', 'Paint the chart cells you want, then drill just those in Flashcards, Mastery or Mixed.')}
 
         <h2 className="drills-group-title">Under pressure</h2>
         {entry('betsitleave', 'Bet or sit', 'From the true count and the shoe, choose to bet or sit out.', true)}

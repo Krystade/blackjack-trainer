@@ -1,14 +1,15 @@
 /**
- * Mastery Challenge: walk EVERY cell in a chosen scope (Hard / Soft / Pairs /
- * All) in random order, exactly once, with no replacement. One wrong answer
- * wipes the run -- back to zero, with a fresh shuffle -- and the goal is a
- * clean sweep: every cell in the scope, correct, in one unbroken run.
+ * Mastery Challenge: walk EVERY cell in a chosen scope (#13: any of Hard /
+ * Soft / Pairs, or a deck), exactly once, with no replacement. One wrong
+ * answer wipes the run -- back to zero, with a fresh shuffle -- and the goal
+ * is a clean sweep: every cell in the scope, correct, in one unbroken run.
  *
- * This is deliberately NOT a weighted/SR-scheduled draw like drawFlashcard --
- * it's the opposite: an exhaustive, unbiased walk of a fixed deck, because
- * the whole point is proving you know ALL of it, not the cells you're weakest
- * on. See docs/superpowers/plans/2026-08-31-B-mastery-challenge.md for the
- * full design rationale (Design Decisions D1-D10).
+ * The walk is still exhaustive -- the point is proving you know ALL of it --
+ * but since #29 its ORDER is not uniform: a seeded weighted shuffle puts the
+ * cells the flashcard spaced-repetition schedule says are due (missed,
+ * overdue, never seen) early in the sweep, where a run is most likely to
+ * reach them. See docs/superpowers/plans/2026-08-31-B-mastery-challenge.md
+ * for the original design rationale (Design Decisions D1-D10).
  */
 
 import { generateAllCells, filterCellsByCategory } from './flashcards';
@@ -16,17 +17,22 @@ import type { Cell } from './flashcards';
 import { fisherYatesShuffle, mulberry32 } from '../engine/cards';
 import type { Card } from '../engine/cards';
 import { pickComposition } from './buildHand';
+import type { HandScope } from './handScope';
+import { srWeight } from './spacedRepetition';
+import type { SrDeck } from './spacedRepetition';
 
+/** The single-category scope older runs were stored under. */
 export type MasteryScope = 'all' | 'hard' | 'soft' | 'pairs';
 
 export interface MasteryRun {
-  scope: MasteryScope;
   /** The seed that produced `order`. Only ever changes on a RESET (D2) --
    * a correct answer never reshuffles, so `seed` staying put is itself part
    * of the "no reshuffle on success" contract. */
   seed: number;
-  /** Every cell id in this scope, shuffled once at run-start / reset time.
-   * Fixed for the run's lifetime except across a reset. */
+  /** Every cell id in the run's universe, shuffled once at run-start / reset
+   * time. Fixed for the run's lifetime except across a reset. #13: the
+   * universe is whatever the caller passed (a multi-select scope, a deck),
+   * so the run carries its cells rather than a scope name. */
   order: string[];
   /** Index of the NEXT cell to present. Also equals "cells cleared so far
    * this run" -- a correct answer at `order[index]` increments this. */
@@ -35,33 +41,79 @@ export interface MasteryRun {
 
 /** All cells for `scope`, via the SAME filter drawFlashcard uses (D1) -- so
  * this challenge and ordinary Flashcards can never disagree about what the
- * universe for a given scope is. */
-export function cellsForScope(scope: MasteryScope): Cell[] {
+ * universe for a given scope is. #13: `scope` may be a set of categories. */
+export function cellsForScope(scope: MasteryScope | readonly HandScope[]): Cell[] {
   return filterCellsByCategory(generateAllCells(), scope);
 }
 
-function shuffledIds(scope: MasteryScope, seed: number): string[] {
+/** The order a pre-#13 run was dealt in: a uniform shuffle of the scope's
+ * cells in universe order. Kept so a run saved by an older build resumes on
+ * the same hand. */
+function legacyOrder(scope: MasteryScope, seed: number): string[] {
   const ids = cellsForScope(scope).map((c) => c.id);
   return fisherYatesShuffle(ids, mulberry32(seed));
 }
 
-export function startMasteryRun(scope: MasteryScope, seed: number): MasteryRun {
-  return { scope, seed, order: shuffledIds(scope, seed), index: 0 };
+/** A per-cell weight for the weighted shuffle; higher comes earlier. */
+export type CellWeight = (cellId: string) => number;
+
+/**
+ * #29: a seeded weighted shuffle (Efraimidis-Spirakis A-Res). Each item draws
+ * u in (0, 1] and gets the key u^(1/w); sorting by key, largest first, is a
+ * weighted sample without replacement of the whole list -- so every item
+ * appears exactly once, and an item twice as heavy is twice as likely to
+ * come before another. The key is compared as ln(u)/w, the same order
+ * without u^(1/w) underflowing for small weights. A non-positive or
+ * non-finite weight is treated as a vanishingly small one, never dropped.
+ */
+export function weightedShuffle<T>(items: readonly T[], weightOf: (item: T) => number, rng: () => number): T[] {
+  const keyed = items.map((item, i) => {
+    const w = weightOf(item);
+    const weight = Number.isFinite(w) && w > 0 ? w : 1e-9;
+    const u = 1 - rng(); // (0, 1]: ln(0) would tie every unlucky draw at -Infinity
+    return { item, key: Math.log(u) / weight, i };
+  });
+  keyed.sort((a, b) => b.key - a.key || a.i - b.i);
+  return keyed.map((k) => k.item);
+}
+
+/** #29: the flashcard SR weight of each cell, as of `now` (epoch ms). */
+export function srCellWeight(deck: SrDeck, now: number): CellWeight {
+  return (cellId) => srWeight(deck[cellId], now);
+}
+
+/**
+ * A fresh run over `cellIds` (the universe, in any order: it is sorted first,
+ * so the deal depends only on the set of cells, the seed and the weights).
+ * With `weightOf` (#29: the SR weight) the order is a weighted shuffle;
+ * without it, a uniform one.
+ */
+export function startMasteryRun(cellIds: readonly string[], seed: number, weightOf?: CellWeight): MasteryRun {
+  const sorted = [...cellIds].sort();
+  const rng = mulberry32(seed);
+  const order = weightOf ? weightedShuffle(sorted, weightOf, rng) : fisherYatesShuffle(sorted, rng);
+  return { seed, order, index: 0 };
 }
 
 /**
  * Advance the run by one graded answer.
  * - correct: only `index` moves forward. `order`/`seed` are untouched --
  *   this is what "no reshuffle on success" means concretely (D2).
- * - incorrect: the ENTIRE run restarts -- index to 0, a brand new shuffle
- *   from `nextSeed` (never `run.seed`, which would silently no-op the
- *   reshuffle). `nextSeed` is supplied by the caller (a component), which is
- *   the one place allowed to read a wall-clock/Math.random-derived seed --
- *   this module itself never calls Date.now()/Math.random() (project rule).
+ * - incorrect: the ENTIRE run restarts over the same cells -- index to 0, a
+ *   brand new shuffle (#29: weighted by `weightOf`, read fresh) from `nextSeed` (never `run.seed`, which would silently
+ *   no-op the reshuffle). `nextSeed` is supplied by the caller (a component),
+ *   which is the one place allowed to read a wall-clock/Math.random-derived
+ *   seed -- this module itself never calls Date.now()/Math.random() (project
+ *   rule).
  */
-export function advanceMasteryRun(run: MasteryRun, correct: boolean, nextSeed: number): MasteryRun {
+export function advanceMasteryRun(
+  run: MasteryRun,
+  correct: boolean,
+  nextSeed: number,
+  weightOf?: CellWeight,
+): MasteryRun {
   if (correct) return { ...run, index: run.index + 1 };
-  return startMasteryRun(run.scope, nextSeed);
+  return startMasteryRun(run.order, nextSeed, weightOf);
 }
 
 export function isMasteryRunComplete(run: MasteryRun): boolean {
@@ -72,6 +124,14 @@ export function isMasteryRunComplete(run: MasteryRun): boolean {
  * complete (nothing left to present). */
 export function currentCellId(run: MasteryRun): string | null {
   return isMasteryRunComplete(run) ? null : run.order[run.index];
+}
+
+/** True when `run` walks exactly the cells of `cellIds` -- the test for
+ * resuming a saved run against the scope and deck chosen now. */
+export function runCoversExactly(run: MasteryRun, cellIds: readonly string[]): boolean {
+  if (run.order.length !== cellIds.length) return false;
+  const want = new Set(cellIds);
+  return run.order.every((id) => want.has(id));
 }
 
 /**
@@ -92,17 +152,20 @@ export function presentedCards(cell: Cell, run: Pick<MasteryRun, 'seed' | 'index
 }
 
 /* ------------------------------------------------------------------ */
-/* Persistence (D8): only {scope, seed, index} is stored -- `order` is   */
-/* cheaply re-derived from scope+seed, so the stored blob can never       */
-/* drift from what startMasteryRun would produce for the same inputs.    */
-/* Guarded try/catch + typeof-window idiom matches gradeAnswer.ts's       */
+/* Persistence (D8). A run saved since #13 stores its `order`: the       */
+/* universe is no longer a scope name it could be re-derived from (a     */
+/* multi-select scope, a painted or marked deck). An older blob carries  */
+/* `scope` instead and is re-derived exactly as it was dealt. Guarded    */
+/* try/catch + typeof-window idiom matches gradeAnswer.ts's              */
 /* loadSrDeck/saveSrDeck exactly.                                        */
 /* ------------------------------------------------------------------ */
 
 export interface PersistedMasteryRun {
-  scope: MasteryScope;
   seed: number;
   index: number;
+  order?: string[];
+  /** Pre-#13 runs only. */
+  scope?: MasteryScope;
 }
 
 const MASTERY_RUN_KEY = 'bjtrainer.masteryrun.v1';
@@ -112,18 +175,29 @@ function isMasteryScope(value: unknown): value is MasteryScope {
   return typeof value === 'string' && (SCOPES as readonly string[]).includes(value);
 }
 
-/** Reconstruct a full MasteryRun from persisted {scope, seed, index}. Falls
- * back to a fresh run at index 0 (same scope/seed) if the persisted index is
- * out of range for that scope -- corrupt/stale data degrades to "start over",
- * never a crash or an out-of-bounds currentCellId(). */
+const KNOWN_CELLS = new Set(generateAllCells().map((c) => c.id));
+
+function isCellOrder(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((id) => typeof id === 'string' && KNOWN_CELLS.has(id)) &&
+    new Set(value).size === value.length
+  );
+}
+
+/** Reconstruct a full MasteryRun from what was persisted. An out-of-range
+ * index restarts the same order at 0 -- corrupt/stale data degrades to
+ * "start over", never a crash or an out-of-bounds currentCellId(). */
 export function hydrateMasteryRun(persisted: PersistedMasteryRun | null): MasteryRun | null {
   if (!persisted) return null;
-  if (!isMasteryScope(persisted.scope) || typeof persisted.seed !== 'number' || typeof persisted.index !== 'number') {
-    return null;
-  }
-  const order = shuffledIds(persisted.scope, persisted.seed);
+  if (typeof persisted.seed !== 'number' || typeof persisted.index !== 'number') return null;
+  let order: string[];
+  if (isCellOrder(persisted.order)) order = [...persisted.order];
+  else if (isMasteryScope(persisted.scope)) order = legacyOrder(persisted.scope, persisted.seed);
+  else return null;
   const index = persisted.index >= 0 && persisted.index <= order.length ? persisted.index : 0;
-  return { scope: persisted.scope, seed: persisted.seed, order, index };
+  return { seed: persisted.seed, order, index };
 }
 
 export function loadMasteryRun(): PersistedMasteryRun | null {
@@ -142,7 +216,7 @@ export function loadMasteryRun(): PersistedMasteryRun | null {
 export function saveMasteryRun(run: MasteryRun): void {
   try {
     if (typeof window === 'undefined' || !window.localStorage) return;
-    const persisted: PersistedMasteryRun = { scope: run.scope, seed: run.seed, index: run.index };
+    const persisted: PersistedMasteryRun = { seed: run.seed, index: run.index, order: run.order };
     window.localStorage.setItem(MASTERY_RUN_KEY, JSON.stringify(persisted));
   } catch {
     // best-effort persistence only, matching every other drill's SR-deck save
