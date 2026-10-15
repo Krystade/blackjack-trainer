@@ -516,7 +516,8 @@ test('the mixed session takes a self-check on either kind of item', async ({ pag
     await expect(page.locator('.message-strip .result-correct')).toBeVisible();
     seen.add(kind);
     await press(page, 'forward'); // next item
-    await expect(page.locator('.message-strip .result-correct')).toHaveCount(0);
+    // The feedback panel closes; the B1 strip may still name the answer just given.
+    await expect(page.locator('.message-strip .result-correct:not(.hand-result-ok)')).toHaveCount(0);
   }
   // With the seed pinned above this is deterministic: quiz at item one,
   // flash at item four. A run that saw only one kind has not tested the
