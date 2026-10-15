@@ -4,6 +4,7 @@ import type { Deviation } from '../engine/deviations';
 import { generateAllCells } from './flashcards';
 import { customWeights } from './cellSelection';
 import { ALL_SCOPES, filterCellsByScopes, scopesFrom, scopesLabel } from './handScope';
+import { markerOf } from './markers';
 import type { HandScope } from './handScope';
 
 /**
@@ -93,8 +94,7 @@ export function handDeck(
     const withIndex = indexCellIds(rules);
     weights = new Map(scoped.filter((id) => withIndex.has(id)).map((id) => [id, 1]));
   } else {
-    const markers = drill.markers ?? {};
-    weights = new Map(scoped.filter((id) => markers[id] !== undefined).map((id) => [id, 1]));
+    weights = new Map(scoped.filter((id) => markerOf(drill, id) !== undefined).map((id) => [id, 1]));
   }
   return { source, scopes, ids: [...weights.keys()], weights };
 }

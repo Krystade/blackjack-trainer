@@ -80,6 +80,7 @@ import { HandDeckGate } from './drills/HandDeckGate';
 import { handDeckFor } from './drills/handDeckFor';
 import { settingsForCustomStart } from '../../drills/deckSource';
 import { CustomDrillEditor } from '../components/CustomDrillEditor';
+import { MarkableHand } from '../components/MarkableHand';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
 import { enableAudioNow } from '../audioGate';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
@@ -1104,7 +1105,8 @@ function FlashcardsView({
       </div>
 
       <div className="hands-row">
-        <div className="player-hand">
+        {/* #31: long-press the hand to mark its cell. */}
+        <MarkableHand cellId={card.cellId} handKey={card} settings={settings} onSettingsChange={onSettingsChange}>
           <div className="hand-cards">
             {card.cards.map((c, i) => (
               <PlayingCard key={i} card={c} />
@@ -1115,7 +1117,7 @@ function FlashcardsView({
           <span className="u-sr-only">
             {narrateFlashcardPrompt(card.cards, card.up)}
           </span>
-        </div>
+        </MarkableHand>
       </div>
 
       {/* Between the hand and the answer, which is where the eye already is.

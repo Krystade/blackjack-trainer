@@ -21,6 +21,7 @@ import { gateDrillAnswer } from '../../../drills/answerGate';
 import { drillLegalActions, rulesChipLabels } from '../../../drills/legalActions';
 import { correctPlay } from '../../../engine/strategy';
 import { PlayingCard } from '../../components/PlayingCard';
+import { MarkableHand } from '../../components/MarkableHand';
 import { ActionBar } from '../../components/ActionBar';
 import { HandResultStrip } from '../../components/HandResultStrip';
 import { RulesChip } from '../../components/RulesChip';
@@ -234,13 +235,19 @@ export function MasteryChallengeView({
               <PlayingCard card={{ rank: cell.up, suit: 's' }} />
             </div>
             <div className="hands-row">
-              <div className="player-hand">
+              {/* #31: long-press the hand to mark its cell. */}
+              <MarkableHand
+                cellId={cell.id}
+                handKey={`${run.seed}:${run.index}`}
+                settings={settings}
+                onSettingsChange={onSettingsChange}
+              >
                 <div className="hand-cards">
                   {cell.cards.map((c, i) => (
                     <PlayingCard key={i} card={c} />
                   ))}
                 </div>
-              </div>
+              </MarkableHand>
             </div>
 
             <div className="message-strip">
