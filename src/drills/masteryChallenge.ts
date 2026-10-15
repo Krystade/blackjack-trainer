@@ -1,14 +1,15 @@
 /**
  * Mastery Challenge: walk EVERY cell in a chosen scope (#13: any of Hard /
- * Soft / Pairs, or a deck) in random order, exactly once, with no replacement. One wrong answer
- * wipes the run -- back to zero, with a fresh shuffle -- and the goal is a
- * clean sweep: every cell in the scope, correct, in one unbroken run.
+ * Soft / Pairs, or a deck), exactly once, with no replacement. One wrong
+ * answer wipes the run -- back to zero, with a fresh shuffle -- and the goal
+ * is a clean sweep: every cell in the scope, correct, in one unbroken run.
  *
- * This is deliberately NOT a weighted/SR-scheduled draw like drawFlashcard --
- * it's the opposite: an exhaustive, unbiased walk of a fixed deck, because
- * the whole point is proving you know ALL of it, not the cells you're weakest
- * on. See docs/superpowers/plans/2026-08-31-B-mastery-challenge.md for the
- * full design rationale (Design Decisions D1-D10).
+ * The walk is still exhaustive -- the point is proving you know ALL of it --
+ * but since #29 its ORDER is not uniform: a seeded weighted shuffle puts the
+ * cells the flashcard spaced-repetition schedule says are due (missed,
+ * overdue, never seen) early in the sweep, where a run is most likely to
+ * reach them. See docs/superpowers/plans/2026-08-31-B-mastery-challenge.md
+ * for the original design rationale (Design Decisions D1-D10).
  */
 
 import { generateAllCells, filterCellsByCategory } from './flashcards';
@@ -17,6 +18,8 @@ import { fisherYatesShuffle, mulberry32 } from '../engine/cards';
 import type { Card } from '../engine/cards';
 import { pickComposition } from './buildHand';
 import type { HandScope } from './handScope';
+import { srWeight } from './spacedRepetition';
+import type { SrDeck } from './spacedRepetition';
 
 /** The single-category scope older runs were stored under. */
 export type MasteryScope = 'all' | 'hard' | 'soft' | 'pairs';
@@ -51,10 +54,45 @@ function legacyOrder(scope: MasteryScope, seed: number): string[] {
   return fisherYatesShuffle(ids, mulberry32(seed));
 }
 
-/** A fresh run over `cellIds` (the universe, in any order: it is sorted
- * first, so the deal depends only on the set of cells and the seed). */
-export function startMasteryRun(cellIds: readonly string[], seed: number): MasteryRun {
-  return { seed, order: fisherYatesShuffle([...cellIds].sort(), mulberry32(seed)), index: 0 };
+/** A per-cell weight for the weighted shuffle; higher comes earlier. */
+export type CellWeight = (cellId: string) => number;
+
+/**
+ * #29: a seeded weighted shuffle (Efraimidis-Spirakis A-Res). Each item draws
+ * u in (0, 1] and gets the key u^(1/w); sorting by key, largest first, is a
+ * weighted sample without replacement of the whole list -- so every item
+ * appears exactly once, and an item twice as heavy is twice as likely to
+ * come before another. The key is compared as ln(u)/w, the same order
+ * without u^(1/w) underflowing for small weights. A non-positive or
+ * non-finite weight is treated as a vanishingly small one, never dropped.
+ */
+export function weightedShuffle<T>(items: readonly T[], weightOf: (item: T) => number, rng: () => number): T[] {
+  const keyed = items.map((item, i) => {
+    const w = weightOf(item);
+    const weight = Number.isFinite(w) && w > 0 ? w : 1e-9;
+    const u = 1 - rng(); // (0, 1]: ln(0) would tie every unlucky draw at -Infinity
+    return { item, key: Math.log(u) / weight, i };
+  });
+  keyed.sort((a, b) => b.key - a.key || a.i - b.i);
+  return keyed.map((k) => k.item);
+}
+
+/** #29: the flashcard SR weight of each cell, as of `now` (epoch ms). */
+export function srCellWeight(deck: SrDeck, now: number): CellWeight {
+  return (cellId) => srWeight(deck[cellId], now);
+}
+
+/**
+ * A fresh run over `cellIds` (the universe, in any order: it is sorted first,
+ * so the deal depends only on the set of cells, the seed and the weights).
+ * With `weightOf` (#29: the SR weight) the order is a weighted shuffle;
+ * without it, a uniform one.
+ */
+export function startMasteryRun(cellIds: readonly string[], seed: number, weightOf?: CellWeight): MasteryRun {
+  const sorted = [...cellIds].sort();
+  const rng = mulberry32(seed);
+  const order = weightOf ? weightedShuffle(sorted, weightOf, rng) : fisherYatesShuffle(sorted, rng);
+  return { seed, order, index: 0 };
 }
 
 /**
@@ -62,15 +100,20 @@ export function startMasteryRun(cellIds: readonly string[], seed: number): Maste
  * - correct: only `index` moves forward. `order`/`seed` are untouched --
  *   this is what "no reshuffle on success" means concretely (D2).
  * - incorrect: the ENTIRE run restarts over the same cells -- index to 0, a
- *   brand new shuffle from `nextSeed` (never `run.seed`, which would silently
+ *   brand new shuffle (#29: weighted by `weightOf`, read fresh) from `nextSeed` (never `run.seed`, which would silently
  *   no-op the reshuffle). `nextSeed` is supplied by the caller (a component),
  *   which is the one place allowed to read a wall-clock/Math.random-derived
  *   seed -- this module itself never calls Date.now()/Math.random() (project
  *   rule).
  */
-export function advanceMasteryRun(run: MasteryRun, correct: boolean, nextSeed: number): MasteryRun {
+export function advanceMasteryRun(
+  run: MasteryRun,
+  correct: boolean,
+  nextSeed: number,
+  weightOf?: CellWeight,
+): MasteryRun {
   if (correct) return { ...run, index: run.index + 1 };
-  return startMasteryRun(run.order, nextSeed);
+  return startMasteryRun(run.order, nextSeed, weightOf);
 }
 
 export function isMasteryRunComplete(run: MasteryRun): boolean {

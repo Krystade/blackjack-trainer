@@ -11,12 +11,13 @@ import {
   hydrateMasteryRun,
   presentedCards,
   runCoversExactly,
+  srCellWeight,
 } from '../../../drills/masteryChallenge';
 import type { MasteryRun } from '../../../drills/masteryChallenge';
 import { generateAllCells } from '../../../drills/flashcards';
 import { deckLabel } from '../../../drills/deckSource';
 import { handDeckFor } from './handDeckFor';
-import { gradeMasteryAnswer } from '../../../drills/gradeAnswer';
+import { gradeMasteryAnswer, loadFlashSr } from '../../../drills/gradeAnswer';
 import { gateDrillAnswer } from '../../../drills/answerGate';
 import { drillLegalActions, rulesChipLabels } from '../../../drills/legalActions';
 import { correctPlay } from '../../../engine/strategy';
@@ -37,6 +38,12 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
+/** #29: each cell's flashcard spaced-repetition weight, read now, which
+ * orders a new sweep so the due and missed cells come first. */
+function srWeightsNow() {
+  return srCellWeight(loadFlashSr(), Date.now());
+}
+
 /** Every cell, by id: a run's order can hold any of them. */
 const CELLS = new Map(generateAllCells().map((c) => [c.id, c]));
 
@@ -48,8 +55,8 @@ function universeFor(settings: Settings, profile: Profile): string[] {
 
 /**
  * Mastery Challenge (operator request): walk EVERY cell in a chosen scope
- * (#13: any of Hard / Soft / Pairs), in random order, exactly once, and get every
- * single one right. One wrong answer wipes the run -- back to zero, with a
+ * (#13: any of Hard / Soft / Pairs), exactly once (#29: due and missed cells
+ * first), and get every single one right. One wrong answer wipes the run -- back to zero, with a
  * fresh shuffle. All the sequencing logic lives in the pure
  * drills/masteryChallenge.ts state machine and is unit-tested there; this
  * view is wiring only. Visual-only (D7, plan doc) -- no eyes-free ZonePad or
@@ -73,7 +80,7 @@ export function MasteryChallengeView({
   // finishing one over hands that are no longer in scope.
   const [run, setRun] = useState<MasteryRun>(() => {
     const saved = hydrateMasteryRun(loadMasteryRun());
-    return saved && runCoversExactly(saved, universe) ? saved : startMasteryRun(universe, randomSeed());
+    return saved && runCoversExactly(saved, universe) ? saved : startMasteryRun(universe, randomSeed(), srWeightsNow());
   });
 
   useEffect(() => {
@@ -111,7 +118,7 @@ export function MasteryChallengeView({
     onSettingsChange(next);
     const cells = universeFor(next, activeProfile);
     if (cells.length === 0) return;
-    const fresh = startMasteryRun(cells, randomSeed());
+    const fresh = startMasteryRun(cells, randomSeed(), srWeightsNow());
     setRun(fresh);
     setLastResult(null);
     setWrongTap(null);
@@ -165,7 +172,8 @@ export function MasteryChallengeView({
         },
       ),
     );
-    const nextRun = advanceMasteryRun(run, correct, randomSeed());
+    // #29: a miss reshuffles by the SR weights as they stand now.
+    const nextRun = advanceMasteryRun(run, correct, randomSeed(), correct ? undefined : srWeightsNow());
     setRun(nextRun);
     promptShownAtRef.current = performance.now();
     releaseAnswerFocus();
@@ -217,7 +225,7 @@ export function MasteryChallengeView({
             type="button"
             className="drill-next-btn"
             onClick={() => {
-              const fresh = startMasteryRun(run.order, randomSeed());
+              const fresh = startMasteryRun(run.order, randomSeed(), srWeightsNow());
               setRun(fresh);
               setLastResult(null);
               setWrongTap(null);

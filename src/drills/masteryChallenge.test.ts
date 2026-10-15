@@ -8,7 +8,11 @@ import {
   hydrateMasteryRun,
   presentedCards,
   runCoversExactly,
+  srCellWeight,
+  weightedShuffle,
 } from './masteryChallenge';
+import { reviewCard } from './spacedRepetition';
+import type { SrDeck } from './spacedRepetition';
 import { fisherYatesShuffle, mulberry32 } from '../engine/cards';
 import { handValue } from '../engine/hand';
 import type { MasteryScope } from './masteryChallenge';
@@ -200,5 +204,79 @@ describe('presentedCards (#18): a hard cell is dealt as any of its compositions'
     for (const cell of cellsForScope('pairs').concat(cellsForScope('soft'))) {
       expect(presentedCards(cell, { seed: 5, index: 3 })).toBe(cell.cards);
     }
+  });
+});
+
+describe('#29: the sweep is a seeded weighted shuffle by the flashcard SR weight', () => {
+  const letters = Array.from({ length: 40 }, (_, i) => `c${i}`);
+
+  it('every item exactly once, for any weights and seed', () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const out = weightedShuffle(letters, (x) => (Number(x.slice(1)) % 7) + 0.1, mulberry32(seed));
+      expect(out).toHaveLength(letters.length);
+      expect([...out].sort()).toEqual([...letters].sort());
+    }
+  });
+
+  it('a zero, negative or NaN weight still deals the item, last', () => {
+    const out = weightedShuffle(['a', 'b', 'c', 'd'], (x) => ({ a: 0, b: -1, c: NaN, d: 1 })[x]!, mulberry32(3));
+    expect([...out].sort()).toEqual(['a', 'b', 'c', 'd']);
+    expect(out[0]).toBe('d');
+  });
+
+  it('is pure: the same seed and weights give the same order', () => {
+    const w = (x: string) => x.length;
+    expect(weightedShuffle(letters, w, mulberry32(9))).toEqual(weightedShuffle(letters, w, mulberry32(9)));
+  });
+
+  it('twice the weight comes first about two times in three', () => {
+    let aFirst = 0;
+    const N = 4000;
+    for (let seed = 1; seed <= N; seed++) {
+      if (weightedShuffle(['a', 'b'], (x) => (x === 'a' ? 2 : 1), mulberry32(seed))[0] === 'a') aFirst++;
+    }
+    expect(aFirst / N).toBeGreaterThan(0.63);
+    expect(aFirst / N).toBeLessThan(0.70);
+  });
+
+  it('missed and overdue cells come early in a sweep; cells reviewed today come late', () => {
+    const DAY = 86_400_000;
+    const now = 100 * DAY;
+    const pairs = ids('pairs');
+    // Everything answered right yesterday, so not due: weight 0.25...
+    let deck: SrDeck = {};
+    for (const id of pairs) deck[id] = reviewCard(undefined, true, now - 1000);
+    // ...except one cell just missed and one a fortnight overdue.
+    deck = { ...deck, 'pair-8-v-A': reviewCard(deck['pair-8-v-A'], false, now - 1000) };
+    deck = { ...deck, 'pair-2-v-7': { ...deck['pair-2-v-7']!, dueAt: now - 14 * DAY } };
+    const weightOf = srCellWeight(deck, now);
+
+    let missed = 0;
+    let overdue = 0;
+    let ordinary = 0;
+    const N = 300;
+    for (let seed = 1; seed <= N; seed++) {
+      const run = startMasteryRun(pairs, seed, weightOf);
+      expect([...run.order].sort()).toEqual([...pairs].sort()); // still exactly once
+      missed += run.order.indexOf('pair-8-v-A');
+      overdue += run.order.indexOf('pair-2-v-7');
+      ordinary += run.order.indexOf('pair-5-v-5');
+    }
+    // A uniform shuffle puts every cell at 49.5 on average.
+    expect(missed / N).toBeLessThan(15);
+    expect(overdue / N).toBeLessThan(15);
+    expect(ordinary / N).toBeGreaterThan(40);
+  });
+
+  it('a reset reshuffles by the weights it is given', () => {
+    const pairs = ids('pairs');
+    const heavy = (id: string) => (id === 'pair-A-v-A' ? 1000 : 1);
+    let first = 0;
+    for (let seed = 1; seed <= 100; seed++) {
+      const reset = advanceMasteryRun(startMasteryRun(pairs, seed), false, seed + 1, heavy);
+      if (reset.order[0] === 'pair-A-v-A') first++;
+      expect(reset.index).toBe(0);
+    }
+    expect(first).toBeGreaterThan(80);
   });
 });
