@@ -496,6 +496,13 @@ test('flashcards: pressing "2" answers Stand, grading identically to a click', a
     latencyHistory: ((stats?.latencyHistory as { category: string; elapsedMs: number }[] | undefined) ?? []).map(
       (e) => ({ category: e.category, elapsedMs: 'NORMALIZED' }),
     ),
+    // B3: per-cell stats stamp the wall-clock answer time, as latency does.
+    cellStats: Object.fromEntries(
+      Object.entries((stats?.cellStats as Record<string, { lastAt: string }> | undefined) ?? {}).map(([id, t]) => [
+        id,
+        { ...t, lastAt: 'NORMALIZED' },
+      ]),
+    ),
   });
   expect(normalizeLatency(keyboardStats)).toEqual(normalizeLatency(clickStats));
 });
