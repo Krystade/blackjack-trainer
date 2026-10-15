@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import type { Profile } from '../../../store/types';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import type { Profile, Settings } from '../../../store/types';
 import type { Action } from '../../../engine/deviations';
 import {
   startMasteryRun,
@@ -11,8 +11,11 @@ import {
   saveMasteryRun,
   hydrateMasteryRun,
   presentedCards,
+  runCoversExactly,
 } from '../../../drills/masteryChallenge';
-import type { MasteryRun, MasteryScope } from '../../../drills/masteryChallenge';
+import type { MasteryRun } from '../../../drills/masteryChallenge';
+import { generateAllCells } from '../../../drills/flashcards';
+import { scopesFrom, scopesLabel } from '../../../drills/handScope';
 import { gradeMasteryAnswer } from '../../../drills/gradeAnswer';
 import { gateDrillAnswer } from '../../../drills/answerGate';
 import { drillLegalActions, rulesChipLabels } from '../../../drills/legalActions';
@@ -25,7 +28,7 @@ import { releaseAnswerFocus, snapshotResult, type HandResult } from '../../handR
 import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../../wrongTap';
 import { answerTooSoon } from '../../answerBounce';
 import { StudyChartOverlay } from '../../components/StudyChartOverlay';
-import { Segmented } from '../Settings';
+import { ScopeChips } from './HandDeckControls';
 import { KEY_TO_ACTION } from '../Drills';
 import { focusSwallowsKey } from '../../keyboardFocus';
 
@@ -33,13 +36,17 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
-function scopeLabel(scope: MasteryScope): string {
-  return scope === 'all' ? 'All' : scope.charAt(0).toUpperCase() + scope.slice(1);
+/** Every cell, by id: a run's order can hold any of them. */
+const CELLS = new Map(generateAllCells().map((c) => [c.id, c]));
+
+/** #13: the cells a sweep walks for the scope chosen now. */
+function universeFor(settings: Settings): string[] {
+  return cellsForScope(scopesFrom(settings.drill)).map((c) => c.id);
 }
 
 /**
  * Mastery Challenge (operator request): walk EVERY cell in a chosen scope
- * (Hard / Soft / Pairs / All), in random order, exactly once, and get every
+ * (#13: any of Hard / Soft / Pairs), in random order, exactly once, and get every
  * single one right. One wrong answer wipes the run -- back to zero, with a
  * fresh shuffle. All the sequencing logic lives in the pure
  * drills/masteryChallenge.ts state machine and is unit-tested there; this
@@ -47,28 +54,31 @@ function scopeLabel(scope: MasteryScope): string {
  * narration, matching PairCancelView's precedent.
  */
 export function MasteryChallengeView({
+  settings,
   activeProfile,
+  onSettingsChange,
   onBack,
 }: {
+  settings: Settings;
   activeProfile: Profile;
+  onSettingsChange: (next: Settings) => void;
   onBack: () => void;
 }) {
+  const universe = useMemo(() => universeFor(settings), [settings]);
+  // A saved run resumes only when it walks the cells chosen now: a scope
+  // changed elsewhere (Flashcards shares it) starts a fresh sweep instead of
+  // finishing one over hands that are no longer in scope.
   const [run, setRun] = useState<MasteryRun>(() => {
-    const persisted = loadMasteryRun();
-    return hydrateMasteryRun(persisted) ?? startMasteryRun('all', randomSeed());
+    const saved = hydrateMasteryRun(loadMasteryRun());
+    return saved && runCoversExactly(saved, universe) ? saved : startMasteryRun(universe, randomSeed());
   });
 
   useEffect(() => {
     saveMasteryRun(run);
   }, [run]);
 
-  const cellMap = useRef(new Map(cellsForScope(run.scope).map((c) => [c.id, c])));
-  useEffect(() => {
-    cellMap.current = new Map(cellsForScope(run.scope).map((c) => [c.id, c]));
-  }, [run.scope]);
-
   const cellId = currentCellId(run);
-  const storedCell = cellId ? cellMap.current.get(cellId) : undefined;
+  const storedCell = cellId ? CELLS.get(cellId) : undefined;
   // #18: a hard cell's cards are drawn for this position of the run, not the
   // one fixed composition the cell universe stores.
   const cell = storedCell ? { ...storedCell, cards: presentedCards(storedCell, run) } : undefined;
@@ -92,8 +102,10 @@ export function MasteryChallengeView({
   const [chartFor, setChartFor] = useState<HandResult | null>(null);
   const promptShownAtRef = useRef(performance.now());
 
-  const changeScope = (scope: MasteryScope) => {
-    const fresh = startMasteryRun(scope, randomSeed());
+  // #13: ScopeChips has already saved the new scope.
+  const changeScopes = (next: Settings) => {
+    onSettingsChange(next);
+    const fresh = startMasteryRun(universeFor(next), randomSeed());
     setRun(fresh);
     setLastResult(null);
     setWrongTap(null);
@@ -183,22 +195,10 @@ export function MasteryChallengeView({
       </div>
 
       <div className="drill-inline-controls">
-        <div className="settings-row">
-          <span className="settings-label">Hands</span>
-          <Segmented
-            options={[
-              { value: 'all', label: 'All' },
-              { value: 'hard', label: 'Hard' },
-              { value: 'soft', label: 'Soft' },
-              { value: 'pairs', label: 'Pairs' },
-            ]}
-            value={run.scope}
-            onChange={changeScope}
-          />
-        </div>
+        <ScopeChips settings={settings} onChange={changeScopes} />
         {/* "Check progress" (operator ask): always-visible, live count. */}
         <div className="mastery-progress" data-testid="mastery-progress">
-          {run.index} / {run.order.length} cleared &middot; {scopeLabel(run.scope)}
+          {run.index} / {run.order.length} cleared &middot; {scopesLabel(scopesFrom(settings.drill))}
         </div>
       </div>
 
@@ -211,7 +211,7 @@ export function MasteryChallengeView({
             type="button"
             className="drill-next-btn"
             onClick={() => {
-              const fresh = startMasteryRun(run.scope, randomSeed());
+              const fresh = startMasteryRun(run.order, randomSeed());
               setRun(fresh);
               setLastResult(null);
               setWrongTap(null);

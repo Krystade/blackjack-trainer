@@ -8,7 +8,7 @@ test('mastery challenge: default scope is All, progress starts at 0', async ({ p
   await expect(page.locator('.drill-heading')).toHaveText('Mastery challenge');
 
   const scopeRow = page.locator('.settings-row', { hasText: 'Hands' });
-  await expect(scopeRow.getByRole('button', { name: 'All', exact: true })).toHaveClass(/segmented-btn-active/);
+  await expect(scopeRow.getByRole('button', { name: 'All', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
   await expect(page.locator('[data-testid="mastery-progress"]')).toContainText('0 / 330 cleared');
 });
@@ -110,7 +110,10 @@ test('mastery challenge: progress survives a reload (persisted run, not lost on 
 
   const stored = await page.evaluate(() => window.localStorage.getItem('bjtrainer.masteryrun.v1'));
   expect(stored).not.toBeNull();
-  expect(JSON.parse(stored!).scope).toBe('pairs');
+  // #13: the run stores the cells it walks, not a scope name.
+  const order = JSON.parse(stored!).order as string[];
+  expect(order).toHaveLength(100);
+  expect(order.every((id) => id.startsWith('pair-'))).toBe(true);
 });
 
 test('mastery challenge #6: there is no Distractions control, and answering never interrupts', async ({ page }) => {

@@ -1387,10 +1387,11 @@ test('flashcards: inline Category segmented redraws from the chosen category and
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
 
   const categoryRow = page.locator('.settings-row', { hasText: 'Hands' });
-  await expect(categoryRow.getByRole('button', { name: 'All', exact: true })).toHaveClass(/segmented-btn-active/);
+  await expect(categoryRow.getByRole('button', { name: 'All', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
   await categoryRow.getByRole('button', { name: 'Pairs', exact: true }).click();
-  await expect(categoryRow.getByRole('button', { name: 'Pairs', exact: true })).toHaveClass(/segmented-btn-active/);
+  await expect(categoryRow.getByRole('button', { name: 'Pairs', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(categoryRow.getByRole('button', { name: 'All', exact: true })).toHaveAttribute('aria-pressed', 'false');
 
   // Redraw actually respected the filter -- the graded answer's cellId is a
   // pair cell (drills/flashcards.ts: "pair-<rank>-v-<up>"), never hard/soft.
@@ -1401,6 +1402,7 @@ test('flashcards: inline Category segmented redraws from the chosen category and
 
   const settings = await readSettings(page);
   expect((settings?.drill as { flashCategory?: string } | undefined)?.flashCategory).toBe('pairs');
+  expect((settings?.drill as { scopes?: string[] } | undefined)?.scopes).toEqual(['pairs']);
 });
 
 /* ==================================================================== */

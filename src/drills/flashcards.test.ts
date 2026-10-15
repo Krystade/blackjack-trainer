@@ -148,3 +148,20 @@ describe('#52: "Follow with a look-alike" is a forced follow', () => {
     expect(seen.size).toBeGreaterThan(300);
   });
 });
+
+describe('#13: a multi-select scope draws from the union of its categories', () => {
+  it('Soft + Pairs deals soft and pair hands and never a hard one', () => {
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 400; seed++) {
+      const card = drawFlashcard(['soft', 'pairs'], {}, 0, seed);
+      seen.add(card.cellId.split('-')[0]!);
+    }
+    expect([...seen].sort()).toEqual(['pair', 'soft']);
+  });
+
+  it('all three scopes draw exactly as the legacy "all" category', () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      expect(drawFlashcard(['hard', 'soft', 'pairs'], {}, 0, seed)).toEqual(drawFlashcard('all', {}, 0, seed));
+    }
+  });
+});

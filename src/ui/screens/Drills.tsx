@@ -75,6 +75,9 @@ import { PairCancelView } from './drills/PairCancelView';
 import { BetSitLeaveView } from './drills/BetSitLeaveView';
 import { DeckEstimationView } from './drills/DeckEstimationView';
 import { MasteryChallengeView } from './drills/MasteryChallengeView';
+import { ScopeChips } from './drills/HandDeckControls';
+import { scopesFrom } from '../../drills/handScope';
+import type { HandScope } from '../../drills/handScope';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
 import { enableAudioNow } from '../audioGate';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
@@ -386,7 +389,7 @@ function FlashcardsView({
   const lastCellRef = useRef<string | null>(null);
   const [card, setCard] = useState<Flashcard>(() =>
     drawFlashcard(
-      settings.drill.flashCategory,
+      scopesFrom(settings.drill),
       srDeckRef.current,
       Date.now(),
       randomSeed(),
@@ -543,7 +546,7 @@ function FlashcardsView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card, eyesFree, voiceOn]);
 
-  const next = (category: Settings['drill']['flashCategory'] = settings.drill.flashCategory) => {
+  const next = (scopes: readonly HandScope[] = scopesFrom(settings.drill)) => {
     runIdRef.current += 1;
     clearAdvanceTimer();
     // Advancing invalidates the correction the chart was opened for, so the
@@ -552,7 +555,7 @@ function FlashcardsView({
     // hand they had never been asked about.
     setShowChart(false);
     const drawn = drawFlashcard(
-      category,
+      scopes,
       srDeckRef.current,
       Date.now(),
       randomSeed(),
@@ -569,11 +572,10 @@ function FlashcardsView({
     promptShownAtRef.current = performance.now();
   };
 
-  const changeCategory = (category: Settings['drill']['flashCategory']) => {
-    const nextSettings: Settings = { ...settings, drill: { ...settings.drill, flashCategory: category } };
-    saveSettings(nextSettings);
+  // #13: ScopeChips has already saved the new scope.
+  const changeScopes = (nextSettings: Settings) => {
     onSettingsChange(nextSettings);
-    next(category);
+    next(scopesFrom(nextSettings.drill));
   };
 
   const handleBack = () => {
@@ -1001,7 +1003,7 @@ function FlashcardsView({
     return () => window.removeEventListener('keydown', handleKeyDown);
     // `card` is a REQUIRED dep, not a convenience. The old comment assumed a
     // fresh card is always drawn in the same render that resets feedback to
-    // null, so `feedback` alone was a sufficient proxy. `changeCategory`
+    // null, so `feedback` alone was a sufficient proxy. `changeScopes`
     // breaks that: it calls next() while feedback is ALREADY null, React bails
     // on the no-op state write, the dep array never changes, and the listener
     // stays bound to the previous card. The next keypress then graded the hand
@@ -1043,19 +1045,7 @@ function FlashcardsView({
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
-        <div className="settings-row">
-          <span className="settings-label">Hands</span>
-          <Segmented
-            options={[
-              { value: 'all', label: 'All' },
-              { value: 'hard', label: 'Hard' },
-              { value: 'soft', label: 'Soft' },
-              { value: 'pairs', label: 'Pairs' },
-            ]}
-            value={settings.drill.flashCategory}
-            onChange={changeCategory}
-          />
-        </div>
+        <ScopeChips settings={settings} onChange={changeScopes} />
 
         <DrillModeControls
           settings={settings}
@@ -2093,9 +2083,9 @@ function MixedSessionView({
   // V5-1: same confusable-neighbour bias as the flashcards drill. The chain is
   // over FLASHCARDS only -- a quiz item in between does not reset it, since the
   // confusion being trained is between chart cells, not between drill types.
-  const drawMixedFlash = () => {
+  const drawMixedFlash = (drill: Settings['drill'] = settings.drill) => {
     const drawn = drawFlashcard(
-      settings.drill.flashCategory,
+      scopesFrom(drill),
       flashSrRef.current,
       Date.now(),
       randomSeed(),
@@ -2237,6 +2227,17 @@ function MixedSessionView({
     setCurrent(drawFor(pickMixedType(sessionSeed(), idx)));
     setFeedback(null);
     promptShownAtRef.current = performance.now();
+  };
+
+  // #13: a basic-strategy hand still waiting for its answer is re-dealt
+  // from the new scope, as in Flashcards; a quiz item, or an answered hand,
+  // is left alone and the next draw follows the new scope.
+  const changeScopes = (nextSettings: Settings) => {
+    onSettingsChange(nextSettings);
+    if (current.type === 'flash' && !feedbackRef.current) {
+      setCurrent({ type: 'flash', card: drawMixedFlash(nextSettings.drill) });
+      promptShownAtRef.current = performance.now();
+    }
   };
 
   const handleBack = () => {
@@ -2582,6 +2583,7 @@ function MixedSessionView({
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
+        <ScopeChips settings={settings} onChange={changeScopes} />
         <DrillModeControls
           settings={settings}
           onSettingsChange={onSettingsChange}
@@ -2835,7 +2837,12 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   }
   if (mode === 'mastery') {
     return (
-      <MasteryChallengeView activeProfile={activeProfile} onBack={() => setMode('picker')} />
+      <MasteryChallengeView
+        settings={settings}
+        activeProfile={activeProfile}
+        onSettingsChange={onSettingsChange}
+        onBack={() => setMode('picker')}
+      />
     );
   }
   if (mode === 'paircancel') {

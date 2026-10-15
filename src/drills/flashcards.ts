@@ -9,6 +9,8 @@ import { weightedIndex } from './weightedDraw';
 import { srWeight } from './spacedRepetition';
 import { confusabilityWeight } from './confusability';
 import type { SrDeck } from './spacedRepetition';
+import { filterCellsByScopes } from './handScope';
+import type { HandScope } from './handScope';
 
 export interface Flashcard {
   cards: [Card, Card];
@@ -90,8 +92,10 @@ export function generateAllCells(): Cell[] {
  */
 export function filterCellsByCategory<T extends { id: string }>(
   cells: T[],
-  category: 'all' | 'hard' | 'soft' | 'pairs',
+  category: 'all' | 'hard' | 'soft' | 'pairs' | readonly HandScope[],
 ): T[] {
+  // #13: a multi-select scope is a set of categories.
+  if (typeof category !== 'string') return filterCellsByScopes(cells, category);
   if (category === 'all') return cells;
   if (category === 'pairs') return cells.filter((c) => c.id.startsWith('pair-'));
   return cells.filter((c) => c.id.startsWith(category + '-'));
@@ -100,7 +104,8 @@ export function filterCellsByCategory<T extends { id: string }>(
 /**
  * Draw a random flashcard from the specified category with weighted sampling.
  *
- * @param category - 'all', 'hard', 'soft', or 'pairs'
+ * @param category - 'all', 'hard', 'soft', or 'pairs', or (#13) a set of
+ *   the last three
  * @param srDeck - RV4 spaced-repetition deck (cellId -> SrCard); draw prefers DUE cells
  * @param now - wall-clock epoch ms, used to weight cells by SR due-ness
  * @param seed - Optional seed for reproducibility
@@ -116,7 +121,7 @@ export function filterCellsByCategory<T extends { id: string }>(
  * @returns A flashcard with correct action
  */
 export function drawFlashcard(
-  category: 'all' | 'hard' | 'soft' | 'pairs',
+  category: 'all' | 'hard' | 'soft' | 'pairs' | readonly HandScope[],
   srDeck: SrDeck,
   now: number,
   seed?: number,
