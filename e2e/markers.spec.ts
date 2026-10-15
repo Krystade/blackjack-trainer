@@ -98,3 +98,28 @@ test('mastery: a marked cell joins the Marked deck, and None takes it out', asyn
   // Nothing marked: the Marked deck is empty and says so.
   await expect(page.getByTestId('empty-deck')).toContainText('No hands are marked yet');
 });
+
+test.describe('touch', () => {
+  test.use({ hasTouch: true });
+
+  test('flashcards: lifting the finger after a long press leaves the picker open', async ({ page, context }) => {
+    await page.goto('/?e2e=1');
+    await openDrill(page, 'Flashcards');
+    const box = (await page.locator('.player-hand').first().boundingBox())!;
+    const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    // A real touch: the release's click lands on whatever is under the
+    // finger by then, which is the backdrop the press just opened.
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+    await page.waitForTimeout(650);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(200);
+    await expect(picker(page)).toBeVisible();
+    expect(await graded(page)).toBe(0);
+
+    // A tap that starts on the backdrop still dismisses it.
+    await page.touchscreen.tap(20, 20);
+    await expect(picker(page)).toHaveCount(0);
+    expect(await graded(page)).toBe(0);
+  });
+});

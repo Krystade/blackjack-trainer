@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { MarkerColour, Settings } from '../../store/types';
 import { MARKER_COLOURS, MARKER_NAME, markerOf, withMarker } from '../../drills/markers';
 import { plainCellLabel } from '../../drills/cellLabel';
@@ -39,7 +39,14 @@ export function MarkableHand({
   const [openFor, setOpenFor] = useState<{ key: unknown } | null>(null);
   const open = openFor !== null && Object.is(openFor.key, handKey);
   const marker = markerOf(settings.drill, cellId);
-  const press = useLongPress(() => setOpenFor({ key: handKey }));
+  // On touch, lifting the finger that held the hand sends a click to
+  // whatever is under it by then: the backdrop that just opened. Only a
+  // press that STARTS on the backdrop dismisses the picker.
+  const dismissArmed = useRef(false);
+  const press = useLongPress(() => {
+    dismissArmed.current = false;
+    setOpenFor({ key: handKey });
+  });
 
   // While the picker is up, keys belong to it: Escape closes it, and nothing
   // reaches the drill (whose 1-5 would answer the hand behind it).
@@ -76,8 +83,13 @@ export function MarkableHand({
           <div
             className="marker-backdrop"
             data-testid="marker-backdrop"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => setOpenFor(null)}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              dismissArmed.current = true;
+            }}
+            onClick={() => {
+              if (dismissArmed.current) setOpenFor(null);
+            }}
           />
           <div
             className="marker-picker"
