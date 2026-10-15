@@ -1,0 +1,88 @@
+import { describe, it, expect } from 'vitest';
+import { mulberry32 } from '../engine/cards';
+import type { Card } from '../engine/cards';
+import { DEFAULT_RULES } from '../engine/ruleset';
+import { correctPlay } from '../engine/strategy';
+import { drawFlashcard } from './flashcards';
+import { FULL_CTX } from './fallbackHand';
+import { drawCountTc, indexLine, reachableIndexes, PLAIN_MIN, PLAIN_MAX, TC_MIN, TC_MAX } from './withCount';
+
+const hand = (...ranks: string[]): Card[] => ranks.map((rank) => ({ rank, suit: 's' }) as Card);
+const NO_LS = { ...DEFAULT_RULES, ls: false };
+
+describe('#53 reachableIndexes', () => {
+  it('12 v 4 has its index; 20 v 4 has none', () => {
+    expect(reachableIndexes(hand('10', '2'), '4', FULL_CTX, DEFAULT_RULES).map((d) => d.id)).toEqual(['12v4']);
+    expect(reachableIndexes(hand('10', 'K'), '4', FULL_CTX, DEFAULT_RULES)).toEqual([]);
+  });
+  it('16 v 10 surrenders at every count when surrender is on, so its stand index never applies', () => {
+    expect(reachableIndexes(hand('10', '6'), '10', FULL_CTX, DEFAULT_RULES)).toEqual([]);
+    expect(reachableIndexes(hand('10', '6'), '10', FULL_CTX, NO_LS).map((d) => d.id)).toEqual(['16v10']);
+  });
+});
+
+describe('#53 drawCountTc', () => {
+  it('a hand with an index sits at or past it about half the time or more', () => {
+    const rng = mulberry32(5);
+    let past = 0;
+    const N = 4000;
+    for (let i = 0; i < N; i++) {
+      const tc = drawCountTc(hand('10', '2'), '4', FULL_CTX, DEFAULT_RULES, rng);
+      expect(tc).toBeGreaterThanOrEqual(TC_MIN);
+      expect(tc).toBeLessThanOrEqual(TC_MAX);
+      if (tc <= -1) past++;
+    }
+    expect(past / N).toBeGreaterThan(0.5);
+  });
+  it('a hand with no index draws from the plain range', () => {
+    const rng = mulberry32(6);
+    const seen = new Set<number>();
+    for (let i = 0; i < 2000; i++) seen.add(drawCountTc(hand('10', 'K'), '4', FULL_CTX, DEFAULT_RULES, rng));
+    expect(Math.min(...seen)).toBe(PLAIN_MIN);
+    expect(Math.max(...seen)).toBe(PLAIN_MAX);
+  });
+});
+
+describe('#53 indexLine', () => {
+  it('names the index that applied, or says none did', () => {
+    expect(indexLine(correctPlay(hand('10', '6'), '10', 0, FULL_CTX, NO_LS), NO_LS)).toBe('Index: 16 v 10: stand at TC ≥ 0');
+    expect(indexLine(correctPlay(hand('10', '6'), '10', -1, FULL_CTX, NO_LS), NO_LS)).toBe('No index here');
+  });
+});
+
+describe('#53 drawFlashcard with count', () => {
+  it('every card carries a TC and its answer is correctPlay at that TC', () => {
+    let deviations = 0;
+    for (let seed = 0; seed < 2000; seed++) {
+      const card = drawFlashcard(['hard', 'soft', 'pairs'], {}, 0, seed, NO_LS, false, null, null, { withCount: true });
+      expect(card.tc).toBeTypeOf('number');
+      const advice = correctPlay(card.cards, card.up, card.tc!, card.ctx ?? FULL_CTX, NO_LS);
+      expect(card.correct).toBe(advice.action);
+      if (advice.deviationId) deviations++;
+    }
+    expect(deviations).toBeGreaterThan(0);
+  });
+
+  it('off: no TC, and the draw is unchanged', () => {
+    for (let seed = 0; seed < 200; seed++) {
+      const card = drawFlashcard('all', {}, 0, seed, DEFAULT_RULES, false, null, null, { withCount: false });
+      expect(card).toEqual(drawFlashcard('all', {}, 0, seed, DEFAULT_RULES));
+      expect(card.tc).toBeUndefined();
+    }
+  });
+
+  it('on the indexes deck, a meaningful share of hands are graded on their index', () => {
+    const deck = new Map([
+      ['hard-12-v-4', 1],
+      ['hard-16-v-10', 1],
+      ['hard-9-v-2', 1],
+    ]);
+    let applied = 0;
+    const N = 1000;
+    for (let seed = 0; seed < N; seed++) {
+      const card = drawFlashcard('all', {}, 0, seed, NO_LS, false, null, deck, { withCount: true });
+      if (correctPlay(card.cards, card.up, card.tc!, FULL_CTX, NO_LS).deviationId) applied++;
+    }
+    expect(applied / N).toBeGreaterThan(0.4);
+  });
+});

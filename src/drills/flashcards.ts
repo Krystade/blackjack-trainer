@@ -3,6 +3,7 @@ import { mulberry32 } from '../engine/cards';
 import { correctPlay } from '../engine/strategy';
 import type { PlayContext } from '../engine/strategy';
 import { FULL_CTX, maybeFallback } from './fallbackHand';
+import { drawCountTc } from './withCount';
 import type { Action } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import type { StrategyRules } from '../engine/ruleset';
@@ -195,8 +196,12 @@ export function drawFlashcard(
   const cards = fallback ? fallback.cards : cell.cards;
   const ctx = fallback ? fallback.ctx : FULL_CTX;
 
+  // #53: a count to play the hand at, biased toward its index. Drawn only
+  // when on, after everything else, so the rest of the draw is unchanged.
+  const tc = options.withCount ? drawCountTc(cards, cell.up, ctx, rules, rng) : undefined;
+
   // Get correct action
-  const advice = correctPlay(cards, cell.up, 0, ctx, rules);
+  const advice = correctPlay(cards, cell.up, tc ?? 0, ctx, rules);
 
   return {
     cards,
@@ -204,5 +209,6 @@ export function drawFlashcard(
     correct: advice.action,
     cellId: cell.id,
     ...(fallback ? { ctx } : {}),
+    ...(tc !== undefined ? { tc } : {}),
   };
 }

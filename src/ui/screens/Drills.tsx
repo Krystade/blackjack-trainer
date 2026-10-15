@@ -9,6 +9,7 @@ import { isIndexActive, indexSetFor } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
 import { drawFlashcard, flashCtx } from '../../drills/flashcards';
 import { flashOptionsFor } from '../../drills/flashOptions';
+import { indexLine } from '../../drills/withCount';
 import { DealToggles } from './drills/DealToggles';
 import { plainCellLabel } from '../../drills/cellLabel';
 import { formatReviewPlain } from '../../drills/srStatus';
@@ -686,7 +687,12 @@ function FlashcardsView({
         nextResultId(),
         event,
         { cards: card.cards, up: card.up, tc: card.tc ?? null },
-        { cellId, sr: srText ? { text: srText, box: srCard?.box } : null },
+        {
+          cellId,
+          sr: srText ? { text: srText, box: srCard?.box } : null,
+          // #53: a With-count card says whether an index applied.
+          ...(card.tc !== undefined ? { indexNote: indexLine(event, activeProfile.rules) } : {}),
+        },
       ),
       event,
       // #22: a withdrawn answer puts the card's schedule back as well.
@@ -1057,7 +1063,7 @@ function FlashcardsView({
 
       <div className="drill-inline-controls" ref={controlsRef}>
         <HandDeckControls settings={settings} onChange={changeScopes} />
-        <DealToggles settings={settings} onChange={changeScopes} />
+        <DealToggles settings={settings} onChange={changeScopes} withCount />
 
         <DrillModeControls
           settings={settings}
@@ -1102,6 +1108,8 @@ function FlashcardsView({
       {/* #26: the rules this card is graded under, before the answer. A
           flashcard is a fresh two-card hand at the profile's table, unless
           (#27) it was dealt as a fallback: then "No double" / "No surrender". */}
+      {/* #53: a With-count card plays at this count. */}
+      {card.tc !== undefined && <div className="quiz-tc">TC {formatSigned(card.tc)}</div>}
       <RulesChip labels={rulesChipLabels(flashCtx(card), activeProfile.rules, card)} />
 
       <div className="dealer-area">
