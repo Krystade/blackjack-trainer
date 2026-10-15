@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TabSettingsButton } from '../components/TabSettingsButton';
 import './charts.css';
+import './chartIndexes.css';
 import type { Screen } from '../App';
 import type { Profile } from '../../store/types';
 import { getChart } from '../../engine/charts';
 import { FloatingBackPill } from '../components/FloatingBackPill';
+import { strategyRulesFor } from '../../store/profiles';
+import { indexList } from './indexChart';
+import type { IndexEntry } from './indexChart';
 import {
   ACTION_LEGEND,
   DEALER_UPCARDS,
@@ -44,6 +48,11 @@ const SECTIONS: readonly { id: ChartSection; title: string; blurb: string }[] = 
 ];
 
 const LEGEND_TEXT = new Map(ACTION_LEGEND.map((entry) => [entry.code, entry.label]));
+
+const INDEX_GROUPS: readonly { id: IndexEntry['group']; title: string }[] = [
+  { id: 'illustrious', title: 'Illustrious 18' },
+  { id: 'fab4', title: 'Fab 4 surrenders' },
+];
 
 interface ChartsProps {
   onNavigate: (screen: Screen) => void;
@@ -144,6 +153,10 @@ export function Charts({
     [chart, order],
   );
 
+  // #23: the indexes the trainer GRADES with -- strategyRulesFor, not the bare
+  // rules, because the Fab 4 are a profile choice and need surrender on.
+  const indexes = useMemo(() => indexList(strategyRulesFor(activeProfile)), [activeProfile]);
+
   const cellRef = useRef<HTMLTableCellElement | null>(null);
 
   const chooseOrder = (next: RowOrder) => {
@@ -199,7 +212,7 @@ export function Charts({
           the cell being rung. */}
       <p className="charts-provenance">
         The basic strategy chart the trainer grades you against. Count-based deviations (index
-        plays) are not shown.
+        plays) are listed under Indexes, below the charts.
       </p>
       {note && <p className="charts-note">{note}</p>}
 
@@ -324,6 +337,48 @@ export function Charts({
           )}
         </section>
       ))}
+
+      <section className="chart-indexes" aria-labelledby="chart-indexes-title" data-testid="chart-indexes">
+        <h2 className="chart-section-title" id="chart-indexes-title">
+          Indexes
+          <span className="chart-section-blurb">
+            Plays the true count changes. Once the count reaches the index, make that play;
+            otherwise play the chart.
+          </span>
+        </h2>
+        {INDEX_GROUPS.map((group) => {
+          const entries = indexes.entries.filter((e) => e.group === group.id);
+          if (entries.length === 0) return null;
+          return (
+            <div className="index-group" key={group.id} data-group={group.id}>
+              <h3 className="index-group-title">{group.title}</h3>
+              <ul className="index-list">
+                {entries.map((e) => (
+                  <li className="index-item" key={e.id} data-index-id={e.id}>
+                    {/* The separators are real text, hidden from sight, so the
+                        line reads (and copies) as "16 v 10 · TC ≥ 0 · Stand"
+                        while the eye gets three aligned columns. */}
+                    <span className="index-hand">
+                      {e.hand} <span className="index-v">v</span> {e.dealer}
+                    </span>
+                    <span className="index-sep"> · </span>
+                    <span className="index-tc">{e.index}</span>
+                    <span className="index-sep"> · </span>
+                    <span className="index-play" data-family={e.family}>
+                      {e.play}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+        {indexes.inactive.map((line) => (
+          <p className="chart-section-note" key={line}>
+            {line}
+          </p>
+        ))}
+      </section>
     </div>
   );
 }

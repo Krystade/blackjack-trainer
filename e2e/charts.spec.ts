@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { answerAndReadStrip, shot, withProfile, withSettings } from './helpers';
+import { indexList } from '../src/ui/screens/indexChart';
+import { DEFAULT_RULES } from '../src/engine/ruleset';
 
 /**
  * Operator item #6: viewable strategy charts.
@@ -306,6 +308,41 @@ test('a PAIRS highlight lands on the pair row', async ({ page }) => {
   const marked = page.locator('[data-highlight="true"]');
   await expect(marked).toHaveCount(1);
   await expect(page.locator('[data-row="PAIRS:8"] [data-highlight="true"]')).toHaveText('Rp');
+});
+
+/**
+ * #23: the Indexes section. Its entries come from the same index set the
+ * grader uses (indexChart.test.ts holds the shaping); what the browser proves
+ * is that the profile reaches it -- the Fab 4 appear only when the profile
+ * plays them AND the table offers surrender.
+ */
+test.describe('#23 indexes', () => {
+  const items = (page: Page) => page.locator('[data-testid="chart-indexes"] .index-item');
+
+  test('lists every graded index as hand, dealer, index and play', async ({ page }) => {
+    await withProfile(page);
+    await openCharts(page);
+    const expected = indexList(DEFAULT_RULES);
+    await expect(items(page)).toHaveText(expected.entries.map((e) => e.text));
+    await expect(items(page).filter({ hasText: '16 v 10' })).toHaveText('16 v 10 · TC ≥ 0 · Stand');
+    await expect(page.locator('[data-group="fab4"]')).toHaveCount(0);
+    // H17 switches 11 v A off; the list says so rather than being one short.
+    await expect(page.locator('[data-testid="chart-indexes"] .chart-section-note')).toHaveText(expected.inactive);
+  });
+
+  test('adds the Fab 4 when the profile plays them, and only with surrender on', async ({ page }) => {
+    await withProfile(page, { surrenderIndices: true });
+    await openCharts(page);
+    const withFab = indexList({ ...DEFAULT_RULES, surrenderIndices: true });
+    await expect(items(page)).toHaveText(withFab.entries.map((e) => e.text));
+    await expect(page.locator('[data-group="fab4"] .index-item')).toHaveCount(
+      withFab.entries.filter((e) => e.group === 'fab4').length,
+    );
+
+    await withProfile(page, { rules: { ls: false }, surrenderIndices: true });
+    await openCharts(page);
+    await expect(page.locator('[data-group="fab4"]')).toHaveCount(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
