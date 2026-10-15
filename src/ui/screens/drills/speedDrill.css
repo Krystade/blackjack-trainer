@@ -1,0 +1,101 @@
+/* #15 / #19: the yes/no Speed drill. */
+
+.speed-stats {
+  margin-left: auto;
+  display: flex;
+  gap: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.speed-median {
+  color: var(--ink-dim);
+}
+
+.speed-modes {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.4rem;
+}
+
+.speed-mode-chip {
+  flex: 1 1 0;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.speed-mode-chip-on {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+
+.speed-question {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  margin: 0.5rem 0.75rem 0.25rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: center;
+}
+
+.speed-tc {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.speed-result {
+  text-align: center;
+}
+
+.speed-result-reason {
+  font-size: 0.85rem;
+  color: var(--ink-dim);
+}
+
+.speed-answer-bar {
+  gap: 0.5rem;
+}
+
+.speed-answer {
+  flex: 1 1 0;
+  min-height: 72px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--act-ink);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.speed-answer:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.speed-answer-no {
+  background: var(--act-hit);
+}
+
+.speed-answer-yes {
+  background: var(--act-double);
+}

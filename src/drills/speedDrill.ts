@@ -198,7 +198,7 @@ export function yesNo(answer: boolean): 'yes' | 'no' {
 export function speedReason(q: SpeedQuestion): string {
   if (q.mode === 'deviation') {
     if (q.indexLabel && q.answer) return `${q.indexLabel} (basic: ${ACTION_WORD[q.basic]})`;
-    return `Play ${ACTION_WORD[q.play]}, the chart play`;
+    return `Chart: ${ACTION_WORD[q.play]}, no index applies`;
   }
   return `Chart: ${ACTION_WORD[q.play]}`;
 }
