@@ -1,0 +1,161 @@
+/*
+ * B2 (#9): the Custom drill editor (CustomDrillEditor.tsx). The painter grid
+ * itself is styled in cellPaintGrid.css.
+ */
+
+.cde-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  /* 16px gutters: the grid inside is sized for 343px on a 375 phone. */
+  padding: var(--space-4) 16px calc(var(--tab-bar-h) + var(--space-6));
+}
+
+.cde-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.cde-starts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.cde-start {
+  min-width: 0;
+  padding: 0 var(--space-2);
+}
+
+.cde-counts {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- mix ---------- */
+
+.cde-slider {
+  display: flex;
+  flex-direction: column;
+}
+
+.cde-slider-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+.cde-slider-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+
+.cde-slider input[type='range'] {
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.cde-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.cde-toggle-state {
+  min-width: 2.5rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  font-size: 0.8rem;
+  text-align: center;
+  color: var(--ink-dim);
+}
+
+.cde-toggle[aria-pressed='true'] .cde-toggle-state {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* ---------- brush palette ---------- */
+
+/* Stays on screen while the long grid scrolls under it, below the strip the
+   app reserves for the mute disc (primitives.css --chrome-top). */
+.cde-palette {
+  position: sticky;
+  top: var(--chrome-top, 0px);
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+
+.cde-brush {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+
+.cde-brush[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--raised);
+  color: var(--ink);
+}
+
+.cde-brush:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* A miniature cell in the double colour, at the brush's brightness. */
+.cde-swatch {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--act-double) 82%, var(--surface));
+}
+
+.cde-swatch[data-tier='off'] {
+  background: color-mix(in oklab, var(--act-double) 16%, var(--surface));
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.cde-swatch[data-tier='rare'] {
+  background: color-mix(in oklab, var(--act-double) 45%, var(--surface));
+}
+
+.cde-swatch[data-tier='focus'] {
+  background: var(--act-double);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.cde-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}

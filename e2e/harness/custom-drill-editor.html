@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <title>Custom drill editor harness</title>
+  </head>
+  <body>
+    <!-- e2e only: mounts the Custom drill editor on its own, so its painting
+         can be driven before (and independently of) the Drills screen that
+         hosts it. Served by the dev server; never part of the build. -->
+    <div id="root"></div>
+    <script type="module" src="/src/ui/components/customDrillEditor.harness.tsx"></script>
+  </body>
+</html>
