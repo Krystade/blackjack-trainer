@@ -22,6 +22,7 @@
 import type { Card, Rank } from '../engine/cards';
 import type { Action } from '../engine/deviations';
 import type { RuleSet } from '../engine/ruleset';
+import type { PlayContext } from '../engine/strategy';
 import { handValue, isPair } from '../engine/hand';
 import { chartLookup } from '../engine/basicStrategy';
 
@@ -51,7 +52,18 @@ function drillOffersSurrender(cards: Card[], up: Rank, rules: RuleSet): boolean 
   return cell === 'Rh' || cell === 'Rs' || cell === 'Rp';
 }
 
-export function drillLegalActions(cards: Card[], rules: RuleSet, up: Rank): Action[] {
+export function drillLegalActions(cards: Card[], rules: RuleSet, up: Rank, ctx?: PlayContext): Action[] {
+  // #27: a fallback hand (three cards, or a pair with surrender off) says
+  // what it has lost; anything it withholds can never be the graded answer,
+  // because the grader runs `correctPlay` under the same ctx.
+  if (ctx) {
+    return drillLegalActions(cards, rules, up).filter(
+      (a) =>
+        (a !== 'double' || ctx.canDouble) &&
+        (a !== 'surrender' || ctx.canSurrender) &&
+        (a !== 'split' || ctx.canSplit),
+    );
+  }
   // Hit and stand are unconditional -- there is no two-card hand that forbids
   // either (a dealt blackjack is settled before the player ever acts, so it
   // never reaches a drill prompt).

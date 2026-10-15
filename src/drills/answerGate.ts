@@ -17,6 +17,7 @@
  * cascade (see clips.ts / narrateReason) instead of dropping to robot voice.
  */
 
+import type { PlayContext } from '../engine/strategy';
 import type { Card, Rank } from '../engine/cards';
 import type { Action } from '../engine/deviations';
 import { narrateActionNotAsked } from '../audio/narrate';
@@ -52,12 +53,13 @@ export function gateDrillAnswer(
   cards: Card[] | null,
   rules: RuleSet,
   up: Rank,
+  ctx?: PlayContext,
 ): AnswerGate {
   if (cards === null) return ACCEPTED;
   if (!(taken in ACTION_SPOKEN)) return ACCEPTED;
 
   const action = taken as Action;
-  if (drillLegalActions(cards, rules, up).includes(action)) return ACCEPTED;
+  if (drillLegalActions(cards, rules, up, ctx).includes(action)) return ACCEPTED;
 
   return { accepted: false, announcement: actionUnavailable(action) };
 }

@@ -856,3 +856,38 @@ describe('a quiz item answered by self-report', () => {
     expect(missed.classification).toBe('self-report');
   });
 });
+
+describe('#27 a fallback flashcard grades under its ctx', () => {
+  it('hard 11 v 5 as 2,4,5: hit is right, the event says so', () => {
+    const card: Flashcard = {
+      cards: [
+        { rank: '2', suit: 's' },
+        { rank: '4', suit: 'h' },
+        { rank: '5', suit: 'd' },
+      ],
+      up: '5',
+      correct: 'hit',
+      cellId: 'hard-11-v-5',
+      ctx: { canDouble: false, canSplit: false, canSurrender: false },
+    };
+    const hit = buildFlashcardEvent(card, 'hit', DEFAULT_RULES, 100);
+    expect(hit.correct).toBe(true);
+    expect(hit.correctAction).toBe('hit');
+    expect(buildFlashcardEvent(card, 'stand', DEFAULT_RULES, 100).correct).toBe(false);
+  });
+
+  it('8,8 v A with surrender off (Rp): split is right', () => {
+    const card: Flashcard = {
+      cards: [
+        { rank: '8', suit: 's' },
+        { rank: '8', suit: 'h' },
+      ],
+      up: 'A',
+      correct: 'split',
+      cellId: 'pair-8-v-A',
+      ctx: { canDouble: true, canSplit: true, canSurrender: false },
+    };
+    expect(buildFlashcardEvent(card, 'split', DEFAULT_RULES, 100).correct).toBe(true);
+    expect(buildFlashcardEvent(card, 'surrender', DEFAULT_RULES, 100).correct).toBe(false);
+  });
+});

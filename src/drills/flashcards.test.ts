@@ -1,4 +1,5 @@
 import { mulberry32 } from '../engine/cards';
+import { DEFAULT_RULES } from '../engine/ruleset';
 import { describe, it, expect } from 'vitest';
 import { generateAllCells, filterCellsByCategory, drawFlashcard } from './flashcards';
 import { confusabilityWeight } from './confusability';
@@ -163,5 +164,30 @@ describe('#13: a multi-select scope draws from the union of its categories', () 
     for (let seed = 1; seed <= 50; seed++) {
       expect(drawFlashcard(['hard', 'soft', 'pairs'], {}, 0, seed)).toEqual(drawFlashcard('all', {}, 0, seed));
     }
+  });
+});
+
+describe('#27 drawFlashcard with fallbacks', () => {
+  const draw = (seed: number, fallbacks: boolean) =>
+    drawFlashcard(['hard', 'soft', 'pairs'], {}, 0, seed, DEFAULT_RULES, false, null, null, { fallbacks });
+
+  it('off: identical to a draw without options', () => {
+    for (let seed = 0; seed < 300; seed++) {
+      expect(draw(seed, false)).toEqual(drawFlashcard(['hard', 'soft', 'pairs'], {}, 0, seed, DEFAULT_RULES));
+    }
+  });
+
+  it('on: some double/surrender hands come as fallbacks, graded under their ctx', () => {
+    let fallbacks = 0;
+    for (let seed = 0; seed < 3000; seed++) {
+      const card = draw(seed, true);
+      if (!card.ctx) continue;
+      fallbacks++;
+      expect(card.correct).toBe(correctPlay(card.cards, card.up, 0, card.ctx, DEFAULT_RULES).action);
+      expect(card.correct).not.toBe('double');
+      expect(card.correct).not.toBe('surrender');
+      if (card.cards.length === 3) expect(card.ctx.canDouble).toBe(false);
+    }
+    expect(fallbacks).toBeGreaterThan(20);
   });
 });
