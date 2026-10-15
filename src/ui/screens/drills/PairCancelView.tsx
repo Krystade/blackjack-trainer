@@ -15,6 +15,7 @@ import { loadStats, saveStats } from '../../../store/persist';
 import { focusSwallowsKey } from '../../keyboardFocus';
 import { ResultStrip } from '../../components/ResultStrip';
 import { releaseAnswerFocus } from '../../handResult';
+import { answerTooSoon } from '../../answerBounce';
 import './pairCancelStrip.css';
 
 function randomSeed(): number {
@@ -55,6 +56,8 @@ export function PairCancelView({ settings, onBack }: { settings: Settings; onBac
   const shownAtRef = useRef(performance.now());
 
   const answer = (guess: number) => {
+    // Review fix (c): a bounced double tap would grade a pair nobody saw.
+    if (answerTooSoon(shownAtRef.current)) return;
     const correct = guess === round.net;
     const elapsedMs = performance.now() - shownAtRef.current;
     audio.ding(correct ? 'good' : 'bad');

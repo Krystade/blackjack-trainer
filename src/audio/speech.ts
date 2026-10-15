@@ -73,6 +73,8 @@ declare global {
       volume?: number;
       rate?: number;
       voiceURI?: string;
+      /** Whether the line cut off what was already playing. */
+      interrupt?: boolean;
     }[];
     /**
      * How long a swallowed utterance should pretend to take, in e2e mode only.
@@ -117,6 +119,7 @@ function pushSpeechLog(entry: string, opts?: SpeechOpts): void {
     volume: opts?.volume,
     rate: opts?.rate,
     voiceURI: opts?.voiceURI,
+    interrupt: opts?.interrupt,
   });
 }
 

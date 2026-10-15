@@ -95,7 +95,7 @@ export function quizCtxFor(item: QuizItem, rules: StrategyRules): PlayContext {
  */
 export function quizRulesChip(item: QuizItem, rules: StrategyRules): string[] {
   if (!item.cards) return [];
-  return rulesChipLabels(quizCtxFor(item, rules), rules);
+  return rulesChipLabels(quizCtxFor(item, rules), rules, { cards: item.cards, up: item.up });
 }
 
 /**
