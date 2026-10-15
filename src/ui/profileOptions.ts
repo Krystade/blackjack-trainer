@@ -91,6 +91,24 @@ export function syncPenetration(profile: Profile): Profile {
 }
 
 /**
+ * Whether two profiles differ in what the Play sheet's held options mean to
+ * the game, judged on their EFFECTIVE values. An absent field and its default
+ * are the same game: turning "Vary" on and off again leaves `cutVary: false`
+ * where there was nothing, and stepping the cut up and back down stores the
+ * cut that was only derived before. Neither is a reason to deal a new shoe.
+ */
+export function playOptionsDiffer(a: Profile, b: Profile): boolean {
+  const effective = (p: Profile) => [
+    p.countCheckEvery,
+    countCheckAskOf(p),
+    gradesDeviations(p),
+    cutDecksOf(p),
+    p.cutVary === true,
+  ];
+  return JSON.stringify(effective(a)) !== JSON.stringify(effective(b));
+}
+
+/**
  * Apply a patch to the stored active profile and save the whole list, as the
  * profile editor saves it. Returns the profile as stored. Reads storage rather
  * than any in-memory copy: the table writes `bankrollNow` to storage only

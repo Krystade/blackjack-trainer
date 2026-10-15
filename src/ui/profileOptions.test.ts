@@ -15,6 +15,7 @@ import {
   gradesDeviations,
   patchActiveProfile,
   penetrationForCut,
+  playOptionsDiffer,
   syncPenetration,
 } from './profileOptions';
 
@@ -117,5 +118,25 @@ describe('patchActiveProfile', () => {
     const after = loadProfiles()[0]!;
     expect(after.cutDecks).toBe(2);
     expect(after.penetration).toBeCloseTo(0.75);
+  });
+});
+
+describe('playOptionsDiffer: what the Play sheet counts as a change', () => {
+  const base = withDecks(profile('a', { penetration: 0.75 }), 6);
+
+  it('a change made and undone is no change', () => {
+    // Vary on then off leaves `false` where nothing was stored.
+    expect(playOptionsDiffer({ ...base, cutVary: false }, base)).toBe(false);
+    // The cut stepped up and back down stores the cut that was only derived.
+    expect(playOptionsDiffer({ ...base, cutDecks: 1.5 }, base)).toBe(false);
+    expect(playOptionsDiffer({ ...base, countCheckAsk: 'alternate', gradeDeviations: true }, base)).toBe(false);
+  });
+
+  it('every real change is one', () => {
+    expect(playOptionsDiffer({ ...base, cutVary: true }, base)).toBe(true);
+    expect(playOptionsDiffer({ ...base, cutDecks: 1.75 }, base)).toBe(true);
+    expect(playOptionsDiffer({ ...base, countCheckAsk: 'true' }, base)).toBe(true);
+    expect(playOptionsDiffer({ ...base, gradeDeviations: false }, base)).toBe(true);
+    expect(playOptionsDiffer({ ...base, countCheckEvery: base.countCheckEvery + 1 }, base)).toBe(true);
   });
 });

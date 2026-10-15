@@ -14,6 +14,11 @@ async function storedSettings(page: Page): Promise<Record<string, any>> {
   return page.evaluate(() => JSON.parse(window.localStorage.getItem('bjtrainer.settings.v1') ?? '{}'));
 }
 
+/** The round counter (the bankroll is a `.topbar-stat` too). */
+function roundStat(page: Page) {
+  return page.locator('.topbar-stat', { hasText: /^Round \d+$/ });
+}
+
 async function openTable(page: Page): Promise<void> {
   await page.goto('/?seed=2&e2e=1');
   await page.locator('.tab-bar').getByRole('button', { name: 'Play', exact: true }).click();
@@ -23,7 +28,7 @@ async function openTable(page: Page): Promise<void> {
 async function playOneRound(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await playRoundByAdvice(page);
-  await expect(page.locator('.topbar-stat')).toHaveText('Round 1');
+  await expect(roundStat(page)).toHaveText('Round 1');
 }
 
 test.beforeEach(async ({ page }) => {
@@ -74,7 +79,7 @@ test('profile options are held until the sheet closes, then deal a new shoe', as
   const before = await storedProfile(page);
   expect(before.countCheckAsk).toBeUndefined();
   expect(before.gradeDeviations).toBeUndefined();
-  await expect(page.locator('.topbar-stat')).toHaveText('Round 1');
+  await expect(roundStat(page)).toHaveText('Round 1');
 
   await sheet.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(sheet).toHaveCount(0);
@@ -86,7 +91,7 @@ test('profile options are held until the sheet closes, then deal a new shoe', as
   expect(after.cutVary).toBe(true);
   expect(after.penetration as number).toBeCloseTo(1 - 1.75 / 6, 5);
   // A new table: the round counter starts again.
-  await expect(page.locator('.topbar-stat')).toHaveText('Round 0');
+  await expect(roundStat(page)).toHaveText('Round 0');
 
   // Reopened, the sheet shows what was saved.
   await page.getByRole('button', { name: 'Play settings' }).click();
@@ -104,9 +109,15 @@ test('closing the Play sheet with nothing changed keeps the shoe in play', async
   // A change made and undone is no change.
   await sheet.getByRole('checkbox', { name: 'Vary ±0.5 decks' }).check();
   await sheet.getByRole('checkbox', { name: 'Vary ±0.5 decks' }).uncheck();
+  const cut = sheet.locator('.settings-row', { hasText: 'Cut card' });
+  await cut.getByRole('button', { name: '+', exact: true }).click();
+  await cut.getByRole('button', { name: '−', exact: true }).click();
+  await sheet.getByRole('checkbox', { name: 'Losing shoe' }).check();
+  await sheet.getByRole('checkbox', { name: 'Losing shoe' }).uncheck();
+  await expect(sheet.getByTestId('tab-sheet-when')).not.toContainText('Changed');
   await page.getByTestId('tab-sheet-scrim').click({ position: { x: 20, y: 20 } });
   await expect(sheet).toHaveCount(0);
-  await expect(page.locator('.topbar-stat')).toHaveText('Round 1');
+  await expect(roundStat(page)).toHaveText('Round 1');
 });
 
 test('feedback and deal speed apply at once, without a new shoe', async ({ page }) => {
@@ -118,7 +129,7 @@ test('feedback and deal speed apply at once, without a new shoe', async ({ page 
   await sheet.locator('.settings-row', { hasText: 'Deal speed' }).getByRole('button', { name: '+' }).click();
   expect((await storedSettings(page)).feedbackMode).toBe('test');
   await sheet.getByRole('button', { name: 'Done', exact: true }).click();
-  await expect(page.locator('.topbar-stat')).toHaveText('Round 1');
+  await expect(roundStat(page)).toHaveText('Round 1');
   const s = await storedSettings(page);
   expect(s.feedbackMode).toBe('test');
   expect(s.dealSpeedMs).toBeGreaterThan(0);

@@ -8,6 +8,7 @@ import { useTabSettings, type TabSettingsContextValue } from '../tabSettingsCont
 import { TabSettingsSheet } from './TabSettingsSheet';
 import { ResetBankrollRow } from './ResetBankrollRow';
 import { CountCheckControls, CutCardControl, DeviationsControl } from './ProfilePlayControls';
+import { playOptionsDiffer } from '../profileOptions';
 
 /**
  * #33: the gear in the topbar of Play, Drills and Charts, opening a sheet of
@@ -91,14 +92,16 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
   // bankroll to storage only (playBankroll.ts).
   const [base] = useState<Profile>(() => getActiveProfile());
   const [draft, setDraft] = useState<Partial<Profile>>({});
-  const [newShoeAsked, setNewShoeAsked] = useState(false);
-  const view: Profile = { ...base, ...draft };
-  const changedProfile = (Object.keys(draft) as (keyof Profile)[]).some(
-    (k) => JSON.stringify(draft[k]) !== JSON.stringify(base[k]),
-  );
-  const pending = changedProfile || newShoeAsked;
-
+  const [bankrollReset, setBankrollReset] = useState(false);
   const { settings } = ctx;
+  const [losingShoeAtOpen] = useState(() => settings.losingShoe === true);
+  const view: Profile = { ...base, ...draft };
+  // Effective values, not raw fields: a change made and undone is no change,
+  // and must not cost the shoe in play.
+  const changedProfile = playOptionsDiffer(view, base);
+  const pending =
+    changedProfile || bankrollReset || (settings.losingShoe === true) !== losingShoeAtOpen;
+
   const update = (patch: Partial<Settings>) => ctx.commitSettings({ ...settings, ...patch });
   const edit = (patch: Partial<Profile>) => setDraft((d) => ({ ...d, ...patch }));
 
@@ -152,15 +155,12 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
       <Toggle
         label="Losing shoe"
         checked={settings.losingShoe === true}
-        onChange={(v) => {
-          update({ losingShoe: v });
-          setNewShoeAsked(true);
-        }}
+        onChange={(v) => update({ losingShoe: v })}
       />
       <p className="settings-note">
         Deals a rigged run of losing hands, graded on your bet ramp. Plays solo.
       </p>
-      <ResetBankrollRow onReset={() => setNewShoeAsked(true)} />
+      <ResetBankrollRow onReset={() => setBankrollReset(true)} />
 
       <AllSettingsButton
         onClick={() => {
