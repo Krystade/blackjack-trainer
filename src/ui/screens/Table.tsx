@@ -200,7 +200,7 @@ function countVerdictOk(v: CountCheckVerdict): boolean {
  * only, so with the sound off a wrong count passed with no sign of what the
  * shoe held: "Count ✓ +3", or "Count ✗ you said +1, it was −5".
  */
-export function countVerdictText(v: CountCheckVerdict): string {
+function countVerdictText(v: CountCheckVerdict): string {
   const part = (label: string, guess: number | null | undefined, ok: boolean | undefined, actual: number) =>
     ok
       ? `${label} ✓ ${signedTc(actual)}`
