@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import './app.css';
+import './stickyTopbars.css';
 import { Home } from './screens/Home';
 import { Table } from './screens/Table';
 import { Drills } from './screens/Drills';
@@ -156,6 +157,13 @@ function App() {
   // per-component: the field test gives the mute strip back (app.css).
   useEffect(() => {
     if (typeof document !== 'undefined') document.body.dataset.screen = screen;
+  }, [screen]);
+
+  // A new screen opens at its top. The document is the scroller for every
+  // screen, so switching tabs kept the old offset: Stats opened halfway down
+  // after scrolling Charts to its indexes.
+  useEffect(() => {
+    window.scrollTo(0, 0);
   }, [screen]);
 
   /**

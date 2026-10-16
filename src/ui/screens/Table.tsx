@@ -14,7 +14,9 @@ import type { PlayContext } from '../../engine/strategy';
 import { basicPlay, correctPlay } from '../../engine/strategy';
 import { isBust } from '../../engine/hand';
 import { useGame } from '../useGame';
-import type { SessionReport } from '../useGame';
+import type { CountCheckVerdict, SessionReport } from '../useGame';
+import { ResultStrip } from '../components/ResultStrip';
+import { signedTc } from '../../drills/tcFeedback';
 import { useAudio } from '../../audio/useAudio';
 import { useVoiceControl } from '../useVoiceControl';
 import { useWheelCommand } from '../useWheelCommand';
@@ -46,6 +48,7 @@ import { CATEGORY_LABELS } from './categoryLabels';
 import { playLabel } from '../playLabel';
 import { LosingShoeBadge } from '../components/LosingShoeBadge';
 import './tableSeats.css';
+import './tableTopbar.css';
 
 type BotActionLogEntry = Game['botActionLog'][number];
 
@@ -188,6 +191,28 @@ function formatSigned(n: number): string {
   return n >= 0 ? `+${n}` : String(n);
 }
 
+function countVerdictOk(v: CountCheckVerdict): boolean {
+  return v.rcCorrect !== false && v.tcCorrect !== false;
+}
+
+/**
+ * The count check's verdict on screen (#36 follow-up). It used to be spoken
+ * only, so with the sound off a wrong count passed with no sign of what the
+ * shoe held: "Count ✓ +3", or "Count ✗ you said +1, it was −5".
+ */
+export function countVerdictText(v: CountCheckVerdict): string {
+  const part = (label: string, guess: number | null | undefined, ok: boolean | undefined, actual: number) =>
+    ok
+      ? `${label} ✓ ${signedTc(actual)}`
+      : `${label} ✗ you said ${guess == null ? '—' : signedTc(guess)}, it was ${signedTc(actual)}`;
+  const parts: string[] = [];
+  if (v.rcCorrect !== undefined) parts.push(part('Count', v.rcGuess, v.rcCorrect, v.actualRc));
+  if (v.tcCorrect !== undefined && v.actualTc !== undefined) {
+    parts.push(part('True count', v.tcGuess, v.tcCorrect, v.actualTc));
+  }
+  return parts.join(' · ');
+}
+
 /**
  * Collapse mistakes that are the same mistake.
  *
@@ -272,9 +297,20 @@ function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () =>
         <ul className="report-mistakes">
           {groupMistakes(report.mistakes).map(({ mistake: m, count }, i) => (
             <li key={i}>
-              {m.hand ?? m.kind} &middot; TC {formatSigned(m.tc)} &middot; you played {playLabel(m.taken)} &middot; correct {playLabel(m.expected)}
-              {' — '}
-              {m.reason}
+              {/* A count check has no hand and no play: "you played 1" read as
+                  nonsense next to the raw event kind. Say what was asked. */}
+              {m.kind === 'countCheck' ? (
+                <>
+                  {m.reason} &middot; you said {m.taken === '' ? '—' : signedTc(Number(m.taken))} &middot; it was{' '}
+                  {signedTc(Number(m.expected))}
+                </>
+              ) : (
+                <>
+                  {m.hand ?? m.kind} &middot; TC {formatSigned(m.tc)} &middot; you played {playLabel(m.taken)} &middot; correct {playLabel(m.expected)}
+                  {' — '}
+                  {m.reason}
+                </>
+              )}
               {count > 1 && <span className="report-mistake-count"> &times;{count}</span>}
             </li>
           ))}
@@ -581,17 +617,19 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     setPendingCount(null);
   }, [countDue, countStage]);
 
+  const [countVerdict, setCountVerdict] = useState<CountCheckVerdict | null>(null);
   const handleCountSubmit = (n: number) => {
     if (game.askRc && game.askTcToo && countStage === 'rc') {
       setPendingRc(n);
       setCountStage('tc');
       return;
     }
-    const endNow = !game.askRc
+    const { endNow, check } = !game.askRc
       ? submitCount(null, n)
       : game.askTcToo
         ? submitCount(pendingRc, n)
         : submitCount(n);
+    setCountVerdict(check);
     setCountStage('rc');
     // The answer released an End that was waiting on it.
     if (endNow) finishSession();
@@ -890,6 +928,14 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         className="message-strip"
         onClick={hasBots || dealAnimating ? skipEverything : undefined}
       >
+        {countVerdict && game.roundNo <= countVerdict.round && (
+          <ResultStrip
+            id={countVerdict.round}
+            tone={countVerdictOk(countVerdict) ? 'ok' : 'miss'}
+          >
+            {countVerdictText(countVerdict)}
+          </ResultStrip>
+        )}
         {game.shuffledLastRound && <div className="message-shuffle">Shuffling…</div>}
         {botNarrationLines.map((line, i) => (
           <div key={i} className="message-bot-narration">

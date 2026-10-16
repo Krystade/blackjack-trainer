@@ -2,6 +2,7 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { TabSettingsButton } from '../components/TabSettingsButton';
 import './charts.css';
+import './chartsThemes.css';
 import './chartIndexes.css';
 import type { Screen } from '../App';
 import type { Profile } from '../../store/types';

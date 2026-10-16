@@ -71,6 +71,19 @@ export interface ReportCategoryStat {
   accuracy: number;
 }
 
+/** A graded table count check, as the screen shows it (#36 follow-up). */
+export interface CountCheckVerdict {
+  rcGuess: number | null;
+  rcCorrect?: boolean;
+  actualRc: number;
+  tcGuess?: number;
+  tcCorrect?: boolean;
+  actualTc?: number;
+  /** The round dealt right after the answer: the verdict shows until a later
+   * round is dealt. */
+  round: number;
+}
+
 export interface SessionReport {
   categories: ReportCategoryStat[];
   mistakes: GradedEvent[];
@@ -554,11 +567,14 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     [poseCountCheckBeforeDeal],
   );
 
-  /** Grade the count check. Returns true when the answer released an End
-   * that was waiting on it (see `requestEnd`): the caller ends the session. */
+  /** Grade the count check. `endNow` is true when the answer released an End
+   * that was waiting on it (see `requestEnd`): the caller ends the session.
+   * `check` is the verdict, for the screen to show -- the spoken answer alone
+   * left a muted player never knowing what the count was. */
   const submitCount = useCallback(
-    (rc: number | null, tcGuess?: number): boolean => {
+    (rc: number | null, tcGuess?: number): { endNow: boolean; check: CountCheckVerdict } => {
       const result = game.submitCountCheck(rc, tcGuess);
+      const roundAtCheck = game.roundNo;
       if (result.rcCorrect !== undefined) {
         audio.say(narrateCountAnswer(result.actualRc));
         audio.ding(result.rcCorrect ? 'good' : 'bad');
@@ -573,7 +589,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       if (pending?.kind === 'deal') runDeal(pending.bets);
       else if (pending?.kind === 'sitOut') runSitOut();
       bump();
-      return pending?.kind === 'end';
+      return { endNow: pending?.kind === 'end', check: { ...result, rcGuess: rc, tcGuess, round: roundAtCheck + 1 } };
     },
     [game, bump, audio, runDeal, runSitOut],
   );

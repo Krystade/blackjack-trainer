@@ -1,0 +1,27 @@
+/*
+ * Charts ground for the two neutral dark themes. charts.css restates its
+ * surface tokens on `.charts-screen` (Midnight Felt's green) and gave only
+ * Bone & Ink its own set, so AMOLED Night and Slate & Copper showed a green
+ * felt chart page between neutral screens -- Slate's whole pitch is a ground
+ * with no hue of its own. Surfaces and inks only: the action families keep
+ * their identity in every theme.
+ */
+:root[data-theme='amoled-night'] .charts-screen {
+  --felt: #000000;
+  --surface: #0b0b0c;
+  --surface-raised: #151517;
+  --hairline: #2a2a2e;
+  --brass: #f2c14e;
+  --ink: #f0f0f2;
+  --ink-dim: #8b8b93;
+}
+
+:root[data-theme='slate-copper'] .charts-screen {
+  --felt: #15171a;
+  --surface: #1d2024;
+  --surface-raised: #262a2f;
+  --hairline: #3a4046;
+  --brass: #d98a5a;
+  --ink: #eceef1;
+  --ink-dim: #98a0a9;
+}

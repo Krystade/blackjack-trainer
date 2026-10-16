@@ -209,6 +209,12 @@ test('#36: the count check is posed when Deal is pressed, over the settled hand,
   await expect(prompt).not.toBeVisible();
   await expect(round).toHaveText('Round 2');
   expect(await feltCards(page)).not.toEqual(settled);
+
+  // The verdict is on screen, not only spoken: with the sound off a wrong
+  // count used to pass with no sign of what the shoe held.
+  await expect(page.getByTestId('result-strip')).toHaveText(
+    /^Count (✓ \+5|✗ you said \+5, it was (0|[+−]\d+))$/,
+  );
 });
 
 test('bet spread: a deliberately bad bet is graded and shows in the test-mode report', async ({ page }) => {
@@ -437,6 +443,11 @@ test('a count check owed on the last round is asked before End shows the report'
   // The answer ends the session rather than dealing another round.
   await expect(page.locator('.report-screen')).toBeVisible();
   await expect(page.locator('.report-categories tr', { hasText: 'Count checks' })).toBeVisible();
+  // A missed check reads as one, not as the raw event kind and "you played 2".
+  await expect(page.locator('.report-mistakes li', { hasText: 'Running count check' })).toHaveText(
+    /^Running count check · you said \+2 · it was (0|[+−]\d+)$/,
+  );
+  await expect(page.locator('.report-screen')).not.toContainText('countCheck');
 });
 
 /** Press and hold the peek with a real pointer (mouse down, no release). */
