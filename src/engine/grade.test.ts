@@ -263,3 +263,17 @@ describe('classifyAction: S17 phantom-deviation detection (16v9)', () => {
     expect(result.classification).toBe('correct');
   });
 });
+
+describe('phantom deviation on a soft extra', () => {
+  it('doubling A,8 v 4 below +3 with the extras on is a phantom deviation', () => {
+    const rules = { ...DEFAULT_RULES, bjaExtras: true };
+    const cards: Card[] = [{ rank: 'A', suit: 's' }, { rank: '8', suit: 'h' }];
+    const ctx = { canDouble: true, canSplit: true, canSurrender: false };
+    const verdict = classifyAction('double', correctPlay(cards, '4', 1, ctx, rules), basicPlay(cards, '4', ctx, rules), cards, '4', 1, rules);
+    expect(verdict.classification).toBe('phantom-deviation');
+    // Off, the same play is a plain basic error.
+    expect(
+      classifyAction('double', correctPlay(cards, '4', 1, ctx, DEFAULT_RULES), basicPlay(cards, '4', ctx, DEFAULT_RULES), cards, '4', 1, DEFAULT_RULES).classification,
+    ).toBe('basic-error');
+  });
+});

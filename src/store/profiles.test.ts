@@ -1,4 +1,4 @@
-import { expect, test, describe, beforeEach } from 'vitest';
+import { expect, test, it, describe, beforeEach } from 'vitest';
 import {
   _setStorage,
   loadProfiles,
@@ -6,8 +6,11 @@ import {
   getActiveProfile,
   setActiveProfile,
   makeDefaultProfile,
+  strategyRulesFor,
 } from './profiles';
 import { DEFAULT_RULES } from '../engine/ruleset';
+import { correctPlay } from '../engine/strategy';
+import type { Card } from '../engine/cards';
 import { DEFAULT_SPREAD } from '../engine/game';
 import type { Profile } from './types';
 
@@ -373,6 +376,22 @@ describe('store/profiles', () => {
       const loaded = loadProfiles();
       expect(loaded[0]!.seats).toBeDefined();
       expect(loaded[0]!.seats).toEqual(fresh.seats);
+    });
+  });
+
+  describe('strategyRulesFor: BJA H17 extras', () => {
+    it('carries the flag under H17 only, and absent means off', () => {
+      const p = makeDefaultProfile();
+      expect(strategyRulesFor(p).bjaExtras).toBe(false);
+      expect(strategyRulesFor({ ...p, bjaExtras: true }).bjaExtras).toBe(true);
+      expect(strategyRulesFor({ ...p, bjaExtras: true, rules: { ...p.rules, s17: true } }).bjaExtras).toBe(false);
+    });
+    it('Play grading follows it through correctPlay', () => {
+      const p = { ...makeDefaultProfile(), bjaExtras: true };
+      const soft19: Card[] = [{ rank: 'A', suit: 's' }, { rank: '8', suit: 'h' }];
+      const ctx = { canDouble: true, canSplit: true, canSurrender: true };
+      expect(correctPlay(soft19, '4', 3, ctx, strategyRulesFor(p)).action).toBe('double');
+      expect(correctPlay(soft19, '4', 3, ctx, strategyRulesFor({ ...p, bjaExtras: false })).action).toBe('stand');
     });
   });
 });

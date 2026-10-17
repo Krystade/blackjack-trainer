@@ -92,6 +92,7 @@ function surrenderFirstLine(plays: readonly string[]): string {
 const INDEX_GROUPS: readonly { id: IndexEntry['group']; title: string }[] = [
   { id: 'illustrious', title: 'Illustrious 18' },
   { id: 'fab4', title: 'Fab 4 surrenders' },
+  { id: 'extra', title: 'BJA H17 extras' },
 ];
 
 interface ChartsProps {
@@ -152,6 +153,8 @@ interface ChartsProps {
    * Back.
    */
   backPlacement?: 'topbar' | 'floating';
+  /** B7: the Back button's whole label, in place of "Back to <backLabel>". */
+  backText?: string;
 }
 
 export function Charts({
@@ -162,6 +165,7 @@ export function Charts({
   onBack,
   backLabel,
   backPlacement = 'topbar',
+  backText: backTextProp,
 }: ChartsProps) {
   const [order, setOrder] = useState<RowOrder>(() => {
     if (typeof window === 'undefined') return 'descending';
@@ -285,7 +289,7 @@ export function Charts({
   }, [highlightKey]);
 
   const goBack = () => (onBack ? onBack() : onNavigate('home'));
-  const backText = `Back to ${backLabel ?? 'Home'}`;
+  const backText = backTextProp ?? `Back to ${backLabel ?? 'Home'}`;
 
   return (
     <div className="charts-screen">

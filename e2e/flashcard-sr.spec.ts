@@ -29,7 +29,7 @@ test('a graded card shows its box and when it is next due', async ({ page }) => 
   await answerAnything(page);
   const sr = page.locator('.feedback-sr');
   await expect(sr).toBeVisible();
-  await expect(sr).toContainText(/Next review: (now|tomorrow|in \d+)/);
+  await expect(sr).toContainText(/You'll see this again (soon|tomorrow|in \d+)/);
 });
 
 /**

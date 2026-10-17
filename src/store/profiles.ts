@@ -334,7 +334,7 @@ export function setActiveProfile(id: string): void {
 
 /**
  * The profile's ruleset plus the training preferences that change what the
- * CORRECT play is — currently just RV3's surrender indices.
+ * CORRECT play is — RV3's surrender indices and B9's BJA H17 extras.
  *
  * Exists so the surfaces that grade or advise a play read one thing instead of
  * assembling it inline, and so it is obvious which surfaces do. Passing a bare
@@ -359,5 +359,11 @@ export function strategyRulesFor(profile: Profile): StrategyRules {
      * profile, and an imported one never passed through the editor at all.
      */
     surrenderIndices: profile.surrenderIndices === true && profile.rules.ls,
+    /*
+     * B9: the BJA extras are H17 values, so an S17 table reads them as off.
+     * As above, this is a read: the stored flag is never rewritten, and
+     * switching the table back to H17 restores the user's choice.
+     */
+    bjaExtras: profile.bjaExtras === true && !profile.rules.s17,
   };
 }

@@ -59,6 +59,8 @@ import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { HandResultStrip } from '../components/HandResultStrip';
 import { RulesChip } from '../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../handResult';
+import { withMissDetail, type DrillHandResult } from './drills/drillMiss';
+import { MissHistoryLine } from './drills/MissHistoryLine';
 import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../wrongTap';
 import type { CellTally } from '../../store/cellStats';
 import { answerTooSoon } from '../answerBounce';
@@ -69,14 +71,16 @@ import { narrateSelfCheckReveal, narrateCorrection, narrateFlashcardPrompt, narr
   narrateAnswerEcho,
   DID_YOU_HAVE_IT,
 } from '../../audio/narrate';
-import { useVoiceControl, type VoiceStatus } from '../useVoiceControl';
+import { useVoiceControl } from '../useVoiceControl';
 import { autoAdvanceDelayMs, spokenPauseFor } from '../../drills/answerPause';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../audio/voiceRecognition';
 import { BLIND_TAP_CHANNEL, SCREEN_CHANNEL, VOICE_CHANNEL } from '../../drills/spacedRepetition';
 import type { AnswerChannel } from '../../drills/spacedRepetition';
-import { VoiceStatusBar } from '../components/VoiceStatusBar';
+import { DrillModeControls } from './drills/DrillModeControls';
+import { QuizAskSwitch } from './drills/QuizAskSwitch';
+import { IndexTestView } from './drills/IndexTestView';
 import type { VoiceAction } from '../../audio/voiceRecognition';
-import { cancelSpeech, speak } from '../../audio/speech';
+import { cancelSpeech, isE2eAudioMode, speak } from '../../audio/speech';
 import { speechOptsFrom } from '../../audio/speechOpts';
 import { requestWakeLock, releaseWakeLock } from '../../audio/wakeLock';
 import { ZONE_LABEL } from '../../audio/zones';
@@ -90,19 +94,23 @@ import { RulesDiffView } from './drills/RulesDiffView';
 import { DeckEstimationView } from './drills/DeckEstimationView';
 import { MasteryChallengeView } from './drills/MasteryChallengeView';
 import { HandDeckControls } from './drills/HandDeckControls';
+import { scopesFrom } from '../../drills/handScope';
 import { HandDeckGate } from './drills/HandDeckGate';
 import { handDeckFor } from './drills/handDeckFor';
 import { settingsForCustomStart } from '../../drills/deckSource';
 import { CustomDrillEditor } from '../components/CustomDrillEditor';
 import { MarkableHand } from '../components/MarkableHand';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
-import { enableAudioNow } from '../audioGate';
-import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
-import { useEyesFreeToggle } from '../eyesFreeSession';
+import { useVoiceToggle, usePushToTalk, startPushToTalk, isVoiceOn } from '../voiceSession';
+import { useEyesFreeToggle, isEyesFreeOn } from '../eyesFreeSession';
 import { useWheelCommand } from '../useWheelCommand';
 import { signed } from '../../drills/signed';
+import { ChartIntro } from './drills/ChartIntro';
+import { chartIntroDue, loadChartIntroSeen, saveChartIntroSeen } from '../../drills/chartIntro';
 import './drills/drillTiming.css';
 import './drills/drillActionBar.css';
+import './drills/flashProgress.css';
+import { flashProgressLine, goalMetLine, goalsCrossed } from './drills/flashProgress';
 
 interface DrillsProps {
   settings: Settings;
@@ -218,7 +226,7 @@ function chartTargetFrom(result: HandResult): ChartTarget {
  * full correction panel -- nobody is looking at a strip while driving.
  */
 function useHandResult() {
-  const [lastResult, setLastResult] = useState<HandResult | null>(null);
+  const [lastResult, setLastResult] = useState<DrillHandResult | null>(null);
   const [chartTarget, setChartTarget] = useState<ChartTarget | null>(null);
   // #22: the miss now on the strip, while it can still be withdrawn. Cleared
   // by every graded answer (`clearWrongTap`), on every channel, so the link
@@ -231,7 +239,7 @@ function useHandResult() {
   };
   /** Freeze an answered hand into the strip, offering "Wrong tap" on a miss. */
   const showResult = (
-    result: HandResult,
+    result: DrillHandResult,
     event: GradedEvent,
     revert: () => void,
     cellBefore: CellTally | null | undefined,
@@ -260,132 +268,6 @@ function useHandResult() {
   };
 }
 
-/* ---------------------------------------------------------------- */
-/* Answer-mode switches + Options, shared by the three hand drills.  */
-/* ---------------------------------------------------------------- */
-
-/**
- * How you answer (Eyes-free audio, Voice answers), the listening line, and an
- * "Options" disclosure for everything that is set once rather than every hand.
- *
- * Shared by Flashcards, Deviation Quiz and Mixed. The three had grown five
- * stacked full-width checkboxes plus a three-line listening panel each, which
- * on a 375x812 phone pushed the action bar below the fold -- you had to scroll
- * to answer, and the scroll tucked the top controls under the status bar.
- *
- * - The two answer modes stay in view: they are the first taps of a driving
- *   session and the only way into it.
- * - "Dim screen" only does anything while eyes-free is on, so it appears only
- *   then, inside Options, instead of sitting disabled on every visit.
- * - The listening line is one row: state + what was last heard. The command
- *   list is dropped here because the five plays are already the buttons on
- *   screen, and the earpiece explanation is dropped because Settings carries
- *   its own copy (`.settings-earpiece`) and the setting it pointed to cannot
- *   bring the loud speaker back (see ec67e35).
- *
- * Options is a native <details>, closed by default (also under ?e2e=1 -- a
- * layout test has to see what a real visitor sees).
- */
-function DrillModeControls({
-  settings,
-  onSettingsChange,
-  eyesFree,
-  onEyesFreeChange,
-  voiceSupported,
-  voiceOn,
-  onVoiceChange,
-  voiceStatus,
-  options,
-}: {
-  settings: Settings;
-  onSettingsChange: (settings: Settings) => void;
-  eyesFree: boolean;
-  onEyesFreeChange: (on: boolean) => void;
-  voiceSupported: boolean;
-  voiceOn: boolean;
-  onVoiceChange: (on: boolean) => void;
-  voiceStatus: VoiceStatus;
-  options?: ReactNode;
-}) {
-  const hasOptions = Boolean(options) || eyesFree;
-  return (
-    <>
-      <div className="drill-mode-row">
-        <label className="count-toggle">
-          <input
-            type="checkbox"
-            checked={eyesFree}
-            onChange={(e) => {
-              // Tapping this IS a request for audio, so honour it instead of
-              // refusing: the control used to sit disabled whenever
-              // `audio.enabled` was false -- which is the shipped default --
-              // making the app's whole driving mode a dead checkbox curable
-              // only from another screen. See ui/audioGate.ts.
-              if (e.target.checked && !settings.audio.enabled) {
-                enableAudioNow(settings, onSettingsChange);
-              }
-              onEyesFreeChange(e.target.checked);
-            }}
-          />
-          Eyes-free audio
-        </label>
-        {/* Hidden rather than disabled where there is no speech API at all:
-            an inert control invites the operator to keep tapping it. */}
-        {voiceSupported && (
-          <label className="count-toggle">
-            <input
-              type="checkbox"
-              checked={voiceOn}
-              onChange={(e) => {
-                // Answering out loud is worthless without hearing the reply,
-                // so this turns audio on the way Eyes-free does.
-                if (e.target.checked && !settings.audio.enabled) {
-                  enableAudioNow(settings, onSettingsChange);
-                }
-                onVoiceChange(e.target.checked);
-              }}
-            />
-            Voice answers
-          </label>
-        )}
-      </div>
-      {/* What the microphone last heard, whether or not it meant anything:
-          a misheard word and a dead microphone look identical without it. */}
-      {voiceOn && (
-        <div className="drill-voice-line">
-          <VoiceStatusBar status={voiceStatus} />
-        </div>
-      )}
-      {hasOptions && (
-        <details className="drill-options">
-          <summary>Options</summary>
-          <div className="drill-options-body">
-            {options}
-            {/* The ZonePad is labelled by default so its layout can be
-                learned; this blanks it (still tappable) for real driving. */}
-            {eyesFree && (
-              <label className="count-toggle">
-                <input
-                  type="checkbox"
-                  checked={settings.audio.dimZones}
-                  onChange={(e) => {
-                    const nextSettings: Settings = {
-                      ...settings,
-                      audio: { ...settings.audio, dimZones: e.target.checked },
-                    };
-                    saveSettings(nextSettings);
-                    onSettingsChange(nextSettings);
-                  }}
-                />
-                Dim screen (tap zones stay live)
-              </label>
-            )}
-          </div>
-        </details>
-      )}
-    </>
-  );
-}
 
 /* ---------------------------------------------------------------- */
 /* Flashcards                                                        */
@@ -416,6 +298,14 @@ function FlashcardsView({
   // each drill -- it used to reset on every navigation, which in a car reads
   // as the app having gone silent for no reason.
   const [eyesFree, setEyesFree] = useEyesFreeToggle('flashcards');
+  // B7: progress to the basic-strategy goal. `progressStats` is the snapshot
+  // taken at the previous answer (or at mount); a goal crossed between two
+  // snapshots shows a confirmation until the next answer.
+  const [progressStats, setProgressStats] = useState(() => loadStats());
+  const [goalMet, setGoalMet] = useState<string | null>(null);
+  // A ref as well: a grade can arrive from a timer or voice callback holding
+  // an older render's closure, and a stale `before` would re-announce a goal.
+  const progressStatsRef = useRef(progressStats);
   // B2: a card from the deck `drill` describes (scope and deck source), or
   // null when that deck is empty -- HandDeckGate then replaces this view.
   const drawFrom = (drill: Settings['drill'], previous: string | null): Flashcard | null => {
@@ -737,6 +627,12 @@ function FlashcardsView({
    * than one from several hands back (review fix a).
    */
   const freezeResult = (event: GradedEvent, prevSr: SrCard | undefined, cellBefore: CellTally | null) => {
+    // B7: the grade has already persisted, so loadStats() includes it.
+    const afterStats = loadStats();
+    const crossed = goalsCrossed(progressStatsRef.current, afterStats, scopesFrom(settings.drill));
+    setGoalMet(crossed.length > 0 ? goalMetLine(crossed, afterStats) : null);
+    progressStatsRef.current = afterStats;
+    setProgressStats(afterStats);
     const indexReview = indexReviewRef.current;
     // Wave A review: an index card was reviewed in the QUIZ deck (F4b), so its
     // "Next review" is the index's -- not the untouched flash cell's, which
@@ -744,22 +640,24 @@ function FlashcardsView({
     const srCard = indexReview ? loadQuizSr()[indexReview.key] : srDeckRef.current[card.cellId];
     const srText = formatReviewPlain(srCard, Date.now());
     const cellId = card.cellId;
+    const snapshot = snapshotResult(
+      nextResultId(),
+      event,
+      { cards: card.cards, up: card.up, tc: card.tc ?? null },
+      {
+        cellId,
+        sr: srText ? { text: srText, box: srCard?.box } : null,
+        // #53: a With-count card says whether an index applied. Wave A (s03):
+        // not on a missed index -- the miss line already names it, and the
+        // second copy only added height.
+        ...(card.tc !== undefined && !(event.deviationId && !event.correct)
+          ? { indexNote: indexLine(event, activeProfile.rules, { cards: card.cards, up: card.up, ctx: flashCtx(card) }) }
+          : {}),
+      },
+    );
     showResult(
-      snapshotResult(
-        nextResultId(),
-        event,
-        { cards: card.cards, up: card.up, tc: card.tc ?? null },
-        {
-          cellId,
-          sr: srText ? { text: srText, box: srCard?.box } : null,
-          // #53: a With-count card says whether an index applied. Wave A (s03):
-          // not on a missed index -- the miss line already names it, and the
-          // second copy only added height.
-          ...(card.tc !== undefined && !(event.deviationId && !event.correct)
-            ? { indexNote: indexLine(event, activeProfile.rules, { cards: card.cards, up: card.up, ctx: flashCtx(card) }) }
-            : {}),
-        },
-      ),
+      // B7: a basic-strategy miss reads its chart region; B6: and its history.
+      withMissDetail(snapshot, event, cellBefore, activeProfile.rules),
       event,
       // #22: a withdrawn answer puts the card's schedule back as well.
       () => {
@@ -1146,6 +1044,14 @@ function FlashcardsView({
 
       <div className="drill-inline-controls" ref={controlsRef}>
         <HandDeckControls settings={settings} onChange={changeScopes} />
+        <div className="flash-progress" data-testid="flash-progress">
+          {flashProgressLine(progressStats, scopesFrom(settings.drill))}
+        </div>
+        {goalMet && (
+          <div className="flash-goal-met" role="status" data-testid="flash-goal-met">
+            {goalMet}
+          </div>
+        )}
 
         <DrillModeControls
           settings={settings}
@@ -1296,7 +1202,10 @@ function FlashcardsView({
         )}
         {/* B1: the previous card's result, under the card now being asked. */}
         {!feedback && !selfCheckOpen && !eyesFree && lastResult && (
-          <HandResultStrip result={lastResult} onShowChart={openChartOn} onWrongTap={wrongTapFor(lastResult)} />
+          <>
+            <HandResultStrip result={lastResult} onShowChart={openChartOn} onWrongTap={wrongTapFor(lastResult)} />
+            <MissHistoryLine result={lastResult} />
+          </>
         )}
       </div>
 
@@ -1658,11 +1567,17 @@ function DeviationQuizView({
   const freezeResult = (event: GradedEvent) => {
     const prevSr = prevSrRef.current;
     showResult(
-      snapshotResult(
-        nextResultId(),
+      // B6: the miss's cost and history (the region rule is a no-op for quiz events).
+      withMissDetail(
+        snapshotResult(
+          nextResultId(),
+          event,
+          { cards: item.cards, up: item.up, tc: item.tc },
+          { label: item.label, note: tableMaskNote(item, strategyRulesFor(activeProfile)) },
+        ),
         event,
-        { cards: item.cards, up: item.up, tc: item.tc },
-        { label: item.label, note: tableMaskNote(item, strategyRulesFor(activeProfile)) },
+        cellBeforeRef.current ?? null,
+        activeProfile.rules,
       ),
       event,
       () => {
@@ -1998,6 +1913,7 @@ function DeviationQuizView({
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
+        <QuizAskSwitch settings={settings} onSettingsChange={onSettingsChange} />
         <label className="settings-row">
           <span className="settings-label">Index</span>
           <select
@@ -2145,11 +2061,14 @@ function DeviationQuizView({
         {/* B1: the previous item's result, under the item now being asked.
             An insurance question has no chart cell to open. */}
         {!feedback && !selfCheckOpen && !eyesFree && lastResult && (
-          <HandResultStrip
-            result={lastResult}
-            onShowChart={lastResult.cards ? openChartOn : undefined}
-            onWrongTap={wrongTapFor(lastResult)}
-          />
+          <>
+            <HandResultStrip
+              result={lastResult}
+              onShowChart={lastResult.cards ? openChartOn : undefined}
+              onWrongTap={wrongTapFor(lastResult)}
+            />
+            <MissHistoryLine result={lastResult} />
+          </>
         )}
       </div>
 
@@ -2513,7 +2432,7 @@ function MixedSessionView({
             },
           );
     const prevSr = prevSrRef.current;
-    showResult(snapshot, event, () => {
+    showResult(withMissDetail(snapshot, event, cellBeforeRef.current ?? null, activeProfile.rules), event, () => {
       if (!prevSr) return;
       if (prevSr.deck === 'flash') {
         flashSrRef.current = restoreSrCard(flashSrRef.current, prevSr.key, prevSr.prev);
@@ -2865,11 +2784,14 @@ function MixedSessionView({
         )}
         {/* B1: the previous item's result, under the item now being asked. */}
         {!feedback && !selfCheckOpen && !eyesFree && lastResult && (
-          <HandResultStrip
-            result={lastResult}
-            onShowChart={lastResult.cards ? openChartOn : undefined}
-            onWrongTap={wrongTapFor(lastResult)}
-          />
+          <>
+            <HandResultStrip
+              result={lastResult}
+              onShowChart={lastResult.cards ? openChartOn : undefined}
+              onWrongTap={wrongTapFor(lastResult)}
+            />
+            <MissHistoryLine result={lastResult} />
+          </>
         )}
       </div>
 
@@ -3013,17 +2935,34 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     </HandDeckGate>
   );
   if (mode === 'flash') {
-    return gate(
-      'Flashcards',
-      <FlashcardsView
-        settings={settings}
+    return (
+      <FlashEntry
         activeProfile={activeProfile}
         onBack={() => setMode('picker')}
-        onSettingsChange={onSettingsChange}
-      />,
+        flashcards={gate(
+          'Flashcards',
+          <FlashcardsView
+            settings={settings}
+            activeProfile={activeProfile}
+            onBack={() => setMode('picker')}
+            onSettingsChange={onSettingsChange}
+          />,
+        )}
+      />
     );
   }
   if (mode === 'quiz') {
+    // B3: the quiz asks either the play (as ever) or the index.
+    if (settings.drill.quizAsk === 'index') {
+      return (
+        <IndexTestView
+          settings={settings}
+          activeProfile={activeProfile}
+          onBack={() => setMode('picker')}
+          onSettingsChange={onSettingsChange}
+        />
+      );
+    }
     return (
       <DeviationQuizView
         settings={settings}
@@ -3161,4 +3100,42 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       </button>
     </div>
   );
+}
+
+/**
+ * B7: the Flashcards entry. Decides once, on mount, whether this launch is
+ * the first-run "How to read the chart" screen; FlashcardsView is untouched.
+ */
+function FlashEntry({
+  activeProfile,
+  onBack,
+  flashcards,
+}: {
+  activeProfile: Profile;
+  onBack: () => void;
+  flashcards: ReactNode;
+}) {
+  const [intro, setIntro] = useState(() =>
+    chartIntroDue({
+      stats: loadStats(),
+      seen: loadChartIntroSeen(),
+      eyesFree: isEyesFreeOn(),
+      voiceOn: isVoiceOn(),
+      search: window.location.search,
+      e2e: isE2eAudioMode(),
+    }),
+  );
+  if (intro) {
+    return (
+      <ChartIntro
+        activeProfile={activeProfile}
+        onBack={onBack}
+        onStart={() => {
+          saveChartIntroSeen();
+          setIntro(false);
+        }}
+      />
+    );
+  }
+  return <>{flashcards}</>;
 }

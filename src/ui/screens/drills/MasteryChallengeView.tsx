@@ -27,6 +27,8 @@ import { ActionBar } from '../../components/ActionBar';
 import { HandResultStrip } from '../../components/HandResultStrip';
 import { RulesChip } from '../../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../../handResult';
+import { withMissDetail, type DrillHandResult } from './drillMiss';
+import { MissHistoryLine } from './MissHistoryLine';
 import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../../wrongTap';
 import { answerTooSoon } from '../../answerBounce';
 import { StudyChartOverlay } from '../../components/StudyChartOverlay';
@@ -132,7 +134,7 @@ export function MasteryChallengeView({
   // one; the strip and "Show on chart" read ONLY this snapshot. #10's bug was
   // the chart reading the live `cell` after setRun(nextRun) had replaced it,
   // so a miss on 4,4 v 4 opened whatever the reshuffle dealt next.
-  const [lastResult, setLastResult] = useState<HandResult | null>(null);
+  const [lastResult, setLastResult] = useState<DrillHandResult | null>(null);
   // #22: the miss on the strip while it can still be withdrawn, with the run
   // as it stood before that answer.
   const [wrongTap, setWrongTap] = useState<WrongTapRecord | null>(null);
@@ -204,15 +206,20 @@ export function MasteryChallengeView({
         : null,
     );
     setLastResult(
-      snapshotResult(
-        resultId,
+      withMissDetail(
+        snapshotResult(
+          resultId,
+          event,
+          { cards: cell.cards, up: cell.up, tc: null },
+          {
+            cellId: cell.id,
+            // #17: what the miss threw away, counted before the reset.
+            progressLost: correct ? undefined : { at: run.index, of: run.order.length },
+          },
+        ),
         event,
-        { cards: cell.cards, up: cell.up, tc: null },
-        {
-          cellId: cell.id,
-          // #17: what the miss threw away, counted before the reset.
-          progressLost: correct ? undefined : { at: run.index, of: run.order.length },
-        },
+        cellBefore ?? null,
+        activeProfile.rules,
       ),
     );
     // #29: a miss reshuffles by the SR weights as they stand now. Wave A
@@ -336,6 +343,7 @@ export function MasteryChallengeView({
                   }
                 />
               )}
+              <MissHistoryLine result={lastResult} />
             </div>
 
             <ActionBar

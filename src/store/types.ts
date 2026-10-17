@@ -82,6 +82,9 @@ export interface Settings {
     // 0 keeps quiz behavior unchanged out of the box; the UI only offers
     // 0/25/50 but any 0-100 value is valid.
     quizDistractorPct: number;
+    // B3: what the Deviation quiz asks -- the play at a shown count ('play'),
+    // or the index itself for a shown hand ('index'). Absent = 'play'.
+    quizAsk?: 'play' | 'index';
     // R2 (docs/BACKLOG.md, accuracy-gated difficulty): when true, the Timed
     // Challenge picks its starting pace from drills/competenceGate.ts's
     // computeUnlockedTier (the fastest tier the user has recently been
@@ -405,6 +408,15 @@ export interface Profile {
    * set is unreachable. The Profile screen gates the control on that.
    */
   surrenderIndices?: boolean;
+  /**
+   * B9: play the opt-in BJA H17 extra indices (engine/deviations.ts
+   * BJA_H17_EXTRAS) on top of the Illustrious 18. OPTIONAL so profiles stored
+   * before this field load untouched, and absent means off.
+   *
+   * H17 only, and read ONLY through `strategyRulesFor` (which also gates it
+   * on the table's soft-17 rule) -- no other caller checks the flag.
+   */
+  bjaExtras?: boolean;
   /**
    * Reveal the dealer's hole card even when no hand still needs a dealer
    * total. OPTIONAL so profiles stored before this field load untouched.

@@ -366,9 +366,9 @@ describe('formatReviewPlain', () => {
     expect(formatReviewPlain(undefined, now)).toBeNull();
   });
   it('uses plain words, never box numbers', () => {
-    expect(formatReviewPlain(c(now - 1), now)).toBe('Next review: now');
-    expect(formatReviewPlain(c(now + 3 * 60 * 60 * 1000), now)).toBe('Next review: in 3 hours');
-    expect(formatReviewPlain(c(now + DAY), now)).toBe('Next review: tomorrow');
-    expect(formatReviewPlain(c(now + 7 * DAY), now)).toBe('Next review: in 7 days');
+    expect(formatReviewPlain(c(now - 1), now)).toBe("You'll see this again soon");
+    expect(formatReviewPlain(c(now + 3 * 60 * 60 * 1000), now)).toBe("You'll see this again in 3 hours");
+    expect(formatReviewPlain(c(now + DAY), now)).toBe("You'll see this again tomorrow");
+    expect(formatReviewPlain(c(now + 7 * DAY), now)).toBe("You'll see this again in 7 days");
   });
 });

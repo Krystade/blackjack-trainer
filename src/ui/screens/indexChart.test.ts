@@ -32,7 +32,7 @@ describe('indexList', () => {
   });
 
   it('is the active index set, in its own order, for every rules combination', () => {
-    for (const rules of [H17, S17, H17_FAB4, S17_FAB4, { ...H17, decks: 1 as const }]) {
+    for (const rules of [H17, S17, H17_FAB4, S17_FAB4, { ...H17, decks: 1 as const }, { ...H17, bjaExtras: true }]) {
       const set = indexSetFor(rules);
       const list = indexList(rules);
       expect(list.entries.map((e) => e.id)).toEqual(set.filter((d) => d.active).map((d) => d.id));
@@ -160,5 +160,25 @@ describe('surrenderComesFirst', () => {
     for (const e of indexList(H17_FAB4).entries.filter((x) => x.family === 'surrender' || x.family === 'insurance')) {
       expect(surrenderComesFirst(e, 'Rh')).toBe(false);
     }
+  });
+});
+
+describe('BJA extras on the Charts screen', () => {
+  const ON: StrategyRules = { ...DEFAULT_RULES, bjaExtras: true };
+  it('lists them as their own group with soft hands written A,x', () => {
+    const byId = new Map(indexList(ON).entries.map((e) => [e.id, e]));
+    expect(byId.get('A8v6')?.group).toBe('extra');
+    expect(byId.get('A8v6')?.text).toBe('A,8 v 6 · TC ≤ −1 · Stand');
+    expect(byId.get('TTv4')?.text).toBe('10,10 v 4 · TC ≥ +6 · Split');
+    expect(byId.get('16v10')?.group).toBe('illustrious');
+    expect(indexList(DEFAULT_RULES).entries.some((e) => e.group === 'extra')).toBe(false);
+  });
+  it('marks the soft cells they sit on, and only those', () => {
+    const rows = buildSectionRows(getChart(ON), 'SOFT', 'descending');
+    const a8 = rows.find((r) => r.keys.includes(19))!;
+    const entries = indexList(ON).entries;
+    expect(indexesAtCell(entries, 'SOFT', a8, '4').map((e) => e.id)).toEqual(['A8v4']);
+    expect(indexesAtCell(entries, 'SOFT', a8, '7')).toEqual([]);
+    expect(indexesAtCell(indexList(DEFAULT_RULES).entries, 'SOFT', a8, '4')).toEqual([]);
   });
 });

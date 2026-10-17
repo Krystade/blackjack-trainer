@@ -30,18 +30,29 @@ export type DeviationId =
   | 'sur15v10'
   | 'sur15vA'
   | 'sur16v8'
-  | 'sur16v9';
+  | 'sur16v9'
+  // BJA H17 extras (B9, opt-in per profile, H17 only). Soft cells are named
+  // by their two cards (A8 = soft 19, A6 = soft 17), like the chart prints them.
+  | '16vA'
+  | '15vA'
+  | '8v6'
+  | 'A8v4'
+  | 'A8v5'
+  | 'A8v6'
+  | 'A6v2'
+  | 'TTv4';
 
 export interface Deviation {
   id: DeviationId;
-  kind: 'insurance' | 'hard' | 'pair10' | 'surrender';
-  total?: number; // for kind 'hard'
+  kind: 'insurance' | 'hard' | 'soft' | 'pair10' | 'surrender';
+  total?: number; // the hard total (kind 'hard'/'surrender') or the soft total (kind 'soft')
   up?: Rank; // '2'..'10','A' ('10' covers J/Q/K via upIndex)
   action: Action | 'take-insurance';
   threshold: number;
   dir: 'gte' | 'lte'; // deviate when tc >= threshold (gte) or tc <= threshold (lte)
   active: boolean; // 11vA inactive: absorbed into H17 basic
   label: string; // e.g. "16 v 10: stand at TC ≥ 0"
+  extra?: true; // set on every BJA H17 extra, so surfaces can mark them as extras
 }
 
 // VERIFIED H17-ADJUSTED INDICES — transcribed verbatim from the task-6 brief.
@@ -96,7 +107,7 @@ export const ILLUSTRIOUS_18_S17: Deviation[] = ILLUSTRIOUS_18.map((dev) => {
  */
 export function isIndexActive(
   id: DeviationId,
-  rules: { s17: boolean; surrenderIndices?: boolean },
+  rules: { s17: boolean; surrenderIndices?: boolean; bjaExtras?: boolean },
 ): boolean {
   // Goes through indexSetFor rather than the two base arrays so a surrender id
   // answers honestly: absent when the profile has indices off, and absent under
@@ -128,19 +139,30 @@ export function isIndexActive(
  * per-deck thresholds to look thorough is precisely how a trainer starts
  * teaching something no book says — so a verified delta is a data addition
  * here, and nothing more.
+ *
+ * The BJA H17 extras (B9) are opt-in (`bjaExtras`, absent = off) and exist
+ * under H17 only: the chart they come from is an H17 chart and no S17 values
+ * were sourced, so an S17 profile with the option on gets no extras rather
+ * than invented ones. Like the I18 above they are shoe values applied at every
+ * deck count, and they come after the Fab 4 so every existing entry keeps its
+ * position in the set.
  */
 export function indexSetFor(rules: {
   decks: number;
   s17: boolean;
   surrenderIndices?: boolean;
+  bjaExtras?: boolean;
 }): Deviation[] {
   const base = rules.s17 ? ILLUSTRIOUS_18_S17 : ILLUSTRIOUS_18;
   const withSurrender = rules.surrenderIndices
     ? [...base, ...(rules.s17 ? FAB_4_S17 : FAB_4_H17)]
     : base;
-  if (rules.decks > 1) return withSurrender;
+  const withExtras = rules.bjaExtras && !rules.s17
+    ? [...withSurrender, ...BJA_H17_EXTRAS]
+    : withSurrender;
+  if (rules.decks > 1) return withExtras;
 
-  return withSurrender.map((dev) =>
+  return withExtras.map((dev) =>
     dev.id === 'ins'
       ? { ...dev, threshold: 2, label: 'Insurance: take at TC ≥ +2 (single deck)' }
       : dev,
@@ -208,4 +230,44 @@ export const FAB_4_S17: Deviation[] = [
   { id: 'sur15v10', kind: 'surrender', total: 15, up: '10', action: 'surrender', threshold: 0, dir: 'gte', active: true, label: '15 v 10: surrender at TC ≥ 0' },
   { id: 'sur15vA', kind: 'surrender', total: 15, up: 'A', action: 'surrender', threshold: 1, dir: 'gte', active: true, label: '15 v A: surrender at TC ≥ +1 (S17)' },
   { id: 'sur14v10', kind: 'surrender', total: 14, up: '10', action: 'surrender', threshold: 3, dir: 'gte', active: true, label: '14 v 10: surrender at TC ≥ +3' },
+];
+
+/**
+ * B9: the eight indices the Blackjack Apprenticeship H17 chart prints beyond
+ * the Illustrious 18 and the Fab 4, opt-in per profile (`bjaExtras`) and H17
+ * only -- see `indexSetFor`. Every value below was read off the chart itself
+ * (`docs/sources/BJA_H17.pdf`, re-read 2026-10-17), not from memory.
+ *
+ * Chart legend, as printed:
+ *   `+` after the index: "the deviation happens at that true count and above"
+ *   `-` after the index: "the deviation happens at the true count and below"
+ *   `0-`: "the deviation happens at any negative running count"
+ *   `0+`: "the deviation occurs at any positive running count"
+ *
+ * A,8 v 6's "0-" is stored the way 12 v 4's "0-" already is: `stand` at
+ * TC <= -1 on the app's integer true count, published index 0.
+ *
+ * 16 v A and 15 v A are stand indices on cells this chart surrenders, so with
+ * late surrender offered on a two-card hand the surrender step in
+ * `resolveAsTotal` settles them first; the stand index decides only when
+ * surrender is unavailable.
+ */
+// The cells, as printed (index, then the basic play the cell's colour encodes):
+// 16 v A — BJA H17 chart, hard 16 row, dealer A: "3+" on an H cell (surrender table: "SUR")
+// 15 v A — BJA H17 chart, hard 15 row, dealer A: "5+" on an H cell (surrender table: "-1+")
+// 8 v 6 — BJA H17 chart, hard 8 row, dealer 6: "2+" on an H cell
+// A,8 v 4 — BJA H17 chart, soft A,8 row, dealer 4: "3+" on an S cell
+// A,8 v 5 — BJA H17 chart, soft A,8 row, dealer 5: "1+" on an S cell
+// A,8 v 6 — BJA H17 chart, soft A,8 row, dealer 6: "0-" on a Ds cell
+// A,6 v 2 — BJA H17 chart, soft A,6 row, dealer 2: "1+" on an H cell
+// 10,10 v 4 — BJA H17 chart, pairs T,T row, dealer 4: "6+" on an N cell (no split: stands as hard 20)
+export const BJA_H17_EXTRAS: Deviation[] = [
+  { id: '16vA', kind: 'hard', total: 16, up: 'A', action: 'stand', threshold: 3, dir: 'gte', active: true, extra: true, label: '16 v A: stand at TC ≥ +3 (no surrender)' },
+  { id: '15vA', kind: 'hard', total: 15, up: 'A', action: 'stand', threshold: 5, dir: 'gte', active: true, extra: true, label: '15 v A: stand at TC ≥ +5 (no surrender)' },
+  { id: '8v6', kind: 'hard', total: 8, up: '6', action: 'double', threshold: 2, dir: 'gte', active: true, extra: true, label: '8 v 6: double at TC ≥ +2' },
+  { id: 'A8v4', kind: 'soft', total: 19, up: '4', action: 'double', threshold: 3, dir: 'gte', active: true, extra: true, label: 'A,8 v 4: double at TC ≥ +3' },
+  { id: 'A8v5', kind: 'soft', total: 19, up: '5', action: 'double', threshold: 1, dir: 'gte', active: true, extra: true, label: 'A,8 v 5: double at TC ≥ +1' },
+  { id: 'A8v6', kind: 'soft', total: 19, up: '6', action: 'stand', threshold: -1, dir: 'lte', active: true, extra: true, label: 'A,8 v 6: stand at any negative TC' },
+  { id: 'A6v2', kind: 'soft', total: 17, up: '2', action: 'double', threshold: 1, dir: 'gte', active: true, extra: true, label: 'A,6 v 2: double at TC ≥ +1' },
+  { id: 'TTv4', kind: 'pair10', up: '4', action: 'split', threshold: 6, dir: 'gte', active: true, extra: true, label: '10,10 v 4: split at TC ≥ +6' },
 ];

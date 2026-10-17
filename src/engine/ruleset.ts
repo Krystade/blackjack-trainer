@@ -8,8 +8,9 @@ export interface RuleSet {
 }
 
 /**
- * The rules a strategy lookup runs under, plus the one TRAINING preference that
- * changes what the correct play is: surrender indices (RV3).
+ * The rules a strategy lookup runs under, plus the TRAINING preferences that
+ * change what the correct play is: surrender indices (RV3) and the BJA H17
+ * extras (B9).
  *
  * It is deliberately not a field on RuleSet. RuleSet describes the GAME -- what
  * the casino offers -- and every field in it is something the house decides.
@@ -23,6 +24,9 @@ export interface RuleSet {
  */
 export interface StrategyRules extends RuleSet {
   surrenderIndices?: boolean;
+  // B9: the opt-in BJA H17 extra indices -- a training preference like
+  // surrenderIndices, from Profile.bjaExtras via strategyRulesFor; absent = off.
+  bjaExtras?: boolean;
 }
 
 /** v1's game: 6 decks, dealer hits soft 17, DAS + late surrender on, no RSA, 3:2 BJ. */

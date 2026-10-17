@@ -551,6 +551,8 @@ test('a correction plays from clips, whole', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  // B7: a fresh profile without ?e2e=1 sees the first-run chart intro.
+  await page.getByRole('button', { name: 'Start quiz' }).first().click();
   await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
 
   // Answer until one is graded wrong -- always the first action button, which

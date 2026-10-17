@@ -160,3 +160,11 @@ describe('Wave A: With-count cards on a chart that already plays the index', () 
     expect(nearIndex / N).toBeLessThan(0.45);
   });
 });
+
+describe('BJA extras are reachable from a soft hand', () => {
+  it('A,8 v 4 carries A8v4 only with the option on', () => {
+    const ctx = { canDouble: true, canSplit: true, canSurrender: false };
+    expect(reachableIndexes(hand('A', '8'), '4', ctx, { ...DEFAULT_RULES, bjaExtras: true }).map((d) => d.id)).toEqual(['A8v4']);
+    expect(reachableIndexes(hand('A', '8'), '4', ctx, DEFAULT_RULES)).toEqual([]);
+  });
+});

@@ -28,12 +28,13 @@ export function deckOf(drill: Pick<Settings['drill'], 'deck'>): DeckSource {
 }
 
 /** The rule fields the index set depends on. */
-export type IndexRules = { decks: number; s17: boolean; surrenderIndices?: boolean };
+export type IndexRules = { decks: number; s17: boolean; surrenderIndices?: boolean; bjaExtras?: boolean };
 
 /** The chart cell a deviation is played on, or null (insurance has none). */
 export function cellIdForDeviation(dev: Deviation): string | null {
   if (!dev.up) return null;
   if (dev.kind === 'pair10') return `pair-10-v-${dev.up}`;
+  if (dev.kind === 'soft' && dev.total !== undefined) return `soft-${dev.total}-v-${dev.up}`;
   if ((dev.kind === 'hard' || dev.kind === 'surrender') && dev.total !== undefined) {
     return `hard-${dev.total}-v-${dev.up}`;
   }
@@ -43,7 +44,7 @@ export function cellIdForDeviation(dev: Deviation): string | null {
 /**
  * The cells with an ACTIVE index under `rules`: the Illustrious 18 for the
  * dealer's soft-17 rule, plus the Fab 4 when the profile has surrender
- * indices on (callers pass `strategyRulesFor(profile)`, which already drops
+ * indices on, plus the BJA H17 extras when it has those on (callers pass `strategyRulesFor(profile)`, which already drops
  * them at a table without late surrender). Read off the deviation data, so a
  * change there moves the deck with it.
  */
