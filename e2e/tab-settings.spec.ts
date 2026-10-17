@@ -164,6 +164,29 @@ test('All settings leaves the sheet for the Settings screen', async ({ page }) =
   await expect(page.locator('.settings-heading')).toHaveText('Settings');
 });
 
+test('the bet spread can be switched on from the Play gear (s06)', async ({ page }) => {
+  await openTable(page);
+  await expect(page.getByRole('button', { name: /Sit out/i })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Play settings' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  await sheet.getByRole('checkbox', { name: 'Vary bets with the count' }).check();
+  await expect(sheet.getByTestId('tab-sheet-when')).toContainText('A new shoe is dealt when you close this');
+  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  expect((await storedProfile(page)).betSpreadOn).toBe(true);
+  await expect(page.getByRole('button', { name: /Sit out/i })).toBeVisible();
+});
+
+test('Edit profile and bet ramp leaves the Play sheet for the profile editor', async ({ page }) => {
+  await openTable(page);
+  await page.getByRole('button', { name: 'Play settings' }).click();
+  await page
+    .getByRole('dialog', { name: 'Play settings' })
+    .getByRole('button', { name: 'Edit profile and bet ramp' })
+    .click();
+  await expect(page.locator('.table-screen')).toHaveCount(0);
+  await expect(page.locator('.profile-editor-screen .settings-heading')).toHaveText('Profiles');
+});
+
 test('the Drills gear sets the shot clock', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.locator('.tab-bar').getByRole('button', { name: 'Drills', exact: true }).click();

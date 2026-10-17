@@ -138,5 +138,6 @@ describe('playOptionsDiffer: what the Play sheet counts as a change', () => {
     expect(playOptionsDiffer({ ...base, countCheckAsk: 'true' }, base)).toBe(true);
     expect(playOptionsDiffer({ ...base, gradeDeviations: false }, base)).toBe(true);
     expect(playOptionsDiffer({ ...base, countCheckEvery: base.countCheckEvery + 1 }, base)).toBe(true);
+    expect(playOptionsDiffer({ ...base, betSpreadOn: !base.betSpreadOn }, base)).toBe(true);
   });
 });

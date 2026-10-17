@@ -7,7 +7,7 @@ import { Segmented, Stepper, Toggle } from '../screens/Settings';
 import { useTabSettings, type TabSettingsContextValue } from '../tabSettingsContext';
 import { TabSettingsSheet } from './TabSettingsSheet';
 import { ResetBankrollRow } from './ResetBankrollRow';
-import { CountCheckControls, CutCardControl, DeviationsControl } from './ProfilePlayControls';
+import { BetSpreadControl, CountCheckControls, CutCardControl, DeviationsControl } from './ProfilePlayControls';
 import { playOptionsDiffer } from '../profileOptions';
 
 /**
@@ -149,6 +149,7 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
           ? 'Changed. A new shoe is dealt when you close this.'
           : `Saved to the ${base.name} profile. Changing one deals a new shoe when you close this.`}
       </p>
+      <BetSpreadControl profile={view} onChange={edit} />
       <DeviationsControl profile={view} onChange={edit} />
       <CountCheckControls profile={view} onChange={edit} />
       <CutCardControl profile={view} onChange={edit} />
@@ -162,6 +163,18 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
       </p>
       <ResetBankrollRow onReset={() => setBankrollReset(true)} />
 
+      {/* Wave A (s06): All settings has no way into profiles, so the bet
+          ramp and the rest of the profile get their own way out. */}
+      <button
+        type="button"
+        className="u-btn tab-sheet-all"
+        onClick={() => {
+          finish();
+          ctx.navigate('profiles');
+        }}
+      >
+        Edit profile and bet ramp
+      </button>
       <AllSettingsButton
         onClick={() => {
           finish();
