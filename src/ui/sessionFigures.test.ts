@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lossPer100, formatLossPer100, sessionsLossPer100, sessionTag } from './sessionFigures';
+import { lossPer100, formatLossPer100, formatLossValue, betMissText, sessionsBetMisses, sessionsLossPer100, sessionTag } from './sessionFigures';
 
 const row = (extra: Record<string, unknown> = {}) => ({ date: '2026-10-17', rounds: 10, graded: 10, correct: 9, bankrollDelta: 0, ...extra });
 
@@ -9,10 +9,24 @@ describe('per-100 figure (B6/W12)', () => {
     expect(lossPer100(0, 40)).toBe(0);
     expect(lossPer100(1, 0)).toBeNull();
   });
-  it('reads as the spec words it', () => {
-    expect(formatLossPer100(2.5)).toBe('−2.50 u lost to mistakes per 100 hands');
-    expect(formatLossPer100(0)).toBe('0 u lost to mistakes per 100 hands');
-    expect(formatLossPer100(0.004)).toBe('Under 0.01 u lost to mistakes per 100 hands');
+  // B2, R3 (deliberately changed): the figure prices PLAY decisions only, and
+  // says so -- "lost to mistakes" read as clean above a list of bet misses.
+  it('says it prices playing mistakes', () => {
+    expect(formatLossPer100(2.5)).toBe('−2.50 u lost to playing mistakes per 100 hands');
+    expect(formatLossPer100(0)).toBe('0 u lost to playing mistakes per 100 hands');
+    expect(formatLossPer100(0.004)).toBe('Under 0.01 u lost to playing mistakes per 100 hands');
+  });
+  it('B2 #50: the Stats value does not repeat its label', () => {
+    expect(formatLossValue(2.5)).toBe('−2.50 u per 100 hands');
+    expect(formatLossValue(0)).toBe('0 u per 100 hands');
+    expect(formatLossValue(0.004)).toBe('Under 0.01 u per 100 hands');
+    expect(formatLossValue(2.5)).not.toMatch(/lost|mistake/);
+  });
+  it('B2, R3: bet misses are counted beside it, singular and plural', () => {
+    expect(betMissText(0)).toBeNull();
+    expect(betMissText(1)).toBe('1 bet decision off');
+    expect(betMissText(4)).toBe('4 bet decisions off');
+    expect(sessionsBetMisses([row({ betMisses: 3 }), row(), row({ betMisses: 1 })])).toBe(4);
   });
   it('pools sessions that recorded it, skips older rows, and keeps Hot shoe rows (skill, not luck)', () => {
     expect(sessionsLossPer100([row({ hands: 50, mistakeUnits: 1 }), row({ hands: 50, mistakeUnits: 0.5, hotShoe: true }), row()])).toBeCloseTo(1.5);

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { GradedEvent } from '../engine/grade';
-import { reportSections, countMissText, drillCellIds, mistakeUnits, groupMistakes } from './reportSections';
+import { reportSections, countMissText, drillCellIds, mistakeUnits, groupMistakes, betRowText, playRowText, unpricedNote } from './reportSections';
 
 const ev = (p: Partial<GradedEvent> & Pick<GradedEvent, 'kind'>): GradedEvent => ({
   category: 'hard', correct: false, classification: 'basic-error', taken: 'hit', expected: 'stand', reason: 'r', tc: 0, source: 'table', ...p,
@@ -67,4 +67,48 @@ describe('drillCellIds (B6: Drill these hands)', () => {
 
 it('mistakeUnits adds priced mistakes only', () => {
   expect(mistakeUnits([ev({ kind: 'action', evCost: 0.5 }), ev({ kind: 'action', evCost: 0.25 }), ev({ kind: 'action' }), ev({ kind: 'bet', correct: true })])).toBeCloseTo(0.75);
+});
+
+describe('betRowText (B2 #15): the bets list in plain words', () => {
+  it('a bet off the ramp', () => {
+    expect(betRowText(ev({ kind: 'bet', category: 'bet', taken: '2', expected: '1', tc: 0, reason: 'Spread bet at tc 0' }))).toBe(
+      'TC +0 · you bet 2u · your ramp bets 1u',
+    );
+  });
+  it('played a count the ramp sits out, and sat out one it plays, with real minus signs', () => {
+    expect(betRowText(ev({ kind: 'wong', category: 'wong', taken: 'play', expected: 'sit-out', tc: -2, reason: 'Wong decision at tc -2' }))).toBe(
+      'TC −2 · you played · your ramp sits out',
+    );
+    expect(betRowText(ev({ kind: 'wong', category: 'wong', taken: 'sit-out', expected: 'play', tc: 1, reason: 'Wong decision at tc 1' }))).toBe(
+      'TC +1 · you sat out · your ramp plays',
+    );
+  });
+  it('names the cover allowance when the session graded with it', () => {
+    expect(
+      betRowText(ev({ kind: 'bet', category: 'bet', taken: '12', expected: '2', tc: 1, reason: 'Spread bet at tc 1 (cover: one rung either side)' })),
+    ).toBe('TC +1 · you bet 12u · your ramp bets 2u (one rung either side allowed)');
+  });
+  it('never prints the engine jargon', () => {
+    for (const m of [
+      ev({ kind: 'bet', category: 'bet', taken: '2', expected: '1', tc: 0, reason: 'Spread bet at tc 0' }),
+      ev({ kind: 'wong', category: 'wong', taken: 'play', expected: 'sit-out', tc: 0, reason: 'Wong decision at tc 0' }),
+    ]) {
+      expect(betRowText(m)).not.toMatch(/wong|sit-out|played play|tc \d|Spread bet|—/);
+    }
+  });
+});
+
+describe('playRowText (B2 #49): insurance reads like the play rows', () => {
+  it('capitalised Take/Decline, a real minus, and no repeated lowercase reason', () => {
+    const m = ev({ kind: 'insurance', category: 'insurance', hand: 'dealer A', taken: 'take', expected: 'decline', tc: -6, reason: 'Insurance vs dealer A at tc -6' });
+    expect(playRowText(m)).toBe('dealer A · TC −6 · you played Take · correct Decline');
+  });
+  it('a play row keeps its reason', () => {
+    const m = ev({ kind: 'action', hand: '10,6 v 10', taken: 'hit', expected: 'stand', tc: 0, reason: 'Basic strategy' });
+    expect(playRowText(m)).toBe('10,6 v 10 · TC +0 · you played Hit · correct Stand — Basic strategy');
+  });
+  it('the unpriced note is singular for one miss', () => {
+    expect(unpricedNote(1)).toBe('Plus 1 index or insurance miss with no price.');
+    expect(unpricedNote(3)).toBe('Plus 3 index or insurance misses with no price.');
+  });
 });

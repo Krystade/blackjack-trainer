@@ -68,9 +68,11 @@ describe('ladder: casino order (B2)', () => {
     expect(ladder(s, ctxFor(6)).current).toBe(6);
   });
 
-  it('rung 7: a session of 40+ graded decisions at 90%, among the last 5', () => {
+  // B2, R4 (deliberately changed): rung 7 counts PLAY decisions (action
+  // events) only -- sit-outs, bets and count checks no longer pad it.
+  it('rung 7: a session of 40+ play decisions at 90%, among the last 5', () => {
     const s = stateAt(7);
-    const row = (graded: number, correct: number) => ({ date: iso(1), rounds: 45, graded, correct, bankrollDelta: 0 });
+    const row = (plays: number, playsCorrect: number) => ({ date: iso(1), rounds: 45, graded: plays, correct: playsCorrect, bankrollDelta: 0, plays, playsCorrect });
     s.sessions = [row(39, 39)];
     expect(ladder(s, ctxFor(7)).rungs[6]!.passed).toBe(false);
     s.sessions = [row(40, 35)];
@@ -78,6 +80,21 @@ describe('ladder: casino order (B2)', () => {
     s.sessions = [row(40, 36)];
     expect(ladder(s, ctxFor(7)).rungs[6]!.passed).toBe(true);
     s.sessions = [row(40, 36), ...Array.from({ length: 5 }, () => row(10, 10))];
+    expect(ladder(s, ctxFor(7)).rungs[6]!.passed).toBe(false);
+  });
+
+  it('rung 7 (R4): a shoe of sit-outs is not a shoe played, and the progress counts plays', () => {
+    const s = stateAt(7);
+    // The tester's session: 87 graded at 84/87, but only 16 hand decisions.
+    s.sessions = [{ date: iso(1), rounds: 46, graded: 87, correct: 84, bankrollDelta: 0, plays: 16, playsCorrect: 15 }];
+    const l = ladder(s, ctxFor(7));
+    expect(l.rungs[6]!.passed).toBe(false);
+    expect(l.rungs[6]!.progress).toBe('Best recent: 15/16 play decisions');
+  });
+
+  it('rung 7 (R4): a row from before plays were recorded does not pass on its graded total', () => {
+    const s = stateAt(7);
+    s.sessions = [{ date: iso(1), rounds: 45, graded: 60, correct: 60, bankrollDelta: 0 }];
     expect(ladder(s, ctxFor(7)).rungs[6]!.passed).toBe(false);
   });
 

@@ -613,6 +613,20 @@ export interface Stats {
     // Wave B, B8: present (true) only for a Hot shoe session, whose bankroll
     // was not carried. Absent on every other row.
     hotShoe?: true;
+    // Wave B2, R1: one row per Play session, upserted by this id after every
+    // settled round and finalised by End. Absent on rows written before B2,
+    // which were only ever appended at End.
+    id?: string;
+    // Wave B2, R1: present (true) while the session has not been ended -- a
+    // shoe left without End (an iOS eviction, a closed tab) stays provisional.
+    provisional?: true;
+    // Wave B2, R4: play decisions (action events) and how many were right, so
+    // the ladder's "Play a shoe" is not passed on sit-outs and bets.
+    plays?: number;
+    playsCorrect?: number;
+    // Wave B2, R3: bet and play-or-sit decisions graded wrong, counted beside
+    // the per-100 figure (which prices play mistakes only).
+    betMisses?: number;
   }[];
   // R1 (docs/BACKLOG.md, decision-latency telemetry): one entry per GRADED
   // EVENT that actually captured a decision time (flashcards + deviation

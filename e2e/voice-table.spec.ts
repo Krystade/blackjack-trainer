@@ -90,6 +90,29 @@ test('"yes" deals the next hand, so a shoe needs no tapping', async ({ page }) =
   await expect(page.getByRole('button', { name: 'Hit', exact: true })).toBeVisible();
 });
 
+/** B2 #37: "deal" is the natural word for the next hand; it was "not a command". */
+for (const word of ['deal', 'Deal me.']) {
+  test(`B2 #37: "${word}" deals the next hand between rounds, like "yes"`, async ({ page }) => {
+    await openTableWithVoice(page);
+    await expect(page.locator('.deal-btn')).toBeVisible();
+    await say(page, word);
+    await expect(page.locator('.deal-btn')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Hit', exact: true })).toBeVisible();
+    await expect(page.locator('.voice-status')).not.toContainText('not a command');
+  });
+}
+
+test('B2 #37: "deal" mid-hand plays nothing', async ({ page }) => {
+  await openTableWithVoice(page);
+  await say(page, 'yes');
+  await expect(page.getByRole('button', { name: 'Hit', exact: true })).toBeVisible();
+  const before = await page.locator('.hands-row').textContent();
+  await say(page, 'deal');
+  await say(page, 'repeat');
+  await expect(page.getByRole('button', { name: 'Hit', exact: true })).toBeVisible();
+  expect(await page.locator('.hands-row').textContent()).toBe(before);
+});
+
 test('a spoken action plays the hand', async ({ page }) => {
   await openTableWithVoice(page);
   await say(page, 'yes');

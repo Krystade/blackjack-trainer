@@ -148,7 +148,8 @@ test('the dealer-reveal rule is a per-profile setting that persists', async ({ p
 
 /**
  * F9 (Wave A): the peek sat 48px above the count check's keypad and could be
- * held while it was open, and the peeked answer was graded correct.
+ * held while it was open, and the peeked answer was graded correct. B2 #31:
+ * the same held for the whole settled window before the sheet opened.
  */
 test('no peek while the count check is open', async ({ page }) => {
   await withProfile(page, { countCheckEvery: 1, countCheckAsk: 'running' });
@@ -157,9 +158,20 @@ test('no peek while the count check is open', async ({ page }) => {
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await resolveInsurance(page, false);
-  await playRoundByAdvice(page);
+  // Before the round: no check owed, so the peek is there (the guard's vacuity check).
   await expect(page.locator('.tc-peek-btn')).toBeVisible();
+  await playRoundByAdvice(page);
+  // B2 #31 (deliberately changed from "visible here"): the check is owed from
+  // the moment the round settles, and the sheet only opens on the next Deal --
+  // a peek in between read off the exact answer about to be graded.
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
+  await expect(page.locator('.tc-peek-btn')).toHaveCount(0);
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await expect(page.locator('.bottom-sheet', { hasText: 'Running count?' })).toBeVisible();
   await expect(page.locator('.tc-peek-btn')).toHaveCount(0);
+  // Answered: the next round is dealt and the peek is back.
+  for (const k of ['0', 'OK']) await page.locator('.bottom-sheet').getByRole('button', { name: k, exact: true }).click();
+  await resolveInsurance(page, false);
+  await expect(page.locator('.bottom-sheet', { hasText: 'Running count?' })).toHaveCount(0);
+  await expect(page.locator('.tc-peek-btn')).toBeVisible();
 });

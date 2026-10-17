@@ -1,0 +1,14 @@
+/* B2 #1: while the count check's keypad is up, the table gives it the room.
+ * The peek is gone anyway (no peek while a check is owed, #31) and the hidden
+ * action bar is an empty strip, so neither should push the keypad down; the
+ * dock stays only while it holds the Skip control. */
+.table-screen:has(> .bottom-sheet .numpad) > .peek-dock:not(:has(.fast-forward-btn)),
+.table-screen:has(> .bottom-sheet .numpad) > .action-bar-hidden {
+  display: none;
+}
+
+/* The dock's sibling rule (peekButton.css) zeroes the sheet's auto margin;
+ * with the dock gone the sheet must still sit at the bottom. */
+.table-screen:has(> .bottom-sheet .numpad) > .bottom-sheet {
+  margin-top: auto;
+}

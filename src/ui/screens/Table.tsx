@@ -1,12 +1,11 @@
 import { strategyRulesFor } from '../../store/profiles';
 import { TabSettingsButton } from '../components/TabSettingsButton';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
 import type { Card } from '../../engine/cards';
 import { TELL_MIN_ROUNDS } from '../../engine/coverBets';
-import type { GradedEvent } from '../../engine/grade';
 import type { DealSlot, Game, PlayerHand, Seat } from '../../engine/game';
 import { handPlayNumber } from '../../engine/game';
 import type { Action } from '../../engine/deviations';
@@ -17,10 +16,11 @@ import { useGame } from '../useGame';
 import type { CountCheckVerdict, SessionReport } from '../useGame';
 import { ResultStrip } from '../components/ResultStrip';
 import { signedTc } from '../../drills/tcFeedback';
-import { reportSections, countMissText, drillCellIds } from '../reportSections';
+import { reportSections, countMissText, drillCellIds, playRowText, betRowText, unpricedNote } from '../reportSections';
 import { launchCustomCells } from '../drillLaunch';
 import type { MistakeRow } from '../reportSections';
-import { lossPer100, formatLossPer100 } from '../sessionFigures';
+import { lossPer100, formatLossPer100, betMissText } from '../sessionFigures';
+import { betMissCount } from '../sessionRow';
 import './sessionReport.css';
 import { useAudio } from '../../audio/useAudio';
 import { useVoiceControl } from '../useVoiceControl';
@@ -49,15 +49,19 @@ import { VOICE_WORDS } from '../voiceLabels';
 import { assistedFlag, peekReadout } from '../peekFlag';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
 import { CATEGORY_LABELS } from './categoryLabels';
-import { playLabel } from '../playLabel';
 import { LosingShoeBadge } from '../components/LosingShoeBadge';
 import { roundBanner } from '../roundBanner';
+import { RoundBannerLine } from '../components/RoundBannerLine';
 import { signed, MINUS } from '../../drills/signed';
 import './tableSeats.css';
 import './tableTopbar.css';
 import './tableCues.css';
 import './tableGlance.css';
-import { dealerFeltRow, playerFeltRow, type FeltRow } from '../feltLayout';
+import './tableSheet.css';
+import { dealerFeltRow, playerFeltLayout, type FeltRow } from '../feltLayout';
+import { useViewportWidth } from '../useViewportWidth';
+import { DEAL_WORDS, isDealWord } from '../dealWord';
+import './feltWrap.css';
 
 /** B5/W4: the row's card slots and fixed chrome, for cardSize.css's clamp. */
 function feltStyle(row: FeltRow): CSSProperties {
@@ -212,11 +216,6 @@ function countVerdictText(v: CountCheckVerdict): string {
 /** How long the End button stays armed after its first tap. */
 const END_ARMED_MS = 3000;
 
-/** "{hand} · TC ±n · you played X · correct Y — reason", as the report always read. */
-function playRowText(m: GradedEvent): string {
-  return `${m.hand ?? m.kind} · TC ${formatSigned(m.tc)} · you played ${playLabel(m.taken)} · correct ${playLabel(m.expected)} — ${m.reason}`;
-}
-
 /** Units lost, two decimals, real minus: "−0.61"; a rounded-away cost reads "0". */
 function unitsText(units: number): string {
   const abs = Math.abs(units).toFixed(2);
@@ -255,6 +254,9 @@ function ReportScreen({
   const unpricedPlays = sections.plays.filter((r) => r.unitsTotal === null).reduce((n, r) => n + r.count, 0);
   const gradedCountCheck = report.categories.some((c) => c.category === 'countCheck' && c.right + c.wrong > 0);
   const loss = lossPer100(report.mistakeUnits, report.hands);
+  // B2, R3: the figure prices play decisions; bet and sit misses are counted
+  // beside it, so a session with only betting errors never reads as clean.
+  const betMisses = betMissText(betMissCount(report.mistakes));
   const drillIds = drillCellIds(sections.plays);
   return (
     <div className="report-screen">
@@ -262,14 +264,18 @@ function ReportScreen({
       {report.hotShoe && (
         <p className="report-hot-shoe">Hot shoe: the counts ran high on purpose, so this session&rsquo;s bankroll isn&rsquo;t kept.</p>
       )}
-      {loss !== null && (
+      {(loss !== null || betMisses !== null) && (
         <p className="report-headline" data-units-total={report.mistakeUnits} data-hands={report.hands}>
-          {formatLossPer100(loss)}
+          {loss !== null && <span className="report-headline-loss">{formatLossPer100(loss)}</span>}
+          {betMisses !== null && (
+            <span className="report-headline-bets">
+              {loss !== null && ' · '}
+              {betMisses}
+            </span>
+          )}
         </p>
       )}
-      {unpricedPlays > 0 && (
-        <p className="report-unpriced">Plus {unpricedPlays} index or insurance misses with no price.</p>
-      )}
+      {unpricedPlays > 0 && <p className="report-unpriced">{unpricedNote(unpricedPlays)}</p>}
       <p className="report-summary">
         {report.correct} / {report.graded} correct
         {!report.hotShoe && <> &middot; bankroll {formatSigned(report.bankrollDelta)}</>}
@@ -361,7 +367,7 @@ function ReportScreen({
           <ul className="report-mistakes report-bets">
             {sections.bets.map((row, i) => (
               <li key={i}>
-                {playRowText(row.mistake)}
+                {betRowText(row.mistake)}
                 {row.count > 1 && <span className="report-mistake-count"> &times;{row.count}</span>}
               </li>
             ))}
@@ -411,6 +417,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     dismissOverlay,
     report,
     endSession,
+    notePeek,
+    betMiss,
     botNarrationRevealed,
     fastForwardNarration,
     sitOut,
@@ -440,8 +448,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const [showChart, setShowChart] = useState(false);
 
   // R7 (docs/BACKLOG.md, count-peek accountability): one per reveal, so the
-  // session report / Stats can flag a peek-assisted accuracy.
-  const [peeks, setPeeks] = useState(0);
+  // session report / Stats can flag a peek-assisted accuracy. Counted in
+  // useGame (B2, R1), so the provisional session row carries them too.
   /**
    * #40: HOLD to show, release to hide (spec 2026-10-13). It was a toggle,
    * which left the count latched on screen; a hold makes every look at the
@@ -450,7 +458,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
    * repeat) lives in PeekButton.
    */
   const revealPeek = () => {
-    setPeeks((n) => n + 1);
+    if (game.countCheckDue || game.countCheckOpen) return;
+    notePeek();
     setPeeking(true);
   };
   const hidePeek = () => setPeeking(false);
@@ -533,7 +542,21 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
    * operator was in the middle of giving.
    */
   const interpretCountSpeech = (heard: string, offered: readonly string[] = [heard]): string | null => {
-    if (!game.countCheckOpen) return null;
+    if (!game.countCheckOpen) {
+      // B2 #37: "deal" between rounds deals, exactly as "yes" does there. It
+      // is not in the command vocabulary (it means nothing anywhere else), so
+      // it is claimed here, with the same gates handleVoiceCommand applies.
+      if (
+        !showChart &&
+        !overlay &&
+        (game.phase === 'idle' || game.phase === 'settled') &&
+        isDealWord(offered.length > 0 ? offered : [heard])
+      ) {
+        handleDeal();
+        return 'deal';
+      }
+      return null;
+    }
 
     // A spoken number is ranked over a car microphone exactly as a spoken
     // word is, and "minus three" behind "minus tree" is the same failure with
@@ -631,7 +654,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // Biased toward the commands AND the count words at once. The phrase list
     // is fixed for the life of a session, and rebuilding the recogniser as
     // the prompt opens would cost a deaf gap exactly when an answer is due.
-    biasPhrases: [...Object.keys(VOICE_ACTIONS), ...COUNT_BIAS_PHRASES],
+    biasPhrases: [...Object.keys(VOICE_ACTIONS), ...DEAL_WORDS, ...COUNT_BIAS_PHRASES],
     context: 'table',
   });
 
@@ -664,11 +687,15 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceOn, countDue, countStage]);
 
-  // F9: a peek held as the count check opens ends there (the button unmounts
-  // under the thumb, so its release never arrives).
+  // F9 / B2 #31: no peek while a count check is OWED, not only while its sheet
+  // is open. The check is owed from the moment the round settles and the sheet
+  // opens on the next Deal, so in between the peek read off the exact answer
+  // about to be graded. A peek held as the check falls due ends there (the
+  // button unmounts under the thumb, so its release never arrives).
+  const peekBlocked = game.countCheckDue || game.countCheckOpen;
   useEffect(() => {
-    if (countDue) setPeeking(false);
-  }, [countDue]);
+    if (peekBlocked) setPeeking(false);
+  }, [peekBlocked]);
 
   // A proposal belongs to one prompt. Carrying it across would offer the
   // running count back as an answer to the true-count question.
@@ -699,6 +726,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   // Training mode, skip the report). The first tap arms it ("Tap again to
   // end") and it disarms itself after 3s. The report is always shown now.
   const [confirmEnd, setConfirmEnd] = useState(false);
+  // B2 #33: two hands take a row each when one row would shrink their cards.
+  const viewportW = useViewportWidth();
+  const feltLayout = playerFeltLayout(game.hands.map((h) => h.cards.length), viewportW);
   useEffect(() => {
     if (!confirmEnd) return;
     const t = setTimeout(() => setConfirmEnd(false), END_ARMED_MS);
@@ -719,12 +749,19 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
 
   function finishSession() {
     // F22: nothing was dealt, so there is nothing to report or to keep.
-    if (endSession(peeks) === null) {
+    if (endSession() === null) {
       onNavigate('home');
       return;
     }
     setShowReport(true);
   }
+
+  // B2 #48: the report opens at its top. The table it replaces may be scrolled
+  // (the count check's sheet at End scrolls the page), and that scroll used to
+  // carry over and hide the report's title under the status bar.
+  useLayoutEffect(() => {
+    if (showReport) window.scrollTo(0, 0);
+  }, [showReport]);
 
   const handleReportDone = () => {
     setShowReport(false);
@@ -899,7 +936,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       {losingShoe && <LosingShoeBadge />}
       {hotShoe && (
         <div className="hot-shoe-badge" data-testid="hot-shoe-badge">
-          Hot shoe
+          {/* B2 #35: the topbar bankroll still moves, so say it is thrown away. */}
+          Hot shoe &middot; bankroll not kept
         </div>
       )}
 
@@ -908,7 +946,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           status={voice.status}
           hint={
             <>
-              Say: {VOICE_WORDS}. &ldquo;Yes&rdquo; deals the next hand or takes insurance; &ldquo;no&rdquo; declines it.
+              Say: {VOICE_WORDS}. &ldquo;Yes&rdquo; or &ldquo;deal&rdquo; deals the next hand; &ldquo;yes&rdquo; takes insurance, &ldquo;no&rdquo; declines it.
             </>
           }
         />
@@ -980,11 +1018,16 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         </div>
       )}
 
-      <div className="hands-row" style={feltStyle(playerFeltRow(game.hands.map((h) => h.cards.length)))}>
+      <div
+        className="hands-row"
+        data-wrap={feltLayout.wrap ? '' : undefined}
+        style={feltStyle(feltLayout.row)}
+      >
         {game.hands.map((hand, i) => (
           <div
             key={i}
             className={`player-hand${i === game.active && game.phase === 'player' ? ' hand-active' : ''}`}
+            style={feltLayout.wrap ? feltStyle(feltLayout.hands[i]!) : undefined}
           >
             {/* s06: a split is labelled too, so "Hand 1" in the results names
                 a hand on the felt (hand 1 is the RIGHT one: order of play). */}
@@ -1022,6 +1065,13 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             {countVerdictText(countVerdict)}
           </ResultStrip>
         )}
+        {/* B2 #13 (R2): a wrong bet or sit decision, said as it is made and
+            kept with its round; it never blocks the hand. */}
+        {betMiss && betMiss.round === game.roundNo && (
+          <ResultStrip id={`bet-${betMiss.round}`} tone="miss">
+            <span className="bet-miss">{betMiss.text}</span>
+          </ResultStrip>
+        )}
         {game.shuffledLastRound && <div className="message-shuffle">Shuffling…</div>}
         {/* s06: the cut card is out, so the next deal shuffles. Said before the
             bet, because that bet is graded at the fresh shoe's count of 0.
@@ -1056,18 +1106,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
               .reverse()
               .map(({ h, i }) => {
                 // B5/W5: result and both totals, so the reason for a loss
-                // reads off the banner instead of off the felt. The separator
-                // has its own span outside the no-wrap totals, so a banner
-                // that wraps at 375px ends its first line with the dot rather
-                // than starting the second line with it.
+                // reads off the banner instead of off the felt. B2 #34: a
+                // banner that wraps drops the dot instead of hanging it.
                 const b = roundBanner(h, handPlayNumber(i, game.hands.length), multiHand, game.dealerCards, game.holeRevealed);
-                return (
-                  <div key={i} className="message-result round-banner" data-net={b.net}>
-                    <span className="round-banner-head">{b.head}</span>
-                    <span className="round-banner-sep"> · </span>
-                    <span className="round-banner-totals">{b.totals}</span>
-                  </div>
-                );
+                return <RoundBannerLine key={i} banner={b} />;
               })}
             {game.insuranceNet !== null && (
               <div className="message-result">
@@ -1081,9 +1123,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       {/* #40: the peek under the left thumb, just above the bar. The skip
           control shares the row, so the dock costs no height when it shows. */}
       <div className="peek-dock">
-        {/* F9: no peek while the count check is open -- the peeked answer
-            was graded correct, and the button sits just above the keypad. */}
-        {!game.countCheckOpen && (
+        {/* F9 / B2 #31: no peek while a count check is owed or open -- the
+            peeked answer was graded correct. */}
+        {!peekBlocked && (
         <PeekButton
           revealed={peeking}
           onReveal={revealPeek}

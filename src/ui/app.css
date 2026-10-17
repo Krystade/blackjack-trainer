@@ -2781,7 +2781,9 @@ button {
   gap: 0.2rem;
   padding: 0.5rem 0.6rem;
   border-radius: 0.45rem;
-  background: rgb(0 0 0 / 22%);
+  /* B2 #32: sunk toward the theme's own sunken ground, not a Midnight-only
+     black wash (22% black turned Bone-ink's cream into a disabled grey). */
+  background: color-mix(in oklab, var(--bg-sunken) 55%, transparent);
 }
 
 .mistake-play-role {
@@ -2804,12 +2806,12 @@ button {
 .mistake-play-taken .mistake-play-value {
   color: var(--bad);
   text-decoration: line-through;
-  text-decoration-color: rgb(235 87 87 / 70%);
+  text-decoration-color: color-mix(in oklab, var(--bad) 70%, transparent);
 }
 
 .mistake-play-expected {
-  background: rgb(216 185 105 / 10%);
-  outline: 1px solid rgb(216 185 105 / 35%);
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+  outline: 1px solid color-mix(in oklab, var(--accent) 35%, transparent);
 }
 
 .mistake-play-expected .mistake-play-value {
@@ -2829,8 +2831,11 @@ button {
   padding: 0 0.25rem;
   border: 1px solid var(--accent);
   border-radius: 0.25rem;
-  background: rgb(216 185 105 / 18%);
-  color: var(--accent);
+  /* B2 #32: a solid accent cell with the theme's ground as ink. Accent text
+     on a Midnight-gold tint missed AA in Midnight (gold on gold) and in
+     Slate-copper (copper on gold); a filled cell passes in every theme. */
+  background: var(--accent);
+  color: var(--bg);
   font-size: 0.85rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
