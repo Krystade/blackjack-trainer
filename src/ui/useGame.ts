@@ -15,6 +15,7 @@ import type { AudioApi } from '../audio/useAudio';
 import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverBets';
 import { mistakeUnits } from './reportSections';
 import { newSessionId, sessionRowFor, upsertSession } from './sessionRow';
+import { betMissFeedback, type BetMiss } from './betFeedback';
 import {
   narrateBotAction,
   narrateCard,
@@ -422,15 +423,36 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     if (narrateSettlement(game, audio)) shuffleSaidRef.current = true;
   }, [game, audio]);
 
+  /**
+   * B2 #13 (R2): the round's wrong bet or play-or-sit decision, shown in the
+   * strip until the next round is dealt. Training mode only, like the
+   * wrong-play correction; never a modal.
+   */
+  const [betMiss, setBetMiss] = useState<(BetMiss & { round: number }) | null>(null);
+  const noteBetMiss = useCallback(
+    (fresh: readonly GradedEvent[]): void => {
+      const miss = settings.feedbackMode === 'training' ? betMissFeedback(fresh) : null;
+      setBetMiss(miss ? { ...miss, round: game.roundNo } : null);
+      if (!miss) return;
+      audio.ding('bad');
+      audio.say(miss.spoken);
+    },
+    [game, audio, settings.feedbackMode],
+  );
+
   const runDeal = useCallback(
     (betUnits?: number | number[]) => {
       realignLosingShoe(playGame);
+      const before = game.events.length;
       game.startRound(betUnits);
+      // Said before the cards: it is about the bet just placed, and the cards
+      // are what the next decision needs fresh.
+      noteBetMiss(game.events.slice(before));
       narrateDeal(game, audio, shuffleSaidRef.current);
       shuffleSaidRef.current = false;
       settleAndNote(); // instant dealer-blackjack / all-naturals rounds settle inside startRound()
     },
-    [game, playGame, audio, settleAndNote],
+    [game, playGame, audio, settleAndNote, noteBetMiss],
   );
 
   const runSitOut = useCallback(() => {
@@ -440,12 +462,14 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     // exactly like an instant dealer-blackjack deal. No player cards to
     // narrate: the player was dealt none. R5.
     realignLosingShoe(playGame);
+    const before = game.events.length;
     game.sitOut();
     if (game.shuffledLastRound && !shuffleSaidRef.current) audio.say(narrateShuffle());
     shuffleSaidRef.current = false;
     audio.say(narrateSitOut());
+    noteBetMiss(game.events.slice(before));
     settleAndNote();
-  }, [game, playGame, audio, settleAndNote]);
+  }, [game, playGame, audio, settleAndNote, noteBetMiss]);
 
   /**
    * #36: if a count check is owed, ask it now -- on the way to the next
@@ -759,6 +783,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     report,
     endSession,
     notePeek,
+    betMiss,
     botNarrationRevealed,
     fastForwardNarration,
     dealAnimating,

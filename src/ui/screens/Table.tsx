@@ -414,6 +414,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     report,
     endSession,
     notePeek,
+    betMiss,
     botNarrationRevealed,
     fastForwardNarration,
     sitOut,
@@ -1036,6 +1037,13 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             tone={countVerdictOk(countVerdict) ? 'ok' : 'miss'}
           >
             {countVerdictText(countVerdict)}
+          </ResultStrip>
+        )}
+        {/* B2 #13 (R2): a wrong bet or sit decision, said as it is made and
+            kept with its round; it never blocks the hand. */}
+        {betMiss && betMiss.round === game.roundNo && (
+          <ResultStrip id={`bet-${betMiss.round}`} tone="miss">
+            <span className="bet-miss">{betMiss.text}</span>
           </ResultStrip>
         )}
         {game.shuffledLastRound && <div className="message-shuffle">Shuffling…</div>}
