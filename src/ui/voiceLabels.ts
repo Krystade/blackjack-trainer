@@ -1,4 +1,4 @@
-import type { ListenState, HeardVerdict } from '../audio/voiceControl';
+import type { ListenState, HeardVerdict, SuppressedWhy } from '../audio/voiceControl';
 import { SPOKEN_FORM } from '../audio/voiceRecognition';
 
 /**
@@ -36,12 +36,16 @@ export const VOICE_STATE_LABEL: Record<ListenState, string> = {
  */
 export const VOICE_WORDS = Object.values(SPOKEN_FORM).join(' · ');
 
-export function describeVerdict(verdict: HeardVerdict | null): string {
+export function describeVerdict(verdict: HeardVerdict | null, why?: SuppressedWhy): string {
   if (verdict === null) return '';
   if (verdict === 'rejected') return 'not a command';
   // Distinguishing this from "not a command" matters: it means the microphone
   // heard the APP, not the operator, and the right response is to wait rather
   // than to repeat themselves louder.
+  // B2 #5: but not in the tail after a line has ENDED. The app is silent
+  // then and the microphone is waiting out its echo guard; "the app was
+  // speaking" was untrue and told the driver to wait for nothing.
+  if (verdict === 'suppressed' && why === 'tail') return 'ignored (too soon)';
   if (verdict === 'suppressed') return 'ignored (the app was speaking)';
   return verdict;
 }

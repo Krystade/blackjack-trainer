@@ -83,6 +83,14 @@ export interface RecognitionLike {
 /** What the microphone did with one utterance, for the operator to read. */
 export type HeardVerdict = VoiceAction | 'rejected' | 'suppressed' | (string & {});
 
+/**
+ * B2 #5: why a 'suppressed' utterance was dropped. 'speaking' while the app
+ * was still making a sound; 'tail' in the SPEECH_TAIL_MS after a line really
+ * ended, where the app has stopped and the driver is simply early; 'echo' a
+ * late transcript of the app's own last line.
+ */
+export type SuppressedWhy = 'speaking' | 'tail' | 'echo';
+
 export interface VoiceControllerDeps {
   /** Returns null when the browser has no recognition API. */
   createRecognition: () => RecognitionLike | null;
@@ -96,7 +104,7 @@ export interface VoiceControllerDeps {
    * has a reason on it: a misheard word and a dead microphone look identical
    * otherwise, and the operator cannot debug either while driving.
    */
-  onHeard?: (heard: string, verdict: HeardVerdict) => void;
+  onHeard?: (heard: string, verdict: HeardVerdict, why?: SuppressedWhy) => void;
   /**
    * First refusal on every transcript, before the command vocabulary sees it.
    *
@@ -405,6 +413,16 @@ export interface VoiceController {
    */
   suppressFor: (ms: number, said?: string) => void;
   /**
+   * B2 #6: deafen for a TONE -- `ms` and no speech tail. The tail exists
+   * because a recogniser delivers the words of a sentence well after the
+   * audio; a chime has no words to deliver, and adding 700ms to the "say
+   * again" chime silently swallowed the driver saying it again. Never
+   * shortens a window and leaves the late-echo sentence alone.
+   */
+  suppressForTone: (ms: number) => void;
+  /** B2 #5: how long the microphone stays deaf from now; 0 when it is live. */
+  suppressedRemainingMs: () => number;
+  /**
    * The app has really stopped talking: deaf for the tail only, from now --
    * even if that SHORTENS a window. Paired with a generous `suppressFor` at
    * the start of each utterance, so the window is bounded by the real ending
@@ -437,6 +455,12 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
   let running = false;
   let sessionStartedAt = 0;
   let suppressedUntil = 0;
+  /**
+   * B2 #5: when the last line really ended (`releaseSuppression`), until the
+   * next line starts. Set, the deaf window is the post-speech tail: the app
+   * is silent and an answer is early, not talked over.
+   */
+  let tailSince: number | null = null;
   /**
    * The last thing the app actually said, kept so a transcript that arrives
    * after the window has shut can still be recognised as its own voice. See
@@ -829,8 +853,9 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
 
       // The app's own voice, arriving back through the microphone.
       if (isSuppressed(deps.now(), suppressedUntil)) {
-        log('suppressed', { heard, forMs: suppressedUntil - deps.now() });
-        deps.onHeard?.(heard, 'suppressed');
+        const why: SuppressedWhy = tailSince !== null && deps.now() >= tailSince ? 'tail' : 'speaking';
+        log('suppressed', { heard, forMs: suppressedUntil - deps.now(), why });
+        deps.onHeard?.(heard, 'suppressed', why);
         return;
       }
 
@@ -869,7 +894,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       const sinceClosed = deps.now() - suppressedUntil;
       if (looksLikeLateSelfEcho(heard, lastSaid, sinceClosed)) {
         log('suppressed-echo', { heard, sinceMs: sinceClosed, said: lastSaid });
-        deps.onHeard?.(heard, 'suppressed');
+        deps.onHeard?.(heard, 'suppressed', 'echo');
         return;
       }
 
@@ -970,10 +995,19 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       // the chime that follows a correction lands exactly when the late
       // transcript of that correction is still in flight -- so letting it
       // clear this would undo the check at the one moment it is needed.
-      if (said !== undefined) lastSaid = said;
+      if (said !== undefined) {
+        lastSaid = said;
+        tailSince = null;
+      }
     },
+    suppressForTone: (ms: number) => {
+      const until = deps.now() + Math.max(0, ms);
+      if (until > suppressedUntil) suppressedUntil = until;
+    },
+    suppressedRemainingMs: () => Math.max(0, suppressedUntil - deps.now()),
     releaseSuppression: () => {
       suppressedUntil = deps.now() + SPEECH_TAIL_MS;
+      tailSince = deps.now();
     },
     cycleIfStale: () => {
       if (!running) return;

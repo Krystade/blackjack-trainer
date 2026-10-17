@@ -25,7 +25,7 @@ export function VoiceStatusBar({ status, hint }: { status: VoiceStatus; hint?: R
       <span className="voice-status-state">{VOICE_STATE_LABEL[status.state]}</span>
       {status.heard && (
         <span className="voice-status-heard">
-          &ldquo;{status.heard}&rdquo; &rarr; {describeVerdict(status.verdict)}
+          &ldquo;{status.heard}&rdquo; &rarr; {describeVerdict(status.verdict, status.why)}
         </span>
       )}
       <span className="voice-status-words">{hint ?? <>Say: {VOICE_WORDS}</>}</span>

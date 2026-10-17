@@ -328,7 +328,9 @@ export async function sayOnceListening(
       { text: transcript, alts: alternatives },
     );
     heard = await page.locator('.voice-status-heard').textContent();
-    if (heard !== null && !heard.includes('the app was speaking')) return;
+    // B2 #5: a word in the post-speech tail is suppressed too, and now says
+    // so honestly ("ignored (too soon)"); both mean "not heard yet".
+    if (heard !== null && !/ignored \((the app was speaking|too soon)\)/.test(heard)) return;
     // Suppressed after all: the app started talking again between the state
     // check and the word. Wait for the next opening rather than hammering.
     await page.waitForTimeout(250);

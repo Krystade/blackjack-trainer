@@ -4,6 +4,7 @@ import {
   browserRecognition,
   type ListenState,
   type HeardVerdict,
+  type SuppressedWhy,
   type VoiceController,
 } from '../audio/voiceControl';
 import { chime, isAppSpeaking, setSpeechActivityListener } from '../audio/speech';
@@ -26,7 +27,12 @@ import {
 
 /** Safety margin on the deaf window for a spoken line, used only if its real ending is never reported. */
 const SPEECH_END_MARGIN_MS = 4000;
-/** How long the app must stay quiet after a line before the "your turn" tone. */
+/**
+ * How long the app must stay quiet after a line before the "your turn" tone.
+ * A floor, not the delay: the tone also waits for the microphone's own deaf
+ * window (SPEECH_TAIL_MS after the ending) to close -- B2 #5, where the tone
+ * at +350ms invited an answer the microphone then threw away until +700ms.
+ */
 const READY_SETTLE_MS = 350;
 
 /**
@@ -44,6 +50,8 @@ export interface VoiceStatus {
   /** The last thing the microphone heard, matched or not. */
   heard: string | null;
   verdict: HeardVerdict | null;
+  /** B2 #5: for a 'suppressed' verdict, why -- the label differs. */
+  why?: SuppressedWhy;
 }
 
 const IDLE: VoiceStatus = { state: 'off', heard: null, verdict: null };
@@ -203,6 +211,11 @@ export function useVoiceControl({
   // that ends twice (a stop, then a settle) never chimes twice.
   const readyGenRef = useRef(0);
   const readyCuedGenRef = useRef(-1);
+  // B2 #7: the screen's "microphone open" cue, held because the microphone
+  // came up while the app was talking (or still deaf after it). It is then
+  // given AS the "your turn" tone, once, when answers are really accepted --
+  // two tones 350ms apart that both meant "talk now" was the bug.
+  const pendingLiveCueRef = useRef(false);
 
   const controllerRef = useRef<VoiceController | null>(null);
 
@@ -212,6 +225,7 @@ export function useVoiceControl({
     // Armed for THIS request, so turning voice off and on again is cued again
     // -- that is the operator asking a second time and waiting a second time.
     cuedLiveRef.current = false;
+    pendingLiveCueRef.current = false;
     diag('mic', 'listen-on', { context: contextRef.current });
     void logMicPermission('listen-on');
     void logAudioInputs('listen-on');
@@ -341,15 +355,21 @@ export function useVoiceControl({
         }
         if (state === 'listening' && !cuedLiveRef.current) {
           cuedLiveRef.current = true;
-          try {
-            listeningRef.current();
-          } catch {
-            // A screen's cue must never take the microphone down with it.
+          // B2 #7: live while the app is talking or still deaf after it --
+          // hold the cue for the moment answers are accepted, where it
+          // replaces the "your turn" tone rather than preceding it.
+          const deafMs = controllerRef.current?.suppressedRemainingMs() ?? 0;
+          if (isAppSpeaking() || deafMs > 0) {
+            pendingLiveCueRef.current = true;
+            diag('speak', 'turn-cue', { kind: 'mic-open-held', context: contextRef.current });
+            if (!isAppSpeaking()) armReadyCue(deafMs);
+          } else {
+            giveLiveCue();
           }
         }
       },
-      onHeard: (heard, verdict) => {
-        setStatus((prev) => ({ ...prev, heard, verdict }));
+      onHeard: (heard, verdict, why) => {
+        setStatus((prev) => ({ ...prev, heard, verdict, why }));
         // Kept so the vocabulary can grow from evidence rather than from a
         // lucky glance at the screen mid-drill, which is how "stant" was
         // found and is not a method that works while driving.
@@ -392,19 +412,48 @@ export function useVoiceControl({
      * else follows within READY_SETTLE_MS -- so "Correct." followed at once by
      * the next hand chimes once, after the hand, not between the two.
      * Asked for by Jack on 2026-10-05, with its partner in onHeard below.
+     *
+     * B2 #5: and not before the microphone takes answers. The tone means
+     * "talk now"; sounding it inside the post-speech tail threw away the
+     * answer it asked for. If the window is still shut when the timer fires
+     * (a "say again" chime extended it), it waits out the rest.
      */
     let readyTimer: ReturnType<typeof setTimeout> | null = null;
-    const scheduleReadyCue = () => {
+    function giveLiveCue(): void {
+      try {
+        listeningRef.current();
+      } catch {
+        // A screen's cue must never take the microphone down with it.
+      }
+    }
+    function armReadyCue(delayMs: number): void {
       if (readyTimer !== null) clearTimeout(readyTimer);
-      const gen = readyGenRef.current;
       readyTimer = setTimeout(() => {
         readyTimer = null;
-        if (gen !== readyGenRef.current || isAppSpeaking()) return;
+        // A new line has started; its ending re-arms this.
+        if (isAppSpeaking()) return;
+        const deafMs = controller.suppressedRemainingMs();
+        if (deafMs > 0) {
+          armReadyCue(deafMs);
+          return;
+        }
+        const gen = readyGenRef.current;
+        if (pendingLiveCueRef.current) {
+          // B2 #7: the held "microphone open" cue IS this tone.
+          pendingLiveCueRef.current = false;
+          readyCuedGenRef.current = gen;
+          diag('speak', 'turn-cue', { kind: 'mic-open', context: contextRef.current });
+          giveLiveCue();
+          return;
+        }
         if (gen === readyCuedGenRef.current) return;
         readyCuedGenRef.current = gen;
         diag('speak', 'turn-cue', { kind: 'your-turn', context: contextRef.current });
         chime('turn');
-      }, READY_SETTLE_MS);
+      }, delayMs);
+    }
+    const scheduleReadyCue = () => {
+      armReadyCue(Math.max(READY_SETTLE_MS, controller.suppressedRemainingMs()));
     };
 
     // Deafen the microphone whenever the app talks. Registered only while
@@ -448,7 +497,10 @@ export function useVoiceControl({
       // with a generous margin, and `releaseSuppression` on the real ending is
       // what actually opens the microphone. The margin only matters if an
       // ending is ever lost.
-      controller.suppressFor(text !== undefined ? ms + SPEECH_END_MARGIN_MS : ms, text);
+      // B2 #6: a chime (no text) deafens for the tone alone. The speech tail
+      // is for late WORDS; added to "say again" it swallowed the repeat.
+      if (text === undefined) controller.suppressForTone(ms);
+      else controller.suppressFor(ms + SPEECH_END_MARGIN_MS, text);
       if (text !== undefined) readyGenRef.current += 1;
     });
     setVoiceCaptureActive(true);

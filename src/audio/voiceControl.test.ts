@@ -74,6 +74,8 @@ interface Harness {
   actions: VoiceAction[];
   states: ListenState[];
   heard: Array<[string, HeardVerdict]>;
+  /** B2 #5: why each suppressed utterance was suppressed. */
+  why: Array<string | undefined>;
   logs: LogLine[];
   made: FakeRecognition[];
   current: () => FakeRecognition;
@@ -91,6 +93,7 @@ function harness(
   const actions: VoiceAction[] = [];
   const states: ListenState[] = [];
   const heard: Array<[string, HeardVerdict]> = [];
+  const why: Array<string | undefined> = [];
   const logs: LogLine[] = [];
   const made: FakeRecognition[] = [];
   let clock = 1000;
@@ -117,7 +120,10 @@ function harness(
     onAction: (a) => actions.push(a),
     onState: (s) => states.push(s),
     onTranscript: opts.onTranscript,
-    onHeard: (h, v) => heard.push([h, v]),
+    onHeard: (h, v, w) => {
+      heard.push([h, v]);
+      why.push(w);
+    },
     log: (event, detail) => logs.push({ event, detail }),
   });
 
@@ -135,6 +141,7 @@ function harness(
     actions,
     states,
     heard,
+    why,
     logs,
     made,
     current: () => made[made.length - 1]!,
@@ -1194,5 +1201,78 @@ describe('a session that fails with no network', () => {
     const err = h.logs.filter((l) => l.event === 'session-error').pop();
     expect(err?.detail?.error).toBe('network');
     expect(err?.detail, 'the log cannot say whether there was a connection').toHaveProperty('online');
+  });
+});
+
+/**
+ * B2 #5 and #6: the deaf window after the app makes a sound, and what the
+ * driver is told about an answer lost to it.
+ */
+describe('the deaf window after a sound', () => {
+  it('a tone deafens for its own length, not a speech tail on top (#6)', () => {
+    const h = harness();
+    h.controller.start();
+    h.controller.suppressForTone(260);
+    h.advance(260);
+    h.current().say('stand');
+    expect(h.actions).toEqual(['stand']);
+  });
+
+  it('a tone never shortens a spoken window', () => {
+    const h = harness();
+    h.controller.start();
+    h.controller.suppressFor(1000, 'You have sixteen.');
+    h.controller.suppressForTone(260);
+    h.advance(1000 + SPEECH_TAIL_MS - 1);
+    h.current().say('stand');
+    expect(h.actions).toEqual([]);
+  });
+
+  it('a tone keeps the sentence the late-echo check holds', () => {
+    const h = harness();
+    h.controller.start();
+    h.controller.suppressFor(5000, 'Correct play was hit. True count was zero.');
+    h.controller.suppressForTone(260);
+    h.advance(5000 + SPEECH_TAIL_MS + 500);
+    h.current().say('Correct play was hit true count was zero');
+    expect(h.actions).toEqual([]);
+  });
+
+  it('reports how long the microphone stays deaf, so a "your turn" cue can wait for it (#5)', () => {
+    const h = harness();
+    h.controller.start();
+    expect(h.controller.suppressedRemainingMs()).toBe(0);
+    h.controller.suppressFor(5000, 'You have sixteen.');
+    h.advance(1200);
+    h.controller.releaseSuppression();
+    expect(h.controller.suppressedRemainingMs()).toBe(SPEECH_TAIL_MS);
+    h.advance(SPEECH_TAIL_MS);
+    expect(h.controller.suppressedRemainingMs()).toBe(0);
+  });
+
+  it('an answer in the tail after the ending is "too soon", not "the app was speaking" (#5)', () => {
+    const h = harness();
+    h.controller.start();
+    h.controller.suppressFor(5000, 'You have sixteen.');
+    h.current().say('stand');
+    h.advance(1200);
+    h.controller.releaseSuppression();
+    h.advance(500);
+    h.current().say('hit');
+    expect(h.heard).toEqual([
+      ['stand', 'suppressed'],
+      ['hit', 'suppressed'],
+    ]);
+    expect(h.why).toEqual(['speaking', 'tail']);
+  });
+
+  it('a new line after the ending is "speaking" again', () => {
+    const h = harness();
+    h.controller.start();
+    h.controller.suppressFor(1000, 'Correct.');
+    h.controller.releaseSuppression();
+    h.controller.suppressFor(3000, 'You have sixteen.');
+    h.current().say('stand');
+    expect(h.why).toEqual(['speaking']);
   });
 });
