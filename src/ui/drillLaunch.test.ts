@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { launchSettings, reviewIndexesLaunch, reviewLaunch, setDrillLaunch, setReviewDeck, takeDrillLaunch, takeFlashHandOver, takeReviewDeck, takeReviewIndexes } from './drillLaunch';
+import { launchSettings, weakCellsLaunch, reviewIndexesLaunch, reviewLaunch, setDrillLaunch, setReviewDeck, takeDrillLaunch, takeFlashHandOver, takeReviewDeck, takeReviewIndexes } from './drillLaunch';
 import { DEFAULT_SETTINGS } from '../store/types';
 import type { Settings } from '../store/types';
 
@@ -31,6 +31,26 @@ describe('launchSettings (F21, s07)', () => {
     const s = base();
     expect(launchSettings('custom', undefined, s)).toBe(s);
     expect(launchSettings('quiz', undefined, s)).toBe(s);
+  });
+});
+
+describe('weakCellsLaunch (Wave B2 #43)', () => {
+  const weak = { 'soft-17-v-3': { right: 0, wrong: 4, lastAt: '' }, 'soft-18-v-9': { right: 30, wrong: 0, lastAt: '' } };
+  it('runs Flashcards on the Custom deck, every hand type, with Auto tiers', () => {
+    const s = structuredClone(DEFAULT_SETTINGS);
+    s.drill = { ...s.drill, deck: 'chart', scopes: ['pairs'], flashCategory: 'pairs' };
+    const d = weakCellsLaunch(s, weak).drill;
+    expect(d).toMatchObject({ deck: 'custom', scopes: ['hard', 'soft', 'pairs'], flashCategory: 'all' });
+    expect(d.custom!.tiers['soft-17-v-3']).toBe('focus');
+    expect(d.custom!.tiers['soft-18-v-9']).toBe('rare');
+  });
+  it('keeps hand-painted cells, the mix and favour-missed, as the editor Auto does', () => {
+    const s = structuredClone(DEFAULT_SETTINGS);
+    s.drill.custom = { tiers: { 'soft-17-v-3': 'rare' }, painted: { 'soft-17-v-3': true, 'hard-9-v-3': true }, mix: { focus: 80, regular: 15, rare: 5 }, favourMissed: true };
+    const c = weakCellsLaunch(s, weak).drill.custom!;
+    expect(c.tiers['soft-17-v-3']).toBe('rare');
+    expect(c.tiers['hard-9-v-3']).toBeUndefined();
+    expect(c).toMatchObject({ mix: { focus: 80, regular: 15, rare: 5 }, favourMissed: true, painted: s.drill.custom.painted });
   });
 });
 

@@ -1,5 +1,7 @@
 import type { NextStepKind } from './screens/nextStep';
-import type { Settings } from '../store/types';
+import type { CustomSelection, Settings, Stats } from '../store/types';
+import { ALL_PAINT_CELL_IDS, autoTiers, defaultSelection, mixShare } from '../drills/cellSelection';
+import { settingsForCustomStart } from '../drills/deckSource';
 import type { HandScope } from '../drills/handScope';
 import { ALL_SCOPES, withScopes } from '../drills/handScope';
 
@@ -42,6 +44,29 @@ export function launchSettings(mode: DrillLaunch, scope: HandScope | undefined, 
   const scopes = mode === 'flash' && scope ? [scope] : [...ALL_SCOPES];
   const scoped = withScopes(settings, scopes);
   return { ...scoped, drill: { ...scoped.drill, deck: 'chart' } };
+}
+
+/**
+ * Wave B2 #43: "Fix weak cells" Start starts drilling. The settings it runs
+ * with are what the Custom editor's Auto then its Flashcards button would
+ * have saved -- Auto's tiers over the saved selection (hand-painted cells
+ * keep theirs), on the Custom deck across every hand type -- so Start opens
+ * Flashcards on that deck with no editor and no three-way choice first. The
+ * saved selection is read as defensively as the editor reads it. Pure.
+ */
+export function weakCellsLaunch(settings: Settings, cellStats: Stats['cellStats']): Settings {
+  const saved = settings.drill.custom;
+  const sel: CustomSelection = saved
+    ? {
+        ...saved,
+        tiers: saved.tiers ?? {},
+        painted: saved.painted ?? {},
+        mix: { focus: mixShare(saved.mix, 'focus'), regular: mixShare(saved.mix, 'regular'), rare: mixShare(saved.mix, 'rare') },
+        favourMissed: saved.favourMissed === true,
+      }
+    : defaultSelection();
+  const tiers = autoTiers(ALL_PAINT_CELL_IDS, cellStats, sel.painted, sel.tiers);
+  return settingsForCustomStart({ ...settings, drill: { ...settings.drill, custom: { ...sel, tiers } } });
 }
 
 /**
