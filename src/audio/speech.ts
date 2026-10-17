@@ -411,6 +411,11 @@ export function cancelSpeech(): void {
   pendingCue?.();
   // C-R5: lines waiting their turn behind the one being stopped go too.
   speakQueueEpoch++;
+  if (protectedSounding) {
+    // C-R3: the protected line plays on; only what was queued is dropped.
+    speakInFlight = 1;
+    return;
+  }
   speakInFlight = 0;
   stopClips();
   settleAllPendingSpeeches();
@@ -450,6 +455,14 @@ export interface SpeechOpts {
    * `speak()` only; `speakAsync` callers already have the promise.
    */
   onEnd?: () => void;
+  /**
+   * C-R3: a line nothing may cut off -- Home's Drive tap speaks it from inside
+   * the gesture, and the drill that opens a moment later speaks its own first
+   * line with `interrupt` and cancels speech on start. While a protected line
+   * is sounding an interrupt waits behind it instead, and cancelSpeech() drops
+   * only what is queued. `speak()` only; one short line at a time.
+   */
+  protect?: boolean;
 }
 
 /** Run `opts.onEnd` once, never letting it throw into the speech path. */
@@ -910,12 +923,15 @@ let speakInFlight = 0;
 /** Bumped by an interrupt or a cancel: everything older is stopped or dropped. */
 let speakQueueEpoch = 0;
 let speakQueueTail: Promise<void> = Promise.resolve();
+/** C-R3: a `protect` line is sounding. */
+let protectedSounding = false;
 
 /** Test-only: forget lines a previous test left sounding. */
 export function _resetSpeakQueueForTest(): void {
   speakQueueEpoch++;
   speakInFlight = 0;
   speakQueueTail = Promise.resolve();
+  protectedSounding = false;
 }
 
 export function speak(text: string, opts?: SpeechOpts): void {
@@ -925,11 +941,18 @@ export function speak(text: string, opts?: SpeechOpts): void {
     speakNow(text, opts, ended);
     return;
   }
+  if (opts?.interrupt && protectedSounding) {
+    // C-R3: a protected line is not cut off; this one waits its turn.
+    diag("speak", "interrupt-held", { said: text });
+    opts = { ...opts, interrupt: false };
+  }
   if (opts?.interrupt) {
     // The line it interrupts is being stopped; it no longer holds the queue.
     speakQueueEpoch++;
     speakInFlight = 0;
   }
+  const isProtected = opts?.protect === true;
+  if (isProtected) protectedSounding = true;
   const epoch = speakQueueEpoch;
   const mustWait = !opts?.interrupt && speakInFlight > 0;
   speakInFlight++;
@@ -938,7 +961,9 @@ export function speak(text: string, opts?: SpeechOpts): void {
     release = resolve;
   });
   const finish = () => {
-    if (epoch === speakQueueEpoch) speakInFlight = Math.max(0, speakInFlight - 1);
+    if (isProtected) protectedSounding = false;
+    // A protected line survives a cancel, so it still holds its place.
+    if (epoch === speakQueueEpoch || isProtected) speakInFlight = Math.max(0, speakInFlight - 1);
     release();
     ended();
   };
@@ -946,7 +971,7 @@ export function speak(text: string, opts?: SpeechOpts): void {
   speakQueueTail = done;
   const go = () => {
     // Superseded while it waited: an interrupt or a cancel came first.
-    if (epoch !== speakQueueEpoch) {
+    if (epoch !== speakQueueEpoch && !isProtected) {
       diag("speak", "queue-dropped", { said: text });
       finish();
       return;

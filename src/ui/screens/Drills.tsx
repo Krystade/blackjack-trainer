@@ -105,6 +105,7 @@ import { MarkableHand } from '../components/MarkableHand';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
 import { useVoiceToggle, usePushToTalk, startPushToTalk, isVoiceOn } from '../voiceSession';
 import { useEyesFreeToggle, isEyesFreeOn } from '../eyesFreeSession';
+import { recordDrive, takeDriveAutoStart } from '../driveLaunch';
 import { useWheelCommand } from '../useWheelCommand';
 import { signed } from '../../drills/signed';
 import { ChartIntro } from './drills/ChartIntro';
@@ -3102,6 +3103,21 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   // #28: Home's Next step can hand over the drill to open.
   const [launch] = useState(() => takeDrillLaunch());
   const [mode, setMode] = useState<'picker' | DrillMode>(() => launch ?? 'picker');
+  // C-R3: Home's Drive tap starts the drill it opens; taken once, on mount.
+  const [driveStart] = useState(() => takeDriveAutoStart());
+  const autoStartFor = (m: DrillMode) => driveStart && launch === m;
+  // C-R3: a drill run eyes-free or by voice becomes Home's Drive button.
+  const [eyesFreeAny] = useEyesFreeToggle('drills');
+  const [voiceAny] = useVoiceToggle('drills');
+  useEffect(() => {
+    if (mode === 'picker' || (!eyesFreeAny && !voiceAny)) return;
+    const next = recordDrive(settings, mode, voiceAny);
+    if (next === settings) return;
+    saveSettings(next);
+    onSettingsChange(next);
+    // Keyed on what is being recorded; `settings` is read fresh each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, eyesFreeAny, voiceAny]);
   // R7 / R5: a review or session deck rides along with the launch, in memory.
   // Taken (and so cleared) on every mount; kept only for the drill it was
   // handed to, and dropped once that drill is left.
@@ -3132,6 +3148,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     return (
       <CountDrillView
         settings={settings}
+        autoStart={autoStartFor('count')}
         onBack={() => setMode('picker')}
         onSettingsChange={onSettingsChange}
       />
@@ -3142,6 +3159,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       <TrueCountDrillView
         settings={settings}
         activeProfile={activeProfile}
+        autoStart={autoStartFor('truecount')}
         onBack={() => setMode('picker')}
         onSettingsChange={onSettingsChange}
       />
@@ -3152,6 +3170,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       <ProduceTcDrillView
         settings={settings}
         activeProfile={activeProfile}
+        autoStart={autoStartFor('producetc')}
         onBack={() => setMode('picker')}
       onSettingsChange={onSettingsChange}
       />

@@ -167,10 +167,13 @@ type CountPhase =
 
 export function CountDrillView({
   settings,
+  autoStart = false,
   onBack,
   onSettingsChange,
 }: {
   settings: Settings;
+  /** C-R3: opened by Home's Drive tap -- skip the setup screen and go. */
+  autoStart?: boolean;
   onBack: () => void;
   onSettingsChange: (settings: Settings) => void;
 }) {
@@ -1541,6 +1544,12 @@ export function CountDrillView({
         handleVoiceCommand(command === 'forward' ? 'yes' : 'repeat');
     }
   });
+
+  // C-R3: Home's Drive tap opened this drill -- start it, once, on mount.
+  useEffect(() => {
+    if (autoStart) start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const voice = useVoiceControl({
     // The push-to-talk window opens the microphone exactly as the toggle

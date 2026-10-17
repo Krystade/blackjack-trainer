@@ -82,3 +82,38 @@ describe('speak() serialises non-interrupting lines (C-R5)', () => {
     expect(started.map((u) => u.text)).toEqual(['First.', 'After.']);
   });
 });
+
+describe('a protected line (C-R3: Drive speaks from the tap)', () => {
+  it('an interrupt waits behind it instead of cutting it off', async () => {
+    const started = install();
+    let cancels = 0;
+    (globalThis as any).window.speechSynthesis.cancel = () => { cancels += 1; }; // eslint-disable-line @typescript-eslint/no-explicit-any
+    speak('Flashcards.', { protect: true, interrupt: true });
+    const before = cancels;
+    speak('You have sixteen. Dealer shows ten.', { interrupt: true });
+    await flush();
+    expect(cancels, 'the protected line was cancelled').toBe(before);
+    expect(started.map((u) => u.text)).toEqual(['Flashcards.']);
+    started[0]!.onend?.();
+    await flush();
+    expect(started.map((u) => u.text)).toEqual(['Flashcards.', 'You have sixteen. Dealer shows ten.']);
+  });
+
+  it('cancelSpeech leaves it playing, and a later line still waits for it', async () => {
+    const started = install();
+    speak('Count drill.', { protect: true, interrupt: true });
+    cancelSpeech();
+    speak('Seven.', { interrupt: true });
+    await flush();
+    expect(started.map((u) => u.text)).toEqual(['Count drill.']);
+    started[0]!.onend?.();
+    await flush();
+    expect(started.map((u) => u.text)).toEqual(['Count drill.', 'Seven.']);
+    // Once it has ended, interrupts interrupt again.
+    speak('Eight.');
+    speak('Nine.', { interrupt: true });
+    await flush();
+    expect(started.map((u) => u.text).slice(-1)).toEqual(['Nine.']);
+  });
+});
+

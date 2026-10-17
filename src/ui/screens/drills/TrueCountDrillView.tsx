@@ -107,11 +107,14 @@ type TcPhase =
  */
 export function TrueCountDrillView({
   settings,
+  autoStart = false,
   activeProfile,
   onBack,
   onSettingsChange,
 }: {
   settings: Settings;
+  /** C-R3: opened by Home's Drive tap -- skip the setup screen and go. */
+  autoStart?: boolean;
   activeProfile: Profile;
   onBack: () => void;
   // Needed so the eyes-free toggle can enable audio itself rather than
@@ -596,6 +599,12 @@ export function TrueCountDrillView({
   // not submit into this one. Registered rather than run from an effect --
   // see `wheelResetRef`.
   wheelResetRef.current = wheelNumber.reset;
+
+  // C-R3: Home's Drive tap opened this drill -- start it, once, on mount.
+  useEffect(() => {
+    if (autoStart) start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const voice = useVoiceControl({
     // The push-to-talk window opens the microphone exactly as the toggle

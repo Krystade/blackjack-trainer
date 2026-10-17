@@ -40,6 +40,10 @@ export interface Settings {
   // #48-51 (spec 2026-10-13): Play deals from the rigged losing shoe
   // (drills/downswingShoe.ts) instead of a fair one. Absent = off.
   losingShoe?: boolean;
+  // C-R3 (W10): the last drill run eyes-free or by voice, for Home's one-tap
+  // "Drive" button. `mode` is the Drills mode id; `voice` whether the
+  // microphone was on. Absent = no such drill yet (no Drive button).
+  lastDrive?: { mode: string; voice: boolean };
   drill: {
     flashCategory: 'all' | 'hard' | 'soft' | 'pairs';
     // #13: multi-select scope for the hand drills (flashcards, mastery, Mixed,

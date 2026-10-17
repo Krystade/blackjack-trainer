@@ -1,0 +1,12 @@
+/* C-R3 (W10): Home's "Drive: <drill>" -- a secondary button directly under
+   Next step's gold Start, full card width so a long drill name never wraps
+   the head row. Plain u-btn styling; never the gold primary. */
+.next-step-drive {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

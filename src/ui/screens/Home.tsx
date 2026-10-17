@@ -13,6 +13,12 @@ import { loadFlashSr, loadQuizSr } from '../../drills/gradeAnswer';
 import { LadderCard } from './LadderCard';
 import { strategyRulesFor } from '../../store/profiles';
 import './nextStep.css';
+import { driveTarget, setDriveAutoStart } from '../driveLaunch';
+import { setEyesFreeOn } from '../eyesFreeSession';
+import { setVoiceOn } from '../voiceSession';
+import { speak } from '../../audio/speech';
+import { speechOptsFrom } from '../../audio/speechOpts';
+import { withAudioEnabled } from '../audioGate';
 
 interface HomeProps {
   onNavigate: (screen: Screen) => void;
@@ -84,6 +90,28 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
     onNavigate('drills');
   };
 
+  /**
+   * C-R3 (W10): Drive. The tap IS the audio-unlock gesture, so the first line
+   * is spoken here, synchronously, inside it -- protected, so the drill that
+   * mounts a moment later queues its own opening line behind it instead of
+   * cutting it off. Eyes-free on, voice as it was, and the drill starts itself.
+   */
+  const drive = driveTarget(settings);
+  const startDrive = () => {
+    if (!drive) return;
+    const next = settings.audio.enabled ? settings : withAudioEnabled(settings);
+    if (next !== settings) {
+      saveSettings(next);
+      onSettingsChange(next);
+    }
+    setEyesFreeOn(true, 'home-drive');
+    setVoiceOn(drive.voice, 'home-drive');
+    speak(`${drive.label}.`, { ...speechOptsFrom(next.audio, { interrupt: true }), protect: true });
+    setDriveAutoStart();
+    setDrillLaunch(drive.mode);
+    onNavigate('drills');
+  };
+
   return (
     <div className="home-screen">
       <header className="home-head">
@@ -99,7 +127,11 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
       </header>
 
       {/* B2: the ladder first, so Start sits above the fold. */}
-      <LadderCard ladder={ladder} onStart={openStep} />
+      <LadderCard
+        ladder={ladder}
+        onStart={openStep}
+        drive={drive ? { label: drive.label, onDrive: startDrive } : undefined}
+      />
 
       <section className="readiness" aria-label="Readiness">
         <div className="readiness-figures">
