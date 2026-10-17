@@ -128,16 +128,17 @@ test('B2 R3/#15: bet and sit misses are counted beside the headline and listed i
   await page.goto('/?seed=7&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   // Fresh shoe, TC 0: the ramp sits out (D1), so dealing in is a play-or-sit
-  // miss; a 2u bet is a bet-size miss on top of it.
+  // miss. C-R6 (deliberately changed): the 2u is not graded on top of it --
+  // one round, one bet decision.
   await page.locator('.bet-chips .chip-btn', { hasText: /^2$/ }).click();
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await playRoundByAdvice(page);
   await endWithReport(page);
   await expect(page.locator('.report-screen')).toBeVisible();
   const head = page.locator('.report-headline');
-  await expect(head).toHaveText(/^(−\d+\.\d\d u|0 u|Under 0\.01 u) lost to playing mistakes per 100 hands · 2 bet decisions off$/);
+  await expect(head).toHaveText(/^(−\d+\.\d\d u|0 u|Under 0\.01 u) lost to playing mistakes per 100 hands · 1 bet decision off$/);
   const rows = page.locator('.report-bets li');
-  await expect(rows).toHaveText(['TC +0 · you bet 2u · your ramp bets 1u', 'TC +0 · you played · your ramp sits out']);
+  await expect(rows).toHaveText(['TC +0 · you played · your ramp sits out']);
   await expect(page.locator('.report-bets')).not.toContainText(/wong|sit-out|played play|tc \d/);
   await shot(page, 'b2-r3-bet-misses');
 });
