@@ -60,6 +60,7 @@ import './tableGlance.css';
 import './tableSheet.css';
 import { dealerFeltRow, playerFeltLayout, type FeltRow } from '../feltLayout';
 import { useViewportWidth } from '../useViewportWidth';
+import { DEAL_WORDS, isDealWord } from '../dealWord';
 import './feltWrap.css';
 
 /** B5/W4: the row's card slots and fixed chrome, for cardSize.css's clamp. */
@@ -541,7 +542,21 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
    * operator was in the middle of giving.
    */
   const interpretCountSpeech = (heard: string, offered: readonly string[] = [heard]): string | null => {
-    if (!game.countCheckOpen) return null;
+    if (!game.countCheckOpen) {
+      // B2 #37: "deal" between rounds deals, exactly as "yes" does there. It
+      // is not in the command vocabulary (it means nothing anywhere else), so
+      // it is claimed here, with the same gates handleVoiceCommand applies.
+      if (
+        !showChart &&
+        !overlay &&
+        (game.phase === 'idle' || game.phase === 'settled') &&
+        isDealWord(offered.length > 0 ? offered : [heard])
+      ) {
+        handleDeal();
+        return 'deal';
+      }
+      return null;
+    }
 
     // A spoken number is ranked over a car microphone exactly as a spoken
     // word is, and "minus three" behind "minus tree" is the same failure with
@@ -639,7 +654,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // Biased toward the commands AND the count words at once. The phrase list
     // is fixed for the life of a session, and rebuilding the recogniser as
     // the prompt opens would cost a deaf gap exactly when an answer is due.
-    biasPhrases: [...Object.keys(VOICE_ACTIONS), ...COUNT_BIAS_PHRASES],
+    biasPhrases: [...Object.keys(VOICE_ACTIONS), ...DEAL_WORDS, ...COUNT_BIAS_PHRASES],
     context: 'table',
   });
 
@@ -931,7 +946,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           status={voice.status}
           hint={
             <>
-              Say: {VOICE_WORDS}. &ldquo;Yes&rdquo; deals the next hand or takes insurance; &ldquo;no&rdquo; declines it.
+              Say: {VOICE_WORDS}. &ldquo;Yes&rdquo; or &ldquo;deal&rdquo; deals the next hand; &ldquo;yes&rdquo; takes insurance, &ldquo;no&rdquo; declines it.
             </>
           }
         />
