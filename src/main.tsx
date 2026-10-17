@@ -41,9 +41,9 @@ createRoot(document.getElementById('root')!).render(
 );
 
 // Keep an installed home-screen app on the current build (see updateCheck.ts).
-// Skipped under ?e2e=1: the e2e harness drives a dev server whose version.json
-// does not exist, and a navigation mid-spec would be indistinguishable from a
-// bug in whatever that spec was testing.
+// Skipped under ?e2e=1: a navigation mid-spec would be indistinguishable from
+// a bug in whatever that spec was testing. e2e/update-deferral.spec.ts loads
+// plain `/` to test this call, deferWhile included, with version.json stubbed.
 if (!new URLSearchParams(window.location.search).has('e2e')) {
   startUpdateWatch({
     // NOT WHILE SOMEBODY IS IN THE MIDDLE OF A RUN. The reload fires from a
