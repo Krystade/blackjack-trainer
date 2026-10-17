@@ -50,14 +50,20 @@ export function betRampResult(stats: Stats): WindowResult {
   return recentWindow(betSizingRows(stats).map((row) => ({ correct: row?.ok })));
 }
 
-/** Rung 7: one of the last PLAY_SESSIONS_JUDGED sessions has PLAY_MIN_GRADED+ graded decisions at PLAY_TARGET. */
+/**
+ * Rung 7: one of the last PLAY_SESSIONS_JUDGED sessions has PLAY_MIN_GRADED+
+ * PLAY decisions (action events) at PLAY_TARGET. B2, R4: sit-outs, bets and
+ * count checks no longer count -- a cold shoe sat out by the ramp padded the
+ * threshold with easy decisions and ticked "Play a shoe". A row written before
+ * plays were recorded counts as none.
+ */
 export function playResult(stats: Stats): { best: { graded: number; correct: number } | null; passed: boolean } {
   const recent = (Array.isArray(stats.sessions) ? stats.sessions : []).slice(-PLAY_SESSIONS_JUDGED);
   let best: { graded: number; correct: number } | null = null;
   let passed = false;
   for (const s of recent) {
-    const graded = Number.isFinite(s?.graded) ? s.graded : 0;
-    const correct = Number.isFinite(s?.correct) ? s.correct : 0;
+    const graded = Number.isFinite(s?.plays) ? s.plays! : 0;
+    const correct = Number.isFinite(s?.playsCorrect) ? s.playsCorrect! : 0;
     if (graded >= PLAY_MIN_GRADED && correct / graded >= PLAY_TARGET) passed = true;
     if (!best || graded > best.graded) best = { graded, correct };
   }

@@ -20,7 +20,8 @@ RUNG_STATS[4] = { ...RUNG_STATS[3], countDrill: { history: many(5, { date: D, ca
 RUNG_STATS[5] = { ...RUNG_STATS[4], deckEstimation: { history: many(10, { date: D, actualDecks: 3, guess: 3, errorDecks: 0, correct: true }) }, trueCount: { history: many(10, { date: D, runningCount: 6, decksRemaining: 3, guess: 2, correctTc: 2, correct: true }) } };
 RUNG_STATS[6] = { ...RUNG_STATS[5], perIndex: Object.fromEntries(IDS.map((id) => [id, { right: 10, wrong: 0 }])) };
 RUNG_STATS[7] = { ...RUNG_STATS[6], betSizing: { history: many(10, { date: D, rc: 6, decksRemaining: 3, tc: 2, taken: 4, correct: 4, ok: true }) } };
-RUNG_STATS[8] = { ...RUNG_STATS[7], sessions: [{ date: D, rounds: 45, graded: 40, correct: 38, bankrollDelta: 0 }] };
+// B2, R4: rung 7 reads play decisions, so the passing session records them.
+RUNG_STATS[8] = { ...RUNG_STATS[7], sessions: [{ date: D, rounds: 45, graded: 40, correct: 38, bankrollDelta: 0, plays: 40, playsCorrect: 38 }] };
 
 async function seed(page: Page, stats: Record<string, unknown>, flashSrDue = 0) {
   await page.addInitScript(([s, ids]) => {

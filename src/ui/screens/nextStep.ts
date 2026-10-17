@@ -34,7 +34,7 @@ const DAY = 86_400_000;
  *                   INDEX_TARGET together.
  *  6. betramp    -- bet sizing at DRILL_WINDOW_NEEDED of the last DRILL_WINDOW.
  *  7. play       -- one of the last PLAY_SESSIONS_JUDGED sessions has
- *                   PLAY_MIN_GRADED+ graded decisions at PLAY_TARGET.
+ *                   PLAY_MIN_GRADED+ play decisions at PLAY_TARGET (B2, R4).
  *
  * Per-cell figures are B3's cellStats, judged on their recent answers (W3).
  * Pure: the caller supplies whether a sweep is complete.
@@ -287,7 +287,7 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
   const playCard: Card = {
     kind: 'play',
     title: 'Play a shoe',
-    why: `Strategy, counting, deviations and the bet ramp are on target. Play a shoe: ${PLAY_MIN_GRADED}+ decisions at 90%.`,
+    why: `Strategy, counting, deviations and the bet ramp are on target. Play a shoe: ${PLAY_MIN_GRADED}+ play decisions at 90%.`,
   };
 
   const drafts: RungDraft[] = [
@@ -356,7 +356,7 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
     {
       id: 'play',
       card: play.passed ? null : playCard,
-      progress: play.best ? `Best recent: ${play.best.correct}/${play.best.graded} graded` : 'No sessions yet',
+      progress: play.best ? `Best recent: ${play.best.correct}/${play.best.graded} play decisions` : 'No sessions yet',
       passedStart: { kind: 'play' },
     },
   ];

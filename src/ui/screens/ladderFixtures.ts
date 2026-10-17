@@ -34,7 +34,7 @@ export function stateAt(r: number): Stats {
   if (r >= 5) { s.deckEstimation.history = deckRows(flags(10, 10)); s.trueCount.history = tcRows(flags(10, 10)); }
   if (r >= 6) withIndices(s);
   if (r >= 7) withBets(s, flags(10, 10));
-  if (r >= 8) s.sessions = [{ date: iso(1), rounds: 45, graded: 40, correct: 36, bankrollDelta: 0 }];
+  if (r >= 8) s.sessions = [{ date: iso(1), rounds: 45, graded: 40, correct: 36, bankrollDelta: 0, plays: 40, playsCorrect: 36 }];
   return s;
 }
 export const ctxFor = (r: number) => ({ sweepDone: r !== 2, now: NOW });
