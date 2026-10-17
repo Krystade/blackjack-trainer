@@ -492,6 +492,14 @@ export function CountDrillView({
   /** Is `idx` one of this run's checkpoint stops? */
   const isCheckpoint = (idx: number) => checkpointStopsRef.current.includes(idx);
 
+  /**
+   * Does the advance from `idx` stop for a distraction? Wave A (s04): seeded by
+   * THIS run, so the stops move from run to run instead of landing on the
+   * same cards every time. One helper for all three advance mechanisms.
+   */
+  const distractionAt = (idx: number) =>
+    isDistractionPoint(idx, settings.drill.distractionFreq, runSeedRef.current);
+
   // Visual-mode (non-eyes-free) fixed-interval advance -- UNCHANGED behavior
   // apart from the D1 distraction check below. Eyes-free auto mode is driven
   // by speech instead (see the effect below), so it's explicitly excluded
@@ -520,7 +528,7 @@ export function CountDrillView({
         triggerCheckpoint(shownIndex, isLast);
         return;
       }
-      if (!countdownMode && isDistractionPoint(shownIndex, settings.drill.distractionFreq)) {
+      if (!countdownMode && distractionAt(shownIndex)) {
         triggerDistraction(shownIndex, isLast);
         return;
       }
@@ -620,7 +628,7 @@ export function CountDrillView({
           return;
         }
 
-        if (isDistractionPoint(i, settings.drill.distractionFreq)) {
+        if (distractionAt(i)) {
           triggerDistraction(i, isLast);
           return;
         }
@@ -863,7 +871,7 @@ export function CountDrillView({
       triggerCheckpoint(shownIndex, isLast);
       return;
     }
-    if (!countdownMode && isDistractionPoint(shownIndex, settings.drill.distractionFreq)) {
+    if (!countdownMode && distractionAt(shownIndex)) {
       triggerDistraction(shownIndex, isLast);
       return;
     }
@@ -1596,11 +1604,19 @@ export function CountDrillView({
   // rotation/offset ("messy cards"). Seeded by this run's seed + the card's
   // absolute position so the jitter is stable while the card is on screen and
   // reproducible in tests, but visibly different card-to-card.
+  //
+  // Wave A (s04): keyed by ABSOLUTE position, not by slot. Keyed by slot the
+  // element was reused card to card, so card-deal-in played once per run and
+  // an identical card dealt next to itself (about 40% of 52-card runs from
+  // the 2-deck shoe) changed nothing on screen: a new counter missed it and
+  // was told "Wrong" with no idea why. Now every card remounts and visibly
+  // arrives.
   const renderFlashCard = (c: Card, i: number) => {
-    if (!settings.drill.messyCards) return <PlayingCard key={i} card={c} />;
+    const key = `${shownIndex}-${i}`;
+    if (!settings.drill.messyCards) return <PlayingCard key={key} card={c} />;
     const jitter = jitterTransform(cardJitter(runSeedRef.current, shownIndex * 4 + i));
     return (
-      <span key={i} className="messy-card" style={{ display: 'inline-block', transform: jitter }}>
+      <span key={key} className="messy-card" style={{ display: 'inline-block', transform: jitter }}>
         <PlayingCard card={c} />
       </span>
     );

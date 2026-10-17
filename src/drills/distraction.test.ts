@@ -214,3 +214,35 @@ describe('isDistractionPoint', () => {
     expect(isDistractionPoint(0, 'relentless')).toBe(false);
   });
 });
+
+/**
+ * Wave A (s04 medium): the stops were seeded by the window index alone, so
+ * every run stopped on the same cards (5, 10, 18, 25, 32, 41, 47) and a
+ * regular learned the rhythm -- under a setup note that promises
+ * "unpredictable moments". The run's seed now picks the slots too.
+ */
+describe('isDistractionPoint per run', () => {
+  const stops = (seed: number, n = 52) =>
+    Array.from({ length: n }, (_, i) => i).filter((i) => isDistractionPoint(i, 'occasional', seed));
+
+  it('different runs stop on different cards', () => {
+    const patterns = new Set([1, 2, 3, 77, 123_456, 987_654_321].map((s) => stops(s).join(',')));
+    expect(patterns.size).toBeGreaterThan(3);
+  });
+
+  it('one run is reproducible, and still fires exactly once per window and never on card 0', () => {
+    for (const seed of [1, 42, 999_999_999]) {
+      expect(stops(seed)).toEqual(stops(seed));
+      expect(isDistractionPoint(0, 'occasional', seed)).toBe(false);
+      expect(isDistractionPoint(0, 'relentless', seed)).toBe(false);
+      const s = stops(seed, 49);
+      for (let w = 0; w < 7; w++) expect(s.filter((i) => Math.floor(i / 7) === w)).toHaveLength(1);
+    }
+  });
+
+  it('a seed of 0 keeps the old positions', () => {
+    for (let i = 0; i < 60; i++) {
+      expect(isDistractionPoint(i, 'occasional', 0)).toBe(isDistractionPoint(i, 'occasional'));
+    }
+  });
+});

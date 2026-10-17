@@ -119,12 +119,18 @@ const FREQ_INTERVAL: Record<Exclude<DistractionFreq, 'off'>, number> = {
  * run and unit-testable but unpredictable to the counter). The average rate
  * is unchanged (~1 per `interval` cards). The very first card (index 0) never
  * triggers -- no running count worth quizzing yet.
+ *
+ * Wave A (s04): `runSeed` is the run's own seed. Seeded by the window index
+ * alone, every run stopped on the same cards (5, 10, 18, 25, ...) and a regular
+ * learned the rhythm. The run seed is mixed in, so each run has its own stops
+ * and one run is still reproducible; 0 gives the old fixed positions.
  */
-export function isDistractionPoint(shownIndex: number, freq: DistractionFreq): boolean {
+export function isDistractionPoint(shownIndex: number, freq: DistractionFreq, runSeed = 0): boolean {
   if (freq === 'off' || shownIndex < 0) return false;
   const interval = FREQ_INTERVAL[freq];
   const windowIndex = Math.floor(shownIndex / interval);
-  let firePos = Math.floor(mulberry32((windowIndex * 0x9e3779b1 + 1) >>> 0)() * interval);
+  const seed = ((windowIndex * 0x9e3779b1 + 1) ^ Math.imul(runSeed | 0, 0x85ebca6b)) >>> 0;
+  let firePos = Math.floor(mulberry32(seed)() * interval);
   // Never interrupt the very first card: if window 0's chosen slot is 0, nudge
   // it forward so the first distraction lands at index >= 1.
   if (windowIndex === 0 && firePos === 0) firePos = 1;
