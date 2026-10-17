@@ -17,7 +17,7 @@ import { formatReviewPlain } from '../../drills/srStatus';
 import { drillLegalActions, rulesChipLabels } from '../../drills/legalActions';
 import { gateDrillAnswer, gateQuizAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
-import { drawQuizItem, quizLegalActions, quizRulesChip, tableMaskNote } from '../../drills/deviationQuiz';
+import { drawQuizItem, quizLegalActions, quizRulesChip, redundantForChart, tableMaskNote } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
 // R4 (docs/BACKLOG.md, interleaved mixed-session mode): the ONE shared grade
 // path -- gradeFlashcardAnswer/gradeQuizAnswer back the standalone
@@ -1331,9 +1331,14 @@ function quizFilterArg(quizIndex: DeviationId | 'all'): DeviationId | undefined 
  */
 function getActiveQuizFilter(quizIndex: DeviationId | 'all', activeProfile: Profile): DeviationId | 'all' {
   if (quizIndex === 'all') return 'all';
-  if (!isIndexActive(quizIndex, strategyRulesFor(activeProfile))) {
+  const rules = strategyRulesFor(activeProfile);
+  if (!isIndexActive(quizIndex, rules)) {
     return 'all';
   }
+  // Wave A (s08): an index this profile's basic chart already plays is not
+  // quizzed (drills/deviationQuiz.ts redundantForChart).
+  const entry = indexSetFor(rules).find((d) => d.id === quizIndex);
+  if (!entry || redundantForChart(entry, rules)) return 'all';
   return quizIndex;
 }
 
@@ -1930,7 +1935,11 @@ function DeviationQuizView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedback, eyesFree, item, showChart]);
 
-  const indexList = indexSetFor(strategyRulesFor(activeProfile));
+  // Wave A (s08): indexes the profile's basic chart already plays show as
+  // inactive -- the quiz never asks them.
+  const indexList = indexSetFor(strategyRulesFor(activeProfile)).map((d) =>
+    redundantForChart(d, strategyRulesFor(activeProfile)) ? { ...d, active: false } : d,
+  );
 
   const openChartOn = (result: HandResult) => {
     setChartTarget(chartTargetFrom(result));
