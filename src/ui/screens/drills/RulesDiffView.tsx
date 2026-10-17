@@ -24,9 +24,12 @@ import { focusSwallowsKey } from '../../keyboardFocus';
 import { answerTooSoon } from '../../answerBounce';
 import { Segmented } from '../Settings';
 import { PlayingCard } from '../../components/PlayingCard';
+import { DiscardTray } from '../../components/DiscardTray';
+import { NumPad } from '../../components/NumPad';
 import { ResultStrip } from '../../components/ResultStrip';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
 import './tcResultStrip.css';
+import './betSizing.css';
 import './rulesDiff.css';
 
 function randomSeed(): number {
@@ -77,8 +80,8 @@ export function RulesDiffView({
     [base, comparison, customDecks, customS17],
   );
   const identical = drawRulesQuestion(plan, 0, 0) === null;
-  // Task 5: a pool-less plan (6 <-> 8, tray questions only) offers no Start yet.
-  const playable = !identical && plan.pool.length > 0;
+  // A pool-less plan (6 <-> 8, same chart) still trains the bigger shoe's tray.
+  const playable = !identical && (plan.pool.length > 0 || plan.trayDecks !== null);
 
   const [phase, setPhase] = useState<'setup' | 'question'>('setup');
   const [n, setN] = useState(0);
@@ -224,6 +227,8 @@ export function RulesDiffView({
         data-side={question.side}
         data-cell={question.kind === 'play' ? question.cellId : question.kind}
         data-tc={qTc === null ? undefined : qTc}
+        data-cards-dealt={question.kind === 'tray-decks' || question.kind === 'tray-tc' ? question.cardsDealt : undefined}
+        data-rc={question.kind === 'tray-tc' ? question.rc : undefined}
       >
         <div className="rules-diff-prompt">{rulesQuestionPrompt(question, plan)}</div>
         {question.kind === 'play' && (
@@ -242,18 +247,34 @@ export function RulesDiffView({
             </div>
           </>
         )}
+        {(question.kind === 'tray-decks' || question.kind === 'tray-tc') && (
+          <div className="rules-diff-tray">
+            {question.kind === 'tray-tc' && <div className="bet-rc">RC {signed(question.rc)}</div>}
+            <DiscardTray cardsDealt={question.cardsDealt} decks={question.totalDecks} />
+            <div className="deck-tray-context">{question.totalDecks}-deck shoe</div>
+          </div>
+        )}
       </div>
 
-      <div
-        className={`rules-diff-answers${feedback ? ' rules-diff-answers--done' : ''}`}
-        aria-disabled={feedback ? 'true' : undefined}
-      >
-        {options.map((o) => (
-          <button key={String(o)} type="button" onClick={() => answer(o)}>
-            {rulesAnswerLabel(question, o)}
-          </button>
-        ))}
-      </div>
+      {question.kind === 'tray-tc' ? (
+        // Unmounted during the result so Enter there means Next, not an empty submit.
+        !feedback && (
+          <div className="rules-diff-numpad">
+            <NumPad label="True count" onSubmit={answer} />
+          </div>
+        )
+      ) : (
+        <div
+          className={`rules-diff-answers${question.kind === 'tray-decks' ? ' rules-diff-depth' : ''}${feedback ? ' rules-diff-answers--done' : ''}`}
+          aria-disabled={feedback ? 'true' : undefined}
+        >
+          {options.map((o) => (
+            <button key={String(o)} type="button" onClick={() => answer(o)}>
+              {rulesAnswerLabel(question, o)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {feedback && (
         <>

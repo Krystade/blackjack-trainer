@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { shot } from './helpers';
 import { DEFAULT_RULES } from '../src/engine/ruleset';
 import { comparisonRules } from '../src/engine/rulesDiff';
+import { trueCount } from '../src/engine/count';
 import { diffSummary, planRulesDrill } from '../src/drills/rulesDiffDrill';
 
 test.use({ viewport: { width: 375, height: 812 } });
@@ -81,4 +82,34 @@ test('rules differences: works by touch with eyes-free on; 44px answers, no side
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   await page.locator('.rules-diff-answers button').first().click();
   await expect(page.getByTestId('result-strip')).toBeVisible();
+});
+
+test('rules differences: 6 ↔ 8 decks says the chart is the same and trains the 8-deck tray', async ({ page }) => {
+  await openRulesDiff(page);
+  await page.getByRole('button', { name: '6 ↔ 8 decks', exact: true }).click();
+  await expect(page.locator('.rules-diff-notice')).toHaveText(
+    '6 decks and 8 decks use the same basic chart and the same index plays. What changes is the shoe: you divide by more decks. Practise reading the 8-deck tray.');
+  await expect(page.locator('.rules-diff-summary li')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+  const q = page.locator('.rules-diff-question');
+  await expect(q).toHaveAttribute('data-kind', 'tray-decks');
+  await expect(page.locator('.rules-diff-question .deck-tray-context')).toHaveText('8-deck shoe');
+  await expect(page.locator('.rules-diff-question .discard-tray--ticked')).toBeVisible();
+  const dealt = Number(await q.getAttribute('data-cards-dealt'));
+  const left = Math.max(0.5, Math.round(((416 - dealt) / 52) * 2) / 2);
+  await page.locator('.rules-diff-depth').getByRole('button', { name: String(left), exact: true }).click();
+  await expect(page.getByTestId('result-strip')).toHaveAttribute('data-tone', 'ok');
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+
+  await expect(q).toHaveAttribute('data-kind', 'tray-tc');
+  const rc = Number(await q.getAttribute('data-rc'));
+  const tc = trueCount(rc, (416 - Number(await q.getAttribute('data-cards-dealt'))) / 52);
+  const pad = await page.locator('.rules-diff-numpad').boundingBox();
+  expect(pad!.y + pad!.height).toBeLessThanOrEqual(812);
+  await shot(page, 'rules-diff-tray-numpad');
+  await page.keyboard.type(String(tc));
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('result-strip')).toHaveAttribute('data-tone', 'ok');
+  await shot(page, 'rules-diff-tray');
 });
