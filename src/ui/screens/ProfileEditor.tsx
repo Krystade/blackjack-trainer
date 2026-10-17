@@ -273,8 +273,7 @@ function ProfileEditForm({
     if (!dirty) return undefined;
     return setLeaveGuard(() => window.confirm(DISCARD_PROMPT));
   }, [dirty]);
-  // Cancel is itself the decision to discard, so it does not ask again.
-  const cancel = onCancel;
+  // Cancel itself is the decision to discard, so it does not ask again.
 
   const update = (patch: Partial<Profile>) => setDraft((d) => ({ ...d, ...patch }));
   const updateRules = (patch: Partial<RuleSet>) =>
@@ -339,7 +338,7 @@ function ProfileEditForm({
   return (
     <div className="profile-editor-screen">
       <div className="settings-topbar">
-        <button type="button" className="settings-back-btn" onClick={cancel}>
+        <button type="button" className="settings-back-btn" onClick={onCancel}>
           Cancel
         </button>
         <div className="settings-heading">{isNew ? 'New profile' : 'Edit profile'}</div>
@@ -741,7 +740,7 @@ function ProfileEditForm({
           <button type="button" className="profile-save-btn" onClick={() => onSave(draft)}>
             Save
           </button>
-          <button type="button" className="profile-cancel-btn" onClick={cancel}>
+          <button type="button" className="profile-cancel-btn" onClick={onCancel}>
             Cancel
           </button>
         </div>
