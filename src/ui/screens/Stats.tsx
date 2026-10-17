@@ -43,6 +43,7 @@ import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, handCategoryProgress, p
 import type { HandCategoryProgress } from './handProgress';
 import './statsGoal.css';
 import './statsHistory.css';
+import { formatLossPer100, sessionsLossPer100, sessionTag } from '../sessionFigures';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -762,16 +763,15 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   const profileSessions = stats.sessions.filter((s) => s.profileId === activeProfile.id);
   const totalGraded = profileSessions.reduce((sum, s) => sum + s.graded, 0);
   const totalCorrect = profileSessions.reduce((sum, s) => sum + s.correct, 0);
-  const totalRounds = profileSessions.reduce((sum, s) => sum + s.rounds, 0);
-  const totalBankrollDelta = profileSessions.reduce((sum, s) => sum + s.bankrollDelta, 0);
   const actualAccuracyPct = totalGraded === 0 ? null : (totalCorrect / totalGraded) * 100;
   // R7 (docs/BACKLOG.md, count-peek accountability / RT#5): the "actual play
   // accuracy" number is uninterpretable if it was silently peek-assisted, so
   // flag the aggregate whenever ANY of this profile's sessions used a peek.
   const totalPeeks = profileSessions.reduce((sum, s) => sum + (s.peeks ?? 0), 0);
   const actualAccuracyAssisted = assistedFlag(totalPeeks);
-  // units won / rounds * assumed rounds-per-hour, per spec §4.
-  const unitsPerHourProxy = totalRounds === 0 ? null : (totalBankrollDelta / totalRounds) * 80;
+  // Wave B (B6/W12): the skill figure, units lost to mistakes per 100 hands,
+  // replaces the luck-driven units per hour (a bankroll swing is not skill).
+  const lossPer100 = sessionsLossPer100(profileSessions);
   const cvcx = activeProfile.cvcx;
   // W15: only the rows with a value.
   const profileRows: [string, string][] = [];
@@ -785,9 +785,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
       pct(totalCorrect, totalGraded),
     ]);
   }
-  if (unitsPerHourProxy !== null) {
-    profileRows.push(['Your units per hour (at 80 rounds an hour)', formatSigned(Math.round(unitsPerHourProxy * 10) / 10)]);
-  }
+  if (lossPer100 !== null) profileRows.push(['Lost to mistakes', formatLossPer100(lossPer100)]);
   // W3: hard / soft / pairs, as Home's Next step judges them.
   const handRows = handCategoryProgress(stats);
 
@@ -1434,7 +1432,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
           {/* s06: the table's own bet and play-or-sit decisions, then the drill's. */}
           {tableBet.n + tableWong.n === 0 && bslAttempts === 0 ? (
             <p className="stats-detail">
-              No bet or sit decisions yet. Play with a bet spread on, or try the Bet or sit drill.
+              No bet or sit decisions yet. Play with a bet spread on, or try the Bet sizing drill.
             </p>
           ) : (
             <ul className="mistake-list">
@@ -1711,6 +1709,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                     {assistedFlag(s.peeks) && (
                       <span className="session-assisted"> · {assistedFlag(s.peeks)}</span>
                     )}
+                    {sessionTag(s) && <span className="session-assisted"> · {sessionTag(s)}</span>}
                   </span>
                   <span className={s.bankrollDelta >= 0 ? 'result-correct' : 'result-wrong'}>
                     {formatSigned(s.bankrollDelta)}

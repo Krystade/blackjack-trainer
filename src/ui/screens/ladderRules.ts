@@ -40,9 +40,9 @@ export function deckTcResult(stats: Stats): { deck: WindowResult; tc: WindowResu
 
 export type BetSizingRow = { date: string; ok: boolean };
 
-/** Contract 1: the bet sizing drill's history (another lane adds the field; cast dropped after merge). */
+/** Contract 1: the bet sizing drill's history. */
 export function betSizingRows(stats: Stats): readonly BetSizingRow[] {
-  const h = (stats as Stats & { betSizing?: { history?: BetSizingRow[] } }).betSizing?.history;
+  const h = stats.betSizing?.history;
   return Array.isArray(h) ? h : [];
 }
 

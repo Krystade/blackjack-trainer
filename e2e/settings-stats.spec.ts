@@ -169,7 +169,7 @@ test('Speak summary narrates the session summary under ?e2e=1', async ({ page })
 test('CVCX profile header renders score/EV/ROR/note plus actual accuracy from a played session', async ({ page }) => {
   // T0 gap #28: seeds a profile carrying CVCX numbers directly via
   // withProfile (not through the ProfileEditor UI), plays a short session so
-  // Stats.tsx's `actualAccuracyPct` / `unitsPerHourProxy` also have real data
+  // Stats.tsx's `actualAccuracyPct` / per-100 loss figure also have real data
   // (rather than the dash "no data" placeholder), and asserts the whole
   // per-profile header block renders.
   await withProfile(page, {
@@ -192,7 +192,9 @@ test('CVCX profile header renders score/EV/ROR/note plus actual accuracy from a 
   await expect(page.locator('.mistake-row', { hasText: 'CVCX risk of ruin' })).toContainText('3%');
   await expect(page.locator('.mistake-row', { hasText: 'CVCX sim note' })).toContainText('CVCX N0 sim, 500M rounds');
   await expect(page.locator('.mistake-row', { hasText: 'Your play accuracy' })).not.toContainText('—');
-  await expect(page.locator('.mistake-row', { hasText: 'Your units per hour' })).not.toContainText('—');
+  await expect(page.locator('.mistake-row', { hasText: 'Lost to mistakes' })).toContainText(
+    /(−\d+\.\d\d|0|Under 0\.01) u lost to mistakes per 100 hands/,
+  );
   await shot(page, '28-stats-cvcx-header-session');
 });
 
