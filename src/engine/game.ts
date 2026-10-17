@@ -387,7 +387,8 @@ export class Game {
   ): { canHit: boolean; canDouble: boolean; canSplit: boolean; canSurrender: boolean } {
     return {
       canHit: !hand.splitAces,
-      canDouble: hand.cards.length === 2 && !hand.doubled && !hand.splitAces,
+      // F10: doubling a split hand needs the table to allow DAS.
+      canDouble: hand.cards.length === 2 && !hand.doubled && !hand.splitAces && (!hand.fromSplit || this.rules.das),
       canSplit:
         isPair(hand.cards) &&
         this.countHandsWithOrigin(hands, hand.originIndex) < 4 &&
@@ -814,7 +815,9 @@ export class Game {
       // `tcBand`). `expected` still carries the exact figure, so the
       // correction says what the shoe actually held.
       tcCorrect =
-        tcGuess !== undefined && tcWithinEye(tcGuess, this.runningCount, this.shoe.decksRemaining);
+        tcGuess !== undefined &&
+        // F7: the profile's rounding, as trueCountNow (the expected figure) uses.
+        tcWithinEye(tcGuess, this.runningCount, this.shoe.decksRemaining, undefined, this.cfg.tcRounding);
       this.events.push({
         source: 'table',
         kind: 'countCheck',
@@ -1154,6 +1157,15 @@ export class Game {
 
       hand.done = !this.rules.rsa || !hand0HasAce || atOriginCap;
       newHand.done = !this.rules.rsa || !hand1HasAce || atOriginCap;
+      // F19: at the cap, every split ace of this origin is finished. An open
+      // A,A left of here can no longer resplit, and a split ace never takes a
+      // second card, so it would be asked a play whose only legal answer is
+      // Stand while being graded against Hit.
+      if (atOriginCap) {
+        for (const h of hands) {
+          if (h.originIndex === hand.originIndex && h.splitAces) h.done = true;
+        }
+      }
     }
   }
 

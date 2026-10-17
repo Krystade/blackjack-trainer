@@ -206,6 +206,43 @@ function resolveAsTotal(
 }
 
 /**
+ * F18: a pair cell that does not split is played as its hard total, so the
+ * total's indices apply to it -- 6,6 v 2 without DAS is a 12 v 2, and 7,7 v 10
+ * is a 14 v 10. Mirrors resolveAsTotal's steps 2-3 while keeping the PAIR
+ * cell's own basic play (it can encode composition the total chart cannot).
+ * Returns undefined when no index changes the pair cell's play.
+ */
+function pairTotalIndex(
+  cards: Card[],
+  dealerUp: Rank,
+  tc: number,
+  ctx: PlayContext,
+  deviations: Deviation[],
+  action: ChartAction,
+): Advice | undefined {
+  const hv = handValue(cards);
+  if (hv.soft) return undefined;
+  let surrenderOff = false;
+  if (ctx.canSurrender) {
+    const sur = findSurrenderDeviation(deviations, hv.total, dealerUp);
+    if (sur) {
+      if (sur.dir === 'gte' ? tc >= sur.threshold : tc <= sur.threshold) return deviation(sur, 'surrender');
+      surrenderOff = true;
+    } else if (action === 'Rh' || action === 'Rs') {
+      return undefined; // basic surrender wins, as in resolveAsTotal
+    }
+  }
+  const dev = findHardDeviation(deviations, hv.total, dealerUp, tc);
+  if (dev) {
+    if (dev.action !== 'double') return deviation(dev, dev.action as Action);
+    if (ctx.canDouble) return deviation(dev, 'double');
+  }
+  if (surrenderOff && action === 'Rh') return basic('hit', `Basic hit vs dealer ${dealerUp}`);
+  if (surrenderOff && action === 'Rs') return basic('stand', `Basic stand vs dealer ${dealerUp}`);
+  return undefined;
+}
+
+/**
  * Core play algorithm, parameterized on an already-assembled Chart. Exported
  * (in addition to correctPlay/basicPlay) so tests can drive it directly with
  * a hand-crafted Chart that bypasses getChart -- e.g. to pin the fail-loud
@@ -240,6 +277,10 @@ export function play(
     if (rank in chart.PAIRS) {
       const idx = upIndex(dealerUp);
       const action = chart.PAIRS[rank]![idx];
+      if (action === 'Rs' || action === 'Rh' || action === 'H' || action === 'S' || action === 'Dh' || action === 'Ds') {
+        const indexed = pairTotalIndex(cards, dealerUp, tc, ctx, deviations, action);
+        if (indexed) return indexed;
+      }
       switch (action) {
         case 'P':
           if (ctx.canSplit) return basic('split', `Basic split vs dealer ${dealerUp}`);

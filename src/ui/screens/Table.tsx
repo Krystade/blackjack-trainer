@@ -612,6 +612,12 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceOn, countDue, countStage]);
 
+  // F9: a peek held as the count check opens ends there (the button unmounts
+  // under the thumb, so its release never arrives).
+  useEffect(() => {
+    if (countDue) setPeeking(false);
+  }, [countDue]);
+
   // A proposal belongs to one prompt. Carrying it across would offer the
   // running count back as an answer to the true-count question.
   useEffect(() => {
@@ -984,6 +990,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       {/* #40: the peek under the left thumb, just above the bar. The skip
           control shares the row, so the dock costs no height when it shows. */}
       <div className="peek-dock">
+        {/* F9: no peek while the count check is open -- the peeked answer
+            was graded correct, and the button sits just above the keypad. */}
+        {!game.countCheckOpen && (
         <PeekButton
           revealed={peeking}
           onReveal={revealPeek}
@@ -999,6 +1008,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             </>
           }
         />
+        )}
         {((hasBots && pacingPending) || dealAnimating) && (
           <button
             type="button"

@@ -24,7 +24,8 @@ import type { Action } from '../engine/deviations';
 import type { RuleSet } from '../engine/ruleset';
 import type { PlayContext } from '../engine/strategy';
 import { handValue, isPair } from '../engine/hand';
-import { chartLookup } from '../engine/basicStrategy';
+import { chartLookup, upIndex } from '../engine/basicStrategy';
+import { FAB_4_H17, FAB_4_S17 } from '../engine/deviations';
 
 /**
  * #11: may a DRILL offer surrender on this hand?
@@ -47,9 +48,21 @@ import { chartLookup } from '../engine/basicStrategy';
 function drillOffersSurrender(cards: Card[], up: Rank, rules: RuleSet): boolean {
   if (!rules.ls) return false;
   const pair = isPair(cards);
-  if (!pair && !handValue(cards).soft) return true;
+  const hv = handValue(cards);
+  if (!pair && !hv.soft) return true;
+  // F18 (Wave A): a pair cell that does not split is played as its hard total, so
+  // a Fab 4 surrender index on that total (7,7 v 10 is a 14 v 10) can make
+  // surrender the graded answer. Offered whenever such an index exists in
+  // either set -- the drill's `rules` may not carry the profile's
+  // surrender-indices switch, and withholding is the failure that matters.
   const cell = chartLookup(cards, up, rules);
-  return cell === 'Rh' || cell === 'Rs' || cell === 'Rp';
+  if (cell === 'Rh' || cell === 'Rs' || cell === 'Rp') return true;
+  return (
+    pair &&
+    !hv.soft &&
+    cell !== 'P' &&
+    [...FAB_4_H17, ...FAB_4_S17].some((d) => d.total === hv.total && upIndex(d.up!) === upIndex(up))
+  );
 }
 
 export function drillLegalActions(cards: Card[], rules: RuleSet, up: Rank, ctx?: PlayContext): Action[] {

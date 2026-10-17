@@ -159,6 +159,29 @@ describe('Shoe', () => {
     });
   });
 
+  describe('F17: last-deck depth in 1-2 deck shoes reads to the quarter deck', () => {
+    test('single deck, 40 left: 0.75 decks, not 1', () => {
+      const shoe = new Shoe({ decks: 1 });
+      for (let i = 0; i < 12; i++) shoe.draw();
+      expect(shoe.decksRemaining).toBe(0.75);
+    });
+
+    test('double deck, 40 left: 0.75 decks; above one deck stays on half decks', () => {
+      const shoe = new Shoe({ decks: 2 });
+      for (let i = 0; i < 64; i++) shoe.draw();
+      expect(shoe.decksRemaining).toBe(0.75);
+      const early = new Shoe({ decks: 2 });
+      for (let i = 0; i < 20; i++) early.draw(); // 84 left = 1.6 decks
+      expect(early.decksRemaining).toBe(1.5);
+    });
+
+    test('six decks keep half-deck snapping in the last deck', () => {
+      const shoe = new Shoe({ decks: 6 });
+      for (let i = 0; i < 272; i++) shoe.draw();
+      expect(shoe.decksRemaining).toBe(1);
+    });
+  });
+
   describe('cutCardReached', () => {
     test('false when dealt < 234 (6*52*0.75)', () => {
       const shoe = new Shoe({});
