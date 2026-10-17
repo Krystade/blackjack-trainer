@@ -74,11 +74,12 @@ export const TONE_SAMPLE_RATE = SAMPLE_RATE;
  * source of the waveform, shared by the WAV data URI (element path) and the
  * AudioBuffer (Web Audio path) so the two can never drift apart.
  */
-export function toneSamples(frequencyHz: number, peak = 1): Float32Array {
+export function toneSamples(frequencyHz: number, peak = 1, endHz = frequencyHz): Float32Array {
   const frames = Math.round(SAMPLE_RATE * DURATION_S);
   const fadeFrames = Math.max(1, Math.round(SAMPLE_RATE * FADE_S));
   const safePeak = Math.min(1, Math.max(0, peak));
   const out = new Float32Array(frames);
+  let phase = 0;
   for (let i = 0; i < frames; i++) {
     // The same shape the oscillator envelope had: up over FADE_S, flat, then
     // down to nothing at the end. `Math.min` of the two ramps gives both
@@ -86,7 +87,11 @@ export function toneSamples(frequencyHz: number, peak = 1): Float32Array {
     const rampIn = i / fadeFrames;
     const rampOut = (frames - 1 - i) / fadeFrames;
     const envelope = Math.min(1, rampIn, rampOut);
-    out[i] = Math.sin((2 * Math.PI * frequencyHz * i) / SAMPLE_RATE) * envelope * safePeak;
+    // C-R4: a glide from frequencyHz to endHz, by accumulating phase (the
+    // instantaneous pitch moves linearly). Flat when endHz === frequencyHz,
+    // which is sample-for-sample the old single sine.
+    out[i] = Math.sin(phase) * envelope * safePeak;
+    phase += (2 * Math.PI * (frequencyHz + ((endHz - frequencyHz) * i) / frames)) / SAMPLE_RATE;
   }
   return out;
 }
@@ -100,7 +105,7 @@ export function toneSamples(frequencyHz: number, peak = 1): Float32Array {
  * level (see `chimePeak`), and this is deliberately the loudest the tone can
  * be rather than the loudest it should be.
  */
-export function toneDataUri(frequencyHz: number, peak = 1): string {
+export function toneDataUri(frequencyHz: number, peak = 1, endHz = frequencyHz): string {
   const frames = Math.round(SAMPLE_RATE * DURATION_S);
   const dataBytes = frames * 2;
   const bytes = new Uint8Array(44 + dataBytes);
@@ -119,7 +124,7 @@ export function toneDataUri(frequencyHz: number, peak = 1): string {
   writeAscii(bytes, 36, 'data');
   writeU32(bytes, 40, dataBytes);
 
-  const samples = toneSamples(frequencyHz, peak);
+  const samples = toneSamples(frequencyHz, peak, endHz);
   for (let i = 0; i < frames; i++) {
     const value = Math.round(samples[i]! * 32767);
     writeU16(bytes, 44 + i * 2, value < 0 ? value + 0x10000 : value);
@@ -142,13 +147,14 @@ export function toneDataUri(frequencyHz: number, peak = 1): string {
  * alternative is rebuilding the same 2880 samples on every chime in a drill
  * that chimes after every answer.
  */
-const cache = new Map<number, string>();
+const cache = new Map<string, string>();
 
-export function cachedToneDataUri(frequencyHz: number): string {
-  const hit = cache.get(frequencyHz);
+export function cachedToneDataUri(frequencyHz: number, endHz = frequencyHz): string {
+  const key = `${frequencyHz}>${endHz}`;
+  const hit = cache.get(key);
   if (hit !== undefined) return hit;
-  const built = toneDataUri(frequencyHz);
-  cache.set(frequencyHz, built);
+  const built = toneDataUri(frequencyHz, 1, endHz);
+  cache.set(key, built);
   return built;
 }
 

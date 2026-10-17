@@ -15,6 +15,7 @@ import { DealToggles } from './drills/DealToggles';
 import { plainCellLabel } from '../../drills/cellLabel';
 import { formatReviewPlain } from '../../drills/srStatus';
 import { drillLegalActions, rulesChipLabels } from '../../drills/legalActions';
+import { INSURANCE_HINT, playHint } from '../../audio/misheardLadder';
 import { gateDrillAnswer, gateQuizAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
 import { drawQuizItem, quizIndexSet, quizLegalActions, quizRulesChip, redundantForChart, tableMaskNote } from '../../drills/deviationQuiz';
@@ -988,7 +989,16 @@ function FlashcardsView({
     // Eyes-free, a rejection is silence, and silence looks the same as a dead
     // microphone. A short cue says "say it again" without costing a sentence
     // of narration mid-drill; Mute silences it like every other tone.
-    onNotUnderstood: () => audio.ding('attention'),
+    onNotUnderstood: () => audio.ding('again'),
+    escalation: {
+      promptKey: card,
+      reask: handleRepeat,
+      hint: () =>
+        speak(
+          playHint(drillLegalActions(card.cards, activeProfile.rules, card.up, card.ctx)),
+          speechOptsFrom(settings.audio, { interrupt: true }),
+        ),
+    },
     // Bias the engine toward the words it should be hearing. Reported from
     // real use: "stand" came back as "Stant" and was rejected -- unbiased,
     // the engine is choosing a one-syllable word out of all of English.
@@ -1978,7 +1988,18 @@ function DeviationQuizView({
   const voice = useVoiceControl({
     enabled: voiceOn || pushToTalkOpen,
     onAction: handleVoiceAction,
-    onNotUnderstood: () => audio.ding('attention'),
+    onNotUnderstood: () => audio.ding('again'),
+    escalation: {
+      promptKey: item,
+      reask: handleRepeat,
+      hint: () =>
+        speak(
+          item.cards === null
+            ? INSURANCE_HINT
+            : playHint(quizLegalActions(item, strategyRulesFor(activeProfile))),
+          speechOptsFrom(settings.audio, { interrupt: true }),
+        ),
+    },
     biasPhrases: Object.keys(VOICE_ACTIONS),
     onListening: () => audio.dingWhenQuiet('ready'),
     context: 'deviation-quiz',
@@ -2773,7 +2794,22 @@ function MixedSessionView({
   const voice = useVoiceControl({
     enabled: voiceOn || pushToTalkOpen,
     onAction: handleVoiceAction,
-    onNotUnderstood: () => audio.ding('attention'),
+    onNotUnderstood: () => audio.ding('again'),
+    escalation: {
+      promptKey: current,
+      reask: handleRepeat,
+      hint: () =>
+        speak(
+          isInsuranceItem
+            ? INSURANCE_HINT
+            : playHint(
+                current.type === 'quiz'
+                  ? quizLegalActions(current.item, strategyRulesFor(activeProfile))
+                  : drillLegalActions(current.card.cards, activeProfile.rules, current.card.up, current.card.ctx),
+              ),
+          speechOptsFrom(settings.audio, { interrupt: true }),
+        ),
+    },
     biasPhrases: Object.keys(VOICE_ACTIONS),
     onListening: () => audio.dingWhenQuiet('ready'),
     context: 'mixed-session',

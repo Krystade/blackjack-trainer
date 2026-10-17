@@ -617,20 +617,21 @@ export function chimeWantsWebAudio(): boolean {
 }
 
 /** Decoded-equivalent tone buffers, per context and frequency. */
-const toneBuffers = new WeakMap<AudioContext, Map<number, AudioBuffer>>();
+const toneBuffers = new WeakMap<AudioContext, Map<string, AudioBuffer>>();
 
-function toneBuffer(ctx: AudioContext, frequencyHz: number): AudioBuffer {
+function toneBuffer(ctx: AudioContext, frequencyHz: number, endHz = frequencyHz): AudioBuffer {
+  const key = `${frequencyHz}>${endHz}`;
   let perCtx = toneBuffers.get(ctx);
   if (!perCtx) {
     perCtx = new Map();
     toneBuffers.set(ctx, perCtx);
   }
-  const hit = perCtx.get(frequencyHz);
+  const hit = perCtx.get(key);
   if (hit) return hit;
-  const samples = toneSamples(frequencyHz);
+  const samples = toneSamples(frequencyHz, 1, endHz);
   const buffer = ctx.createBuffer(1, samples.length, TONE_SAMPLE_RATE);
   buffer.getChannelData(0).set(samples);
-  perCtx.set(frequencyHz, buffer);
+  perCtx.set(key, buffer);
   return buffer;
 }
 
@@ -642,15 +643,15 @@ function toneBuffer(ctx: AudioContext, frequencyHz: number): AudioBuffer {
  * arithmetic the element's `volume` did. NOT a chain, so it never stops a
  * prompt. Never throws.
  */
-export function playChimeTone(frequencyHz: number, peak: number): void {
+export function playChimeTone(frequencyHz: number, peak: number, endHz = frequencyHz): void {
   const onElement = () => {
-    void playPooledTone(cachedToneDataUri(frequencyHz), peak);
+    void playPooledTone(cachedToneDataUri(frequencyHz, endHz), peak);
   };
   if (!chimeWantsWebAudio()) return onElement();
   const startTone = (ctx: AudioContext) => {
     try {
       const src = ctx.createBufferSource();
-      src.buffer = toneBuffer(ctx, frequencyHz);
+      src.buffer = toneBuffer(ctx, frequencyHz, endHz);
       const gain = ctx.createGain();
       gain.gain.value = Math.min(1, Math.max(0, peak));
       src.connect(gain);

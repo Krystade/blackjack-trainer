@@ -16,7 +16,7 @@ import { prewarmClips, setClipsEnabled, setClipVoice } from './clips';
 export interface AudioApi {
   say: (text: string, opts?: { interrupt?: boolean }) => void;
   sayFull: (text: string) => void;
-  ding: (kind: 'good' | 'bad' | 'attention' | 'ready') => void;
+  ding: (kind: 'good' | 'bad' | 'attention' | 'ready' | 'again') => void;
   /**
    * A chime held until the app stops talking.
    *

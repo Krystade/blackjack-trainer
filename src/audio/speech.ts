@@ -1452,7 +1452,7 @@ export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
  * that, because a duplicate would silently undo the distinction this table
  * exists for.
  */
-export type ChimeKind = "good" | "bad" | "attention" | "mark" | "blocked" | "ready" | "turn" | "heard";
+export type ChimeKind = "good" | "bad" | "attention" | "mark" | "blocked" | "ready" | "turn" | "heard" | "again";
 
 const CHIME_FREQUENCY_HZ: Record<ChimeKind, number> = {
   good: 880,
@@ -1468,7 +1468,22 @@ const CHIME_FREQUENCY_HZ: Record<ChimeKind, number> = {
   // "Got it" -- below "ready" and well above "bad", so the pair a listener
   // must tell apart (your turn / got it) are a fourth apart, not a semitone.
   heard: 392,
+  // C-R4 "say again": the answer was not understood. Starts at a pitch no
+  // other kind uses and GLIDES DOWN an octave (CHIME_END_HZ), so it differs
+  // from the flat "your turn" / "mic open" tones in contour, not only note.
+  again: 698,
 };
+
+/** C-R4: kinds whose pitch moves across the tone; every other kind is flat. */
+const CHIME_END_HZ: Partial<Record<ChimeKind, number>> = {
+  again: 349,
+};
+
+/** [start, end] pitch of a kind, for the test that asserts the contours differ. */
+export function chimeContourForTest(kind: ChimeKind): readonly [number, number] {
+  const start = CHIME_FREQUENCY_HZ[kind];
+  return [start, CHIME_END_HZ[kind] ?? start];
+}
 
 /**
  * Plays a short (0.12s) gain-ramped sine tone. In e2e mode, records
@@ -1563,7 +1578,7 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
    * in a car.
    */
   try {
-    playChimeTone(CHIME_FREQUENCY_HZ[kind], chimePeak(opts?.volume ?? 1));
+    playChimeTone(CHIME_FREQUENCY_HZ[kind], chimePeak(opts?.volume ?? 1), CHIME_END_HZ[kind]);
   } catch {
     // never throw
   }

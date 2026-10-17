@@ -57,6 +57,7 @@ import {
 import { focusSwallowsKey } from '../../keyboardFocus';
 import { enableAudioNow } from '../../audioGate';
 import { useVoiceControl } from '../../useVoiceControl';
+import { NEXT_HINT, NUMBER_HINT } from '../../../audio/misheardLadder';
 import { useWheelCommand } from '../../useWheelCommand';
 import { useWheelNumber } from '../../useWheelNumber';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
@@ -1550,7 +1551,13 @@ export function CountDrillView({
     // Eyes-free, a rejection is silence, and silence looks the same as a dead
     // microphone. A short cue says "say it again" without costing a sentence
     // of narration mid-drill.
-    onNotUnderstood: () => audio.ding('attention'),
+    onNotUnderstood: () => audio.ding('again'),
+    // C-R4: second miss on this question repeats it; third names what it takes.
+    escalation: {
+      promptKey: [phase, drillRound, countdownRound, tableRun],
+      reask: () => handleVoiceCommand('repeat'),
+      hint: () => ((t: string) => sayBack(t, true))(phase === 'answering' ? NUMBER_HINT : NEXT_HINT),
+    },
     biasPhrases: [...Object.keys(VOICE_ACTIONS), ...COUNT_BIAS_PHRASES],
     onListening: () => audio.dingWhenQuiet('ready'),
     context: 'count-drill',
