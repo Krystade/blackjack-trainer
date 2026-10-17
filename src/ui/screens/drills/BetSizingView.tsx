@@ -13,6 +13,7 @@ import {
   type BetAnswer,
   type BetSizingScenario,
 } from '../../../drills/betSizing';
+import { betVerdictText } from '../../../drills/betVerdict';
 import { signed } from '../../../drills/signed';
 import { useAudio } from '../../../audio/useAudio';
 import { loadStats, saveStats } from '../../../store/persist';
@@ -23,6 +24,7 @@ import { ResultStrip } from '../../components/ResultStrip';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
 import './tcResultStrip.css';
 import './betSizing.css';
+import './betSizingTaken.css';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -31,6 +33,7 @@ function randomSeed(): number {
 interface Feedback {
   id: number;
   ok: boolean;
+  taken: BetAnswer;
   correct: BetAnswer;
   working: string;
 }
@@ -74,6 +77,7 @@ export function BetSizingView({
     setFeedback({
       id: Date.now(),
       ok,
+      taken,
       correct: correctBetAnswer(tc, activeProfile.spread),
       working: betSizingWorking(scenario, activeProfile),
     });
@@ -143,7 +147,13 @@ export function BetSizingView({
         aria-disabled={feedback ? 'true' : undefined}
       >
         {options.map((o) => (
-          <button key={String(o)} type="button" className="bet-sizing-btn" onClick={() => answer(o)}>
+          <button
+            key={String(o)}
+            type="button"
+            className={`bet-sizing-btn${feedback?.taken === o ? ' bet-sizing-btn--taken' : ''}`}
+            aria-pressed={feedback ? feedback.taken === o : undefined}
+            onClick={() => answer(o)}
+          >
             {betAnswerLabel(o)}
           </button>
         ))}
@@ -154,7 +164,7 @@ export function BetSizingView({
           <div className="tc-strip-wrap">
             <ResultStrip id={feedback.id} tone={feedback.ok ? 'ok' : 'miss'}>
               <div className="bet-verdict">
-                {feedback.ok ? 'Correct' : `Wrong — ${betAnswerLabel(feedback.correct)}`}
+                {betVerdictText(feedback.taken, feedback.correct, feedback.ok)}
               </div>
               <div className="bet-working">{feedback.working}</div>
               {activeProfile.coverBets && (

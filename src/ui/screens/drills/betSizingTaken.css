@@ -1,0 +1,12 @@
+/* B2 #19: after an answer the grid dims, but the button you tapped stays
+   readable and outlined so you can see what you pressed. */
+.bet-sizing-answers.bet-sizing-answers--done {
+  opacity: 1;
+}
+.bet-sizing-answers--done .bet-sizing-btn {
+  opacity: 0.45;
+}
+.bet-sizing-answers--done .bet-sizing-btn--taken {
+  opacity: 1;
+  border: 2px solid currentColor;
+}
