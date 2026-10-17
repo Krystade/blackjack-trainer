@@ -39,7 +39,7 @@ export interface QuizItem {
 /**
  * Helper: construct cards for a pair10 (two ten-value cards).
  */
-function makePair10Cards(): [Card, Card] {
+export function makePair10Cards(): [Card, Card] {
   return [
     { rank: '10', suit: 's' },
     { rank: 'J', suit: 's' },

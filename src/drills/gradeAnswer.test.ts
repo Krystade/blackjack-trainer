@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { drawFlashcard, generateAllCells } from './flashcards';
 import type { Flashcard } from './flashcards';
 import { drawQuizItem, quizCtxFor } from './deviationQuiz';
@@ -9,7 +9,10 @@ import {
   gradeFlashcardAnswer,
   gradeQuizAnswer,
   gradeMasteryAnswer,
+  gradeIndexTestAnswer,
   loadFlashSr,
+  loadQuizSr,
+  FLASH_SR_KEY,
   SELF_REPORT_HAD,
   SELF_REPORT_MISSED,
   TIMEOUT_ANSWER,
@@ -32,6 +35,8 @@ import { correctPlay } from '../engine/strategy';
 import { drillLegalActions } from './legalActions';
 import type { Card, Rank } from '../engine/cards';
 import type { Action } from '../engine/deviations';
+import { mulberry32 } from '../engine/cards';
+import { indexTestSet, indexTestItemFor } from './indexTest';
 
 /**
  * R4 anti-drift guard (docs/BACKLOG.md): the mixed-session view and the two
@@ -965,5 +970,30 @@ describe('Wave A review: a With-count card on a chart that already plays the ind
   it('6D keeps the index', () => {
     const six = { ...TWO_D, decks: 6 as const };
     expect(buildFlashcardEvent(nineVTwo(2), 'double', six, 100).event.deviationId).toBe('9v2');
+  });
+});
+
+describe('gradeIndexTestAnswer', () => {
+  it('reviews the index in the quiz deck and tallies perIndex, not a chart cell', () => {
+    // The SR decks live in window.localStorage, not the persist layer
+    // freshStorage() swaps, so node needs a window for this assertion to bite.
+    const ls = new Map<string, string>();
+    vi.stubGlobal('window', { localStorage: { getItem: (k: string) => ls.get(k) ?? null, setItem: (k: string, v: string) => void ls.set(k, v) } });
+    try {
+      const rules = { ...DEFAULT_RULES };
+      const dev = indexTestSet(rules).find((d) => d.id === '16v10')!;
+      const item = indexTestItemFor(dev, rules, mulberry32(4));
+      const r = gradeIndexTestAnswer(item, 0, {}, NOW);
+      expect(r.correct).toBe(true);
+      expect(r.nextDeck['16v10']?.reviews).toBe(1);
+      expect(r.nextDeck['16v10']?.paceMs).toBeUndefined();
+      expect(loadQuizSr()['16v10']?.reviews).toBe(1);
+      const stats = loadStats();
+      expect(stats.perIndex['16v10']).toEqual({ right: 1, wrong: 0 });
+      expect(Object.keys(stats.cellStats ?? {})).toEqual([]);
+      expect(ls.has(FLASH_SR_KEY)).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

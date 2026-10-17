@@ -26,6 +26,8 @@ import type { Flashcard } from './flashcards';
 import { flashCtx } from './flashcards';
 import type { QuizItem } from './deviationQuiz';
 import { quizCtxFor } from './deviationQuiz';
+import type { IndexTestItem } from './indexTest';
+import { buildIndexTestEvent } from './indexTest';
 import { withCountAdvice } from './withCount';
 import { reviewCard, isGapReview, SCREEN_CHANNEL } from './spacedRepetition';
 import { trackedElapsedMs } from './idleAnswer';
@@ -541,4 +543,28 @@ export function gradeQuizAnswer(
   const cellBefore = persistGrade(event, retention);
 
   return { event, nextDeck, cellBefore };
+}
+
+/**
+ * B3: grade an Index test answer end-to-end. The index is reviewed in the QUIZ
+ * deck (the same card the Deviation quiz schedules), a gap review writes its
+ * retention row, and the event is tallied per index. No `elapsedMs` reaches
+ * `reviewCard`: keying a signed number takes longer than tapping a play, so it
+ * would brake promotion (FLUENT_MS) and drag the shared card's `paceMs`, which
+ * the play quiz reads.
+ */
+export function gradeIndexTestAnswer(
+  item: IndexTestItem,
+  answer: number,
+  deck: SrDeck,
+  now: number,
+  channel: AnswerChannel = SCREEN_CHANNEL,
+): { event: GradedEvent; nextDeck: SrDeck; correct: boolean } {
+  const event: GradedEvent = { ...buildIndexTestEvent(item, answer), at: new Date(now).toISOString() };
+  const prev = deck[item.deviationId];
+  const retention = prev && isGapReview(prev, now) ? retentionRow(item.deviationId, prev, event.correct, now) : null;
+  const nextDeck = { ...deck, [item.deviationId]: reviewCard(prev, event.correct, now, { channel }) };
+  saveQuizSr(nextDeck);
+  persistGrade(event, retention);
+  return { event, nextDeck, correct: event.correct };
 }
