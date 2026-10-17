@@ -54,8 +54,13 @@ export function sessionsLossPer100(rows: readonly SessionRow[]): number | null {
   return lossPer100(units, hands);
 }
 
+/**
+ * The tags after a Stats session row's accuracy. C-R9: a provisional row (a
+ * shoe left without End -- B2, R1) says " · not ended".
+ */
 export function sessionTag(row: SessionRow): string | null {
-  return row.hotShoe ? 'Hot shoe' : null;
+  const tags = [row.hotShoe ? 'Hot shoe' : null, row.provisional ? 'not ended' : null].filter(Boolean);
+  return tags.length > 0 ? tags.join(' · ') : null;
 }
 
 /**

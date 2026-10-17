@@ -54,3 +54,11 @@ describe('C-R8: Stats play accuracy counts play decisions only', () => {
     expect(sessionsPlayAccuracy([])).toEqual({ correct: 0, plays: 0 });
   });
 });
+
+describe('C-R9: a provisional row is tagged not ended', () => {
+  it('tags only provisional rows', () => {
+    expect(sessionTag(row({ provisional: true }))).toBe('not ended');
+    expect(sessionTag(row({ provisional: true, hotShoe: true }))).toBe('Hot shoe · not ended');
+    expect(sessionTag(row())).toBeNull();
+  });
+});
