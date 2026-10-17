@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './ui/App.tsx';
 import { startUpdateWatch } from './updateCheck.ts';
-import { fieldTestRunIsLive } from './diag/fieldTestRun.ts';
+import { updateMustWait } from './ui/activityLive.ts';
 import { primeVoices } from './audio/speech.ts';
 import { dropRetiredKeys } from './store/persist.ts';
 import { registerOfflineWorker } from './offline/registerOffline.ts';
@@ -40,6 +40,8 @@ if (!new URLSearchParams(window.location.search).has('e2e')) {
     // visibility change, so answering a phone call mid-protocol was enough to
     // restart the app and drop the operator on Home. The update is not lost:
     // the next foreground event after the run goes quiet picks it up.
-    deferWhile: fieldTestRunIsLive,
+    // One shared flag covers the field test, the table and every drill
+    // (ui/activityLive.ts); it used to cover only the field test (F2).
+    deferWhile: () => updateMustWait(),
   });
 }

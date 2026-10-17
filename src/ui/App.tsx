@@ -28,6 +28,7 @@ import { invokeWheelCommand, type WheelCommand } from '../audio/wheelCommands';
 import { releaseAudioFocus } from '../audio/audioFocus';
 import { installAudioUnlock } from '../audio/unlock';
 import { installAudioContextKeepAlive } from '../audio/audioContext';
+import { useActivityLive } from './activityLive';
 
 declare global {
   interface Window {
@@ -152,6 +153,19 @@ function App() {
   useEffect(() => {
     startDiagnostics();
   }, []);
+
+  // AN UPDATE RELOAD WAITS WHILE A RUN IS OPEN (F2). The table holds a shoe and
+  // the drill screen holds a drill; reloading either from the visibility change
+  // a phone call causes landed the driver on a silent Home. Held per screen
+  // here, so it covers every drill view without each one opting in; a view can
+  // still hold it itself with useActivityLive. Being on the Drills picker also
+  // holds it, which costs only a short wait: the update applies on the next
+  // foreground event after leaving, and on every fresh launch (which opens on
+  // Home).
+  useActivityLive(
+    `screen:${screen}`,
+    screen === 'table' || screen === 'drills' || screen === 'fieldtest' || screen === 'testkit',
+  );
 
   // Which screen is up, for the one layout rule that is per-screen rather than
   // per-component: the field test gives the mute strip back (app.css).
