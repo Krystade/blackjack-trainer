@@ -92,6 +92,7 @@ function surrenderFirstLine(plays: readonly string[]): string {
 const INDEX_GROUPS: readonly { id: IndexEntry['group']; title: string }[] = [
   { id: 'illustrious', title: 'Illustrious 18' },
   { id: 'fab4', title: 'Fab 4 surrenders' },
+  { id: 'extra', title: 'BJA H17 extras' },
 ];
 
 interface ChartsProps {

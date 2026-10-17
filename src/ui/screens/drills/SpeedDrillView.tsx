@@ -105,7 +105,7 @@ function SpeedSession({
   const idRef = useRef(0);
 
   // A new mode or deck is a new session.
-  const sessionKey = `${mode}|${deck.source}|${deck.ids.join(',')}|${rules.ls}|${rules.s17}|${rules.surrenderIndices}|${rules.decks}`;
+  const sessionKey = `${mode}|${deck.source}|${deck.ids.join(',')}|${rules.ls}|${rules.s17}|${rules.surrenderIndices}|${rules.decks}|${rules.bjaExtras}`;
   const firstKey = useRef(sessionKey);
   useEffect(() => {
     if (firstKey.current === sessionKey) return;

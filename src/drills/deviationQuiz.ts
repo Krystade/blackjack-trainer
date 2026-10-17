@@ -46,6 +46,27 @@ function makePair10Cards(): [Card, Card] {
   ];
 }
 
+/**
+ * B9: a two-card soft hand of `total` -- an ace and the card that makes it.
+ * Soft 13..20 only (A,2 .. A,9); A,10 is blackjack and A,A is a pair.
+ */
+export function makeSoftHand(total: number): [Card, Card] {
+  if (!Number.isInteger(total) || total < 13 || total > 20) {
+    throw new Error(`makeSoftHand: no two-card soft ${total}`);
+  }
+  return [
+    { rank: 'A', suit: 's' },
+    { rank: String(total - 11) as Rank, suit: 'h' },
+  ];
+}
+
+/** The two cards an index is asked on: a ten pair, a soft hand, or a varied hard total. */
+function handFor(entry: Deviation, rng: () => number): [Card, Card] | null {
+  if (entry.kind === 'pair10') return makePair10Cards();
+  if (entry.kind === 'soft') return makeSoftHand(entry.total!);
+  return makeHardHand(entry.total!, rng);
+}
+
 /** ctx shared by every hard/pair10 quiz item AND every distractor built from
  * one -- surrender unavailable models the standard index-play situation
  * (see the deviationQuiz surrender-masking fix note below). */
@@ -66,7 +87,7 @@ const QUIZ_CTX_SURRENDER: PlayContext = { ...QUIZ_CTX, canSurrender: true };
 
 /** The ctx an entry must be asked under: surrender indices need the play to
  *  be available, every other kind needs it unavailable. */
-function ctxFor(entry: Deviation): PlayContext {
+export function entryCtx(entry: Deviation): PlayContext {
   return entry.kind === 'surrender' ? QUIZ_CTX_SURRENDER : QUIZ_CTX;
 }
 
@@ -87,11 +108,9 @@ export function redundantForChart(entry: Deviation, rules: StrategyRules): boole
   // "Surrender at TC >= 0" over a chart that surrenders is consistent at 0.
   const zeroBeforeIndex = entry.dir === 'gte' ? entry.threshold > 0 : entry.threshold < 0;
   if (!zeroBeforeIndex) return false;
-  let cards: Card[] | null;
-  if (entry.kind === 'pair10') cards = makePair10Cards();
-  else cards = makeHardHand(entry.total!, mulberry32(1));
+  const cards = handFor(entry, mulberry32(1));
   if (!cards || !entry.up) return false;
-  return basicPlay(cards, entry.up, ctxFor(entry), rules).action === entry.action;
+  return basicPlay(cards, entry.up, entryCtx(entry), rules).action === entry.action;
 }
 
 /** The indexes the quiz asks under these rules (see redundantForChart). */
@@ -102,7 +121,7 @@ export function quizIndexSet(rules: StrategyRules): Deviation[] {
 /**
  * The ctx an ITEM was drawn under, for everyone downstream of the draw.
  *
- * The grader and the action bar both need the same answer as `ctxFor`, and
+ * The grader and the action bar both need the same answer as `entryCtx`, and
  * both used to hardcode their own: the grader's was `canSurrender: false`
  * for every item, and the action bar's came from `rules.ls`. One derivation,
  * from the item.
@@ -113,7 +132,7 @@ export function quizIndexSet(rules: StrategyRules): Deviation[] {
 export function quizCtxFor(item: QuizItem, rules: StrategyRules): PlayContext {
   if (!item.deviationId) return QUIZ_CTX;
   const entry = indexSetFor(rules).find((d) => d.id === item.deviationId);
-  return entry ? ctxFor(entry) : QUIZ_CTX;
+  return entry ? entryCtx(entry) : QUIZ_CTX;
 }
 
 /**
@@ -336,6 +355,33 @@ function buildClosePair10Candidate(entry: Deviation, rng: () => number, rules: S
   return null;
 }
 
+/**
+ * B9: CLOSE distractor for a 'soft' kind entry (the BJA H17 extras). The same
+ * three perturbations as the hard builder -- count on the wrong side, an
+ * adjacent up-card, an adjacent soft total (kept to two-card soft 13..20) --
+ * every candidate engine-verified with isBasicOnly.
+ */
+function buildCloseSoftCandidate(entry: Deviation, rng: () => number, rules: StrategyRules): Candidate | null {
+  const total = entry.total!;
+  const attempts: Array<() => Candidate | null> = [
+    () => ({ cards: makeSoftHand(total), up: entry.up!, tc: tcWrongSide(entry, rng) }),
+    ...adjacentUps(entry.up!).map(
+      (up) => () => ({ cards: makeSoftHand(total), up, tc: tcNearThreshold(entry.threshold, rng) }),
+    ),
+    ...[total - 1, total + 1]
+      .filter((t) => t >= 13 && t <= 20)
+      .map((t) => () => ({ cards: makeSoftHand(t), up: entry.up!, tc: tcNearThreshold(entry.threshold, rng) })),
+  ];
+
+  for (const attempt of shuffled(attempts, rng)) {
+    const candidate = attempt();
+    if (candidate && isBasicOnly(candidate.cards, candidate.up, candidate.tc, rules).ok) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 const RANDOM_HARD_TOTALS: number[] = Array.from({ length: 15 }, (_, i) => i + 5); // 5..19
 const RANDOM_TC_MIN = -6;
 const RANDOM_TC_MAX = 6;
@@ -380,7 +426,8 @@ function fallbackCandidate(
   rng: () => number,
   rules: StrategyRules,
 ): Candidate | null {
-  const cards = entry.kind === 'pair10' ? makePair10Cards() : makeHardHand(entry.total!, rng)!;
+  const cards = handFor(entry, rng);
+  if (!cards) return null;
   const up = entry.up!;
   const first = tcWrongSide(entry, rng);
   const tries = [first, ...[1, 2, 3, 4, 5, 6].flatMap((d) => [first - d, first + d])];
@@ -466,7 +513,9 @@ function buildDistractorItem(
     candidate =
       baseEntry.kind === 'pair10'
         ? buildClosePair10Candidate(baseEntry, rng, rules)
-        : buildCloseHardCandidate(baseEntry, rng, rules);
+        : baseEntry.kind === 'soft'
+          ? buildCloseSoftCandidate(baseEntry, rng, rules)
+          : buildCloseHardCandidate(baseEntry, rng, rules);
   }
 
   /*
@@ -597,15 +646,15 @@ export function drawQuizItem(
     // Insurance: no cards, correct is take/decline based on tc
     cards = null;
     correct = insuranceCorrect(tc, rules) ? 'take-insurance' : 'decline-insurance';
-  } else if (entry.kind === 'pair10') {
-    // pair10: two ten-value cards
-    cards = makePair10Cards();
+  } else if (entry.kind === 'pair10' || entry.kind === 'soft') {
+    // pair10: two ten-value cards; soft (B9): the ace and its partner card.
+    cards = handFor(entry, rng)!;
     // canSurrender: false models the standard index-play situation (surrender
     // unavailable, e.g. a multi-card or post-split hand) — see deviationQuiz
     // surrender-masking fix: with surrender on, basic surrender beats the
     // 16v10/15v10/16v9 deviations at every TC, making those thresholds
     // unlearnable and contradicting the displayed index label.
-    const advice = correctPlay(cards, entry.up!, tc, ctxFor(entry), rules);
+    const advice = correctPlay(cards, entry.up!, tc, entryCtx(entry), rules);
     correct = advice.action;
   } else {
     // hard: construct a truly hard (non-pair, non-ace) hand with the specified total
@@ -617,10 +666,10 @@ export function drawQuizItem(
       throw new Error(`Cannot construct hard total ${entry.total}`);
     }
     cards = totalCards;
-    // canSurrender per ctxFor: false for a hard index (so basic surrender
+    // canSurrender per entryCtx: false for a hard index (so basic surrender
     // cannot mask it), true for a surrender index (so the play it teaches is
     // reachable at all).
-    const advice = correctPlay(cards, entry.up!, tc, ctxFor(entry), rules);
+    const advice = correctPlay(cards, entry.up!, tc, entryCtx(entry), rules);
     // Note: no special-casing for 11vA. Under h17 it's inactive, so the engine's
     // basic chart (HARD[11] = Dh) already yields 'double' at every tc; under
     // s17 it's active (vs A the S17 basic chart is H) so correctPlay(rules)

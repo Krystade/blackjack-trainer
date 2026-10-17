@@ -137,3 +137,18 @@ describe('emptyDeckMessage / settingsForCustomStart', () => {
     expect(s.drill.flashCategory).toBe('all');
   });
 });
+
+describe('BJA extras in the index deck', async () => {
+  const { cellIdForDeviation, indexCellIds } = await import('./deckSource');
+  const { BJA_H17_EXTRAS } = await import('../engine/deviations');
+  const dev = (id: string) => BJA_H17_EXTRAS.find((d) => d.id === id)!;
+  it('soft, ten-pair and hard extras map to their cells', () => {
+    expect(cellIdForDeviation(dev('A8v4'))).toBe('soft-19-v-4');
+    expect(cellIdForDeviation(dev('TTv4'))).toBe('pair-10-v-4');
+    expect(cellIdForDeviation(dev('8v6'))).toBe('hard-8-v-6');
+  });
+  it('the soft cells join the deck only with the option on', () => {
+    expect(indexCellIds({ decks: 6, s17: false, bjaExtras: true }).has('soft-19-v-6')).toBe(true);
+    expect(indexCellIds({ decks: 6, s17: false }).has('soft-19-v-6')).toBe(false);
+  });
+});

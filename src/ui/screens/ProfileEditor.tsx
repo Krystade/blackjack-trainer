@@ -519,6 +519,26 @@ function ProfileEditForm({
               <>Needs late surrender, which is off in this profile&rsquo;s rules.</>
             )}
           </p>
+          {/* B9: the BJA H17 extras exist only for an H17 game, so the toggle is
+              gated on the dealer hitting soft 17 the way the Fab 4 is gated on
+              late surrender. */}
+          <Toggle
+            label="BJA H17 extra indices"
+            checked={draft.bjaExtras === true && !draft.rules.s17}
+            disabled={draft.rules.s17}
+            onChange={(v) => update({ bjaExtras: v })}
+          />
+          <p className="stats-detail">
+            {draft.rules.s17 ? (
+              <>Only for games where the dealer hits soft 17, which is off in this profile&rsquo;s rules.</>
+            ) : (
+              <>
+                Eight more count plays from the Blackjack Apprenticeship H17 chart: doubling A,8 v 4 and 5,
+                A,6 v 2 and 8 v 6, splitting 10,10 v 4 at +6, standing A,8 v 6 below zero, and standing 15 and
+                16 v A when surrender isn&rsquo;t on offer. Off by default.
+              </>
+            )}
+          </p>
           <Stepper
             label="Starting bankroll"
             value={draft.bankrollStart}

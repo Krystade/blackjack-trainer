@@ -21,9 +21,12 @@ export type IndexFamily = 'hit' | 'stand' | 'double' | 'split' | 'surrender' | '
 
 export interface IndexEntry {
   id: DeviationId;
-  /** The Fab 4 are the surrender indexes; everything else is the Illustrious 18. */
-  group: 'illustrious' | 'fab4';
-  /** '16', '10,10', or 'Any hand' for insurance. */
+  /**
+   * The BJA H17 extras (B9) are their own group; of the rest, the Fab 4 are
+   * the surrender indexes and everything else is the Illustrious 18.
+   */
+  group: 'illustrious' | 'fab4' | 'extra';
+  /** '16', '10,10', 'A,8' for a soft hand, or 'Any hand' for insurance. */
   hand: string;
   /** A chart column rank. */
   dealer: Rank;
@@ -40,6 +43,8 @@ export interface IndexEntry {
    * hard 20, which is where its split index belongs.
    */
   hardTotal: number | null;
+  /** The SOFT-chart total a soft index sits on (A,8 is 19), else null. */
+  softTotal: number | null;
 }
 
 export interface IndexList {
@@ -71,12 +76,17 @@ function toEntry(dev: Deviation): IndexEntry {
   const family: IndexFamily = dev.action === 'take-insurance' ? 'insurance' : dev.action;
   let hand: string;
   let hardTotal: number | null;
+  let softTotal: number | null = null;
   if (dev.kind === 'insurance') {
     hand = 'Any hand';
     hardTotal = null;
   } else if (dev.kind === 'pair10') {
     hand = '10,10';
     hardTotal = 20;
+  } else if (dev.kind === 'soft') {
+    hand = `A,${dev.total! - 11}`;
+    hardTotal = null;
+    softTotal = dev.total!;
   } else {
     hand = String(dev.total);
     hardTotal = dev.total ?? null;
@@ -87,7 +97,7 @@ function toEntry(dev: Deviation): IndexEntry {
   const play = PLAY_TEXT[dev.action];
   return {
     id: dev.id,
-    group: dev.kind === 'surrender' ? 'fab4' : 'illustrious',
+    group: dev.extra ? 'extra' : dev.kind === 'surrender' ? 'fab4' : 'illustrious',
     hand,
     dealer,
     index,
@@ -95,12 +105,14 @@ function toEntry(dev: Deviation): IndexEntry {
     family,
     text: `${hand} v ${dealer} · ${index} · ${play}`,
     hardTotal,
+    softTotal,
   };
 }
 
 /**
  * Every index graded under `rules`, in the set's own order (Illustrious 18 by
- * value, then the Fab 4 when the profile plays them). Pass
+ * value, then the Fab 4 when the profile plays them, then the BJA H17 extras
+ * when it has those on). Pass
  * strategyRulesFor(profile), not the bare RuleSet -- the surrender indexes are
  * a profile choice, and only that call knows it (and drops them when the
  * table has no surrender).
@@ -139,8 +151,9 @@ export function hardCellAction(entry: IndexEntry, hardRows: readonly ChartRow[])
 }
 
 /**
- * The indexes drawn on one chart cell. Only HARD cells carry any: every index
- * is a hard total, a ten-pair (hard 20) or insurance (no cell). A collapsed
+ * The indexes drawn on one chart cell. HARD cells carry the hard totals and
+ * the ten-pairs (hard 20); SOFT cells carry the BJA H17 soft extras (B9);
+ * PAIRS cells and insurance carry none. A collapsed
  * row ('18+') matches on any total folded into it, the same way a highlight
  * does. One cell can hold two (16 v 9: stand at +4, surrender at 0).
  */
@@ -150,6 +163,11 @@ export function indexesAtCell(
   row: ChartRow,
   dealerUp: Rank,
 ): IndexEntry[] {
+  if (section === 'SOFT') {
+    return entries.filter(
+      (e) => e.softTotal !== null && e.dealer === dealerUp && row.keys.includes(e.softTotal),
+    );
+  }
   if (section !== 'HARD') return [];
   return entries.filter(
     (e) => e.hardTotal !== null && e.dealer === dealerUp && row.keys.includes(e.hardTotal),
