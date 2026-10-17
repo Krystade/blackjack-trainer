@@ -1,0 +1,16 @@
+/* B7: Flashcards' progress-to-goal line and its goal-met confirmation. */
+.flash-progress,
+.flash-goal-met {
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 100%;
+}
+.flash-progress {
+  opacity: 0.8;
+}
+.flash-goal-met {
+  font-weight: 600;
+}

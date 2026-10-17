@@ -93,6 +93,7 @@ import { BetSitLeaveView } from './drills/BetSitLeaveView';
 import { DeckEstimationView } from './drills/DeckEstimationView';
 import { MasteryChallengeView } from './drills/MasteryChallengeView';
 import { HandDeckControls } from './drills/HandDeckControls';
+import { scopesFrom } from '../../drills/handScope';
 import { HandDeckGate } from './drills/HandDeckGate';
 import { handDeckFor } from './drills/handDeckFor';
 import { settingsForCustomStart } from '../../drills/deckSource';
@@ -107,6 +108,8 @@ import { ChartIntro } from './drills/ChartIntro';
 import { chartIntroDue, loadChartIntroSeen, saveChartIntroSeen } from '../../drills/chartIntro';
 import './drills/drillTiming.css';
 import './drills/drillActionBar.css';
+import './drills/flashProgress.css';
+import { flashProgressLine, goalMetLine, goalsCrossed } from './drills/flashProgress';
 
 interface DrillsProps {
   settings: Settings;
@@ -294,6 +297,14 @@ function FlashcardsView({
   // each drill -- it used to reset on every navigation, which in a car reads
   // as the app having gone silent for no reason.
   const [eyesFree, setEyesFree] = useEyesFreeToggle('flashcards');
+  // B7: progress to the basic-strategy goal. `progressStats` is the snapshot
+  // taken at the previous answer (or at mount); a goal crossed between two
+  // snapshots shows a confirmation until the next answer.
+  const [progressStats, setProgressStats] = useState(() => loadStats());
+  const [goalMet, setGoalMet] = useState<string | null>(null);
+  // A ref as well: a grade can arrive from a timer or voice callback holding
+  // an older render's closure, and a stale `before` would re-announce a goal.
+  const progressStatsRef = useRef(progressStats);
   // B2: a card from the deck `drill` describes (scope and deck source), or
   // null when that deck is empty -- HandDeckGate then replaces this view.
   const drawFrom = (drill: Settings['drill'], previous: string | null): Flashcard | null => {
@@ -615,6 +626,12 @@ function FlashcardsView({
    * than one from several hands back (review fix a).
    */
   const freezeResult = (event: GradedEvent, prevSr: SrCard | undefined, cellBefore: CellTally | null) => {
+    // B7: the grade has already persisted, so loadStats() includes it.
+    const afterStats = loadStats();
+    const crossed = goalsCrossed(progressStatsRef.current, afterStats, scopesFrom(settings.drill));
+    setGoalMet(crossed.length > 0 ? goalMetLine(crossed, afterStats) : null);
+    progressStatsRef.current = afterStats;
+    setProgressStats(afterStats);
     const indexReview = indexReviewRef.current;
     // Wave A review: an index card was reviewed in the QUIZ deck (F4b), so its
     // "Next review" is the index's -- not the untouched flash cell's, which
@@ -1026,6 +1043,14 @@ function FlashcardsView({
 
       <div className="drill-inline-controls" ref={controlsRef}>
         <HandDeckControls settings={settings} onChange={changeScopes} />
+        <div className="flash-progress" data-testid="flash-progress">
+          {flashProgressLine(progressStats, scopesFrom(settings.drill))}
+        </div>
+        {goalMet && (
+          <div className="flash-goal-met" role="status" data-testid="flash-goal-met">
+            {goalMet}
+          </div>
+        )}
 
         <DrillModeControls
           settings={settings}
