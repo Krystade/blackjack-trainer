@@ -78,7 +78,8 @@ test('speed: the mode is saved, and Deviation shows a true count', async ({ page
   await expect(page.getByTestId('speed-tc')).toHaveCount(0);
   await page.getByTestId('speed-mode-deviation').click();
   await expect(page.getByTestId('speed-question')).toContainText('Deviation here?');
-  await expect(page.getByTestId('speed-tc')).toHaveText(/^TC [+-]\d+$/);
+  // Wave A: a negative TC shows a real minus sign (U+2212), never a hyphen.
+  await expect(page.getByTestId('speed-tc')).toHaveText(/^TC [+−]\d+$/);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.settings.v1') ?? '{}'));
   expect(saved.drill.speedMode).toBe('deviation');
 });
