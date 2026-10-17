@@ -314,7 +314,9 @@ describe('evCost (V3-8: what the mistake cost)', () => {
    * whatever count the learner was actually looking at.
    */
   it('refuses to price a phantom deviation for the same reason', () => {
-    const card = flash([H('10'), H('2')], '4', 'hard-12-v-4', 'stand');
+    // Wave A (s01): on a With-count card (tc shown). A plain card with no
+    // count cannot phantom-deviate; see the s01 test below.
+    const card = { ...flash([H('10'), H('2')], '4', 'hard-12-v-4', 'stand'), tc: 0 };
     const { event } = buildFlashcardEvent(card, 'hit', DEFAULT_RULES, 100);
 
     expect(event.classification).toBe('phantom-deviation');
@@ -924,5 +926,16 @@ describe('#53 a With-count flashcard grades at its TC', () => {
     const ev = buildFlashcardEvent(noCount, 'stand', NO_LS, 100);
     expect(ev.event.tc).toBe(0);
     expect(ev.event.deviationId).toBeUndefined();
+  });
+});
+
+describe('Wave A (s01): plain flashcards never say phantom deviation', () => {
+  it('7,5 v 3 Stand with no count is a basic error, priced; with a count it stays phantom', () => {
+    const plain = { cards: [{ rank: '7', suit: 's' }, { rank: '5', suit: 's' }], up: '3', correct: 'hit', cellId: 'hard-12-v-3' } as unknown as Flashcard;
+    const e = buildFlashcardEvent(plain, 'stand', DEFAULT_RULES, 1000).event;
+    expect(e.classification).toBe('basic-error');
+    expect(e.evCost).toBeTypeOf('number');
+    const counted = { ...plain, tc: 0 } as Flashcard;
+    expect(buildFlashcardEvent(counted, 'stand', DEFAULT_RULES, 1000).event.classification).toBe('phantom-deviation');
   });
 });

@@ -201,6 +201,23 @@ function elapsedField(elapsedMs: number | undefined, taken: string): { elapsedMs
 }
 
 /**
+ * Wave A (s01): a card shown with no count cannot be a phantom DEVIATION.
+ * Standing 7,5 v 3 on a plain flashcard is a basic-strategy error; calling it
+ * "Phantom deviation" told a beginner who has never heard of indexes that they
+ * had deviated. The With-count cards, Mixed's quiz half, Play and the quiz keep
+ * the class, because there a count was on the table.
+ */
+function noCountShown(
+  verdict: { classification: GradedEvent['classification']; correct: boolean },
+  card: Pick<Flashcard, 'tc'>,
+): { classification: GradedEvent['classification']; correct: boolean } {
+  if (card.tc === undefined && verdict.classification === 'phantom-deviation') {
+    return { ...verdict, classification: 'basic-error' };
+  }
+  return verdict;
+}
+
+/**
  * Build the GradedEvent + correct action for a flashcard answer. Pure: no
  * weight/stats writes, no audio. `elapsedMs` (R1) is captured by the caller
  * via performance.now() and passed in, so this stays deterministic and the
@@ -230,7 +247,7 @@ export function buildFlashcardEvent(
         ? ({ classification: 'correct', correct: true } as const)
         : taken === SELF_REPORT_MISSED
           ? ({ classification: 'self-report', correct: false } as const)
-          : classifyAction(taken, withCount, basicOnly, card.cards, card.up, tc, rules);
+          : noCountShown(classifyAction(taken, withCount, basicOnly, card.cards, card.up, tc, rules), card);
 
   const event: GradedEvent = {
     kind: 'action',
