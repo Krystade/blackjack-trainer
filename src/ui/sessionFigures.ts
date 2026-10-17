@@ -30,6 +30,5 @@ export function sessionsLossPer100(rows: readonly SessionRow[]): number | null {
 }
 
 export function sessionTag(row: SessionRow): string | null {
-  // Task 8 adds `hotShoe` to the row type; read it loosely until then.
-  return (row as { hotShoe?: true }).hotShoe ? 'Hot shoe' : null;
+  return row.hotShoe ? 'Hot shoe' : null;
 }

@@ -598,6 +598,9 @@ export interface Stats {
     // the per-100 figure. Absent on older rows, which the per-100 figure skips.
     hands?: number;
     mistakeUnits?: number;
+    // Wave B, B8: present (true) only for a Hot shoe session, whose bankroll
+    // was not carried. Absent on every other row.
+    hotShoe?: true;
   }[];
   // R1 (docs/BACKLOG.md, decision-latency telemetry): one entry per GRADED
   // EVENT that actually captured a decision time (flashcards + deviation

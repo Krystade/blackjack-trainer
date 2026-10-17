@@ -519,6 +519,18 @@ function ProfileEditForm({
               <>Needs late surrender, which is off in this profile&rsquo;s rules.</>
             )}
           </p>
+          {/* Wave B, B8: biased shoes for count practice; such sessions are
+              labelled and never carry their bankroll. */}
+          <Toggle
+            label="Hot shoe (practice)"
+            checked={draft.hotShoe === true}
+            onChange={(v) => update({ hotShoe: v })}
+          />
+          <p className="stats-detail">
+            Deals shoes that run to high counts on purpose: true counts of +2 to +5 come up almost
+            twice as often, so index plays and big bets get practice. These sessions are labelled
+            Hot shoe and don&rsquo;t change your bankroll.
+          </p>
           <Stepper
             label="Starting bankroll"
             value={draft.bankrollStart}

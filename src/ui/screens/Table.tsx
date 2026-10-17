@@ -259,6 +259,9 @@ function ReportScreen({
   return (
     <div className="report-screen">
       <h1>Session report</h1>
+      {report.hotShoe && (
+        <p className="report-hot-shoe">Hot shoe: the counts ran high on purpose, so this session&rsquo;s bankroll isn&rsquo;t kept.</p>
+      )}
       {loss !== null && (
         <p className="report-headline" data-units-total={report.mistakeUnits} data-hands={report.hands}>
           {formatLossPer100(loss)}
@@ -268,7 +271,8 @@ function ReportScreen({
         <p className="report-unpriced">Plus {unpricedPlays} index or insurance misses with no price.</p>
       )}
       <p className="report-summary">
-        {report.correct} / {report.graded} correct &middot; bankroll {formatSigned(report.bankrollDelta)}
+        {report.correct} / {report.graded} correct
+        {!report.hotShoe && <> &middot; bankroll {formatSigned(report.bankrollDelta)}</>}
       </p>
       {assisted && <p className="report-assisted">{assisted}</p>}
       {/* RT#11 (docs/BACKLOG.md): perfect conformity to the ramp IS the tell,
@@ -397,6 +401,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const {
     game,
     losingShoe,
+    hotShoe,
     deal,
     act,
     insure,
@@ -892,6 +897,11 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         </button>
       </div>
       {losingShoe && <LosingShoeBadge />}
+      {hotShoe && (
+        <div className="hot-shoe-badge" data-testid="hot-shoe-badge">
+          Hot shoe
+        </div>
+      )}
 
       {voiceOn && (
         <VoiceStatusBar

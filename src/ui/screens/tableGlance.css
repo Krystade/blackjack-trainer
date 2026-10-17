@@ -55,3 +55,26 @@
    the taken play pass AA. Other themes pass as is. */
 :root:not([data-theme]) .mistake-card-table,
 :root[data-theme='midnight-felt'] .mistake-card-table { --bad: #f28b82; }
+
+/* Wave B, B8: the Hot shoe note on Play. Same metrics as .losing-shoe-badge,
+   in the accent colour: it is a practice mode, not a warning. */
+.hot-shoe-badge {
+  align-self: center;
+  margin: 4px auto 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid currentColor;
+  width: fit-content;
+}
+
+/* Wave B, B8: the report's Hot shoe note, a quiet line under the title. */
+.report-hot-shoe {
+  color: var(--ink-dim, inherit);
+  font-size: 0.85rem;
+  margin-top: -0.25rem;
+}

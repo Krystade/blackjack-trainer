@@ -7,6 +7,7 @@ import type { Profile, Settings } from '../store/types';
 import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
 import { resumeBankroll, storeBankrollNow } from './playBankroll';
+import { hotShoeActive } from '../engine/shoeBias';
 import { playConfigFor } from './playConfig';
 import { datedSessionEvents } from './sessionEvents';
 import { makePlayGame, realignLosingShoe, type PlayGame } from './losingShoe';
@@ -104,6 +105,8 @@ export interface SessionReport {
   hands: number;
   /** Wave B, B6: units lost to priced mistakes (sum of evCost). */
   mistakeUnits: number;
+  /** Wave B, B8: dealt from a Hot shoe, so the bankroll was not kept. */
+  hotShoe: boolean;
 }
 
 /**
@@ -140,7 +143,7 @@ function readSeed(): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-function buildReport(events: GradedEvent[], bankrollDelta: number, peeks: number, hands: number): SessionReport {
+function buildReport(events: GradedEvent[], bankrollDelta: number, peeks: number, hands: number): Omit<SessionReport, 'hotShoe'> {
   // RT#11: read the bets back off the graded events. `taken`/`expected` are
   // strings on the event, and a bet event always carries both as numbers, so
   // an unparseable pair means something upstream changed shape -- dropped
@@ -340,9 +343,12 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
    */
   const storedBankrollRef = useRef(game.bankroll);
   const profileId = profile.id;
+  // Wave B, B8: a Hot shoe session's bankroll is never written back.
+  const hotShoe = hotShoeActive(game.cfg, game.isRigged);
   useEffect(() => {
     if (game.phase === 'player' || game.phase === 'insurance') return;
     commitEvents();
+    if (hotShoe) return;
     if (game.bankroll === storedBankrollRef.current) return;
     storedBankrollRef.current = game.bankroll;
     storeBankrollNow(profileId, game.bankroll);
@@ -687,7 +693,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       // From where THIS session started (#42), not the profile's original stake.
       const bankrollDelta = game.bankroll - game.cfg.bankrollStart;
       storedBankrollRef.current = game.bankroll;
-      storeBankrollNow(profileId, game.bankroll);
+      if (!hotShoe) storeBankrollNow(profileId, game.bankroll);
 
       const stats = loadStats();
       saveStats({
@@ -708,20 +714,22 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
             // Wave B, B6: per-100 inputs.
             hands: game.handsPlayed,
             mistakeUnits: Math.round(mistakeUnits(events) * 10000) / 10000,
+            ...(hotShoe ? { hotShoe: true as const } : {}),
           },
         ],
       });
 
-      const rep = buildReport(events, bankrollDelta, peeks, game.handsPlayed);
+      const rep = { ...buildReport(events, bankrollDelta, peeks, game.handsPlayed), hotShoe };
       setReport(rep);
       return rep;
     },
-    [game, profile.id, profile.name, profileId, commitEvents],
+    [game, profile.id, profile.name, profileId, commitEvents, hotShoe],
   );
 
   return {
     game,
     losingShoe,
+    hotShoe,
     deal,
     sitOut,
     act,
