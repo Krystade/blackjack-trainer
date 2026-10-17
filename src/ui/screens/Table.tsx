@@ -16,7 +16,7 @@ import { isBust } from '../../engine/hand';
 import { useGame } from '../useGame';
 import type { CountCheckVerdict, SessionReport } from '../useGame';
 import { ResultStrip } from '../components/ResultStrip';
-import { signedTc } from '../../drills/tcFeedback';
+import { countVerdictPart } from '../countVerdictPart';
 import { reportSections, countMissText, drillCellIds } from '../reportSections';
 import { launchCustomCells } from '../drillLaunch';
 import type { MistakeRow } from '../reportSections';
@@ -197,10 +197,7 @@ function countVerdictOk(v: CountCheckVerdict): boolean {
  * shoe held: "Count ✓ +3", or "Count ✗ you said +1, it was −5".
  */
 function countVerdictText(v: CountCheckVerdict): string {
-  const part = (label: string, guess: number | null | undefined, ok: boolean | undefined, actual: number) =>
-    ok
-      ? `${label} ✓ ${signedTc(actual)}`
-      : `${label} ✗ you said ${guess == null ? '—' : signedTc(guess)}, it was ${signedTc(actual)}`;
+  const part = countVerdictPart; // B2 #21: repeats the typed figure
   const parts: string[] = [];
   if (v.rcCorrect !== undefined) parts.push(part('Count', v.rcGuess, v.rcCorrect, v.actualRc));
   if (v.tcCorrect !== undefined && v.actualTc !== undefined) {
