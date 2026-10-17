@@ -1557,11 +1557,8 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
         dataTab={SECTION_TAB['True count drill']}
         defaultOpen={false}
       >
-          <p className="stats-detail">
-            {trueCountSummary.attempts === 0
-              ? 'No true count drill attempts yet.'
-              : `${trueCountSummary.correct}/${trueCountSummary.attempts} correct (${pct(trueCountSummary.correct, trueCountSummary.attempts)})`}
-          </p>
+          {/* The headline accuracy is ResultTrend's, below the breakdown. */}
+          {trueCountSummary.attempts === 0 && <p className="stats-detail">No true count drill attempts yet.</p>}
           {trueCountSummary.attempts > 0 && (
             <ul className="mistake-list">
               <li className="mistake-row">
