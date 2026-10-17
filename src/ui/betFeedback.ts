@@ -5,17 +5,17 @@
  * the moment it was broken. A short strip line and a brief spoken line; never
  * a modal, because the round it belongs to is already dealt.
  *
- * The spoken line goes to live speech (no clip covers it), like the
- * settlement lines that already follow every round.
+ * C-R5: the spoken line is recorded (Kokoro clips, see narrateRampBets) and
+ * queued through speak(), so it no longer talks over the deal narration.
  */
 import type { GradedEvent } from '../engine/grade';
 import { signed } from '../drills/signed';
-import { narrateTc } from '../audio/narrate';
+import { narrateRampBets, narrateRampPlays, narrateRampSitsOut } from '../audio/narrate';
 
 export interface BetMiss {
   /** "Bet 8u at TC +3 — you bet 1u", "Sit out at TC −1 — you bet 2u". */
   text: string;
-  /** "Your ramp bets 8 at true count plus three." */
+  /** "Your ramp bets eight. True count plus three." */
   spoken: string;
 }
 
@@ -27,18 +27,18 @@ export function betMissFeedback(events: readonly GradedEvent[]): BetMiss | null 
   const bets = events.filter((e) => e.kind === 'bet');
   if (wong) {
     if (wong.taken === 'sit-out') {
-      return { text: `Play at ${tcText(wong.tc)} — you sat out`, spoken: `Your ramp plays at true count ${narrateTc(wong.tc)}.` };
+      return { text: `Play at ${tcText(wong.tc)} — you sat out`, spoken: narrateRampPlays(wong.tc) };
     }
     const taken = bets[0]?.taken;
     return {
       text: `Sit out at ${tcText(wong.tc)}${taken !== undefined ? ` — you bet ${taken}u` : ' — you played'}`,
-      spoken: `Your ramp sits out at true count ${narrateTc(wong.tc)}.`,
+      spoken: narrateRampSitsOut(wong.tc),
     };
   }
   const bet = bets.find((e) => !e.correct);
   if (!bet) return null;
   return {
     text: `Bet ${bet.expected}u at ${tcText(bet.tc)} — you bet ${bet.taken}u`,
-    spoken: `Your ramp bets ${bet.expected} at true count ${narrateTc(bet.tc)}.`,
+    spoken: narrateRampBets(Number(bet.expected), bet.tc),
   };
 }

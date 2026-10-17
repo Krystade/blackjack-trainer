@@ -29,6 +29,7 @@ import { drawFlashcard } from '../src/drills/flashcards';
 import { drawQuizItem } from '../src/drills/deviationQuiz';
 import { reachableReasons, drillSentences } from './spokenPhrases';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
+import { betMissFeedback } from '../src/ui/betFeedback';
 import {
   narrateNotATag,
   narrateReadback,
@@ -333,6 +334,26 @@ describe('shipped clip coverage', () => {
         ...[-20, -5, 0, 12, 20].map((n) => `Correct. ${narrateCountAnswer(n)} Say yes to go again.`),
       ];
       expect(texts.filter((t) => segmentForClips(t, manifest) === null)).toEqual([]);
+    });
+
+    /**
+     * C-R5: the bet-miss lines (B2 #13) were live TTS, which talked over the
+     * deal narration's clip chain. Every one the ramp can produce -- any
+     * count, and any bet the spread editor allows a sensible ramp to name.
+     */
+    it(`resolves every bet-miss line (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      const ev = (kind: 'bet' | 'wong', taken: string, expected: string, tc: number) =>
+        ({ source: 'table', kind, category: kind, correct: false, classification: 'basic-error', taken, expected, reason: '', tc }) as GradedEvent;
+      const lines = new Set<string>();
+      for (let tc = -20; tc <= 20; tc++) {
+        lines.add(betMissFeedback([ev('wong', 'sit-out', 'play', tc)])!.spoken);
+        lines.add(betMissFeedback([ev('wong', 'play', 'sit-out', tc)])!.spoken);
+        for (let units = 1; units <= 20; units++) {
+          lines.add(betMissFeedback([ev('bet', String(units === 1 ? 2 : 1), String(units), tc)])!.spoken);
+        }
+      }
+      expect([...lines].filter((t) => segmentForClips(t, manifest) === null)).toEqual([]);
     });
 
     /** "Correct." was covered and "Wrong." was not, for a long time. */

@@ -22,7 +22,7 @@ test('dealing in at a count the ramp sits out: a strip and a spoken line, and th
   await expect(strip).toHaveText('Sit out at TC +0 — you bet 1u');
   // Not a modal: nothing to dismiss, the hand is still to be played.
   await expect(page.locator('.modal-backdrop')).toHaveCount(0);
-  await expect.poll(async () => (await speech(page)).some((l) => l.includes('Your ramp sits out at true count zero.'))).toBe(true);
+  await expect.poll(async () => (await speech(page)).some((l) => l.includes('Your ramp sits out. True count zero.'))).toBe(true);
   await playRoundByAdvice(page);
   await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
   // It stays with that round, and goes when the next decision is right.

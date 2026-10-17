@@ -15,19 +15,19 @@ describe('betMissFeedback (B2 #13, R2)', () => {
   it('a bet off the ramp: what the ramp bets, at what count, and what was bet', () => {
     expect(betMissFeedback([bet(1, 8, 3), wong('play', 'play', 3)])).toEqual({
       text: 'Bet 8u at TC +3 — you bet 1u',
-      spoken: 'Your ramp bets 8 at true count plus three.',
+      spoken: 'Your ramp bets eight. True count plus three.',
     });
   });
   it('playing a count the ramp sits out names the sit-out first, with a real minus', () => {
     expect(betMissFeedback([bet(2, 1, -1), wong('play', 'sit-out', -1)])).toEqual({
       text: 'Sit out at TC −1 — you bet 2u',
-      spoken: 'Your ramp sits out at true count minus one.',
+      spoken: 'Your ramp sits out. True count minus one.',
     });
   });
   it('sitting out a count the ramp plays', () => {
     expect(betMissFeedback([wong('sit-out', 'play', 1)])).toEqual({
       text: 'Play at TC +1 — you sat out',
-      spoken: 'Your ramp plays at true count plus one.',
+      spoken: 'Your ramp plays. True count plus one.',
     });
   });
   it('nothing for right decisions, plays, or no events', () => {

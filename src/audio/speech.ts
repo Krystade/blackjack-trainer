@@ -409,6 +409,9 @@ export function cancelSpeech(): void {
    * on the mute button it lands in a room someone just silenced.
    */
   pendingCue?.();
+  // C-R5: lines waiting their turn behind the one being stopped go too.
+  speakQueueEpoch++;
+  speakInFlight = 0;
   stopClips();
   settleAllPendingSpeeches();
   if (!isSpeechSupported()) return;
@@ -892,9 +895,73 @@ export function _resetSpeechPathForTest(): void {
   pathSeq = 0;
 }
 
+/**
+ * C-R5: ONE LINE AT A TIME through speak().
+ *
+ * The clip chain and live speech are separate players, and neither knew about
+ * the other -- nor did one clip chain about the next: a non-interrupting line
+ * started a second chain on its own element while the first was still
+ * talking. So a bet-miss line said just before the deal talked over the deal
+ * narration. A non-interrupting line issued while an earlier speak() line is
+ * still sounding now waits for it to end; an interrupting line goes at once
+ * and drops anything still waiting, and so does cancelSpeech().
+ */
+let speakInFlight = 0;
+/** Bumped by an interrupt or a cancel: everything older is stopped or dropped. */
+let speakQueueEpoch = 0;
+let speakQueueTail: Promise<void> = Promise.resolve();
+
+/** Test-only: forget lines a previous test left sounding. */
+export function _resetSpeakQueueForTest(): void {
+  speakQueueEpoch++;
+  speakInFlight = 0;
+  speakQueueTail = Promise.resolve();
+}
+
 export function speak(text: string, opts?: SpeechOpts): void {
   const ended = onceOnEnd(opts);
   rememberSpoken(text, opts);
+  if (isE2eAudioMode()) {
+    speakNow(text, opts, ended);
+    return;
+  }
+  if (opts?.interrupt) {
+    // The line it interrupts is being stopped; it no longer holds the queue.
+    speakQueueEpoch++;
+    speakInFlight = 0;
+  }
+  const epoch = speakQueueEpoch;
+  const mustWait = !opts?.interrupt && speakInFlight > 0;
+  speakInFlight++;
+  let release: () => void = () => {};
+  const done = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const finish = () => {
+    if (epoch === speakQueueEpoch) speakInFlight = Math.max(0, speakInFlight - 1);
+    release();
+    ended();
+  };
+  const previous = speakQueueTail;
+  speakQueueTail = done;
+  const go = () => {
+    // Superseded while it waited: an interrupt or a cancel came first.
+    if (epoch !== speakQueueEpoch) {
+      diag("speak", "queue-dropped", { said: text });
+      finish();
+      return;
+    }
+    speakNow(text, opts, finish);
+  };
+  if (!mustWait) {
+    go();
+    return;
+  }
+  diag("speak", "queued", { said: text });
+  void previous.then(go);
+}
+
+function speakNow(text: string, opts: SpeechOpts | undefined, ended: () => void): void {
   // BEFORE the e2e short-circuit: the microphone has to know about every
   // utterance the app decides to make, including the ones the test harness
   // swallows, or suppression is untestable.

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { hasClips, playClipsResumable } from './clips';
-import { speak, speakAsync } from './speech';
+import { speak, speakAsync, _resetSpeakQueueForTest } from './speech';
 import { _resetAudioFocusForTest, holdAudioFocus, releaseAllAudioFocus } from './audioFocus';
 import { clearDiagnosticLog, readDiagnosticLog } from '../diag/diagnosticLog';
 
@@ -65,6 +65,8 @@ function installFakeAudio(): void {
 
 beforeEach(() => {
   created.length = 0;
+  // C-R5: a clip a previous test left unsettled must not queue this one.
+  _resetSpeakQueueForTest();
   _resetAudioFocusForTest();
   clearDiagnosticLog();
   installFakeAudio();

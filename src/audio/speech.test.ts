@@ -12,6 +12,7 @@ import {
   chimeWhenQuiet,
   CUE_WAIT_CEILING_MS,
   primeVoices, _resetVoiceCacheForTest,
+  _resetSpeakQueueForTest,
 } from './speech';
 
 describe('speech wrapper — absence guards (no browser APIs in jsdom/node)', () => {
@@ -1072,6 +1073,8 @@ describe('every speaking entry point tells the microphone', () => {
       setSpeechActivityListener((ms) => slow.push(ms));
       fn('Basic hit versus dealer nine.', { rate: 0.5 });
       setSpeechActivityListener(null);
+      // C-R5: speak() would queue the second line behind the first.
+      _resetSpeakQueueForTest();
 
       const fast: number[] = [];
       setSpeechActivityListener((ms) => fast.push(ms));
