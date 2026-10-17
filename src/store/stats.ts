@@ -21,17 +21,18 @@ export function tallyCellIdFor(event: GradedEvent): string | null {
 }
 
 /**
- * R9 (#25): whether an event counts in `stats.categories`. An index answer
- * (one carrying a `deviationId`: the Index test, the Deviation quiz, a
- * With-count or Play decision on an index) is index knowledge and is tallied
- * in `perIndex` only -- never in the basic-strategy hand categories (hard,
- * soft, pairs, surrender), which the per-cell goal reads beside `cellStats`.
+ * R9 (#25): whether an event counts in `stats.categories`. An Index-test or
+ * With-count index answer (`indexOnly`) is index knowledge and is tallied in
+ * `perIndex` only -- never in the basic-strategy hand categories (hard, soft,
+ * pairs, surrender), which the per-cell goal reads beside `cellStats`. R9
+ * names those two sources; the Deviation quiz and Play keep counting, as
+ * Mixed's graded count and the drill specs rely on.
  * Counting them there showed a fresh profile's Index-test answers as "answers
  * from before per-hand tracking". Insurance has no basic play and keeps its
  * tally. Shared with the undo so the two never disagree.
  */
 export function countsInCategory(event: GradedEvent): boolean {
-  return !event.deviationId || !BASIC_CATEGORIES.has(event.category);
+  return !event.indexOnly || !BASIC_CATEGORIES.has(event.category);
 }
 
 const BASIC_CATEGORIES: ReadonlySet<Category> = new Set<Category>(['hard', 'soft', 'pairs', 'surrender']);

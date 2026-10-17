@@ -36,7 +36,7 @@ import { drillLegalActions } from './legalActions';
 import type { Card, Rank } from '../engine/cards';
 import type { Action } from '../engine/deviations';
 import { mulberry32 } from '../engine/cards';
-import { indexTestSet, indexTestItemFor } from './indexTest';
+import { buildIndexTestEvent, indexTestSet, indexTestItemFor } from './indexTest';
 import { handCategoryProgress } from '../ui/screens/handProgress';
 
 /**
@@ -1065,5 +1065,50 @@ describe('R9: Index-test answers never count toward basic-strategy categories', 
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+/**
+ * R9's scope is the Index test and With-count index/phantom answers. The
+ * Deviation quiz (and Mixed, which grades quiz items through it) still counts
+ * in the hand category: a first cut that dropped every deviationId event
+ * from categories zeroed those drills' graded counts.
+ */
+describe('R9 scope: the Deviation quiz still counts in its hand category', () => {
+  it('a 16 v 10 quiz answer moves categories.hard and perIndex', () => {
+    const item: QuizItem = {
+      cards: [H('10'), H('6')],
+      up: '10',
+      tc: 3,
+      deviationId: '16v10',
+      isDeviationSide: true,
+      correct: 'stand',
+      label: '16 v 10: stand at TC ≥ 0',
+      isDistractor: false,
+    };
+    const event = buildQuizEvent(item, 'hit', DEFAULT_RULES, 100);
+    expect(event.indexOnly).toBeUndefined();
+    const s = applyEvents(EMPTY_STATS, [event]);
+    expect(s.categories.hard).toEqual({ right: 0, wrong: 1 });
+    expect(s.perIndex['16v10']).toEqual({ right: 0, wrong: 1 });
+  });
+
+  it('Index-test and With-count index events are marked index-only', () => {
+    const rules = { ...DEFAULT_RULES };
+    const dev = indexTestSet(rules).find((d) => d.id === '16v10')!;
+    expect(buildIndexTestEvent(indexTestItemFor(dev, rules, mulberry32(4)), 0).indexOnly).toBe(true);
+    const NO_LS = { ...DEFAULT_RULES, ls: false };
+    const card = { ...flash([H('10'), H('6')], '10', 'hard-16-v-10', 'hit'), tc: -1 };
+    expect(buildFlashcardEvent(card, 'stand', NO_LS, 900).event.indexOnly).toBe(true);
+  });
+
+  it('a With-count card that HITS its index is index-only too (not just a phantom)', () => {
+    const NO_LS = { ...DEFAULT_RULES, ls: false };
+    const card = { ...flash([H('10'), H('6')], '10', 'hard-16-v-10', 'hit'), tc: 2 };
+    const { event } = buildFlashcardEvent(card, 'stand', NO_LS, 900);
+    expect(event.deviationId).toBe('16v10');
+    const s = applyEvents(EMPTY_STATS, [event]);
+    expect(s.categories.hard).toEqual({ right: 0, wrong: 0 });
+    expect(s.perIndex['16v10']).toEqual({ right: 1, wrong: 0 });
   });
 });

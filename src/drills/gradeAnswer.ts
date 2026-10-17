@@ -227,12 +227,12 @@ function indexFieldFor(
   taken: DrillAnswer,
   card: Flashcard,
   rules: StrategyRules,
-): { deviationId?: DeviationId } {
-  if (hit) return { deviationId: hit };
+): { deviationId?: DeviationId; indexOnly?: true } {
+  if (hit) return { deviationId: hit, indexOnly: true };
   // Only classifyAction says phantom, and only for one of the five plays.
   if (classification !== 'phantom-deviation') return {};
   const id = phantomDeviationId(taken as Action, card.cards, card.up, rules);
-  return id === null ? {} : { deviationId: id };
+  return id === null ? {} : { deviationId: id, indexOnly: true };
 }
 
 /**

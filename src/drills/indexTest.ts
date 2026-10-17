@@ -177,6 +177,7 @@ export function buildIndexTestEvent(item: IndexTestItem, answer: number): Graded
     expected: String(item.index),
     reason: item.label,
     deviationId: item.deviationId,
+    indexOnly: true, // R9
     tc: item.index,
     hand: insurance ? 'dealer A' : `${item.cards!.map((c) => c.rank).join(',')} v ${item.up}`,
   };

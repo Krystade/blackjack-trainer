@@ -57,6 +57,12 @@ export interface GradedEvent {
   expected: string; // correct action / value
   reason: string; // Advice.reason or index label
   deviationId?: DeviationId;
+  /**
+   * R9 (#8, #25): an Index-test or With-count index/phantom answer. Index
+   * knowledge only: tallied in perIndex, never in the basic-strategy hand
+   * categories. The Deviation quiz and Play keep counting there.
+   */
+  indexOnly?: true;
   tc: number;
   hand?: string; // e.g. "10,6 v 9"
   // R1 (docs/BACKLOG.md): decision latency in milliseconds, from prompt-shown
