@@ -196,6 +196,8 @@ export class Game {
   private _active = 0;
   bankroll: number;
   roundNo = 0;
+  /** Wave B, B6: player hands settled this game, splits counted separately; a sit-out adds none. Feeds the per-100 figure. */
+  handsPlayed = 0;
   events: GradedEvent[] = [];
   /** A count check is OWED: set when a round settles on a check interval,
    * cleared by `submitCountCheck`. Owed is not asked -- see `countCheckOpen`. */
@@ -1296,6 +1298,7 @@ export class Game {
   }
 
   private finishRound(): void {
+    this.handsPlayed += this.hands.length;
     this.phase = 'settled';
     if (this.cfg.countCheckEvery > 0 && this.roundNo % this.cfg.countCheckEvery === 0) {
       this.countCheckDue = true;

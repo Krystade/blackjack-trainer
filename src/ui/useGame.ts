@@ -12,6 +12,7 @@ import { datedSessionEvents } from './sessionEvents';
 import { makePlayGame, realignLosingShoe, type PlayGame } from './losingShoe';
 import type { AudioApi } from '../audio/useAudio';
 import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverBets';
+import { mistakeUnits } from './reportSections';
 import {
   narrateBotAction,
   narrateCard,
@@ -99,6 +100,10 @@ export interface SessionReport {
    * but only this says whether any was taken.
    */
   cover: LockstepTell;
+  /** Wave B, B6: player hands settled this session (splits count separately). */
+  hands: number;
+  /** Wave B, B6: units lost to priced mistakes (sum of evCost). */
+  mistakeUnits: number;
 }
 
 /**
@@ -135,7 +140,7 @@ function readSeed(): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-function buildReport(events: GradedEvent[], bankrollDelta: number, peeks: number): SessionReport {
+function buildReport(events: GradedEvent[], bankrollDelta: number, peeks: number, hands: number): SessionReport {
   // RT#11: read the bets back off the graded events. `taken`/`expected` are
   // strings on the event, and a bet event always carries both as numbers, so
   // an unparseable pair means something upstream changed shape -- dropped
@@ -166,6 +171,8 @@ function buildReport(events: GradedEvent[], bankrollDelta: number, peeks: number
     bankrollDelta,
     peeks,
     cover: lockstepTell(betRounds),
+    hands,
+    mistakeUnits: mistakeUnits(events),
   };
 }
 
@@ -698,11 +705,14 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
             // R7: only persist the field when peeks actually happened, so a
             // clean (0-peek) session's blob is byte-for-byte what it was pre-R7.
             ...(peeks > 0 ? { peeks } : {}),
+            // Wave B, B6: per-100 inputs.
+            hands: game.handsPlayed,
+            mistakeUnits: Math.round(mistakeUnits(events) * 10000) / 10000,
           },
         ],
       });
 
-      const rep = buildReport(events, bankrollDelta, peeks);
+      const rep = buildReport(events, bankrollDelta, peeks, game.handsPlayed);
       setReport(rep);
       return rep;
     },

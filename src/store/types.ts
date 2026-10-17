@@ -591,6 +591,10 @@ export interface Stats {
     // persisted before R7 lack it (persist merges `sessions` by pass-through,
     // so no migration is needed), and a session with 0 peeks omits it too.
     peeks?: number;
+    // Wave B, B6: player hands settled and units lost to priced mistakes, for
+    // the per-100 figure. Absent on older rows, which the per-100 figure skips.
+    hands?: number;
+    mistakeUnits?: number;
   }[];
   // R1 (docs/BACKLOG.md, decision-latency telemetry): one entry per GRADED
   // EVENT that actually captured a decision time (flashcards + deviation

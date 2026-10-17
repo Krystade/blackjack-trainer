@@ -2397,3 +2397,20 @@ describe('Wave A engine fixes', () => {
     expect(asked.every((e) => e.taken === 'split')).toBe(true);
   });
 });
+
+describe('handsPlayed (B6)', () => {
+  it('counts each settled player hand, splits included, and nothing for a sit-out', () => {
+    const one = Game.withRiggedShoe(cfg(), rig('10', '9', '6', '8', '5'));
+    one.startRound(); one.act('hit'); one.act('stand');
+    expect(one.handsPlayed).toBe(1);
+
+    const split = Game.withRiggedShoe(cfg(), rig('8', '9', '8', '7', '10', '10', '10', '10', '10'));
+    split.startRound(); split.act('split');
+    while (split.phase === 'player') split.act('stand');
+    expect(split.handsPlayed).toBe(2);
+
+    const sat = new Game(cfg({ seed: 5 }));
+    sat.sitOut();
+    expect(sat.handsPlayed).toBe(0);
+  });
+});
