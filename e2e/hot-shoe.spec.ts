@@ -20,7 +20,8 @@ test('B8: a Hot shoe session is labelled, flagged, and leaves the bankroll alone
   await withProfile(page, { hotShoe: true });
   await page.goto('/?seed=2&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await expect(page.getByTestId('hot-shoe-badge')).toHaveText('Hot shoe');
+  // B2 #35 (deliberately changed): the badge says the moving bankroll is not kept.
+  await expect(page.getByTestId('hot-shoe-badge')).toHaveText('Hot shoe · bankroll not kept');
   await playUntilBankrollMoves(page);
   expect((await storedProfile(page)).bankrollNow).toBeUndefined();
   await endIt(page);

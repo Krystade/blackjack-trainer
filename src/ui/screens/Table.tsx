@@ -914,7 +914,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       {losingShoe && <LosingShoeBadge />}
       {hotShoe && (
         <div className="hot-shoe-badge" data-testid="hot-shoe-badge">
-          Hot shoe
+          {/* B2 #35: the topbar bankroll still moves, so say it is thrown away. */}
+          Hot shoe &middot; bankroll not kept
         </div>
       )}
 

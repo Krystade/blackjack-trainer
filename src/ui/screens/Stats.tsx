@@ -43,6 +43,7 @@ import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, handCategoryProgress, p
 import type { HandCategoryProgress } from './handProgress';
 import './statsGoal.css';
 import './statsHistory.css';
+import './statsSessions.css';
 import { betMissText, formatLossValue, sessionsBetMisses, sessionsLossPer100, sessionTag } from '../sessionFigures';
 
 interface StatsProps {
@@ -760,7 +761,10 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   // them) alongside actual results computed from this profile's own sessions
   // only (sessions persisted before profileId existed never match, and are
   // simply excluded rather than mis-attributed).
-  const profileSessions = stats.sessions.filter((s) => s.profileId === activeProfile.id);
+  // B2 #45: in the selected range, like the Table sessions list -- every
+  // session row is dated, and the range note does not list this block among
+  // its all-time tallies.
+  const profileSessions = inRange(stats.sessions).filter((s) => s.profileId === activeProfile.id);
   const totalGraded = profileSessions.reduce((sum, s) => sum + s.graded, 0);
   const totalCorrect = profileSessions.reduce((sum, s) => sum + s.correct, 0);
   const actualAccuracyPct = totalGraded === 0 ? null : (totalCorrect / totalGraded) * 100;
@@ -1716,9 +1720,15 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                     )}
                     {sessionTag(s) && <span className="session-assisted"> · {sessionTag(s)}</span>}
                   </span>
-                  <span className={s.bankrollDelta >= 0 ? 'result-correct' : 'result-wrong'}>
-                    {formatSigned(s.bankrollDelta)}
-                  </span>
+                  {/* B2 #35: a Hot shoe session's bankroll was not kept (B8), so its
+                      change is not shown as a result. */}
+                  {s.hotShoe ? (
+                    <span className="session-not-kept">not kept</span>
+                  ) : (
+                    <span className={s.bankrollDelta >= 0 ? 'result-correct' : 'result-wrong'}>
+                      {formatSigned(s.bankrollDelta)}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

@@ -1,0 +1,7 @@
+/* B2 #35: a Hot shoe session's bankroll was not kept (B8), so its row says
+ * so in the quiet ink instead of a green or red result. */
+.session-not-kept {
+  color: var(--ink-dim);
+  font-style: italic;
+  font-weight: 400;
+}
