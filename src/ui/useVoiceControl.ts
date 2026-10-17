@@ -11,6 +11,7 @@ import { chime, isAppSpeaking, setSpeechActivityListener } from '../audio/speech
 import { recordHeard } from '../audio/voiceHistory';
 import { looksLikeAnAttempt, type VoiceAction } from '../audio/voiceRecognition';
 import { looksLikeSelfEcho } from '../audio/selfEcho';
+import { createMisheardLadder } from '../audio/misheardLadder';
 import { requestWakeLock, releaseWakeLock } from '../audio/wakeLock';
 import { diag } from '../diag/diagnosticLog';
 import { reassertAudioFocus } from '../audio/audioFocus';
@@ -88,6 +89,7 @@ export function useVoiceControl({
   isAttempt,
   biasPhrases,
   context,
+  escalation,
 }: {
   enabled: boolean;
   onAction: (action: VoiceAction) => void;
@@ -135,6 +137,15 @@ export function useVoiceControl({
    * a count in the prompt -- so a log without it cannot be read back.
    */
   context: string;
+  /**
+   * C-R4 (W16): escalate repeated misses on one prompt. The first unrecognised
+   * attempt still goes to `onNotUnderstood` (the "say again" tone); the second
+   * calls `reask` (say the prompt line again); the third and after call
+   * `hint` (name the accepted words). `promptKey` identifies the prompt -- a
+   * new key starts the count again, as does any recognised answer.
+   * Without it, every miss is the tone, as before.
+   */
+  escalation?: { promptKey: unknown; reask: () => void; hint: () => void };
 }): { status: VoiceStatus; cycleIfStale: () => void } {
   const [status, setStatus] = useState<VoiceStatus>(IDLE);
 
@@ -173,6 +184,9 @@ export function useVoiceControl({
 
   const unheardRef = useRef(onNotUnderstood);
   unheardRef.current = onNotUnderstood;
+  const escalationRef = useRef(escalation);
+  escalationRef.current = escalation;
+  const ladderRef = useRef(createMisheardLadder());
   // Held in a ref for the same reason as the handlers above: the predicate
   // closes over the screen's current step, and rebuilding the recogniser
   // because a step changed costs a real gap in listening.
@@ -391,10 +405,21 @@ export function useVoiceControl({
         if (verdict !== 'rejected' && verdict !== 'suppressed') {
           diag('speak', 'turn-cue', { kind: 'got-it', context: contextRef.current });
           chime('heard');
+          ladderRef.current.heard();
         }
         const attempt = attemptRef.current?.(heard) ?? looksLikeAnAttempt(heard);
-        if (verdict === 'rejected' && attempt) unheardRef.current?.('rejected');
-        else if (
+        if (verdict === 'rejected' && attempt) {
+          const esc = escalationRef.current;
+          const step = esc ? ladderRef.current.miss(esc.promptKey) : 'tone';
+          diag('speak', 'misheard', { step, context: contextRef.current });
+          try {
+            if (step === 'reask') esc?.reask();
+            else if (step === 'hint') esc?.hint();
+            else unheardRef.current?.('rejected');
+          } catch {
+            // A screen's handler must never take the microphone down with it.
+          }
+        } else if (
           verdict === 'suppressed' &&
           attempt &&
           !looksLikeSelfEcho(heard, saidRef.current) &&

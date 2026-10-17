@@ -28,6 +28,7 @@ import {
 import { loadStats, saveStats } from '../../../store/persist';
 import { enableAudioNow } from '../../audioGate';
 import { useVoiceControl } from '../../useVoiceControl';
+import { NEXT_HINT, NUMBER_HINT } from '../../../audio/misheardLadder';
 import { useWheelCommand } from '../../useWheelCommand';
 import { useWheelNumber } from '../../useWheelNumber';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
@@ -106,11 +107,14 @@ type TcPhase =
  */
 export function TrueCountDrillView({
   settings,
+  autoStart = false,
   activeProfile,
   onBack,
   onSettingsChange,
 }: {
   settings: Settings;
+  /** C-R3: opened by Home's Drive tap -- skip the setup screen and go. */
+  autoStart?: boolean;
   activeProfile: Profile;
   onBack: () => void;
   // Needed so the eyes-free toggle can enable audio itself rather than
@@ -596,6 +600,12 @@ export function TrueCountDrillView({
   // see `wheelResetRef`.
   wheelResetRef.current = wheelNumber.reset;
 
+  // C-R3: Home's Drive tap opened this drill -- start it, once, on mount.
+  useEffect(() => {
+    if (autoStart) start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const voice = useVoiceControl({
     // The push-to-talk window opens the microphone exactly as the toggle
     // does; the only difference is that something closes it again.
@@ -604,7 +614,13 @@ export function TrueCountDrillView({
     onTranscript: interpretTcSpeech,
     // Eyes-free, a rejection is silence, and silence looks the same as a dead
     // microphone. A short cue says "say it again".
-    onNotUnderstood: () => audio.ding('attention'),
+    onNotUnderstood: () => audio.ding('again'),
+    // C-R4: second miss on this question repeats it; third names what it takes.
+    escalation: {
+      promptKey: [phase, question],
+      reask: () => handleVoiceCommand('repeat'),
+      hint: () => ((t: string) => sayBack(t, true))(phase === 'answering' ? NUMBER_HINT : NEXT_HINT),
+    },
     biasPhrases: [...Object.keys(VOICE_ACTIONS), ...COUNT_BIAS_PHRASES],
     onListening: () => audio.dingWhenQuiet('ready'),
     context: 'true-count-drill',

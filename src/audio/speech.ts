@@ -409,6 +409,14 @@ export function cancelSpeech(): void {
    * on the mute button it lands in a room someone just silenced.
    */
   pendingCue?.();
+  // C-R5: lines waiting their turn behind the one being stopped go too.
+  speakQueueEpoch++;
+  if (protectedSounding) {
+    // C-R3: the protected line plays on; only what was queued is dropped.
+    speakInFlight = 1;
+    return;
+  }
+  speakInFlight = 0;
   stopClips();
   settleAllPendingSpeeches();
   if (!isSpeechSupported()) return;
@@ -447,6 +455,14 @@ export interface SpeechOpts {
    * `speak()` only; `speakAsync` callers already have the promise.
    */
   onEnd?: () => void;
+  /**
+   * C-R3: a line nothing may cut off -- Home's Drive tap speaks it from inside
+   * the gesture, and the drill that opens a moment later speaks its own first
+   * line with `interrupt` and cancels speech on start. While a protected line
+   * is sounding an interrupt waits behind it instead, and cancelSpeech() drops
+   * only what is queued. `speak()` only; one short line at a time.
+   */
+  protect?: boolean;
 }
 
 /** Run `opts.onEnd` once, never letting it throw into the speech path. */
@@ -892,9 +908,85 @@ export function _resetSpeechPathForTest(): void {
   pathSeq = 0;
 }
 
+/**
+ * C-R5: ONE LINE AT A TIME through speak().
+ *
+ * The clip chain and live speech are separate players, and neither knew about
+ * the other -- nor did one clip chain about the next: a non-interrupting line
+ * started a second chain on its own element while the first was still
+ * talking. So a bet-miss line said just before the deal talked over the deal
+ * narration. A non-interrupting line issued while an earlier speak() line is
+ * still sounding now waits for it to end; an interrupting line goes at once
+ * and drops anything still waiting, and so does cancelSpeech().
+ */
+let speakInFlight = 0;
+/** Bumped by an interrupt or a cancel: everything older is stopped or dropped. */
+let speakQueueEpoch = 0;
+let speakQueueTail: Promise<void> = Promise.resolve();
+/** C-R3: a `protect` line is sounding. */
+let protectedSounding = false;
+
+/** Test-only: forget lines a previous test left sounding. */
+export function _resetSpeakQueueForTest(): void {
+  speakQueueEpoch++;
+  speakInFlight = 0;
+  speakQueueTail = Promise.resolve();
+  protectedSounding = false;
+}
+
 export function speak(text: string, opts?: SpeechOpts): void {
   const ended = onceOnEnd(opts);
   rememberSpoken(text, opts);
+  if (isE2eAudioMode()) {
+    speakNow(text, opts, ended);
+    return;
+  }
+  if (opts?.interrupt && protectedSounding) {
+    // C-R3: a protected line is not cut off; this one waits its turn.
+    diag("speak", "interrupt-held", { said: text });
+    opts = { ...opts, interrupt: false };
+  }
+  if (opts?.interrupt) {
+    // The line it interrupts is being stopped; it no longer holds the queue.
+    speakQueueEpoch++;
+    speakInFlight = 0;
+  }
+  const isProtected = opts?.protect === true;
+  if (isProtected) protectedSounding = true;
+  const epoch = speakQueueEpoch;
+  const mustWait = !opts?.interrupt && speakInFlight > 0;
+  speakInFlight++;
+  let release: () => void = () => {};
+  const done = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const finish = () => {
+    if (isProtected) protectedSounding = false;
+    // A protected line survives a cancel, so it still holds its place.
+    if (epoch === speakQueueEpoch || isProtected) speakInFlight = Math.max(0, speakInFlight - 1);
+    release();
+    ended();
+  };
+  const previous = speakQueueTail;
+  speakQueueTail = done;
+  const go = () => {
+    // Superseded while it waited: an interrupt or a cancel came first.
+    if (epoch !== speakQueueEpoch && !isProtected) {
+      diag("speak", "queue-dropped", { said: text });
+      finish();
+      return;
+    }
+    speakNow(text, opts, finish);
+  };
+  if (!mustWait) {
+    go();
+    return;
+  }
+  diag("speak", "queued", { said: text });
+  void previous.then(go);
+}
+
+function speakNow(text: string, opts: SpeechOpts | undefined, ended: () => void): void {
   // BEFORE the e2e short-circuit: the microphone has to know about every
   // utterance the app decides to make, including the ones the test harness
   // swallows, or suppression is untestable.
@@ -1452,7 +1544,7 @@ export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
  * that, because a duplicate would silently undo the distinction this table
  * exists for.
  */
-export type ChimeKind = "good" | "bad" | "attention" | "mark" | "blocked" | "ready" | "turn" | "heard";
+export type ChimeKind = "good" | "bad" | "attention" | "mark" | "blocked" | "ready" | "turn" | "heard" | "again";
 
 const CHIME_FREQUENCY_HZ: Record<ChimeKind, number> = {
   good: 880,
@@ -1468,7 +1560,22 @@ const CHIME_FREQUENCY_HZ: Record<ChimeKind, number> = {
   // "Got it" -- below "ready" and well above "bad", so the pair a listener
   // must tell apart (your turn / got it) are a fourth apart, not a semitone.
   heard: 392,
+  // C-R4 "say again": the answer was not understood. Starts at a pitch no
+  // other kind uses and GLIDES DOWN an octave (CHIME_END_HZ), so it differs
+  // from the flat "your turn" / "mic open" tones in contour, not only note.
+  again: 698,
 };
+
+/** C-R4: kinds whose pitch moves across the tone; every other kind is flat. */
+const CHIME_END_HZ: Partial<Record<ChimeKind, number>> = {
+  again: 349,
+};
+
+/** [start, end] pitch of a kind, for the test that asserts the contours differ. */
+export function chimeContourForTest(kind: ChimeKind): readonly [number, number] {
+  const start = CHIME_FREQUENCY_HZ[kind];
+  return [start, CHIME_END_HZ[kind] ?? start];
+}
 
 /**
  * Plays a short (0.12s) gain-ramped sine tone. In e2e mode, records
@@ -1563,7 +1670,7 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
    * in a car.
    */
   try {
-    playChimeTone(CHIME_FREQUENCY_HZ[kind], chimePeak(opts?.volume ?? 1));
+    playChimeTone(CHIME_FREQUENCY_HZ[kind], chimePeak(opts?.volume ?? 1), CHIME_END_HZ[kind]);
   } catch {
     // never throw
   }

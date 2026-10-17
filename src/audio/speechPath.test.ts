@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   speak,
   speakAsync,
@@ -124,12 +124,14 @@ describe('a path record can be told apart from a repeat of the same line', () =>
     expect(overtook?.tag).toBeUndefined();
   });
 
-  it('two lines spoken in the same step carry distinguishable tags', () => {
+  it('two lines spoken in the same step carry distinguishable tags', async () => {
     // The other half of the reason text cannot be the key: steps deliberately
     // speak the same line, and one step speaks several.
     speak('Did you have it?', { tag: 'mic-route#1' });
     speak('Did you have it?', { tag: 'mic-route#2' });
-    const records = paths();
-    expect(records.map((d) => d?.tag)).toEqual(['mic-route#1', 'mic-route#2']);
+    // C-R5: the second line waits for the first to end before it starts.
+    await vi.waitFor(() =>
+      expect(paths().map((d) => d?.tag)).toEqual(['mic-route#1', 'mic-route#2']),
+    );
   });
 });

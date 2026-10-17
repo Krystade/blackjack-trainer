@@ -34,6 +34,7 @@ import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../audi
 import { narrateReadback, narrateTableCountPrompt } from '../../audio/narrate';
 import type { VoiceAction } from '../../audio/voiceRecognition';
 import { actionUnavailable } from '../../drills/answerGate';
+import { INSURANCE_HINT, hintLine, playHint } from '../../audio/misheardLadder';
 import { enableAudioNow } from '../audioGate';
 import { PlayingCard, formatCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
@@ -646,7 +647,23 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // Eyes-free, a rejection is silence, and silence looks the same as a dead
     // microphone. A short cue says "say it again" without costing a sentence
     // of narration mid-drill; Mute silences it like every other tone.
-    onNotUnderstood: () => audio.ding('attention'),
+    onNotUnderstood: () => audio.ding('again'),
+    // C-R4: a second miss on the same decision repeats it, a third names the
+    // words it takes. Keyed on what is being asked, so a new decision starts
+    // the count again.
+    escalation: {
+      promptKey: `${game.roundNo}|${game.phase}|${game.active}|${game.hands.map((h) => h.cards.length).join(',')}|${overlay ? 'overlay' : ''}`,
+      reask: () => audio.replay(),
+      hint: () =>
+        audio.say(
+          overlay || (game.phase !== 'player' && game.phase !== 'insurance')
+            ? hintLine(['yes'])
+            : game.phase === 'insurance'
+              ? INSURANCE_HINT
+              : playHint(game.legalActions()),
+          { interrupt: true },
+        ),
+    },
     // ...and the state before that one. The table is played eyes-free too, and
     // the microphone can take seconds to come up on the first ask of a page.
     onListening: () => audio.dingWhenQuiet('ready'),

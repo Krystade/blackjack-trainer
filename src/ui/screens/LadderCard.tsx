@@ -1,4 +1,5 @@
 import type { Ladder, NextStep, StartTarget } from './nextStep';
+import './driveButton.css';
 import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, pctDown } from './handProgress';
 
 /**
@@ -9,8 +10,11 @@ import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, pctDown } from './handP
 export function LadderCard({
   ladder,
   onStart,
+  drive,
 }: {
   ladder: Ladder;
+  /** C-R3: one tap back into the last eyes-free / voice drill. */
+  drive?: { label: string; onDrive: () => void };
   /** A review step carries its due cells or indexes; a rung row only its target. */
   onStart: (t: StartTarget & Pick<NextStep, 'reviewCells' | 'reviewIndexes'>) => void;
 }) {
@@ -33,6 +37,12 @@ export function LadderCard({
           Start
         </button>
       </div>
+      {/* C-R3: secondary, directly under Start -- Start stays the one gold. */}
+      {drive && (
+        <button type="button" className="u-btn next-step-drive" onClick={drive.onDrive}>
+          Drive: {drive.label}
+        </button>
+      )}
       {/* s02: per-category progress while basic strategy is the rung. */}
       {current === 0 && step.progress && (
         <ul className="next-step-progress" aria-label="Basic strategy progress">

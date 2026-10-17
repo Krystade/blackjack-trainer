@@ -34,6 +34,9 @@ import {
   narrateBotAction,
   narrateCorrection,
   narrateSitOut,
+  narrateRampBets,
+  narrateRampPlays,
+  narrateRampSitsOut,
   narrateNotATag,
   narrateReadback,
   narrateAnswerEcho,
@@ -185,6 +188,14 @@ export function correctionSentences(): string[] {
 export function tableSentences(): string[] {
   const sentences = new Set<string>();
   sentences.add(narrateSitOut());
+
+  // C-R5: the bet-miss lines, said before the deal. Every count the TC
+  // sentences already cover, every bet a ramp row is likely to name.
+  for (let tc = -20; tc <= 20; tc++) {
+    const lines = [narrateRampPlays(tc), narrateRampSitsOut(tc)];
+    for (let units = 1; units <= 20; units++) lines.push(narrateRampBets(units, tc));
+    for (const line of lines) for (const sentence of splitIntoSentences(line)) sentences.add(sentence);
+  }
 
   for (const seat of SEAT_LABELS) {
     for (const action of ACTIONS) {

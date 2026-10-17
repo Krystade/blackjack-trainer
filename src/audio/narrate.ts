@@ -244,6 +244,23 @@ export function narrateDealerUp(up: Rank): string {
 }
 
 /** Spoken when the player wongs out (sits the round out). R5. */
+/**
+ * C-R5: the bet-miss lines (B2 #13), in clip-sized sentences. Two sentences
+ * rather than one so the recorded voice can say them: "True count plus
+ * three." is already a clip, so only the first sentence needed recording.
+ */
+export function narrateRampBets(units: number, tc: number): string {
+  return `Your ramp bets ${numberWord(units)}. True count ${narrateTc(tc)}.`;
+}
+
+export function narrateRampPlays(tc: number): string {
+  return `Your ramp plays. True count ${narrateTc(tc)}.`;
+}
+
+export function narrateRampSitsOut(tc: number): string {
+  return `Your ramp sits out. True count ${narrateTc(tc)}.`;
+}
+
 export function narrateSitOut(): string {
   return 'Sitting out.';
 }

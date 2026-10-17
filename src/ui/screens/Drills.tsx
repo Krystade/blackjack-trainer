@@ -15,6 +15,7 @@ import { DealToggles } from './drills/DealToggles';
 import { plainCellLabel } from '../../drills/cellLabel';
 import { formatReviewPlain } from '../../drills/srStatus';
 import { drillLegalActions, rulesChipLabels } from '../../drills/legalActions';
+import { INSURANCE_HINT, playHint } from '../../audio/misheardLadder';
 import { gateDrillAnswer, gateQuizAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
 import { drawQuizItem, quizIndexSet, quizLegalActions, quizRulesChip, redundantForChart, tableMaskNote } from '../../drills/deviationQuiz';
@@ -104,6 +105,7 @@ import { MarkableHand } from '../components/MarkableHand';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
 import { useVoiceToggle, usePushToTalk, startPushToTalk, isVoiceOn } from '../voiceSession';
 import { useEyesFreeToggle, isEyesFreeOn } from '../eyesFreeSession';
+import { recordDrive, takeDriveAutoStart } from '../driveLaunch';
 import { useWheelCommand } from '../useWheelCommand';
 import { signed } from '../../drills/signed';
 import { ChartIntro } from './drills/ChartIntro';
@@ -988,7 +990,16 @@ function FlashcardsView({
     // Eyes-free, a rejection is silence, and silence looks the same as a dead
     // microphone. A short cue says "say it again" without costing a sentence
     // of narration mid-drill; Mute silences it like every other tone.
-    onNotUnderstood: () => audio.ding('attention'),
+    onNotUnderstood: () => audio.ding('again'),
+    escalation: {
+      promptKey: card,
+      reask: handleRepeat,
+      hint: () =>
+        speak(
+          playHint(drillLegalActions(card.cards, activeProfile.rules, card.up, card.ctx)),
+          speechOptsFrom(settings.audio, { interrupt: true }),
+        ),
+    },
     // Bias the engine toward the words it should be hearing. Reported from
     // real use: "stand" came back as "Stant" and was rejected -- unbiased,
     // the engine is choosing a one-syllable word out of all of English.
@@ -1978,7 +1989,18 @@ function DeviationQuizView({
   const voice = useVoiceControl({
     enabled: voiceOn || pushToTalkOpen,
     onAction: handleVoiceAction,
-    onNotUnderstood: () => audio.ding('attention'),
+    onNotUnderstood: () => audio.ding('again'),
+    escalation: {
+      promptKey: item,
+      reask: handleRepeat,
+      hint: () =>
+        speak(
+          item.cards === null
+            ? INSURANCE_HINT
+            : playHint(quizLegalActions(item, strategyRulesFor(activeProfile))),
+          speechOptsFrom(settings.audio, { interrupt: true }),
+        ),
+    },
     biasPhrases: Object.keys(VOICE_ACTIONS),
     onListening: () => audio.dingWhenQuiet('ready'),
     context: 'deviation-quiz',
@@ -2773,7 +2795,22 @@ function MixedSessionView({
   const voice = useVoiceControl({
     enabled: voiceOn || pushToTalkOpen,
     onAction: handleVoiceAction,
-    onNotUnderstood: () => audio.ding('attention'),
+    onNotUnderstood: () => audio.ding('again'),
+    escalation: {
+      promptKey: current,
+      reask: handleRepeat,
+      hint: () =>
+        speak(
+          isInsuranceItem
+            ? INSURANCE_HINT
+            : playHint(
+                current.type === 'quiz'
+                  ? quizLegalActions(current.item, strategyRulesFor(activeProfile))
+                  : drillLegalActions(current.card.cards, activeProfile.rules, current.card.up, current.card.ctx),
+              ),
+          speechOptsFrom(settings.audio, { interrupt: true }),
+        ),
+    },
     biasPhrases: Object.keys(VOICE_ACTIONS),
     onListening: () => audio.dingWhenQuiet('ready'),
     context: 'mixed-session',
@@ -3066,6 +3103,21 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   // #28: Home's Next step can hand over the drill to open.
   const [launch] = useState(() => takeDrillLaunch());
   const [mode, setMode] = useState<'picker' | DrillMode>(() => launch ?? 'picker');
+  // C-R3: Home's Drive tap starts the drill it opens; taken once, on mount.
+  const [driveStart] = useState(() => takeDriveAutoStart());
+  const autoStartFor = (m: DrillMode) => driveStart && launch === m;
+  // C-R3: a drill run eyes-free or by voice becomes Home's Drive button.
+  const [eyesFreeAny] = useEyesFreeToggle('drills');
+  const [voiceAny] = useVoiceToggle('drills');
+  useEffect(() => {
+    if (mode === 'picker' || (!eyesFreeAny && !voiceAny)) return;
+    const next = recordDrive(settings, mode, voiceAny);
+    if (next === settings) return;
+    saveSettings(next);
+    onSettingsChange(next);
+    // Keyed on what is being recorded; `settings` is read fresh each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, eyesFreeAny, voiceAny]);
   // R7 / R5: a review or session deck rides along with the launch, in memory.
   // Taken (and so cleared) on every mount; kept only for the drill it was
   // handed to, and dropped once that drill is left.
@@ -3096,6 +3148,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     return (
       <CountDrillView
         settings={settings}
+        autoStart={autoStartFor('count')}
         onBack={() => setMode('picker')}
         onSettingsChange={onSettingsChange}
       />
@@ -3106,6 +3159,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       <TrueCountDrillView
         settings={settings}
         activeProfile={activeProfile}
+        autoStart={autoStartFor('truecount')}
         onBack={() => setMode('picker')}
         onSettingsChange={onSettingsChange}
       />
@@ -3116,6 +3170,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       <ProduceTcDrillView
         settings={settings}
         activeProfile={activeProfile}
+        autoStart={autoStartFor('producetc')}
         onBack={() => setMode('picker')}
       onSettingsChange={onSettingsChange}
       />

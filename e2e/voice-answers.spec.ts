@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { waitForMic } from './helpers';
+import { sayOnceListening, waitForMic } from './helpers';
 
 /**
  * Answering flashcards out loud.
@@ -233,7 +233,7 @@ test('an attempt that is not understood says so out loud', async ({ page }) => {
 
   await expect(page.locator('.voice-status-heard')).toContainText('not a command');
   const log = await page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
-  expect(log).toContain('chime:attention');
+  expect(log).toContain('chime:again');
 });
 
 /**
@@ -247,7 +247,37 @@ test('conversation that is not understood stays silent', async ({ page }) => {
 
   await expect(page.locator('.voice-status-heard')).toContainText('not a command');
   const log = await page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
-  expect(log).not.toContain('chime:attention');
+  expect(log).not.toContain('chime:again');
+});
+
+/**
+ * C-R4 (W16): a word missed again and again on one prompt escalates --
+ * the tone, then the prompt again, then a hint naming the accepted words.
+ */
+test('repeated misses escalate: tone, re-ask, then the accepted words', async ({ page }) => {
+  await openFlashcardsWithVoice(page);
+  const log = () => page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
+  const opening = await log();
+  const prompt = [...opening].reverse().find((e) => !e.startsWith('chime:'));
+  expect(prompt, 'the card was read out').toBeTruthy();
+
+  let mark = opening.length;
+  await sayOnceListening(page, 'wombat');
+  await expect.poll(async () => (await log()).slice(mark)).toContain('chime:again');
+  expect((await log()).slice(mark)).not.toContain(prompt);
+
+  mark = (await log()).length;
+  await sayOnceListening(page, 'wombat');
+  await expect.poll(async () => (await log()).slice(mark)).toContain(prompt);
+
+  mark = (await log()).length;
+  await sayOnceListening(page, 'wombat');
+  await expect
+    .poll(async () => (await log()).slice(mark).join('|'))
+    .toMatch(/Say hit, stand[a-z, ]* or [a-z]+\./);
+  // Still listening, and a recognised answer still grades the card.
+  await sayOnceListening(page, 'stand');
+  await expect(page.locator('.drill-feedback, [class*="feedback"]').first()).toBeVisible();
 });
 
 // A word that WAS understood is answered by the card turning, not by a cue.
@@ -256,7 +286,7 @@ test('an understood word gets no say-again cue', async ({ page }) => {
   await say(page, 'stand');
 
   const log = await page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
-  expect(log).not.toContain('chime:attention');
+  expect(log).not.toContain('chime:again');
 });
 
 /**

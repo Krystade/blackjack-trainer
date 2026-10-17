@@ -35,6 +35,7 @@ import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecogniti
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { requestWakeLock, releaseWakeLock } from '../../../audio/wakeLock';
 import { useVoiceControl } from '../../useVoiceControl';
+import { NEXT_HINT, NUMBER_HINT } from '../../../audio/misheardLadder';
 import { useWheelCommand } from '../../useWheelCommand';
 import { useWheelNumber } from '../../useWheelNumber';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
@@ -257,7 +258,13 @@ export function IndexTestView({
     enabled: voiceOn || pushToTalkOpen,
     onAction,
     onTranscript,
-    onNotUnderstood: () => audio.ding('attention'),
+    onNotUnderstood: () => audio.ding('again'),
+    // C-R4: second miss on this question repeats it; third names what it takes.
+    escalation: {
+      promptKey: [phase, item],
+      reask: () => onAction('repeat'),
+      hint: () => say(phase === 'answering' ? NUMBER_HINT : NEXT_HINT),
+    },
     biasPhrases: [...Object.keys(VOICE_ACTIONS), ...COUNT_BIAS_PHRASES],
     onListening: () => audio.dingWhenQuiet('ready'),
     context: 'index-test',

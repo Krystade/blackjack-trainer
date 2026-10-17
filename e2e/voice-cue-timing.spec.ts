@@ -91,7 +91,7 @@ test('#5: an answer given on the "your turn" tone is graded, not ignored', async
   );
 
   const after = (await log(page)).slice(before);
-  expect(after, 'the answer on the tone was suppressed').not.toContain('chime:attention');
+  expect(after, 'the answer on the tone was suppressed').not.toContain('chime:again');
   await expect(page.locator('.feedback-cell')).toHaveCount(1);
 });
 
@@ -137,7 +137,7 @@ test('#6: saying it again after the "say again" chime is heard', async ({ page }
         setTimeout(() => {
           rec()?.onresult?.({ results: [[{ transcript: 'double' }]] });
           const fresh = (window.__speechLog ?? []).slice(start);
-          const attention = fresh.filter((e) => e === 'chime:attention').length;
+          const attention = fresh.filter((e) => e === 'chime:again').length;
           if (attention !== 1) {
             reject(new Error(`expected one say-again chime, log: ${fresh.join(' | ')}`));
             return;

@@ -92,7 +92,7 @@ test('an answer said over the app earns a cue instead of vanishing', async ({ pa
   await say(page, 'double');
 
   const after = await spoken(page);
-  expect(after.slice(before)).toContain('chime:attention');
+  expect(after.slice(before)).toContain('chime:again');
   // Suppressed, not acted on: the card must not have been graded.
   await expect(page.locator('.feedback-cell')).toHaveCount(0);
 });
@@ -108,7 +108,7 @@ test('the app hearing its own voice stays silent', async ({ page }) => {
   const echo = said.replace(/[^A-Za-z ]/g, ' ').trim().split(/\s+/).slice(0, 2).join(' ');
   await say(page, echo);
 
-  expect((await spoken(page)).slice(before)).not.toContain('chime:attention');
+  expect((await spoken(page)).slice(before)).not.toContain('chime:again');
 });
 
 /**
@@ -131,6 +131,6 @@ test('the cue is given once per utterance, not once per attempt', async ({ page 
   await say(page, 'double');
   await say(page, 'double');
 
-  const cues = (await spoken(page)).slice(before).filter((e) => e === 'chime:attention');
+  const cues = (await spoken(page)).slice(before).filter((e) => e === 'chime:again');
   expect(cues).toHaveLength(1);
 });
