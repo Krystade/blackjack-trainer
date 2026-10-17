@@ -63,10 +63,6 @@ export function normalizeTheme(value: unknown): ThemeId {
 }
 
 /**
- * Publish the theme to the document. Idempotent, and safe in non-browser
- * environments (unit tests, SSR) where `document` is undefined.
- */
-/**
  * Each theme's `--bg` (themes.css), for `<meta name="theme-color">`: the
  * browser chrome and Android's task switcher paint with it, and it was fixed
  * at Midnight green for every theme (s09). Restated rather than read from the
@@ -81,6 +77,10 @@ export const THEME_COLOR: Readonly<Record<ThemeId, string>> = {
   'slate-copper': '#15171a',
 };
 
+/**
+ * Publish the theme to the document. Idempotent, and safe in non-browser
+ * environments (unit tests, SSR) where `document` is undefined.
+ */
 export function applyTheme(theme: ThemeId): void {
   if (typeof document === 'undefined') return;
   document.documentElement.setAttribute('data-theme', theme);
