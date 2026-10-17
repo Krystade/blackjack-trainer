@@ -309,6 +309,9 @@ test('split flow: find a ten-value pair seed, split, and play both hands out', a
   await splitBtn.click();
 
   await expect(page.locator('.hands-row .player-hand')).toHaveCount(2);
+  // s06: split hands are labelled on the felt in order of play -- hand 1 is
+  // the RIGHT one -- so the result lines' "Hand 1 / Hand 2" name a hand.
+  await expect(page.locator('.hand-label')).toHaveText(['Hand 2', 'Hand 1']);
   await shot(page, '10-split-two-hands');
 
   await playRoundByAdvice(page);
@@ -615,6 +618,132 @@ test('the shuffle message appears on the round after the cut card is reached', a
 });
 
 /**
+ * Wave A (s06): the bet on the round after the cut card was graded at the
+ * reshuffled TC 0 with no warning. The cut card is now announced as the round
+ * that reached it settles -- before the bet -- and the deal then shuffles.
+ */
+test('the cut card is announced before the bet that the shuffle will grade', async ({ page }) => {
+  await withSettings(page, { dealSpeedMs: 0, audio: { enabled: true, verbosity: 'results' } });
+  await withProfile(page, { name: 'Shuffle E2E Profile', rules: { decks: 1 }, penetration: 0.1 });
+  await page.goto('/?seed=3&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+
+  const cue = page.getByTestId('cut-card-cue');
+  await expect(cue).toHaveCount(0);
+  let warned = false;
+  for (let round = 0; round < 6 && !warned; round += 1) {
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await resolveInsurance(page, false);
+    if (await page.locator('.action-bar[data-advice]').isVisible().catch(() => false)) {
+      await playRoundByAdvice(page);
+    }
+    await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
+    warned = await cue.isVisible().catch(() => false);
+  }
+  expect(warned, 'expected the cut card to be announced between rounds').toBe(true);
+  await expect(page.locator('.message-shuffle')).toHaveCount(0);
+  // Said aloud as well, before the bet.
+  expect(shuffleLines(await speechLog(page))).toBe(1);
+
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await expect(page.locator('.message-shuffle')).toHaveText('Shuffling…');
+  // ...and not a second time as the shuffled shoe is dealt.
+  expect(shuffleLines(await speechLog(page))).toBe(1);
+});
+
+async function speechLog(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
+}
+
+const shuffleLines = (log: string[]): number => log.filter((l) => l === 'Shuffling.').length;
+
+/**
+ * Play the first round of a single deck cut a tenth of the way in, with a
+ * count check owed on every round: the round that reaches the cut card is the
+ * round the check grades (seed 3: 10, 3, 9, K, Q -- the count is -2, not 0).
+ */
+async function settleCutCardRoundWithCheckOwed(page: Page, betSpreadOn: boolean): Promise<void> {
+  await withSettings(page, { dealSpeedMs: 0, audio: { enabled: true, verbosity: 'results' } });
+  await withProfile(page, {
+    name: 'Cut Card Check',
+    rules: { decks: 1 },
+    penetration: 0.1,
+    countCheckEvery: 1,
+    betSpreadOn,
+  });
+  await page.goto('/?seed=3&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await resolveInsurance(page, false);
+  if (await page.locator('.action-bar[data-advice]').isVisible().catch(() => false)) {
+    await playRoundByAdvice(page);
+  }
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
+}
+
+/**
+ * Wave A review: with a count check owed on the round that reached the cut
+ * card, the screen said "count 0" right above the "Running count?" keypad, and
+ * "Shuffling." was spoken before the question -- while the check grades the
+ * count BEFORE the shuffle. The check now comes first; only then is the
+ * shuffle announced, and the bet (chosen before anyone knew) is chosen again.
+ */
+test('cut card with a count check owed: the check first, then the shuffle, then the bet', async ({ page }) => {
+  await settleCutCardRoundWithCheckOwed(page, true);
+  const cue = page.getByTestId('cut-card-cue');
+  const prompt = page.locator('.bottom-sheet', { hasText: 'Running count?' });
+  const round = page.locator('.topbar-stat', { hasText: /^Round / });
+
+  // Settled, check owed: nothing says the count is 0 yet, on screen or aloud.
+  await expect(round).toHaveText('Round 1');
+  await expect(cue).toHaveCount(0);
+  expect(shuffleLines(await speechLog(page))).toBe(0);
+
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await expect(prompt).toBeVisible();
+  await expect(cue).toHaveCount(0);
+  expect(shuffleLines(await speechLog(page))).toBe(0);
+
+  await prompt.getByRole('button', { name: '2', exact: true }).click();
+  await prompt.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(prompt).not.toBeVisible();
+
+  // Answered: now the shuffle is announced, once, after the question -- and
+  // the deal waits, because the bet was placed before the player knew.
+  await expect(cue).toBeVisible();
+  await expect(round).toHaveText('Round 1');
+  const log = await speechLog(page);
+  expect(shuffleLines(log)).toBe(1);
+  expect(log.indexOf('Shuffling.')).toBeGreaterThan(log.indexOf("What's the running count?"));
+  await shot(page, '55-cut-card-after-count-check');
+
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await expect(round).toHaveText('Round 2');
+  await expect(page.locator('.message-shuffle')).toHaveText('Shuffling…');
+  expect(shuffleLines(await speechLog(page))).toBe(1);
+});
+
+test('cut card with a count check owed and no bet spread: the answer deals the fresh shoe', async ({ page }) => {
+  await settleCutCardRoundWithCheckOwed(page, false);
+  const prompt = page.locator('.bottom-sheet', { hasText: 'Running count?' });
+  await expect(page.getByTestId('cut-card-cue')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await expect(prompt).toBeVisible();
+  await expect(page.getByTestId('cut-card-cue')).toHaveCount(0);
+  expect(shuffleLines(await speechLog(page))).toBe(0);
+  await prompt.getByRole('button', { name: '2', exact: true }).click();
+  await prompt.getByRole('button', { name: 'OK', exact: true }).click();
+
+  // Nothing is graded on the bet, so the deal follows the answer (#36).
+  await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 2');
+  await expect(page.locator('.message-shuffle')).toHaveText('Shuffling…');
+  const log = await speechLog(page);
+  expect(shuffleLines(log)).toBe(1);
+  expect(log.indexOf('Shuffling.')).toBeGreaterThan(log.indexOf("What's the running count?"));
+});
+
+/**
  * RV7: the other half of R5's wong decision.
  *
  * Dealing in at a count the spread says to leave used to produce exactly one
@@ -724,7 +853,9 @@ test('RT#11: the report stays quiet below the sample floor, where a ratio is noi
 
 test('RT#11: eight rounds of exact ramp conformity are named as the tell', async ({ page }) => {
   await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
-  await withProfile(page, { name: 'Mechanical', betSpreadOn: true });
+  // Cover on: the tell is a warning only when cover was allowed and not taken
+  // (s06 -- with cover off every off-ramp bet is graded wrong).
+  await withProfile(page, { name: 'Mechanical', betSpreadOn: true, coverBets: true });
   await page.goto('/?seed=6&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
@@ -753,4 +884,41 @@ test('RT#11: eight rounds of exact ramp conformity are named as the tell', async
   // Vacuity guard: the collapse must account for every round, not hide some.
   expect(summed).toBe(wongMistakes);
   await shot(page, '54-report-bet-tell');
+});
+
+test('s06: with cover bets off the ramp ratio is stated, not warned about', async ({ page }) => {
+  await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
+  await withProfile(page, { name: 'No Cover', betSpreadOn: true });
+  await page.goto('/?seed=6&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  // The table minimum every round: seed 6 never leaves the bottom of the ramp
+  // (see RT#11 above), so every one of these bets is exactly the ramp's.
+  for (let i = 0; i < 8; i++) {
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await playRoundByAdvice(page);
+  }
+  await page.locator('.end-btn').click();
+  await page.locator('.end-btn').click();
+  await expect(page.locator('.report-tell')).toHaveCount(0);
+  await expect(page.locator('.report-cover')).toContainText('8 of 8 rounds bet the ramp exactly');
+  await expect(page.locator('.report-cover')).toContainText('Turn on Cover bets');
+});
+
+test('s06: a doubled hand shows the bet riding on it', async ({ page }) => {
+  await withSettings(page, { countCheckEvery: 0 });
+  let doubled = false;
+  for (let seed = 1; seed <= 60 && !doubled; seed++) {
+    await page.goto(`/?seed=${seed}&e2e=1`);
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await resolveInsurance(page, false);
+    const double = page.locator('.action-bar[data-advice] button.action-btn', { hasText: 'Double' });
+    if (!(await double.isEnabled().catch(() => false))) continue;
+    await expect(page.locator('.player-hand .hand-bet')).toHaveText('Bet: 1');
+    await double.click();
+    doubled = true;
+  }
+  expect(doubled, 'expected a seed in 1..60 to offer a double').toBe(true);
+  await playRoundByAdvice(page);
+  await expect(page.locator('.player-hand .hand-bet')).toHaveText('Bet: 2');
 });

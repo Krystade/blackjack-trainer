@@ -1,5 +1,6 @@
 import type { Card } from './cards';
 import type { Shoe } from './cards';
+import { snapDecksRemaining } from './cards';
 
 /**
  * The pre-stacked shoe every rigged session runs on, and the seed offset that
@@ -80,7 +81,7 @@ export function makeRiggedShoe(
       // count read off this one is the count a player at that table would
       // compute.
       if (decks !== undefined) {
-        return Math.max(0.5, Math.round((decks * 52 - dealt) / 26) / 2);
+        return snapDecksRemaining(decks * 52 - dealt, decks);
       }
       const rounded = Math.round(queue.length / 26);
       return Math.max(0.5, rounded / 2);

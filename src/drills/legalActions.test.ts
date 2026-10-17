@@ -101,14 +101,32 @@ describe('#11: surrender on soft hands and pairs', () => {
             out.push(`${rank},${rank} v ${up}`);
       return out;
     };
-    const at = (decks: 1 | 2 | 6, s17: boolean, das = true) => offered({ ...DEFAULT_RULES, decks, s17, das });
+    const at = (decks: 1 | 2 | 6, s17: boolean, das = true, surrenderIndices = false) =>
+      offered({ ...DEFAULT_RULES, decks, s17, das, surrenderIndices });
+    // Surrender indices off (the default): only the chart's own cells.
     expect(at(1, false)).toEqual(['7,7 v 10', '7,7 v A']);
     expect(at(1, true)).toEqual(['7,7 v 10']);
     expect(at(2, false, false)).toEqual(['8,8 v A']);
     expect(at(2, false, true)).toEqual([]);
     expect(at(6, false)).toEqual(['8,8 v A']);
     expect(at(6, true)).toEqual([]);
+    // F18: with surrender indices on, 7,7 v 10 is a 14 v 10 wherever the pair
+    // cell does not split, so the Fab 4's 14 v 10 surrender can be the answer.
+    expect(at(2, false, false, true)).toEqual(['7,7 v 10', '8,8 v A']);
+    expect(at(2, false, true, true)).toEqual(['7,7 v 10']);
+    expect(at(6, false, true, true)).toEqual(['7,7 v 10', '8,8 v A']);
+    expect(at(6, true, true, true)).toEqual(['7,7 v 10']);
     expect(offered({ ...DEFAULT_RULES, ls: false })).toEqual([]);
+    expect(offered({ ...DEFAULT_RULES, ls: false, surrenderIndices: true })).toEqual([]);
+  });
+
+  it('a plain RuleSet (no surrender-indices switch) never offers an index surrender on a pair', () => {
+    // Flashcards and Mastery grade with the bare profile rules, where surrender
+    // indices are undefined and therefore off: 7,7 v 10 cannot be a surrender.
+    expect(drillLegalActions([c('7', 's'), c('7', 'h')], DEFAULT_RULES, '10')).not.toContain('surrender');
+    expect(drillLegalActions([c('7', 's'), c('7', 'h')], { ...DEFAULT_RULES, surrenderIndices: true } as StrategyRules, '10')).toContain(
+      'surrender',
+    );
   });
 
   /**
@@ -117,7 +135,7 @@ describe('#11: surrender on soft hands and pairs', () => {
    * counts: withholding surrender must never hide the graded-correct answer.
    */
   it('never withholds surrender where correctPlay would return it', () => {
-    const ctx = { canDouble: true, canSplit: true, canSurrender: true };
+    // canSurrender follows the table's late-surrender rule, as at the table.
     const hands: Card[][] = [
       ...PAIR_RANKS.map((r) => [c(r, 's'), c(r === 'J' ? 'Q' : r, 'h')]),
       ...SOFT_OTHERS.map((r) => [c('A'), c(r)]),
@@ -130,6 +148,7 @@ describe('#11: surrender on soft hands and pairs', () => {
           if (legal.includes('surrender')) continue;
           withheld++;
           for (let tc = -10; tc <= 10; tc++) {
+            const ctx = { canDouble: true, canSplit: true, canSurrender: rules.ls };
             const play = correctPlay(cards, up, tc, ctx, rules).action;
             expect(play, `${cards.map((x) => x.rank)} v ${up} tc ${tc}`).not.toBe('surrender');
           }

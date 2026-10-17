@@ -20,7 +20,8 @@ import {
 type ProfileView = Pick<
   Profile,
   'countCheckEvery' | 'countCheckAsk' | 'gradeDeviations' | 'cutDecks' | 'cutVary' | 'penetration' | 'rules'
->;
+> &
+  Partial<Pick<Profile, 'betSpreadOn'>>;
 
 interface ControlProps {
   profile: ProfileView;
@@ -103,6 +104,25 @@ export function CutCardControl({ profile, onChange }: ControlProps) {
       <p className="settings-note profile-play-note">
         Decks left behind the cut card of a {profile.rules.decks}-deck shoe
         {profile.cutVary ? ', moved by up to half a deck either way each shoe.' : '.'}
+      </p>
+    </>
+  );
+}
+
+/**
+ * Wave A (s06): vary bets with the count -- the bet ramp and the play-or-sit
+ * grading both hang off it. Reachable from the Play gear, not only from the
+ * profile editor; the ramp itself is edited there.
+ */
+export function BetSpreadControl({ profile, onChange }: ControlProps) {
+  const on = profile.betSpreadOn === true;
+  return (
+    <>
+      <Toggle label="Vary bets with the count" checked={on} onChange={(v) => onChange({ betSpreadOn: v })} />
+      <p className="settings-note profile-play-note">
+        {on
+          ? 'Bets are graded on your bet ramp, and Sit out appears: sitting out is right where the ramp bets its minimum.'
+          : 'Flat bets: no bet ramp, and no sitting out.'}
       </p>
     </>
   );

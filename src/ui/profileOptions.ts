@@ -104,6 +104,8 @@ export function playOptionsDiffer(a: Profile, b: Profile): boolean {
     gradesDeviations(p),
     cutDecksOf(p),
     p.cutVary === true,
+    // Wave A: the bet spread toggle is in the Play sheet too.
+    p.betSpreadOn === true,
   ];
   return JSON.stringify(effective(a)) !== JSON.stringify(effective(b));
 }

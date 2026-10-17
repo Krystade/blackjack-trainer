@@ -1,25 +1,56 @@
 import { describe, it, expect } from 'vitest';
 import {
   correctAction,
+  explainAction,
   makeBetSitLeaveScenario,
-  T_BET,
   type BetSitLeaveScenario,
 } from './betSitLeave';
+import { Game, DEFAULT_SPREAD, type GameConfig } from '../engine/game';
 
 const sc = (trueCount: number, decksRemaining: number): BetSitLeaveScenario => ({ trueCount, decksRemaining });
 
-describe('correctAction (#48-51: bet vs sit only)', () => {
-  it('TC >= 0 is always BET, regardless of depth', () => {
-    for (const tc of [0, 1, 3]) for (const d of [0.5, 3, 6]) expect(correctAction(sc(tc, d))).toBe('bet');
+describe('correctAction follows the profile spread, as Play does (Wave A, D1)', () => {
+  it('default ramp: bets from TC +1 (where it raises), sits at 0 and below, at any depth', () => {
+    for (const tc of [1, 3]) for (const d of [0.5, 3, 6]) expect(correctAction(sc(tc, d))).toBe('bet');
+    for (const tc of [0, -1, -2, -6]) for (const d of [0.5, 1, 6]) expect(correctAction(sc(tc, d))).toBe('sit');
   });
 
-  it('any negative TC is SIT, early or late, mild or deep -- there is no LEAVE answer', () => {
-    for (const tc of [-1, -2, -4, -6]) for (const d of [0.5, 1, 2, 4, 6]) expect(correctAction(sc(tc, d))).toBe('sit');
+  it('moving the ramp moves the line', () => {
+    const early = [
+      { minTc: -99, units: 1 },
+      { minTc: -1, units: 2 },
+    ];
+    expect(correctAction(sc(-1, 3), early)).toBe('bet');
+    expect(correctAction(sc(-2, 3), early)).toBe('sit');
   });
 
-  it('boundary: TC exactly T_BET (0) bets; one below sits', () => {
-    expect(correctAction(sc(T_BET, 4))).toBe('bet');
-    expect(correctAction(sc(T_BET - 1, 4))).toBe('sit');
+  it('agrees with the wong grading in Play at every count, for the default ramp and another', () => {
+    const ramps = [DEFAULT_SPREAD, [{ minTc: -99, units: 1 }, { minTc: 2, units: 3 }]];
+    for (const spread of ramps)
+      for (let tc = -6; tc <= 6; tc++) {
+        const cfg: GameConfig = {
+          penetration: 0.75,
+          betSpreadOn: true,
+          spread,
+          bankrollStart: 100,
+          countCheckEvery: 0,
+          seed: 1,
+        };
+        const game = new Game(cfg);
+        // Fix the count Play grades the sit-out against.
+        Object.defineProperty(game, 'trueCountNow', { get: () => tc });
+        game.sitOut();
+        const wong = game.events.find((e) => e.kind === 'wong')!;
+        expect(correctAction(sc(tc, 3), spread), `tc ${tc}`).toBe(wong.correct ? 'sit' : 'bet');
+      }
+  });
+
+  it('explains the line by the ramp, with a real minus sign', () => {
+    expect(explainAction(sc(0, 3))).toBe('Your ramp raises from TC +1: below that, sit out.');
+    expect(explainAction(sc(2, 3))).toBe('Your ramp bets above its minimum here: play.');
+    expect(explainAction(sc(-3, 3), [{ minTc: -99, units: 1 }, { minTc: -2, units: 2 }])).toBe(
+      'Your ramp raises from TC −2: below that, sit out.',
+    );
   });
 });
 
@@ -138,5 +169,36 @@ describe('makeBetSitLeaveScenario across shoe sizes (V4-3)', () => {
       expect(seen.has('bet'), `${totalDecks}-deck bet`).toBe(true);
       expect(seen.has('sit'), `${totalDecks}-deck sit`).toBe(true);
     }
+  });
+});
+
+describe('makeBetSitLeaveScenario is balanced by the answer (Wave A review)', () => {
+  /** Share of Sit answers over `n` seeds, graded by `spread`. */
+  const sitShare = (totalDecks: number, spread = DEFAULT_SPREAD, n = 2000): number => {
+    let sit = 0;
+    for (let seed = 0; seed < n; seed++) {
+      if (correctAction(makeBetSitLeaveScenario(seed, totalDecks, spread), spread) === 'sit') sit++;
+    }
+    return sit / n;
+  };
+
+  it('tapping Sit every time scores about half, not three in four, on the default ramp', () => {
+    // Before: 63% (1D) to 76% (8D) of answers were Sit once the drill sat at
+    // every count where the ramp bets its minimum (D1).
+    for (const totalDecks of [1, 2, 6, 8]) {
+      const share = sitShare(totalDecks);
+      expect(share, `${totalDecks}D`).toBeGreaterThan(0.42);
+      expect(share, `${totalDecks}D`).toBeLessThan(0.58);
+    }
+  });
+
+  it('follows the ramp it is given: one that raises late still gets half Bet answers', () => {
+    const late = [
+      { minTc: -99, units: 1 },
+      { minTc: 3, units: 4 },
+    ];
+    const share = sitShare(6, late);
+    expect(share).toBeGreaterThan(0.42);
+    expect(share).toBeLessThan(0.58);
   });
 });

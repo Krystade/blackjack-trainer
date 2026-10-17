@@ -1,6 +1,7 @@
 import { Shoe, rankValue, mulberry32 } from './cards';
 import { makeRiggedShoe, botRngSeed, type RiggedShoe } from './riggedShoe';
 import { betWithinStep } from './coverBets';
+import { sitOutIsCorrect, spreadUnitsFor } from './wong';
 import { cutCardsFor, cutRngSeed, usesCutCards } from './cut';
 import { priceMistake } from './mistakeCost';
 import type { Card, Rank } from './cards';
@@ -129,15 +130,6 @@ export interface PlayerHand {
    * original hand to its cap never blocks another original hand (dealt in
    * the same round) from splitting independently. */
   originIndex: number;
-}
-
-/** Find the last spread row (sorted asc by minTc) whose minTc <= tc. */
-function spreadUnitsFor(tc: number, spread: SpreadRow[]): number {
-  let units = spread.length > 0 ? spread[0].units : 1;
-  for (const row of spread) {
-    if (row.minTc <= tc) units = row.units;
-  }
-  return units;
 }
 
 function isTenValueUp(up: Rank): boolean {
@@ -387,7 +379,8 @@ export class Game {
   ): { canHit: boolean; canDouble: boolean; canSplit: boolean; canSurrender: boolean } {
     return {
       canHit: !hand.splitAces,
-      canDouble: hand.cards.length === 2 && !hand.doubled && !hand.splitAces,
+      // F10: doubling a split hand needs the table to allow DAS.
+      canDouble: hand.cards.length === 2 && !hand.doubled && !hand.splitAces && (!hand.fromSplit || this.rules.das),
       canSplit:
         isPair(hand.cards) &&
         this.countHandsWithOrigin(hands, hand.originIndex) < 4 &&
@@ -419,6 +412,20 @@ export class Game {
   }
 
   /**
+   * The next round (staked or sat out) will shuffle before it deals: the cut
+   * card is out, or the shoe is too shallow for a full round (see
+   * beginRound). Read BETWEEN rounds so the table can say so before the bet
+   * is placed -- the bet is then graded at the fresh shoe's count, which is
+   * the count the player was told they were betting into (Wave A, s06).
+   */
+  get shuffleDue(): boolean {
+    const totalHands = this.seatCfg.bots + this.seatCfg.playerHands;
+    const needed = 4 * totalHands + 20;
+    const tooShallow = !this.shoeIsRigged && this.shoe.cardsRemaining < needed;
+    return this.shoe.cutCardReached || tooShallow;
+  }
+
+  /**
    * Round-start bookkeeping + the pre-deal depth/cut-card reshuffle guard,
    * shared by startRound (staked) and sitOut (wong-out). Extracted so a
    * sit-out round advances the shoe, cut card and running-count reset on
@@ -443,10 +450,7 @@ export class Game {
     // configured playerHands even on a sit-out (conservative: a sit-out deals
     // strictly fewer cards, so a shoe deep enough for a full round is deep
     // enough to sit out).
-    const totalHands = this.seatCfg.bots + this.seatCfg.playerHands;
-    const needed = 4 * totalHands + 20;
-    const tooShallow = !this.shoeIsRigged && this.shoe.cardsRemaining < needed;
-    if (this.shoe.cutCardReached || tooShallow) {
+    if (this.shuffleDue) {
       this.shoe.shuffle();
       this.runningCount = 0;
       this.shuffledLastRound = true;
@@ -455,21 +459,9 @@ export class Game {
     }
   }
 
-  /**
-   * A wong-out (sit-out) is correct when the configured bet spread calls only
-   * for the table-minimum bet at this true count -- the count gives no edge
-   * worth staking above the floor, so back-counting beats playing at the
-   * minimum. Grounded entirely in the profile's OWN spread (no hard-coded
-   * count threshold asserted as strategy truth): if the user configures a
-   * spread that bets above the minimum starting at TC +1, the wong-out line
-   * moves with it. Empty spread => never correct to sit out (nothing to grade
-   * against). R5, docs/BACKLOG.md.
-   */
+  /** The play-or-sit line: one shared rule with the Bet or sit drill (engine/wong.ts). */
   private sitOutIsCorrect(tc: number): boolean {
-    const spread = this.cfg.spread;
-    if (spread.length === 0) return false;
-    const minUnits = Math.min(...spread.map((r) => r.units));
-    return spreadUnitsFor(tc, spread) <= minUnits;
+    return sitOutIsCorrect(tc, this.cfg.spread);
   }
 
   /**
@@ -803,7 +795,9 @@ export class Game {
       // `tcBand`). `expected` still carries the exact figure, so the
       // correction says what the shoe actually held.
       tcCorrect =
-        tcGuess !== undefined && tcWithinEye(tcGuess, this.runningCount, this.shoe.decksRemaining);
+        tcGuess !== undefined &&
+        // F7: the profile's rounding, as trueCountNow (the expected figure) uses.
+        tcWithinEye(tcGuess, this.runningCount, this.shoe.decksRemaining, undefined, this.cfg.tcRounding);
       this.events.push({
         source: 'table',
         kind: 'countCheck',
@@ -1143,6 +1137,15 @@ export class Game {
 
       hand.done = !this.rules.rsa || !hand0HasAce || atOriginCap;
       newHand.done = !this.rules.rsa || !hand1HasAce || atOriginCap;
+      // F19: at the cap, every split ace of this origin is finished. An open
+      // A,A left of here can no longer resplit, and a split ace never takes a
+      // second card, so it would be asked a play whose only legal answer is
+      // Stand while being graded against Hit.
+      if (atOriginCap) {
+        for (const h of hands) {
+          if (h.originIndex === hand.originIndex && h.splitAces) h.done = true;
+        }
+      }
     }
   }
 

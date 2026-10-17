@@ -171,10 +171,13 @@ describe('correctPlay: 12v6 -- (10,2) v 6', () => {
   it('tc -2 -> stand (basic, above threshold)', () => {
     expectAdvice(correctPlay(cards('10', '2'), '6', -2, ctx()), 'stand');
   });
-  it('tc -3 -> hit 12v6', () => {
-    // Boundary corrected 2026-08-17: the published index is the STAND
-    // threshold, so the hit boundary is index - 1. See deviations.test.ts.
-    expectAdvice(correctPlay(cards('10', '2'), '6', -3, ctx()), 'hit', '12v6');
+  it('tc -3 -> STANDS: -3 is the published H17 index itself (F6)', () => {
+    // Published H17 12v6 is "stand at TC >= -3", so the hit boundary is
+    // index - 1 = -4, the same convention as every other negative index.
+    expectAdvice(correctPlay(cards('10', '2'), '6', -3, ctx()), 'stand');
+  });
+  it('tc -4 -> hit 12v6', () => {
+    expectAdvice(correctPlay(cards('10', '2'), '6', -4, ctx()), 'hit', '12v6');
   });
   it('tc -7 -> hit 12v6 (further below threshold)', () => {
     expectAdvice(correctPlay(cards('10', '2'), '6', -7, ctx()), 'hit', '12v6');
@@ -436,9 +439,10 @@ describe('S17 Illustrious-18 variant: 10vA threshold +4', () => {
 describe('S17 Illustrious-18 variant: 12v6 threshold −2 (lte)', () => {
   const s17Rules: RuleSet = { decks: 6, s17: true, das: true, ls: true, rsa: false, bj65: false };
 
-  it('H17 (10,2) v 6, tc -3 -> hit 12v6', () => {
+  it('H17 (10,2) v 6, tc -4 -> hit 12v6 (published stand >= -3)', () => {
     const h17Rules: RuleSet = { decks: 6, s17: false, das: true, ls: true, rsa: false, bj65: false };
-    expectAdvice(correctPlay(cards('10', '2'), '6', -3, ctx(), h17Rules), 'hit', '12v6');
+    expectAdvice(correctPlay(cards('10', '2'), '6', -4, ctx(), h17Rules), 'hit', '12v6');
+    expectAdvice(correctPlay(cards('10', '2'), '6', -3, ctx(), h17Rules), 'stand');
   });
 
   it('S17 (10,2) v 6, tc -2 -> hit 12v6 at threshold', () => {
@@ -518,5 +522,26 @@ describe('insuranceCorrect is deck-aware (operator request)', () => {
     // behaviour rather than silently switching to single-deck rules.
     expect(insuranceCorrect(2)).toBe(false);
     expect(insuranceCorrect(3)).toBe(true);
+  });
+});
+
+describe('F18: pair cells that do not split still take the index on their total', () => {
+  const noDas: RuleSet = { decks: 6, s17: false, das: false, ls: true, rsa: false, bj65: false };
+
+  it('6,6 v 2 without DAS is a hard 12: stands at the 12v2 index (+3)', () => {
+    // Basic for 6,6 v 2 without DAS does not split, so the cell is the total.
+    expect(basicPlay(cards('6', '6'), '2', ctx({ canSplit: true }), noDas).action).not.toBe('split');
+    expectAdvice(correctPlay(cards('6', '6'), '2', 3, ctx({ canSplit: true }), noDas), 'stand', '12v2');
+    expectAdvice(correctPlay(cards('6', '6'), '2', 2, ctx({ canSplit: true }), noDas), 'hit');
+  });
+
+  it('7,7 v 10 with surrender indices surrenders at sur14v10 (+3)', () => {
+    const fab4 = { ...DEFAULT_RULES, surrenderIndices: true };
+    expect(basicPlay(cards('7', '7'), '10', ctx({ canSplit: true, canSurrender: true }), fab4).action).not.toBe('split');
+    expectAdvice(
+      correctPlay(cards('7', '7'), '10', 3, ctx({ canSplit: true, canSurrender: true }), fab4),
+      'surrender',
+      'sur14v10',
+    );
   });
 });

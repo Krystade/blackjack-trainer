@@ -198,8 +198,14 @@ function botLabelFor(game: Game, seatIndex: number): string {
  * the mid-round bot HIT/DOUBLE cards get paced (see the narration-reveal
  * effect below), because those are the only cards the UI itself paces.
  */
-export function narrateDeal(game: Game, audio: Pick<AudioApi, 'say' | 'sayFull'>): void {
-  if (game.shuffledLastRound) {
+export function narrateDeal(
+  game: Game,
+  audio: Pick<AudioApi, 'say' | 'sayFull'>,
+  shuffleAlreadySaid = false,
+): void {
+  // Wave A: the shuffle is normally announced between rounds, before the bet
+  // (see narrateSettlement / submitCount); said here only if it was not.
+  if (game.shuffledLastRound && !shuffleAlreadySaid) {
     audio.say(narrateShuffle());
   }
   for (const seat of game.seats) {
@@ -231,8 +237,8 @@ export function narrateDeal(game: Game, audio: Pick<AudioApi, 'say' | 'sayFull'>
  * hand's result. The count check is NOT asked here any more (#36): it is
  * posed when the next deal is asked for -- see `poseCountCheckBeforeDeal`.
  */
-function narrateSettlement(game: Game, audio: AudioApi): void {
-  if (game.phase !== 'settled') return;
+function narrateSettlement(game: Game, audio: AudioApi): boolean {
+  if (game.phase !== 'settled') return false;
 
   if (game.holeRevealed) {
     for (const card of game.dealerCards.slice(1)) {
@@ -250,6 +256,17 @@ function narrateSettlement(game: Game, audio: AudioApi): void {
       );
     }
   }
+
+  // s06: the cut card came out this round, so the next bet goes into a fresh
+  // shoe. Said now, before that bet, as the screen says it -- unless a count
+  // check is owed: it grades the count BEFORE the shuffle, so "Shuffling."
+  // then "Running count?" would ask for a 0 that is marked wrong. Then it is
+  // said once the check is answered (submitCount). Returns whether it was said.
+  if (game.shuffleDue && !game.countCheckDue) {
+    audio.say(narrateShuffle());
+    return true;
+  }
+  return false;
 }
 
 /** What the player asked for when an owed count check interrupted it (#36).
@@ -286,16 +303,39 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const bump = useCallback(() => setVersion((v) => v + 1), []);
 
   /**
+   * F1: graded events committed to Stats so far. Each round's events are
+   * written as the round SETTLES (and a count check's as it is answered), so
+   * a reload, an iOS eviction or leaving through the gear loses nothing that
+   * was already decided. End then writes only the session row (and whatever a
+   * round still in play had graded).
+   */
+  const committedRef = useRef(0);
+  const commitEvents = useCallback(() => {
+    if (game.events.length <= committedRef.current) return;
+    const now = new Date().toISOString();
+    // #25: dated as they are committed, so Play's priced mistakes land in the
+    // cost-of-mistakes history inside a Stats time range, not only "all".
+    const fresh = datedSessionEvents(game.events.slice(committedRef.current), now);
+    committedRef.current = game.events.length;
+    saveStats(applyEvents(loadStats(), fresh, now));
+  }, [game]);
+
+  /**
    * #42: write the bankroll back to the profile whenever an engine call has
-   * moved it -- in practice, as each round settles. To STORAGE ONLY: see
-   * playBankroll.ts for why the app's copy of the profile is left alone (it
-   * keys the Table, and a remount would reshuffle the shoe mid-session).
-   * Runs after every render, which is after every engine call; the
-   * comparison makes the common case free.
+   * moved it. To STORAGE ONLY: see playBankroll.ts for why the app's copy of
+   * the profile is left alone (it keys the Table, and a remount would
+   * reshuffle the shoe mid-session). Runs after every render, which is after
+   * every engine call; the comparison makes the common case free.
+   *
+   * F1: only BETWEEN rounds, and in the same breath as the round's graded
+   * events, so the stored bankroll and the stored stats always describe the
+   * same rounds. An insurance loss mid-round is stored when the round settles.
    */
   const storedBankrollRef = useRef(game.bankroll);
   const profileId = profile.id;
   useEffect(() => {
+    if (game.phase === 'player' || game.phase === 'insurance') return;
+    commitEvents();
     if (game.bankroll === storedBankrollRef.current) return;
     storedBankrollRef.current = game.bankroll;
     storeBankrollNow(profileId, game.bankroll);
@@ -311,14 +351,25 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
    */
   const pendingDealRef = useRef<PendingDeal | null>(null);
 
+  /**
+   * Wave A: "Shuffling." has been said between rounds (as the cut-card round
+   * settled, or as the count check owed on it was answered), so the deal that
+   * shuffles does not say it a second time. Cleared by every deal.
+   */
+  const shuffleSaidRef = useRef(false);
+  const settleAndNote = useCallback(() => {
+    if (narrateSettlement(game, audio)) shuffleSaidRef.current = true;
+  }, [game, audio]);
+
   const runDeal = useCallback(
     (betUnits?: number | number[]) => {
       realignLosingShoe(playGame);
       game.startRound(betUnits);
-      narrateDeal(game, audio);
-      narrateSettlement(game, audio); // instant dealer-blackjack / all-naturals rounds settle inside startRound()
+      narrateDeal(game, audio, shuffleSaidRef.current);
+      shuffleSaidRef.current = false;
+      settleAndNote(); // instant dealer-blackjack / all-naturals rounds settle inside startRound()
     },
-    [game, playGame, audio],
+    [game, playGame, audio, settleAndNote],
   );
 
   const runSitOut = useCallback(() => {
@@ -329,10 +380,11 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     // narrate: the player was dealt none. R5.
     realignLosingShoe(playGame);
     game.sitOut();
-    if (game.shuffledLastRound) audio.say(narrateShuffle());
+    if (game.shuffledLastRound && !shuffleSaidRef.current) audio.say(narrateShuffle());
+    shuffleSaidRef.current = false;
     audio.say(narrateSitOut());
-    narrateSettlement(game, audio);
-  }, [game, playGame, audio]);
+    settleAndNote();
+  }, [game, playGame, audio, settleAndNote]);
 
   /**
    * #36: if a count check is owed, ask it now -- on the way to the next
@@ -370,10 +422,10 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const insure = useCallback(
     (take: boolean) => {
       game.insuranceDecision(take);
-      narrateSettlement(game, audio);
+      settleAndNote();
       bump();
     },
-    [game, bump, audio],
+    [game, bump, settleAndNote],
   );
 
   const act = useCallback(
@@ -407,10 +459,10 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
           });
         }
       }
-      narrateSettlement(game, audio);
+      settleAndNote();
       bump();
     },
-    [game, bump, settings.feedbackMode, audio],
+    [game, bump, settings.feedbackMode, audio, settleAndNote],
   );
 
   const dismissOverlay = useCallback(() => setOverlay(null), []);
@@ -583,47 +635,78 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
         audio.say(narrateCountAnswer(result.actualTc));
         audio.ding(result.tcCorrect ? 'good' : 'bad');
       }
+      // F1: the answer is graded now; commit it before the next deal starts
+      // a round whose events wait for its settle.
+      commitEvents();
       // #36: the deal that was asked for happens right after the answer.
       const pending = pendingDealRef.current;
       pendingDealRef.current = null;
-      if (pending?.kind === 'deal') runDeal(pending.bets);
-      else if (pending?.kind === 'sitOut') runSitOut();
+      const next = pending?.kind === 'deal' || pending?.kind === 'sitOut';
+      // Wave A: the round just counted reached the cut card. Its shuffle was
+      // held back so as not to tell the player the count was 0 before the
+      // check (narrateSettlement); the check is answered, so say it now.
+      const shuffling = next && game.shuffleDue;
+      if (shuffling) {
+        audio.say(narrateShuffle());
+        shuffleSaidRef.current = true;
+      }
+      // With a spread on, the bet (or the sit-out) was chosen before the
+      // player knew the next hand is off a fresh shoe at count 0 -- and it is
+      // graded at that count (s06). So the deal waits for a bet placed with
+      // the cut card on screen, instead of running the stale one.
+      const holdForBet = shuffling && game.cfg.betSpreadOn;
+      if (!holdForBet) {
+        if (pending?.kind === 'deal') runDeal(pending.bets);
+        else if (pending?.kind === 'sitOut') runSitOut();
+      }
       bump();
       return { endNow: pending?.kind === 'end', check: { ...result, rcGuess: rc, tcGuess, round: roundAtCheck + 1 } };
     },
-    [game, bump, audio, runDeal, runSitOut],
+    [game, bump, audio, runDeal, runSitOut, commitEvents],
   );
 
+  /**
+   * End the session. Returns null when nothing was played (F22): no rounds,
+   * no report, and no session row. Otherwise commits whatever is still
+   * uncommitted (a round ended mid-play) and writes the session row only --
+   * the settled rounds' events are already in Stats (F1).
+   */
   const endSession = useCallback(
-    (peeks = 0): SessionReport => {
+    (peeks = 0): SessionReport | null => {
+      if (game.roundNo === 0) return null;
       const now = new Date().toISOString();
-      // #25: dated with the session, so Play's priced mistakes land in the
-      // cost-of-mistakes history inside a Stats time range, not only "all".
-      const events = datedSessionEvents(game.events, now);
+      commitEvents();
+      const events = game.events;
       // From where THIS session started (#42), not the profile's original stake.
       const bankrollDelta = game.bankroll - game.cfg.bankrollStart;
+      storedBankrollRef.current = game.bankroll;
+      storeBankrollNow(profileId, game.bankroll);
 
       const stats = loadStats();
-      const updated = applyEvents(stats, events, new Date().toISOString());
-      updated.sessions.push({
-        date: now,
-        rounds: game.roundNo,
-        graded: events.length,
-        correct: events.filter((e) => e.correct).length,
-        bankrollDelta,
-        profileId: profile.id,
-        profileName: profile.name,
-        // R7: only persist the field when peeks actually happened, so a
-        // clean (0-peek) session's blob is byte-for-byte what it was pre-R7.
-        ...(peeks > 0 ? { peeks } : {}),
+      saveStats({
+        ...stats,
+        sessions: [
+          ...stats.sessions,
+          {
+            date: now,
+            rounds: game.roundNo,
+            graded: events.length,
+            correct: events.filter((e) => e.correct).length,
+            bankrollDelta,
+            profileId: profile.id,
+            profileName: profile.name,
+            // R7: only persist the field when peeks actually happened, so a
+            // clean (0-peek) session's blob is byte-for-byte what it was pre-R7.
+            ...(peeks > 0 ? { peeks } : {}),
+          },
+        ],
       });
-      saveStats(updated);
 
       const rep = buildReport(events, bankrollDelta, peeks);
       setReport(rep);
       return rep;
     },
-    [game, profile.id, profile.name],
+    [game, profile.id, profile.name, profileId, commitEvents],
   );
 
   return {

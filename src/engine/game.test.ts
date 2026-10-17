@@ -1177,6 +1177,23 @@ describe('reshuffle', () => {
     expect(game.runningCount).toBe(-1);
   });
 
+  it('shuffleDue says so between rounds, before the bet that the shuffle will grade at TC 0', () => {
+    const game = Game.withRiggedShoe(
+      cfg({ penetration: 0.5, betSpreadOn: true }),
+      rig('10', '10', '6', '10', '7', '9', '8', '7'),
+    );
+    expect(game.shuffleDue).toBe(false);
+    game.startRound(1);
+    game.act('stand');
+    // Settled past the cut card: the table can warn before the next bet.
+    expect(game.shuffleDue).toBe(true);
+    game.startRound(1);
+    expect(game.shuffledLastRound).toBe(true);
+    // The bet is graded at the fresh shoe's count -- the count the warning named.
+    const bets = game.events.filter((e) => e.kind === 'bet');
+    expect(bets[bets.length - 1].tc).toBe(0);
+  });
+
   it('shuffledLastRound is false when the cut card was not reached', () => {
     const game = Game.withRiggedShoe(cfg(), rig('10', '9', '6', '8', '5'));
     game.startRound();
@@ -2335,5 +2352,48 @@ describe('#39 cut card from cutDecks / cutVary', () => {
       while (game.phase === 'player') game.act('stand');
     }
     expect(game.shuffledLastRound).toBe(true);
+  });
+});
+
+describe('Wave A engine fixes', () => {
+  it('F7: the count check accepts trueCountNow under a truncating profile', () => {
+    const game = new Game(cfg({ tcRounding: 'truncate' }));
+    // RC -5 with six decks left is -0.83: truncate says 0, floor says -1.
+    game.runningCount = -5;
+    game.askRc = false;
+    game.askTcToo = true;
+    game.countCheckDue = true;
+    expect(game.trueCountNow).toBe(0);
+    const { tcCorrect } = game.submitCountCheck(null, game.trueCountNow);
+    expect(tcCorrect).toBe(true);
+  });
+
+  it('F10: no double after a split without DAS', () => {
+    const deal = rig('8', '6', '8', '10', '3', '2', '10', '10', '10', '10');
+    const noDas = Game.withRiggedShoe(cfg({ rules: { ...DEFAULT_RULES, das: false } }), deal);
+    noDas.startRound();
+    noDas.act('split');
+    expect(noDas.hands[noDas.active].cards).toHaveLength(2);
+    expect(noDas.legalActions()).not.toContain('double');
+
+    const das = Game.withRiggedShoe(cfg({ rules: { ...DEFAULT_RULES, das: true } }), deal);
+    das.startRound();
+    das.act('split');
+    expect(das.legalActions()).toContain('double');
+  });
+
+  it('F19: split aces at the 4-hand cap are done, never asked for a play they cannot make', () => {
+    const game = Game.withRiggedShoe(
+      cfg({ rules: { ...DEFAULT_RULES, rsa: true } }),
+      rig('A', '6', 'A', '10', 'A', 'A', 'A', 'A', '5', '7', '5', '9', '9', '9', '9'),
+    );
+    game.startRound();
+    game.act('split'); // 2 hands, both A,A
+    game.act('split'); // 3 hands
+    game.act('split'); // 4 hands: the cap
+    // Every hand is a split ace that can neither hit nor resplit: done.
+    expect(game.phase).toBe('settled');
+    const asked = game.events.filter((e) => e.kind === 'action');
+    expect(asked.every((e) => e.taken === 'split')).toBe(true);
   });
 });

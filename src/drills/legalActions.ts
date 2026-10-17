@@ -21,10 +21,11 @@
 
 import type { Card, Rank } from '../engine/cards';
 import type { Action } from '../engine/deviations';
-import type { RuleSet } from '../engine/ruleset';
+import type { RuleSet, StrategyRules } from '../engine/ruleset';
 import type { PlayContext } from '../engine/strategy';
 import { handValue, isPair } from '../engine/hand';
-import { chartLookup } from '../engine/basicStrategy';
+import { chartLookup, upIndex } from '../engine/basicStrategy';
+import { indexSetFor } from '../engine/deviations';
 
 /**
  * #11: may a DRILL offer surrender on this hand?
@@ -37,22 +38,37 @@ import { chartLookup } from '../engine/basicStrategy';
  * and soft hand the button was a play that could never be right. Derived from
  * the chart, not listed: `chartLookup` routes a pair to its PAIRS row first,
  * and `getChart` has already resolved Rp by DAS and stripped every R cell
- * when surrender is off. No deviation index surrenders a pair or a soft hand
- * (the Fab 4 are hard 14-16); legalActions.test.ts checks that across every
- * ruleset and count rather than trusting this comment.
+ * when surrender is off. No index surrenders a soft hand. A pair cell that
+ * does not split is played as its hard total (F18), so a Fab 4 surrender index
+ * on that total surrenders it -- 7,7 v 10 is a 14 v 10 -- but only when the
+ * rules carry surrender indices, exactly as the grader reads them.
+ * legalActions.test.ts checks that across every ruleset and count rather than
+ * trusting this comment.
  *
  * Drills only. At the table surrender stays a legal choice on A,2, and taking
  * it is a graded mistake rather than a dark button.
  */
-function drillOffersSurrender(cards: Card[], up: Rank, rules: RuleSet): boolean {
+function drillOffersSurrender(cards: Card[], up: Rank, rules: StrategyRules): boolean {
   if (!rules.ls) return false;
   const pair = isPair(cards);
-  if (!pair && !handValue(cards).soft) return true;
+  const hv = handValue(cards);
+  if (!pair && !hv.soft) return true;
   const cell = chartLookup(cards, up, rules);
-  return cell === 'Rh' || cell === 'Rs' || cell === 'Rp';
+  if (cell === 'Rh' || cell === 'Rs' || cell === 'Rp') return true;
+  if (!pair || hv.soft || cell === 'P') return false;
+  // F18 (Wave A): a pair cell that does not split is played as its hard total,
+  // so a surrender index on that total (7,7 v 10 is a 14 v 10) can make
+  // surrender the graded answer. Read from `indexSetFor(rules)`, the set the
+  // grader itself uses: every drill passes the same rules to this and to its
+  // grader, so a plain RuleSet (surrender indices undefined, i.e. off) never
+  // surrenders here, and neither does the grade.
+  const idx = upIndex(up);
+  return indexSetFor(rules).some(
+    (d) => d.active && d.kind === 'surrender' && d.total === hv.total && d.up !== undefined && upIndex(d.up) === idx,
+  );
 }
 
-export function drillLegalActions(cards: Card[], rules: RuleSet, up: Rank, ctx?: PlayContext): Action[] {
+export function drillLegalActions(cards: Card[], rules: StrategyRules, up: Rank, ctx?: PlayContext): Action[] {
   // #27: a fallback hand (three cards, or a pair with surrender off) says
   // what it has lost; anything it withholds can never be the graded answer,
   // because the grader runs `correctPlay` under the same ctx.

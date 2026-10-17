@@ -41,6 +41,24 @@ export function fisherYatesShuffle<T>(array: T[], rng: () => number): T[] {
   return arr;
 }
 
+/**
+ * Decks remaining as the graded true count divides by it: the nearest half
+ * deck, never below half a deck.
+ *
+ * F17: in the LAST deck of a one- or two-deck game it is the nearest quarter
+ * deck instead. With 40 cards left in a single deck, half-deck snapping says
+ * one deck, and RC +6 grades as TC +6 where the shoe really holds +7.8 -- a
+ * two-count error on the very depths a pitch-game counter reads most closely.
+ * Shoe games keep half decks throughout: there a half-deck step near the end
+ * is a small share of what has been dealt.
+ */
+export function snapDecksRemaining(cardsRemaining: number, totalDecks: number): number {
+  if (totalDecks <= 2 && cardsRemaining <= 52) {
+    return Math.max(0.5, Math.round(cardsRemaining / 13) / 4);
+  }
+  return Math.max(0.5, Math.round(cardsRemaining / 26) / 2);
+}
+
 export class Shoe {
   private cards: Card[];
   private cardsDealtCount: number;
@@ -110,13 +128,7 @@ export class Shoe {
   }
 
   get decksRemaining(): number {
-    // Formula: max(0.5, round(cardsRemaining/26)/2)
-    // cardsRemaining/26 gives decks in increments of 0.5
-    // round(x)/2 rounds to nearest 0.5
-    const cardsPerHalfDeck = 26;
-    const halfDecksRemaining = this.cardsRemaining / cardsPerHalfDeck;
-    const rounded = Math.round(halfDecksRemaining);
-    return Math.max(0.5, rounded / 2);
+    return snapDecksRemaining(this.cardsRemaining, this.deckCount);
   }
 
   get cutCardReached(): boolean {

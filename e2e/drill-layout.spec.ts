@@ -1,5 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
-import { answerAndReadStrip, waitForMic, withProfile, withSettings } from './helpers';
+import {
+  answerAndReadStrip,
+  playRoundByAdvice,
+  resolveInsurance,
+  waitForMic,
+  withProfile,
+  withSettings,
+} from './helpers';
 
 /**
  * The flashcards screen on the phone it is actually used on.
@@ -470,7 +477,11 @@ test('Table End takes two taps, reverts after 3s, and always shows the session r
   await expect(end).toHaveText('End', { timeout: 5000 });
   await expect(page.locator('.report-screen')).toHaveCount(0);
 
-  // Training mode is the default: the report shows anyway.
+  // Training mode is the default: the report shows anyway -- once a round
+  // has been played (F22: End at round 0 goes Home, with nothing to report).
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await resolveInsurance(page, false);
+  await playRoundByAdvice(page);
   await end.click();
   await end.click();
   await expect(page.locator('.report-screen')).toBeVisible();

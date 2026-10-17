@@ -1,4 +1,6 @@
 import { mulberry32 } from '../engine/cards';
+import { DEFAULT_SPREAD, type SpreadRow } from '../engine/game';
+import { firstRaiseTc, sitOutIsCorrect } from '../engine/wong';
 
 /**
  * ET3 (docs/BACKLOG.md, experiential training): the bet / sit-out decision
@@ -19,18 +21,33 @@ export interface BetSitLeaveScenario {
   decksRemaining: number;
 }
 
-/* Consensus threshold (docs/research/2026-08-01-bet-sit-leave-consensus.md §7). */
-export const T_BET = 0; // TC >= 0 -> play the ramp
+/**
+ * Wave A, decision D1: the drill grades by the PROFILE'S SPREAD, through the
+ * very function Play grades its wong decision with (engine/wong.ts). It used
+ * a fixed consensus line (TC >= 0 bets), so the two screens disagreed at TC 0
+ * under the default ramp: Play said sit, the drill said bet. Absent a spread,
+ * the default ramp -- the one a new profile carries.
+ */
+export function correctAction(
+  s: BetSitLeaveScenario,
+  spread: readonly SpreadRow[] = DEFAULT_SPREAD,
+): TableAction {
+  return sitOutIsCorrect(s.trueCount, spread) ? 'sit' : 'bet';
+}
 
-/** The correct action: TC >= 0 bets, anything negative sits out. */
-export function correctAction(s: BetSitLeaveScenario): TableAction {
-  return s.trueCount >= T_BET ? 'bet' : 'sit';
+function signed(n: number): string {
+  return n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0';
 }
 
 /** Short reason for the correct action, for post-answer feedback. */
-export function explainAction(s: BetSitLeaveScenario): string {
-  if (s.trueCount >= T_BET) return 'Count is neutral-or-positive — play your ramp.';
-  return 'Negative count — sit out until it turns.';
+export function explainAction(
+  s: BetSitLeaveScenario,
+  spread: readonly SpreadRow[] = DEFAULT_SPREAD,
+): string {
+  const raise = firstRaiseTc(spread);
+  if (correctAction(s, spread) === 'bet') return 'Your ramp bets above its minimum here: play.';
+  if (raise === null) return 'Your ramp never bets above its minimum: sit out.';
+  return `Your ramp raises from TC ${signed(raise)}: below that, sit out.`;
 }
 
 /**
@@ -45,19 +62,8 @@ export function explainAction(s: BetSitLeaveScenario): string {
 const DEFAULT_TOTAL_DECKS = 6;
 const TC_CLAMP = 6; // realistic true-count bound
 
-/**
- * Generate a seeded, PHYSICALLY-CONSISTENT decision scenario (V3-3 fix): the
- * true count is derived from a plausible running count bounded by how much of
- * the shoe has been dealt, so a big |TC| only occurs deep in the shoe — never
- * an impossible "TC -4 with a near-full shoe". Decks-remaining in 0.5-deck steps
- * over the profile's own shoe. Early shoes stay near neutral (bet); negative
- * counts, the sit decisions, happen deeper.
- */
-export function makeBetSitLeaveScenario(
-  seed?: number,
-  totalDecks: number = DEFAULT_TOTAL_DECKS,
-): BetSitLeaveScenario {
-  const rng = mulberry32(seed ?? Date.now());
+/** One physically consistent draw -- see makeBetSitLeaveScenario. */
+function drawScenario(rng: () => number, totalDecks: number): BetSitLeaveScenario {
   // Half-deck steps across the whole shoe: 0.5 .. totalDecks. This 12 was
   // also a hardcoded 6 (as totalDecks * 2); left alone it would have produced
   // a 6-deck depth inside a 2-deck shoe, i.e. a NEGATIVE dealt count feeding
@@ -72,4 +78,34 @@ export function makeBetSitLeaveScenario(
   const rawTc = Math.floor(runningCount / decksRemaining);
   const trueCount = Math.max(-TC_CLAMP, Math.min(TC_CLAMP, rawTc));
   return { trueCount, decksRemaining };
+}
+
+/** Draws allowed when looking for the answer a scenario was picked to have. */
+const BALANCE_TRIES = 40;
+
+/**
+ * Generate a seeded, PHYSICALLY-CONSISTENT decision scenario (V3-3 fix): the
+ * true count is derived from a plausible running count bounded by how much of
+ * the shoe has been dealt, so a big |TC| only occurs deep in the shoe — never
+ * an impossible "TC -4 with a near-full shoe". Decks-remaining in 0.5-deck steps
+ * over the profile's own shoe.
+ *
+ * Balanced by the answer (Wave A review of D1): the raw draw sits near a
+ * neutral count, and once the drill sat at every count where the ramp bets its
+ * minimum, about three draws in four were Sit -- tapping Sit every time scored
+ * ~75%. So the answer is picked first, evenly, and draws are repeated until one
+ * has it. Every scenario is still a plain draw (a Bet one simply tends to be
+ * deeper in the shoe, which is where high counts happen); a ramp that never
+ * raises, or one whose raise the shoe cannot reach, falls back to the last draw.
+ */
+export function makeBetSitLeaveScenario(
+  seed?: number,
+  totalDecks: number = DEFAULT_TOTAL_DECKS,
+  spread: readonly SpreadRow[] = DEFAULT_SPREAD,
+): BetSitLeaveScenario {
+  const rng = mulberry32(seed ?? Date.now());
+  const want: TableAction = rng() < 0.5 ? 'bet' : 'sit';
+  let s = drawScenario(rng, totalDecks);
+  for (let i = 1; i < BALANCE_TRIES && correctAction(s, spread) !== want; i++) s = drawScenario(rng, totalDecks);
+  return s;
 }

@@ -30,10 +30,16 @@ async function storedBankrollNow(page: Page): Promise<unknown> {
   });
 }
 
-/** The only way off the table: End session (confirm), then the report's Back to Home. */
+/** The only way off the table: End session (confirm), then the report's Back to Home.
+ * F22: a session ended at round 0 has no report and goes straight Home. */
 async function leavePlay(page: Page): Promise<void> {
+  const atRoundZero = (await readRound(page)) === 0;
   await page.locator('.end-btn').click();
   await page.locator('.end-btn').click();
+  if (atRoundZero) {
+    await expect(page.locator('.table-screen')).toHaveCount(0);
+    return;
+  }
   await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
 }
 

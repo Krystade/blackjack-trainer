@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { withProfile, withSettings, resolveInsurance } from './helpers';
+import { withProfile, withSettings, resolveInsurance, playRoundByAdvice } from './helpers';
 
 /**
  * Two operator requests on the table screen.
@@ -144,4 +144,22 @@ test('the dealer-reveal rule is a per-profile setting that persists', async ({ p
     page.locator('.settings-toggle-row', { hasText: 'Dealer always shows the hole card' })
       .locator('input[type="checkbox"]'),
   ).toBeChecked();
+});
+
+/**
+ * F9 (Wave A): the peek sat 48px above the count check's keypad and could be
+ * held while it was open, and the peeked answer was graded correct.
+ */
+test('no peek while the count check is open', async ({ page }) => {
+  await withProfile(page, { countCheckEvery: 1, countCheckAsk: 'running' });
+  await withSettings(page, { countCheckEvery: 1 });
+  await page.goto('/?seed=102&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await resolveInsurance(page, false);
+  await playRoundByAdvice(page);
+  await expect(page.locator('.tc-peek-btn')).toBeVisible();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await expect(page.locator('.bottom-sheet', { hasText: 'Running count?' })).toBeVisible();
+  await expect(page.locator('.tc-peek-btn')).toHaveCount(0);
 });

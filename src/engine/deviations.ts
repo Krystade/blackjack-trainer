@@ -46,7 +46,8 @@ export interface Deviation {
 
 // VERIFIED H17-ADJUSTED INDICES — transcribed verbatim from the task-6 brief.
 // Do NOT adjust from S17 memory (10vA is +3 not +4, 16v9 is +4 not +5,
-// 12v6 is -3 not -1, 11vA is inactive under H17).
+// 12v6 is -3 not -1 -- published stand index, stored as hit ≤ -4 -- and
+// 11vA is inactive under H17).
 export const ILLUSTRIOUS_18: Deviation[] = [
   { id: 'ins', kind: 'insurance', action: 'take-insurance', threshold: 3, dir: 'gte', active: true, label: 'Insurance: take at TC ≥ +3' },
   { id: '16v10', kind: 'hard', total: 16, up: '10', action: 'stand', threshold: 0, dir: 'gte', active: true, label: '16 v 10: stand at TC ≥ 0' },
@@ -64,7 +65,9 @@ export const ILLUSTRIOUS_18: Deviation[] = [
   { id: '13v2', kind: 'hard', total: 13, up: '2', action: 'hit', threshold: -2, dir: 'lte', active: true, label: '13 v 2: hit at TC ≤ −2' },
   { id: '12v4', kind: 'hard', total: 12, up: '4', action: 'hit', threshold: -1, dir: 'lte', active: true, label: '12 v 4: hit at any negative TC' },
   { id: '12v5', kind: 'hard', total: 12, up: '5', action: 'hit', threshold: -3, dir: 'lte', active: true, label: '12 v 5: hit at TC ≤ −3' },
-  { id: '12v6', kind: 'hard', total: 12, up: '6', action: 'hit', threshold: -3, dir: 'lte', active: true, label: '12 v 6: hit at TC ≤ −3 (H17)' },
+  // F6: published H17 index is "stand at TC ≥ −3", so -- like every other
+  // negative index here -- the stored hit threshold is the index minus one.
+  { id: '12v6', kind: 'hard', total: 12, up: '6', action: 'hit', threshold: -4, dir: 'lte', active: true, label: '12 v 6: hit at TC ≤ −4 (H17)' },
   { id: '13v3', kind: 'hard', total: 13, up: '3', action: 'hit', threshold: -3, dir: 'lte', active: true, label: '13 v 3: hit at TC ≤ −3' },
 ];
 
