@@ -101,7 +101,7 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
 
         {r.decisions === 0 ? (
           <p className="u-note">
-            No hands played yet. Play a shoe, or start with the drills.
+            Nothing answered yet. Start with the next step below.
           </p>
         ) : (
           <p className="u-note">
@@ -123,40 +123,48 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
         <span className="readiness-label">Next step</span>
         <h2 className="next-step-title">{step.title}</h2>
         <p className="next-step-why">{step.why}</p>
-        {/* s02: progress on each category, and a tick once its goal is met. */}
-        {step.progress && (
-          <ul className="next-step-progress" aria-label="Basic strategy progress">
-            {step.progress.map((c) => (
-              <li
-                key={c.prefix}
-                className="next-step-progress-row"
-                data-hand={c.prefix}
-                data-on-target={c.onTarget ? 'true' : 'false'}
-              >
-                <span className="next-step-progress-label">{c.label}</span>
-                <span className="next-step-progress-value">
-                  {c.thin
-                    ? `${c.n}/${MIN_CATEGORY_ANSWERS} answers`
-                    : c.onTarget
-                      ? `✓ ${pctDown(c.pct)}%, on target`
-                      : `${pctDown(c.pct)}% of ${pctDown(CATEGORY_TARGET)}%`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <button type="button" className="u-btn next-step-btn" onClick={openStep}>
-          Start
-        </button>
+        {/* s02: progress on each category, and a tick once its goal is met,
+            beside Start so the card still fits the 812px fold. */}
+        <div className="next-step-foot">
+          {step.progress && (
+            <ul className="next-step-progress" aria-label="Basic strategy progress">
+              {step.progress.map((c) => (
+                <li
+                  key={c.prefix}
+                  className="next-step-progress-row"
+                  data-hand={c.prefix}
+                  data-on-target={c.onTarget ? 'true' : 'false'}
+                >
+                  <span className="next-step-progress-label">{c.label}</span>
+                  <span className="next-step-progress-value">
+                    {c.thin
+                      ? `${c.n}/${MIN_CATEGORY_ANSWERS} answers`
+                      : c.onTarget
+                        ? `✓ ${pctDown(c.pct)}%`
+                        : `${pctDown(c.pct)}% (goal ${pctDown(CATEGORY_TARGET)})`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* W13: the one gold primary on Home. */}
+          <button type="button" className="u-btn u-btn-primary next-step-btn" onClick={openStep}>
+            Start
+          </button>
+        </div>
       </section>
 
-      {/* The primary action, and Settings (which has no tab). Drills and
+      {/* Play, and Settings (which has no tab). Drills and
           Charts are one tap away in the tab bar, and repeating them would
           make Home a menu again -- the exact thing the tab bar replaces. */}
       <div className="home-actions">
-        <button type="button" className="u-btn u-btn-primary home-play-btn" onClick={() => onNavigate('table')}>
-          Play a shoe
-        </button>
+        {/* W13: secondary to Next step, and gone when Next step is the shoe
+            itself -- two buttons for the same thing compete. */}
+        {step.kind !== 'play' && (
+          <button type="button" className="u-btn home-play-btn" onClick={() => onNavigate('table')}>
+            Play a shoe
+          </button>
+        )}
         {/* #32: Settings left the tab bar. The accessible name is exactly
             "Settings" -- the glyph is decoration. */}
         <button type="button" className="u-btn home-settings-btn" onClick={() => onNavigate('settings')}>

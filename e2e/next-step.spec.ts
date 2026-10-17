@@ -97,3 +97,31 @@ test('the Mastery step sweeps the whole chart even after a Custom session', asyn
   await card.getByRole('button', { name: 'Start' }).click();
   await expect(page.getByTestId('mastery-progress')).toContainText('0 / 330 cleared');
 });
+
+/* W13: Next step's Start is the single gold primary on Home. */
+test('Start is the one primary button; Play a shoe steps back, and goes when it is the step', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  const start = page.getByRole('region', { name: 'Next step' }).getByRole('button', { name: 'Start' });
+  await expect(start).toHaveClass(/u-btn-primary/);
+  await expect(page.locator('.home-screen .u-btn-primary')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Play a shoe', exact: true })).toBeVisible();
+
+  const runs = Array.from({ length: 5 }, () => ({ date: '', cards: 52, intervalMs: 700, correct: true }));
+  const perIndex = Object.fromEntries(
+    ['ins', '16v10', '15v10', 'TTv5', 'TTv6', '10v10', '12v3', '12v2', '11vA', '9v2', '10vA', '9v7', '16v9', '13v2', '12v4', '12v5', '12v6', '13v3', '14v10', '15v9', '15vA']
+      .map((id) => [id, { right: 10, wrong: 0 }]),
+  );
+  await page.evaluate(
+    ([cs, pi, cr]) => {
+      window.localStorage.setItem('e2e.noReseed', '1');
+      window.localStorage.setItem(
+        'bjtrainer.stats.v1',
+        JSON.stringify({ version: 1, cellStats: cs, perIndex: pi, masterySweepsCompleted: 1, countDrill: { history: cr } }),
+      );
+    },
+    [STRONG, perIndex, runs] as const,
+  );
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Next step' })).toHaveAttribute('data-step', 'play');
+  await expect(page.locator('.home-play-btn')).toHaveCount(0);
+});
