@@ -78,3 +78,24 @@ test('B6: a session that only sat out shows no per-100 headline', async ({ page 
   await expect(page.locator('.report-headline')).toHaveCount(0);
   await expect(page.locator('.report-screen')).not.toContainText(/NaN|Infinity/);
 });
+
+test('B6: Drill these hands opens Custom with exactly the missed cells as Focus', async ({ page }) => {
+  await withSettings(page, { feedbackMode: 'test', dealSpeedMs: 0 });
+  await withProfile(page, { gradeDeviations: false, countCheckEvery: 0 });
+  await page.goto('/?seed=4&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  for (let r = 0; r < 3; r++) {
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await playRoundWithOneMistake(page);
+  }
+  await endWithReport(page);
+  const cells = await page.locator('.report-plays li[data-cell]').evaluateAll((els) =>
+    [...new Set(els.map((e) => (e as HTMLElement).dataset.cell!))].sort());
+  expect(cells.length).toBeGreaterThanOrEqual(1);
+  await page.getByRole('button', { name: 'Drill these hands', exact: true }).click();
+  await expect(page.getByTestId('cde-counts')).toHaveText(`${cells.length} Focus · 0 Regular · 0 Rare · ${330 - cells.length} Off`);
+  const focus = await page.locator('.cpg-cell[data-tier="focus"]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.cell!).sort());
+  expect(focus).toEqual(cells);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.settings.v1')!).drill.custom.tiers);
+  expect(Object.keys(stored).sort()).toEqual(cells);
+});

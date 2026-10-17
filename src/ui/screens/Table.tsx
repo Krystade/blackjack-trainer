@@ -17,7 +17,8 @@ import { useGame } from '../useGame';
 import type { CountCheckVerdict, SessionReport } from '../useGame';
 import { ResultStrip } from '../components/ResultStrip';
 import { signedTc } from '../../drills/tcFeedback';
-import { reportSections, countMissText } from '../reportSections';
+import { reportSections, countMissText, drillCellIds } from '../reportSections';
+import { launchCustomCells } from '../drillLaunch';
 import type { MistakeRow } from '../reportSections';
 import { lossPer100, formatLossPer100 } from '../sessionFigures';
 import './sessionReport.css';
@@ -237,11 +238,14 @@ function ReportScreen({
   report,
   coverBetsOn,
   onDone,
+  onDrill,
 }: {
   report: SessionReport;
   /** Whether this session graded with cover bets (one rung either side). */
   coverBetsOn: boolean;
   onDone: () => void;
+  /** B6: open Custom on exactly the report's missed cells. */
+  onDrill?: (cellIds: string[]) => void;
 }) {
   // R7 (docs/BACKLOG.md): this screen shows after every End (see handleEnd),
   // so a peek-assisted session's accuracy is flagged right under the headline
@@ -251,6 +255,7 @@ function ReportScreen({
   const unpricedPlays = sections.plays.filter((r) => r.unitsTotal === null).reduce((n, r) => n + r.count, 0);
   const gradedCountCheck = report.categories.some((c) => c.category === 'countCheck' && c.right + c.wrong > 0);
   const loss = lossPer100(report.mistakeUnits, report.hands);
+  const drillIds = drillCellIds(sections.plays);
   return (
     <div className="report-screen">
       <h1>Session report</h1>
@@ -323,6 +328,11 @@ function ReportScreen({
             </li>
           ))}
         </ul>
+      )}
+      {onDrill && drillIds.length > 0 && (
+        <button type="button" className="report-drill-btn" onClick={() => onDrill(drillIds)}>
+          Drill these hands
+        </button>
       )}
       {gradedCountCheck && (
         <>
@@ -716,8 +726,23 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     onNavigate('home');
   };
 
+  // B6 (contract 4): Custom on exactly the missed cells, saved before Drills mounts.
+  const handleReportDrill = (ids: string[]) => {
+    const next = launchCustomCells(ids, settings);
+    onSettingsChange(next);
+    setShowReport(false);
+    onNavigate('drills');
+  };
+
   if (showReport && report) {
-    return <ReportScreen report={report} coverBetsOn={game.cfg.coverBets === true} onDone={handleReportDone} />;
+    return (
+      <ReportScreen
+        report={report}
+        coverBetsOn={game.cfg.coverBets === true}
+        onDone={handleReportDone}
+        onDrill={handleReportDrill}
+      />
+    );
   }
 
   const activeHand: PlayerHand | undefined = game.hands[game.active];
