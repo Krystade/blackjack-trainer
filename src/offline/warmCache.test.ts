@@ -120,6 +120,19 @@ describe('warmOfflineCache', () => {
     expect(result.cached).toBe(1);
   });
 
+  it('keeps the stored manifest when the refetch gets a server error, and does not overwrite it', async () => {
+    const cache = fakeCache();
+    cache.stored.set('https://x/clips/index.json', 1);
+    const result = await warmOfflineCache({
+      urls: ['https://x/clips/index.json'],
+      cache,
+      fetchFn: async () => new Response('Not Found', { status: 404 }),
+    });
+    expect(result.failed).toEqual([]);
+    expect(result.cached).toBe(1);
+    expect(cache.stored.get('https://x/clips/index.json'), 'the error page replaced it').toBe(1);
+  });
+
   it('holds the number of open requests down', async () => {
     /*
      * 615 simultaneous fetches on airport wifi is how a download takes longer

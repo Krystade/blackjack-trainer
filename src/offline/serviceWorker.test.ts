@@ -115,6 +115,33 @@ describe('service worker cache name', () => {
     await w.activate();
     expect(await w.cacheStorage.keys()).not.toContain('bjtrainer-offline-v1');
   });
+
+  it('carries what v1 saved into v2, so the bump does not cost the saved voice or the shell', async () => {
+    const w = loadWorker(async () => text('{}'));
+    const v1 = await w.cacheStorage.open('bjtrainer-offline-v1');
+    for (const f of ['', 'assets/index-A.js', 'clips/af_bella/a.mp3', 'clips/index.json']) {
+      await v1.put(`${BASE}${f}`, text(`v1 ${f}`));
+    }
+    const v2 = await w.cacheStorage.open(OFFLINE_CACHE);
+    await v2.put(`${BASE}clips/index.json`, text('v2 newer'));
+
+    await w.activate();
+
+    for (const f of ['', 'assets/index-A.js', 'clips/af_bella/a.mp3']) {
+      expect(await (await v2.match(`${BASE}${f}`))?.text(), f || '(document)').toBe(`v1 ${f}`);
+    }
+    expect(await (await v2.match(`${BASE}clips/index.json`))!.text(), 'v2 copy is newer').toBe(
+      'v2 newer',
+    );
+  });
+
+  it("leaves other apps' caches on the same origin alone", async () => {
+    // GitHub Pages serves every project of one account from one origin.
+    const w = loadWorker(async () => text('{}'));
+    await w.cacheStorage.open('lotus-tracker-shell');
+    await w.activate();
+    expect(await w.cacheStorage.keys()).toContain('lotus-tracker-shell');
+  });
 });
 
 describe('clip manifests and the web manifest are network-first', () => {
@@ -201,8 +228,124 @@ describe('navigation', () => {
     await w.fetchEvent(BASE, { navigate: true });
     await w.settle();
 
+    // NEW.css was not cached yet: the document is stored only once it is.
     const left = [...cache.store.keys()].map((k) => k.slice(BASE.length)).sort();
-    expect(left).toEqual(['', 'assets/index-NEW.js', 'clips/af_bella/a.mp3']);
+    expect(left).toEqual(['', 'assets/index-NEW.css', 'assets/index-NEW.js', 'clips/af_bella/a.mp3']);
+  });
+
+  /** A built document naming one JS and one CSS file of build `v`. */
+  const builtDoc = (v: string) =>
+    `<html><head><script type="module" crossorigin src="./assets/index-${v}.js"></script>` +
+    `<link rel="stylesheet" href="./assets/index-${v}.css"></head></html>`;
+
+  /** Every `assets/` url the cached document names, and whether each is cached. */
+  async function cachedDocAssets(cache: FakeCache) {
+    const doc = await (await cache.match(BASE))!.text();
+    const named = [...doc.matchAll(/(?:src|href)="\.\/(assets\/[^"]+)"/g)].map((m) => m[1]!);
+    return named.map((p) => [p, cache.store.has(`${BASE}${p}`)] as const);
+  }
+
+  it('a new build that arrives after the timeout is stored only with its assets, and the old build stays whole', async () => {
+    // The phone holds build OLD. A deploy of NEW has landed; weak signal makes
+    // the document take 5s, so this launch is answered with OLD.
+    let online = true;
+    const w = loadWorker(async (req) => {
+      if (!online) throw new TypeError('offline');
+      const path = new URL(req.url).pathname;
+      if (path === '/bj/') {
+        return new Promise<Response>((r) =>
+          setTimeout(() => r(text(builtDoc('NEW'), 'text/html')), 5000 / TIME_SCALE),
+        );
+      }
+      return text(`body of ${path}`, 'text/javascript');
+    });
+    const cache = await w.cacheStorage.open(OFFLINE_CACHE);
+    await cache.put(BASE, text(builtDoc('OLD'), 'text/html'));
+    await cache.put(`${BASE}assets/index-OLD.js`, text('old js', 'text/javascript'));
+    await cache.put(`${BASE}assets/index-OLD.css`, text('old css', 'text/css'));
+
+    const first = await (await w.fetchEvent(BASE, { navigate: true }))!.text();
+    expect(first, 'the timeout should have served the cached build').toContain('index-OLD');
+    await w.settle();
+
+    // The cached document names only files that are in the cache...
+    const named = await cachedDocAssets(cache);
+    expect(named.length).toBeGreaterThan(0);
+    for (const [path, present] of named) expect(present, `${path} is named but not cached`).toBe(true);
+    // ...and the build the page is running was not pruned out from under it.
+    expect(cache.store.has(`${BASE}assets/index-OLD.js`)).toBe(true);
+    expect(cache.store.has(`${BASE}assets/index-OLD.css`)).toBe(true);
+
+    // The next launch, on a plane: whatever document it gets, its JS loads.
+    online = false;
+    const second = await (await w.fetchEvent(BASE, { navigate: true }))!.text();
+    const js = /src="\.\/(assets\/[^"]+\.js)"/.exec(second)![1]!;
+    const res = await w.fetchEvent(`${BASE}${js}`);
+    expect(res!.ok).toBe(true);
+  });
+
+  it('a late new build whose JS cannot be fetched is not stored: the old build stays the shell', async () => {
+    const w = loadWorker(async (req) => {
+      const path = new URL(req.url).pathname;
+      if (path === '/bj/') {
+        return new Promise<Response>((r) =>
+          setTimeout(() => r(text(builtDoc('NEW'), 'text/html')), 5000 / TIME_SCALE),
+        );
+      }
+      if (path.endsWith('index-NEW.js')) throw new TypeError('signal dropped');
+      return text(`body of ${path}`, 'text/css');
+    });
+    const cache = await w.cacheStorage.open(OFFLINE_CACHE);
+    await cache.put(BASE, text(builtDoc('OLD'), 'text/html'));
+    await cache.put(`${BASE}assets/index-OLD.js`, text('old js', 'text/javascript'));
+    await cache.put(`${BASE}assets/index-OLD.css`, text('old css', 'text/css'));
+
+    await w.fetchEvent(BASE, { navigate: true });
+    await w.settle();
+
+    expect(await (await cache.match(BASE))!.text()).toContain('index-OLD');
+    for (const [path, present] of await cachedDocAssets(cache)) expect(present, path).toBe(true);
+  });
+
+  it('a fresh build in time: the page and the background fill share one download per asset', async () => {
+    const calls = new Map<string, number>();
+    const w = loadWorker(async (req) => {
+      const path = new URL(req.url).pathname;
+      calls.set(path, (calls.get(path) ?? 0) + 1);
+      if (path === '/bj/') return text(builtDoc('NEW'), 'text/html');
+      // Slow enough that the page's request and the fill overlap.
+      return new Promise<Response>((r) =>
+        setTimeout(() => r(text(`body of ${path}`, 'text/javascript')), 30),
+      );
+    });
+    const cache = await w.cacheStorage.open(OFFLINE_CACHE);
+
+    const doc = await (await w.fetchEvent(BASE, { navigate: true }))!.text();
+    expect(doc).toContain('index-NEW');
+    // The browser asks for the document's files as soon as it has parsed it.
+    const [js, css] = await Promise.all([
+      w.fetchEvent(`${BASE}assets/index-NEW.js`),
+      w.fetchEvent(`${BASE}assets/index-NEW.css`),
+    ]);
+    expect(await js!.text()).toBe('body of /bj/assets/index-NEW.js');
+    expect(await css!.text()).toBe('body of /bj/assets/index-NEW.css');
+    await w.settle();
+
+    expect(calls.get('/bj/assets/index-NEW.js')).toBe(1);
+    expect(calls.get('/bj/assets/index-NEW.css')).toBe(1);
+    for (const [path, present] of await cachedDocAssets(cache)) expect(present, path).toBe(true);
+  });
+
+  it('a page that names no assets (a captive-portal login) does not replace the cached shell', async () => {
+    const w = loadWorker(async () => text('<html>Log in to Airport WiFi</html>', 'text/html'));
+    const cache = await w.cacheStorage.open(OFFLINE_CACHE);
+    await cache.put(BASE, text(builtDoc('OLD'), 'text/html'));
+    await cache.put(`${BASE}assets/index-OLD.js`, text('old js', 'text/javascript'));
+    await cache.put(`${BASE}assets/index-OLD.css`, text('old css', 'text/css'));
+
+    await w.fetchEvent(BASE, { navigate: true });
+    await w.settle();
+    expect(await (await cache.match(BASE))!.text()).toContain('index-OLD');
   });
 
   it('a document that names no assets (an error page) prunes nothing', async () => {
