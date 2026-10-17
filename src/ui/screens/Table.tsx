@@ -51,13 +51,16 @@ import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession'
 import { CATEGORY_LABELS } from './categoryLabels';
 import { LosingShoeBadge } from '../components/LosingShoeBadge';
 import { roundBanner } from '../roundBanner';
+import { RoundBannerLine } from '../components/RoundBannerLine';
 import { signed, MINUS } from '../../drills/signed';
 import './tableSeats.css';
 import './tableTopbar.css';
 import './tableCues.css';
 import './tableGlance.css';
 import './tableSheet.css';
-import { dealerFeltRow, playerFeltRow, type FeltRow } from '../feltLayout';
+import { dealerFeltRow, playerFeltLayout, type FeltRow } from '../feltLayout';
+import { useViewportWidth } from '../useViewportWidth';
+import './feltWrap.css';
 
 /** B5/W4: the row's card slots and fixed chrome, for cardSize.css's clamp. */
 function feltStyle(row: FeltRow): CSSProperties {
@@ -708,6 +711,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   // Training mode, skip the report). The first tap arms it ("Tap again to
   // end") and it disarms itself after 3s. The report is always shown now.
   const [confirmEnd, setConfirmEnd] = useState(false);
+  // B2 #33: two hands take a row each when one row would shrink their cards.
+  const viewportW = useViewportWidth();
+  const feltLayout = playerFeltLayout(game.hands.map((h) => h.cards.length), viewportW);
   useEffect(() => {
     if (!confirmEnd) return;
     const t = setTimeout(() => setConfirmEnd(false), END_ARMED_MS);
@@ -997,11 +1003,16 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         </div>
       )}
 
-      <div className="hands-row" style={feltStyle(playerFeltRow(game.hands.map((h) => h.cards.length)))}>
+      <div
+        className="hands-row"
+        data-wrap={feltLayout.wrap ? '' : undefined}
+        style={feltStyle(feltLayout.row)}
+      >
         {game.hands.map((hand, i) => (
           <div
             key={i}
             className={`player-hand${i === game.active && game.phase === 'player' ? ' hand-active' : ''}`}
+            style={feltLayout.wrap ? feltStyle(feltLayout.hands[i]!) : undefined}
           >
             {/* s06: a split is labelled too, so "Hand 1" in the results names
                 a hand on the felt (hand 1 is the RIGHT one: order of play). */}
@@ -1080,18 +1091,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
               .reverse()
               .map(({ h, i }) => {
                 // B5/W5: result and both totals, so the reason for a loss
-                // reads off the banner instead of off the felt. The separator
-                // has its own span outside the no-wrap totals, so a banner
-                // that wraps at 375px ends its first line with the dot rather
-                // than starting the second line with it.
+                // reads off the banner instead of off the felt. B2 #34: a
+                // banner that wraps drops the dot instead of hanging it.
                 const b = roundBanner(h, handPlayNumber(i, game.hands.length), multiHand, game.dealerCards, game.holeRevealed);
-                return (
-                  <div key={i} className="message-result round-banner" data-net={b.net}>
-                    <span className="round-banner-head">{b.head}</span>
-                    <span className="round-banner-sep"> · </span>
-                    <span className="round-banner-totals">{b.totals}</span>
-                  </div>
-                );
+                return <RoundBannerLine key={i} banner={b} />;
               })}
             {game.insuranceNet !== null && (
               <div className="message-result">

@@ -1,0 +1,9 @@
+/* B2 #34: a wrapped banner breaks between the result and the totals with no
+ * dot left hanging (RoundBannerLine.tsx measures the wrap). */
+.round-banner[data-wrapped] .round-banner-sep {
+  display: none;
+}
+
+.round-banner[data-wrapped] .round-banner-totals {
+  display: block;
+}

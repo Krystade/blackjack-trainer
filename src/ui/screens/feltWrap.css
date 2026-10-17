@@ -1,0 +1,48 @@
+/* B2 #33: two hands that would not fit one row at 70px or more take a row each
+ * (src/ui/feltLayout.ts, playerFeltLayout / handFeltRow -- change them
+ * together). Hand 1 is the last in the DOM (it sits on the right in one row),
+ * so it is moved to the top, in order of play. Each hand sizes its own cards
+ * from its own --felt-slots / --felt-fixed, with label and bet in a 44px
+ * column beside the cards, and the hands share one left edge. Padding and the
+ * 70px cap are trimmed so a settled round still fits 375x812 with the notch. */
+.table-screen .hands-row[data-wrap] {
+  display: grid;
+  justify-content: center;
+  justify-items: start;
+  gap: 2px;
+  padding: var(--space-1) 4px 0;
+}
+
+.table-screen .hands-row[data-wrap] .player-hand:last-child {
+  order: -1;
+}
+
+.table-screen .hands-row[data-wrap] .player-hand {
+  --card-w: clamp(32px, calc((min(100vw, 480px) - var(--felt-fixed)) / var(--felt-slots)), 70px);
+  display: grid;
+  grid-template-columns: 44px auto;
+  grid-template-rows: auto auto;
+  column-gap: 6px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 3px;
+}
+
+.table-screen .hands-row[data-wrap] .hand-label {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: end;
+  text-align: center;
+}
+
+.table-screen .hands-row[data-wrap] .hand-bet {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: start;
+  text-align: center;
+}
+
+.table-screen .hands-row[data-wrap] .hand-cards {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}

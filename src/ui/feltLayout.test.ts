@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { playerFeltRow, dealerFeltRow, cardWidthAt, CARD_MIN_PX, CARD_MAX_PX } from './feltLayout';
+import { playerFeltRow, dealerFeltRow, cardWidthAt, CARD_MIN_PX, CARD_MAX_PX, playerFeltLayout, handFeltRow, wrappedCardWidthAt } from './feltLayout';
 
 const fits = (counts: number[], vw: number) => {
   const row = playerFeltRow(counts);
@@ -36,5 +36,37 @@ describe('feltLayout (B5/W4)', () => {
   });
   it('counts an empty felt as one two-card hand', () => {
     expect(playerFeltRow([])).toEqual(playerFeltRow([2]));
+  });
+});
+
+describe('playerFeltLayout (B2 #33): two hands take a row each rather than drop below 70px', () => {
+  const widths = (counts: number[], vw: number) => {
+    const l = playerFeltLayout(counts, vw);
+    return l.hands.map((row) => (l.wrap ? wrappedCardWidthAt(row, vw) : cardWidthAt(row, vw)));
+  };
+  it('two dealt hands stay on one row', () => {
+    expect(playerFeltLayout([2, 2], 375).wrap).toBe(false);
+    expect(widths([2, 2], 375).every((w) => w >= 70)).toBe(true);
+  });
+  it('a hit that would shrink both hands below 70 puts each on its own row, every card 70px or more', () => {
+    for (const counts of [[3, 2], [2, 3], [4, 2], [3, 3], [3, 4], [4, 4]]) {
+      expect(playerFeltLayout(counts, 375).wrap, `${counts}`).toBe(true);
+      for (const w of widths(counts, 375)) expect(w, `${counts}`).toBeGreaterThanOrEqual(70);
+    }
+  });
+  it('each wrapped hand fits the width on its own (the side column included)', () => {
+    for (const n of [2, 3, 4, 5, 6]) {
+      const row = handFeltRow(n);
+      expect(wrappedCardWidthAt(row, 375) * row.slots + row.fixedPx).toBeLessThanOrEqual(375);
+    }
+  });
+  it('one hand, three hands, and a wide screen keep the single row', () => {
+    expect(playerFeltLayout([5], 375).wrap).toBe(false);
+    expect(playerFeltLayout([3, 2, 2], 375).wrap).toBe(false);
+    expect(playerFeltLayout([3, 2], 480).wrap).toBe(false);
+  });
+  it('unwrapped, every hand reads the row', () => {
+    const l = playerFeltLayout([2, 2], 375);
+    expect(l.hands).toEqual([l.row, l.row]);
   });
 });
