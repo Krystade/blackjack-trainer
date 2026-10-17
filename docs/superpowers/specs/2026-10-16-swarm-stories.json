@@ -1,0 +1,1677 @@
+[
+ {
+  "goalAchieved": false,
+  "tapsOrSteps": "About 71 taps in the e2e pass and 73 in the real-timing pass: 3 to reach Flashcards with Hard on (Drills tab, Flashcards, Hard chip), 60 answers, about 4 to visit Home midway, about 4 to reach Home and Stats at the end, plus 2-3 Stats tab taps. With human think time it took about 2.7 minutes (160.9s) in Chromium without ?e2e=1, and 73s with ?e2e=1. The drill part works and Hard reached 54/60 correct, but Home never tells the user that, and Stats needs 2-3 extra taps on collapsed sections before any Hard figure is visible.",
+  "narrative": "Fresh install. Home said \"Learn basic strategy - Hard totals: 0 answers so far, 20 needed to judge. Get every category to 90%.\" That was clear. Flashcards is below the fold on the Drills picker, under five counting drills, so a beginner has to scroll for it. Opening Flashcards and tapping Hard worked, and every dealt hand was a real hard total.\n\nI answered 60 cards: 6 deliberate misses early (beginner), then all right, ending at 54/60 = 90%. I checked every grade against my own copy of the 6D H17 DAS LS chart, which matches src/engine/charts/d68_h17.ts. All 60 grades agreed (including 17 v A = surrender and 9 v 7 = hit), and no soft hands or pairs leaked into Hard scope. The result strip was clear and quick: \"Correct! 7,2 v 9 - Hit\", or a red card with You played / Right play / Show on chart. The flashcard screen never shows progress toward the 20-answer / 90% goal, so the user drills blind.\n\nAfter 30 answers (80%) I went to Home. Hard had disappeared from Next step. It now said \"Soft totals: 0 answers so far\", and the only mention of Hard was \"weakest: hard totals\". Tapping Start reopened Flashcards still set to Hard, not Soft. After 60 answers (90%, goal met), Home showed exactly the same Next step text and still said \"weakest: hard totals\". There was no confirmation that Hard was done.\n\nStats opens on the Play tab. A six-row CVCX/profile block of em-dashes fills the first screen, and without ?e2e=1 every useful section is collapsed. Once opened, \"Accuracy by category\" (on the Play tab, although it is fed by drills) and Drills > Flashcards both say Hard totals 54/59 (92%), while Flashcards overall says 54/60 = 90%. The surrender-cell miss was filed under Surrender, not Hard. Home's Next step uses the per-cell numbers, which give 54/60 = 90%. A seeded repro at the 90% line shows the two screens disagreeing: Home says \"Hard totals are at 89%\", Stats says \"53/58 (91%)\".\n\nReloading kept all progress. There were no console or page errors in Chromium or WebKit, no sideways scroll, and no clipped controls. The only targets under 44px are the 22x22 native checkboxes (Eyes-free audio, Voice answers, look-alike option).",
+  "findings": [
+   {
+    "severity": "high",
+    "title": "Home Start opens a different hand type from the one Next step names",
+    "steps": "Fresh install. Drills > Flashcards > Hard, answer 30 or more. Home now says 'Learn basic strategy - Soft totals: 0 answers so far, 20 needed to judge.' Tap Start.",
+    "expected": "Flashcards opens with Soft selected (the hand type Next step just named), or at least says the selection was changed.",
+    "actual": "Flashcards opens with the saved Hard-only selection (Hard=true, Soft=false), dealing hard hands. Answering more of them never moves the Next step forward. Same result after 60 answers.",
+    "screenshots": [
+     "shots/chromium-e2e/020-home-after-30.png",
+     "shots/chromium-e2e/021-start-from-home-after-30.png",
+     "shots/chromium-e2e/035-start-from-home-after-60.png",
+     "shots/chromium-real/023-start-from-home-after-30.png"
+    ],
+    "likelyFile": "src/ui/screens/Home.tsx (openStep), src/ui/drillLaunch.ts, src/ui/screens/nextStep.ts, src/ui/screens/Drills.tsx (launch handling ~L2809)",
+    "suggestedFix": "Make NextStep carry the hand type it is about (for example scope: 'soft'), and pass it through setDrillLaunch. When Drills mounts with a flash launch, save withScopes(settings, [scope]) before mounting FlashcardsView. The same applies to 'Hard totals are at N%': launch on that hand type."
+   },
+   {
+    "severity": "high",
+    "title": "Home and Stats give different Hard percentages, so they can disagree on whether the 90% goal is met",
+    "steps": "Drill Hard and miss a surrender cell (for example stand on 17 v A). Compare Home Next step with Stats > Accuracy by category, or Drills > Flashcards. Seeded repro: boundary.mjs.",
+    "expected": "One Hard-totals figure everywhere. The screen that sets the 90% goal and the screen that reports progress agree.",
+    "actual": "After the real run, Stats shows Hard totals 54/59 (92%) plus Surrender 0/1, while Next step counts 54/60 = 90%. At the line: Home says 'Hard totals are at 89%; get every category to 90%' while Stats says 'Hard totals 53/58 (91%)'. grade.ts files any hand whose right play is surrender under 'surrender'. Stats reads that stats.categories tally, but nextStep sums every hard-* cell in cellStats.",
+    "screenshots": [
+     "shots/boundary/01-home.png",
+     "shots/boundary/02-stats-accuracy.png",
+     "shots/chromium-statstabs/004-stats-drills-s1.png",
+     "shots/chromium-e2e/030-stats-top.png"
+    ],
+    "likelyFile": "src/ui/screens/Stats.tsx (Accuracy by category, Flashcards section), src/ui/screens/nextStep.ts, src/engine/grade.ts (category ~L279), src/ui/screens/readiness.ts",
+    "suggestedFix": "Have Stats' Hard/Soft/Pairs rows read the same hard-/soft-/pair- sums from cellStats that nextStep uses, through a shared helper (for example categoryFromCells). Keep Surrender as its own breakdown line. Use pctDown (floor) in both places so 89.8% never shows as 90% on one screen and 89% on the other."
+   },
+   {
+    "severity": "high",
+    "title": "Home never shows progress on the hand type being drilled, and never confirms the goal is met",
+    "steps": "Drill Hard to 80% (30 answers) and visit Home. Drill on to 90% / 60 answers and visit Home again.",
+    "expected": "Something like 'Hard totals: 90% over 60 - done. Next: Soft totals'. The midway visit shows 'Hard 80%, 10 points to go'.",
+    "actual": "Next step jumps straight to 'Soft totals: 0 answers so far' as soon as Hard passes 20 answers, before Hard reaches 90%. The text is identical at 80% and at 90%. The only Hard mention is 'weakest: hard totals', still shown at 90%, which reads as a failure right when the goal was met. Hard below 90% is only named again once soft and pairs each have 20+ answers.",
+    "screenshots": [
+     "shots/chromium-e2e/020-home-after-30.png",
+     "shots/chromium-e2e/029-home-after-60.png",
+     "shots/chromium-real/031-home-after-60.png",
+     "shots/webkit-statstabs/001-home-seeded.png"
+    ],
+    "likelyFile": "src/ui/screens/nextStep.ts, src/ui/screens/Home.tsx, src/ui/screens/readiness.ts (weakestCategories)",
+    "suggestedFix": "Add a small three-row progress list to the Next step card (Hard / Soft / Pairs, each answers out of 20 and % against 90%, with a check when met). Let weakestCategories drop categories already at or above CATEGORY_TARGET, or label the line 'lowest'."
+   },
+   {
+    "severity": "medium",
+    "title": "Flashcards shows no progress toward the 20-answer / 90% goal",
+    "steps": "Drills > Flashcards > Hard, answer 60 cards.",
+    "expected": "A quiet line under the chips or above the action bar, for example 'Hard 47/52 - 90% (goal 90%, 20+)', and a one-time 'Hard totals on target' note when it crosses.",
+    "actual": "Only the per-card result strip. To know whether the goal is met, the user has to leave the drill (Back, then Home tab) and read Home, which does not report it either (see above).",
+    "screenshots": [
+     "shots/chromium-e2e/018-flash-a30-ok.png",
+     "shots/chromium-e2e/027-flash-a60-ok.png",
+     "shots/chromium-real/029-flash-a60-ok.png"
+    ],
+    "likelyFile": "src/ui/screens/Drills.tsx (FlashcardsView render ~L1058-1150)",
+    "suggestedFix": "Compute the selected hand types' cellStats totals with the nextStep helper and show one line in the empty space above the action bar. Show a short confirmation the first time a selected hand type crosses MIN_CATEGORY_ANSWERS and CATEGORY_TARGET."
+   },
+   {
+    "severity": "medium",
+    "title": "Stats opens on empty CVCX rows, and the useful sections start collapsed",
+    "steps": "After drilling, tap Home > All stats (without ?e2e=1).",
+    "expected": "The first screen answers 'how am I doing on the plays?'. Accuracy by category, or the drill tallies, is visible without extra taps.",
+    "actual": "The default Play tab's first screen is a six-row 'Profile: Default' block of em-dashes (CVCX score, EV, risk of ruin, sim note, play accuracy, units per hour). It is the only section open by default and repeats on the Drills and Progress tabs. Accuracy by category and Flashcards are collapsed below the fold. Accuracy by category, which is fed by Flashcards, sits on the Play tab. Seeing the Hard figure takes All stats, scroll, and tapping a collapsed header (or Drills tab, then Flashcards).",
+    "screenshots": [
+     "shots/chromium-real/032-stats-top.png",
+     "shots/chromium-real/034-stats-drills-top.png",
+     "shots/chromium-real/036-stats-progress-top.png"
+    ],
+    "likelyFile": "src/ui/screens/Stats.tsx (~L655 Profile section defaultOpen, SECTION_TAB ~L282)",
+    "suggestedFix": "Collapse the Profile/CVCX block by default, or hide it when every value is empty, and show it only on Play. Open the first section that has data, or default Accuracy by category / Flashcards to open. Open Stats on the Drills tab when the user has no table sessions yet."
+   },
+   {
+    "severity": "low",
+    "title": "Flashcards is below the fold on the Drills picker although Home sends beginners there first",
+    "steps": "Fresh install, tap the Drills tab.",
+    "expected": "The drill Home recommends (Flashcards, for basic strategy) is visible without scrolling, or highlighted.",
+    "actual": "Five counting drills come first. 'Knowing the plays > Flashcards' is cut off by the tab bar at 375x812.",
+    "screenshots": [
+     "shots/chromium-e2e/002-drills-picker.png",
+     "shots/chromium-real/002-drills-picker.png"
+    ],
+    "likelyFile": "src/ui/screens/Drills.tsx (picker section order)",
+    "suggestedFix": "Put 'Knowing the plays' first, or pin a 'Recommended: <Next step>' card at the top of the picker."
+   },
+   {
+    "severity": "low",
+    "title": "Miss explanation repeats 'Basic' and does not explain the play",
+    "steps": "Answer 2,9 v 4 with Stand.",
+    "expected": "A short reason a beginner can learn from, for example 'Double 11 against everything: you're the favourite to draw a 10'.",
+    "actual": "'Basic strategy error. Basic double vs dealer 4': the word Basic twice, and it only restates the answer.",
+    "screenshots": [
+     "shots/chromium-e2e/006-flash-a02-miss.png",
+     "shots/chromium-real/007-flash-a02-transition-immediate.png"
+    ],
+    "likelyFile": "src/engine/strategy.ts (reason text), src/ui/components/HandResultStrip.tsx",
+    "suggestedFix": "Drop the second 'Basic', or replace the reason with a one-line rule for that row (hard 12-16 v 2-6 stand, 11 double, and so on)."
+   },
+   {
+    "severity": "low",
+    "title": "Stats bars have no marker at the 90% target",
+    "steps": "Open Stats > Accuracy by category after drilling Hard to 90%.",
+    "expected": "The 90% target is drawn on the bar, or the row is marked as on target.",
+    "actual": "A plain green bar with no target. 89% and 92% look the same.",
+    "screenshots": [
+     "shots/boundary/02-stats-accuracy.png",
+     "shots/chromium-statstabs/004-stats-drills-s1.png"
+    ],
+    "likelyFile": "src/ui/screens/Stats.tsx (category-list)",
+    "suggestedFix": "Draw a tick at CATEGORY_TARGET and add 'on target' when n >= MIN_CATEGORY_ANSWERS and pct >= target."
+   },
+   {
+    "severity": "low",
+    "title": "Settings gear renders as a colour emoji in WebKit",
+    "steps": "Open Home in WebKit and compare with Chromium.",
+    "expected": "The same plain glyph in both.",
+    "actual": "WebKit draws the colour gear emoji next to 'Settings'; Chromium draws a plain glyph.",
+    "screenshots": [
+     "shots/webkit-statstabs/001-home-seeded.png",
+     "shots/chromium-e2e/001-home-fresh.png"
+    ],
+    "likelyFile": "src/ui/screens/Home.tsx (home-settings-btn glyph)",
+    "suggestedFix": "Add the U+FE0E text-style selector after the gear, or use an inline SVG icon."
+   }
+  ],
+  "topChanges": [
+   "Make Home's Next step name a hand type and have Start open Flashcards on that type (save the selection on launch). Today Start reopens the old Hard-only selection while the card says Soft.",
+   "Use one Hard/Soft/Pairs tally everywhere: Stats should read the same cellStats sums as nextStep, so the 90% goal and the reported % agree (now 89% on Home vs 91% on Stats at the line).",
+   "Show progress against the goal: a Hard/Soft/Pairs answers-out-of-20 and %-against-90% list on Home's Next step card, a one-line counter plus a one-time 'on target' note in Flashcards, and drop 'weakest: hard totals' once Hard is at 90%."
+  ],
+  "consoleErrors": []
+ },
+ {
+  "goalAchieved": true,
+  "tapsOrSteps": "Happy path, 8 navigation taps plus answers: Drills tab, scroll, Speed (2 taps). Back, scroll, Mastery challenge (2 taps; resumed at 61/330). Long-press the hand, then Amber (2 gestures). Stats tab, Last 7 days (2 taps). The real-timing Chromium pass (no ?e2e=1) took 102 taps in 2.2 minutes: 60 Speed answers, 14 Mastery answers and 30 Stats range/tab taps. The Chromium e2e pass took 82 taps in 0.7 minutes, and WebKit e2e took 82 taps in 1.8 minutes. There were no console or page errors in any pass and no sideways scroll on any screen. Every Speed and Mastery button measured at least 44px; the marker swatches are exactly 44x44.",
+  "narrative": "Seed: 249 of the 330 cells have cellStats, about 80% of them dated in the last 7 days. Three cells are weak (12 v 3, A,7 v 9, 9,9 v 7). Also seeded: 380 dated latency rows, 11 count-drill runs, 14 true-count rows and 4 Play sessions over 3 weeks, a Mastery run at index 61, and a red marker on soft-18-v-9.\n\nHome opened at 97% accuracy with \"Next step: Fix weak cells (Hard 12 v 3 is at 50%)\". Nothing on Home mentions the Mastery run that is 61/330 in progress.\n\nSpeed warm-up: 2 taps plus a long scroll (Speed is the 11th drill). It remembered Surrender. The yes/no loop is fast and clear. I checked every verdict (about 140 across passes) against src/engine/strategy, 6D H17 DAS LS, by hand: 16 v 9/10/A, 15 v 10/A and 17 v A surrender; 8,8 v A surrender; A,2 v 6 double; 11 v A double; 7,7 v 2 split. All correct. Problems with the warm-up:\n- There is no clock and no session length, so a \"5-minute warm-up\" has to be timed by hand.\n- Switching question mode wipes the score with no summary: 40 answers ended showing \"10/11\".\n- Long-pressing the hand in Speed does nothing.\n\nMastery: resumed exactly at 61/330 · All. A 250ms press did not open the marker picker; a 700ms press opened \"Marker for Pair of 10s vs 2\". Amber put a dot on the hand without answering it and without moving progress. 14 correct answers took it to 75/330. Leaving to Home and coming back kept 75/330, and a reload kept progress too. A deliberate slip showed \"Run reset at 3/330\", and Wrong tap put it back to 3/330. That part works well.\n\nBranch run: in Speed I narrowed Hands to Pairs for Split? practice. Opening Mastery then showed 0 / 100 · Pairs, and the 61/330 run was overwritten in storage. Tapping All only gave 0/330. The run is gone.\n\nStats: Last 7 and Last 30 days do change Table sessions (4 to 2), True count (11/14 to 7/9) and Fatigue (18 to 7 sessions). They do not change anything the user sees first. Accuracy by category, Flashcards (97%, 1777/1830), Mistake types and the I18 table are identical in every range, while the median-time line on the same rows does change. Speed's yes/no taps are also counted as Flashcards and per-cell decisions, which raised a weak cell to passing.\n\nWebKit matched Chromium on Speed, the Mastery marker picker and Stats 7d.",
+  "findings": [
+   {
+    "severity": "high",
+    "title": "Changing Hands scope in Speed silently destroys the in-progress Mastery run",
+    "steps": "Seed a Mastery run at 61/330 (scope All). Open Drills > Speed and tap Pairs in the Hands row (Speed's own 'nothing to ask' copy tells users to 'Choose Pairs' for Split?). Answer a few. Back > Mastery challenge.",
+    "expected": "Mastery resumes at 61/330, or at least warns before discarding it. The scope Speed uses should not decide whether the sweep survives.",
+    "actual": "Mastery opens at '0 / 100 cleared · Pairs', and bjtrainer.masteryrun.v1 is overwritten on mount (index 0, 100 cells). Tapping All gives '0 / 330'; the 61-hand run is unrecoverable. No message at any point.",
+    "screenshots": [
+     "shots/branch-chromium/02-speed-split-pairs.png",
+     "shots/branch-chromium/04-mastery-after-pairs-speed.png",
+     "shots/branch-chromium/05-mastery-back-to-all.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/MasteryChallengeView.tsx (useState initialiser plus the saveMasteryRun effect); scopes shared via src/ui/screens/drills/HandDeckControls.tsx",
+    "suggestedFix": "Store the run's own scope/deck with the run, and on open restore that scope instead of starting fresh. Or keep runs keyed by universe (one per scope) and never overwrite the saved run until the user answers a hand in the new scope. At minimum show 'Your 61/330 All sweep is paused — switch back to All to continue'."
+   },
+   {
+    "severity": "medium",
+    "title": "Speed yes/no answers count as correct chart decisions and clear weak cells",
+    "steps": "Seed A,7 v 9 at 5/8 (62%, listed by Home as a weak cell). Speed > Double > Deck: Marked. Answer 'No' 6 times to 'Double?' on A,7 v 9.",
+    "expected": "A yes/no answer to 'Double?' says nothing about whether you hit or stand A,7 v 9 (the actual confusion). It should not move the cell's accuracy, Flashcards %, or Home's weak-cell list, or it should be tracked separately.",
+    "actual": "cellStats soft-18-v-9 went from 5/8 to 11/14 (79%). Home's Next step went from 'Hard 12 v 3 … and 2 more cells' to '… and 1 more cell': the weak cell was cleared without ever being played. The Stats 'Flashcards' section also gained a 'Surrender 6/6' row and its total rose by Speed's taps. 'Accuracy by category > Surrender' median decision time is now entirely yes/no taps (0.4s/1.3s).",
+    "screenshots": [
+     "shots/inflate/01-speed-marked-double.png",
+     "shots/inflate/02-after-6-no.png",
+     "shots/inflate/03-home-after.png",
+     "shots/chromium-e2e/39-stats-drills-last7days-mid.png"
+    ],
+    "likelyFile": "src/drills/speedDrill.ts (SPEED_EVENT_SOURCE = 'flashcard', buildSpeedEvent hand: cellId); src/drills/gradeAnswer.ts persistGrade/applyEvents",
+    "suggestedFix": "Give Speed its own source (or a flag on the event) and skip cellStats/bySource.flashcard/latencyHistory for it. Or record only Speed misses against the cell, since a miss is real evidence and a correct 'No' is not."
+   },
+   {
+    "severity": "medium",
+    "title": "Stats time filter leaves every hand-accuracy figure unchanged; same rows mix all-time accuracy with ranged median time",
+    "steps": "Returning user with most answers in the last 7 days and some 9–20 days ago. Stats > Play (or Drills) > tap Last 7 days, then Last 30 days.",
+    "expected": "'Am I better than last week?': hand accuracy for the selected range.",
+    "actual": "Everything above the fold is identical in all ranges: Profile/CVCX block, Accuracy by category (Hard 755/774), Flashcards (97%, 1777/1830), Mistake types, I18 table. Only the 'Median decision time' line under each category changes (Pairs 1.8s to 1.5s), so a single row shows all-time accuracy next to last-7-days time. The note lists only 'Accuracy by category and the Illustrious 18 table' as all-time; Flashcards and Mistake types are not mentioned but also ignore the range. To a user, tapping Last 7 days looks like it did nothing.",
+    "screenshots": [
+     "shots/chromium-e2e/26-stats-play-alltime-top.png",
+     "shots/chromium-e2e/29-stats-play-last7days-top.png",
+     "shots/chromium-e2e/30-stats-play-last7days-mid.png",
+     "shots/chromium-e2e/38-stats-drills-last7days-top.png",
+     "shots/webkit-e2e/30-stats-play-last7days-mid.png"
+    ],
+    "likelyFile": "src/ui/screens/Stats.tsx (categories/bySource read unfiltered); src/store/types.ts latencyHistory row lacks `correct`",
+    "suggestedFix": "Add `correct: boolean` to each dated latencyHistory row (already one per timed graded event) and compute ranged per-category accuracy from it. Until then, grey out or badge 'all time' on each unfiltered section (Flashcards and Mistake types too). Move range-sensitive sections above the CVCX block."
+   },
+   {
+    "severity": "medium",
+    "title": "Speed has no clock or session length and mode switches wipe the score with no summary",
+    "steps": "Open Speed for a '5-minute warm-up'. Answer 16 Surrender questions, switch to Double, answer 13, switch to Split, answer 11.",
+    "expected": "The drill is described as 'Yes or no, against the clock'. A warm-up wants a visible timer or a set length, and a session total that survives switching question type.",
+    "actual": "There is no timer, countdown or end screen. Each mode tap silently resets to '0/0 –', so after 40 answers the header showed '10/11 0.4s' (real pass: 60 answers showed '27/31'). The second number has no label (it is a median). There is no way to see the whole warm-up's result except in Stats.",
+    "screenshots": [
+     "shots/chromium-e2e/05-speed-open.png",
+     "shots/chromium-e2e/11-speed-mode-double.png",
+     "shots/chromium-e2e/14-speed-end.png",
+     "shots/chromium-real/14-speed-end.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/SpeedDrillView.tsx (sessionKey effect resets score; topbar speed-stats)",
+    "suggestedFix": "Add an optional 2/5-minute timer chip with an end card (answers, accuracy, median, misses to review). Keep a running session total across mode changes, with a per-mode breakdown. Label the median ('median 1.5s')."
+   },
+   {
+    "severity": "low",
+    "title": "Home does not mention a Mastery sweep in progress",
+    "steps": "Seed a Mastery run at 61/330 plus a few weak cells; open the app.",
+    "expected": "A returning user sees 'Resume Mastery: 61/330' (one tap) somewhere on Home.",
+    "actual": "Next step says 'Fix weak cells'. Nothing on Home shows or links to the 61/330 run, so resuming takes Drills > scroll past 10 entries > Mastery.",
+    "screenshots": [
+     "shots/chromium-e2e/01-home-open.png",
+     "shots/chromium-e2e/23-home-after-mastery.png"
+    ],
+    "likelyFile": "src/ui/screens/Home.tsx, src/ui/screens/nextStep.ts",
+    "suggestedFix": "When loadMasteryRun() has 0 < index < order.length, show a 'Continue sweep 61/330' row (or Next-step secondary button) that uses setDrillLaunch('mastery')."
+   },
+   {
+    "severity": "low",
+    "title": "Long-press marking does nothing in Speed (or anywhere outside Flashcards/Mastery), and nothing hints it exists",
+    "steps": "In Speed, hold the player's hand for 700ms.",
+    "expected": "Either the marker picker opens (as in Mastery), or long-press is clearly scoped. Some hint that hands can be marked.",
+    "actual": "Nothing happens (0 dialogs). In Mastery it works, but no on-screen hint mentions long-press, so the feature is only discoverable by accident.",
+    "screenshots": [
+     "shots/chromium-e2e/06-speed-longpress-attempt.png",
+     "shots/chromium-e2e/18-mastery-marker-picker.png",
+     "shots/chromium-e2e/19-mastery-marked.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/SpeedDrillView.tsx (hand not wrapped in MarkableHand)",
+    "suggestedFix": "Wrap Speed's hand-cards in MarkableHand (handKey = idRef/question). Add a one-time 'Hold a hand to mark it' hint under the hand."
+   },
+   {
+    "severity": "low",
+    "title": "Speed 'Split?' on 8,8 v A answers No with 'Chart: Surrender' and no fallback",
+    "steps": "Speed > Split (scope All). When 8,8 v A is dealt, answer Yes.",
+    "expected": "Correct for 6D H17 LS, but the reason should say why: 'Chart: Surrender (split if surrender isn't offered)'.",
+    "actual": "judgeSpeed('split', 8,8, A) gives answer No, reason 'Chart: Surrender'. A learner who split is told 'No', which reads as 'don't split 8s'.",
+    "screenshots": [
+     "shots/chromium-real/13-speed-answer-59.png"
+    ],
+    "likelyFile": "src/drills/speedDrill.ts speedReason",
+    "suggestedFix": "When basic is surrender and the mode asks split/double, add the no-surrender fallback (from fallbackHand) to the reason line."
+   },
+   {
+    "severity": "low",
+    "title": "Home profile chip slides under the mute disc when scrolled",
+    "steps": "Home with a seeded history (page is 44px taller than 812). Scroll to the bottom.",
+    "expected": "Header controls stay clear of the fixed mute disc.",
+    "actual": "Profile chip rect [196,24,352,72] overlaps the mute disc [323,0,367,44] by about 29x20px. The chip text 'Default (6D H17)' is partly covered.",
+    "screenshots": [
+     "shots/chromium-e2e/02-home-scrolled.png"
+    ],
+    "likelyFile": "src/ui/screens/Home.tsx / app.css (.home-head)",
+    "suggestedFix": "Apply the same mute-disc clearance used for the Stats/Settings headers to .home-head (right padding = disc width + gap), or make the header sticky below the safe area like the drill topbars."
+   },
+   {
+    "severity": "ux",
+    "title": "Profile/CVCX block of dashes leads every Stats tab, pushing range-sensitive content below the fold",
+    "steps": "Stats > Drills or Progress tab, any range.",
+    "expected": "The first screen shows the data for the selected tab and range.",
+    "actual": "Six rows of 'CVCX … —' occupy most of the first screen on all three tabs. The first content that answers the range picker starts around 700px down.",
+    "screenshots": [
+     "shots/chromium-e2e/38-stats-drills-last7days-top.png",
+     "shots/chromium-e2e/47-stats-progress-last7days-top.png"
+    ],
+    "likelyFile": "src/ui/screens/Stats.tsx",
+    "suggestedFix": "Show the Profile/CVCX block only on the Play tab, collapsed by default when every value is empty."
+   }
+  ],
+  "topChanges": [
+   "Stop the Mastery run being destroyed by scope changes made in other drills: persist the run's own scope/deck and restore it on open (or keep one saved run per scope), and never overwrite the saved run until a hand is answered in the new scope.",
+   "Keep Speed's yes/no taps out of per-cell accuracy, Flashcards totals and category decision times (own event source, or record misses only), so a warm-up cannot clear weak cells or inflate the 97%.",
+   "Make the Stats time range answer the user's real question: add `correct` to dated latencyHistory rows and filter hand accuracy by range, badge any section still on all time, and move ranged sections above the CVCX block. Also add a Speed session timer with an end card, plus a 'Continue sweep 61/330' row on Home."
+  ],
+  "consoleErrors": []
+ },
+ {
+  "goalAchieved": false,
+  "tapsOrSteps": "Story path from the real 40-card state: Home Start (1 tap), 40 answers, Stats tab plus expanding Cost of mistakes (2), then Drills > Custom > Auto > Flashcards (4) to reach the first Focus card, 40 more answers, Back > Custom > Auto > Mastery (4). Home never sends this player to Custom. I kept obeying Next step for 360 answers (about 370 taps) and it still said 'Learn basic strategy'. In a seeded 'a few sessions in' state (categories at 90% or better, 6 weak cells), Next step says 'Fix weak cells': Start > Flashcards is 2 taps to the first Focus card. It took 120 correct answers (95 of them on Focus cells, about 10 minutes at a real pace) before Home moved on to 'Mastery sweep'. 71 screenshots, Chromium plus a WebKit repeat, about 20 browser runs, no console or page errors.",
+  "narrative": "Fresh install, Default 6D H17. Home's Next step 'Learn basic strategy' > Start opened Flashcards straight away. I answered 40 cards, deliberately missing every soft double and splits of 2s, 3s, 4s, 6s, 7s and 9s, and got everything else right: 9 misses, 78% overall. Every verdict matched src/engine (correctPlay). I also checked the Custom grid's H17/DAS/LS chart cells by eye and they were right.\n\nBack on Home, Next step said 'Pairs: 10 answers so far, 20 needed', and Start opens the same plain all-chart Flashcards. Stats > Cost of mistakes lists '9,9 v 6: Stand for Split x1, 0.20 u' and the rest. But the section sits only on the Play tab, even though every priced mistake came from Flashcards. It is collapsed by default, and its rows look tappable but do nothing. There is no way from 'this is costing you' to 'drill this'.\n\nTo test whether Home ever closes the loop on its own, I kept obeying Next step in batches of 40, still missing the same plays, up to 360 answers. It never left 'Learn basic strategy' (soft 59%, pairs 49%): the category-at-90% step comes before 'Fix weak cells', so the exact weakness Custom is built to fix keeps it out of reach. Plain Flashcards also re-drew my previously missed cells only 1-7 times per 40 cards while unseen cells remained. An unseen card weighs 8 and a just-missed card weighs 6.\n\nDoing what a user would do, I went to Drills > Custom by hand and tapped Auto. It correctly painted exactly my 9 missed cells Focus. The only feedback is a small '9 Focus · 290 Regular · 31 Rare' line, and the grid is about 900px further down. In Custom Flashcards, Focus cells were 8 of the first 20 draws but only 4 of the next 20 (30% against the 60% mix). Each Focus cell drops to an SR weight of 0.25 after one right answer, while the 290 unseen Regular cells stay at 8.\n\nMastery from Custom is a 330-hand sweep, because Auto paints every cell. None of the first 12 hands were Focus cells, and one soft-double miss reset the run at 16/330.\n\nSeparately, Custom edits are never saved until a Start button is tapped. Auto plus a painted-Off row read 'null' in localStorage, and after a relaunch the editor showed '0 Focus · 330 Regular'. That matters for an iOS home-screen app that gets evicted.\n\nIn the seeded state the intended path works: Next step 'Fix weak cells - 2,2 v 3 is at 33% and 5 more cells below 78%' > Start opens Custom with Auto already applied (exactly the 6 seeded cells) > Flashcards drew Focus cells 79% of the time. Closing the loop still took 120 answers, because accuracy is all-time and a 2/6 cell needs about 13 right in a row, and nothing in the drill shows progress. Afterwards Home said 'Mastery sweep', but its Start opened Mastery still on the leftover 'Custom' deck. Without e2e mode the timings felt fine (next card ready 25-435 ms after a tap). WebKit rendered the three key screens the same as Chromium.",
+  "findings": [
+   {
+    "severity": "high",
+    "title": "Home Next step never routes a concentrated weakness to 'Fix weak cells'",
+    "steps": "Fresh install > Next step Start > answer flashcards, missing every soft double and splits of 2/3/4/6/7/9s (everything else right) > after each batch of 40, go back Home and tap Next step Start again. Continue to 360 answers.",
+    "expected": "Once specific cells are clearly weak (here: 9,9 v 5/6/8, 6,6 v 2/3, A,2-A,7 doubles), Next step points to Custom with Auto, the tool built for this, or at least to the weak category.",
+    "actual": "Next step stayed 'Learn basic strategy' for all 360 answers ('Soft totals are at 68%' ... 'Pairs are at 49%'). Start always opened all-chart Flashcards. Weak cells with 5 or more answers existed from answer 320, but step 2 (custom) cannot fire while step 1 (every category at 90%) fails, and a concentrated weakness keeps its category below 90%.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/010-home-after-40.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/016-home-nextstep-after-40.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/022-home-nextstep-final-after-360.png"
+    ],
+    "likelyFile": "src/ui/screens/nextStep.ts",
+    "suggestedFix": "In nextStep(), once a category has at least MIN_CATEGORY_ANSWERS but is below target, check for weak cells in that category (allow MIN_CELL_ANSWERS of 2-3, or 'missed and due') and return kind 'custom' with those cells named. Keep 'flash' only for the too-few-answers case. Alternatively, have 'flash' Start open Flashcards scoped to the weak category instead of All."
+   },
+   {
+    "severity": "high",
+    "title": "Custom editor edits (Auto, paint, mix, Favour missed) are not saved until a Start button is tapped",
+    "steps": "Drills > Custom > tap Auto (11 Focus) > choose the Off brush and tap the A,9 row (10 Off) > reload or relaunch the app (as iOS does when it evicts the home-screen PWA) > Drills > Custom.",
+    "expected": "The painted selection and Auto tiers are still there.",
+    "actual": "After relaunch: '0 Focus · 330 Regular · 0 Rare · 0 Off'. localStorage bjtrainer.settings.v1 drill.custom was null before the reload. CustomDrillEditor.commit only calls onSettingsChange, which Drills receives as App's setSettings (memory only). Only onStart calls saveSettings. The harness used by the editor spec does call saveSettings, so no test can catch this.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/099-real-custom-before-relaunch.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/100-real-custom-after-relaunch-edits-lost.png"
+    ],
+    "likelyFile": "src/ui/components/CustomDrillEditor.tsx (commit) / src/ui/App.tsx (Drills onSettingsChange={setSettings})",
+    "suggestedFix": "Call saveSettings(next) inside CustomDrillEditor.commit (as customDrillEditor.harness.tsx does), or give Drills a persisting onSettingsChange. Add an e2e test that paints, reloads and re-opens via the real app, not the harness."
+   },
+   {
+    "severity": "medium",
+    "title": "Missed cells are drawn less often than unseen cells in Flashcards and in Mastery order",
+    "steps": "Answer flashcards on the Chart deck, missing some cells. Track how often previously missed cells come back while most cells are still unseen. Also start Mastery from Custom after Auto.",
+    "expected": "A just-missed cell comes back soon and more often than a never-seen one, as the Mastery copy says ('due and missed cells come first').",
+    "actual": "srWeight gives an unseen card 8 but a just-missed card only 6 (box 0: 1 + 0 + 5). Batches of 40 drew previously missed cells 1, 3, 3, 6, 7, 5 times while about half the chart was unseen. In Mastery from Custom, none of the first 12 cells were Focus (missed) cells. In the seeded state, 1 of the first 15.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/047-custom-mastery-after-12.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/072-seeded-mastery-after-15.png"
+    ],
+    "likelyFile": "src/drills/spacedRepetition.ts (srWeight, SR_NEW_WEIGHT) / src/drills/masteryChallenge.ts",
+    "suggestedFix": "Make a box-0 missed card outweigh an unseen one, e.g. add a recent-miss bonus so box 0 with reviews > 0 weighs at least 2x SR_NEW_WEIGHT. When Mastery runs on a Custom deck, multiply its order weights by the Custom tier weights."
+   },
+   {
+    "severity": "medium",
+    "title": "Custom Focus share collapses after one correct answer when most cells are unseen",
+    "steps": "From the 40-answer state: Drills > Custom > Auto (9 Focus, 290 Regular, 31 Rare, mix 60/30/10) > Flashcards > answer 40 correctly.",
+    "expected": "About 60% of draws come from the 9 Focus cells until they are fixed.",
+    "actual": "Focus draws were 8 of the first 20, then 4 of the next 20 (12/40 = 30%). After one right answer a Focus cell's SR weight drops from 6 to 0.25 while each unseen Regular cell stays at 8, so the tier share is swamped. Every Focus cell was still at 1/2 = 50% after the session.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/039-custom-flash-1-pair-6-v-3-FOCUS.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/042-custom-flash-40-hard-11-v-4.png"
+    ],
+    "likelyFile": "src/drills/flashcards.ts (weights = srWeight * deckWeight) / src/drills/cellSelection.ts customWeights",
+    "suggestedFix": "Normalise SR weights within each tier before applying the tier share, so tiers keep their advertised percentages and SR only orders cells within a tier. Or floor the SR weight of Focus cells at 1."
+   },
+   {
+    "severity": "medium",
+    "title": "Cost of mistakes is a dead end: inert rows, Play tab only, collapsed by default, labels don't match the grid",
+    "steps": "After 40 flashcards with misses > Stats. Look on the Drills tab (where flashcard results live), then the Play tab > expand Cost of mistakes > tap a row.",
+    "expected": "Costs from drill mistakes appear where drills are reported, and a row (or a 'Drill these' button) takes you to practise those hands.",
+    "actual": "Cost of mistakes is hidden on the Drills tab (SECTION_TAB maps it to 'play') even though all 9 priced mistakes came from Flashcards. It is collapsed by default outside e2e mode. The bordered rows look like buttons but are inert. Soft hands read 'Soft 16 v 6' while the Custom grid labels the row 'A,5', so the user has to translate before painting.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/013-stats-tab-drills.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/097-real-stats-cost-collapsed-default.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/098-real-stats-cost-opened.png"
+    ],
+    "likelyFile": "src/ui/screens/Stats.tsx (SECTION_TAB, Cost of mistakes section) / src/ui/screens/statsFormat.ts costHandLabel",
+    "suggestedFix": "Show Cost of mistakes on the Drills tab too (or split it by source). Add a 'Drill these' button that opens Custom with the listed cells painted Focus. Use the grid's A,x labels for soft hands."
+   },
+   {
+    "severity": "medium",
+    "title": "The leftover Custom deck carries into Home's other next steps",
+    "steps": "Use Custom > Flashcards once (this saves deck='custom') > later, Home Next step 'Learn basic strategy' or 'Mastery sweep' > Start.",
+    "expected": "Home's 'Learn basic strategy' and 'answer every cell once' steps open on the whole chart.",
+    "actual": "Both opened with DECK: Custom. Flashcards kept drawing from the old Auto tiers. Mastery showed '0 / 330 cleared · Custom · All'. A whole-chart sweep only counts when all 330 cells are in the run (isWholeChartSweep), so any Off-painted cell makes Home's Mastery step impossible to complete from its own Start button.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/050-home-nextstep-flashcards-deck-state.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/071-seeded-home-mastery-start.png"
+    ],
+    "likelyFile": "src/ui/screens/Home.tsx openStep / src/ui/drillLaunch.ts / src/drills/deckSource.ts settingsForCustomStart",
+    "suggestedFix": "When Home launches 'flash' or 'mastery', set drill.deck='chart' with all scopes (persisted), the mirror of settingsForCustomStart. Or have Mastery launched from Home always walk the full chart."
+   },
+   {
+    "severity": "low",
+    "title": "Closing the loop takes about 13 straight right answers per weak cell, with no progress shown",
+    "steps": "Seeded: 6 cells at 2/6 and everything else strong > Home 'Fix weak cells' > Start > Flashcards > answer correctly until Home changes.",
+    "expected": "Fixing a cell shows up soon, and the drill tells you how many weak cells are left and when you're done.",
+    "actual": "It took 120 answers (95 on Focus cells). Weak detection uses all-time accuracy, so (2+k)/(6+k) >= 78% needs k >= 13. The drill shows no 'weak cells left' count and no done state. The user has to go back to Home to find out.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/068-seeded-custom-flash-done.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/070-seeded-home-after-fix.png"
+    ],
+    "likelyFile": "src/ui/screens/nextStep.ts (weak-cell rule) / src/drills/cellSelection.ts autoTiers",
+    "suggestedFix": "Judge weak cells on recent answers (e.g. the last 5, or an EWMA) for both Auto and Next step. Show 'Focus cells left: N' in Custom-launched drills, with a done banner that sends you back to Home."
+   },
+   {
+    "severity": "low",
+    "title": "Mastery from Custom sweeps all 330 hands, not the weak ones",
+    "steps": "Custom > Auto > Mastery.",
+    "expected": "Following the picker copy ('drill just those in Flashcards, Mastery or Mixed'), Mastery from Custom proves the Focus cells.",
+    "actual": "Auto paints every cell (unseen = Regular, strong = Rare), so the deck is the whole chart: '0 / 330 cleared · Custom · All'. One soft-double miss reset the run at 16/330.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/046-custom-mastery-start.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/048-custom-mastery-miss-reset.png"
+    ],
+    "likelyFile": "src/ui/components/CustomDrillEditor.tsx (STARTS) / src/ui/screens/drills/MasteryChallengeView.tsx",
+    "suggestedFix": "Make Custom's Mastery button sweep the Focus cells only (label it 'Mastery: N Focus'), or offer that as a choice."
+   },
+   {
+    "severity": "ux",
+    "title": "Auto gives almost no visible feedback, and Back from Custom drills skips the editor",
+    "steps": "Custom > tap Auto. Then start Flashcards and tap Back.",
+    "expected": "Auto confirms what it did (e.g. 'Focus: 9,9 v 5, 9,9 v 6, ... 9 cells'). Back returns to the Custom editor you came from.",
+    "actual": "The only change in view is the small counts line about 280px above the Auto button. The Focus cells are about 900px further down the grid. Back from Custom Flashcards or Mastery lands on the Drills picker, so re-checking or re-applying Auto costs an extra tap. The grid's 26x30 px cells and 26x28 px dealer headers are under 44px, and while scrolling the mute disc sits over the top-right grid cells.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/035-custom-editor-after-auto.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/036-custom-grid-soft-after-auto.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/043-after-back-from-custom-flashcards.png"
+    ],
+    "likelyFile": "src/ui/components/CustomDrillEditor.tsx / src/ui/screens/Drills.tsx (onStart/onBack routing)",
+    "suggestedFix": "After Auto, show an inline note naming the Focus cells, or scroll the first one into view. Remember that a drill was started from Custom and return there on Back."
+   },
+   {
+    "severity": "low",
+    "title": "A lit Surrender button on pairs gives away 8,8 v A",
+    "steps": "Flashcards or Mastery: on most pair and soft hands Surrender is greyed and the chip says 'No surrender'. On 8,8 v A (H17 6D) Surrender lights up.",
+    "expected": "Button availability doesn't reveal the answer.",
+    "actual": "Of the pairs, only 8,8 v A lights Surrender (drillOffersSurrender follows the chart cell), so the button itself tells you the answer on that hand. The 'No surrender' chip on soft hands also contradicts a table that offers late surrender.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s07-fix-weak-cells/shots/002-flashcards-first-card.png"
+    ],
+    "likelyFile": "src/drills/legalActions.ts drillOffersSurrender",
+    "suggestedFix": "Offer Surrender on every pair whenever the table has late surrender (taking it is a graded mistake), or at least on every pair vs 9/10/A, so it no longer singles out the one correct cell."
+   }
+  ],
+  "topChanges": [
+   "Let Home's Next step send a player with concentrated misses straight to Custom (Auto) with the cells named. Today a below-90% category blocks the 'Fix weak cells' step forever, so plain all-chart Flashcards is the only advice (360 answers, never routed).",
+   "Save Custom editor changes on every commit, and when Home launches Flashcards or Mastery, reset the deck to Chart. Today Auto and paint are lost on relaunch until Start is tapped, and Home's next steps inherit a stale Custom deck.",
+   "Make weak cells actually come first. A just-missed card should outweigh an unseen one (today 6 vs 8). Custom tier shares should hold after one right answer (today Focus fell from 40% to 20% of draws). Mastery on Custom should walk the Focus cells first or only. Also give Cost of mistakes a 'Drill these' button and show it on the Drills tab."
+  ],
+  "consoleErrors": []
+ },
+ {
+  "goalAchieved": true,
+  "tapsOrSteps": "Getting into each piece takes about 8 navigation taps. Charts index list: Charts (1 tap), then a long scroll of about 1,800px with no jump link, then tap a corner-marked cell (1). Deviation quiz: Drills (1), scroll, Deviation quiz (1). Flashcards with count: Drills, Flashcards, Options, With count (4). One full loop (miss, explanation, Show on chart, Back to hand) is 3 taps. A human would need about 4-6 minutes for the whole story, plus drilling time. Scripted runs: 14 quiz answers with 4 misses and 3 chart round trips took 14 taps and 18.5s at real timing (no ?e2e=1). About 165 graded answers across Chromium and WebKit, and 85 screenshots.",
+  "narrative": "I played an intermediate player learning the Illustrious 18 on the default 6-deck H17 DAS LS profile.\n\nCharts: the corner marks and inline notes are clear. Tapping 12 v 4 shows \"12 v 4 · TC ≤ −1 · Hit\". Tapping 16 v 10 adds the line that surrender comes first. The 10,10 indexes sit on the 18+ row and the note says \"10,10 v 5\", which makes sense once tapped. The Indexes table is correct and readable, but it is a dead end: it sits about 1,800px down the page, no row links to its cell or to a drill, and nothing tells you that you can drill these.\n\nAdvice is correct. Every graded item matched an independent oracle I wrote from the published Hi-Lo indexes (stand at index or above, hit below). That covered the H17 changes (10vA +3, 16v9 +4, 11vA always double), all the negative indexes, and the BJA H17 chart in docs/sources, which I read. The one cell I could not source is 12v6 under H17 (more below).\n\nDeviation quiz: answering advances at once, and the last result sits as a strip under the next hand. The strip gives the play, the class (Missed / Phantom / Wrong either way) and the index label. \"Show on chart\" opens the chart over the drill with the cell ringed, plus a note when the chart and the grade differ (\"This chart is basic strategy. That hand was graded double at a true count of +3…\"). \"Back to hand\" returns to the same pending item, so nothing is lost. A miss comes back through spaced repetition: a missed TTv6 returned 8 items later. With one index picked from the Index list, the very next item was the same hand, which works as a retry. Picking an index has a catch: its full label, answer included, stays printed at the top of the screen.\n\nFlashcards with count: the toggle is hidden under Options. On the default Chart deck only 1 hand in 40 involved an index, so for learning deviations it is basic strategy with a number on top. The Indexes deck works better. But on index cells where the count hasn't reached the index, the strip says \"No index here\", which contradicts the chart's corner mark. And Options has to be open to switch With count on, which makes the screen overflow: after an index miss the Hit/Stand/Double bar is pushed entirely off-screen at 375x812 (same in WebKit).\n\nStats has a per-index Right/Wrong table. Home still says \"NEXT STEP: Learn basic strategy\" and \"weakest: hard totals\" after 42 deviation answers. No console or page errors in any run.",
+  "findings": [
+   {
+    "severity": "high",
+    "title": "With Options open, a miss pushes the answer bar off-screen (Flashcards fully, quiz partly)",
+    "steps": "375x812, Chromium or WebKit. Drills > Flashcards > Options > With count (Options stays open). Answer an index hand wrongly, e.g. 9,3 v 6 at TC -4 and tap Stand.",
+    "expected": "Hit/Stand/Double for the next card stay visible at the bottom; the strip shrinks or scrolls inside.",
+    "actual": "The page grows to 888px and the action bar sits at y=820-888, fully below the 812px viewport. You must scroll to answer the next card. In one run the page scrolled itself 76px instead, which pushed Back/Repeat under the mute disc. In the Deviation quiz with Options open, the bar is cut off by 19px and the page creeps 0 > 8 > 17px between items. The With count user always hits this, because the toggle lives inside Options.",
+    "screenshots": [
+     "83-flash-index-miss-options-open-6.png",
+     "96-webkit-flash-with-count-index-miss.png",
+     "82-flash-miss-options-open.png",
+     "100-quiz-options-open-miss-0.png",
+     "78b-flash-count-item2-miss-feedback.png"
+    ],
+    "likelyFile": "src/ui/screens/Drills.tsx (drill-screen layout, .action-bar is position: static) / src/ui/app.css",
+    "suggestedFix": "Make .action-bar position: sticky; bottom: 0 (or let the hand area flex-shrink with min-height: 0) so the drill screen never exceeds 100dvh. Also close the Options disclosure after a chip is toggled."
+   },
+   {
+    "severity": "medium",
+    "title": "With count says 'No index here' on index cells when the count hasn't reached the index",
+    "steps": "Flashcards > Deck: Indexes (With count on). Answer 4,8 v 2 at TC +0 with Hit, or 10,10 v 6 at TC +3 with Stand.",
+    "expected": "Something like 'Index not reached: 12 v 2 stands at TC ≥ +3', the way the Deviation quiz always prints the label.",
+    "actual": "'Correct! 4,8 v 2 at TC +0 — Hit / No index here'. Same for 10,10 v 6 at +3, one count short of its +4 index, and for 12v4, 13v2, 9v7, 10v10 below their indexes. This tells a learner the cell has no index while the chart shows a corner mark on it.",
+    "screenshots": [
+     "84-flash-deck-indexes-with-count.png",
+     "85-flash-deck-indexes-after-25.png"
+    ],
+    "likelyFile": "src/drills/withCount.ts indexLine()",
+    "suggestedFix": "In indexLine, when advice.deviationId is empty, call reachableIndexes(cards, up, ctx, rules). If any exist, return 'Index not reached: <label>'. Keep 'No index here' for cells with none."
+   },
+   {
+    "severity": "medium",
+    "title": "With count on the default Chart deck almost never asks an index (1 hand in 40)",
+    "steps": "Flashcards, Deck = Chart, Options > With count. Play 40 cards.",
+    "expected": "Enough index hands that 'With count' actually trains deviations, or a hint pointing to the Indexes deck.",
+    "actual": "Only 1 of 40 cards (4,5 v 7 at +5) involved an index. INDEX_SHARE only biases the count once a hand is dealt; it does not deal more index hands, and those are about 16 of roughly 270 cells. The Chart/Custom/Indexes/Marked deck list sits right next to the toggle with no explanation of how they combine.",
+    "screenshots": [
+     "75-flashcards-with-count-on.png",
+     "76-flash-count-item0-prompt.png",
+     "77-flash-count-item1-prompt.png"
+    ],
+    "likelyFile": "src/drills/withCount.ts / src/drills/flashcards.ts (deck draw)",
+    "suggestedFix": "When With count is on, weight the draw toward index cells (e.g. 30-40%), or show a hint under the chip: 'For index practice pick Deck: Indexes.'"
+   },
+   {
+    "severity": "medium",
+    "title": "Picking one index in the quiz shows its answer above every question",
+    "steps": "Deviation quiz > Index list > pick '9 v 2: double at TC ≥ +1'. Drill.",
+    "expected": "The closed list shows only '9 v 2', so recall is still tested.",
+    "actual": "'9 v 2: double at TC ≥ +1' stays in the list box at the top of the screen for every question, which turns focused practice into reading.",
+    "screenshots": [
+     "67-quiz-filter-9v2.png"
+    ],
+    "likelyFile": "src/ui/screens/Drills.tsx (quiz-index-select options use the full Deviation.label)",
+    "suggestedFix": "Use a short option text (e.g. '9 v 2 (double)', without the threshold), or a custom button-list picker that shows only the hand."
+   },
+   {
+    "severity": "low",
+    "title": "Indexes table and Stats index table are dead ends: no link to drill an index",
+    "steps": "Charts > scroll to Indexes, or Stats > Illustrious 18. Try to practise one row.",
+    "expected": "Tapping a row opens the Deviation quiz with that index picked (or highlights its cell).",
+    "actual": "Rows are plain text. Reaching the list means scrolling about 1,800px with no jump link, then 4 more taps and a manual pick from the list to drill it. Stats lists right/wrong per index, but you cannot drill the weakest one from there.",
+    "screenshots": [
+     "08-indexes-section.png",
+     "87-real-charts-indexes.png",
+     "99-stats-indices.png"
+    ],
+    "likelyFile": "src/ui/screens/Charts.tsx (chart-indexes section), src/ui/screens/Stats.tsx",
+    "suggestedFix": "Make each index row a button that launches the quiz with quizIndex set. Add an 'Indexes ↓' jump link in the charts intro text."
+   },
+   {
+    "severity": "low",
+    "title": "TC shows an ASCII hyphen next to the true minus sign in the same strip (quiz and flashcards)",
+    "steps": "Deviation quiz: answer a negative-count item wrongly.",
+    "expected": "One minus sign throughout, U+2212 as the index labels use.",
+    "actual": "'7,5 v 5 at TC -2' (ASCII) sits beside 'hit at TC ≤ −3' (U+2212), and the big 'TC -2' headline is ASCII too. This goes beyond the known peek/bet-or-sit/pair-cancel list: formatSigned is duplicated in 11 files (Drills.tsx, MistakeCard.tsx, handResult.ts, Stats.tsx, Table.tsx, ...).",
+    "screenshots": [
+     "100-quiz-options-open-miss-0.png",
+     "12-quiz-first-screen.png"
+    ],
+    "likelyFile": "src/ui/screens/Drills.tsx:118, src/ui/components/MistakeCard.tsx:47, src/ui/handResult.ts:48",
+    "suggestedFix": "Move formatSigned into one shared helper that returns '−' + Math.abs(n), and import it everywhere."
+   },
+   {
+    "severity": "low",
+    "title": "Index miss card prints the same index line twice",
+    "steps": "Flashcards with count: miss an index hand (e.g. 4,5 v 7 at +5, Hit).",
+    "expected": "The index label appears once.",
+    "actual": "'Index: 9 v 7: double at TC ≥ +3' then 'Missed deviation. 9 v 7: double at TC ≥ +3'. The extra line also adds height that feeds the overflow finding above.",
+    "screenshots": [
+     "78b-flash-count-item2-miss-feedback.png",
+     "96-webkit-flash-with-count-index-miss.png"
+    ],
+    "likelyFile": "src/ui/components/MistakeCard.tsx / src/ui/handResult.ts (indexNote plus reasonLine)",
+    "suggestedFix": "Skip indexNote when the miss class is missed or phantom deviation, since the reason line already names the index."
+   },
+   {
+    "severity": "low",
+    "title": "Index cells are 26x32px touch targets and the chart's dealer header row scrolls away",
+    "steps": "Charts > tap 12 v 4, or open Show on chart from a miss that adds the sticky explanation note.",
+    "expected": "44px targets, or a list alternative; the dealer column header stays visible.",
+    "actual": "Cells are 26x32 (necessary to fit 10 columns, but under 44). With the sticky note, the DEALER 2..A header row is hidden, so you work out the column of the ringed cell from its position.",
+    "screenshots": [
+     "04-tap-12v4-index.png",
+     "69-quiz-9v2-chart-overlay.png"
+    ],
+    "likelyFile": "src/ui/screens/Charts.tsx / chart CSS",
+    "suggestedFix": "Make the chart thead sticky under the topbar and note. The tappable index rows suggested above also give a 44px way in."
+   },
+   {
+    "severity": "low",
+    "title": "H17 12 v 6 threshold (hit at TC ≤ −3) is not covered by the repo's own source check",
+    "steps": "Compare src/engine/deviations.ts 12v6 with docs/sources/verified-surrender-indices.md section 6.",
+    "expected": "Every negative index follows 'stored hit threshold = published stand index − 1', with a source.",
+    "actual": "Commit 550b632 moved S17 12v6 from −1 to −2 but left H17 at −3. BJA_H17.pdf has no 12 v 6 entry, and the 5-for-5 table only checks the S17 value. If −3 was a published 'stand at ≥ −3' number, H17 should be ≤ −4. I could not find a source either way. Every other graded item matched my oracle.",
+    "screenshots": [
+     "07-tap-12v6-index.png"
+    ],
+    "likelyFile": "src/engine/deviations.ts (12v6 entry)",
+    "suggestedFix": "Ask Jack to check his H17 source for 12 v 6 and record it in docs/sources like the 13 v 2 check. Change nothing without a source."
+   },
+   {
+    "severity": "ux",
+    "title": "WebKit: quiz Index list and checkboxes render with native styling (grey box, serif font)",
+    "steps": "WebKit at 375x812 > Deviation quiz.",
+    "expected": "The same dark green styled list box as Chromium.",
+    "actual": "A grey native list box with serif 'All indices' and white native checkboxes. It looks off-theme on Safari.",
+    "screenshots": [
+     "94-webkit-quiz-miss-strip.png",
+     "96-webkit-flash-with-count-index-miss.png"
+    ],
+    "likelyFile": "src/ui/app.css (.quiz-index-select, drill checkboxes)",
+    "suggestedFix": "Add -webkit-appearance: none; appearance: none; font: inherit to the select, a custom chevron, and accent-color on the checkboxes."
+   },
+   {
+    "severity": "ux",
+    "title": "Home keeps prescribing basic strategy and calls hard totals the weakest after a deviation miss",
+    "steps": "Fresh profile; answer 42 Deviation quiz items with 1 missed deviation; go Home.",
+    "expected": "Next step acknowledges index practice (e.g. 'Indexes: 41/42'), or deviation misses aren't counted as hard-total weakness.",
+    "actual": "'98% · weakest: hard totals' and 'NEXT STEP Learn basic strategy — Soft totals: 0 answers'. Quiz items land in the Hard totals category, so one missed deviation shows up as a hard-totals weakness. An intermediate player gets no credit for index work.",
+    "screenshots": [
+     "97-home-after-quiz-sessions.png"
+    ],
+    "likelyFile": "src/ui/screens/nextStep.ts / src/store/stats.ts (category tally for quiz events)",
+    "suggestedFix": "Leave deviation-quiz events out of the basic category 'weakest' pick, or add an Indexes line and step to the Home card."
+   }
+  ],
+  "topChanges": [
+   "Stop the answer bar being pushed off-screen: make .action-bar sticky to the bottom (or let the hand area shrink) and close Options after a chip is toggled. With count users hit this on their first miss.",
+   "Fix With count teaching: replace 'No index here' on index cells with 'Index not reached: <label>' (via reachableIndexes), and weight With count draws toward index cells or point users to Deck: Indexes.",
+   "Close the learning loop from the reference: make each Charts Indexes row and Stats index row open the Deviation quiz with that index picked, with a short list label that doesn't print the answer above every question."
+  ],
+  "consoleErrors": []
+ },
+ {
+  "goalAchieved": true,
+  "tapsOrSteps": "About 30 taps and roughly 3 minutes of real use for the core story. Home > Settings (1), Bone & Ink (1), speech rate +/+ and volume - (3), Audio detail: Verbosity Full and Answer pause + (3), Charts tab (1), Lowest first (1), indexed cell (1), gear (1), decks 2 / S17 / LS off (3), Done (1), Drills tab (1), gear (1), shot clock 5s (1), Done (1), Flashcards and 4 answers (5), Play tab (1), gear (1), Done (1), End x2 (2), Stats (1). The AMOLED and Slate passes took about 20 taps each (Settings > theme > every tab and every gear sheet). 99 screenshots in total, across Chromium e2e, Chromium with real timings, and WebKit.",
+  "narrative": "I started fresh on Midnight Felt, opened Settings from Home and picked Bone & Ink. The theme applies at once, survives a reload, and each picker card says what the theme is for, which helps. Speech rate, volume, verbosity and answer pause all changed and stuck. I didn't touch the Voice select or Test audio because both speak. Turning Audio off greys out the steppers properly.\n\nOn Charts in Bone the grids read well. No text failed WCAG in my automated sweep, except one tiny label on Play (below). Lowest first flipped every section and persisted. Tapping a corner-marked cell opened its index note inline. In the gear sheet I set 2 decks, S17 and no surrender. The ruleset line and the grids redrew straight away, and I checked every cell against 2D S17 DAS no-surrender basic strategy: hard, soft and pairs are all correct. The 6D H17 LS chart before the change was also correct (8,8 v A Rp, 11 v A Dh, A,8 v 6 Ds, 15/16/17 surrenders). Flashcard grading was correct too (10 v 5 Double, 13 v 10 Hit, A,9 v 7 Stand, 2,2 v 3 Split, A,A v 7 Split).\n\nThe Drills gear set the shot clock to 5s, and Flashcards used it. The Play gear sheet shows Training/Test, deal speed and the new-shoe group. Stats and the session report also render cleanly in Bone. AMOLED and Slate look consistent across every tab and sheet. I found no sideways scroll on any screen and no console or page errors in any run.\n\nThe story succeeds, but daylight readability has three real gaps. In Bone you can't tell which tab you're on: the active tab's colour has almost the same luminance as the others. Segmented controls in every theme mark the selected option only by text colour on a near-identical background. And the profile chip keeps saying 'Default (6D H17)' after the rules became 2D S17, so Home, Play, Stats and the sheet all show a label the chart contradicts.\n\nThe shot clock has two side effects. In visual mode it starts the next card while you're still reading the correction. And it auto-grades forever if you walk away: about 6 misses in 31 seconds, and Stats showed Hard 0/8 and Pairs 0/7 from nothing but idle time.\n\nSmaller issues:\n- One dark-green frame paints before Bone applies on cold load.\n- The status bar is black-translucent (white clock and battery text) over a cream band in Bone. This is inferred from the meta tag; I didn't see it on a device.\n- The gear renders as a colour emoji in WebKit.\n- The Charts topbar wraps both the back label and the title to two lines.\n- The deck buttons in the Charts sheet are 30-33px wide.",
+  "findings": [
+   {
+    "severity": "medium",
+    "title": "Bone & Ink: the active tab can't be told apart from the others",
+    "steps": "Settings > Bone & Ink > tap Charts (or any tab) > look at the bottom tab bar",
+    "expected": "The current tab is obviously marked (higher contrast, weight or a fill), as in the dark themes where it turns gold or copper",
+    "actual": "Active tab colour is rgb(130,84,26) and inactive is rgb(95,85,70). Luminance is nearly identical, with the same weight and no background, so in shots 111 and 007 the Charts tab looks exactly like the others. Dark themes are fine (AMOLED gold 242,193,78 against grey 139,139,147).",
+    "screenshots": [
+     "shots/111-bone-charts-top.png",
+     "shots/007-charts-bone-top.png",
+     "shots/006-home-bone-after-reload.png",
+     "tabbar-bone-check.png"
+    ],
+    "likelyFile": "src/ui/themes.css (bone-ink token used by .tab-btn-active), src/ui/app.css .tab-btn-active",
+    "suggestedFix": "Give .tab-btn-active a second cue that doesn't depend on hue, such as font-weight 700, a 3px top indicator bar or a tinted pill behind the glyph. Darken Bone's inactive tab colour toward a lighter grey so the active accent stands out (aim for 3:1 between active and inactive)."
+   },
+   {
+    "severity": "medium",
+    "title": "Segmented controls mark the selected option only by text colour, in every theme",
+    "steps": "Open any gear sheet (Charts: Decks / Dealer soft 17; Drills: Shot clock; Play: Feedback / Count checks ask), or Settings > Verbosity / The two wheel buttons, in Bone, AMOLED or Slate",
+    "expected": "The selected option is unmistakable at a glance in daylight or glare, and styled like the Row order toggle on the same Charts screen (filled pill)",
+    "actual": ".segmented-btn-active only switches to background var(--raised) and colour var(--accent). In Bone the selected '2' / 'S17' / '5s' / 'Training' is near-white with brown text, while the unselected options are bone with darker text, so the selection reads weaker than the options around it. In AMOLED and Slate only the label hue changes. The Row order toggle a few pixels away uses a solid accent fill, so two selected-state styles sit side by side.",
+    "screenshots": [
+     "shots/017-charts-bone-sheet-ls-toggled.png",
+     "shots/024-drills-bone-shotclock-picked.png",
+     "shots/104-bone-play-gear-sheet.png",
+     "shots/204-amoled-play-gear-sheet.png",
+     "shots/314-slate-charts-sheet.png",
+     "shots/202-amoled-settings-mid.png"
+    ],
+    "likelyFile": "src/ui/app.css (.segmented-btn-active, ~line 1833)",
+    "suggestedFix": "Match .charts-order-btn-active: background var(--accent), colour var(--accent-ink or --bg), font-weight 700. One selected-state style for every toggle in the app."
+   },
+   {
+    "severity": "medium",
+    "title": "Profile label says '6D H17' after the Charts gear changed the rules to 2D S17",
+    "steps": "Charts > gear > Decks 2, S17, LS off > Done > go to Home, Play, Stats, or reopen the gear",
+    "expected": "The label shown with the rules matches the rules in use, or the sheet warns that it's editing a profile whose name states different rules",
+    "actual": "Home chip, Play topbar ('Default (6D H17)' under Bankroll), Stats ('Profile: Default (6D H17)') and the sheet's own line ('Default (6D H17)'s rules') all keep saying 6D H17, while the chart header says '2 deck · S17 · DAS · No surrender' and the Play sheet says 'a 2-deck shoe'. A user studying in daylight sees two contradictory rule sets on one screen.",
+    "screenshots": [
+     "shots/017-charts-bone-sheet-ls-toggled.png",
+     "shots/021-home-bone-profile-chip-after-rule-change.png",
+     "shots/105-bone-play-gear-sheet-bottom.png",
+     "shots/408-real-play-bone-hand.png",
+     "shots/033-stats-bone-after-walkaway.png"
+    ],
+    "likelyFile": "src/ui/components/TabSettingsButton.tsx (ChartsSheet setRules), src/store/profiles.ts (default profile name)",
+    "suggestedFix": "Don't bake rules into the default profile's name: call it 'Default' and render the live rulesetSummary beside it. At minimum, when ChartsSheet edits a profile whose name contains a rules token, rename it or show the live rules in the chip."
+   },
+   {
+    "severity": "medium",
+    "title": "Shot clock keeps grading misses forever when nobody is there, polluting stats",
+    "steps": "Drills gear > Shot clock 5s > Flashcards > put the phone down for 31 s > open Stats",
+    "expected": "After one or two timeouts in a row the drill pauses ('Still there? Tap to resume') and stops recording misses",
+    "actual": "7 distinct cards went by in 31 s with no taps, and each timeout was graded as a miss and sent back to review now. Stats then showed Hard totals 0/8 and Pairs 0/7 with a median decision time of 5.0s, built from idle time alone. In a car, a traffic-light glance away does the same.",
+    "screenshots": [
+     "shots/032-flash-bone-walkaway-31s.png",
+     "shots/033-stats-bone-after-walkaway.png",
+     "shots/031-flash-bone-after-shotclock-wait.png"
+    ],
+    "likelyFile": "src/ui/screens/Drills.tsx (handleShotClockExpiry ~line 795, quiz equivalent ~1590)",
+    "suggestedFix": "Count consecutive timeouts. After 2, stop auto-advancing and show a resume prompt. Exclude the idle run from latency medians, or record only the first timeout."
+   },
+   {
+    "severity": "medium",
+    "title": "In visual mode the shot clock starts the next card while the wrong-answer correction is still being read",
+    "steps": "Shot clock 5s (or 3s) > Flashcards > answer wrong > read the 'Wrong · You played / Right play / Basic strategy error' strip",
+    "expected": "The time spent reading a correction doesn't count against the next hand. The clock starts when the user dismisses the strip, or after a short reading grace.",
+    "actual": "The next card is dealt and its clock armed the moment you answer. 250 ms later the bar is already about 95% and draining under a 3-4 line correction. With a 3s clock, reading the correction leads to the next card timing out ('Too slow ... You played Nothing').",
+    "screenshots": [
+     "shots/027-flash-bone-answer-0-hit.png",
+     "shots/028-flash-bone-answer-1-stand.png",
+     "shots/031-flash-bone-after-shotclock-wait.png"
+    ],
+    "likelyFile": "src/ui/screens/Drills.tsx (arm effect deps [card, feedback, showChart, shotClockMs] ~line 836; advanceWithResult)",
+    "suggestedFix": "After a wrong answer in visual mode, delay arming the clock (e.g. 1.5-2 s, or until the strip is tapped), or pause the bar while a wrong-result strip is showing."
+   },
+   {
+    "severity": "low",
+    "title": "Bone & Ink: status bar text may be unreadable (black-translucent over a cream band). Inferred, not seen on device.",
+    "steps": "Install to home screen on iPhone > choose Bone & Ink",
+    "expected": "Clock and battery are legible on every theme",
+    "actual": "index.html sets apple-mobile-web-app-status-bar-style=black-translucent, which on iOS means white status-bar text drawn over the page. Bone paints the top band rgb(242,236,224), so white text on cream is close to 1.1:1. theme-color is also fixed at #0d2318. I inferred this from Apple's documented behaviour; headless can't show it.",
+    "screenshots": [
+     "shots/003-settings-bone-selected.png",
+     "shots/006-home-bone-after-reload.png"
+    ],
+    "likelyFile": "index.html (meta apple-mobile-web-app-status-bar-style, theme-color), src/ui/theme.ts applyTheme",
+    "suggestedFix": "Check on the 13 mini. If confirmed, give Bone a darker top band behind the status bar (status-bar style can't change at runtime once installed). Also update meta theme-color in applyTheme per theme."
+   },
+   {
+    "severity": "low",
+    "title": "One frame of Midnight Felt paints before the stored Bone theme applies on launch",
+    "steps": "With Bone & Ink stored, cold-load the app (no ?e2e)",
+    "expected": "The first painted frame already uses the stored theme",
+    "actual": "A requestAnimationFrame trace shows the first frame with content at t=170ms with no data-theme and body rgb(13,35,24) (dark green), then Bone at t=207ms. applyTheme runs in a useEffect after the first paint, and nothing in index.html sets it earlier. That's a dark flash on every launch for a daylight user.",
+    "screenshots": [
+     "shots/401-real-home-bone.png"
+    ],
+    "likelyFile": "src/ui/App.tsx (useEffect applyTheme ~line 134), index.html",
+    "suggestedFix": "Apply the theme before React renders: a tiny inline script in index.html that reads the settings key and sets data-theme, or call applyTheme(normalizeTheme(loadSettings().theme)) in main.tsx before createRoot().render."
+   },
+   {
+    "severity": "low",
+    "title": "Play topbar profile name is 9.5px and fails contrast in Bone (3.21:1)",
+    "steps": "Bone & Ink > Play tab > read the line under 'Bankroll: 100'",
+    "expected": "Readable secondary text (at least 12px and 4.5:1)",
+    "actual": ".topbar-profile-name uses inline style fontSize 0.7em and opacity 0.65, rendering at 9.52px with rgb(74,66,55) on rgb(230,220,203), which is 3.21:1. In sunlight it's effectively unreadable, and it carries the (stale) rules label.",
+    "screenshots": [
+     "shots/103-bone-play.png",
+     "shots/408-real-play-bone-hand.png"
+    ],
+    "likelyFile": "src/ui/screens/Table.tsx (~line 784 inline style)",
+    "suggestedFix": "Drop the inline opacity, use var(--muted) at 0.75rem or larger, and move it into a CSS class so themes can tune it."
+   },
+   {
+    "severity": "low",
+    "title": "Deck buttons in the Charts gear sheet are 30-33px wide",
+    "steps": "Charts > gear > Decks row",
+    "expected": "Tap targets at least 44px each way. The sheet has plenty of horizontal room.",
+    "actual": "The 1/2/6/8 segmented buttons measure 30x48, 33x48, 33x48 and 32x48 (same in WebKit). The Row order buttons are 40px tall.",
+    "screenshots": [
+     "shots/015-charts-bone-gear-sheet.png",
+     "shots/505-wk-bone-charts-sheet.png"
+    ],
+    "likelyFile": "src/ui/app.css (.segmented-btn min-width), src/ui/screens/charts.css (.charts-order-btn)",
+    "suggestedFix": "min-width: 44px on .segmented-btn, min-height: 44px on .charts-order-btn."
+   },
+   {
+    "severity": "low",
+    "title": "Gear icon renders as a colour emoji in WebKit and ignores the theme",
+    "steps": "WebKit > Charts or Drills > look at the gear button",
+    "expected": "A monochrome glyph tinted with the theme like the other icons (Chromium shows a dark outline gear)",
+    "actual": "U+2699 has no variation selector, so WebKit draws the purple-grey emoji gear on the Bone disc. That's inconsistent across themes and doesn't match the outline style elsewhere.",
+    "screenshots": [
+     "shots/504-wk-bone-charts-index-note.png",
+     "shots/505-wk-bone-charts-sheet.png"
+    ],
+    "likelyFile": "src/ui/components/TabSettingsButton.tsx (<span aria-hidden>⚙</span>), src/ui/screens/Home.tsx (Settings button)",
+    "suggestedFix": "Use '⚙︎' (text presentation) or, better, an inline SVG gear with stroke currentColor."
+   },
+   {
+    "severity": "ux",
+    "title": "Charts topbar wraps both the back label and the title to two lines",
+    "steps": "Open Charts from Home or Settings (Chromium and WebKit, 375px)",
+    "expected": "A single-line topbar like Stats and Settings",
+    "actual": "'Back to / Home' or 'Back to / Settings' and 'Strategy / charts' each wrap, squeezed between the gear and the mute disc. 'Back to Drills' happens to fit. The topbar height changes depending on where you came from.",
+    "screenshots": [
+     "shots/007-charts-bone-top.png",
+     "shots/505-wk-bone-charts-sheet.png",
+     "shots/111-bone-charts-top.png"
+    ],
+    "likelyFile": "src/ui/screens/charts.css (.charts-topbar), src/ui/screens/Charts.tsx",
+    "suggestedFix": "Shorten to 'Back' with the destination as aria-label, or title the screen 'Charts' (as on the tab), and let the back button shrink with white-space: nowrap and ellipsis."
+   },
+   {
+    "severity": "ux",
+    "title": "Mute disc almost disappears in Bone & Ink",
+    "steps": "Bone & Ink > any screen > top-right mute disc",
+    "expected": "The always-available mute control is easy to find in daylight",
+    "actual": "The disc is rgb(250,246,238) at opacity 0.7 over a rgb(242,236,224) band, so its edge is about 1.05:1. Only the grey emoji speaker shows. In the dark themes the disc reads clearly.",
+    "screenshots": [
+     "shots/003-settings-bone-selected.png",
+     "shots/022-drills-bone-picker.png"
+    ],
+    "likelyFile": "src/ui/app.css (.mute-btn), src/ui/themes.css (bone-ink)",
+    "suggestedFix": "Give the disc a 1px var(--border) ring or a slightly darker surface token in Bone, and raise the opacity to 1."
+   },
+   {
+    "severity": "ux",
+    "title": "Session report after ending at round 0 shows an empty table header",
+    "steps": "Play > End > Tap again to end, without playing a hand",
+    "expected": "A one-line empty state ('No hands played'), with no two-tap confirm when there's nothing to lose",
+    "actual": "'0 / 0 correct · bankroll +0', then a bordered Category/Right/Wrong/Accuracy header with no rows, then 'Mistakes / No mistakes this session.' End still needed two taps at Round 0.",
+    "screenshots": [
+     "shots/106-bone-play-end-armed.png",
+     "shots/107-bone-play-after-end.png"
+    ],
+    "likelyFile": "src/ui/screens/Table.tsx (handleEnd / session report)",
+    "suggestedFix": "Hide the table when it has no rows. Skip the arm-and-confirm when roundNo === 0."
+   }
+  ],
+  "topChanges": [
+   "Make 'selected' and 'you are here' obvious without relying on hue: one filled-accent active style for every segmented control (the Row order pill already does this), plus a weight or indicator bar on the active tab. This matters most in Bone & Ink, where both are almost invisible.",
+   "Stop the profile name contradicting the rules: show the live rules summary next to a plain profile name (or rename on rule edit), so Home, Play, Stats and the Charts sheet agree with the chart header.",
+   "Make the shot clock humane: don't start the next card's clock while a wrong-answer correction is on screen, and pause the drill after 2 consecutive timeouts instead of auto-grading misses forever."
+  ],
+  "consoleErrors": []
+ },
+ {
+  "goalAchieved": false,
+  "tapsOrSteps": "About 75 taps, roughly 5 minutes for a person (2.5 of those minutes are Produce TC card flashing). Deck estimation: 2 taps to open, then 2 taps per rep (guess, then Next); 4 reps plus a Quarter-resolution rep took 19 taps. True count drill: 2 taps to open, then 2 to 4 taps per rep with fast advance; 14 reps took 36 taps. Produce the true count: 2 taps to open, then about 42 s of flashing (52 cards at 0.8 s, which cannot be changed on this screen) plus 2 to 4 taps per rep; 3 reps took 12 taps and 131 s. Changing the rounding convention took 6 taps plus scrolling: Home, profile chip, Edit, scroll to y≈1307 of a 2549 px page, Round, Save. Stats: Stats tab, Drills sub-tab, scroll (3 taps). Screenshots: about 150 PNGs under C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/. Prefixes: bde/wde = deck estimation (Chromium/WebKit), ctc/wtc = TC drill, cptc/wptc = Produce TC, ccv/ccx = convention change and tie, cst = stats, r/rd/rdd = runs without ?e2e=1. No console or page errors in any run.",
+  "narrative": "The three drills are easy to find under Drills > Keeping the count, and each step is clear on screen. Deck estimation shows a tall tray and a 4x3 answer grid. The result screen states the exact depth, the tolerance and the cards dealt, but it hides the tray, so I could not check my eye against the picture.\n\nThe True count drill is the strongest of the three. Grading always matched engine/count.ts trueCount() with floor: I checked all 14 reps in Chromium and 14 in WebKit. Fast advance with the result strip works well. A truncate slip is named exactly: \"0 is truncate; your profile floors.\" Nowhere on the drill does it say which convention I am being graded on, though. I only found out when I got one wrong, and changing it means going Home > profile chip > Edit and scrolling halfway down the page. After switching to Round, I hit a real contradiction. +2 ÷ 4 = 0.5, I entered 0, and the strip said \"Correct! +2 ÷ 4 = 0.5 → round +1\". Stats then showed 13/13 correct (100%) alongside \"Guessed too low 1\".\n\nProduce the true count is the realistic one, and it works, but it costs 42 s of counting per conversion, and that length can't be changed on its own screen. After OK, the next round starts flashing straight away under the result strip. My scripted counter was reading the strip and missed the first 2 cards in rounds 2 and 3, which threw its running count off by 2. A wrong-answer strip says \"you entered +4 — +4 ÷ 6 = 0.67 → floor 0\". The running count isn't labelled, so you can't tell whether the count, the tray read or the division went wrong.\n\nWithout ?e2e=1, a 90 ms double-tap on OK in the TC drill graded a phantom 0 against a question I never saw. It was saved as a wrong answer and replaced the strip for my real answer. In Deck estimation, double-tapping a bottom-row answer (5.0) dropped me back on the Drills list without showing the result.\n\nStats is where \"see where I go wrong\" fails. Produce TC has no section, although its history is saved. The TC section lists only the last 5 answers: after a 14-rep run all 5 were correct, so my 4 misses, including the convention slip, could not be seen. Rows don't show the right answer, and nothing counts convention slips.\n\nWebKit rendered the TC strip, the Produce tray screen and the Deck estimation tray the same as Chromium. Conversion practice works and slips are explained one rep at a time. I'm marking the goal not achieved because a counter can't see their convention up front, can't trust the round-tie verdict or what double-taps record, and can't review their mistakes afterwards.",
+  "findings": [
+   {
+    "severity": "high",
+    "title": "Double-tap on OK (or OK with nothing typed) grades a phantom 0 on the next, unseen question",
+    "steps": "Without ?e2e=1: Drills > True count drill > Start. Tap 1, then tap OK twice 90 ms apart (an ordinary double-tap).",
+    "expected": "One answer is recorded, and the strip shows the result of the question I answered.",
+    "actual": "Two history rows were saved: {rc:-6,d:5,g:1} and {rc:-4,d:4,g:0,correct:false}. The strip now reads 'Wrong: you entered 0 — −4 ÷ 4 = −1 → floor −1.' for a question that was never on screen, and the result of my real answer is gone. Tapping OK with nothing typed also grades 0, because the display shows a placeholder '0' that looks like a value.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/r02-tc-after-double-tap-ok.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/r03-tc-empty-ok.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/TrueCountDrillView.tsx (handleSubmit), src/ui/components/NumPad.tsx (submit)",
+    "suggestedFix": "In handleSubmit, apply the existing answerTooSoon(shownAt) guard from src/ui/answerBounce.ts, timed from when each question appears. Do the same in ProduceTcDrillView submit. In NumPad, show an empty or dimmed placeholder instead of '0' and disable OK until a digit has been typed."
+   },
+   {
+    "severity": "high",
+    "title": "Round convention on an exact half: strip says 'Correct!' above a different answer, and Stats counts it as too low",
+    "steps": "Profile > Edit > True count rounding: Round > Save. Open True count drill and wait for a tie, e.g. RC +2 with 4 decks left (0.5). Enter 0. Then open Stats > Drills > True count drill.",
+    "expected": "The verdict and the stated answer agree, e.g. 'Correct! +2 ÷ 4 = 0.5, an exact half, so 0 or +1', and Stats treats the answer as exact.",
+    "actual": "Strip: 'Correct! +2 ÷ 4 = 0.5 → round +1' after I entered 0. Stats: '13/13 correct (100%)' alongside 'Guessed too low 1, Exact 12'. This is the 'Correct! above a different answer' contradiction that #54 set out to remove, back again for round ties.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/ccx09-q-tie-away-from-zero-strip.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/ccx10-stats-drills-tab.png"
+    ],
+    "likelyFile": "src/drills/tcFeedback.ts (tcWorking / gradeTcConversion tie branch), src/store/drillStats.ts (signedErrorBreakdown)",
+    "suggestedFix": "When rounding is 'round' and the quotient is exactly x.5, have tcWorking print both neighbours ('→ round 0 or +1, exact half'). In signedErrorBreakdown, count a row as exact whenever row.correct is true, not only when guess === correctTc."
+   },
+   {
+    "severity": "high",
+    "title": "Produce TC: the next round's cards start flashing at once, under the result you are trying to read",
+    "steps": "Drills > Produce the true count > Start. Count all 52 cards, enter a TC and tap OK. Read the two-line strip.",
+    "expected": "Time to read the verdict before the next count starts, such as a Next tap or a short 'Next round in 3…'.",
+    "actual": "100 ms after OK the screen already shows '1 / 52 — keep the running count' with a new card, below the strip. 1.5 s later it is on card 3/52. My scripted counter was reading the strip and missed those cards: its running count was off by 2 in rounds 2 and 3 (it had +6 and −10 against the real +4 and −8). A miss on a new round can come from the previous round's feedback, not from counting.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/cptc18-r2-strip-during-next-flash.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/cptc13-r1-strip-1.5s-later.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/ProduceTcDrillView.tsx (submit: `else start()`)",
+    "suggestedFix": "Fast advance suits the 1-second TC drill but not a 42-second count. Eyes-on, end each round on a result view (strip plus tray with the true depth marked, plus a Next button), or show a 2 to 3 second 'Ready…' countdown before the first card."
+   },
+   {
+    "severity": "medium",
+    "title": "Deck estimation: double-tapping a bottom-row answer exits the drill or skips the result",
+    "steps": "Without ?e2e=1: Drills > Deck estimation > Start. Double-tap '5.0' (bottom row, 110 ms apart).",
+    "expected": "The result screen shows my guess against the actual depth.",
+    "actual": "I landed back on the Drills list. The answer buttons at y 740–788 (4.5–6.0) sit exactly under 'Back to Drills' on the result screen, and the row at y 684–732 (2.5–4.0) sits under 'Next' (checked with elementFromPoint). A double-tap either leaves the drill or skips straight to the next question without showing the result.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/rdd01-question.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/rd01-after-tap-5.0.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/DeckEstimationView.tsx",
+    "suggestedFix": "Ignore taps on the result view for about 400 ms after it mounts (answerBounce). Better still, move this drill to the same fast-advance pattern as the TC drill, with the result in a strip and the tray staying on screen, which also halves the taps per rep."
+   },
+   {
+    "severity": "medium",
+    "title": "Stats can't show where a counter goes wrong: no Produce TC section, misses hidden, no convention-slip count",
+    "steps": "Do 14 TC drill reps with 4 misses, one of them a truncate slip, plus 3 Produce TC reps. Open Stats > Drills.",
+    "expected": "Accuracy for all three drills, recent misses with the right answer, and a count of convention slips (and of negative versus positive counts, where floor and truncate differ).",
+    "actual": "Produce TC is missing entirely, although stats.produceTc.history is saved. The TC section lists the last 5 answers only, and after the run all 5 were correct, so none of the 4 misses can be seen. Rows show 'guess -2 · correct' but never the right TC. The only breakdown is too high / too low / exact, and a truncate slip on a negative count just appears as 'too high'. Deck estimation rows don't say whether I over- or under-estimated.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/cst04-stats-tc-open.png"
+    ],
+    "likelyFile": "src/ui/screens/Stats.tsx (True count drill / Deck estimation sections), src/store/drillStats.ts",
+    "suggestedFix": "Add a Produce TC section. Replace 'last 5' with 'Recent misses', each showing the tcWorking text and tcConventionNote. Add a 'Convention slips (e.g. truncated instead of floored)' row that counts rows where tcConventionNote is not null, and split accuracy into negative and positive counts. Show signed over/under for deck estimation."
+   },
+   {
+    "severity": "medium",
+    "title": "The rounding convention you are graded on is never shown on the drills; the only way to change it is buried in the profile editor",
+    "steps": "Open the True count drill or Produce TC setup and look for floor/truncate/round. Then look in Settings.",
+    "expected": "A line on setup such as 'Rounding: Floor (−1.5 → −2) · change', so the counter knows which rule is being trained.",
+    "actual": "Neither setup screen mentions it. Settings has no rounding control. It lives at Home > profile chip > Edit > Bankroll & count, about 1307 px down a 2549 px page. A user first learns the rule from a wrong answer ('your profile floors').",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/ctc01-setup.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/ccv04-profile-rounding-row.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/TrueCountDrillView.tsx, src/ui/screens/drills/ProduceTcDrillView.tsx (setup)",
+    "suggestedFix": "On both setup screens, show the profile's tcRounding as a Floor / Truncate / Round segmented control with a one-line example, saving to the active profile the way DeckEstimationView's Resolution control writes to settings. Add 'Drill negative counts only' as an optional focus, since that is where floor and truncate differ."
+   },
+   {
+    "severity": "medium",
+    "title": "Produce TC wrong-answer strip doesn't label the running count, so you can't tell which step failed",
+    "steps": "Produce TC: count, then enter a wrong TC.",
+    "expected": "Something like 'Running count was +4, tray 6 decks left: +4 ÷ 6 = 0.67 → floor 0. You entered +4.'",
+    "actual": "'Wrong: you entered +4 — +4 ÷ 6 = 0.67 → floor 0.' The two '+4's mean different things: one is my TC, the other the true running count. With my own count at +6, I couldn't tell from this whether the count, the tray read or the division was wrong.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/cptc13-r1-strip-1.5s-later.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/ProduceTcDrillView.tsx (ProduceResultLine)",
+    "suggestedFix": "Label the parts: 'RC +4 · tray 6 decks → TC 0 (floor)'. Optionally ask for the running count first (a two-step NumPad), so the strip can say 'count right, division wrong' or 'count off by 2'."
+   },
+   {
+    "severity": "medium",
+    "title": "Produce TC costs about 42 s per rep, and its length, pace and tray resolution are set silently on other screens",
+    "steps": "Open Produce the true count setup.",
+    "expected": "The card count, pace and tray resolution shown on this screen and adjustable here (short rounds for practising the conversion).",
+    "actual": "The setup offers only Eyes-free and Voice. Each rep flashes 52 cards at 800 ms (41.7 s measured). The card count can only be changed in the Count drill setup (settings.drill.countLengthCards), and the forgiveness band follows the Resolution picked in Deck estimation. Neither is mentioned here, and the Drills gear sheet only has Shot clock.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/cptc01-setup.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/g01-drills-gear-sheet.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/ProduceTcDrillView.tsx (setup)",
+    "suggestedFix": "Add a Cards stepper (e.g. 13/26/52), a pace stepper and the Half / Last deck / Quarter segmented control to Produce setup, or at least a summary line such as '52 cards · 0.8 s · half-deck tray'."
+   },
+   {
+    "severity": "low",
+    "title": "The tray in Produce TC looks nothing like the one Deck estimation trains on, and the deck-estimation result hides it",
+    "steps": "Compare the Deck estimation question screen with the Produce TC answer screen, then answer a Deck estimation question.",
+    "expected": "The same tray in both drills, and the result showing the tray with the true depth marked so I can calibrate.",
+    "actual": "Deck estimation uses a tall vertical stack (128x260 px). Produce TC uses a thin horizontal 'DISCARD' bar about 290x10 px with no tick marks, so the skill doesn't carry over. The Deck estimation result is text only ('4.25 were left'), with the tray gone.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/bde02-q0-tray.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/cptc04-r0-answer-tray.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/bde03-q0-result.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/ProduceTcDrillView.tsx, src/ui/screens/drills/DeckEstimationView.tsx",
+    "suggestedFix": "Pull the vertical .deck-tray-frame into a shared component and use it in Produce TC. On the Deck estimation result, keep the tray visible with lines marking your guess and the actual depth."
+   },
+   {
+    "severity": "low",
+    "title": "Unrealistic depths: tray reads 6 decks left after 52 cards were counted; TC drill asks RC −12 with 0.5 decks left",
+    "steps": "Produce TC round 2 (tray fill 2%, '+4 ÷ 6'). TC drill (WebKit run) q02: RC −12, decks remaining 0.5.",
+    "expected": "The depth agrees with the cards just dealt, and stays within the profile's penetration (75% means at least 1.5 decks left in a 6-deck shoe).",
+    "actual": "Depth is drawn independently: 0.5 to 6 decks for Produce, and 0.5 to the profile's deck count with RC ±15 for the TC drill. That produces impossible spots (52 cards dealt but 6 decks left) and TCs of −24 that never happen at a table.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/cptc10-r1-answer-tray.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/wtc08-q02-question.png"
+    ],
+    "likelyFile": "src/drills/produceTcDrill.ts, src/drills/trueCountDrill.ts",
+    "suggestedFix": "Keep decksRemaining at or below totalDecks minus cards counted / 52, and at or above (1 − penetration) × totalDecks. Weight running counts toward realistic magnitudes at each depth."
+   },
+   {
+    "severity": "low",
+    "title": "ASCII hyphen as a minus sign in the NumPad display and Stats rows",
+    "steps": "TC drill: type 3 then ±. Stats > Drills > True count drill.",
+    "expected": "A real minus '−', matching 'Running count −3' and the strip.",
+    "actual": "The NumPad display shows '-3', and Stats rows show 'RC -10', 'RC -6', 'guess -2'. Zero is shown as 'guess +0' where signedTc gives '0'. These sites are not on the known-open list (peek, bet-or-sit, pair-cancel).",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/ctc03-q00-typed--3.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/cst04-stats-tc-open.png"
+    ],
+    "likelyFile": "src/ui/components/NumPad.tsx (numpad-display), src/ui/screens/Stats.tsx (formatSigned)",
+    "suggestedFix": "Render the display through value.replace('-', '−'), and use signedTc from drills/tcFeedback.ts in the Stats TC rows."
+   },
+   {
+    "severity": "ux",
+    "title": "Strip wording: an em dash right before a minus sign reads as a double dash",
+    "steps": "Get a negative TC wrong in the TC drill.",
+    "expected": "Easy to scan, with the correct answer standing out.",
+    "actual": "'Wrong: you entered −1 — −11 ÷ 6 = −1.83 → floor −2. −1 is truncate; your profile floors.' The '— −' looks like one long dash, and the correct answer is buried at the end of the working.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/wtc07-q01-strip-truncate-slip.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/TrueCountDrillView.tsx (TcResultLine), ProduceTcDrillView.tsx (ProduceResultLine)",
+    "suggestedFix": "Lead with the answer: 'TC −2, not −1 (you truncated; your profile floors). −11 ÷ 6 = −1.83.'"
+   },
+   {
+    "severity": "low",
+    "title": "Quarter-resolution grid: last row sits flush with the screen bottom, with no safe-area padding",
+    "steps": "Deck estimation > Quarter > Start, then scroll to the bottom.",
+    "expected": "The bottom row clears the iPhone home indicator (about 34 px inset in standalone mode).",
+    "actual": "At maximum scroll the 5.25–6.0 row ends at 811 of 812 px. The grid's 1.5 rem bottom padding doesn't show, and .deck-guess-grid uses no env(safe-area-inset-bottom). This can't be confirmed headless, where the inset is 0, but it is plausible on the installed app.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s05-true-count/shots/bde13-quarter-grid-scrolled.png"
+    ],
+    "likelyFile": "src/ui/app.css (.deck-guess-grid)",
+    "suggestedFix": "padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px)), and check that the grid's parent doesn't clip it."
+   }
+  ],
+  "topChanges": [
+   "Make answers impossible to record by accident, and make every verdict agree with its stated answer. Add the answerBounce guard and a disabled-until-typed OK to the TC and Produce NumPads, and a short tap-ignore window on the Deck estimation result. Fix the round-tie strip so it states both accepted answers, and have Stats breakdowns count `correct` rows as exact.",
+   "Put the rounding convention in front of the counter: a Floor / Truncate / Round control with a one-line example on the True count and Produce setup screens, saving to the profile. Lead each strip with the answer and the slip ('TC −2, not −1: you truncated'). Label the running count in the Produce strip, or ask for it, so it can say which step failed.",
+   "Make 'see where I go wrong' real in Stats: add a Produce TC section, replace the last-5 list with Recent misses showing the working, count convention slips and split negative from positive counts, and show signed over/under for deck estimation. Separately, give Produce TC a pause before the next round's cards plus its own card-count, pace and resolution controls, so reps aren't 42 s each and feedback doesn't eat the next count."
+  ],
+  "consoleErrors": []
+ },
+ {
+  "goalAchieved": false,
+  "tapsOrSteps": "10 count runs in Chromium plus 1 in WebKit: auto ×2, manual, manual with 2 checkpoints, auto with Occasional distractions and 1 checkpoint, manual with distractions, a 10-round Table run, a 13-card real-timing auto run without ?e2e=1, and a 13-card WebKit manual run with checkpoints. A human doing the story would make about 75 non-card taps (setup, mode changes, answers, distraction and checkpoint entries, the Stats route) plus about 170 card-advance taps, in roughly 9 to 11 minutes. Each mode change costs 4 to 8 taps, because the result screen has no 'change settings' button: Back to Drills > Count drill > Options (collapsed again every time) > scroll > choose > Start. Getting to the count history takes 4 taps plus a scroll: Back to Drills > Stats tab > Drills subtab > scroll past the empty CVCX block > expand Count drill. 76 screenshots are in C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/ (all read), with the journey log in journey.log. The port-4904 server is stopped.",
+  "narrative": "I played a new counter on a fresh profile. Home > Drills > Count drill was obvious. The setup screen has big targets and the default (52 cards, 800ms, Auto) starts in one tap. The first auto run (42s) shows one small card, 48x68 CSS px, in the middle of an empty 375x812 screen. I entered the count off by one and got 'Wrong. You entered 11; the running count was 10.' Nothing helps you find where it slipped. The second auto run was correct.\n\nSwitching to manual meant Back to Drills > Count drill > Options > On tap. 'Time per card 800ms' still shows even though it no longer applies. The manual run felt good: the whole screen is the tap zone and the progress hint is clear.\n\nCheckpoints are buried under Options, below the fold. The stop screen ('CHECKPOINT / Running count so far?') is clear and leaks nothing. The read-back after a planted +2 slip that I later corrected was confusing as a user. It says 'Correct!' with 'Checkpoints: 0/2', then shows a red line 'After 47 cards: you said 1, it was 1 — expected +3, graded from your +6 at card 24 (adjusted)'. In WebKit a green line says 'you said -3, it was -2'.\n\nDistractions ('Occasional') stopped the run 7 times in 52 cards with prompts like '-1 - (-4)' in ASCII hyphens. The result screen never mentioned them, though I got 4 of 7 wrong. The distractions landed on exactly the same cards (5, 10, 18, 25, 32, 41, 47) in a second run. Table mode looks good and reads well at 375px. But the hands are impossible (the dealer stands on 8+3 and on Q+6), the dealer row has no label, and the run is stored as '105 cards · manual · 255ms avg', a per-round gap shown as if it were card pace.\n\nThe goal failed at the last step. In Stats > Drills > Count drill the history is only the last 5 rows, all 'correct'. My early wrong run had already dropped off. There is no accuracy rate, no trend, and no way to tell which rows were auto, checkpoint, distraction or Table, so 'am I improving?' can't be answered. The only accuracy split is in Progress > Fatigue (early 67% / late 100%).\n\nThe real-timing pass showed the card element is reused between cards, so the deal-in animation plays only on card 1. Two identical cards in a row from the 2-deck shoe would look like one card. WebKit renders the same screens. The setup checkboxes there are bright white native boxes on dark green. There were no console or page errors in either engine.",
+  "findings": [
+   {
+    "severity": "high",
+    "title": "Stats count history can't show improvement: last 5 rows only, no accuracy or trend, mode not recorded",
+    "steps": "Do 8+ count runs in different modes (first one wrong) > Stats tab > Drills subtab > expand Count drill.",
+    "expected": "A story of progress: accuracy over runs (e.g. 7/8, 88%, last 10 vs previous 10), a sparkline or trend, best pace, and rows labelled with their mode (Auto, On tap, Table, Distractions, Checkpoints) so I can compare like with like. The early wrong run should still count.",
+    "actual": "Two 'Best clean run' lines, 'Checkpoints held 1/3', and a list of the 5 most recent runs only, each 'date · N cards · pace · correct'. My first wrong run had already dropped off, so the list showed all 'correct'. There is no correct rate, no trend, and no mode marker: Table, distraction and plain runs look the same. The only accuracy split is in another tab (Progress > Fatigue, early 67% / late 100%).",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/055-stats-count-drill-open.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/056-stats-count-drill-open-scrolled.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/074-webkit-stats-count-drill.png"
+    ],
+    "likelyFile": "src/ui/screens/Stats.tsx (countHistory/recentRuns ~L398-420, Count drill section ~L975-1020); src/ui/screens/drills/CountDrillView.tsx finishRun ~L1088-1110",
+    "suggestedFix": "In finishRun, persist mode fields (table: true, distractions: freq, group size). In Stats, add a headline 'Correct: X/Y (Z%) · last 10: A/10' and a small correct/wrong dot strip or rolling-accuracy sparkline over the whole range. Let the list expand past 5 (Show all), and add a mode chip per row."
+   },
+   {
+    "severity": "medium",
+    "title": "Two identical cards in a row are invisible in auto mode (card element reused, no re-deal animation)",
+    "steps": "No ?e2e=1. Count drill, Auto, 800ms. Sample the DOM every 10ms during the run.",
+    "expected": "Every new card visibly arrives (re-deal animation or a blank gap), so 7♠ followed by another 7♠ reads as two cards.",
+    "actual": "The timeline shows the same .card element for cards 2-13 ('SAME-NODE'). The card-deal-in animation plays only on mount (card 1 and after a checkpoint). Only the face text swaps. A 52-card run uses a 2-deck shoe (decks = ceil(cards/52)+1), so an identical card follows with probability about 1/103 per card, roughly 40% of 52-card runs. The screen then doesn't change except the small 'n / 52', and a new counter misses a card and gets 'Wrong' with no idea why. Same-rank, different-suit pairs (5♣ then 5♦) are also low-salience.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/065-real-first-card-120ms.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/009-run1-auto-mid.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/CountDrillView.tsx renderFlashCard (~L1600, key={i}) and the .count-flash-cards JSX (~L2064/2077)",
+    "suggestedFix": "Key flashed cards by absolute position (key={`${shownIndex}-${i}`}) so each card remounts and replays card-deal-in, or blank the card for ~60ms between groups."
+   },
+   {
+    "severity": "medium",
+    "title": "Distractions hit the same card positions every run, though the copy says 'unpredictable'",
+    "steps": "Options > Distractions: Occasional. Do two runs (one auto, one manual) and note the card index of each distraction.",
+    "expected": "Different stops each run, as the setup note promises ('Stops the cards at unpredictable moments… like table talk you can't time').",
+    "actual": "Both runs stopped at cards [5, 10, 18, 25, 32, 41, 47]. isDistractionPoint seeds mulberry32 from windowIndex only, never the run seed, so a regular learns the rhythm and the training effect fades. 7 stops in 52 cards also feels more frequent than 'now and then'.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/030-run5-setup-distractions-occasional.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/031-run5-distraction-1.png"
+    ],
+    "likelyFile": "src/drills/distraction.ts isDistractionPoint (~L123-132); caller in CountDrillView.tsx advanceManual / auto effect",
+    "suggestedFix": "Pass runSeedRef.current into isDistractionPoint and mix it into the mulberry32 seed (windowIndex * K ^ runSeed). Keep it deterministic per run for tests."
+   },
+   {
+    "severity": "medium",
+    "title": "Checkpoint read-back reads as contradictions: 'you said 1, it was 1' in red, 'you said -3, it was -2' in green",
+    "steps": "Checkpoints: Two, On tap. At checkpoint 1 answer the true count +2. At checkpoint 2 answer the true count. Finish correctly. (WebKit: slip -1 at checkpoint 1 and carry it.)",
+    "expected": "A plain statement of which stretch I slipped in and by how much, e.g. 'Cards 1-24: +2 too high. Cards 25-47: dropped 2, which cancelled it. Cards 48-52: clean.'",
+    "actual": "'Correct!' plus 'Checkpoints: 0/2', then a red bullet 'After 47 cards: you said 1, it was 1 — expected +3, graded from your +6 at card 24 (adjusted)'. In WebKit a green bullet says 'After 11 cards: you said -3, it was -2 — expected -3 … (adjusted)'. The grading is deliberate (#46), but a new counter sees matching numbers marked wrong and mismatched numbers marked right, and the 'expected/graded from/adjusted' wording reads as engine output.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/028-run4-result-checkpoints.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/073-webkit-result-one-early-slip.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/CountDrillView.tsx checkpointBlock / stretchNote (~L1620-1670)",
+    "suggestedFix": "Phrase each row as a stretch verdict: 'Cards 25-47: clean' or 'Cards 25-47: off by -2 (count moved -5, should have moved -3)'. Show the absolute 'you said / it was' only as secondary text, or only for the first stop."
+   },
+   {
+    "severity": "medium",
+    "title": "Table runs stored as '105 cards · manual · 255ms avg': a per-round tap gap shown as card pace, with no Table marker",
+    "steps": "Deal: Table, 10 rounds, On tap > finish correct > Stats > Drills > Count drill.",
+    "expected": "The row says it was a Table run ('Table · 10 rounds · 105 cards') with a per-round or per-card pace, and it doesn't compete with single-card runs for 'Best clean manual run'.",
+    "actual": "The row reads '105 cards · manual · 255ms avg'. 255ms is the mean gap between rounds of up to 24 cards, presented like single-card tap pace. The stored row has no table flag, so Stats can't separate it, and a table run's per-round gap is ranked against single-card runs by bestCleanCountRuns.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/048-table-result.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/056-stats-count-drill-open-scrolled.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/CountDrillView.tsx finishRun (~L1088-1110); src/drills/countSpeed.ts formatCountRun / bestCleanCountRuns",
+    "suggestedFix": "Store table: true and rounds on the row. In formatCountRun render 'Table · N rounds · X cards', with pace as ms per card (meanTap / avg cards per round) or omitted. Exclude table rows from bestCleanCountRuns, or rank them separately."
+   },
+   {
+    "severity": "medium",
+    "title": "Result screen ignores distraction answers and gives a wrong run nothing to learn from",
+    "steps": "Distractions: Occasional. Answer 4 of 7 quick questions wrong, finish the count, read the result. Separately, finish a plain run off by one.",
+    "expected": "'Quick questions: 3/7 · count kept', and on a wrong run without checkpoints some way to look back (the cards replayed with running tags, or a 'Replay this shoe' option).",
+    "actual": "The result shows only 'Correct!/Wrong', 'You entered X; the running count was Y' and any checkpoint block. Distraction accuracy never appears, even though it's persisted (Stats > Distraction shows 29%). A plain wrong run ends at 'You entered 11; the running count was 10' over ~600px of empty space.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/037-run5-result.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/012-run1-result-wrong.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/057-stats-distraction-section.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/CountDrillView.tsx result JSX (~L2211-2260)",
+    "suggestedFix": "Add a distraction line from runDistractionRowsRef. On a wrong run, offer a collapsible 'Review the cards' strip (cards with tags and the running count every 13 cards). Add a one-line progress context, e.g. 'Today: 3/4 correct'."
+   },
+   {
+    "severity": "low",
+    "title": "Count history takes 4 taps plus a scroll every time: Stats opens on Play, the Drills subtab leads with an empty CVCX play block",
+    "steps": "From a count result: Back to Drills > Stats tab > (opens on Play, all dashes) > Drills subtab > scroll past 'Profile: Default (6D H17)' CVCX rows > expand Count drill.",
+    "expected": "A drills-only user lands on the data they have, and the Drills subtab starts with drill sections.",
+    "actual": "Stats always opens on Play (the subtab isn't remembered). The Drills subtab repeats the Profile/CVCX block with 6 dash rows above Flashcards and Shot clock, so Count drill sits below the fold and collapsed. The result screen has no link to Stats.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/052-stats-top.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/053-stats-drills-subtab.png"
+    ],
+    "likelyFile": "src/ui/screens/Stats.tsx (stats-tabs ~L608, Profile section placement)",
+    "suggestedFix": "Show the Profile/CVCX block only on Play. Remember the last subtab (localStorage, try/catch) or default to the subtab with the newest data. Add a 'See history' link on the count result."
+   },
+   {
+    "severity": "low",
+    "title": "Mid-run Back silently abandons the run, and every mode change goes through the Drills list",
+    "steps": "Start a 52-card On-tap run, tap 4 cards, tap Back (11px above the full-screen tap zone). Separately, from a result try to change Next card or Checkpoints.",
+    "expected": "Back mid-run asks first, or the run resumes. From a result, a 'Change settings' path back to this drill's setup.",
+    "actual": "Back drops the run (history unchanged, 7 -> 7) and lands on the Drills list. The tap zone starts at y=112, just under Back (y 54-102), so a hurried thumb can lose a run. Result Back and 'Back to Drills' both leave the drill, and Options is collapsed again on every return.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/049-midrun-before-back.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/050-midrun-after-back.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/CountDrillView.tsx handleBack (~L990) and result DrillPrimaryBar",
+    "suggestedFix": "On the result, make the secondary action 'Change settings' (setPhase('setup')). Mid-run, have Back return to setup with a one-tap 'Leave run?' confirm, or add a guard band between the topbar and the tap zone. Remember the Options open state per screen."
+   },
+   {
+    "severity": "low",
+    "title": "Flashed count card is tiny (48x68 CSS px) on a mostly empty phone screen",
+    "steps": "Count drill > Start (Cards, group 1).",
+    "expected": "In the core drill, the card fills a good part of the 375px width so rank and suit read at a glance (and in a car).",
+    "actual": "One 48x68px card in the centre with ~600px of empty space above and below. It's the same size as Play's compact layout, smaller than the Table-mode dealer cards.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/008-run1-auto-first-card.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/018-run3-manual-card-21.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/countDrillView.css (.count-flash-cards .card)",
+    "suggestedFix": "Scale flashed cards in .count-flash-cards (e.g. transform: scale(2) or a --card-w override, ~110x155px for group 1, smaller for groups 2-3)."
+   },
+   {
+    "severity": "low",
+    "title": "Setup shows options that don't apply to the chosen mode",
+    "steps": "Options > Next card: On tap (Time per card 800ms still shown). Deal: Table (Count bias and Pace pressure still shown).",
+    "expected": "Options that don't apply are hidden or carry a note, like the existing 'Distractions are off in a timed challenge' notes.",
+    "actual": "Time per card stays visible and editable under On tap. In Table mode, Count bias (Neg-first/Pos-first) is offered, but start() builds makeCountTable without bias, so the choice is silently ignored.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/016-run3-setup-on-tap-selected.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/040-table-setup-options.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/CountDrillView.tsx setup JSX (~L1805-2020), start() ~L930",
+    "suggestedFix": "Guard Time per card with !countManual (or label it 'Auto pace'). Guard Count bias with !tableOn, or apply the bias inside makeCountTable."
+   },
+   {
+    "severity": "low",
+    "title": "Table mode deals impossible hands, and the dealer row is unlabelled",
+    "steps": "Deal: Table, step through 10 rounds.",
+    "expected": "Rounds that look like a real table: the dealer hits to 17, players don't hit soft 20, and a 'Dealer' label over the top row.",
+    "actual": "The dealer stands on Q♥6♥ (16) with a live player, on 8♣3♠ (11), and on 2♠A♣ (soft 13). P1 hits A♦9♠ (soft 20) and takes J♥. The top row has no label, while players have P1-P6. Hands are random by design (countTable.ts), but a new counter reads them as bugs and it undercuts 'laid out like Play'.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/041-table-round-1.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/045-table-round-7-busy-16cards.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/046-table-round-9.png"
+    ],
+    "likelyFile": "src/drills/countTable.ts makeCountTable; CountDrillView.tsx tableLayout (~L1571)",
+    "suggestedFix": "Draw the dealer to hard 17 (or the profile's S17/H17) and stop players at hard 17+/soft 19+, or at least make dealerCards satisfy dealer rules. Add a 'Dealer' label over .count-table-dealer."
+   },
+   {
+    "severity": "low",
+    "title": "ASCII hyphen-minus in distraction prompts and count results (same family as the known peek/bet-or-sit issue)",
+    "steps": "Distractions: Occasional (near-count). Read the prompts and the final result.",
+    "expected": "A true minus sign (−) in '-1 − (−4)', 'You entered −2', 'expected −2', matching the NumPad's − key.",
+    "actual": "'-1 - (-4)', '-6 + (-2)', 'You entered -2; the running count was -2.', 'After 34 cards: you said -8'. The short hyphen is easy to misread at a glance, which is the whole point of a 'quick' distraction.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/034-run5-distraction-3.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/037-run5-result.png"
+    ],
+    "likelyFile": "src/drills/distraction.ts (prompt builder); CountDrillView.tsx formatSigned and the result-detail template",
+    "suggestedFix": "Route displayed signed numbers through a shared formatter that emits U+2212, in the same pass that fixes peek/bet-or-sit/pair-cancel."
+   },
+   {
+    "severity": "low",
+    "title": "Setup controls: Group size targets 30-33px wide, labels wrap, alignment differs between rows",
+    "steps": "Count drill > Options at 375px.",
+    "expected": "44px minimum targets, single-line segment labels, one alignment style for every row.",
+    "actual": "Group size buttons '1/2/3' are 30x48, 33x48 and 32x48. 'On tap', 'Neg-first', 'Pos-first' and 'Near-count' wrap onto two lines. Deal and Length rows are centred while every Options row is label-left/control-right. When scrolled, the fixed mute disc covers the top-right of the Time per card '+' stepper.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/006-count-setup-options-open.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/030-run5-setup-distractions-occasional.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/021-run4-setup-checkpoints-two.png"
+    ],
+    "likelyFile": "src/ui/screens/drills/countDrillView.css / app.css .segmented-btn, .count-setup .settings-row",
+    "suggestedFix": "Set min-width: 44px on .segmented-btn and white-space: nowrap (shorten to 'Tap', 'Neg', 'Pos' if needed). Make the Deal and Length rows use the same space-between layout as the Options rows. Add scroll-padding-top or a right gutter so content doesn't scroll under the mute disc."
+   },
+   {
+    "severity": "low",
+    "title": "WebKit (iOS) renders the setup checkboxes as bright white native boxes on the dark theme",
+    "steps": "Open Count drill setup in WebKit at 375x812.",
+    "expected": "The same dark, themed checkboxes Chromium shows.",
+    "actual": "Eyes-free audio, Countdown and Timed challenge show glaring white squares in WebKit; Chromium shows dark grey ones.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/071-webkit-setup-options.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/006-count-setup-options-open.png"
+    ],
+    "likelyFile": "src/ui/app.css (.count-toggle input) / themes.css",
+    "suggestedFix": "Set color-scheme: dark on :root for the dark themes, or give .count-toggle input[type=checkbox] accent-color plus a themed appearance:none style."
+   },
+   {
+    "severity": "ux",
+    "title": "Home doesn't acknowledge count practice",
+    "steps": "Do 8 count drill runs, then open Home.",
+    "expected": "Home reflects the work (e.g. 'Count drill: 7/8 correct, last run today') and the Next step adapts.",
+    "actual": "Home still says 'No hands played yet. Play a shoe, or start with the drills.' and Next step 'Learn basic strategy: Hard totals 0 answers'. The count work is invisible outside Stats > Drills.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/059-home-after-count-runs.png"
+    ],
+    "likelyFile": "src/ui/screens/Home.tsx; src/ui/screens/nextStep.ts",
+    "suggestedFix": "When play stats are empty but drill history exists, show a drill summary line on Home and link it to Stats > Drills."
+   },
+   {
+    "severity": "ux",
+    "title": "OK on an empty keypad submits 0 and grades it",
+    "steps": "At the final count or a checkpoint, tap OK before typing.",
+    "expected": "OK is disabled (or asks) until a value is entered, or the display reads '0' deliberately.",
+    "actual": "NumPad.submit treats '' as 0 and the run is graded and recorded. A stray tap on the full-width OK ends a 52-card run as 'Wrong'.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s04-running-count/shots/010-run1-answer-numpad.png"
+    ],
+    "likelyFile": "src/ui/components/NumPad.tsx submit()",
+    "suggestedFix": "Ignore OK while value === '' (show a faint 'Enter a number'). Explicitly typing 0 still submits 0."
+   }
+  ],
+  "topChanges": [
+   "Make Stats > Count drill show progress: persist the mode (table, distractions, group, checkpoints) on each run, then show overall and rolling accuracy ('7/8 · last 10: 9/10'), a correct/wrong strip or sparkline over the full range, mode chips on rows, and Show all past 5 rows. Also drop the CVCX block from the Drills subtab and add a 'See history' link on the result.",
+   "Make every card visibly arrive and every interruption truly random: key flashed cards by shownIndex so card-deal-in replays (identical consecutive cards from the 2-deck shoe are currently invisible), mix the run seed into isDistractionPoint, and enlarge the flashed card from 48x68px.",
+   "Make the result screen teach: reword checkpoint rows as stretch verdicts ('Cards 25-47: off by -2'), not 'you said 1, it was 1' in red; report distraction answers (3/7); offer 'Review the cards' on a wrong run; and add a 'Change settings' button that returns to this drill's setup instead of the Drills list."
+  ],
+  "consoleErrors": []
+ },
+ {
+  "goalAchieved": false,
+  "tapsOrSteps": "Setup took 9 taps plus a dead end: gear, scroll, All settings (no profile link there), Back to Home, profile chip, Edit, open \"Bankroll & count\", tick \"Vary bets with the count\", Save, Play tab. The shoe took 188 taps over 46 rounds (chip, Deal, actions, 9 count-check prompts answered on the numpad, 4 insurance offers, 1 split of aces, 1 sit-out, 1 peek, 1 wrong-play Continue). End is 2 taps. Report to Stats is 1 tap on the tab bar, then 3 taps to open Accuracy by category, Mistake types and Cost of mistakes, plus Progress > Table sessions. About 205 taps in total. The automated ?e2e=1 shoe ran in 97s, about 2s per round. A non-e2e pass with real deal animation ran 10 rounds in 23s. A human would take roughly 6-8 minutes.",
+  "narrative": "I played as a counter on Chromium at 375x812, using ?e2e=1&seed=606 for the full shoe, then a 10-round pass without e2e (seed 4242), then 6 rounds in WebKit. I kept my own Hi-Lo count from the cards on the felt.\n\nMy count and the engine's agreed on every count check (13/13; the peek also matched), so the counting itself is consistent. Wrong advice did not come up: every split, double, surrender and insurance call I checked against 6D H17 DAS LS basic strategy plus the I18 was right.\n\nSetup: the Play gear sheet has no bet-spread control. \"All settings\" opens a Settings screen with no way into profiles. I only found the toggle through the Home profile chip, then Edit, then the closed \"Bankroll & count\" section.\n\nPlay itself reads well. Chips, Deal and Sit out are obvious and every target is at least 44px. The insurance and count-check sheets dock without covering the cards. The count verdict strip shows after each check, \"Shuffling…\" appears, and End's two-tap arm works.\n\nThe report and Stats are where the story breaks:\n- **Wong grading:** 36 of 46 rounds were marked wrong as \"Play or sit out\", including round 1 off a fresh shoe. With the default ramp, every TC ≤ 0 counts as \"should sit out\". That drags the headline down to 126/166 and Home now says my weakest area is \"play or sit out\".\n- **Shuffle-round bet:** the bet on the round where the shuffle happened was graded against the reshuffled TC 0. I had just answered the count check correctly (+2), and nothing on screen warned that the cut card was out.\n- **Stats labelling:** bet and wong errors are counted as \"Basic strategy errors\". Cost of mistakes calls them \"index mistakes\" it can't price. The Play-tab \"Bet or sit\" section says \"No bet or sit decisions yet\".\n- **Peek during count check:** the peek can be held while the count check is open, and the peeked answer is graded correct.\n- **Unsaved session:** reloading mid-shoe (the same thing as iOS evicting the PWA in the car) drops every graded decision, though the bankroll is kept.\n\nWebKit rendered the bet screen, count check and report correctly; there the gear shows as an emoji and, with audio off, the second topbar row holds only End. No console or page errors in any run.",
+  "findings": [
+   {
+    "severity": "high",
+    "title": "Play-or-sit-out grading marks every round at TC <= 0 wrong, including round 1 of a fresh shoe",
+    "steps": "Turn on 'Vary bets with the count' with the default ramp (1u for TC<1). Play a full shoe betting the ramp exactly and sitting out only at TC -2. End.",
+    "expected": "Playing a neutral count at the table minimum, and above all the first hands off the top, is a normal counter decision and should not be wrong. Wong-out grading should apply only below a deliberate threshold the user chose.",
+    "actual": "The report shows 'Play or sit out 10/46 (22%)' and mistakes 'wong · TC +0 · you played play · correct sit-out — Wong decision at tc 0 ×16', '×18' at TC -1 and '×2' at TC -2. The headline drops to 126/166, Stats 'Your play accuracy' to 76%, and Home's coaching now reads 'weakest: play or sit out, bet sizing, hard totals'. The toggle's label says nothing about wonging.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/052-shoe-report-top.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/053-shoe-report-full.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/054-stats-home-after-session.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/056-stats-play-accuracy-by-category.png"
+    ],
+    "likelyFile": "src/engine/game.ts (sitOutIsCorrect + the 'wong' event pushed in startRound)",
+    "suggestedFix": "Add an explicit wong-out threshold to the profile (e.g. 'Sit out at TC ≤ −1', off by default) and grade the play side only when that is set and the TC is below it. Never grade the first round after a shuffle. Until then, emit the 'play' wong event only when the user actually sat out at some point, or keep it out of the headline accuracy."
+   },
+   {
+    "severity": "high",
+    "title": "Bet on the shuffle round is graded against the reshuffled TC 0, with no cut-card warning",
+    "steps": "Play the shoe to the cut card. At round 45 the count check reads 'Count ✓ +2' (TC +1, so the ramp says 2u). Bet 2 and tap Deal.",
+    "expected": "Either the app signals 'cut card out, shuffle next' before you bet, or the bet is graded at the count you could see.",
+    "actual": "Deal shuffles first, resets the running count to 0, and only then grades the bet: 'bet · TC +0 · you played 2 · correct 1 — Spread bet at tc 0'. 'Shuffling…' appears only after the bet is locked, and nothing in the discard tray or topbar marks the cut card. The same applies to the play-or-sit (wong) event.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/050-shoe-r46-shuffling.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/053-shoe-report-full.png"
+    ],
+    "likelyFile": "src/engine/game.ts (beginRound shuffles inside startRound before preDealTc is read); src/ui/screens/Table.tsx (no cut-card cue)",
+    "suggestedFix": "Shuffle at settle of the round that passed the cut card, not on the next Deal. Show 'Cut card — shuffling' in the message strip and reset the discard tray before the bet chips appear. The bet is then placed knowingly off the top at TC 0."
+   },
+   {
+    "severity": "high",
+    "title": "Bet spread can't be turned on from the Play gear; 'All settings' is a dead end",
+    "steps": "On Play, tap the gear and scroll the Play settings sheet. Tap 'All settings' and look for profile or bet options.",
+    "expected": "'Vary bets with the count' (a profile field like count-check frequency) sits in the Play sheet's 'New shoe' group, or All settings links to the profile.",
+    "actual": "The sheet offers Feedback, Deal speed, deviations, count checks, cut card, Losing shoe (whose note says 'graded on your bet ramp', a ramp you can't switch on from there) and bankroll. Settings has no Profiles entry. The only route is Home → 'Default (6D H17)' chip → Edit → expand 'Bankroll & count' → toggle → scroll → Save → Play tab: 9 taps after the dead end. Save gives no confirmation.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/003-play-gear-sheet.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/004-play-gear-sheet-bottom.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/005-settings-screen.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/010-profile-editor-bet-spread-on.png"
+    ],
+    "likelyFile": "src/ui/components/TabSettingsButton.tsx (PlaySheet); src/ui/screens/Settings.tsx",
+    "suggestedFix": "Add a 'Vary bets with the count' Toggle to PlaySheet's New-shoe group (held in the draft like the other profile fields, applied on close) and an 'Edit bet ramp…' link to the profile editor. Add a 'Profiles' row to Settings."
+   },
+   {
+    "severity": "high",
+    "title": "Mid-shoe progress is lost on reload or app eviction; only End saves decisions",
+    "steps": "Play 8 rounds without End, then reload (the same as iOS killing the backgrounded PWA when Maps or a call takes over in the car).",
+    "expected": "Rounds already played are kept, either by resuming or by saving what was played as a session.",
+    "actual": "After reload: 'Round 0'. bjtrainer.stats.v1 has 0 sessions and no category tallies, so all 8 rounds of graded decisions are gone. The bankroll (98) is still carried, so the two disagree.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/065-probe-after-reload.png"
+    ],
+    "likelyFile": "src/ui/useGame.ts (endSession is the only saveStats call for table play)",
+    "suggestedFix": "Checkpoint game.events and round count to storage at each settle (or on visibilitychange/pagehide). On the next load, fold an unfinished checkpoint into stats as a session, flagged 'not ended'."
+   },
+   {
+    "severity": "medium",
+    "title": "Peek can be held while the count check is open, and the peeked answer is graded correct",
+    "steps": "Wait for 'Running count?'. Hold 'Hold to peek' (still visible above the sheet), read 'RC 0', type it, OK.",
+    "expected": "Peek is disabled while a count check is pending, or that check is marked assisted and not counted.",
+    "actual": "The peek shows 'RC 0 · TC 0.0 5.46 decks left' over the open numpad and the answer scores 'Count ✓ 0'. Count checks show 100% in the report; the only trace is a session-wide 'assisted — used 1 peek'.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/062-probe-peek-during-count-check.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/063-probe-verdict-after-peeked-answer.png"
+    ],
+    "likelyFile": "src/ui/screens/Table.tsx (peek-dock renders regardless of game.countCheckOpen)",
+    "suggestedFix": "Hide or disable PeekButton while game.countCheckOpen. Alternatively, if a peek happens while the check is open, grade that check as a miss/assisted and don't count it."
+   },
+   {
+    "severity": "medium",
+    "title": "Stats mislabel betting and wong mistakes as basic-strategy and index mistakes",
+    "steps": "After the shoe, open Stats > Play and expand Mistake types and Cost of mistakes.",
+    "expected": "Bet sizing and play-or-sit errors appear under their own heading, and the unpriced-mistakes note says what they are.",
+    "actual": "Mistake types shows 'Basic strategy errors 39': 36 wong, 2 bet and only 1 real hand error. Cost of mistakes says '39 further mistakes are counted above but not priced: index mistakes depend on the count'. None of them are index mistakes.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/057-stats-play-mistake-types.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/058-stats-play-cost-of-mistakes.png"
+    ],
+    "likelyFile": "src/engine/game.ts (classification 'basic-error' on bet/wong/countCheck events); src/ui/screens/Stats.tsx (unpricedMistakes copy)",
+    "suggestedFix": "Give bet, wong and countCheck events their own classification (e.g. 'betting', 'count'), add a 'Betting mistakes' row, and word the unpriced note by kind ('2 bet-sizing and 36 sit-out calls aren't priced')."
+   },
+   {
+    "severity": "medium",
+    "title": "Stats Play tab 'Bet or sit' says 'No bet or sit decisions yet' straight after a shoe full of them",
+    "steps": "Play a shoe with bet spread on (45 bets, 46 play/sit decisions). Open Stats > Play and expand 'Bet or sit'.",
+    "expected": "The section reflects the table's bet and sit decisions, or is clearly the drill's.",
+    "actual": "It reads 'No bet or sit decisions yet.' because it counts only the Bet-or-sit drill, yet it is filed under the Play tab.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/059-stats-play-bet-or-sit.png"
+    ],
+    "likelyFile": "src/ui/screens/Stats.tsx (SECTION_TAB 'Bet or sit': 'play'; bslAttempts drill-only)",
+    "suggestedFix": "Rename it 'Bet-or-sit drill' and move it to the Drills tab, or fold the table's bet/wong tallies into it."
+   },
+   {
+    "severity": "medium",
+    "title": "Report mistake lines use jargon and bury the real hand mistake",
+    "steps": "End the shoe and read the Mistakes list.",
+    "expected": "Plain lines ordered by importance, e.g. 'TC −1: bet 8, ramp says 1' and 'K,8 v 10: hit, should stand'.",
+    "actual": "'wong · TC +0 · you played play · correct sit-out — Wong decision at tc 0 ×16' comes first. The only real playing error (K,8 v 10 hit) is second, followed by 'bet · TC -1 · you played 8 · correct 1 — Spread bet at tc -1'. Raw event kinds, lowercase 'tc', and 'you played play'.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/053-shoe-report-full.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/103-webkit2-report-top.png"
+    ],
+    "likelyFile": "src/ui/screens/Table.tsx (ReportScreen, groupMistakes)",
+    "suggestedFix": "Give bet and wong rows their own copy (as the countCheck branch already has), and order the list as hand plays (by EV cost) first, then bets, then sit-outs."
+   },
+   {
+    "severity": "low",
+    "title": "Split hands aren't labelled on the felt, but the results say 'Hand 1 / Hand 2'",
+    "steps": "Split A,A v 5 (or 8,8 v 6). Let the round settle.",
+    "expected": "Each split hand carries its label or result under it.",
+    "actual": "The strip says 'Hand 1: Push / Hand 2: Lose -2' with no label on the felt. Hand 1 is the RIGHT hand (order of play), which most people won't guess.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/048-shoe-r38-after-split.png",
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/075-real-r3-settled.png"
+    ],
+    "likelyFile": "src/ui/screens/Table.tsx (hand-label rendered only when playerHandsCount > 1)",
+    "suggestedFix": "Render the hand label when game.hands.length > 1 as well, and put a W/L/P badge under each hand once settled, as bot seats already have."
+   },
+   {
+    "severity": "low",
+    "title": "Doubled hand still shows 'Bet: 1'",
+    "steps": "Split 8,8 v 6, double the 8,2.",
+    "expected": "The doubled hand shows 2 units staked.",
+    "actual": "The felt keeps 'Bet: 1' under the doubled 8,2,J. hand.bet isn't changed on double; only the 'doubled' flag is set.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/075-real-r3-settled.png"
+    ],
+    "likelyFile": "src/ui/screens/Table.tsx (hand-bet uses hand.bet)",
+    "suggestedFix": "Display hand.bet * (hand.doubled ? 2 : 1), or 'Bet: 1 ×2'."
+   },
+   {
+    "severity": "low",
+    "title": "The 'Bet cover' warning contradicts the grading",
+    "steps": "Bet the ramp exactly with cover bets off (the default), then End.",
+    "expected": "Consistent guidance.",
+    "actual": "A bold gold line says 'Betting that close to the count is what gets counters noticed.' The same report marks every off-ramp bet as a mistake, and nothing points to the 'Cover bets' toggle that would allow one.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/052-shoe-report-top.png"
+    ],
+    "likelyFile": "src/ui/screens/Table.tsx (ReportScreen cover paragraph)",
+    "suggestedFix": "With coverBets off, state the ratio neutrally and add 'Turn on Cover bets in your profile to practise varying it'. Reserve the warning style for when cover is on and still unused."
+   },
+   {
+    "severity": "low",
+    "title": "Bet ramp editor shows the sentinel 'TC ≥ -99'",
+    "steps": "Profile editor > Bet ramp, first row.",
+    "expected": "'Any count' or 'Below +1' for the floor row.",
+    "actual": "'TC ≥ -99' with an ASCII hyphen and working −/+ steppers on a value that isn't a real count.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/011-profile-editor-bet-ramp.png"
+    ],
+    "likelyFile": "src/ui/screens/ProfileEditor.tsx (spread-table)",
+    "suggestedFix": "Render the minimum row as 'Any count' with its TC stepper hidden, and format other values with a typographic minus."
+   },
+   {
+    "severity": "ux",
+    "title": "Square tap-highlight flash on the round bet chips",
+    "steps": "Tap a chip in the bet row.",
+    "expected": "No rectangle behind a circular chip.",
+    "actual": "A teal square shows behind the round '1' chip on tap (no -webkit-tap-highlight-color on .chip-btn; iOS draws its grey rounded rect the same way).",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/014-shoe-r1-bet-1-tc0.png"
+    ],
+    "likelyFile": "src/ui/app.css (.chip-btn)",
+    "suggestedFix": "Add -webkit-tap-highlight-color: transparent and an :active scale/brightness state to .chip-btn."
+   },
+   {
+    "severity": "ux",
+    "title": "Sitting out on a solo table shows only the dealer's up card",
+    "steps": "Tap 'Sit out' at TC -2.",
+    "expected": "Something to back-count while sitting out.",
+    "actual": "One up card plus a face-down card that is never turned. The round passes with one countable card; the hole card leaves the shoe unseen. The count stays consistent because the engine doesn't count it.",
+    "screenshots": [
+     "C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s06-play-a-shoe/shots/043-shoe-r24-settled.png"
+    ],
+    "likelyFile": "src/engine/game.ts (sitOut round flow)",
+    "suggestedFix": "On a sit-out, deal a phantom seat or reveal the hole card and play the dealer out, so the user practises watching cards while sitting out."
+   }
+  ],
+  "topChanges": [
+   "Fix the grading that poisons the report: grade play-or-sit only against an explicit, opt-in wong-out threshold (never off the top), and shuffle on the settle of the cut-card round with a visible 'Cut card — shuffling' cue, so the next bet is graded at the count the user could see.",
+   "Put 'Vary bets with the count' (and a link to the bet ramp) in the Play gear sheet, and add a Profiles row to Settings so 'All settings' isn't a dead end.",
+   "Make Play's results trustworthy and durable: checkpoint graded events each round so a reload or iOS eviction doesn't erase the shoe, disable peek while a count check is open, and give bet/wong mistakes their own classification, copy and Stats rows (Mistake types, Cost of mistakes note, the Play-tab 'Bet or sit' section)."
+  ],
+  "consoleErrors": []
+ },
+ {
+  "goalAchieved": false,
+  "tapsOrSteps": "Getting into the drill took 1 tap (Home Next step \"Start\" opens Flashcards with the first card already dealt). After that, nothing in the app tells you that you've learned basic strategy until Home's Next step changes from \"Learn basic strategy\" to \"Mastery sweep\". In a measured fresh run with no ?e2e=1, that took about 1,190 graded answers. The run was: 420 answers from a simulated beginner who guesses and then remembers every correction cell by cell, followed by 770 perfect answers checked against the engine (0 graded wrong, so the app's grading agrees with src/engine/strategy.ts basicPlay). After 1,070 answers, the last 650 of them perfect, Home still said \"Pairs are at 89%; get every category to 90%\". At a believable beginner pace of 3-4 s per answer that is roughly 60-80 minutes, not 10. After 10 real minutes (about 150-200 answers) the user is still at \"Soft totals are at 68%\", and nothing on screen shows progress. 47 screenshots are in C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s01-first-run/shots/. Console and page errors: none, in Chromium or WebKit.",
+  "narrative": "I played a new user who knows the rules but no strategy, starting from a clean install at 375x812 in Chromium (mobile, touch). Home is tidy, but the most eye-catching button is the gold \"Play a shoe\". The Next step card's \"Start\" is styled as a secondary button, even though the card is the one telling me to \"Learn basic strategy\". The card's reason (\"Hard totals: 0 answers so far, 20 needed to judge\") reads like a gate, not an instruction. \"0/17 indices seen\" and \"Default (6D H17)\" mean nothing to a beginner.\n\nTapping Start drops you straight into a Flashcards quiz. Nothing teaches first: no look at the chart, no \"this is how it works\", no hand total on screen, and no progress counter. Answering is fast and the feedback is clear about *what*: a green \"Correct! K,9 v 6 — Stand\", or a red strip with \"You played Split / Right play Stand\". It never says *why*. The copy just repeats itself (\"Basic strategy error. Basic stand vs dealer 3\"). Sometimes it uses jargon a beginner has never met: \"Phantom deviation\" on 12 v 2/3 stands, 6,6 v 2/3 and 5,5 v A. \"Next review: now\" is puzzling, including right after a correct answer.\n\n\"Show on chart\" is the best learning moment. It opens the full chart (correct for 6D H17 DAS LS; I checked every cell against standard strategy and against src/engine) with the right cell highlighted, and \"Back to hand\" returns cleanly. The \"Wrong tap\" link is a trap for this user, though. It looks like \"explain this\", but it erases the correction (\"Not counted: A,5 v 2\") so the lesson is lost.\n\nBack from Flashcards goes to the Drills menu, not Home. That menu leads with five card-counting drills, and Flashcards sits below the fold.\n\nThe core failure is the gate. It compares lifetime accuracy per category with 90%, so every mistake made while learning stays in the denominator for good. A learner who has fully learned the chart still sees \"Pairs are at 89%\" after hundreds of perfect answers. And Start always reopens \"All\" hands, even when the card names Soft totals or Pairs.\n\nWhen the gate finally cleared, the next step was a 330-card Mastery sweep with a progress counter (0 / 330 cleared). Flashcards never had a counter like that.\n\nWebKit (Home, wrong strip, Show on chart) matched Chromium except for one thing: the ⚙ on Home's Settings button renders as a colour emoji there. Charts/Stats: the Charts tab top bar wraps \"Back to Home\" and \"Strategy charts\" onto two lines each. Stats opens on Play/CVCX rows that show only dashes for a drills-only beginner.",
+  "findings": [
+   {
+    "severity": "high",
+    "title": "'Learn basic strategy' gate uses lifetime accuracy, so learners stay stuck long after they know the chart",
+    "steps": "Fresh install -> Home Start -> answer as a beginner who learns from each correction (420 answers, about 15% wrong while learning) -> then answer 650 in a row perfectly -> Home",
+    "expected": "Once recent play is at 90%+, Home moves on (or at least shows progress toward it). The story's 10-minute goal should be reachable for someone who has learned the chart.",
+    "actual": "After 1,070 answers (last 650 perfect) Home still says 'Learn basic strategy — Pairs are at 89%; get every category to 90%.' It cleared only at about 1,190 answers (roughly 60-80 min at human pace). At 10 minutes it said 'Soft totals are at 68%'. Mistakes made while learning are never forgotten.",
+    "screenshots": [
+     "shots/12-home-after-120-answers.png",
+     "shots/14-home-after-420-answers.png",
+     "shots/15-home-after-1070-answers.png",
+     "shots/16-home-gate-cleared.png"
+    ],
+    "likelyFile": "src/ui/screens/nextStep.ts",
+    "suggestedFix": "Judge each category on a recent window (e.g. the last 20-30 answers per category, or per-cell last-N via cellStats.lastAt) instead of summed lifetime right/wrong. Keep MIN_CATEGORY_ANSWERS as the minimum sample. Show the windowed figure in the 'why' line."
+   },
+   {
+    "severity": "high",
+    "title": "'Learn basic strategy' quizzes from the first second; there is no learn/study step and no explanation of why",
+    "steps": "Fresh install -> Home Next step 'Learn basic strategy' -> Start",
+    "expected": "A brand-new user is shown the chart or a short primer first (or a 'study the chart' option), and wrong answers explain the rule (e.g. 'Always split 2s and 3s against 2-7').",
+    "actual": "The first card is already dealt with no instructions. Wrong feedback only repeats the answer: 'Basic strategy error. Basic split vs dealer 3'. The chart is only reachable by making a mistake (Show on chart) or by leaving for the Charts tab. That means a beginner can only learn by trial and error, which (with the lifetime gate) keeps failing them.",
+    "screenshots": [
+     "shots/02-after-start.png",
+     "shots/05-wrong-split-tens.png",
+     "shots/07-show-on-chart.png"
+    ],
+    "likelyFile": "src/ui/screens/Drills.tsx",
+    "suggestedFix": "On the first flash launch with no cellStats, show a one-screen 'How to read the chart' plus the chart (with a 'Start quiz' button), or add a 'Study chart' button to the Next step card. Add a one-line rule per region to the wrong strip (from the cell's row/column group) in place of the duplicated 'Basic X vs dealer N' text."
+   },
+   {
+    "severity": "medium",
+    "title": "Flashcards shows no progress toward the goal Home set",
+    "steps": "Home says '20 needed to judge… get every category to 90%' -> Start -> answer cards",
+    "expected": "A visible counter or meter in Flashcards, like Mastery's '0 / 330 cleared' (e.g. 'Soft 6/20 · Pairs 58%').",
+    "actual": "Nothing in Flashcards shows count, accuracy or distance to the goal. The only way to check is Back -> Home tab, which also loses your place in the drill flow.",
+    "screenshots": [
+     "shots/11-flashcards-after-120.png",
+     "shots/17-mastery-sweep-open.png"
+    ],
+    "likelyFile": "src/ui/screens/Drills.tsx",
+    "suggestedFix": "Add a slim status line under the scope chips with per-category answers and accuracy (the same figures nextStep uses), and a toast when the Home goal is met."
+   },
+   {
+    "severity": "medium",
+    "title": "Next step names a weak category but Start opens 'All' hands",
+    "steps": "With soft or pairs the weakest, Home says 'Soft totals are at 68%' (or 'Pairs are at 73%') -> Start",
+    "expected": "Flashcards opens scoped to Soft (or Pairs), the category the card just named.",
+    "actual": "It always opens on 'All' (aria-pressed All:true), so most cards are hard totals the user has already mastered. drillLaunch only carries the mode.",
+    "screenshots": [
+     "shots/12-home-after-120-answers.png",
+     "shots/13-start-again-scope.png"
+    ],
+    "likelyFile": "src/ui/drillLaunch.ts",
+    "suggestedFix": "Extend DrillLaunch with an optional scope ('hard'|'soft'|'pair') that nextStep fills from the thin/low category, and apply it in Drills when launch==='flash'."
+   },
+   {
+    "severity": "medium",
+    "title": "'Wrong tap' erases the correction a beginner needs",
+    "steps": "Flashcards -> answer wrong (A,5 v 2 Stand) -> tap 'Wrong tap' at the top right of the red strip",
+    "expected": "Either the label makes clear it means 'I mis-tapped, don't count it', or the right play stays visible after pressing it.",
+    "actual": "The strip collapses to 'Not counted: A,5 v 2'. The 'Right play Hit' line and 'Show on chart' disappear and the miss isn't recorded. A beginner reading 'Wrong tap' as 'why was this wrong?' loses the lesson and nothing gets re-queued.",
+    "screenshots": [
+     "shots/24-e2e-wrong-strip.png",
+     "shots/25-after-wrong-tap.png"
+    ],
+    "likelyFile": "src/ui/components/MistakeCard.tsx",
+    "suggestedFix": "Rename to 'Mis-tap, don't count' (or 'Undo: mis-tap'), and keep 'Right play X' visible in the 'Not counted' strip."
+   },
+   {
+    "severity": "medium",
+    "title": "Plain flashcards label beginner mistakes 'Phantom deviation'",
+    "steps": "Flashcards (no count shown) -> 7,5 v 3 Stand, or 9,3 v 2 Stand, or 6,6 v 2 Stand, or 5,5 v A Double",
+    "expected": "'Basic strategy error' (no count is involved in a plain flashcard), or plain words a beginner can follow.",
+    "actual": "'Phantom deviation. Basic hit vs dealer 3'. The beginner never deviated and has never heard of indices.",
+    "screenshots": [
+     "shots/05-wrong-split-tens.png"
+    ],
+    "likelyFile": "src/engine/grade.ts",
+    "suggestedFix": "When the card has no tc (plain flashcard, deck Chart), classify every miss as basic-strategy-error. Keep phantom-deviation for With count, Mixed, Play and the quiz."
+   },
+   {
+    "severity": "low",
+    "title": "Back from a Home-launched drill goes to the Drills menu, which leads with counting drills",
+    "steps": "Home -> Start -> Flashcards -> Back",
+    "expected": "Back returns to Home (where the user came from), or the Drills menu puts 'Knowing the plays' first for a basic-strategy learner.",
+    "actual": "It lands on the Drills picker, where 'Keeping the count' (5 counting drills) fills the screen and Flashcards is below the fold.",
+    "screenshots": [
+     "shots/10-back-from-flashcards.png"
+    ],
+    "likelyFile": "src/ui/screens/Drills.tsx",
+    "suggestedFix": "When mode came from takeDrillLaunch(), make onBack call onNavigate('home'). Consider ordering the picker sections Plays -> Count -> Pressure."
+   },
+   {
+    "severity": "low",
+    "title": "Home's visual hierarchy favours 'Play a shoe' over the recommended Next step",
+    "steps": "Fresh install -> Home",
+    "expected": "The recommended action (Next step Start) is the primary, most prominent button.",
+    "actual": "'Play a shoe' is the gold primary button, while Start is a muted secondary button inside the card. A beginner told to 'learn basic strategy' is drawn to the table.",
+    "screenshots": [
+     "shots/01-first-open-home.png",
+     "shots/webkit-30-home-first-run.png"
+    ],
+    "likelyFile": "src/ui/screens/Home.tsx",
+    "suggestedFix": "Make next-step-btn u-btn-primary and demote 'Play a shoe' to secondary until the next step is 'play'."
+   },
+   {
+    "severity": "low",
+    "title": "Home 'weakest' line lists every category, including ones at 94%",
+    "steps": "After about 120 answers -> Home",
+    "expected": "Only the categories that are actually below target.",
+    "actual": "'weakest: soft totals, pairs, hard totals' with hard at 94%. weakestCategories only filters out pct < 1 and lists up to 3.",
+    "screenshots": [
+     "shots/12-home-after-120-answers.png",
+     "shots/16-home-gate-cleared.png"
+    ],
+    "likelyFile": "src/ui/screens/readiness.ts",
+    "suggestedFix": "Filter to pct < CATEGORY_TARGET (0.9), or show just the single weakest category with its %."
+   },
+   {
+    "severity": "ux",
+    "title": "Beginner-facing jargon with no explanation (Next review: now, Surrender OK / No surrender, indices, 6D H17, CVCX)",
+    "steps": "Home and Flashcards on first run, then Stats",
+    "expected": "Short plain-language hints or hidden-until-relevant labels for a new user.",
+    "actual": "'Next review: now' even after a correct answer. The 'Surrender OK' / 'No surrender' pill changes per card with no explanation. Home shows '0/17 INDICES SEEN' and 'Default (6D H17)'. Stats opens on the Play tab with four CVCX rows of dashes, and Options shows Fallbacks / With count with no description.",
+    "screenshots": [
+     "shots/04-answer-stand-1600ms.png",
+     "shots/23-flash-options-open.png",
+     "shots/27-stats-learner-top.png"
+    ],
+    "likelyFile": "src/ui/screens/Drills.tsx",
+    "suggestedFix": "Hide 'Next review' unless it is later than now. Add a title or first-time hint to the surrender pill. Hide the indices stat until the deviation step. Default Stats to Drills or Progress when there are no Play rounds."
+   },
+   {
+    "severity": "low",
+    "title": "Settings gear renders as a colour emoji on WebKit/iOS",
+    "steps": "WebKit 375x812 -> Home",
+    "expected": "A monochrome glyph matching Chromium and the rest of the UI.",
+    "actual": "⚙ renders as a grey/purple emoji next to 'Settings'.",
+    "screenshots": [
+     "shots/webkit-30-home-first-run.png",
+     "shots/01-first-open-home.png"
+    ],
+    "likelyFile": "src/ui/screens/Home.tsx",
+    "suggestedFix": "Append U+FE0E ('⚙︎ ') or use the inline SVG gear the tab gear buttons use."
+   },
+   {
+    "severity": "low",
+    "title": "Charts tab top bar wraps onto two lines",
+    "steps": "Home -> Charts tab",
+    "expected": "A single-line top bar like the other tabs.",
+    "actual": "'Back to Home' and 'Strategy charts' both wrap to two lines next to the gear and the mute disc. 'Back to Home' is also redundant on a tab screen.",
+    "screenshots": [
+     "shots/21-charts-tab-top.png"
+    ],
+    "likelyFile": "src/ui/screens/Charts.tsx",
+    "suggestedFix": "Use a short 'Back' label (or drop it when Charts was opened from the tab bar), and keep the title on one line with nowrap and ellipsis."
+   }
+  ],
+  "topChanges": [
+   "Judge 'Learn basic strategy' on a recent window per category (e.g. last 20-30 answers) instead of lifetime totals, so a learner who has the chart down clears it within minutes, not after about 1,200 answers (nextStep.ts).",
+   "Add a learn step: show the chart and a one-screen 'how to read it' on the first flash launch, and give wrong answers a one-line rule (why), not the duplicated 'Basic X vs dealer N'. Never call a plain-flashcard miss a 'Phantom deviation'.",
+   "Make Start focus on, and show progress toward, the stated goal: pass the weak category as the Flashcards scope, add a per-category counter/meter to Flashcards with a 'goal met' toast, and make Start the primary Home button."
+  ],
+  "consoleErrors": []
+ },
+ {
+  "goalAchieved": true,
+  "tapsOrSteps": "Making the profile active took 11 taps: the profile chip on Home, New profile, the name field (typing), Decks 2, S17, Late surrender off, a scroll, Save, tapping the new profile's row to make it active, and Back to Home. Switching back to Default took 3 taps: chip, Default row, Back. Checking everything (Charts plus an index cell, Flashcards with about 18 cards, a Custom deck of 10 cells, the Deviation quiz, 5-8 Play rounds, the Play gear sheet, End twice) brought the full runs to 48 taps (Chromium e2e phase 1), 59 taps (phase 2) and 51 taps (WebKit). The automated time was about 36 s with ?e2e=1 and about 76 s plus 90 s with real timings. A real person would take roughly 6-8 minutes. Screenshots are in C:/Users/jackp/AppData/Local/Temp/claude/C--Users-jackp/5eb9dd98-f8da-490b-a046-a394be7c9a16/scratchpad/swarmB/s08-house-rules-profile/shots/: A* = Chromium e2e phase 1, B* = phase 2 and switch back, R*/S* = real timings, Aw* = WebKit, Q* = Deviation quiz probe. There are 150+ in total and the key ones were read.",
+  "narrative": "Overall the profile works: the new rules reach every surface tested, and switching back to Default leaks nothing in the rules themselves. The exceptions are the drill history, and two doubling indexes that conflict with the 2-deck chart and get graded against the player in the quiz.\n\nHome only shows the profile as a chip, \"Default (6D H17)\", which opens Profiles. Profiles has New profile, and the form is clear: Decks 2, S17, untick Late surrender. The cut card resets itself to \"0.5 decks behind, 2-deck shoe\", and Surrender indices greys out with \"Needs late surrender, which is off in this profile's rules\". Save is at the bottom of a long form (about 2400px). After Save, the list shows the new row, but the profile is NOT made active and there is no rules summary on the row. To switch you have to know to tap the row's name, which looks like a label. Once you do, the Home chip and the Play topbar show \"Local 2D S17\".\n\nCharts shows \"2 deck · S17 · DAS · No surrender\". I compared all 350 rendered cells against src/engine/charts/d2_s17.ts with no-surrender applied: zero mismatches. That includes 9v2 Dh, 15/16 v 10 H, 16vA H, A7v2 S, A8v6 S, 6,6v7 P and 7,7v8 P. The Custom painter showed the same codes.\n\nFlashcards always showed the \"No surrender\" chip and Surrender was greyed out. All 18 random cards and a 14-card Custom deck of the cells that differ were graded to the 2-deck S17 rules; I checked each answer against src/engine/strategy.ts correctPlay. Playing the Default answer (A,8 v 6 Double, A,7 v 2 Double) was marked Wrong with \"Right play Stand\".\n\nPlay dealt a 2-deck shoe (the discard tray has 1 tick), Surrender was disabled, and the gear sheet says \"Saved to the Local 2D S17 profile\" with the 2-deck cut card.\n\nThe Indexes list follows S17 (16v9 +5, 10vA +4, 12v6 -2, 11vA +1). But it carries 11vA and 9v2 \"double at TC >= +1\", which the 2-deck chart already doubles at every count. The Deviation quiz then marks \"hit at TC -1 / TC 0\" wrong while quoting \"double at TC >= +1\" as the reason.\n\nSwitching back to Default:\n- The Home chip, the Charts summary and every chart cell match the earlier capture exactly.\n- Default's stored rules are byte-identical, and each profile has its own bankroll.\n- The Custom grid shows Rh/Rs/Ds again, Flashcards shows \"Surrender OK\" on surrenderable hard hands and grades 9,6 v 10 as Surrender, and Play deals 6 decks (5 ticks).\n\nShared state does leak, though. The Flashcards spaced-repetition (SR) schedule (bjtrainer.flashsr.v1) and the per-cell stats are keyed by cell alone. Hard 17 v A, answered \"Stand\" under the 2-deck profile, sits in box 1 due tomorrow under Default, where the right play is Surrender. Home accuracy (95%, 44 decisions) mixes both rule sets.\n\nThere were no console or page errors in any Chromium or WebKit run. WebKit matched Chromium apart from a serif font in the profile name field.",
+  "findings": [
+   {
+    "severity": "high",
+    "title": "Deviation quiz contradicts itself on 11vA and 9v2 under 2-deck rules",
+    "steps": "Make a 2D S17 DAS no-surrender profile and make it active. Drills > Deviation quiz > Index '9 v 2: double at TC ≥ +1'. A card comes up at TC +0 (or choose '11 v A' and get TC -1). Answer Hit, as the index label says.",
+    "expected": "For 2 decks, where basic strategy already doubles 9v2 and 11vA, these indexes should be dropped (or replaced with a correct 2-deck index). The quiz should never grade against the very rule it is quoting.",
+    "actual": "It shows 'Wrong 2,7 v 2 at TC +0. You played Hit, Right play Double. Basic strategy error. 9 v 2: double at TC ≥ +1', and the same for 11 v A at TC -1. Charts > Indexes lists both, with corner marks on cells that already say Dh, so the player is taught to hit below +1.",
+    "screenshots": [
+     "Q03-quiz-9v2-3.png",
+     "Q06-quiz-11vA-1.png",
+     "A19-charts-new-indexes.png",
+     "A16-charts-new-hard.png"
+    ],
+    "likelyFile": "src/engine/deviations.ts (indexSetFor), src/drills/deviationQuiz.ts, src/ui/screens/indexChart.ts",
+    "suggestedFix": "In indexSetFor, when decks <= 2, remove (or swap for the correct 2-deck version) any index whose action the base chart already plays at TC 0: 11vA and 9v2 for 2D, and the equivalents for 1D. Add a unit test: for every chart and index set, no gte index may name the chart's own action. The indexes are 6-deck numbers, so the Indexes header could also say so for 1-2 decks."
+   },
+   {
+    "severity": "medium",
+    "title": "Drill history is shared across profiles with different correct answers",
+    "steps": "Under the 2-deck no-surrender profile, answer hard 17 v A 'Stand' (or 16 v 10 'Stand') in Flashcards. Switch to Default (6D H17 LS). Read localStorage bjtrainer.flashsr.v1, or look at Home accuracy.",
+    "expected": "Learning state for a cell whose correct play depends on the rules should be kept per profile (or per rules set), or at least reset or flagged when the answer differs.",
+    "actual": "bjtrainer.flashsr.v1['hard-17-v-A'] = {box:1, reviews:1, due tomorrow} under Default, whose right play is Rs (surrender). The schedule pushes back a cell the player has never answered correctly under these rules. Home shows '95% accuracy, 44 decisions' mixed from both rule sets, even though Stats says 'Profile: Default (6D H17)'.",
+    "screenshots": [
+     "S31-stats-default.png",
+     "B13-home-default-again.png"
+    ],
+    "likelyFile": "src/drills/gradeAnswer.ts (FLASH_SR_KEY / persistGrade), src/store/cellStats.ts",
+    "suggestedFix": "Key the SR deck and per-cell tallies by a rules signature (deck class, s17, das, ls), or store the expected action alongside each entry and treat a changed expected action as a fresh card."
+   },
+   {
+    "severity": "medium",
+    "title": "A new profile isn't made active on Save, and the way to activate it is hidden",
+    "steps": "Profiles > New profile > set the rules > Save.",
+    "expected": "Saving a new profile offers to use it (or just makes it active), and each row shows its rules.",
+    "actual": "You land back on the list with Default still 'Active'. The only way to switch is to tap the profile's name text, which looks like a label, not a button. Rows show only the name, so 'Local 2D S17' versus a profile called 'Vegas' gives no hint of decks or surrender.",
+    "screenshots": [
+     "A12-list-after-save.png",
+     "A13-list-new-active.png"
+    ],
+    "likelyFile": "src/ui/screens/ProfileEditor.tsx (saveDraft, list rows)",
+    "suggestedFix": "On saving a new profile, call selectActive(cleaned.id), or show 'Use this profile' as a button. Add a second line to each row with rulesetSummary(p.rules), and a visible 'Use' button or radio on rows that aren't active."
+   },
+   {
+    "severity": "ux",
+    "title": "Drills and Play never say which rules are in force",
+    "steps": "Make the 2-deck profile active and open Flashcards, Deviation quiz or Play.",
+    "expected": "A short rules line (e.g. '2D · S17 · DAS · No surr') or the profile chip is visible, so you can confirm you're drilling your casino's game.",
+    "actual": "Flashcards and the quiz show only a 'No surrender' chip. Play shows only the name the user chose ('Local 2D S17'). Charts is the only screen that states the rules.",
+    "screenshots": [
+     "A23-flash-first.png",
+     "A30-play-new-idle.png"
+    ],
+    "likelyFile": "src/ui/screens/Drills.tsx, src/ui/screens/Table.tsx",
+    "suggestedFix": "Put rulesetSummary(activeProfile.rules) next to the RulesChip in the drill views and under the profile name in the Play topbar."
+   },
+   {
+    "severity": "low",
+    "title": "Last answer's correction appears next to the new card's 'No surrender' chip",
+    "steps": "Default profile: in Flashcards, answer 9,6 v 10 with Hit. The app auto-advances to a soft or pair hand.",
+    "expected": "The correction is clearly about the previous hand.",
+    "actual": "The red strip says 'Right play Surrender' directly under a 'No surrender' chip that belongs to the new card. A glance reads as a contradiction.",
+    "screenshots": [
+     "B19-cflash-def-1-wrong-BAD.png"
+    ],
+    "likelyFile": "src/ui/components/HandResultStrip.tsx, src/ui/screens/Drills.tsx",
+    "suggestedFix": "Label the strip 'Last hand', or hide or dim the chip while a strip from a previous card is showing."
+   },
+   {
+    "severity": "low",
+    "title": "Home 'Indices seen' total is always the H17 set",
+    "steps": "Make the S17 profile active and look at Home. Then look at Charts > Indexes.",
+    "expected": "The denominator matches the active profile's index set (18 under S17).",
+    "actual": "Home shows 0/17. Charts lists 18 (11vA is active under S17), and 11vA progress can never count.",
+    "screenshots": [
+     "A14-home-new-profile.png",
+     "A19-charts-new-indexes.png"
+    ],
+    "likelyFile": "src/ui/screens/readiness.ts (uses ILLUSTRIOUS_18 directly)",
+    "suggestedFix": "Pass strategyRulesFor(activeProfile) to readiness() and use indexSetFor(rules).filter(active)."
+   },
+   {
+    "severity": "low",
+    "title": "Deck-count segment buttons are 30-33px wide",
+    "steps": "Profiles > New profile > Rules > Decks 1/2/6/8.",
+    "expected": "Tap targets of at least 44px.",
+    "actual": "Measured 30x48, 33x48, 33x48 and 32x48. On a 375px phone it's easy to hit 1 when you meant 2.",
+    "screenshots": [
+     "A08-ls-off.png"
+    ],
+    "likelyFile": "src/ui/screens/Settings.tsx (Segmented), app.css",
+    "suggestedFix": "Give the segmented buttons min-width: 44px. The row has room."
+   },
+   {
+    "severity": "low",
+    "title": "Profile name field ignores the app font (serif in WebKit)",
+    "steps": "Open Profiles > New profile in WebKit.",
+    "expected": "The input uses the app's sans-serif font.",
+    "actual": "'Local 2D S17' renders in Times. app.css sets font-family: inherit on button only, not on input.",
+    "screenshots": [
+     "Aw08-ls-off.png"
+    ],
+    "likelyFile": "src/ui/app.css (.profile-text-input / .profile-number-input, ~line 2085)",
+    "suggestedFix": "Add font: inherit to input, select and textarea globally (or to the profile input classes)."
+   },
+   {
+    "severity": "low",
+    "title": "ASCII hyphen in the Deviation quiz TC and its correction ('TC -1')",
+    "steps": "Deviation quiz, any card at a negative count.",
+    "expected": "A true minus sign, matching the index labels ('TC ≤ −2').",
+    "actual": "The big 'TC -1' readout and 'at TC -1' in the correction use a hyphen-minus. This may share a root with the known peek/bet-or-sit hyphen issue, but it's a different screen.",
+    "screenshots": [
+     "Q06-quiz-11vA-1.png"
+    ],
+    "likelyFile": "src/ui/screens/Drills.tsx (formatSigned) / mistake copy",
+    "suggestedFix": "Use U+2212 in formatSigned."
+   },
+   {
+    "severity": "ux",
+    "title": "Rules summary says '2 deck' instead of '2 decks'",
+    "steps": "Charts with the 2-deck profile active.",
+    "expected": "'2 decks' (or '2D').",
+    "actual": "'2 deck · S17 · DAS · No surrender'.",
+    "screenshots": [
+     "A15-charts-new-top.png"
+    ],
+    "likelyFile": "src/ui/screens/chartRows.ts (rulesetSummary)",
+    "suggestedFix": "Pluralise when decks > 1, or use '2D'."
+   }
+  ],
+  "topChanges": [
+   "Fix the index set per deck count: drop or correct 11vA and 9v2 for 1-2 decks, where basic strategy already doubles, so Charts > Indexes, the corner marks and the Deviation quiz stop teaching the player to hit and then marking it wrong.",
+   "Keep the spaced-repetition (SR) schedule and per-cell stats per rules set (or reset a cell when its correct action changes), so drilling one casino's rules doesn't mark cells as learned under another profile.",
+   "After saving a new profile, make it active (or show a 'Use this profile' button), and show rulesetSummary on each profile row and on the drill and Play screens, so the player can see which rules they are training on."
+  ],
+  "consoleErrors": []
+ }
+]
