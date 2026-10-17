@@ -73,7 +73,7 @@ test('Start opens Flashcards on the hand type the step names, on the chart deck'
   await expect(card).toContainText('Pairs: 0 answers');
   // s02: progress per category, with the met goal ticked.
   await expect(card.locator('[data-hand="hard"]')).toHaveAttribute('data-on-target', 'true');
-  await expect(card.locator('[data-hand="hard"]')).toContainText('on target');
+  await expect(card.locator('[data-hand="hard"]')).toContainText('✓');
   await expect(card.locator('[data-hand="pair"]')).toContainText('0/20 answers');
   await card.getByRole('button', { name: 'Start' }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Flashcards');

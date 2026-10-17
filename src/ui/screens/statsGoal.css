@@ -11,3 +11,10 @@
   margin-left: -1px;
   background: var(--ink);
 }
+
+/* s10: the in-range accuracy line under a category (its own class, so
+   selectors for the latency line stay unique). */
+.category-in-range {
+  font-size: 0.75rem;
+  color: var(--ink-dim);
+}

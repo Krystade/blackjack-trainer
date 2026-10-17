@@ -352,7 +352,7 @@ function HandGoalRow({ row, latencyText, rangeText }: { row: HandCategoryProgres
         {status}
         {row.recent ? ` · all time ${row.right}/${row.n}` : ''} · Median decision time: {latencyText}
       </div>
-      {rangeText !== null && <div className="category-latency category-in-range">{rangeText}</div>}
+      {rangeText !== null && <div className="category-in-range">{rangeText}</div>}
     </div>
   );
 }
@@ -628,7 +628,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
     const hand =
       unpricedHand === 0
         ? ''
-        : ` ${unpricedHand} further hand ${unpricedHand === 1 ? 'mistake is' : 'mistakes are'} counted above but not priced: index mistakes depend on the count, which this pricing can't see.`;
+        : ` ${unpricedHand} further ${unpricedHand === 1 ? 'mistake is' : 'mistakes are'} counted above but not priced: index mistakes depend on the count, which this pricing can't see.`;
     return kinds + hand;
   })();
 
@@ -907,7 +907,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                   </div>
                   <div className="category-latency">Median decision time: {formatLatency(latencyMs)}</div>
                   {inRangeText(cat) !== null && (
-                    <div className="category-latency category-in-range">{inRangeText(cat)}</div>
+                    <div className="category-in-range">{inRangeText(cat)}</div>
                   )}
                 </div>
               );
