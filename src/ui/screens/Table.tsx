@@ -17,6 +17,11 @@ import { useGame } from '../useGame';
 import type { CountCheckVerdict, SessionReport } from '../useGame';
 import { ResultStrip } from '../components/ResultStrip';
 import { signedTc } from '../../drills/tcFeedback';
+import { reportSections, countMissText, drillCellIds } from '../reportSections';
+import { launchCustomCells } from '../drillLaunch';
+import type { MistakeRow } from '../reportSections';
+import { lossPer100, formatLossPer100 } from '../sessionFigures';
+import './sessionReport.css';
 import { useAudio } from '../../audio/useAudio';
 import { useVoiceControl } from '../useVoiceControl';
 import { useWheelCommand } from '../useWheelCommand';
@@ -33,7 +38,6 @@ import { enableAudioNow } from '../audioGate';
 import { PlayingCard, formatCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import type { ActionBarMode } from '../components/ActionBar';
-import { Modal } from '../components/Modal';
 import { BottomSheet } from '../components/BottomSheet';
 import { DiscardTray } from '../components/DiscardTray';
 import { PeekButton } from '../components/PeekButton';
@@ -47,9 +51,18 @@ import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession'
 import { CATEGORY_LABELS } from './categoryLabels';
 import { playLabel } from '../playLabel';
 import { LosingShoeBadge } from '../components/LosingShoeBadge';
+import { roundBanner } from '../roundBanner';
+import { signed, MINUS } from '../../drills/signed';
 import './tableSeats.css';
 import './tableTopbar.css';
 import './tableCues.css';
+import './tableGlance.css';
+import { dealerFeltRow, playerFeltRow, type FeltRow } from '../feltLayout';
+
+/** B5/W4: the row's card slots and fixed chrome, for cardSize.css's clamp. */
+function feltStyle(row: FeltRow): CSSProperties {
+  return { '--felt-slots': row.slots, '--felt-fixed': `${row.fixedPx}px` } as CSSProperties;
+}
 
 type BotActionLogEntry = Game['botActionLog'][number];
 
@@ -169,28 +182,10 @@ function isE2E(): boolean {
   return new URLSearchParams(window.location.search).get('e2e') === '1';
 }
 
-/** `playNumber` is the hand's place in the order of play (#1), counted from 1. */
-function resultMessage(hand: PlayerHand, playNumber: number, multi: boolean): string {
-  const prefix = multi ? `Hand ${playNumber}: ` : '';
-  switch (hand.result) {
-    case 'win':
-      return `${prefix}Win +${hand.net}`;
-    case 'lose':
-      return `${prefix}Lose ${hand.net}`;
-    case 'push':
-      return `${prefix}Push`;
-    case 'blackjack':
-      return `${prefix}Blackjack! +${hand.net}`;
-    case 'surrender':
-      return `${prefix}Surrender ${hand.net}`;
-    default:
-      return '';
-  }
-}
-
-function formatSigned(n: number): string {
-  return n >= 0 ? `+${n}` : String(n);
-}
+/** Every signed number on the Table and its report: "+2", "+0", "−3", with a
+ * real minus (contract 6). The count-voice value was the Wave A leftover that
+ * still printed the ASCII hyphen. */
+const formatSigned = (n: number) => signed(n, { plusZero: true });
 
 function countVerdictOk(v: CountCheckVerdict): boolean {
   return v.rcCorrect !== false && v.tcCorrect !== false;
@@ -214,56 +209,70 @@ function countVerdictText(v: CountCheckVerdict): string {
   return parts.join(' · ');
 }
 
-/**
- * Collapse mistakes that are the same mistake.
- *
- * A per-ROUND grade repeats by nature: eight rounds dealt into a dead count
- * produce eight identical "took play, correct sit-out" lines, which push
- * every other mistake off the screen and read as eight different problems
- * rather than one habit. Grouped on everything the row actually renders --
- * two entries that display identically ARE the same finding -- and the first
- * occurrence keeps its place in the list, so the ordering still tells you
- * when things went wrong.
- */
-function groupMistakes(mistakes: readonly GradedEvent[]): { mistake: GradedEvent; count: number }[] {
-  const out: { mistake: GradedEvent; count: number }[] = [];
-  const seen = new Map<string, { mistake: GradedEvent; count: number }>();
-  for (const m of mistakes) {
-    const key = [m.hand ?? m.kind, m.tc, m.taken, m.expected, m.reason].join('|');
-    const hit = seen.get(key);
-    if (hit) {
-      hit.count += 1;
-      continue;
-    }
-    const row = { mistake: m, count: 1 };
-    seen.set(key, row);
-    out.push(row);
-  }
-  return out;
-}
-
 /** How long the End button stays armed after its first tap. */
 const END_ARMED_MS = 3000;
+
+/** "{hand} · TC ±n · you played X · correct Y — reason", as the report always read. */
+function playRowText(m: GradedEvent): string {
+  return `${m.hand ?? m.kind} · TC ${formatSigned(m.tc)} · you played ${playLabel(m.taken)} · correct ${playLabel(m.expected)} — ${m.reason}`;
+}
+
+/** Units lost, two decimals, real minus: "−0.61"; a rounded-away cost reads "0". */
+function unitsText(units: number): string {
+  const abs = Math.abs(units).toFixed(2);
+  if (abs === '0.00') return signed(0);
+  return `${units > 0 ? MINUS : '+'}${abs}`;
+}
+
+/** " ×n" for repeats, then " · −0.61 u" when the row was priced. */
+function RowTail({ row }: { row: MistakeRow }) {
+  return (
+    <>
+      {row.count > 1 && <span className="report-mistake-count"> &times;{row.count}</span>}
+      {row.unitsTotal !== null && <span className="report-row-units"> &middot; {unitsText(row.unitsTotal)} u</span>}
+    </>
+  );
+}
 
 function ReportScreen({
   report,
   coverBetsOn,
   onDone,
+  onDrill,
 }: {
   report: SessionReport;
   /** Whether this session graded with cover bets (one rung either side). */
   coverBetsOn: boolean;
   onDone: () => void;
+  /** B6: open Custom on exactly the report's missed cells. */
+  onDrill?: (cellIds: string[]) => void;
 }) {
   // R7 (docs/BACKLOG.md): this screen shows after every End (see handleEnd),
   // so a peek-assisted session's accuracy is flagged right under the headline
   // number it qualifies — the number can't be mistaken for unassisted.
   const assisted = assistedFlag(report.peeks);
+  const sections = reportSections(report.mistakes);
+  const unpricedPlays = sections.plays.filter((r) => r.unitsTotal === null).reduce((n, r) => n + r.count, 0);
+  const gradedCountCheck = report.categories.some((c) => c.category === 'countCheck' && c.right + c.wrong > 0);
+  const loss = lossPer100(report.mistakeUnits, report.hands);
+  const drillIds = drillCellIds(sections.plays);
   return (
     <div className="report-screen">
       <h1>Session report</h1>
+      {report.hotShoe && (
+        <p className="report-hot-shoe">Hot shoe: the counts ran high on purpose, so this session&rsquo;s bankroll isn&rsquo;t kept.</p>
+      )}
+      {loss !== null && (
+        <p className="report-headline" data-units-total={report.mistakeUnits} data-hands={report.hands}>
+          {formatLossPer100(loss)}
+        </p>
+      )}
+      {unpricedPlays > 0 && (
+        <p className="report-unpriced">Plus {unpricedPlays} index or insurance misses with no price.</p>
+      )}
       <p className="report-summary">
-        {report.correct} / {report.graded} correct &middot; bankroll {formatSigned(report.bankrollDelta)}
+        {report.correct} / {report.graded} correct
+        {!report.hotShoe && <> &middot; bankroll {formatSigned(report.bankrollDelta)}</>}
       </p>
       {assisted && <p className="report-assisted">{assisted}</p>}
       {/* RT#11 (docs/BACKLOG.md): perfect conformity to the ramp IS the tell,
@@ -307,31 +316,57 @@ function ReportScreen({
           ))}
         </tbody>
       </table>
-      <h2>Mistakes</h2>
-      {report.mistakes.length === 0 ? (
-        <p>No mistakes this session.</p>
+      <h2>Plays</h2>
+      {sections.plays.length === 0 ? (
+        <p>No play mistakes.</p>
       ) : (
-        <ul className="report-mistakes">
-          {groupMistakes(report.mistakes).map(({ mistake: m, count }, i) => (
-            <li key={i}>
-              {/* A count check has no hand and no play: "you played 1" read as
-                  nonsense next to the raw event kind. Say what was asked. */}
-              {m.kind === 'countCheck' ? (
-                <>
-                  {m.reason} &middot; you said {m.taken === '' ? '—' : signedTc(Number(m.taken))} &middot; it was{' '}
-                  {signedTc(Number(m.expected))}
-                </>
-              ) : (
-                <>
-                  {m.hand ?? m.kind} &middot; TC {formatSigned(m.tc)} &middot; you played {playLabel(m.taken)} &middot; correct {playLabel(m.expected)}
-                  {' — '}
-                  {m.reason}
-                </>
-              )}
-              {count > 1 && <span className="report-mistake-count"> &times;{count}</span>}
+        <ul className="report-mistakes report-plays">
+          {sections.plays.map((row, i) => (
+            <li
+              key={i}
+              data-units={row.unitsTotal !== null ? row.unitsTotal : undefined}
+              data-cell={row.cellId ?? undefined}
+            >
+              {playRowText(row.mistake)}
+              <RowTail row={row} />
             </li>
           ))}
         </ul>
+      )}
+      {onDrill && drillIds.length > 0 && (
+        <button type="button" className="report-drill-btn" onClick={() => onDrill(drillIds)}>
+          Drill these hands
+        </button>
+      )}
+      {gradedCountCheck && (
+        <>
+          <h2>Count checks</h2>
+          {sections.counts.length === 0 ? (
+            <p>No count checks missed.</p>
+          ) : (
+            <ul className="report-mistakes report-counts">
+              {sections.counts.map((row, i) => (
+                <li key={i}>
+                  {countMissText(row.mistake)}
+                  {row.count > 1 && <span className="report-mistake-count"> &times;{row.count}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      {sections.bets.length > 0 && (
+        <>
+          <h2>Bets</h2>
+          <ul className="report-mistakes report-bets">
+            {sections.bets.map((row, i) => (
+              <li key={i}>
+                {playRowText(row.mistake)}
+                {row.count > 1 && <span className="report-mistake-count"> &times;{row.count}</span>}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
       <button type="button" className="report-done-btn" onClick={onDone}>
         Back to Home
@@ -366,6 +401,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const {
     game,
     losingShoe,
+    hotShoe,
     deal,
     act,
     insure,
@@ -695,8 +731,23 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     onNavigate('home');
   };
 
+  // B6 (contract 4): Custom on exactly the missed cells, saved before Drills mounts.
+  const handleReportDrill = (ids: string[]) => {
+    const next = launchCustomCells(ids, settings);
+    onSettingsChange(next);
+    setShowReport(false);
+    onNavigate('drills');
+  };
+
   if (showReport && report) {
-    return <ReportScreen report={report} coverBetsOn={game.cfg.coverBets === true} onDone={handleReportDone} />;
+    return (
+      <ReportScreen
+        report={report}
+        coverBetsOn={game.cfg.coverBets === true}
+        onDone={handleReportDone}
+        onDrill={handleReportDrill}
+      />
+    );
   }
 
   const activeHand: PlayerHand | undefined = game.hands[game.active];
@@ -846,6 +897,11 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         </button>
       </div>
       {losingShoe && <LosingShoeBadge />}
+      {hotShoe && (
+        <div className="hot-shoe-badge" data-testid="hot-shoe-badge">
+          Hot shoe
+        </div>
+      )}
 
       {voiceOn && (
         <VoiceStatusBar
@@ -867,7 +923,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           per whole deck, labelled decks dealt, so depth reads like a real tray. */}
       <DiscardTray cardsDealt={game.shoe.cardsDealt} decks={activeProfile.rules.decks} />
 
-      <div className="dealer-area">
+      <div className="dealer-area" style={feltStyle(dealerFeltRow(game.dealerCards.length))}>
         {game.dealerCards.map((c, i) => (
           <PlayingCard
             key={i}
@@ -924,7 +980,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         </div>
       )}
 
-      <div className="hands-row">
+      <div className="hands-row" style={feltStyle(playerFeltRow(game.hands.map((h) => h.cards.length)))}>
         {game.hands.map((hand, i) => (
           <div
             key={i}
@@ -998,11 +1054,21 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             {game.hands
               .map((h, i) => ({ h, i }))
               .reverse()
-              .map(({ h, i }) => (
-                <div key={i} className="message-result">
-                  {resultMessage(h, handPlayNumber(i, game.hands.length), multiHand)}
-                </div>
-              ))}
+              .map(({ h, i }) => {
+                // B5/W5: result and both totals, so the reason for a loss
+                // reads off the banner instead of off the felt. The separator
+                // has its own span outside the no-wrap totals, so a banner
+                // that wraps at 375px ends its first line with the dot rather
+                // than starting the second line with it.
+                const b = roundBanner(h, handPlayNumber(i, game.hands.length), multiHand, game.dealerCards, game.holeRevealed);
+                return (
+                  <div key={i} className="message-result round-banner" data-net={b.net}>
+                    <span className="round-banner-head">{b.head}</span>
+                    <span className="round-banner-sep"> · </span>
+                    <span className="round-banner-totals">{b.totals}</span>
+                  </div>
+                );
+              })}
             {game.insuranceNet !== null && (
               <div className="message-result">
                 Insurance {formatSigned(game.insuranceNet)}
@@ -1041,7 +1107,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             aria-label="Skip ahead: finish dealing and other players' turns"
             onClick={skipEverything}
           >
-            ⏩
+            Skip
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
+              <path d="M2 3l6 5-6 5zM8 3l6 5-6 5z" fill="currentColor" />
+            </svg>
           </button>
         )}
       </div>
@@ -1098,13 +1167,22 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       )}
 
       {overlay && (
-        <Modal title="Wrong play">
+        // Docked to the bottom rather than a centred Modal: the hands stay
+        // visible above it and Continue lands in the thumb zone.
+        <div
+          className="modal-backdrop wrong-play-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Wrong play"
+        >
+          <div className="wrong-play-sheet">
           {/* Same panel the drills use, so a correction reads identically
               wherever it is earned -- the table and the flashcards were
               previously two different vocabularies for the same event. */}
           <MistakeCard
             taken={overlay.taken}
             expected={overlay.expected}
+            variant="table"
             reason={overlay.reason}
             tc={overlay.tc}
             hand={overlay.hand}
@@ -1118,7 +1196,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           <button type="button" className="overlay-continue-btn" onClick={dismissOverlay}>
             Continue
           </button>
-        </Modal>
+          </div>
+        </div>
       )}
 
       {showChart && overlay && (

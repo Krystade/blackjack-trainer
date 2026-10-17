@@ -69,13 +69,23 @@ export class Shoe {
    * the cut sits at `penetration`, the same place every shoe. */
   private cutCards?: () => number;
   private cutPosition: number;
+  private order?: (cards: Card[], rng: () => number) => Card[];
 
   constructor(
-    opts: { decks?: number; penetration?: number; seed?: number; cutCards?: () => number } = {},
+    opts: {
+      decks?: number;
+      penetration?: number;
+      seed?: number;
+      cutCards?: () => number;
+      /** B8: how a fresh shoe is ordered. Absent = Fisher-Yates, so a seed
+       * deals byte-identical cards to before. */
+      order?: (cards: Card[], rng: () => number) => Card[];
+    } = {},
   ) {
     this.deckCount = opts.decks ?? 6;
     this.penetration = opts.penetration ?? 0.75;
     this.cutCards = opts.cutCards;
+    this.order = opts.order;
     this.cardsDealtCount = 0;
 
     const seed = opts.seed ?? Date.now();
@@ -108,7 +118,7 @@ export class Shoe {
       }
     }
 
-    return fisherYatesShuffle(cards, this.rng);
+    return (this.order ?? fisherYatesShuffle)(cards, this.rng);
   }
 
   draw(): Card {

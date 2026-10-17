@@ -1,0 +1,45 @@
+/* B5/W4 (spec 2026-10-16): big cards wherever a card is the thing being read.
+ *
+ * On the felt, the card width is the space a row leaves after its chrome,
+ * split across its card slots, clamped to 32..84px. Table.tsx sets
+ * --felt-slots and --felt-fixed per row from src/ui/feltLayout.ts, which holds
+ * the same constants and the unit test for them: change both together.
+ * The 480px cap is the app column's width.
+ *
+ * Each container sets --card-w (the drills a fixed size) and its cards read it. Loaded through PlayingCard.tsx so every
+ * screen that draws a card has it, without touching app.css or the drill
+ * views. The :is() selector outranks app.css's plain .card. */
+.table-screen :is(.dealer-area, .hands-row) {
+  --card-w: clamp(32px, calc((min(100vw, 480px) - var(--felt-fixed)) / var(--felt-slots)), 84px);
+}
+
+:is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards) .card:not(.card-compact) {
+  width: var(--card-w);
+  height: calc(var(--card-w) * 1.4167);
+}
+
+:is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards) .card:not(.card-compact) .card-rank {
+  font-size: calc(var(--card-w) * 0.34);
+}
+
+:is(.table-screen .dealer-area, .table-screen .hands-row, .count-flash-cards, .pair-cancel-cards) .card:not(.card-compact) .card-suit {
+  font-size: calc(var(--card-w) * 0.38);
+}
+
+/* Count drill: one card flashes biggest, three still fit 375px. */
+.count-flash-cards {
+  --card-w: 104px;
+  min-height: calc(var(--card-w) * 1.4167);
+}
+
+.count-flash-cards:has(> :nth-child(2)) {
+  --card-w: 92px;
+}
+
+.count-flash-cards:has(> :nth-child(3)) {
+  --card-w: 84px;
+}
+
+.pair-cancel-cards {
+  --card-w: 96px;
+}

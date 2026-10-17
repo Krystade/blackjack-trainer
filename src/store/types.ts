@@ -460,6 +460,9 @@ export interface Profile {
     riskOfRuin?: number;
     simNote?: string;
   };
+  /** B8: deal Play from a Hot shoe (biased toward positive counts). Opt-in;
+   * absent = off. */
+  hotShoe?: boolean;
 }
 
 export interface TallyRW {
@@ -603,6 +606,13 @@ export interface Stats {
     // persisted before R7 lack it (persist merges `sessions` by pass-through,
     // so no migration is needed), and a session with 0 peeks omits it too.
     peeks?: number;
+    // Wave B, B6: player hands settled and units lost to priced mistakes, for
+    // the per-100 figure. Absent on older rows, which the per-100 figure skips.
+    hands?: number;
+    mistakeUnits?: number;
+    // Wave B, B8: present (true) only for a Hot shoe session, whose bankroll
+    // was not carried. Absent on every other row.
+    hotShoe?: true;
   }[];
   // R1 (docs/BACKLOG.md, decision-latency telemetry): one entry per GRADED
   // EVENT that actually captured a decision time (flashcards + deviation

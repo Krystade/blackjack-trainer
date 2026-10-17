@@ -1,0 +1,80 @@
+/* B5/W5 (spec 2026-10-16): play at a glance.
+ *
+ * The result banner: one line per settled hand with the result and both
+ * totals ("Lose −1 · You 17 · Dealer 19"), big enough to read without leaning
+ * in. The totals hold together as a unit, so a wrap at 375px breaks between
+ * the result and the totals rather than inside "Dealer 19". */
+.table-screen .round-banner {
+  font-size: 1.375rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.round-banner-totals {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+/* The dot between result and totals, at the totals' weight so it matches the
+ * dot inside them. It stays outside the no-wrap totals so a wrapped banner
+ * ends its first line with it instead of opening the second. */
+.round-banner-sep {
+  font-weight: 600;
+}
+
+/* B5/W4: action labels readable at a glance. 13.5px at 375px; "Surrender"
+ * measures 60.5px at that size against a ~62px content box. */
+.table-screen .action-btn {
+  font-size: clamp(0.8125rem, 3.6vw, 1rem);
+  min-height: 52px;
+}
+
+/* B5: the skip control is a labelled pill, not an emoji. */
+.table-screen .fast-forward-btn {
+  min-height: 44px;
+  padding: 0 1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  border-radius: 999px;
+}
+
+/* B5/W6: the wrong-play card docks to the bottom as a sheet. */
+.wrong-play-backdrop { align-items: flex-end; padding: 0; }
+.wrong-play-sheet { width: 100%; max-width: 480px; background: var(--surface); border-radius: 14px 14px 0 0; padding: 0.75rem var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom, 0px)); max-height: 85svh; overflow-y: auto; }
+.wrong-play-sheet .overlay-continue-btn { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); min-height: 52px; font-size: 1.05rem; margin-top: 0.75rem; }
+.mistake-card-table .mistake-head { flex-wrap: nowrap; justify-content: flex-start; align-items: center; }
+.mistake-card-table .mistake-verdict { font-size: 1rem; white-space: nowrap; }
+.mistake-card-table .mistake-class { white-space: nowrap; }
+.mistake-table-link { border: none; background: none; text-decoration: underline; min-height: 44px; }
+/* Midnight Felt's --bad (#eb5757) is 3.58:1 on the sheet's --surface; inside
+   the table card it is lifted to a lighter red (~5.2:1) so the verdict and
+   the taken play pass AA. Other themes pass as is. */
+:root:not([data-theme]) .mistake-card-table,
+:root[data-theme='midnight-felt'] .mistake-card-table { --bad: #f28b82; }
+
+/* Wave B, B8: the Hot shoe note on Play. Same metrics as .losing-shoe-badge,
+   in the accent colour: it is a practice mode, not a warning. */
+.hot-shoe-badge {
+  align-self: center;
+  margin: 4px auto 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid currentColor;
+  width: fit-content;
+}
+
+/* Wave B, B8: the report's Hot shoe note, a quiet line under the title. */
+.report-hot-shoe {
+  color: var(--ink-dim, inherit);
+  font-size: 0.85rem;
+  margin-top: -0.25rem;
+}

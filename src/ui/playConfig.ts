@@ -33,6 +33,8 @@ export function playConfigFor(
     rules: strategyRulesFor(profile),
     seats: profile.seats,
     dealerAlwaysPlaysOut: profile.dealerAlwaysPlaysOut,
+    // B8: absent keeps the normal shoe.
+    ...(profile.hotShoe ? { hotShoe: true } : {}),
     seed,
   };
 }

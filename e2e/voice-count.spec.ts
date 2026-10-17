@@ -107,7 +107,7 @@ test('a spoken count becomes a proposal, not an answer', async ({ page }) => {
   await openCountCheck(page);
   await sayWhenListening(page, 'minus three');
 
-  await expect(page.locator('.count-voice-value')).toHaveText('-3');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
   // Still open: hearing it is not the same as answering it.
   await expect(page.locator('.count-voice')).toBeVisible();
 });
@@ -119,10 +119,10 @@ test('a spoken count becomes a proposal, not an answer', async ({ page }) => {
 test('"plus" and "minus" nudge the proposal by one each', async ({ page }) => {
   await openCountCheck(page);
   await sayWhenListening(page, 'minus three');
-  await expect(page.locator('.count-voice-value')).toHaveText('-3');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
 
   await sayWhenListening(page, 'plus');
-  await expect(page.locator('.count-voice-value')).toHaveText('-2');
+  await expect(page.locator('.count-voice-value')).toHaveText('−2');
 
   await sayWhenListening(page, 'plus plus');
   await expect(page.locator('.count-voice-value')).toHaveText('+0');
@@ -139,13 +139,13 @@ test('"no, minus three" corrects the value instead of clearing it', async ({ pag
   await expect(page.locator('.count-voice-value')).toHaveText('+7');
 
   await sayWhenListening(page, 'no minus three');
-  await expect(page.locator('.count-voice-value')).toHaveText('-3');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
 });
 
 test('a bare "no" clears the proposal and asks again', async ({ page }) => {
   await openCountCheck(page);
   await sayWhenListening(page, 'minus three');
-  await expect(page.locator('.count-voice-value')).toHaveText('-3');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
 
   await sayWhenListening(page, 'no');
   await expect(page.locator('.count-voice-value')).toHaveCount(0);
@@ -208,13 +208,13 @@ test('a count ranked second is still heard', async ({ page }) => {
   // is only reachable through the runner-up.
   await sayWhenListening(page, 'my nurse tea', ['minus three']);
 
-  await expect(page.locator('.count-voice-value')).toHaveText('-3');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
 });
 
 test('a confirmation ranked second still confirms', async ({ page }) => {
   await openCountCheck(page);
   await sayWhenListening(page, 'minus three');
-  await expect(page.locator('.count-voice-value')).toHaveText('-3');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
 
   await sayWhenListening(page, 'yeh', ['yes']);
   await expect(page.locator('.count-voice')).toBeHidden();

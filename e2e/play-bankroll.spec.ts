@@ -110,7 +110,7 @@ test('the session report measures the bankroll from where the session started', 
   await page.locator('.end-btn').click();
   const delta = second - first;
   await expect(page.locator('.report-summary')).toContainText(
-    `bankroll ${delta >= 0 ? `+${delta}` : String(delta)}`,
+    `bankroll ${delta >= 0 ? `+${delta}` : `−${-delta}`}`,
   );
 });
 
