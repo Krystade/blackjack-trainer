@@ -93,9 +93,22 @@ describe('ladder: casino order (B2)', () => {
     expect(l.rungs[6]!.progress).toBe('Best recent: 15/16 play decisions');
   });
 
-  it('rung 7 (R4): a row from before plays were recorded does not pass on its graded total', () => {
+  // C-R7 (deliberately changes R4's legacy rule): a row written before B2 has
+  // no `plays`, so its old graded-decision total stands in -- a rung already
+  // ticked must not untick after deploy. New rows use `plays`.
+  it('rung 7 (C-R7): a row from before plays were recorded counts on its graded total', () => {
     const s = stateAt(7);
     s.sessions = [{ date: iso(1), rounds: 45, graded: 60, correct: 60, bankrollDelta: 0 }];
+    const l = ladder(s, ctxFor(7));
+    expect(l.rungs[6]!.passed).toBe(true);
+    expect(l.rungs[6]!.progress).toBe('Best recent: 60/60 play decisions');
+    s.sessions = [{ date: iso(1), rounds: 45, graded: 60, correct: 50, bankrollDelta: 0 }];
+    expect(ladder(s, ctxFor(7)).rungs[6]!.passed).toBe(false);
+  });
+
+  it('rung 7 (C-R7): a new row with plays is judged on plays, not its graded total', () => {
+    const s = stateAt(7);
+    s.sessions = [{ date: iso(1), rounds: 45, graded: 60, correct: 60, bankrollDelta: 0, plays: 0, playsCorrect: 0 }];
     expect(ladder(s, ctxFor(7)).rungs[6]!.passed).toBe(false);
   });
 
