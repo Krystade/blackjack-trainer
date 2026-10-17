@@ -35,7 +35,7 @@ test('it is reachable from every screen, including the immersive ones', async ({
   // The table stands the tab bar down and owns the whole viewport. A
   // per-screen button would be missing here, which is the case that matters:
   // it is the screen that talks the most.
-  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.getByRole('button', { name: 'Play a shoe', exact: true }).click();
   await expect(page.locator(MUTE)).toBeVisible();
 
   await page.locator('.end-btn').click(); // arms: the second tap ends

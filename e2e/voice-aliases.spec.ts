@@ -168,7 +168,7 @@ test('a taught word is then heard as that command', async ({ page }) => {
 
   // Into a drill, with the microphone on.
   await page.getByRole('button', { name: 'Back to Home' }).click();
-  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.getByRole('button', { name: 'Play a shoe', exact: true }).click();
   await page.locator('.voice-btn').click();
   await expect(page.locator('.voice-status')).toHaveAttribute(
     'data-voice-state',

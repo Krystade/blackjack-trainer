@@ -67,7 +67,7 @@ test('the served version document carries the build date too', async ({ page }) 
 test('it stays out of the way of the primary action', async ({ page }) => {
   await page.goto('/?e2e=1');
 
-  const play = await page.getByRole('button', { name: 'Play a shoe' }).boundingBox();
+  const play = await page.getByRole('button', { name: 'Play a shoe', exact: true }).boundingBox();
   const build = await page.locator('.home-build').boundingBox();
 
   // Below the play button, never competing with it.

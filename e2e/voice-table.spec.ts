@@ -51,7 +51,7 @@ async function withFakeEngine(page: Page): Promise<void> {
 async function openTableWithVoice(page: Page): Promise<void> {
   await withFakeEngine(page);
   await page.goto('/?seed=102&e2e=1');
-  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.getByRole('button', { name: 'Play a shoe', exact: true }).click();
   await page.locator('.voice-btn').click();
   await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');
 }
@@ -71,7 +71,7 @@ async function spoken(page: Page): Promise<string[]> {
 test('the microphone is off until it is asked for, and shows when it is on', async ({ page }) => {
   await withFakeEngine(page);
   await page.goto('/?seed=102&e2e=1');
-  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.getByRole('button', { name: 'Play a shoe', exact: true }).click();
 
   // Nothing may open the microphone except the operator.
   await expect(page.locator('.voice-status')).toHaveCount(0);
@@ -224,7 +224,7 @@ test('voice stays on across a navigation, because forgetting it looks like a fai
 }) => {
   await withFakeEngine(page);
   await page.goto('/?seed=102&e2e=1');
-  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.getByRole('button', { name: 'Play a shoe', exact: true }).click();
   await page.locator('.voice-btn').click();
   await expect(page.locator('.voice-btn')).toHaveAttribute('aria-pressed', 'true');
 
@@ -234,7 +234,7 @@ test('voice stays on across a navigation, because forgetting it looks like a fai
   await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   // F22: nothing was dealt, so End goes straight Home with no report.
-  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.getByRole('button', { name: 'Play a shoe', exact: true }).click();
 
   await expect(page.locator('.voice-btn')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.voice-status')).toBeVisible();
@@ -243,14 +243,14 @@ test('voice stays on across a navigation, because forgetting it looks like a fai
 test('turning it off stays off across a navigation too', async ({ page }) => {
   await withFakeEngine(page);
   await page.goto('/?seed=102&e2e=1');
-  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.getByRole('button', { name: 'Play a shoe', exact: true }).click();
   await page.locator('.voice-btn').click();
   await page.locator('.voice-btn').click();
 
   await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   // F22: nothing was dealt, so End goes straight Home with no report.
-  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.getByRole('button', { name: 'Play a shoe', exact: true }).click();
 
   // Vacuity guard for the test above: if the toggle simply reported "on"
   // whatever happened, this would fail.
@@ -261,11 +261,11 @@ test('turning it off stays off across a navigation too', async ({ page }) => {
 test('a reload starts with the microphone closed, whatever the last run did', async ({ page }) => {
   await withFakeEngine(page);
   await page.goto('/?seed=102&e2e=1');
-  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.getByRole('button', { name: 'Play a shoe', exact: true }).click();
   await page.locator('.voice-btn').click();
   await expect(page.locator('.voice-btn')).toHaveAttribute('aria-pressed', 'true');
 
   await page.reload();
-  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.getByRole('button', { name: 'Play a shoe', exact: true }).click();
   await expect(page.locator('.voice-btn')).toHaveAttribute('aria-pressed', 'false');
 });

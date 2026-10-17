@@ -265,6 +265,8 @@ test('hit targets are at least 44px', async ({ page }) => {
   };
 
   await tall('.home-stats-link', 'Home All stats');
+  await tall('.ladder-row', 'Home ladder row');
+  await tall('.next-step-btn', 'Home Start');
   await tall(MUTE, 'mute');
 
   // Stats tabs and range chips.

@@ -49,15 +49,13 @@ test('without a sweep on record, Mastery is next', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'Next step' })).toHaveAttribute('data-step', 'mastery');
 });
 
-/* s02 (review): Home confirms the goal once every category has met it. */
-test('once all three categories meet the goal, Home says so instead of listing them', async ({ page }) => {
+/* s02 (review) / B2: once every category meets the goal, the basic rung is a done row, not a list. */
+test('once all three categories meet the goal, the basic rung is ticked and the list goes', async ({ page }) => {
   await seedStats(page, STRONG);
   await page.goto('/?e2e=1');
   const card = page.getByRole('region', { name: 'Next step' });
   await expect(card).toHaveAttribute('data-step', 'mastery');
-  await expect(card.getByTestId('basic-goal-met')).toHaveText(
-    '✓ Basic strategy goal met (hard 100%, soft 100%, pairs 100%)',
-  );
+  await expect(card.locator('[data-rung="basic"]')).toHaveAttribute('data-state', 'done');
   await expect(card.locator('.next-step-progress')).toHaveCount(0);
 });
 
@@ -141,5 +139,6 @@ test('Start is the one primary button; Play a shoe steps back, and goes when it 
   );
   await page.reload();
   await expect(page.getByRole('region', { name: 'Next step' })).toHaveAttribute('data-step', 'play');
+  await expect(page.getByRole('region', { name: 'Next step' })).toHaveAttribute('data-card', 'rung');
   await expect(page.locator('.home-play-btn')).toHaveCount(0);
 });
