@@ -12,3 +12,15 @@
 .checkpoint-result-final {
   margin-top: 0.4rem;
 }
+
+/* Wave A (s04): each checkpoint row leads with its verdict in the row's own
+   colour (right / off by), and the why sits after it, quieter. */
+.checkpoint-result-list .checkpoint-verdict,
+.checkpoint-result-final .checkpoint-verdict {
+  font-weight: 600;
+}
+
+.checkpoint-result-list .checkpoint-detail,
+.checkpoint-result-final .checkpoint-detail {
+  color: var(--ink-dim);
+}

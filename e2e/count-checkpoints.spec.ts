@@ -35,6 +35,22 @@ async function advanceUntil(page: Page, until: () => Promise<boolean>, maxTaps: 
 }
 
 const checkpointArea = (page: Page) => page.locator('.checkpoint-area');
+
+/**
+ * Wave A (s04): the read-back and the result print signed numbers with a real
+ * minus sign ("+2", "−2", "0"). Parse either sign, and format the same way.
+ */
+const SIGNED = '([+−-]?\\d+)';
+const parseSigned = (s: string | undefined) => Number((s ?? '').replace('−', '-').replace('+', ''));
+const fmt = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
+/** The true running count from the result line. */
+const finalCount = (detail: string) => parseSigned(new RegExp(`running count was ${SIGNED}`).exec(detail)?.[1]);
+/** A first-stop row: "Cards 1–6: right. You said 0; it was +2." */
+const readRow = (text: string) => ({
+  said: parseSigned(new RegExp(`You said ${SIGNED}`).exec(text)?.[1]),
+  was: parseSigned(new RegExp(`it was ${SIGNED}`).exec(text)?.[1]),
+  after: Number(/^Cards? (?:\d+–)?(\d+):/.exec(text)?.[1]),
+});
 const ok = (page: Page) => page.getByRole('button', { name: 'OK', exact: true });
 
 /** Type `n` (0-99, no sign) into whichever NumPad is on screen and submit. */
@@ -105,7 +121,7 @@ test('RT#12: a wrong checkpoint under a RIGHT final count is called out as error
   await advanceUntil(page, () => ok(page).isVisible(), 12);
   await ok(page).click();
   const detail = await page.locator('.result-detail').innerText();
-  const actual = Number(/running count was (-?\d+)/.exec(detail)?.[1]);
+  const actual = finalCount(detail);
   expect(Number.isFinite(actual), `unparsed result detail: ${detail}`).toBe(true);
 
   // Pass two, same shoe: drift at the checkpoint, then land the final count.
@@ -141,6 +157,8 @@ test('a wrong final count is not called a cancellation -- it is just wrong', asy
   await expect(page.locator('.checkpoint-result-segment')).toBeVisible();
 });
 
+// Wave A (s04): the row now leads with a stretch verdict; the first stop still
+// states both numbers, and the words must agree with the colour.
 test('the read-back states both numbers, and its colour agrees with them', async ({ page }) => {
   await withSettings(page, { drill: { ...SHORT_RUN, countCheckpoints: 'one' } });
   await openCountDrill(page);
@@ -153,9 +171,7 @@ test('the read-back states both numbers, and its colour agrees with them', async
   const row = page.locator('.checkpoint-result-list li');
   await expect(row).toHaveCount(1);
   const text = await row.innerText();
-  const said = Number(/you said (-?\d+)/.exec(text)?.[1]);
-  const was = Number(/it was (-?\d+)/.exec(text)?.[1]);
-  const after = Number(/After (\d+) cards/.exec(text)?.[1]);
+  const { said, was, after } = readRow(text);
   expect(said).toBe(0);
   // Vacuity guards: a blank or unparsed row would satisfy a laxer assertion.
   expect(Number.isFinite(was), `unparsed read-back: ${text}`).toBe(true);
@@ -164,6 +180,8 @@ test('the read-back states both numbers, and its colour agrees with them', async
 
   // A green row over a mismatch would be worse than no row at all.
   expect(await row.getAttribute('class')).toBe(said === was ? 'checkpoint-hit' : 'checkpoint-miss');
+  // And the words say the same as the colour.
+  expect(text).toContain(said === was ? ': right.' : `: off by ${fmt(said - was)}.`);
   await expect(page.locator('.checkpoint-result-segment')).toHaveCount(said === was ? 0 : 1);
 });
 
@@ -249,8 +267,8 @@ test('the checkpoint is graded against the cards actually shown', async ({ page 
 
   expect(found, 'no pinned shoe produced a non-zero count at its checkpoint').not.toBeNull();
   const text = await page.locator('.checkpoint-result-list li').innerText();
-  expect(text).toContain(`After ${found!.seen} cards`);
-  expect(text).toContain(`it was ${found!.count}`);
+  expect(readRow(text).after).toBe(found!.seen);
+  expect(text).toContain(`it was ${fmt(found!.count)}`);
 });
 
 test('screenshots: the checkpoint prompt and its read-back', async ({ page }) => {
@@ -284,9 +302,8 @@ test('#46: after an off-by-one checkpoint, a cleanly counted last stretch is gra
   await advanceUntil(page, () => ok(page).isVisible(), 12);
   await ok(page).click();
   const rowText = await page.locator('.checkpoint-result-list li').innerText();
-  const atCheckpoint = Number(/it was (-?\d+)/.exec(rowText)?.[1]);
-  const seen = Number(/After (\d+) cards/.exec(rowText)?.[1]);
-  const final = Number(/running count was (-?\d+)/.exec(await page.locator('.result-detail').innerText())?.[1]);
+  const { was: atCheckpoint, after: seen } = readRow(rowText);
+  const final = finalCount(await page.locator('.result-detail').innerText());
   expect(Number.isFinite(atCheckpoint) && Number.isFinite(final) && seen > 0).toBe(true);
 
   // Pass two, same shoe: one high at the checkpoint, and the stretch after it
@@ -299,12 +316,16 @@ test('#46: after an off-by-one checkpoint, a cleanly counted last stretch is gra
 
   // Absolute verdict: wrong.
   await expect(page.locator('.result-wrong')).toBeVisible();
-  // Adjusted last stretch: right, and it says what it was graded from.
-  const fmt = (n: number) => (n > 0 ? `+${n}` : String(n));
+  // Adjusted last stretch: right, over the cards after the stop, and it says
+  // why in the stretch's own terms (Wave A s04: no "graded from ... adjusted").
   const last = page.locator('.checkpoint-result-final');
   await expect(last).toHaveClass(/checkpoint-hit/);
-  await expect(last).toContainText('Last stretch: right');
-  await expect(last).toContainText(`graded from your ${fmt(atCheckpoint + 1)} at card ${seen} (adjusted)`);
+  const cards = seen + 1 === 10 ? 'card 10' : `cards ${seen + 1}–10`;
+  await expect(last).toContainText(`Last stretch (${cards}): right.`);
+  const move = final - atCheckpoint;
+  await expect(last).toContainText(
+    move === 0 ? 'Your count stayed put, as the cards did.' : `Your count moved ${fmt(move)}, as the cards did.`,
+  );
 });
 
 test('#46: a last stretch counted wrong is graded wrong, even when the final count is right', async ({
@@ -318,8 +339,8 @@ test('#46: a last stretch counted wrong is graded wrong, even when the final cou
   await advanceUntil(page, () => ok(page).isVisible(), 12);
   await ok(page).click();
   const rowText = await page.locator('.checkpoint-result-list li').innerText();
-  const atCheckpoint = Number(/it was (-?\d+)/.exec(rowText)?.[1]);
-  const final = Number(/running count was (-?\d+)/.exec(await page.locator('.result-detail').innerText())?.[1]);
+  const { was: atCheckpoint } = readRow(rowText);
+  const final = finalCount(await page.locator('.result-detail').innerText());
 
   await page.getByRole('button', { name: 'New run', exact: true }).click();
   await advanceUntil(page, () => checkpointArea(page).isVisible(), 12);
@@ -329,5 +350,6 @@ test('#46: a last stretch counted wrong is graded wrong, even when the final cou
 
   await expect(page.locator('.result-correct')).toBeVisible();
   await expect(page.locator('.checkpoint-result-final')).toHaveClass(/checkpoint-miss/);
-  await expect(page.locator('.checkpoint-result-final')).toContainText('Last stretch: wrong');
+  // Two high at the stop, then the right final count: the stretch dropped 2.
+  await expect(page.locator('.checkpoint-result-final')).toContainText(/Last stretch \(cards? [\d–]+\): off by −2\./);
 });

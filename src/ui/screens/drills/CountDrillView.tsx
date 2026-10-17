@@ -65,14 +65,11 @@ import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
+import { cardsLabel, stretchLine } from '../../../drills/checkpointCopy';
 import './countDrillView.css';
 import { makeCountTable, tableRounds, TABLE_ROUND_CHOICES } from '../../../drills/countTable';
 import type { TableRound } from '../../../drills/countTable';
 import './countTable.css';
-
-function formatSigned(n: number): string {
-  return n > 0 ? `+${n}` : String(n);
-}
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -1635,18 +1632,25 @@ export function CountDrillView({
    * sweep of nothing.
    */
   /**
-   * #46: how a stretch after the first was graded, said in full. An adjusted
-   * grade that did not say so would read as a contradiction whenever it
-   * disagrees with "it was N" beside it.
+   * #46 / Wave A (s04): a stop's row, as a verdict on its stretch.
+   *
+   * It used to print the absolute "you said 1, it was 1" beside the ADJUSTED
+   * grade, so matching numbers showed in red; now the words lead with the
+   * same verdict the colour gives ("off by −2" / "right") and say why in the
+   * same terms. See drills/checkpointCopy.ts.
    */
-  const stretchNote = (g: GradedCheckpoint): ReactNode =>
-    g.from && (
-      <span className="checkpoint-adjusted">
-        {' '}
-        &mdash; expected {formatSigned(g.expected)}, graded from your {formatSigned(g.from.answer)} at card{' '}
-        {g.from.cardsShown} (adjusted)
-      </span>
+  const stretchRow = (g: GradedCheckpoint, lead?: string): ReactNode => {
+    const line = stretchLine(g);
+    const cards = cardsLabel(line);
+    return (
+      <>
+        <span className="checkpoint-verdict">
+          {lead ? `${lead} (${cards})` : cards.charAt(0).toUpperCase() + cards.slice(1)}: {line.verdict}.
+        </span>{' '}
+        <span className="checkpoint-detail">{line.detail}</span>
+      </>
     );
+  };
 
   const checkpointBlock = checkpointReport && (
     <div className="checkpoint-result">
@@ -1667,8 +1671,7 @@ export function CountDrillView({
       <ul className="checkpoint-result-list">
         {checkpointReport.results.map((r) => (
           <li key={r.atGroup} className={r.correct ? 'checkpoint-hit' : 'checkpoint-miss'}>
-            After {r.cardsShown} cards: you said {r.answer}, it was {r.actual}
-            {stretchNote(r)}
+            {stretchRow(r)}
           </li>
         ))}
       </ul>
@@ -1681,8 +1684,7 @@ export function CountDrillView({
             checkpointReport.finalStretch.correct ? 'checkpoint-hit' : 'checkpoint-miss'
           }`}
         >
-          Last stretch: {checkpointReport.finalStretch.correct ? 'right' : 'wrong'}
-          {stretchNote(checkpointReport.finalStretch)}
+          {stretchRow(checkpointReport.finalStretch, 'Last stretch')}
         </div>
       )}
     </div>
