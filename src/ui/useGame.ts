@@ -14,6 +14,7 @@ import { makePlayGame, realignLosingShoe, type PlayGame } from './losingShoe';
 import type { AudioApi } from '../audio/useAudio';
 import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverBets';
 import { mistakeUnits } from './reportSections';
+import { newSessionId, sessionRowFor, upsertSession } from './sessionRow';
 import {
   narrateBotAction,
   narrateCard,
@@ -316,19 +317,69 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
    * F1: graded events committed to Stats so far. Each round's events are
    * written as the round SETTLES (and a count check's as it is answered), so
    * a reload, an iOS eviction or leaving through the gear loses nothing that
-   * was already decided. End then writes only the session row (and whatever a
-   * round still in play had graded).
+   * was already decided.
+   *
+   * Wave B2, R1: in the same write, this session's row -- one per Table
+   * mount, keyed by `sessionIdRef` -- is upserted as provisional, so a shoe
+   * that is never ended (the car's normal case: iOS evicts the page) is still
+   * a session in Stats, and its rounds, events, row and bankroll can never
+   * disagree. End finalises the same row. F22: nothing is written before the
+   * first round.
    */
   const committedRef = useRef(0);
-  const commitEvents = useCallback(() => {
-    if (game.events.length <= committedRef.current) return;
-    const now = new Date().toISOString();
-    // #25: dated as they are committed, so Play's priced mistakes land in the
-    // cost-of-mistakes history inside a Stats time range, not only "all".
-    const fresh = datedSessionEvents(game.events.slice(committedRef.current), now);
-    committedRef.current = game.events.length;
-    saveStats(applyEvents(loadStats(), fresh, now));
-  }, [game]);
+  const sessionIdRef = useRef<string | null>(null);
+  sessionIdRef.current ??= newSessionId();
+  /** R7: peek reveals this session, counted here so the provisional row has them. */
+  const peeksRef = useRef(0);
+  const notePeek = useCallback(() => {
+    peeksRef.current += 1;
+  }, []);
+  /** What the last row write described, so an unchanged render writes nothing. */
+  const rowKeyRef = useRef('');
+  /** End has finalised the row; nothing may turn it provisional again. */
+  const endedRef = useRef(false);
+  const profileName = profile.name;
+  const profileId = profile.id;
+  // Wave B, B8: a Hot shoe session's bankroll is never written back.
+  const hotShoe = hotShoeActive(game.cfg, game.isRigged);
+
+  const persistSession = useCallback(
+    (final: boolean) => {
+      if (game.roundNo === 0 || endedRef.current) return;
+      const fresh = game.events.length > committedRef.current;
+      const key = `${game.roundNo}|${game.events.length}|${game.bankroll}|${peeksRef.current}|${final}`;
+      if (!fresh && key === rowKeyRef.current) return;
+      const now = new Date().toISOString();
+      let stats = loadStats();
+      if (fresh) {
+        // #25: dated as they are committed, so Play's priced mistakes land in
+        // the cost-of-mistakes history inside a Stats time range.
+        stats = applyEvents(stats, datedSessionEvents(game.events.slice(committedRef.current), now), now);
+        committedRef.current = game.events.length;
+      }
+      stats = upsertSession(
+        stats,
+        sessionRowFor({
+          id: sessionIdRef.current!,
+          date: now,
+          rounds: game.roundNo,
+          hands: game.handsPlayed,
+          events: game.events,
+          // From where THIS session started (#42), not the profile's original stake.
+          bankrollDelta: game.bankroll - game.cfg.bankrollStart,
+          profileId,
+          profileName,
+          peeks: peeksRef.current,
+          hotShoe,
+          provisional: !final,
+        }),
+      );
+      rowKeyRef.current = key;
+      if (final) endedRef.current = true;
+      saveStats(stats);
+    },
+    [game, profileId, profileName, hotShoe],
+  );
 
   /**
    * #42: write the bankroll back to the profile whenever an engine call has
@@ -342,12 +393,9 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
    * same rounds. An insurance loss mid-round is stored when the round settles.
    */
   const storedBankrollRef = useRef(game.bankroll);
-  const profileId = profile.id;
-  // Wave B, B8: a Hot shoe session's bankroll is never written back.
-  const hotShoe = hotShoeActive(game.cfg, game.isRigged);
   useEffect(() => {
     if (game.phase === 'player' || game.phase === 'insurance') return;
-    commitEvents();
+    persistSession(false);
     if (hotShoe) return;
     if (game.bankroll === storedBankrollRef.current) return;
     storedBankrollRef.current = game.bankroll;
@@ -650,7 +698,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       }
       // F1: the answer is graded now; commit it before the next deal starts
       // a round whose events wait for its settle.
-      commitEvents();
+      persistSession(false);
       // #36: the deal that was asked for happens right after the answer.
       const pending = pendingDealRef.current;
       pendingDealRef.current = null;
@@ -675,56 +723,26 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       bump();
       return { endNow: pending?.kind === 'end', check: { ...result, rcGuess: rc, tcGuess, round: roundAtCheck + 1 } };
     },
-    [game, bump, audio, runDeal, runSitOut, commitEvents],
+    [game, bump, audio, runDeal, runSitOut, persistSession],
   );
 
   /**
    * End the session. Returns null when nothing was played (F22): no rounds,
    * no report, and no session row. Otherwise commits whatever is still
-   * uncommitted (a round ended mid-play) and writes the session row only --
-   * the settled rounds' events are already in Stats (F1).
+   * uncommitted (a round ended mid-play) and finalises this session's row --
+   * the one the settled rounds have been keeping current (R1), never a second.
    */
-  const endSession = useCallback(
-    (peeks = 0): SessionReport | null => {
-      if (game.roundNo === 0) return null;
-      const now = new Date().toISOString();
-      commitEvents();
-      const events = game.events;
-      // From where THIS session started (#42), not the profile's original stake.
-      const bankrollDelta = game.bankroll - game.cfg.bankrollStart;
-      storedBankrollRef.current = game.bankroll;
-      if (!hotShoe) storeBankrollNow(profileId, game.bankroll);
-
-      const stats = loadStats();
-      saveStats({
-        ...stats,
-        sessions: [
-          ...stats.sessions,
-          {
-            date: now,
-            rounds: game.roundNo,
-            graded: events.length,
-            correct: events.filter((e) => e.correct).length,
-            bankrollDelta,
-            profileId: profile.id,
-            profileName: profile.name,
-            // R7: only persist the field when peeks actually happened, so a
-            // clean (0-peek) session's blob is byte-for-byte what it was pre-R7.
-            ...(peeks > 0 ? { peeks } : {}),
-            // Wave B, B6: per-100 inputs.
-            hands: game.handsPlayed,
-            mistakeUnits: Math.round(mistakeUnits(events) * 10000) / 10000,
-            ...(hotShoe ? { hotShoe: true as const } : {}),
-          },
-        ],
-      });
-
-      const rep = { ...buildReport(events, bankrollDelta, peeks, game.handsPlayed), hotShoe };
-      setReport(rep);
-      return rep;
-    },
-    [game, profile.id, profile.name, profileId, commitEvents, hotShoe],
-  );
+  const endSession = useCallback((): SessionReport | null => {
+    if (game.roundNo === 0) return null;
+    persistSession(true);
+    const events = game.events;
+    const bankrollDelta = game.bankroll - game.cfg.bankrollStart;
+    storedBankrollRef.current = game.bankroll;
+    if (!hotShoe) storeBankrollNow(profileId, game.bankroll);
+    const rep = { ...buildReport(events, bankrollDelta, peeksRef.current, game.handsPlayed), hotShoe };
+    setReport(rep);
+    return rep;
+  }, [game, profileId, persistSession, hotShoe]);
 
   return {
     game,
@@ -740,6 +758,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     dismissOverlay,
     report,
     endSession,
+    notePeek,
     botNarrationRevealed,
     fastForwardNarration,
     dealAnimating,

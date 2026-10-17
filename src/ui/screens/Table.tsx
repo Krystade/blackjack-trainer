@@ -411,6 +411,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     dismissOverlay,
     report,
     endSession,
+    notePeek,
     botNarrationRevealed,
     fastForwardNarration,
     sitOut,
@@ -440,8 +441,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const [showChart, setShowChart] = useState(false);
 
   // R7 (docs/BACKLOG.md, count-peek accountability): one per reveal, so the
-  // session report / Stats can flag a peek-assisted accuracy.
-  const [peeks, setPeeks] = useState(0);
+  // session report / Stats can flag a peek-assisted accuracy. Counted in
+  // useGame (B2, R1), so the provisional session row carries them too.
   /**
    * #40: HOLD to show, release to hide (spec 2026-10-13). It was a toggle,
    * which left the count latched on screen; a hold makes every look at the
@@ -450,7 +451,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
    * repeat) lives in PeekButton.
    */
   const revealPeek = () => {
-    setPeeks((n) => n + 1);
+    notePeek();
     setPeeking(true);
   };
   const hidePeek = () => setPeeking(false);
@@ -719,7 +720,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
 
   function finishSession() {
     // F22: nothing was dealt, so there is nothing to report or to keep.
-    if (endSession(peeks) === null) {
+    if (endSession() === null) {
       onNavigate('home');
       return;
     }
