@@ -340,3 +340,10 @@ describe('evCostSummary (V3-8: where the units went)', () => {
     expect(summary.worst[0]!.unitsTotal).toBe(0.3);
   });
 });
+
+describe('signedErrorBreakdown: Wave A (s05) graded-correct rows are exact', () => {
+  it('counts a correct round-tie answer as exact, not too low', () => {
+    expect(signedErrorBreakdown([{ guess: 0, correctTc: 1, correct: true }])).toEqual({ tooHigh: 0, tooLow: 0, exact: 1 });
+    expect(signedErrorBreakdown([{ guess: 0, correctTc: 1, correct: false }])).toEqual({ tooHigh: 0, tooLow: 1, exact: 0 });
+  });
+});

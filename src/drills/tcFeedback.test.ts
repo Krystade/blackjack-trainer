@@ -52,3 +52,15 @@ describe('tcConventionNote (#54)', () => {
     expect(signedTc(2)).toBe('+2');
   });
 });
+
+describe('Wave A (s05): an exact half under round', () => {
+  it('names both accepted answers, so the verdict never sits above a different number', () => {
+    expect(tcWorking(2, 4, 'round')).toBe('+2 ÷ 4 = 0.5, an exact half → 0 or +1');
+    expect(tcWorking(-3, 2, 'round')).toBe('−3 ÷ 2 = −1.5, an exact half → −2 or −1');
+    expect(gradeTcConversion(0, 2, 4, 'round')).toBe(true);
+    expect(gradeTcConversion(1, 2, 4, 'round')).toBe(true);
+  });
+  it('leaves floor/truncate halves alone', () => {
+    expect(tcWorking(2, 4, 'floor')).toBe('+2 ÷ 4 = 0.5 → floor 0');
+  });
+});

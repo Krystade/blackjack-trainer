@@ -78,7 +78,7 @@ export interface SignedErrorBreakdown {
  * one of the three buckets.
  */
 export function signedErrorBreakdown(
-  history: { guess?: number; correctTc: number }[],
+  history: { guess?: number; correctTc: number; correct?: boolean }[],
 ): SignedErrorBreakdown {
   let tooHigh = 0;
   let tooLow = 0;
@@ -90,7 +90,11 @@ export function signedErrorBreakdown(
     // admitted miss into a perfect hit -- which is the opposite of what
     // this breakdown is for.
     if (h.guess === undefined) continue;
-    if (h.guess > h.correctTc) tooHigh += 1;
+    // Wave A (s05 high): a row GRADED correct is exact, whatever the stored
+    // correctTc says. An exact half under 'round' accepts both neighbours, so
+    // a correct 0 against a stored +1 was counted "too low" beside "100%".
+    if (h.correct === true) exact += 1;
+    else if (h.guess > h.correctTc) tooHigh += 1;
     else if (h.guess < h.correctTc) tooLow += 1;
     else exact += 1;
   }

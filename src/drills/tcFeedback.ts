@@ -54,6 +54,13 @@ export function tcWorking(runningCount: number, decksRemaining: number, rounding
   const decks = Math.max(0.5, decksRemaining);
   const exact = runningCount / decks;
   const answer = trueCount(runningCount, decksRemaining, rounding);
+  // Wave A (s05 high): an exact half under 'round' accepts BOTH neighbours
+  // (gradeTcConversion's tie branch). Printing only one put "Correct!" above
+  // a different number than the one entered.
+  if (rounding === 'round' && Math.abs(exact - Math.trunc(exact)) === 0.5) {
+    const lo = Math.floor(exact);
+    return `${signedTc(runningCount)} ÷ ${plain(decks)} = ${plain(exact)}, an exact half → ${signedTc(lo)} or ${signedTc(lo + 1)}`;
+  }
   return `${signedTc(runningCount)} ÷ ${plain(decks)} = ${plain(exact)} → ${rounding} ${signedTc(answer)}`;
 }
 
