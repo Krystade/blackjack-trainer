@@ -11,7 +11,8 @@
 import { warmOfflineCache, type CacheLike, type WarmProgress, type WarmResult } from './warmCache';
 import { shellUrls, clipUrlsFor } from './offlineAssets';
 
-export const OFFLINE_CACHE = 'bjtrainer-offline-v1';
+// Must match CACHE in public/sw.js (serviceWorker.test.ts checks).
+export const OFFLINE_CACHE = 'bjtrainer-offline-v2';
 
 export interface FlightWarmDeps {
   documentUrl: string;

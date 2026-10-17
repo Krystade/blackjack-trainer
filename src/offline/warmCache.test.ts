@@ -85,6 +85,41 @@ describe('warmOfflineCache', () => {
     expect(result.cached).toBe(2);
   });
 
+  it('always refetches the JSON manifests and the web manifest, even when stored', async () => {
+    // F8: the clip manifest changes under its own name when clips are
+    // regenerated. Skipping it because a copy exists froze the voice at the
+    // day it was first saved, and new phrases fell back to the iOS voice.
+    const cache = fakeCache();
+    const stored = [
+      'https://x/clips/index.json',
+      'https://x/clips/af_bella/manifest.json',
+      'https://x/manifest.webmanifest',
+      'https://x/clips/af_bella/a.mp3',
+    ];
+    for (const u of stored) cache.stored.set(u, 1);
+    const fetchFn = vi.fn(async (_url: string) => okResponse(7));
+
+    const result = await warmOfflineCache({ urls: stored, cache, fetchFn });
+
+    expect(fetchFn.mock.calls.map((c) => c[0]).sort()).toEqual(stored.slice(0, 3).sort());
+    expect(cache.stored.get('https://x/clips/af_bella/manifest.json')).toBe(7);
+    expect(result.cached).toBe(4);
+  });
+
+  it('keeps the stored manifest when the refetch fails', async () => {
+    const cache = fakeCache();
+    cache.stored.set('https://x/clips/index.json', 1);
+    const result = await warmOfflineCache({
+      urls: ['https://x/clips/index.json'],
+      cache,
+      fetchFn: async () => {
+        throw new Error('offline');
+      },
+    });
+    expect(result.failed).toEqual([]);
+    expect(result.cached).toBe(1);
+  });
+
   it('holds the number of open requests down', async () => {
     /*
      * 615 simultaneous fetches on airport wifi is how a download takes longer

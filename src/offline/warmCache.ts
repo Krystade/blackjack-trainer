@@ -53,6 +53,16 @@ export interface WarmOptions {
 
 const DEFAULT_CONCURRENCY = 6;
 
+/**
+ * The clip voice list, each voice's manifest and the web manifest: small files
+ * whose CONTENT changes under the same url. Everything else saved here is a
+ * hashed asset or a recording, which never does.
+ */
+export function changesUnderSameName(url: string): boolean {
+  const path = url.split(/[?#]/)[0] ?? url;
+  return path.endsWith('.json') || path.endsWith('.webmanifest');
+}
+
 export async function warmOfflineCache(opts: WarmOptions): Promise<WarmResult> {
   const { urls, cache, fetchFn, onProgress } = opts;
   const total = urls.length;
@@ -77,13 +87,29 @@ export async function warmOfflineCache(opts: WarmOptions): Promise<WarmResult> {
       try {
         // Already there: the second press of the button costs nothing, which
         // is the difference between a usable button and a trap on a metered
-        // connection.
-        if (await cache.match(url)) {
+        // connection. EXCEPT the few small files that change under their own
+        // name (F8): those are refetched, and the stored copy stands if the
+        // refetch fails.
+        const had = Boolean(await cache.match(url));
+        if (had && !changesUnderSameName(url)) {
           cached += 1;
           advance();
           continue;
         }
-        const res = await fetchFn(url);
+        let res: Response;
+        try {
+          res = await fetchFn(url);
+        } catch (e) {
+          if (!had) throw e;
+          cached += 1;
+          advance();
+          continue;
+        }
+        if (!res.ok && had) {
+          cached += 1;
+          advance();
+          continue;
+        }
         if (!res.ok) {
           // A stored error page is served later AS AUDIO. Not downloading is
           // recoverable; storing the server's apology is not.
