@@ -10,7 +10,7 @@ import { isIndexActive, indexSetFor } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
 import { drawFlashcard, flashCtx } from '../../drills/flashcards';
 import { flashOptionsFor } from '../../drills/flashOptions';
-import { indexLine } from '../../drills/withCount';
+import { indexLine, indexPickerText } from '../../drills/withCount';
 import { DealToggles } from './drills/DealToggles';
 import { plainCellLabel } from '../../drills/cellLabel';
 import { formatReviewPlain } from '../../drills/srStatus';
@@ -92,6 +92,7 @@ import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession'
 import { useEyesFreeToggle } from '../eyesFreeSession';
 import { useWheelCommand } from '../useWheelCommand';
 import './drills/drillTiming.css';
+import './drills/drillActionBar.css';
 
 interface DrillsProps {
   settings: Settings;
@@ -731,8 +732,12 @@ function FlashcardsView({
         {
           cellId,
           sr: srText ? { text: srText, box: srCard?.box } : null,
-          // #53: a With-count card says whether an index applied.
-          ...(card.tc !== undefined ? { indexNote: indexLine(event, activeProfile.rules) } : {}),
+          // #53: a With-count card says whether an index applied. Wave A (s03):
+          // not on a missed index -- the miss line already names it, and the
+          // second copy only added height.
+          ...(card.tc !== undefined && !(event.deviationId && !event.correct)
+            ? { indexNote: indexLine(event, activeProfile.rules, { cards: card.cards, up: card.up, ctx: flashCtx(card) }) }
+            : {}),
         },
       ),
       event,
@@ -1976,7 +1981,7 @@ function DeviationQuizView({
             <option value="all">All indices</option>
             {indexList.map((d) => (
               <option key={d.id} value={d.id} disabled={!d.active}>
-                {d.label}
+                {indexPickerText(d)}
                 {!d.active ? ' (inactive for this profile)' : ''}
               </option>
             ))}

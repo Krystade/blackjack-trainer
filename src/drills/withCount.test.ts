@@ -5,7 +5,7 @@ import { DEFAULT_RULES } from '../engine/ruleset';
 import { correctPlay } from '../engine/strategy';
 import { drawFlashcard } from './flashcards';
 import { FULL_CTX } from './fallbackHand';
-import { drawCountTc, indexLine, reachableIndexes, PLAIN_MIN, PLAIN_MAX, TC_MIN, TC_MAX } from './withCount';
+import { drawCountTc, indexLine, indexPickerText, reachableIndexes, PLAIN_MIN, PLAIN_MAX, TC_MIN, TC_MAX } from './withCount';
 
 const hand = (...ranks: string[]): Card[] => ranks.map((rank) => ({ rank, suit: 's' }) as Card);
 const NO_LS = { ...DEFAULT_RULES, ls: false };
@@ -47,6 +47,19 @@ describe('#53 indexLine', () => {
   it('names the index that applied, or says none did', () => {
     expect(indexLine(correctPlay(hand('10', '6'), '10', 0, FULL_CTX, NO_LS), NO_LS)).toBe('Index: 16 v 10: stand at TC ≥ 0');
     expect(indexLine(correctPlay(hand('10', '6'), '10', -1, FULL_CTX, NO_LS), NO_LS)).toBe('No index here');
+  });
+  it('Wave A: on an index cell short of its index, names the index instead of "No index here"', () => {
+    const h = { cards: hand('4', '8'), up: '2' as const, ctx: FULL_CTX };
+    expect(indexLine(correctPlay(h.cards, h.up, 0, FULL_CTX, NO_LS), NO_LS, h)).toBe(
+      'Index not reached at this count: 12 v 2: stand at TC ≥ +3',
+    );
+    const none = { cards: hand('10', 'K'), up: '4' as const, ctx: FULL_CTX };
+    expect(indexLine(correctPlay(none.cards, none.up, 0, FULL_CTX, NO_LS), NO_LS, none)).toBe('No index here');
+  });
+  it('Wave A: the picker text carries no threshold', () => {
+    expect(indexPickerText({ label: '9 v 2: double at TC ≥ +1', kind: 'hard', action: 'double' })).toBe('9 v 2 (double)');
+    expect(indexPickerText({ label: '15 v 10: surrender at TC ≥ 0', kind: 'surrender', action: 'surrender' })).toBe('15 v 10 (surrender)');
+    expect(indexPickerText({ label: 'Insurance: take at TC ≥ +3', kind: 'insurance', action: 'take-insurance' })).toBe('Insurance');
   });
 });
 

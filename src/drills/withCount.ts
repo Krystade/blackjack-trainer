@@ -60,9 +60,35 @@ export function drawCountTc(
   return intIn(rng, PLAIN_MIN, PLAIN_MAX);
 }
 
-/** The result strip's line for a With-count card: which index applied. */
-export function indexLine(advice: Pick<Advice, 'deviationId' | 'reason'>, rules: StrategyRules): string {
-  if (!advice.deviationId) return 'No index here';
+/**
+ * The result strip's line for a With-count card: which index applied.
+ *
+ * Wave A (s03): with the hand given, a cell that HAS an index the count has
+ * not reached says so -- "No index here" on 12 v 2 at +0 told a learner the
+ * cell had no index while the chart showed a corner mark on it.
+ */
+export function indexLine(
+  advice: Pick<Advice, 'deviationId' | 'reason'>,
+  rules: StrategyRules,
+  hand?: { cards: Card[]; up: Rank; ctx: PlayContext },
+): string {
+  if (!advice.deviationId) {
+    const near = hand ? reachableIndexes(hand.cards, hand.up, hand.ctx, rules) : [];
+    if (near.length === 0) return 'No index here';
+    return `Index not reached at this count: ${near.map((d) => d.label).join('; ')}`;
+  }
   const dev = indexSetFor(rules).find((d) => d.id === advice.deviationId);
   return `Index: ${dev?.label ?? advice.reason}`;
+}
+
+/**
+ * Wave A (s03): the index picker's option text -- the hand (and the play, to
+ * tell 15 v 10 stand from 15 v 10 surrender) without the threshold. The full
+ * label stayed in the closed select above every question, so focused practice
+ * on one index printed its answer on screen.
+ */
+export function indexPickerText(dev: Pick<Deviation, 'label' | 'kind' | 'action'>): string {
+  if (dev.kind === 'insurance') return 'Insurance';
+  const hand = dev.label.split(':')[0]!.trim();
+  return `${hand} (${dev.action})`;
 }
