@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { mulberry32 } from '../../../engine/cards';
 import type { Profile, Settings } from '../../../store/types';
 import {
   appendBetSizingRow,
@@ -27,6 +28,21 @@ import './tcResultStrip.css';
 import './betSizing.css';
 import './betSizingTaken.css';
 import { BET_SIZING_DRILL, BET_SIZING_INTRO } from './betSizingCopy';
+import {
+  betPropositionLabel,
+  betPropositionRow,
+  betPropositionVerdictText,
+  narrateBetProposition,
+  narrateBetVerdict,
+  proposeBet,
+} from '../../../drills/wheelProposition';
+import { autoAdvanceDelayMs, spokenPauseFor } from '../../../drills/answerPause';
+import { cancelSpeech, speak } from '../../../audio/speech';
+import { speechOptsFrom } from '../../../audio/speechOpts';
+import { useEyesFreeToggle } from '../../eyesFreeSession';
+import { useWheelCommand } from '../../useWheelCommand';
+import { EyesFreeCheckbox } from './EyesFreeCheckbox';
+import './betProposition.css';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -38,6 +54,10 @@ interface Feedback {
   taken: BetAnswer;
   correct: BetAnswer;
   working: string;
+  /** C-R1: a yes/no on a proposed bet, when answered eyes-free. */
+  saidYes?: boolean;
+  /** The spoken verdict, for the wheel's "say it again". */
+  spoken?: string;
 }
 
 /**
@@ -46,17 +66,22 @@ interface Feedback {
  * rung of their own spread, or sits out. Grading is drills/betSizing.ts, which
  * calls the same engine functions Play does.
  *
- * Eyes-free is deliberately not read: there is no audio path beyond the ding,
- * so the screen renders the same either way.
+ * C-R1 (W9): eyes-free, the app PROPOSES a bet out loud ("Running count plus
+ * three. Two decks remaining. Bet four units?") and the wheel answers it --
+ * forward yes, back no -- graded and recorded like a tapped answer, with the
+ * verdict spoken. No microphone, no clock. Off eyes-free the screen is the
+ * rung grid it always was.
  */
 export function BetSizingView({
   settings,
   activeProfile,
   onBack,
+  onSettingsChange,
 }: {
   settings: Settings;
   activeProfile: Profile;
   onBack: () => void;
+  onSettingsChange?: (settings: Settings) => void;
 }) {
   const totalDecks = activeProfile.rules.decks;
   // #17: no tray deeper than this profile's cut card lets Play deal.
@@ -68,6 +93,59 @@ export function BetSizingView({
   );
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const resultShownAtRef = useRef(performance.now());
+  const [eyesFree, setEyesFree] = useEyesFreeToggle('bet-sizing');
+  // The proposal's own seed, drawn with each scenario, so a re-render never
+  // changes the bet already proposed.
+  const [proposalSeed, setProposalSeed] = useState(randomSeed);
+  const proposal = useMemo(
+    () => proposeBet(mulberry32(proposalSeed), scenarioTc(scenario, activeProfile.tcRounding), activeProfile),
+    [proposalSeed, scenario, activeProfile],
+  );
+  const advanceTimerRef = useRef<number | null>(null);
+  const clearAdvance = () => {
+    if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current);
+    advanceTimerRef.current = null;
+  };
+  useEffect(() => clearAdvance, []);
+  const say = (text: string) => speak(text, speechOptsFrom(settings.audio, { interrupt: true }));
+
+  // Eyes-free: propose each scenario's bet out loud.
+  useEffect(() => {
+    if (eyesFree && !feedback) say(narrateBetProposition(scenario, proposal.proposed));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenario, proposal, eyesFree]);
+
+  const nextScenario = () => {
+    clearAdvance();
+    setScenario(makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread, floor));
+    setProposalSeed(randomSeed());
+    setFeedback(null);
+  };
+
+  /** C-R1: yes (forward) or no (back) to the proposed bet. */
+  const answerProposal = (saidYes: boolean) => {
+    if (feedback) return;
+    const row = betPropositionRow(scenario, activeProfile, proposal.proposed, saidYes, new Date().toISOString());
+    saveStats(appendBetSizingRow(loadStats(), row));
+    audio.ding(row.ok ? 'good' : 'bad');
+    const spoken = narrateBetVerdict(row.ok, row.correct);
+    say(spoken);
+    resultShownAtRef.current = performance.now();
+    setFeedback({
+      id: Date.now(),
+      ok: row.ok,
+      taken: proposal.proposed,
+      correct: row.correct,
+      working: betSizingWorking(scenario, activeProfile),
+      saidYes,
+      spoken,
+    });
+    clearAdvance();
+    advanceTimerRef.current = window.setTimeout(() => {
+      advanceTimerRef.current = null;
+      nextScenario();
+    }, autoAdvanceDelayMs(settings.audio.answerPauseMs, spokenPauseFor(spoken, settings.audio.rate)));
+  };
 
   const answer = (taken: BetAnswer) => {
     // The grid stays mounted during the result; this guard is what keeps a
@@ -89,14 +167,30 @@ export function BetSizingView({
 
   const next = () => {
     if (answerTooSoon(resultShownAtRef.current)) return;
-    setScenario(makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread, floor));
-    setFeedback(null);
+    nextScenario();
+  };
+
+  const leave = () => {
+    clearAdvance();
+    if (eyesFree) cancelSpeech();
+    onBack();
   };
 
   const back = () => {
     if (answerTooSoon(resultShownAtRef.current)) return;
-    onBack();
+    leave();
   };
+
+  // C-R1: the wheel, eyes-free only. On a proposal both buttons answer it;
+  // on a verdict, forward goes on and back says it again.
+  useWheelCommand((command) => {
+    if (feedback) {
+      if (command === 'forward') nextScenario();
+      else if (feedback.spoken) say(feedback.spoken);
+      return;
+    }
+    answerProposal(command === 'forward');
+  }, eyesFree);
 
   // Keyboard: digit k answers options[k-1]; Enter/Space on the result = Next.
   useEffect(() => {
@@ -125,7 +219,7 @@ export function BetSizingView({
   return (
     <div className="drill-screen">
       <div className="drill-topbar">
-        <button type="button" className="drill-back-btn" onClick={onBack}>
+        <button type="button" className="drill-back-btn" onClick={leave}>
           Back
         </button>
         <div className="drill-heading">{BET_SIZING_DRILL}</div>
@@ -133,6 +227,18 @@ export function BetSizingView({
 
       <div className="settings-row settings-note-row">
         {BET_SIZING_INTRO}
+      </div>
+
+      <div className="settings-row bet-eyes-free-row">
+        <EyesFreeCheckbox
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+          eyesFree={eyesFree}
+          onChange={(on) => {
+            if (!on) clearAdvance();
+            setEyesFree(on);
+          }}
+        />
       </div>
 
       <div
@@ -146,6 +252,19 @@ export function BetSizingView({
         <div className="deck-tray-context">{scenario.totalDecks}-deck shoe</div>
       </div>
 
+      {eyesFree ? (
+        <div className="bet-proposition" data-testid="bet-proposition" data-proposed={String(proposal.proposed)}>
+          <div className="bet-proposition-ask">{betPropositionLabel(proposal.proposed)}</div>
+          <div className={`bet-proposition-answers${feedback ? ' bet-sizing-answers--done' : ''}`}>
+            <button type="button" className="bet-proposition-btn" disabled={!!feedback} onClick={() => answerProposal(false)}>
+              No
+            </button>
+            <button type="button" className="bet-proposition-btn" disabled={!!feedback} onClick={() => answerProposal(true)}>
+              Yes
+            </button>
+          </div>
+        </div>
+      ) : (
       <div
         className={`bet-sizing-answers${feedback ? ' bet-sizing-answers--done' : ''}`}
         aria-disabled={feedback ? 'true' : undefined}
@@ -162,13 +281,16 @@ export function BetSizingView({
           </button>
         ))}
       </div>
+      )}
 
       {feedback && (
         <>
           <div className="tc-strip-wrap">
             <ResultStrip id={feedback.id} tone={feedback.ok ? 'ok' : 'miss'}>
               <div className="bet-verdict">
-                {betVerdictText(feedback.taken, feedback.correct, feedback.ok)}
+                {feedback.saidYes === undefined
+                  ? betVerdictText(feedback.taken, feedback.correct, feedback.ok)
+                  : betPropositionVerdictText(feedback.taken, feedback.saidYes, feedback.correct, feedback.ok)}
               </div>
               <div className="bet-working">{feedback.working}</div>
               {activeProfile.coverBets && (

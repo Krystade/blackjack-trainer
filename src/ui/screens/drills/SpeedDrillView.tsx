@@ -25,6 +25,14 @@ import { focusSwallowsKey } from '../../keyboardFocus';
 import { HandDeckControls } from './HandDeckControls';
 import { HandDeckGate } from './HandDeckGate';
 import { handDeckFor } from './handDeckFor';
+import { narrateSpeedPrompt, narrateYesNoVerdict } from '../../../drills/wheelProposition';
+import { autoAdvanceDelayMs, spokenPauseFor } from '../../../drills/answerPause';
+import { useAudio } from '../../../audio/useAudio';
+import { cancelSpeech, speak } from '../../../audio/speech';
+import { speechOptsFrom } from '../../../audio/speechOpts';
+import { useEyesFreeToggle } from '../../eyesFreeSession';
+import { useWheelCommand } from '../../useWheelCommand';
+import { EyesFreeCheckbox } from './EyesFreeCheckbox';
 import './speedDrill.css';
 
 function randomSeed(): number {
@@ -61,7 +69,13 @@ function nothingToAsk(mode: SpeedMode, rulesLs: boolean): string {
  * #15 / #19: the yes/no Speed drill. One question per mode ("Surrender?",
  * "Deviation here?", "Double?", "Split?"), two big buttons, no Next: an
  * answer deals the next hand at once and the previous one's result shows in
- * the strip. Visual-only (no voice / wheel path), like Mastery.
+ * the strip.
+ *
+ * C-R1 (W9): eyes-free, the hand and question are SAID and the wheel answers
+ * them -- forward yes, back no -- with the verdict spoken and the next
+ * question after it. No microphone and no clock: a wheel press is not a
+ * reaction time, so eyes-free answers are scored but not timed. Off
+ * eyes-free the screen is exactly as it was.
  */
 export function SpeedDrillView({
   settings,
@@ -103,6 +117,16 @@ function SpeedSession({
   const [times, setTimes] = useState<number[]>([]);
   const shownAtRef = useRef(performance.now());
   const idRef = useRef(0);
+  const audio = useAudio(settings.audio);
+  const [eyesFree, setEyesFree] = useEyesFreeToggle('speed');
+  /** Eyes-free only: the verdict is being said; the next question waits. */
+  const feedbackRef = useRef<{ verdict: string; prev: string } | null>(null);
+  const advanceTimerRef = useRef<number | null>(null);
+  const clearAdvance = () => {
+    if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current);
+    advanceTimerRef.current = null;
+  };
+  useEffect(() => clearAdvance, []);
 
   // A new mode or deck is a new session.
   const sessionKey = `${mode}|${deck.source}|${deck.ids.join(',')}|${rules.ls}|${rules.s17}|${rules.surrenderIndices}|${rules.decks}|${rules.bjaExtras}`;
@@ -118,8 +142,30 @@ function SpeedSession({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKey]);
 
+  const say = (text: string) => speak(text, speechOptsFrom(settings.audio, { interrupt: true }));
+
+  // Eyes-free: say each question as it comes up (and on switching it on).
+  useEffect(() => {
+    if (!eyesFree) {
+      // Switched off over a verdict: go on, as the timer would have.
+      if (feedbackRef.current) nextAfterVerdict();
+      return;
+    }
+    if (question && !feedbackRef.current) say(narrateSpeedPrompt(question));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question, eyesFree]);
+
+  const nextAfterVerdict = () => {
+    const fb = feedbackRef.current;
+    if (!fb) return;
+    clearAdvance();
+    feedbackRef.current = null;
+    setQuestion(drawSpeedQuestion(mode, deck, rules, randomSeed(), fb.prev));
+    shownAtRef.current = performance.now();
+  };
+
   const answer = (saidYes: boolean) => {
-    if (!question) return;
+    if (!question || feedbackRef.current) return;
     // Review fix (c): a bounce's second touch lands on the next hand.
     if (answerTooSoon(shownAtRef.current)) return;
     const elapsedMs = performance.now() - shownAtRef.current;
@@ -131,11 +177,44 @@ function SpeedSession({
     idRef.current += 1;
     setLast({ id: idRef.current, q: question, saidYes, correct: event.correct });
     setScore((s) => ({ right: s.right + (event.correct ? 1 : 0), total: s.total + 1 }));
+    if (eyesFree) {
+      // The verdict, then the next question once it has been said (or at
+      // once on forward). Not timed: see the component comment.
+      const verdict = narrateYesNoVerdict(event.correct, question.answer);
+      audio.ding(event.correct ? 'good' : 'bad');
+      say(verdict);
+      feedbackRef.current = { verdict, prev: question.cellId };
+      clearAdvance();
+      advanceTimerRef.current = window.setTimeout(
+        nextAfterVerdict,
+        autoAdvanceDelayMs(settings.audio.answerPauseMs, spokenPauseFor(verdict, settings.audio.rate)),
+      );
+      return;
+    }
     // #30: idle answers are graded but not timed.
     if (event.elapsedMs !== undefined) setTimes((t) => [...t, event.elapsedMs!]);
     setQuestion(drawSpeedQuestion(mode, deck, rules, randomSeed(), question.cellId));
     shownAtRef.current = performance.now();
     releaseAnswerFocus();
+  };
+
+  // C-R1: the wheel, eyes-free only. Both buttons answer (there is no
+  // microphone here, so push-to-talk has nothing to open); on a verdict,
+  // forward goes on and back says it again.
+  useWheelCommand((command) => {
+    const fb = feedbackRef.current;
+    if (fb) {
+      if (command === 'forward') nextAfterVerdict();
+      else say(fb.verdict);
+      return;
+    }
+    answer(command === 'forward');
+  }, eyesFree);
+
+  const handleBack = () => {
+    clearAdvance();
+    if (eyesFree) cancelSpeech();
+    onBack();
   };
 
   useEffect(() => {
@@ -163,7 +242,7 @@ function SpeedSession({
   return (
     <div className="drill-screen speed-drill">
       <div className="drill-topbar">
-        <button type="button" className="drill-back-btn" onClick={onBack}>
+        <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
         </button>
         <div className="drill-heading">Speed</div>
@@ -193,6 +272,7 @@ function SpeedSession({
           ))}
         </div>
         <HandDeckControls settings={settings} onChange={onSettingsChange} />
+        <EyesFreeCheckbox settings={settings} onSettingsChange={onSettingsChange} eyesFree={eyesFree} onChange={setEyesFree} />
       </div>
 
       {question ? (

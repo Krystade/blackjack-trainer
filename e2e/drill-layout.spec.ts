@@ -264,11 +264,17 @@ test('Deviation quiz with voice on fits one screen', async ({ page }) => {
   await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Voice answers' }).check();
   await waitForMic(page);
-  // An insurance item has no hand to measure; draw until one has cards.
-  for (let i = 0; i < 20 && (await page.locator('.hand-cards').count()) === 0; i++) {
-    await page.getByRole('button', { name: 'Decline insurance', exact: true }).click();
-    await page.getByRole('button', { name: 'Next', exact: true }).click();
-  }
+  // An insurance item has no hand to measure; answer it until one has cards.
+  // C-R12: there is NO Next button to press here. B1's fast advance draws the
+  // next item inside the answer handler (Drills.tsx `advanceWithResult`), so
+  // the old `click Next` waited 30s for a button that never renders -- and
+  // failed exactly when the first item drawn happened to be insurance (2 in
+  // 20 under load), which is why it read as a flake rather than a fault.
+  await expect(async () => {
+    if ((await page.locator('.hand-cards').count()) > 0) return;
+    await page.getByRole('button', { name: 'Decline insurance', exact: true }).click({ timeout: 2_000 });
+    await expect(page.locator('.hand-cards')).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
   await expectAnswerableWithoutScrolling(page);
 });
 

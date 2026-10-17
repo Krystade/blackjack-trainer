@@ -49,6 +49,14 @@ import {
   narrateCountAnswer,
 } from '../src/audio/narrate';
 import { hiLoTag } from '../src/engine/count';
+import { SPEED_QUESTION } from '../src/drills/speedDrill';
+import { COUNT_PAUSED_LINE } from '../src/drills/countPause';
+import {
+  BET_UNIT_WORDS_MAX,
+  narrateBetQuestion,
+  narrateBetVerdict,
+  narrateYesNoVerdict,
+} from '../src/drills/wheelProposition';
 import type { GradedEvent } from '../src/engine/grade';
 
 const RANKS: Rank[] = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
@@ -273,6 +281,21 @@ export function drillSentences(): string[] {
   add(narrateTableCountPrompt('rc'));
   add(narrateTableCountPrompt('tc'));
   add(narrateResult('push', 0));
+  // C-R1: Speed and Bet sizing on the wheel -- the questions, the proposed
+  // bets and the verdicts. The hand and count sentences are the flashcard and
+  // true-count ones above; the deeper trays of a 7- and 8-deck shoe are not.
+  for (const q of Object.values(SPEED_QUESTION)) add(q);
+  for (const answer of [true, false]) add(narrateYesNoVerdict(false, answer));
+  add(narrateYesNoVerdict(true, true));
+  add(narrateBetQuestion('sit'));
+  add(narrateBetVerdict(false, 'sit'));
+  for (let units = 1; units <= BET_UNIT_WORDS_MAX; units++) {
+    add(narrateBetQuestion(units));
+    add(narrateBetVerdict(false, units));
+  }
+  for (const decks of [6.5, 7, 7.5, 8]) add(narrateTcQuestion(0, decks));
+  // C-R2: a count run paused from the wheel.
+  add(COUNT_PAUSED_LINE);
   // The Test kit's word step: its intro, order and spoken retry.
   add(CALIBRATION_INTRO);
   add(calibrationOrderLine());

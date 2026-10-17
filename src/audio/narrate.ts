@@ -70,7 +70,7 @@ const NUMBER_WORDS: Record<number, string> = {
 };
 
 /** Speak a non-negative integer as a word, falling back to digits beyond the known range. */
-function numberWord(n: number): string {
+export function numberWord(n: number): string {
   return NUMBER_WORDS[n] ?? String(n);
 }
 

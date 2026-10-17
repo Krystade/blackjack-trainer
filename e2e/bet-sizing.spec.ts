@@ -83,7 +83,9 @@ test('bet sizing: works by touch with eyes-free on', async ({ page }) => {
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();
   await page.locator('.drill-back-btn').click();
   await page.getByRole('button', { name: 'Bet sizing', exact: true }).click();
-  await page.locator('.bet-sizing-answers button').first().click();
+  // C-R1 (W9): eyes-free, the drill proposes a bet and is answered yes or no
+  // (the wheel's two buttons); the same two answers are on screen to tap.
+  await page.getByTestId('bet-proposition').getByRole('button', { name: 'Yes', exact: true }).click();
   await expect(page.getByTestId('result-strip')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
 });
