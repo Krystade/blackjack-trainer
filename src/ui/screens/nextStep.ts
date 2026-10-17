@@ -6,11 +6,11 @@ import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, WEAK_CELL_BELOW, goalPct, handCa
 import { cellWindow, countBits } from '../../store/cellStats';
 import type { HandCategoryProgress, WeakCell } from './handProgress';
 import type { HandScope } from '../../drills/handScope';
-import { activeIndices } from './readiness';
+import { MIN_INDEX_ANSWERS, activeIndices, indexPractised } from './readiness';
 import { COUNT_RUNS_JUDGED, COUNT_RUNS_NEEDED, countFluency } from '../../drills/fluencyGate';
 import type { IndexRules } from './readiness';
 import type { SrDeck } from '../../drills/spacedRepetition';
-import { PLAY_MIN_GRADED, REVIEW_DUE_MIN, betRampResult, deckTcResult, dueForReview, playResult, stalestSkill } from './ladderRules';
+import { PLAY_MIN_GRADED, REVIEW_DUE_MIN, betRampResult, deckTcResult, dueForReview, playResult, reviewIndexMin, stalestSkill } from './ladderRules';
 
 const DAY = 86_400_000;
 
@@ -90,7 +90,10 @@ export interface NextStep extends StartTarget {
    * three are met (every later step has them all on target).
    */
   progress?: HandCategoryProgress[];
+  /** R7: a 'review' step's due cells (kind 'flash'), handed to Flashcards in memory. */
   reviewCells?: string[];
+  /** R7: a 'review' step's due indexes (kind 'quiz'), handed to the quiz in memory. */
+  reviewIndexes?: string[];
 }
 
 export interface Ladder {
@@ -111,7 +114,7 @@ export interface LadderContext {
 // W3: the category and cell thresholds live with the shared figures Home and
 // Stats both read; re-exported here for the callers that already import them.
 export { MIN_CATEGORY_ANSWERS, CATEGORY_TARGET, MIN_CELL_ANSWERS, WEAK_CELL_BELOW } from './handProgress';
-export const MIN_INDEX_ANSWERS = 3;
+export { MIN_INDEX_ANSWERS } from './readiness';
 export const INDEX_TARGET = 0.9;
 // F15: one counting-fluency rule, shared with the Drills picker.
 export { COUNT_RUNS_JUDGED, COUNT_RUNS_NEEDED } from '../../drills/fluencyGate';
@@ -229,10 +232,7 @@ function repairCard(weak: readonly WeakCell[], sweepDone: boolean): Card | null 
 /** Rung 5: deviations (the Wave A rule, unchanged). */
 function deviationsCard(stats: Stats, rules?: IndexRules): Card | null {
   const active = activeIndices(rules);
-  const unpractised = active.filter((d) => {
-    const t = stats.perIndex[d.id];
-    return (t?.right ?? 0) + (t?.wrong ?? 0) < MIN_INDEX_ANSWERS;
-  });
+  const unpractised = active.filter((d) => !indexPractised(stats, d.id));
   if (unpractised.length > 0) {
     return {
       kind: 'quiz',
@@ -280,9 +280,8 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
   const bets = betRampResult(stats);
   const play = playResult(stats);
   const active = activeIndices(ctx.rules);
-  const practised = active.filter(
-    (d) => (stats.perIndex[d.id]?.right ?? 0) + (stats.perIndex[d.id]?.wrong ?? 0) >= MIN_INDEX_ANSWERS,
-  ).length;
+  // Wave B2 #10: the same figure as Home's readiness tile.
+  const practised = active.filter((d) => indexPractised(stats, d.id)).length;
 
   const playCard: Card = {
     kind: 'play',
@@ -377,18 +376,28 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
   // s02: every step carries the three categories.
   // W2: first match wins -- Review (once strategy is in hand), the rung, the stalest skill.
   const due = dueForReview(flashSr, quizSr, activeIds, now);
-  if ((current === null || current >= 2) && due.total >= REVIEW_DUE_MIN) {
-    const flash = due.cells.length >= due.indexes.length;
+  // Wave B2 #39 / R7: cells and indexes each have their own threshold. When
+  // both are over, Start reviews the one further past its own (ties: cells);
+  // the title counts what Start reviews, as the review screen does.
+  const indexMin = reviewIndexMin(activeIds.length);
+  const cellsOver = due.cells.length / REVIEW_DUE_MIN;
+  const indexesOver = due.indexes.length / indexMin;
+  if ((current === null || current >= 2) && (cellsOver >= 1 || indexesOver >= 1)) {
+    const flash = cellsOver >= 1 && cellsOver >= indexesOver;
+    const n = flash ? due.cells.length : due.indexes.length;
     return {
       rungs,
       current,
       step: {
         card: 'review',
         kind: flash ? 'flash' : 'quiz',
-        title: `Review ${due.total} due`,
-        why: `${due.cells.length} cells and ${due.indexes.length} indexes are due for review. Start reviews the ${flash ? 'cells' : 'indexes'}.`,
+        title: `Review ${n} due`,
+        why:
+          due.cells.length > 0 && due.indexes.length > 0
+            ? `${due.cells.length} cells and ${due.indexes.length} indexes are due for review. Start reviews the ${flash ? 'cells' : 'indexes'}.`
+            : `${n} ${flash ? (n === 1 ? 'cell' : 'cells') : n === 1 ? 'index' : 'indexes'} ${n === 1 ? 'is' : 'are'} due for review.`,
         progress: cats,
-        ...(flash ? { reviewCells: due.cells } : {}),
+        ...(flash ? { reviewCells: due.cells } : { reviewIndexes: due.indexes }),
       },
     };
   }
@@ -403,8 +412,11 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
       card: 'stale',
       kind: stale.kind,
       title: `Keep it fresh: ${stale.label}`,
+      // Wave B2 #44: every rung is passed, so every skill has practice on
+      // record; lastAt 0 means none of it is dated (perIndex without a quiz
+      // schedule, undated sessions), never "not practised".
       why: stale.lastAt === 0
-        ? `Every rung is done. ${stale.label} has not been practised yet.`
+        ? `Every rung is done. ${stale.label} has no practice date on record.`
         : `Every rung is done. ${stale.label} was practised longest ago (${ago}).`,
       progress: cats,
     },

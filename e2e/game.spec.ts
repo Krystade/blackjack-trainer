@@ -235,7 +235,7 @@ test('bet spread: a deliberately bad bet is graded and shows in the test-mode re
   await expect(page.locator('.report-screen')).toBeVisible();
   const betRow = page.locator('.report-categories tr', { hasText: 'bet' });
   await expect(betRow).toBeVisible();
-  await expect(betRow).toContainText('Bet sizing');
+  await expect(betRow).toContainText('Bet size when playing'); // Wave B2 #14 label
   await shot(page, '09-bet-spread-report');
 });
 
@@ -267,7 +267,7 @@ test('wong-out (R5): Sit Out plays the round unstaked, keeps the bankroll flat, 
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-screen')).toBeVisible();
   await expect(page.locator('.report-categories tr', { hasText: 'Play or sit out' })).toBeVisible();
-  await expect(page.locator('.report-categories tr', { hasText: /^Bet sizing/ })).toHaveCount(0);
+  await expect(page.locator('.report-categories tr', { hasText: /^Bet size when playing/ })).toHaveCount(0); // Wave B2 #14 label
   await shot(page, '31-wong-report');
 });
 
@@ -771,8 +771,8 @@ test('RV7: dealing in at a should-wong count is graded, not just the min bet', a
   // Columns are right / wrong / percent, so the row reads "wong 0 1 0%".
   await expect(wongRow.locator('td')).toHaveText(['Play or sit out', '0', '1', '0%']);
   await expect(
-    page.locator('.report-categories tr', { hasText: /^Bet sizing/ }).locator('td'),
-  ).toHaveText(['Bet sizing', '1', '0', '100%']);
+    page.locator('.report-categories tr', { hasText: /^Bet size when playing/ }).locator('td'),
+  ).toHaveText(['Bet size when playing', '1', '0', '100%']); // Wave B2 #14 label
 });
 
 /**
@@ -796,8 +796,8 @@ test('RT#11: cover mode accepts one rung either side of the ramp', async ({ page
   await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-screen')).toBeVisible();
-  await expect(page.locator('.report-categories tr', { hasText: /^Bet sizing/ }).locator('td')).toHaveText([
-    'Bet sizing',
+  await expect(page.locator('.report-categories tr', { hasText: /^Bet size when playing/ }).locator('td')).toHaveText([
+    'Bet size when playing', // Wave B2 #14 label
     '1',
     '0',
     '100%',

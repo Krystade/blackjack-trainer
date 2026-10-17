@@ -1,6 +1,7 @@
 import { mulberry32, snapDecksRemaining } from '../engine/cards';
 import { betWithinStep, spreadSteps } from '../engine/coverBets';
 import { trueCount, type TcRounding } from '../engine/count';
+import { CUT_MIN_DECKS, CUT_VARY_DECKS, type CutSpec } from '../engine/cut';
 import type { SpreadRow } from '../engine/game';
 import { sitOutIsCorrect, spreadUnitsFor } from '../engine/wong';
 import type { Stats } from '../store/types';
@@ -86,12 +87,33 @@ export function gradeBetSizing(taken: BetAnswer, tc: number, p: BetGradeProfile)
 }
 
 /**
+ * Wave B2 #17: the fewest decks a tray can leave before a deal at Play's table
+ * on this profile. Play reshuffles once the cut card is reached, so a pre-deal
+ * decision always has at least the cut's cards left: `cutDecks`, or
+ * decks * (1 - penetration) when it is unset, half a deck closer with
+ * `cutVary` (engine/cut.ts), never under CUT_MIN_DECKS. Rounded UP to the half
+ * deck the drill's trays sit on, so the drill never shows a tray deeper than
+ * Play can.
+ */
+export function trayFloorDecks(spec: CutSpec): number {
+  const decks = spec.rules.decks;
+  let behind = spec.cutDecks ?? decks * (1 - spec.penetration);
+  if (spec.cutVary) behind -= CUT_VARY_DECKS;
+  behind = Math.min(decks, Math.max(CUT_MIN_DECKS, behind));
+  return Math.ceil(behind * 2 - 1e-9) / 2;
+}
+
+/**
  * One physically consistent draw, as the old Bet or sit drill drew it: a tray on
  * an exact half deck, and a running count no larger than about two per dealt
  * deck. No true-count clamp: the count is whatever that RC and depth give.
+ * #17: the tray leaves at least `minDecksRemaining` (the profile's cut, see
+ * trayFloorDecks); at the default 0.5 this is the old draw, rng for rng.
  */
-function drawScenario(rng: () => number, totalDecks: number): BetSizingScenario {
-  const decksRemaining = 0.5 * (1 + Math.floor(rng() * totalDecks * 2));
+function drawScenario(rng: () => number, totalDecks: number, minDecksRemaining = 0.5): BetSizingScenario {
+  const floor = Math.min(totalDecks, Math.max(0.5, minDecksRemaining));
+  const steps = Math.round((totalDecks - floor) * 2) + 1;
+  const decksRemaining = floor + 0.5 * Math.floor(rng() * steps);
   const decksDealt = totalDecks - decksRemaining;
   const rcMax = Math.round(2 * decksDealt) + 1;
   const rc = -rcMax + Math.floor(rng() * (2 * rcMax + 1));
@@ -110,19 +132,21 @@ const BALANCE_REDRAWS = 100;
  * terminates, including on a one-row spread whose only answer is Sit.
  *
  * Balanced under the default (floor) rounding; the drill still grades every
- * scenario at the profile's own rounding.
+ * scenario at the profile's own rounding. `minDecksRemaining` (#17): the
+ * profile's tray floor (trayFloorDecks), so no scenario is deeper than Play's cut.
  */
 export function makeBetSizingScenario(
   seed: number,
   totalDecks: number,
   spread: readonly SpreadRow[],
+  minDecksRemaining = 0.5,
 ): BetSizingScenario {
   const rng = mulberry32(seed);
   const targets: BetAnswer[] = ['sit', ...spreadSteps(spread).slice(1)];
   const want = targets[Math.floor(rng() * targets.length)];
-  let s = drawScenario(rng, totalDecks);
+  let s = drawScenario(rng, totalDecks, minDecksRemaining);
   for (let i = 0; i < BALANCE_REDRAWS && correctBetAnswer(scenarioTc(s), spread) !== want; i++) {
-    s = drawScenario(rng, totalDecks);
+    s = drawScenario(rng, totalDecks, minDecksRemaining);
   }
   return s;
 }

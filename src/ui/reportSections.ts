@@ -1,7 +1,7 @@
 /**
  * Wave B, B6/W12: the session report's figures. Mistakes grouped into rows,
  * split into Plays / Count checks / Bets, plays sorted by units lost, and the
- * chart cells "Drill these hands" hands to Custom.
+ * chart cells "Drill these hands" hands to Flashcards (Wave B2 #46).
  */
 import type { GradedEvent } from '../engine/grade';
 import { tallyCellIdFor } from '../store/stats';

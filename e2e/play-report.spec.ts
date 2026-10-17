@@ -80,8 +80,11 @@ test('B6: a session that only sat out shows no per-100 headline', async ({ page 
   await expect(page.locator('.report-screen')).not.toContainText(/NaN|Infinity/);
 });
 
-test('B6: Drill these hands opens Custom with exactly the missed cells as Focus', async ({ page }) => {
-  await withSettings(page, { feedbackMode: 'test', dealSpeedMs: 0 });
+/** A saved Custom deck "Drill these hands" must leave exactly as it was (R5). */
+const SAVED_CUSTOM = { tiers: { 'soft-18-v-9': 'focus', 'hard-12-v-3': 'rare' }, painted: { 'soft-18-v-9': true }, mix: { focus: 60, regular: 30, rare: 10 } };
+
+test('B6 / B2 #46: Drill these hands deals exactly the missed cells, labelled, and leaves the saved Custom deck alone', async ({ page }) => {
+  await withSettings(page, { feedbackMode: 'test', dealSpeedMs: 0, drill: { deck: 'custom', custom: SAVED_CUSTOM } });
   await withProfile(page, { gradeDeviations: false, countCheckEvery: 0 });
   await page.goto('/?seed=4&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -93,12 +96,30 @@ test('B6: Drill these hands opens Custom with exactly the missed cells as Focus'
   const cells = await page.locator('.report-plays li[data-cell]').evaluateAll((els) =>
     [...new Set(els.map((e) => (e as HTMLElement).dataset.cell!))].sort());
   expect(cells.length).toBeGreaterThanOrEqual(1);
+  const savedDrill = () => page.evaluate(() => JSON.stringify(JSON.parse(localStorage.getItem('bjtrainer.settings.v1')!).drill));
+  const before = await savedDrill();
   await page.getByRole('button', { name: 'Drill these hands', exact: true }).click();
-  await expect(page.getByTestId('cde-counts')).toHaveText(`${cells.length} Focus · 0 Regular · 0 Rare · ${330 - cells.length} Off`);
-  const focus = await page.locator('.cpg-cell[data-tier="focus"]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.cell!).sort());
-  expect(focus).toEqual(cells);
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.settings.v1')!).drill.custom.tiers);
-  expect(Object.keys(stored).sort()).toEqual(cells);
+
+  // Flashcards on the session's hands, visibly labelled -- not the Custom editor.
+  const n = cells.length;
+  await expect(page.locator('.drill-heading')).toHaveText('Your session');
+  await expect(page.getByTestId('review-status')).toHaveText(`Drilling ${n} ${n === 1 ? 'hand' : 'hands'} from your session · ${n} left`);
+  await expect(page.locator('.cde-counts, [data-testid="cde-counts"]')).toHaveCount(0);
+
+  // Exactly the missed cells, each once when answered right, then done.
+  const dealt: string[] = [];
+  for (let i = 0; i < n + 5 && (await page.getByTestId('review-done').count()) === 0; i++) {
+    const bar = page.locator('.action-bar[data-advice]');
+    const advice = (await bar.getAttribute('data-advice'))!;
+    await bar.getByRole('button', { name: advice.charAt(0).toUpperCase() + advice.slice(1), exact: true }).click();
+    dealt.push((await page.locator('.hand-result').first().getAttribute('data-cell-id'))!);
+  }
+  await expect(page.getByTestId('review-done')).toBeVisible();
+  expect([...dealt].sort()).toEqual(cells);
+
+  // R5: the saved deck is untouched -- no tiers rewritten, nothing marked painted.
+  expect(await savedDrill()).toBe(before);
+  expect(JSON.parse(before).custom).toEqual(SAVED_CUSTOM);
 });
 
 test('B2 R3/#15: bet and sit misses are counted beside the headline and listed in plain words', async ({ page }) => {

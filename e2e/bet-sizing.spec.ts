@@ -104,3 +104,18 @@ test('bet sizing: 2-deck profile tray, 44px answers, no sideways scroll at 375',
   expect(tray!.width).toBeGreaterThanOrEqual(300);
   await shot(page, 'bet-sizing-2d');
 });
+
+test('B2 #17: the drill never shows a tray deeper than the profile\'s cut card', async ({ page }) => {
+  // 6 decks, cut 2.5 decks behind: Play reshuffles with 130 cards left, so no
+  // pre-deal tray holds more than 182 dealt cards.
+  await withProfile(page, { cutDecks: 2.5 });
+  await openBetSizing(page);
+  const dealt: number[] = [];
+  for (let i = 0; i < 30; i++) {
+    dealt.push((await readScenario(page)).cardsDealt);
+    await page.locator('.bet-sizing-answers button').first().click();
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+  }
+  expect(Math.max(...dealt)).toBeLessThanOrEqual(6 * 52 - 130);
+  expect(new Set(dealt).size).toBeGreaterThan(1);
+});

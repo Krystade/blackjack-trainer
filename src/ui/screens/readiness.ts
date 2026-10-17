@@ -1,6 +1,9 @@
 import type { Stats } from '../../store/types';
 import { medianLatency } from '../../store/drillStats';
-import { indexSetFor } from '../../engine/deviations';
+import { DEFAULT_RULES } from '../../engine/ruleset';
+import type { RuleSet } from '../../engine/ruleset';
+import { indexTestSet } from '../../drills/indexTest';
+import type { DeviationId } from '../../engine/deviations';
 import { CATEGORY_TARGET, handCategoryProgress } from './handProgress';
 
 /**
@@ -17,20 +20,43 @@ export interface Readiness {
   accuracyPct: number | null;
   /** Median time to decide, ms. The variable that predicts table survival. */
   medianMs: number | null;
-  /** Indices answered correctly at least once, out of the active set. */
-  indicesKnown: number;
+  /**
+   * Wave B2 #10: indices practised (MIN_INDEX_ANSWERS+ answers), the same
+   * figure as the ladder's deviations rung, out of the indices the drills ask.
+   */
+  indicesPractised: number;
   indicesTotal: number;
   /** Total graded decisions — the credibility of everything above. */
   decisions: number;
 }
 
-/** The rule fields the index set depends on (F11). Default: the 6D H17 set. */
-export type IndexRules = { decks: number; s17: boolean; surrenderIndices?: boolean };
+/**
+ * The rule fields the index set depends on (F11). Default: the 6D H17 set.
+ * The table rules (DAS, surrender...) decide which indexes the basic chart
+ * already plays; absent ones are DEFAULT_RULES'.
+ */
+export type IndexRules = { decks: number; s17: boolean; surrenderIndices?: boolean; bjaExtras?: boolean } & Partial<RuleSet>;
 const DEFAULT_INDEX_RULES: IndexRules = { decks: 6, s17: false };
 
-/** F11: the indices a profile is graded on -- its own set, not always H17's. */
+/**
+ * F11: the indices a profile is graded on -- its own set, not always H17's.
+ * Wave B2 #22: exactly the set the drills ask (the Index test's: the quiz's
+ * set, active entries only), so Home, the ladder and Stats count the same
+ * indices and every one of them can be reached. An inactive index (11 v A
+ * under H17) and one the profile's chart already plays (9 v 2 at 2 decks)
+ * are not in it.
+ */
 export function activeIndices(rules: IndexRules = DEFAULT_INDEX_RULES) {
-  return indexSetFor(rules).filter((d) => d.active);
+  return indexTestSet({ ...DEFAULT_RULES, ...rules });
+}
+
+/** An index counts as practised from this many answers (the ladder's rung 5). */
+export const MIN_INDEX_ANSWERS = 3;
+
+/** Whether `id` has MIN_INDEX_ANSWERS answers or more, right or wrong. */
+export function indexPractised(stats: Stats, id: DeviationId): boolean {
+  const t = stats.perIndex?.[id];
+  return (t?.right ?? 0) + (t?.wrong ?? 0) >= MIN_INDEX_ANSWERS;
 }
 
 export function readiness(stats: Stats, rules?: IndexRules): Readiness {
@@ -39,12 +65,12 @@ export function readiness(stats: Stats, rules?: IndexRules): Readiness {
   const decisions = right + wrong;
 
   const active = activeIndices(rules);
-  const indicesKnown = active.filter((d) => (stats.perIndex[d.id]?.right ?? 0) > 0).length;
+  const indicesPractised = active.filter((d) => indexPractised(stats, d.id)).length;
 
   return {
     accuracyPct: decisions === 0 ? null : (right / decisions) * 100,
     medianMs: medianLatency(stats.latencyHistory),
-    indicesKnown,
+    indicesPractised,
     indicesTotal: active.length,
     decisions,
   };

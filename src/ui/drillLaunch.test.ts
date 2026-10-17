@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { launchSettings, reviewLaunch, setDrillLaunch, setReviewDeck, takeDrillLaunch, takeReviewDeck } from './drillLaunch';
+import { launchSettings, weakCellsLaunch, reviewIndexesLaunch, reviewLaunch, setDrillLaunch, setReviewDeck, takeDrillLaunch, takeFlashHandOver, takeReviewDeck, takeReviewIndexes } from './drillLaunch';
 import { DEFAULT_SETTINGS } from '../store/types';
 import type { Settings } from '../store/types';
-import { ALL_PAINT_CELL_IDS, autoTiers } from '../drills/cellSelection';
-import { customCellsSettings, launchCustomCells } from './drillLaunch';
-import { loadSettings } from '../store/persist';
 
 describe('drillLaunch (#28)', () => {
   it('hands one launch across, once', () => {
@@ -37,28 +34,23 @@ describe('launchSettings (F21, s07)', () => {
   });
 });
 
-describe('customCellsSettings (B6: Drill these hands)', () => {
-  const ids = ['pair-8-v-4', 'hard-16-v-10'];
-  it('paints exactly those cells Focus and every other cell Off', () => {
-    const sel = customCellsSettings(ids, structuredClone(DEFAULT_SETTINGS)).drill.custom!;
-    expect(Object.keys(sel.tiers).sort()).toEqual([...ids].sort());
-    expect(Object.values(sel.tiers).every((t) => t === 'focus')).toBe(true);
-  });
-  it('survives the Auto that a Custom launch applies', () => {
-    const sel = customCellsSettings(ids, structuredClone(DEFAULT_SETTINGS)).drill.custom!;
-    const weak = Object.fromEntries(ALL_PAINT_CELL_IDS.map((id) => [id, { right: 0, wrong: 9, lastAt: '' }]));
-    expect(autoTiers(ALL_PAINT_CELL_IDS, weak, sel.painted, sel.tiers)).toEqual(sel.tiers);
-  });
-  it('keeps the mix and the favour-missed toggle', () => {
+describe('weakCellsLaunch (Wave B2 #43)', () => {
+  const weak = { 'soft-17-v-3': { right: 0, wrong: 4, lastAt: '' }, 'soft-18-v-9': { right: 30, wrong: 0, lastAt: '' } };
+  it('runs Flashcards on the Custom deck, every hand type, with Auto tiers', () => {
     const s = structuredClone(DEFAULT_SETTINGS);
-    s.drill.custom = { tiers: {}, painted: {}, mix: { focus: 80, regular: 15, rare: 5 }, favourMissed: true };
-    expect(customCellsSettings(ids, s).drill.custom).toMatchObject({ mix: { focus: 80, regular: 15, rare: 5 }, favourMissed: true });
+    s.drill = { ...s.drill, deck: 'chart', scopes: ['pairs'], flashCategory: 'pairs' };
+    const d = weakCellsLaunch(s, weak).drill;
+    expect(d).toMatchObject({ deck: 'custom', scopes: ['hard', 'soft', 'pairs'], flashCategory: 'all' });
+    expect(d.custom!.tiers['soft-17-v-3']).toBe('focus');
+    expect(d.custom!.tiers['soft-18-v-9']).toBe('rare');
   });
-  it('launch saves it and hands Custom across once', () => {
-    const next = launchCustomCells(ids, structuredClone(DEFAULT_SETTINGS));
-    expect(loadSettings().drill.custom).toEqual(next.drill.custom);
-    expect(takeDrillLaunch()).toBe('custom');
-    expect(takeDrillLaunch()).toBeNull();
+  it('keeps hand-painted cells, the mix and favour-missed, as the editor Auto does', () => {
+    const s = structuredClone(DEFAULT_SETTINGS);
+    s.drill.custom = { tiers: { 'soft-17-v-3': 'rare' }, painted: { 'soft-17-v-3': true, 'hard-9-v-3': true }, mix: { focus: 80, regular: 15, rare: 5 }, favourMissed: true };
+    const c = weakCellsLaunch(s, weak).drill.custom!;
+    expect(c.tiers['soft-17-v-3']).toBe('rare');
+    expect(c.tiers['hard-9-v-3']).toBeUndefined();
+    expect(c).toMatchObject({ mix: { focus: 80, regular: 15, rare: 5 }, favourMissed: true, painted: s.drill.custom.painted });
   });
 });
 
@@ -70,6 +62,14 @@ describe('B2 review hand-over (controller ruling)', () => {
     ids.push('soft-18-v-9'); // a copy is handed over, not the caller's array
     expect(takeReviewDeck()).toEqual(['hard-16-v-10', 'pair-8-v-A']);
     expect(takeReviewDeck()).toBeNull();
+  });
+
+  it('R5 (#46): a session deck says it is one', () => {
+    setReviewDeck(['pair-8-v-4'], 'session');
+    expect(takeFlashHandOver()).toEqual({ ids: ['pair-8-v-4'], source: 'session' });
+    expect(takeFlashHandOver()).toBeNull();
+    setReviewDeck(['pair-8-v-4']);
+    expect(takeFlashHandOver()?.source).toBe('review');
   });
 
   it('reviewLaunch leaves the Custom deck and the saved settings byte-identical', () => {
@@ -87,5 +87,24 @@ describe('B2 review hand-over (controller ruling)', () => {
     expect(JSON.stringify(out)).toBe(before);
     expect(JSON.stringify(saved)).toBe(before);
     expect(takeReviewDeck()).toEqual(['hard-16-v-10', 'pair-8-v-A']);
+  });
+});
+
+describe('Wave B2 #38: index review hand-over', () => {
+  it('hands the due indexes across once, in memory, and leaves the settings alone', () => {
+    expect(takeReviewIndexes()).toBeNull();
+    const saved = structuredClone(DEFAULT_SETTINGS);
+    const before = JSON.stringify(saved);
+    const ids = ['16v10', '12v3'];
+    expect(reviewIndexesLaunch(saved, ids)).toBe(saved);
+    ids.push('ins');
+    expect(takeReviewIndexes()).toEqual(['16v10', '12v3']);
+    expect(takeReviewIndexes()).toBeNull();
+    expect(JSON.stringify(saved)).toBe(before);
+  });
+  it('a cell review is marked as a review', () => {
+    reviewLaunch(structuredClone(DEFAULT_SETTINGS), ['hard-16-v-10']);
+    expect(takeFlashHandOver()).toEqual({ ids: ['hard-16-v-10'], source: 'review' });
+    expect(takeFlashHandOver()).toBeNull();
   });
 });

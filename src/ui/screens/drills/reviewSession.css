@@ -1,0 +1,30 @@
+/* Wave B2 R7 (#40, #42): a review (or session deck) says what it is and how
+   much is left, in place of the saved deck's controls, and ends visibly. */
+.review-status {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink-dim);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.review-done {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+  /* The 16px side gutter every screen keeps (the drill screen itself has none). */
+  padding: 1.5rem max(16px, env(safe-area-inset-right)) 1.5rem max(16px, env(safe-area-inset-left));
+  text-align: center;
+}
+
+.review-done-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.review-done-actions .u-btn {
+  min-height: 48px;
+}

@@ -261,7 +261,8 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all ten D
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
+  // Wave B2 #11: the Drills picker has no Back to Home; the tab bar has Home.
+  await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
   await expect(page.locator('.home-title')).toBeVisible();
 
   // ---------------------------------------------------------------

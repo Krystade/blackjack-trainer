@@ -83,7 +83,7 @@ test('s10: table-only categories get no in-range line; the note says what the go
     page.locator('.category-row', { has: page.locator('.category-label', { hasText: label }) });
   await expect(row('Hard totals').locator('.category-in-range')).toHaveText('Last 7 days: 1/1 (100%) timed answers');
   await expect(row('Soft totals').locator('.category-in-range')).toHaveCount(0);
-  await expect(row('Bet sizing').locator('.category-in-range')).toHaveCount(0);
+  await expect(row('Bet size when playing').locator('.category-in-range')).toHaveCount(0); // Wave B2 #14 label
   await expect(row('Count checks').locator('.category-in-range')).toHaveCount(0);
   await expect(page.locator('.stats-range > .u-note')).toContainText(
     'the last 30 per hand type',

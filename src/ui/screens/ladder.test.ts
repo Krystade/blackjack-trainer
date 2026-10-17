@@ -6,6 +6,7 @@ import { NOW, DAY, iso, flags, runs, deckRows, tcRows, withBets, withIndices, st
 import type { SrCard, SrDeck } from '../../drills/spacedRepetition';
 import { generateAllCells } from '../../drills/flashcards';
 import { activeIndices } from './readiness';
+import { reviewIndexMin } from './ladderRules';
 
 describe('ladder: casino order (B2)', () => {
   it.each([
@@ -137,11 +138,40 @@ describe('Review N due (W2)', () => {
     expect(ladder(stateAt(2), { ...ctx(sr), sweepDone: false }).step.card).toBe('rung');
   });
 
+  // Wave B2 R7 (deliberate change): the title counts what Start reviews (15
+  // indexes here), so the card and the review screen give the same number,
+  // and the due indexes go across with it.
   it('counts only active indexes, and reviews indexes when more of them are due', () => {
     const q = { ...deckOf(ACTIVE.slice(0, 15), card(2, NOW - DAY)), notAnIndex: card(2, NOW - DAY) };
     const l = ladder(stateAt(5), ctx(deckOf(CELLS.slice(0, 5), card(2, NOW - DAY)), q));
-    expect(l.step).toMatchObject({ card: 'review', kind: 'quiz', title: 'Review 20 due' });
+    expect(l.step).toMatchObject({ card: 'review', kind: 'quiz', title: 'Review 15 due' });
+    expect(l.step.why).toBe('5 cells and 15 indexes are due for review. Start reviews the indexes.');
     expect(l.step.reviewCells).toBeUndefined();
+    expect(l.step.reviewIndexes).toEqual([...ACTIVE.slice(0, 15)].sort());
+  });
+
+  // Wave B2 #39 / R7: an index set is at most ~25 ids, so indexes alone earn a
+  // review at min(8, ceil(active / 2)) due -- 8 for the 17 H17 indexes.
+  it('#39: due indexes alone earn a review at min(8, ceil(active/2)); fewer do not', () => {
+    expect(ACTIVE).toHaveLength(17);
+    const due = (n: number) => deckOf(ACTIVE.slice(0, n), card(3, NOW - DAY));
+    expect(ladder(stateAt(8), ctx({}, due(7))).step.card).toBe('stale');
+    const l = ladder(stateAt(8), ctx({}, due(8)));
+    expect(l.step).toMatchObject({ card: 'review', kind: 'quiz', title: 'Review 8 due', why: '8 indexes are due for review.' });
+    expect(l.step.reviewIndexes).toEqual([...ACTIVE.slice(0, 8)].sort());
+    const all = ladder(stateAt(8), ctx({}, due(17)));
+    expect(all.step).toMatchObject({ card: 'review', kind: 'quiz', title: 'Review 17 due' });
+  });
+
+  it('#39: a small index set needs half of it due', () => {
+    expect([3, 10, 15, 16, 17, 25].map(reviewIndexMin)).toEqual([2, 5, 8, 8, 8, 8]);
+  });
+
+  it('#39: with both over their thresholds, Start reviews the one further past it (ties: cells)', () => {
+    const cells = deckOf(CELLS.slice(0, 20), card(2, NOW - DAY));
+    const idx = (n: number) => deckOf(ACTIVE.slice(0, n), card(2, NOW - DAY));
+    expect(ladder(stateAt(8), ctx(cells, idx(8))).step).toMatchObject({ kind: 'flash', title: 'Review 20 due' });
+    expect(ladder(stateAt(8), ctx(cells, idx(12))).step).toMatchObject({ kind: 'quiz', title: 'Review 12 due' });
   });
 
   it('after the ladder, Review still comes before the stalest skill', () => {
@@ -172,9 +202,20 @@ describe('stalest skill after the ladder (W2)', () => {
 
   it('ties go to the earlier rung; never practised counts as oldest', () => {
     expect(ladder(done({ count: 9, quiz: 9 }).s, done({ count: 9, quiz: 9 }).ctx).step.kind).toBe('count');
+    // Wave B2 #44 (deliberate change): every rung is passed here, so each
+    // skill HAS practice on record; an undated one is not "not practised yet".
     const { s, ctx } = done({});
     s.sessions.forEach((r) => (r.date = ''));
-    expect(ladder(s, ctx).step).toMatchObject({ kind: 'play', why: 'Every rung is done. Play a shoe has not been practised yet.' });
+    expect(ladder(s, ctx).step).toMatchObject({ kind: 'play', why: 'Every rung is done. Play a shoe has no practice date on record.' });
+  });
+
+  it('#44: deviations learned with no quiz schedule (perIndex only) are not "not practised yet"', () => {
+    const { s } = done({});
+    const l = ladder(s, { sweepDone: true, flashSr: {}, quizSr: {}, now: NOW });
+    expect(l.rungs.find((r) => r.id === 'deviations')!.passed).toBe(true);
+    expect(l.step).toMatchObject({ card: 'stale', kind: 'quiz', title: 'Keep it fresh: Deviations' });
+    expect(l.step.why).toBe('Every rung is done. Deviations has no practice date on record.');
+    expect(l.step.why).not.toMatch(/not been practised/);
   });
 
   it('a timestamp in the future (device clock behind) reads "today", never negative (Review Focus 3)', () => {

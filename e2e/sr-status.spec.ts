@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { withProfile, withSettings } from './helpers';
 import { generateAllCells } from '../src/drills/flashcards';
+import { activeIndices } from '../src/ui/screens/readiness';
 
 /**
  * "I'd also like the ability to view the status of my spaced repetition
@@ -237,7 +238,11 @@ test('the deviation-quiz panel denominator is the live index count', async ({ pa
   await openStatsProgressTab(page);
 
   const quiz = quizSection(page);
-  await expect(quiz).toContainText('of 18 deviation-quiz items studied');
+  // Wave B2 #22: the indexes this profile is graded on -- 17 under H17,
+  // since 11 v A is the chart's play there and not asked (it was 18).
+  const n = activeIndices({ decks: 6, s17: false, das: true, ls: true, surrenderIndices: false }).length;
+  expect(n).toBe(17);
+  await expect(quiz).toContainText(`of ${n} deviation-quiz items studied`);
 });
 
 /**
@@ -257,7 +262,10 @@ test('the deviation-quiz denominator grows with the profile that grades them', a
   await openStatsProgressTab(page);
 
   const quiz = quizSection(page);
-  await expect(quiz).toContainText('of 24 deviation-quiz items studied');
+  // Wave B2 #22: active indexes only -- 23 with surrender on (11 v A is out under H17).
+  const n = activeIndices({ decks: 6, s17: false, das: true, ls: true, surrenderIndices: true }).length;
+  expect(n).toBe(23);
+  await expect(quiz).toContainText(`of ${n} deviation-quiz items studied`);
   // ...and a studied surrender index is named, not printed as its raw key.
   await expect(quiz).not.toContainText('sur15v10');
 });

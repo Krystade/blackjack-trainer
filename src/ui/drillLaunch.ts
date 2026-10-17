@@ -1,7 +1,7 @@
 import type { NextStepKind } from './screens/nextStep';
-import type { CustomSelection, Settings } from '../store/types';
-import { ALL_PAINT_CELL_IDS, DEFAULT_MIX } from '../drills/cellSelection';
-import { saveSettings } from '../store/persist';
+import type { CustomSelection, Settings, Stats } from '../store/types';
+import { ALL_PAINT_CELL_IDS, autoTiers, defaultSelection, mixShare } from '../drills/cellSelection';
+import { settingsForCustomStart } from '../drills/deckSource';
 import type { HandScope } from '../drills/handScope';
 import { ALL_SCOPES, withScopes } from '../drills/handScope';
 
@@ -47,53 +47,60 @@ export function launchSettings(mode: DrillLaunch, scope: HandScope | undefined, 
 }
 
 /**
- * Contract 4 (Wave B, B6): "Drill these hands" on the session report opens
- * Custom on exactly the report's missed cells. Every chart cell is marked
- * painted, so the Auto fill a Custom launch applies (autoTiers leaves painted
- * cells alone) keeps the missed cells Focus and every other cell Off. The
- * existing mix and favour-missed toggle are kept. Pure.
+ * Wave B2 #43: "Fix weak cells" Start starts drilling. The settings it runs
+ * with are what the Custom editor's Auto then its Flashcards button would
+ * have saved -- Auto's tiers over the saved selection (hand-painted cells
+ * keep theirs), on the Custom deck across every hand type -- so Start opens
+ * Flashcards on that deck with no editor and no three-way choice first. The
+ * saved selection is read as defensively as the editor reads it. Pure.
  */
-export function customCellsSettings(cellIds: readonly string[], settings: Settings): Settings {
-  const prev = settings.drill.custom;
-  const tiers: CustomSelection['tiers'] = {};
-  for (const id of cellIds) tiers[id] = 'focus';
-  const painted: Record<string, true> = {};
-  for (const id of ALL_PAINT_CELL_IDS) painted[id] = true;
-  for (const id of cellIds) painted[id] = true;
-  const custom: CustomSelection = {
-    tiers,
-    painted,
-    mix: prev ? { ...prev.mix } : { ...DEFAULT_MIX },
-    favourMissed: prev?.favourMissed ?? false,
-  };
-  return { ...settings, drill: { ...settings.drill, custom } };
-}
-
-/** Contract 4: persist the Custom selection and hand 'custom' to the next Drills mount. */
-export function launchCustomCells(cellIds: readonly string[], settings: Settings): Settings {
-  const next = customCellsSettings(cellIds, settings);
-  saveSettings(next);
-  setDrillLaunch('custom');
-  return next;
+export function weakCellsLaunch(settings: Settings, cellStats: Stats['cellStats']): Settings {
+  const saved = settings.drill.custom;
+  const sel: CustomSelection = saved
+    ? {
+        ...saved,
+        tiers: saved.tiers ?? {},
+        painted: saved.painted ?? {},
+        mix: { focus: mixShare(saved.mix, 'focus'), regular: mixShare(saved.mix, 'regular'), rare: mixShare(saved.mix, 'rare') },
+        favourMissed: saved.favourMissed === true,
+      }
+    : defaultSelection();
+  const tiers = autoTiers(ALL_PAINT_CELL_IDS, cellStats, sel.painted, sel.tiers);
+  return settingsForCustomStart({ ...settings, drill: { ...settings.drill, custom: { ...sel, tiers } } });
 }
 
 /**
  * B2 "Review N due" (controller ruling): the due cells, handed to the next
  * Flashcards mount in memory only -- never persisted, never replayed on
- * reload, and never written into the saved Custom deck. Flashcards takes it
- * (which clears it) and deals only these cells for that session.
+ * reload, and never written into the saved Custom deck. Drills takes it
+ * (which clears it) and Flashcards deals only these cells for that session.
+ *
+ * Wave B2 R5 (#46): "Drill these hands" hands the report's missed cells over
+ * the same way, as a 'session' deck, so the saved Custom deck is untouched.
+ * R7: either is a finite session -- a cell leaves it once answered right.
  */
-let reviewDeck: string[] | null = null;
-
-export function setReviewDeck(cellIds: readonly string[]): void {
-  reviewDeck = [...cellIds];
+export type FlashHandOverSource = 'review' | 'session';
+export interface FlashHandOver {
+  ids: string[];
+  source: FlashHandOverSource;
 }
 
-/** The pending review deck, cleared as it is read. */
+let flashHandOver: FlashHandOver | null = null;
+
+export function setReviewDeck(cellIds: readonly string[], source: FlashHandOverSource = 'review'): void {
+  flashHandOver = { ids: [...cellIds], source };
+}
+
+/** The pending Flashcards hand-over, cleared as it is read. */
+export function takeFlashHandOver(): FlashHandOver | null {
+  const h = flashHandOver;
+  flashHandOver = null;
+  return h;
+}
+
+/** The pending deck's cells, cleared as they are read. */
 export function takeReviewDeck(): string[] | null {
-  const d = reviewDeck;
-  reviewDeck = null;
-  return d;
+  return takeFlashHandOver()?.ids ?? null;
 }
 
 /**
@@ -103,6 +110,30 @@ export function takeReviewDeck(): string[] | null {
  * setDrillLaunch('flash').
  */
 export function reviewLaunch(settings: Settings, cellIds: readonly string[]): Settings {
-  setReviewDeck(cellIds);
+  setReviewDeck(cellIds, 'review');
+  return settings;
+}
+
+/**
+ * Wave B2 #38 / R7: the due INDEXES of an index review, handed to the next
+ * Deviation quiz mount in memory, exactly as the cells are. The quiz asks only
+ * these, ignoring (and never rewriting) the saved Index choice.
+ */
+let reviewIndexes: string[] | null = null;
+
+export function setReviewIndexes(ids: readonly string[]): void {
+  reviewIndexes = [...ids];
+}
+
+/** The pending index review, cleared as it is read. */
+export function takeReviewIndexes(): string[] | null {
+  const r = reviewIndexes;
+  reviewIndexes = null;
+  return r;
+}
+
+/** R7: an index review's Start. Settings come back unchanged; pair with setDrillLaunch('quiz'). */
+export function reviewIndexesLaunch(settings: Settings, ids: readonly string[]): Settings {
+  setReviewIndexes(ids);
   return settings;
 }

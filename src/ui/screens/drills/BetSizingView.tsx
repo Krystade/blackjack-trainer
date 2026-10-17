@@ -10,6 +10,7 @@ import {
   gradeBetSizing,
   makeBetSizingScenario,
   scenarioTc,
+  trayFloorDecks,
   type BetAnswer,
   type BetSizingScenario,
 } from '../../../drills/betSizing';
@@ -25,6 +26,7 @@ import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
 import './tcResultStrip.css';
 import './betSizing.css';
 import './betSizingTaken.css';
+import { BET_SIZING_DRILL, BET_SIZING_INTRO } from './betSizingCopy';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -57,10 +59,12 @@ export function BetSizingView({
   onBack: () => void;
 }) {
   const totalDecks = activeProfile.rules.decks;
+  // #17: no tray deeper than this profile's cut card lets Play deal.
+  const floor = trayFloorDecks(activeProfile);
   const audio = useAudio(settings.audio);
   const options = betSizingOptions(activeProfile.spread);
   const [scenario, setScenario] = useState<BetSizingScenario>(() =>
-    makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread),
+    makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread, floor),
   );
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const resultShownAtRef = useRef(performance.now());
@@ -85,7 +89,7 @@ export function BetSizingView({
 
   const next = () => {
     if (answerTooSoon(resultShownAtRef.current)) return;
-    setScenario(makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread));
+    setScenario(makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread, floor));
     setFeedback(null);
   };
 
@@ -124,11 +128,11 @@ export function BetSizingView({
         <button type="button" className="drill-back-btn" onClick={onBack}>
           Back
         </button>
-        <div className="drill-heading">Bet sizing</div>
+        <div className="drill-heading">{BET_SIZING_DRILL}</div>
       </div>
 
       <div className="settings-row settings-note-row">
-        Read the tray, divide, and bet your ramp. Sit out where your ramp bets its minimum.
+        {BET_SIZING_INTRO}
       </div>
 
       <div

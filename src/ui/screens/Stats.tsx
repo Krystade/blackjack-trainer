@@ -38,6 +38,8 @@ import './sr.css';
 import './countHistory.css';
 import { strategyRulesFor } from '../../store/profiles';
 import { CATEGORY_LABELS } from './categoryLabels';
+import { betSizingRows } from './ladderRules';
+import { activeIndices } from './readiness';
 import { bestCleanCountRuns, formatCountRun } from '../../drills/countSpeed';
 import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, handCategoryProgress, pctDown } from './handProgress';
 import type { HandCategoryProgress } from './handProgress';
@@ -92,7 +94,7 @@ const MISTAKE_LABELS: Record<Exclude<MistakeClass, 'correct'>, string> = {
 type NonHandMiss = 'bet' | 'wong' | 'countCheck';
 const NON_HAND_MISSES: readonly NonHandMiss[] = ['bet', 'wong', 'countCheck'];
 const NON_HAND_MISS_LABEL: Record<NonHandMiss, string> = {
-  bet: 'Bet sizing mistakes',
+  bet: 'Bet size mistakes (when playing)',
   wong: 'Play or sit-out mistakes',
   countCheck: 'Count check misses',
 };
@@ -695,7 +697,9 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   // studied" over a box histogram summing to twenty, and a lapsed surrender
   // index appeared in "Most often forgotten" as the raw key `sur15v10`.
   const flashSrSummary = summarizeSrDeck(loadFlashSr(), generateAllCells().length, now);
-  const quizSrSummary = summarizeSrDeck(loadQuizSr(), indexSetFor(gradedRules).length, now);
+  // Wave B2 #22: the indexes the drills ask, as on Home (readiness.activeIndices).
+  const askedIndices = activeIndices(gradedRules);
+  const quizSrSummary = summarizeSrDeck(loadQuizSr(), askedIndices.length, now);
   const quizLabelFor = (key: string) =>
     indexSetFor(gradedRules).find((d) => d.id === key)?.label ?? key;
 
@@ -714,6 +718,10 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   };
   const tableBet = tally('bet');
   const tableWong = tally('wong');
+  // Wave B2 #12: the Bet sizing drill (which replaced Bet or sit) writes its
+  // own history; it is read here, in range, beside the table's figures.
+  const betSizingDrill = inRange(betSizingRows(stats));
+  const betSizingRight = betSizingDrill.filter((r) => r?.ok === true).length;
 
 
   // ET5: fatigue drift over the COUNTING runs you've logged (count drill + timed
@@ -1087,7 +1095,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                   indices on is 24 rather than 18. The six Fab 4 tallies were
                   being written to `perIndex` and then had no row to appear
                   in. */}
-              {indexSetFor(gradedRules).map((dev) => {
+              {askedIndices.map((dev) => {
                 const tally = stats.perIndex[dev.id];
                 return (
                   <tr key={dev.id}>
@@ -1439,7 +1447,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
         defaultOpen={false}
       >
           {/* s06: the table's own bet and play-or-sit decisions, then the drill's. */}
-          {tableBet.n + tableWong.n === 0 && bslAttempts === 0 ? (
+          {tableBet.n + tableWong.n === 0 && bslAttempts === 0 && betSizingDrill.length === 0 ? (
             <p className="stats-detail">
               No bet or sit decisions yet. Play with a bet spread on, or try the Bet sizing drill.
             </p>
@@ -1447,7 +1455,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
             <ul className="mistake-list">
               {tableBet.n > 0 && (
                 <li className="mistake-row" data-testid="bsl-table-bet">
-                  <span>At the table: bet sizing</span>
+                  <span>At the table: bet size when playing</span>
                   <span>
                     {tableBet.right}/{tableBet.n} ({pct(tableBet.right, tableBet.n)})
                   </span>
@@ -1458,6 +1466,14 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                   <span>At the table: play or sit out</span>
                   <span>
                     {tableWong.right}/{tableWong.n} ({pct(tableWong.right, tableWong.n)})
+                  </span>
+                </li>
+              )}
+              {betSizingDrill.length > 0 && (
+                <li className="mistake-row" data-testid="bsl-drill-bet-sizing">
+                  <span>Bet sizing drill</span>
+                  <span>
+                    {betSizingRight}/{betSizingDrill.length} ({pct(betSizingRight, betSizingDrill.length)})
                   </span>
                 </li>
               )}

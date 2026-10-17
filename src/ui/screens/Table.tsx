@@ -17,7 +17,7 @@ import type { CountCheckVerdict, SessionReport } from '../useGame';
 import { ResultStrip } from '../components/ResultStrip';
 import { countVerdictPart } from '../countVerdictPart';
 import { reportSections, countMissText, drillCellIds, playRowText, betRowText, unpricedNote } from '../reportSections';
-import { launchCustomCells } from '../drillLaunch';
+import { setDrillLaunch, setReviewDeck } from '../drillLaunch';
 import type { MistakeRow } from '../reportSections';
 import { lossPer100, formatLossPer100, betMissText } from '../sessionFigures';
 import { betMissCount } from '../sessionRow';
@@ -765,10 +765,13 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     onNavigate('home');
   };
 
-  // B6 (contract 4): Custom on exactly the missed cells, saved before Drills mounts.
+  // B6 / Wave B2 R5 (#46): Flashcards on exactly the missed cells, handed
+  // over in memory as a labelled session deck. The saved Custom deck is not
+  // touched (it used to be overwritten with these cells, every other cell
+  // marked painted).
   const handleReportDrill = (ids: string[]) => {
-    const next = launchCustomCells(ids, settings);
-    onSettingsChange(next);
+    setReviewDeck(ids, 'session');
+    setDrillLaunch('flash');
     setShowReport(false);
     onNavigate('drills');
   };

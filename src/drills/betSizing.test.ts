@@ -6,7 +6,7 @@ import { playConfigFor } from '../ui/playConfig';
 import { EMPTY_STATS, type Profile, type Stats } from '../store/types';
 import {
   appendBetSizingRow, betAnswerLabel, betSizingOptions, betSizingRow, betSizingWorking, correctBetAnswer,
-  gradeBetSizing, makeBetSizingScenario, scenarioTc, type BetAnswer,
+  gradeBetSizing, makeBetSizingScenario, scenarioTc, trayFloorDecks, type BetAnswer,
 } from './betSizing';
 
 /** Play's own verdict on one pre-deal decision: every bet/wong event it grades is correct. */
@@ -152,5 +152,41 @@ describe('stats row (contract 1)', () => {
     expect(next.betSitLeave).toEqual(old.betSitLeave);
     expect(appendBetSizingRow(next, { ...row, ok: false }).betSizing!.history).toHaveLength(2);
     expect(old.betSizing).toBeUndefined();
+  });
+});
+
+describe('Wave B2 #17: only trays the profile\'s shoe can reach', () => {
+  const deepest = (p: Profile, n = 1500) => {
+    let min = Infinity;
+    const counts = new Map<BetAnswer, number>();
+    for (let seed = 0; seed < n; seed++) {
+      const s = makeBetSizingScenario(seed, p.rules.decks, p.spread, trayFloorDecks(p));
+      min = Math.min(min, s.totalDecks - s.cardsDealt / 52);
+      const a = correctBetAnswer(scenarioTc(s), p.spread);
+      counts.set(a, (counts.get(a) ?? 0) + 1);
+    }
+    return { min, counts };
+  };
+  it('the default profile (6 decks, 75%) never deals past its cut: at least 1.5 decks left', () => {
+    expect(trayFloorDecks(base)).toBe(1.5);
+    const { min, counts } = deepest(base);
+    expect(min).toBe(1.5);
+    // Every answer the ramp calls still comes up from reachable trays.
+    for (const a of ['sit', 2, 4, 8, 10, 12] as const) expect(counts.get(a) ?? 0).toBeGreaterThan(50);
+  });
+  it('the cut card setting moves the floor, rounded up to the half deck', () => {
+    expect(trayFloorDecks({ ...base, cutDecks: 1 })).toBe(1);
+    expect(trayFloorDecks({ ...base, cutDecks: 2.2 })).toBe(2.5);
+    expect(deepest({ ...base, cutDecks: 2.5 }).min).toBe(2.5);
+    expect(trayFloorDecks({ ...base, penetration: 0.5, rules: { ...base.rules, decks: 2 } })).toBe(1);
+  });
+  it('a varied cut can come half a deck closer, never into the last half deck', () => {
+    expect(trayFloorDecks({ ...base, cutDecks: 1.5, cutVary: true })).toBe(1);
+    expect(trayFloorDecks({ ...base, cutDecks: 0.5, cutVary: true })).toBe(0.5);
+  });
+  it('without a floor the draw is unchanged (seed-stable)', () => {
+    for (let seed = 0; seed < 50; seed++) {
+      expect(makeBetSizingScenario(seed, 6, DEFAULT_SPREAD, 0.5)).toEqual(makeBetSizingScenario(seed, 6, DEFAULT_SPREAD));
+    }
   });
 });

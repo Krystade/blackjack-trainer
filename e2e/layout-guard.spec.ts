@@ -74,7 +74,11 @@ async function statusBarOffenders(page: Page, inset: number): Promise<string[]> 
         for (const r of range.getClientRects()) {
           if (r.height === 0 || r.bottom <= 0 || r.top >= inset) continue;
           const x = Math.min(Math.max(r.left + 2, 0), innerWidth - 1);
-          const y = Math.max(r.top, 0) + 1;
+          // Probe INSIDE the band the text shares with the status bar: a line
+          // box whose top edge dips under the strip by a fraction of a pixel
+          // (the Drills picker scrolled to its end) used to be probed at
+          // top + 1, below the strip, and read as uncovered.
+          const y = (Math.max(r.top, 0) + Math.min(r.bottom, inset)) / 2;
           const top = document.elementsFromPoint(x, y)[0];
           if (top && (top === el || el.contains(top))) out.add(`${el.className || el.tagName} "${node.textContent!.trim().slice(0, 24)}"`);
         }
