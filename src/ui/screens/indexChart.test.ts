@@ -5,8 +5,9 @@ import { DEFAULT_RULES } from '../../engine/ruleset';
 import type { StrategyRules } from '../../engine/ruleset';
 import { DEALER_UPCARDS, buildSectionRows } from './chartRows';
 import type { ChartSection } from './chartRows';
-import { formatIndex, hardCellAction, indexList, indexesAtCell, surrenderComesFirst } from './indexChart';
+import { hardCellAction, indexList, indexesAtCell, surrenderComesFirst } from './indexChart';
 import { correctPlay } from '../../engine/strategy';
+import { publishedIndexText } from '../../drills/indexDisplay';
 import type { Card, Rank } from '../../engine/cards';
 
 const H17: StrategyRules = DEFAULT_RULES;
@@ -14,19 +15,14 @@ const S17: StrategyRules = { ...DEFAULT_RULES, s17: true };
 const H17_FAB4: StrategyRules = { ...DEFAULT_RULES, surrenderIndices: true };
 const S17_FAB4: StrategyRules = { ...S17, surrenderIndices: true };
 
-describe('formatIndex', () => {
-  it('signs the threshold the way the deviation labels do, with a real minus', () => {
-    expect(formatIndex(3, 'gte')).toBe('TC ≥ +3');
-    expect(formatIndex(0, 'gte')).toBe('TC ≥ 0');
-    expect(formatIndex(-2, 'lte')).toBe('TC ≤ −2');
-  });
-});
-
 describe('indexList', () => {
   it('writes each index as hand, dealer, index and play', () => {
     const byId = new Map(indexList(H17).entries.map((e) => [e.id, e]));
     expect(byId.get('16v10')?.text).toBe('16 v 10 · TC ≥ 0 · Stand');
-    expect(byId.get('13v2')?.text).toBe('13 v 2 · TC ≤ −2 · Hit');
+    // R6: the published index the Index test grades, not the stored hit ≤ −2.
+    expect(byId.get('13v2')?.text).toBe('13 v 2 · TC ≥ −1 · Stand · hit below');
+    expect(byId.get('12v6')?.text).toBe('12 v 6 · TC ≥ −3 · Stand · hit below');
+    expect(byId.get('12v4')?.text).toBe('12 v 4 · TC ≥ 0 · Stand · hit below');
     expect(byId.get('TTv5')?.text).toBe('10,10 v 5 · TC ≥ +5 · Split');
     expect(byId.get('ins')?.text).toBe('Any hand v A · TC ≥ +3 · Take insurance');
   });
@@ -36,10 +32,10 @@ describe('indexList', () => {
       const set = indexSetFor(rules);
       const list = indexList(rules);
       expect(list.entries.map((e) => e.id)).toEqual(set.filter((d) => d.active).map((d) => d.id));
-      // The threshold on screen is the one the engine grades with.
+      // The index on screen is the published one the Index test grades (R6).
       for (const e of list.entries) {
         const dev = set.find((d) => d.id === e.id)!;
-        expect(e.index).toBe(formatIndex(dev.threshold, dev.dir));
+        expect(e.index).toBe(publishedIndexText(dev));
       }
     }
   });
@@ -168,7 +164,7 @@ describe('BJA extras on the Charts screen', () => {
   it('lists them as their own group with soft hands written A,x', () => {
     const byId = new Map(indexList(ON).entries.map((e) => [e.id, e]));
     expect(byId.get('A8v6')?.group).toBe('extra');
-    expect(byId.get('A8v6')?.text).toBe('A,8 v 6 · TC ≤ −1 · Stand');
+    expect(byId.get('A8v6')?.text).toBe('A,8 v 6 · TC ≥ 0 · Double · stand below');
     expect(byId.get('TTv4')?.text).toBe('10,10 v 4 · TC ≥ +6 · Split');
     expect(byId.get('16v10')?.group).toBe('illustrious');
     expect(indexList(DEFAULT_RULES).entries.some((e) => e.group === 'extra')).toBe(false);

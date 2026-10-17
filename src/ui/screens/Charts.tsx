@@ -4,6 +4,7 @@ import { TabSettingsButton } from '../components/TabSettingsButton';
 import './charts.css';
 import './chartsThemes.css';
 import './chartIndexes.css';
+import './indexBelow.css';
 import type { Screen } from '../App';
 import type { Profile } from '../../store/types';
 import { getChart } from '../../engine/charts';
@@ -73,8 +74,18 @@ function IndexLine({ entry }: { entry: IndexEntry }) {
       <span className="index-sep"> · </span>
       <span className="index-tc">{entry.index}</span>
       <span className="index-sep"> · </span>
-      <span className="index-play" data-family={entry.family}>
-        {entry.play}
+      {/* R6: an lte index reads as published, "TC ≥ −3 · Stand", with the
+          play below it under the chip ("hit below"). */}
+      <span className="index-play-cell">
+        <span className="index-play" data-family={entry.family}>
+          {entry.play}
+        </span>
+        {entry.below !== null && (
+          <>
+            <span className="index-sep"> · </span>
+            <span className="index-below">{entry.below}</span>
+          </>
+        )}
       </span>
     </>
   );
@@ -150,9 +161,10 @@ interface ChartsProps {
    * header. 'floating' is the study overlay's (#2): a pill pinned
    * bottom-centre that stays on screen however far the grids are scrolled,
    * because the cell being studied is often PAIRS, a long way below a header
-   * Back.
+   * Back. 'none' draws no Back at all: the first-run intro (B7) places its
+   * own Start quiz.
    */
-  backPlacement?: 'topbar' | 'floating';
+  backPlacement?: 'topbar' | 'floating' | 'none';
   /** B7: the Back button's whole label, in place of "Back to <backLabel>". */
   backText?: string;
 }

@@ -7,12 +7,25 @@ import './numPadEmpty.css';
 interface NumPadProps {
   label: string;
   onSubmit: (value: number) => void;
+  /**
+   * #29: optional controlled value ('-3', '' = nothing typed). A screen that
+   * also takes the answer by voice or the wheel holds it here, so the keypad
+   * display IS the one answer state and OK submits what was said.
+   */
+  value?: string;
+  onValueChange?: (value: string) => void;
 }
 
 const DIGIT_ROWS = ['789', '456', '123'];
 
-export function NumPad({ label, onSubmit }: NumPadProps) {
-  const [value, setValue] = useState('');
+export function NumPad({ label, onSubmit, value: controlled, onValueChange }: NumPadProps) {
+  const [own, setOwn] = useState('');
+  const value = controlled ?? own;
+  const setValue = (next: string | ((v: string) => string)) => {
+    const v = typeof next === 'function' ? next(value) : next;
+    if (controlled === undefined) setOwn(v);
+    onValueChange?.(v);
+  };
 
   const appendDigit = (d: string) => setValue((v) => v + d);
   const toggleMinus = () => setValue((v) => (v.startsWith('-') ? v.slice(1) : '-' + v));
@@ -63,7 +76,7 @@ export function NumPad({ label, onSubmit }: NumPadProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, onSubmit]);
+  }, [value, onSubmit, onValueChange]);
 
   return (
     <div className="numpad">

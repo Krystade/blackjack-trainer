@@ -527,6 +527,8 @@ describe('store/stats', () => {
     ];
 
     const result = applyEvents(stats, events);
+    // R9 is scoped to Index-test and With-count answers (indexOnly); a
+    // Deviation-quiz or Play index decision still counts in its hand category.
     expect(result.categories.hard.right).toBe(0);
     expect(result.categories.hard.wrong).toBe(1);
     expect(result.perIndex['16v10']).toEqual({ right: 0, wrong: 1 });

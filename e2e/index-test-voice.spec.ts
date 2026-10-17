@@ -57,6 +57,11 @@ async function withFakeEngine(page: Page): Promise<void> {
   });
 }
 
+/** The keypad display for a value: a real minus, no plus. */
+function padText(n: number): string {
+  return n < 0 ? `−${-n}` : String(n);
+}
+
 async function spoken(page: Page): Promise<string> {
   const log = await page.evaluate(
     () => (window as unknown as { __speechLog?: string[] }).__speechLog ?? [],
@@ -97,8 +102,8 @@ test('a spoken number is read back, then "yes" grades it', async ({ page }) => {
   await voiceOn(page);
   const index = await askedIndex(page);
   await sayOnceListening(page, speakable(index));
-  const sign = index > 0 ? '+' : index < 0 ? '−' : '+';
-  await expect(page.getByTestId('index-test-pending')).toHaveText(`${sign}${Math.abs(index)}?`);
+  // #29: one answer state -- the proposal is in the keypad display.
+  await expect(page.locator('.numpad-display')).toHaveText(padText(index));
   await expect.poll(() => spoken(page)).toContain('Correct?');
   await sayOnceListening(page, 'yes');
   await expect(page.getByTestId('index-test-result')).toContainText('Correct!');
@@ -112,7 +117,7 @@ test('a number said during the correction is not graded into the next item', asy
   await voiceOn(page);
   const index = await askedIndex(page);
   await sayOnceListening(page, speakable(index));
-  await expect(page.getByTestId('index-test-pending')).toBeVisible();
+  await expect(page.locator('.numpad-display')).toHaveText(padText(index));
   await sayOnceListening(page, 'yes');
   await expect(page.getByTestId('index-test-result')).toBeVisible();
   await sayOnceListening(page, 'plus five');
@@ -120,10 +125,27 @@ test('a number said during the correction is not graded into the next item', asy
   // itself fades after a right answer, so it is not the marker.
   await expect(page.locator('.drill-next-btn')).toBeVisible();
   await expect(page.locator('.voice-status-heard')).toContainText('plus five');
-  await expect(page.getByTestId('index-test-pending')).toHaveCount(0);
+  await expect(page.locator('.numpad-display')).toHaveCount(0);
   const perIndex = await page.evaluate(
     () => JSON.parse(localStorage.getItem('bjtrainer.stats.v1') ?? '{}').perIndex ?? {},
   ) as Record<string, { right: number; wrong: number }>;
   const total = Object.values(perIndex).reduce((n, t) => n + t.right + t.wrong, 0);
   expect(total).toBe(1);
+});
+
+/**
+ * #29: a spoken number and the keypad are one answer. The proposal shows in
+ * the keypad display with OK live, so a glance and a tap submit what was said;
+ * there is no separate "+2?" line beside an empty "Type a number".
+ */
+test('a spoken number fills the keypad, and OK submits it', async ({ page }) => {
+  await openIndexTest(page);
+  await voiceOn(page);
+  const index = await askedIndex(page);
+  await sayOnceListening(page, speakable(index));
+  await expect(page.locator('.numpad-display')).toHaveText(padText(index));
+  await expect(page.locator('.numpad-placeholder')).toHaveCount(0);
+  await expect(page.getByTestId('index-test-pending')).toHaveCount(0);
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.getByTestId('index-test-result')).toContainText('Correct!');
 });

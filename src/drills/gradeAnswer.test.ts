@@ -36,7 +36,8 @@ import { drillLegalActions } from './legalActions';
 import type { Card, Rank } from '../engine/cards';
 import type { Action } from '../engine/deviations';
 import { mulberry32 } from '../engine/cards';
-import { indexTestSet, indexTestItemFor } from './indexTest';
+import { buildIndexTestEvent, indexTestSet, indexTestItemFor } from './indexTest';
+import { handCategoryProgress } from '../ui/screens/handProgress';
 
 /**
  * R4 anti-drift guard (docs/BACKLOG.md): the mixed-session view and the two
@@ -923,7 +924,8 @@ describe('#53 a With-count flashcard grades at its TC', () => {
     const ev = buildFlashcardEvent(card(-2), 'stand', NO_LS, 100);
     expect(ev.correct).toBe(false);
     expect(ev.event.classification).toBe('phantom-deviation');
-    expect(ev.event.deviationId).toBeUndefined();
+    // R9 (#8): filed under the index it reached for, like the quiz files it.
+    expect(ev.event.deviationId).toBe('16v10');
   });
   it('a card without a TC records no deviation even where the engine applies one at 0', () => {
     const { tc: _tc, ...noCount } = card(0);
@@ -995,5 +997,118 @@ describe('gradeIndexTestAnswer', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+/**
+ * R9 (#8, #25): an index answer is index knowledge. A With-count phantom
+ * deviation (stand on 16 v 10 below its index) is filed under that index, like
+ * the Deviation quiz files the same miss, and never charged to the basic cell
+ * or the hard-totals category.
+ */
+describe('R9: With-count phantom deviations are index answers', () => {
+  const NO_LS = { ...DEFAULT_RULES, ls: false };
+  const sixteenVTen = (tc: number) => ({ ...flash([H('10'), H('6')], '10', 'hard-16-v-10', 'hit'), tc });
+
+  it('a Stand on 16 v 10 at TC −1 carries the index it deviated toward', () => {
+    const { event } = buildFlashcardEvent(sixteenVTen(-1), 'stand', NO_LS, 900);
+    expect(event.classification).toBe('phantom-deviation');
+    expect(event.deviationId).toBe('16v10');
+  });
+
+  it('a plain basic error on the same card carries no index', () => {
+    const { event } = buildFlashcardEvent(sixteenVTen(-1), 'double', NO_LS, 900);
+    expect(event.classification).not.toBe('phantom-deviation');
+    expect(event.deviationId).toBeUndefined();
+  });
+
+  it('the miss lands in perIndex only: no cell tally, no hard-category tally', () => {
+    const { event } = buildFlashcardEvent(sixteenVTen(-1), 'stand', NO_LS, 900);
+    const s = applyEvents(EMPTY_STATS, [event]);
+    expect(s.perIndex['16v10']).toEqual({ right: 0, wrong: 1 });
+    expect(s.cellStats?.['hard-16-v-10']).toBeUndefined();
+    expect(s.categories.hard).toEqual({ right: 0, wrong: 0 });
+  });
+
+  it('grading it reviews the index in the quiz deck and leaves the flash deck alone', () => {
+    const ls = new Map<string, string>();
+    vi.stubGlobal('window', { localStorage: { getItem: (k: string) => ls.get(k) ?? null, setItem: (k: string, v: string) => void ls.set(k, v) } });
+    try {
+      const r = gradeFlashcardAnswer(sixteenVTen(-1), 'stand', NO_LS, 900, {}, NOW);
+      expect(r.event.correct).toBe(false);
+      expect(r.nextDeck['hard-16-v-10']).toBeUndefined();
+      expect(loadQuizSr()['16v10']?.reviews).toBe(1);
+      expect(ls.has(FLASH_SR_KEY)).toBe(false);
+      expect(loadStats().cellStats?.['hard-16-v-10']).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('R9: Index-test answers never count toward basic-strategy categories', () => {
+  it('a hard-total index answer moves perIndex, not categories.hard', () => {
+    const ls = new Map<string, string>();
+    vi.stubGlobal('window', { localStorage: { getItem: (k: string) => ls.get(k) ?? null, setItem: (k: string, v: string) => void ls.set(k, v) } });
+    try {
+      const rules = { ...DEFAULT_RULES };
+      for (const id of ['16v10', '12v3', 'TTv5'] as const) {
+        const dev = indexTestSet(rules).find((d) => d.id === id)!;
+        gradeIndexTestAnswer(indexTestItemFor(dev, rules, mulberry32(4)), 0, {}, NOW);
+      }
+      const stats = loadStats();
+      expect(stats.categories.hard).toEqual({ right: 0, wrong: 0 });
+      expect(stats.categories.pairs).toEqual({ right: 0, wrong: 0 });
+      expect(Object.keys(stats.perIndex).sort()).toEqual(['12v3', '16v10', 'TTv5']);
+      // #25: no "answers from before per-hand tracking" on a fresh profile.
+      expect(handCategoryProgress(stats).every((c) => !c.legacy)).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+/**
+ * R9's scope is the Index test and With-count index/phantom answers. The
+ * Deviation quiz (and Mixed, which grades quiz items through it) still counts
+ * in the hand category: a first cut that dropped every deviationId event
+ * from categories zeroed those drills' graded counts.
+ */
+describe('R9 scope: the Deviation quiz still counts in its hand category', () => {
+  it('a 16 v 10 quiz answer moves categories.hard and perIndex', () => {
+    const item: QuizItem = {
+      cards: [H('10'), H('6')],
+      up: '10',
+      tc: 3,
+      deviationId: '16v10',
+      isDeviationSide: true,
+      correct: 'stand',
+      label: '16 v 10: stand at TC ≥ 0',
+      isDistractor: false,
+    };
+    const event = buildQuizEvent(item, 'hit', DEFAULT_RULES, 100);
+    expect(event.indexOnly).toBeUndefined();
+    const s = applyEvents(EMPTY_STATS, [event]);
+    expect(s.categories.hard).toEqual({ right: 0, wrong: 1 });
+    expect(s.perIndex['16v10']).toEqual({ right: 0, wrong: 1 });
+  });
+
+  it('Index-test and With-count index events are marked index-only', () => {
+    const rules = { ...DEFAULT_RULES };
+    const dev = indexTestSet(rules).find((d) => d.id === '16v10')!;
+    expect(buildIndexTestEvent(indexTestItemFor(dev, rules, mulberry32(4)), 0).indexOnly).toBe(true);
+    const NO_LS = { ...DEFAULT_RULES, ls: false };
+    const card = { ...flash([H('10'), H('6')], '10', 'hard-16-v-10', 'hit'), tc: -1 };
+    expect(buildFlashcardEvent(card, 'stand', NO_LS, 900).event.indexOnly).toBe(true);
+  });
+
+  it('a With-count card that HITS its index is index-only too (not just a phantom)', () => {
+    const NO_LS = { ...DEFAULT_RULES, ls: false };
+    const card = { ...flash([H('10'), H('6')], '10', 'hard-16-v-10', 'hit'), tc: 2 };
+    const { event } = buildFlashcardEvent(card, 'stand', NO_LS, 900);
+    expect(event.deviationId).toBe('16v10');
+    const s = applyEvents(EMPTY_STATS, [event]);
+    expect(s.categories.hard).toEqual({ right: 0, wrong: 0 });
+    expect(s.perIndex['16v10']).toEqual({ right: 1, wrong: 0 });
   });
 });

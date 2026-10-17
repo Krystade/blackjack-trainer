@@ -13,13 +13,26 @@ import './floatingBackPill.css';
  * overlay pads its own bottom (floatingBackPill.css) so the last rows can be
  * scrolled clear of it.
  */
-export function FloatingBackPill({ label, onClick }: { label: string; onClick: () => void }) {
+export function FloatingBackPill({
+  label,
+  onClick,
+  forward = false,
+}: {
+  label: string;
+  onClick: () => void;
+  /** #55: a forward action (the intro's "Start quiz") points forward, after its label. */
+  forward?: boolean;
+}) {
+  const arrow = (
+    <span className="floating-back-pill-arrow" aria-hidden="true">
+      {forward ? '→' : '←'}
+    </span>
+  );
   return (
     <button type="button" className="floating-back-pill" onClick={onClick}>
-      <span className="floating-back-pill-arrow" aria-hidden="true">
-        ←
-      </span>
+      {!forward && arrow}
       {label}
+      {forward && arrow}
     </button>
   );
 }

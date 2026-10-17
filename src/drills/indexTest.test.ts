@@ -4,9 +4,10 @@ import { correctPlay, insuranceCorrect } from '../engine/strategy';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import type { StrategyRules } from '../engine/ruleset';
 import { entryCtx } from './deviationQuiz';
+import { reviewCard } from './spacedRepetition';
 import {
   indexTestSet, indexTestItemFor, gradeIndexTest, publishedIndex, indexTestPlayLine,
-  indexTestPrompt, drawIndexTestItem, buildIndexTestEvent,
+  indexTestPrompt, drawIndexTestItem, buildIndexTestEvent, NEW_INDEX_SESSION, afterIndexAnswer, answerWasShown,
 } from './indexTest';
 
 const H17_ALL: StrategyRules = { ...DEFAULT_RULES, surrenderIndices: true, bjaExtras: true };
@@ -87,5 +88,43 @@ describe('Index test copy and events', () => {
     const count = (srDeck: object) =>
       Array.from({ length: 200 }, (_, s) => drawIndexTestItem(s + 1, H17_ALL, srDeck as never, 10)).filter((i) => i.deviationId === '12v4').length;
     expect(count(deck)).toBeGreaterThan(count({}) * 3);
+  });
+});
+
+describe('#24 (R8): the Index test never repeats the item just answered', () => {
+  const rules = { ...DEFAULT_RULES };
+  const set = indexTestSet(rules);
+  // Every index learned and not due, except one just missed (box 0, due now).
+  const deckWithMiss = (missed: string) =>
+    Object.fromEntries(set.map((d) => [d.id, d.id === missed
+      ? { box: 0, dueAt: 0, lastSeenAt: 1, lapses: 1, reviews: 4 }
+      : { box: 2, dueAt: 4e12, lastSeenAt: 1, lapses: 0, reviews: 3 }]));
+
+  it('a just-missed item is never drawn next, and the last two are avoided', () => {
+    for (let seed = 0; seed < 300; seed++) {
+      expect(drawIndexTestItem(seed, rules, deckWithMiss('16v10'), 1000, ['16v10']).deviationId).not.toBe('16v10');
+      const two = drawIndexTestItem(seed, rules, deckWithMiss('12v3'), 1000, ['16v10', '12v3']).deviationId;
+      expect(['16v10', '12v3']).not.toContain(two);
+    }
+  });
+
+  it('still draws when every item is excluded', () => {
+    const all = set.map((d) => d.id);
+    expect(all).toContain(drawIndexTestItem(3, rules, {}, 0, all).deviationId);
+  });
+
+  it('a correct answer to an item missed this session holds it at box 0, due again soon', () => {
+    let session = NEW_INDEX_SESSION;
+    session = afterIndexAnswer(session, '16v10', false);
+    expect(answerWasShown(session, '16v10')).toBe(true);
+    expect(answerWasShown(session, '12v3')).toBe(false);
+    const missed = reviewCard(undefined, false, 1000);
+    const copied = reviewCard(missed, true, 2000, { answerShown: true });
+    expect(copied.box).toBe(0);
+    expect(copied.dueAt).toBe(2000);
+    // ...and the copy clears it: the next correct recall promotes.
+    session = afterIndexAnswer(session, '16v10', true);
+    expect(answerWasShown(session, '16v10')).toBe(false);
+    expect(session.recent).toEqual(['16v10', '16v10']);
   });
 });

@@ -15,13 +15,13 @@
  */
 
 import { priceMistake as enginePriceMistake } from '../engine/mistakeCost';
-import type { GradedEvent, EventSource } from '../engine/grade';
-import { classifyAction, actionCategory, classifyInsurance } from '../engine/grade';
+import type { GradedEvent, EventSource, MistakeClass } from '../engine/grade';
+import { classifyAction, actionCategory, classifyInsurance, phantomDeviationId } from '../engine/grade';
 import type { Card, Rank } from '../engine/cards';
 import type { PlayContext } from '../engine/strategy';
 import { correctPlay, basicPlay } from '../engine/strategy';
 import type { StrategyRules } from '../engine/ruleset';
-import type { Action } from '../engine/deviations';
+import type { Action, DeviationId } from '../engine/deviations';
 import type { Flashcard } from './flashcards';
 import { flashCtx } from './flashcards';
 import type { QuizItem } from './deviationQuiz';
@@ -220,6 +220,21 @@ function noCountShown(
   return verdict;
 }
 
+/** The deviationId a With-count answer is filed under, if any (#53, R9). */
+function indexFieldFor(
+  hit: DeviationId | undefined,
+  classification: MistakeClass,
+  taken: DrillAnswer,
+  card: Flashcard,
+  rules: StrategyRules,
+): { deviationId?: DeviationId; indexOnly?: true } {
+  if (hit) return { deviationId: hit, indexOnly: true };
+  // Only classifyAction says phantom, and only for one of the five plays.
+  if (classification !== 'phantom-deviation') return {};
+  const id = phantomDeviationId(taken as Action, card.cards, card.up, rules);
+  return id === null ? {} : { deviationId: id, indexOnly: true };
+}
+
 /**
  * Build the GradedEvent + correct action for a flashcard answer. Pure: no
  * weight/stats writes, no audio. `elapsedMs` (R1) is captured by the caller
@@ -270,7 +285,9 @@ export function buildFlashcardEvent(
     reason: withCount.reason,
     tc,
     // #53: a With-count card that hit an index counts toward that index.
-    ...(card.tc !== undefined && withCount.deviationId ? { deviationId: withCount.deviationId } : {}),
+    // R9 (#8): so does a phantom deviation -- the play of an index taken below
+    // it is index knowledge, filed under that index like the quiz files it.
+    ...(card.tc !== undefined ? indexFieldFor(withCount.deviationId, classification, taken, card, rules) : {}),
     hand: card.cellId,
     // #30: omitted, not zeroed, for an idle answer -- see idleAnswer.ts.
     ...elapsedField(elapsedMs, taken),
@@ -559,11 +576,13 @@ export function gradeIndexTestAnswer(
   deck: SrDeck,
   now: number,
   channel: AnswerChannel = SCREEN_CHANNEL,
+  // #24 (R8): the answer was shown after a miss this session -- a copy, not a recall.
+  answerShown = false,
 ): { event: GradedEvent; nextDeck: SrDeck; correct: boolean } {
   const event: GradedEvent = { ...buildIndexTestEvent(item, answer), at: new Date(now).toISOString() };
   const prev = deck[item.deviationId];
   const retention = prev && isGapReview(prev, now) ? retentionRow(item.deviationId, prev, event.correct, now) : null;
-  const nextDeck = { ...deck, [item.deviationId]: reviewCard(prev, event.correct, now, { channel }) };
+  const nextDeck = { ...deck, [item.deviationId]: reviewCard(prev, event.correct, now, { channel, answerShown }) };
   saveQuizSr(nextDeck);
   persistGrade(event, retention);
   return { event, nextDeck, correct: event.correct };

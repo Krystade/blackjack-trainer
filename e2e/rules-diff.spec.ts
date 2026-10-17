@@ -17,6 +17,8 @@ const H17_S17_6D: Record<string, { h17: string; s17: string }> = {
   'pair-8-v-A': { h17: 'Surrender', s17: 'Split' },
   'hard-12-v-6': { h17: 'Stand', s17: 'Hit' },
   'hard-10-v-A': { h17: 'Double', s17: 'Hit' },
+  // #53: asked after a hit (no surrender), at TC +4.
+  'hard-16-v-9': { h17: 'Stand', s17: 'Hit' },
 };
 
 async function openRulesDiff(page: Page): Promise<void> {
@@ -28,29 +30,35 @@ async function openRulesDiff(page: Page): Promise<void> {
 
 test('rules differences: H17 ↔ S17 asks only changed cells, one question each way', async ({ page }) => {
   await openRulesDiff(page);
-  await expect(page.locator('.rules-diff-summary li')).toHaveCount(8);
+  await expect(page.locator('.rules-diff-summary li')).toHaveCount(9);
+  await expect(page.locator('.rules-diff-summary')).toContainText('16 v 9 after a hit at TC +4: H17 stands, S17 hits');
+  await expect(page.locator('.rules-diff-inert')).toHaveCount(0);
   await shot(page, 'rules-diff-setup');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
-  let q = page.locator('.rules-diff-question');
-  await expect(q).toHaveAttribute('data-side', 'a');
-  await expect(page.locator('.rules-diff-inforce')).toContainText('Under H17');
-  let cellId = (await q.getAttribute('data-cell'))!;
-  expect(Object.keys(H17_S17_6D)).toContain(cellId);
-  await page.locator('.rules-diff-answers').getByRole('button', { name: H17_S17_6D[cellId].h17, exact: true }).click();
+  // #56: the side is drawn, not alternated; the heading names it, once.
+  const q = page.locator('.rules-diff-question');
+  const plays = async () => {
+    const side = (await q.getAttribute('data-side'))!;
+    const cellId = (await q.getAttribute('data-cell'))!;
+    expect(Object.keys(H17_S17_6D)).toContain(cellId);
+    const both = H17_S17_6D[cellId];
+    await expect(page.locator('.rules-diff-inforce')).toContainText(side === 'a' ? 'Under H17' : 'Under S17');
+    await expect(page.locator('.rules-diff-prompt')).not.toContainText('Under');
+    return side === 'a' ? { right: both.h17, wrong: both.s17 } : { right: both.s17, wrong: both.h17 };
+  };
+  const first = await plays();
+  await page.locator('.rules-diff-answers').getByRole('button', { name: first.right, exact: true }).click();
   await expect(page.getByTestId('result-strip')).toHaveAttribute('data-tone', 'ok');
+  await expect(page.locator('.rules-verdict')).toHaveText(`Correct — ${first.right}`);
   await shot(page, 'rules-diff-right');
   await page.getByRole('button', { name: 'Next', exact: true }).click();
 
-  q = page.locator('.rules-diff-question');
-  await expect(q).toHaveAttribute('data-side', 'b');
-  await expect(page.locator('.rules-diff-inforce')).toContainText('Under S17');
-  cellId = (await q.getAttribute('data-cell'))!;
-  expect(Object.keys(H17_S17_6D)).toContain(cellId);
-  await page.locator('.rules-diff-answers').getByRole('button', { name: H17_S17_6D[cellId].h17, exact: true }).click();
+  const second = await plays();
+  await page.locator('.rules-diff-answers').getByRole('button', { name: second.wrong, exact: true }).click();
   const strip = page.getByTestId('result-strip');
   await expect(strip).toHaveAttribute('data-tone', 'miss');
-  await expect(strip.locator('.rules-verdict')).toHaveText(`Wrong — ${H17_S17_6D[cellId].s17}`);
+  await expect(strip.locator('.rules-verdict')).toHaveText(`You played ${second.wrong} · Right play ${second.right}`);
   await expect(strip.locator('.rules-explain')).toContainText('H17');
   await shot(page, 'rules-diff-wrong');
 });

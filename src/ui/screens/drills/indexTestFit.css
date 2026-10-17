@@ -1,0 +1,21 @@
+/*
+ * #28: the Index test's height budget on an 812-tall phone with its insets
+ * (47px status bar, 34px home indicator). A miss strip above a full keypad
+ * pushed OK into the home-indicator zone. The strip is two lines (see
+ * IndexTestView), and here the keypad gives back what the prompt already says:
+ * its "Index (true count)" label is kept for screen readers only, and the keys
+ * sit at the 44px touch minimum rather than 48px.
+ */
+.index-test-screen .numpad-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.index-test-screen .numpad-btn,
+.index-test-screen .numpad-ok {
+  min-height: 44px;
+}

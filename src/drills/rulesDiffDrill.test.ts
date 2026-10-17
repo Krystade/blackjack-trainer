@@ -3,25 +3,25 @@ import { DEFAULT_RULES, type StrategyRules } from '../engine/ruleset';
 import { generateAllCells } from './flashcards';
 import {
   diffSummary, drawRulesQuestion, expectedRulesAnswer, explainRulesQuestion, gradeRulesAnswer, inertNotes,
-  planRulesDrill, rulesAnswerOptions, rulesQuestionPrompt, sameChartNotice,
+  planRulesDrill, rulesAnswerLabel, rulesAnswerOptions, rulesQuestionPrompt, rulesResultLine, sameChartNotice,
   type RulesDrillPlan, type RulesQuestion, type Side,
 } from './rulesDiffDrill';
 
 const r = (p: Partial<StrategyRules>): StrategyRules => ({ ...DEFAULT_RULES, ...p });
 const poolOf = (plan: RulesDrillPlan) =>
-  plan.pool.map((i) => (i.kind === 'play' ? `${i.cellId}:${i.tcs === null ? 'basic' : i.tcs.join(',')}` : `insurance:${i.tcs.join(',')}`)).sort();
+  plan.pool.map((i) => (i.kind === 'play' ? `${i.cellId}:${i.tcs === null ? 'basic' : i.tcs.join(',')}${i.afterHit ? ':after-hit' : ''}` : `insurance:${i.tcs.join(',')}`)).sort();
 const cell = (id: string) => generateAllCells().find((c) => c.id === id)!;
 const play = (id: string, side: Side, tc: number | null): RulesQuestion => ({ kind: 'play', side, cellId: id, cards: cell(id).cards, up: cell(id).up, tc });
 
 const H17S17 = planRulesDrill(r({ s17: false }), r({ s17: true }));
 
 describe('planRulesDrill pools only what changes', () => {
-  it('6D H17 vs S17: five basic cells, three counted ones, 16 v 9 inert under late surrender', () => {
+  it('6D H17 vs S17: five basic cells, three counted ones, and 16 v 9 after a hit under late surrender (#53)', () => {
     expect(poolOf(H17S17)).toEqual([
       'hard-10-v-A:3', 'hard-11-v-A:-6,-5,-4,-3,-2,-1,0', 'hard-12-v-6:-3,-2',
-      'hard-15-v-A:basic', 'hard-17-v-A:basic', 'pair-8-v-A:basic', 'soft-18-v-2:basic', 'soft-19-v-6:basic',
+      'hard-15-v-A:basic', 'hard-16-v-9:4:after-hit', 'hard-17-v-A:basic', 'pair-8-v-A:basic', 'soft-18-v-2:basic', 'soft-19-v-6:basic',
     ]);
-    expect(H17S17.inert.map((d) => d.id)).toEqual(['16v9']);
+    expect(H17S17.inert).toEqual([]);
     expect(H17S17.trayDecks).toBeNull();
     expect(sameChartNotice(H17S17)).toBeNull();
   });
@@ -104,7 +104,6 @@ describe('drawRulesQuestion', () => {
     for (let seed = 0; seed < 150; seed++) {
       for (let n = 0; n < 4; n++) {
         const q = drawRulesQuestion(plan, seed, n)!;
-        expect(q.side).toBe(n % 2 === 0 ? 'a' : 'b');
         if (q.kind !== 'play' && q.kind !== 'insurance') throw new Error(`unexpected ${q.kind}`);
         expect(expectedRulesAnswer({ ...q, side: 'a' }, plan)).not.toEqual(expectedRulesAnswer({ ...q, side: 'b' }, plan));
         if (q.kind === 'play') {
@@ -151,14 +150,14 @@ describe('grading under the rules in force', () => {
 });
 
 describe('copy', () => {
-  it('prompts say which rules are in force', () => {
-    expect(rulesQuestionPrompt(play('soft-18-v-2', 'b', null), H17S17)).toBe('Under S17: A,7 v 2?');
-    expect(rulesQuestionPrompt(play('hard-12-v-6', 'a', -3), H17S17)).toBe('Under H17 at TC −3: 12 v 6?');
+  it('prompts ask the hand; the rules in force are the heading (#56)', () => {
+    expect(rulesQuestionPrompt(play('soft-18-v-2', 'b', null), H17S17)).toBe('A,7 v 2?');
+    expect(rulesQuestionPrompt({ kind: 'tray-tc', side: 'b', totalDecks: 8, cardsDealt: 182, rc: 9 }, H17S17)).toBe('RC +9. True count?');
   });
   it('explanations name both rules', () => {
     expect(explainRulesQuestion(play('soft-18-v-2', 'b', null), H17S17)).toBe('Basic strategy, A,7 v 2: H17 doubles, S17 stands.');
     expect(explainRulesQuestion(play('hard-12-v-6', 'a', -3), H17S17)).toBe(
-      'At TC −3, 12 v 6: H17 stands, S17 hits. Index: H17 hit ≤ −4, S17 hit ≤ −2.');
+      'At TC −3, 12 v 6: H17 stands, S17 hits. Index: H17 stand ≥ −3, S17 stand ≥ −1.');
     expect(explainRulesQuestion(play('hard-11-v-A', 'b', 0), H17S17)).toBe(
       'At TC 0, 11 v A: H17 doubles, S17 hits. Index: H17 none, S17 double ≥ +1.');
     const p61 = planRulesDrill(r({}), r({ decks: 1 }));
@@ -171,12 +170,81 @@ describe('copy', () => {
   });
   it('summary and inert notes', () => {
     const lines = diffSummary(H17S17);
-    expect(lines).toHaveLength(8);
+    expect(lines).toHaveLength(9);
     expect(lines).toContain('A,7 v 2: H17 doubles, S17 stands');
     expect(lines).toContain('12 v 6 at TC −3 to −2: H17 stands, S17 hits');
     expect(lines).toContain('10 v A at TC +3: H17 doubles, S17 hits');
     expect(lines).toContain('11 v A at TC 0 and below: H17 doubles, S17 hits');
-    expect(inertNotes(H17S17)).toEqual([
-      '16 v 9: the index differs (H17 stand ≥ +4, S17 stand ≥ +5) but never changes a play at this table.']);
+    // #53: 16 v 9 is drilled after a hit now; 2D's 11 v A is still truly inert.
+    expect(inertNotes(H17S17)).toEqual([]);
+    expect(inertNotes(planRulesDrill(r({ decks: 2, s17: false }), r({ decks: 2, s17: true })))).toEqual([
+      '11 v A: the index differs (H17 none, S17 double ≥ +1) but never changes a play at this table.']);
+  });
+});
+
+describe('#52 tray-decks miss names a button, never a raw float', () => {
+  it('the correct answer shown on a miss is one of the offered half-deck options', () => {
+    const plan = planRulesDrill(r({ decks: 6 }), r({ decks: 8 }));
+    for (let cardsDealt = 1; cardsDealt < 416; cardsDealt += 7) {
+      const q: RulesQuestion = { kind: 'tray-decks', side: 'b', totalDecks: 8, cardsDealt };
+      const correct = expectedRulesAnswer(q, plan);
+      const offered = rulesAnswerOptions(q, plan).map((o) => rulesAnswerLabel(q, o));
+      expect(offered).toContain(rulesAnswerLabel(q, correct));
+      // ...and it is a button the grader accepts.
+      expect(gradeRulesAnswer(q, plan, correct)).toBe(true);
+    }
+  });
+  it('279 of 416 dealt (2.63 decks left) reads 2.5', () => {
+    const plan = planRulesDrill(r({ decks: 6 }), r({ decks: 8 }));
+    const q: RulesQuestion = { kind: 'tray-decks', side: 'b', totalDecks: 8, cardsDealt: 279 };
+    expect(rulesAnswerLabel(q, expectedRulesAnswer(q, plan))).toBe('2.5');
+  });
+});
+
+describe('#56: one statement of the rules, a strip that says what you answered, and an unpredictable side', () => {
+  it('the prompt no longer repeats the rules in force (the heading states them)', () => {
+    expect(rulesQuestionPrompt(play('soft-18-v-2', 'b', null), H17S17)).toBe('A,7 v 2?');
+    expect(rulesQuestionPrompt(play('hard-12-v-6', 'a', -3), H17S17)).toBe('12 v 6?');
+    expect(rulesQuestionPrompt({ kind: 'insurance', side: 'a', tc: 2 }, H17S17)).toBe('Insurance?');
+  });
+
+  it('the result line names your answer and the right one', () => {
+    const q = play('hard-11-v-A', 'b', 0);
+    expect(rulesResultLine(q, 'double', 'hit', false)).toBe('You played Double · Right play Hit');
+    expect(rulesResultLine(q, 'hit', 'hit', true)).toBe('Correct — Hit');
+    const p68 = planRulesDrill(r({ decks: 6 }), r({ decks: 8 }));
+    const tray: RulesQuestion = { kind: 'tray-decks', side: 'b', totalDecks: 8, cardsDealt: 279 };
+    expect(rulesResultLine(tray, 4, expectedRulesAnswer(tray, p68), false)).toBe('You said 4 · Right 2.5');
+    const tc: RulesQuestion = { kind: 'tray-tc', side: 'b', totalDecks: 8, cardsDealt: 182, rc: 9 };
+    expect(rulesResultLine(tc, -1, 2, false)).toBe('You said −1 · Right +2');
+  });
+
+  it('which side is asked is not given away by the question number', () => {
+    for (const n of [0, 1, 2, 3]) {
+      const sides = new Set<string>();
+      for (let seed = 0; seed < 60; seed++) sides.add(drawRulesQuestion(H17S17, seed, n)!.side);
+      expect([...sides].sort(), `question ${n}`).toEqual(['a', 'b']);
+    }
+  });
+});
+
+describe('#53: an index the 2-card hand surrenders past is still drilled, after a hit', () => {
+  it('6D H17 vs S17 with LS: 16 v 9 is asked as a multi-card hand with no surrender, and nothing is inert', () => {
+    const item = H17S17.pool.find((i) => i.kind === 'play' && i.cellId === 'hard-16-v-9');
+    expect(item).toMatchObject({ kind: 'play', afterHit: true, tcs: [4] });
+    if (item?.kind !== 'play') throw new Error('unreachable');
+    expect(item.cards.length).toBeGreaterThanOrEqual(3);
+    expect(H17S17.inert).toEqual([]);
+    expect(inertNotes(H17S17)).toEqual([]);
+  });
+  it('asks it with no surrender offered, and grades H17 stand / S17 hit at +4', () => {
+    const item = H17S17.pool.find((i) => i.kind === 'play' && i.cellId === 'hard-16-v-9')!;
+    if (item.kind !== 'play') throw new Error('unreachable');
+    const q = (side: Side): RulesQuestion => ({ kind: 'play', side, cellId: item.cellId, cards: item.cards, up: item.up, tc: 4, afterHit: true });
+    expect(rulesAnswerOptions(q('a'), H17S17)).toEqual(['hit', 'stand']);
+    expect(gradeRulesAnswer(q('a'), H17S17, 'stand')).toBe(true);
+    expect(gradeRulesAnswer(q('b'), H17S17, 'hit')).toBe(true);
+    expect(rulesQuestionPrompt(q('a'))).toBe('16 v 9 after a hit?');
+    expect(diffSummary(H17S17)).toContain('16 v 9 after a hit at TC +4: H17 stands, S17 hits');
   });
 });

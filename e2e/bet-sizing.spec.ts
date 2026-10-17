@@ -37,7 +37,7 @@ test('bet sizing: the right rung is graded correct, shows the working, and is re
   await page.locator('.bet-sizing-answers').getByRole('button', { name: betAnswerLabel(right), exact: true }).click();
   const strip = page.getByTestId('result-strip');
   await expect(strip).toHaveAttribute('data-tone', 'ok');
-  await expect(strip.locator('.bet-verdict')).toHaveText('Correct');
+  await expect(strip.locator('.bet-verdict')).toHaveText(`Correct — ${betAnswerLabel(right)}`);
   await expect(strip.locator('.bet-working')).toHaveText(betSizingWorking(s, PROFILE));
   const rows = await history(page);
   expect(rows).toHaveLength(1);
@@ -45,7 +45,7 @@ test('bet sizing: the right rung is graded correct, shows the working, and is re
   await shot(page, 'bet-sizing-right');
 });
 
-test('bet sizing: a wrong rung is graded wrong and names the right one', async ({ page }) => {
+test('bet sizing: a wrong rung is graded wrong, says what you tapped, and names the right one', async ({ page }) => {
   await openBetSizing(page);
   const s = await readScenario(page);
   const right = correctBetAnswer(scenarioTc(s), DEFAULT_SPREAD);
@@ -53,7 +53,14 @@ test('bet sizing: a wrong rung is graded wrong and names the right one', async (
   await page.locator('.bet-sizing-answers').getByRole('button', { name: betAnswerLabel(wrong), exact: true }).click();
   const strip = page.getByTestId('result-strip');
   await expect(strip).toHaveAttribute('data-tone', 'miss');
-  await expect(strip.locator('.bet-verdict')).toHaveText(`Wrong — ${betAnswerLabel(right)}`);
+  await expect(strip.locator('.bet-verdict')).toHaveText(
+    wrong === 'sit' ? `You sat out · Right ${betAnswerLabel(right)}` : `You bet ${betAnswerLabel(wrong)} · Right ${betAnswerLabel(right)}`,
+  );
+  // B2 #19: the tapped button stays marked; the others do not.
+  const answers = page.locator('.bet-sizing-answers');
+  await expect(answers.getByRole('button', { name: betAnswerLabel(wrong), exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(answers.locator('[aria-pressed="true"]')).toHaveCount(1);
+  await expect(answers.locator('.bet-sizing-btn--taken')).toHaveCount(1);
   expect((await history(page))[0]).toMatchObject({ taken: wrong, correct: right, ok: false });
   await shot(page, 'bet-sizing-wrong');
   await page.getByRole('button', { name: 'Next', exact: true }).click();

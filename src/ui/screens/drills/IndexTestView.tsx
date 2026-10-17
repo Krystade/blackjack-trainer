@@ -3,7 +3,11 @@ import type { Profile, Settings } from '../../../store/types';
 import type { Card, Rank } from '../../../engine/cards';
 import { strategyRulesFor } from '../../../store/profiles';
 import {
+  afterIndexAnswer,
+  answerWasShown,
   drawIndexTestItem,
+  NEW_INDEX_SESSION,
+  type IndexTestSession,
   indexTestPlayLine,
   indexTestPrompt,
   narrateIndexTestCorrection,
@@ -38,6 +42,7 @@ import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { DrillModeControls } from './DrillModeControls';
 import { QuizAskSwitch } from './QuizAskSwitch';
 import './indexTest.css';
+import './indexTestFit.css';
 
 /** The answered item, frozen for the strip: never the live next item. */
 interface IndexResult {
@@ -78,13 +83,19 @@ export function IndexTestView({
   );
   const [phase, setPhase] = useState<'answering' | 'feedback'>('answering');
   const phaseRef = useRef<'answering' | 'feedback'>('answering');
-  const [pending, setPending] = useState<number | null>(null);
+  // #29: the keypad's value is the one answer state -- typed, spoken or
+  // pressed out on the wheel -- so OK and "yes" submit the same thing.
+  const [padValue, setPadValue] = useState('');
+  const pending = /\d/.test(padValue) ? parseInt(padValue, 10) : null;
+  const setPending = (v: number | null) => setPadValue(v === null ? '' : String(v));
   const [result, setResult] = useState<IndexResult | null>(null);
   const resultIdRef = useRef(0);
   const correctionRef = useRef('');
   const runIdRef = useRef(0);
   const advanceTimerRef = useRef<number | null>(null);
   const promptShownAtRef = useRef(performance.now());
+  // #24 (R8): what this session has answered and missed, for the draw and the review.
+  const sessionRef = useRef<IndexTestSession>(NEW_INDEX_SESSION);
 
   const audio = useAudio(settings.audio);
   const [eyesFree, setEyesFree] = useEyesFreeToggle('deviation-quiz');
@@ -130,7 +141,7 @@ export function IndexTestView({
     phaseRef.current = 'answering';
     setPhase('answering');
     setPending(null);
-    setItem(drawIndexTestItem(randomSeed(), rules, srDeckRef.current, Date.now()));
+    setItem(drawIndexTestItem(randomSeed(), rules, srDeckRef.current, Date.now(), sessionRef.current.recent));
     promptShownAtRef.current = performance.now();
   };
 
@@ -139,8 +150,10 @@ export function IndexTestView({
     // Review fix (c), as in the quiz: the second touch of a bounce.
     if (answerTooSoon(promptShownAtRef.current)) return;
     const now = Date.now();
-    const graded = gradeIndexTestAnswer(item, answer, srDeckRef.current, now, channel);
+    const shown = answerWasShown(sessionRef.current, item.deviationId);
+    const graded = gradeIndexTestAnswer(item, answer, srDeckRef.current, now, channel, shown);
     srDeckRef.current = graded.nextDeck;
+    sessionRef.current = afterIndexAnswer(sessionRef.current, item.deviationId, graded.correct);
     resultIdRef.current += 1;
     setResult({
       id: resultIdRef.current,
@@ -320,33 +333,32 @@ export function IndexTestView({
         <div className="quiz-insurance-prompt">Dealer shows an Ace. Insurance?</div>
       )}
 
-      {pending !== null && (
-        <div className="index-test-pending" data-testid="index-test-pending">
-          {signed(pending, { plusZero: true })}?
-        </div>
-      )}
-
       <div className="message-strip">
         {result && (
           <ResultStrip id={result.id} tone={result.correct ? 'ok' : 'miss'}>
             <div className="index-test-result" data-testid="index-test-result">
+              {/* #28: two lines, not four, so a miss strip and the keypad
+                  fit an 812-tall phone with its insets. */}
               {result.correct ? (
                 <div className="index-test-verdict">
                   {`Correct! ${handText(result.cards, result.up)} — index ${signed(result.index)}`}
                 </div>
               ) : (
-                <>
-                  <div className="index-test-verdict">Wrong</div>
-                  <div className="index-test-hand">
-                    {`${handText(result.cards, result.up)} · you said ${signed(result.answer)}`}
-                  </div>
-                </>
+                <div className="index-test-line">
+                  <span className="index-test-verdict">Wrong</span>
+                  <span className="index-test-hand">
+                    {` · ${handText(result.cards, result.up)} · you said ${signed(result.answer)}`}
+                  </span>
+                </div>
               )}
-              <div className="index-test-right-index" data-testid="index-test-right-index">
-                {`Index ${signed(result.index)}`}
-              </div>
-              <div className="index-test-play-line" data-testid="index-test-play-line">
-                {result.playLine}
+              <div className="index-test-line">
+                <span className="index-test-right-index" data-testid="index-test-right-index">
+                  {`Index ${signed(result.index)}`}
+                </span>
+                {' · '}
+                <span className="index-test-play-line" data-testid="index-test-play-line">
+                  {result.playLine}
+                </span>
               </div>
               {result.review && <div className="index-test-review">{result.review}</div>}
             </div>
@@ -355,7 +367,7 @@ export function IndexTestView({
       </div>
 
       {phase === 'answering' ? (
-        <NumPad label="Index (true count)" onSubmit={(v) => submit(v)} />
+        <NumPad label="Index (true count)" value={padValue} onValueChange={setPadValue} onSubmit={(v) => submit(v)} />
       ) : (
         <div className="action-bar">
           <button type="button" className="drill-next-btn" onClick={() => next()}>
