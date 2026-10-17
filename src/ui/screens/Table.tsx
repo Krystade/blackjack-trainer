@@ -659,7 +659,11 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   };
 
   function finishSession() {
-    endSession(peeks);
+    // F22: nothing was dealt, so there is nothing to report or to keep.
+    if (endSession(peeks) === null) {
+      onNavigate('home');
+      return;
+    }
     setShowReport(true);
   }
 

@@ -286,16 +286,39 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const bump = useCallback(() => setVersion((v) => v + 1), []);
 
   /**
+   * F1: graded events committed to Stats so far. Each round's events are
+   * written as the round SETTLES (and a count check's as it is answered), so
+   * a reload, an iOS eviction or leaving through the gear loses nothing that
+   * was already decided. End then writes only the session row (and whatever a
+   * round still in play had graded).
+   */
+  const committedRef = useRef(0);
+  const commitEvents = useCallback(() => {
+    if (game.events.length <= committedRef.current) return;
+    const now = new Date().toISOString();
+    // #25: dated as they are committed, so Play's priced mistakes land in the
+    // cost-of-mistakes history inside a Stats time range, not only "all".
+    const fresh = datedSessionEvents(game.events.slice(committedRef.current), now);
+    committedRef.current = game.events.length;
+    saveStats(applyEvents(loadStats(), fresh, now));
+  }, [game]);
+
+  /**
    * #42: write the bankroll back to the profile whenever an engine call has
-   * moved it -- in practice, as each round settles. To STORAGE ONLY: see
-   * playBankroll.ts for why the app's copy of the profile is left alone (it
-   * keys the Table, and a remount would reshuffle the shoe mid-session).
-   * Runs after every render, which is after every engine call; the
-   * comparison makes the common case free.
+   * moved it. To STORAGE ONLY: see playBankroll.ts for why the app's copy of
+   * the profile is left alone (it keys the Table, and a remount would
+   * reshuffle the shoe mid-session). Runs after every render, which is after
+   * every engine call; the comparison makes the common case free.
+   *
+   * F1: only BETWEEN rounds, and in the same breath as the round's graded
+   * events, so the stored bankroll and the stored stats always describe the
+   * same rounds. An insurance loss mid-round is stored when the round settles.
    */
   const storedBankrollRef = useRef(game.bankroll);
   const profileId = profile.id;
   useEffect(() => {
+    if (game.phase === 'player' || game.phase === 'insurance') return;
+    commitEvents();
     if (game.bankroll === storedBankrollRef.current) return;
     storedBankrollRef.current = game.bankroll;
     storeBankrollNow(profileId, game.bankroll);
@@ -583,6 +606,9 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
         audio.say(narrateCountAnswer(result.actualTc));
         audio.ding(result.tcCorrect ? 'good' : 'bad');
       }
+      // F1: the answer is graded now; commit it before the next deal starts
+      // a round whose events wait for its settle.
+      commitEvents();
       // #36: the deal that was asked for happens right after the answer.
       const pending = pendingDealRef.current;
       pendingDealRef.current = null;
@@ -591,39 +617,51 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       bump();
       return { endNow: pending?.kind === 'end', check: { ...result, rcGuess: rc, tcGuess, round: roundAtCheck + 1 } };
     },
-    [game, bump, audio, runDeal, runSitOut],
+    [game, bump, audio, runDeal, runSitOut, commitEvents],
   );
 
+  /**
+   * End the session. Returns null when nothing was played (F22): no rounds,
+   * no report, and no session row. Otherwise commits whatever is still
+   * uncommitted (a round ended mid-play) and writes the session row only --
+   * the settled rounds' events are already in Stats (F1).
+   */
   const endSession = useCallback(
-    (peeks = 0): SessionReport => {
+    (peeks = 0): SessionReport | null => {
+      if (game.roundNo === 0) return null;
       const now = new Date().toISOString();
-      // #25: dated with the session, so Play's priced mistakes land in the
-      // cost-of-mistakes history inside a Stats time range, not only "all".
-      const events = datedSessionEvents(game.events, now);
+      commitEvents();
+      const events = game.events;
       // From where THIS session started (#42), not the profile's original stake.
       const bankrollDelta = game.bankroll - game.cfg.bankrollStart;
+      storedBankrollRef.current = game.bankroll;
+      storeBankrollNow(profileId, game.bankroll);
 
       const stats = loadStats();
-      const updated = applyEvents(stats, events, new Date().toISOString());
-      updated.sessions.push({
-        date: now,
-        rounds: game.roundNo,
-        graded: events.length,
-        correct: events.filter((e) => e.correct).length,
-        bankrollDelta,
-        profileId: profile.id,
-        profileName: profile.name,
-        // R7: only persist the field when peeks actually happened, so a
-        // clean (0-peek) session's blob is byte-for-byte what it was pre-R7.
-        ...(peeks > 0 ? { peeks } : {}),
+      saveStats({
+        ...stats,
+        sessions: [
+          ...stats.sessions,
+          {
+            date: now,
+            rounds: game.roundNo,
+            graded: events.length,
+            correct: events.filter((e) => e.correct).length,
+            bankrollDelta,
+            profileId: profile.id,
+            profileName: profile.name,
+            // R7: only persist the field when peeks actually happened, so a
+            // clean (0-peek) session's blob is byte-for-byte what it was pre-R7.
+            ...(peeks > 0 ? { peeks } : {}),
+          },
+        ],
       });
-      saveStats(updated);
 
       const rep = buildReport(events, bankrollDelta, peeks);
       setReport(rep);
       return rep;
     },
-    [game, profile.id, profile.name],
+    [game, profile.id, profile.name, profileId, commitEvents],
   );
 
   return {
