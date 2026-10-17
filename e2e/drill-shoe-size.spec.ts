@@ -61,7 +61,9 @@ test('produce the true count: a one-deck profile never divides by more than one 
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   const seen: number[] = [];
-  for (let round = 0; round < 6; round++) {
+  // A 1-deck shoe snaps to 0.5 or 1 deck (F17), so a short run can see one
+  // value by chance; play until both have shown up (30 rounds: ~1e-4 miss).
+  for (let round = 0; round < 30 && new Set(seen).size < 2; round++) {
     await expect(page.locator('.numpad')).toBeVisible();
     await expect(page.locator('.deck-tray-context')).toHaveText('1-deck shoe');
     await submitZero(page);
