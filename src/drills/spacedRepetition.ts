@@ -177,6 +177,12 @@ export interface ReviewContext {
    * treated as uncapped for the same reason.
    */
   channel?: AnswerChannel;
+  /**
+   * #24 (R8): the right answer was on screen (or just spoken) after a miss of
+   * this item. Correct then is a copy, not a recall: the box is held, like a
+   * hesitant answer, so a box-0 item stays due now and never jumps to tomorrow.
+   */
+  answerShown?: boolean;
 }
 
 /**
@@ -216,7 +222,7 @@ export function reviewCard(
     // longer gap.
     const hesitant = ctx.elapsedMs !== undefined && ctx.elapsedMs >= FLUENT_MS;
     const cap = ctx.channel ? channelBoxCap(ctx.channel) : MAX_BOX;
-    const target = hesitant ? prev.box : Math.min(prev.box + 1, cap);
+    const target = hesitant || ctx.answerShown ? prev.box : Math.min(prev.box + 1, cap);
     box = Math.max(prev.box, target);
 
     if (ctx.elapsedMs !== undefined) {

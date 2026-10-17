@@ -576,11 +576,13 @@ export function gradeIndexTestAnswer(
   deck: SrDeck,
   now: number,
   channel: AnswerChannel = SCREEN_CHANNEL,
+  // #24 (R8): the answer was shown after a miss this session -- a copy, not a recall.
+  answerShown = false,
 ): { event: GradedEvent; nextDeck: SrDeck; correct: boolean } {
   const event: GradedEvent = { ...buildIndexTestEvent(item, answer), at: new Date(now).toISOString() };
   const prev = deck[item.deviationId];
   const retention = prev && isGapReview(prev, now) ? retentionRow(item.deviationId, prev, event.correct, now) : null;
-  const nextDeck = { ...deck, [item.deviationId]: reviewCard(prev, event.correct, now, { channel }) };
+  const nextDeck = { ...deck, [item.deviationId]: reviewCard(prev, event.correct, now, { channel, answerShown }) };
   saveQuizSr(nextDeck);
   persistGrade(event, retention);
   return { event, nextDeck, correct: event.correct };

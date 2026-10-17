@@ -83,12 +83,50 @@ export function indexTestItemFor(dev: Deviation, rules: StrategyRules, rng: () =
   };
 }
 
-/** An SR-weighted pick over the Index test set -- drawQuizItem's no-filter weighting. */
-export function drawIndexTestItem(seed: number, rules: StrategyRules, srDeck: SrDeck = {}, now = 0): IndexTestItem {
+/**
+ * An SR-weighted pick over the Index test set -- drawQuizItem's no-filter
+ * weighting -- that never re-asks a `recent` item (newest last) while another
+ * is left (#24, R8). A just-missed card is box 0 and due now, so it used to
+ * outweigh every learned card and come straight back with its answer still on
+ * the strip. The last two are avoided when the set allows; the last one always.
+ */
+export function drawIndexTestItem(
+  seed: number,
+  rules: StrategyRules,
+  srDeck: SrDeck = {},
+  now = 0,
+  recent: readonly DeviationId[] = [],
+): IndexTestItem {
   const rng = mulberry32(seed);
   const set = indexTestSet(rules);
-  const weights = set.map((d) => srWeight(srDeck[d.id], now));
+  const base = set.map((d) => srWeight(srDeck[d.id], now));
+  const avoiding = (avoid: readonly DeviationId[]) => base.map((w, i) => (avoid.includes(set[i]!.id) ? 0 : w));
+  const options = [avoiding(recent.slice(-2)), avoiding(recent.slice(-1)), base];
+  const weights = options.find((ws) => ws.some((w) => w > 0))!;
   return indexTestItemFor(set[weightedIndex(rng, weights)]!, rules, rng);
+}
+
+/**
+ * The Index test's in-session memory (#24, R8): the items answered, newest
+ * last, and the ones missed whose answer has since been shown on the strip
+ * (or spoken). A correct answer to a shown item is a copy, not a recall.
+ */
+export interface IndexTestSession {
+  recent: DeviationId[];
+  shown: DeviationId[];
+}
+
+export const NEW_INDEX_SESSION: IndexTestSession = { recent: [], shown: [] };
+
+export function afterIndexAnswer(session: IndexTestSession, id: DeviationId, correct: boolean): IndexTestSession {
+  const recent = [...session.recent, id].slice(-2);
+  const others = session.shown.filter((s) => s !== id);
+  return { recent, shown: correct ? others : [...others, id] };
+}
+
+/** True when this item's answer was shown after a miss this session and not yet recalled. */
+export function answerWasShown(session: IndexTestSession, id: DeviationId): boolean {
+  return session.shown.includes(id);
 }
 
 export function gradeIndexTest(item: IndexTestItem, answer: number): boolean {

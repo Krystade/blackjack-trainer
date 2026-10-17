@@ -3,7 +3,11 @@ import type { Profile, Settings } from '../../../store/types';
 import type { Card, Rank } from '../../../engine/cards';
 import { strategyRulesFor } from '../../../store/profiles';
 import {
+  afterIndexAnswer,
+  answerWasShown,
   drawIndexTestItem,
+  NEW_INDEX_SESSION,
+  type IndexTestSession,
   indexTestPlayLine,
   indexTestPrompt,
   narrateIndexTestCorrection,
@@ -85,6 +89,8 @@ export function IndexTestView({
   const runIdRef = useRef(0);
   const advanceTimerRef = useRef<number | null>(null);
   const promptShownAtRef = useRef(performance.now());
+  // #24 (R8): what this session has answered and missed, for the draw and the review.
+  const sessionRef = useRef<IndexTestSession>(NEW_INDEX_SESSION);
 
   const audio = useAudio(settings.audio);
   const [eyesFree, setEyesFree] = useEyesFreeToggle('deviation-quiz');
@@ -130,7 +136,7 @@ export function IndexTestView({
     phaseRef.current = 'answering';
     setPhase('answering');
     setPending(null);
-    setItem(drawIndexTestItem(randomSeed(), rules, srDeckRef.current, Date.now()));
+    setItem(drawIndexTestItem(randomSeed(), rules, srDeckRef.current, Date.now(), sessionRef.current.recent));
     promptShownAtRef.current = performance.now();
   };
 
@@ -139,8 +145,10 @@ export function IndexTestView({
     // Review fix (c), as in the quiz: the second touch of a bounce.
     if (answerTooSoon(promptShownAtRef.current)) return;
     const now = Date.now();
-    const graded = gradeIndexTestAnswer(item, answer, srDeckRef.current, now, channel);
+    const shown = answerWasShown(sessionRef.current, item.deviationId);
+    const graded = gradeIndexTestAnswer(item, answer, srDeckRef.current, now, channel, shown);
     srDeckRef.current = graded.nextDeck;
+    sessionRef.current = afterIndexAnswer(sessionRef.current, item.deviationId, graded.correct);
     resultIdRef.current += 1;
     setResult({
       id: resultIdRef.current,

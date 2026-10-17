@@ -78,3 +78,56 @@ test('fits a 375×812 phone: OK and the strip are on screen after a miss', async
   expect(ok!.y + ok!.height).toBeLessThanOrEqual(812);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });
+
+/**
+ * #24 (R8): a missed index never comes straight back while its answer is on the
+ * strip, the last two are avoided, and copying the shown answer is not a
+ * clean recall. Seeded so every index is learned and not due -- the shape that
+ * made a just-missed (box 0, due now) card win the draw 60% of the time.
+ */
+test('a missed index is not asked again straight away, and is not promoted on a copied answer', async ({ page }) => {
+  const deck: Record<string, unknown> = {};
+  for (const id of Object.keys(H17)) deck[id] = { box: 2, dueAt: 4e12, lastSeenAt: 1, lapses: 0, reviews: 3 };
+  await page.addInitScript((d) => {
+    if (sessionStorage.getItem('seeded') === '1') return;
+    localStorage.setItem('bjtrainer.quizsr.v1', d);
+    sessionStorage.setItem('seeded', '1');
+  }, JSON.stringify(deck));
+  await openIndexTest(page);
+  const seen: string[] = [];
+  for (let i = 0; i < 12; i++) {
+    const { id, index } = await asked(page);
+    // Never the last item, nor the one before it.
+    expect(seen.slice(-2), `item ${i}: ${id} came back after ${seen.slice(-2).join(', ')}`).not.toContain(id);
+    seen.push(id);
+    await typeIndex(page, index + 7);
+    await expect(page.getByTestId('result-strip')).toHaveAttribute('data-tone', 'miss');
+    // A miss is due again soon, never "tomorrow".
+    await expect(page.getByTestId('index-test-result')).toContainText('again soon');
+  }
+});
+
+test('copying the answer shown after a miss holds the index at "soon"; a later recall promotes it', async ({ page }) => {
+  const deck: Record<string, unknown> = {};
+  for (const id of Object.keys(H17)) deck[id] = { box: 2, dueAt: 4e12, lastSeenAt: 1, lapses: 0, reviews: 3 };
+  await page.addInitScript((d) => {
+    if (sessionStorage.getItem('seeded') === '1') return;
+    localStorage.setItem('bjtrainer.quizsr.v1', d);
+    sessionStorage.setItem('seeded', '1');
+  }, JSON.stringify(deck));
+  await openIndexTest(page);
+  const missed = await asked(page);
+  await typeIndex(page, missed.index + 7);
+  const result = page.getByTestId('index-test-result');
+  let copies = 0;
+  for (let i = 0; i < 60 && copies < 2; i++) {
+    const { id, index } = await asked(page);
+    await typeIndex(page, index);
+    if (id !== missed.id) continue;
+    copies += 1;
+    // First right answer after the miss is a copy: held at box 0, due soon.
+    // The second is a recall and earns the next box (tomorrow).
+    await expect(result).toContainText(copies === 1 ? 'again soon' : 'again tomorrow');
+  }
+  expect(copies).toBe(2);
+});
