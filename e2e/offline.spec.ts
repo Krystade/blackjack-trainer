@@ -409,7 +409,8 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
    * persisted stats are read back: each counting drill has to have scored a
    * run, and the played hand has to have left a session behind.
    */
-  await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
+  // Wave B2 #11: the Drills picker has no Back to Home; the tab bar has Home.
+  await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
   await page.locator('.home-stats-link').click();
   await expect(page.locator('.stats-heading')).toHaveText('Stats');
   await statsTab(page, 'Drills');

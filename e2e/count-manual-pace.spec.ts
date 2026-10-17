@@ -47,7 +47,8 @@ test('a manual run records its own tap pace, not the auto interval', async ({ pa
 
   // Stats reads it back as a manual run.
   await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
+  // Wave B2 #11: the Drills picker has no Back to Home; the tab bar has Home.
+  await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
   await page.locator('.home-stats-link').click();
   await statsTab(page, 'Drills');
   await expect(page.locator('.count-history-row').first()).toContainText(

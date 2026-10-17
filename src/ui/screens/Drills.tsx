@@ -2882,7 +2882,7 @@ type DrillMode =
   | 'custom'
   | 'speed';
 
-export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
+export function Drills({ settings, activeProfile, onSettingsChange }: DrillsProps) {
   // #28: Home's Next step can hand over the drill to open.
   const [launch] = useState(() => takeDrillLaunch());
   const [mode, setMode] = useState<'picker' | DrillMode>(() => launch ?? 'picker');
@@ -3104,9 +3104,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         <h2 className="drills-group-title">Under pressure</h2>
         {entry('betsizing', 'Bet sizing', 'Read the running count and the tray, then bet your ramp, or sit out.', true)}
       </div>
-      <button type="button" className="drills-back-btn" onClick={() => onNavigate('home')}>
-        Back to Home
-      </button>
+      {/* Wave B2 #11 (B1): Drills is a tab-bar screen; Home is the tab bar's. */}
     </div>
   );
 }
