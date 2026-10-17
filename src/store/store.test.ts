@@ -527,8 +527,9 @@ describe('store/stats', () => {
     ];
 
     const result = applyEvents(stats, events);
+    // R9 (#25): an index answer is tallied per index only, not in the hard category.
     expect(result.categories.hard.right).toBe(0);
-    expect(result.categories.hard.wrong).toBe(1);
+    expect(result.categories.hard.wrong).toBe(0);
     expect(result.perIndex['16v10']).toEqual({ right: 0, wrong: 1 });
     expect(result.mistakes['missed-deviation']).toBe(1);
   });
@@ -657,8 +658,8 @@ describe('store/stats', () => {
 
     const result = applyEvents(stats, events);
 
-    // Category tallies
-    expect(result.categories.hard).toEqual({ right: 1, wrong: 1 });
+    // Category tallies. R9 (#25): the 16v10 index miss is in perIndex, not hard.
+    expect(result.categories.hard).toEqual({ right: 1, wrong: 0 });
     expect(result.categories.insurance).toEqual({ right: 0, wrong: 1 });
     expect(result.categories.bet).toEqual({ right: 0, wrong: 1 });
     expect(result.categories.countCheck).toEqual({ right: 1, wrong: 0 });

@@ -2,7 +2,7 @@ import type { GradedEvent } from '../engine/grade';
 import type { Stats, TallyRW } from './types';
 import type { CellTally } from './cellStats';
 import { cellUndone, handRecentUndone } from './cellStats';
-import { tallyCellIdFor } from './stats';
+import { countsInCategory, tallyCellIdFor } from './stats';
 
 /**
  * #22 (spec 2026-10-13): "Wrong tap". The exact inverse of applying ONE graded
@@ -34,7 +34,9 @@ export function undoGradedEvent(stats: Stats, event: GradedEvent, cellBefore?: C
   };
   const isZero = (t: TallyRW) => t.right === 0 && t.wrong === 0;
 
-  result.categories = { ...stats.categories, [event.category]: dec(stats.categories[event.category]) };
+  if (countsInCategory(event)) {
+    result.categories = { ...stats.categories, [event.category]: dec(stats.categories[event.category]) };
+  }
 
   if (event.deviationId) {
     const perIndex = { ...stats.perIndex };

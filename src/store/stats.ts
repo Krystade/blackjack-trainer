@@ -21,6 +21,22 @@ export function tallyCellIdFor(event: GradedEvent): string | null {
 }
 
 /**
+ * R9 (#25): whether an event counts in `stats.categories`. An index answer
+ * (one carrying a `deviationId`: the Index test, the Deviation quiz, a
+ * With-count or Play decision on an index) is index knowledge and is tallied
+ * in `perIndex` only -- never in the basic-strategy hand categories (hard,
+ * soft, pairs, surrender), which the per-cell goal reads beside `cellStats`.
+ * Counting them there showed a fresh profile's Index-test answers as "answers
+ * from before per-hand tracking". Insurance has no basic play and keeps its
+ * tally. Shared with the undo so the two never disagree.
+ */
+export function countsInCategory(event: GradedEvent): boolean {
+  return !event.deviationId || !BASIC_CATEGORIES.has(event.category);
+}
+
+const BASIC_CATEGORIES: ReadonlySet<Category> = new Set<Category>(['hard', 'soft', 'pairs', 'surrender']);
+
+/**
  * Apply graded events to stats, returning a new Stats object (pure function).
  * Does not mutate the input stats.
  *
@@ -65,13 +81,15 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
   for (const event of events) {
     // Update category tallies. The tally object itself is copied, not
     // mutated, so sibling categories stay shared with the input.
-    const categoryTally = { ...result.categories[event.category] };
-    if (event.correct) {
-      categoryTally.right += 1;
-    } else {
-      categoryTally.wrong += 1;
+    if (countsInCategory(event)) {
+      const categoryTally = { ...result.categories[event.category] };
+      if (event.correct) {
+        categoryTally.right += 1;
+      } else {
+        categoryTally.wrong += 1;
+      }
+      result.categories[event.category] = categoryTally;
     }
-    result.categories[event.category] = categoryTally;
 
     // Update perIndex if deviationId is present
     if (event.deviationId) {

@@ -206,6 +206,16 @@ export function classifyAction(
  * @param rules The ruleset to determine which deviation set to use (H17 vs S17)
  */
 function isPhantomDeviation(taken: Action, cards: Card[], up: Rank, rules: StrategyRules = DEFAULT_RULES): boolean {
+  return phantomDeviationId(taken, cards, up, rules) !== null;
+}
+
+/**
+ * R9 (#8): the active index a phantom deviation reached for -- the entry on
+ * this hand and upcard whose play is `taken` -- or null when there is none.
+ * A With-count miss below the index is filed under it (perIndex, quiz deck),
+ * the way the Deviation quiz files the same miss, never under the basic cell.
+ */
+export function phantomDeviationId(taken: Action, cards: Card[], up: Rank, rules: StrategyRules = DEFAULT_RULES): DeviationId | null {
   const hv = handValue(cards);
   const upIdx = upIndex(up);
   const isTenPair = pairRank(cards) === '10'; // pairRank normalizes 10/J/Q/K to '10'
@@ -224,25 +234,25 @@ function isPhantomDeviation(taken: Action, cards: Card[], up: Rank, rules: Strat
       if (dev.total !== hv.total) continue; // Different total
       if (dev.up === undefined) continue; // Should not happen
       if (upIndex(dev.up) !== upIdx) continue; // Different upcard
-      return true; // Found a matching active hard deviation with the same action
+      return dev.id; // Found a matching active hard deviation with the same action
     } else if (dev.kind === 'soft') {
       // Soft deviations (the opt-in BJA H17 extras) only match soft hands
       if (!hv.soft) continue; // Not a soft hand
       if (dev.total !== hv.total) continue; // Different total
       if (dev.up === undefined) continue; // Should not happen
       if (upIndex(dev.up) !== upIdx) continue; // Different upcard
-      return true; // Found a matching active soft deviation with the same action
+      return dev.id; // Found a matching active soft deviation with the same action
     } else if (dev.kind === 'pair10') {
       // Pair10 deviations only match ten-value pairs
       if (!isTenPair) continue;
       if (dev.up === undefined) continue;
       if (upIndex(dev.up) !== upIdx) continue;
-      return true; // Found a matching active pair10 deviation with the same action
+      return dev.id; // Found a matching active pair10 deviation with the same action
     }
     // insurance deviations are not checked here (different context)
   }
 
-  return false;
+  return null;
 }
 
 /**
