@@ -114,7 +114,7 @@ test('With count: a missed index shows the index review date, and Wrong tap rest
   expect(await storage('bjtrainer.flashsr.v1')).toEqual(flashBefore);
   // The index's review (just missed: soon), not the flash cell's (a month).
   const sr = page.locator('[data-testid="result-strip"] .hand-result-sr');
-  await expect(sr).toHaveText(/^Next review: (now|in \d+ hours?)$/);
+  await expect(sr).toHaveText(/^You'll see this again (soon|in \d+ hours?)$/);
 
   await page.getByRole('button', { name: 'Wrong tap', exact: true }).click();
   await expect(page.getByTestId('hand-result-undone')).toBeVisible();

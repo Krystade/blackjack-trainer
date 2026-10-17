@@ -27,6 +27,7 @@ import { ActionBar } from '../../components/ActionBar';
 import { HandResultStrip } from '../../components/HandResultStrip';
 import { RulesChip } from '../../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../../handResult';
+import { withRegionRule } from './drillMiss';
 import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../../wrongTap';
 import { answerTooSoon } from '../../answerBounce';
 import { StudyChartOverlay } from '../../components/StudyChartOverlay';
@@ -204,15 +205,19 @@ export function MasteryChallengeView({
         : null,
     );
     setLastResult(
-      snapshotResult(
-        resultId,
+      withRegionRule(
+        snapshotResult(
+          resultId,
+          event,
+          { cards: cell.cards, up: cell.up, tc: null },
+          {
+            cellId: cell.id,
+            // #17: what the miss threw away, counted before the reset.
+            progressLost: correct ? undefined : { at: run.index, of: run.order.length },
+          },
+        ),
         event,
-        { cards: cell.cards, up: cell.up, tc: null },
-        {
-          cellId: cell.id,
-          // #17: what the miss threw away, counted before the reset.
-          progressLost: correct ? undefined : { at: run.index, of: run.order.length },
-        },
+        activeProfile.rules,
       ),
     );
     // #29: a miss reshuffles by the SR weights as they stand now. Wave A

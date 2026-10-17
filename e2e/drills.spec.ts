@@ -14,8 +14,8 @@ import { answerAndReadStrip, shot, withSettings, withStats, readStats, goHomeAnd
  */
 async function stripText(page: Page): Promise<string> {
   return (await page.locator('.message-strip').innerText()).replace(
-    /Next review[^\n]*/g,
-    'Next review <time>',
+    /You'll see this again[^\n]*/g,
+    "You'll see this again <time>",
   );
 }
 

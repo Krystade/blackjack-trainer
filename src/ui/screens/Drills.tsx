@@ -59,6 +59,7 @@ import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { HandResultStrip } from '../components/HandResultStrip';
 import { RulesChip } from '../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../handResult';
+import { withRegionRule, type DrillHandResult } from './drills/drillMiss';
 import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../wrongTap';
 import type { CellTally } from '../../store/cellStats';
 import { answerTooSoon } from '../answerBounce';
@@ -218,7 +219,7 @@ function chartTargetFrom(result: HandResult): ChartTarget {
  * full correction panel -- nobody is looking at a strip while driving.
  */
 function useHandResult() {
-  const [lastResult, setLastResult] = useState<HandResult | null>(null);
+  const [lastResult, setLastResult] = useState<DrillHandResult | null>(null);
   const [chartTarget, setChartTarget] = useState<ChartTarget | null>(null);
   // #22: the miss now on the strip, while it can still be withdrawn. Cleared
   // by every graded answer (`clearWrongTap`), on every channel, so the link
@@ -231,7 +232,7 @@ function useHandResult() {
   };
   /** Freeze an answered hand into the strip, offering "Wrong tap" on a miss. */
   const showResult = (
-    result: HandResult,
+    result: DrillHandResult,
     event: GradedEvent,
     revert: () => void,
     cellBefore: CellTally | null | undefined,
@@ -618,22 +619,24 @@ function FlashcardsView({
     const srCard = indexReview ? loadQuizSr()[indexReview.key] : srDeckRef.current[card.cellId];
     const srText = formatReviewPlain(srCard, Date.now());
     const cellId = card.cellId;
+    const snapshot = snapshotResult(
+      nextResultId(),
+      event,
+      { cards: card.cards, up: card.up, tc: card.tc ?? null },
+      {
+        cellId,
+        sr: srText ? { text: srText, box: srCard?.box } : null,
+        // #53: a With-count card says whether an index applied. Wave A (s03):
+        // not on a missed index -- the miss line already names it, and the
+        // second copy only added height.
+        ...(card.tc !== undefined && !(event.deviationId && !event.correct)
+          ? { indexNote: indexLine(event, activeProfile.rules, { cards: card.cards, up: card.up, ctx: flashCtx(card) }) }
+          : {}),
+      },
+    );
     showResult(
-      snapshotResult(
-        nextResultId(),
-        event,
-        { cards: card.cards, up: card.up, tc: card.tc ?? null },
-        {
-          cellId,
-          sr: srText ? { text: srText, box: srCard?.box } : null,
-          // #53: a With-count card says whether an index applied. Wave A (s03):
-          // not on a missed index -- the miss line already names it, and the
-          // second copy only added height.
-          ...(card.tc !== undefined && !(event.deviationId && !event.correct)
-            ? { indexNote: indexLine(event, activeProfile.rules, { cards: card.cards, up: card.up, ctx: flashCtx(card) }) }
-            : {}),
-        },
-      ),
+      // B7: a basic-strategy miss reads its chart region.
+      withRegionRule(snapshot, event, activeProfile.rules),
       event,
       // #22: a withdrawn answer puts the card's schedule back as well.
       () => {
@@ -2388,7 +2391,7 @@ function MixedSessionView({
             },
           );
     const prevSr = prevSrRef.current;
-    showResult(snapshot, event, () => {
+    showResult(withRegionRule(snapshot, event, activeProfile.rules), event, () => {
       if (!prevSr) return;
       if (prevSr.deck === 'flash') {
         flashSrRef.current = restoreSrCard(flashSrRef.current, prevSr.key, prevSr.prev);
