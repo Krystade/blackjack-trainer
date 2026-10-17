@@ -27,7 +27,8 @@ import { ActionBar } from '../../components/ActionBar';
 import { HandResultStrip } from '../../components/HandResultStrip';
 import { RulesChip } from '../../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../../handResult';
-import { withRegionRule } from './drillMiss';
+import { withMissDetail, type DrillHandResult } from './drillMiss';
+import { MissHistoryLine } from './MissHistoryLine';
 import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../../wrongTap';
 import { answerTooSoon } from '../../answerBounce';
 import { StudyChartOverlay } from '../../components/StudyChartOverlay';
@@ -133,7 +134,7 @@ export function MasteryChallengeView({
   // one; the strip and "Show on chart" read ONLY this snapshot. #10's bug was
   // the chart reading the live `cell` after setRun(nextRun) had replaced it,
   // so a miss on 4,4 v 4 opened whatever the reshuffle dealt next.
-  const [lastResult, setLastResult] = useState<HandResult | null>(null);
+  const [lastResult, setLastResult] = useState<DrillHandResult | null>(null);
   // #22: the miss on the strip while it can still be withdrawn, with the run
   // as it stood before that answer.
   const [wrongTap, setWrongTap] = useState<WrongTapRecord | null>(null);
@@ -205,7 +206,7 @@ export function MasteryChallengeView({
         : null,
     );
     setLastResult(
-      withRegionRule(
+      withMissDetail(
         snapshotResult(
           resultId,
           event,
@@ -217,6 +218,7 @@ export function MasteryChallengeView({
           },
         ),
         event,
+        cellBefore ?? null,
         activeProfile.rules,
       ),
     );
@@ -341,6 +343,7 @@ export function MasteryChallengeView({
                   }
                 />
               )}
+              <MissHistoryLine result={lastResult} />
             </div>
 
             <ActionBar

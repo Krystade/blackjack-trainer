@@ -59,7 +59,8 @@ import { StudyChartOverlay } from '../components/StudyChartOverlay';
 import { HandResultStrip } from '../components/HandResultStrip';
 import { RulesChip } from '../components/RulesChip';
 import { releaseAnswerFocus, snapshotResult, type HandResult } from '../handResult';
-import { withRegionRule, type DrillHandResult } from './drills/drillMiss';
+import { withMissDetail, type DrillHandResult } from './drills/drillMiss';
+import { MissHistoryLine } from './drills/MissHistoryLine';
 import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../wrongTap';
 import type { CellTally } from '../../store/cellStats';
 import { answerTooSoon } from '../answerBounce';
@@ -635,8 +636,8 @@ function FlashcardsView({
       },
     );
     showResult(
-      // B7: a basic-strategy miss reads its chart region.
-      withRegionRule(snapshot, event, activeProfile.rules),
+      // B7: a basic-strategy miss reads its chart region; B6: and its history.
+      withMissDetail(snapshot, event, cellBefore, activeProfile.rules),
       event,
       // #22: a withdrawn answer puts the card's schedule back as well.
       () => {
@@ -1173,7 +1174,10 @@ function FlashcardsView({
         )}
         {/* B1: the previous card's result, under the card now being asked. */}
         {!feedback && !selfCheckOpen && !eyesFree && lastResult && (
-          <HandResultStrip result={lastResult} onShowChart={openChartOn} onWrongTap={wrongTapFor(lastResult)} />
+          <>
+            <HandResultStrip result={lastResult} onShowChart={openChartOn} onWrongTap={wrongTapFor(lastResult)} />
+            <MissHistoryLine result={lastResult} />
+          </>
         )}
       </div>
 
@@ -1535,11 +1539,17 @@ function DeviationQuizView({
   const freezeResult = (event: GradedEvent) => {
     const prevSr = prevSrRef.current;
     showResult(
-      snapshotResult(
-        nextResultId(),
+      // B6: the miss's cost and history (the region rule is a no-op for quiz events).
+      withMissDetail(
+        snapshotResult(
+          nextResultId(),
+          event,
+          { cards: item.cards, up: item.up, tc: item.tc },
+          { label: item.label, note: tableMaskNote(item, strategyRulesFor(activeProfile)) },
+        ),
         event,
-        { cards: item.cards, up: item.up, tc: item.tc },
-        { label: item.label, note: tableMaskNote(item, strategyRulesFor(activeProfile)) },
+        cellBeforeRef.current ?? null,
+        activeProfile.rules,
       ),
       event,
       () => {
@@ -2023,11 +2033,14 @@ function DeviationQuizView({
         {/* B1: the previous item's result, under the item now being asked.
             An insurance question has no chart cell to open. */}
         {!feedback && !selfCheckOpen && !eyesFree && lastResult && (
-          <HandResultStrip
-            result={lastResult}
-            onShowChart={lastResult.cards ? openChartOn : undefined}
-            onWrongTap={wrongTapFor(lastResult)}
-          />
+          <>
+            <HandResultStrip
+              result={lastResult}
+              onShowChart={lastResult.cards ? openChartOn : undefined}
+              onWrongTap={wrongTapFor(lastResult)}
+            />
+            <MissHistoryLine result={lastResult} />
+          </>
         )}
       </div>
 
@@ -2391,7 +2404,7 @@ function MixedSessionView({
             },
           );
     const prevSr = prevSrRef.current;
-    showResult(withRegionRule(snapshot, event, activeProfile.rules), event, () => {
+    showResult(withMissDetail(snapshot, event, cellBeforeRef.current ?? null, activeProfile.rules), event, () => {
       if (!prevSr) return;
       if (prevSr.deck === 'flash') {
         flashSrRef.current = restoreSrCard(flashSrRef.current, prevSr.key, prevSr.prev);
@@ -2743,11 +2756,14 @@ function MixedSessionView({
         )}
         {/* B1: the previous item's result, under the item now being asked. */}
         {!feedback && !selfCheckOpen && !eyesFree && lastResult && (
-          <HandResultStrip
-            result={lastResult}
-            onShowChart={lastResult.cards ? openChartOn : undefined}
-            onWrongTap={wrongTapFor(lastResult)}
-          />
+          <>
+            <HandResultStrip
+              result={lastResult}
+              onShowChart={lastResult.cards ? openChartOn : undefined}
+              onWrongTap={wrongTapFor(lastResult)}
+            />
+            <MissHistoryLine result={lastResult} />
+          </>
         )}
       </div>
 
