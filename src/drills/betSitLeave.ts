@@ -67,8 +67,8 @@ const TC_CLAMP = 6; // realistic true-count bound
  * true count is derived from a plausible running count bounded by how much of
  * the shoe has been dealt, so a big |TC| only occurs deep in the shoe — never
  * an impossible "TC -4 with a near-full shoe". Decks-remaining in 0.5-deck steps
- * over the profile's own shoe. Early shoes stay near neutral (bet); negative
- * counts, the sit decisions, happen deeper.
+ * over the profile's own shoe. Early shoes stay near neutral (a sit on the
+ * default ramp, which raises from +1); big counts either way happen deeper.
  */
 export function makeBetSitLeaveScenario(
   seed?: number,
