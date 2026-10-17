@@ -4,7 +4,7 @@ import { hydrateMasteryRun, isMasteryRunComplete } from '../../drills/masteryCha
 import type { MasteryRun, PersistedMasteryRun } from '../../drills/masteryChallenge';
 import { generateAllCells } from '../../drills/flashcards';
 import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, WEAK_CELL_BELOW, handCategoryProgress, pctDown, weakCells } from './handProgress';
-import type { HandCategoryProgress } from './handProgress';
+import type { HandCategoryProgress, WeakCell } from './handProgress';
 import type { HandScope } from '../../drills/handScope';
 
 /**
@@ -13,6 +13,8 @@ import type { HandScope } from '../../drills/handScope';
  *
  *  1. flash   -- Learn basic strategy: until hard, soft and pairs are each
  *                at >= 90% over at least MIN_CATEGORY_ANSWERS answers.
+ *                (s07: a category below 90% whose misses sit mostly in a few
+ *                weak cells goes to step 2's Custom instead.)
  *  2. custom  -- Fix weak cells (Custom with Auto): any cell with at least
  *                MIN_CELL_ANSWERS answers below 78%.
  *  3. mastery -- a Mastery sweep, until one has been completed.
@@ -82,6 +84,21 @@ export function cellLabel(id: string): string {
   return `${kind === 'hard' ? 'Hard' : 'Soft'} ${row} v ${up}`;
 }
 
+/** s07: cells judged weak inside a category that is below target need only this many answers. */
+export const MIN_CELL_ANSWERS_IN_LOW_CATEGORY = 3;
+
+/** The "Fix weak cells" step for `weak` (worst first), its reason led by `lead`. */
+function weakCellsStep(weak: readonly WeakCell[], lead: string, progress?: HandCategoryProgress[]): NextStep {
+  const w = weak[0]!;
+  const more = weak.length > 1 ? ` and ${weak.length - 1} more cell${weak.length > 2 ? 's' : ''}` : '';
+  return {
+    kind: 'custom',
+    title: 'Fix weak cells',
+    why: `${lead}${cellLabel(w.id)}${lead ? '' : ' is'} at ${pctDown(w.pct)}%${more} below ${pctDown(WEAK_CELL_BELOW)}%. Custom with Auto drills them most.`,
+    ...(progress ? { progress } : {}),
+  };
+}
+
 export function nextStep(stats: Stats, opts: { sweepDone: boolean }): NextStep {
   // 1. Basic strategy, category by category (W3: judged on the recent
   // window, see handProgress). Too few answers to judge comes first: it is
@@ -98,6 +115,20 @@ export function nextStep(stats: Stats, opts: { sweepDone: boolean }): NextStep {
     };
   }
   const low = cats.filter((c) => c.pct < CATEGORY_TARGET).sort((a, b) => a.pct - b.pct)[0];
+  // s07: a weakness CONCENTRATED in a few cells keeps its category under 90%
+  // for good while the rest is known, and more of the whole category is the
+  // wrong drill for it. When cells judged weak (on as few as
+  // MIN_CELL_ANSWERS_IN_LOW_CATEGORY answers) hold at least half of the
+  // category's misses, send them to Custom with Auto instead.
+  if (low) {
+    const lowWeak = weakCells(stats, { prefix: low.prefix, minAnswers: MIN_CELL_ANSWERS_IN_LOW_CATEGORY });
+    const cells = stats.cellStats ?? {};
+    const missesIn = (ids: readonly string[]) => ids.reduce((n, id) => n + (cells[id]?.wrong ?? 0), 0);
+    const categoryMisses = missesIn(Object.keys(cells).filter((id) => id.startsWith(`${low.prefix}-`)));
+    if (lowWeak.length > 0 && missesIn(lowWeak.map((w) => w.id)) * 2 >= categoryMisses) {
+      return weakCellsStep(lowWeak, `${low.label} are at ${pctDown(low.pct)}%, mostly from `, cats);
+    }
+  }
   if (low) {
     return {
       kind: 'flash',
@@ -110,15 +141,7 @@ export function nextStep(stats: Stats, opts: { sweepDone: boolean }): NextStep {
 
   // 2. Weak cells, worst first (W3: judged on each cell's recent answers).
   const weak = weakCells(stats);
-  if (weak.length > 0) {
-    const w = weak[0]!;
-    const more = weak.length > 1 ? ` and ${weak.length - 1} more cell${weak.length > 2 ? 's' : ''}` : '';
-    return {
-      kind: 'custom',
-      title: 'Fix weak cells',
-      why: `${cellLabel(w.id)} is at ${pctDown(w.pct)}%${more} below ${pctDown(WEAK_CELL_BELOW)}%. Custom with Auto drills them most.`,
-    };
-  }
+  if (weak.length > 0) return weakCellsStep(weak, '');
 
   // 3. A full sweep proves it with no misses in a row.
   if (!opts.sweepDone) {

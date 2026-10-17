@@ -90,7 +90,7 @@ describe('nextStep (#28)', () => {
 
   it('W3: with fewer than 20 answers in the window the lifetime figure is used', () => {
     const s = learned();
-    s.cellStats!['pair-8-v-A'] = { right: 70, wrong: 30, lastAt: '' };
+    s.cellStats!['pair-8-v-A'] = { right: 70, wrong: 30, lastAt: '', recent: '1'.repeat(10) };
     s.handRecent = { pair: '1'.repeat(19) };
     expect(nextStep(s, { sweepDone: true }).why).toMatch(/^Pairs are at 70%;/);
   });
@@ -118,6 +118,28 @@ describe('nextStep (#28)', () => {
     expect(low).toMatchObject({ kind: 'flash', scope: 'soft' });
     expect(low.progress?.find((c) => c.prefix === 'hard')?.onTarget).toBe(true);
     expect(nextStep(learned(), { sweepDone: false }).scope).toBeUndefined();
+  });
+
+  it('s07: a weakness concentrated in a few cells of a low category goes to Fix weak cells', () => {
+    const s = learned();
+    // Soft at 80%: every miss is on two soft doubles with 3-4 answers each.
+    s.cellStats!['soft-18-v-9'] = { right: 30, wrong: 0, lastAt: '', recent: '1'.repeat(10) };
+    s.cellStats!['soft-17-v-3'] = { right: 0, wrong: 4, lastAt: '', recent: '0000' };
+    s.cellStats!['soft-15-v-4'] = { right: 1, wrong: 3, lastAt: '', recent: '0100' };
+    const n = nextStep(s, { sweepDone: false });
+    expect(n.kind).toBe('custom');
+    expect(n.why).toBe(
+      'Soft totals are at 81%, mostly from Soft 17 v 3 at 0% and 1 more cell below 78%. Custom with Auto drills them most.',
+    );
+    expect(n.progress?.map((c) => c.prefix)).toEqual(['hard', 'soft', 'pair']);
+  });
+
+  it('s07: misses spread across the category stay with Learn basic strategy', () => {
+    const s = learned();
+    s.cellStats!['soft-18-v-9'] = { right: 24, wrong: 6, lastAt: '', recent: '1111111111' };
+    // One weak cell, but it holds 2 of the category's 8 misses.
+    s.cellStats!['soft-17-v-3'] = { right: 1, wrong: 2, lastAt: '', recent: '010' };
+    expect(nextStep(s, { sweepDone: false })).toMatchObject({ kind: 'flash', scope: 'soft' });
   });
 
   it('3: strategy in hand and no completed sweep -> Mastery', () => {
