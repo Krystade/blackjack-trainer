@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lossPer100, formatLossPer100, formatLossValue, betMissText, sessionsBetMisses, sessionsLossPer100, sessionTag } from './sessionFigures';
+import { lossPer100, formatLossPer100, formatLossValue, betMissText, sessionsBetMisses, sessionsLossPer100, sessionTag, sessionsPlayAccuracy } from './sessionFigures';
 
 const row = (extra: Record<string, unknown> = {}) => ({ date: '2026-10-17', rounds: 10, graded: 10, correct: 9, bankrollDelta: 0, ...extra });
 
@@ -36,5 +36,21 @@ describe('per-100 figure (B6/W12)', () => {
   it('tags Hot shoe rows', () => {
     expect(sessionTag(row({ hotShoe: true }))).toBe('Hot shoe');
     expect(sessionTag(row())).toBeNull();
+  });
+});
+
+describe('C-R8: Stats play accuracy counts play decisions only', () => {
+  it('reads plays/playsCorrect, falling back to the graded total for rows written before B2', () => {
+    // A B2 row: 100 graded (bets, sits, checks included) but 40 plays, 20 right.
+    // A pre-B2 row: no plays, so its graded total stands in (C-R7's rule).
+    const rows = [
+      row({ graded: 100, correct: 90, plays: 40, playsCorrect: 20 }),
+      row({ graded: 10, correct: 10 }),
+    ];
+    expect(sessionsPlayAccuracy(rows)).toEqual({ correct: 30, plays: 50 });
+  });
+
+  it('is zero plays with no rows', () => {
+    expect(sessionsPlayAccuracy([])).toEqual({ correct: 0, plays: 0 });
   });
 });

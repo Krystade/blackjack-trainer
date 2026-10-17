@@ -63,3 +63,20 @@ test('B2 #35: a Hot shoe session shows no bankroll result in Table sessions', as
   await expect(hot.locator('.result-correct, .result-wrong')).toHaveCount(0);
   await expect(hot.locator('.session-not-kept')).toHaveText('not kept');
 });
+
+test('C-R8: play accuracy counts play decisions only, and a pre-B2 row on its graded total', async ({ page }) => {
+  await withProfile(page);
+  const date = new Date(Date.now() - DAY).toISOString();
+  await withStats(page, {
+    sessions: [
+      // 100 graded, but only 40 were plays (20 right); the rest were bets, sits, checks.
+      { date, rounds: 40, graded: 100, correct: 90, bankrollDelta: 0, profileId: 'e2e-profile', plays: 40, playsCorrect: 20 },
+      // Written before B2: no plays, so its graded total stands in.
+      { date, rounds: 10, graded: 10, correct: 10, bankrollDelta: 0, profileId: 'e2e-profile' },
+    ],
+  });
+  await openStats(page);
+  await statsTab(page, 'Play');
+  // (20 + 10) / (40 + 10) = 60%, not the 100 / 110 every graded decision gives.
+  await expect(profileRow(page, 'Your play accuracy')).toContainText('60%');
+});

@@ -46,7 +46,7 @@ import type { HandCategoryProgress } from './handProgress';
 import './statsGoal.css';
 import './statsHistory.css';
 import './statsSessions.css';
-import { betMissText, formatLossValue, sessionsBetMisses, sessionsLossPer100, sessionTag } from '../sessionFigures';
+import { betMissText, formatLossValue, sessionsBetMisses, sessionsLossPer100, sessionsPlayAccuracy, sessionTag } from '../sessionFigures';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -773,8 +773,9 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   // session row is dated, and the range note does not list this block among
   // its all-time tallies.
   const profileSessions = inRange(stats.sessions).filter((s) => s.profileId === activeProfile.id);
-  const totalGraded = profileSessions.reduce((sum, s) => sum + s.graded, 0);
-  const totalCorrect = profileSessions.reduce((sum, s) => sum + s.correct, 0);
+  // C-R8: play decisions only, on rung 7's basis -- bet/sit and count checks
+  // keep their own rows. A pre-B2 row falls back to its graded total.
+  const { plays: totalGraded, correct: totalCorrect } = sessionsPlayAccuracy(profileSessions);
   const actualAccuracyPct = totalGraded === 0 ? null : (totalCorrect / totalGraded) * 100;
   // R7 (docs/BACKLOG.md, count-peek accountability / RT#5): the "actual play
   // accuracy" number is uninterpretable if it was silently peek-assisted, so

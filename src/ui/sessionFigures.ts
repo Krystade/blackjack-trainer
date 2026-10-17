@@ -1,6 +1,7 @@
 /** Wave B, B6/W12: the per-100 figure and session tags for the report and Stats. */
 import type { Stats } from '../store/types';
 import { MINUS } from '../drills/signed';
+import { playDecisions } from './screens/ladderRules';
 
 type SessionRow = Stats['sessions'][number];
 
@@ -55,4 +56,20 @@ export function sessionsLossPer100(rows: readonly SessionRow[]): number | null {
 
 export function sessionTag(row: SessionRow): string | null {
   return row.hotShoe ? 'Hot shoe' : null;
+}
+
+/**
+ * C-R8: Stats' "Your play accuracy" over these rows -- play decisions only, on
+ * the same basis as rung 7 (playDecisions: `plays`/`playsCorrect`, or a pre-B2
+ * row's graded total). Bet/sit and count checks have their own rows.
+ */
+export function sessionsPlayAccuracy(rows: readonly SessionRow[]): { correct: number; plays: number } {
+  let correct = 0;
+  let plays = 0;
+  for (const r of rows) {
+    const d = playDecisions(r);
+    correct += d.correct;
+    plays += d.plays;
+  }
+  return { correct, plays };
 }
