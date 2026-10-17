@@ -341,7 +341,7 @@ describe('normalizeRowOrder', () => {
 
 describe('rulesetSummary', () => {
   it('names the deck count, the soft-17 rule, DAS and surrender', () => {
-    expect(rulesetSummary(D68_H17)).toBe('6 deck · H17 · DAS · Late surrender');
+    expect(rulesetSummary(D68_H17)).toBe('6 decks · H17 · DAS · Late surrender');
   });
 
   it('flips every clause when the rules do', () => {
@@ -350,7 +350,10 @@ describe('rulesetSummary', () => {
     );
   });
 
-  it('says "2 deck" not "2 decks" so the header stays one tight line', () => {
-    expect(rulesetSummary({ ...DEFAULT_RULES, decks: 2 })).toContain('2 deck');
+  // Plural from two up (s08: '2 deck' read as a typo). The longest summary,
+  // '8 decks · H17 · No DAS · Late surrender', still fits one line at 375px.
+  it('says "2 decks", and "1 deck" for a single deck', () => {
+    expect(rulesetSummary({ ...DEFAULT_RULES, decks: 2 })).toMatch(/^2 decks · /);
+    expect(rulesetSummary({ ...DEFAULT_RULES, decks: 1 })).toMatch(/^1 deck · /);
   });
 });

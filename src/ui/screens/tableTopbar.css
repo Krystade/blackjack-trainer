@@ -22,10 +22,18 @@
   white-space: normal;
 }
 
-/* The profile name under the bankroll rather than truncated beside it. */
+/* The profile name under the bankroll rather than truncated beside it.
+   F28: it was 9.5px at 65% opacity (3.21:1 in Bone & Ink). The !important
+   overrides the inline size and opacity Table.tsx still sets; once that
+   inline style is gone they can be dropped. */
 .table-screen > .topbar .topbar-profile-name {
   display: block;
   margin-left: 0 !important;
+  font-size: 0.75rem !important;
+  opacity: 1 !important;
+  font-weight: 600;
+  color: var(--ink-dim);
+  line-height: 1.25;
 }
 
 .table-screen > .topbar > .topbar-stat:nth-child(2) {

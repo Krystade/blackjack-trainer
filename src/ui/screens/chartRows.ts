@@ -317,12 +317,13 @@ export function normalizeRowOrder(raw: string | null | undefined): RowOrder {
  * The header line that makes it unambiguous WHICH chart is on screen. Rules
  * that silently change cells (deck count, dealer soft 17, DAS, late
  * surrender) each get a clause; rsa and bj65 are omitted because neither
- * moves a cell at this granularity (see RuleSet's own comments). Singular
- * "deck" throughout keeps it to one line on a 320px phone.
+ * moves a cell at this granularity (see RuleSet's own comments). "2 decks",
+ * not "2 deck" (s08: it read as a typo). Measured: the longest summary fits
+ * one line at 375px, and wraps at 320px with or without the "s".
  */
 export function rulesetSummary(rules: RuleSet): string {
   return [
-    `${rules.decks} deck`,
+    `${rules.decks} ${rules.decks === 1 ? 'deck' : 'decks'}`,
     rules.s17 ? 'S17' : 'H17',
     rules.das ? 'DAS' : 'No DAS',
     rules.ls ? 'Late surrender' : 'No surrender',

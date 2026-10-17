@@ -26,7 +26,11 @@
 import type { Stats } from './types';
 
 /** Entries kept per history array. ~2000 x the largest entry (176 chars for a
- * session) is well under 1MB even if every array were full at once. */
+ * session) is about 350K characters for ONE full array; with eleven-plus
+ * arrays all full at once that is roughly 4M, which does NOT fit beside
+ * everything else under a ~5MB quota. In practice most arrays fill slowly and
+ * the cap is a valve, not a budget -- a write that still fails makes room by
+ * shrinking the diagnostic log and is then reported (store/storageHealth.ts). */
 export const HISTORY_CAP = 2000;
 
 /** Most-recent-N, tolerant of a corrupt non-array value. */

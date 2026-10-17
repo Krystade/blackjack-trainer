@@ -1,0 +1,29 @@
+/* The Profile editor's Save bar (F13). Pinned above the tab bar while the
+   draft has unsaved changes; in its normal place at the end otherwise. */
+.profile-edit-actions-dirty {
+  position: sticky;
+  bottom: calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + var(--vp-gap, 0px));
+  z-index: 30;
+  background: var(--bg-sunken);
+  border-top: 2px solid var(--accent);
+  box-shadow: 0 -6px 16px rgb(0 0 0 / 25%);
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-3);
+}
+
+.profile-unsaved-note {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.profile-edit-actions-dirty .profile-save-btn {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.profile-delete-section {
+  border-bottom: 0;
+}

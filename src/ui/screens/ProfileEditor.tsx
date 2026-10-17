@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { setLeaveGuard } from '../leaveGuard';
+import './profileEditorSave.css';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import type { Screen } from '../App';
 import type { Profile } from '../../store/types';
@@ -166,8 +168,11 @@ export function ProfileEditor({ onNavigate }: ProfileEditorProps) {
       : profiles.map((p) => (p.id === cleaned.id ? cleaned : p));
     saveProfiles(next);
     setProfiles(next);
-    if (cleaned.id === activeId) {
-      setActiveProfile(cleaned.id);
+    // A NEW PROFILE IS THE ONE YOU MEANT TO USE (s08). Saving it used to land
+    // back on the list with the old profile still Active, and the way to
+    // switch was tapping a name that looks like a label.
+    if (cleaned.id === activeId || wasNew) {
+      selectActive(cleaned.id);
     }
     setMode({ kind: 'list' });
   };
@@ -236,6 +241,8 @@ export function ProfileEditor({ onNavigate }: ProfileEditorProps) {
   );
 }
 
+const DISCARD_PROMPT = 'Discard unsaved changes to this profile?';
+
 type CvcxImportState =
   | { kind: 'closed' }
   | { kind: 'input'; text: string; unitDollars?: number; error?: string; preview?: SpreadRow[] }
@@ -258,6 +265,15 @@ function ProfileEditForm({
 }) {
   const [draft, setDraft] = useState<Profile>(initialDraft);
   const [cvcxImport, setCvcxImport] = useState<CvcxImportState>({ kind: 'closed' });
+
+  // UNSAVED WORK IS VISIBLE AND ASKED ABOUT (F13). A new profile is unsaved by
+  // definition; an existing one is dirty once the draft differs from it.
+  const dirty = isNew || JSON.stringify(draft) !== JSON.stringify(initialDraft);
+  useEffect(() => {
+    if (!dirty) return undefined;
+    return setLeaveGuard(() => window.confirm(DISCARD_PROMPT));
+  }, [dirty]);
+  // Cancel itself is the decision to discard, so it does not ask again.
 
   const update = (patch: Partial<Profile>) => setDraft((d) => ({ ...d, ...patch }));
   const updateRules = (patch: Partial<RuleSet>) =>
@@ -710,7 +726,16 @@ function ProfileEditForm({
           />
       </CollapsibleSection>
 
-      <section className="settings-section profile-edit-actions">
+      {/* Pinned above the tab bar while there is something to save (F13):
+          Save used to sit about 2,450px down an untouched-looking page. */}
+      <section
+        className={`settings-section profile-edit-actions${dirty ? ' profile-edit-actions-dirty' : ''}`}
+      >
+        {dirty && (
+          <div className="profile-unsaved-note" role="status">
+            {isNew ? 'New profile, not saved yet' : 'Unsaved changes'}
+          </div>
+        )}
         <div className="profile-save-cancel-row">
           <button type="button" className="profile-save-btn" onClick={() => onSave(draft)}>
             Save
@@ -719,7 +744,9 @@ function ProfileEditForm({
             Cancel
           </button>
         </div>
-        {!isNew && (
+      </section>
+      {!isNew && (
+        <section className="settings-section profile-delete-section">
           <button
             type="button"
             className="profile-delete-btn"
@@ -728,8 +755,8 @@ function ProfileEditForm({
           >
             Delete profile
           </button>
-        )}
-      </section>
+        </section>
+      )}
     </div>
   );
 }

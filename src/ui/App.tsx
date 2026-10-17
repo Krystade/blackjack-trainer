@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import './app.css';
 import './stickyTopbars.css';
+import './themeCues.css';
+import './formControls.css';
 import { Home } from './screens/Home';
 import { Table } from './screens/Table';
 import { Drills } from './screens/Drills';
@@ -10,6 +12,7 @@ import { ProfileEditor } from './screens/ProfileEditor';
 import { Charts } from './screens/Charts';
 import { TabBar } from './components/TabBar';
 import { MuteButton } from './components/MuteButton';
+import { StorageToast } from './components/StorageToast';
 import { FieldTest } from './screens/FieldTest';
 import { TestKit } from './screens/TestKit';
 import { KIT_PROGRESS_KEY, parseProgress } from '../diag/testKit';
@@ -28,6 +31,8 @@ import { invokeWheelCommand, type WheelCommand } from '../audio/wheelCommands';
 import { releaseAudioFocus } from '../audio/audioFocus';
 import { installAudioUnlock } from '../audio/unlock';
 import { installAudioContextKeepAlive } from '../audio/audioContext';
+import { useActivityLive } from './activityLive';
+import { mayLeave } from './leaveGuard';
 
 declare global {
   interface Window {
@@ -153,6 +158,19 @@ function App() {
     startDiagnostics();
   }, []);
 
+  // AN UPDATE RELOAD WAITS WHILE A RUN IS OPEN (F2). The table holds a shoe and
+  // the drill screen holds a drill; reloading either from the visibility change
+  // a phone call causes landed the driver on a silent Home. Held per screen
+  // here, so it covers every drill view without each one opting in; a view can
+  // still hold it itself with useActivityLive. Being on the Drills picker also
+  // holds it, which costs only a short wait: the update applies on the next
+  // foreground event after leaving, and on every fresh launch (which opens on
+  // Home).
+  useActivityLive(
+    `screen:${screen}`,
+    screen === 'table' || screen === 'drills' || screen === 'fieldtest' || screen === 'testkit',
+  );
+
   // Which screen is up, for the one layout rule that is per-screen rather than
   // per-component: the field test gives the mute strip back (app.css).
   useEffect(() => {
@@ -238,6 +256,8 @@ function App() {
   }, []);
 
   const navigate = (next: Screen) => {
+    // A screen with unsaved work (the Profile editor) may ask first (F13).
+    if (next !== screen && !mayLeave()) return;
     if (screen === 'profiles' && next !== 'profiles') {
       setActiveProfileState(getActiveProfile());
     }
@@ -379,6 +399,8 @@ function App() {
           app has to work on the immersive screens that stand the tab bar
           down, and on a screen that has just crashed. */}
       <MuteButton settings={settings} onSettingsChange={setSettings} />
+      {/* A save that did not land (F24): one toast for every caller. */}
+      <StorageToast />
       <TabBar current={screen} onNavigate={navigate} />
     </>
   );
