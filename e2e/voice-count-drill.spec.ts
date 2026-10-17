@@ -170,7 +170,7 @@ test('a spoken count becomes a proposal, not an answer', async ({ page }) => {
   await expect(page.locator('.count-voice')).toBeVisible({ timeout: 15_000 });
 
   await sayWhenListening(page, 'minus three');
-  await expect(page.locator('.count-voice-value')).toHaveText('-3');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
   // Still open: hearing it is not the same as answering it.
   await expect(page.locator('.numpad')).toBeVisible();
 });
@@ -181,9 +181,9 @@ test('"plus" and "minus" nudge the proposal by one each', async ({ page }) => {
   await expect(page.locator('.count-voice')).toBeVisible({ timeout: 15_000 });
 
   await sayWhenListening(page, 'minus three');
-  await expect(page.locator('.count-voice-value')).toHaveText('-3');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
   await sayWhenListening(page, 'plus plus');
-  await expect(page.locator('.count-voice-value')).toHaveText('-1');
+  await expect(page.locator('.count-voice-value')).toHaveText('−1');
 });
 
 test('"yes" submits the proposal and the run is graded', async ({ page }) => {
@@ -195,7 +195,7 @@ test('"yes" submits the proposal and the run is graded', async ({ page }) => {
   await sayWhenListening(page, 'yes');
 
   await expect(page.locator('.drill-result')).toBeVisible();
-  await expect(page.locator('.drill-result .result-detail')).toContainText('You entered -3');
+  await expect(page.locator('.drill-result .result-detail')).toContainText('You entered −3');
 });
 
 /**
@@ -237,7 +237,7 @@ test('a count ranked second by the engine is still heard', async ({ page }) => {
   await expect(page.locator('.count-voice')).toBeVisible({ timeout: 15_000 });
 
   await sayWhenListening(page, 'my nurse tea', ['minus three']);
-  await expect(page.locator('.count-voice-value')).toHaveText('-3');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
 });
 
 /**
@@ -294,7 +294,8 @@ test('a number spoken mid-flash is not taken as an answer', async ({ page }) => 
 
 /** The arithmetic on screen, evaluated -- "-3 - (-6)" and friends. */
 function solveDistraction(prompt: string): number {
-  const m = /^\s*(-?\d+)\s*([+\-×])\s*\(?(-?\d+)\)?\s*$/.exec(prompt);
+  // Wave A: the prompt is shown with real minus signs (U+2212).
+  const m = /^\s*(-?\d+)\s*([+\-×])\s*\(?(-?\d+)\)?\s*$/.exec(prompt.replace(/−/g, '-'));
   if (!m) throw new Error(`unparsed distraction prompt: ${JSON.stringify(prompt)}`);
   const a = Number(m[1]);
   const b = Number(m[3]);

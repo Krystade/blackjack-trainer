@@ -16,14 +16,16 @@ import { focusSwallowsKey } from '../../keyboardFocus';
 import { ResultStrip } from '../../components/ResultStrip';
 import { releaseAnswerFocus } from '../../handResult';
 import { answerTooSoon } from '../../answerBounce';
+import { signed } from '../../../drills/signed';
 import './pairCancelStrip.css';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
+/** Wave A: a real minus sign (U+2212). */
 function formatSigned(n: number): string {
-  return n > 0 ? `+${n}` : String(n);
+  return signed(n);
 }
 
 /**

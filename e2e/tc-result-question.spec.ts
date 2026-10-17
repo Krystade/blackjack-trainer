@@ -81,6 +81,10 @@ test('a truncate answer under a floor profile is wrong, and the strip names the 
     await expect(strip).toContainText(`${signed(rc)} ÷ ${plain(decks)}`);
     await expect(strip).toContainText('your profile floors');
     await expect(strip).toContainText(`is truncate`);
+    // Wave A: answer first, and no dash against a minus sign (floor and
+    // truncate only disagree below zero, so this strip always has one).
+    await expect(strip).toContainText(`Wrong: TC ${signed(floor)}, not ${signed(trunc)}`);
+    expect(await strip.innerText()).not.toMatch(/[—-]\s*−/);
     const history = ((await readStats(page))!.trueCount as { history: { correct: boolean }[] }).history;
     expect(history.at(-1)!.correct).toBe(false);
     return;

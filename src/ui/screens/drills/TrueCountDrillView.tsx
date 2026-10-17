@@ -3,7 +3,8 @@ import type { Profile, Settings } from '../../../store/types';
 import { makeTrueCountQuestion } from '../../../drills/trueCountDrill';
 import { DEFAULT_TC_ROUNDING } from '../../../engine/count';
 import type { TcRounding } from '../../../engine/count';
-import { gradeTcConversion, tcWorking, tcConventionNote, signedTc } from '../../../drills/tcFeedback';
+import { gradeTcConversion, tcWorking, tcConventionNote, signedTc, tcAnswer, tcWrongLead } from '../../../drills/tcFeedback';
+import { signed } from '../../../drills/signed';
 import { ResultStrip } from '../../components/ResultStrip';
 import { answerTooSoon } from '../../answerBounce';
 import './tcResultStrip.css';
@@ -41,8 +42,9 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
+/** Wave A: a real minus sign (U+2212); 0 reads "+0" here, as before. */
 function formatSigned(n: number): string {
-  return n >= 0 ? `+${n}` : String(n);
+  return signed(n, { plusZero: true });
 }
 
 function formatDecks(n: number): string {
@@ -879,9 +881,10 @@ function TcResultLine({
   const working = tcWorking(q.runningCount, q.decksRemaining, rounding);
   if (correct) return <span data-testid="tc-strip-text">Correct! {working}</span>;
   const note = tcConventionNote(guess, q.runningCount, q.decksRemaining, rounding);
+  // Wave A: answer first, and no em dash against a minus sign.
   return (
     <span data-testid="tc-strip-text">
-      Wrong: you entered {signedTc(guess)} &mdash; {working}.{note ? ` ${note}.` : ''}
+      {tcWrongLead(tcAnswer(q.runningCount, q.decksRemaining, rounding), guess, note)} {working}.
     </span>
   );
 }

@@ -26,7 +26,8 @@ test('flashcards With count: 12 v 4 graded at the shown TC, the strip names the 
   const seen = new Set<string>();
   for (let i = 0; i < 16; i++) {
     const text = (await tcBox.textContent()) ?? '';
-    const tc = Number(text.replace('TC', '').replace('+', '').trim());
+    // Wave A: the TC is shown with a real minus sign (U+2212).
+    const tc = Number(text.replace('TC', '').replace('+', '').replace('−', '-').trim());
     expect(Number.isInteger(tc)).toBe(true);
     const play = tc <= -1 ? 'Hit' : 'Stand';
     expect(await answerAndReadStrip(page, page.getByRole('button', { name: play, exact: true }))).toBe('ok');
@@ -40,7 +41,7 @@ test('flashcards With count: 12 v 4 graded at the shown TC, the strip names the 
 
   // A wrong answer at a count past the index is a missed deviation.
   for (let i = 0; i < 30; i++) {
-    const tc = Number(((await tcBox.textContent()) ?? '').replace('TC', '').replace('+', '').trim());
+    const tc = Number(((await tcBox.textContent()) ?? '').replace('TC', '').replace('+', '').replace('−', '-').trim());
     if (tc <= -1) {
       expect(await answerAndReadStrip(page, page.getByRole('button', { name: 'Stand', exact: true }))).toBe('miss');
       await expect(page.getByTestId('hand-result-expected')).toHaveText('Hit');

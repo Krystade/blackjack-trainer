@@ -9,7 +9,8 @@ import {
 import type { ProduceTcRound } from '../../../drills/produceTcDrill';
 import { DEFAULT_TC_ROUNDING } from '../../../engine/count';
 import type { TcRounding } from '../../../engine/count';
-import { tcWorking, tcConventionNote, signedTc } from '../../../drills/tcFeedback';
+import { tcWorking, tcConventionNote, signedTc, tcWrongLead } from '../../../drills/tcFeedback';
+import { signed } from '../../../drills/signed';
 import { ResultStrip } from '../../components/ResultStrip';
 import { answerTooSoon } from '../../answerBounce';
 import './tcResultStrip.css';
@@ -54,8 +55,9 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
+/** Wave A: a real minus sign (U+2212); 0 reads "+0" here, as before. */
 function formatSigned(n: number): string {
-  return n >= 0 ? `+${n}` : String(n);
+  return signed(n, { plusZero: true });
 }
 
 function formatDecks(n: number): string {
@@ -732,10 +734,13 @@ function ProduceResultLine({ result, rounding }: { result: StripResult; rounding
     );
   }
   const note = tcConventionNote(produced, rc, round.decksRemaining, rounding, slack);
+  // Wave A: answer first (the whole accepted range when the tray reading
+  // widens it), and no em dash against a minus sign.
+  const answer = band.min === band.max ? signedTc(band.min) : `${signedTc(band.min)} to ${signedTc(band.max)}`;
   return (
     <span data-testid="tc-strip-text">
-      Wrong: you entered {signedTc(produced)} &mdash; {working}.{range}
-      {note ? ` ${note}.` : ''}
+      {tcWrongLead(answer, produced, note)} {working}.
+      {band.min === band.max ? '' : ` Reading the tray ${formatDepthSlack(slack)} either way, that whole range counts.`}
     </span>
   );
 }

@@ -9,13 +9,15 @@ import type { BetSitLeaveScenario, TableAction } from '../../../drills/betSitLea
 import { useAudio } from '../../../audio/useAudio';
 import { loadStats, saveStats } from '../../../store/persist';
 import { focusSwallowsKey } from '../../keyboardFocus';
+import { signed } from '../../../drills/signed';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
+/** Wave A: a real minus sign (U+2212). */
 function formatSigned(n: number): string {
-  return n > 0 ? `+${n}` : String(n);
+  return signed(n);
 }
 
 const ACTIONS: { key: TableAction; label: string }[] = [

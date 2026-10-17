@@ -88,7 +88,7 @@ test('a spoken true count becomes a proposal, not an answer', async ({ page }) =
   await expect(page.locator('.count-voice')).toBeVisible();
 
   await sayWhenListening(page, 'minus two');
-  await expect(page.locator('.count-voice-value')).toHaveText('-2');
+  await expect(page.locator('.count-voice-value')).toHaveText('−2');
   await expect(page.locator('.numpad')).toBeVisible();
 });
 
@@ -107,7 +107,7 @@ test('"yes" submits the proposal, and the graded row is what was said', async ({
   await expect(page.locator('.count-voice')).toBeVisible();
 
   await sayWhenListening(page, 'minus two');
-  await expect(page.locator('.count-voice-value')).toHaveText('-2');
+  await expect(page.locator('.count-voice-value')).toHaveText('−2');
   await sayWhenListening(page, 'yes');
 
   // #54: eyes-on answers fast-advance; the verdict is the B1 strip.
@@ -152,7 +152,7 @@ test('a true count ranked second by the engine is still heard', async ({ page })
   await expect(page.locator('.count-voice')).toBeVisible();
 
   await sayWhenListening(page, 'my nurse tea', ['minus three']);
-  await expect(page.locator('.count-voice-value')).toHaveText('-3');
+  await expect(page.locator('.count-voice-value')).toHaveText('−3');
 });
 
 test('"yes" claims the eyes-free self-check', async ({ page }) => {

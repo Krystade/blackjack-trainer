@@ -91,6 +91,7 @@ import { enableAudioNow } from '../audioGate';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
 import { useEyesFreeToggle } from '../eyesFreeSession';
 import { useWheelCommand } from '../useWheelCommand';
+import { signed } from '../../drills/signed';
 import './drills/drillTiming.css';
 import './drills/drillActionBar.css';
 
@@ -117,8 +118,9 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
+/** Wave A: a real minus sign (U+2212); 0 reads "+0" here, as before. */
 function formatSigned(n: number): string {
-  return n >= 0 ? `+${n}` : String(n);
+  return signed(n, { plusZero: true });
 }
 
 /* ---------------------------------------------------------------- */

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { focusSwallowsKey } from '../keyboardFocus';
+import { MINUS } from '../../drills/signed';
 import './numPad.css';
 
 interface NumPadProps {
@@ -61,7 +62,9 @@ export function NumPad({ label, onSubmit }: NumPadProps) {
   return (
     <div className="numpad">
       <div className="numpad-label">{label}</div>
-      <div className="numpad-display">{value === '' ? '0' : value}</div>
+      {/* Wave A: shown with a real minus sign (U+2212), like the − key and the
+          strips; the value itself keeps its ASCII '-' for parseInt. */}
+      <div className="numpad-display">{value === '' ? '0' : value.replace('-', MINUS)}</div>
       <div className="numpad-grid">
         {DIGIT_ROWS.map((row) =>
           row.split('').map((d) => (

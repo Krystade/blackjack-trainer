@@ -66,6 +66,7 @@ import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSessi
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
 import { cardsLabel, stretchLine } from '../../../drills/checkpointCopy';
+import { plainNumber, signed, withMinusSigns } from '../../../drills/signed';
 import './countDrillView.css';
 import { makeCountTable, tableRounds, TABLE_ROUND_CHOICES } from '../../../drills/countTable';
 import type { TableRound } from '../../../drills/countTable';
@@ -2128,7 +2129,7 @@ export function CountDrillView({
 
       {phase === 'selfreport' && (
         <div className="selfreport-area">
-          <div className="selfreport-question">The running count was {actualValue}. Did you have it?</div>
+          <div className="selfreport-question">The running count was {plainNumber(actualValue)}. Did you have it?</div>
           {voiceOn && (
             <div className="selfreport-voice-hint">
               or say &ldquo;yes&rdquo; / &ldquo;no&rdquo;
@@ -2175,7 +2176,8 @@ export function CountDrillView({
       {phase === 'distraction' && distraction && (
         <div className="distraction-area">
           <div className="distraction-label">Quick: what&apos;s this?</div>
-          <div className="distraction-prompt">{distraction.prompt}</div>
+          {/* Wave A: shown with real minus signs; the prompt itself stays ASCII for speech. */}
+          <div className="distraction-prompt">{withMinusSigns(distraction.prompt)}</div>
           <NumPad label="Answer" onSubmit={handleDistractionSubmit} />
         </div>
       )}
@@ -2193,7 +2195,7 @@ export function CountDrillView({
           ) : (
             <>
               <span className="count-voice-value">
-                {pendingCount >= 0 ? `+${pendingCount}` : pendingCount}
+                {signed(pendingCount, { plusZero: true })}
               </span>
               <span className="count-voice-hint">
                 &ldquo;yes&rdquo; to submit &middot; &ldquo;no&rdquo; to start over &middot;
@@ -2231,7 +2233,7 @@ export function CountDrillView({
             {wasCorrect ? 'Correct!' : 'Wrong'}
           </div>
           <div className="result-detail">
-            The running count was {actualValue}. Self-reported, and recorded.
+            The running count was {plainNumber(actualValue)}. Self-reported, and recorded.
           </div>
           {checkpointBlock}
           <DrillPrimaryBar label="New run" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
@@ -2244,7 +2246,7 @@ export function CountDrillView({
             {wasCorrect ? 'Correct!' : 'Wrong'}
           </div>
           <div className="result-detail">
-            You entered {enteredValue}; the running count was {actualValue}.
+            You entered {plainNumber(enteredValue)}; the running count was {plainNumber(actualValue)}.
           </div>
           {checkpointBlock}
           {timedResult &&
