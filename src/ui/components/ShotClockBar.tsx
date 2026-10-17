@@ -24,11 +24,15 @@ export function ShotClockBar({
   limitMs,
   restartKey,
   paused = false,
+  delayMs = 0,
 }: {
   limitMs: number;
   restartKey: number | string;
   /** Freeze the bar where it is -- the answer is in, or a modal is over it. */
   paused?: boolean;
+  /** Hold the bar full this long before it drains: the reading time after a
+   *  miss (Wave A, drills/shotClock.ts `readGraceMs`). */
+  delayMs?: number;
 }) {
   if (!shotClockOn(limitMs)) return null;
 
@@ -43,7 +47,8 @@ export function ShotClockBar({
         key={restartKey}
         className="shot-clock-fill"
         data-paused={paused ? 'true' : undefined}
-        style={{ animationDuration: `${limitMs}ms` }}
+        data-delay-ms={delayMs > 0 ? delayMs : undefined}
+        style={{ animationDuration: `${limitMs}ms`, animationDelay: delayMs > 0 ? `${delayMs}ms` : undefined }}
       />
     </div>
   );

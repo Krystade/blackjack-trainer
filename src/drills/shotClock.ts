@@ -77,3 +77,39 @@ export function shotClockExpired(elapsedMs: number, limitMs: number): boolean {
   if (!shotClockOn(limitMs)) return false;
   return elapsedMs >= limitMs;
 }
+
+/**
+ * Wave A F3: no shot clock while the drill is being answered eyes-free or out
+ * loud. The prompt alone takes 1.5-3.5s to say and a spoken answer has a mic
+ * tail on top, so a 3s clock expired before the question had finished -- and
+ * a driver cannot glance at a countdown bar anyway.
+ */
+export function shotClockSuspended(eyesFree: boolean, voiceOn: boolean): boolean {
+  return eyesFree || voiceOn;
+}
+
+/**
+ * Wave A (s09): consecutive timeouts after which the clock stops instead of
+ * grading. The first unanswered card is a real timeout; the second in a row
+ * means nobody is there (phone down, a glance at traffic), and grading every
+ * card that goes by as a miss filled Stats with idle time. The SECOND expiry is
+ * not graded: the clock stops and waits for an answer.
+ */
+export const SHOT_CLOCK_IDLE_AFTER = 2;
+
+/** What to do with an expiry, given how many came straight before it. */
+export function expiryVerdict(consecutiveBefore: number): 'grade' | 'stop' {
+  return consecutiveBefore + 1 >= SHOT_CLOCK_IDLE_AFTER ? 'stop' : 'grade';
+}
+
+/**
+ * Wave A (s09): reading time before the next card's clock starts, after a
+ * miss in visual mode. The next card is dealt the moment you answer, under a
+ * 3-4 line correction; with the clock running from the deal, reading the
+ * correction timed out the next card. A right answer has nothing to read.
+ */
+export const CORRECTION_READ_GRACE_MS = 2500;
+
+export function readGraceMs(lastWasMiss: boolean): number {
+  return lastWasMiss ? CORRECTION_READ_GRACE_MS : 0;
+}

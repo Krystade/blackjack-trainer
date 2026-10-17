@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   SHOT_CLOCK_OFF,
+  CORRECTION_READ_GRACE_MS,
+  expiryVerdict,
+  readGraceMs,
+  shotClockSuspended,
   SHOT_CLOCK_OPTIONS,
   shotClockExpired,
   shotClockLabel,
@@ -58,5 +62,23 @@ describe('shot clock: the boundary', () => {
 
   it('is not expired when an answer beat the limit, even by a hair', () => {
     expect(shotClockExpired(2999.9, 3000)).toBe(false);
+  });
+});
+
+describe('Wave A: idle stop, suspension and reading grace', () => {
+  it('grades the first timeout and stops on the second in a row', () => {
+    expect(expiryVerdict(0)).toBe('grade');
+    expect(expiryVerdict(1)).toBe('stop');
+    expect(expiryVerdict(5)).toBe('stop');
+  });
+  it('is suspended eyes-free or with voice on', () => {
+    expect(shotClockSuspended(false, false)).toBe(false);
+    expect(shotClockSuspended(true, false)).toBe(true);
+    expect(shotClockSuspended(false, true)).toBe(true);
+  });
+  it('gives reading time only after a miss', () => {
+    expect(readGraceMs(true)).toBe(CORRECTION_READ_GRACE_MS);
+    expect(readGraceMs(false)).toBe(0);
+    expect(CORRECTION_READ_GRACE_MS).toBeGreaterThan(0);
   });
 });

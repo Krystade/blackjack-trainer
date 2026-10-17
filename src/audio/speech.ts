@@ -437,6 +437,30 @@ export interface SpeechOpts {
    * fails as soon as anything else speaks in between, and fails silently.
    */
   tag?: string;
+  /**
+   * Called once when this utterance has stopped sounding -- finished,
+   * interrupted or failed -- MEASURED at the settle, not estimated (Wave A
+   * F3). The drills start their answer clock here: a spoken prompt is not
+   * answer time, and starting the clock when the card was drawn charged every
+   * eyes-free answer the 1.5-3.5s the question took to say. Under `?e2e=1` it
+   * fires at the estimate, which is where that harness ends the utterance.
+   * `speak()` only; `speakAsync` callers already have the promise.
+   */
+  onEnd?: () => void;
+}
+
+/** Run `opts.onEnd` once, never letting it throw into the speech path. */
+function onceOnEnd(opts?: SpeechOpts): () => void {
+  let done = false;
+  return () => {
+    if (done || !opts?.onEnd) return;
+    done = true;
+    try {
+      opts.onEnd();
+    } catch {
+      /* a caller's bookkeeping must never break speaking */
+    }
+  };
 }
 
 /**
@@ -869,6 +893,7 @@ export function _resetSpeechPathForTest(): void {
 }
 
 export function speak(text: string, opts?: SpeechOpts): void {
+  const ended = onceOnEnd(opts);
   rememberSpoken(text, opts);
   // BEFORE the e2e short-circuit: the microphone has to know about every
   // utterance the app decides to make, including the ones the test harness
@@ -896,6 +921,7 @@ export function speak(text: string, opts?: SpeechOpts): void {
     setTimeout(() => {
       e2eUtterancesSounding = Math.max(0, e2eUtterancesSounding - 1);
       notifySpeechEnded();
+      ended();
     }, estimateSpeechMs(text, opts?.rate));
     return;
   }
@@ -937,6 +963,7 @@ export function speak(text: string, opts?: SpeechOpts): void {
         // the failures did -- so counting `speak path` would have counted
         // exactly the utterances that went wrong.
         recordSpeechPath({ path: "clip", text, for: text, tag: opts?.tag });
+        ended();
         return;
       }
       // A clip chain that broke is the app switching voices MID-UTTERANCE,
@@ -959,9 +986,10 @@ export function speak(text: string, opts?: SpeechOpts): void {
       // delivered -- the user heard the opening twice and the good audio was
       // thrown away for nothing. Fall back to the remainder when there is
       // one, and to the whole utterance only when nothing played at all.
-      void speakAsyncLive(remainder ?? text, opts).then(() =>
-        reassertAudioFocus("after-speech"),
-      );
+      void speakAsyncLive(remainder ?? text, opts).then(() => {
+        reassertAudioFocus("after-speech");
+        ended();
+      });
     });
     return;
   }
@@ -981,9 +1009,10 @@ export function speak(text: string, opts?: SpeechOpts): void {
   // their callbacks, so a re-assert hung on `onend` there could never fire.
   // `speakAsyncLive` retains the utterance, settles on a watchdog, writes
   // `tts-end`, and re-asserts the hold when the line is over.
-  void speakAsyncLive(text, opts).then(() =>
-    reassertAudioFocus("after-speech"),
-  );
+  void speakAsyncLive(text, opts).then(() => {
+    reassertAudioFocus("after-speech");
+    ended();
+  });
 }
 
 /**
