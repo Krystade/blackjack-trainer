@@ -1597,38 +1597,6 @@ test('count drill: Pace pressure toggle persists and a pressured run drills to a
   await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
 });
 
-/* ET3: bet/sit/leave decision drill. Validates wiring deterministically without */
-/* pinning the seed: click a fixed action, then assert the recorded telemetry is */
-/* self-consistent (the consensus grading rule is proven in betSitLeave.test.ts). */
-test('bet/sit/leave: answering a scenario grades it and records self-consistent telemetry', async ({
-  page,
-}) => {
-  await page.goto('/?e2e=1');
-  await page.getByRole('button', { name: 'Drills', exact: true }).click();
-  await page.getByRole('button', { name: 'Bet or sit', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Bet or sit');
-  await expect(page.locator('.bsl-tc')).toBeVisible();
-  // #48-51: two answers only; no "Leave", no fresh-table line.
-  await expect(page.locator('.bsl-answers .action-btn')).toHaveText(['Bet', 'Sit out']);
-  await expect(page.getByText('table is open')).toHaveCount(0);
-  await shot(page, '95-bet-sit-leave');
-
-  await page.locator('.bsl-answers').getByRole('button', { name: 'Bet', exact: true }).click();
-  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toBeVisible();
-
-  const stats = await readStats(page);
-  const history = (stats?.betSitLeave as { history: Record<string, unknown>[] } | undefined)?.history ?? [];
-  expect(history).toHaveLength(1);
-  const row = history[0]!;
-  expect(row.taken).toBe('bet');
-  expect(['bet', 'sit']).toContain(row.correctAction);
-  expect(row.correct).toBe(row.taken === row.correctAction); // grading is consistent
-
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.locator('.message-strip .result-correct, .message-strip .result-wrong')).toHaveCount(0);
-  await expect(page.locator('.bsl-tc')).toBeVisible();
-});
-
 /* V3-2: the "produce a true count" drill — flash (maintain RC), judge the tray */
 /* (estimate decks), enter the TRUE count. Validates the full flow + self-       */
 /* consistent telemetry (the grading math is unit-tested in produceTcDrill.test).*/
@@ -1691,7 +1659,7 @@ test('drills picker: advanced modes show a soft fluency nudge until fluent, but 
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await expect(page.locator('.drills-title')).toHaveText('Drills');
-  // Fresh profile: not fluent -> advisory on Mixed and Bet or sit.
+  // Fresh profile: not fluent -> advisory on Mixed and Bet sizing.
   await expect(page.locator('.drills-nav-note')).toHaveCount(2);
   // #48-51: the Downswing drill is gone.
   await expect(page.getByRole('button', { name: 'Downswing', exact: true })).toHaveCount(0);
@@ -1701,8 +1669,8 @@ test('drills picker: advanced modes show a soft fluency nudge until fluent, but 
   ).toHaveClass(/drills-nav-btn-advanced/);
   await shot(page, '99-soft-gate');
   // Soft, not locked: the mode still opens.
-  await page.getByRole('button', { name: 'Bet or sit', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Bet or sit');
+  await page.getByRole('button', { name: 'Bet sizing', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Bet sizing');
 });
 
 test('drills picker: no fluency nudge once the learner is fluent', async ({ page }) => {

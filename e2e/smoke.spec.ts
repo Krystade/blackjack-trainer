@@ -252,11 +252,11 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all ten D
   await expect(page.locator('.drills-picker')).toBeVisible();
 
   // ---------------------------------------------------------------
-  // 9f. Bet or sit: one scenario answered
+  // 9f. Bet sizing: one scenario answered
   // ---------------------------------------------------------------
-  await page.getByRole('button', { name: 'Bet or sit', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Bet or sit');
-  await page.locator('.bsl-answers .action-btn').first().click();
+  await page.getByRole('button', { name: 'Bet sizing', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Bet sizing');
+  await page.locator('.bet-sizing-answers button').first().click();
   await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
   await expect(page.locator('.drills-picker')).toBeVisible();
