@@ -1,0 +1,28 @@
+/* Wave A / s04-s05: drill histories on Stats -- a results strip and a mode chip. */
+.result-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.result-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.result-dot-right {
+  background: var(--good);
+}
+
+/* A hollow ring, so a miss is told apart by shape as well as colour. */
+.result-dot-wrong {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--bad);
+}
+
+.count-run-mode {
+  font-size: 0.75rem;
+  color: var(--ink-dim);
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pct, clockGap, formatUnits, costHandLabel } from './statsFormat';
+import { pct, pctOfPercent, clockGap, formatUnits, costHandLabel, trendLine, signed } from './statsFormat';
 
 describe('pct', () => {
   it('never prints a perfect score that was not earned', () => {
@@ -72,5 +72,35 @@ describe('costHandLabel (#25)', () => {
   it('prints anything else as stored', () => {
     expect(costHandLabel('16 v 10: stand at TC ≥ 0')).toBe('16 v 10: stand at TC ≥ 0');
     expect(costHandLabel(undefined)).toBe('Unidentified hand');
+  });
+});
+
+describe('trendLine (s04)', () => {
+  const runs = (bits: string) => [...bits].map((b) => ({ correct: b === '1' }));
+  it('says nothing below ten results', () => {
+    expect(trendLine(runs('111111111'))).toBeNull();
+  });
+  it('states the last ten, then compares with the ten before', () => {
+    expect(trendLine(runs('1111111000'))).toBe('Last 10: 7/10');
+    expect(trendLine(runs('0000011111' + '1111111110'))).toBe('Last 10: 9/10, up from 5/10 the 10 before');
+    expect(trendLine(runs('1111111111' + '1111100000'))).toBe('Last 10: 5/10, down from 10/10 the 10 before');
+    expect(trendLine(runs('1'.repeat(20)))).toBe('Last 10: 10/10, same as 10/10 the 10 before');
+  });
+});
+
+describe('signed', () => {
+  it('uses a real minus sign', () => {
+    expect(signed(-2)).toBe('\u22122');
+    expect(signed(3)).toBe('+3');
+    expect(signed(0)).toBe('0');
+  });
+});
+
+describe('pctOfPercent (F23)', () => {
+  it('never rounds 99.6% up to 100% or 0.4% down to 0%', () => {
+    expect(pctOfPercent(99.6)).toBe('99%');
+    expect(pctOfPercent(100)).toBe('100%');
+    expect(pctOfPercent(0.4)).toBe('<1%');
+    expect(pctOfPercent(null)).toBe('\u2014');
   });
 });

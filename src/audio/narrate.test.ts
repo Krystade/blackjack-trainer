@@ -195,21 +195,30 @@ describe('narrateStatsSummary', () => {
   it('summarizes total decisions and nonzero mistake types', () => {
     expect(
       narrateStatsSummary(statsWith({ correct: 38, 'basic-error': 3, 'missed-deviation': 1 })),
-    ).toBe('This session: 42 decisions, 3 basic errors, 1 missed deviation.');
+    ).toBe('All time: 42 decisions, 3 basic errors, 1 missed deviation.');
   });
 
   it('uses singular wording for exactly one decision and one mistake', () => {
     expect(narrateStatsSummary(statsWith({ 'basic-error': 1 }))).toBe(
-      'This session: 1 decision, 1 basic error.',
+      'All time: 1 decision, 1 basic error.',
     );
   });
 
   it('says "no mistakes" when every mistake tally is zero', () => {
-    expect(narrateStatsSummary(statsWith({ correct: 10 }))).toBe('This session: 10 decisions, no mistakes.');
+    expect(narrateStatsSummary(statsWith({ correct: 10 }))).toBe('All time: 10 decisions, no mistakes.');
   });
 
   it('reports zero decisions on empty stats', () => {
-    expect(narrateStatsSummary(EMPTY_STATS)).toBe('This session: 0 decisions, no mistakes.');
+    expect(narrateStatsSummary(EMPTY_STATS)).toBe('All time: 0 decisions, no mistakes.');
+  });
+
+  it('F14: a bounded range says its label and reads the dated answers', () => {
+    expect(narrateStatsSummary(statsWith({ 'basic-error': 9 }), { label: 'Last 7 days', right: 18, total: 20 })).toBe(
+      'Last 7 days: 20 timed answers, 2 mistakes.',
+    );
+    expect(narrateStatsSummary(EMPTY_STATS, { label: 'Last 7 days', right: 0, total: 0 })).toBe(
+      'Last 7 days: no timed answers.',
+    );
   });
 
   it('lists mistake types in a fixed order regardless of magnitude', () => {
@@ -218,7 +227,7 @@ describe('narrateStatsSummary', () => {
         statsWith({ 'wrong-anyway': 2, 'phantom-deviation': 1, 'missed-deviation': 4, 'basic-error': 1 }),
       ),
     ).toBe(
-      'This session: 8 decisions, 1 basic error, 4 missed deviations, 1 phantom deviation, 2 wrong-anyway plays.',
+      'All time: 8 decisions, 1 basic error, 4 missed deviations, 1 phantom deviation, 2 wrong-anyway plays.',
     );
   });
 });

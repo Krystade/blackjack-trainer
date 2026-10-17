@@ -4,6 +4,7 @@ import { loadStats, saveSettings } from '../../store/persist';
 import { readiness, weakestCategories } from './readiness';
 import { buildLabel, formatBuiltAt, runningBuildId, runningBuiltAt } from '../../updateCheck';
 import { CATEGORY_LABELS } from './categoryLabels';
+import { pctOfPercent } from './statsFormat';
 import { masterySweepDone, nextStep } from './nextStep';
 import { loadMasteryRun } from '../../drills/masteryChallenge';
 import { launchSettings, setDrillLaunch } from '../drillLaunch';
@@ -19,9 +20,8 @@ interface HomeProps {
   onSettingsChange: (settings: Settings) => void;
 }
 
-function pct(n: number | null): string {
-  return n === null ? '—' : `${Math.round(n)}%`;
-}
+/** F23: never rounds 99.6% up to 100% (statsFormat). */
+const pct = pctOfPercent;
 
 function secs(ms: number | null): string {
   return ms === null ? '—' : `${(ms / 1000).toFixed(1)}s`;

@@ -622,13 +622,25 @@ const MISTAKE_SUMMARY_LABELS: Record<Exclude<MistakeClass, 'correct'>, { singula
 };
 
 /**
- * Speak a one-line session summary: total decisions plus every nonzero
- * mistake tally, in a fixed order, with correct singular/plural wording.
- * "This session" refers to the currently loaded stats blob (reset via the
- * Stats screen's "Reset stats" action) — there is no separate live-session
- * mistake breakdown in `Stats`.
+ * Speak a one-line summary: total decisions plus every nonzero mistake
+ * tally, in a fixed order, with correct singular/plural wording.
+ *
+ * F14: it used to open "This session" while reading the lifetime blob. With
+ * no range it now says "All time", which is what the tallies are. The mistake
+ * tallies are undated counters, so a bounded range (Stats' picker) is read
+ * from the dated, graded answers instead and says its own label.
  */
-export function narrateStatsSummary(stats: Stats): string {
+export function narrateStatsSummary(
+  stats: Stats,
+  range?: { label: string; right: number; total: number },
+): string {
+  if (range) {
+    if (range.total === 0) return `${range.label}: no timed answers.`;
+    const wrong = range.total - range.right;
+    return `${range.label}: ${range.total} timed ${pluralize(range.total, 'answer', 'answers')}, ${
+      wrong === 0 ? 'no mistakes' : `${wrong} ${pluralize(wrong, 'mistake', 'mistakes')}`
+    }.`;
+  }
   const decisions = Object.values(stats.mistakes).reduce((sum, n) => sum + n, 0);
   const decisionsPhrase = `${decisions} ${pluralize(decisions, 'decision', 'decisions')}`;
 
@@ -639,7 +651,7 @@ export function narrateStatsSummary(stats: Stats): string {
   });
 
   if (mistakeParts.length === 0) {
-    return `This session: ${decisionsPhrase}, no mistakes.`;
+    return `All time: ${decisionsPhrase}, no mistakes.`;
   }
-  return `This session: ${decisionsPhrase}, ${mistakeParts.join(', ')}.`;
+  return `All time: ${decisionsPhrase}, ${mistakeParts.join(', ')}.`;
 }

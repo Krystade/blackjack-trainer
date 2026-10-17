@@ -18,6 +18,18 @@ export function pct(right: number, total: number): string {
   return `${rounded}%`;
 }
 
+/**
+ * F23: `pct` for a figure already in percent (0..100), with the same rule:
+ * 99.6% is never "100%" and 0.4% is never "0%". Null is the no-data dash.
+ */
+export function pctOfPercent(p: number | null): string {
+  if (p === null || Number.isNaN(p)) return '—';
+  const rounded = Math.round(p);
+  if (rounded === 100 && p < 100) return '99%';
+  if (rounded === 0 && p > 0) return '<1%';
+  return `${rounded}%`;
+}
+
 export interface ClockGap {
   /** Whether the two buckets can be told apart at all. */
   distinguishable: boolean;
@@ -97,4 +109,26 @@ export function costHandLabel(hand: string | undefined): string {
   // sidesteps pluralising "a pair of As".
   if (kind === 'pair') return `${value},${value} v ${up}`;
   return kind === 'soft' ? `Soft ${value} v ${up}` : `${value} v ${up}`;
+}
+
+/**
+ * s04: whether a drill is getting better -- the last ten results against the
+ * ten before them. Null below ten results (nothing to say yet); with fewer
+ * than twenty only the last ten are stated.
+ */
+export function trendLine(history: readonly { correct: boolean }[], window = 10): string | null {
+  if (history.length < window) return null;
+  const right = (xs: readonly { correct: boolean }[]) => xs.filter((h) => h.correct).length;
+  const last = right(history.slice(-window));
+  if (history.length < window * 2) return `Last ${window}: ${last}/${window}`;
+  const prev = right(history.slice(-window * 2, -window));
+  const dir = last > prev ? 'up from' : last < prev ? 'down from' : 'same as';
+  return `Last ${window}: ${last}/${window}, ${dir} ${prev}/${window} the ${window} before`;
+}
+
+/** A signed whole number with a real minus sign (U+2212): "+3", "−2", "0". */
+export function signed(n: number): string {
+  if (n > 0) return `+${n}`;
+  if (n < 0) return `−${Math.abs(n)}`;
+  return '0';
 }
