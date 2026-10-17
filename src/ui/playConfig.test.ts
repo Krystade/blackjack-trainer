@@ -29,4 +29,10 @@ describe('playConfigFor', () => {
     expect(cfg.bankrollStart).toBe(137);
     expect(cfg.seed).toBe(9);
   });
+
+  it('B8: carries hotShoe only when it is on', () => {
+    expect(playConfigFor({ ...base, hotShoe: true }, 100, 1).hotShoe).toBe(true);
+    expect('hotShoe' in playConfigFor({ ...base, hotShoe: false }, 100, 1)).toBe(false);
+    expect('hotShoe' in playConfigFor(base, 100, 1)).toBe(false);
+  });
 });

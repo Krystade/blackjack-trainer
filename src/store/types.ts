@@ -448,6 +448,9 @@ export interface Profile {
     riskOfRuin?: number;
     simNote?: string;
   };
+  /** B8: deal Play from a Hot shoe (biased toward positive counts). Opt-in;
+   * absent = off. */
+  hotShoe?: boolean;
 }
 
 export interface TallyRW {

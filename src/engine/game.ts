@@ -4,6 +4,7 @@ import { betWithinStep } from './coverBets';
 import { sitOutIsCorrect, spreadUnitsFor } from './wong';
 import { cutCardsFor, cutRngSeed, usesCutCards } from './cut';
 import { priceMistake } from './mistakeCost';
+import { hotShoeOrder } from './shoeBias';
 import type { Card, Rank } from './cards';
 import { handValue, isBust, isBlackjack, isPair } from './hand';
 import { hiLoTag, trueCount, tcWithinEye } from './count';
@@ -93,6 +94,9 @@ export interface GameConfig {
    * revealed without this flag at all.
    */
   dealerAlwaysPlaysOut?: boolean;
+  /** B8: deal from a Hot shoe (shoeBias.ts), biased toward positive counts.
+   * Absent or false = the normal shoe. */
+  hotShoe?: boolean;
 }
 
 /** #3: what a Play count check asks. 'running' = RC only, 'true' = TC only,
@@ -290,7 +294,8 @@ export class Game {
       const cutRng = mulberry32(cutRngSeed(cfg.seed ?? Date.now()));
       cutCards = () => cutCardsFor(cutSpec, cutRng);
     }
-    this.shoe = new Shoe({ decks: this.rules.decks, penetration: cfg.penetration, seed: cfg.seed, cutCards });
+    this.shoe = new Shoe({ decks: this.rules.decks, penetration: cfg.penetration, seed: cfg.seed, cutCards,
+      order: cfg.hotShoe ? hotShoeOrder : undefined });
     this.bankroll = cfg.bankrollStart;
     this.rng = mulberry32(botRngSeed(cfg.seed ?? Date.now()));
   }
