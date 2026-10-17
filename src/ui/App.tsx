@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import './app.css';
 import './stickyTopbars.css';
+import './themeCues.css';
 import { Home } from './screens/Home';
 import { Table } from './screens/Table';
 import { Drills } from './screens/Drills';

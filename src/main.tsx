@@ -4,7 +4,8 @@ import App from './ui/App.tsx';
 import { startUpdateWatch } from './updateCheck.ts';
 import { updateMustWait } from './ui/activityLive.ts';
 import { primeVoices } from './audio/speech.ts';
-import { dropRetiredKeys } from './store/persist.ts';
+import { dropRetiredKeys, loadSettings } from './store/persist.ts';
+import { applyTheme, normalizeTheme } from './ui/theme.ts';
 import { registerOfflineWorker } from './offline/registerOffline.ts';
 import { requestPersistentStorage } from './store/storageHealth.ts';
 
@@ -28,6 +29,10 @@ registerOfflineWorker();
 // Ask the browser to exempt this origin's storage from eviction (F24). Every
 // answer the operator has given lives in localStorage; refusal is normal.
 void requestPersistentStorage();
+
+// The stored theme before React's first render (index.html does it even
+// earlier, before the bundle loads; this covers a document served without it).
+applyTheme(normalizeTheme(loadSettings().theme));
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

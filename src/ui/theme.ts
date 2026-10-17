@@ -66,7 +66,24 @@ export function normalizeTheme(value: unknown): ThemeId {
  * Publish the theme to the document. Idempotent, and safe in non-browser
  * environments (unit tests, SSR) where `document` is undefined.
  */
+/**
+ * Each theme's `--bg` (themes.css), for `<meta name="theme-color">`: the
+ * browser chrome and Android's task switcher paint with it, and it was fixed
+ * at Midnight green for every theme (s09). Restated rather than read from the
+ * stylesheet so it can be set before any CSS has loaded; a test in
+ * scripts/themeColor.test.ts holds it to themes.css and to index.html's
+ * pre-paint script.
+ */
+export const THEME_COLOR: Readonly<Record<ThemeId, string>> = {
+  'midnight-felt': '#0d2318',
+  'bone-ink': '#f2ece0',
+  'amoled-night': '#000000',
+  'slate-copper': '#15171a',
+};
+
 export function applyTheme(theme: ThemeId): void {
   if (typeof document === 'undefined') return;
   document.documentElement.setAttribute('data-theme', theme);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', THEME_COLOR[theme]);
 }

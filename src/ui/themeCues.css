@@ -1,0 +1,51 @@
+/*
+ * "SELECTED" IS MORE THAN A TEXT COLOUR (s09).
+ *
+ * In Bone & Ink the active tab (brown) and the others (grey-brown) had nearly
+ * the same luminance, and a selected segment read WEAKER than its neighbours
+ * (near-white with brown text among bone ones). In every theme only the hue
+ * changed. Each selected state now also changes weight and shape, so it reads
+ * in sunlight and to colour-blind eyes. Loaded after app.css and
+ * primitives.css, so these win at equal specificity.
+ */
+
+/* Bottom tab bar: bold label, an indicator bar on top, a tinted ground. */
+.tab-btn {
+  position: relative;
+}
+
+.tab-btn-active {
+  font-weight: 700;
+  background: var(--accent-wash);
+}
+
+.tab-btn-active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 22%;
+  right: 22%;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--accent);
+}
+
+/* Segmented controls: one selected-state style for every toggle, matching
+   the Charts row-order buttons (solid accent fill). */
+.segmented-btn-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+
+/* Bone & Ink: the mute disc was a 0.7-opacity near-white on a cream band,
+   about 1.05:1 at its edge. A darker ring and full opacity make it findable. */
+:root[data-theme='bone-ink'] .mute-btn {
+  opacity: 1;
+  background: var(--raised);
+}
+
+/* Not on the muted state, whose red ring is the signal. */
+:root[data-theme='bone-ink'] .mute-btn:not(.mute-btn-on) {
+  border-color: var(--ink-faint);
+}

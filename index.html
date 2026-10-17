@@ -14,6 +14,26 @@
          the home indicator once installed. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#0d2318" />
+    <!-- THE STORED THEME BEFORE THE FIRST PAINT (s09). React applies it too,
+         but only after the bundle has loaded and rendered, so a Bone & Ink
+         user saw a frame of Midnight green on every launch. Ids and colours
+         mirror src/ui/theme.ts (THEMES / THEME_COLOR); scripts/themeColor.test.ts
+         keeps them in step. Anything unexpected leaves the default. -->
+    <script>
+      (function () {
+        try {
+          var colors = { 'midnight-felt': '#0d2318', 'bone-ink': '#f2ece0', 'amoled-night': '#000000', 'slate-copper': '#15171a' };
+          var s = JSON.parse(localStorage.getItem('bjtrainer.settings.v1') || 'null');
+          var t = s && s.theme;
+          if (typeof t !== 'string' || !Object.prototype.hasOwnProperty.call(colors, t)) return;
+          document.documentElement.setAttribute('data-theme', t);
+          var m = document.querySelector('meta[name="theme-color"]');
+          if (m) m.setAttribute('content', colors[t]);
+        } catch (e) {
+          /* private mode or a corrupt blob: the default theme stands */
+        }
+      })();
+    </script>
 
     <!-- iOS ignores most of the manifest, so the standalone launch, the
          status-bar treatment and the home-screen icon are declared again
