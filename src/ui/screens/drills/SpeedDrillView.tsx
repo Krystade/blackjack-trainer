@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Profile, Settings } from '../../../store/types';
 import { getActiveProfile, strategyRulesFor } from '../../../store/profiles';
 import { saveSettings } from '../../../store/persist';
-import { persistGrade } from '../../../drills/gradeAnswer';
 import {
   buildSpeedEvent,
   drawSpeedQuestion,
@@ -123,7 +122,10 @@ function SpeedSession({
     if (answerTooSoon(shownAtRef.current)) return;
     const elapsedMs = performance.now() - shownAtRef.current;
     const event = buildSpeedEvent(question, saidYes, elapsedMs, Date.now());
-    persistGrade(event, null);
+    // Wave A F20: NOT written to Stats. "Double? No" on A,7 v 9 says nothing
+    // about whether you hit or stand it, yet it counted as a full chart
+    // answer: it cleared weak cells, could satisfy Home's index gate, and its
+    // 0.4s taps became the Surrender median. Speed keeps its own session score.
     idRef.current += 1;
     setLast({ id: idRef.current, q: question, saidYes, correct: event.correct });
     setScore((s) => ({ right: s.right + (event.correct ? 1 : 0), total: s.total + 1 }));
