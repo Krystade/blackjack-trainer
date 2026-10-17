@@ -64,17 +64,19 @@ test('late surrender off disables the control instead of offering a dead setting
 test('the quiz index list grows by the Fab 4 only when the flag is on', async ({ page }) => {
   await withProfile(page, { surrenderIndices: false });
   await openDeviationQuiz(page);
+  // Wave A (s03): the picker names the hand and the play, not the threshold.
   const off = await indexOptions(page).allTextContents();
-  expect(off.filter((t) => /surrender at TC/.test(t))).toEqual([]);
+  expect(off.filter((t) => /\(surrender\)/.test(t))).toEqual([]);
 
   await withProfile(page, { surrenderIndices: true });
   await openDeviationQuiz(page);
   const on = await indexOptions(page).allTextContents();
-  const surrenders = on.filter((t) => /surrender at TC/.test(t));
+  const surrenders = on.filter((t) => /\(surrender\)/.test(t));
 
   expect(surrenders).toHaveLength(6);
-  expect(surrenders.join(' | ')).toContain('16 v 8: surrender at TC ≥ +4');
-  expect(surrenders.join(' | ')).toContain('15 v 10: surrender at TC ≥ 0');
+  expect(surrenders.join(' | ')).toContain('16 v 8 (surrender)');
+  expect(surrenders.join(' | ')).toContain('15 v 10 (surrender)');
+  expect(on.join(' | ')).not.toContain('TC ≥');
   // The eighteen it already had are all still there.
   expect(on.length).toBe(off.length + 6);
 });
@@ -85,11 +87,11 @@ test('S17 carries four surrender indices, not the six H17 does', async ({ page }
   const texts = (await indexOptions(page).allTextContents()).join(' | ');
 
   // The two cells with no S17 source must be ABSENT, not carried over from H17.
-  expect(texts).not.toContain('16 v 8: surrender');
-  expect(texts).not.toContain('16 v 9: surrender');
-  // And the cell that genuinely moves between rulesets shows its S17 value.
-  expect(texts).toContain('15 v A: surrender at TC ≥ +1');
-  expect(texts).not.toContain('15 v A: surrender at TC ≥ −1');
+  // (Wave A s03: the picker names hand and play only, so the S17 threshold of
+  // 15 v A is no longer readable here; surrenderIndices.test pins its value.)
+  expect(texts).not.toContain('16 v 8 (surrender)');
+  expect(texts).not.toContain('16 v 9 (surrender)');
+  expect(texts).toContain('15 v A (surrender)');
 });
 
 /**

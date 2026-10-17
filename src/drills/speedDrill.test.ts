@@ -134,7 +134,7 @@ describe('drawSpeedQuestion', () => {
 describe('buildSpeedEvent', () => {
   const q = drawSpeedQuestion('deviation', { ids: ['hard-12-v-3'], weights: null }, H17, 7)!;
 
-  it('records a graded action on the cell, so cellStats and accuracy count it', () => {
+  it('builds a graded action keyed by the cell (the view does not persist it: Wave A F20)', () => {
     const e = buildSpeedEvent(q, q.answer, 900, 0);
     expect(e).toMatchObject({ kind: 'action', source: 'flashcard', correct: true, classification: 'correct', hand: 'hard-12-v-3', elapsedMs: 900 });
     expect(cellIdForEvent(e)).toBe('hard-12-v-3');

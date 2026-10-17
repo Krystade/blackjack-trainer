@@ -12,3 +12,45 @@
 .checkpoint-result-final {
   margin-top: 0.4rem;
 }
+
+/* Wave A (s04): each checkpoint row leads with its verdict in the row's own
+   colour (right / off by), and the why sits after it, quieter. */
+.checkpoint-result-list .checkpoint-verdict,
+.checkpoint-result-final .checkpoint-verdict {
+  font-weight: 600;
+}
+
+.checkpoint-result-list .checkpoint-detail,
+.checkpoint-result-final .checkpoint-detail {
+  color: var(--ink-dim);
+}
+
+/* Wave A review (s04): how a flashed count card arrives, scaled to its time
+   on screen (drills/cardArrive.ts sets the two variables). The deal-in keeps
+   app.css's movement, shortened; under reduced motion there is no movement,
+   only a short blank before each card, so a card dealt twice in a row still
+   visibly changes. */
+@media (prefers-reduced-motion: no-preference) {
+  .count-flash-cards .card-back,
+  .count-flash-cards .card-red,
+  .count-flash-cards .card-black {
+    animation-duration: var(--count-arrive-ms, 220ms);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .count-flash-cards .card-back,
+  .count-flash-cards .card-red,
+  .count-flash-cards .card-black {
+    animation: count-card-blank var(--count-blank-ms, 80ms) steps(1, end) both;
+  }
+}
+
+@keyframes count-card-blank {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

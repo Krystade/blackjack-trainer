@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, readStats } from './helpers';
+import { withSettings, readStats, submitZero } from './helpers';
 
 /**
  * #47: the count drill's Table mode deals whole rounds laid out like Play,
@@ -13,8 +13,6 @@ async function openCountDrill(page: Page) {
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Count drill', exact: true }).click();
 }
-
-const ok = (page: Page) => page.getByRole('button', { name: 'OK', exact: true });
 
 test('a manual table run shows rounds like Play and records every card shown', async ({ page }) => {
   await withSettings(page, {
@@ -40,7 +38,7 @@ test('a manual table run shows rounds like Play and records every card shown', a
     shown += await table.locator('.card').count();
     await page.locator('.manual-tap-zone').click();
   }
-  await ok(page).click();
+  await submitZero(page);
   await expect(page.locator('.result-detail')).toBeVisible();
 
   const stats = (await readStats(page)) as { countDrill: { history: CountRow[] } };

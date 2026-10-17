@@ -1545,3 +1545,49 @@ describe('making a sound leaves the audio session alone', () => {
     expect(session.type).toBe('play-and-record');
   });
 });
+
+/**
+ * Wave A F3: the drills start their answer clock when the prompt has stopped
+ * sounding, so `speak()` has to say when that was -- measured on the live
+ * path, at the estimate under `?e2e=1`.
+ */
+describe('speak() onEnd -- when the prompt actually stopped', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    teardownFakeSpeechEnv();
+  });
+
+  it('fires once the live utterance ends, not when speak() returns', async () => {
+    const spoken = installFakeSpeechEnv([], { autoEnd: false });
+    const onEnd = vi.fn();
+    speak('You have sixteen. Dealer shows ten.', { onEnd });
+    // Speaking has started; nothing has ended.
+    await Promise.resolve();
+    expect(onEnd).not.toHaveBeenCalled();
+    spoken[0]!.onend?.();
+    await vi.waitFor(() => expect(onEnd).toHaveBeenCalledTimes(1));
+  });
+
+  it('fires at the estimate under ?e2e=1, and only once', async () => {
+    vi.useFakeTimers();
+    (globalThis as any).window = { location: { search: '?e2e=1' } };
+    const onEnd = vi.fn();
+    speak('You have sixteen. Dealer shows ten.', { onEnd });
+    vi.advanceTimersByTime(500);
+    expect(onEnd).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(10_000);
+    expect(onEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('a throwing onEnd does not break speaking', async () => {
+    installFakeSpeechEnv([]);
+    expect(() =>
+      speak('Queen.', {
+        onEnd: () => {
+          throw new Error('nope');
+        },
+      }),
+    ).not.toThrow();
+    await new Promise((r) => setTimeout(r, 0));
+  });
+});

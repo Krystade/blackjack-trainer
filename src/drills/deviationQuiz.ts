@@ -71,6 +71,35 @@ function ctxFor(entry: Deviation): PlayContext {
 }
 
 /**
+ * Wave A (s08 high): an index the profile's OWN basic chart already plays.
+ *
+ * The index set is the 6-deck one. On 2 decks basic strategy already doubles
+ * 9 v 2 and 11 v A, so "9 v 2: double at TC >= +1" was asked at TC 0 and
+ * graded against basic -- Double -- while the label on the same card said to
+ * hit below +1. The quiz contradicted itself. Such an index teaches nothing
+ * at this table and is left out of the quiz (and shown as inactive in its
+ * picker). Judged with the ctx the item would be asked under.
+ */
+export function redundantForChart(entry: Deviation, rules: StrategyRules): boolean {
+  if (entry.kind === 'insurance') return false;
+  // Only a contradiction when TC 0 is on the index's NON-deviation side: there
+  // the label says "not yet" while the chart already plays the index's action.
+  // "Surrender at TC >= 0" over a chart that surrenders is consistent at 0.
+  const zeroBeforeIndex = entry.dir === 'gte' ? entry.threshold > 0 : entry.threshold < 0;
+  if (!zeroBeforeIndex) return false;
+  let cards: Card[] | null;
+  if (entry.kind === 'pair10') cards = makePair10Cards();
+  else cards = makeHardHand(entry.total!, mulberry32(1));
+  if (!cards || !entry.up) return false;
+  return basicPlay(cards, entry.up, ctxFor(entry), rules).action === entry.action;
+}
+
+/** The indexes the quiz asks under these rules (see redundantForChart). */
+export function quizIndexSet(rules: StrategyRules): Deviation[] {
+  return indexSetFor(rules).filter((d) => !redundantForChart(d, rules));
+}
+
+/**
  * The ctx an ITEM was drawn under, for everyone downstream of the draw.
  *
  * The grader and the action bar both need the same answer as `ctxFor`, and
@@ -522,7 +551,8 @@ export function drawQuizItem(
   now = 0,
 ): QuizItem {
   const rng = mulberry32(seed ?? Date.now());
-  const deviationSet = indexSetFor(rules);
+  // Wave A (s08): without the indexes the profile's basic chart already plays.
+  const deviationSet = quizIndexSet(rules);
 
   // Resolve the filtered entry up front (if given) so both the distractor
   // and real-item paths below can share it -- identical to the original

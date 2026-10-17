@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { answerAndReadStrip, shot, withSettings, withStats, readStats, goHomeAndNavigate, openCountOptions } from './helpers';
+import { answerAndReadStrip, shot, withSettings, withStats, readStats, goHomeAndNavigate, openCountOptions, submitZero } from './helpers';
 
 /**
  * The feedback strip, with the spaced-repetition due time masked out.
@@ -285,10 +285,10 @@ test('true count drill: answering a question persists a trueCount history entry'
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.numpad')).toBeVisible();
 
-  // Submit a guess of 0 (OK with an empty display defaults to 0, same idiom
-  // NumPad uses elsewhere) -- the point here is proving persistence
-  // happens, not exercising every guess value.
-  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  // Submit a guess of 0 (typed: Wave A made an empty OK submit nothing) --
+  // the point here is proving persistence happens, not exercising every
+  // guess value.
+  await submitZero(page);
 
   // #54: fast advance -- the B1 strip carries the result, no result screen.
   await expect(page.getByTestId('result-strip')).toBeVisible();
@@ -1650,10 +1650,12 @@ test('produce the true count: flash then produce a TC, graded within tolerance a
   await page.locator('.numpad-btn', { hasText: /^0$/ }).click();
   await page.getByRole('button', { name: 'OK', exact: true }).click();
 
-  // #54: fast advance -- straight into the next flash, result in the strip.
+  // Wave A (s05): the round stops on its result (strip over the tray, Next
+  // below); the next 52 cards no longer start flashing under it.
   const strip = page.getByTestId('result-strip');
   await expect(strip).toBeVisible();
-  await expect(page.locator('.drill-result')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
+  await expect(page.locator('.count-flash-area')).toHaveCount(0);
 
   const stats = await readStats(page);
   const history = (stats?.produceTc as { history: Record<string, number>[] } | undefined)?.history ?? [];

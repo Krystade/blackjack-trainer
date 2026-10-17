@@ -314,7 +314,9 @@ describe('evCost (V3-8: what the mistake cost)', () => {
    * whatever count the learner was actually looking at.
    */
   it('refuses to price a phantom deviation for the same reason', () => {
-    const card = flash([H('10'), H('2')], '4', 'hard-12-v-4', 'stand');
+    // Wave A (s01): on a With-count card (tc shown). A plain card with no
+    // count cannot phantom-deviate; see the s01 test below.
+    const card = { ...flash([H('10'), H('2')], '4', 'hard-12-v-4', 'stand'), tc: 0 };
     const { event } = buildFlashcardEvent(card, 'hit', DEFAULT_RULES, 100);
 
     expect(event.classification).toBe('phantom-deviation');
@@ -924,5 +926,44 @@ describe('#53 a With-count flashcard grades at its TC', () => {
     const ev = buildFlashcardEvent(noCount, 'stand', NO_LS, 100);
     expect(ev.event.tc).toBe(0);
     expect(ev.event.deviationId).toBeUndefined();
+  });
+});
+
+describe('Wave A (s01): plain flashcards never say phantom deviation', () => {
+  it('7,5 v 3 Stand with no count is a basic error, priced; with a count it stays phantom', () => {
+    const plain = { cards: [{ rank: '7', suit: 's' }, { rank: '5', suit: 's' }], up: '3', correct: 'hit', cellId: 'hard-12-v-3' } as unknown as Flashcard;
+    const e = buildFlashcardEvent(plain, 'stand', DEFAULT_RULES, 1000).event;
+    expect(e.classification).toBe('basic-error');
+    expect(e.evCost).toBeTypeOf('number');
+    const counted = { ...plain, tc: 0 } as Flashcard;
+    expect(buildFlashcardEvent(counted, 'stand', DEFAULT_RULES, 1000).event.classification).toBe('phantom-deviation');
+  });
+});
+
+describe('Wave A review: a With-count card on a chart that already plays the index', () => {
+  // 2D S17: basic doubles 9 v 2 at every count, so "9 v 2: double at TC >= +1"
+  // is not an index here (the quiz leaves it out too).
+  const TWO_D = { ...DEFAULT_RULES, decks: 2 as const, s17: true, ls: false };
+  const nineVTwo = (tc: number): Flashcard => ({
+    cards: [
+      { rank: '5', suit: 's' },
+      { rank: '4', suit: 'h' },
+    ],
+    up: '2',
+    correct: 'double',
+    cellId: 'hard-9-v-2',
+    tc,
+  });
+  it('past the 6-deck threshold the answer carries no index id, so it is reviewed as the basic cell', () => {
+    const right = buildFlashcardEvent(nineVTwo(2), 'double', TWO_D, 100);
+    expect(right.correct).toBe(true);
+    expect(right.event.deviationId).toBeUndefined();
+    const wrong = buildFlashcardEvent(nineVTwo(2), 'hit', TWO_D, 100);
+    expect(wrong.event.deviationId).toBeUndefined();
+    expect(wrong.event.classification).toBe('basic-error');
+  });
+  it('6D keeps the index', () => {
+    const six = { ...TWO_D, decks: 6 as const };
+    expect(buildFlashcardEvent(nineVTwo(2), 'double', six, 100).event.deviationId).toBe('9v2');
   });
 });

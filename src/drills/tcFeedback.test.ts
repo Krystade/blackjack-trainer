@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { gradeTcConversion, tcWorking, tcConventionNote, signedTc } from './tcFeedback';
+import { gradeTcConversion, tcWorking, tcConventionNote, signedTc, tcAnswer, tcWrongLead } from './tcFeedback';
 
 describe('gradeTcConversion (#54)', () => {
   it('grades against the profile convention only', () => {
@@ -50,5 +50,42 @@ describe('tcConventionNote (#54)', () => {
     expect(signedTc(-3)).toBe('−3');
     expect(signedTc(0)).toBe('0');
     expect(signedTc(2)).toBe('+2');
+  });
+});
+
+describe('Wave A (s05): an exact half under round', () => {
+  it('names both accepted answers, so the verdict never sits above a different number', () => {
+    expect(tcWorking(2, 4, 'round')).toBe('+2 ÷ 4 = 0.5, an exact half → 0 or +1');
+    expect(tcWorking(-3, 2, 'round')).toBe('−3 ÷ 2 = −1.5, an exact half → −2 or −1');
+    expect(gradeTcConversion(0, 2, 4, 'round')).toBe(true);
+    expect(gradeTcConversion(1, 2, 4, 'round')).toBe(true);
+  });
+  it('leaves floor/truncate halves alone', () => {
+    expect(tcWorking(2, 4, 'floor')).toBe('+2 ÷ 4 = 0.5 → floor 0');
+  });
+});
+
+/**
+ * Wave A (s02 ux): "Wrong: you entered −1 — −11 ÷ 6 = −1.83 → floor −2" put an
+ * em dash against a minus sign, which reads as one long dash, and buried the
+ * right answer at the end. The wrong line now leads with the answer.
+ */
+describe('tcWrongLead / tcAnswer', () => {
+  it('leads with the answer, then what was entered, then the convention', () => {
+    const note = tcConventionNote(-1, -11, 6, 'floor');
+    expect(tcWrongLead(tcAnswer(-11, 6, 'floor'), -1, note)).toBe(
+      'Wrong: TC \u22122, not \u22121 (\u22121 is truncate; your profile floors).',
+    );
+    expect(tcWrongLead('+3', 5, null)).toBe('Wrong: TC +3, not +5.');
+  });
+
+  it('never puts a dash against a minus sign', () => {
+    const line = `${tcWrongLead(tcAnswer(-11, 6, 'floor'), -1, null)} ${tcWorking(-11, 6, 'floor')}.`;
+    expect(line).not.toMatch(/[\u2014-]\s*\u2212/);
+  });
+
+  it("an exact half under 'round' has two right answers", () => {
+    expect(tcAnswer(-3, 2, 'round')).toBe('\u22122 or \u22121');
+    expect(tcAnswer(7, 2.5, 'round')).toBe('+3');
   });
 });

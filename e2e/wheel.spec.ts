@@ -248,7 +248,8 @@ test('in answer mode, forward answers and never opens the microphone', async ({ 
 
 /** The arithmetic on screen, evaluated -- "-3 - (-6)" and friends. */
 function solve(prompt: string): number {
-  const m = /^\s*(-?\d+)\s*([+\-\u00d7])\s*\(?(-?\d+)\)?\s*$/.exec(prompt);
+  // Wave A: the prompt is shown with real minus signs (U+2212).
+  const m = /^\s*(-?\d+)\s*([+\-\u00d7])\s*\(?(-?\d+)\)?\s*$/.exec(prompt.replace(/\u2212/g, '-'));
   if (!m) throw new Error(`unparsed distraction prompt: ${JSON.stringify(prompt)}`);
   const a = Number(m[1]);
   const b = Number(m[3]);

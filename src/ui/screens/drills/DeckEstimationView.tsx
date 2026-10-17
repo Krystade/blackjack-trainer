@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Profile, Settings } from '../../../store/types';
 import { makeDeckEstimationQuestion, gradeDeckEstimate } from '../../../drills/deckEstimation';
 import type { DeckEstimationQuestion } from '../../../drills/deckEstimation';
@@ -13,6 +13,7 @@ import type { DepthResolution } from '../../../drills/depthResolution';
 import { loadStats, saveStats, saveSettings } from '../../../store/persist';
 import { focusSwallowsKey } from '../../keyboardFocus';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
+import { answerTooSoon } from '../../answerBounce';
 
 // This drill is deliberately visual-only (judging a physical card stack) --
 // unlike the other drills it has NO eyes-free/audio mode. See
@@ -115,6 +116,10 @@ export function DeckEstimationView({
   // typedToValue above for the exact grammar. Reset whenever a new
   // question starts or a guess (typed or tapped) is submitted.
   const [typed, setTyped] = useState('');
+  // Wave A (s05): the result's Next and Back to Drills sit exactly where the
+  // bottom rows of answers were, so the second touch of a double-tapped answer
+  // left the drill or skipped the result. Taps that early are dropped.
+  const resultShownAtRef = useRef(performance.now());
 
   const start = () => {
     const q = makeDeckEstimationQuestion(randomSeed(), { totalDecks });
@@ -135,6 +140,7 @@ export function DeckEstimationView({
     setWasCorrect(correct);
     setErrorDecks(err);
     setTyped('');
+    resultShownAtRef.current = performance.now();
     setPhase('result');
 
     // Record telemetry -- this drill previously wrote nothing at all, so a
@@ -313,7 +319,16 @@ export function DeckEstimationView({
             {question.cardsDealt} of {question.totalDecks * 52} cards dealt ({question.totalDecks}-deck
             shoe).
           </div>
-          <DrillPrimaryBar label="Next" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
+          <DrillPrimaryBar
+            label="Next"
+            onPrimary={() => {
+              if (!answerTooSoon(resultShownAtRef.current)) start();
+            }}
+            secondaryLabel="Back to Drills"
+            onSecondary={() => {
+              if (!answerTooSoon(resultShownAtRef.current)) handleBack();
+            }}
+          />
         </div>
       )}
     </div>

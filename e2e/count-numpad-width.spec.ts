@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, openCountOptions } from './helpers';
+import { withSettings, openCountOptions, submitZero } from './helpers';
 
 /**
  * #45: the checkpoint and distraction keypads shrink-wrapped.
@@ -47,7 +47,7 @@ test('the checkpoint keypad is the same full-width keypad as the final answer', 
   await openCountDrill(page);
   expect(await advanceUntil(page, () => page.locator('.checkpoint-area').isVisible(), 12)).toBe(true);
   const checkpoint = await measure(page);
-  await ok(page).click();
+  await submitZero(page);
 
   expect(await advanceUntil(page, () => ok(page).isVisible(), 12)).toBe(true);
   const answer = await measure(page);
@@ -70,7 +70,7 @@ test('the distraction keypad is the same full-width keypad as the final answer',
   // Answer the distractions (any number resumes the stream) to reach the end.
   for (let i = 0; i < 12; i++) {
     if (await page.locator('.distraction-area').isVisible()) {
-      await ok(page).click();
+      await submitZero(page);
       continue;
     }
     if (await page.locator('.numpad').isVisible()) break;

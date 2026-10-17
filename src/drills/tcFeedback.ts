@@ -54,7 +54,38 @@ export function tcWorking(runningCount: number, decksRemaining: number, rounding
   const decks = Math.max(0.5, decksRemaining);
   const exact = runningCount / decks;
   const answer = trueCount(runningCount, decksRemaining, rounding);
+  // Wave A (s05 high): an exact half under 'round' accepts BOTH neighbours
+  // (gradeTcConversion's tie branch). Printing only one put "Correct!" above
+  // a different number than the one entered.
+  if (rounding === 'round' && Math.abs(exact - Math.trunc(exact)) === 0.5) {
+    const lo = Math.floor(exact);
+    return `${signedTc(runningCount)} ÷ ${plain(decks)} = ${plain(exact)}, an exact half → ${signedTc(lo)} or ${signedTc(lo + 1)}`;
+  }
   return `${signedTc(runningCount)} ÷ ${plain(decks)} = ${plain(exact)} → ${rounding} ${signedTc(answer)}`;
+}
+
+/**
+ * The right answer as the wrong strip leads with it: "−2", or both neighbours
+ * on an exact half under 'round' ("−2 or −1"), which gradeTcConversion accepts.
+ */
+export function tcAnswer(runningCount: number, decksRemaining: number, rounding: TcRounding): string {
+  const exact = runningCount / Math.max(0.5, decksRemaining);
+  if (rounding === 'round' && Math.abs(exact - Math.trunc(exact)) === 0.5) {
+    const lo = Math.floor(exact);
+    return `${signedTc(lo)} or ${signedTc(lo + 1)}`;
+  }
+  return signedTc(trueCount(runningCount, decksRemaining, rounding));
+}
+
+/**
+ * Wave A (s02 ux): the opening of a wrong strip, answer first --
+ * "Wrong: TC −2, not −1 (−1 is truncate; your profile floors)." It used to
+ * read "Wrong: you entered −1 — −11 ÷ 6 = …": the em dash against the minus
+ * sign read as one long dash, and the right answer came last. The working
+ * follows this sentence.
+ */
+export function tcWrongLead(answer: string, guess: number, note: string | null): string {
+  return `Wrong: TC ${answer}, not ${signedTc(guess)}${note ? ` (${note})` : ''}.`;
 }
 
 /**

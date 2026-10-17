@@ -28,14 +28,20 @@ test('speed: an answer deals the next hand and the strip describes the answered 
   }
   await expect(page.getByTestId('speed-median')).toHaveText(/^\d+\.\ds$/);
 
-  // Recorded through the stats path: per-cell tallies and flashcard accuracy.
+  // Wave A F20 (this pinned the opposite before): a yes/no answer is not a
+  // full chart answer, so nothing reaches per-cell tallies, category
+  // accuracy, the index tallies or the latency history.
   const stats = (await readStats(page)) as {
     cellStats?: Record<string, { right: number; wrong: number }>;
-    bySource?: Record<string, Record<string, { right?: number; wrong?: number }>>;
-  };
-  const tallied = Object.values(stats.cellStats ?? {}).reduce((n, c) => n + c.right + c.wrong, 0);
-  expect(tallied).toBe(4);
-  expect(stats.bySource?.flashcard).toBeTruthy();
+    bySource?: Record<string, unknown>;
+    perIndex?: Record<string, unknown>;
+    latencyHistory?: unknown[];
+  } | null;
+  const tallied = Object.values(stats?.cellStats ?? {}).reduce((n, c) => n + c.right + c.wrong, 0);
+  expect(tallied).toBe(0);
+  expect(stats?.bySource?.flashcard).toBeFalsy();
+  expect(Object.keys(stats?.perIndex ?? {})).toHaveLength(0);
+  expect(stats?.latencyHistory ?? []).toHaveLength(0);
 });
 
 test('speed: the score counts exactly the answers the strip marks right', async ({ page }) => {
@@ -72,7 +78,8 @@ test('speed: the mode is saved, and Deviation shows a true count', async ({ page
   await expect(page.getByTestId('speed-tc')).toHaveCount(0);
   await page.getByTestId('speed-mode-deviation').click();
   await expect(page.getByTestId('speed-question')).toContainText('Deviation here?');
-  await expect(page.getByTestId('speed-tc')).toHaveText(/^TC [+-]\d+$/);
+  // Wave A: a negative TC shows a real minus sign (U+2212), never a hyphen.
+  await expect(page.getByTestId('speed-tc')).toHaveText(/^TC [+−]\d+$/);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.settings.v1') ?? '{}'));
   expect(saved.drill.speedMode).toBe('deviation');
 });

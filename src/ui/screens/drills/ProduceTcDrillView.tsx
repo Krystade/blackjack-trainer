@@ -9,8 +9,10 @@ import {
 import type { ProduceTcRound } from '../../../drills/produceTcDrill';
 import { DEFAULT_TC_ROUNDING } from '../../../engine/count';
 import type { TcRounding } from '../../../engine/count';
-import { tcWorking, tcConventionNote, signedTc } from '../../../drills/tcFeedback';
+import { tcWorking, tcConventionNote, signedTc, tcWrongLead } from '../../../drills/tcFeedback';
+import { signed } from '../../../drills/signed';
 import { ResultStrip } from '../../components/ResultStrip';
+import { answerTooSoon } from '../../answerBounce';
 import './tcResultStrip.css';
 import { PlayingCard } from '../../components/PlayingCard';
 import { NumPad } from '../../components/NumPad';
@@ -53,8 +55,9 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
+/** Wave A: a real minus sign (U+2212); 0 reads "+0" here, as before. */
 function formatSigned(n: number): string {
-  return n >= 0 ? `+${n}` : String(n);
+  return signed(n, { plusZero: true });
 }
 
 function formatDecks(n: number): string {
@@ -125,6 +128,8 @@ export function ProduceTcDrillView({
   const phaseRef = useRef<Phase>('setup');
   const wheelResetRef = useRef<() => void>(() => {});
   const setPhase = (next: Phase): void => {
+    if (next === 'answering') answerShownAtRef.current = performance.now();
+    if (next === 'result') resultShownAtRef.current = performance.now();
     phaseRef.current = next;
     wheelResetRef.current();
     setPendingTc(null);
@@ -138,6 +143,10 @@ export function ProduceTcDrillView({
   /** #54: the last graded answer for the B1 strip, with its own round. */
   const [lastResult, setLastResult] = useState<StripResult | null>(null);
   const runIdRef = useRef(0);
+  // Wave A (s05): when the keypad (answering) and the result came up, so a
+  // double-tap's second touch is not taken as an answer or as Next.
+  const answerShownAtRef = useRef(performance.now());
+  const resultShownAtRef = useRef(performance.now());
 
   const [eyesFree, setEyesFree] = useEyesFreeToggle('produce-tc-drill');
   const [strictMode, setStrictMode] = useState(false);
@@ -294,6 +303,8 @@ export function ProduceTcDrillView({
   };
 
   const submit = (produced: number) => {
+    // Wave A (s05): a bounce on OK, not an answer.
+    if (answerTooSoon(answerShownAtRef.current)) return;
     // V5-5: the forgiveness band is the depth slack the player has signed up
     // for, not a fixed half deck. Grading and the explanation below read the
     // SAME value, or the result screen states a range the grader did not use.
@@ -312,11 +323,19 @@ export function ProduceTcDrillView({
     else audio.sayFull(verdict);
 
     recordResult(produced, correct);
-    // #54: eyes-on, straight on to the next round; the strip holds the result.
-    // Eyes-free keeps the result phase, whose timers pace the next question
-    // from the end of the spoken verdict.
-    if (eyesFree) setPhase('result');
-    else start();
+    // Wave A (s05 high): BOTH channels stop on the result. Eyes-on used to go
+    // straight into the next round (#54's fast advance), so the next 52 cards
+    // started flashing under the strip you were reading and a miss in round 2
+    // could come from reading round 1's verdict. Fast advance suits the
+    // one-second TC drill, not a 40-second count: the next round starts on
+    // Next. Eyes-free keeps its timers, which pace from the spoken verdict.
+    setPhase('result');
+  };
+
+  /** Next from the result, unless it is the second touch of the OK tap. */
+  const nextFromResult = () => {
+    if (answerTooSoon(resultShownAtRef.current)) return;
+    start();
   };
 
   const handleSelfReport = (correct: boolean) => {
@@ -552,8 +571,10 @@ export function ProduceTcDrillView({
         </div>
       )}
 
-      {lastResult && !eyesFree && (phase === 'flashing' || phase === 'answering') && (
-        <div className="tc-strip-wrap">
+      {/* Eyes-on, the result is the strip, read over the tray it was judged
+          from; Next is at the foot of the screen, below the tray. */}
+      {lastResult && !eyesFree && phase === 'result' && (
+        <div className="tc-strip-wrap produce-tc-result">
           <ResultStrip id={lastResult.id} tone={lastResult.correct ? 'ok' : 'miss'}>
             <ProduceResultLine result={lastResult} rounding={rounding} />
           </ResultStrip>
@@ -587,9 +608,12 @@ export function ProduceTcDrillView({
 
       {(phase === 'answering' || phase === 'result') && !eyesFree && (
         <>
-          <div className="settings-row settings-note-row">
-            Read decks remaining from the tray, then enter the true count.
-          </div>
+          {/* An instruction for the question, not the answer under review. */}
+          {phase === 'answering' && (
+            <div className="settings-row settings-note-row">
+              Read decks remaining from the tray, then enter the true count.
+            </div>
+          )}
           <div className="table-discard-tray" aria-label="Discard tray">
             <span className="table-discard-label">Discard</span>
             <div className="table-discard-frame">
@@ -605,6 +629,12 @@ export function ProduceTcDrillView({
 
       {(phase === 'answering' || phase === 'result') && eyesFree && (
         <div className="settings-row settings-note-row">{decksSentence}.</div>
+      )}
+
+      {/* Wave A review: a direct child of the screen, so it sits at the foot
+          (margin-top: auto) rather than between the strip and the tray. */}
+      {lastResult && !eyesFree && phase === 'result' && (
+        <DrillPrimaryBar label="Next" onPrimary={nextFromResult} secondaryLabel="Back to Drills" onSecondary={handleBack} />
       )}
 
       {phase === 'answering' && (
@@ -630,7 +660,7 @@ export function ProduceTcDrillView({
         </div>
       )}
 
-      {phase === 'result' && answer && (
+      {phase === 'result' && answer && eyesFree && (
         <div className="drill-result">
           <div className={answer.correct ? 'result-correct' : 'result-wrong'}>
             {answer.correct ? 'Correct!' : 'Wrong'}
@@ -675,7 +705,7 @@ export function ProduceTcDrillView({
               </>
             )}
           </div>
-          <DrillPrimaryBar label="Next" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
+          <DrillPrimaryBar label="Next" onPrimary={nextFromResult} secondaryLabel="Back to Drills" onSecondary={handleBack} />
         </div>
       )}
     </div>
@@ -710,10 +740,13 @@ function ProduceResultLine({ result, rounding }: { result: StripResult; rounding
     );
   }
   const note = tcConventionNote(produced, rc, round.decksRemaining, rounding, slack);
+  // Wave A: answer first (the whole accepted range when the tray reading
+  // widens it), and no em dash against a minus sign.
+  const answer = band.min === band.max ? signedTc(band.min) : `${signedTc(band.min)} to ${signedTc(band.max)}`;
   return (
     <span data-testid="tc-strip-text">
-      Wrong: you entered {signedTc(produced)} &mdash; {working}.{range}
-      {note ? ` ${note}.` : ''}
+      {tcWrongLead(answer, produced, note)} {working}.
+      {band.min === band.max ? '' : ` Reading the tray ${formatDepthSlack(slack)} either way, that whole range counts.`}
     </span>
   );
 }

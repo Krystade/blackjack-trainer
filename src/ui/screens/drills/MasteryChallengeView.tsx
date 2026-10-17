@@ -38,6 +38,7 @@ import { KEY_TO_ACTION } from '../Drills';
 import { focusSwallowsKey } from '../../keyboardFocus';
 import { isWholeChartSweep } from '../nextStep';
 import { loadStats, saveStats } from '../../../store/persist';
+import './mastery.css';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -80,13 +81,22 @@ export function MasteryChallengeView({
 }) {
   const deck = useMemo(() => handDeckFor(settings.drill, activeProfile), [settings.drill, activeProfile]);
   const universe = deck.ids;
-  // A saved run resumes only when it walks the cells chosen now: a scope
-  // changed elsewhere (Flashcards shares it) starts a fresh sweep instead of
-  // finishing one over hands that are no longer in scope.
-  const [run, setRun] = useState<MasteryRun>(() => {
+  // A saved run resumes when it walks the cells chosen now. Wave A (s10):
+  // it ALSO resumes when it is a sweep in progress over other cells. The Hands
+  // scope is shared with Flashcards and Speed, so tapping Pairs in Speed used
+  // to overwrite a 61/330 sweep here on mount with no word said. Now the sweep
+  // carries on over its own cells and says so; changing Hands HERE is the
+  // explicit way to start a new one. A run with nothing cleared is not worth
+  // keeping, and a fresh sweep follows the scope chosen now.
+  const [initial] = useState(() => {
     const saved = hydrateMasteryRun(loadMasteryRun());
-    return saved && runCoversExactly(saved, universe) ? saved : startMasteryRun(universe, randomSeed(), srWeightsNow());
+    if (saved && runCoversExactly(saved, universe)) return { run: saved, foreign: false };
+    if (saved && saved.index > 0 && !isMasteryRunComplete(saved)) return { run: saved, foreign: true };
+    return { run: startMasteryRun(universe, randomSeed(), srWeightsNow()), foreign: false };
   });
+  const [run, setRun] = useState<MasteryRun>(initial.run);
+  // The resumed sweep's cells differ from the Hands picked now.
+  const [foreignRun, setForeignRun] = useState(initial.foreign);
 
   useEffect(() => {
     saveMasteryRun(run);
@@ -136,8 +146,15 @@ export function MasteryChallengeView({
     onSettingsChange(next);
     const cells = universeFor(next, activeProfile);
     if (cells.length === 0) return;
+    // Wave A (s10): picking the Hands the sweep in progress already walks
+    // (back to All after Speed moved it to Pairs) carries that sweep on.
+    if (runCoversExactly(run, cells)) {
+      setForeignRun(false);
+      return;
+    }
     const fresh = startMasteryRun(cells, randomSeed(), srWeightsNow());
     setRun(fresh);
+    setForeignRun(false);
     setLastResult(null);
     setWrongTap(null);
     promptShownAtRef.current = performance.now();
@@ -169,6 +186,7 @@ export function MasteryChallengeView({
     resultIdRef.current += 1;
     const resultId = resultIdRef.current;
     const prevRun = run;
+    const prevForeign = foreignRun;
     setWrongTap(
       wrongTapOffered(event)
         ? {
@@ -179,6 +197,7 @@ export function MasteryChallengeView({
             // position, and the same hand back on screen to answer again.
             revert: () => {
               setRun(prevRun);
+              setForeignRun(prevForeign);
               promptShownAtRef.current = performance.now();
             },
           }
@@ -196,9 +215,13 @@ export function MasteryChallengeView({
         },
       ),
     );
-    // #29: a miss reshuffles by the SR weights as they stand now.
-    const nextRun = advanceMasteryRun(run, correct, randomSeed(), correct ? undefined : srWeightsNow());
+    // #29: a miss reshuffles by the SR weights as they stand now. Wave A
+    // review: a miss in a resumed sweep restarts over the Hands picked now --
+    // its progress is gone either way, and a fresh sweep follows the scope.
+    const restartOver = foreignRun && universe.length > 0 ? universe : run.order;
+    const nextRun = advanceMasteryRun(run, correct, randomSeed(), correct ? undefined : srWeightsNow(), restartOver);
     setRun(nextRun);
+    if (!correct) setForeignRun(false);
     // #28: remember a finished whole-chart sweep; the saved run forgets it
     // the moment the next sweep starts.
     if (correct && isWholeChartSweep(nextRun)) {
@@ -243,8 +266,13 @@ export function MasteryChallengeView({
         <DealToggles settings={settings} onChange={onSettingsChange} />
         {/* "Check progress" (operator ask): always-visible, live count. */}
         <div className="mastery-progress" data-testid="mastery-progress">
-          {run.index} / {run.order.length} cleared &middot; {deckLabel(deck)}
+          {run.index} / {run.order.length} cleared &middot; {foreignRun ? 'your sweep in progress' : deckLabel(deck)}
         </div>
+        {foreignRun && (
+          <div className="mastery-resumed" data-testid="mastery-resumed">
+            Carrying on your {run.index}/{run.order.length} sweep. Pick Hands above to start a new one.
+          </div>
+        )}
       </div>
 
       {complete ? (
@@ -256,8 +284,11 @@ export function MasteryChallengeView({
             type="button"
             className="drill-next-btn"
             onClick={() => {
-              const fresh = startMasteryRun(run.order, randomSeed(), srWeightsNow());
+              // Wave A review: a new sweep follows the Hands picked now, even
+              // after finishing a resumed sweep over other cells.
+              const fresh = startMasteryRun(universe.length > 0 ? universe : run.order, randomSeed(), srWeightsNow());
               setRun(fresh);
+              setForeignRun(false);
               setLastResult(null);
               setWrongTap(null);
             }}

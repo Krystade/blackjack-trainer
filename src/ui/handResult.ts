@@ -2,6 +2,7 @@ import type { Card, Rank } from '../engine/cards';
 import type { GradedEvent, MistakeClass } from '../engine/grade';
 import { playLabel } from './playLabel';
 import { TIMEOUT_ANSWER } from '../drills/gradeAnswer';
+import { signed } from '../drills/signed';
 
 /**
  * B1 (spec 2026-10-13, items #8, #10, #14, #17): the result of an answered
@@ -45,8 +46,9 @@ export interface HandResult {
   undone?: boolean;
 }
 
+/** Wave A: a real minus sign (U+2212); 0 reads "+0" here, as before. */
 function formatSigned(n: number): string {
-  return n >= 0 ? `+${n}` : String(n);
+  return signed(n, { plusZero: true });
 }
 
 /** "9,7 v 10" -- the exact cards, as dealt. An insurance question has no

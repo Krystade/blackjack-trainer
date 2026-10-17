@@ -1,0 +1,10 @@
+/* Wave A (s03 high): the answer bar never leaves the screen. With Options open
+   a miss's correction strip grew the drill past the viewport (888px on an
+   812px phone) and the bar for the NEXT card sat below the fold. Sticky keeps
+   it at the bottom edge whenever the page is taller than the screen, and
+   changes nothing when it is not. */
+.drill-screen > .action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+}

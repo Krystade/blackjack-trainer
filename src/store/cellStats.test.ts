@@ -167,14 +167,51 @@ describe('through the real grade path', () => {
     expect(undoGradedEvent(loadStats(), graded.event, graded.cellBefore)).toEqual(before);
   });
 
-  it('the quiz tallies the dealt cards, not the index label', () => {
+  // Wave A F4: an index question is index knowledge. It goes to perIndex and
+  // leaves the basic cell alone (this test pinned the opposite before F4).
+  it('a quiz index item leaves the basic cell alone and counts toward the index', () => {
     const before = loadStats();
     const item = drawQuizItem(7, '16v10', DEFAULT_RULES, 0, {}, NOW);
     const wrong = item.correct === 'stand' ? 'hit' : 'stand';
     const graded = gradeQuizAnswer(item, wrong, DEFAULT_RULES, 2500, {}, NOW);
-    const id = cellIdForEvent(graded.event)!;
-    expect(id).toBe('hard-16-v-10');
-    expect(loadStats().cellStats![id]).toEqual({ right: 2, wrong: 6, lastAt: new Date(NOW).toISOString() });
+    expect(cellIdForEvent(graded.event)).toBe('hard-16-v-10');
+    expect(loadStats().cellStats!['hard-16-v-10']).toEqual(before.cellStats!['hard-16-v-10']);
+    expect(loadStats().perIndex['16v10']).toEqual({ right: 0, wrong: 1 });
+    expect(graded.cellBefore).toBeNull();
     expect(recordMisclick(loadStats(), graded.event, graded.cellBefore)).toEqual({ ...before, misclicks: 1 });
+  });
+
+  it('an off-index (distractor) quiz hand still tallies the dealt cards', () => {
+    const item = drawQuizItem(11, undefined, DEFAULT_RULES, 100, {}, NOW);
+    expect(item.deviationId).toBeUndefined();
+    const graded = gradeQuizAnswer(item, item.correct, DEFAULT_RULES, 2500, {}, NOW);
+    const id = cellIdForEvent(graded.event)!;
+    expect(id).not.toBeNull();
+    expect(loadStats().cellStats![id]!.right).toBeGreaterThanOrEqual(1);
+  });
+
+  // Wave A F4b: a With-count card where the index applied is reviewed in the
+  // quiz deck under the index; the flash cell's schedule is untouched.
+  it('a With-count index card reviews the index, not the flash cell', () => {
+    const store = new Map<string, string>();
+    (globalThis as unknown as { window: unknown }).window = {
+      localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) },
+    };
+    try {
+      const base = cardFor('hard-12-v-3');
+      const card: Flashcard = { ...base, tc: 3, correct: correctPlay(base.cards, base.up, 3, { canDouble: true, canSplit: true, canSurrender: true }, DEFAULT_RULES).action };
+      const flashDeck = { 'hard-12-v-3': { box: 3, dueAt: NOW + 1e9, lastSeenAt: NOW - 1e6 } } as never;
+      const wrong = card.correct === 'stand' ? 'hit' : 'stand';
+      const graded = gradeFlashcardAnswer(card, wrong, DEFAULT_RULES, 1000, flashDeck, NOW);
+      expect(graded.event.deviationId).toBeDefined();
+      expect(graded.nextDeck).toBe(flashDeck);
+      const quiz = JSON.parse(store.get('bjtrainer.quizsr.v1') ?? '{}') as Record<string, unknown>;
+      expect(quiz[graded.event.deviationId!]).toBeDefined();
+      expect(graded.indexReview?.key).toBe(graded.event.deviationId);
+      expect(store.has('bjtrainer.flashsr.v1')).toBe(false);
+      expect(loadStats().cellStats!['hard-12-v-3']).toBeUndefined();
+    } finally {
+      delete (globalThis as unknown as { window?: unknown }).window;
+    }
   });
 });

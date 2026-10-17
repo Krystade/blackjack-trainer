@@ -56,6 +56,29 @@ test('with a shot clock running, answers land in the timed bucket instead', asyn
   expect(s!.untimed.right + s!.untimed.wrong).toBe(0);
 });
 
+test('eyes-free suspends the clock, so its answers are untimed even with a limit set', async ({ page }) => {
+  // Wave A review: the limit is still set in Settings, but eyes-free shows
+  // and runs no clock -- an answer there is not a timed one.
+  await withSettings(page, { drill: { shotClockMs: 60_000 }, audio: { enabled: true, answerPauseMs: 0 } });
+  await page.goto('/?e2e=1');
+  await openFlashcards(page);
+  await page.getByLabel('Eyes-free audio').check();
+  await expect(page.locator('.zone-pad-quadrants')).toBeVisible();
+  await expect(page.getByTestId('shot-clock')).toHaveCount(0);
+  await page.waitForTimeout(800);
+  const box = await page.locator('.zone-pad').boundingBox();
+  if (!box) throw new Error('no zone pad');
+  await page.mouse.click(box.x + box.width * 0.75, box.y + box.height * 0.25);
+
+  await expect.poll(async () => {
+    const s = split(await readStats(page));
+    return s ? s.timed.right + s.timed.wrong + s.untimed.right + s.untimed.wrong : 0;
+  }).toBe(1);
+  const s = split(await readStats(page))!;
+  expect(s.untimed.right + s.untimed.wrong).toBe(1);
+  expect(s.timed.right + s.timed.wrong).toBe(0);
+});
+
 test('the Stats section stays quiet until both buckets have answers', async ({ page }) => {
   // One bucket alone says nothing about the gap, and a "100%" off two cards
   // would invite exactly the wrong conclusion.

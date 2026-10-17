@@ -10,14 +10,14 @@ import { isIndexActive, indexSetFor } from '../../engine/deviations';
 import type { GradedEvent } from '../../engine/grade';
 import { drawFlashcard, flashCtx } from '../../drills/flashcards';
 import { flashOptionsFor } from '../../drills/flashOptions';
-import { indexLine } from '../../drills/withCount';
+import { indexLine, indexPickerText } from '../../drills/withCount';
 import { DealToggles } from './drills/DealToggles';
 import { plainCellLabel } from '../../drills/cellLabel';
 import { formatReviewPlain } from '../../drills/srStatus';
 import { drillLegalActions, rulesChipLabels } from '../../drills/legalActions';
 import { gateDrillAnswer, gateQuizAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
-import { drawQuizItem, quizLegalActions, quizRulesChip, tableMaskNote } from '../../drills/deviationQuiz';
+import { drawQuizItem, quizLegalActions, quizRulesChip, redundantForChart, tableMaskNote } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
 // R4 (docs/BACKLOG.md, interleaved mixed-session mode): the ONE shared grade
 // path -- gradeFlashcardAnswer/gradeQuizAnswer back the standalone
@@ -35,7 +35,15 @@ import {
   SELF_REPORT_HAD,
   SELF_REPORT_MISSED } from '../../drills/gradeAnswer';
 import type { DrillAnswer } from '../../drills/gradeAnswer';
-import { shotClockExpired, shotClockOn } from '../../drills/shotClock';
+import {
+  answeredUnderShotClock,
+  answerElapsedMs,
+  expiryVerdict,
+  readGraceMs,
+  shotClockExpired,
+  shotClockOn,
+  shotClockSuspended,
+} from '../../drills/shotClock';
 import type { SrCard, SrDeck } from '../../drills/spacedRepetition';
 import { restoreSrCard } from '../../drills/spacedRepetition';
 import { pickMixedType } from '../../drills/mixedSession';
@@ -91,6 +99,9 @@ import { enableAudioNow } from '../audioGate';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
 import { useEyesFreeToggle } from '../eyesFreeSession';
 import { useWheelCommand } from '../useWheelCommand';
+import { signed } from '../../drills/signed';
+import './drills/drillTiming.css';
+import './drills/drillActionBar.css';
 
 interface DrillsProps {
   settings: Settings;
@@ -115,8 +126,9 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
+/** Wave A: a real minus sign (U+2212); 0 reads "+0" here, as before. */
 function formatSigned(n: number): string {
-  return n >= 0 ? `+${n}` : String(n);
+  return signed(n, { plusZero: true });
 }
 
 /* ---------------------------------------------------------------- */
@@ -395,6 +407,9 @@ function FlashcardsView({
   // be a render behind -- and a stale previous cell silently boosts the wrong
   // neighbours, which no test would catch.
   const lastCellRef = useRef<string | null>(null);
+  // Wave A F4b: the index the last answer was reviewed under, when the card's
+  // expected play came from an index (gradeAnswer.ts) -- for "Wrong tap".
+  const indexReviewRef = useRef<{ key: string; prev: SrCard | undefined } | null>(null);
   // Eyes-free audio (Task 9): a per-session choice, shared across screens for
   // the life of this page load (ui/eyesFreeSession.ts) rather than owned by
   // each drill -- it used to reset on every navigation, which in a car reads
@@ -462,6 +477,12 @@ function FlashcardsView({
   // wall-clock adjustments, and matches the elapsedMs contract on
   // GradedEvent.
   const promptShownAtRef = useRef(performance.now());
+  // Wave A F3: where the ANSWER clock starts. The draw time in visual mode;
+  // moved to the measured end of the spoken prompt when the card is read out
+  // (eyes-free or voice), because the seconds the question takes to say are
+  // not answer time. Kept apart from promptShownAtRef, which the bounce guard
+  // keys on and which must stay at the draw.
+  const answerClockRef = useRef(performance.now());
   // Review fix (b): set when a spoken correction is still playing as the next
   // card is dealt, so that card's prompt queues behind it.
   const promptQueuesRef = useRef(false);
@@ -492,6 +513,15 @@ function FlashcardsView({
   // the one now on screen.
   const shotClockMs = settings.drill.shotClockMs;
   const shotClockTimerRef = useRef<number | null>(null);
+  // Wave A F3: no clock eyes-free or by voice.
+  const clockSuspended = shotClockSuspended(eyesFree, voiceOn);
+  // Wave A (s09): expiries in a row, and whether the clock has stopped
+  // because nobody is answering. Any answer resets both.
+  const consecutiveTimeoutsRef = useRef(0);
+  const [clockIdle, setClockIdle] = useState(false);
+  // Wave A (s09): reading time before THIS card's clock starts -- set after a
+  // miss in visual mode, when the next card is dealt under the correction.
+  const clockGraceRef = useRef(0);
 
   const clearShotClock = () => {
     if (shotClockTimerRef.current !== null) {
@@ -568,7 +598,18 @@ function FlashcardsView({
       next();
       return;
     }
-    speak(narrateFlashcardPrompt(card.cards, card.up), speechOptsFrom(settings.audio, { interrupt }));
+    // Wave A F3: the answer clock starts when the question has been SAID.
+    const runId = runIdRef.current;
+    speak(narrateFlashcardPrompt(card.cards, card.up), {
+      ...speechOptsFrom(settings.audio, { interrupt }),
+      onEnd: () => {
+        if (runIdRef.current !== runId || feedbackRef.current) return;
+        answerClockRef.current = performance.now();
+        // The prompt queued behind the correction, so the reading time is
+        // already off the answer clock (and the shot clock is suspended).
+        clockGraceRef.current = 0;
+      },
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card, eyesFree, voiceOn]);
 
@@ -590,6 +631,8 @@ function FlashcardsView({
     feedbackRef.current = null;
     setSelfCheckOpen(false);
     promptShownAtRef.current = performance.now();
+    answerClockRef.current = promptShownAtRef.current;
+    clockGraceRef.current = 0;
   };
 
   // #13 / B2: HandDeckControls has already saved the change.
@@ -635,10 +678,14 @@ function FlashcardsView({
     taken: DrillAnswer,
     channel: AnswerChannel,
   ): { event: GradedEvent; correctAction: Action; prevSr: SrCard | undefined; cellBefore: CellTally | null } => {
-    const elapsedMs = performance.now() - promptShownAtRef.current;
+    // Wave A review: reading a miss's correction is not answer time.
+    const elapsedMs = answerElapsedMs(performance.now() - answerClockRef.current, clockGraceRef.current);
     // #22: the card's schedule before this answer, for "Wrong tap".
     const prevSr = srDeckRef.current[card.cellId];
     clearWrongTap();
+    // Somebody is there: an answer restarts a clock stopped for idleness.
+    consecutiveTimeoutsRef.current = 0;
+    setClockIdle(false);
     const result = gradeFlashcard(
       card,
       taken,
@@ -650,10 +697,12 @@ function FlashcardsView({
       // V5-2: accuracy under the shot clock and accuracy without it measure
       // different things (see engine/grade.ts), so the grader records which
       // this was. Passed IN rather than stamped on the way out -- the grader
-      // is what persists the event.
-      settings.drill.shotClockMs > 0,
+      // is what persists the event. Wave A review: a clock suspended
+      // (eyes-free, voice) or stopped for idleness was not running.
+      answeredUnderShotClock(shotClockMs, clockSuspended, clockIdle),
     );
     srDeckRef.current = result.nextDeck;
+    indexReviewRef.current = result.indexReview ?? null;
     return { event: result.event, correctAction: result.correctAction, prevSr, cellBefore: result.cellBefore };
   };
 
@@ -687,7 +736,11 @@ function FlashcardsView({
    * than one from several hands back (review fix a).
    */
   const freezeResult = (event: GradedEvent, prevSr: SrCard | undefined, cellBefore: CellTally | null) => {
-    const srCard = srDeckRef.current[card.cellId];
+    const indexReview = indexReviewRef.current;
+    // Wave A review: an index card was reviewed in the QUIZ deck (F4b), so its
+    // "Next review" is the index's -- not the untouched flash cell's, which
+    // after a missed index read "in N days" while the index was due now.
+    const srCard = indexReview ? loadQuizSr()[indexReview.key] : srDeckRef.current[card.cellId];
     const srText = formatReviewPlain(srCard, Date.now());
     const cellId = card.cellId;
     showResult(
@@ -698,13 +751,22 @@ function FlashcardsView({
         {
           cellId,
           sr: srText ? { text: srText, box: srCard?.box } : null,
-          // #53: a With-count card says whether an index applied.
-          ...(card.tc !== undefined ? { indexNote: indexLine(event, activeProfile.rules) } : {}),
+          // #53: a With-count card says whether an index applied. Wave A (s03):
+          // not on a missed index -- the miss line already names it, and the
+          // second copy only added height.
+          ...(card.tc !== undefined && !(event.deviationId && !event.correct)
+            ? { indexNote: indexLine(event, activeProfile.rules, { cards: card.cards, up: card.up, ctx: flashCtx(card) }) }
+            : {}),
         },
       ),
       event,
       // #22: a withdrawn answer puts the card's schedule back as well.
       () => {
+        // Wave A F4b: an index card was reviewed in the quiz deck instead.
+        if (indexReview) {
+          saveQuizSr(restoreSrCard(loadQuizSr(), indexReview.key, indexReview.prev));
+          return;
+        }
         srDeckRef.current = restoreSrCard(srDeckRef.current, cellId, prevSr);
         saveFlashSr(srDeckRef.current);
       },
@@ -718,6 +780,8 @@ function FlashcardsView({
     freezeResult(event, prevSr, cellBefore);
     releaseAnswerFocus();
     next();
+    // Wave A (s09): a miss leaves a correction to read under the new card.
+    clockGraceRef.current = readGraceMs(!event.correct);
   };
 
   const handleAction = (taken: Action) => {
@@ -795,7 +859,14 @@ function FlashcardsView({
    */
   const handleShotClockExpiry = () => {
     const elapsedMs = performance.now() - promptShownAtRef.current;
-    if (!shotClockExpired(elapsedMs, shotClockMs)) return;
+    if (!shotClockExpired(elapsedMs - clockGraceRef.current, shotClockMs)) return;
+    // Wave A (s09): the second unanswered card in a row is not graded -- the
+    // clock stops and waits for somebody to answer.
+    if (expiryVerdict(consecutiveTimeoutsRef.current) === 'stop') {
+      setClockIdle(true);
+      return;
+    }
+    consecutiveTimeoutsRef.current += 1;
 
     const prevSr = srDeckRef.current[card.cellId];
     clearWrongTap();
@@ -808,6 +879,7 @@ function FlashcardsView({
       Date.now(),
     );
     srDeckRef.current = result.nextDeck;
+    indexReviewRef.current = result.indexReview ?? null;
 
     const spokenMs = speakCorrectionOnceGated(result.event, (text) =>
       eyesFree || voiceOn
@@ -835,7 +907,7 @@ function FlashcardsView({
   useEffect(() => {
     clearShotClock();
     if (!shotClockOn(shotClockMs)) return;
-    if (feedback || showChart) return;
+    if (feedback || showChart || clockSuspended || clockIdle) return;
     const runId = runIdRef.current;
     shotClockTimerRef.current = window.setTimeout(() => {
       shotClockTimerRef.current = null;
@@ -844,10 +916,10 @@ function FlashcardsView({
       // one. Same guard, same reason, as the auto-advance timer's.
       if (runIdRef.current !== runId) return;
       handleShotClockExpiry();
-    }, shotClockMs);
+    }, shotClockMs + clockGraceRef.current);
     return clearShotClock;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card, feedback, showChart, shotClockMs]);
+  }, [card, feedback, showChart, shotClockMs, clockSuspended, clockIdle]);
 
   /**
    * A spoken answer.
@@ -1052,6 +1124,8 @@ function FlashcardsView({
     if (!feedbackRef.current) {
       runIdRef.current += 1;
       promptShownAtRef.current = performance.now();
+      answerClockRef.current = promptShownAtRef.current;
+      clockGraceRef.current = 0;
     }
   };
 
@@ -1146,10 +1220,16 @@ function FlashcardsView({
           Paused rather than hidden once an answer is in, so the bar does not
           vanish out from under a glance at the correction. */}
       <ShotClockBar
-        limitMs={shotClockMs}
+        limitMs={clockSuspended ? 0 : shotClockMs}
         restartKey={runIdRef.current}
-        paused={feedback !== null || showChart}
+        paused={feedback !== null || showChart || clockIdle}
+        delayMs={clockGraceRef.current}
       />
+      {clockIdle && !clockSuspended && (
+        <div className="shot-clock-idle" data-testid="shot-clock-idle">
+          Shot clock stopped: nobody answered. Answer to start it again.
+        </div>
+      )}
 
       <div className="message-strip">
         {/* The revealed play, while the wheel waits to be told whether it was
@@ -1270,9 +1350,14 @@ function quizFilterArg(quizIndex: DeviationId | 'all'): DeviationId | undefined 
  */
 function getActiveQuizFilter(quizIndex: DeviationId | 'all', activeProfile: Profile): DeviationId | 'all' {
   if (quizIndex === 'all') return 'all';
-  if (!isIndexActive(quizIndex, strategyRulesFor(activeProfile))) {
+  const rules = strategyRulesFor(activeProfile);
+  if (!isIndexActive(quizIndex, rules)) {
     return 'all';
   }
+  // Wave A (s08): an index this profile's basic chart already plays is not
+  // quizzed (drills/deviationQuiz.ts redundantForChart).
+  const entry = indexSetFor(rules).find((d) => d.id === quizIndex);
+  if (!entry || redundantForChart(entry, rules)) return 'all';
   return quizIndex;
 }
 
@@ -1344,6 +1429,8 @@ function DeviationQuizView({
   // value), so it can never point at a stale, already-answered item.
   // `performance.now()`, never `Date.now()`.
   const promptShownAtRef = useRef(performance.now());
+  // Wave A F3: where the answer clock starts -- see FlashcardsView's.
+  const answerClockRef = useRef(performance.now());
   // Spoken "Correct." is only wanted once per drill session -- after that,
   // correct answers still chime but skip the spoken text. `useRef(false)`
   // is fresh on every mount, and this view is unmounted/remounted each time
@@ -1359,6 +1446,11 @@ function DeviationQuizView({
   // TIMEOUT_ANSWER means neither can invent its own idea of what a timeout is.
   const shotClockMs = settings.drill.shotClockMs;
   const shotClockTimerRef = useRef<number | null>(null);
+  // Wave A: suspension, idle stop and reading grace -- see FlashcardsView.
+  const clockSuspended = shotClockSuspended(eyesFree, voiceOn);
+  const consecutiveTimeoutsRef = useRef(0);
+  const [clockIdle, setClockIdle] = useState(false);
+  const clockGraceRef = useRef(0);
 
   const clearShotClock = () => {
     if (shotClockTimerRef.current !== null) {
@@ -1406,13 +1498,25 @@ function DeviationQuizView({
   // the existing Phase-A verbosity-'full' behavior unchanged. The two
   // branches are mutually exclusive so nothing double-speaks.
   useEffect(() => {
-    if (eyesFree) {
-      speak(narrateQuizPrompt(item.cards, item.up, item.tc), speechOptsFrom(settings.audio, { interrupt: true }));
+    // Wave A review: voice counts as eyes-free here as in Flashcards --
+    // someone answering out loud is not reading the screen, and a prompt
+    // spoken through sayFull had no end to start the answer clock from.
+    if (eyesFree || voiceOn) {
+      // Wave A F3: the answer clock starts when the question has been said.
+      const runId = runIdRef.current;
+      speak(narrateQuizPrompt(item.cards, item.up, item.tc), {
+        ...speechOptsFrom(settings.audio, { interrupt: true }),
+        onEnd: () => {
+          if (runIdRef.current !== runId || feedbackRef.current) return;
+          answerClockRef.current = performance.now();
+          clockGraceRef.current = 0;
+        },
+      });
     } else {
       audio.sayFull(narrateQuizPrompt(item.cards, item.up, item.tc));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item, eyesFree]);
+  }, [item, eyesFree, voiceOn]);
 
   /**
    * Show a graded answer. The ONE place `feedback` is set to a result, so
@@ -1444,6 +1548,8 @@ function DeviationQuizView({
     );
     setFeedback(null);
     promptShownAtRef.current = performance.now();
+    answerClockRef.current = promptShownAtRef.current;
+    clockGraceRef.current = 0;
   };
 
   const changeIndex = (quizIndex: DeviationId | 'all') => {
@@ -1496,7 +1602,13 @@ function DeviationQuizView({
   // (real items only) + the Stats write happen inside gradeQuiz. No audio,
   // no setState -- callers layer their own feedback on top.
   const gradeQuizAnswer = (taken: string, channel: AnswerChannel = SCREEN_CHANNEL): GradedEvent => {
-    const elapsedMs = performance.now() - promptShownAtRef.current;
+    // Wave A review: reading a miss's correction is not answer time.
+    const elapsedMs = answerElapsedMs(performance.now() - answerClockRef.current, clockGraceRef.current);
+    if (taken !== TIMEOUT_ANSWER) {
+      // Somebody is there: an answer restarts a clock stopped for idleness.
+      consecutiveTimeoutsRef.current = 0;
+      setClockIdle(false);
+    }
     // #22: the index's schedule before this answer, for "Wrong tap". A
     // distractor has no index and nothing scheduled to put back.
     const srKey = item.deviationId;
@@ -1510,7 +1622,7 @@ function DeviationQuizView({
       srDeckRef.current,
       Date.now(),
       channel,
-      settings.drill.shotClockMs > 0, // V5-2: see the flashcard grader above.
+      answeredUnderShotClock(shotClockMs, clockSuspended, clockIdle), // V5-2: see the flashcard grader above.
     );
     srDeckRef.current = result.nextDeck;
     cellBeforeRef.current = result.cellBefore;
@@ -1566,6 +1678,8 @@ function DeviationQuizView({
     freezeResult(event);
     releaseAnswerFocus();
     next();
+    // Wave A (s09): a miss leaves a correction to read under the new item.
+    clockGraceRef.current = readGraceMs(!event.correct);
   };
 
   const handleAnswer = (taken: string) => {
@@ -1587,7 +1701,13 @@ function DeviationQuizView({
    */
   const handleShotClockExpiry = () => {
     const elapsedMs = performance.now() - promptShownAtRef.current;
-    if (!shotClockExpired(elapsedMs, shotClockMs)) return;
+    if (!shotClockExpired(elapsedMs - clockGraceRef.current, shotClockMs)) return;
+    // Wave A (s09): the second unanswered item in a row stops the clock.
+    if (expiryVerdict(consecutiveTimeoutsRef.current) === 'stop') {
+      setClockIdle(true);
+      return;
+    }
+    consecutiveTimeoutsRef.current += 1;
 
     const event = gradeQuizAnswer(TIMEOUT_ANSWER);
     const spokenMs = speakCorrectionOnceGated(event, (text) =>
@@ -1609,16 +1729,16 @@ function DeviationQuizView({
   useEffect(() => {
     clearShotClock();
     if (!shotClockOn(shotClockMs)) return;
-    if (feedback || showChart) return;
+    if (feedback || showChart || clockSuspended || clockIdle) return;
     const runId = runIdRef.current;
     shotClockTimerRef.current = window.setTimeout(() => {
       shotClockTimerRef.current = null;
       if (runIdRef.current !== runId) return;
       handleShotClockExpiry();
-    }, shotClockMs);
+    }, shotClockMs + clockGraceRef.current);
     return clearShotClock;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item, feedback, showChart, shotClockMs]);
+  }, [item, feedback, showChart, shotClockMs, clockSuspended, clockIdle]);
 
   // Eyes-free zone tap. Non-insurance items: ZoneId and Action are the
   // identical five-member literal union, so the tapped zone maps straight
@@ -1840,7 +1960,11 @@ function DeviationQuizView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedback, eyesFree, item, showChart]);
 
-  const indexList = indexSetFor(strategyRulesFor(activeProfile));
+  // Wave A (s08): indexes the profile's basic chart already plays show as
+  // inactive -- the quiz never asks them.
+  const indexList = indexSetFor(strategyRulesFor(activeProfile)).map((d) =>
+    redundantForChart(d, strategyRulesFor(activeProfile)) ? { ...d, active: false } : d,
+  );
 
   const openChartOn = (result: HandResult) => {
     setChartTarget(chartTargetFrom(result));
@@ -1853,6 +1977,8 @@ function DeviationQuizView({
     if (!feedbackRef.current) {
       runIdRef.current += 1;
       promptShownAtRef.current = performance.now();
+      answerClockRef.current = promptShownAtRef.current;
+      clockGraceRef.current = 0;
     }
   };
 
@@ -1889,7 +2015,7 @@ function DeviationQuizView({
             <option value="all">All indices</option>
             {indexList.map((d) => (
               <option key={d.id} value={d.id} disabled={!d.active}>
-                {d.label}
+                {indexPickerText(d)}
                 {!d.active ? ' (inactive for this profile)' : ''}
               </option>
             ))}
@@ -1955,10 +2081,16 @@ function DeviationQuizView({
       {/* Below the hand (or the insurance prompt) and above the answer, the
           same place FlashcardsView puts it. */}
       <ShotClockBar
-        limitMs={shotClockMs}
+        limitMs={clockSuspended ? 0 : shotClockMs}
         restartKey={runIdRef.current}
-        paused={feedback !== null || showChart}
+        paused={feedback !== null || showChart || clockIdle}
+        delayMs={clockGraceRef.current}
       />
+      {clockIdle && !clockSuspended && (
+        <div className="shot-clock-idle" data-testid="shot-clock-idle">
+          Shot clock stopped: nobody answered. Answer to start it again.
+        </div>
+      )}
 
       <div className="message-strip">
         {/* The revealed answer, while the wheel waits to be told whether it
@@ -2183,6 +2315,8 @@ function MixedSessionView({
   const runIdRef = useRef(0);
   const advanceTimerRef = useRef<number | null>(null);
   const promptShownAtRef = useRef(performance.now());
+  // Wave A F3: where the answer clock starts -- see FlashcardsView's.
+  const answerClockRef = useRef(performance.now());
   const spokenCorrectOnceRef = useRef(false);
   const [controlsRef, padTop] = useControlStripBottom();
 
@@ -2226,13 +2360,21 @@ function MixedSessionView({
   // the same prompt builders (the quiz prompt includes the spoken TC, the
   // flashcard prompt never does, making the discrimination audible too).
   useEffect(() => {
-    if (eyesFree) {
-      speak(promptFor(current), speechOptsFrom(settings.audio, { interrupt: true }));
+    // Wave A review: voice is spoken to like eyes-free (see the quiz view).
+    if (eyesFree || voiceOn) {
+      // Wave A F3: the answer clock starts when the question has been said.
+      const runId = runIdRef.current;
+      speak(promptFor(current), {
+        ...speechOptsFrom(settings.audio, { interrupt: true }),
+        onEnd: () => {
+          if (runIdRef.current === runId && !feedbackRef.current) answerClockRef.current = performance.now();
+        },
+      });
     } else if (current.type === 'quiz') {
       audio.sayFull(narrateQuizPrompt(current.item.cards, current.item.up, current.item.tc));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, eyesFree]);
+  }, [current, eyesFree, voiceOn]);
 
   /** The ONE place `feedback` is set to a result -- see FlashcardsView. */
   const showFeedback = (result: {
@@ -2262,6 +2404,7 @@ function MixedSessionView({
     setCurrent(drawFor(pickMixedType(sessionSeed(), idx)));
     setFeedback(null);
     promptShownAtRef.current = performance.now();
+    answerClockRef.current = promptShownAtRef.current;
   };
 
   // #13: a basic-strategy hand still waiting for its answer is re-dealt
@@ -2274,6 +2417,7 @@ function MixedSessionView({
       if (!card) return; // empty deck: HandDeckGate takes the screen
       setCurrent({ type: 'flash', card });
       promptShownAtRef.current = performance.now();
+      answerClockRef.current = promptShownAtRef.current;
     }
   };
 
@@ -2307,7 +2451,7 @@ function MixedSessionView({
   // current item's type -- byte-identical to what the standalone views call.
   // R1 latency captured here; R3 weights + Stats write happen inside.
   const gradeCurrent = (taken: string): { correct: boolean; correctAction?: Action; event: GradedEvent } => {
-    const elapsedMs = performance.now() - promptShownAtRef.current;
+    const elapsedMs = performance.now() - answerClockRef.current;
     clearWrongTap();
     if (current.type === 'flash') {
       // #22: the card's schedule before this answer, for "Wrong tap".
@@ -2602,6 +2746,7 @@ function MixedSessionView({
     if (!feedbackRef.current) {
       runIdRef.current += 1;
       promptShownAtRef.current = performance.now();
+      answerClockRef.current = promptShownAtRef.current;
     }
   };
 

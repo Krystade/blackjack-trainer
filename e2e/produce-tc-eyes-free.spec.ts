@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { withSettings, withProfile } from './helpers';
+import { withSettings, withProfile, submitZero } from './helpers';
 
 /**
  * Produce-the-True-Count, eyes-free.
@@ -114,7 +114,7 @@ test('strict mode shows no tray and claims no accepted range', async ({ page }) 
   for (let i = 0; i < 8; i++) {
     await expect(page.locator('.numpad')).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('.table-discard-tray')).toHaveCount(0);
-    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await submitZero(page);
     await expect(page.locator('.drill-result')).toBeVisible();
 
     const detail = await page.locator('.result-detail').innerText();

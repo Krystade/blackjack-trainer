@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile } from './helpers';
+import { withSettings, withProfile, submitZero } from './helpers';
 
 /**
  * V4-3 (docs/BACKLOG.md): the count-conversion drills take their shoe from the
@@ -64,7 +64,7 @@ test('produce the true count: a one-deck profile never divides by more than one 
   for (let round = 0; round < 6; round++) {
     await expect(page.locator('.numpad')).toBeVisible();
     await expect(page.locator('.deck-tray-context')).toHaveText('1-deck shoe');
-    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await submitZero(page);
 
     // #54: fast advance; the strip prints the working "rc ÷ decks = q".
     const detail = await page.getByTestId('result-strip').innerText();
@@ -74,6 +74,8 @@ test('produce the true count: a one-deck profile never divides by more than one 
     expect(decks, `round ${round} divided by ${decks} decks in a 1-deck shoe`).toBeLessThanOrEqual(1);
     expect(decks).toBeGreaterThanOrEqual(0.5);
     seen.push(decks);
+    // Wave A (s05): each round stops on its result; Next starts the next one.
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
   }
 
   // Vacuity guard: the drill must actually be varying the depth, or the bound

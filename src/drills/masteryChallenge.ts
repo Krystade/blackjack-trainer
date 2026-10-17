@@ -111,9 +111,34 @@ export function advanceMasteryRun(
   correct: boolean,
   nextSeed: number,
   weightOf?: CellWeight,
+  // Wave A review: the cells a MISS restarts over. A sweep resumed over other
+  // cells than the Hands picked now (s10) loses its progress on a miss
+  // anyway, so the restart follows the Hands picked now -- otherwise it read
+  // "Carrying on your 0/330 sweep" and the next mount silently replaced it.
+  restartOver: readonly string[] = run.order,
 ): MasteryRun {
   if (correct) return { ...run, index: run.index + 1 };
-  return startMasteryRun(run.order, nextSeed, weightOf);
+  const fresh = startMasteryRun(restartOver, nextSeed, weightOf);
+  // Wave A F16 (spec #29): the cell just missed comes back early in the new
+  // sweep. The reshuffle reads the FLASHCARD SR weights, which a Mastery miss
+  // never reaches (mastery leaves that deck alone, D6), so the missed cell used
+  // to land anywhere -- median 173rd of 330. It is now placed a short gap in:
+  // not the very next hand (that is just reading the correction back), but
+  // soon enough to be the retry the miss calls for.
+  const missed = currentCellId(run);
+  return missed === null ? fresh : { ...fresh, order: placeMissedEarly(fresh.order, missed) };
+}
+
+/** Wave A F16: where in the new sweep the just-missed cell is re-asked. */
+export const MASTERY_MISS_RETRY_AT = 2;
+
+/** `order` with `cellId` moved to MASTERY_MISS_RETRY_AT (or the end of a
+ *  shorter run). Pure; the other cells keep their relative order. */
+export function placeMissedEarly(order: readonly string[], cellId: string): string[] {
+  if (!order.includes(cellId)) return [...order];
+  const rest = order.filter((id) => id !== cellId);
+  const at = Math.min(MASTERY_MISS_RETRY_AT, rest.length);
+  return [...rest.slice(0, at), cellId, ...rest.slice(at)];
 }
 
 export function isMasteryRunComplete(run: MasteryRun): boolean {

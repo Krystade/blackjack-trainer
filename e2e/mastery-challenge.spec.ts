@@ -195,3 +195,79 @@ test('mastery #29: an overdue cell comes early in a new sweep', async ({ page })
   expect(order).toHaveLength(100);
   expect(order.indexOf('pair-8-v-A')).toBeLessThan(5);
 });
+
+/**
+ * Wave A (s10 high): the Hands scope is shared with Speed and Flashcards.
+ * Tapping Pairs in Speed used to overwrite a 61/330 sweep the moment Mastery
+ * opened. The sweep in progress now carries on over its own cells.
+ */
+test('mastery: a scope changed elsewhere does not destroy a sweep in progress', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return;
+    sessionStorage.setItem('seeded', '1');
+    window.localStorage.setItem('bjtrainer.masteryrun.v1', JSON.stringify({ scope: 'all', seed: 12345, index: 61 }));
+    window.localStorage.setItem('bjtrainer.settings.v1', JSON.stringify({ version: 1, drill: { scopes: ['pairs'] } }));
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
+  await expect(page.getByTestId('mastery-progress')).toContainText('61 / 330 cleared');
+  await expect(page.getByTestId('mastery-resumed')).toBeVisible();
+  const stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('bjtrainer.masteryrun.v1') ?? '{}'));
+  expect(stored.index).toBe(61);
+  expect(stored.order).toHaveLength(330);
+
+  // Back to All: the same sweep, not a new one.
+  const scopeRow = page.locator('.settings-row', { hasText: 'Hands' });
+  await scopeRow.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(page.getByTestId('mastery-progress')).toContainText('61 / 330 cleared');
+  await expect(page.getByTestId('mastery-resumed')).toHaveCount(0);
+
+  // Changing Hands here is the explicit way to start over.
+  await scopeRow.getByRole('button', { name: 'Pairs', exact: true }).click();
+  await expect(page.getByTestId('mastery-progress')).toContainText('0 / 100 cleared');
+});
+
+/**
+ * Wave A review: a miss in a resumed sweep loses its progress either way, so
+ * the restart follows the Hands picked now -- not "Carrying on your 0/330
+ * sweep" over cells the next visit would silently replace. Wrong tap puts the
+ * resumed sweep back as it was.
+ */
+test('mastery: a miss in a resumed sweep restarts over the Hands picked now; Wrong tap restores it', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return;
+    sessionStorage.setItem('seeded', '1');
+    window.localStorage.setItem('bjtrainer.masteryrun.v1', JSON.stringify({ scope: 'all', seed: 12345, index: 61 }));
+    window.localStorage.setItem('bjtrainer.settings.v1', JSON.stringify({ version: 1, drill: { scopes: ['pairs'] } }));
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
+  const progress = page.getByTestId('mastery-progress');
+  await expect(progress).toContainText('61 / 330 cleared');
+
+  // Answer until one is a miss (a right answer only moves the sweep on).
+  let before = '';
+  for (let i = 0; i < 20; i++) {
+    before = (await progress.textContent()) ?? '';
+    for (const label of ['Surrender', 'Split', 'Double', 'Hit']) {
+      const btn = page.locator('.action-bar button.action-btn', { hasText: label });
+      if (await btn.isEnabled()) {
+        await btn.click();
+        break;
+      }
+    }
+    if (await page.locator('.mastery-reset-banner').isVisible()) break;
+  }
+  await expect(page.locator('.mastery-reset-banner')).toBeVisible();
+  await expect(progress).toContainText('0 / 100 cleared');
+  await expect(progress).not.toContainText('your sweep in progress');
+  await expect(page.getByTestId('mastery-resumed')).toHaveCount(0);
+  const stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('bjtrainer.masteryrun.v1') ?? '{}'));
+  expect(stored.order).toHaveLength(100);
+
+  await page.getByRole('button', { name: 'Wrong tap', exact: true }).click();
+  await expect(progress).toHaveText(before);
+  await expect(page.getByTestId('mastery-resumed')).toBeVisible();
+});

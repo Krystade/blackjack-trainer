@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Settings } from '../../../store/types';
 import type { Card } from '../../../engine/cards';
 import { hiLoTag } from '../../../engine/count';
@@ -28,6 +28,7 @@ import { loadStats, saveStats, saveSettings } from '../../../store/persist';
 import { PlayingCard } from '../../components/PlayingCard';
 import { cardJitter, jitterTransform } from '../../../drills/cardJitter';
 import { paceMultiplier } from '../../../drills/pacePressure';
+import { cardArrival } from '../../../drills/cardArrive';
 import { isCountFluent } from '../../../drills/fluencyGate';
 import { NumPad } from '../../components/NumPad';
 import { Segmented, Stepper } from '../Settings';
@@ -65,14 +66,12 @@ import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
+import { cardsLabel, stretchLine } from '../../../drills/checkpointCopy';
+import { plainNumber, signed, withMinusSigns } from '../../../drills/signed';
 import './countDrillView.css';
 import { makeCountTable, tableRounds, TABLE_ROUND_CHOICES } from '../../../drills/countTable';
 import type { TableRound } from '../../../drills/countTable';
 import './countTable.css';
-
-function formatSigned(n: number): string {
-  return n > 0 ? `+${n}` : String(n);
-}
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -492,6 +491,14 @@ export function CountDrillView({
   /** Is `idx` one of this run's checkpoint stops? */
   const isCheckpoint = (idx: number) => checkpointStopsRef.current.includes(idx);
 
+  /**
+   * Does the advance from `idx` stop for a distraction? Wave A (s04): seeded by
+   * THIS run, so the stops move from run to run instead of landing on the
+   * same cards every time. One helper for all three advance mechanisms.
+   */
+  const distractionAt = (idx: number) =>
+    isDistractionPoint(idx, settings.drill.distractionFreq, runSeedRef.current);
+
   // Visual-mode (non-eyes-free) fixed-interval advance -- UNCHANGED behavior
   // apart from the D1 distraction check below. Eyes-free auto mode is driven
   // by speech instead (see the effect below), so it's explicitly excluded
@@ -520,7 +527,7 @@ export function CountDrillView({
         triggerCheckpoint(shownIndex, isLast);
         return;
       }
-      if (!countdownMode && isDistractionPoint(shownIndex, settings.drill.distractionFreq)) {
+      if (!countdownMode && distractionAt(shownIndex)) {
         triggerDistraction(shownIndex, isLast);
         return;
       }
@@ -620,7 +627,7 @@ export function CountDrillView({
           return;
         }
 
-        if (isDistractionPoint(i, settings.drill.distractionFreq)) {
+        if (distractionAt(i)) {
           triggerDistraction(i, isLast);
           return;
         }
@@ -863,7 +870,7 @@ export function CountDrillView({
       triggerCheckpoint(shownIndex, isLast);
       return;
     }
-    if (!countdownMode && isDistractionPoint(shownIndex, settings.drill.distractionFreq)) {
+    if (!countdownMode && distractionAt(shownIndex)) {
       triggerDistraction(shownIndex, isLast);
       return;
     }
@@ -1596,11 +1603,36 @@ export function CountDrillView({
   // rotation/offset ("messy cards"). Seeded by this run's seed + the card's
   // absolute position so the jitter is stable while the card is on screen and
   // reproducible in tests, but visibly different card-to-card.
+  //
+  // Wave A (s04): keyed by ABSOLUTE position, not by slot. Keyed by slot the
+  // element was reused card to card, so card-deal-in played once per run and
+  // an identical card dealt next to itself (about 40% of 52-card runs from
+  // the 2-deck shoe) changed nothing on screen: a new counter missed it and
+  // was told "Wrong" with no idea why. Now every card remounts and visibly
+  // arrives.
+  // Wave A review (s04): the arrival is scaled to this card's time on screen
+  // (drills/cardArrive.ts), so a fast card is not still fading in as it is
+  // replaced, and under reduced motion a short blank marks every new card.
+  const cardOnScreenMs = (): number => {
+    if (timedChallenge) return rampIntervalMs(shownIndex, timedStartMsRef.current, { floorMs: timedFloorMsRef.current });
+    if (settings.drill.countManual) return Infinity;
+    return (
+      settings.drill.countIntervalMs *
+      (settings.drill.pacePressure ? paceMultiplier(runSeedRef.current, shownIndex) : 1)
+    );
+  };
+  const arrival = cardArrival(cardOnScreenMs());
+  const arrivalStyle = {
+    '--count-arrive-ms': `${arrival.arriveMs}ms`,
+    '--count-blank-ms': `${arrival.blankMs}ms`,
+  } as CSSProperties;
+
   const renderFlashCard = (c: Card, i: number) => {
-    if (!settings.drill.messyCards) return <PlayingCard key={i} card={c} />;
+    const key = `${shownIndex}-${i}`;
+    if (!settings.drill.messyCards) return <PlayingCard key={key} card={c} />;
     const jitter = jitterTransform(cardJitter(runSeedRef.current, shownIndex * 4 + i));
     return (
-      <span key={i} className="messy-card" style={{ display: 'inline-block', transform: jitter }}>
+      <span key={key} className="messy-card" style={{ display: 'inline-block', transform: jitter }}>
         <PlayingCard card={c} />
       </span>
     );
@@ -1619,18 +1651,25 @@ export function CountDrillView({
    * sweep of nothing.
    */
   /**
-   * #46: how a stretch after the first was graded, said in full. An adjusted
-   * grade that did not say so would read as a contradiction whenever it
-   * disagrees with "it was N" beside it.
+   * #46 / Wave A (s04): a stop's row, as a verdict on its stretch.
+   *
+   * It used to print the absolute "you said 1, it was 1" beside the ADJUSTED
+   * grade, so matching numbers showed in red; now the words lead with the
+   * same verdict the colour gives ("off by −2" / "right") and say why in the
+   * same terms. See drills/checkpointCopy.ts.
    */
-  const stretchNote = (g: GradedCheckpoint): ReactNode =>
-    g.from && (
-      <span className="checkpoint-adjusted">
-        {' '}
-        &mdash; expected {formatSigned(g.expected)}, graded from your {formatSigned(g.from.answer)} at card{' '}
-        {g.from.cardsShown} (adjusted)
-      </span>
+  const stretchRow = (g: GradedCheckpoint, lead?: string): ReactNode => {
+    const line = stretchLine(g);
+    const cards = cardsLabel(line);
+    return (
+      <>
+        <span className="checkpoint-verdict">
+          {lead ? `${lead} (${cards})` : cards.charAt(0).toUpperCase() + cards.slice(1)}: {line.verdict}.
+        </span>{' '}
+        <span className="checkpoint-detail">{line.detail}</span>
+      </>
     );
+  };
 
   const checkpointBlock = checkpointReport && (
     <div className="checkpoint-result">
@@ -1651,8 +1690,7 @@ export function CountDrillView({
       <ul className="checkpoint-result-list">
         {checkpointReport.results.map((r) => (
           <li key={r.atGroup} className={r.correct ? 'checkpoint-hit' : 'checkpoint-miss'}>
-            After {r.cardsShown} cards: you said {r.answer}, it was {r.actual}
-            {stretchNote(r)}
+            {stretchRow(r)}
           </li>
         ))}
       </ul>
@@ -1665,8 +1703,7 @@ export function CountDrillView({
             checkpointReport.finalStretch.correct ? 'checkpoint-hit' : 'checkpoint-miss'
           }`}
         >
-          Last stretch: {checkpointReport.finalStretch.correct ? 'right' : 'wrong'}
-          {stretchNote(checkpointReport.finalStretch)}
+          {stretchRow(checkpointReport.finalStretch, 'Last stretch')}
         </div>
       )}
     </div>
@@ -2061,7 +2098,7 @@ export function CountDrillView({
       {phase === 'flashing' && settings.drill.countManual && !timedChallenge && (
         <div className="manual-tap-zone" onClick={advanceManual}>
           {tableLayout || (
-            <div className="count-flash-cards">
+            <div className="count-flash-cards" style={arrivalStyle}>
               {currentGroup?.map(renderFlashCard)}
             </div>
           )}
@@ -2074,7 +2111,7 @@ export function CountDrillView({
       {phase === 'flashing' && (!settings.drill.countManual || timedChallenge) && (
         <div className="count-flash-area">
           {tableLayout || (
-            <div className="count-flash-cards">
+            <div className="count-flash-cards" style={arrivalStyle}>
               {currentGroup?.map(renderFlashCard)}
             </div>
           )}
@@ -2110,7 +2147,7 @@ export function CountDrillView({
 
       {phase === 'selfreport' && (
         <div className="selfreport-area">
-          <div className="selfreport-question">The running count was {actualValue}. Did you have it?</div>
+          <div className="selfreport-question">The running count was {plainNumber(actualValue)}. Did you have it?</div>
           {voiceOn && (
             <div className="selfreport-voice-hint">
               or say &ldquo;yes&rdquo; / &ldquo;no&rdquo;
@@ -2157,7 +2194,8 @@ export function CountDrillView({
       {phase === 'distraction' && distraction && (
         <div className="distraction-area">
           <div className="distraction-label">Quick: what&apos;s this?</div>
-          <div className="distraction-prompt">{distraction.prompt}</div>
+          {/* Wave A: shown with real minus signs; the prompt itself stays ASCII for speech. */}
+          <div className="distraction-prompt">{withMinusSigns(distraction.prompt)}</div>
           <NumPad label="Answer" onSubmit={handleDistractionSubmit} />
         </div>
       )}
@@ -2175,7 +2213,7 @@ export function CountDrillView({
           ) : (
             <>
               <span className="count-voice-value">
-                {pendingCount >= 0 ? `+${pendingCount}` : pendingCount}
+                {signed(pendingCount, { plusZero: true })}
               </span>
               <span className="count-voice-hint">
                 &ldquo;yes&rdquo; to submit &middot; &ldquo;no&rdquo; to start over &middot;
@@ -2213,7 +2251,7 @@ export function CountDrillView({
             {wasCorrect ? 'Correct!' : 'Wrong'}
           </div>
           <div className="result-detail">
-            The running count was {actualValue}. Self-reported, and recorded.
+            The running count was {plainNumber(actualValue)}. Self-reported, and recorded.
           </div>
           {checkpointBlock}
           <DrillPrimaryBar label="New run" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
@@ -2226,7 +2264,7 @@ export function CountDrillView({
             {wasCorrect ? 'Correct!' : 'Wrong'}
           </div>
           <div className="result-detail">
-            You entered {enteredValue}; the running count was {actualValue}.
+            You entered {plainNumber(enteredValue)}; the running count was {plainNumber(actualValue)}.
           </div>
           {checkpointBlock}
           {timedResult &&

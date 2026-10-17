@@ -26,14 +26,14 @@ import type { Flashcard } from './flashcards';
 import { flashCtx } from './flashcards';
 import type { QuizItem } from './deviationQuiz';
 import { quizCtxFor } from './deviationQuiz';
+import { withCountAdvice } from './withCount';
 import { reviewCard, isGapReview, SCREEN_CHANNEL } from './spacedRepetition';
 import { trackedElapsedMs } from './idleAnswer';
 import type { AnswerChannel } from './spacedRepetition';
 import type { SrCard, SrDeck } from './spacedRepetition';
 import { loadStats, saveStats } from '../store/persist';
 import type { Stats } from '../store/types';
-import { applyEvents } from '../store/stats';
-import { cellIdForEvent } from '../store/cellStats';
+import { applyEvents, tallyCellIdFor } from '../store/stats';
 import type { CellTally } from '../store/cellStats';
 
 type RetentionRow = Stats['retention']['history'][number];
@@ -104,7 +104,7 @@ function retentionRow(key: string, prev: SrCard, correct: boolean, now: number):
  * cell's date is restored exactly, not just its count. */
 export function persistGrade(event: GradedEvent, retention: RetentionRow | null): CellTally | null {
   const before = loadStats();
-  const cellId = cellIdForEvent(event);
+  const cellId = tallyCellIdFor(event);
   const cellBefore = cellId === null ? null : (before.cellStats?.[cellId] ?? null);
   let stats = applyEvents(before, [event]);
   if (retention) {
@@ -202,6 +202,23 @@ function elapsedField(elapsedMs: number | undefined, taken: string): { elapsedMs
 }
 
 /**
+ * Wave A (s01): a card shown with no count cannot be a phantom DEVIATION.
+ * Standing 7,5 v 3 on a plain flashcard is a basic-strategy error; calling it
+ * "Phantom deviation" told a beginner who has never heard of indexes that they
+ * had deviated. The With-count cards, Mixed's quiz half, Play and the quiz keep
+ * the class, because there a count was on the table.
+ */
+function noCountShown(
+  verdict: { classification: GradedEvent['classification']; correct: boolean },
+  card: Pick<Flashcard, 'tc'>,
+): { classification: GradedEvent['classification']; correct: boolean } {
+  if (card.tc === undefined && verdict.classification === 'phantom-deviation') {
+    return { ...verdict, classification: 'basic-error' };
+  }
+  return verdict;
+}
+
+/**
  * Build the GradedEvent + correct action for a flashcard answer. Pure: no
  * weight/stats writes, no audio. `elapsedMs` (R1) is captured by the caller
  * via performance.now() and passed in, so this stays deterministic and the
@@ -218,7 +235,9 @@ export function buildFlashcardEvent(
   // "With count" card at the count it showed. Both absent = as before.
   const ctx: PlayContext = flashCtx(card);
   const tc = card.tc ?? 0;
-  const withCount = correctPlay(card.cards, card.up, tc, ctx, rules);
+  // Wave A review: an index the profile's chart already plays is not one
+  // (withCount.ts) -- same play, no index id, so no index review.
+  const withCount = withCountAdvice(card.cards, card.up, tc, ctx, rules);
   const basicOnly = basicPlay(card.cards, card.up, ctx, rules);
   // A timeout never reaches classifyAction, and neither does a self-report:
   // that function asks which of the five plays was chosen, and the answer in
@@ -231,7 +250,7 @@ export function buildFlashcardEvent(
         ? ({ classification: 'correct', correct: true } as const)
         : taken === SELF_REPORT_MISSED
           ? ({ classification: 'self-report', correct: false } as const)
-          : classifyAction(taken, withCount, basicOnly, card.cards, card.up, tc, rules);
+          : noCountShown(classifyAction(taken, withCount, basicOnly, card.cards, card.up, tc, rules), card);
 
   const event: GradedEvent = {
     kind: 'action',
@@ -375,6 +394,13 @@ export interface FlashGradeResult {
   nextDeck: SrDeck;
   /** B3: the answered cell's tally before this answer, for "Wrong tap". */
   cellBefore: CellTally | null;
+  /**
+   * Wave A F4b: set when the card's expected play came from an index. The
+   * answer was reviewed in the QUIZ deck under that index, and the flash cell's
+   * schedule was left alone; `prev` is the index's card before the review, for
+   * "Wrong tap".
+   */
+  indexReview?: { key: string; prev: SrCard | undefined };
 }
 
 /**
@@ -412,11 +438,28 @@ export function gradeFlashcardAnswer(
     ...(underShotClock === undefined ? {} : { underShotClock }),
   };
 
+  const review = { elapsedMs: trackedElapsedMs(elapsedMs, taken === TIMEOUT_ANSWER), channel };
+
+  // Wave A F4b: a With-count card whose expected play came from an index was a
+  // question about the INDEX. It is reviewed in the quiz deck under that
+  // index, where the Deviation quiz schedules it, and the basic cell's
+  // schedule is left alone -- missing 16v10 at +2 is not forgetting hard 16 v
+  // 10 at TC 0, and it used to reset the cell's box.
+  const deviationId = event.deviationId;
+  if (deviationId) {
+    const quizDeck = loadQuizSr();
+    const prevIndex = quizDeck[deviationId];
+    const retention = prevIndex && isGapReview(prevIndex, now) ? retentionRow(deviationId, prevIndex, correct, now) : null;
+    saveQuizSr({ ...quizDeck, [deviationId]: reviewCard(prevIndex, correct, now, review) });
+    const cellBefore = persistGrade(event, retention);
+    return { event, correctAction, nextDeck: deck, cellBefore, indexReview: { key: deviationId, prev: prevIndex } };
+  }
+
   // RV4: classify the gap review against the cell's PRE-review state, then
   // advance its Leitner schedule.
   const prev = deck[card.cellId];
   const retention = prev && isGapReview(prev, now) ? retentionRow(card.cellId, prev, correct, now) : null;
-  const nextDeck = { ...deck, [card.cellId]: reviewCard(prev, correct, now, { elapsedMs: trackedElapsedMs(elapsedMs, taken === TIMEOUT_ANSWER), channel }) };
+  const nextDeck = { ...deck, [card.cellId]: reviewCard(prev, correct, now, review) };
   saveFlashSr(nextDeck);
 
   const cellBefore = persistGrade(event, retention);

@@ -1,4 +1,5 @@
 import { playLabel } from '../playLabel';
+import { signed } from '../../drills/signed';
 import type { Action } from '../../engine/deviations';
 import type { MistakeClass } from '../../engine/grade';
 import { plainCellLabel } from '../../drills/cellLabel';
@@ -44,8 +45,9 @@ function letterFor(value: string): string | null {
   return null;
 }
 
+/** Wave A: a real minus sign (U+2212); 0 reads "+0" here, as before. */
 function formatSigned(n: number): string {
-  return n >= 0 ? `+${n}` : String(n);
+  return signed(n, { plusZero: true });
 }
 
 export interface MistakeCardProps {

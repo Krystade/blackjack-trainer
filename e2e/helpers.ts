@@ -402,3 +402,14 @@ export async function openSettingsScreen(page: Page): Promise<void> {
   }
   await btn.click();
 }
+
+/**
+ * Wave A (s04/s05): an empty keypad no longer submits 0 -- OK stays disabled
+ * until a digit is typed, so a stray or bounced tap cannot grade a phantom 0.
+ * A spec that means "answer 0" types it, like a person now has to.
+ */
+export async function submitZero(page: Page): Promise<void> {
+  const pad = page.locator('.numpad');
+  await pad.locator('.numpad-btn', { hasText: /^0$/ }).click();
+  await pad.locator('.numpad-ok').click();
+}

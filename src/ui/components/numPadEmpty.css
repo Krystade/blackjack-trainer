@@ -1,0 +1,12 @@
+/* Wave A (s04/s05): an empty keypad shows a dim prompt rather than a '0' that
+   reads as a typed answer, and OK stays dim until a digit is typed. The
+   display's own font still sets the line box, so it does not change height. */
+.numpad-placeholder {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--ink-dim);
+}
+.numpad-ok:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

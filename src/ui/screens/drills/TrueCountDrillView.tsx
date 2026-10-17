@@ -3,8 +3,10 @@ import type { Profile, Settings } from '../../../store/types';
 import { makeTrueCountQuestion } from '../../../drills/trueCountDrill';
 import { DEFAULT_TC_ROUNDING } from '../../../engine/count';
 import type { TcRounding } from '../../../engine/count';
-import { gradeTcConversion, tcWorking, tcConventionNote, signedTc } from '../../../drills/tcFeedback';
+import { gradeTcConversion, tcWorking, tcConventionNote, signedTc, tcAnswer, tcWrongLead } from '../../../drills/tcFeedback';
+import { signed } from '../../../drills/signed';
 import { ResultStrip } from '../../components/ResultStrip';
+import { answerTooSoon } from '../../answerBounce';
 import './tcResultStrip.css';
 import type { TrueCountQuestion } from '../../../drills/trueCountDrill';
 import { NumPad } from '../../components/NumPad';
@@ -40,8 +42,9 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
+/** Wave A: a real minus sign (U+2212); 0 reads "+0" here, as before. */
 function formatSigned(n: number): string {
-  return n >= 0 ? `+${n}` : String(n);
+  return signed(n, { plusZero: true });
 }
 
 function formatDecks(n: number): string {
@@ -328,8 +331,15 @@ export function TrueCountDrillView({
     };
   }, []);
 
+  // Wave A (s05): when the question on screen appeared. The keypad stays up
+  // between questions (fast advance), so the second tap of a double-tap on OK
+  // used to land on the NEXT question and grade a phantom 0 the learner never
+  // saw -- and push the real answer's result off the strip.
+  const questionShownAtRef = useRef(performance.now());
+
   const start = () => {
     runIdRef.current += 1;
+    questionShownAtRef.current = performance.now();
     const q = makeTrueCountQuestion(randomSeed(), { maxDecks, rounding: activeProfile.tcRounding });
     setQuestion(q);
     setHonorCheck(false);
@@ -348,6 +358,7 @@ export function TrueCountDrillView({
 
   const handleSubmit = (value: number) => {
     if (!question) return;
+    if (answerTooSoon(questionShownAtRef.current)) return;
     // #54: the profile's convention ONLY. Accepting floor, round or truncate
     // put "Correct!" above a different stated answer and trained no rule.
     const correct = gradeTcConversion(value, question.runningCount, question.decksRemaining, rounding);
@@ -870,9 +881,10 @@ function TcResultLine({
   const working = tcWorking(q.runningCount, q.decksRemaining, rounding);
   if (correct) return <span data-testid="tc-strip-text">Correct! {working}</span>;
   const note = tcConventionNote(guess, q.runningCount, q.decksRemaining, rounding);
+  // Wave A: answer first, and no em dash against a minus sign.
   return (
     <span data-testid="tc-strip-text">
-      Wrong: you entered {signedTc(guess)} &mdash; {working}.{note ? ` ${note}.` : ''}
+      {tcWrongLead(tcAnswer(q.runningCount, q.decksRemaining, rounding), guess, note)} {working}.
     </span>
   );
 }

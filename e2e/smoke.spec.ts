@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { shot, withProfile, withSettings, readStats, playRoundByAdvice, statsTab, openCountOptions } from './helpers';
+import { shot, withProfile, withSettings, readStats, playRoundByAdvice, statsTab, openCountOptions, submitZero } from './helpers';
 
 /**
  * T0 gap #2 (docs/research/2026-07-26-test-coverage-matrix.md, "SPEC — Single
@@ -140,7 +140,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all ten D
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 
   await expect(page.locator('.numpad')).toBeVisible();
-  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await submitZero(page);
 
   // #54: fast advance -- the result is the strip above the next question.
   await expect(page.getByTestId('result-strip')).toBeVisible();
@@ -220,7 +220,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all ten D
   await expect(page.locator('.drill-heading')).toHaveText('Produce the true count');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.numpad')).toBeVisible({ timeout: 20_000 });
-  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await submitZero(page);
   // #54: fast advance -- the result is the strip over the next flash.
   await expect(page.getByTestId('result-strip')).toBeVisible();
   await shot(page, 'smoke-09c-produce-tc');
