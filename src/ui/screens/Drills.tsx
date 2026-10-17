@@ -1,5 +1,5 @@
 ﻿import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { takeDrillLaunch, takeReviewDeck } from '../drillLaunch';
+import { takeDrillLaunch, takeFlashHandOver, takeReviewIndexes, type FlashHandOver } from '../drillLaunch';
 import { SpeedDrillView } from './drills/SpeedDrillView';
 import { TabSettingsButton } from '../components/TabSettingsButton';
 import { strategyRulesFor } from '../../store/profiles';
@@ -17,7 +17,7 @@ import { formatReviewPlain } from '../../drills/srStatus';
 import { drillLegalActions, rulesChipLabels } from '../../drills/legalActions';
 import { gateDrillAnswer, gateQuizAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
-import { drawQuizItem, quizLegalActions, quizRulesChip, redundantForChart, tableMaskNote } from '../../drills/deviationQuiz';
+import { drawQuizItem, quizIndexSet, quizLegalActions, quizRulesChip, redundantForChart, tableMaskNote } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
 // R4 (docs/BACKLOG.md, interleaved mixed-session mode): the ONE shared grade
 // path -- gradeFlashcardAnswer/gradeQuizAnswer back the standalone
@@ -112,6 +112,8 @@ import './drills/drillTiming.css';
 import './drills/drillActionBar.css';
 import './drills/flashProgress.css';
 import { flashProgressLine, goalMetLine, goalsCrossed } from './drills/flashProgress';
+import { reviewDoneLine, reviewHeading, reviewStatus, useReviewSession } from './drills/reviewSession';
+import './drills/reviewSession.css';
 
 interface DrillsProps {
   settings: Settings;
@@ -278,11 +280,17 @@ function FlashcardsView({
   settings,
   activeProfile,
   onBack,
-  onSettingsChange }: {
+  onSettingsChange,
+  handOver = null,
+  onHome }: {
   settings: Settings;
   activeProfile: Profile;
   onBack: () => void;
   onSettingsChange: (settings: Settings) => void;
+  /** R7 / R5: a review or session deck handed over in memory (Drills takes it). */
+  handOver?: FlashHandOver | null;
+  /** The review's end state offers Home. */
+  onHome?: () => void;
 }) {
   const srDeckRef = useRef<SrDeck>(loadFlashSr());
   // V5-1: the cell just answered, which the next draw biases toward the cells
@@ -312,14 +320,17 @@ function FlashcardsView({
   // B2 "Review N due" (Lane H, controller ruling): a review deck Home handed
   // over replaces the saved deck for this session only -- every hand type,
   // only the due cells, nothing written to Settings or the Custom deck.
-  const [reviewDeck] = useState(() => {
-    const ids = takeReviewDeck();
-    return ids && ids.length > 0
-      ? { scopes: 'all' as const, ids, weights: new Map(ids.map((id) => [id, 1])) }
-      : null;
-  });
+  // Wave B2 R7 (#42): finite -- a cell leaves once answered right, the one
+  // just answered is not dealt straight back, and the session ends when none
+  // are left. R5 (#46): the session report's missed cells come the same way.
+  const review = useReviewSession(handOver?.ids ?? null);
+  const reviewSource = handOver?.source ?? 'review';
+  const reviewDeckFor = (previous: string | null) => {
+    const ids = review.pool(previous);
+    return { scopes: 'all' as const, ids, weights: new Map(ids.map((id) => [id, 1])) };
+  };
   const drawFrom = (drill: Settings['drill'], previous: string | null): Flashcard | null => {
-    const deck = reviewDeck ?? handDeckFor(drill, activeProfile);
+    const deck = review.active ? reviewDeckFor(previous) : handDeckFor(drill, activeProfile);
     if (deck.ids.length === 0) return null;
     return drawFlashcard(
       deck.scopes,
@@ -330,7 +341,9 @@ function FlashcardsView({
       drill.flashByConfusability,
       previous,
       deck.weights,
-      flashOptionsFor(drill, eyesFree),
+      // A review asks the cell itself: no count (an index answer would be
+      // reviewed in the quiz deck and leave the cell due), no fallback deal.
+      review.active ? { fallbacks: false, withCount: false } : flashOptionsFor(drill, eyesFree),
     );
   };
   const [card, setCard] = useState<Flashcard>(
@@ -523,8 +536,12 @@ function FlashcardsView({
     // hand they had never been asked about.
     setShowChart(false);
     const drawn = drawFrom(drill, lastCellRef.current);
-    // An empty deck: HandDeckGate takes the screen on this same render.
-    if (!drawn) return;
+    // An empty deck: HandDeckGate takes the screen on this same render. An
+    // empty review is a finished one (R7).
+    if (!drawn) {
+      if (review.active) finishReview();
+      return;
+    }
     lastCellRef.current = drawn.cellId;
     setCard(drawn);
     setFeedback(null);
@@ -534,6 +551,17 @@ function FlashcardsView({
     promptShownAtRef.current = performance.now();
     answerClockRef.current = promptShownAtRef.current;
     clockGraceRef.current = 0;
+  };
+
+  // R7: the end of a review. Said out loud too: in the car nothing else says
+  // that the dealing has stopped.
+  const finishReview = () => {
+    clearAdvanceTimer();
+    clearShotClock();
+    review.finish();
+    if (eyesFree || voiceOn) {
+      speak(reviewSource === 'review' ? 'Review done.' : 'All done.', speechOptsFrom(settings.audio, { interrupt: false }));
+    }
   };
 
   // #13 / B2: HandDeckControls has already saved the change.
@@ -604,6 +632,8 @@ function FlashcardsView({
     );
     srDeckRef.current = result.nextDeck;
     indexReviewRef.current = result.indexReview ?? null;
+    // R7: a right answer takes the cell out of a review.
+    review.answered(card.cellId, result.event.correct);
     return { event: result.event, correctAction: result.correctAction, prevSr, cellBefore: result.cellBefore };
   };
 
@@ -694,6 +724,8 @@ function FlashcardsView({
   };
 
   const handleAction = (taken: Action) => {
+    // R7: a finished review has no card to answer.
+    if (review.doneRef.current) return;
     // Review fix (c): the second touch of a bounce lands on the new card.
     if (answerTooSoon(promptShownAtRef.current)) return;
     // An ActionBar click: the hand is on screen and a finger is on the button.
@@ -721,6 +753,7 @@ function FlashcardsView({
     channel: AnswerChannel = BLIND_TAP_CHANNEL,
   ) => {
     if (zone === 'take' || zone === 'decline') return;
+    if (review.doneRef.current) return;
     // Review fix (c): a bounce on the pad, not an answer to this card.
     if (answerTooSoon(promptShownAtRef.current)) return;
 
@@ -767,6 +800,7 @@ function FlashcardsView({
    * feel broken.
    */
   const handleShotClockExpiry = () => {
+    if (review.doneRef.current) return;
     const elapsedMs = performance.now() - promptShownAtRef.current;
     if (!shotClockExpired(elapsedMs - clockGraceRef.current, shotClockMs)) return;
     // Wave A (s09): the second unanswered card in a row is not graded -- the
@@ -816,7 +850,7 @@ function FlashcardsView({
   useEffect(() => {
     clearShotClock();
     if (!shotClockOn(shotClockMs)) return;
-    if (feedback || showChart || clockSuspended || clockIdle) return;
+    if (feedback || showChart || clockSuspended || clockIdle || review.done) return;
     const runId = runIdRef.current;
     shotClockTimerRef.current = window.setTimeout(() => {
       shotClockTimerRef.current = null;
@@ -828,7 +862,7 @@ function FlashcardsView({
     }, shotClockMs + clockGraceRef.current);
     return clearShotClock;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card, feedback, showChart, shotClockMs, clockSuspended, clockIdle]);
+  }, [card, feedback, showChart, shotClockMs, clockSuspended, clockIdle, review.done]);
 
   /**
    * A spoken answer.
@@ -842,6 +876,7 @@ function FlashcardsView({
    * cannot drift apart.
    */
   const handleVoiceAction = (action: VoiceAction) => {
+    if (review.doneRef.current) return;
     if (action === 'repeat') {
       handleRepeat();
       return;
@@ -924,6 +959,8 @@ function FlashcardsView({
     // The chart overlay is modal over a frozen correction, exactly as for the
     // keyboard and for voice.
     if (showChart) return;
+    // R7: nothing left to ask.
+    if (review.doneRef.current) return;
 
     if (wheelPhaseRef.current === 'reporting') {
       submitSelfReport(command === 'forward');
@@ -978,6 +1015,7 @@ function FlashcardsView({
       // drawing a new card, clearing the correction, and in eyes-free even
       // narrating it -- while the chart stayed up.
       if (showChart) return;
+      if (review.doneRef.current) return;
 
       if (!feedback) {
         const action = KEY_TO_ACTION[e.key];
@@ -1038,13 +1076,26 @@ function FlashcardsView({
     }
   };
 
+  const reviewNoun = reviewSource === 'review' ? 'cell' : 'hand';
+  if (review.done) {
+    return (
+      <ReviewDone
+        heading={reviewHeading(reviewSource, review.total)}
+        line={reviewDoneLine(reviewSource, review.total, reviewNoun)}
+        onBack={handleBack}
+        onHome={onHome}
+        lastResult={lastResult}
+      />
+    );
+  }
+
   return (
     <div className="drill-screen" style={drillScreenStyle(padTop)}>
       <div className="drill-topbar">
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
         </button>
-        <div className="drill-heading">Flashcards</div>
+        <div className="drill-heading">{review.active ? reviewHeading(reviewSource, review.total) : 'Flashcards'}</div>
         {settings.audio.enabled && (
           <button type="button" className="repeat-btn" onClick={audio.replay}>
             Repeat
@@ -1053,14 +1104,23 @@ function FlashcardsView({
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
-        <HandDeckControls settings={settings} onChange={changeScopes} />
-        <div className="flash-progress" data-testid="flash-progress">
-          {flashProgressLine(progressStats, scopesFrom(settings.drill))}
-        </div>
-        {goalMet && (
-          <div className="flash-goal-met" role="status" data-testid="flash-goal-met">
-            {goalMet}
-          </div>
+        {/* R7 (#40, #41): a review deals its own cells, so the saved deck's
+            controls and goal line would describe something else -- and a tap
+            on them would rewrite the saved deck. A status line instead. */}
+        {review.active ? (
+          <ReviewStatusLine text={reviewStatus(reviewSource, review.total, review.left, reviewNoun)} />
+        ) : (
+          <>
+            <HandDeckControls settings={settings} onChange={changeScopes} />
+            <div className="flash-progress" data-testid="flash-progress">
+              {flashProgressLine(progressStats, scopesFrom(settings.drill))}
+            </div>
+            {goalMet && (
+              <div className="flash-goal-met" role="status" data-testid="flash-goal-met">
+                {goalMet}
+              </div>
+            )}
+          </>
         )}
 
         <DrillModeControls
@@ -1078,7 +1138,7 @@ function FlashcardsView({
           voiceOn={voiceOn}
           onVoiceChange={setVoiceOn}
           voiceStatus={voice.status}
-          options={
+          options={review.active ? undefined :
             <>
               {/* #27 / #53: set once, so folded with the other options --
                   a row of its own pushed the answers off a 635px phone. */}
@@ -1233,7 +1293,9 @@ function FlashcardsView({
             mode={{
               kind: 'actions',
               legal: drillLegalActions(card.cards, activeProfile.rules, card.up, card.ctx),
-              onAction: handleAction }}
+              onAction: handleAction,
+              // ?e2e=1 only, as on Play's table: lets a spec answer right.
+              ...(isE2eAudioMode() ? { advice: card.correct } : {}) }}
           />
         )
       ) : (
@@ -1252,6 +1314,58 @@ function FlashcardsView({
           onClose={closeChart}
         />
       )}
+    </div>
+  );
+}
+
+/** R7: a review's "what and how much is left" line, in place of the deck controls. */
+function ReviewStatusLine({ text }: { text: string }) {
+  return (
+    <div className="review-status" role="status" data-testid="review-status">
+      {text}
+    </div>
+  );
+}
+
+/**
+ * R7 (#42): the end of a review or session deck -- the dealing stops, says
+ * so, and offers the way back. `lastResult` keeps the final answer readable.
+ */
+function ReviewDone({
+  heading,
+  line,
+  onBack,
+  onHome,
+  lastResult,
+}: {
+  heading: string;
+  line: string;
+  onBack: () => void;
+  onHome?: () => void;
+  lastResult: DrillHandResult | null;
+}) {
+  return (
+    <div className="drill-screen">
+      <div className="drill-topbar">
+        <button type="button" className="drill-back-btn" onClick={onBack}>
+          Back
+        </button>
+        <div className="drill-heading">{heading}</div>
+      </div>
+      <div className="review-done" role="status" data-testid="review-done">
+        <div className="result-correct">{line}</div>
+        {lastResult && <HandResultStrip result={lastResult} />}
+        <div className="review-done-actions">
+          {onHome && (
+            <button type="button" className="u-btn u-btn-primary" onClick={onHome}>
+              Back to Home
+            </button>
+          )}
+          <button type="button" className="u-btn" onClick={onBack}>
+            Drills
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1285,11 +1399,17 @@ function DeviationQuizView({
   settings,
   activeProfile,
   onBack,
-  onSettingsChange }: {
+  onSettingsChange,
+  reviewIds = null,
+  onHome }: {
   settings: Settings;
   activeProfile: Profile;
   onBack: () => void;
   onSettingsChange: (settings: Settings) => void;
+  /** Wave B2 #38 / R7: the due indexes of an index review, handed over in memory. */
+  reviewIds?: string[] | null;
+  /** The review's end state offers Home. */
+  onHome?: () => void;
 }) {
   // Use the active filter (falls back to 'all' if saved index is inactive)
   const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
@@ -1302,16 +1422,33 @@ function DeviationQuizView({
   // B3: the answered cell's tally before the answer, for "Wrong tap".
   const cellBeforeRef = useRef<CellTally | null>(null);
 
-  const [item, setItem] = useState<QuizItem>(() =>
-    drawQuizItem(
+  // Wave B2 #38 / R7: an index review asks exactly the due indexes, one at a
+  // time, with no off-index hands, ignoring the saved Index choice (which it
+  // never rewrites). Finite, as the cells' review is: an index leaves once
+  // answered right, and the one just answered is not asked straight back.
+  const review = useReviewSession(reviewIds);
+  const lastIndexRef = useRef<string | null>(null);
+  const drawItem = (filter: DeviationId | 'all', distractorPct: number): QuizItem | null => {
+    if (review.active) {
+      const pool = review.pool(lastIndexRef.current);
+      if (pool.length === 0) return null;
+      const id = pool[Math.floor(Math.random() * pool.length)] as DeviationId;
+      return drawQuizItem(randomSeed(), id, strategyRulesFor(activeProfile), 0, srDeckRef.current, Date.now());
+    }
+    return drawQuizItem(
       randomSeed(),
-      quizFilterArg(activeFilter),
+      quizFilterArg(filter),
       strategyRulesFor(activeProfile),
-      settings.drill.quizDistractorPct,
+      distractorPct,
       srDeckRef.current,
       Date.now(),
-    ),
-  );
+    );
+  };
+  const [item, setItem] = useState<QuizItem>(() => {
+    const first = drawItem(activeFilter, settings.drill.quizDistractorPct)!;
+    lastIndexRef.current = first.deviationId ?? null;
+    return first;
+  });
   const [feedback, setFeedback] = useState<{ correct: boolean; event: GradedEvent } | null>(null);
   // #7: the chart opened over this correction, closed back onto the same card.
   const [showChart, setShowChart] = useState(false);
@@ -1463,13 +1600,26 @@ function DeviationQuizView({
     // (its cards/dealerUp are live props), and the learner closed it onto a
     // hand they had never been asked about.
     setShowChart(false);
-    setItem(
-      drawQuizItem(randomSeed(), quizFilterArg(filter), strategyRulesFor(activeProfile), distractorPct, srDeckRef.current, Date.now()),
-    );
+    const drawn = drawItem(filter, distractorPct);
+    // R7: an empty review is a finished one.
+    if (!drawn) {
+      finishReview();
+      return;
+    }
+    lastIndexRef.current = drawn.deviationId ?? null;
+    setItem(drawn);
     setFeedback(null);
     promptShownAtRef.current = performance.now();
     answerClockRef.current = promptShownAtRef.current;
     clockGraceRef.current = 0;
+  };
+
+  // R7: the end of an index review, said out loud as well.
+  const finishReview = () => {
+    clearAdvanceTimer();
+    clearShotClock();
+    review.finish();
+    if (eyesFree || voiceOn) speak('Review done.', speechOptsFrom(settings.audio, { interrupt: false }));
   };
 
   const changeIndex = (quizIndex: DeviationId | 'all') => {
@@ -1546,6 +1696,8 @@ function DeviationQuizView({
     );
     srDeckRef.current = result.nextDeck;
     cellBeforeRef.current = result.cellBefore;
+    // R7: a right answer takes the index out of a review.
+    review.answered(item.deviationId, result.event.correct);
     return result.event;
   };
 
@@ -1609,6 +1761,7 @@ function DeviationQuizView({
   };
 
   const handleAnswer = (taken: string) => {
+    if (review.doneRef.current) return;
     // Review fix (c): the second touch of a bounce lands on the new item.
     if (answerTooSoon(promptShownAtRef.current)) return;
     const event = gradeQuizAnswer(taken);
@@ -1626,6 +1779,7 @@ function DeviationQuizView({
    * unanswered is not a third option.
    */
   const handleShotClockExpiry = () => {
+    if (review.doneRef.current) return;
     const elapsedMs = performance.now() - promptShownAtRef.current;
     if (!shotClockExpired(elapsedMs - clockGraceRef.current, shotClockMs)) return;
     // Wave A (s09): the second unanswered item in a row stops the clock.
@@ -1655,7 +1809,7 @@ function DeviationQuizView({
   useEffect(() => {
     clearShotClock();
     if (!shotClockOn(shotClockMs)) return;
-    if (feedback || showChart || clockSuspended || clockIdle) return;
+    if (feedback || showChart || clockSuspended || clockIdle || review.done) return;
     const runId = runIdRef.current;
     shotClockTimerRef.current = window.setTimeout(() => {
       shotClockTimerRef.current = null;
@@ -1677,6 +1831,7 @@ function DeviationQuizView({
     zone: ZoneId | 'take' | 'decline',
     channel: AnswerChannel = BLIND_TAP_CHANNEL,
   ) => {
+    if (review.doneRef.current) return;
     const isInsurance = item.cards === null;
     if (isInsurance !== (zone === 'take' || zone === 'decline')) return; // mode/zone mismatch guard
     // Review fix (c): a bounce on the pad, not an answer to this item.
@@ -1723,6 +1878,7 @@ function DeviationQuizView({
    * the question really is a yes/no -- so they are taken rather than ignored.
    */
   const handleVoiceAction = (action: VoiceAction) => {
+    if (review.doneRef.current) return;
     if (action === 'repeat') {
       handleRepeat();
       return;
@@ -1798,6 +1954,7 @@ function DeviationQuizView({
     // The chart overlay is modal over a frozen correction, as for every
     // other input.
     if (showChart) return;
+    if (review.doneRef.current) return;
 
     if (wheelPhaseRef.current === 'reporting') {
       submitSelfReport(command === 'forward');
@@ -1847,6 +2004,7 @@ function DeviationQuizView({
       // drawing a new card, clearing the correction, and in eyes-free even
       // narrating it -- while the chart stayed up.
       if (showChart) return;
+      if (review.doneRef.current) return;
 
       if (!feedback) {
         const isInsurance = item.cards === null;
@@ -1908,13 +2066,25 @@ function DeviationQuizView({
     }
   };
 
+  if (review.done) {
+    return (
+      <ReviewDone
+        heading={reviewHeading('review', review.total)}
+        line={reviewDoneLine('review', review.total, 'index')}
+        onBack={handleBack}
+        onHome={onHome}
+        lastResult={lastResult}
+      />
+    );
+  }
+
   return (
-    <div className="drill-screen" style={drillScreenStyle(padTop)}>
+    <div className="drill-screen" style={drillScreenStyle(padTop)} data-correct={isE2eAudioMode() ? item.correct : undefined}>
       <div className="drill-topbar">
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
         </button>
-        <div className="drill-heading">Deviation quiz</div>
+        <div className="drill-heading">{review.active ? reviewHeading('review', review.total) : 'Deviation quiz'}</div>
         {settings.audio.enabled && (
           <button type="button" className="repeat-btn" onClick={audio.replay}>
             Repeat
@@ -1923,6 +2093,13 @@ function DeviationQuizView({
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
+        {/* R7 (#38, #40): a review asks its own indexes; the saved Ask/Index
+            choices would describe something else, and changing them would
+            rewrite the saved settings. */}
+        {review.active ? (
+          <ReviewStatusLine text={reviewStatus('review', review.total, review.left, 'index')} />
+        ) : (
+        <>
         <QuizAskSwitch settings={settings} onSettingsChange={onSettingsChange} />
         <label className="settings-row">
           <span className="settings-label">Index</span>
@@ -1948,6 +2125,8 @@ function DeviationQuizView({
             ))}
           </select>
         </label>
+        </>
+        )}
 
         <DrillModeControls
           settings={settings}
@@ -1964,7 +2143,7 @@ function DeviationQuizView({
           voiceOn={voiceOn}
           onVoiceChange={setVoiceOn}
           voiceStatus={voice.status}
-          options={
+          options={review.active ? undefined :
             <div className="settings-row">
               <span className="settings-label">Off-index hands</span>
               <Segmented
@@ -2883,10 +3062,30 @@ type DrillMode =
   | 'custom'
   | 'speed';
 
-export function Drills({ settings, activeProfile, onSettingsChange }: DrillsProps) {
+export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
   // #28: Home's Next step can hand over the drill to open.
   const [launch] = useState(() => takeDrillLaunch());
   const [mode, setMode] = useState<'picker' | DrillMode>(() => launch ?? 'picker');
+  // R7 / R5: a review or session deck rides along with the launch, in memory.
+  // Taken (and so cleared) on every mount; kept only for the drill it was
+  // handed to, and dropped once that drill is left.
+  const [flashHandOver, setFlashHandOver] = useState(() => {
+    const h = takeFlashHandOver();
+    return launch === 'flash' && h && h.ids.length > 0 ? h : null;
+  });
+  const [reviewIndexes, setReviewIndexes] = useState(() => {
+    const ids = takeReviewIndexes();
+    if (launch !== 'quiz' || !ids) return null;
+    // Only indexes the quiz can ask under this profile (drawQuizItem throws on others).
+    const askable = new Set(quizIndexSet(strategyRulesFor(activeProfile)).filter((d) => d.active).map((d) => d.id as string));
+    const kept = ids.filter((id) => askable.has(id));
+    return kept.length > 0 ? kept : null;
+  });
+  const leaveHandOver = () => {
+    setFlashHandOver(null);
+    setReviewIndexes(null);
+    setMode('picker');
+  };
   // Every mode is a new screen: start it at the top, not at the picker's
   // scroll offset (the Custom editor opened mid-grid with its header hidden).
   useEffect(() => {
@@ -2944,6 +3143,20 @@ export function Drills({ settings, activeProfile, onSettingsChange }: DrillsProp
       {view}
     </HandDeckGate>
   );
+  if (mode === 'flash' && flashHandOver) {
+    // R7 / R5: the handed-over cells, whatever the saved deck holds -- so no
+    // empty-deck gate, and no first-run chart intro in front of a review.
+    return (
+      <FlashcardsView
+        settings={settings}
+        activeProfile={activeProfile}
+        onBack={leaveHandOver}
+        onSettingsChange={onSettingsChange}
+        handOver={flashHandOver}
+        onHome={() => onNavigate('home')}
+      />
+    );
+  }
   if (mode === 'flash') {
     return (
       <FlashEntry
@@ -2958,6 +3171,20 @@ export function Drills({ settings, activeProfile, onSettingsChange }: DrillsProp
             onSettingsChange={onSettingsChange}
           />,
         )}
+      />
+    );
+  }
+  if (mode === 'quiz' && reviewIndexes) {
+    // Wave B2 #38 / R7: an index review is the Deviation quiz on exactly the
+    // due indexes, whatever the saved Ask and Index choices are.
+    return (
+      <DeviationQuizView
+        settings={settings}
+        activeProfile={activeProfile}
+        onBack={leaveHandOver}
+        onSettingsChange={onSettingsChange}
+        reviewIds={reviewIndexes}
+        onHome={() => onNavigate('home')}
       />
     );
   }

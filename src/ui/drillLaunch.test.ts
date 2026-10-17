@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { launchSettings, reviewLaunch, setDrillLaunch, setReviewDeck, takeDrillLaunch, takeReviewDeck } from './drillLaunch';
+import { launchSettings, reviewIndexesLaunch, reviewLaunch, setDrillLaunch, setReviewDeck, takeDrillLaunch, takeFlashHandOver, takeReviewDeck, takeReviewIndexes } from './drillLaunch';
 import { DEFAULT_SETTINGS } from '../store/types';
 import type { Settings } from '../store/types';
 import { ALL_PAINT_CELL_IDS, autoTiers } from '../drills/cellSelection';
@@ -87,5 +87,24 @@ describe('B2 review hand-over (controller ruling)', () => {
     expect(JSON.stringify(out)).toBe(before);
     expect(JSON.stringify(saved)).toBe(before);
     expect(takeReviewDeck()).toEqual(['hard-16-v-10', 'pair-8-v-A']);
+  });
+});
+
+describe('Wave B2 #38: index review hand-over', () => {
+  it('hands the due indexes across once, in memory, and leaves the settings alone', () => {
+    expect(takeReviewIndexes()).toBeNull();
+    const saved = structuredClone(DEFAULT_SETTINGS);
+    const before = JSON.stringify(saved);
+    const ids = ['16v10', '12v3'];
+    expect(reviewIndexesLaunch(saved, ids)).toBe(saved);
+    ids.push('ins');
+    expect(takeReviewIndexes()).toEqual(['16v10', '12v3']);
+    expect(takeReviewIndexes()).toBeNull();
+    expect(JSON.stringify(saved)).toBe(before);
+  });
+  it('a cell review is marked as a review', () => {
+    reviewLaunch(structuredClone(DEFAULT_SETTINGS), ['hard-16-v-10']);
+    expect(takeFlashHandOver()).toEqual({ ids: ['hard-16-v-10'], source: 'review' });
+    expect(takeFlashHandOver()).toBeNull();
   });
 });

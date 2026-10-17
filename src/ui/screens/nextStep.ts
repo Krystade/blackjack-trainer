@@ -10,7 +10,7 @@ import { MIN_INDEX_ANSWERS, activeIndices, indexPractised } from './readiness';
 import { COUNT_RUNS_JUDGED, COUNT_RUNS_NEEDED, countFluency } from '../../drills/fluencyGate';
 import type { IndexRules } from './readiness';
 import type { SrDeck } from '../../drills/spacedRepetition';
-import { PLAY_MIN_GRADED, REVIEW_DUE_MIN, betRampResult, deckTcResult, dueForReview, playResult, stalestSkill } from './ladderRules';
+import { PLAY_MIN_GRADED, REVIEW_DUE_MIN, betRampResult, deckTcResult, dueForReview, playResult, reviewIndexMin, stalestSkill } from './ladderRules';
 
 const DAY = 86_400_000;
 
@@ -90,7 +90,10 @@ export interface NextStep extends StartTarget {
    * three are met (every later step has them all on target).
    */
   progress?: HandCategoryProgress[];
+  /** R7: a 'review' step's due cells (kind 'flash'), handed to Flashcards in memory. */
   reviewCells?: string[];
+  /** R7: a 'review' step's due indexes (kind 'quiz'), handed to the quiz in memory. */
+  reviewIndexes?: string[];
 }
 
 export interface Ladder {
@@ -373,18 +376,28 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
   // s02: every step carries the three categories.
   // W2: first match wins -- Review (once strategy is in hand), the rung, the stalest skill.
   const due = dueForReview(flashSr, quizSr, activeIds, now);
-  if ((current === null || current >= 2) && due.total >= REVIEW_DUE_MIN) {
-    const flash = due.cells.length >= due.indexes.length;
+  // Wave B2 #39 / R7: cells and indexes each have their own threshold. When
+  // both are over, Start reviews the one further past its own (ties: cells);
+  // the title counts what Start reviews, as the review screen does.
+  const indexMin = reviewIndexMin(activeIds.length);
+  const cellsOver = due.cells.length / REVIEW_DUE_MIN;
+  const indexesOver = due.indexes.length / indexMin;
+  if ((current === null || current >= 2) && (cellsOver >= 1 || indexesOver >= 1)) {
+    const flash = cellsOver >= 1 && cellsOver >= indexesOver;
+    const n = flash ? due.cells.length : due.indexes.length;
     return {
       rungs,
       current,
       step: {
         card: 'review',
         kind: flash ? 'flash' : 'quiz',
-        title: `Review ${due.total} due`,
-        why: `${due.cells.length} cells and ${due.indexes.length} indexes are due for review. Start reviews the ${flash ? 'cells' : 'indexes'}.`,
+        title: `Review ${n} due`,
+        why:
+          due.cells.length > 0 && due.indexes.length > 0
+            ? `${due.cells.length} cells and ${due.indexes.length} indexes are due for review. Start reviews the ${flash ? 'cells' : 'indexes'}.`
+            : `${n} ${flash ? (n === 1 ? 'cell' : 'cells') : n === 1 ? 'index' : 'indexes'} ${n === 1 ? 'is' : 'are'} due for review.`,
         progress: cats,
-        ...(flash ? { reviewCells: due.cells } : {}),
+        ...(flash ? { reviewCells: due.cells } : { reviewIndexes: due.indexes }),
       },
     };
   }

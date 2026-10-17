@@ -107,7 +107,8 @@ test('Review N due comes first, opens Flashcards, and leaves the saved Custom de
   await themedShots(page, 'review');
   const before = await page.evaluate(() => localStorage.getItem('bjtrainer.settings.v1'));
   await startBtn(page).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+  // Wave B2 R7 (deliberate change): the review says it is one.
+  await expect(page.locator('.drill-heading')).toHaveText('Review · 24 due');
   const after = await page.evaluate(() => localStorage.getItem('bjtrainer.settings.v1'));
   expect(after).toBe(before);
   expect(JSON.parse(after!).drill.custom.tiers).toEqual({ 'soft-18-v-9': 'focus' });

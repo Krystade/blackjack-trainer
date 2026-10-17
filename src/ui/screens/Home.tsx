@@ -6,9 +6,9 @@ import { buildLabel, formatBuiltAt, runningBuildId, runningBuiltAt } from '../..
 import { CATEGORY_LABELS } from './categoryLabels';
 import { pctOfPercent } from './statsFormat';
 import { ladder as buildLadder, masterySweepDone } from './nextStep';
-import type { StartTarget } from './nextStep';
+import type { NextStep, StartTarget } from './nextStep';
 import { loadMasteryRun } from '../../drills/masteryChallenge';
-import { launchSettings, reviewLaunch, setDrillLaunch } from '../drillLaunch';
+import { launchSettings, reviewIndexesLaunch, reviewLaunch, setDrillLaunch } from '../drillLaunch';
 import { loadFlashSr, loadQuizSr } from '../../drills/gradeAnswer';
 import { LadderCard } from './LadderCard';
 import { strategyRulesFor } from '../../store/profiles';
@@ -56,7 +56,7 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
     now: Date.now(),
   });
   const step = ladder.step;
-  const openStep = (t: StartTarget, reviewCells?: string[]) => {
+  const openStep = (t: StartTarget & Pick<NextStep, 'reviewCells' | 'reviewIndexes'>) => {
     if (t.kind === 'play') {
       onNavigate('table');
       return;
@@ -65,8 +65,13 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
     // chart rather than a leftover Custom deck. Persisted and lifted before
     // Drills mounts, so its first render already has them. B2 Review (Task 4
     // ruling): the due cells go over in memory and the settings come back
-    // unchanged, so the saved Custom deck survives the review.
-    const next = reviewCells ? reviewLaunch(settings, reviewCells) : launchSettings(t.kind, t.scope, settings);
+    // unchanged, so the saved Custom deck survives the review. Wave B2 #38:
+    // an index review hands its due indexes to the quiz the same way.
+    const next = t.reviewCells
+      ? reviewLaunch(settings, t.reviewCells)
+      : t.reviewIndexes
+        ? reviewIndexesLaunch(settings, t.reviewIndexes)
+        : launchSettings(t.kind, t.scope, settings);
     if (next !== settings) {
       saveSettings(next);
       onSettingsChange(next);

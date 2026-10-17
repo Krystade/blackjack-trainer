@@ -80,20 +80,35 @@ export function launchCustomCells(cellIds: readonly string[], settings: Settings
 /**
  * B2 "Review N due" (controller ruling): the due cells, handed to the next
  * Flashcards mount in memory only -- never persisted, never replayed on
- * reload, and never written into the saved Custom deck. Flashcards takes it
- * (which clears it) and deals only these cells for that session.
+ * reload, and never written into the saved Custom deck. Drills takes it
+ * (which clears it) and Flashcards deals only these cells for that session.
+ *
+ * Wave B2 R5 (#46): "Drill these hands" hands the report's missed cells over
+ * the same way, as a 'session' deck, so the saved Custom deck is untouched.
+ * R7: either is a finite session -- a cell leaves it once answered right.
  */
-let reviewDeck: string[] | null = null;
-
-export function setReviewDeck(cellIds: readonly string[]): void {
-  reviewDeck = [...cellIds];
+export type FlashHandOverSource = 'review' | 'session';
+export interface FlashHandOver {
+  ids: string[];
+  source: FlashHandOverSource;
 }
 
-/** The pending review deck, cleared as it is read. */
+let flashHandOver: FlashHandOver | null = null;
+
+export function setReviewDeck(cellIds: readonly string[], source: FlashHandOverSource = 'review'): void {
+  flashHandOver = { ids: [...cellIds], source };
+}
+
+/** The pending Flashcards hand-over, cleared as it is read. */
+export function takeFlashHandOver(): FlashHandOver | null {
+  const h = flashHandOver;
+  flashHandOver = null;
+  return h;
+}
+
+/** The pending deck's cells, cleared as they are read. */
 export function takeReviewDeck(): string[] | null {
-  const d = reviewDeck;
-  reviewDeck = null;
-  return d;
+  return takeFlashHandOver()?.ids ?? null;
 }
 
 /**
@@ -103,6 +118,30 @@ export function takeReviewDeck(): string[] | null {
  * setDrillLaunch('flash').
  */
 export function reviewLaunch(settings: Settings, cellIds: readonly string[]): Settings {
-  setReviewDeck(cellIds);
+  setReviewDeck(cellIds, 'review');
+  return settings;
+}
+
+/**
+ * Wave B2 #38 / R7: the due INDEXES of an index review, handed to the next
+ * Deviation quiz mount in memory, exactly as the cells are. The quiz asks only
+ * these, ignoring (and never rewriting) the saved Index choice.
+ */
+let reviewIndexes: string[] | null = null;
+
+export function setReviewIndexes(ids: readonly string[]): void {
+  reviewIndexes = [...ids];
+}
+
+/** The pending index review, cleared as it is read. */
+export function takeReviewIndexes(): string[] | null {
+  const r = reviewIndexes;
+  reviewIndexes = null;
+  return r;
+}
+
+/** R7: an index review's Start. Settings come back unchanged; pair with setDrillLaunch('quiz'). */
+export function reviewIndexesLaunch(settings: Settings, ids: readonly string[]): Settings {
+  setReviewIndexes(ids);
   return settings;
 }

@@ -1,4 +1,4 @@
-import type { Ladder, StartTarget } from './nextStep';
+import type { Ladder, NextStep, StartTarget } from './nextStep';
 import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, pctDown } from './handProgress';
 
 /**
@@ -11,7 +11,8 @@ export function LadderCard({
   onStart,
 }: {
   ladder: Ladder;
-  onStart: (t: StartTarget, reviewCells?: string[]) => void;
+  /** A review step carries its due cells or indexes; a rung row only its target. */
+  onStart: (t: StartTarget & Pick<NextStep, 'reviewCells' | 'reviewIndexes'>) => void;
 }) {
   const { step, rungs, current } = ladder;
   return (
@@ -27,7 +28,7 @@ export function LadderCard({
           type="button"
           className="u-btn u-btn-primary next-step-btn"
           data-launch={step.kind}
-          onClick={() => onStart(step, step.reviewCells)}
+          onClick={() => onStart(step)}
         >
           Start
         </button>

@@ -71,8 +71,17 @@ export function parseTime(iso: unknown): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
-/** W2: this many due SR items (cells + indexes) put "Review N due" ahead of the rung. */
+/** W2: this many due cells put "Review N due" ahead of the rung. */
 export const REVIEW_DUE_MIN = 20;
+
+/**
+ * Wave B2 #39 / R7: due indexes alone earn a review at min(8, ceil(active/2)).
+ * An index set is at most about 25 ids (17 for 6D H17), so the cells' 20
+ * could never be reached by indexes on their own.
+ */
+export function reviewIndexMin(activeCount: number): number {
+  return Math.max(1, Math.min(8, Math.ceil(activeCount / 2)));
+}
 
 export interface DueCount {
   cells: string[];
