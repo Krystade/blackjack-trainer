@@ -6,7 +6,7 @@ import type { Screen } from '../App';
 import type { Profile, Settings, Stats as StatsData } from '../../store/types';
 import { EMPTY_STATS } from '../../store/types';
 import { filterByRange, RANGE_LABEL } from '../../store/timeRange';
-import { pct, clockGap, formatUnits, costHandLabel } from './statsFormat';
+import { pct, pctOfPercent, clockGap, formatUnits, costHandLabel, trendLine, signed } from './statsFormat';
 import './costOfMistakes.css';
 import type { RangeId, TimeRange } from '../../store/timeRange';
 import { loadStats, saveStats, loadSettings, exportAll, importAll } from '../../store/persist';
@@ -39,6 +39,10 @@ import './countHistory.css';
 import { strategyRulesFor } from '../../store/profiles';
 import { CATEGORY_LABELS } from './categoryLabels';
 import { bestCleanCountRuns, formatCountRun } from '../../drills/countSpeed';
+import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, handCategoryProgress, pctDown } from './handProgress';
+import type { HandCategoryProgress } from './handProgress';
+import './statsGoal.css';
+import './statsHistory.css';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -61,6 +65,10 @@ const CATEGORY_ORDER: Category[] = ['hard', 'soft', 'pairs', 'surrender', 'insur
 /** #25: rows shown before "Show all". */
 const COST_ROWS_SHOWN = 5;
 
+/** s04: history rows shown before "Show all", and dots in the results strip. */
+const HISTORY_ROWS_SHOWN = 5;
+const RESULT_DOTS = 40;
+
 const MISTAKE_ORDER: Exclude<MistakeClass, 'correct'>[] = [
   'basic-error',
   'missed-deviation',
@@ -78,8 +86,24 @@ const MISTAKE_LABELS: Record<Exclude<MistakeClass, 'correct'>, string> = {
   timeout: 'Out of time',
   'self-report': 'Admitted misses (eyes-free)' };
 
+/** s06: Play's non-hand misses, which the engine files under 'basic-error'. */
+type NonHandMiss = 'bet' | 'wong' | 'countCheck';
+const NON_HAND_MISSES: readonly NonHandMiss[] = ['bet', 'wong', 'countCheck'];
+const NON_HAND_MISS_LABEL: Record<NonHandMiss, string> = {
+  bet: 'Bet sizing mistakes',
+  wong: 'Play or sit-out mistakes',
+  countCheck: 'Count check misses',
+};
+
+/** "a", "a and b", "a, b and c". */
+function joinList(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts.join('');
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
+/** A signed figure with a real minus sign (U+2212); zero shows as "+0" as before. */
 function formatSigned(n: number): string {
-  return n >= 0 ? `+${n}` : String(n);
+  return n >= 0 ? `+${n}` : signed(n);
 }
 
 /**
@@ -264,6 +288,84 @@ function SrStatusPanel({ deckLabel, summary, labelForKey }: SrStatusPanelProps) 
 
 
 /**
+ * s04: a drill's results as a row of dots, oldest left, with the headline
+ * accuracy and the last-ten trend -- a story of progress, which a list of the
+ * five newest rows (all "correct" once the early misses scrolled off) is not.
+ */
+function ResultTrend({ history, noun }: { history: readonly { correct: boolean }[]; noun: string }) {
+  if (history.length === 0) return null;
+  const right = history.filter((h) => h.correct).length;
+  const trend = trendLine(history);
+  const dots = history.slice(-RESULT_DOTS);
+  return (
+    <div className="result-trend" data-testid={`trend-${noun}`}>
+      <p className="stats-detail">
+        Correct: {right}/{history.length} {noun} ({pct(right, history.length)})
+        {trend ? ` \u00b7 ${trend}` : ''}
+      </p>
+      <div
+        className="result-dots"
+        role="img"
+        aria-label={`Last ${dots.length} ${noun}, oldest first: ${dots.filter((d) => d.correct).length} right`}
+      >
+        {dots.map((d, i) => (
+          <span key={i} className={`result-dot${d.correct ? ' result-dot-right' : ' result-dot-wrong'}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** s04: how a count run was dealt, from the fields the run actually stored. */
+function countRunMode(run: StatsData['countDrill']['history'][number]): string {
+  const base = run.manual ? 'On tap' : 'Auto';
+  return run.checkpointsTotal !== undefined ? `${base} \u00b7 checkpoints` : base;
+}
+
+/**
+ * W3 / s02: one hand category against the 90% goal, with the figure Home
+ * judges it on. The bar carries a tick at the target, and the row says when
+ * the goal is met, so 89% and 92% no longer look the same.
+ */
+function HandGoalRow({ row, latencyText, rangeText }: { row: HandCategoryProgress; latencyText: string; rangeText: string | null }) {
+  const gap = pctDown(CATEGORY_TARGET) - pctDown(row.pct);
+  const status = row.thin
+    ? `${row.n} of ${MIN_CATEGORY_ANSWERS} answers needed to judge`
+    : row.onTarget
+      ? 'On target'
+      : `${gap} point${gap === 1 ? '' : 's'} to the ${pctDown(CATEGORY_TARGET)}% goal`;
+  return (
+    <div className="category-row" data-hand={row.prefix} data-on-target={row.onTarget ? 'true' : 'false'}>
+      <div className="category-row-top">
+        <span className="category-label">{row.label}</span>
+        <span className="category-fraction">
+          {row.recent ? `last ${row.judgedN}: ` : ''}
+          {row.judgedRight}/{row.judgedN} ({row.judgedN === 0 ? '—' : goalPct(row.pct)})
+        </span>
+      </div>
+      <div className="category-bar-track goal-bar-track">
+        <div className="category-bar-fill" style={{ width: `${row.pct * 100}%` }} />
+        <div className="goal-bar-target" style={{ left: `${CATEGORY_TARGET * 100}%` }} aria-hidden="true" />
+      </div>
+      <div className="category-latency">
+        {row.onTarget ? '✓ ' : ''}
+        {status}
+        {row.recent && !row.legacy ? ` · all time ${row.right}/${row.n}` : ''} · Median decision time: {latencyText}
+      </div>
+      {/* The goal reads per-cell answers, which have no backfill: a returning
+          user's older answers show here rather than vanish (see handProgress). */}
+      {row.legacy && (
+        <div className="category-legacy" data-testid={`legacy-${row.prefix}`}>
+          All time {row.allRight}/{row.allN} ({pct(row.allRight, row.allN)}), with answers from before per-hand
+          tracking. The goal counts only answers since.
+        </div>
+      )}
+      {rangeText !== null && <div className="category-in-range">{rangeText}</div>}
+    </div>
+  );
+}
+
+/**
  * Stats tabs (C5).
  *
  * Fifteen equal-weight sections in one 3115px column meant the answer to any
@@ -291,6 +393,8 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Distraction': 'drills',
   'Pair cancellation': 'drills',
   'True count drill': 'drills',
+  'Produce TC': 'drills',
+  'Deviation quiz': 'drills',
   'Deck estimation drill': 'drills',
   'Spaced repetition — Flashcards': 'progress',
   'Spaced repetition — Deviation quiz': 'progress',
@@ -311,6 +415,8 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   const [range, setRange] = useState<TimeRange>({ id: 'all' });
   // #25: the five dearest habits by default, the rest behind "Show all".
   const [showAllCosts, setShowAllCosts] = useState(false);
+  // s04: every count run in range, not only the newest five.
+  const [showAllRuns, setShowAllRuns] = useState(false);
   const now = Date.now();
   // The rules the app GRADES with, which is the profile's rules plus its
   // surrender-index flag. Read once so the sections below cannot disagree
@@ -323,6 +429,23 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   // the pace-drift readout -- two separate filters here could disagree about
   // which answers are in the window.
   const latencyRows = inRange(stats.latencyHistory);
+  /*
+   * s10: hand accuracy that answers the range picker. The category tallies
+   * are undated counters; the dated latency rows carry `correct` since Wave A
+   * (one row per timed graded answer -- drills, not table play), so a bounded
+   * range reads its accuracy from them. Null on "All time".
+   */
+  const inRangeText = (cat: Category): string | null => {
+    if (range.id === 'all') return null;
+    // Table-only categories (bet sizing, play or sit, count checks) never
+    // write a timed row; "no timed answers" under them in every range is noise.
+    if (!stats.latencyHistory.some((r) => r.category === cat)) return null;
+    const label = range.id === 'since' ? `Since ${range.since ?? '…'}` : RANGE_LABEL[range.id];
+    const rows = latencyRows.filter((r) => r.category === cat && r.correct !== undefined);
+    if (rows.length === 0) return `${label}: no timed answers`;
+    const right = rows.filter((r) => r.correct).length;
+    return `${label}: ${right}/${rows.length} (${pct(right, rows.length)}) timed answers`;
+  };
   // ET5: the session-gap for the fatigue-drift analysis is configurable (a gap
   // longer than this splits practice sessions). Local to this screen.
   const [fatigueGapMin, setFatigueGapMin] = useState(30);
@@ -332,7 +455,17 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   const refresh = () => setStats(loadStats());
 
   const handleSpeakSummary = () => {
-    audio.say(narrateStatsSummary(stats), { interrupt: true });
+    // F14: the summary follows the range picker, and says which range it read.
+    const graded = latencyRows.filter((r) => r.correct !== undefined);
+    const summary =
+      range.id === 'all'
+        ? narrateStatsSummary(stats)
+        : narrateStatsSummary(stats, {
+            label: range.id === 'since' ? `Since ${range.since ?? 'the date you picked'}` : RANGE_LABEL[range.id],
+            right: graded.filter((r) => r.correct).length,
+            total: graded.length,
+          });
+    audio.say(summary, { interrupt: true });
   };
 
   const handleExport = () => {
@@ -399,7 +532,8 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   // #20: auto and manual runs are ranked apart -- a manual run was never
   // dealt at an interval, so its pace is its measured mean tap gap.
   const bestCleanRun = bestCleanCountRuns(countHistory);
-  const recentRuns = countHistory.slice(-5).reverse();
+  const allRunsNewestFirst = [...countHistory].reverse();
+  const recentRuns = showAllRuns ? allRunsNewestFirst : allRunsNewestFirst.slice(0, HISTORY_ROWS_SHOWN);
   // RT#12: runs that were actually MEASURED mid-count. A run with checkpoints
   // off carries neither field, and is left out rather than counted as clean --
   // "not measured" is not the same as "nothing went wrong".
@@ -426,7 +560,16 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   const trueCountRows = inRange(stats.trueCount.history);
   const trueCountSummary = summarize(trueCountRows);
   const trueCountBreakdown = signedErrorBreakdown(trueCountRows);
-  const trueCountRecent = trueCountRows.slice(-5).reverse();
+  // s05: the misses are what a counter learns from, and five newest rows
+  // (all right after a good streak) hid every one.
+  const trueCountRecent = trueCountRows.filter((r) => !r.correct).slice(-HISTORY_ROWS_SHOWN).reverse();
+  const produceTcRows = inRange(stats.produceTc.history);
+  const produceTcSummary = summarize(produceTcRows);
+  const produceTcMisses = produceTcRows.filter((r) => !r.correct).slice(-HISTORY_ROWS_SHOWN).reverse();
+  // s05: the deviation quiz's own tally (bySource.quiz), all time like Flashcards.
+  const quizBucket = stats.bySource?.quiz;
+  const quizRight = quizBucket ? Object.values(quizBucket).reduce((n, t) => n + t.right, 0) : 0;
+  const quizTotal = quizBucket ? Object.values(quizBucket).reduce((n, t) => n + t.right + t.wrong, 0) : 0;
 
   const deckEstRows = inRange(stats.deckEstimation.history);
   const deckEstSummary = summarize(deckEstRows);
@@ -459,6 +602,19 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   const evCost = evCostSummary(evCostRows);
   const totalMistakes = MISTAKE_ORDER.reduce((sum, cls) => sum + stats.mistakes[cls], 0);
   /*
+   * s06: the table's bet-sizing, play-or-sit and count-check misses are all
+   * classified 'basic-error' by the engine, so "Basic strategy errors" counted
+   * 36 sit-out calls as hand mistakes. Their category tallies say how many
+   * there are; they are shown on their own rows and taken out of that one.
+   */
+  const nonHandMisses: Record<NonHandMiss, number> = {
+    bet: stats.categories.bet.wrong,
+    wong: stats.categories.wong.wrong,
+    countCheck: stats.categories.countCheck.wrong,
+  };
+  const nonHandMissTotal = NON_HAND_MISSES.reduce((n, k) => n + nonHandMisses[k], 0);
+  const handBasicErrors = Math.max(0, stats.mistakes['basic-error'] - nonHandMissTotal);
+  /*
    * ONLY ON "ALL TIME", because only there do the two numbers describe the
    * same set of answers.
    *
@@ -471,6 +627,21 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
    */
   const unpricedMistakes =
     range.id === 'all' ? Math.max(0, totalMistakes - evCost.priced) : 0;
+  // s06: the unpriced note names its kinds instead of calling them all index mistakes.
+  const unpricedHand = Math.max(0, unpricedMistakes - nonHandMissTotal);
+  const unpricedNote = (() => {
+    if (unpricedMistakes === 0) return '';
+    const parts: string[] = [];
+    if (nonHandMisses.bet > 0) parts.push(`${nonHandMisses.bet} bet-sizing`);
+    if (nonHandMisses.wong > 0) parts.push(`${nonHandMisses.wong} play-or-sit`);
+    if (nonHandMisses.countCheck > 0) parts.push(`${nonHandMisses.countCheck} count-check`);
+    const kinds = parts.length === 0 ? '' : ` ${joinList(parts)} ${nonHandMissTotal === 1 ? 'mistake is' : 'mistakes are'} not hand plays, so they have no price.`;
+    const hand =
+      unpricedHand === 0
+        ? ''
+        : ` ${unpricedHand} further ${unpricedHand === 1 ? 'mistake is' : 'mistakes are'} counted above but not priced: index mistakes depend on the count, which this pricing can't see.`;
+    return kinds + hand;
+  })();
 
   // D1 part 2 (docs/BACKLOG.md, distraction training): answer accuracy and
   // count-survival are reported separately -- see distractionSummary's own
@@ -534,6 +705,13 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   const bslCorrect = bslHistory.filter((h) => h.correct).length;
   const bslLeaveRows = bslHistory.filter((h) => h.correctAction === 'leave');
   const bslLeaveCorrect = bslLeaveRows.filter((h) => h.correct).length;
+  // s06: Play's own bet and play-or-sit tallies (undated counters, all time).
+  const tally = (c: Category) => {
+    const t = stats.categories[c];
+    return { right: t.right, n: t.right + t.wrong };
+  };
+  const tableBet = tally('bet');
+  const tableWong = tally('wong');
 
 
   // ET5: fatigue drift over the COUNTING runs you've logged (count drill + timed
@@ -595,6 +773,23 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   // units won / rounds * assumed rounds-per-hour, per spec §4.
   const unitsPerHourProxy = totalRounds === 0 ? null : (totalBankrollDelta / totalRounds) * 80;
   const cvcx = activeProfile.cvcx;
+  // W15: only the rows with a value.
+  const profileRows: [string, string][] = [];
+  if (cvcx?.score !== undefined) profileRows.push(['CVCX score', String(cvcx.score)]);
+  if (cvcx?.evPerHour !== undefined) profileRows.push(['CVCX EV per hour', formatSigned(cvcx.evPerHour)]);
+  if (cvcx?.riskOfRuin !== undefined) profileRows.push(['CVCX risk of ruin', `${cvcx.riskOfRuin}%`]);
+  if (cvcx?.simNote) profileRows.push(['CVCX sim note', cvcx.simNote]);
+  if (actualAccuracyPct !== null) {
+    profileRows.push([
+      `Your play accuracy${actualAccuracyAssisted ? ` (${actualAccuracyAssisted})` : ''}`,
+      pct(totalCorrect, totalGraded),
+    ]);
+  }
+  if (unitsPerHourProxy !== null) {
+    profileRows.push(['Your units per hour (at 80 rounds an hour)', formatSigned(Math.round(unitsPerHourProxy * 10) / 10)]);
+  }
+  // W3: hard / soft / pairs, as Home's Next step judges them.
+  const handRows = handCategoryProgress(stats);
 
   return (
     <div className="stats-screen" data-active-tab={tab}>
@@ -648,41 +843,36 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
         <p className="u-note">
           {range.id === 'all'
             ? 'Showing all time.'
-            : 'The range applies to dated results only. Accuracy by category and the Illustrious 18 table always show all time.'}
+            : 'The range applies to dated results. Accuracy by category adds an in-range line for timed drill answers. Its goal figures are always your latest answers (the last 30 per hand type), and Flashcards, Shot clock on vs off, Illustrious 18, Mistake types, the Bet or sit table rows and the spaced-repetition boxes are undated tallies, so they show all time.'}
         </p>
       </div>
 
+      {/*
+        W15: the profile block lives on Play only, starts closed, and lists only
+        the figures it actually has -- six rows of dashes used to be the first
+        thing on every Stats tab.
+      */}
       <CollapsibleSection
         title={<>Profile: {activeProfile.name}</>}
         className="stats-section"
-        defaultOpen={true}
+        dataTab="play"
+        defaultOpen={false}
       >
-          <ul className="mistake-list">
-            <li className="mistake-row">
-              <span>CVCX score</span>
-              <span>{cvcx?.score !== undefined ? cvcx.score : dash()}</span>
-            </li>
-            <li className="mistake-row">
-              <span>CVCX EV per hour</span>
-              <span>{cvcx?.evPerHour !== undefined ? formatSigned(cvcx.evPerHour) : dash()}</span>
-            </li>
-            <li className="mistake-row">
-              <span>CVCX risk of ruin</span>
-              <span>{cvcx?.riskOfRuin !== undefined ? `${cvcx.riskOfRuin}%` : dash()}</span>
-            </li>
-            <li className="mistake-row">
-              <span>CVCX sim note</span>
-              <span>{cvcx?.simNote ? cvcx.simNote : dash()}</span>
-            </li>
-            <li className="mistake-row">
-              <span>Your play accuracy{actualAccuracyAssisted ? ` (${actualAccuracyAssisted})` : ''}</span>
-              <span>{actualAccuracyPct === null ? dash() : `${Math.round(actualAccuracyPct)}%`}</span>
-            </li>
-            <li className="mistake-row">
-              <span>Your units per hour (at 80 rounds an hour)</span>
-              <span>{unitsPerHourProxy === null ? dash() : formatSigned(Math.round(unitsPerHourProxy * 10) / 10)}</span>
-            </li>
-          </ul>
+          {profileRows.length === 0 ? (
+            <p className="stats-detail">
+              No CVCX figures or table sessions for this profile yet. Add CVCX numbers in the profile
+              editor, or play a shoe.
+            </p>
+          ) : (
+            <ul className="mistake-list">
+              {profileRows.map(([label, value]) => (
+                <li className="mistake-row" key={label}>
+                  <span>{label}</span>
+                  <span>{value}</span>
+                </li>
+              ))}
+            </ul>
+          )}
       </CollapsibleSection>
 
       <CollapsibleSection
@@ -693,6 +883,16 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       >
           <div className="category-list">
             {CATEGORY_ORDER.map((cat) => {
+              // W3 / s02: hard, soft and pairs read the SAME figure Home's
+              // Next step judges the 90% goal on (handProgress.ts), drawn
+              // against the target, so the two screens cannot disagree.
+              const hand = handRows.find((h) => h.scope === cat);
+              if (hand) {
+                const latencyMs = medianLatency(latencyRows.filter((e) => e.category === cat));
+                return (
+                  <HandGoalRow key={cat} row={hand} latencyText={formatLatency(latencyMs)} rangeText={inRangeText(cat)} />
+                );
+              }
               const tally = stats.categories[cat];
               const total = tally.right + tally.wrong;
               const pctNum = total === 0 ? 0 : (tally.right / total) * 100;
@@ -717,6 +917,14 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                     <div className="category-bar-fill" style={{ width: `${pctNum}%` }} />
                   </div>
                   <div className="category-latency">Median decision time: {formatLatency(latencyMs)}</div>
+                  {/* s02: hands whose right play is surrender are also in
+                      their hand type's per-cell goal figure above. */}
+                  {cat === 'surrender' && total > 0 && (
+                    <div className="category-legacy">These hands also count toward their hand type&apos;s goal above.</div>
+                  )}
+                  {inRangeText(cat) !== null && (
+                    <div className="category-in-range">{inRangeText(cat)}</div>
+                  )}
                 </div>
               );
             })}
@@ -899,7 +1107,14 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
             {MISTAKE_ORDER.map((cls) => (
               <li className="mistake-row" key={cls}>
                 <span>{MISTAKE_LABELS[cls]}</span>
-                <span>{stats.mistakes[cls]}</span>
+                <span>{cls === 'basic-error' ? handBasicErrors : stats.mistakes[cls]}</span>
+              </li>
+            ))}
+            {/* s06: Play files these under basic-error; they are not hand plays. */}
+            {NON_HAND_MISSES.filter((k) => nonHandMisses[k] > 0).map((k) => (
+              <li className="mistake-row" key={k} data-testid={`stats-misses-${k}`}>
+                <span>{NON_HAND_MISS_LABEL[k]}</span>
+                <span>{nonHandMisses[k]}</span>
               </li>
             ))}
             {/* #22: answers withdrawn with "Wrong tap". Not mistakes -- they
@@ -962,9 +1177,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
               <p className="stats-detail">
                 Ranked by total cost, so a small mistake you repeat outranks one big slip. Prices are
                 exact for an infinite deck at a neutral count.
-                {unpricedMistakes > 0
-                  ? ` ${unpricedMistakes} further ${unpricedMistakes === 1 ? 'mistake is' : 'mistakes are'} counted above but not priced: index mistakes depend on the count, which this pricing can't see.`
-                  : ''}{' '}
+                {unpricedNote}{' '}
                 {evCostUndated > 0
                   ? ` ${evCostUndated} priced ${evCostUndated === 1 ? 'mistake has' : 'mistakes have'} no date, so ${evCostUndated === 1 ? 'it shows' : 'they show'} only under "All time".`
                   : ''}
@@ -1005,17 +1218,31 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
           {recentRuns.length === 0 ? (
             <p className="stats-detail">No count drill runs yet.</p>
           ) : (
-            <ul className="count-history-list">
-              {recentRuns.map((run, i) => (
-                <li className="count-history-row" key={i}>
-                  <span>{formatDate(run.date)}</span>
-                  <span className="count-history-pace">{formatCountRun(run)}</span>
-                  <span className={run.correct ? 'result-correct' : 'result-wrong'}>
-                    {run.correct ? 'correct' : 'wrong'}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ResultTrend history={countHistory} noun="runs" />
+              <ul className="count-history-list">
+                {recentRuns.map((run, i) => (
+                  <li className="count-history-row" key={i}>
+                    <span>{formatDate(run.date)}</span>
+                    <span className="count-run-mode">{countRunMode(run)}</span>
+                    <span className="count-history-pace">{formatCountRun(run)}</span>
+                    <span className={run.correct ? 'result-correct' : 'result-wrong'}>
+                      {run.correct ? 'correct' : 'wrong'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {countHistory.length > HISTORY_ROWS_SHOWN && (
+                <button
+                  type="button"
+                  className="cost-show-all"
+                  aria-expanded={showAllRuns}
+                  onClick={() => setShowAllRuns((v) => !v)}
+                >
+                  {showAllRuns ? `Show newest ${HISTORY_ROWS_SHOWN}` : `Show all ${countHistory.length} runs`}
+                </button>
+              )}
+            </>
           )}
       </CollapsibleSection>
 
@@ -1030,12 +1257,12 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
               ? 'No timed runs yet.'
               : `${timedCountSummary.correct}/${timedCountSummary.attempts} correct (${pct(timedCountSummary.correct, timedCountSummary.attempts)})`}
           </p>
-          <p className="stats-detail">
-            Best clean speed: {timedCountBest === null ? '—' : `${timedCountBest.toFixed(1)}s / deck`}
-          </p>
-          {timedCountRecent.length === 0 ? (
-            <p className="stats-detail">No timed runs yet.</p>
-          ) : (
+          {timedCountSummary.attempts > 0 && (
+            <p className="stats-detail">
+              Best clean speed: {timedCountBest === null ? '—' : `${timedCountBest.toFixed(1)}s / deck`}
+            </p>
+          )}
+          {timedCountRecent.length === 0 ? null : (
             <ul className="count-history-list">
               {timedCountRecent.map((run, i) => (
                 <li className="count-history-row" key={i}>
@@ -1069,15 +1296,13 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
               <li className="mistake-row">
                 <span>Answer accuracy</span>
                 <span>
-                  {distractionSum.answerAccuracyPct === null
-                    ? dash()
-                    : `${Math.round(distractionSum.answerAccuracyPct)}%`}
+                  {pctOfPercent(distractionSum.answerAccuracyPct)}
                 </span>
               </li>
               <li className="mistake-row">
                 <span>Count kept</span>
                 <span>
-                  {distractionSum.countKeptPct === null ? dash() : `${Math.round(distractionSum.countKeptPct)}%`}
+                  {pctOfPercent(distractionSum.countKeptPct)}
                 </span>
               </li>
             </ul>
@@ -1209,18 +1434,41 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
         dataTab={SECTION_TAB['Bet or sit']}
         defaultOpen={false}
       >
-          {bslAttempts === 0 ? (
-            <p className="stats-detail">No bet or sit decisions yet.</p>
+          {/* s06: the table's own bet and play-or-sit decisions, then the drill's. */}
+          {tableBet.n + tableWong.n === 0 && bslAttempts === 0 ? (
+            <p className="stats-detail">
+              No bet or sit decisions yet. Play with a bet spread on, or try the Bet or sit drill.
+            </p>
           ) : (
             <ul className="mistake-list">
-              <li className="mistake-row">
-                <span>Decisions</span>
-                <span>{bslAttempts}</span>
-              </li>
-              <li className="mistake-row">
-                <span>Accuracy</span>
-                <span>{pct(bslCorrect, bslAttempts)}</span>
-              </li>
+              {tableBet.n > 0 && (
+                <li className="mistake-row" data-testid="bsl-table-bet">
+                  <span>At the table: bet sizing</span>
+                  <span>
+                    {tableBet.right}/{tableBet.n} ({pct(tableBet.right, tableBet.n)})
+                  </span>
+                </li>
+              )}
+              {tableWong.n > 0 && (
+                <li className="mistake-row" data-testid="bsl-table-wong">
+                  <span>At the table: play or sit out</span>
+                  <span>
+                    {tableWong.right}/{tableWong.n} ({pct(tableWong.right, tableWong.n)})
+                  </span>
+                </li>
+              )}
+              {bslAttempts > 0 && (
+                <>
+                  <li className="mistake-row">
+                    <span>Bet or sit drill: decisions</span>
+                    <span>{bslAttempts}</span>
+                  </li>
+                  <li className="mistake-row">
+                    <span>Bet or sit drill: accuracy</span>
+                    <span>{pct(bslCorrect, bslAttempts)}</span>
+                  </li>
+                </>
+              )}
               {bslLeaveRows.length > 0 && (
                 <li className="mistake-row">
                   <span>Accuracy when it was time to leave (old)</span>
@@ -1325,11 +1573,8 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
         dataTab={SECTION_TAB['True count drill']}
         defaultOpen={false}
       >
-          <p className="stats-detail">
-            {trueCountSummary.attempts === 0
-              ? 'No true count drill attempts yet.'
-              : `${trueCountSummary.correct}/${trueCountSummary.attempts} correct (${pct(trueCountSummary.correct, trueCountSummary.attempts)})`}
-          </p>
+          {/* The headline accuracy is ResultTrend's, below the breakdown. */}
+          {trueCountSummary.attempts === 0 && <p className="stats-detail">No true count drill attempts yet.</p>}
           {trueCountSummary.attempts > 0 && (
             <ul className="mistake-list">
               <li className="mistake-row">
@@ -1346,25 +1591,75 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
               </li>
             </ul>
           )}
-          {trueCountRecent.length === 0 ? (
-            <p className="stats-detail">No true count drill attempts yet.</p>
+          <ResultTrend history={trueCountRows} noun="answers" />
+          {trueCountRecent.length === 0 ? null : (
+            <>
+              <h3 className="sr-lapses-title">Recent misses</h3>
+              <ul className="count-history-list">
+                {trueCountRecent.map((run, i) => (
+                  <li className="count-history-row" key={i}>
+                    <span>{formatDate(run.date)}</span>
+                    <span>
+                      RC {formatSigned(run.runningCount)} / {run.decksRemaining} decks remaining
+                    </span>
+                    <span>
+                      {run.guess === undefined ? 'self-reported' : `you said ${signed(run.guess)}`}, it was{' '}
+                      {signed(run.correctTc)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+      </CollapsibleSection>
+
+      {/* s05: Produce TC was saved and never shown. */}
+      <CollapsibleSection
+        title={<>Produce TC</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Produce TC']}
+        defaultOpen={false}
+      >
+          {produceTcSummary.attempts === 0 ? (
+            <p className="stats-detail">No Produce TC attempts yet.</p>
           ) : (
-            <ul className="count-history-list">
-              {trueCountRecent.map((run, i) => (
-                <li className="count-history-row" key={i}>
-                  <span>{formatDate(run.date)}</span>
-                  <span>
-                    RC {formatSigned(run.runningCount)} / {run.decksRemaining} decks remaining
-                  </span>
-                  <span>
-                    {run.guess === undefined ? 'self-reported' : `guess ${formatSigned(run.guess)}`}
-                  </span>
-                  <span className={run.correct ? 'result-correct' : 'result-wrong'}>
-                    {run.correct ? 'correct' : 'wrong'}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ResultTrend history={produceTcRows} noun="answers" />
+              {produceTcMisses.length > 0 && (
+                <>
+                  <h3 className="sr-lapses-title">Recent misses</h3>
+                  <ul className="count-history-list">
+                    {produceTcMisses.map((run, i) => (
+                      <li className="count-history-row" key={i}>
+                        <span>{formatDate(run.date)}</span>
+                        <span>
+                          {run.produced === undefined ? 'self-reported' : `you said ${signed(run.produced)}`}, it was{' '}
+                          {signed(run.correctTc)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </>
+          )}
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Deviation quiz</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Deviation quiz']}
+        defaultOpen={false}
+      >
+          {quizTotal === 0 ? (
+            <p className="stats-detail">No deviation quiz answers yet.</p>
+          ) : (
+            <div className="stats-headline">
+              <span className="stats-headline-value">{pct(quizRight, quizTotal)}</span>
+              <span className="stats-headline-label">
+                {quizRight}/{quizTotal} correct, all time. Per index: Play tab, Illustrious 18.
+              </span>
+            </div>
           )}
       </CollapsibleSection>
 
@@ -1379,9 +1674,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
               ? 'No deck estimation attempts yet.'
               : `${deckEstSummary.correct}/${deckEstSummary.attempts} correct (${pct(deckEstSummary.correct, deckEstSummary.attempts)})`}
           </p>
-          {deckEstRecent.length === 0 ? (
-            <p className="stats-detail">No deck estimation attempts yet.</p>
-          ) : (
+          {deckEstRecent.length === 0 ? null : (
             <ul className="count-history-list">
               {deckEstRecent.map((run, i) => (
                 <li className="count-history-row" key={i}>

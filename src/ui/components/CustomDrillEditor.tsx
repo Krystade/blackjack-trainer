@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import './customDrillEditor.css';
 import type { CustomSelection, SelectionTier, Settings } from '../../store/types';
 import type { RuleSet } from '../../engine/ruleset';
-import { loadStats } from '../../store/persist';
+import { loadStats, saveSettings } from '../../store/persist';
 import { getActiveProfile } from '../../store/profiles';
 import {
   ALL_PAINT_CELL_IDS,
@@ -23,8 +23,8 @@ import { CellPaintGrid } from './CellPaintGrid';
  * B2 (#9): the Custom drill editor -- paint tiers on the chart grid, set the
  * session mix, Auto-fill from accuracy, and start a hand drill on it.
  *
- * Everything persists through `onSettingsChange` into
- * `settings.drill.custom`. A drag paints into a local draft so the grid
+ * Everything persists into `settings.drill.custom`, saved on every change
+ * and lifted through `onSettingsChange`. A drag paints into a local draft so the grid
  * follows the finger without a settings write per cell; the stroke is
  * committed once, when the finger lifts.
  *
@@ -94,7 +94,12 @@ export function CustomDrillEditor({
   const chartRules = useMemo(() => rules ?? getActiveProfile().rules, [rules]);
 
   const commit = (next: CustomSelection) => {
-    onSettingsChange({ ...settings, drill: { ...settings.drill, custom: next } });
+    const nextSettings = { ...settings, drill: { ...settings.drill, custom: next } };
+    // s07: persisted on every change, not only on Start. App's settings
+    // setter is memory only, so an edit left without starting a drill was
+    // lost on the next relaunch (iOS evicting the PWA, say).
+    saveSettings(nextSettings);
+    onSettingsChange(nextSettings);
   };
 
   const onPaint = (ids: string[]) => {

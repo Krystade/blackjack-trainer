@@ -156,7 +156,14 @@ test('Speak summary narrates the session summary under ?e2e=1', async ({ page })
   const speechLog = await page.evaluate(
     () => (window as unknown as { __speechLog?: string[] }).__speechLog ?? [],
   );
-  expect(speechLog.some((s) => s.startsWith('This session:'))).toBe(true);
+  // F14: the lifetime blob is "All time", never "This session".
+  expect(speechLog.some((s) => s.startsWith('All time:'))).toBe(true);
+
+  // F14: and the summary follows the range picker, saying which range it read.
+  await page.getByRole('button', { name: 'Last 7 days', exact: true }).click();
+  await page.locator('.stats-action-btn', { hasText: 'Read summary aloud' }).click();
+  const after = await page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
+  expect(after.some((s) => s.startsWith('Last 7 days:'))).toBe(true);
 });
 
 test('CVCX profile header renders score/EV/ROR/note plus actual accuracy from a played session', async ({ page }) => {

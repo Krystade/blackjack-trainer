@@ -139,6 +139,17 @@ describe('customWeights', () => {
     expect(on.get('g3')).toBeCloseTo(off.get('g3')!); // no data: unchanged
   });
 
+  it('W3: favour missed weighs the recent miss rate, not the all-time one', () => {
+    const stats: Stats['cellStats'] = {
+      g1: { right: 45, wrong: 5, lastAt: '', recent: '0000011111' }, // 50% missed lately
+      g2: { right: 3, wrong: 7, lastAt: '', recent: '1111111111' }, // none missed lately
+    };
+    const off = customWeights(sel(tiers), ids, stats);
+    const on = customWeights(sel(tiers, { favourMissed: true }), ids, stats);
+    expect(on.get('g1')).toBeCloseTo(off.get('g1')! * 1.5);
+    expect(on.get('g2')).toBeCloseTo(off.get('g2')!);
+  });
+
   it('returns nothing for a selection with every cell Off', () => {
     expect(customWeights(sel({}), ids).size).toBe(0);
   });
@@ -164,6 +175,19 @@ describe('autoTiers', () => {
       strong: 'rare',
       empty: 'regular',
       unseen: 'regular',
+    });
+  });
+
+  it('W3: judges a cell on its last answers once it has five, as Fix weak cells does', () => {
+    const recent: Stats['cellStats'] = {
+      fixed: { right: 3, wrong: 7, lastAt: '', recent: '11111' }, // 30% all time, right lately
+      slipping: { right: 45, wrong: 5, lastAt: '', recent: '0000011111' }, // 90% all time, 50% lately
+      short: { right: 3, wrong: 7, lastAt: '', recent: '1111' }, // too few lately: all time decides
+    };
+    expect(autoTiers(['fixed', 'slipping', 'short'], recent, {})).toEqual({
+      fixed: 'rare',
+      slipping: 'focus',
+      short: 'focus',
     });
   });
 

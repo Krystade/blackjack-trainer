@@ -1,6 +1,7 @@
 import type { Stats } from '../../store/types';
 import { medianLatency } from '../../store/drillStats';
-import { ILLUSTRIOUS_18 } from '../../engine/deviations';
+import { indexSetFor } from '../../engine/deviations';
+import { CATEGORY_TARGET, handCategoryProgress } from './handProgress';
 
 /**
  * The numbers the Home dashboard answers "am I ready?" with (C4).
@@ -23,12 +24,21 @@ export interface Readiness {
   decisions: number;
 }
 
-export function readiness(stats: Stats): Readiness {
+/** The rule fields the index set depends on (F11). Default: the 6D H17 set. */
+export type IndexRules = { decks: number; s17: boolean; surrenderIndices?: boolean };
+const DEFAULT_INDEX_RULES: IndexRules = { decks: 6, s17: false };
+
+/** F11: the indices a profile is graded on -- its own set, not always H17's. */
+export function activeIndices(rules: IndexRules = DEFAULT_INDEX_RULES) {
+  return indexSetFor(rules).filter((d) => d.active);
+}
+
+export function readiness(stats: Stats, rules?: IndexRules): Readiness {
   const right = Object.values(stats.categories).reduce((n, c) => n + c.right, 0);
   const wrong = Object.values(stats.categories).reduce((n, c) => n + c.wrong, 0);
   const decisions = right + wrong;
 
-  const active = ILLUSTRIOUS_18.filter((d) => d.active);
+  const active = activeIndices(rules);
   const indicesKnown = active.filter((d) => (stats.perIndex[d.id]?.right ?? 0) > 0).length;
 
   return {
@@ -41,15 +51,28 @@ export function readiness(stats: Stats): Readiness {
 }
 
 /**
- * The categories worth practising next: worst accuracy first, and only those
- * with enough attempts to mean anything. A dashboard that names your weakest
- * hand is worth more than one that reports a single blended percentage.
+ * The categories worth practising next: worst accuracy first, only those with
+ * enough attempts to mean anything, and (W13) only those BELOW the target --
+ * a category at 94% is not "weak". Hard / soft / pairs use the same judged
+ * figure as Next step and Stats (handProgress.ts, W3), so the three screens
+ * agree; the other categories (surrender, insurance, betting, wonging, count
+ * checks) have no cell breakdown and read their own tally.
  */
 export function weakestCategories(stats: Stats, minAttempts = 5, limit = 3): string[] {
-  return Object.entries(stats.categories)
-    .map(([name, c]) => ({ name, attempts: c.right + c.wrong, pct: c.right + c.wrong === 0 ? 1 : c.right / (c.right + c.wrong) }))
-    .filter((c) => c.attempts >= minAttempts && c.pct < 1)
+  const hands = handCategoryProgress(stats).map((c) => ({
+    name: c.scope as string,
+    attempts: c.n,
+    pct: c.pct,
+  }));
+  const others = Object.entries(stats.categories)
+    .filter(([name]) => !HAND_CATEGORY_KEYS.has(name))
+    .map(([name, c]) => ({ name, attempts: c.right + c.wrong, pct: c.right + c.wrong === 0 ? 1 : c.right / (c.right + c.wrong) }));
+  return [...hands, ...others]
+    .filter((c) => c.attempts >= minAttempts && c.pct < CATEGORY_TARGET)
     .sort((a, b) => a.pct - b.pct)
     .slice(0, limit)
     .map((c) => c.name);
 }
+
+/** The categories handProgress judges from cellStats (Category keys). */
+const HAND_CATEGORY_KEYS = new Set(['hard', 'soft', 'pairs']);

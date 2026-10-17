@@ -1,8 +1,14 @@
 import type { Stats } from '../../store/types';
-import { ILLUSTRIOUS_18 } from '../../engine/deviations';
 import { hydrateMasteryRun, isMasteryRunComplete } from '../../drills/masteryChallenge';
 import type { MasteryRun, PersistedMasteryRun } from '../../drills/masteryChallenge';
 import { generateAllCells } from '../../drills/flashcards';
+import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, WEAK_CELL_BELOW, goalPct, handCategoryProgress, pctDown, weakCells } from './handProgress';
+import { cellWindow, countBits } from '../../store/cellStats';
+import type { HandCategoryProgress, WeakCell } from './handProgress';
+import type { HandScope } from '../../drills/handScope';
+import { activeIndices } from './readiness';
+import { COUNT_RUNS_JUDGED, COUNT_RUNS_NEEDED, countFluency } from '../../drills/fluencyGate';
+import type { IndexRules } from './readiness';
 
 /**
  * #28: the ONE thing Home recommends next, and why. The first step in this
@@ -10,17 +16,22 @@ import { generateAllCells } from '../../drills/flashcards';
  *
  *  1. flash   -- Learn basic strategy: until hard, soft and pairs are each
  *                at >= 90% over at least MIN_CATEGORY_ANSWERS answers.
+ *                (s07: a category below 90% whose misses sit mostly in a few
+ *                weak cells goes to step 2's Custom instead.)
  *  2. custom  -- Fix weak cells (Custom with Auto): any cell with at least
  *                MIN_CELL_ANSWERS answers below 78%.
  *  3. mastery -- a Mastery sweep, until one has been completed.
  *  4. quiz    -- Deviations: until every active index has at least
  *                MIN_INDEX_ANSWERS answers and they are >= 90% together.
- *  5. count   -- Counting: until COUNT_RUNS_JUDGED count runs have been done
- *                and at least COUNT_RUNS_NEEDED of the last ones were right.
+ *  5. count   -- Counting: until COUNT_RUNS_NEEDED of the last
+ *                COUNT_RUNS_JUDGED paced, deck-long runs were right (F15:
+ *                the Drills picker's fluency rule, drills/fluencyGate.ts).
  *  6. play    -- Play a shoe.
  *
  * Per-cell figures are B3's cellStats (every hand drill and Play), so a
  * category here is the sum of its cells, not the older per-category tally.
+ * W3: categories and cells are judged on their recent answers (see
+ * handProgress.ts), so a mistake made while learning ages out.
  * Pure: the caller supplies whether a sweep is complete.
  */
 export type NextStepKind = 'flash' | 'custom' | 'mastery' | 'quiz' | 'count' | 'play';
@@ -29,22 +40,26 @@ export interface NextStep {
   kind: NextStepKind;
   title: string;
   why: string;
+  /**
+   * F21: the hand type a 'flash' step is about, so Start opens Flashcards on
+   * it rather than on whatever scope was saved last. Absent = the whole chart.
+   */
+  scope?: HandScope;
+  /**
+   * s02: the three basic-strategy categories against the goal, on every step,
+   * so Home shows progress while one is short and confirms the goal once all
+   * three are met (every later step has them all on target).
+   */
+  progress?: HandCategoryProgress[];
 }
 
-export const MIN_CATEGORY_ANSWERS = 20;
-export const CATEGORY_TARGET = 0.9;
-export const MIN_CELL_ANSWERS = 5;
-export const WEAK_CELL_BELOW = 0.78;
+// W3: the category and cell thresholds live with the shared figures Home and
+// Stats both read; re-exported here for the callers that already import them.
+export { MIN_CATEGORY_ANSWERS, CATEGORY_TARGET, MIN_CELL_ANSWERS, WEAK_CELL_BELOW } from './handProgress';
 export const MIN_INDEX_ANSWERS = 3;
 export const INDEX_TARGET = 0.9;
-export const COUNT_RUNS_JUDGED = 5;
-export const COUNT_RUNS_NEEDED = 4;
-
-const HAND_CATEGORIES = [
-  { prefix: 'hard', label: 'Hard totals' },
-  { prefix: 'soft', label: 'Soft totals' },
-  { prefix: 'pair', label: 'Pairs' },
-] as const;
+// F15: one counting-fluency rule, shared with the Drills picker.
+export { COUNT_RUNS_JUDGED, COUNT_RUNS_NEEDED } from '../../drills/fluencyGate';
 
 /**
  * Whether the saved Mastery run is a finished sweep of the WHOLE chart. Only
@@ -64,11 +79,6 @@ export function isWholeChartSweep(run: MasteryRun): boolean {
   return all.length === inRun.size && all.every((id) => inRun.has(id));
 }
 
-/** A whole percent that never rounds a miss up to the target. */
-function pctDown(p: number): number {
-  return Math.floor(p * 100);
-}
-
 /** "hard-16-v-10" -> "Hard 16 v 10"; "pair-8-v-A" -> "8,8 v A". */
 export function cellLabel(id: string): string {
   const m = /^(hard|soft|pair)-([0-9]+|A)-v-([0-9]+|A)$/.exec(id);
@@ -78,54 +88,94 @@ export function cellLabel(id: string): string {
   return `${kind === 'hard' ? 'Hard' : 'Soft'} ${row} v ${up}`;
 }
 
-export function nextStep(stats: Stats, opts: { sweepDone: boolean }): NextStep {
-  const cells = Object.entries(stats.cellStats ?? {});
+/** s07: cells judged weak inside a category that is below target need only this many answers. */
+export const MIN_CELL_ANSWERS_IN_LOW_CATEGORY = 3;
 
-  // 1. Basic strategy, category by category. Too few answers to judge comes
-  // first: it is the reason the percentage cannot be trusted yet.
-  const cats = HAND_CATEGORIES.map(({ prefix, label }) => {
-    let right = 0;
-    let wrong = 0;
-    for (const [id, t] of cells) {
-      if (id.startsWith(`${prefix}-`)) {
-        right += t.right;
-        wrong += t.wrong;
-      }
-    }
-    const n = right + wrong;
-    return { label, n, pct: n === 0 ? 0 : right / n };
-  });
-  const thin = cats.filter((c) => c.n < MIN_CATEGORY_ANSWERS).sort((a, b) => a.n - b.n)[0];
+/**
+ * s07: whether `weak` (cells of a category below target) hold at least half
+ * of the category's misses. Both sides count misses from the same kind of
+ * figure the category is judged on: the recent windows (each weak cell's last
+ * CELL_WINDOW against the category's last HAND_WINDOW) when the category is
+ * judged on its window, else the lifetime tallies. Mixing the two let a
+ * learner's early, spread-out misses -- which never age out of a lifetime
+ * sum -- hide a weakness that sits in two cells now. A cell's window can
+ * reach back past the category's, so this leans towards Fix weak cells; the
+ * cells it names are weak on their own recent answers either way.
+ */
+function holdsHalfTheMisses(stats: Stats, low: HandCategoryProgress, weak: readonly WeakCell[]): boolean {
+  const cells = stats.cellStats ?? {};
+  const missesIn = (id: string) => (low.recent ? countBits(cellWindow(cells[id])).wrong : (cells[id]?.wrong ?? 0));
+  const weakMisses = weak.reduce((n, w) => n + missesIn(w.id), 0);
+  return weakMisses * 2 >= low.judgedN - low.judgedRight;
+}
+
+/** The "Fix weak cells" step for `weak` (worst first), its reason led by `lead`. */
+function weakCellsStep(weak: readonly WeakCell[], lead: string): NextStep {
+  const w = weak[0]!;
+  const more = weak.length > 1 ? ` and ${weak.length - 1} more cell${weak.length > 2 ? 's' : ''}` : '';
+  return {
+    kind: 'custom',
+    title: 'Fix weak cells',
+    why: `${lead}${cellLabel(w.id)}${lead ? '' : ' is'} at ${goalPct(w.pct)}${more} below ${pctDown(WEAK_CELL_BELOW)}%. Custom with Auto drills them most.`,
+  };
+}
+
+export function nextStep(
+  stats: Stats,
+  opts: {
+    sweepDone: boolean;
+    /** F11: the active profile's graded rules, so the deviations step counts its own index set. */
+    rules?: IndexRules;
+  },
+): NextStep {
+  // s02: every step carries the three categories, so Home can confirm the
+  // goal once it is met as well as show progress while it is not.
+  const cats = handCategoryProgress(stats);
+  return { ...stepFor(stats, cats, opts), progress: cats };
+}
+
+function stepFor(
+  stats: Stats,
+  cats: HandCategoryProgress[],
+  opts: { sweepDone: boolean; rules?: IndexRules },
+): NextStep {
+  // 1. Basic strategy, category by category (W3: judged on the recent
+  // window, see handProgress). Too few answers to judge comes first: it is
+  // the reason the percentage cannot be trusted yet.
+  const thin = cats.filter((c) => c.thin).sort((a, b) => a.n - b.n)[0];
   if (thin) {
+    // cellStats has no backfill: a returning user's older answers are in the
+    // category tally only, so "so far" would be false for them.
+    const since = thin.legacy ? 'since per-hand tracking began' : 'so far';
     return {
       kind: 'flash',
       title: 'Learn basic strategy',
-      why: `${thin.label}: ${thin.n} answer${thin.n === 1 ? '' : 's'} so far, ${MIN_CATEGORY_ANSWERS} needed to judge. Get every category to ${pctDown(CATEGORY_TARGET)}%.`,
+      why: `${thin.label}: ${thin.n} answer${thin.n === 1 ? '' : 's'} ${since}, ${MIN_CATEGORY_ANSWERS} needed to judge. Get every category to ${pctDown(CATEGORY_TARGET)}%.`,
+      scope: thin.scope,
     };
   }
   const low = cats.filter((c) => c.pct < CATEGORY_TARGET).sort((a, b) => a.pct - b.pct)[0];
+  // s07: a weakness CONCENTRATED in a few cells keeps its category under 90%
+  // for good while the rest is known, and more of the whole category is the
+  // wrong drill for it. When cells judged weak (on as few as
+  // MIN_CELL_ANSWERS_IN_LOW_CATEGORY answers) hold at least half of the
+  // category's misses, send them to Custom with Auto instead.
   if (low) {
+    const lowWeak = weakCells(stats, { prefix: low.prefix, minAnswers: MIN_CELL_ANSWERS_IN_LOW_CATEGORY });
+    if (lowWeak.length > 0 && holdsHalfTheMisses(stats, low, lowWeak)) {
+      return weakCellsStep(lowWeak, `${low.label} are at ${goalPct(low.pct)}, mostly from `);
+    }
     return {
       kind: 'flash',
       title: 'Learn basic strategy',
-      why: `${low.label} are at ${pctDown(low.pct)}%; get every category to ${pctDown(CATEGORY_TARGET)}%.`,
+      why: `${low.label} are at ${goalPct(low.pct)}${low.recent ? ` over your last ${low.judgedN}` : ''}; get every category to ${pctDown(CATEGORY_TARGET)}%.`,
+      scope: low.scope,
     };
   }
 
-  // 2. Weak cells, worst first.
-  const weak = cells
-    .map(([id, t]) => ({ id, n: t.right + t.wrong, pct: t.right + t.wrong === 0 ? 1 : t.right / (t.right + t.wrong) }))
-    .filter((c) => c.n >= MIN_CELL_ANSWERS && c.pct < WEAK_CELL_BELOW)
-    .sort((a, b) => a.pct - b.pct || b.n - a.n || a.id.localeCompare(b.id));
-  if (weak.length > 0) {
-    const w = weak[0]!;
-    const more = weak.length > 1 ? ` and ${weak.length - 1} more cell${weak.length > 2 ? 's' : ''}` : '';
-    return {
-      kind: 'custom',
-      title: 'Fix weak cells',
-      why: `${cellLabel(w.id)} is at ${pctDown(w.pct)}%${more} below ${pctDown(WEAK_CELL_BELOW)}%. Custom with Auto drills them most.`,
-    };
-  }
+  // 2. Weak cells, worst first (W3: judged on each cell's recent answers).
+  const weak = weakCells(stats);
+  if (weak.length > 0) return weakCellsStep(weak, '');
 
   // 3. A full sweep proves it with no misses in a row.
   if (!opts.sweepDone) {
@@ -137,7 +187,7 @@ export function nextStep(stats: Stats, opts: { sweepDone: boolean }): NextStep {
   }
 
   // 4. Deviations.
-  const active = ILLUSTRIOUS_18.filter((d) => d.active);
+  const active = activeIndices(opts.rules);
   const unpractised = active.filter((d) => {
     const t = stats.perIndex[d.id];
     return (t?.right ?? 0) + (t?.wrong ?? 0) < MIN_INDEX_ANSWERS;
@@ -160,21 +210,21 @@ export function nextStep(stats: Stats, opts: { sweepDone: boolean }): NextStep {
     return {
       kind: 'quiz',
       title: 'Learn the deviations',
-      why: `The deviation quiz is at ${pctDown(ipct)}%; get it to ${pctDown(INDEX_TARGET)}%.`,
+      why: `The deviation quiz is at ${goalPct(ipct)}; get it to ${pctDown(INDEX_TARGET)}%.`,
     };
   }
 
-  // 5. Counting.
-  const runs = stats.countDrill.history.slice(-COUNT_RUNS_JUDGED);
-  const right = runs.filter((r) => r.correct).length;
-  if (runs.length < COUNT_RUNS_JUDGED || right < COUNT_RUNS_NEEDED) {
+  // 5. Counting. F15: the same rule as the Drills picker's fluency nudge
+  // (drills/fluencyGate.ts): paced runs of at least a deck.
+  const fluency = countFluency(stats.countDrill.history);
+  if (!fluency.fluent) {
     return {
       kind: 'count',
       title: 'Practise counting',
       why:
-        runs.length < COUNT_RUNS_JUDGED
-          ? `${runs.length} of ${COUNT_RUNS_JUDGED} count drill runs done.`
-          : `${right} of your last ${COUNT_RUNS_JUDGED} count runs were right; aim for ${COUNT_RUNS_NEEDED}.`,
+        fluency.judged < COUNT_RUNS_JUDGED
+          ? `${fluency.judged} of ${COUNT_RUNS_JUDGED} count drill runs done (dealt at a set pace, a deck or more).`
+          : `${fluency.right} of your last ${COUNT_RUNS_JUDGED} count runs were right; aim for ${COUNT_RUNS_NEEDED}.`,
     };
   }
 

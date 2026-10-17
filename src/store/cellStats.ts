@@ -67,14 +67,124 @@ export function cellAfter(
     right: base.right + (event.correct ? 1 : 0),
     wrong: base.wrong + (event.correct ? 0 : 1),
     lastAt: event.at ?? fallbackAt ?? base.lastAt,
+    recent: pushRecent(base.recent, event.correct, CELL_WINDOW + WINDOW_SPARE),
   };
+}
+
+/* ---------------------------------------------------------------- */
+/* Wave A / W3: judge "weak" on recent results, not lifetime totals.  */
+/* ---------------------------------------------------------------- */
+
+/** Results a cell is judged on: enough to judge 78% (Auto Focus, "Fix weak cells"). */
+export const CELL_WINDOW = 10;
+/** Results a hand type is judged on: enough to judge the 90% category gate. */
+export const HAND_WINDOW = 30;
+/**
+ * Each stored window keeps this many results beyond the ones it is judged on,
+ * so "Wrong tap" restores the judged window exactly even once it is full:
+ * the push it withdraws dropped only the spare, never a judged result. One is
+ * enough because Wrong tap withdraws only the latest answer.
+ */
+export const WINDOW_SPARE = 1;
+
+export type HandPrefix = 'hard' | 'soft' | 'pair';
+
+/** The last `size` results of a stored window (oldest first); '' when absent. */
+function judgedWindow(recent: string | undefined, size: number): string {
+  return (recent ?? '').slice(-size);
+}
+
+/** The results a cell is judged on: the last CELL_WINDOW of its stored window. */
+export function cellWindow(t: CellTally | undefined): string {
+  return judgedWindow(t?.recent, CELL_WINDOW);
+}
+
+/** The results a hand type is judged on: the last HAND_WINDOW of its stored window. */
+export function handWindow(handRecent: Stats['handRecent'], prefix: HandPrefix): string {
+  return judgedWindow(handRecent?.[prefix], HAND_WINDOW);
+}
+
+/** `recent` with one more result on the end, trimmed to the last `max`. */
+export function pushRecent(recent: string | undefined, correct: boolean, max: number): string {
+  return ((recent ?? '') + (correct ? '1' : '0')).slice(-max);
+}
+
+/** `recent` with its last result removed (the inverse of pushRecent while untrimmed). */
+export function popRecent(recent: string | undefined): string | undefined {
+  if (!recent) return undefined;
+  const out = recent.slice(0, -1);
+  return out === '' ? undefined : out;
+}
+
+export function countBits(recent: string): { right: number; wrong: number } {
+  let right = 0;
+  for (const ch of recent) if (ch === '1') right += 1;
+  return { right, wrong: recent.length - right };
+}
+
+/**
+ * The right/wrong figure a cell is JUDGED on: its recent window once that
+ * holds at least `minSample` results, else the lifetime tally (a cell written
+ * before the window shipped, or one with only a handful of answers since).
+ */
+export function judgedTally(t: CellTally | undefined, minSample: number): { right: number; wrong: number } {
+  if (!t) return { right: 0, wrong: 0 };
+  const window = cellWindow(t);
+  if (window.length >= minSample) return countBits(window);
+  return { right: t.right, wrong: t.wrong };
+}
+
+/**
+ * The judged accuracy of a cell, 0..1, or undefined with no answers. Shared by
+ * Auto (cellSelection) and Home's "Fix weak cells", so the two agree on what
+ * is weak. The minimum sample matches Next step's MIN_CELL_ANSWERS.
+ */
+export function judgedAccuracy(t: CellTally | undefined, minSample = 5): number | undefined {
+  const { right, wrong } = judgedTally(t, minSample);
+  const n = right + wrong;
+  return n > 0 ? right / n : undefined;
+}
+
+/** The hand type a cell id belongs to. */
+export function handPrefixOf(cellId: string): HandPrefix | null {
+  const m = /^(hard|soft|pair)-/.exec(cellId);
+  return m ? (m[1] as HandPrefix) : null;
+}
+
+/** The recent-results window per hand type after a result on `cellId`. */
+export function handRecentAfter(
+  before: Stats['handRecent'],
+  cellId: string,
+  correct: boolean,
+): Stats['handRecent'] {
+  const prefix = handPrefixOf(cellId);
+  if (prefix === null) return before;
+  return { ...before, [prefix]: pushRecent(before?.[prefix], correct, HAND_WINDOW + WINDOW_SPARE) };
+}
+
+/**
+ * The inverse of handRecentAfter for "Wrong tap"; empty branches are removed.
+ * The judged window (handWindow) comes back exactly, full or not: once the
+ * stored window is full the push dropped only its spare result, which is the
+ * one thing not restored.
+ */
+export function handRecentUndone(current: Stats['handRecent'], cellId: string): Stats['handRecent'] {
+  const prefix = handPrefixOf(cellId);
+  if (prefix === null || !current) return current;
+  const next = { ...current };
+  const popped = popRecent(next[prefix]);
+  if (popped === undefined) delete next[prefix];
+  else next[prefix] = popped;
+  return Object.keys(next).length === 0 ? undefined : next;
 }
 
 /**
  * The inverse of `cellAfter` for "Wrong tap". `before` is the cell as it was
  * just before the answer (captured by the grader); with it the undo is exact,
- * date included. Without it the count is still reversed and the date kept.
- * A cell emptied by the undo is removed, as it was never written.
+ * date included. Without it the count is still reversed, the date kept, and
+ * the judged window (cellWindow) restored exactly -- only the stored spare
+ * result is lost once the window is full. A cell emptied by the undo is
+ * removed, as it was never written.
  */
 export function cellUndone(
   current: CellTally | undefined,
@@ -86,5 +196,9 @@ export function cellUndone(
   const right = event.correct ? Math.max(0, base.right - 1) : base.right;
   const wrong = event.correct ? base.wrong : Math.max(0, base.wrong - 1);
   if (right === 0 && wrong === 0) return null;
-  return { right, wrong, lastAt: before ? before.lastAt : base.lastAt };
+  const out: CellTally = { right, wrong, lastAt: before ? before.lastAt : base.lastAt };
+  // W3: the window as it was (exact with `before`), else the last result dropped.
+  const recent = before ? before.recent : popRecent(base.recent);
+  if (recent !== undefined) out.recent = recent;
+  return out;
 }

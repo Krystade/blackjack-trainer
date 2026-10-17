@@ -1,7 +1,7 @@
 import type { GradedEvent } from '../engine/grade';
 import type { Stats, TallyRW } from './types';
 import type { CellTally } from './cellStats';
-import { cellUndone } from './cellStats';
+import { cellUndone, handRecentUndone } from './cellStats';
 import { tallyCellIdFor } from './stats';
 
 /**
@@ -73,6 +73,10 @@ export function undoGradedEvent(stats: Stats, event: GradedEvent, cellBefore?: C
     else cellStats[cellId] = cell;
     if (Object.keys(cellStats).length === 0) delete result.cellStats;
     else result.cellStats = cellStats;
+    // W3: the per-hand-type window loses the same result.
+    const handRecent = handRecentUndone(stats.handRecent, cellId);
+    if (handRecent === undefined) delete result.handRecent;
+    else result.handRecent = handRecent;
   }
 
   result.mistakes = {

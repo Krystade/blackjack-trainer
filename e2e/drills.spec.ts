@@ -1706,9 +1706,10 @@ test('drills picker: advanced modes show a soft fluency nudge until fluent, but 
 });
 
 test('drills picker: no fluency nudge once the learner is fluent', async ({ page }) => {
+  // F15: the shared fluency rule counts paced runs of at least one deck.
   const history = Array.from({ length: 10 }, () => ({
     date: '2026-08-03T00:00:00.000Z',
-    cards: 20,
+    cards: 52,
     intervalMs: 800,
     correct: true,
   }));
@@ -1742,9 +1743,10 @@ test('count drill: turning distractions on before fluency says so, and still tur
 });
 
 test('count drill: a fluent learner gets no distraction nudge', async ({ page }) => {
+  // F15: the shared fluency rule counts paced runs of at least one deck.
   const history = Array.from({ length: 10 }, () => ({
     date: '2026-08-03T00:00:00.000Z',
-    cards: 20,
+    cards: 52,
     intervalMs: 800,
     correct: true,
   }));

@@ -38,19 +38,46 @@ describe('readiness', () => {
   });
 });
 
+describe('readiness index set (F11)', () => {
+  it('follows the profile: H17 17, S17 18 (11vA), and the Fab 4 on top', () => {
+    const s = structuredClone(EMPTY_STATS);
+    s.perIndex['11vA'] = { right: 1, wrong: 0 };
+    expect(readiness(s, { decks: 6, s17: false })).toMatchObject({ indicesTotal: 17, indicesKnown: 0 });
+    expect(readiness(s, { decks: 6, s17: true })).toMatchObject({ indicesTotal: 18, indicesKnown: 1 });
+    expect(readiness(s, { decks: 6, s17: true, surrenderIndices: true }).indicesTotal).toBe(18 + 4);
+  });
+});
+
 describe('weakestCategories', () => {
   it('ignores categories with too few attempts to mean anything', () => {
     // One miss out of one is not evidence of a weakness.
     expect(weakestCategories(withCats({ hard: { right: 0, wrong: 1 } }))).toEqual([]);
   });
 
-  it('lists the worst first', () => {
-    const s = withCats({
-      hard: { right: 9, wrong: 1 },
-      soft: { right: 5, wrong: 5 },
-      pairs: { right: 2, wrong: 8 },
-    });
-    expect(weakestCategories(s)).toEqual(['pairs', 'soft', 'hard']);
+  it('lists the worst first, and only categories below the 90% target (W13)', () => {
+    const s = structuredClone(EMPTY_STATS);
+    s.cellStats = {
+      'hard-16-v-10': { right: 9, wrong: 1, lastAt: '' }, // 90%: on target, not weak
+      'soft-18-v-9': { right: 5, wrong: 5, lastAt: '' },
+      'pair-8-v-A': { right: 2, wrong: 8, lastAt: '' },
+    };
+    expect(weakestCategories(s)).toEqual(['pairs', 'soft']);
+  });
+
+  it('reads hard/soft/pairs from the same judged figure as Next step (W3, F27)', () => {
+    const s = structuredClone(EMPTY_STATS);
+    // The old per-category tally says hard is weak; the cells and the recent
+    // window (what Next step and Stats judge on) say it is not.
+    s.categories.hard = { right: 1, wrong: 9 };
+    s.cellStats = { 'hard-16-v-10': { right: 20, wrong: 10, lastAt: '' } };
+    s.handRecent = { hard: '1'.repeat(30) };
+    expect(weakestCategories(s)).toEqual([]);
+    s.handRecent = { hard: '0'.repeat(10) + '1'.repeat(20) };
+    expect(weakestCategories(s)).toEqual(['hard']);
+  });
+
+  it('still names non-hand categories from their own tally', () => {
+    expect(weakestCategories(withCats({ wong: { right: 3, wrong: 7 } }))).toEqual(['wong']);
   });
 
   it('omits categories with no mistakes at all', () => {

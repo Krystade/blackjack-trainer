@@ -488,7 +488,19 @@ export interface Stats {
   masterySweepsCompleted?: number;
   // B3 (spec 2026-10-13): per-cell accuracy, keyed by chart cellId, written
   // by every hand drill and Play. `lastAt` is an ISO date. Absent = no data.
-  cellStats?: Record<string, { right: number; wrong: number; lastAt: string }>;
+  cellStats?: Record<
+    string,
+    {
+      right: number;
+      wrong: number;
+      lastAt: string;
+      // Wave A / W3: the cell's last CELL_WINDOW results (plus one spare so
+      // Wrong tap undoes exactly, cellStats.ts WINDOW_SPARE), oldest first,
+      // '1' right and '0' wrong. "Weak" is judged on this, not the lifetime
+      // tally. Absent on cells written before it shipped.
+      recent?: string;
+    }
+  >;
   countDrill: {
     history: {
       date: string;
@@ -592,7 +604,14 @@ export interface Stats {
   // component. Optional and absent on every row written before V3-5, which is
   // exactly what filterByRange's undated rule already handles: kept on "all
   // time", dropped from a bounded range rather than silently counted inside it.
-  latencyHistory: { category: Category; elapsedMs: number; date?: string }[];
+  latencyHistory: {
+    category: Category;
+    elapsedMs: number;
+    date?: string;
+    // Wave A (s10): whether the answer was right, so hand accuracy can answer
+    // the Stats range picker. Absent on rows written before it shipped.
+    correct?: boolean;
+  }[];
   // D1 part 1 (docs/BACKLOG.md, distraction training): telemetry for the
   // mid-drill interruption generator (drills/distraction.ts). This part is
   // additive-only -- nothing writes to this history yet; part 2 wires the
@@ -725,6 +744,12 @@ export interface Stats {
       date?: string;
     }[];
   };
+  // Wave A / W3: the last HAND_WINDOW hand-decision results per hand type
+  // (from cellStats' cell prefix; plus one spare, cellStats.ts WINDOW_SPARE),
+  // oldest first, '1' right and '0' wrong.
+  // Home's "Learn basic strategy" gate is judged on this window so mistakes
+  // made while learning age out. Absent = none recorded since it shipped.
+  handRecent?: { hard?: string; soft?: string; pair?: string };
 }
 
 export const EMPTY_STATS: Stats = {

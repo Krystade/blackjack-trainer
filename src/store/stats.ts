@@ -1,6 +1,6 @@
 import type { Category, GradedEvent } from '../engine/grade';
 import type { Stats, TallyRW } from './types';
-import { cellAfter, cellIdForEvent } from './cellStats';
+import { cellAfter, cellIdForEvent, handRecentAfter } from './cellStats';
 
 /**
  * Wave A F4: the chart cell an event is tallied under in `cellStats`, or null.
@@ -141,6 +141,8 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
         cellStatsCopied = true;
       }
       result.cellStats![cellId] = cellAfter(result.cellStats![cellId], event, fallbackAt);
+      // W3: the per-hand-type recent window Home's category gate reads.
+      result.handRecent = handRecentAfter(result.handRecent, cellId, event.correct);
     }
 
     // Update mistakes tally by classification
@@ -164,6 +166,8 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
         category: event.category,
         elapsedMs: event.elapsedMs,
         ...(event.at === undefined ? {} : { date: event.at }),
+        // s10: lets Stats window hand accuracy by the range picker.
+        correct: event.correct,
       });
     }
 

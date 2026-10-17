@@ -305,7 +305,7 @@ function App() {
   const body = (() => {
     switch (screen) {
       case 'home':
-        return <Home onNavigate={navigate} activeProfile={activeProfile} />;
+        return <Home onNavigate={navigate} activeProfile={activeProfile} settings={settings} onSettingsChange={setSettings} />;
       case 'table':
         // The key forces a remount whenever the active profile's CONTENT changes,
         // not merely when a different profile is selected. useGame builds its Game
