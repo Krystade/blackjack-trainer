@@ -674,6 +674,11 @@ export interface Stats {
       correct: boolean;
     }[];
   };
+  // Wave B B4 (contract 1): one row per Bet sizing answer. `taken`/`correct`
+  // are units, or 'sit'. Optional: absent = no history (EMPTY_STATS unchanged).
+  betSizing?: {
+    history: { date: string; rc: number; decksRemaining: number; tc: number; taken: number | 'sit'; correct: number | 'sit'; ok: boolean }[];
+  };
   // ET1 (docs/BACKLOG.md, tilt-inoculation Downswing): one row per completed
   // session (V3-1 fix — the session used to persist nothing). `correct`/`total`
   // are the bets that matched the ramp; `drawdown` the units lost. Migration-safe.

@@ -85,7 +85,8 @@ import { CountDrillView } from './drills/CountDrillView';
 import { TrueCountDrillView } from './drills/TrueCountDrillView';
 import { ProduceTcDrillView } from './drills/ProduceTcDrillView';
 import { PairCancelView } from './drills/PairCancelView';
-import { BetSitLeaveView } from './drills/BetSitLeaveView';
+import { BetSizingView } from './drills/BetSizingView';
+import { RulesDiffView } from './drills/RulesDiffView';
 import { DeckEstimationView } from './drills/DeckEstimationView';
 import { MasteryChallengeView } from './drills/MasteryChallengeView';
 import { HandDeckControls } from './drills/HandDeckControls';
@@ -2943,7 +2944,8 @@ type DrillMode =
   | 'quiz'
   | 'mixed'
   | 'paircancel'
-  | 'betsitleave'
+  | 'betsizing'
+  | 'rulesdiff'
   | 'producetc'
   | 'mastery'
   | 'custom'
@@ -3084,15 +3086,8 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   if (mode === 'paircancel') {
     return <PairCancelView settings={settings} onBack={() => setMode('picker')} />;
   }
-  if (mode === 'betsitleave') {
-    return (
-      <BetSitLeaveView
-        settings={settings}
-        activeProfile={activeProfile}
-        onBack={() => setMode('picker')}
-      />
-    );
-  }
+  if (mode === 'betsizing') return <BetSizingView settings={settings} activeProfile={activeProfile} onBack={() => setMode('picker')} />;
+  if (mode === 'rulesdiff') return <RulesDiffView settings={settings} activeProfile={activeProfile} onBack={() => setMode('picker')} />;
 
   // V3-4: SOFT competence gating — advanced pressure modes still work, but show
   // a "get fluent first" nudge until the learner has demonstrated basic
@@ -3156,9 +3151,10 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         {entry('mastery', 'Mastery challenge', 'Every basic-strategy hand once, with no mistakes. One miss starts the sweep over.')}
         {entry('custom', 'Custom', 'Paint the chart cells you want, then drill just those in Flashcards, Mastery or Mixed.')}
         {entry('speed', 'Speed', 'Yes or no, against the clock: Surrender? Deviation here? Double? Split?')}
+        {entry('rulesdiff', 'Rules differences', 'Only the plays that change between H17 and S17, 6 and 8 decks, or another game.')}
 
         <h2 className="drills-group-title">Under pressure</h2>
-        {entry('betsitleave', 'Bet or sit', 'From the true count and the shoe, choose to bet or sit out.', true)}
+        {entry('betsizing', 'Bet sizing', 'Read the running count and the tray, then bet your ramp, or sit out.', true)}
       </div>
       <button type="button" className="drills-back-btn" onClick={() => onNavigate('home')}>
         Back to Home

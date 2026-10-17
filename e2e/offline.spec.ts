@@ -395,10 +395,10 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
   await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
 
-  // --- Bet or sit ---------------------------------------------------------
-  await page.getByRole('button', { name: 'Bet or sit', exact: true }).click();
-  await expect(page.locator('.drill-heading')).toHaveText('Bet or sit');
-  await page.locator('.bsl-answers .action-btn').first().click();
+  // --- Bet sizing ---------------------------------------------------------
+  await page.getByRole('button', { name: 'Bet sizing', exact: true }).click();
+  await expect(page.locator('.drill-heading')).toHaveText('Bet sizing');
+  await page.locator('.bet-sizing-answers button').first().click();
   await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
 
