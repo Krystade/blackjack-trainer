@@ -63,3 +63,33 @@ describe('CSS custom properties', () => {
     expect(undefinedVars, 'map these to theme tokens (themes.css)').toEqual([]);
   });
 });
+
+/**
+ * SECONDARY TEXT IS NOT FADED TWICE.
+ *
+ * `--ink-dim` is already the dimmed ink, tuned to clear AA (4.5:1) in every
+ * theme with little to spare: about 6.2:1 in Bone & Ink and AMOLED Night. A
+ * rule that also sets `opacity: 0.8` on it lands at 3.96:1 and 4.22:1 -- the
+ * Test Kit's why/note text did exactly that once --ink-muted was mapped to
+ * --ink-dim, and the count drill's voice hint had done it all along.
+ */
+describe('dimmed text', () => {
+  it('no rule colours text --ink-dim and then lowers its opacity', () => {
+    const offenders: string[] = [];
+    let rules = 0;
+    for (const file of walk(SRC).filter((f) => f.endsWith('.css'))) {
+      const css = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        const body = m[2]!;
+        if (!/(?:^|[;\s])color\s*:\s*var\(--ink-dim\)/.test(body)) continue;
+        rules += 1;
+        const op = /(?:^|[;\s])opacity\s*:\s*([\d.]+)/.exec(body);
+        if (op && Number(op[1]) < 1) {
+          offenders.push(`${m[1]!.trim().replace(/\s+/g, ' ')} (opacity ${op[1]})`);
+        }
+      }
+    }
+    expect(rules, 'the scan found no --ink-dim text at all').toBeGreaterThan(5);
+    expect(offenders, 'drop the opacity: --ink-dim is already dimmed').toEqual([]);
+  });
+});

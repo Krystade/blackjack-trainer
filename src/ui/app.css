@@ -3475,7 +3475,6 @@ button {
   text-align: center;
   font-size: 0.8rem;
   color: var(--ink-dim);
-  opacity: 0.8;
 }
 
 .selfreport-zone {
@@ -4574,7 +4573,6 @@ details.stats-section > summary::after {
 .testkit-note {
   margin: 0;
   color: var(--ink-dim);
-  opacity: 0.8;
   font-size: 0.9rem;
 }
 .testkit-title {
