@@ -74,6 +74,10 @@ export interface MistakeCardProps {
   /** Extra detail rendered under the correction — the drills pass the chart
    * cell id / index label, which names the exact row being learned. */
   footnote?: string;
+  /** 'table' docks the panel in the table's wrong-play sheet: one header
+   * line ("Wrong play" + the error kind) and the chart as a quiet link, so
+   * the gold Continue below it is the only primary action. */
+  variant?: 'drill' | 'table';
 }
 
 export function MistakeCard({
@@ -87,7 +91,9 @@ export function MistakeCard({
   onShowTable,
   onNext,
   footnote,
+  variant = 'drill',
 }: MistakeCardProps) {
+  const isTable = variant === 'table';
   const expectedLetter = letterFor(expected);
   const copy =
     classification && classification !== 'correct' ? CLASS_COPY[classification] : undefined;
@@ -126,7 +132,7 @@ export function MistakeCard({
   }
 
   return (
-    <div className="mistake-card" role="alert">
+    <div className={isTable ? 'mistake-card mistake-card-table' : 'mistake-card'} role="alert">
       <div className="mistake-head">
         {/* `result-wrong` is kept alongside the panel's own class: it is the
             app-wide marker for "this answer was wrong", relied on by the e2e
@@ -138,7 +144,7 @@ export function MistakeCard({
             nothing was answered wrongly -- but `result-wrong` stays either way:
             it is the app-wide marker for a graded miss and the e2e specs' one
             stable hook for it. Only the word changes. */}
-        <span className="mistake-verdict result-wrong">{timedOut ? 'Too slow' : 'Wrong'}</span>
+        <span className="mistake-verdict result-wrong">{timedOut ? 'Too slow' : isTable ? 'Wrong play' : 'Wrong'}</span>
         {copy && <span className="mistake-class">{copy.label}</span>}
       </div>
 
@@ -168,7 +174,11 @@ export function MistakeCard({
       {(onShowTable || onNext) && (
         <div className="mistake-actions">
           {onShowTable && (
-            <button type="button" className="mistake-table-btn" onClick={onShowTable}>
+            <button
+              type="button"
+              className={isTable ? 'mistake-table-btn mistake-table-link' : 'mistake-table-btn'}
+              onClick={onShowTable}
+            >
               Show on chart
             </button>
           )}

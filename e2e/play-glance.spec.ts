@@ -172,3 +172,79 @@ for (const theme of THEMES) {
     await shot(page, `b5-banner-${theme}`);
   });
 }
+
+async function makeWrongPlay(page: Page): Promise<void> {
+  const bar = page.locator('.action-bar[data-advice]');
+  const advice = await bar.getAttribute('data-advice');
+  const enabled = bar.locator('button.action-btn:not([disabled])');
+  const n = await enabled.count();
+  for (let i = 0; i < n; i++) {
+    if ((await enabled.nth(i).innerText()).trim().toLowerCase() !== advice) { await enabled.nth(i).click(); return; }
+  }
+  throw new Error('no legal wrong action');
+}
+
+function lum([r, g, b]: number[]): number {
+  const f = (v: number) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * f(r!) + 0.7152 * f(g!) + 0.0722 * f(b!);
+}
+/** Worst-case contrast of an element's text against every background it can sit on (opaque ancestor colour plus any gradient stops on the way up). */
+async function worstContrast(page: Page, sel: string): Promise<number> {
+  const got = await page.locator(sel).first().evaluate((el) => {
+    const nums = (s: string) => (s.match(/[\d.]+/g) ?? []).map(Number);
+    const grounds: number[][] = [];
+    for (let e: Element | null = el; e; e = e.parentElement) {
+      const cs = getComputedStyle(e);
+      for (const m of cs.backgroundImage.match(/rgba?\([^)]+\)/g) ?? []) grounds.push(nums(m));
+      const bg = nums(cs.backgroundColor);
+      if (bg.length === 3 || (bg[3] ?? 0) > 0.9) { grounds.push(bg); break; }
+    }
+    return { color: nums(getComputedStyle(el).color), grounds };
+  });
+  return Math.min(...got.grounds.map((g) => { const [a, b] = [lum(got.color), lum(g)].sort((x, y) => y - x); return (a! + 0.05) / (b! + 0.05); }));
+}
+
+test('B5/W6: one header line, gold Continue below y=650, chart as a link', async ({ page }) => {
+  await withSettings(page, { feedbackMode: 'training', countCheckEvery: 0, dealSpeedMs: 0 });
+  await withProfile(page, { seats: SOLO });
+  await dealPlayerTurn(page);
+  await makeWrongPlay(page);
+  const sheet = page.locator('.wrong-play-sheet');
+  await expect(sheet).toBeVisible();
+  await expect(page.locator('.modal-title')).toHaveCount(0);
+  await expect(sheet.locator('.mistake-verdict')).toHaveText('Wrong play');
+  const v = (await sheet.locator('.mistake-verdict').boundingBox())!;
+  const k = (await sheet.locator('.mistake-class').boundingBox())!;
+  expect(Math.abs(v.y + v.height / 2 - (k.y + k.height / 2))).toBeLessThanOrEqual(4);
+  expect((await sheet.locator('.mistake-head').boundingBox())!.height).toBeLessThanOrEqual(36);
+  const cont = page.getByRole('button', { name: 'Continue', exact: true });
+  const box = (await cont.boundingBox())!;
+  expect(box.y).toBeGreaterThan(650);
+  expect(box.y + box.height).toBeLessThanOrEqual(812);
+  expect(box.height).toBeGreaterThanOrEqual(48);
+  const { bg, accent } = await cont.evaluate((el) => {
+    const probe = document.createElement('div'); probe.style.color = 'var(--accent)'; document.body.appendChild(probe);
+    const accent = getComputedStyle(probe).color; probe.remove();
+    return { bg: getComputedStyle(el).backgroundColor, accent };
+  });
+  expect(bg).toBe(accent);
+  const link = sheet.getByRole('button', { name: 'Show on chart', exact: true });
+  await expect(link).toBeVisible();
+  expect(await link.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+  await cont.click();
+  await expect(sheet).toHaveCount(0);
+});
+
+for (const theme of THEMES) {
+  test(`B5/W6: ${theme}: the wrong-play card passes AA`, async ({ page }) => {
+    await withSettings(page, { theme, feedbackMode: 'training', countCheckEvery: 0, dealSpeedMs: 0 });
+    await withProfile(page, { seats: SOLO });
+    await dealPlayerTurn(page);
+    await makeWrongPlay(page);
+    for (const sel of ['.mistake-verdict', '.mistake-class', '.mistake-play-role', '.mistake-play-value', '.mistake-tc', '.mistake-table-link', '.overlay-continue-btn']) {
+      const ratio = await worstContrast(page, `.wrong-play-sheet ${sel}`);
+      expect(ratio, `${theme} ${sel} ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+    await shot(page, `b5-wrong-play-${theme}`);
+  });
+}

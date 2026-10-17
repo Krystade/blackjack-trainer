@@ -33,7 +33,6 @@ import { enableAudioNow } from '../audioGate';
 import { PlayingCard, formatCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
 import type { ActionBarMode } from '../components/ActionBar';
-import { Modal } from '../components/Modal';
 import { BottomSheet } from '../components/BottomSheet';
 import { DiscardTray } from '../components/DiscardTray';
 import { PeekButton } from '../components/PeekButton';
@@ -1102,13 +1101,22 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       )}
 
       {overlay && (
-        <Modal title="Wrong play">
+        // Docked to the bottom rather than a centred Modal: the hands stay
+        // visible above it and Continue lands in the thumb zone.
+        <div
+          className="modal-backdrop wrong-play-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Wrong play"
+        >
+          <div className="wrong-play-sheet">
           {/* Same panel the drills use, so a correction reads identically
               wherever it is earned -- the table and the flashcards were
               previously two different vocabularies for the same event. */}
           <MistakeCard
             taken={overlay.taken}
             expected={overlay.expected}
+            variant="table"
             reason={overlay.reason}
             tc={overlay.tc}
             hand={overlay.hand}
@@ -1122,7 +1130,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           <button type="button" className="overlay-continue-btn" onClick={dismissOverlay}>
             Continue
           </button>
-        </Modal>
+          </div>
+        </div>
       )}
 
       {showChart && overlay && (
