@@ -82,6 +82,9 @@ export interface Settings {
     // 0 keeps quiz behavior unchanged out of the box; the UI only offers
     // 0/25/50 but any 0-100 value is valid.
     quizDistractorPct: number;
+    // B3: what the Deviation quiz asks -- the play at a shown count ('play'),
+    // or the index itself for a shown hand ('index'). Absent = 'play'.
+    quizAsk?: 'play' | 'index';
     // R2 (docs/BACKLOG.md, accuracy-gated difficulty): when true, the Timed
     // Challenge picks its starting pace from drills/competenceGate.ts's
     // computeUnlockedTier (the fastest tier the user has recently been

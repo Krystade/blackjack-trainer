@@ -75,6 +75,8 @@ import { detectVoiceSupport, VOICE_ACTIONS } from '../../audio/voiceRecognition'
 import { BLIND_TAP_CHANNEL, SCREEN_CHANNEL, VOICE_CHANNEL } from '../../drills/spacedRepetition';
 import type { AnswerChannel } from '../../drills/spacedRepetition';
 import { DrillModeControls } from './drills/DrillModeControls';
+import { QuizAskSwitch } from './drills/QuizAskSwitch';
+import { IndexTestView } from './drills/IndexTestView';
 import type { VoiceAction } from '../../audio/voiceRecognition';
 import { cancelSpeech, speak } from '../../audio/speech';
 import { speechOptsFrom } from '../../audio/speechOpts';
@@ -1870,6 +1872,7 @@ function DeviationQuizView({
       </div>
 
       <div className="drill-inline-controls" ref={controlsRef}>
+        <QuizAskSwitch settings={settings} onSettingsChange={onSettingsChange} />
         <label className="settings-row">
           <span className="settings-label">Index</span>
           <select
@@ -2895,6 +2898,17 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     );
   }
   if (mode === 'quiz') {
+    // B3: the quiz asks either the play (as ever) or the index.
+    if (settings.drill.quizAsk === 'index') {
+      return (
+        <IndexTestView
+          settings={settings}
+          activeProfile={activeProfile}
+          onBack={() => setMode('picker')}
+          onSettingsChange={onSettingsChange}
+        />
+      );
+    }
     return (
       <DeviationQuizView
         settings={settings}

@@ -1,0 +1,84 @@
+/* B3: the Index test inside the Deviation quiz. */
+
+/* The question. A fixed height so the hand below does not move between
+   "Index to stand?" and "Insurance index?". */
+.index-test-ask {
+  min-height: 1.9rem;
+  margin: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: center;
+}
+
+/* What voice or the wheel has proposed, waiting for "yes". */
+.index-test-pending {
+  margin: 2px auto 0;
+  font-size: 1.3rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  text-align: center;
+}
+
+.index-test-screen .message-strip .result-strip {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.index-test-result {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+}
+
+.index-test-verdict {
+  font-weight: 700;
+}
+
+.index-test-right-index,
+.index-test-play-line {
+  font-variant-numeric: tabular-nums;
+}
+
+.index-test-review {
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+/* The dealer's card beside the hand rather than above it: the Index test
+   answers on a full keypad, which a stacked table pushes off a 375x812
+   phone. */
+.index-test-table {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 1.25rem;
+}
+.index-test-table .dealer-area,
+.index-test-table .hands-row {
+  padding: 0.25rem;
+  min-height: 0;
+}
+.index-test-table .player-hand {
+  padding: 0;
+}
+
+/* A little tighter than the shared drill layout, for the same reason: the
+   prompt, the table, a miss strip and the keypad share one phone screen. */
+.index-test-screen .drill-inline-controls {
+  padding-bottom: 0.25rem;
+}
+.index-test-screen .message-strip {
+  padding-top: 0;
+}
+.index-test-screen .numpad {
+  gap: 0.4rem;
+}
+.index-test-screen .numpad-display {
+  padding: 0.2rem;
+}
