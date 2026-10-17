@@ -131,3 +131,30 @@ test('copying the answer shown after a miss holds the index at "soon"; a later r
   }
   expect(copies).toBe(2);
 });
+
+/**
+ * #28: with an iPhone 13 mini's insets (47px status bar, 34px home indicator)
+ * a miss strip must not push OK into the home-indicator zone. Headless has no
+ * env() insets, so both are injected: --safe-top as the app's own variable and
+ * the keypad's env(safe-area-inset-bottom) padding as 34px.
+ */
+test('with notch insets, OK stays above the home indicator after a miss', async ({ page }) => {
+  await page.addInitScript(() => {
+    const add = () => {
+      const s = document.createElement('style');
+      s.textContent = ':root{--safe-top:47px !important} .numpad{padding-bottom:calc(var(--space-3) + 34px) !important}';
+      document.head.appendChild(s);
+    };
+    if (document.head) add();
+    else document.addEventListener('DOMContentLoaded', add);
+  });
+  await openIndexTest(page);
+  for (let i = 0; i < 4; i++) {
+    const { index } = await asked(page);
+    await typeIndex(page, index + 5);
+    await expect(page.getByTestId('result-strip')).toHaveAttribute('data-tone', 'miss');
+    const ok = (await page.getByRole('button', { name: 'OK', exact: true }).boundingBox())!;
+    expect(ok.y + ok.height, `item ${i}: OK bottom`).toBeLessThanOrEqual(812 - 34);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight), `item ${i}: page height`).toBeLessThanOrEqual(812);
+  }
+});

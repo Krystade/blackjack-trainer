@@ -14,16 +14,6 @@
   text-align: center;
 }
 
-/* What voice or the wheel has proposed, waiting for "yes". */
-.index-test-pending {
-  margin: 2px auto 0;
-  font-size: 1.3rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-  text-align: center;
-}
-
 .index-test-screen .message-strip .result-strip {
   width: 100%;
   box-sizing: border-box;
