@@ -615,6 +615,35 @@ test('the shuffle message appears on the round after the cut card is reached', a
 });
 
 /**
+ * Wave A (s06): the bet on the round after the cut card was graded at the
+ * reshuffled TC 0 with no warning. The cut card is now announced as the round
+ * that reached it settles -- before the bet -- and the deal then shuffles.
+ */
+test('the cut card is announced before the bet that the shuffle will grade', async ({ page }) => {
+  await withProfile(page, { name: 'Shuffle E2E Profile', rules: { decks: 1 }, penetration: 0.1 });
+  await page.goto('/?seed=3&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+
+  const cue = page.getByTestId('cut-card-cue');
+  await expect(cue).toHaveCount(0);
+  let warned = false;
+  for (let round = 0; round < 6 && !warned; round += 1) {
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await resolveInsurance(page, false);
+    if (await page.locator('.action-bar[data-advice]').isVisible().catch(() => false)) {
+      await playRoundByAdvice(page);
+    }
+    await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
+    warned = await cue.isVisible().catch(() => false);
+  }
+  expect(warned, 'expected the cut card to be announced between rounds').toBe(true);
+  await expect(page.locator('.message-shuffle')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await expect(page.locator('.message-shuffle')).toHaveText('Shuffling…');
+});
+
+/**
  * RV7: the other half of R5's wong decision.
  *
  * Dealing in at a count the spread says to leave used to produce exactly one

@@ -1177,6 +1177,23 @@ describe('reshuffle', () => {
     expect(game.runningCount).toBe(-1);
   });
 
+  it('shuffleDue says so between rounds, before the bet that the shuffle will grade at TC 0', () => {
+    const game = Game.withRiggedShoe(
+      cfg({ penetration: 0.5, betSpreadOn: true }),
+      rig('10', '10', '6', '10', '7', '9', '8', '7'),
+    );
+    expect(game.shuffleDue).toBe(false);
+    game.startRound(1);
+    game.act('stand');
+    // Settled past the cut card: the table can warn before the next bet.
+    expect(game.shuffleDue).toBe(true);
+    game.startRound(1);
+    expect(game.shuffledLastRound).toBe(true);
+    // The bet is graded at the fresh shoe's count -- the count the warning named.
+    const bets = game.events.filter((e) => e.kind === 'bet');
+    expect(bets[bets.length - 1].tc).toBe(0);
+  });
+
   it('shuffledLastRound is false when the cut card was not reached', () => {
     const game = Game.withRiggedShoe(cfg(), rig('10', '9', '6', '8', '5'));
     game.startRound();

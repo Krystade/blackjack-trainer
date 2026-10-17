@@ -1,0 +1,8 @@
+/* Wave A (lane A1): table cues that read the engine between rounds. */
+
+/* The cut card is out: the next deal shuffles, so the bet about to be placed
+   is off the top at a count of 0. Said BEFORE the bet, not after it. */
+.message-cut-card {
+  color: var(--accent);
+  font-weight: 600;
+}

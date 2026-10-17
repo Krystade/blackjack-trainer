@@ -250,6 +250,10 @@ function narrateSettlement(game: Game, audio: AudioApi): void {
       );
     }
   }
+
+  // s06: the cut card came out this round, so the next bet goes into a fresh
+  // shoe. Said now, before that bet, as the screen says it.
+  if (game.shuffleDue) audio.say(narrateShuffle());
 }
 
 /** What the player asked for when an owed count check interrupted it (#36).

@@ -49,6 +49,7 @@ import { playLabel } from '../playLabel';
 import { LosingShoeBadge } from '../components/LosingShoeBadge';
 import './tableSeats.css';
 import './tableTopbar.css';
+import './tableCues.css';
 
 type BotActionLogEntry = Game['botActionLog'][number];
 
@@ -941,6 +942,13 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           </ResultStrip>
         )}
         {game.shuffledLastRound && <div className="message-shuffle">Shuffling…</div>}
+        {/* s06: the cut card is out, so the next deal shuffles. Said before the
+            bet, because that bet is graded at the fresh shoe's count of 0. */}
+        {game.roundNo > 0 && (game.phase === 'idle' || game.phase === 'settled') && game.shuffleDue && (
+          <div className="message-cut-card" data-testid="cut-card-cue">
+            Cut card: the next hand is off a fresh shoe, count 0.
+          </div>
+        )}
         {botNarrationLines.map((line, i) => (
           <div key={i} className="message-bot-narration">
             {line}

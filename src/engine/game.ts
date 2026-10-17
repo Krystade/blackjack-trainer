@@ -419,6 +419,20 @@ export class Game {
   }
 
   /**
+   * The next round (staked or sat out) will shuffle before it deals: the cut
+   * card is out, or the shoe is too shallow for a full round (see
+   * beginRound). Read BETWEEN rounds so the table can say so before the bet
+   * is placed -- the bet is then graded at the fresh shoe's count, which is
+   * the count the player was told they were betting into (Wave A, s06).
+   */
+  get shuffleDue(): boolean {
+    const totalHands = this.seatCfg.bots + this.seatCfg.playerHands;
+    const needed = 4 * totalHands + 20;
+    const tooShallow = !this.shoeIsRigged && this.shoe.cardsRemaining < needed;
+    return this.shoe.cutCardReached || tooShallow;
+  }
+
+  /**
    * Round-start bookkeeping + the pre-deal depth/cut-card reshuffle guard,
    * shared by startRound (staked) and sitOut (wong-out). Extracted so a
    * sit-out round advances the shoe, cut card and running-count reset on
@@ -443,10 +457,7 @@ export class Game {
     // configured playerHands even on a sit-out (conservative: a sit-out deals
     // strictly fewer cards, so a shoe deep enough for a full round is deep
     // enough to sit out).
-    const totalHands = this.seatCfg.bots + this.seatCfg.playerHands;
-    const needed = 4 * totalHands + 20;
-    const tooShallow = !this.shoeIsRigged && this.shoe.cardsRemaining < needed;
-    if (this.shoe.cutCardReached || tooShallow) {
+    if (this.shuffleDue) {
       this.shoe.shuffle();
       this.runningCount = 0;
       this.shuffledLastRound = true;
