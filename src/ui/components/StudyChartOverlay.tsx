@@ -1,4 +1,5 @@
 import './studyChartOverlay.css';
+import './insetLayers.css';
 import type { Card, Rank } from '../../engine/cards';
 import type { Profile } from '../../store/types';
 import { Charts, highlightForHand } from '../screens/Charts';

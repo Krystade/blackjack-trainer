@@ -76,3 +76,33 @@ test('the harness default stays quiet', async ({ page }) => {
   await expect(page.locator('.action-bar')).toBeVisible();
   await expect(page.getByTestId('chart-intro')).toHaveCount(0);
 });
+
+/**
+ * #54: step 1 teaches the lookup order (a pair, then an ace as 11, then hard),
+ * but the charts run Hard, Soft, Pairs top to bottom -- so it says where each
+ * one is. #55: at rest the card's own Start quiz is on screen, so no floating
+ * pill covers the cell-code legend; it appears once that button has scrolled
+ * away, and it points forward, not back.
+ */
+test('step 1 points to where each chart is; the floating Start quiz waits until it is needed and points forward', async ({ page }) => {
+  await page.goto('/?e2e=1&intro=1');
+  await openFlashcards(page);
+  const intro = page.getByTestId('chart-intro');
+  await expect(intro).toBeVisible();
+  const sections = await intro.locator('[data-section]').evaluateAll((els) => els.map((e) => e.getAttribute('data-section')));
+  expect(sections.slice(0, 3)).toEqual(['HARD', 'SOFT', 'PAIRS']);
+  const step1 = intro.locator('.chart-intro-card li').first();
+  await expect(step1).toContainText('Pairs (the last chart)');
+  await expect(step1).toContainText('Hard totals (the first chart)');
+
+  // At rest: no pill over the legend.
+  await expect(page.locator('.floating-back-pill')).toHaveCount(0);
+  // Scrolled past the card: the pill is there, and it reads forward.
+  await intro.evaluate((el) => { el.scrollTop = 900; });
+  const pill = page.locator('.floating-back-pill');
+  await expect(pill).toBeVisible();
+  await expect(pill).toHaveText(/^Start quiz\s*→$/);
+  await pill.click();
+  await expect(page.getByTestId('chart-intro')).toHaveCount(0);
+  await expect(page.locator('.action-bar')).toBeVisible();
+});

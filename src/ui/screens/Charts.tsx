@@ -161,9 +161,10 @@ interface ChartsProps {
    * header. 'floating' is the study overlay's (#2): a pill pinned
    * bottom-centre that stays on screen however far the grids are scrolled,
    * because the cell being studied is often PAIRS, a long way below a header
-   * Back.
+   * Back. 'none' draws no Back at all: the first-run intro (B7) places its
+   * own Start quiz.
    */
-  backPlacement?: 'topbar' | 'floating';
+  backPlacement?: 'topbar' | 'floating' | 'none';
   /** B7: the Back button's whole label, in place of "Back to <backLabel>". */
   backText?: string;
 }

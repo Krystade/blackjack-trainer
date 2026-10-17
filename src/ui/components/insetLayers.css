@@ -1,0 +1,45 @@
+/*
+ * #2 / #51: the chart intro and the study chart overlay are fixed scroll
+ * layers padded by the status-bar inset (--safe-top). A sticky bar inside such
+ * a layer measures its `top` from inside that padding, so the shared
+ * `top: var(--safe-top)` on .drill-topbar and .charts-topbar counted the inset
+ * twice: on a 13 mini the bars pinned at 94px, not 47px, and their ::before
+ * covers (one inset tall, above the bar) landed over content -- the intro's
+ * heading and the bottom of Start quiz.
+ *
+ * Inside these layers the bars pin at the padding edge (top: 0), which is the
+ * status-bar line. The layer covers the status band itself, once, with a fixed
+ * strip, so scrolled chart text never paints under the clock whichever bar is
+ * pinned (the intro's drill bar scrolls away with the card above the chart).
+ * The bars' own covers are then not needed, and in the intro they would sit
+ * over the card above the Charts bar.
+ */
+.chart-intro .drill-topbar,
+.chart-intro .charts-topbar,
+.study-chart-overlay .charts-topbar {
+  top: 0;
+}
+
+/* The ringed cell's note pins under the Charts bar, so it drops the inset too. */
+.chart-intro .charts-note,
+.study-chart-overlay .charts-note {
+  top: var(--charts-bar-h);
+}
+
+.chart-intro .drill-topbar::before,
+.chart-intro .charts-topbar::before,
+.study-chart-overlay .charts-topbar::before {
+  height: 0;
+}
+
+.chart-intro::before,
+.study-chart-overlay::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--safe-top, 0px);
+  z-index: 20;
+  background: var(--bg);
+}
