@@ -3262,7 +3262,15 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   if (mode === 'paircancel') {
     return <PairCancelView settings={settings} onBack={() => setMode('picker')} />;
   }
-  if (mode === 'betsizing') return <BetSizingView settings={settings} activeProfile={activeProfile} onBack={() => setMode('picker')} />;
+  if (mode === 'betsizing')
+    return (
+      <BetSizingView
+        settings={settings}
+        activeProfile={activeProfile}
+        onSettingsChange={onSettingsChange}
+        onBack={() => setMode('picker')}
+      />
+    );
   if (mode === 'rulesdiff') return <RulesDiffView settings={settings} activeProfile={activeProfile} onBack={() => setMode('picker')} />;
 
   // V3-4: SOFT competence gating — advanced pressure modes still work, but show

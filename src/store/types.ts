@@ -713,7 +713,21 @@ export interface Stats {
   // Wave B B4 (contract 1): one row per Bet sizing answer. `taken`/`correct`
   // are units, or 'sit'. Optional: absent = no history (EMPTY_STATS unchanged).
   betSizing?: {
-    history: { date: string; rc: number; decksRemaining: number; tc: number; taken: number | 'sit'; correct: number | 'sit'; ok: boolean }[];
+    history: {
+      date: string;
+      rc: number;
+      decksRemaining: number;
+      tc: number;
+      taken: number | 'sit';
+      correct: number | 'sit';
+      ok: boolean;
+      /**
+       * C-R1: set on a row answered eyes-free from the wheel, where the app
+       * PROPOSED a bet and the driver said yes (forward) or no (back). `taken`
+       * is then the proposal; `ok` is whether the yes/no was right.
+       */
+      saidYes?: boolean;
+    }[];
   };
   // ET1 (docs/BACKLOG.md, tilt-inoculation Downswing): one row per completed
   // session (V3-1 fix — the session used to persist nothing). `correct`/`total`
