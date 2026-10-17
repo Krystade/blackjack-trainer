@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_STATS } from '../../store/types';
 import { isCountFluent } from '../../drills/fluencyGate';
 import { ladder } from './nextStep';
-import { NOW, iso, flags, runs, deckRows, tcRows, withBets, withIndices, stateAt, ctxFor } from './ladderFixtures';
+import { NOW, DAY, iso, flags, runs, deckRows, tcRows, withBets, withIndices, stateAt, ctxFor } from './ladderFixtures';
+import type { SrCard, SrDeck } from '../../drills/spacedRepetition';
+import { generateAllCells } from '../../drills/flashcards';
+import { activeIndices } from './readiness';
 
 describe('ladder: casino order (B2)', () => {
   it.each([
@@ -86,5 +89,82 @@ describe('ladder: casino order (B2)', () => {
     expect(l.rungs[5]!.passed).toBe(false);
     expect(l.rungs[6]!.passed).toBe(false);
     expect(JSON.stringify(l)).not.toMatch(/NaN|Infinity/);
+  });
+});
+
+const CELLS = generateAllCells().map((c) => c.id);
+const ACTIVE = activeIndices().map((d) => d.id);
+const card = (box: number, dueAt: number, lastSeenAt = dueAt - DAY): SrCard => ({ box, dueAt, lastSeenAt, lapses: 0, reviews: 3 });
+const deckOf = (ids: readonly string[], c: SrCard): SrDeck => Object.fromEntries(ids.map((id) => [id, c]));
+
+describe('Review N due (W2)', () => {
+  const ctx = (flashSr: SrDeck, quizSr: SrDeck = {}) => ({ sweepDone: true, flashSr, quizSr, now: NOW });
+
+  it('20 due cells put Review first once strategy is in hand; 19 do not', () => {
+    const due = (n: number) => deckOf(CELLS.slice(0, n), card(2, NOW - DAY));
+    expect(ladder(stateAt(3), ctx(due(19))).step.card).toBe('rung');
+    const l = ladder(stateAt(3), ctx(due(20)));
+    expect(l.step).toMatchObject({ card: 'review', kind: 'flash', title: 'Review 20 due' });
+    expect(l.step.reviewCells).toEqual([...CELLS.slice(0, 20)].sort());
+    expect(l.current).toBe(2); // the rung under it is unchanged
+  });
+
+  it('a card missed today (box 0), one not yet due, and a non-cell key are not due', () => {
+    const sr = { ...deckOf(CELLS.slice(0, 19), card(2, NOW - DAY)), [CELLS[19]!]: card(0, NOW - 1), [CELLS[20]!]: card(3, NOW + DAY), junk: card(2, NOW - DAY) };
+    expect(ladder(stateAt(3), ctx(sr)).step.card).toBe('rung');
+  });
+
+  it('nothing is inserted while rung 1 or 2 is current', () => {
+    const sr = deckOf(CELLS.slice(0, 100), card(2, NOW - DAY));
+    expect(ladder(stateAt(1), ctx(sr)).step.card).toBe('rung');
+    expect(ladder(stateAt(2), { ...ctx(sr), sweepDone: false }).step.card).toBe('rung');
+  });
+
+  it('counts only active indexes, and reviews indexes when more of them are due', () => {
+    const q = { ...deckOf(ACTIVE.slice(0, 15), card(2, NOW - DAY)), notAnIndex: card(2, NOW - DAY) };
+    const l = ladder(stateAt(5), ctx(deckOf(CELLS.slice(0, 5), card(2, NOW - DAY)), q));
+    expect(l.step).toMatchObject({ card: 'review', kind: 'quiz', title: 'Review 20 due' });
+    expect(l.step.reviewCells).toBeUndefined();
+  });
+
+  it('after the ladder, Review still comes before the stalest skill', () => {
+    expect(ladder(stateAt(8), ctx(deckOf(CELLS.slice(0, 20), card(1, NOW - DAY)))).step.card).toBe('review');
+  });
+});
+
+describe('stalest skill after the ladder (W2)', () => {
+  /** All rungs passed; each skill last practised `days` ago (deviations through quizSr). */
+  function done(days: Partial<Record<'cells' | 'count' | 'deck' | 'tc' | 'quiz' | 'bets' | 'play', number>>) {
+    const d = { cells: 1, count: 1, deck: 1, tc: 1, quiz: 1, bets: 1, play: 1, ...days };
+    const s = stateAt(8);
+    for (const t of Object.values(s.cellStats!)) t.lastAt = iso(d.cells);
+    s.countDrill.history.forEach((r) => (r.date = iso(d.count)));
+    s.deckEstimation.history.forEach((r) => (r.date = iso(d.deck)));
+    s.trueCount.history.forEach((r) => (r.date = iso(d.tc)));
+    (s as unknown as { betSizing: { history: { date: string }[] } }).betSizing.history.forEach((r) => (r.date = iso(d.bets)));
+    s.sessions.forEach((r) => (r.date = iso(d.play)));
+    const quizSr = deckOf(ACTIVE, card(3, NOW + 5 * DAY, NOW - d.quiz * DAY));
+    return { s, ctx: { sweepDone: true, flashSr: {}, quizSr, now: NOW } };
+  }
+
+  it('rotates to the skill practised longest ago, saying how long', () => {
+    const { s, ctx } = done({ deck: 30, tc: 2 });
+    expect(ladder(s, ctx).step).toMatchObject({ card: 'stale', kind: 'deckest', title: 'Keep it fresh: Deck estimation' });
+    expect(ladder(s, ctx).step.why).toMatch(/\(30 days ago\)/);
+  });
+
+  it('ties go to the earlier rung; never practised counts as oldest', () => {
+    expect(ladder(done({ count: 9, quiz: 9 }).s, done({ count: 9, quiz: 9 }).ctx).step.kind).toBe('count');
+    const { s, ctx } = done({});
+    s.sessions.forEach((r) => (r.date = ''));
+    expect(ladder(s, ctx).step).toMatchObject({ kind: 'play', why: 'Every rung is done. Play a shoe has not been practised yet.' });
+  });
+
+  it('a timestamp in the future (device clock behind) reads "today", never negative (Review Focus 3)', () => {
+    const { s, ctx } = done({ bets: 40 });
+    s.cellStats!['hard-16-v-10']!.lastAt = iso(-3);
+    expect(ladder(s, ctx).step.why).toMatch(/40 days ago/);
+    const fut = done({ cells: -3, count: -3, deck: -3, tc: -3, quiz: -3, bets: -3, play: -3 });
+    expect(ladder(fut.s, fut.ctx).step.why).toMatch(/\(today\)/);
   });
 });

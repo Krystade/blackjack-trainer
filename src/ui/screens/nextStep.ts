@@ -10,7 +10,9 @@ import { activeIndices } from './readiness';
 import { COUNT_RUNS_JUDGED, COUNT_RUNS_NEEDED, countFluency } from '../../drills/fluencyGate';
 import type { IndexRules } from './readiness';
 import type { SrDeck } from '../../drills/spacedRepetition';
-import { PLAY_MIN_GRADED, betRampResult, deckTcResult, playResult } from './ladderRules';
+import { PLAY_MIN_GRADED, REVIEW_DUE_MIN, betRampResult, deckTcResult, dueForReview, playResult, stalestSkill } from './ladderRules';
+
+const DAY = 86_400_000;
 
 /**
  * #28 / B2: the ONE thing Home recommends next, and why, read off a ladder of
@@ -368,10 +370,45 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
   }));
   const first = rungs.findIndex((r) => !r.passed);
   const current = first === -1 ? null : first;
-  // Every rung passed: Play stays the step (Task 4 adds the review and stale cards).
-  const card = current === null ? playCard : drafts[current]!.card!;
+  const now = ctx.now ?? Date.now();
+  const activeIds = active.map((d) => d.id);
+  const flashSr = ctx.flashSr ?? {};
+  const quizSr = ctx.quizSr ?? {};
   // s02: every step carries the three categories.
-  return { rungs, current, step: { card: 'rung', ...card, progress: cats } };
+  // W2: first match wins -- Review (once strategy is in hand), the rung, the stalest skill.
+  const due = dueForReview(flashSr, quizSr, activeIds, now);
+  if ((current === null || current >= 2) && due.total >= REVIEW_DUE_MIN) {
+    const flash = due.cells.length >= due.indexes.length;
+    return {
+      rungs,
+      current,
+      step: {
+        card: 'review',
+        kind: flash ? 'flash' : 'quiz',
+        title: `Review ${due.total} due`,
+        why: `${due.cells.length} cells and ${due.indexes.length} indexes are due for review. Start reviews the ${flash ? 'cells' : 'indexes'}.`,
+        progress: cats,
+        ...(flash ? { reviewCells: due.cells } : {}),
+      },
+    };
+  }
+  if (current !== null) return { rungs, current, step: { card: 'rung', ...drafts[current]!.card!, progress: cats } };
+  const stale = stalestSkill(stats, quizSr, activeIds);
+  const days = Math.max(0, Math.floor((now - stale.lastAt) / DAY));
+  const ago = days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'} ago`;
+  return {
+    rungs,
+    current,
+    step: {
+      card: 'stale',
+      kind: stale.kind,
+      title: `Keep it fresh: ${stale.label}`,
+      why: stale.lastAt === 0
+        ? `Every rung is done. ${stale.label} has not been practised yet.`
+        : `Every rung is done. ${stale.label} was practised longest ago (${ago}).`,
+      progress: cats,
+    },
+  };
 }
 
 export function nextStep(stats: Stats, ctx: LadderContext): NextStep {

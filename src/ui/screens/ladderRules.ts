@@ -1,4 +1,6 @@
 import type { Stats } from '../../store/types';
+import type { SrDeck } from '../../drills/spacedRepetition';
+import { generateAllCells } from '../../drills/flashcards';
 
 /**
  * B2: the recent-window pass rules for the ladder's drill rungs (nextStep.ts).
@@ -67,4 +69,61 @@ export function parseTime(iso: unknown): number {
   if (typeof iso !== 'string' || iso === '') return 0;
   const t = Date.parse(iso);
   return Number.isNaN(t) ? 0 : t;
+}
+
+/** W2: this many due SR items (cells + indexes) put "Review N due" ahead of the rung. */
+export const REVIEW_DUE_MIN = 20;
+
+export interface DueCount {
+  cells: string[];
+  indexes: string[];
+  total: number;
+}
+
+let cellIdSet: Set<string> | null = null;
+const isCellId = (id: string) => (cellIdSet ??= new Set(generateAllCells().map((c) => c.id))).has(id);
+
+/** Due ids of a deck: graduated (box >= 1, so a card missed today waits) and dueAt reached. */
+function dueIds(deck: SrDeck, keep: (id: string) => boolean, now: number): string[] {
+  return Object.entries(deck ?? {})
+    .filter(([id, c]) => keep(id) && Number.isFinite(c?.box) && c.box >= 1 && Number.isFinite(c?.dueAt) && c.dueAt <= now)
+    .map(([id]) => id)
+    .sort();
+}
+
+export function dueForReview(flashSr: SrDeck, quizSr: SrDeck, activeIndexIds: readonly string[], now: number): DueCount {
+  const active = new Set(activeIndexIds);
+  const cells = dueIds(flashSr, isCellId, now);
+  const indexes = dueIds(quizSr, (id) => active.has(id), now);
+  return { cells, indexes, total: cells.length + indexes.length };
+}
+
+export type StaleKind = 'flash' | 'count' | 'deckest' | 'truecount' | 'quiz' | 'betsizing' | 'play';
+export interface StaleSkill {
+  kind: StaleKind;
+  label: string;
+  /** Epoch ms; 0 = never. */
+  lastAt: number;
+}
+
+const lastDate = (rows: readonly { date?: unknown }[] | undefined): number =>
+  Array.isArray(rows) && rows.length > 0 ? parseTime(rows[rows.length - 1]?.date) : 0;
+
+/** W2: once every rung is done, the skill practised longest ago (ties: the earlier rung). */
+export function stalestSkill(stats: Stats, quizSr: SrDeck, activeIndexIds: readonly string[]): StaleSkill {
+  const cellsAt = Math.max(0, ...Object.values(stats.cellStats ?? {}).map((t) => parseTime(t?.lastAt)));
+  const quizAt = Math.max(0, ...activeIndexIds.map((id) => {
+    const t = quizSr?.[id]?.lastSeenAt;
+    return Number.isFinite(t) ? t! : 0;
+  }));
+  const candidates: StaleSkill[] = [
+    { kind: 'flash', label: 'Basic strategy', lastAt: cellsAt },
+    { kind: 'count', label: 'Running count', lastAt: lastDate(stats.countDrill?.history) },
+    { kind: 'deckest', label: 'Deck estimation', lastAt: lastDate(stats.deckEstimation?.history) },
+    { kind: 'truecount', label: 'True count', lastAt: lastDate(stats.trueCount?.history) },
+    { kind: 'quiz', label: 'Deviations', lastAt: quizAt },
+    { kind: 'betsizing', label: 'Bet ramp', lastAt: lastDate(betSizingRows(stats)) },
+    { kind: 'play', label: 'Play a shoe', lastAt: lastDate(stats.sessions) },
+  ];
+  return candidates.reduce((best, c) => (c.lastAt < best.lastAt ? c : best));
 }

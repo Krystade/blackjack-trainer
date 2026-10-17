@@ -238,8 +238,8 @@ describe('nextStep (#28)', () => {
     ).toBe('count');
   });
 
-  it('6: everything on target -> Play', () => {
-    expect(nextStep(stateAt(8), ctxFor(8))).toMatchObject({ kind: 'play', title: 'Play a shoe' });
+  it('6: everything on target -> keep the stalest skill fresh (W2; no quiz SR = deviations never practised)', () => {
+    expect(nextStep(stateAt(8), ctxFor(8))).toMatchObject({ card: 'stale', kind: 'quiz', title: 'Keep it fresh: Deviations' });
   });
 
   it('labels cells the way the chart reads', () => {

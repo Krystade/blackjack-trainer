@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { launchSettings, setDrillLaunch, takeDrillLaunch } from './drillLaunch';
+import { launchSettings, reviewLaunch, setDrillLaunch, setReviewDeck, takeDrillLaunch, takeReviewDeck } from './drillLaunch';
 import { DEFAULT_SETTINGS } from '../store/types';
 import type { Settings } from '../store/types';
 
@@ -31,5 +31,33 @@ describe('launchSettings (F21, s07)', () => {
     const s = base();
     expect(launchSettings('custom', undefined, s)).toBe(s);
     expect(launchSettings('quiz', undefined, s)).toBe(s);
+  });
+});
+
+describe('B2 review hand-over (controller ruling)', () => {
+  it('hands the due cells across once, in memory', () => {
+    expect(takeReviewDeck()).toBeNull();
+    const ids = ['hard-16-v-10', 'pair-8-v-A'];
+    setReviewDeck(ids);
+    ids.push('soft-18-v-9'); // a copy is handed over, not the caller's array
+    expect(takeReviewDeck()).toEqual(['hard-16-v-10', 'pair-8-v-A']);
+    expect(takeReviewDeck()).toBeNull();
+  });
+
+  it('reviewLaunch leaves the Custom deck and the saved settings byte-identical', () => {
+    const saved: Settings = {
+      ...structuredClone(DEFAULT_SETTINGS),
+      drill: {
+        ...structuredClone(DEFAULT_SETTINGS.drill),
+        deck: 'custom',
+        scopes: ['hard'],
+        custom: { tiers: { 'soft-18-v-9': 'focus' }, painted: { 'soft-18-v-9': true }, mix: { focus: 60, regular: 30, rare: 10 }, favourMissed: true },
+      },
+    } as Settings;
+    const before = JSON.stringify(saved);
+    const out = reviewLaunch(saved, ['hard-16-v-10', 'pair-8-v-A']);
+    expect(JSON.stringify(out)).toBe(before);
+    expect(JSON.stringify(saved)).toBe(before);
+    expect(takeReviewDeck()).toEqual(['hard-16-v-10', 'pair-8-v-A']);
   });
 });

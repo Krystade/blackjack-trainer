@@ -1,5 +1,5 @@
 ﻿import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { takeDrillLaunch } from '../drillLaunch';
+import { takeDrillLaunch, takeReviewDeck } from '../drillLaunch';
 import { SpeedDrillView } from './drills/SpeedDrillView';
 import { TabSettingsButton } from '../components/TabSettingsButton';
 import { strategyRulesFor } from '../../store/profiles';
@@ -417,8 +417,17 @@ function FlashcardsView({
   const [eyesFree, setEyesFree] = useEyesFreeToggle('flashcards');
   // B2: a card from the deck `drill` describes (scope and deck source), or
   // null when that deck is empty -- HandDeckGate then replaces this view.
+  // B2 "Review N due" (Lane H, controller ruling): a review deck Home handed
+  // over replaces the saved deck for this session only -- every hand type,
+  // only the due cells, nothing written to Settings or the Custom deck.
+  const [reviewDeck] = useState(() => {
+    const ids = takeReviewDeck();
+    return ids && ids.length > 0
+      ? { scopes: 'all' as const, ids, weights: new Map(ids.map((id) => [id, 1])) }
+      : null;
+  });
   const drawFrom = (drill: Settings['drill'], previous: string | null): Flashcard | null => {
-    const deck = handDeckFor(drill, activeProfile);
+    const deck = reviewDeck ?? handDeckFor(drill, activeProfile);
     if (deck.ids.length === 0) return null;
     return drawFlashcard(
       deck.scopes,
