@@ -399,8 +399,11 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
       card: 'stale',
       kind: stale.kind,
       title: `Keep it fresh: ${stale.label}`,
+      // Wave B2 #44: every rung is passed, so every skill has practice on
+      // record; lastAt 0 means none of it is dated (perIndex without a quiz
+      // schedule, undated sessions), never "not practised".
       why: stale.lastAt === 0
-        ? `Every rung is done. ${stale.label} has not been practised yet.`
+        ? `Every rung is done. ${stale.label} has no practice date on record.`
         : `Every rung is done. ${stale.label} was practised longest ago (${ago}).`,
       progress: cats,
     },

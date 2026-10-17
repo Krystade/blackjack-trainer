@@ -155,9 +155,20 @@ describe('stalest skill after the ladder (W2)', () => {
 
   it('ties go to the earlier rung; never practised counts as oldest', () => {
     expect(ladder(done({ count: 9, quiz: 9 }).s, done({ count: 9, quiz: 9 }).ctx).step.kind).toBe('count');
+    // Wave B2 #44 (deliberate change): every rung is passed here, so each
+    // skill HAS practice on record; an undated one is not "not practised yet".
     const { s, ctx } = done({});
     s.sessions.forEach((r) => (r.date = ''));
-    expect(ladder(s, ctx).step).toMatchObject({ kind: 'play', why: 'Every rung is done. Play a shoe has not been practised yet.' });
+    expect(ladder(s, ctx).step).toMatchObject({ kind: 'play', why: 'Every rung is done. Play a shoe has no practice date on record.' });
+  });
+
+  it('#44: deviations learned with no quiz schedule (perIndex only) are not "not practised yet"', () => {
+    const { s } = done({});
+    const l = ladder(s, { sweepDone: true, flashSr: {}, quizSr: {}, now: NOW });
+    expect(l.rungs.find((r) => r.id === 'deviations')!.passed).toBe(true);
+    expect(l.step).toMatchObject({ card: 'stale', kind: 'quiz', title: 'Keep it fresh: Deviations' });
+    expect(l.step.why).toBe('Every rung is done. Deviations has no practice date on record.');
+    expect(l.step.why).not.toMatch(/not been practised/);
   });
 
   it('a timestamp in the future (device clock behind) reads "today", never negative (Review Focus 3)', () => {
