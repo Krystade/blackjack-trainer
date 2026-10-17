@@ -572,15 +572,12 @@ export function ProduceTcDrillView({
       )}
 
       {/* Eyes-on, the result is the strip, read over the tray it was judged
-          from, with Next below. */}
+          from; Next is at the foot of the screen, below the tray. */}
       {lastResult && !eyesFree && phase === 'result' && (
-        <div className="drill-result produce-tc-result">
-          <div className="tc-strip-wrap">
-            <ResultStrip id={lastResult.id} tone={lastResult.correct ? 'ok' : 'miss'}>
-              <ProduceResultLine result={lastResult} rounding={rounding} />
-            </ResultStrip>
-          </div>
-          <DrillPrimaryBar label="Next" onPrimary={nextFromResult} secondaryLabel="Back to Drills" onSecondary={handleBack} />
+        <div className="tc-strip-wrap produce-tc-result">
+          <ResultStrip id={lastResult.id} tone={lastResult.correct ? 'ok' : 'miss'}>
+            <ProduceResultLine result={lastResult} rounding={rounding} />
+          </ResultStrip>
         </div>
       )}
 
@@ -611,9 +608,12 @@ export function ProduceTcDrillView({
 
       {(phase === 'answering' || phase === 'result') && !eyesFree && (
         <>
-          <div className="settings-row settings-note-row">
-            Read decks remaining from the tray, then enter the true count.
-          </div>
+          {/* An instruction for the question, not the answer under review. */}
+          {phase === 'answering' && (
+            <div className="settings-row settings-note-row">
+              Read decks remaining from the tray, then enter the true count.
+            </div>
+          )}
           <div className="table-discard-tray" aria-label="Discard tray">
             <span className="table-discard-label">Discard</span>
             <div className="table-discard-frame">
@@ -629,6 +629,12 @@ export function ProduceTcDrillView({
 
       {(phase === 'answering' || phase === 'result') && eyesFree && (
         <div className="settings-row settings-note-row">{decksSentence}.</div>
+      )}
+
+      {/* Wave A review: a direct child of the screen, so it sits at the foot
+          (margin-top: auto) rather than between the strip and the tray. */}
+      {lastResult && !eyesFree && phase === 'result' && (
+        <DrillPrimaryBar label="Next" onPrimary={nextFromResult} secondaryLabel="Back to Drills" onSecondary={handleBack} />
       )}
 
       {phase === 'answering' && (

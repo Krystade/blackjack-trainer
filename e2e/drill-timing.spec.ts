@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { readStats, withProfile, withSettings } from './helpers';
+import { answerAndReadStrip, readStats, waitForMic, withProfile, withSettings } from './helpers';
 
 /**
  * Wave A F3 + s09: when the hand drills' clocks start and stop.
@@ -51,6 +51,38 @@ test('the shot clock stops after a timeout and a second unanswered card, and an 
   await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
   await expect(page.getByTestId('shot-clock-idle')).toHaveCount(0);
   await expect(page.getByTestId('shot-clock')).toBeVisible();
+  // Wave A review: that answer was given with the clock stopped, so it is not
+  // a timed one in Stats' split (the timeout before it carries no stamp).
+  const split = (await readStats(page))!.shotClockSplit as { timed: { right: number; wrong: number }; untimed: { right: number; wrong: number } };
+  expect(split.timed.right + split.timed.wrong).toBe(0);
+  expect(split.untimed.right + split.untimed.wrong).toBe(1);
+});
+
+test('after a miss, the seconds spent reading the correction are not answer time', async ({ page }) => {
+  test.setTimeout(60_000);
+  await withProfile(page);
+  await withSettings(page, { drill: { shotClockMs: 0, flashCategory: 'hard' } });
+  await page.goto('/?e2e=1');
+  await openFlashcards(page);
+  const stand = page.locator('.action-bar button.action-btn', { hasText: 'Stand' });
+  // Answer Stand until one is a miss; the card dealt under it is the subject.
+  let missed = false;
+  for (let i = 0; i < 30 && !missed; i++) {
+    await page.waitForTimeout(300);
+    missed = (await answerAndReadStrip(page, stand)) === 'miss';
+  }
+  expect(missed, '30 answers of Stand and none was a miss').toBe(true);
+  const before = ((await readStats(page))!.latencyHistory as unknown[]).length;
+  // Read the correction for the grace, then answer: 4.2s after the deal.
+  await page.waitForTimeout(4200);
+  await answerAndReadStrip(page, stand);
+  await expect.poll(async () => ((await readStats(page))!.latencyHistory as unknown[]).length).toBe(before + 1);
+  const latency = (await readStats(page))!.latencyHistory as { elapsedMs: number }[];
+  const last = latency[latency.length - 1]!.elapsedMs;
+  // From the deal it is >= 4200 (hesitant, over FLUENT_MS 4000). With the
+  // 2.5s reading grace off, about 1.7s -- floored at the grace itself.
+  expect(last).toBeLessThan(3000);
+  expect(last).toBeGreaterThanOrEqual(2500);
 });
 
 test('a right answer gives the next card no reading delay', async ({ page }) => {
@@ -104,5 +136,66 @@ test('eyes-free: the answer clock starts when the spoken prompt ends', async ({ 
   // From the draw it would be >= 4000. From the prompt's end it is what is
   // left after the prompt: well under that.
   expect(latency[0]!.elapsedMs).toBeLessThan(3200);
+  expect(latency[0]!.elapsedMs).toBeGreaterThan(0);
+});
+
+/** A scriptable SpeechRecognition (see voice-answers.spec.ts). */
+async function withFakeEngine(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    class FakeRecognition {
+      continuous = false;
+      interimResults = true;
+      lang = '';
+      aborted = false;
+      onstart: (() => void) | null = null;
+      onaudiostart: (() => void) | null = null;
+      onend: (() => void) | null = null;
+      onerror: ((e: { error?: string }) => void) | null = null;
+      onresult: ((e: unknown) => void) | null = null;
+      constructor() {
+        (window as unknown as { __rec: FakeRecognition }).__rec = this;
+      }
+      start(): void {
+        this.aborted = false;
+        setTimeout(() => {
+          this.onstart?.();
+          this.onaudiostart?.();
+        }, 0);
+      }
+      abort(): void {
+        this.aborted = true;
+        this.onend?.();
+      }
+    }
+    const w = window as unknown as Record<string, unknown>;
+    w.SpeechRecognition = FakeRecognition;
+    w.webkitSpeechRecognition = FakeRecognition;
+  });
+}
+
+test('voice-only Deviation quiz: the answer clock starts when the spoken prompt ends', async ({ page }) => {
+  // Wave A review: with voice on and eyes-free off, the quiz prompt went
+  // through sayFull with no end callback, so its seconds were answer time.
+  test.setTimeout(40_000);
+  await withFakeEngine(page);
+  await withSettings(page, { drill: { quizIndex: '16v10' }, audio: { enabled: true, verbosity: 'full' } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Voice answers' }).check();
+  const shownAt = Date.now();
+  await waitForMic(page);
+  // Answer well after the prompt: 4.5s after voice went on.
+  await page.waitForTimeout(Math.max(0, 4500 - (Date.now() - shownAt)));
+  await waitForMic(page);
+  const answeredAt = Date.now();
+  await page.evaluate(() => {
+    const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
+    rec?.onresult?.({ results: [[{ transcript: 'stand' }]] });
+  });
+  await expect.poll(async () => ((await readStats(page))?.latencyHistory as unknown[] | undefined)?.length ?? 0).toBe(1);
+  const latency = (await readStats(page))!.latencyHistory as { elapsedMs: number }[];
+  // From the draw (or voice going on) it would be >= 4500.
+  expect(latency[0]!.elapsedMs).toBeLessThan(answeredAt - shownAt - 1000);
   expect(latency[0]!.elapsedMs).toBeGreaterThan(0);
 });

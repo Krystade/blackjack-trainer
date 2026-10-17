@@ -7,6 +7,7 @@ import {
   resolveInsurance,
   readStats,
   statsTab,
+  submitZero,
 } from './helpers';
 
 /**
@@ -332,7 +333,7 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
   await expect(page.locator('.count-setup')).toBeVisible();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.numpad')).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await submitZero(page);
   await expect(page.locator('.drill-result')).toBeVisible();
   await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
 
@@ -376,7 +377,7 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
   await expect(page.locator('.drill-heading')).toHaveText('Produce the true count');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.numpad')).toBeVisible({ timeout: 40_000 });
-  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await submitZero(page);
   await expect(page.locator('.drill-result')).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
 

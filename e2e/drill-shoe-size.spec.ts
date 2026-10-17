@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile } from './helpers';
+import { withSettings, withProfile, submitZero } from './helpers';
 
 /**
  * V4-3 (docs/BACKLOG.md): the count-conversion drills take their shoe from the
@@ -64,7 +64,7 @@ test('produce the true count: a one-deck profile never divides by more than one 
   for (let round = 0; round < 6; round++) {
     await expect(page.locator('.numpad')).toBeVisible();
     await expect(page.locator('.deck-tray-context')).toHaveText('1-deck shoe');
-    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await submitZero(page);
 
     // #54: fast advance; the strip prints the working "rc ÷ decks = q".
     const detail = await page.getByTestId('result-strip').innerText();

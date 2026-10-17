@@ -5,7 +5,7 @@ import { DEFAULT_RULES } from '../engine/ruleset';
 import { correctPlay } from '../engine/strategy';
 import { drawFlashcard } from './flashcards';
 import { FULL_CTX } from './fallbackHand';
-import { drawCountTc, indexLine, indexPickerText, reachableIndexes, PLAIN_MIN, PLAIN_MAX, TC_MIN, TC_MAX } from './withCount';
+import { drawCountTc, indexLine, indexPickerText, reachableIndexes, withCountAdvice, PLAIN_MIN, PLAIN_MAX, TC_MIN, TC_MAX } from './withCount';
 
 const hand = (...ranks: string[]): Card[] => ranks.map((rank) => ({ rank, suit: 's' }) as Card);
 const NO_LS = { ...DEFAULT_RULES, ls: false };
@@ -97,5 +97,66 @@ describe('#53 drawFlashcard with count', () => {
       if (correctPlay(card.cards, card.up, card.tc!, FULL_CTX, NO_LS).deviationId) applied++;
     }
     expect(applied / N).toBeGreaterThan(0.4);
+  });
+});
+
+/**
+ * Wave A review (s08 carried into Flashcards): on 2 decks the basic chart
+ * already doubles 9 v 2 and 11 v A, so the 6-deck index is no index at all.
+ * The Deviation quiz leaves them out; a With-count card must agree -- never
+ * "Index not reached at this count: 9 v 2: double at TC >= +1" under a graded
+ * Double at TC 0, and never an index attribution for a play the chart makes.
+ */
+describe('Wave A: With-count cards on a chart that already plays the index', () => {
+  const TWO_D: typeof DEFAULT_RULES = { ...DEFAULT_RULES, decks: 2, s17: true, ls: false };
+  const nine = { cards: hand('5', '4'), up: '2' as const, ctx: FULL_CTX };
+  const eleven = { cards: hand('6', '5'), up: 'A' as const, ctx: FULL_CTX };
+
+  it('9 v 2 and 11 v A have no reachable index on 2D S17; 6D keeps them', () => {
+    expect(reachableIndexes(nine.cards, nine.up, FULL_CTX, TWO_D)).toEqual([]);
+    expect(reachableIndexes(eleven.cards, eleven.up, FULL_CTX, TWO_D)).toEqual([]);
+    const sixD = { ...TWO_D, decks: 6 as const };
+    expect(reachableIndexes(nine.cards, nine.up, FULL_CTX, sixD).map((d) => d.id)).toEqual(['9v2']);
+    expect(reachableIndexes(eleven.cards, eleven.up, FULL_CTX, sixD).map((d) => d.id)).toEqual(['11vA']);
+  });
+
+  it('the advice keeps the play and drops the index id, at every count', () => {
+    for (let tc = TC_MIN; tc <= TC_MAX; tc++) {
+      for (const h of [nine, eleven]) {
+        const raw = correctPlay(h.cards, h.up, tc, FULL_CTX, TWO_D);
+        const adv = withCountAdvice(h.cards, h.up, tc, FULL_CTX, TWO_D);
+        expect(adv.action).toBe(raw.action);
+        expect(adv.action).toBe('double');
+        expect(adv.deviationId, `${h.up} at TC ${tc}`).toBeUndefined();
+      }
+    }
+    // 6D: the index is real, and kept.
+    const sixD = { ...TWO_D, decks: 6 as const };
+    expect(withCountAdvice(nine.cards, nine.up, 1, FULL_CTX, sixD).deviationId).toBe('9v2');
+  });
+
+  it('the strip never says an index was not reached under the index play', () => {
+    for (const tc of [-1, 0, 1, 3]) {
+      for (const h of [nine, eleven]) {
+        const line = indexLine(withCountAdvice(h.cards, h.up, tc, FULL_CTX, TWO_D), TWO_D, h);
+        expect(line).not.toMatch(/not reached|^Index:/);
+        expect(line).toMatch(/basic already doubles/);
+      }
+    }
+  });
+
+  it('counts are not drawn toward an index the chart already plays', () => {
+    // Biased toward +1 the share at +1..+3 is about 2/3; uniform over the
+    // plain range it is 3/9.
+    const rng = mulberry32(9);
+    const N = 3000;
+    let nearIndex = 0;
+    for (let i = 0; i < N; i++) {
+      const tc = drawCountTc(nine.cards, nine.up, FULL_CTX, TWO_D, rng);
+      expect(tc).toBeGreaterThanOrEqual(PLAIN_MIN);
+      expect(tc).toBeLessThanOrEqual(PLAIN_MAX);
+      if (tc >= 1 && tc <= 3) nearIndex++;
+    }
+    expect(nearIndex / N).toBeLessThan(0.45);
   });
 });

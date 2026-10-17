@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Settings } from '../../../store/types';
 import type { Card } from '../../../engine/cards';
 import { hiLoTag } from '../../../engine/count';
@@ -28,6 +28,7 @@ import { loadStats, saveStats, saveSettings } from '../../../store/persist';
 import { PlayingCard } from '../../components/PlayingCard';
 import { cardJitter, jitterTransform } from '../../../drills/cardJitter';
 import { paceMultiplier } from '../../../drills/pacePressure';
+import { cardArrival } from '../../../drills/cardArrive';
 import { isCountFluent } from '../../../drills/fluencyGate';
 import { NumPad } from '../../components/NumPad';
 import { Segmented, Stepper } from '../Settings';
@@ -1609,6 +1610,23 @@ export function CountDrillView({
   // the 2-deck shoe) changed nothing on screen: a new counter missed it and
   // was told "Wrong" with no idea why. Now every card remounts and visibly
   // arrives.
+  // Wave A review (s04): the arrival is scaled to this card's time on screen
+  // (drills/cardArrive.ts), so a fast card is not still fading in as it is
+  // replaced, and under reduced motion a short blank marks every new card.
+  const cardOnScreenMs = (): number => {
+    if (timedChallenge) return rampIntervalMs(shownIndex, timedStartMsRef.current, { floorMs: timedFloorMsRef.current });
+    if (settings.drill.countManual) return Infinity;
+    return (
+      settings.drill.countIntervalMs *
+      (settings.drill.pacePressure ? paceMultiplier(runSeedRef.current, shownIndex) : 1)
+    );
+  };
+  const arrival = cardArrival(cardOnScreenMs());
+  const arrivalStyle = {
+    '--count-arrive-ms': `${arrival.arriveMs}ms`,
+    '--count-blank-ms': `${arrival.blankMs}ms`,
+  } as CSSProperties;
+
   const renderFlashCard = (c: Card, i: number) => {
     const key = `${shownIndex}-${i}`;
     if (!settings.drill.messyCards) return <PlayingCard key={key} card={c} />;
@@ -2080,7 +2098,7 @@ export function CountDrillView({
       {phase === 'flashing' && settings.drill.countManual && !timedChallenge && (
         <div className="manual-tap-zone" onClick={advanceManual}>
           {tableLayout || (
-            <div className="count-flash-cards">
+            <div className="count-flash-cards" style={arrivalStyle}>
               {currentGroup?.map(renderFlashCard)}
             </div>
           )}
@@ -2093,7 +2111,7 @@ export function CountDrillView({
       {phase === 'flashing' && (!settings.drill.countManual || timedChallenge) && (
         <div className="count-flash-area">
           {tableLayout || (
-            <div className="count-flash-cards">
+            <div className="count-flash-cards" style={arrivalStyle}>
               {currentGroup?.map(renderFlashCard)}
             </div>
           )}

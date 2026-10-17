@@ -186,6 +186,7 @@ export function MasteryChallengeView({
     resultIdRef.current += 1;
     const resultId = resultIdRef.current;
     const prevRun = run;
+    const prevForeign = foreignRun;
     setWrongTap(
       wrongTapOffered(event)
         ? {
@@ -196,6 +197,7 @@ export function MasteryChallengeView({
             // position, and the same hand back on screen to answer again.
             revert: () => {
               setRun(prevRun);
+              setForeignRun(prevForeign);
               promptShownAtRef.current = performance.now();
             },
           }
@@ -213,9 +215,13 @@ export function MasteryChallengeView({
         },
       ),
     );
-    // #29: a miss reshuffles by the SR weights as they stand now.
-    const nextRun = advanceMasteryRun(run, correct, randomSeed(), correct ? undefined : srWeightsNow());
+    // #29: a miss reshuffles by the SR weights as they stand now. Wave A
+    // review: a miss in a resumed sweep restarts over the Hands picked now --
+    // its progress is gone either way, and a fresh sweep follows the scope.
+    const restartOver = foreignRun && universe.length > 0 ? universe : run.order;
+    const nextRun = advanceMasteryRun(run, correct, randomSeed(), correct ? undefined : srWeightsNow(), restartOver);
     setRun(nextRun);
+    if (!correct) setForeignRun(false);
     // #28: remember a finished whole-chart sweep; the saved run forgets it
     // the moment the next sweep starts.
     if (correct && isWholeChartSweep(nextRun)) {
@@ -278,8 +284,11 @@ export function MasteryChallengeView({
             type="button"
             className="drill-next-btn"
             onClick={() => {
-              const fresh = startMasteryRun(run.order, randomSeed(), srWeightsNow());
+              // Wave A review: a new sweep follows the Hands picked now, even
+              // after finishing a resumed sweep over other cells.
+              const fresh = startMasteryRun(universe.length > 0 ? universe : run.order, randomSeed(), srWeightsNow());
               setRun(fresh);
+              setForeignRun(false);
               setLastResult(null);
               setWrongTap(null);
             }}

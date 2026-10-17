@@ -939,3 +939,31 @@ describe('Wave A (s01): plain flashcards never say phantom deviation', () => {
     expect(buildFlashcardEvent(counted, 'stand', DEFAULT_RULES, 1000).event.classification).toBe('phantom-deviation');
   });
 });
+
+describe('Wave A review: a With-count card on a chart that already plays the index', () => {
+  // 2D S17: basic doubles 9 v 2 at every count, so "9 v 2: double at TC >= +1"
+  // is not an index here (the quiz leaves it out too).
+  const TWO_D = { ...DEFAULT_RULES, decks: 2 as const, s17: true, ls: false };
+  const nineVTwo = (tc: number): Flashcard => ({
+    cards: [
+      { rank: '5', suit: 's' },
+      { rank: '4', suit: 'h' },
+    ],
+    up: '2',
+    correct: 'double',
+    cellId: 'hard-9-v-2',
+    tc,
+  });
+  it('past the 6-deck threshold the answer carries no index id, so it is reviewed as the basic cell', () => {
+    const right = buildFlashcardEvent(nineVTwo(2), 'double', TWO_D, 100);
+    expect(right.correct).toBe(true);
+    expect(right.event.deviationId).toBeUndefined();
+    const wrong = buildFlashcardEvent(nineVTwo(2), 'hit', TWO_D, 100);
+    expect(wrong.event.deviationId).toBeUndefined();
+    expect(wrong.event.classification).toBe('basic-error');
+  });
+  it('6D keeps the index', () => {
+    const six = { ...TWO_D, decks: 6 as const };
+    expect(buildFlashcardEvent(nineVTwo(2), 'double', six, 100).event.deviationId).toBe('9v2');
+  });
+});

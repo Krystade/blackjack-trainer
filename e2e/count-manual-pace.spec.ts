@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, openCountOptions, readStats, statsTab } from './helpers';
+import { withSettings, openCountOptions, readStats, statsTab, submitZero } from './helpers';
 
 /**
  * #20/#30: a manual (tap-to-advance) count run used to record the AUTO
@@ -34,7 +34,7 @@ test('a manual run records its own tap pace, not the auto interval', async ({ pa
   for (let i = 0; i < 12 && !(await ok(page).isVisible()); i++) {
     await page.locator('.manual-tap-zone').click();
   }
-  await ok(page).click();
+  await submitZero(page);
   await expect(page.locator('.result-detail')).toBeVisible();
 
   const row = await lastCountRow(page);
@@ -61,7 +61,7 @@ test('an auto run is not marked manual and keeps its interval', async ({ page })
   });
   await openCountDrill(page);
   await expect(ok(page)).toBeVisible({ timeout: 10_000 });
-  await ok(page).click();
+  await submitZero(page);
   const row = await lastCountRow(page);
   expect(row.manual).toBeUndefined();
   expect(row.meanTapMs).toBeUndefined();
@@ -80,11 +80,11 @@ test('time spent answering a checkpoint is not a tap gap', async ({ page }) => {
   // A long think at the checkpoint. Counted as a gap, it alone would put
   // the mean over 600ms across ten cards; real taps here are ~50ms.
   await page.waitForTimeout(6000);
-  await ok(page).click();
+  await submitZero(page);
   for (let i = 0; i < 12 && !(await ok(page).isVisible()); i++) {
     await page.locator('.manual-tap-zone').click();
   }
-  await ok(page).click();
+  await submitZero(page);
   await expect(page.locator('.result-detail')).toBeVisible();
 
   const row = await lastCountRow(page);

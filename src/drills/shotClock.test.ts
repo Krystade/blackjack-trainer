@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   SHOT_CLOCK_OFF,
   CORRECTION_READ_GRACE_MS,
+  answeredUnderShotClock,
+  answerElapsedMs,
   expiryVerdict,
   readGraceMs,
   shotClockSuspended,
@@ -80,5 +82,35 @@ describe('Wave A: idle stop, suspension and reading grace', () => {
     expect(readGraceMs(true)).toBe(CORRECTION_READ_GRACE_MS);
     expect(readGraceMs(false)).toBe(0);
     expect(CORRECTION_READ_GRACE_MS).toBeGreaterThan(0);
+  });
+});
+
+describe('Wave A review: what an answer records', () => {
+  it('is under the shot clock only when one was actually running', () => {
+    expect(answeredUnderShotClock(3000, false, false)).toBe(true);
+    expect(answeredUnderShotClock(0, false, false)).toBe(false);
+    // Eyes-free / voice: suspended, no clock on screen.
+    expect(answeredUnderShotClock(3000, true, false)).toBe(false);
+    // Stopped for idleness: the answer that restarts it was untimed.
+    expect(answeredUnderShotClock(3000, false, true)).toBe(false);
+  });
+
+  it('takes the correction-reading grace off the answer time, never below the grace itself', () => {
+    // No grace: untouched.
+    expect(answerElapsedMs(4000, 0)).toBe(4000);
+    // Answered inside the grace: nothing was spent reading on top of it.
+    expect(answerElapsedMs(1200, CORRECTION_READ_GRACE_MS)).toBe(1200);
+    // Read for the grace, then 1.5s to answer: 1.5s is under the grace, so
+    // the answer is credited as the grace (fluent), not 4.0s (hesitant).
+    expect(answerElapsedMs(CORRECTION_READ_GRACE_MS + 1500, CORRECTION_READ_GRACE_MS)).toBe(CORRECTION_READ_GRACE_MS);
+    // Read, then a slow 3.5s answer: the 3.5s is what is recorded.
+    expect(answerElapsedMs(CORRECTION_READ_GRACE_MS + 3500, CORRECTION_READ_GRACE_MS)).toBe(3500);
+    // Monotone: a later answer never records less time.
+    let prev = -1;
+    for (let raw = 0; raw <= 10_000; raw += 50) {
+      const v = answerElapsedMs(raw, CORRECTION_READ_GRACE_MS);
+      expect(v).toBeGreaterThanOrEqual(prev);
+      prev = v;
+    }
   });
 });

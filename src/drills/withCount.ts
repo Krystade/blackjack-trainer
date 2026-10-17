@@ -17,9 +17,10 @@
 import type { Card, Rank } from '../engine/cards';
 import type { Deviation } from '../engine/deviations';
 import { indexSetFor } from '../engine/deviations';
-import { correctPlay } from '../engine/strategy';
+import { basicPlay, correctPlay } from '../engine/strategy';
 import type { Advice, PlayContext } from '../engine/strategy';
 import type { StrategyRules } from '../engine/ruleset';
+import { redundantForChart } from './deviationQuiz';
 
 /** The counts a With-count card can show. */
 export const TC_MIN = -6;
@@ -30,15 +31,60 @@ export const PLAIN_MAX = 5;
 /** How often a hand with an index is dealt at or past it. */
 export const INDEX_SHARE = 0.5;
 
-/** The deviations the engine applies to this hand somewhere in the range. */
-export function reachableIndexes(cards: Card[], up: Rank, ctx: PlayContext, rules: StrategyRules): Deviation[] {
+/**
+ * The play for a With-count card: `correctPlay`, except that an index the
+ * profile's own basic chart already plays is not an index.
+ *
+ * Wave A review (s08, carried into Flashcards): the index set is the 6-deck
+ * one, and on 2 decks basic already doubles 9 v 2 and 11 v A. The engine still
+ * tags the double past +1 with the index id, so a With-count card graded it as
+ * an index hit -- and reviewed it in the quiz deck under an index the quiz no
+ * longer asks (deviationQuiz.ts redundantForChart, the one rule for both). The
+ * PLAY never changes here: only when the chart's own play is the same action
+ * is the advice swapped for the chart's, with no index id.
+ */
+export function withCountAdvice(cards: Card[], up: Rank, tc: number, ctx: PlayContext, rules: StrategyRules): Advice {
+  const advice = correctPlay(cards, up, tc, ctx, rules);
+  if (!advice.deviationId) return advice;
+  const dev = indexSetFor(rules).find((d) => d.id === advice.deviationId);
+  if (!dev || !redundantForChart(dev, rules)) return advice;
+  const basic = basicPlay(cards, up, ctx, rules);
+  return basic.action === advice.action ? basic : advice;
+}
+
+/** Index ids `advise` returns for this hand somewhere in the range. */
+function indexIdsInRange(
+  advise: (tc: number) => Pick<Advice, 'deviationId'>,
+): Set<string> {
   const ids = new Set<string>();
   for (let tc = TC_MIN; tc <= TC_MAX; tc++) {
-    const id = correctPlay(cards, up, tc, ctx, rules).deviationId;
+    const id = advise(tc).deviationId;
     if (id) ids.add(id);
   }
+  return ids;
+}
+
+/** The deviations the engine applies to this hand somewhere in the range. */
+export function reachableIndexes(cards: Card[], up: Rank, ctx: PlayContext, rules: StrategyRules): Deviation[] {
+  const ids = indexIdsInRange((tc) => withCountAdvice(cards, up, tc, ctx, rules));
   return indexSetFor(rules).filter((d) => ids.has(d.id));
 }
+
+/** Indexes the engine carries for this hand that the chart already plays. */
+function chartPlayedIndexes(cards: Card[], up: Rank, ctx: PlayContext, rules: StrategyRules): Deviation[] {
+  const raw = indexIdsInRange((tc) => correctPlay(cards, up, tc, ctx, rules));
+  const kept = new Set(reachableIndexes(cards, up, ctx, rules).map((d) => d.id));
+  return indexSetFor(rules).filter((d) => raw.has(d.id) && !kept.has(d.id));
+}
+
+const PLAYS: Record<Deviation['action'], string> = {
+  hit: 'hits',
+  stand: 'stands',
+  double: 'doubles',
+  split: 'splits',
+  surrender: 'surrenders',
+  'take-insurance': 'takes insurance on',
+};
 
 const intIn = (rng: () => number, lo: number, hi: number) => lo + Math.floor(rng() * (hi - lo + 1));
 const clamp = (tc: number) => Math.max(TC_MIN, Math.min(TC_MAX, tc));
@@ -74,8 +120,14 @@ export function indexLine(
 ): string {
   if (!advice.deviationId) {
     const near = hand ? reachableIndexes(hand.cards, hand.up, hand.ctx, rules) : [];
-    if (near.length === 0) return 'No index here';
-    return `Index not reached at this count: ${near.map((d) => d.label).join('; ')}`;
+    if (near.length > 0) return `Index not reached at this count: ${near.map((d) => d.label).join('; ')}`;
+    // Wave A review: the Charts screen still marks 9 v 2 on 2 decks, so say
+    // why the card has no index rather than a bare "No index here".
+    const played = hand ? chartPlayedIndexes(hand.cards, hand.up, hand.ctx, rules) : [];
+    if (played.length === 0) return 'No index here';
+    return `No index at these rules: basic already ${played
+      .map((d) => `${PLAYS[d.action]} ${d.label.split(':')[0]!.trim()}`)
+      .join('; ')}`;
   }
   const dev = indexSetFor(rules).find((d) => d.id === advice.deviationId);
   return `Index: ${dev?.label ?? advice.reason}`;

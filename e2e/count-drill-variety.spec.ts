@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { withSettings, submitZero } from './helpers';
 
 /**
  * Wave A (s04 medium): two things a regular would learn to game.
@@ -55,6 +55,52 @@ test('auto mode: every card is a freshly dealt element, so a repeated card still
   expect(reused, "card 2 reused card 1's element: a repeated card would not visibly change").toBe(false);
 });
 
+/** In the page: wait for the next card, and read its style on its first frame. */
+async function nextCardFirstFrame(page: Page): Promise<{ name: string; duration: string; opacity: string }> {
+  return page.evaluate(
+    () =>
+      new Promise<{ name: string; duration: string; opacity: string }>((resolve) => {
+        const label = () => document.querySelector('.count-flash-progress')?.textContent ?? '';
+        const was = label();
+        const tick = () => {
+          const card = document.querySelector('.count-flash-cards .card');
+          if (label() === was || !card) return void requestAnimationFrame(tick);
+          const cs = getComputedStyle(card);
+          resolve({ name: cs.animationName, duration: cs.animationDuration, opacity: cs.opacity });
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+}
+
+test('Wave A review: a card arrives in a quarter of its time on screen, not a fixed 220ms', async ({ page }) => {
+  await withSettings(page, {
+    audio: { enabled: false },
+    drill: { countManual: false, countLengthCards: 8, countGroup: 1, countIntervalMs: 400 },
+  });
+  await openCountDrill(page);
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.count-flash-progress')).toContainText('1 / 8');
+  const frame = await nextCardFirstFrame(page);
+  expect(frame.name).toBe('card-deal-in');
+  expect(frame.duration).toBe('0.1s');
+});
+
+test('Wave A review: under reduced motion a new card still visibly arrives (a blank, no movement)', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await withSettings(page, {
+    audio: { enabled: false },
+    drill: { countManual: false, countLengthCards: 8, countGroup: 1, countIntervalMs: 400 },
+  });
+  await openCountDrill(page);
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page.locator('.count-flash-progress')).toContainText('1 / 8');
+  const frame = await nextCardFirstFrame(page);
+  expect(frame.name).toBe('count-card-blank');
+  // Blank on its first frame, so the same card twice still flickers.
+  expect(frame.opacity).toBe('0');
+});
+
 /** One manual run with Occasional distractions: the cards it stopped after. */
 async function distractionStops(page: Page, cards: number): Promise<number[]> {
   const stops: number[] = [];
@@ -84,7 +130,7 @@ test('distractions stop on different cards in a second run', async ({ page }) =>
   await openCountDrill(page);
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   const first = await distractionStops(page, 28);
-  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await submitZero(page);
   await page.getByRole('button', { name: 'New run', exact: true }).click();
   const second = await distractionStops(page, 28);
 

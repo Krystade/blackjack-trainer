@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { answerAndReadStrip, shot, withSettings, withStats, readStats, goHomeAndNavigate, openCountOptions } from './helpers';
+import { answerAndReadStrip, shot, withSettings, withStats, readStats, goHomeAndNavigate, openCountOptions, submitZero } from './helpers';
 
 /**
  * The feedback strip, with the spaced-repetition due time masked out.
@@ -285,10 +285,10 @@ test('true count drill: answering a question persists a trueCount history entry'
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.numpad')).toBeVisible();
 
-  // Submit a guess of 0 (OK with an empty display defaults to 0, same idiom
-  // NumPad uses elsewhere) -- the point here is proving persistence
-  // happens, not exercising every guess value.
-  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  // Submit a guess of 0 (typed: Wave A made an empty OK submit nothing) --
+  // the point here is proving persistence happens, not exercising every
+  // guess value.
+  await submitZero(page);
 
   // #54: fast advance -- the B1 strip carries the result, no result screen.
   await expect(page.getByTestId('result-strip')).toBeVisible();

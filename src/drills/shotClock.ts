@@ -113,3 +113,28 @@ export const CORRECTION_READ_GRACE_MS = 2500;
 export function readGraceMs(lastWasMiss: boolean): number {
   return lastWasMiss ? CORRECTION_READ_GRACE_MS : 0;
 }
+
+/**
+ * Wave A review: whether an answer was given under a RUNNING shot clock, for
+ * Stats' timed/untimed split (V5-2). A limit set in Settings is not enough:
+ * eyes-free and voice suspend the clock, and the answer that restarts a clock
+ * stopped for idleness was given with none running.
+ */
+export function answeredUnderShotClock(limitMs: number, suspended: boolean, idle: boolean): boolean {
+  return shotClockOn(limitMs) && !suspended && !idle;
+}
+
+/**
+ * Wave A review: the answer time to record for a card dealt under a miss's
+ * correction (`graceMs` from readGraceMs). The seconds spent reading the
+ * correction are not answer time -- the same reasoning that starts the answer
+ * clock at a spoken prompt's end -- so the grace comes off. But the split
+ * between reading and answering cannot be seen, so the answer is never
+ * credited as faster than the grace itself (or than the raw time, if that was
+ * shorter): a tap 2.6s after the deal was not a 0.1s answer. Monotone, so a
+ * later answer never records less.
+ */
+export function answerElapsedMs(rawMs: number, graceMs: number): number {
+  if (graceMs <= 0) return rawMs;
+  return Math.max(rawMs - graceMs, Math.min(rawMs, graceMs));
+}

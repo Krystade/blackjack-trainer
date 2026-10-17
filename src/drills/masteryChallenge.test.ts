@@ -300,3 +300,24 @@ describe('Wave A F16: the missed cell comes back early in the next sweep', () =>
     expect(placeMissedEarly(['a', 'b'], 'z')).toEqual(['a', 'b']);
   });
 });
+
+describe('Wave A review: a miss in a resumed sweep restarts over the Hands picked now', () => {
+  it('reshuffles over `restartOver`, with the missed cell early when it is still in scope', () => {
+    const all = ids('all');
+    const pairs = all.filter((id) => id.startsWith('pair-'));
+    expect(pairs.length).toBeGreaterThan(0);
+    // A resumed sweep over every cell, a few in, its current cell a pair.
+    let run = startMasteryRun(all, 11);
+    while (!run.order[run.index]!.startsWith('pair-')) run = advanceMasteryRun(run, true, 0);
+    const missed = run.order[run.index]!;
+    const reset = advanceMasteryRun(run, false, 99, undefined, pairs);
+    expect([...reset.order].sort()).toEqual([...pairs].sort());
+    expect(reset.index).toBe(0);
+    expect(reset.order.indexOf(missed)).toBe(MASTERY_MISS_RETRY_AT);
+    // Out of the new scope: a plain fresh sweep over it.
+    const hard = all.filter((id) => id.startsWith('hard-'));
+    expect([...advanceMasteryRun(run, false, 99, undefined, hard).order].sort()).toEqual([...hard].sort());
+    // Not given: the sweep's own cells, as before.
+    expect([...advanceMasteryRun(run, false, 99).order].sort()).toEqual([...all].sort());
+  });
+});

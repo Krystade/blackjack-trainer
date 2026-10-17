@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, shot, openCountOptions } from './helpers';
+import { withSettings, shot, openCountOptions, submitZero } from './helpers';
 
 /**
  * RT#12 (docs/BACKLOG.md): the count drill graded ONE number at the end, so a
@@ -117,9 +117,9 @@ test('RT#12: a wrong checkpoint under a RIGHT final count is called out as error
 
   // Pass one: learn what this shoe's final count actually is.
   await advanceUntil(page, () => checkpointArea(page).isVisible(), 12);
-  await ok(page).click();
+  await submitZero(page);
   await advanceUntil(page, () => ok(page).isVisible(), 12);
-  await ok(page).click();
+  await submitZero(page);
   const detail = await page.locator('.result-detail').innerText();
   const actual = finalCount(detail);
   expect(Number.isFinite(actual), `unparsed result detail: ${detail}`).toBe(true);
@@ -163,10 +163,10 @@ test('the read-back states both numbers, and its colour agrees with them', async
   await withSettings(page, { drill: { ...SHORT_RUN, countCheckpoints: 'one' } });
   await openCountDrill(page);
   await advanceUntil(page, () => checkpointArea(page).isVisible(), 12);
-  await ok(page).click(); // submit 0
+  await submitZero(page); // 0
 
   await advanceUntil(page, () => ok(page).isVisible(), 12);
-  await ok(page).click();
+  await submitZero(page);
 
   const row = page.locator('.checkpoint-result-list li');
   await expect(row).toHaveCount(1);
@@ -192,11 +192,11 @@ test('two checkpoints are asked separately and both are read back', async ({ pag
   for (let i = 0; i < 2; i++) {
     const reached = await advanceUntil(page, () => checkpointArea(page).isVisible(), 12);
     expect(reached, `expected checkpoint ${i + 1}`).toBe(true);
-    await ok(page).click();
+    await submitZero(page);
   }
 
   await advanceUntil(page, () => ok(page).isVisible(), 12);
-  await ok(page).click();
+  await submitZero(page);
 
   await expect(page.locator('.checkpoint-result-list li')).toHaveCount(2);
   await expect(page.locator('.checkpoint-result-score')).toContainText('/2');
@@ -211,7 +211,7 @@ test('checkpoints are off by default, and the run is never interrupted', async (
     if (await ok(page).isVisible()) break;
     await page.locator('.manual-tap-zone').click();
   }
-  await ok(page).click();
+  await submitZero(page);
   await expect(page.locator('.result-detail')).toBeVisible();
   await expect(page.locator('.checkpoint-result')).toHaveCount(0);
 });
@@ -259,9 +259,9 @@ test('the checkpoint is graded against the cards actually shown', async ({ page 
     if (count === 0) continue; // a zero here would not discriminate
 
     found = { seen, count };
-    await ok(page).click(); // submit 0, whatever the truth is
+    await submitZero(page); // 0, whatever the truth is
     await advanceUntil(page, () => ok(page).isVisible(), 12);
-    await ok(page).click();
+    await submitZero(page);
     break;
   }
 
@@ -279,7 +279,7 @@ test('screenshots: the checkpoint prompt and its read-back', async ({ page }) =>
 
   await enterNumber(page, 99);
   await advanceUntil(page, () => ok(page).isVisible(), 12);
-  await ok(page).click();
+  await submitZero(page);
   await expect(page.locator('.checkpoint-result')).toBeVisible();
   await shot(page, 'count-checkpoint-result');
 });
@@ -298,9 +298,9 @@ test('#46: after an off-by-one checkpoint, a cleanly counted last stretch is gra
 
   // Pass one: learn the true count at the checkpoint and at the end.
   await advanceUntil(page, () => checkpointArea(page).isVisible(), 12);
-  await ok(page).click();
+  await submitZero(page);
   await advanceUntil(page, () => ok(page).isVisible(), 12);
-  await ok(page).click();
+  await submitZero(page);
   const rowText = await page.locator('.checkpoint-result-list li').innerText();
   const { was: atCheckpoint, after: seen } = readRow(rowText);
   const final = finalCount(await page.locator('.result-detail').innerText());
@@ -335,9 +335,9 @@ test('#46: a last stretch counted wrong is graded wrong, even when the final cou
   await withSettings(page, { drill: { ...SHORT_RUN, countCheckpoints: 'one' } });
   await openCountDrill(page);
   await advanceUntil(page, () => checkpointArea(page).isVisible(), 12);
-  await ok(page).click();
+  await submitZero(page);
   await advanceUntil(page, () => ok(page).isVisible(), 12);
-  await ok(page).click();
+  await submitZero(page);
   const rowText = await page.locator('.checkpoint-result-list li').innerText();
   const { was: atCheckpoint } = readRow(rowText);
   const final = finalCount(await page.locator('.result-detail').innerText());

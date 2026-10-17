@@ -26,6 +26,7 @@ import type { Flashcard } from './flashcards';
 import { flashCtx } from './flashcards';
 import type { QuizItem } from './deviationQuiz';
 import { quizCtxFor } from './deviationQuiz';
+import { withCountAdvice } from './withCount';
 import { reviewCard, isGapReview, SCREEN_CHANNEL } from './spacedRepetition';
 import { trackedElapsedMs } from './idleAnswer';
 import type { AnswerChannel } from './spacedRepetition';
@@ -234,7 +235,9 @@ export function buildFlashcardEvent(
   // "With count" card at the count it showed. Both absent = as before.
   const ctx: PlayContext = flashCtx(card);
   const tc = card.tc ?? 0;
-  const withCount = correctPlay(card.cards, card.up, tc, ctx, rules);
+  // Wave A review: an index the profile's chart already plays is not one
+  // (withCount.ts) -- same play, no index id, so no index review.
+  const withCount = withCountAdvice(card.cards, card.up, tc, ctx, rules);
   const basicOnly = basicPlay(card.cards, card.up, ctx, rules);
   // A timeout never reaches classifyAction, and neither does a self-report:
   // that function asks which of the five plays was chosen, and the answer in

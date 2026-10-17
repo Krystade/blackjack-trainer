@@ -111,9 +111,14 @@ export function advanceMasteryRun(
   correct: boolean,
   nextSeed: number,
   weightOf?: CellWeight,
+  // Wave A review: the cells a MISS restarts over. A sweep resumed over other
+  // cells than the Hands picked now (s10) loses its progress on a miss
+  // anyway, so the restart follows the Hands picked now -- otherwise it read
+  // "Carrying on your 0/330 sweep" and the next mount silently replaced it.
+  restartOver: readonly string[] = run.order,
 ): MasteryRun {
   if (correct) return { ...run, index: run.index + 1 };
-  const fresh = startMasteryRun(run.order, nextSeed, weightOf);
+  const fresh = startMasteryRun(restartOver, nextSeed, weightOf);
   // Wave A F16 (spec #29): the cell just missed comes back early in the new
   // sweep. The reshuffle reads the FLASHCARD SR weights, which a Mastery miss
   // never reaches (mastery leaves that deck alone, D6), so the missed cell used

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { focusSwallowsKey } from '../keyboardFocus';
 import { MINUS } from '../../drills/signed';
 import './numPad.css';
+import './numPadEmpty.css';
 
 interface NumPadProps {
   label: string;
@@ -16,9 +17,14 @@ export function NumPad({ label, onSubmit }: NumPadProps) {
   const appendDigit = (d: string) => setValue((v) => v + d);
   const toggleMinus = () => setValue((v) => (v.startsWith('-') ? v.slice(1) : '-' + v));
   const backspace = () => setValue((v) => v.slice(0, -1));
+  // Wave A (s04/s05 high): nothing typed is no answer. OK on an empty pad
+  // used to submit 0 -- a stray tap, or the second touch of a double-tap
+  // landing on the next question, graded a phantom 0. A count of zero is
+  // typed like any other number.
+  const hasDigit = /\d/.test(value);
   const submit = () => {
-    const n = value === '' || value === '-' ? 0 : parseInt(value, 10);
-    onSubmit(n);
+    if (!hasDigit) return;
+    onSubmit(parseInt(value, 10));
     setValue('');
   };
 
@@ -64,7 +70,10 @@ export function NumPad({ label, onSubmit }: NumPadProps) {
       <div className="numpad-label">{label}</div>
       {/* Wave A: shown with a real minus sign (U+2212), like the − key and the
           strips; the value itself keeps its ASCII '-' for parseInt. */}
-      <div className="numpad-display">{value === '' ? '0' : value.replace('-', MINUS)}</div>
+      <div className="numpad-display" data-empty={value === '' ? 'true' : undefined}>
+        {/* Not a '0': that looked like a typed answer, and OK sent it. */}
+        {value === '' ? <span className="numpad-placeholder">Type a number</span> : value.replace('-', MINUS)}
+      </div>
       <div className="numpad-grid">
         {DIGIT_ROWS.map((row) =>
           row.split('').map((d) => (
@@ -83,7 +92,7 @@ export function NumPad({ label, onSubmit }: NumPadProps) {
           ⌫
         </button>
       </div>
-      <button type="button" className="numpad-ok" onClick={submit}>
+      <button type="button" className="numpad-ok" onClick={submit} disabled={!hasDigit}>
         OK
       </button>
     </div>
