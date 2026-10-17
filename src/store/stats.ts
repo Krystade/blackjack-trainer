@@ -3,6 +3,24 @@ import type { Stats, TallyRW } from './types';
 import { cellAfter, cellIdForEvent } from './cellStats';
 
 /**
+ * Wave A F4: the chart cell an event is tallied under in `cellStats`, or null.
+ *
+ * An event that carries a `deviationId` was a question about an INDEX -- every
+ * real Deviation-quiz item, and a With-count flashcard or Play decision where
+ * the index applied. Its answer is index knowledge, not basic strategy: missing
+ * 16v10 at TC +1 says nothing about whether you know hard 16 v 10 at TC 0. It
+ * used to land on the basic cell anyway, so Home went back to "Fix weak cells"
+ * and Custom Auto painted the cell Focus, and learning an index sent you back to
+ * the basic chart. Those events are tallied in `perIndex` only.
+ *
+ * Used by every writer and the undo, so the three can never disagree.
+ */
+export function tallyCellIdFor(event: GradedEvent): string | null {
+  if (event.deviationId) return null;
+  return cellIdForEvent(event);
+}
+
+/**
  * Apply graded events to stats, returning a new Stats object (pure function).
  * Does not mutate the input stats.
  *
@@ -116,7 +134,7 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
 
     // B3: the chart cell this hand decision was asked on. Insurance, bets,
     // count checks and anything that names no cell are skipped.
-    const cellId = cellIdForEvent(event);
+    const cellId = tallyCellIdFor(event);
     if (cellId !== null) {
       if (!cellStatsCopied) {
         result.cellStats = { ...stats.cellStats };

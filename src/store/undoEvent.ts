@@ -1,7 +1,8 @@
 import type { GradedEvent } from '../engine/grade';
 import type { Stats, TallyRW } from './types';
 import type { CellTally } from './cellStats';
-import { cellIdForEvent, cellUndone } from './cellStats';
+import { cellUndone } from './cellStats';
+import { tallyCellIdFor } from './stats';
 
 /**
  * #22 (spec 2026-10-13): "Wrong tap". The exact inverse of applying ONE graded
@@ -64,7 +65,7 @@ export function undoGradedEvent(stats: Stats, event: GradedEvent, cellBefore?: C
 
   // B3: `cellBefore` is the cell as the grader found it (null = absent), so
   // the date is restored too; see cellStats.ts's cellUndone.
-  const cellId = cellIdForEvent(event);
+  const cellId = tallyCellIdFor(event);
   if (cellId !== null && stats.cellStats) {
     const cellStats = { ...stats.cellStats };
     const cell = cellUndone(cellStats[cellId], event, cellBefore);

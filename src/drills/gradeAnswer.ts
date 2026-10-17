@@ -32,8 +32,7 @@ import type { AnswerChannel } from './spacedRepetition';
 import type { SrCard, SrDeck } from './spacedRepetition';
 import { loadStats, saveStats } from '../store/persist';
 import type { Stats } from '../store/types';
-import { applyEvents } from '../store/stats';
-import { cellIdForEvent } from '../store/cellStats';
+import { applyEvents, tallyCellIdFor } from '../store/stats';
 import type { CellTally } from '../store/cellStats';
 
 type RetentionRow = Stats['retention']['history'][number];
@@ -104,7 +103,7 @@ function retentionRow(key: string, prev: SrCard, correct: boolean, now: number):
  * cell's date is restored exactly, not just its count. */
 export function persistGrade(event: GradedEvent, retention: RetentionRow | null): CellTally | null {
   const before = loadStats();
-  const cellId = cellIdForEvent(event);
+  const cellId = tallyCellIdFor(event);
   const cellBefore = cellId === null ? null : (before.cellStats?.[cellId] ?? null);
   let stats = applyEvents(before, [event]);
   if (retention) {
@@ -375,6 +374,13 @@ export interface FlashGradeResult {
   nextDeck: SrDeck;
   /** B3: the answered cell's tally before this answer, for "Wrong tap". */
   cellBefore: CellTally | null;
+  /**
+   * Wave A F4b: set when the card's expected play came from an index. The
+   * answer was reviewed in the QUIZ deck under that index, and the flash cell's
+   * schedule was left alone; `prev` is the index's card before the review, for
+   * "Wrong tap".
+   */
+  indexReview?: { key: string; prev: SrCard | undefined };
 }
 
 /**
@@ -412,11 +418,28 @@ export function gradeFlashcardAnswer(
     ...(underShotClock === undefined ? {} : { underShotClock }),
   };
 
+  const review = { elapsedMs: trackedElapsedMs(elapsedMs, taken === TIMEOUT_ANSWER), channel };
+
+  // Wave A F4b: a With-count card whose expected play came from an index was a
+  // question about the INDEX. It is reviewed in the quiz deck under that
+  // index, where the Deviation quiz schedules it, and the basic cell's
+  // schedule is left alone -- missing 16v10 at +2 is not forgetting hard 16 v
+  // 10 at TC 0, and it used to reset the cell's box.
+  const deviationId = event.deviationId;
+  if (deviationId) {
+    const quizDeck = loadQuizSr();
+    const prevIndex = quizDeck[deviationId];
+    const retention = prevIndex && isGapReview(prevIndex, now) ? retentionRow(deviationId, prevIndex, correct, now) : null;
+    saveQuizSr({ ...quizDeck, [deviationId]: reviewCard(prevIndex, correct, now, review) });
+    const cellBefore = persistGrade(event, retention);
+    return { event, correctAction, nextDeck: deck, cellBefore, indexReview: { key: deviationId, prev: prevIndex } };
+  }
+
   // RV4: classify the gap review against the cell's PRE-review state, then
   // advance its Leitner schedule.
   const prev = deck[card.cellId];
   const retention = prev && isGapReview(prev, now) ? retentionRow(card.cellId, prev, correct, now) : null;
-  const nextDeck = { ...deck, [card.cellId]: reviewCard(prev, correct, now, { elapsedMs: trackedElapsedMs(elapsedMs, taken === TIMEOUT_ANSWER), channel }) };
+  const nextDeck = { ...deck, [card.cellId]: reviewCard(prev, correct, now, review) };
   saveFlashSr(nextDeck);
 
   const cellBefore = persistGrade(event, retention);

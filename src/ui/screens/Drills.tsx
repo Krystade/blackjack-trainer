@@ -396,6 +396,9 @@ function FlashcardsView({
   // be a render behind -- and a stale previous cell silently boosts the wrong
   // neighbours, which no test would catch.
   const lastCellRef = useRef<string | null>(null);
+  // Wave A F4b: the index the last answer was reviewed under, when the card's
+  // expected play came from an index (gradeAnswer.ts) -- for "Wrong tap".
+  const indexReviewRef = useRef<{ key: string; prev: SrCard | undefined } | null>(null);
   // Eyes-free audio (Task 9): a per-session choice, shared across screens for
   // the life of this page load (ui/eyesFreeSession.ts) rather than owned by
   // each drill -- it used to reset on every navigation, which in a car reads
@@ -682,6 +685,7 @@ function FlashcardsView({
       settings.drill.shotClockMs > 0,
     );
     srDeckRef.current = result.nextDeck;
+    indexReviewRef.current = result.indexReview ?? null;
     return { event: result.event, correctAction: result.correctAction, prevSr, cellBefore: result.cellBefore };
   };
 
@@ -715,6 +719,7 @@ function FlashcardsView({
    * than one from several hands back (review fix a).
    */
   const freezeResult = (event: GradedEvent, prevSr: SrCard | undefined, cellBefore: CellTally | null) => {
+    const indexReview = indexReviewRef.current;
     const srCard = srDeckRef.current[card.cellId];
     const srText = formatReviewPlain(srCard, Date.now());
     const cellId = card.cellId;
@@ -733,6 +738,11 @@ function FlashcardsView({
       event,
       // #22: a withdrawn answer puts the card's schedule back as well.
       () => {
+        // Wave A F4b: an index card was reviewed in the quiz deck instead.
+        if (indexReview) {
+          saveQuizSr(restoreSrCard(loadQuizSr(), indexReview.key, indexReview.prev));
+          return;
+        }
         srDeckRef.current = restoreSrCard(srDeckRef.current, cellId, prevSr);
         saveFlashSr(srDeckRef.current);
       },
@@ -845,6 +855,7 @@ function FlashcardsView({
       Date.now(),
     );
     srDeckRef.current = result.nextDeck;
+    indexReviewRef.current = result.indexReview ?? null;
 
     const spokenMs = speakCorrectionOnceGated(result.event, (text) =>
       eyesFree || voiceOn
