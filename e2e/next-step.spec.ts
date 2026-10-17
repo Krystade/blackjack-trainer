@@ -128,7 +128,13 @@ test('Start is the one primary button; Play a shoe steps back, and goes when it 
       window.localStorage.setItem('e2e.noReseed', '1');
       window.localStorage.setItem(
         'bjtrainer.stats.v1',
-        JSON.stringify({ version: 1, cellStats: cs, perIndex: pi, masterySweepsCompleted: 1, countDrill: { history: cr } }),
+        // B2: the casino-order ladder also needs deck estimation, true count and the bet ramp (no session yet, so Play is the step).
+        JSON.stringify({
+          version: 1, cellStats: cs, perIndex: pi, masterySweepsCompleted: 1, countDrill: { history: cr },
+          deckEstimation: { history: Array.from({ length: 10 }, () => ({ date: '', actualDecks: 3, guess: 3, errorDecks: 0, correct: true })) },
+          trueCount: { history: Array.from({ length: 10 }, () => ({ date: '', runningCount: 6, decksRemaining: 3, guess: 2, correctTc: 2, correct: true })) },
+          betSizing: { history: Array.from({ length: 10 }, () => ({ date: '', ok: true })) },
+        }),
       );
     },
     [STRONG, perIndex, runs] as const,

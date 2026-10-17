@@ -2947,7 +2947,8 @@ type DrillMode =
   | 'producetc'
   | 'mastery'
   | 'custom'
-  | 'speed';
+  | 'speed'
+  | 'betsizing';
 
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
   // #28: Home's Next step can hand over the drill to open.
