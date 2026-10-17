@@ -80,7 +80,7 @@ import { DrillModeControls } from './drills/DrillModeControls';
 import { QuizAskSwitch } from './drills/QuizAskSwitch';
 import { IndexTestView } from './drills/IndexTestView';
 import type { VoiceAction } from '../../audio/voiceRecognition';
-import { cancelSpeech, speak } from '../../audio/speech';
+import { cancelSpeech, isE2eAudioMode, speak } from '../../audio/speech';
 import { speechOptsFrom } from '../../audio/speechOpts';
 import { requestWakeLock, releaseWakeLock } from '../../audio/wakeLock';
 import { ZONE_LABEL } from '../../audio/zones';
@@ -99,10 +99,12 @@ import { settingsForCustomStart } from '../../drills/deckSource';
 import { CustomDrillEditor } from '../components/CustomDrillEditor';
 import { MarkableHand } from '../components/MarkableHand';
 import { focusSwallowsKey, blurAfterChange } from '../keyboardFocus';
-import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
-import { useEyesFreeToggle } from '../eyesFreeSession';
+import { useVoiceToggle, usePushToTalk, startPushToTalk, isVoiceOn } from '../voiceSession';
+import { useEyesFreeToggle, isEyesFreeOn } from '../eyesFreeSession';
 import { useWheelCommand } from '../useWheelCommand';
 import { signed } from '../../drills/signed';
+import { ChartIntro } from './drills/ChartIntro';
+import { chartIntroDue, loadChartIntroSeen, saveChartIntroSeen } from '../../drills/chartIntro';
 import './drills/drillTiming.css';
 import './drills/drillActionBar.css';
 
@@ -2906,14 +2908,20 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     </HandDeckGate>
   );
   if (mode === 'flash') {
-    return gate(
-      'Flashcards',
-      <FlashcardsView
-        settings={settings}
+    return (
+      <FlashEntry
         activeProfile={activeProfile}
         onBack={() => setMode('picker')}
-        onSettingsChange={onSettingsChange}
-      />,
+        flashcards={gate(
+          'Flashcards',
+          <FlashcardsView
+            settings={settings}
+            activeProfile={activeProfile}
+            onBack={() => setMode('picker')}
+            onSettingsChange={onSettingsChange}
+          />,
+        )}
+      />
     );
   }
   if (mode === 'quiz') {
@@ -3071,4 +3079,42 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       </button>
     </div>
   );
+}
+
+/**
+ * B7: the Flashcards entry. Decides once, on mount, whether this launch is
+ * the first-run "How to read the chart" screen; FlashcardsView is untouched.
+ */
+function FlashEntry({
+  activeProfile,
+  onBack,
+  flashcards,
+}: {
+  activeProfile: Profile;
+  onBack: () => void;
+  flashcards: ReactNode;
+}) {
+  const [intro, setIntro] = useState(() =>
+    chartIntroDue({
+      stats: loadStats(),
+      seen: loadChartIntroSeen(),
+      eyesFree: isEyesFreeOn(),
+      voiceOn: isVoiceOn(),
+      search: window.location.search,
+      e2e: isE2eAudioMode(),
+    }),
+  );
+  if (intro) {
+    return (
+      <ChartIntro
+        activeProfile={activeProfile}
+        onBack={onBack}
+        onStart={() => {
+          saveChartIntroSeen();
+          setIntro(false);
+        }}
+      />
+    );
+  }
+  return <>{flashcards}</>;
 }

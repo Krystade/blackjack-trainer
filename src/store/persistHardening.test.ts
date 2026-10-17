@@ -365,6 +365,8 @@ const NOT_BACKED_UP: Record<string, string> = {
   'bjtrainer.reloadedFor': 'a one-shot guard against a reload loop',
   'bjtrainer.devicecheck.probe':
     'written and deleted inside one run of the device check, to find out whether this browser can store anything at all -- it holds no state to back up',
+  'bjtrainer.chartIntro.v1':
+    'B7 one-shot "seen" flag for the first-run chart intro; a restore carrying any hand history suppresses the intro anyway',
   'bjtrainer.stats.v1.corrupt':
     'written by the reader, not the app, and already carried verbatim by exportAll when present',
 };

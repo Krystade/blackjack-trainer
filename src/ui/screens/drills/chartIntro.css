@@ -1,0 +1,57 @@
+/* B7: first-run "How to read the chart". A fixed layer like
+   .study-chart-overlay that owns its scroll; the top padding keeps the
+   drill top bar clear of the mute seat (--mute-h strip, top-right). */
+.chart-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg);
+  padding-top: calc(var(--safe-top, 0px) + var(--mute-h, 44px));
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.chart-intro-head {
+  padding: 0 16px;
+}
+
+.chart-intro-card {
+  margin: 8px 0 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--surface, rgba(255, 255, 255, 0.06));
+}
+
+.chart-intro-card h2 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+}
+
+.chart-intro-card ol {
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  line-height: 1.35;
+}
+
+.chart-intro-start {
+  width: 100%;
+  min-height: 56px;
+  border-radius: 12px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (display-mode: standalone) {
+  .chart-intro {
+    bottom: var(--vp-gap);
+  }
+}

@@ -176,6 +176,9 @@ describe('OWNED_KEYS', () => {
     // race loses a column order, and re-reading mid-drag would yank the
     // columns out from under the finger doing the dragging.
     'bjtrainer.chartOrder.v1': 'view preference, re-reading mid-drag is worse',
+    // B7: a one-shot "seen" flag read once when Flashcards mounts. Another
+    // tab setting it changes nothing on a screen already past the intro.
+    'bjtrainer.chartIntro.v1': 'one-shot seen flag, read once on mount',
     // Bounded to one challenge in one tab and cleared when it ends.
     'bjtrainer.masteryrun.v1': 'single in-flight challenge, cleared on finish',
     // A half-typed note, written on every keystroke so a reload or an iOS
