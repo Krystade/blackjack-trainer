@@ -309,6 +309,9 @@ test('split flow: find a ten-value pair seed, split, and play both hands out', a
   await splitBtn.click();
 
   await expect(page.locator('.hands-row .player-hand')).toHaveCount(2);
+  // s06: split hands are labelled on the felt in order of play -- hand 1 is
+  // the RIGHT one -- so the result lines' "Hand 1 / Hand 2" name a hand.
+  await expect(page.locator('.hand-label')).toHaveText(['Hand 2', 'Hand 1']);
   await shot(page, '10-split-two-hands');
 
   await playRoundByAdvice(page);
@@ -753,7 +756,9 @@ test('RT#11: the report stays quiet below the sample floor, where a ratio is noi
 
 test('RT#11: eight rounds of exact ramp conformity are named as the tell', async ({ page }) => {
   await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
-  await withProfile(page, { name: 'Mechanical', betSpreadOn: true });
+  // Cover on: the tell is a warning only when cover was allowed and not taken
+  // (s06 -- with cover off every off-ramp bet is graded wrong).
+  await withProfile(page, { name: 'Mechanical', betSpreadOn: true, coverBets: true });
   await page.goto('/?seed=6&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
@@ -782,4 +787,41 @@ test('RT#11: eight rounds of exact ramp conformity are named as the tell', async
   // Vacuity guard: the collapse must account for every round, not hide some.
   expect(summed).toBe(wongMistakes);
   await shot(page, '54-report-bet-tell');
+});
+
+test('s06: with cover bets off the ramp ratio is stated, not warned about', async ({ page }) => {
+  await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
+  await withProfile(page, { name: 'No Cover', betSpreadOn: true });
+  await page.goto('/?seed=6&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  for (let i = 0; i < 8; i++) {
+    const advised = page.locator('.chip-btn.chip-advised');
+    if (await advised.isVisible().catch(() => false)) await advised.click();
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await playRoundByAdvice(page);
+  }
+  await page.locator('.end-btn').click();
+  await page.locator('.end-btn').click();
+  await expect(page.locator('.report-tell')).toHaveCount(0);
+  await expect(page.locator('.report-cover')).toContainText('8 of 8 rounds bet the ramp exactly');
+  await expect(page.locator('.report-cover')).toContainText('Turn on Cover bets');
+});
+
+test('s06: a doubled hand shows the bet riding on it', async ({ page }) => {
+  await withSettings(page, { countCheckEvery: 0 });
+  let doubled = false;
+  for (let seed = 1; seed <= 60 && !doubled; seed++) {
+    await page.goto(`/?seed=${seed}&e2e=1`);
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await resolveInsurance(page, false);
+    const double = page.locator('.action-bar[data-advice] button.action-btn', { hasText: 'Double' });
+    if (!(await double.isEnabled().catch(() => false))) continue;
+    await expect(page.locator('.player-hand .hand-bet')).toHaveText('Bet: 1');
+    await double.click();
+    doubled = true;
+  }
+  expect(doubled, 'expected a seed in 1..60 to offer a double').toBe(true);
+  await playRoundByAdvice(page);
+  await expect(page.locator('.player-hand .hand-bet')).toHaveText('Bet: 2');
 });

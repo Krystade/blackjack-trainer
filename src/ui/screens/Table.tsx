@@ -245,7 +245,16 @@ function groupMistakes(mistakes: readonly GradedEvent[]): { mistake: GradedEvent
 /** How long the End button stays armed after its first tap. */
 const END_ARMED_MS = 3000;
 
-function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () => void }) {
+function ReportScreen({
+  report,
+  coverBetsOn,
+  onDone,
+}: {
+  report: SessionReport;
+  /** Whether this session graded with cover bets (one rung either side). */
+  coverBetsOn: boolean;
+  onDone: () => void;
+}) {
   // R7 (docs/BACKLOG.md): this screen shows after every End (see handleEnd),
   // so a peek-assisted session's accuracy is flagged right under the headline
   // number it qualifies — the number can't be mistaken for unassisted.
@@ -262,13 +271,20 @@ function ReportScreen({ report, onDone }: { report: SessionReport; onDone: () =>
           grading is on -- the tolerance makes room for cover, but only this
           says whether any was taken. Silent below the sample floor, where the
           ratio would be noise rather than a pattern. */}
+      {/* s06: with cover bets off, every bet off the ramp is graded a
+          mistake, so warning about betting the ramp exactly contradicted the
+          grading. Off, the ratio is stated plainly with the way to practise
+          cover; the warning is kept for a session that allowed cover and
+          still took none. */}
       {report.cover.rounds >= TELL_MIN_ROUNDS && (
-        <p className={report.cover.isTell ? 'report-tell' : 'report-cover'}>
+        <p className={report.cover.isTell && coverBetsOn ? 'report-tell' : 'report-cover'}>
           Bet cover: {report.cover.exact} of {report.cover.rounds} rounds bet the ramp
           exactly ({Math.round(report.cover.ratio * 100)}%)
-          {report.cover.isTell
-            ? '. Betting that close to the count is what gets counters noticed.'
-            : '.'}
+          {!coverBetsOn
+            ? '. Turn on Cover bets in your profile to practise varying it.'
+            : report.cover.isTell
+              ? '. Betting that close to the count is what gets counters noticed.'
+              : '.'}
         </p>
       )}
       <table className="report-categories">
@@ -680,7 +696,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   };
 
   if (showReport && report) {
-    return <ReportScreen report={report} onDone={handleReportDone} />;
+    return <ReportScreen report={report} coverBetsOn={game.cfg.coverBets === true} onDone={handleReportDone} />;
   }
 
   const activeHand: PlayerHand | undefined = game.hands[game.active];
@@ -914,7 +930,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             key={i}
             className={`player-hand${i === game.active && game.phase === 'player' ? ' hand-active' : ''}`}
           >
-            {playerHandsCount > 1 && (
+            {/* s06: a split is labelled too, so "Hand 1" in the results names
+                a hand on the felt (hand 1 is the RIGHT one: order of play). */}
+            {(playerHandsCount > 1 || game.hands.length > 1) && (
               <div className="hand-label">Hand {handPlayNumber(i, game.hands.length)}</div>
             )}
             <div className="hand-cards">
@@ -930,7 +948,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
                 />
               ))}
             </div>
-            <div className="hand-bet">Bet: {hand.bet}</div>
+            {/* s06: a doubled hand has twice its bet riding on it. */}
+            <div className="hand-bet">Bet: {hand.doubled ? hand.bet * 2 : hand.bet}</div>
           </div>
         ))}
       </div>
