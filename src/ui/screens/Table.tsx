@@ -17,6 +17,10 @@ import { useGame } from '../useGame';
 import type { CountCheckVerdict, SessionReport } from '../useGame';
 import { ResultStrip } from '../components/ResultStrip';
 import { signedTc } from '../../drills/tcFeedback';
+import { reportSections, countMissText } from '../reportSections';
+import type { MistakeRow } from '../reportSections';
+import { lossPer100, formatLossPer100 } from '../sessionFigures';
+import './sessionReport.css';
 import { useAudio } from '../../audio/useAudio';
 import { useVoiceControl } from '../useVoiceControl';
 import { useWheelCommand } from '../useWheelCommand';
@@ -47,7 +51,7 @@ import { CATEGORY_LABELS } from './categoryLabels';
 import { playLabel } from '../playLabel';
 import { LosingShoeBadge } from '../components/LosingShoeBadge';
 import { roundBanner } from '../roundBanner';
-import { signed } from '../../drills/signed';
+import { signed, MINUS } from '../../drills/signed';
 import './tableSeats.css';
 import './tableTopbar.css';
 import './tableCues.css';
@@ -204,36 +208,30 @@ function countVerdictText(v: CountCheckVerdict): string {
   return parts.join(' · ');
 }
 
-/**
- * Collapse mistakes that are the same mistake.
- *
- * A per-ROUND grade repeats by nature: eight rounds dealt into a dead count
- * produce eight identical "took play, correct sit-out" lines, which push
- * every other mistake off the screen and read as eight different problems
- * rather than one habit. Grouped on everything the row actually renders --
- * two entries that display identically ARE the same finding -- and the first
- * occurrence keeps its place in the list, so the ordering still tells you
- * when things went wrong.
- */
-function groupMistakes(mistakes: readonly GradedEvent[]): { mistake: GradedEvent; count: number }[] {
-  const out: { mistake: GradedEvent; count: number }[] = [];
-  const seen = new Map<string, { mistake: GradedEvent; count: number }>();
-  for (const m of mistakes) {
-    const key = [m.hand ?? m.kind, m.tc, m.taken, m.expected, m.reason].join('|');
-    const hit = seen.get(key);
-    if (hit) {
-      hit.count += 1;
-      continue;
-    }
-    const row = { mistake: m, count: 1 };
-    seen.set(key, row);
-    out.push(row);
-  }
-  return out;
-}
-
 /** How long the End button stays armed after its first tap. */
 const END_ARMED_MS = 3000;
+
+/** "{hand} · TC ±n · you played X · correct Y — reason", as the report always read. */
+function playRowText(m: GradedEvent): string {
+  return `${m.hand ?? m.kind} · TC ${formatSigned(m.tc)} · you played ${playLabel(m.taken)} · correct ${playLabel(m.expected)} — ${m.reason}`;
+}
+
+/** Units lost, two decimals, real minus: "−0.61"; a rounded-away cost reads "0". */
+function unitsText(units: number): string {
+  const abs = Math.abs(units).toFixed(2);
+  if (abs === '0.00') return signed(0);
+  return `${units > 0 ? MINUS : '+'}${abs}`;
+}
+
+/** " ×n" for repeats, then " · −0.61 u" when the row was priced. */
+function RowTail({ row }: { row: MistakeRow }) {
+  return (
+    <>
+      {row.count > 1 && <span className="report-mistake-count"> &times;{row.count}</span>}
+      {row.unitsTotal !== null && <span className="report-row-units"> &middot; {unitsText(row.unitsTotal)} u</span>}
+    </>
+  );
+}
 
 function ReportScreen({
   report,
@@ -249,9 +247,21 @@ function ReportScreen({
   // so a peek-assisted session's accuracy is flagged right under the headline
   // number it qualifies — the number can't be mistaken for unassisted.
   const assisted = assistedFlag(report.peeks);
+  const sections = reportSections(report.mistakes);
+  const unpricedPlays = sections.plays.filter((r) => r.unitsTotal === null).reduce((n, r) => n + r.count, 0);
+  const gradedCountCheck = report.categories.some((c) => c.category === 'countCheck' && c.right + c.wrong > 0);
+  const loss = lossPer100(report.mistakeUnits, report.hands);
   return (
     <div className="report-screen">
       <h1>Session report</h1>
+      {loss !== null && (
+        <p className="report-headline" data-units-total={report.mistakeUnits} data-hands={report.hands}>
+          {formatLossPer100(loss)}
+        </p>
+      )}
+      {unpricedPlays > 0 && (
+        <p className="report-unpriced">Plus {unpricedPlays} index or insurance misses with no price.</p>
+      )}
       <p className="report-summary">
         {report.correct} / {report.graded} correct &middot; bankroll {formatSigned(report.bankrollDelta)}
       </p>
@@ -297,31 +307,52 @@ function ReportScreen({
           ))}
         </tbody>
       </table>
-      <h2>Mistakes</h2>
-      {report.mistakes.length === 0 ? (
-        <p>No mistakes this session.</p>
+      <h2>Plays</h2>
+      {sections.plays.length === 0 ? (
+        <p>No play mistakes.</p>
       ) : (
-        <ul className="report-mistakes">
-          {groupMistakes(report.mistakes).map(({ mistake: m, count }, i) => (
-            <li key={i}>
-              {/* A count check has no hand and no play: "you played 1" read as
-                  nonsense next to the raw event kind. Say what was asked. */}
-              {m.kind === 'countCheck' ? (
-                <>
-                  {m.reason} &middot; you said {m.taken === '' ? '—' : signedTc(Number(m.taken))} &middot; it was{' '}
-                  {signedTc(Number(m.expected))}
-                </>
-              ) : (
-                <>
-                  {m.hand ?? m.kind} &middot; TC {formatSigned(m.tc)} &middot; you played {playLabel(m.taken)} &middot; correct {playLabel(m.expected)}
-                  {' — '}
-                  {m.reason}
-                </>
-              )}
-              {count > 1 && <span className="report-mistake-count"> &times;{count}</span>}
+        <ul className="report-mistakes report-plays">
+          {sections.plays.map((row, i) => (
+            <li
+              key={i}
+              data-units={row.unitsTotal !== null ? row.unitsTotal : undefined}
+              data-cell={row.cellId ?? undefined}
+            >
+              {playRowText(row.mistake)}
+              <RowTail row={row} />
             </li>
           ))}
         </ul>
+      )}
+      {gradedCountCheck && (
+        <>
+          <h2>Count checks</h2>
+          {sections.counts.length === 0 ? (
+            <p>No count checks missed.</p>
+          ) : (
+            <ul className="report-mistakes report-counts">
+              {sections.counts.map((row, i) => (
+                <li key={i}>
+                  {countMissText(row.mistake)}
+                  {row.count > 1 && <span className="report-mistake-count"> &times;{row.count}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      {sections.bets.length > 0 && (
+        <>
+          <h2>Bets</h2>
+          <ul className="report-mistakes report-bets">
+            {sections.bets.map((row, i) => (
+              <li key={i}>
+                {playRowText(row.mistake)}
+                {row.count > 1 && <span className="report-mistake-count"> &times;{row.count}</span>}
+              </li>
+            ))}
+          </ul>
+        </>
       )}
       <button type="button" className="report-done-btn" onClick={onDone}>
         Back to Home

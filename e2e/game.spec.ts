@@ -448,8 +448,8 @@ test('a count check owed on the last round is asked before End shows the report'
   await expect(page.locator('.report-screen')).toBeVisible();
   await expect(page.locator('.report-categories tr', { hasText: 'Count checks' })).toBeVisible();
   // A missed check reads as one, not as the raw event kind and "you played 2".
-  await expect(page.locator('.report-mistakes li', { hasText: 'Running count check' })).toHaveText(
-    /^Running count check · you said \+2 · it was (0|[+−]\d+)$/,
+  await expect(page.locator('.report-counts li')).toHaveText(
+    /^RC off by \d+ · you said \+2 · it was (0|[+−]\d+)$/,
   );
   await expect(page.locator('.report-screen')).not.toContainText('countCheck');
 });
