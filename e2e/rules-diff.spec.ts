@@ -17,6 +17,8 @@ const H17_S17_6D: Record<string, { h17: string; s17: string }> = {
   'pair-8-v-A': { h17: 'Surrender', s17: 'Split' },
   'hard-12-v-6': { h17: 'Stand', s17: 'Hit' },
   'hard-10-v-A': { h17: 'Double', s17: 'Hit' },
+  // #53: asked after a hit (no surrender), at TC +4.
+  'hard-16-v-9': { h17: 'Stand', s17: 'Hit' },
 };
 
 async function openRulesDiff(page: Page): Promise<void> {
@@ -28,7 +30,9 @@ async function openRulesDiff(page: Page): Promise<void> {
 
 test('rules differences: H17 ↔ S17 asks only changed cells, one question each way', async ({ page }) => {
   await openRulesDiff(page);
-  await expect(page.locator('.rules-diff-summary li')).toHaveCount(8);
+  await expect(page.locator('.rules-diff-summary li')).toHaveCount(9);
+  await expect(page.locator('.rules-diff-summary')).toContainText('16 v 9 after a hit at TC +4: H17 stands, S17 hits');
+  await expect(page.locator('.rules-diff-inert')).toHaveCount(0);
   await shot(page, 'rules-diff-setup');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
 

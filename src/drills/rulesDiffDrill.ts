@@ -20,8 +20,11 @@ import { indexPlayAt, publishedIndex } from './indexDisplay';
 export type Side = 'a' | 'b';
 export const DIFF_TC_WINDOW: readonly [number, number] = [-6, 6];
 
+// afterHit (#53): asked as a multi-card hand of the cell's total with no
+// surrender, double or split offered -- where an index on a surrender-first
+// cell (16 v 9 under LS) actually changes the play.
 export type PoolItem =
-  | { kind: 'play'; cellId: string; cards: Card[]; up: Rank; tcs: number[] | null } // null = basic strategy, no count shown
+  | { kind: 'play'; cellId: string; cards: Card[]; up: Rank; tcs: number[] | null; afterHit?: true } // null = basic strategy, no count shown
   | { kind: 'insurance'; tcs: number[] };
 
 export interface RulesDrillPlan {
@@ -35,7 +38,7 @@ export interface RulesDrillPlan {
 }
 
 export type RulesQuestion =
-  | { kind: 'play'; side: Side; cellId: string; cards: Card[]; up: Rank; tc: number | null }
+  | { kind: 'play'; side: Side; cellId: string; cards: Card[]; up: Rank; tc: number | null; afterHit?: true }
   | { kind: 'insurance'; side: Side; tc: number }
   | { kind: 'tray-decks'; side: Side; totalDecks: number; cardsDealt: number }
   | { kind: 'tray-tc'; side: Side; totalDecks: number; cardsDealt: number; rc: number };
@@ -52,6 +55,21 @@ function windowTcs(): number[] {
 
 export function questionCtx(rules: StrategyRules): PlayContext {
   return { canDouble: true, canSplit: true, canSurrender: rules.ls };
+}
+
+/** After a hit only hit and stand are left. */
+const AFTER_HIT_CTX: PlayContext = { canDouble: false, canSplit: false, canSurrender: false };
+
+function playCtx(q: { afterHit?: true }, rules: StrategyRules): PlayContext {
+  return q.afterHit ? AFTER_HIT_CTX : questionCtx(rules);
+}
+
+/** A three-card hard hand of `total` with no pair and no ace: 5, 4, total - 9. */
+function afterHitCards(total: number): Card[] | null {
+  const third = total - 9;
+  if (third < 2 || third > 10) return null;
+  const rank = (third === 10 ? '10' : String(third)) as Rank;
+  return [{ rank: '5', suit: 's' }, { rank: '4', suit: 'h' }, { rank, suit: 'd' }];
 }
 
 export function sideRules(plan: RulesDrillPlan, side: Side): StrategyRules {
@@ -105,6 +123,18 @@ export function planRulesDrill(a: StrategyRules, b: StrategyRules): RulesDrillPl
     if (c && tcs.length > 0) {
       pool.push({ kind: 'play', cellId: c.id, cards: c.cards, up: c.up, tcs });
       inPool.add(c.id);
+      continue;
+    }
+    // #53: the two-card hand surrenders before the index can matter (16 v 9
+    // with late surrender), but after a hit it does: H17 stands at +4, S17
+    // at +5. Drilled as that hand rather than called inert.
+    const hard = c && c.id.startsWith('hard-') ? afterHitCards(Number(c.id.split('-')[1])) : null;
+    const hitTcs = hard
+      ? window.filter((tc) => correctPlay(hard, c!.up, tc, AFTER_HIT_CTX, a).action !== correctPlay(hard, c!.up, tc, AFTER_HIT_CTX, b).action)
+      : [];
+    if (c && hard && hitTcs.length > 0) {
+      pool.push({ kind: 'play', cellId: c.id, cards: hard, up: c.up, tcs: hitTcs, afterHit: true });
+      inPool.add(c.id);
     } else inert.push(d);
   }
 
@@ -136,7 +166,7 @@ export function drawRulesQuestion(plan: RulesDrillPlan, seed: number, n: number)
   const side: Side = rng() < 0.5 ? 'a' : 'b';
   if (item.kind === 'insurance') return { kind: 'insurance', side, tc: item.tcs[Math.floor(rng() * item.tcs.length)] };
   const tc = item.tcs === null ? null : item.tcs[Math.floor(rng() * item.tcs.length)];
-  return { kind: 'play', side, cellId: item.cellId, cards: item.cards, up: item.up, tc };
+  return { kind: 'play', side, cellId: item.cellId, cards: item.cards, up: item.up, tc, ...(item.afterHit ? { afterHit: true as const } : {}) };
 }
 
 const exactRemaining = (q: { totalDecks: number; cardsDealt: number }) => (q.totalDecks * 52 - q.cardsDealt) / 52;
@@ -149,7 +179,7 @@ function nearestDepthOption(q: { totalDecks: number; cardsDealt: number }): numb
 }
 
 function playAction(q: Extract<RulesQuestion, { kind: 'play' }>, rules: StrategyRules): Action {
-  const ctx = questionCtx(rules);
+  const ctx = playCtx(q, rules);
   return q.tc === null ? basicPlay(q.cards, q.up, ctx, rules).action : correctPlay(q.cards, q.up, q.tc, ctx, rules).action;
 }
 
@@ -181,7 +211,7 @@ export function rulesAnswerOptions(q: RulesQuestion, plan: RulesDrillPlan): Rule
       // (drillLegalActions hides Surrender on 8,8 v A under S17).
       const offered = new Set<Action>();
       for (const rules of [plan.a, plan.b]) {
-        for (const act of drillLegalActions(q.cards, rules, q.up, questionCtx(rules))) offered.add(act);
+        for (const act of drillLegalActions(q.cards, rules, q.up, playCtx(q, rules))) offered.add(act);
       }
       const ls = sideRules(plan, q.side).ls;
       return ACTION_ORDER.filter((act) => offered.has(act) && (act !== 'surrender' || ls));
@@ -226,7 +256,7 @@ const decksText = (n: number) => `${Number(n.toFixed(2))} ${n === 1 ? 'deck' : '
 export function rulesQuestionPrompt(q: RulesQuestion, _plan?: RulesDrillPlan): string {
   switch (q.kind) {
     case 'play':
-      return `${cellLabel(q.cellId)}?`;
+      return `${cellLabel(q.cellId)}${q.afterHit ? ' after a hit' : ''}?`;
     case 'insurance':
       return 'Insurance?';
     case 'tray-decks':
@@ -275,7 +305,7 @@ function bothInsurance(plan: RulesDrillPlan, tc: number): string {
 export function explainRulesQuestion(q: RulesQuestion, plan: RulesDrillPlan, rounding?: TcRounding): string {
   switch (q.kind) {
     case 'play': {
-      const label = cellLabel(q.cellId);
+      const label = `${cellLabel(q.cellId)}${q.afterHit ? ' after a hit' : ''}`;
       if (q.tc === null) return `Basic strategy, ${label}: ${bothPlays(plan, q)}.`;
       const idx = cellIndexDiffs(plan, q.cellId);
       const tail = idx.length > 0 ? ` Index: ${idx.map((d) => indexPair(plan, d)).join('; ')}.` : '';
@@ -311,8 +341,9 @@ export function diffSummary(plan: RulesDrillPlan): string[] {
     if (item.kind === 'insurance') return `Insurance ${tcRangeText(item.tcs)}: ${bothInsurance(plan, item.tcs[0])}`;
     const q: Extract<RulesQuestion, { kind: 'play' }> = {
       kind: 'play', side: 'a', cellId: item.cellId, cards: item.cards, up: item.up, tc: item.tcs === null ? null : item.tcs[0],
+      ...(item.afterHit ? { afterHit: true as const } : {}),
     };
-    const label = cellLabel(item.cellId);
+    const label = `${cellLabel(item.cellId)}${item.afterHit ? ' after a hit' : ''}`;
     const where = item.tcs === null ? label : `${label} ${tcRangeText(item.tcs)}`;
     return `${where}: ${bothPlays(plan, q)}`;
   });

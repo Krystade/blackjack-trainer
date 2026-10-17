@@ -9,19 +9,19 @@ import {
 
 const r = (p: Partial<StrategyRules>): StrategyRules => ({ ...DEFAULT_RULES, ...p });
 const poolOf = (plan: RulesDrillPlan) =>
-  plan.pool.map((i) => (i.kind === 'play' ? `${i.cellId}:${i.tcs === null ? 'basic' : i.tcs.join(',')}` : `insurance:${i.tcs.join(',')}`)).sort();
+  plan.pool.map((i) => (i.kind === 'play' ? `${i.cellId}:${i.tcs === null ? 'basic' : i.tcs.join(',')}${i.afterHit ? ':after-hit' : ''}` : `insurance:${i.tcs.join(',')}`)).sort();
 const cell = (id: string) => generateAllCells().find((c) => c.id === id)!;
 const play = (id: string, side: Side, tc: number | null): RulesQuestion => ({ kind: 'play', side, cellId: id, cards: cell(id).cards, up: cell(id).up, tc });
 
 const H17S17 = planRulesDrill(r({ s17: false }), r({ s17: true }));
 
 describe('planRulesDrill pools only what changes', () => {
-  it('6D H17 vs S17: five basic cells, three counted ones, 16 v 9 inert under late surrender', () => {
+  it('6D H17 vs S17: five basic cells, three counted ones, and 16 v 9 after a hit under late surrender (#53)', () => {
     expect(poolOf(H17S17)).toEqual([
       'hard-10-v-A:3', 'hard-11-v-A:-6,-5,-4,-3,-2,-1,0', 'hard-12-v-6:-3,-2',
-      'hard-15-v-A:basic', 'hard-17-v-A:basic', 'pair-8-v-A:basic', 'soft-18-v-2:basic', 'soft-19-v-6:basic',
+      'hard-15-v-A:basic', 'hard-16-v-9:4:after-hit', 'hard-17-v-A:basic', 'pair-8-v-A:basic', 'soft-18-v-2:basic', 'soft-19-v-6:basic',
     ]);
-    expect(H17S17.inert.map((d) => d.id)).toEqual(['16v9']);
+    expect(H17S17.inert).toEqual([]);
     expect(H17S17.trayDecks).toBeNull();
     expect(sameChartNotice(H17S17)).toBeNull();
   });
@@ -170,13 +170,15 @@ describe('copy', () => {
   });
   it('summary and inert notes', () => {
     const lines = diffSummary(H17S17);
-    expect(lines).toHaveLength(8);
+    expect(lines).toHaveLength(9);
     expect(lines).toContain('A,7 v 2: H17 doubles, S17 stands');
     expect(lines).toContain('12 v 6 at TC −3 to −2: H17 stands, S17 hits');
     expect(lines).toContain('10 v A at TC +3: H17 doubles, S17 hits');
     expect(lines).toContain('11 v A at TC 0 and below: H17 doubles, S17 hits');
-    expect(inertNotes(H17S17)).toEqual([
-      '16 v 9: the index differs (H17 stand ≥ +4, S17 stand ≥ +5) but never changes a play at this table.']);
+    // #53: 16 v 9 is drilled after a hit now; 2D's 11 v A is still truly inert.
+    expect(inertNotes(H17S17)).toEqual([]);
+    expect(inertNotes(planRulesDrill(r({ decks: 2, s17: false }), r({ decks: 2, s17: true })))).toEqual([
+      '11 v A: the index differs (H17 none, S17 double ≥ +1) but never changes a play at this table.']);
   });
 });
 
@@ -223,5 +225,26 @@ describe('#56: one statement of the rules, a strip that says what you answered, 
       for (let seed = 0; seed < 60; seed++) sides.add(drawRulesQuestion(H17S17, seed, n)!.side);
       expect([...sides].sort(), `question ${n}`).toEqual(['a', 'b']);
     }
+  });
+});
+
+describe('#53: an index the 2-card hand surrenders past is still drilled, after a hit', () => {
+  it('6D H17 vs S17 with LS: 16 v 9 is asked as a multi-card hand with no surrender, and nothing is inert', () => {
+    const item = H17S17.pool.find((i) => i.kind === 'play' && i.cellId === 'hard-16-v-9');
+    expect(item).toMatchObject({ kind: 'play', afterHit: true, tcs: [4] });
+    if (item?.kind !== 'play') throw new Error('unreachable');
+    expect(item.cards.length).toBeGreaterThanOrEqual(3);
+    expect(H17S17.inert).toEqual([]);
+    expect(inertNotes(H17S17)).toEqual([]);
+  });
+  it('asks it with no surrender offered, and grades H17 stand / S17 hit at +4', () => {
+    const item = H17S17.pool.find((i) => i.kind === 'play' && i.cellId === 'hard-16-v-9')!;
+    if (item.kind !== 'play') throw new Error('unreachable');
+    const q = (side: Side): RulesQuestion => ({ kind: 'play', side, cellId: item.cellId, cards: item.cards, up: item.up, tc: 4, afterHit: true });
+    expect(rulesAnswerOptions(q('a'), H17S17)).toEqual(['hit', 'stand']);
+    expect(gradeRulesAnswer(q('a'), H17S17, 'stand')).toBe(true);
+    expect(gradeRulesAnswer(q('b'), H17S17, 'hit')).toBe(true);
+    expect(rulesQuestionPrompt(q('a'))).toBe('16 v 9 after a hit?');
+    expect(diffSummary(H17S17)).toContain('16 v 9 after a hit at TC +4: H17 stands, S17 hits');
   });
 });
