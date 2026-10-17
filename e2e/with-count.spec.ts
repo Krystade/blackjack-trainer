@@ -32,9 +32,9 @@ test('flashcards With count: 12 v 4 graded at the shown TC, the strip names the 
     const play = tc <= -1 ? 'Hit' : 'Stand';
     expect(await answerAndReadStrip(page, page.getByRole('button', { name: play, exact: true }))).toBe('ok');
     const note = page.getByTestId('hand-result-index');
-    if (tc <= -1) await expect(note).toHaveText('Index: 12 v 4: hit at any negative TC');
+    if (tc <= -1) await expect(note).toHaveText('Index: 12 v 4: stand at TC ≥ 0; hit below');
     // Wave A (s03): the cell HAS an index the count has not reached.
-    else await expect(note).toHaveText('Index not reached at this count: 12 v 4: hit at any negative TC');
+    else await expect(note).toHaveText('Index not reached at this count: 12 v 4: stand at TC ≥ 0; hit below');
     seen.add(play);
   }
   expect([...seen].sort()).toEqual(['Hit', 'Stand']);
@@ -47,7 +47,7 @@ test('flashcards With count: 12 v 4 graded at the shown TC, the strip names the 
       await expect(page.getByTestId('hand-result-expected')).toHaveText('Hit');
       // Wave A (s03): the miss line names the index, so the index note is
       // not printed a second time.
-      await expect(page.locator('[data-testid="result-strip"]')).toContainText('12 v 4: hit at any negative TC');
+      await expect(page.locator('[data-testid="result-strip"]')).toContainText('12 v 4: stand at TC ≥ 0; hit below');
       await expect(page.getByTestId('hand-result-index')).toHaveCount(0);
       return;
     }

@@ -1,0 +1,20 @@
+/*
+ * R6 (#20): an index stored as "hit at TC <= -4" is shown as published,
+ * "TC >= -3 . Stand", with the play below the index in small dim text under
+ * the play chip. The wrapper takes the chip's grid track.
+ */
+.index-play-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+}
+
+.index-below {
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}

@@ -2,6 +2,7 @@ import type { Rank } from '../../engine/cards';
 import { indexSetFor } from '../../engine/deviations';
 import type { Deviation, DeviationId } from '../../engine/deviations';
 import type { StrategyRules } from '../../engine/ruleset';
+import { indexPlayAt, indexPlayBelow, publishedIndexText } from '../../drills/indexDisplay';
 import { DEALER_UPCARDS, upcardColumn } from './chartRows';
 import type { ChartRow, ChartSection } from './chartRows';
 
@@ -30,12 +31,17 @@ export interface IndexEntry {
   hand: string;
   /** A chart column rank. */
   dealer: Rank;
-  /** 'TC ≥ +3', 'TC ≥ 0', 'TC ≤ −2'. */
+  /**
+   * The PUBLISHED index, always 'TC ≥ n' (R6): 'TC ≥ +3', 'TC ≥ 0', and
+   * 'TC ≥ −3' for 12 v 6 under H17, which the engine stores as hit at ≤ −4.
+   */
   index: string;
-  /** 'Stand', 'Split', 'Take insurance'. */
+  /** The play at and above the index: 'Stand', 'Split', 'Take insurance'. */
   play: string;
+  /** 'hit below' when the entry names the play below the index, else null. */
+  below: string | null;
   family: IndexFamily;
-  /** The whole entry as one line: '16 v 10 · TC ≥ 0 · Stand'. */
+  /** The whole entry as one line: '16 v 10 · TC ≥ 0 · Stand', '12 v 6 · TC ≥ −3 · Stand · hit below'. */
   text: string;
   /**
    * The HARD-chart total the index sits on, or null when it has no cell
@@ -57,12 +63,6 @@ export interface IndexList {
   inactive: string[];
 }
 
-/** The signed threshold as the deviation labels write it: +3, 0, −2 (a real minus). */
-export function formatIndex(threshold: number, dir: Deviation['dir']): string {
-  const sign = threshold > 0 ? '+' : threshold < 0 ? '−' : '';
-  return `TC ${dir === 'gte' ? '≥' : '≤'} ${sign}${Math.abs(threshold)}`;
-}
-
 const PLAY_TEXT: Record<Deviation['action'], string> = {
   hit: 'Hit',
   stand: 'Stand',
@@ -73,7 +73,8 @@ const PLAY_TEXT: Record<Deviation['action'], string> = {
 };
 
 function toEntry(dev: Deviation): IndexEntry {
-  const family: IndexFamily = dev.action === 'take-insurance' ? 'insurance' : dev.action;
+  const at = indexPlayAt(dev);
+  const family: IndexFamily = at === 'take-insurance' ? 'insurance' : at;
   let hand: string;
   let hardTotal: number | null;
   let softTotal: number | null = null;
@@ -93,8 +94,10 @@ function toEntry(dev: Deviation): IndexEntry {
   }
   // Insurance is only ever offered against an ace, so that is its column.
   const dealer = upcardColumn(dev.up ?? 'A');
-  const index = formatIndex(dev.threshold, dev.dir);
-  const play = PLAY_TEXT[dev.action];
+  const index = publishedIndexText(dev);
+  const play = PLAY_TEXT[at];
+  const belowPlay = indexPlayBelow(dev);
+  const below = belowPlay === null ? null : `${PLAY_TEXT[belowPlay].toLowerCase()} below`;
   return {
     id: dev.id,
     group: dev.extra ? 'extra' : dev.kind === 'surrender' ? 'fab4' : 'illustrious',
@@ -102,8 +105,9 @@ function toEntry(dev: Deviation): IndexEntry {
     dealer,
     index,
     play,
+    below,
     family,
-    text: `${hand} v ${dealer} · ${index} · ${play}`,
+    text: `${hand} v ${dealer} · ${index} · ${play}${below === null ? '' : ` · ${below}`}`,
     hardTotal,
     softTotal,
   };

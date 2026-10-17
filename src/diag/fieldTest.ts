@@ -937,7 +937,7 @@ export const FIELD_TEST_STEPS: readonly FieldTestStep[] = [
     instruction:
       'A longer line this time. Where did it come from?',
     say: [
-      'Twelve versus six: hit at true count minus four or lower, when the dealer hits soft seventeen.',
+      'Twelve versus six: stand at true count minus three or higher; hit below, when the dealer hits soft seventeen.',
     ],
     sayAgain: true,
     responses: ROUTE_RESPONSES,

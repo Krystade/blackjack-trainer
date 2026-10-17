@@ -4,6 +4,7 @@ import { TabSettingsButton } from '../components/TabSettingsButton';
 import './charts.css';
 import './chartsThemes.css';
 import './chartIndexes.css';
+import './indexBelow.css';
 import type { Screen } from '../App';
 import type { Profile } from '../../store/types';
 import { getChart } from '../../engine/charts';
@@ -73,8 +74,18 @@ function IndexLine({ entry }: { entry: IndexEntry }) {
       <span className="index-sep"> · </span>
       <span className="index-tc">{entry.index}</span>
       <span className="index-sep"> · </span>
-      <span className="index-play" data-family={entry.family}>
-        {entry.play}
+      {/* R6: an lte index reads as published, "TC ≥ −3 · Stand", with the
+          play below it under the chip ("hit below"). */}
+      <span className="index-play-cell">
+        <span className="index-play" data-family={entry.family}>
+          {entry.play}
+        </span>
+        {entry.below !== null && (
+          <>
+            <span className="index-sep"> · </span>
+            <span className="index-below">{entry.below}</span>
+          </>
+        )}
       </span>
     </>
   );

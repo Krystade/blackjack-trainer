@@ -158,7 +158,7 @@ describe('copy', () => {
   it('explanations name both rules', () => {
     expect(explainRulesQuestion(play('soft-18-v-2', 'b', null), H17S17)).toBe('Basic strategy, A,7 v 2: H17 doubles, S17 stands.');
     expect(explainRulesQuestion(play('hard-12-v-6', 'a', -3), H17S17)).toBe(
-      'At TC −3, 12 v 6: H17 stands, S17 hits. Index: H17 hit ≤ −4, S17 hit ≤ −2.');
+      'At TC −3, 12 v 6: H17 stands, S17 hits. Index: H17 stand ≥ −3, S17 stand ≥ −1.');
     expect(explainRulesQuestion(play('hard-11-v-A', 'b', 0), H17S17)).toBe(
       'At TC 0, 11 v A: H17 doubles, S17 hits. Index: H17 none, S17 double ≥ +1.');
     const p61 = planRulesDrill(r({}), r({ decks: 1 }));

@@ -19,6 +19,7 @@ import { srWeight } from './spacedRepetition';
 import type { SrDeck } from './spacedRepetition';
 import { weightedIndex } from './weightedDraw';
 import { signed } from './signed';
+import { publishedIndex } from './indexDisplay';
 import { narrateFlashcardPrompt, narrateDealerUp, narrateInsuranceOffer, narrateReason } from '../audio/narrate';
 import { speakableCount } from '../audio/voiceNumber';
 
@@ -44,10 +45,8 @@ const PLAY: Record<Play, string> = {
   'decline-insurance': 'decline',
 };
 
-/** The count the play changes AT: `gte` -> threshold; `lte` -> threshold + 1. */
-export function publishedIndex(dev: Deviation): number {
-  return dev.dir === 'gte' ? dev.threshold : dev.threshold + 1;
-}
+// R6: one published-index formatter for every surface (drills/indexDisplay.ts).
+export { publishedIndex } from './indexDisplay';
 
 /** The indexes the Index test asks: the quiz's set, active entries only. */
 export function indexTestSet(rules: StrategyRules): Deviation[] {

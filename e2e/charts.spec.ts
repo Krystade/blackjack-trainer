@@ -446,7 +446,7 @@ test.describe('#23 indexes', () => {
     await cell.focus();
     await page.keyboard.press('Enter');
     const note = page.locator('[data-testid="chart-index-note"]');
-    await expect(note).toHaveText('12 v 4 · TC ≤ −1 · Hit');
+    await expect(note).toHaveText('12 v 4 · TC ≥ 0 · Stand · hit below');
     await expect(cell).toHaveAttribute('aria-controls', (await note.getAttribute('id'))!);
     await page.keyboard.press('Escape');
     await expect(note).toHaveCount(0);
@@ -476,7 +476,7 @@ test.describe('#23 indexes', () => {
     await expect(page.locator('[data-testid="chart-index-surrender-first"]')).toContainText('The stand index');
     // 12 v 4 is a plain hit cell: no such line.
     await page.locator('[data-row="HARD:12"] [data-up="4"] button').click();
-    await expect(page.locator('[data-testid="chart-index-note"]')).toHaveText('12 v 4 · TC ≤ −1 · Hit');
+    await expect(page.locator('[data-testid="chart-index-note"]')).toHaveText('12 v 4 · TC ≥ 0 · Stand · hit below');
     await expect(page.locator('[data-testid="chart-index-surrender-first"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="chart-indexes-surrender-first"]')).toContainText('16 v 10');
   });

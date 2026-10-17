@@ -10,6 +10,7 @@ import { drillLegalActions } from './legalActions';
 import { gradeDeckEstimate, makeDeckEstimationQuestion } from './deckEstimation';
 import { depthOptions } from './depthResolution';
 import { signed } from './signed';
+import { indexPlayAt, publishedIndex } from './indexDisplay';
 
 /**
  * B10 rules differences drill: asks only the plays where two rulesets give
@@ -238,7 +239,8 @@ const VERB: Record<Deviation['action'], string> = {
 
 function indexText(d: Deviation | null): string {
   if (!d || !d.active) return 'none';
-  return `${VERB[d.action]} ${d.dir === 'gte' ? '≥' : '≤'} ${signed(d.threshold)}`;
+  // R6: the published index ("stand ≥ −3"), never the stored "hit ≤ −4".
+  return `${VERB[indexPlayAt(d)]} ≥ ${signed(publishedIndex(d))}`;
 }
 
 function indexPair(plan: RulesDrillPlan, d: IndexDiff): string {

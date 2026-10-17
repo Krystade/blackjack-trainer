@@ -53,6 +53,10 @@ export interface Deviation {
   active: boolean; // 11vA inactive: absorbed into H17 basic
   label: string; // e.g. "16 v 10: stand at TC ≥ 0"
   extra?: true; // set on every BJA H17 extra, so surfaces can mark them as extras
+  // R6: `lte` entries only -- the play at and above the published index
+  // (threshold + 1). The user is always shown that form ("12 v 6: stand at
+  // TC ≥ −3"), never the stored hit threshold; see drills/indexDisplay.ts.
+  above?: Action;
 }
 
 // VERIFIED H17-ADJUSTED INDICES — transcribed verbatim from the task-6 brief.
@@ -73,13 +77,13 @@ export const ILLUSTRIOUS_18: Deviation[] = [
   { id: '10vA', kind: 'hard', total: 10, up: 'A', action: 'double', threshold: 3, dir: 'gte', active: true, label: '10 v A: double at TC ≥ +3 (H17)' },
   { id: '9v7', kind: 'hard', total: 9, up: '7', action: 'double', threshold: 3, dir: 'gte', active: true, label: '9 v 7: double at TC ≥ +3' },
   { id: '16v9', kind: 'hard', total: 16, up: '9', action: 'stand', threshold: 4, dir: 'gte', active: true, label: '16 v 9: stand at TC ≥ +4 (H17)' },
-  { id: '13v2', kind: 'hard', total: 13, up: '2', action: 'hit', threshold: -2, dir: 'lte', active: true, label: '13 v 2: hit at TC ≤ −2' },
-  { id: '12v4', kind: 'hard', total: 12, up: '4', action: 'hit', threshold: -1, dir: 'lte', active: true, label: '12 v 4: hit at any negative TC' },
-  { id: '12v5', kind: 'hard', total: 12, up: '5', action: 'hit', threshold: -3, dir: 'lte', active: true, label: '12 v 5: hit at TC ≤ −3' },
+  { id: '13v2', kind: 'hard', total: 13, up: '2', action: 'hit', threshold: -2, dir: 'lte', above: 'stand', active: true, label: '13 v 2: stand at TC ≥ −1; hit below' },
+  { id: '12v4', kind: 'hard', total: 12, up: '4', action: 'hit', threshold: -1, dir: 'lte', above: 'stand', active: true, label: '12 v 4: stand at TC ≥ 0; hit below' },
+  { id: '12v5', kind: 'hard', total: 12, up: '5', action: 'hit', threshold: -3, dir: 'lte', above: 'stand', active: true, label: '12 v 5: stand at TC ≥ −2; hit below' },
   // F6: published H17 index is "stand at TC ≥ −3", so -- like every other
   // negative index here -- the stored hit threshold is the index minus one.
-  { id: '12v6', kind: 'hard', total: 12, up: '6', action: 'hit', threshold: -4, dir: 'lte', active: true, label: '12 v 6: hit at TC ≤ −4 (H17)' },
-  { id: '13v3', kind: 'hard', total: 13, up: '3', action: 'hit', threshold: -3, dir: 'lte', active: true, label: '13 v 3: hit at TC ≤ −3' },
+  { id: '12v6', kind: 'hard', total: 12, up: '6', action: 'hit', threshold: -4, dir: 'lte', above: 'stand', active: true, label: '12 v 6: stand at TC ≥ −3; hit below (H17)' },
+  { id: '13v3', kind: 'hard', total: 13, up: '3', action: 'hit', threshold: -3, dir: 'lte', above: 'stand', active: true, label: '13 v 3: stand at TC ≥ −2; hit below' },
 ];
 
 // VERIFIED S17-ADJUSTED INDICES — derived from H17 ILLUSTRIOUS_18 with four overrides
@@ -90,7 +94,7 @@ export const ILLUSTRIOUS_18_S17: Deviation[] = ILLUSTRIOUS_18.map((dev) => {
     '11vA': { active: true, threshold: 1, label: '11 v A: double at TC ≥ +1 (S17)' },
     '16v9': { threshold: 5, label: '16 v 9: stand at TC ≥ +5' },
     '10vA': { threshold: 4, label: '10 v A: double at TC ≥ +4' },
-    '12v6': { threshold: -2, label: '12 v 6: hit at TC ≤ −2 (S17)' },
+    '12v6': { threshold: -2, label: '12 v 6: stand at TC ≥ −1; hit below (S17)' },
   };
   if (dev.id in overrides) {
     return { ...dev, ...overrides[dev.id] };
@@ -267,7 +271,7 @@ export const BJA_H17_EXTRAS: Deviation[] = [
   { id: '8v6', kind: 'hard', total: 8, up: '6', action: 'double', threshold: 2, dir: 'gte', active: true, extra: true, label: '8 v 6: double at TC ≥ +2' },
   { id: 'A8v4', kind: 'soft', total: 19, up: '4', action: 'double', threshold: 3, dir: 'gte', active: true, extra: true, label: 'A,8 v 4: double at TC ≥ +3' },
   { id: 'A8v5', kind: 'soft', total: 19, up: '5', action: 'double', threshold: 1, dir: 'gte', active: true, extra: true, label: 'A,8 v 5: double at TC ≥ +1' },
-  { id: 'A8v6', kind: 'soft', total: 19, up: '6', action: 'stand', threshold: -1, dir: 'lte', active: true, extra: true, label: 'A,8 v 6: stand at any negative TC' },
+  { id: 'A8v6', kind: 'soft', total: 19, up: '6', action: 'stand', threshold: -1, dir: 'lte', above: 'double', active: true, extra: true, label: 'A,8 v 6: double at TC ≥ 0; stand below' },
   { id: 'A6v2', kind: 'soft', total: 17, up: '2', action: 'double', threshold: 1, dir: 'gte', active: true, extra: true, label: 'A,6 v 2: double at TC ≥ +1' },
   { id: 'TTv4', kind: 'pair10', up: '4', action: 'split', threshold: 6, dir: 'gte', active: true, extra: true, label: '10,10 v 4: split at TC ≥ +6' },
 ];
