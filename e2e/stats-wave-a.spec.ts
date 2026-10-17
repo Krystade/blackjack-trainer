@@ -49,6 +49,48 @@ test('s02: hand categories show the goal figure against a 90% marker', async ({ 
   await expect(page.locator('.category-row[data-hand="pair"]')).toContainText('0 of 20 answers needed to judge');
 });
 
+test('review: 1 point is singular, older answers are shown, surrender overlap is said', async ({ page }) => {
+  await withStats(page, {
+    categories: { pairs: { right: 380, wrong: 20 }, surrender: { right: 3, wrong: 1 } },
+    cellStats: {
+      'hard-16-v-10': { right: 89, wrong: 11, lastAt: '' },
+      'pair-8-v-A': { right: 12, wrong: 0, lastAt: '' },
+    },
+  });
+  await openStats(page);
+  const hard = page.locator('.category-row[data-hand="hard"]');
+  await expect(hard).toContainText('1 point to the 90% goal');
+  await expect(hard).not.toContainText('points');
+  // cellStats has no backfill: answers from before it are shown, not dropped.
+  const pair = page.locator('.category-row[data-hand="pair"]');
+  await expect(pair).toContainText('12 of 20 answers needed to judge');
+  await expect(pair.getByTestId('legacy-pair')).toHaveText(
+    'All time 380/400 (95%), with answers from before per-hand tracking. The goal counts only answers since.',
+  );
+  await expect(hard.getByTestId('legacy-hard')).toHaveCount(0);
+  const surrender = page.locator('.category-row', { has: page.locator('.category-label', { hasText: 'Surrender' }) });
+  await expect(surrender).toContainText("These hands also count toward their hand type's goal above.");
+});
+
+test('s10: table-only categories get no in-range line; the note says what the goal figures are', async ({ page }) => {
+  await withStats(page, {
+    categories: { bet: { right: 4, wrong: 1 }, countCheck: { right: 2, wrong: 2 } },
+    latencyHistory: [{ category: 'hard', elapsedMs: 900, date: new Date(Date.now() - DAY).toISOString(), correct: true }],
+  });
+  await openStats(page);
+  await page.getByRole('button', { name: 'Last 7 days', exact: true }).click();
+  const row = (label: string) =>
+    page.locator('.category-row', { has: page.locator('.category-label', { hasText: label }) });
+  await expect(row('Hard totals').locator('.category-in-range')).toHaveText('Last 7 days: 1/1 (100%) timed answers');
+  await expect(row('Soft totals').locator('.category-in-range')).toHaveCount(0);
+  await expect(row('Bet sizing').locator('.category-in-range')).toHaveCount(0);
+  await expect(row('Count checks').locator('.category-in-range')).toHaveCount(0);
+  await expect(page.locator('.stats-range > .u-note')).toContainText(
+    'the last 30 per hand type',
+  );
+  await expect(page.getByText('the Bet or sit table rows')).toBeVisible();
+});
+
 test('s10: a bounded range shows in-range hand accuracy from dated answers', async ({ page }) => {
   const recent = new Date(Date.now() - DAY).toISOString();
   const old = new Date(Date.now() - 20 * DAY).toISOString();

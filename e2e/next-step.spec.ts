@@ -49,6 +49,18 @@ test('without a sweep on record, Mastery is next', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'Next step' })).toHaveAttribute('data-step', 'mastery');
 });
 
+/* s02 (review): Home confirms the goal once every category has met it. */
+test('once all three categories meet the goal, Home says so instead of listing them', async ({ page }) => {
+  await seedStats(page, STRONG);
+  await page.goto('/?e2e=1');
+  const card = page.getByRole('region', { name: 'Next step' });
+  await expect(card).toHaveAttribute('data-step', 'mastery');
+  await expect(card.getByTestId('basic-goal-met')).toHaveText(
+    '✓ Basic strategy goal met (hard 100%, soft 100%, pairs 100%)',
+  );
+  await expect(card.locator('.next-step-progress')).toHaveCount(0);
+});
+
 test('with a sweep on record, the next step moves past Mastery', async ({ page }) => {
   await seedStats(page, STRONG, { masterySweepsCompleted: 1 });
   await page.goto('/?e2e=1');

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { cellIdForHand, cellIdForEvent, CELL_WINDOW, HAND_WINDOW, judgedAccuracy } from './cellStats';
+import { cellIdForHand, cellIdForEvent, CELL_WINDOW, HAND_WINDOW, countBits, handWindow, judgedAccuracy, judgedTally } from './cellStats';
 import { applyEvents } from './stats';
 import { undoGradedEvent, recordMisclick } from './undoEvent';
 import { EMPTY_STATS } from './types';
@@ -180,20 +180,23 @@ describe('through the real grade path', () => {
 });
 
 describe('W3: recent windows', () => {
-  it('each cell keeps its last CELL_WINDOW results, oldest first', () => {
+  it('each cell is judged on its last CELL_WINDOW results, oldest first', () => {
     let s = structuredClone(EMPTY_STATS);
     for (let i = 0; i < CELL_WINDOW + 3; i++) s = applyEvents(s, [{ ...flash, correct: i < 3 }]);
     const t = s.cellStats!['hard-16-v-10']!;
-    expect(t.recent).toBe('0'.repeat(CELL_WINDOW));
+    // One spare result is kept beyond the judged window (see 'Wrong tap' below).
+    expect(t.recent).toBe('1' + '0'.repeat(CELL_WINDOW));
+    expect(judgedTally(t, 5)).toEqual({ right: 0, wrong: CELL_WINDOW });
     expect(t.right + t.wrong).toBe(CELL_WINDOW + 3);
   });
 
-  it('each hand type keeps its last HAND_WINDOW results', () => {
+  it('each hand type is judged on its last HAND_WINDOW results', () => {
     let s = structuredClone(EMPTY_STATS);
     for (let i = 0; i < HAND_WINDOW + 5; i++) s = applyEvents(s, [play]);
     s = applyEvents(s, [flash, playPair]);
-    expect(s.handRecent!.hard).toBe('1'.repeat(HAND_WINDOW - 1) + '0');
-    expect(s.handRecent!.pair).toBe('1');
+    expect(handWindow(s.handRecent, 'hard')).toBe('1'.repeat(HAND_WINDOW - 1) + '0');
+    expect(s.handRecent!.hard).toHaveLength(HAND_WINDOW + 1);
+    expect(handWindow(s.handRecent, 'pair')).toBe('1');
     expect(s.handRecent!.soft).toBeUndefined();
   });
 
@@ -204,7 +207,7 @@ describe('W3: recent windows', () => {
     expect(judgedAccuracy(undefined)).toBeUndefined();
   });
 
-  it('Wrong tap restores both windows exactly', () => {
+  it('Wrong tap restores both windows exactly while they are short', () => {
     const before = applyEvents(structuredClone(EMPTY_STATS), [play, flash, playPair]);
     const cellBefore = before.cellStats!['hard-16-v-10']!;
     expect(undoGradedEvent(applyEvents(before, [flash]), flash, cellBefore)).toEqual(before);
@@ -212,5 +215,40 @@ describe('W3: recent windows', () => {
     const undone = undoGradedEvent(applyEvents(before, [flash]), flash);
     expect(undone.cellStats!['hard-16-v-10']!.recent).toBe(cellBefore.recent);
     expect(undone.handRecent).toEqual(before.handRecent);
+  });
+
+  it('Wrong tap restores every judged figure exactly, even once the windows are full', () => {
+    // 31 hard results. The hand window's oldest JUDGED result (30th from the
+    // end) is a miss on 12 v 3; the 16 v 10 cell's oldest judged result (10th
+    // from its end) is a miss too. An undo that lost either would lift it.
+    const other: GradedEvent = { ...play, hand: '10,2 v 3' };
+    const events: GradedEvent[] = [
+      other,
+      { ...other, correct: false },
+      ...Array.from({ length: 18 }, () => other),
+      play,
+      { ...play, correct: false },
+      ...Array.from({ length: 9 }, () => play),
+    ];
+    let before = structuredClone(EMPTY_STATS);
+    for (const e of events) before = applyEvents(before, [e]);
+    expect(handWindow(before.handRecent, 'hard')).toHaveLength(HAND_WINDOW);
+    const cellBefore = before.cellStats!['hard-16-v-10']!;
+    expect(judgedAccuracy(cellBefore)).toBeCloseTo(0.9);
+    expect(countBits(handWindow(before.handRecent, 'hard'))).toEqual({ right: 28, wrong: 2 });
+
+    // With the grader's snapshot (Flashcards, Mastery, the quiz) and without it.
+    for (const snapshot of [cellBefore, undefined]) {
+      const undone = undoGradedEvent(applyEvents(before, [flash]), flash, snapshot);
+      expect(handWindow(undone.handRecent, 'hard')).toBe(handWindow(before.handRecent, 'hard'));
+      const cell = undone.cellStats!['hard-16-v-10']!;
+      expect(judgedTally(cell, 5)).toEqual(judgedTally(cellBefore, 5));
+      expect(cell.right + cell.wrong).toBe(cellBefore.right + cellBefore.wrong);
+    }
+    // And the next answer lands exactly as if the withdrawn one never happened.
+    const undone = undoGradedEvent(applyEvents(before, [flash]), flash);
+    expect(handWindow(applyEvents(undone, [play]).handRecent, 'hard')).toBe(
+      handWindow(applyEvents(before, [play]).handRecent, 'hard'),
+    );
   });
 });

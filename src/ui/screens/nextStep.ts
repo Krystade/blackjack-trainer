@@ -2,7 +2,8 @@ import type { Stats } from '../../store/types';
 import { hydrateMasteryRun, isMasteryRunComplete } from '../../drills/masteryChallenge';
 import type { MasteryRun, PersistedMasteryRun } from '../../drills/masteryChallenge';
 import { generateAllCells } from '../../drills/flashcards';
-import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, WEAK_CELL_BELOW, handCategoryProgress, pctDown, weakCells } from './handProgress';
+import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, WEAK_CELL_BELOW, goalPct, handCategoryProgress, pctDown, weakCells } from './handProgress';
+import { cellWindow, countBits } from '../../store/cellStats';
 import type { HandCategoryProgress, WeakCell } from './handProgress';
 import type { HandScope } from '../../drills/handScope';
 import { activeIndices } from './readiness';
@@ -45,9 +46,9 @@ export interface NextStep {
    */
   scope?: HandScope;
   /**
-   * s02: the three basic-strategy categories against the goal, shown on the
-   * card while the step is about them ('flash'), so progress and a met goal
-   * are visible on Home.
+   * s02: the three basic-strategy categories against the goal, on every step,
+   * so Home shows progress while one is short and confirms the goal once all
+   * three are met (every later step has them all on target).
    */
   progress?: HandCategoryProgress[];
 }
@@ -90,15 +91,32 @@ export function cellLabel(id: string): string {
 /** s07: cells judged weak inside a category that is below target need only this many answers. */
 export const MIN_CELL_ANSWERS_IN_LOW_CATEGORY = 3;
 
+/**
+ * s07: whether `weak` (cells of a category below target) hold at least half
+ * of the category's misses. Both sides count misses from the same kind of
+ * figure the category is judged on: the recent windows (each weak cell's last
+ * CELL_WINDOW against the category's last HAND_WINDOW) when the category is
+ * judged on its window, else the lifetime tallies. Mixing the two let a
+ * learner's early, spread-out misses -- which never age out of a lifetime
+ * sum -- hide a weakness that sits in two cells now. A cell's window can
+ * reach back past the category's, so this leans towards Fix weak cells; the
+ * cells it names are weak on their own recent answers either way.
+ */
+function holdsHalfTheMisses(stats: Stats, low: HandCategoryProgress, weak: readonly WeakCell[]): boolean {
+  const cells = stats.cellStats ?? {};
+  const missesIn = (id: string) => (low.recent ? countBits(cellWindow(cells[id])).wrong : (cells[id]?.wrong ?? 0));
+  const weakMisses = weak.reduce((n, w) => n + missesIn(w.id), 0);
+  return weakMisses * 2 >= low.judgedN - low.judgedRight;
+}
+
 /** The "Fix weak cells" step for `weak` (worst first), its reason led by `lead`. */
-function weakCellsStep(weak: readonly WeakCell[], lead: string, progress?: HandCategoryProgress[]): NextStep {
+function weakCellsStep(weak: readonly WeakCell[], lead: string): NextStep {
   const w = weak[0]!;
   const more = weak.length > 1 ? ` and ${weak.length - 1} more cell${weak.length > 2 ? 's' : ''}` : '';
   return {
     kind: 'custom',
     title: 'Fix weak cells',
-    why: `${lead}${cellLabel(w.id)}${lead ? '' : ' is'} at ${pctDown(w.pct)}%${more} below ${pctDown(WEAK_CELL_BELOW)}%. Custom with Auto drills them most.`,
-    ...(progress ? { progress } : {}),
+    why: `${lead}${cellLabel(w.id)}${lead ? '' : ' is'} at ${goalPct(w.pct)}${more} below ${pctDown(WEAK_CELL_BELOW)}%. Custom with Auto drills them most.`,
   };
 }
 
@@ -110,18 +128,30 @@ export function nextStep(
     rules?: IndexRules;
   },
 ): NextStep {
+  // s02: every step carries the three categories, so Home can confirm the
+  // goal once it is met as well as show progress while it is not.
+  const cats = handCategoryProgress(stats);
+  return { ...stepFor(stats, cats, opts), progress: cats };
+}
+
+function stepFor(
+  stats: Stats,
+  cats: HandCategoryProgress[],
+  opts: { sweepDone: boolean; rules?: IndexRules },
+): NextStep {
   // 1. Basic strategy, category by category (W3: judged on the recent
   // window, see handProgress). Too few answers to judge comes first: it is
   // the reason the percentage cannot be trusted yet.
-  const cats = handCategoryProgress(stats);
   const thin = cats.filter((c) => c.thin).sort((a, b) => a.n - b.n)[0];
   if (thin) {
+    // cellStats has no backfill: a returning user's older answers are in the
+    // category tally only, so "so far" would be false for them.
+    const since = thin.legacy ? 'since per-hand tracking began' : 'so far';
     return {
       kind: 'flash',
       title: 'Learn basic strategy',
-      why: `${thin.label}: ${thin.n} answer${thin.n === 1 ? '' : 's'} so far, ${MIN_CATEGORY_ANSWERS} needed to judge. Get every category to ${pctDown(CATEGORY_TARGET)}%.`,
+      why: `${thin.label}: ${thin.n} answer${thin.n === 1 ? '' : 's'} ${since}, ${MIN_CATEGORY_ANSWERS} needed to judge. Get every category to ${pctDown(CATEGORY_TARGET)}%.`,
       scope: thin.scope,
-      progress: cats,
     };
   }
   const low = cats.filter((c) => c.pct < CATEGORY_TARGET).sort((a, b) => a.pct - b.pct)[0];
@@ -132,20 +162,14 @@ export function nextStep(
   // category's misses, send them to Custom with Auto instead.
   if (low) {
     const lowWeak = weakCells(stats, { prefix: low.prefix, minAnswers: MIN_CELL_ANSWERS_IN_LOW_CATEGORY });
-    const cells = stats.cellStats ?? {};
-    const missesIn = (ids: readonly string[]) => ids.reduce((n, id) => n + (cells[id]?.wrong ?? 0), 0);
-    const categoryMisses = missesIn(Object.keys(cells).filter((id) => id.startsWith(`${low.prefix}-`)));
-    if (lowWeak.length > 0 && missesIn(lowWeak.map((w) => w.id)) * 2 >= categoryMisses) {
-      return weakCellsStep(lowWeak, `${low.label} are at ${pctDown(low.pct)}%, mostly from `, cats);
+    if (lowWeak.length > 0 && holdsHalfTheMisses(stats, low, lowWeak)) {
+      return weakCellsStep(lowWeak, `${low.label} are at ${goalPct(low.pct)}, mostly from `);
     }
-  }
-  if (low) {
     return {
       kind: 'flash',
       title: 'Learn basic strategy',
-      why: `${low.label} are at ${pctDown(low.pct)}%${low.recent ? ` over your last ${low.judgedN}` : ''}; get every category to ${pctDown(CATEGORY_TARGET)}%.`,
+      why: `${low.label} are at ${goalPct(low.pct)}${low.recent ? ` over your last ${low.judgedN}` : ''}; get every category to ${pctDown(CATEGORY_TARGET)}%.`,
       scope: low.scope,
-      progress: cats,
     };
   }
 
@@ -186,7 +210,7 @@ export function nextStep(
     return {
       kind: 'quiz',
       title: 'Learn the deviations',
-      why: `The deviation quiz is at ${pctDown(ipct)}%; get it to ${pctDown(INDEX_TARGET)}%.`,
+      why: `The deviation quiz is at ${goalPct(ipct)}; get it to ${pctDown(INDEX_TARGET)}%.`,
     };
   }
 

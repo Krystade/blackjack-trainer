@@ -39,7 +39,7 @@ import './countHistory.css';
 import { strategyRulesFor } from '../../store/profiles';
 import { CATEGORY_LABELS } from './categoryLabels';
 import { bestCleanCountRuns, formatCountRun } from '../../drills/countSpeed';
-import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, handCategoryProgress, pctDown } from './handProgress';
+import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, handCategoryProgress, pctDown } from './handProgress';
 import type { HandCategoryProgress } from './handProgress';
 import './statsGoal.css';
 import './statsHistory.css';
@@ -328,19 +328,19 @@ function countRunMode(run: StatsData['countDrill']['history'][number]): string {
  * the goal is met, so 89% and 92% no longer look the same.
  */
 function HandGoalRow({ row, latencyText, rangeText }: { row: HandCategoryProgress; latencyText: string; rangeText: string | null }) {
-  const judgedRight = Math.round(row.pct * row.judgedN);
+  const gap = pctDown(CATEGORY_TARGET) - pctDown(row.pct);
   const status = row.thin
     ? `${row.n} of ${MIN_CATEGORY_ANSWERS} answers needed to judge`
     : row.onTarget
       ? 'On target'
-      : `${pctDown(CATEGORY_TARGET) - pctDown(row.pct)} points to the ${pctDown(CATEGORY_TARGET)}% goal`;
+      : `${gap} point${gap === 1 ? '' : 's'} to the ${pctDown(CATEGORY_TARGET)}% goal`;
   return (
     <div className="category-row" data-hand={row.prefix} data-on-target={row.onTarget ? 'true' : 'false'}>
       <div className="category-row-top">
         <span className="category-label">{row.label}</span>
         <span className="category-fraction">
           {row.recent ? `last ${row.judgedN}: ` : ''}
-          {judgedRight}/{row.judgedN} ({row.judgedN === 0 ? '—' : `${pctDown(row.pct)}%`})
+          {row.judgedRight}/{row.judgedN} ({row.judgedN === 0 ? '—' : goalPct(row.pct)})
         </span>
       </div>
       <div className="category-bar-track goal-bar-track">
@@ -350,8 +350,16 @@ function HandGoalRow({ row, latencyText, rangeText }: { row: HandCategoryProgres
       <div className="category-latency">
         {row.onTarget ? '✓ ' : ''}
         {status}
-        {row.recent ? ` · all time ${row.right}/${row.n}` : ''} · Median decision time: {latencyText}
+        {row.recent && !row.legacy ? ` · all time ${row.right}/${row.n}` : ''} · Median decision time: {latencyText}
       </div>
+      {/* The goal reads per-cell answers, which have no backfill: a returning
+          user's older answers show here rather than vanish (see handProgress). */}
+      {row.legacy && (
+        <div className="category-legacy" data-testid={`legacy-${row.prefix}`}>
+          All time {row.allRight}/{row.allN} ({pct(row.allRight, row.allN)}), with answers from before per-hand
+          tracking. The goal counts only answers since.
+        </div>
+      )}
       {rangeText !== null && <div className="category-in-range">{rangeText}</div>}
     </div>
   );
@@ -429,6 +437,9 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
    */
   const inRangeText = (cat: Category): string | null => {
     if (range.id === 'all') return null;
+    // Table-only categories (bet sizing, play or sit, count checks) never
+    // write a timed row; "no timed answers" under them in every range is noise.
+    if (!stats.latencyHistory.some((r) => r.category === cat)) return null;
     const label = range.id === 'since' ? `Since ${range.since ?? '…'}` : RANGE_LABEL[range.id];
     const rows = latencyRows.filter((r) => r.category === cat && r.correct !== undefined);
     if (rows.length === 0) return `${label}: no timed answers`;
@@ -832,7 +843,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
         <p className="u-note">
           {range.id === 'all'
             ? 'Showing all time.'
-            : 'The range applies to dated results. Accuracy by category adds an in-range line for timed answers; its goal figures, Flashcards, Shot clock on vs off, Illustrious 18, Mistake types and the spaced-repetition boxes always show all time.'}
+            : 'The range applies to dated results. Accuracy by category adds an in-range line for timed drill answers. Its goal figures are always your latest answers (the last 30 per hand type), and Flashcards, Shot clock on vs off, Illustrious 18, Mistake types, the Bet or sit table rows and the spaced-repetition boxes are undated tallies, so they show all time.'}
         </p>
       </div>
 
@@ -906,6 +917,11 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                     <div className="category-bar-fill" style={{ width: `${pctNum}%` }} />
                   </div>
                   <div className="category-latency">Median decision time: {formatLatency(latencyMs)}</div>
+                  {/* s02: hands whose right play is surrender are also in
+                      their hand type's per-cell goal figure above. */}
+                  {cat === 'surrender' && total > 0 && (
+                    <div className="category-legacy">These hands also count toward their hand type&apos;s goal above.</div>
+                  )}
                   {inRangeText(cat) !== null && (
                     <div className="category-in-range">{inRangeText(cat)}</div>
                   )}

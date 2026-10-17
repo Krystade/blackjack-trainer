@@ -9,7 +9,7 @@ import { masterySweepDone, nextStep } from './nextStep';
 import { loadMasteryRun } from '../../drills/masteryChallenge';
 import { launchSettings, setDrillLaunch } from '../drillLaunch';
 import { strategyRulesFor } from '../../store/profiles';
-import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, pctDown } from './handProgress';
+import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, pctDown } from './handProgress';
 import './nextStep.css';
 
 interface HomeProps {
@@ -66,6 +66,9 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
     setDrillLaunch(step.kind);
     onNavigate('drills');
   };
+  // s02: once hard, soft and pairs all meet the goal, the card says so
+  // instead of listing three ticks on every later step.
+  const basicMet = step.progress?.every((c) => c.onTarget) ?? false;
 
   return (
     <div className="home-screen">
@@ -124,9 +127,18 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
         <h2 className="next-step-title">{step.title}</h2>
         <p className="next-step-why">{step.why}</p>
         {/* s02: progress on each category, and a tick once its goal is met,
-            beside Start so the card still fits the 812px fold. */}
+            beside Start so the card still fits the 812px fold. Once all
+            three are met, one line confirms it. */}
         <div className="next-step-foot">
-          {step.progress && (
+          {basicMet && step.progress && (
+            <p className="next-step-goal-met" data-testid="basic-goal-met">
+              <span aria-hidden="true">✓ </span>
+              Basic strategy goal met ({step.progress
+                .map((c) => `${c.scope} ${goalPct(c.pct)}`)
+                .join(', ')})
+            </p>
+          )}
+          {!basicMet && step.progress && (
             <ul className="next-step-progress" aria-label="Basic strategy progress">
               {step.progress.map((c) => (
                 <li
@@ -140,8 +152,8 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
                     {c.thin
                       ? `${c.n}/${MIN_CATEGORY_ANSWERS} answers`
                       : c.onTarget
-                        ? `✓ ${pctDown(c.pct)}%`
-                        : `${pctDown(c.pct)}% (goal ${pctDown(CATEGORY_TARGET)})`}
+                        ? `✓ ${goalPct(c.pct)}`
+                        : `${goalPct(c.pct)} (goal ${pctDown(CATEGORY_TARGET)})`}
                   </span>
                 </li>
               ))}

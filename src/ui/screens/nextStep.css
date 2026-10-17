@@ -66,3 +66,14 @@
   color: var(--good);
   font-weight: 700;
 }
+
+/* s02: all three categories at the goal -- one line confirms it. */
+.next-step-goal-met {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  color: var(--good);
+  font-weight: 700;
+}

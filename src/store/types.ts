@@ -494,8 +494,9 @@ export interface Stats {
       right: number;
       wrong: number;
       lastAt: string;
-      // Wave A / W3: the cell's last CELL_WINDOW results, oldest first, '1'
-      // right and '0' wrong. "Weak" is judged on this, not the lifetime
+      // Wave A / W3: the cell's last CELL_WINDOW results (plus one spare so
+      // Wrong tap undoes exactly, cellStats.ts WINDOW_SPARE), oldest first,
+      // '1' right and '0' wrong. "Weak" is judged on this, not the lifetime
       // tally. Absent on cells written before it shipped.
       recent?: string;
     }
@@ -744,7 +745,8 @@ export interface Stats {
     }[];
   };
   // Wave A / W3: the last HAND_WINDOW hand-decision results per hand type
-  // (from cellStats' cell prefix), oldest first, '1' right and '0' wrong.
+  // (from cellStats' cell prefix; plus one spare, cellStats.ts WINDOW_SPARE),
+  // oldest first, '1' right and '0' wrong.
   // Home's "Learn basic strategy" gate is judged on this window so mistakes
   // made while learning age out. Absent = none recorded since it shipped.
   handRecent?: { hard?: string; soft?: string; pair?: string };

@@ -1,6 +1,7 @@
 import type { Stats } from '../../store/types';
+import type { Category } from '../../engine/grade';
 import type { HandPrefix } from '../../store/cellStats';
-import { judgedAccuracy } from '../../store/cellStats';
+import { countBits, handWindow, judgedAccuracy } from '../../store/cellStats';
 import type { HandScope } from '../../drills/handScope';
 
 /**
@@ -17,6 +18,11 @@ import type { HandScope } from '../../drills/handScope';
  * before the window shipped, or a category barely started -- the lifetime
  * sum of its cells is used. MIN_CATEGORY_ANSWERS lifetime answers are needed
  * before a category is judged at all.
+ *
+ * cellStats has no backfill: hand decisions from before it shipped live only
+ * in the per-category tally (`stats.categories`). They are not judged on --
+ * the goal is about what you know now -- but `allRight`/`allN` carry that
+ * tally so a screen can show them and say why the goal counts fewer.
  */
 
 export const MIN_CATEGORY_ANSWERS = 20;
@@ -24,10 +30,10 @@ export const CATEGORY_TARGET = 0.9;
 export const MIN_CELL_ANSWERS = 5;
 export const WEAK_CELL_BELOW = 0.78;
 
-export const HAND_CATEGORIES: readonly { prefix: HandPrefix; scope: HandScope; label: string }[] = [
-  { prefix: 'hard', scope: 'hard', label: 'Hard totals' },
-  { prefix: 'soft', scope: 'soft', label: 'Soft totals' },
-  { prefix: 'pair', scope: 'pairs', label: 'Pairs' },
+export const HAND_CATEGORIES: readonly { prefix: HandPrefix; scope: HandScope; category: Category; label: string }[] = [
+  { prefix: 'hard', scope: 'hard', category: 'hard', label: 'Hard totals' },
+  { prefix: 'soft', scope: 'soft', category: 'soft', label: 'Soft totals' },
+  { prefix: 'pair', scope: 'pairs', category: 'pairs', label: 'Pairs' },
 ];
 
 export interface HandCategoryProgress {
@@ -39,6 +45,8 @@ export interface HandCategoryProgress {
   n: number;
   /** The figure the goal is judged on, 0..1 (0 with no answers). */
   pct: number;
+  /** Right answers behind `pct`. */
+  judgedRight: number;
   /** Answers behind `pct`: the recent window's length, or `n`. */
   judgedN: number;
   /** True when `pct` is the recent window rather than the lifetime sum. */
@@ -47,11 +55,21 @@ export interface HandCategoryProgress {
   thin: boolean;
   /** Judged, and at or above CATEGORY_TARGET. */
   onTarget: boolean;
+  /**
+   * The all-time per-category tally (`stats.categories`), which also holds
+   * hand decisions from before per-cell tracking. Not judged on. It files
+   * hands whose right play is surrender under Surrender, so it is not a
+   * superset of `n`.
+   */
+  allRight: number;
+  allN: number;
+  /** The all-time tally holds more answers than the cells: older answers exist. */
+  legacy: boolean;
 }
 
 export function handCategoryProgress(stats: Stats): HandCategoryProgress[] {
   const cells = Object.entries(stats.cellStats ?? {});
-  return HAND_CATEGORIES.map(({ prefix, scope, label }) => {
+  return HAND_CATEGORIES.map(({ prefix, scope, category, label }) => {
     let right = 0;
     let wrong = 0;
     for (const [id, t] of cells) {
@@ -61,13 +79,30 @@ export function handCategoryProgress(stats: Stats): HandCategoryProgress[] {
       }
     }
     const n = right + wrong;
-    const window = stats.handRecent?.[prefix] ?? '';
+    const window = handWindow(stats.handRecent, prefix);
     const recent = window.length >= MIN_CATEGORY_ANSWERS;
-    const judgedRight = recent ? [...window].filter((c) => c === '1').length : right;
+    const judgedRight = recent ? countBits(window).right : right;
     const judgedN = recent ? window.length : n;
     const pct = judgedN === 0 ? 0 : judgedRight / judgedN;
     const thin = n < MIN_CATEGORY_ANSWERS;
-    return { prefix, scope, label, right, n, pct, judgedN, recent, thin, onTarget: !thin && pct >= CATEGORY_TARGET };
+    const all = stats.categories?.[category] ?? { right: 0, wrong: 0 };
+    const allN = all.right + all.wrong;
+    return {
+      prefix,
+      scope,
+      label,
+      right,
+      n,
+      pct,
+      judgedRight,
+      judgedN,
+      recent,
+      thin,
+      onTarget: !thin && pct >= CATEGORY_TARGET,
+      allRight: all.right,
+      allN,
+      legacy: allN > n,
+    };
   });
 }
 
@@ -94,4 +129,14 @@ export function weakCells(stats: Stats, opts: { prefix?: HandPrefix; minAnswers?
 /** A whole percent that never rounds a miss up to the target. */
 export function pctDown(p: number): number {
   return Math.floor(p * 100 + 1e-9);
+}
+
+/**
+ * A goal figure (0..1) for display: floored like pctDown, so 89.9% is never
+ * shown as the 90% goal, and never "0%" for a figure above zero (F23's rule,
+ * statsFormat.pct).
+ */
+export function goalPct(p: number): string {
+  const whole = pctDown(p);
+  return whole === 0 && p > 0 ? '<1%' : `${whole}%`;
 }

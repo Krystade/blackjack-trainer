@@ -142,6 +142,65 @@ describe('nextStep (#28)', () => {
     expect(nextStep(s, { sweepDone: false })).toMatchObject({ kind: 'flash', scope: 'soft' });
   });
 
+  it('s07: misses are counted on the same recent windows as the category figure', () => {
+    // Review repro: a learner whose early pair misses were spread out. Ten
+    // pair cells carry 3 old misses each but are clean lately; every one of
+    // the last 30 pair answers' 7 misses is on two cells. Lifetime misses in
+    // those two (7) are far short of half the category's (37), but they hold
+    // all of its recent misses, so they are the drill.
+    const s = learned();
+    delete s.cellStats!['pair-8-v-A'];
+    for (const up of ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'A']) {
+      s.cellStats![`pair-3-v-${up}`] = { right: 10, wrong: 3, lastAt: '', recent: '1'.repeat(10) };
+    }
+    s.cellStats!['pair-9-v-7'] = { right: 5, wrong: 4, lastAt: '', recent: '1110000111' };
+    s.cellStats!['pair-2-v-8'] = { right: 5, wrong: 3, lastAt: '', recent: '1111100011' };
+    s.handRecent = { pair: '1'.repeat(23) + '0'.repeat(7) };
+    const n = nextStep(s, { sweepDone: false });
+    expect(n.kind).toBe('custom');
+    expect(n.why).toBe(
+      'Pairs are at 76%, mostly from 9,9 v 7 at 60% and 1 more cell below 78%. Custom with Auto drills them most.',
+    );
+  });
+
+  it('s07: recent misses spread across the category stay with Learn basic strategy', () => {
+    const s = learned();
+    // Soft at 73% over the last 30: 8 misses, only 2 of them on the one weak cell.
+    for (const up of ['2', '3', '4', '5', '6', '7']) {
+      s.cellStats![`soft-19-v-${up}`] = { right: 9, wrong: 1, lastAt: '', recent: '1111111110' };
+    }
+    s.cellStats!['soft-17-v-3'] = { right: 3, wrong: 2, lastAt: '', recent: '00111' };
+    s.handRecent = { soft: '1'.repeat(22) + '0'.repeat(8) };
+    expect(nextStep(s, { sweepDone: false })).toMatchObject({ kind: 'flash', scope: 'soft' });
+  });
+
+  it('s02: once every category meets the goal, later steps still carry it, all ticked', () => {
+    const later = [
+      nextStep(learned(), { sweepDone: false }),
+      nextStep(learned(), { sweepDone: true }),
+    ];
+    for (const n of later) {
+      expect(n.kind).not.toBe('flash');
+      expect(n.progress?.map((c) => c.onTarget)).toEqual([true, true, true]);
+    }
+  });
+
+  it("a returning user's older answers are named, not counted as 'so far'", () => {
+    // Hand decisions from before per-cell tracking live only in the category tally.
+    const s = learned();
+    s.categories.pairs = { right: 380, wrong: 20 };
+    s.cellStats!['pair-8-v-A'] = { right: 12, wrong: 0, lastAt: '' };
+    expect(nextStep(s, { sweepDone: false }).why).toBe(
+      'Pairs: 12 answers since per-hand tracking began, 20 needed to judge. Get every category to 90%.',
+    );
+  });
+
+  it('never prints 0% for a category with a right answer', () => {
+    const s = learned();
+    s.cellStats!['soft-18-v-9'] = { right: 1, wrong: 299, lastAt: '' };
+    expect(nextStep(s, { sweepDone: true }).why).toMatch(/^Soft totals are at <1%, mostly from Soft 18 v 9 at <1%/);
+  });
+
   it('3: strategy in hand and no completed sweep -> Mastery', () => {
     expect(nextStep(learned(), { sweepDone: false }).kind).toBe('mastery');
   });
