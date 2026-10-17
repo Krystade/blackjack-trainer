@@ -1,4 +1,6 @@
 import { mulberry32 } from '../engine/cards';
+import { DEFAULT_SPREAD, type SpreadRow } from '../engine/game';
+import { firstRaiseTc, sitOutIsCorrect } from '../engine/wong';
 
 /**
  * ET3 (docs/BACKLOG.md, experiential training): the bet / sit-out decision
@@ -19,18 +21,33 @@ export interface BetSitLeaveScenario {
   decksRemaining: number;
 }
 
-/* Consensus threshold (docs/research/2026-08-01-bet-sit-leave-consensus.md §7). */
-export const T_BET = 0; // TC >= 0 -> play the ramp
+/**
+ * Wave A, decision D1: the drill grades by the PROFILE'S SPREAD, through the
+ * very function Play grades its wong decision with (engine/wong.ts). It used
+ * a fixed consensus line (TC >= 0 bets), so the two screens disagreed at TC 0
+ * under the default ramp: Play said sit, the drill said bet. Absent a spread,
+ * the default ramp -- the one a new profile carries.
+ */
+export function correctAction(
+  s: BetSitLeaveScenario,
+  spread: readonly SpreadRow[] = DEFAULT_SPREAD,
+): TableAction {
+  return sitOutIsCorrect(s.trueCount, spread) ? 'sit' : 'bet';
+}
 
-/** The correct action: TC >= 0 bets, anything negative sits out. */
-export function correctAction(s: BetSitLeaveScenario): TableAction {
-  return s.trueCount >= T_BET ? 'bet' : 'sit';
+function signed(n: number): string {
+  return n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0';
 }
 
 /** Short reason for the correct action, for post-answer feedback. */
-export function explainAction(s: BetSitLeaveScenario): string {
-  if (s.trueCount >= T_BET) return 'Count is neutral-or-positive — play your ramp.';
-  return 'Negative count — sit out until it turns.';
+export function explainAction(
+  s: BetSitLeaveScenario,
+  spread: readonly SpreadRow[] = DEFAULT_SPREAD,
+): string {
+  const raise = firstRaiseTc(spread);
+  if (correctAction(s, spread) === 'bet') return 'Your ramp bets above its minimum here: play.';
+  if (raise === null) return 'Your ramp never bets above its minimum: sit out.';
+  return `Your ramp raises from TC ${signed(raise)}: below that, sit out.`;
 }
 
 /**

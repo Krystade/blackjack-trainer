@@ -48,7 +48,7 @@ export function BetSitLeaveView({
 
   const answer = (taken: TableAction) => {
     if (feedback) return;
-    const correct = taken === correctAction(scenario);
+    const correct = taken === correctAction(scenario, activeProfile.spread);
     setFeedback({ correct, taken });
     audio.ding(correct ? 'good' : 'bad');
 
@@ -58,7 +58,7 @@ export function BetSitLeaveView({
       betSitLeave: {
         history: [
           ...stats.betSitLeave.history,
-          { date: new Date().toISOString(), taken, correctAction: correctAction(scenario), correct },
+          { date: new Date().toISOString(), taken, correctAction: correctAction(scenario, activeProfile.spread), correct },
         ],
       },
     });
@@ -94,7 +94,7 @@ export function BetSitLeaveView({
 
   const dealtFraction = (totalDecks - scenario.decksRemaining) / totalDecks;
   const fillPct = Math.min(98, Math.max(2, dealtFraction * 100));
-  const correct = correctAction(scenario);
+  const correct = correctAction(scenario, activeProfile.spread);
 
   return (
     <div className="drill-screen">
@@ -129,7 +129,7 @@ export function BetSitLeaveView({
             <div className={feedback.correct ? 'result-correct' : 'result-wrong'}>
               {feedback.correct ? 'Correct!' : `Wrong — ${ACTIONS.find((a) => a.key === correct)!.label}`}
             </div>
-            <div className="bsl-explain">{explainAction(scenario)}</div>
+            <div className="bsl-explain">{explainAction(scenario, activeProfile.spread)}</div>
           </>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { Shoe, rankValue, mulberry32 } from './cards';
 import { makeRiggedShoe, botRngSeed, type RiggedShoe } from './riggedShoe';
 import { betWithinStep } from './coverBets';
+import { sitOutIsCorrect, spreadUnitsFor } from './wong';
 import { cutCardsFor, cutRngSeed, usesCutCards } from './cut';
 import { priceMistake } from './mistakeCost';
 import type { Card, Rank } from './cards';
@@ -129,15 +130,6 @@ export interface PlayerHand {
    * original hand to its cap never blocks another original hand (dealt in
    * the same round) from splitting independently. */
   originIndex: number;
-}
-
-/** Find the last spread row (sorted asc by minTc) whose minTc <= tc. */
-function spreadUnitsFor(tc: number, spread: SpreadRow[]): number {
-  let units = spread.length > 0 ? spread[0].units : 1;
-  for (const row of spread) {
-    if (row.minTc <= tc) units = row.units;
-  }
-  return units;
 }
 
 function isTenValueUp(up: Rank): boolean {
@@ -467,21 +459,9 @@ export class Game {
     }
   }
 
-  /**
-   * A wong-out (sit-out) is correct when the configured bet spread calls only
-   * for the table-minimum bet at this true count -- the count gives no edge
-   * worth staking above the floor, so back-counting beats playing at the
-   * minimum. Grounded entirely in the profile's OWN spread (no hard-coded
-   * count threshold asserted as strategy truth): if the user configures a
-   * spread that bets above the minimum starting at TC +1, the wong-out line
-   * moves with it. Empty spread => never correct to sit out (nothing to grade
-   * against). R5, docs/BACKLOG.md.
-   */
+  /** The play-or-sit line: one shared rule with the Bet or sit drill (engine/wong.ts). */
   private sitOutIsCorrect(tc: number): boolean {
-    const spread = this.cfg.spread;
-    if (spread.length === 0) return false;
-    const minUnits = Math.min(...spread.map((r) => r.units));
-    return spreadUnitsFor(tc, spread) <= minUnits;
+    return sitOutIsCorrect(tc, this.cfg.spread);
   }
 
   /**
