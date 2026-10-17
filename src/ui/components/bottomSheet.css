@@ -1,5 +1,13 @@
-/* #37: docked in the action-bar slot, so the felt above stays visible. */
+/* #37: docked in the action-bar slot, so the felt above stays visible.
+   B2 #1: and STUCK to the bottom of the screen. In the page flow alone it ran
+   past the bottom edge whenever the felt above was tall (the minus key, 0 and
+   delete were off-screen at 375x812), so a negative count meant scrolling
+   first. Sticky keeps every key on screen; at worst it covers the bottom of
+   the felt, which the page can still scroll to. */
 .bottom-sheet {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
   margin-top: auto;
   width: 100%;
   box-sizing: border-box;
@@ -47,6 +55,9 @@
    (OK as a tall key down the right) so the sheet fits under the hands on a
    375x812 phone; every key stays at least 44px. */
 .bottom-sheet .numpad {
+  /* Above the home indicator through the app's own inset token, like the
+     rest of the safe-area layout (env() alone is what app.css's .numpad has). */
+  padding-bottom: calc(var(--space-3) + var(--safe-bottom, 0px));
   display: grid;
   grid-template-columns: 1fr 76px;
   grid-template-areas:

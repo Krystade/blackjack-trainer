@@ -1,6 +1,6 @@
 import { strategyRulesFor } from '../../store/profiles';
 import { TabSettingsButton } from '../components/TabSettingsButton';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
@@ -57,6 +57,7 @@ import './tableSeats.css';
 import './tableTopbar.css';
 import './tableCues.css';
 import './tableGlance.css';
+import './tableSheet.css';
 import { dealerFeltRow, playerFeltRow, type FeltRow } from '../feltLayout';
 
 /** B5/W4: the row's card slots and fixed chrome, for cardSize.css's clamp. */
@@ -731,6 +732,13 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     }
     setShowReport(true);
   }
+
+  // B2 #48: the report opens at its top. The table it replaces may be scrolled
+  // (the count check's sheet at End scrolls the page), and that scroll used to
+  // carry over and hide the report's title under the status bar.
+  useLayoutEffect(() => {
+    if (showReport) window.scrollTo(0, 0);
+  }, [showReport]);
 
   const handleReportDone = () => {
     setShowReport(false);
