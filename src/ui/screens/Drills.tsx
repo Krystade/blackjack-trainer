@@ -90,6 +90,7 @@ import { TrueCountDrillView } from './drills/TrueCountDrillView';
 import { ProduceTcDrillView } from './drills/ProduceTcDrillView';
 import { PairCancelView } from './drills/PairCancelView';
 import { BetSizingView } from './drills/BetSizingView';
+import { BET_SIZING_DRILL, BET_SIZING_PICKER } from './drills/betSizingCopy';
 import { RulesDiffView } from './drills/RulesDiffView';
 import { DeckEstimationView } from './drills/DeckEstimationView';
 import { MasteryChallengeView } from './drills/MasteryChallengeView';
@@ -3102,7 +3103,7 @@ export function Drills({ settings, activeProfile, onSettingsChange }: DrillsProp
         {entry('rulesdiff', 'Rules differences', 'Only the plays that change between H17 and S17, 6 and 8 decks, or another game.')}
 
         <h2 className="drills-group-title">Under pressure</h2>
-        {entry('betsizing', 'Bet sizing', 'Read the running count and the tray, then bet your ramp, or sit out.', true)}
+        {entry('betsizing', BET_SIZING_DRILL, BET_SIZING_PICKER, true)}
       </div>
       {/* Wave B2 #11 (B1): Drills is a tab-bar screen; Home is the tab bar's. */}
     </div>

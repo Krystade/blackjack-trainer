@@ -91,7 +91,7 @@ const MISTAKE_LABELS: Record<Exclude<MistakeClass, 'correct'>, string> = {
 type NonHandMiss = 'bet' | 'wong' | 'countCheck';
 const NON_HAND_MISSES: readonly NonHandMiss[] = ['bet', 'wong', 'countCheck'];
 const NON_HAND_MISS_LABEL: Record<NonHandMiss, string> = {
-  bet: 'Bet sizing mistakes',
+  bet: 'Bet size mistakes (when playing)',
   wong: 'Play or sit-out mistakes',
   countCheck: 'Count check misses',
 };

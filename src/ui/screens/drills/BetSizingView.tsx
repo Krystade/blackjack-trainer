@@ -24,6 +24,7 @@ import { ResultStrip } from '../../components/ResultStrip';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
 import './tcResultStrip.css';
 import './betSizing.css';
+import { BET_SIZING_DRILL, BET_SIZING_INTRO } from './betSizingCopy';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -123,11 +124,11 @@ export function BetSizingView({
         <button type="button" className="drill-back-btn" onClick={onBack}>
           Back
         </button>
-        <div className="drill-heading">Bet sizing</div>
+        <div className="drill-heading">{BET_SIZING_DRILL}</div>
       </div>
 
       <div className="settings-row settings-note-row">
-        Read the tray, divide, and bet your ramp. Sit out where your ramp bets its minimum.
+        {BET_SIZING_INTRO}
       </div>
 
       <div
