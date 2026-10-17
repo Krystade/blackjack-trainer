@@ -1,7 +1,5 @@
 import type { NextStepKind } from './screens/nextStep';
-import type { CustomSelection, Settings } from '../store/types';
-import { ALL_PAINT_CELL_IDS, DEFAULT_MIX } from '../drills/cellSelection';
-import { saveSettings } from '../store/persist';
+import type { Settings } from '../store/types';
 import type { HandScope } from '../drills/handScope';
 import { ALL_SCOPES, withScopes } from '../drills/handScope';
 
@@ -44,37 +42,6 @@ export function launchSettings(mode: DrillLaunch, scope: HandScope | undefined, 
   const scopes = mode === 'flash' && scope ? [scope] : [...ALL_SCOPES];
   const scoped = withScopes(settings, scopes);
   return { ...scoped, drill: { ...scoped.drill, deck: 'chart' } };
-}
-
-/**
- * Contract 4 (Wave B, B6): "Drill these hands" on the session report opens
- * Custom on exactly the report's missed cells. Every chart cell is marked
- * painted, so the Auto fill a Custom launch applies (autoTiers leaves painted
- * cells alone) keeps the missed cells Focus and every other cell Off. The
- * existing mix and favour-missed toggle are kept. Pure.
- */
-export function customCellsSettings(cellIds: readonly string[], settings: Settings): Settings {
-  const prev = settings.drill.custom;
-  const tiers: CustomSelection['tiers'] = {};
-  for (const id of cellIds) tiers[id] = 'focus';
-  const painted: Record<string, true> = {};
-  for (const id of ALL_PAINT_CELL_IDS) painted[id] = true;
-  for (const id of cellIds) painted[id] = true;
-  const custom: CustomSelection = {
-    tiers,
-    painted,
-    mix: prev ? { ...prev.mix } : { ...DEFAULT_MIX },
-    favourMissed: prev?.favourMissed ?? false,
-  };
-  return { ...settings, drill: { ...settings.drill, custom } };
-}
-
-/** Contract 4: persist the Custom selection and hand 'custom' to the next Drills mount. */
-export function launchCustomCells(cellIds: readonly string[], settings: Settings): Settings {
-  const next = customCellsSettings(cellIds, settings);
-  saveSettings(next);
-  setDrillLaunch('custom');
-  return next;
 }
 
 /**
