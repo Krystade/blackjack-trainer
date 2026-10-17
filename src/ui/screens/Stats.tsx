@@ -402,7 +402,7 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Fatigue': 'progress',
   'Table sessions': 'progress' };
 
-export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }: StatsProps) {
+export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps) {
   const [stats, setStats] = useState<StatsData>(() => loadStats());
   const [message, setMessage] = useState<string | null>(null);
 
@@ -794,9 +794,6 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   return (
     <div className="stats-screen" data-active-tab={tab}>
       <div className="stats-topbar">
-        <button type="button" className="stats-back-btn" onClick={() => onNavigate('home')}>
-          Back to Home
-        </button>
         <div className="stats-heading">Stats</div>
       </div>
 

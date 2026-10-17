@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { withSettings, withStats, openSettingsScreen, statsTab, shot } from './helpers'; // Task 2 adds openCountOptions
+import { withSettings, withStats, openSettingsScreen, statsTab, shot, openCountOptions } from './helpers';
 
 /**
  * Cross-cutting layout guards at 375x812 (iPhone 13 mini).
@@ -123,6 +123,24 @@ const SCREENS: { name: string; open: (page: Page) => Promise<void> }[] = [
   { name: 'Charts (from Home)', open: (p) => tab(p, 'Charts') },
 ];
 
+const drill = (name: string, run?: (p: Page) => Promise<void>) => ({
+  name: `Drill ${name}${run ? ' (running)' : ''}`,
+  open: async (p: Page) => { await tab(p, 'Drills'); await p.getByRole('button', { name, exact: true }).click(); await expect(p.locator('.drill-topbar')).toBeVisible(); if (run) await run(p); },
+});
+const start = async (p: Page) => { await p.getByRole('button', { name: 'Start', exact: true }).click(); };
+SCREENS.push(
+  { name: 'Drills picker', open: (p) => tab(p, 'Drills') },
+  drill('Flashcards'), drill('Deviation quiz'), drill('Mixed'), drill('Mastery challenge'), drill('Speed'),
+  drill('Custom'), drill('Pair cancellation'), drill('Bet or sit'),
+  drill('Count drill', openCountOptions), drill('Count drill', start),
+  drill('True count drill', start), drill('Deck estimation', start), drill('Produce the true count', start),
+  { name: 'Table (bet)', open: (p) => tab(p, 'Play') },
+  { name: 'Table (dealt)', open: async (p) => { await tab(p, 'Play'); await p.getByRole('button', { name: 'Deal', exact: true }).click(); await expect(p.locator('.action-bar')).toBeVisible(); } },
+  { name: 'Session report', open: async (p) => { await tab(p, 'Play'); await p.getByRole('button', { name: 'Deal', exact: true }).click(); await p.locator('.end-btn').click(); await p.locator('.end-btn').click(); await expect(p.locator('.report-screen')).toBeVisible(); } },
+  { name: 'Charts (from Drills)', open: async (p) => { await tab(p, 'Drills'); await tab(p, 'Charts'); } },
+  { name: 'Charts (from Settings)', open: async (p) => { await openSettingsScreen(p); await tab(p, 'Charts'); } },
+);
+
 for (const [label, inset, height] of [['inset 0', 0, 812], ['inset 47', 47, 812], ['short 667', 0, 667]] as const) {
   test(`B1: nothing under the mute control or the status bar, scrolled or not (${label})`, async ({ page }) => {
     test.setTimeout(180_000);
@@ -187,6 +205,44 @@ test('B1: with no bar, the disc scrolls away with the page and under the status 
     return document.elementsFromPoint(r.left + r.width / 2, 40)[0]?.closest(sel) ? 'disc' : 'strip';
   }, MUTE);
   expect(onTopInStatusBar, 'what is on top where the disc meets the status bar').toBe('strip');
+});
+
+test('B1: the Custom editor palette sticks below the drill bar, not under it', async ({ page }) => {
+  await withSettings(page, { audio: { enabled: true } });
+  await page.goto('/?e2e=1');
+  await tab(page, 'Drills');
+  await page.getByRole('button', { name: 'Custom', exact: true }).click();
+  await page.evaluate(() => window.scrollTo(0, 900));
+  const [bar, pal] = [await page.locator('.drill-topbar').boundingBox(), await page.locator('.cde-palette').boundingBox()];
+  expect(pal!.y).toBeGreaterThanOrEqual(bar!.y + bar!.height - 1);
+});
+
+test('B1/s09: the Charts bar is one line from every origin; Back only where it goes somewhere', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  const oneLine = (sel: string) => page.locator(sel).evaluate((el) => {
+    const r = document.createRange(); r.selectNodeContents(el); return r.getClientRects().length;
+  });
+  await tab(page, 'Charts');
+  await expect(page.locator('.charts-back-btn')).toHaveCount(0);
+  expect(await oneLine('.charts-heading')).toBe(1);
+  for (const origin of ['Drills', 'Settings'] as const) {
+    await page.goto('/?e2e=1');
+    if (origin === 'Settings') await openSettingsScreen(page); else await tab(page, 'Drills');
+    await tab(page, 'Charts');
+    const back = page.locator('.charts-back-btn');
+    await expect(back).toHaveText('Back');
+    await expect(back).toHaveAccessibleName(`Back to ${origin}`);
+    expect(await oneLine('.charts-back-btn')).toBe(1);
+    expect(await oneLine('.charts-heading')).toBe(1);
+    expect((await page.locator('.charts-topbar').boundingBox())!.height).toBeLessThanOrEqual(57);
+  }
+});
+
+test('B1: Stats is a tab screen with no Back to Home', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.locator('.home-stats-link').click();
+  await expect(page.locator('.stats-heading')).toHaveText('Stats');
+  await expect(page.getByRole('button', { name: 'Back to Home' })).toHaveCount(0);
 });
 
 test('hit targets are at least 44px', async ({ page }) => {

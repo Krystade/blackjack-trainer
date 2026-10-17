@@ -16,7 +16,8 @@ test('returns to Drills when opened from Drills', async ({ page }) => {
   await page.getByRole('button', { name: 'Charts', exact: true }).click();
 
   const back = page.locator('.charts-back-btn');
-  await expect(back).toHaveText('Back to Drills');
+  await expect(back).toHaveAccessibleName('Back to Drills');
+  await expect(back).toHaveText('Back');
   await back.click();
   await expect(page.locator('.drills-picker')).toBeVisible();
 });
@@ -97,10 +98,11 @@ test.describe('the study overlay', () => {
   });
 });
 
-test('still says Home when that is genuinely where you came from', async ({ page }) => {
+test('opened from Home, Charts has no Back (the tab bar is Home)', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Charts', exact: true }).click();
-  await expect(page.locator('.charts-back-btn')).toHaveText('Back to Home');
+  await expect(page.locator('.charts-heading')).toBeVisible();
+  await expect(page.locator('.charts-back-btn')).toHaveCount(0);
 });
 
 // A second tap on the Charts tab must not make "back" a loop onto itself.
@@ -110,5 +112,6 @@ test('re-entering Charts keeps the original return target', async ({ page }) => 
   await page.getByRole('button', { name: 'Charts', exact: true }).click();
   await page.getByRole('button', { name: 'Charts', exact: true }).click();
 
-  await expect(page.locator('.charts-back-btn')).toHaveText('Back to Drills');
+  await expect(page.locator('.charts-back-btn')).toHaveAccessibleName('Back to Drills');
+  await expect(page.locator('.charts-back-btn')).toHaveText('Back');
 });

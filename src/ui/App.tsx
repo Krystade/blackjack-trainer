@@ -372,7 +372,7 @@ function App() {
           <Charts
             onNavigate={navigate}
             activeProfile={activeProfile}
-            onBack={() => navigate(chartsReturn)}
+            onBack={chartsReturn === 'home' ? undefined : () => navigate(chartsReturn)}
             backLabel={SCREEN_LABEL[chartsReturn]}
           />
         );

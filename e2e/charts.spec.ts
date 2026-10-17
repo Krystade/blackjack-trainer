@@ -4,6 +4,8 @@ import { answerAndReadStrip, shot, withProfile, withSettings } from './helpers';
 import { indexList } from '../src/ui/screens/indexChart';
 import { DEFAULT_RULES } from '../src/engine/ruleset';
 
+const tab = (page: Page, name: string) => page.locator('.tab-bar').getByRole('button', { name, exact: true }).click();
+
 /**
  * Operator item #6: viewable strategy charts.
  *
@@ -35,7 +37,7 @@ test('Home offers a Charts destination that opens the viewer', async ({ page }) 
   await expect(page.locator('[data-section="SOFT"]')).toBeVisible();
   await expect(page.locator('[data-section="PAIRS"]')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
+  await tab(page, 'Home');
   await expect(page.locator('.home-title')).toBeVisible();
 });
 
@@ -277,9 +279,10 @@ test.describe('at 375x812', () => {
       expect(seen.beneath, `${section}: what the disc covers`).toEqual(['bar', 'bar', 'bar', 'bar', 'bar']);
       expect(seen.inside, `${section}: the disc sits within the header bar`).toBe(true);
     }
-    // Back is still there at the bottom of the page: the bar is sticky.
+    // The bar is still there at the bottom of the page: it is sticky. (Opened
+    // from Home, so there is no Back in it; the bar itself is the check.)
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    await expect(page.locator('.charts-back-btn')).toBeInViewport({ ratio: 1 });
+    await expect(page.locator('.charts-topbar')).toBeInViewport({ ratio: 1 });
   });
 
   test('the disc sits on the same seat line on Home, Drills and Charts', async ({ page }) => {

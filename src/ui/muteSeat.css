@@ -83,3 +83,22 @@ body[data-screen='fieldtest'] .fieldtest-topbar::before {
    under the status bar. Only where it sticks changes: unscrolled, and
    wherever there is no inset, nothing moves. */
 body[data-screen='fieldtest'] .fieldtest-topbar { top: var(--safe-top, 0px); }
+
+/* Drill top bars (every drill view, HandDeckGate, Custom editor): sticky, seat, inset cover. */
+.drill-topbar {
+  position: sticky; top: var(--safe-top, 0px); z-index: 5;
+  min-height: var(--topbar-h); padding-right: var(--mute-seat);
+}
+.drill-topbar::before { content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: var(--safe-top, 0px); background: inherit; }
+.cde-palette { top: calc(var(--safe-top, 0px) + var(--topbar-h)); }
+
+/* Drills picker: no bar; the gear joins the disc's line, left of the seat. */
+.drills-picker > .tab-gear { top: var(--mute-top); right: var(--mute-seat); }
+
+/* Play: only row 1 col 3 (the gear) shares the disc's line; End on row 2 keeps its full 8.5rem. */
+.table-screen > .topbar { position: sticky; top: var(--safe-top, 0px); z-index: 5; }
+.table-screen > .topbar > .tab-gear { margin-right: calc(var(--mute-seat) - 0.75rem); }
+
+/* s05/s09: Charts bar on one line. */
+.charts-back-btn { flex: none; white-space: nowrap; }
+.charts-heading { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
