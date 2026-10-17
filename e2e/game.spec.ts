@@ -344,8 +344,9 @@ test('dealer showing an ace: taking insurance settles and shows an insurance-net
   await expect(insuranceMsg).toBeVisible();
   // insuranceNet is always non-null once insurance was taken -- either
   // +bet (dealer had blackjack, 2:1 payout) or -bet/2 (no dealer blackjack).
-  // formatSigned always prefixes a sign, so either outcome matches.
-  await expect(insuranceMsg).toHaveText(/Insurance [+-]\d+(\.\d+)?/);
+  // formatSigned always prefixes a sign, so either outcome matches -- and a
+  // loss carries the real minus (U+2212, B5), never the ASCII hyphen.
+  await expect(insuranceMsg).toHaveText(/Insurance [+−]\d+(\.\d+)?/);
   await shot(page, '12-insurance-take-result');
 });
 
@@ -544,7 +545,7 @@ test('player surrender: takes a -0.5 net when the LS rule is on', async ({ page 
   }
   expect(found, 'expected at least one of seeds 1..30 to offer Surrender at the first decision').toBe(true);
 
-  await expect(page.locator('.message-strip .message-result')).toContainText('Surrender -0.5');
+  await expect(page.locator('.message-strip .message-result')).toContainText('Surrender −0.5');
   await shot(page, '15-surrender-result');
 });
 

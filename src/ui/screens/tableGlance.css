@@ -1,0 +1,24 @@
+/* B5/W5 (spec 2026-10-16): play at a glance.
+ *
+ * The result banner: one line per settled hand with the result and both
+ * totals ("Lose −1 · You 17 · Dealer 19"), big enough to read without leaning
+ * in. The totals hold together as a unit, so a wrap at 375px breaks between
+ * the result and the totals rather than inside "Dealer 19". */
+.table-screen .round-banner {
+  font-size: 1.375rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.round-banner-totals {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+/* The dot between result and totals, at the totals' weight so it matches the
+ * dot inside them. It stays outside the no-wrap totals so a wrapped banner
+ * ends its first line with it instead of opening the second. */
+.round-banner-sep {
+  font-weight: 600;
+}

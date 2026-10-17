@@ -11,14 +11,6 @@ async function readBankroll(page: Page): Promise<number> {
   return Number(match[1]);
 }
 
-/** Parses the trailing signed number off a ".message-result" line (e.g.
- * "Hand 1: Win +2" -> 2, "Hand 2: Lose -8" -> -8); a bare "Push" has no
- * number and nets 0. */
-function parseNet(resultText: string): number {
-  const match = resultText.match(/(-?\d+(?:\.\d+)?)\s*$/);
-  return match ? Number(match[1]) : 0;
-}
-
 test('full table: 3 bots deal, play, and settle with W/L/P markers + narration', async ({ page }) => {
   test.setTimeout(120_000);
   await withSettings(page, { dealSpeedMs: 0 });
@@ -159,7 +151,9 @@ test('multi-hand: two independent bets, two hands played out, per-hand results s
     const lines = await page.locator('.message-result').allTextContents();
     expect(lines[0]).toContain('Hand 1');
     expect(lines[1]).toContain('Hand 2');
-    const nets = lines.map(parseNet);
+    // B5/W5: the banner ends in the totals, not the net, so the net is read
+    // off the banner's data-net rather than parsed out of its text.
+    const nets = await page.locator('.round-banner').evaluateAll((els) => els.map((e) => Number((e as HTMLElement).dataset.net)));
     const bankrollAfter = await readBankroll(page);
     expect(bankrollAfter - bankrollBefore).toBeCloseTo(nets.reduce((a, b) => a + b, 0), 5);
     await shot(page, '51-table-multihand-settled');

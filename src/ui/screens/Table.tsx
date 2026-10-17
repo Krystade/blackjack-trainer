@@ -47,9 +47,12 @@ import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession'
 import { CATEGORY_LABELS } from './categoryLabels';
 import { playLabel } from '../playLabel';
 import { LosingShoeBadge } from '../components/LosingShoeBadge';
+import { roundBanner } from '../roundBanner';
+import { signed } from '../../drills/signed';
 import './tableSeats.css';
 import './tableTopbar.css';
 import './tableCues.css';
+import './tableGlance.css';
 
 type BotActionLogEntry = Game['botActionLog'][number];
 
@@ -169,28 +172,10 @@ function isE2E(): boolean {
   return new URLSearchParams(window.location.search).get('e2e') === '1';
 }
 
-/** `playNumber` is the hand's place in the order of play (#1), counted from 1. */
-function resultMessage(hand: PlayerHand, playNumber: number, multi: boolean): string {
-  const prefix = multi ? `Hand ${playNumber}: ` : '';
-  switch (hand.result) {
-    case 'win':
-      return `${prefix}Win +${hand.net}`;
-    case 'lose':
-      return `${prefix}Lose ${hand.net}`;
-    case 'push':
-      return `${prefix}Push`;
-    case 'blackjack':
-      return `${prefix}Blackjack! +${hand.net}`;
-    case 'surrender':
-      return `${prefix}Surrender ${hand.net}`;
-    default:
-      return '';
-  }
-}
-
-function formatSigned(n: number): string {
-  return n >= 0 ? `+${n}` : String(n);
-}
+/** Every signed number on the Table and its report: "+2", "+0", "−3", with a
+ * real minus (contract 6). The count-voice value was the Wave A leftover that
+ * still printed the ASCII hyphen. */
+const formatSigned = (n: number) => signed(n, { plusZero: true });
 
 function countVerdictOk(v: CountCheckVerdict): boolean {
   return v.rcCorrect !== false && v.tcCorrect !== false;
@@ -998,11 +983,21 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             {game.hands
               .map((h, i) => ({ h, i }))
               .reverse()
-              .map(({ h, i }) => (
-                <div key={i} className="message-result">
-                  {resultMessage(h, handPlayNumber(i, game.hands.length), multiHand)}
-                </div>
-              ))}
+              .map(({ h, i }) => {
+                // B5/W5: result and both totals, so the reason for a loss
+                // reads off the banner instead of off the felt. The separator
+                // has its own span outside the no-wrap totals, so a banner
+                // that wraps at 375px ends its first line with the dot rather
+                // than starting the second line with it.
+                const b = roundBanner(h, handPlayNumber(i, game.hands.length), multiHand, game.dealerCards, game.holeRevealed);
+                return (
+                  <div key={i} className="message-result round-banner" data-net={b.net}>
+                    <span className="round-banner-head">{b.head}</span>
+                    <span className="round-banner-sep"> · </span>
+                    <span className="round-banner-totals">{b.totals}</span>
+                  </div>
+                );
+              })}
             {game.insuranceNet !== null && (
               <div className="message-result">
                 Insurance {formatSigned(game.insuranceNet)}
