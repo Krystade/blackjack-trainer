@@ -72,6 +72,7 @@ import './countDrillView.css';
 import { makeCountTable, tableRounds, TABLE_ROUND_CHOICES } from '../../../drills/countTable';
 import type { TableRound } from '../../../drills/countTable';
 import './countTable.css';
+import './countPause.css';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -333,6 +334,17 @@ export function CountDrillView({
   const runManualRef = useRef(false);
   const tapGapsRef = useRef<number[]>([]);
   const lastCardAtRef = useRef<number | null>(null);
+  /**
+   * C-R2 (W11): the run is paused. Back on the wheel (or the Pause button)
+   * while the cards are flashing stops every advance mechanism -- each one
+   * checks `paused` -- and forward (or Resume) goes on from the NEXT card.
+   * `pausedAtRef` is when, so the paused stretch can be taken out of the
+   * run's timing. Only an explicit resume ends a pause: nothing resumes on
+   * its own, however long it lasts (the car's automatic play/pause never
+   * reach a drill, see audio/mediaSession.ts).
+   */
+  const [paused, setPaused] = useState(false);
+  const pausedAtRef = useRef<number | null>(null);
   // performance.now() at the moment the current distraction was posed --
   // read (never displayed) to compute its elapsedMs on answer. null when no
   // distraction is currently pending.
@@ -506,6 +518,7 @@ export function CountDrillView({
   useEffect(() => {
     if (
       phase !== 'flashing' ||
+      paused ||
       groups.length === 0 ||
       settings.drill.countManual ||
       eyesFree ||
@@ -555,6 +568,7 @@ export function CountDrillView({
     countdownMode,
     timedChallenge,
     tableRun,
+    paused,
   ]);
 
   // Eyes-free AUTO (timed) mode: speech drives the pace instead of a fixed
@@ -584,6 +598,7 @@ export function CountDrillView({
   useEffect(() => {
     if (
       phase !== 'flashing' ||
+      paused ||
       groups.length === 0 ||
       !eyesFree ||
       settings.drill.countManual ||
@@ -662,6 +677,7 @@ export function CountDrillView({
     settings.drill.distractionFreq,
     countdownMode,
     timedChallenge,
+    paused,
   ]);
 
   // Narrate each card group as it's shown. Visual mode speaks only at
@@ -684,7 +700,7 @@ export function CountDrillView({
     // D2: Countdown is no longer excluded. It was the one mode whose cards
     // were never spoken, which made it the one mode you could not run without
     // looking -- and reading fifty-one cards out is the entire drill.
-    if (phase !== 'flashing') return;
+    if (phase !== 'flashing' || paused) return;
     if (eyesFree && !settings.drill.countManual && !timedChallenge) return;
     const g = groups[shownIndex];
     if (!g) return;
@@ -694,7 +710,7 @@ export function CountDrillView({
       audio.sayFull(narrateCards(g, 'rank'));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, shownIndex, countdownMode, groups, eyesFree, settings.drill.countManual, timedChallenge]);
+  }, [phase, shownIndex, countdownMode, groups, eyesFree, settings.drill.countManual, timedChallenge, paused]);
 
   // TIMED CHALLENGE ramp: cards auto-advance on a geometrically SHRINKING
   // interval (drills/countSpeed.ts rampIntervalMs), regardless of the
@@ -720,7 +736,7 @@ export function CountDrillView({
   // (countTimedStartMs / RAMP_FLOOR_MS), so its ramp is byte-for-byte the
   // same schedule as before this feature shipped.
   useEffect(() => {
-    if (phase !== 'flashing' || groups.length === 0 || countdownMode || !timedChallenge) {
+    if (phase !== 'flashing' || paused || groups.length === 0 || countdownMode || !timedChallenge) {
       return undefined;
     }
 
@@ -749,6 +765,7 @@ export function CountDrillView({
     settings.drill.countLengthCards,
     countdownMode,
     timedChallenge,
+    paused,
   ]);
 
   // Announce the running-count prompt once the flash sequence completes and
@@ -857,6 +874,7 @@ export function CountDrillView({
   }, []);
 
   const advanceManual = () => {
+    if (pausedAtRef.current !== null) return;
     const isLast = shownIndex >= groups.length - 1;
     // #20: the gap this tap closes. Read before any interruption is posed --
     // the card was up until now whatever happens next.
@@ -880,6 +898,60 @@ export function CountDrillView({
       setShownIndex((i) => i + 1);
     }
   };
+
+  /** C-R2: stop the run where it is. Only while the cards are flashing. */
+  const pauseRun = () => {
+    if (phaseRef.current !== 'flashing' || pausedAtRef.current !== null) return;
+    pausedAtRef.current = performance.now();
+    cancelSpeech();
+    setPaused(true);
+  };
+
+  /**
+   * C-R2: go on from the NEXT card, at once, with the paused stretch taken
+   * out of the run's clock (a timed run's elapsed time, a manual run's tap
+   * gap). The step past the held card is the one its own advance would have
+   * taken: a checkpoint or distraction due there is still posed.
+   */
+  const resumeRun = () => {
+    const pausedAt = pausedAtRef.current;
+    if (pausedAt === null || phaseRef.current !== 'flashing') return;
+    const pausedMs = performance.now() - pausedAt;
+    pausedAtRef.current = null;
+    if (timedStartRef.current !== null) timedStartRef.current += pausedMs;
+    if (lastCardAtRef.current !== null) lastCardAtRef.current += pausedMs;
+    setPaused(false);
+    const i = shownIndex;
+    const isLast = i >= groups.length - 1;
+    if (isCheckpoint(i)) {
+      triggerCheckpoint(i, isLast);
+      return;
+    }
+    if (!countdownMode && !timedChallenge && distractionAt(i)) {
+      triggerDistraction(i, isLast);
+      return;
+    }
+    if (isLast) {
+      if (timedChallenge && timedStartRef.current !== null) {
+        setTimedResult({
+          elapsedMs: performance.now() - timedStartRef.current,
+          cardsShown: settings.drill.countLengthCards,
+        });
+      }
+      enterAnswerPhase();
+      return;
+    }
+    setShownIndex(i + 1);
+  };
+
+  // "Paused", said once the pause has torn the narration down -- an effect,
+  // so it runs AFTER the cleanup that cancels the card being spoken.
+  useEffect(() => {
+    if (!paused) return;
+    if (eyesFree || voiceOn) speak('Paused.', speechOptsFrom(settings.audio, { interrupt: true }));
+    else audio.sayFull('Paused.');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paused]);
 
   // Desktop keyboard input (operator request): Space/Enter/ArrowRight
   // advance the manual-tap flash exactly like tapping the drill area --
@@ -958,6 +1030,8 @@ export function CountDrillView({
       }
     }
     setShownIndex(0);
+    pausedAtRef.current = null;
+    setPaused(false);
     // #20: Timed Challenge ignores Next card, so it is never a manual run.
     runManualRef.current = settings.drill.countManual && !timedChallenge;
     tapGapsRef.current = [];
@@ -1507,6 +1581,19 @@ export function CountDrillView({
    * on and back says it again.
    */
   useWheelCommand((command) => {
+    // C-R2: while the cards flash, back pauses them and forward resumes from
+    // the next card -- in either wheel mode, since there is nothing to say
+    // to a run that is still dealing.
+    if (phaseRef.current === 'flashing') {
+      if (command === 'back') {
+        pauseRun();
+        return;
+      }
+      if (pausedAtRef.current !== null) {
+        resumeRun();
+        return;
+      }
+    }
     // Push-to-talk mode: forward OPENS THE MICROPHONE instead of answering.
     // A mode rather than an extra gesture -- there are two buttons and three
     // things to say with them (see DrillSettings.wheelMode). Back still
@@ -2120,6 +2207,24 @@ export function CountDrillView({
             {shownIndex + 1} / {groups.length}
             {timedChallenge && <span className="count-timed-badge">speeding up&hellip;</span>}
           </div>
+        </div>
+      )}
+
+      {phase === 'flashing' && (
+        <div className="count-pause-row">
+          {paused && (
+            <div className="count-paused" role="status">
+              Paused
+            </div>
+          )}
+          <button
+            type="button"
+            className="count-pause-btn"
+            aria-pressed={paused}
+            onClick={paused ? resumeRun : pauseRun}
+          >
+            {paused ? 'Resume' : 'Pause'}
+          </button>
         </div>
       )}
 

@@ -1,0 +1,34 @@
+/* C-R2 (W11): Pause / Resume under a flashing count run. A quiet secondary
+   button -- the run's own primary is the cards -- at the 44px touch minimum,
+   with "Paused" stated beside it while the run is held. */
+.count-pause-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.count-pause-btn {
+  min-height: 44px;
+  min-width: 96px;
+  padding: 0 1.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.count-pause-btn[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.count-paused {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
