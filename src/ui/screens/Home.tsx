@@ -5,11 +5,13 @@ import { readiness, weakestCategories } from './readiness';
 import { buildLabel, formatBuiltAt, runningBuildId, runningBuiltAt } from '../../updateCheck';
 import { CATEGORY_LABELS } from './categoryLabels';
 import { pctOfPercent } from './statsFormat';
-import { masterySweepDone, nextStep } from './nextStep';
+import { ladder as buildLadder, masterySweepDone } from './nextStep';
+import type { StartTarget } from './nextStep';
 import { loadMasteryRun } from '../../drills/masteryChallenge';
-import { launchSettings, setDrillLaunch } from '../drillLaunch';
+import { launchSettings, reviewLaunch, setDrillLaunch } from '../drillLaunch';
+import { loadFlashSr, loadQuizSr } from '../../drills/gradeAnswer';
+import { LadderCard } from './LadderCard';
 import { strategyRulesFor } from '../../store/profiles';
-import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, pctDown } from './handProgress';
 import './nextStep.css';
 
 interface HomeProps {
@@ -45,30 +47,33 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
   const gradedRules = strategyRulesFor(activeProfile);
   const r = readiness(stats, gradedRules);
   const weak = weakestCategories(stats);
-  // #28: one recommendation, with its reason.
-  const step = nextStep(stats, {
+  // #28 / B2: the seven-rung ladder, and the one step it recommends.
+  const ladder = buildLadder(stats, {
     sweepDone: (stats.masterySweepsCompleted ?? 0) > 0 || masterySweepDone(loadMasteryRun()),
     rules: gradedRules,
+    flashSr: loadFlashSr(),
+    quizSr: loadQuizSr(),
+    now: Date.now(),
   });
-  const openStep = () => {
-    if (step.kind === 'play') {
+  const step = ladder.step;
+  const openStep = (t: StartTarget, reviewCells?: string[]) => {
+    if (t.kind === 'play') {
       onNavigate('table');
       return;
     }
     // F21 / s07: the drill opens on the hand type the step names, and on the
     // chart rather than a leftover Custom deck. Persisted and lifted before
-    // Drills mounts, so its first render already has them.
-    const next = launchSettings(step.kind, step.scope, settings);
+    // Drills mounts, so its first render already has them. B2 Review (Task 4
+    // ruling): the due cells go over in memory and the settings come back
+    // unchanged, so the saved Custom deck survives the review.
+    const next = reviewCells ? reviewLaunch(settings, reviewCells) : launchSettings(t.kind, t.scope, settings);
     if (next !== settings) {
       saveSettings(next);
       onSettingsChange(next);
     }
-    setDrillLaunch(step.kind);
+    setDrillLaunch(t.kind);
     onNavigate('drills');
   };
-  // s02: once hard, soft and pairs all meet the goal, the card says so
-  // instead of listing three ticks on every later step.
-  const basicMet = step.progress?.every((c) => c.onTarget) ?? false;
 
   return (
     <div className="home-screen">
@@ -83,6 +88,9 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
           {activeProfile.name}
         </button>
       </header>
+
+      {/* B2: the ladder first, so Start sits above the fold. */}
+      <LadderCard ladder={ladder} onStart={openStep} />
 
       <section className="readiness" aria-label="Readiness">
         <div className="readiness-figures">
@@ -104,7 +112,7 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
 
         {r.decisions === 0 ? (
           <p className="u-note">
-            Nothing answered yet. Start with the next step below.
+            Nothing answered yet. Start with the next step above.
           </p>
         ) : (
           <p className="u-note">
@@ -122,49 +130,6 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
         </button>
       </section>
 
-      <section className="next-step" aria-label="Next step" data-step={step.kind}>
-        <span className="readiness-label">Next step</span>
-        <h2 className="next-step-title">{step.title}</h2>
-        <p className="next-step-why">{step.why}</p>
-        {/* s02: progress on each category, and a tick once its goal is met,
-            beside Start so the card still fits the 812px fold. Once all
-            three are met, one line confirms it. */}
-        <div className="next-step-foot">
-          {basicMet && step.progress && (
-            <p className="next-step-goal-met" data-testid="basic-goal-met">
-              <span aria-hidden="true">✓ </span>
-              Basic strategy goal met ({step.progress
-                .map((c) => `${c.scope} ${goalPct(c.pct)}`)
-                .join(', ')})
-            </p>
-          )}
-          {!basicMet && step.progress && (
-            <ul className="next-step-progress" aria-label="Basic strategy progress">
-              {step.progress.map((c) => (
-                <li
-                  key={c.prefix}
-                  className="next-step-progress-row"
-                  data-hand={c.prefix}
-                  data-on-target={c.onTarget ? 'true' : 'false'}
-                >
-                  <span className="next-step-progress-label">{c.label}</span>
-                  <span className="next-step-progress-value">
-                    {c.thin
-                      ? `${c.n}/${MIN_CATEGORY_ANSWERS} answers`
-                      : c.onTarget
-                        ? `✓ ${goalPct(c.pct)}`
-                        : `${goalPct(c.pct)} (goal ${pctDown(CATEGORY_TARGET)})`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {/* W13: the one gold primary on Home. */}
-          <button type="button" className="u-btn u-btn-primary next-step-btn" onClick={openStep}>
-            Start
-          </button>
-        </div>
-      </section>
 
       {/* Play, and Settings (which has no tab). Drills and
           Charts are one tap away in the tab bar, and repeating them would

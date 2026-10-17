@@ -500,6 +500,10 @@ test('Home: top-aligned, the full profile name, Test kit is a small link under t
   const overflow = await chip.evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(overflow, 'the profile name is truncated').toBeLessThanOrEqual(1);
 
+  // B2: the ladder sits first and Start is the fold's job (ladder.spec);
+  // Play a shoe and Test kit are a scroll below it.
+  await expectInViewport(page, '.next-step-btn', 'Start');
+  await page.getByTestId('testkit-open').scrollIntoViewIfNeeded();
   await expectInViewport(page, '.home-play-btn', 'Play a shoe');
   await expectInViewport(page, '[data-testid="testkit-open"]', 'the Test kit link');
   const link = (await page.getByTestId('testkit-open').boundingBox())!;

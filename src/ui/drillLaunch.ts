@@ -76,3 +76,33 @@ export function launchCustomCells(cellIds: readonly string[], settings: Settings
   setDrillLaunch('custom');
   return next;
 }
+
+/**
+ * B2 "Review N due" (controller ruling): the due cells, handed to the next
+ * Flashcards mount in memory only -- never persisted, never replayed on
+ * reload, and never written into the saved Custom deck. Flashcards takes it
+ * (which clears it) and deals only these cells for that session.
+ */
+let reviewDeck: string[] | null = null;
+
+export function setReviewDeck(cellIds: readonly string[]): void {
+  reviewDeck = [...cellIds];
+}
+
+/** The pending review deck, cleared as it is read. */
+export function takeReviewDeck(): string[] | null {
+  const d = reviewDeck;
+  reviewDeck = null;
+  return d;
+}
+
+/**
+ * B2: Review's Start. Hands the due cells over and returns the settings
+ * unchanged (the same object), so Home saves nothing and the user's Custom
+ * deck, scopes and deck choice all survive the review. Pair with
+ * setDrillLaunch('flash').
+ */
+export function reviewLaunch(settings: Settings, cellIds: readonly string[]): Settings {
+  setReviewDeck(cellIds);
+  return settings;
+}

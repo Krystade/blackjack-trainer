@@ -11,7 +11,7 @@
  * ("Practise counting") and the Drills picker's nudge used different rules
  * (4 of the last 5 runs vs 10 runs at 70%), so Home could call counting on
  * target while the picker still said "get fluent first". Both read
- * `countFluency` now.
+ * `countFluency` now. B2: this rule is rung 3 of the ladder, nextStep.ts.
  *
  * The rule: of the last COUNT_RUNS_JUDGED QUALIFYING runs, at least
  * COUNT_RUNS_NEEDED were right. A qualifying run is dealt at a set pace (not a

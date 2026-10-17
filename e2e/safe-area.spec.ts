@@ -165,8 +165,10 @@ test('the field-test check is discriminating', async ({ page }) => {
   await page.getByTestId('settings-testkit-open').click();
   await page.getByTestId('fieldtest-open').click();
   await expect(page.getByTestId('fieldtest-screen')).toBeVisible();
+  // Since B1 the bar also sticks at `--safe-top` (muteSeat.css), which on its
+  // own keeps it out of the strip, so that goes too (as in the Charts control).
   await page.addStyleTag({
-    content: `:root { --safe-top: ${INSET}px; } body { padding-top: 0 !important; } .fieldtest-screen { padding-top: 0 !important; }`,
+    content: `:root { --safe-top: ${INSET}px; } body { padding-top: 0 !important; } .fieldtest-screen { padding-top: 0 !important; } .fieldtest-topbar { position: static !important; }`,
   });
   const topMost = await page.evaluate(() => {
     let min = Infinity;

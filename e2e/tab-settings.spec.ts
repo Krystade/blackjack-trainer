@@ -176,15 +176,15 @@ test('the bet spread can be switched on from the Play gear (s06)', async ({ page
   await expect(page.getByRole('button', { name: /Sit out/i })).toBeVisible();
 });
 
-test('Profiles leaves the Play sheet for the profile list', async ({ page }) => {
+test('Edit profile and bet ramp leaves the Play sheet for the profile editor', async ({ page }) => {
   await openTable(page);
   await page.getByRole('button', { name: 'Play settings' }).click();
   await page
     .getByRole('dialog', { name: 'Play settings' })
-    .getByRole('button', { name: 'Profiles', exact: true })
+    .getByRole('button', { name: 'Edit profile and bet ramp', exact: true })
     .click();
   await expect(page.locator('.table-screen')).toHaveCount(0);
-  await expect(page.locator('.profile-editor-screen .settings-heading')).toHaveText('Profiles');
+  await expect(page.locator('.profile-editor-screen .settings-heading')).toHaveText('Edit profile');
 });
 
 test('the Drills gear sets the shot clock', async ({ page }) => {

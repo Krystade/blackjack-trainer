@@ -49,15 +49,13 @@ test('without a sweep on record, Mastery is next', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'Next step' })).toHaveAttribute('data-step', 'mastery');
 });
 
-/* s02 (review): Home confirms the goal once every category has met it. */
-test('once all three categories meet the goal, Home says so instead of listing them', async ({ page }) => {
+/* s02 (review) / B2: once every category meets the goal, the basic rung is a done row, not a list. */
+test('once all three categories meet the goal, the basic rung is ticked and the list goes', async ({ page }) => {
   await seedStats(page, STRONG);
   await page.goto('/?e2e=1');
   const card = page.getByRole('region', { name: 'Next step' });
   await expect(card).toHaveAttribute('data-step', 'mastery');
-  await expect(card.getByTestId('basic-goal-met')).toHaveText(
-    '✓ Basic strategy goal met (hard 100%, soft 100%, pairs 100%)',
-  );
+  await expect(card.locator('[data-rung="basic"]')).toHaveAttribute('data-state', 'done');
   await expect(card.locator('.next-step-progress')).toHaveCount(0);
 });
 
@@ -128,12 +126,19 @@ test('Start is the one primary button; Play a shoe steps back, and goes when it 
       window.localStorage.setItem('e2e.noReseed', '1');
       window.localStorage.setItem(
         'bjtrainer.stats.v1',
-        JSON.stringify({ version: 1, cellStats: cs, perIndex: pi, masterySweepsCompleted: 1, countDrill: { history: cr } }),
+        // B2: the casino-order ladder also needs deck estimation, true count and the bet ramp (no session yet, so Play is the step).
+        JSON.stringify({
+          version: 1, cellStats: cs, perIndex: pi, masterySweepsCompleted: 1, countDrill: { history: cr },
+          deckEstimation: { history: Array.from({ length: 10 }, () => ({ date: '', actualDecks: 3, guess: 3, errorDecks: 0, correct: true })) },
+          trueCount: { history: Array.from({ length: 10 }, () => ({ date: '', runningCount: 6, decksRemaining: 3, guess: 2, correctTc: 2, correct: true })) },
+          betSizing: { history: Array.from({ length: 10 }, () => ({ date: '', ok: true })) },
+        }),
       );
     },
     [STRONG, perIndex, runs] as const,
   );
   await page.reload();
   await expect(page.getByRole('region', { name: 'Next step' })).toHaveAttribute('data-step', 'play');
+  await expect(page.getByRole('region', { name: 'Next step' })).toHaveAttribute('data-card', 'rung');
   await expect(page.locator('.home-play-btn')).toHaveCount(0);
 });

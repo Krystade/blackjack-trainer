@@ -1,0 +1,5 @@
+/* Task 6 (Wave B, lane H): "Edit profile and bet ramp" scrolls the ramp into
+   view; keep it clear of the sticky settings bar. */
+.profile-ramp-anchor {
+  scroll-margin-top: calc(var(--safe-top, 0px) + var(--topbar-h) + 8px);
+}

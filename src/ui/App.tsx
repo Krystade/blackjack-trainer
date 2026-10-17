@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import './app.css';
-import './stickyTopbars.css';
 import './themeCues.css';
 import './formControls.css';
 import { Home } from './screens/Home';
@@ -33,6 +32,8 @@ import { installAudioUnlock } from '../audio/unlock';
 import { installAudioContextKeepAlive } from '../audio/audioContext';
 import { useActivityLive } from './activityLive';
 import { mayLeave } from './leaveGuard';
+// Last, so the mute seat (B1) wins the cascade over every sheet above it.
+import './muteSeat.css';
 
 declare global {
   interface Window {
@@ -371,7 +372,7 @@ function App() {
           <Charts
             onNavigate={navigate}
             activeProfile={activeProfile}
-            onBack={() => navigate(chartsReturn)}
+            onBack={chartsReturn === 'home' ? undefined : () => navigate(chartsReturn)}
             backLabel={SCREEN_LABEL[chartsReturn]}
           />
         );

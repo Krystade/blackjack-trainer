@@ -66,7 +66,7 @@ test('importing garbage shows an error and leaves the app navigable', async ({ p
   await expect(page.locator('.stats-message')).toContainText('Import failed');
   await shot(page, '25-stats-import-error');
 
-  await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
+  await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
   await expect(page.locator('.home-title')).toBeVisible();
 });
 

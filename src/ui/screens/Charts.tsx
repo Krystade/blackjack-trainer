@@ -297,9 +297,12 @@ export function Charts({
         {/* Named after where you actually came from: Charts is reachable at
             any moment, and a hardcoded "Back to Home" threw away whatever
             drill or table you left to go and check a cell. */}
-        {backPlacement === 'topbar' && (
-          <button type="button" className="charts-back-btn" onClick={goBack}>
-            {backText}
+        {/* B1/s09: no Back when there is nowhere to go back to (opened from
+            Home, the tab bar is Home), and the visible word is just "Back" so
+            the bar stays on one line; the destination is in the aria-label. */}
+        {backPlacement === 'topbar' && onBack && (
+          <button type="button" className="charts-back-btn" onClick={goBack} aria-label={backText}>
+            Back
           </button>
         )}
         <div className="charts-heading">Strategy charts</div>

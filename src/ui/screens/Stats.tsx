@@ -21,7 +21,7 @@ import type { Category, MistakeClass } from '../../engine/grade';
 import { indexSetFor } from '../../engine/deviations';
 import { useAudio } from '../../audio/useAudio';
 import { narrateStatsSummary } from '../../audio/narrate';
-import { assistedFlag } from '../peekFlag';
+import { assistedFlag, signedFixed } from '../peekFlag';
 import {
   fatigueDrift,
   latencyDrift,
@@ -402,7 +402,7 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Fatigue': 'progress',
   'Table sessions': 'progress' };
 
-export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }: StatsProps) {
+export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps) {
   const [stats, setStats] = useState<StatsData>(() => loadStats());
   const [message, setMessage] = useState<string | null>(null);
 
@@ -794,9 +794,6 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   return (
     <div className="stats-screen" data-active-tab={tab}>
       <div className="stats-topbar">
-        <button type="button" className="stats-back-btn" onClick={() => onNavigate('home')}>
-          Back to Home
-        </button>
         <div className="stats-heading">Stats</div>
       </div>
 
@@ -1517,7 +1514,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                 <li className="mistake-row">
                   <span>Drift</span>
                   <span>
-                    {(fatigue.drift > 0 ? '+' : '') + Math.round(fatigue.drift * 100)}%{' '}
+                    {signedFixed(fatigue.drift * 100, 0)}%{' '}
                     {fatigueVerdict ? `(${fatigueVerdict})` : ''}
                   </span>
                 </li>
@@ -1558,7 +1555,7 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
                 <li className="mistake-row">
                   <span>Pace drift</span>
                   <span className="mistake-value">
-                    {(pace.driftMs > 0 ? '+' : '') + (pace.driftMs / 1000).toFixed(1)}s{' '}
+                    {signedFixed(pace.driftMs / 1000, 1)}s{' '}
                     {paceVerdict ? `(${paceVerdict})` : ''}
                   </span>
                 </li>

@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { EMPTY_STATS } from '../../store/types';
 import type { Stats } from '../../store/types';
-import { ILLUSTRIOUS_18 } from '../../engine/deviations';
 import { generateAllCells } from '../../drills/flashcards';
 import { cellLabel, masterySweepDone, nextStep } from './nextStep';
-
-type Tally = { right: number; wrong: number };
+import { ctxFor, runs, stateAt, withIndices } from './ladderFixtures';
 
 /** Strategy learned: 30 answers per category, all right, spread over cells. */
 function learned(): Stats {
@@ -18,13 +16,8 @@ function learned(): Stats {
   return s;
 }
 
-function withIndices(s: Stats, t: Tally): Stats {
-  for (const d of ILLUSTRIOUS_18.filter((x) => x.active)) s.perIndex[d.id] = { ...t };
-  return s;
-}
-
 function withCountRuns(s: Stats, results: boolean[]): Stats {
-  s.countDrill.history = results.map((correct) => ({ date: '', cards: 52, intervalMs: 700, correct }));
+  s.countDrill.history = runs(results);
   return s;
 }
 
@@ -68,9 +61,9 @@ describe('nextStep (#28)', () => {
     // Enough right answers elsewhere that Hard totals stay over 90%.
     s.cellStats!['hard-16-v-10'] = { right: 1000, wrong: 0, lastAt: '' };
     s.cellStats!['hard-12-v-3'] = { right: 2, wrong: 2, lastAt: '' };
-    expect(nextStep(s, { sweepDone: true }).kind).toBe('quiz');
+    expect(nextStep(s, { sweepDone: true }).kind).toBe('count');
     s.cellStats!['hard-12-v-3'] = { right: 39, wrong: 11, lastAt: '' }; // exactly 78%
-    expect(nextStep(s, { sweepDone: true }).kind).toBe('quiz');
+    expect(nextStep(s, { sweepDone: true }).kind).toBe('count');
   });
 
   it('W3: a category is judged on its last 30 answers, so learning mistakes age out', () => {
@@ -81,7 +74,7 @@ describe('nextStep (#28)', () => {
     // The last 30 pair answers were all right: the gate clears.
     s.handRecent = { pair: '1'.repeat(30) };
     s.cellStats!['pair-8-v-A']!.recent = '1'.repeat(10);
-    expect(nextStep(s, { sweepDone: true }).kind).toBe('quiz');
+    expect(nextStep(s, { sweepDone: true }).kind).toBe('count');
     // A recent slump is caught even with a good lifetime figure.
     s.cellStats!['pair-8-v-A'] = { right: 300, wrong: 5, lastAt: '' };
     s.handRecent = { pair: '0'.repeat(6) + '1'.repeat(24) };
@@ -99,7 +92,7 @@ describe('nextStep (#28)', () => {
     const s = learned();
     s.cellStats!['hard-16-v-10'] = { right: 1000, wrong: 0, lastAt: '' };
     s.cellStats!['hard-12-v-3'] = { right: 2, wrong: 4, lastAt: '', recent: '11111' };
-    expect(nextStep(s, { sweepDone: true }).kind).toBe('quiz');
+    expect(nextStep(s, { sweepDone: true }).kind).toBe('count');
     // Still weak while the window is short: lifetime decides.
     s.cellStats!['hard-12-v-3'] = { right: 2, wrong: 4, lastAt: '', recent: '1111' };
     expect(nextStep(s, { sweepDone: true }).kind).toBe('custom');
@@ -206,32 +199,31 @@ describe('nextStep (#28)', () => {
   });
 
   it('4: deviations until every index has 3 answers and 90% together', () => {
-    expect(nextStep(learned(), { sweepDone: true })).toMatchObject({ kind: 'quiz' });
-    const s = withIndices(learned(), { right: 2, wrong: 1 });
-    const n = nextStep(s, { sweepDone: true });
+    expect(nextStep(stateAt(5), ctxFor(5))).toMatchObject({ kind: 'quiz' });
+    const n = nextStep(withIndices(stateAt(5), 2, 1), ctxFor(5));
     expect(n.kind).toBe('quiz');
     expect(n.why).toMatch(/at 66%/);
-    expect(nextStep(withIndices(learned(), { right: 9, wrong: 1 }), { sweepDone: true }).kind).toBe('count');
+    expect(nextStep(withIndices(stateAt(5), 9, 1), ctxFor(5)).kind).toBe('betsizing');
   });
 
   it('F11: the deviations step counts the index set of the profile', () => {
     // Every H17 index practised: under H17 that is done; under S17, 11vA is
     // active and unpractised, so the step stays on the deviations.
-    const s = withIndices(learned(), { right: 10, wrong: 0 });
-    expect(nextStep(s, { sweepDone: true, rules: { decks: 6, s17: false } }).kind).toBe('count');
-    const s17 = nextStep(s, { sweepDone: true, rules: { decks: 6, s17: true } });
+    const s = withIndices(stateAt(5));
+    expect(nextStep(s, { ...ctxFor(5), rules: { decks: 6, s17: false } }).kind).toBe('betsizing');
+    const s17 = nextStep(s, { ...ctxFor(5), rules: { decks: 6, s17: true } });
     expect(s17.kind).toBe('quiz');
     expect(s17.why).toMatch(/^1 of 18 indices/);
   });
 
   it('F15: short or self-paced count runs do not count toward the counting step', () => {
-    const s = withIndices(learned(), { right: 10, wrong: 0 });
+    const s = withIndices(learned());
     s.countDrill.history = Array.from({ length: 5 }, () => ({ date: '', cards: 20, intervalMs: 700, correct: true }));
     expect(nextStep(s, { sweepDone: true }).why).toMatch(/^0 of 5 count drill runs/);
   });
 
   it('5: counting until 4 of the last 5 runs are right', () => {
-    const base = () => withIndices(learned(), { right: 10, wrong: 0 });
+    const base = () => withIndices(learned());
     expect(nextStep(withCountRuns(base(), [true, true, true, true]), { sweepDone: true }).kind).toBe('count');
     const three = nextStep(withCountRuns(base(), [true, true, true, false, false]), { sweepDone: true });
     expect(three.kind).toBe('count');
@@ -239,16 +231,15 @@ describe('nextStep (#28)', () => {
     // Old misses outside the last five do not count against you.
     expect(
       nextStep(withCountRuns(base(), [false, false, true, true, true, true, false]), { sweepDone: true }).kind,
-    ).toBe('play');
+    ).toBe('deckest');
     // And old hits outside them do not count for you.
     expect(
       nextStep(withCountRuns(base(), [true, true, true, true, false, false]), { sweepDone: true }).kind,
     ).toBe('count');
   });
 
-  it('6: everything on target -> Play', () => {
-    const s = withCountRuns(withIndices(learned(), { right: 10, wrong: 0 }), [true, true, true, true, true]);
-    expect(nextStep(s, { sweepDone: true })).toMatchObject({ kind: 'play', title: 'Play a shoe' });
+  it('6: everything on target -> keep the stalest skill fresh (W2; no quiz SR = deviations never practised)', () => {
+    expect(nextStep(stateAt(8), ctxFor(8))).toMatchObject({ card: 'stale', kind: 'quiz', title: 'Keep it fresh: Deviations' });
   });
 
   it('labels cells the way the chart reads', () => {

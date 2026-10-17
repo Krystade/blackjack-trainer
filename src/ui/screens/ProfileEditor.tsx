@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { setLeaveGuard } from '../leaveGuard';
 import './profileEditorSave.css';
+import './profileRamp.css';
+import { plainNumber } from '../../drills/signed';
+import { takeProfileLaunch } from '../profileLaunch';
+import { isFloorRow, spreadTcText, stepMinTc } from '../spreadRows';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import type { Screen } from '../App';
 import type { Profile } from '../../store/types';
@@ -110,7 +114,24 @@ function TextField({
 export function ProfileEditor({ onNavigate }: ProfileEditorProps) {
   const [profiles, setProfiles] = useState<Profile[]>(() => loadProfiles());
   const [activeId, setActiveId] = useState<string>(() => getActiveProfile().id);
-  const [mode, setMode] = useState<Mode>({ kind: 'list' });
+  // Play's "Edit profile and bet ramp" (Task 6): open the active profile at
+  // its ramp, and go back where it came from on Save or Cancel.
+  const [launch] = useState(takeProfileLaunch);
+  const [mode, setMode] = useState<Mode>(() =>
+    launch
+      ? { kind: 'edit', draft: structuredClone(getActiveProfile()), isNew: false }
+      : { kind: 'list' },
+  );
+  const [exitTo, setExitTo] = useState<Screen | null>(null);
+  // Navigates after the form has unmounted, so its leave guard is already
+  // cleared and no discard prompt appears.
+  useEffect(() => {
+    if (exitTo) onNavigate(exitTo);
+  }, [exitTo, onNavigate]);
+  const leaveEdit = () => {
+    setMode({ kind: 'list' });
+    if (launch) setExitTo(launch.returnTo);
+  };
 
   const selectActive = (id: string) => {
     setActiveProfile(id);
@@ -151,7 +172,7 @@ export function ProfileEditor({ onNavigate }: ProfileEditorProps) {
   };
 
   const cancelEdit = () => {
-    setMode({ kind: 'list' });
+    leaveEdit();
   };
 
   const saveDraft = (draft: Profile) => {
@@ -174,7 +195,7 @@ export function ProfileEditor({ onNavigate }: ProfileEditorProps) {
     if (cleaned.id === activeId || wasNew) {
       selectActive(cleaned.id);
     }
-    setMode({ kind: 'list' });
+    leaveEdit();
   };
 
   if (mode.kind === 'list') {
@@ -234,6 +255,7 @@ export function ProfileEditor({ onNavigate }: ProfileEditorProps) {
       draft={mode.draft}
       isNew={mode.isNew}
       canDelete={profiles.length > 1}
+      openRamp={launch !== null}
       onSave={saveDraft}
       onCancel={cancelEdit}
       onDelete={() => deleteProfile(mode.draft.id)}
@@ -252,6 +274,7 @@ function ProfileEditForm({
   draft: initialDraft,
   isNew,
   canDelete,
+  openRamp,
   onSave,
   onCancel,
   onDelete,
@@ -259,12 +282,19 @@ function ProfileEditForm({
   draft: Profile;
   isNew: boolean;
   canDelete: boolean;
+  openRamp: boolean;
   onSave: (draft: Profile) => void;
   onCancel: () => void;
   onDelete: () => void;
 }) {
   const [draft, setDraft] = useState<Profile>(initialDraft);
   const [cvcxImport, setCvcxImport] = useState<CvcxImportState>({ kind: 'closed' });
+  const rampAnchor = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (openRamp) rampAnchor.current?.scrollIntoView({ block: 'start' });
+    // Mount only: the launch lands on the ramp once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // UNSAVED WORK IS VISIBLE AND ASKED ABOUT (F13). A new profile is unsaved by
   // definition; an existing one is dirty once the draft differs from it.
@@ -463,11 +493,17 @@ function ProfileEditForm({
         title={<>Bankroll &amp; count</>}
         defaultOpen={false}
       >
-          <Toggle
-            label="Vary bets with the count"
-            checked={draft.betSpreadOn}
-            onChange={(v) => update({ betSpreadOn: v })}
-          />
+          <div
+            className={draft.betSpreadOn ? undefined : 'profile-ramp-anchor'}
+            ref={draft.betSpreadOn ? undefined : rampAnchor}
+            data-testid="profile-ramp-toggle"
+          >
+            <Toggle
+              label="Vary bets with the count"
+              checked={draft.betSpreadOn}
+              onChange={(v) => update({ betSpreadOn: v })}
+            />
+          </div>
 
           {/* V5-4 (docs/BACKLOG.md): a property of the COUNTER'S system, not the
               casino's table, so it lives here and not under Rules. Deliberately
@@ -571,33 +607,41 @@ function ProfileEditForm({
       </CollapsibleSection>
 
       {draft.betSpreadOn && (
+        <div className="profile-ramp-anchor" ref={rampAnchor} data-testid="profile-ramp">
         <CollapsibleSection
           title={<>Bet ramp</>}
-          defaultOpen={false}
+          defaultOpen={openRamp}
         >
             <div className="spread-table">
               {draft.spread.map((row, i) => (
                 <div className="spread-row" key={i}>
+                  {/* The −99 sentinel is "any count", never a number. */}
+                  {isFloorRow(row) ? (
+                    <div className="spread-field">
+                      <span className="spread-field-label">Any count</span>
+                    </div>
+                  ) : (
                   <div className="spread-field">
                     <span className="spread-field-label">TC ≥</span>
                     <div className="stepper">
                       <button
                         type="button"
                         className="stepper-btn"
-                        onClick={() => updateSpreadRow(i, { minTc: row.minTc - 1 })}
+                        onClick={() => updateSpreadRow(i, { minTc: stepMinTc(row, -1) })}
                       >
                         &minus;
                       </button>
-                      <span className="stepper-value">{row.minTc}</span>
+                      <span className="stepper-value">{spreadTcText(row)}</span>
                       <button
                         type="button"
                         className="stepper-btn"
-                        onClick={() => updateSpreadRow(i, { minTc: row.minTc + 1 })}
+                        onClick={() => updateSpreadRow(i, { minTc: stepMinTc(row, 1) })}
                       >
                         +
                       </button>
                     </div>
                   </div>
+                  )}
                   <div className="spread-field">
                     <span className="spread-field-label">Units</span>
                     <div className="stepper">
@@ -711,7 +755,7 @@ function ProfileEditForm({
                       </div>
                       {cvcxImport.rows.map((row, i) => (
                         <div className="cvcx-preview-row" key={i}>
-                          <div className="cvcx-preview-col">{row.minTc}</div>
+                          <div className="cvcx-preview-col">{isFloorRow(row) ? 'Any' : plainNumber(row.minTc)}</div>
                           <div className="cvcx-preview-col">{row.units}</div>
                         </div>
                       ))}
@@ -729,6 +773,7 @@ function ProfileEditForm({
               </div>
             )}
         </CollapsibleSection>
+        </div>
       )}
 
       <CollapsibleSection

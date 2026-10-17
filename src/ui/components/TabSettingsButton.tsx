@@ -9,6 +9,7 @@ import { TabSettingsSheet } from './TabSettingsSheet';
 import { ResetBankrollRow } from './ResetBankrollRow';
 import { BetSpreadControl, CountCheckControls, CutCardControl, DeviationsControl } from './ProfilePlayControls';
 import { playOptionsDiffer } from '../profileOptions';
+import { setProfileLaunch } from '../profileLaunch';
 
 /**
  * #33: the gear in the topbar of Play, Drills and Charts, opening a sheet of
@@ -164,17 +165,19 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
       <ResetBankrollRow onReset={() => setBankrollReset(true)} />
 
       {/* Wave A (s06): All settings has no way into profiles, so the bet
-          ramp and the rest of the profile get their own way out. Labelled for
-          where it lands -- the Profiles list; the ramp is under Edit. */}
+          ramp and the rest of the profile get their own way out. Task 6
+          (Wave B): it opens the active profile at its ramp and Save or Cancel
+          comes back to Play, so it is labelled for that. */}
       <button
         type="button"
         className="u-btn tab-sheet-all"
         onClick={() => {
           finish();
+          setProfileLaunch({ section: 'ramp', returnTo: 'table' });
           ctx.navigate('profiles');
         }}
       >
-        Profiles
+        Edit profile and bet ramp
       </button>
       <AllSettingsButton
         onClick={() => {

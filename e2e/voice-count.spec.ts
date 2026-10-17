@@ -74,7 +74,7 @@ async function openCountCheck(page: Page): Promise<void> {
   await countCheckEveryRound(page);
   await page.goto('/?seed=102&e2e=1');
 
-  await page.getByRole('button', { name: 'Play a shoe' }).click();
+  await page.getByRole('button', { name: 'Play a shoe', exact: true }).click();
   await page.locator('.voice-btn').click();
   await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');
 
