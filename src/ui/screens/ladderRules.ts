@@ -50,20 +50,44 @@ export function betRampResult(stats: Stats): WindowResult {
   return recentWindow(betSizingRows(stats).map((row) => ({ correct: row?.ok })));
 }
 
+/** The fields of a session row that play decisions are read from. */
+export interface PlayDecisionRow {
+  graded?: number;
+  correct?: number;
+  plays?: number;
+  playsCorrect?: number;
+}
+
+const finite = (n: unknown): number => (typeof n === 'number' && Number.isFinite(n) ? n : 0);
+
+/**
+ * A session row's play decisions (action events) and how many were right.
+ * B2, R4 rows carry `plays`/`playsCorrect`. C-R7: a row written before B2 has
+ * no `plays`, so its old graded-decision total stands in -- a rung already
+ * ticked on it must not untick after deploy. One rule, shared by rung 7 and
+ * Stats' play accuracy (C-R8).
+ */
+export function playDecisions(row: PlayDecisionRow | null | undefined): { plays: number; correct: number } {
+  if (!row) return { plays: 0, correct: 0 };
+  if (typeof row.plays === 'number' && Number.isFinite(row.plays)) {
+    return { plays: row.plays, correct: finite(row.playsCorrect) };
+  }
+  return { plays: finite(row.graded), correct: finite(row.correct) };
+}
+
 /**
  * Rung 7: one of the last PLAY_SESSIONS_JUDGED sessions has PLAY_MIN_GRADED+
  * PLAY decisions (action events) at PLAY_TARGET. B2, R4: sit-outs, bets and
  * count checks no longer count -- a cold shoe sat out by the ramp padded the
- * threshold with easy decisions and ticked "Play a shoe". A row written before
- * plays were recorded counts as none.
+ * threshold with easy decisions and ticked "Play a shoe". C-R7: a row written
+ * before plays were recorded counts on its old graded total (playDecisions).
  */
 export function playResult(stats: Stats): { best: { graded: number; correct: number } | null; passed: boolean } {
   const recent = (Array.isArray(stats.sessions) ? stats.sessions : []).slice(-PLAY_SESSIONS_JUDGED);
   let best: { graded: number; correct: number } | null = null;
   let passed = false;
   for (const s of recent) {
-    const graded = Number.isFinite(s?.plays) ? s.plays! : 0;
-    const correct = Number.isFinite(s?.playsCorrect) ? s.playsCorrect! : 0;
+    const { plays: graded, correct } = playDecisions(s);
     if (graded >= PLAY_MIN_GRADED && correct / graded >= PLAY_TARGET) passed = true;
     if (!best || graded > best.graded) best = { graded, correct };
   }

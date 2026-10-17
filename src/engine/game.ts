@@ -495,63 +495,52 @@ export class Game {
       : new Array(playerHandsCount).fill(bets ?? 1);
 
     if (this.cfg.betSpreadOn) {
-      const expectedUnits = spreadUnitsFor(preDealTc, this.cfg.spread);
-      // One bet GradedEvent PER HAND, left to right -- each hand's own bet is
-      // graded against the same pre-deal true count (Cycle-2 Task 4).
-      for (const bet of betArray) {
-        // RT#11: with cover on, a bet one rung either side of the spread's
-        // number is not an error -- see engine/coverBets.ts for why the
-        // tolerance is a RUNG rather than a unit.
-        const correct = this.cfg.coverBets
-          ? betWithinStep(bet, expectedUnits, this.cfg.spread)
-          : bet === expectedUnits;
-        this.events.push({
-          source: 'table',
-          kind: 'bet',
-          category: 'bet',
-          correct,
-          classification: correct ? 'correct' : 'basic-error',
-          taken: String(bet),
-          expected: String(expectedUnits),
-          reason: this.cfg.coverBets
-            ? `Spread bet at tc ${preDealTc} (cover: one rung either side)`
-            : `Spread bet at tc ${preDealTc}`,
-          tc: preDealTc,
-        });
-      }
-
       /**
-       * RV7 / RT#2 (docs/BACKLOG.md): the wong decision is graded on BOTH
-       * sides now.
-       *
-       * Sitting out has always been graded. Dealing in was not -- so playing
-       * a count the spread says to leave scored as a CORRECT bet (the table
-       * minimum is what the spread asked for) and nothing else. The app was
-       * rewarding, one round at a time, the exact habit R5 exists to break:
-       * playing all counts at the floor.
-       *
-       * Playing is the same decision as sitting out, made the other way, so
-       * it emits the same event against the same criterion -- correct unless
-       * the spread calls only for the table minimum at this true count. That
-       * makes the two sides complementary and the accuracy figure honest:
-       * every round with a spread on now contributes one play-or-sit
-       * decision, rather than only the rounds the player chose to leave.
-       *
-       * Pushed AFTER the bet events on purpose: `events[0]` is the first
-       * hand's bet, which existing callers and tests read positionally.
+       * C-R6: one round, one graded bet decision. When the ramp says sit out,
+       * dealing in is the error and the stake size is moot -- only the
+       * play-or-sit decision is graded (RV7's "wrong to be in the hand").
+       * When the ramp says play and you did, the play-or-sit decision was
+       * right by definition, so only the bet size is graded (one event per
+       * hand, left to right, as Cycle-2 Task 4). Sitting out is graded in
+       * sitOut(). Stored history is not migrated.
        */
       const shouldWong = this.sitOutIsCorrect(preDealTc);
-      this.events.push({
-        source: 'table',
-        kind: 'wong',
-        category: 'wong',
-        correct: !shouldWong,
-        classification: shouldWong ? 'basic-error' : 'correct',
-        taken: 'play',
-        expected: shouldWong ? 'sit-out' : 'play',
-        reason: `Wong decision at tc ${preDealTc}`,
-        tc: preDealTc,
-      });
+      if (shouldWong) {
+        this.events.push({
+          source: 'table',
+          kind: 'wong',
+          category: 'wong',
+          correct: false,
+          classification: 'basic-error',
+          taken: 'play',
+          expected: 'sit-out',
+          reason: `Wong decision at tc ${preDealTc}`,
+          tc: preDealTc,
+        });
+      } else {
+        const expectedUnits = spreadUnitsFor(preDealTc, this.cfg.spread);
+        for (const bet of betArray) {
+          // RT#11: with cover on, a bet one rung either side of the spread's
+          // number is not an error -- see engine/coverBets.ts for why the
+          // tolerance is a RUNG rather than a unit.
+          const correct = this.cfg.coverBets
+            ? betWithinStep(bet, expectedUnits, this.cfg.spread)
+            : bet === expectedUnits;
+          this.events.push({
+            source: 'table',
+            kind: 'bet',
+            category: 'bet',
+            correct,
+            classification: correct ? 'correct' : 'basic-error',
+            taken: String(bet),
+            expected: String(expectedUnits),
+            reason: this.cfg.coverBets
+              ? `Spread bet at tc ${preDealTc} (cover: one rung either side)`
+              : `Spread bet at tc ${preDealTc}`,
+            tc: preDealTc,
+          });
+        }
+      }
     }
 
     this.dealerCards = [];

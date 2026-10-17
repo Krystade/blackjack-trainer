@@ -58,6 +58,7 @@ describe('Play losing shoe (#48-51)', () => {
   it('grades the bet against the normal ramp', () => {
     const pg = makePlayGame(cfg, true);
     play(pg, 5, 'stand');
-    expect(pg.game.events.filter((e) => e.kind === 'bet').length).toBe(5);
+    // C-R6: one graded bet decision per round -- bet size or play-or-sit.
+    expect(pg.game.events.filter((e) => e.kind === 'bet' || e.kind === 'wong').length).toBe(5);
   });
 });

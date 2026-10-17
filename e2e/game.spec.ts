@@ -2,6 +2,18 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { shot, withSettings, withProfile, resolveInsurance, playRoundByAdvice } from './helpers';
 
+
+/**
+ * C-R6: bet SIZE is graded only on a round the ramp says to play. The default
+ * ramp sits out at TC 0 (the top of every shoe), so the bet-size specs use a
+ * ramp that bets 2u at every count this side of TC -20: it never sits out,
+ * and the ramp's bet is known without reading the count.
+ */
+const PLAY_EVERY_COUNT = [
+  { minTc: -99, units: 1 },
+  { minTc: -20, units: 2 },
+];
+
 test('home renders and navigates to the table', async ({ page }) => {
   await page.goto('/?e2e=1');
   await expect(page.locator('.home-title')).toHaveText('Blackjack Trainer');
@@ -218,11 +230,12 @@ test('#36: the count check is posed when Deal is pressed, over the settled hand,
 });
 
 test('bet spread: a deliberately bad bet is graded and shows in the test-mode report', async ({ page }) => {
-  await withSettings(page, { feedbackMode: 'test', betSpreadOn: true, countCheckEvery: 0 });
+  await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
+  await withProfile(page, { betSpreadOn: true, spread: PLAY_EVERY_COUNT });
   await page.goto('/?seed=6&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
-  // At tc 0 the default spread's correct bet is 1 unit; deliberately pick 8.
+  // At tc 0 this ramp's correct bet is 2 units (C-R6); deliberately pick 8.
   await expect(page.locator('.bet-chips')).toBeVisible();
   await page.locator('.chip-btn', { hasText: /^8$/ }).click();
   await shot(page, '08-bet-chip-selected');
@@ -764,15 +777,13 @@ test('RV7: dealing in at a should-wong count is graded, not just the min bet', a
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-screen')).toBeVisible();
 
-  // Both grades are there, and they disagree — which is the point. The bet
-  // matched the spread; being in the hand at all did not.
+  // C-R6 (deliberately changed): the round grades ONE bet decision. The ramp
+  // sits out here, so being in the hand is the miss and the size is not graded.
   const wongRow = page.locator('.report-categories tr', { hasText: 'Play or sit out' });
   await expect(wongRow).toBeVisible();
   // Columns are right / wrong / percent, so the row reads "wong 0 1 0%".
   await expect(wongRow.locator('td')).toHaveText(['Play or sit out', '0', '1', '0%']);
-  await expect(
-    page.locator('.report-categories tr', { hasText: /^Bet size when playing/ }).locator('td'),
-  ).toHaveText(['Bet size when playing', '1', '0', '100%']); // Wave B2 #14 label
+  await expect(page.locator('.report-categories tr', { hasText: /^Bet size when playing/ })).toHaveCount(0);
 });
 
 /**
@@ -783,13 +794,13 @@ test('RV7: dealing in at a should-wong count is graded, not just the min bet', a
  */
 test('RT#11: cover mode accepts one rung either side of the ramp', async ({ page }) => {
   await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
-  await withProfile(page, { name: 'Cover Profile', betSpreadOn: true, coverBets: true });
+  await withProfile(page, { name: 'Cover Profile', betSpreadOn: true, coverBets: true, spread: PLAY_EVERY_COUNT });
   await page.goto('/?seed=6&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
-  // At the top of the shoe the ramp wants 1 unit. Bet the next rung up.
+  // This ramp wants 2 units (C-R6). Bet the next rung down.
   await expect(page.locator('.bet-chips')).toBeVisible();
-  await page.locator('.chip-btn', { hasText: /^2$/ }).click();
+  await page.locator('.chip-btn', { hasText: /^1$/ }).click();
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await playRoundByAdvice(page);
 
@@ -855,15 +866,15 @@ test('RT#11: the report stays quiet below the sample floor, where a ratio is noi
 test('RT#11: eight rounds of exact ramp conformity are named as the tell', async ({ page }) => {
   await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
   // Cover on: the tell is a warning only when cover was allowed and not taken
-  // (s06 -- with cover off every off-ramp bet is graded wrong).
-  await withProfile(page, { name: 'Mechanical', betSpreadOn: true, coverBets: true });
+  // (s06 -- with cover off every off-ramp bet is graded wrong). C-R6: a ramp
+  // that plays every count, so every round grades a bet size.
+  await withProfile(page, { name: 'Mechanical', betSpreadOn: true, coverBets: true, spread: PLAY_EVERY_COUNT });
   await page.goto('/?seed=6&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
-  // Bet whatever the ramp asks for, every round, which is precisely the habit.
+  // Bet whatever the ramp asks for (2u), every round, which is precisely the habit.
+  await page.locator('.chip-btn', { hasText: /^2$/ }).click();
   for (let i = 0; i < 8; i++) {
-    const advised = page.locator('.chip-btn.chip-advised');
-    if (await advised.isVisible().catch(() => false)) await advised.click();
     await page.getByRole('button', { name: 'Deal', exact: true }).click();
     await playRoundByAdvice(page);
   }
@@ -873,27 +884,40 @@ test('RT#11: eight rounds of exact ramp conformity are named as the tell', async
   await expect(page.locator('.report-screen')).toBeVisible();
   await expect(page.locator('.report-tell')).toBeVisible();
   await expect(page.locator('.report-tell')).toContainText('8 of 8 rounds bet the ramp exactly');
+  await shot(page, '54-report-bet-tell');
+});
 
+test('eight rounds dealt in at a should-wong count are one grouped mistake, not eight', async ({ page }) => {
+  await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
+  await withProfile(page, { name: 'Dead count', betSpreadOn: true });
+  await page.goto('/?seed=6&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  for (let i = 0; i < 8; i++) {
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await playRoundByAdvice(page);
+  }
+  await page.locator('.end-btn').click();
+  await page.locator('.end-btn').click();
+  await expect(page.locator('.report-screen')).toBeVisible();
   // A per-round grade repeats by nature: eight rounds into a dead count are
   // one habit, not eight problems, and listing them separately pushed every
   // other mistake off the screen. Grouped, with the repeat count kept.
   const rows = page.locator('.report-mistakes li');
-  const wongMistakes = 8; // every round above dealt in at a should-wong count
+  const wongMistakes = 8; // seed 6 never leaves the bottom of the default ramp
   expect(await rows.count()).toBeLessThan(wongMistakes);
   const counts = await page.locator('.report-mistake-count').allInnerTexts();
   const summed = counts.reduce((n, t) => n + Number(t.replace(/\D/g, '')), 0);
   // Vacuity guard: the collapse must account for every round, not hide some.
   expect(summed).toBe(wongMistakes);
-  await shot(page, '54-report-bet-tell');
 });
 
 test('s06: with cover bets off the ramp ratio is stated, not warned about', async ({ page }) => {
   await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
-  await withProfile(page, { name: 'No Cover', betSpreadOn: true });
+  await withProfile(page, { name: 'No Cover', betSpreadOn: true, spread: PLAY_EVERY_COUNT });
   await page.goto('/?seed=6&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  // The table minimum every round: seed 6 never leaves the bottom of the ramp
-  // (see RT#11 above), so every one of these bets is exactly the ramp's.
+  // The ramp's own bet (2u) every round (C-R6: a ramp that plays every count).
+  await page.locator('.chip-btn', { hasText: /^2$/ }).click();
   for (let i = 0; i < 8; i++) {
     await page.getByRole('button', { name: 'Deal', exact: true }).click();
     await playRoundByAdvice(page);

@@ -19,7 +19,8 @@ test('dealing in at a count the ramp sits out: a strip and a spoken line, and th
   // Fresh shoe, TC 0: the ramp sits out (D1).
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   const strip = page.locator('.bet-miss');
-  await expect(strip).toHaveText('Sit out at TC +0 — you bet 1u');
+  // C-R6: the ramp sits out, so the stake is not graded -- the line names the play.
+  await expect(strip).toHaveText('Sit out at TC +0 — you played');
   // Not a modal: nothing to dismiss, the hand is still to be played.
   await expect(page.locator('.modal-backdrop')).toHaveCount(0);
   await expect.poll(async () => (await speech(page)).some((l) => l.includes('Your ramp sits out at true count zero.'))).toBe(true);

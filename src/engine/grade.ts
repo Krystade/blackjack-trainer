@@ -193,7 +193,10 @@ export function classifyAction(
   } else {
     // withCount.source === 'basic' (no deviation applied at this count)
     // Check for phantom-deviation: an ACTIVE I18 entry exists for this (hand,up) with action === taken
-    if (isPhantomDeviation(taken, cards, up, rules)) {
+    // C-R11: a pair the chart splits is a PAIR cell -- a hard/soft total
+    // index (12v3 on 6,6) does not apply to it, so only pair indexes match.
+    const pairCell = basicOnly.action === 'split';
+    if (isPhantomDeviation(taken, cards, up, rules, pairCell)) {
       return { classification: 'phantom-deviation', correct: false };
     } else {
       return { classification: 'basic-error', correct: false };
@@ -211,8 +214,8 @@ export function classifyAction(
  * @param up The dealer's up-card
  * @param rules The ruleset to determine which deviation set to use (H17 vs S17)
  */
-function isPhantomDeviation(taken: Action, cards: Card[], up: Rank, rules: StrategyRules = DEFAULT_RULES): boolean {
-  return phantomDeviationId(taken, cards, up, rules) !== null;
+function isPhantomDeviation(taken: Action, cards: Card[], up: Rank, rules: StrategyRules = DEFAULT_RULES, pairCell = false): boolean {
+  return phantomDeviationId(taken, cards, up, rules, pairCell) !== null;
 }
 
 /**
@@ -221,7 +224,14 @@ function isPhantomDeviation(taken: Action, cards: Card[], up: Rank, rules: Strat
  * A With-count miss below the index is filed under it (perIndex, quiz deck),
  * the way the Deviation quiz files the same miss, never under the basic cell.
  */
-export function phantomDeviationId(taken: Action, cards: Card[], up: Rank, rules: StrategyRules = DEFAULT_RULES): DeviationId | null {
+export function phantomDeviationId(
+  taken: Action,
+  cards: Card[],
+  up: Rank,
+  rules: StrategyRules = DEFAULT_RULES,
+  /** C-R11: the hand is a pair basic strategy splits -- only pair indexes match. */
+  pairCell = false,
+): DeviationId | null {
   const hv = handValue(cards);
   const upIdx = upIndex(up);
   const isTenPair = pairRank(cards) === '10'; // pairRank normalizes 10/J/Q/K to '10'
@@ -232,6 +242,9 @@ export function phantomDeviationId(taken: Action, cards: Card[], up: Rank, rules
   for (const dev of deviationSet) {
     if (!dev.active) continue;
     if (dev.action !== taken) continue;
+
+    // C-R11: a split cell is graded as a pair, never as its hard/soft total.
+    if (pairCell && dev.kind !== 'pair10') continue;
 
     // Match by kind
     if (dev.kind === 'hard') {
