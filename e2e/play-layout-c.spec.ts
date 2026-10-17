@@ -105,7 +105,6 @@ test('C-R10b: with voice on, the action bar stays on screen inside the notch ins
   await resolveInsurance(page, false);
   await expect(page.locator('.action-bar[data-advice]')).toBeVisible();
   await shotIf(page, 'c-r10b-voice-actions');
-  if (process.env.C_R10_DUMP) console.log(await page.evaluate(() => [...document.querySelector('.table-screen')!.children].map((c) => `${c.className} ${Math.round(c.getBoundingClientRect().top)} ${Math.round(c.getBoundingClientRect().height)} minH=${getComputedStyle(c).minHeight}`).join(' | ') + ` | body pad ${getComputedStyle(document.body).paddingTop} screen ${getComputedStyle(document.querySelector('.table-screen')!).minHeight} h ${document.querySelector('.table-screen')!.getBoundingClientRect().height}`));
   expectOnScreen(await boxes(page, '.action-bar[data-advice] button.action-btn'), 'action button');
   expectOnScreen(await boxes(page, '.voice-status'), 'voice strip');
 });
