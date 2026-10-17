@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assistedFlag, peekReadout } from './peekFlag';
+import { assistedFlag, peekReadout, signedFixed } from './peekFlag';
 
 // R7 (docs/BACKLOG.md, count-peek accountability): the assisted-flag string is
 // the one piece of pure logic behind RT#5's "interpretable test-mode accuracy"
@@ -47,14 +47,21 @@ describe('peekReadout (#41)', () => {
   });
 
   it('signs negatives and leaves zero unsigned', () => {
-    expect(peekReadout(-7, 2.5).counts).toBe('RC -7 · TC -2.8');
+    expect(peekReadout(-7, 2.5).counts).toBe('RC −7 · TC −2.8');
     expect(peekReadout(0, 6).counts).toBe('RC 0 · TC 0.0');
     // A negative zero (0 * -1) must not print "-0" / "-0.0".
     expect(peekReadout(-0, 6).counts).toBe('RC 0 · TC 0.0');
-    expect(peekReadout(-1, 6).counts).toBe('RC -1 · TC -0.2');
+    expect(peekReadout(-1, 6).counts).toBe('RC −1 · TC −0.2');
   });
 
   it('survives an empty shoe without dividing by zero', () => {
     expect(peekReadout(3, 0).text).toBe('RC +3 · TC 0.0 · 0.00 decks left');
+  });
+
+  it('signedFixed: real minus, plus on positives, zero unsigned after rounding', () => {
+    expect(signedFixed(-2.75, 1)).toBe('−2.8');
+    expect(signedFixed(2, 1)).toBe('+2.0');
+    expect(signedFixed(-0.04, 1)).toBe('0.0');
+    expect(signedFixed(-50, 0)).toBe('−50');
   });
 });

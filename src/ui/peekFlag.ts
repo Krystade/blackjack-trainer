@@ -1,3 +1,5 @@
+import { MINUS } from '../drills/signed';
+
 /**
  * R7 (docs/BACKLOG.md, count-peek accountability): format the "this session's
  * accuracy was peek-assisted" flag from a session's peek count. The RC/TC peek
@@ -18,10 +20,10 @@ export function assistedFlag(peeks: number | undefined): string | null {
 
 /** A signed number at a fixed precision, with zero unsigned ("0.0", never
  * "-0.0" or "+0.0"). Rounded BEFORE the sign is chosen, so -0.04 is zero. */
-function signedFixed(n: number, digits: number): string {
+export function signedFixed(n: number, digits: number): string {
   const text = Math.abs(n).toFixed(digits);
   if (Number(text) === 0) return text;
-  return `${n < 0 ? '-' : '+'}${text}`;
+  return `${n < 0 ? MINUS : '+'}${text}`;
 }
 
 export interface PeekReadout {

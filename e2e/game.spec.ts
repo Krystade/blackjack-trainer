@@ -476,7 +476,7 @@ test('TC peek shows RC/TC only while held and hides on release', async ({ page }
   await holdPeek(page);
   // #41: "RC +5 · TC +1.4 · 3.62 decks left" -- TC to one decimal, decks to
   // two. Two rounds' worth of cards at most have left a fresh 6-deck shoe.
-  await expect(peekBtn).toHaveText(/^RC (0|[+-]\d+) · TC (0\.0|[+-]\d+\.\d) · 5\.\d\d decks left$/);
+  await expect(peekBtn).toHaveText(/^RC (0|[+−]\d+) · TC (0\.0|[+−]\d+\.\d) · 5\.\d\d decks left$/);
   await page.waitForTimeout(400);
   await expect(peekBtn).toContainText(/RC [+-]?\d+/);
   await shot(page, '14-tc-peek-revealed');

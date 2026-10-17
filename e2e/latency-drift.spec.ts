@@ -177,6 +177,6 @@ test('speeding up late in a session is reported as a negative drift, not as hold
   await openStats(page, 'Progress');
 
   const drift = enduranceSection(page).locator('.mistake-row', { hasText: 'Pace drift' });
-  await expect(drift).toContainText('-3.0s');
+  await expect(drift).toContainText('−3.0s');
   await expect(drift).toContainText('faster late');
 });

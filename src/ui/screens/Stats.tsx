@@ -21,7 +21,7 @@ import type { Category, MistakeClass } from '../../engine/grade';
 import { indexSetFor } from '../../engine/deviations';
 import { useAudio } from '../../audio/useAudio';
 import { narrateStatsSummary } from '../../audio/narrate';
-import { assistedFlag } from '../peekFlag';
+import { assistedFlag, signedFixed } from '../peekFlag';
 import {
   fatigueDrift,
   latencyDrift,
@@ -1514,7 +1514,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                 <li className="mistake-row">
                   <span>Drift</span>
                   <span>
-                    {(fatigue.drift > 0 ? '+' : '') + Math.round(fatigue.drift * 100)}%{' '}
+                    {signedFixed(fatigue.drift * 100, 0)}%{' '}
                     {fatigueVerdict ? `(${fatigueVerdict})` : ''}
                   </span>
                 </li>
@@ -1555,7 +1555,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                 <li className="mistake-row">
                   <span>Pace drift</span>
                   <span className="mistake-value">
-                    {(pace.driftMs > 0 ? '+' : '') + (pace.driftMs / 1000).toFixed(1)}s{' '}
+                    {signedFixed(pace.driftMs / 1000, 1)}s{' '}
                     {paceVerdict ? `(${paceVerdict})` : ''}
                   </span>
                 </li>
