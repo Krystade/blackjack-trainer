@@ -10,6 +10,7 @@ import {
   gradeBetSizing,
   makeBetSizingScenario,
   scenarioTc,
+  trayFloorDecks,
   type BetAnswer,
   type BetSizingScenario,
 } from '../../../drills/betSizing';
@@ -54,10 +55,12 @@ export function BetSizingView({
   onBack: () => void;
 }) {
   const totalDecks = activeProfile.rules.decks;
+  // #17: no tray deeper than this profile's cut card lets Play deal.
+  const floor = trayFloorDecks(activeProfile);
   const audio = useAudio(settings.audio);
   const options = betSizingOptions(activeProfile.spread);
   const [scenario, setScenario] = useState<BetSizingScenario>(() =>
-    makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread),
+    makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread, floor),
   );
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const resultShownAtRef = useRef(performance.now());
@@ -81,7 +84,7 @@ export function BetSizingView({
 
   const next = () => {
     if (answerTooSoon(resultShownAtRef.current)) return;
-    setScenario(makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread));
+    setScenario(makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread, floor));
     setFeedback(null);
   };
 
