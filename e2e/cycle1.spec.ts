@@ -114,13 +114,15 @@ test('bet-spread grading against a profile ramp: a wrong bet is graded and shows
   await withProfile(page, {
     name: 'Bet Spread Test Profile',
     betSpreadOn: true,
-    spread: [{ minTc: -99, units: 1 }],
+    // C-R6: the ramp sits where it bets its minimum, and a sit round grades
+    // no bet size, so the ramp must PLAY at the opening TC 0: 2u from TC -5.
+    spread: [{ minTc: -99, units: 1 }, { minTc: -5, units: 2 }],
     countCheckEvery: 0,
   });
   await page.goto('/?seed=6&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
-  // Ramp says 1 unit at every TC (single-row spread); deliberately pick 8.
+  // Ramp says 2 units at TC 0; deliberately pick 8.
   await expect(page.locator('.bet-chips')).toBeVisible();
   await page.locator('.chip-btn', { hasText: /^8$/ }).click();
   await shot(page, '44-profile-bet-chip-selected');
