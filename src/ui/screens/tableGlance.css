@@ -22,3 +22,22 @@
 .round-banner-sep {
   font-weight: 600;
 }
+
+/* B5/W4: action labels readable at a glance. 13.5px at 375px; "Surrender"
+ * measures 60.5px at that size against a ~62px content box. */
+.table-screen .action-btn {
+  font-size: clamp(0.8125rem, 3.6vw, 1rem);
+  min-height: 52px;
+}
+
+/* B5: the skip control is a labelled pill, not an emoji. */
+.table-screen .fast-forward-btn {
+  min-height: 44px;
+  padding: 0 1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  border-radius: 999px;
+}

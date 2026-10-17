@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { Card, Rank, Suit } from '../../engine/cards';
+import './cardSize.css';
 
 interface PlayingCardProps {
   card?: Card;

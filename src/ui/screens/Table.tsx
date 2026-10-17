@@ -53,6 +53,12 @@ import './tableSeats.css';
 import './tableTopbar.css';
 import './tableCues.css';
 import './tableGlance.css';
+import { dealerFeltRow, playerFeltRow, type FeltRow } from '../feltLayout';
+
+/** B5/W4: the row's card slots and fixed chrome, for cardSize.css's clamp. */
+function feltStyle(row: FeltRow): CSSProperties {
+  return { '--felt-slots': row.slots, '--felt-fixed': `${row.fixedPx}px` } as CSSProperties;
+}
 
 type BotActionLogEntry = Game['botActionLog'][number];
 
@@ -852,7 +858,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           per whole deck, labelled decks dealt, so depth reads like a real tray. */}
       <DiscardTray cardsDealt={game.shoe.cardsDealt} decks={activeProfile.rules.decks} />
 
-      <div className="dealer-area">
+      <div className="dealer-area" style={feltStyle(dealerFeltRow(game.dealerCards.length))}>
         {game.dealerCards.map((c, i) => (
           <PlayingCard
             key={i}
@@ -909,7 +915,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         </div>
       )}
 
-      <div className="hands-row">
+      <div className="hands-row" style={feltStyle(playerFeltRow(game.hands.map((h) => h.cards.length)))}>
         {game.hands.map((hand, i) => (
           <div
             key={i}
@@ -1036,7 +1042,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             aria-label="Skip ahead: finish dealing and other players' turns"
             onClick={skipEverything}
           >
-            ⏩
+            Skip
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
+              <path d="M2 3l6 5-6 5zM8 3l6 5-6 5z" fill="currentColor" />
+            </svg>
           </button>
         )}
       </div>

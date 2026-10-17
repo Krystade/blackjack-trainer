@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile, resolveInsurance, playRoundByAdvice, shot } from './helpers';
+import { withSettings, withProfile, resolveInsurance, playRoundByAdvice, shot, openCountOptions } from './helpers';
 
 test.use({ viewport: { width: 375, height: 812 } });
 const THEMES = ['midnight-felt', 'bone-ink', 'amoled-night', 'slate-copper'] as const;
@@ -77,6 +77,98 @@ for (const theme of THEMES) {
       expect(b.right).toBeLessThanOrEqual(strip.right + 0.5);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+    await shot(page, `b5-banner-${theme}`);
+  });
+}
+
+for (const hands of [1, 2] as const) {
+  test(`B5/W4: ${hands} hand(s): cards ≥ 70px at 375, centred, one row, no sideways scroll`, async ({ page }) => {
+    await withSettings(page, { countCheckEvery: 0, dealSpeedMs: 0 });
+    await withProfile(page, { seats: { ...SOLO, playerHands: hands } });
+    await dealPlayerTurn(page);
+    const player = await boxes(page, '.hands-row .card');
+    const dealer = await boxes(page, '.dealer-area .card');
+    expect(player.length).toBeGreaterThanOrEqual(hands * 2);
+    for (const b of [...player, ...dealer]) {
+      expect(b.w).toBeGreaterThanOrEqual(70);
+      expect(b.x).toBeGreaterThanOrEqual(0);
+      expect(b.right).toBeLessThanOrEqual(375);
+    }
+    const handBoxes = await boxes(page, '.player-hand');
+    expect(new Set(handBoxes.map((h) => Math.round(h.y))).size).toBe(1);
+    const left = Math.min(...handBoxes.map((h) => h.x));
+    const right = 375 - Math.max(...handBoxes.map((h) => h.right));
+    expect(Math.abs(left - right)).toBeLessThanOrEqual(2);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  });
+}
+
+test('B5/W4: three hands shrink to fit one row', async ({ page }) => {
+  await withSettings(page, { countCheckEvery: 0, dealSpeedMs: 0 });
+  await withProfile(page, { seats: { ...SOLO, playerHands: 3 } });
+  await dealPlayerTurn(page);
+  const player = await boxes(page, '.hands-row .card');
+  for (const b of player) { expect(b.w).toBeLessThan(70); expect(b.w).toBeGreaterThanOrEqual(32); expect(b.right).toBeLessThanOrEqual(375); }
+  expect(new Set((await boxes(page, '.player-hand')).map((h) => Math.round(h.y))).size).toBe(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});
+
+test('B5/W4: action-bar labels are at least 13px and none is cut off', async ({ page }) => {
+  await withSettings(page, { countCheckEvery: 0, dealSpeedMs: 0 });
+  await withProfile(page, { seats: SOLO });
+  await dealPlayerTurn(page);
+  const m = await page.locator('.action-bar .action-btn').evaluateAll((els) =>
+    els.map((e) => ({ px: parseFloat(getComputedStyle(e).fontSize), fits: e.scrollWidth <= e.clientWidth, h: e.getBoundingClientRect().height })));
+  expect(m).toHaveLength(5);
+  for (const b of m) { expect(b.px).toBeGreaterThanOrEqual(13); expect(b.fits).toBe(true); expect(b.h).toBeGreaterThanOrEqual(48); }
+});
+
+test('B5: the skip control is a styled button, not an emoji', async ({ page }) => {
+  await withSettings(page, { countCheckEvery: 0, dealSpeedMs: 400 });
+  await page.goto('/?seed=3&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  const ff = page.locator('.fast-forward-btn');
+  await expect(ff).toBeVisible();
+  await expect(ff).toHaveText('Skip');
+  expect(await ff.innerText()).not.toMatch(/\p{Extended_Pictographic}/u);
+  expect((await ff.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await ff.click();
+  await expect(ff).toHaveCount(0);
+});
+
+for (const [group, min] of [[1, 96], [3, 70]] as const) {
+  test(`B5/W4: the Count drill flashes big cards (group of ${group})`, async ({ page }) => {
+    await withSettings(page, { drill: { countLengthCards: 6, countGroup: group, countManual: true } });
+    await page.goto('/?e2e=1');
+    await page.getByRole('button', { name: 'Drills', exact: true }).click();
+    await page.getByRole('button', { name: 'Count drill', exact: true }).click();
+    await openCountOptions(page);
+    await page.getByRole('button', { name: 'Start', exact: true }).click();
+    const cards = await boxes(page, '.manual-tap-zone .count-flash-cards .card');
+    expect(cards).toHaveLength(group);
+    for (const c of cards) { expect(c.w).toBeGreaterThanOrEqual(min); expect(c.right).toBeLessThanOrEqual(375); }
+  });
+}
+
+test('B5/W4: Pair cancellation shows both cards at least 90px wide', async ({ page }) => {
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Pair cancellation', exact: true }).click();
+  const cards = await boxes(page, '.pair-cancel-cards .card');
+  expect(cards).toHaveLength(2);
+  for (const c of cards) { expect(c.w).toBeGreaterThanOrEqual(90); expect(c.right).toBeLessThanOrEqual(375); }
+});
+
+for (const theme of THEMES) {
+  test(`B5 screenshots: felt and banner at 375x812 in ${theme}`, async ({ page }) => {
+    // The 220ms fly-in would catch the cards half-faded; shoot them at rest.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await withSettings(page, { theme, countCheckEvery: 0, dealSpeedMs: 0 });
+    await withProfile(page, { seats: { ...SOLO, playerHands: 2 } });
+    await dealPlayerTurn(page);
+    await shot(page, `b5-felt-${theme}`);
+    await playRoundByAdvice(page);
     await shot(page, `b5-banner-${theme}`);
   });
 }
