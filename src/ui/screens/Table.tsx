@@ -6,7 +6,6 @@ import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
 import type { Card } from '../../engine/cards';
 import { TELL_MIN_ROUNDS } from '../../engine/coverBets';
-import type { GradedEvent } from '../../engine/grade';
 import type { DealSlot, Game, PlayerHand, Seat } from '../../engine/game';
 import { handPlayNumber } from '../../engine/game';
 import type { Action } from '../../engine/deviations';
@@ -17,10 +16,11 @@ import { useGame } from '../useGame';
 import type { CountCheckVerdict, SessionReport } from '../useGame';
 import { ResultStrip } from '../components/ResultStrip';
 import { signedTc } from '../../drills/tcFeedback';
-import { reportSections, countMissText, drillCellIds } from '../reportSections';
+import { reportSections, countMissText, drillCellIds, playRowText, betRowText, unpricedNote } from '../reportSections';
 import { launchCustomCells } from '../drillLaunch';
 import type { MistakeRow } from '../reportSections';
-import { lossPer100, formatLossPer100 } from '../sessionFigures';
+import { lossPer100, formatLossPer100, betMissText } from '../sessionFigures';
+import { betMissCount } from '../sessionRow';
 import './sessionReport.css';
 import { useAudio } from '../../audio/useAudio';
 import { useVoiceControl } from '../useVoiceControl';
@@ -49,7 +49,6 @@ import { VOICE_WORDS } from '../voiceLabels';
 import { assistedFlag, peekReadout } from '../peekFlag';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../voiceSession';
 import { CATEGORY_LABELS } from './categoryLabels';
-import { playLabel } from '../playLabel';
 import { LosingShoeBadge } from '../components/LosingShoeBadge';
 import { roundBanner } from '../roundBanner';
 import { signed, MINUS } from '../../drills/signed';
@@ -213,11 +212,6 @@ function countVerdictText(v: CountCheckVerdict): string {
 /** How long the End button stays armed after its first tap. */
 const END_ARMED_MS = 3000;
 
-/** "{hand} · TC ±n · you played X · correct Y — reason", as the report always read. */
-function playRowText(m: GradedEvent): string {
-  return `${m.hand ?? m.kind} · TC ${formatSigned(m.tc)} · you played ${playLabel(m.taken)} · correct ${playLabel(m.expected)} — ${m.reason}`;
-}
-
 /** Units lost, two decimals, real minus: "−0.61"; a rounded-away cost reads "0". */
 function unitsText(units: number): string {
   const abs = Math.abs(units).toFixed(2);
@@ -256,6 +250,9 @@ function ReportScreen({
   const unpricedPlays = sections.plays.filter((r) => r.unitsTotal === null).reduce((n, r) => n + r.count, 0);
   const gradedCountCheck = report.categories.some((c) => c.category === 'countCheck' && c.right + c.wrong > 0);
   const loss = lossPer100(report.mistakeUnits, report.hands);
+  // B2, R3: the figure prices play decisions; bet and sit misses are counted
+  // beside it, so a session with only betting errors never reads as clean.
+  const betMisses = betMissText(betMissCount(report.mistakes));
   const drillIds = drillCellIds(sections.plays);
   return (
     <div className="report-screen">
@@ -263,14 +260,18 @@ function ReportScreen({
       {report.hotShoe && (
         <p className="report-hot-shoe">Hot shoe: the counts ran high on purpose, so this session&rsquo;s bankroll isn&rsquo;t kept.</p>
       )}
-      {loss !== null && (
+      {(loss !== null || betMisses !== null) && (
         <p className="report-headline" data-units-total={report.mistakeUnits} data-hands={report.hands}>
-          {formatLossPer100(loss)}
+          {loss !== null && <span className="report-headline-loss">{formatLossPer100(loss)}</span>}
+          {betMisses !== null && (
+            <span className="report-headline-bets">
+              {loss !== null && ' · '}
+              {betMisses}
+            </span>
+          )}
         </p>
       )}
-      {unpricedPlays > 0 && (
-        <p className="report-unpriced">Plus {unpricedPlays} index or insurance misses with no price.</p>
-      )}
+      {unpricedPlays > 0 && <p className="report-unpriced">{unpricedNote(unpricedPlays)}</p>}
       <p className="report-summary">
         {report.correct} / {report.graded} correct
         {!report.hotShoe && <> &middot; bankroll {formatSigned(report.bankrollDelta)}</>}
@@ -362,7 +363,7 @@ function ReportScreen({
           <ul className="report-mistakes report-bets">
             {sections.bets.map((row, i) => (
               <li key={i}>
-                {playRowText(row.mistake)}
+                {betRowText(row.mistake)}
                 {row.count > 1 && <span className="report-mistake-count"> &times;{row.count}</span>}
               </li>
             ))}

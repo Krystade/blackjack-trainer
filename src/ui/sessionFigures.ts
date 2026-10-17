@@ -10,11 +10,35 @@ export function lossPer100(units: number, hands: number): number | null {
   return (units / hands) * 100;
 }
 
+/** The amount alone: "−0.42", "0", "Under 0.01". */
+function lossAmount(loss: number): string {
+  if (loss <= 0) return '0';
+  if (loss < 0.005) return 'Under 0.01';
+  return `${MINUS}${loss.toFixed(2)}`;
+}
+
+/**
+ * The report's headline. B2, R3: it prices PLAY decisions only and says so --
+ * "lost to mistakes" read as a clean session above a list of bet misses.
+ */
 export function formatLossPer100(loss: number): string {
-  const tail = 'u lost to mistakes per 100 hands';
-  if (loss <= 0) return `0 ${tail}`;
-  if (loss < 0.005) return `Under 0.01 ${tail}`;
-  return `${MINUS}${loss.toFixed(2)} ${tail}`;
+  return `${lossAmount(loss)} u lost to playing mistakes per 100 hands`;
+}
+
+/** B2 #50: the Stats value under its "Lost to playing mistakes" label. */
+export function formatLossValue(loss: number): string {
+  return `${lossAmount(loss)} u per 100 hands`;
+}
+
+/** B2, R3: bet and play-or-sit decisions graded wrong, said beside the figure. */
+export function betMissText(n: number): string | null {
+  if (!(n > 0)) return null;
+  return `${n} bet ${n === 1 ? 'decision' : 'decisions'} off`;
+}
+
+/** Bet misses over the rows that recorded them (B2 and later). */
+export function sessionsBetMisses(rows: readonly SessionRow[]): number {
+  return rows.reduce((n, r) => n + (typeof r.betMisses === 'number' && Number.isFinite(r.betMisses) ? r.betMisses : 0), 0);
 }
 
 /** Pooled over rows that recorded it (Hot shoe included: skill, not luck). */

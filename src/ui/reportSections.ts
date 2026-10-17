@@ -7,6 +7,7 @@ import type { GradedEvent } from '../engine/grade';
 import { tallyCellIdFor } from '../store/stats';
 import { ALL_PAINT_CELL_IDS } from '../drills/cellSelection';
 import { signed, MINUS } from '../drills/signed';
+import { playLabel } from './playLabel';
 
 export interface MistakeRow {
   mistake: GradedEvent;
@@ -84,4 +85,43 @@ export function drillCellIds(rows: readonly MistakeRow[]): string[] {
 /** Units lost to priced mistakes: the sum of evCost. */
 export function mistakeUnits(events: readonly GradedEvent[]): number {
   return events.reduce((sum, e) => sum + (e.evCost ?? 0), 0);
+}
+
+/** "+2", "+0", "−3": the report's signed numbers, real minus. */
+const tcText = (n: number) => signed(n, { plusZero: true });
+
+/** Insurance as the play rows print an action (B2 #49). */
+const INSURANCE_LABEL: Record<string, string> = { take: 'Take', decline: 'Decline' };
+
+/**
+ * A Plays row: "{hand} · TC ±n · you played X · correct Y — reason". An
+ * insurance row drops the reason (B2 #49): it only repeated the dealer card
+ * and the TC, in lowercase with an ASCII hyphen.
+ */
+export function playRowText(m: GradedEvent): string {
+  if (m.kind === 'insurance') {
+    const label = (v: string) => INSURANCE_LABEL[v] ?? playLabel(v);
+    return `${m.hand ?? 'Insurance'} · TC ${tcText(m.tc)} · you played ${label(m.taken)} · correct ${label(m.expected)}`;
+  }
+  return `${m.hand ?? m.kind} · TC ${tcText(m.tc)} · you played ${playLabel(m.taken)} · correct ${playLabel(m.expected)} — ${m.reason}`;
+}
+
+/**
+ * A Bets row in plain words (B2 #15): "TC +0 · you bet 2u · your ramp bets
+ * 1u", "TC −2 · you played · your ramp sits out". It used to print the raw
+ * event -- "wong · TC +0 · you played play · correct sit-out — Wong decision
+ * at tc 0".
+ */
+export function betRowText(m: GradedEvent): string {
+  const tc = `TC ${tcText(m.tc)}`;
+  if (m.kind === 'wong') {
+    return m.taken === 'sit-out' ? `${tc} · you sat out · your ramp plays` : `${tc} · you played · your ramp sits out`;
+  }
+  const cover = /cover/i.test(m.reason) ? ' (one rung either side allowed)' : '';
+  return `${tc} · you bet ${m.taken}u · your ramp bets ${m.expected}u${cover}`;
+}
+
+/** "Plus 1 index or insurance miss with no price." (B2 #49: singular for one). */
+export function unpricedNote(n: number): string {
+  return `Plus ${n} index or insurance ${n === 1 ? 'miss' : 'misses'} with no price.`;
 }

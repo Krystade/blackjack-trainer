@@ -192,9 +192,11 @@ test('CVCX profile header renders score/EV/ROR/note plus actual accuracy from a 
   await expect(page.locator('.mistake-row', { hasText: 'CVCX risk of ruin' })).toContainText('3%');
   await expect(page.locator('.mistake-row', { hasText: 'CVCX sim note' })).toContainText('CVCX N0 sim, 500M rounds');
   await expect(page.locator('.mistake-row', { hasText: 'Your play accuracy' })).not.toContainText('—');
-  await expect(page.locator('.mistake-row', { hasText: 'Lost to mistakes' })).toContainText(
-    /(−\d+\.\d\d|0|Under 0\.01) u lost to mistakes per 100 hands/,
-  );
+  // B2 #50 (deliberately changed): the label names what is priced and the
+  // value no longer repeats it.
+  const lossRow = page.locator('.mistake-row', { hasText: 'Lost to playing mistakes' });
+  await expect(lossRow).toContainText(/(−\d+\.\d\d|0|Under 0\.01) u per 100 hands/);
+  await expect(lossRow.locator('span').nth(1)).not.toContainText(/lost|mistake/);
   await shot(page, '28-stats-cvcx-header-session');
 });
 

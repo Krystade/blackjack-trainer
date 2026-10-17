@@ -43,7 +43,7 @@ import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, handCategoryProgress, p
 import type { HandCategoryProgress } from './handProgress';
 import './statsGoal.css';
 import './statsHistory.css';
-import { formatLossPer100, sessionsLossPer100, sessionTag } from '../sessionFigures';
+import { betMissText, formatLossValue, sessionsBetMisses, sessionsLossPer100, sessionTag } from '../sessionFigures';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -785,7 +785,12 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
       pct(totalCorrect, totalGraded),
     ]);
   }
-  if (lossPer100 !== null) profileRows.push(['Lost to mistakes', formatLossPer100(lossPer100)]);
+  // B2, R3/#50: the label says what is priced and the value does not repeat
+  // it; bet and sit misses are counted beside the figure, never hidden.
+  if (lossPer100 !== null) {
+    const bets = betMissText(sessionsBetMisses(profileSessions));
+    profileRows.push(['Lost to playing mistakes', bets ? `${formatLossValue(lossPer100)} · ${bets}` : formatLossValue(lossPer100)]);
+  }
   // W3: hard / soft / pairs, as Home's Next step judges them.
   const handRows = handCategoryProgress(stats);
 

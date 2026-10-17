@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile, resolveInsurance, shot } from './helpers';
+import { withSettings, withProfile, resolveInsurance, playRoundByAdvice, shot } from './helpers';
 
 test.use({ viewport: { width: 375, height: 812 } });
 
@@ -56,12 +56,13 @@ test('B6: plays and count checks are separate, plays sorted by cost, headline is
   expect([...units].sort((a, b) => b - a)).toEqual(units);
 
   const head = page.locator('.report-headline');
-  await expect(head).toHaveText(/^(−\d+\.\d\d u|0 u|Under 0\.01 u) lost to mistakes per 100 hands$/);
+  // B2, R3 (deliberately changed): the figure says it prices PLAY mistakes.
+  await expect(head).toHaveText(/^(−\d+\.\d\d u|0 u|Under 0\.01 u) lost to playing mistakes per 100 hands$/);
   const total = Number(await head.getAttribute('data-units-total'));
   const hands = Number(await head.getAttribute('data-hands'));
   expect(hands).toBeGreaterThanOrEqual(3);
   expect(total).toBeCloseTo(units.reduce((a, b) => a + b, 0), 3);
-  const shown = Number((await head.innerText()).replace('−', '').split(' ')[0]);
+  const shown = Number((await head.locator('.report-headline-loss').innerText()).replace('−', '').split(' ')[0]);
   if (!Number.isNaN(shown)) expect(shown).toBeCloseTo((total / hands) * 100, 2);
   await expect(page.locator('.report-screen')).not.toContainText(/per hour/i);
   await shot(page, 'b6-report');
@@ -98,4 +99,24 @@ test('B6: Drill these hands opens Custom with exactly the missed cells as Focus'
   expect(focus).toEqual(cells);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('bjtrainer.settings.v1')!).drill.custom.tiers);
   expect(Object.keys(stored).sort()).toEqual(cells);
+});
+
+test('B2 R3/#15: bet and sit misses are counted beside the headline and listed in plain words', async ({ page }) => {
+  await withSettings(page, { feedbackMode: 'test', dealSpeedMs: 0 });
+  await withProfile(page, { betSpreadOn: true, countCheckEvery: 0 });
+  await page.goto('/?seed=7&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  // Fresh shoe, TC 0: the ramp sits out (D1), so dealing in is a play-or-sit
+  // miss; a 2u bet is a bet-size miss on top of it.
+  await page.locator('.bet-chips .chip-btn', { hasText: /^2$/ }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await playRoundByAdvice(page);
+  await endWithReport(page);
+  await expect(page.locator('.report-screen')).toBeVisible();
+  const head = page.locator('.report-headline');
+  await expect(head).toHaveText(/^(−\d+\.\d\d u|0 u|Under 0\.01 u) lost to playing mistakes per 100 hands · 2 bet decisions off$/);
+  const rows = page.locator('.report-bets li');
+  await expect(rows).toHaveText(['TC +0 · you bet 2u · your ramp bets 1u', 'TC +0 · you played · your ramp sits out']);
+  await expect(page.locator('.report-bets')).not.toContainText(/wong|sit-out|played play|tc \d/);
+  await shot(page, 'b2-r3-bet-misses');
 });
