@@ -451,6 +451,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
    * repeat) lives in PeekButton.
    */
   const revealPeek = () => {
+    if (game.countCheckDue || game.countCheckOpen) return;
     notePeek();
     setPeeking(true);
   };
@@ -665,11 +666,15 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceOn, countDue, countStage]);
 
-  // F9: a peek held as the count check opens ends there (the button unmounts
-  // under the thumb, so its release never arrives).
+  // F9 / B2 #31: no peek while a count check is OWED, not only while its sheet
+  // is open. The check is owed from the moment the round settles and the sheet
+  // opens on the next Deal, so in between the peek read off the exact answer
+  // about to be graded. A peek held as the check falls due ends there (the
+  // button unmounts under the thumb, so its release never arrives).
+  const peekBlocked = game.countCheckDue || game.countCheckOpen;
   useEffect(() => {
-    if (countDue) setPeeking(false);
-  }, [countDue]);
+    if (peekBlocked) setPeeking(false);
+  }, [peekBlocked]);
 
   // A proposal belongs to one prompt. Carrying it across would offer the
   // running count back as an answer to the true-count question.
@@ -1082,9 +1087,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       {/* #40: the peek under the left thumb, just above the bar. The skip
           control shares the row, so the dock costs no height when it shows. */}
       <div className="peek-dock">
-        {/* F9: no peek while the count check is open -- the peeked answer
-            was graded correct, and the button sits just above the keypad. */}
-        {!game.countCheckOpen && (
+        {/* F9 / B2 #31: no peek while a count check is owed or open -- the
+            peeked answer was graded correct. */}
+        {!peekBlocked && (
         <PeekButton
           revealed={peeking}
           onReveal={revealPeek}
