@@ -4,6 +4,8 @@ import { hydrateMasteryRun, isMasteryRunComplete } from '../../drills/masteryCha
 import type { MasteryRun, PersistedMasteryRun } from '../../drills/masteryChallenge';
 import { generateAllCells } from '../../drills/flashcards';
 import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, WEAK_CELL_BELOW, handCategoryProgress, pctDown, weakCells } from './handProgress';
+import type { HandCategoryProgress } from './handProgress';
+import type { HandScope } from '../../drills/handScope';
 
 /**
  * #28: the ONE thing Home recommends next, and why. The first step in this
@@ -32,6 +34,17 @@ export interface NextStep {
   kind: NextStepKind;
   title: string;
   why: string;
+  /**
+   * F21: the hand type a 'flash' step is about, so Start opens Flashcards on
+   * it rather than on whatever scope was saved last. Absent = the whole chart.
+   */
+  scope?: HandScope;
+  /**
+   * s02: the three basic-strategy categories against the goal, shown on the
+   * card while the step is about them ('flash'), so progress and a met goal
+   * are visible on Home.
+   */
+  progress?: HandCategoryProgress[];
 }
 
 // W3: the category and cell thresholds live with the shared figures Home and
@@ -80,6 +93,8 @@ export function nextStep(stats: Stats, opts: { sweepDone: boolean }): NextStep {
       kind: 'flash',
       title: 'Learn basic strategy',
       why: `${thin.label}: ${thin.n} answer${thin.n === 1 ? '' : 's'} so far, ${MIN_CATEGORY_ANSWERS} needed to judge. Get every category to ${pctDown(CATEGORY_TARGET)}%.`,
+      scope: thin.scope,
+      progress: cats,
     };
   }
   const low = cats.filter((c) => c.pct < CATEGORY_TARGET).sort((a, b) => a.pct - b.pct)[0];
@@ -88,6 +103,8 @@ export function nextStep(stats: Stats, opts: { sweepDone: boolean }): NextStep {
       kind: 'flash',
       title: 'Learn basic strategy',
       why: `${low.label} are at ${pctDown(low.pct)}%${low.recent ? ` over your last ${low.judgedN}` : ''}; get every category to ${pctDown(CATEGORY_TARGET)}%.`,
+      scope: low.scope,
+      progress: cats,
     };
   }
 

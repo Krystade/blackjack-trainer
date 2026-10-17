@@ -108,6 +108,18 @@ describe('nextStep (#28)', () => {
     expect(nextStep(s, { sweepDone: true }).why).toMatch(/^Hard 12 v 3 is at 50%/);
   });
 
+  it('F21: a basic-strategy step names the hand type Start should open on, with progress', () => {
+    const fresh = nextStep(structuredClone(EMPTY_STATS), { sweepDone: false });
+    expect(fresh.scope).toBe('hard');
+    expect(fresh.progress?.map((c) => c.prefix)).toEqual(['hard', 'soft', 'pair']);
+    const s = learned();
+    s.cellStats!['soft-18-v-9'] = { right: 80, wrong: 20, lastAt: '', recent: '1'.repeat(10) };
+    const low = nextStep(s, { sweepDone: true });
+    expect(low).toMatchObject({ kind: 'flash', scope: 'soft' });
+    expect(low.progress?.find((c) => c.prefix === 'hard')?.onTarget).toBe(true);
+    expect(nextStep(learned(), { sweepDone: false }).scope).toBeUndefined();
+  });
+
   it('3: strategy in hand and no completed sweep -> Mastery', () => {
     expect(nextStep(learned(), { sweepDone: false }).kind).toBe('mastery');
   });
