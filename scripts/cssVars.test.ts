@@ -1,0 +1,65 @@
+import { describe, it, expect } from 'vitest';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * EVERY `var(--x)` IN THE CSS NAMES A PROPERTY SOMETHING DEFINES (F12).
+ *
+ * app.css used `--panel`, `--muted`, `--danger`, `--warn`, `--border` and
+ * `--text`, which no theme defines, so each fell back to its literal and
+ * ignored the theme everywhere -- the wheel self-check banner's answer was
+ * 1.01:1 in Bone & Ink. A fallback hides the bug, so a fallback does not
+ * count as a definition here.
+ *
+ * Defined means declared as `--x:` in any stylesheet, or set from code
+ * (`style.setProperty('--x', ...)` or an inline style key `'--x'`).
+ *
+ * Here rather than under src/ because vitest hands a test an empty string
+ * for a `.css?raw` import, which would make this pass on nothing.
+ */
+
+const SRC = fileURLToPath(new URL('../src', import.meta.url));
+
+function walk(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
+  );
+}
+
+function scan() {
+  const files = walk(SRC).filter((f) => /\.(css|tsx?)$/.test(f) && !/\.test\.tsx?$/.test(f));
+  const defined = new Set<string>();
+  const used = new Map<string, Set<string>>();
+  let cssFiles = 0;
+  for (const file of files) {
+    const text = readFileSync(file, 'utf8');
+    for (const m of text.matchAll(/(--[a-zA-Z0-9_-]+)\s*:/g)) defined.add(m[1]!);
+    for (const m of text.matchAll(/["'`](--[a-zA-Z0-9_-]+)["'`]/g)) defined.add(m[1]!);
+    if (!file.endsWith('.css')) continue;
+    cssFiles += 1;
+    for (const m of text.matchAll(/var\(\s*(--[a-zA-Z0-9_-]+)/g)) {
+      const name = m[1]!;
+      if (!used.has(name)) used.set(name, new Set());
+      used.get(name)!.add(file.slice(SRC.length + 1).split('\\').join('/'));
+    }
+  }
+  return { defined, used, cssFiles };
+}
+
+describe('CSS custom properties', () => {
+  it('reads the real stylesheets (the scan is not silently empty)', () => {
+    const { cssFiles, used, defined } = scan();
+    expect(cssFiles).toBeGreaterThan(5);
+    expect(used.size).toBeGreaterThan(20);
+    expect(defined.has('--ink')).toBe(true);
+  });
+
+  it('every var(--x) used in a stylesheet is defined somewhere', () => {
+    const { defined, used } = scan();
+    const undefinedVars = [...used]
+      .filter(([name]) => !defined.has(name))
+      .map(([name, files]) => `${name} (${[...files].join(', ')})`);
+    expect(undefinedVars, 'map these to theme tokens (themes.css)').toEqual([]);
+  });
+});
