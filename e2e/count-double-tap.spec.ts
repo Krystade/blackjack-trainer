@@ -37,7 +37,9 @@ test('true count drill: a double-tapped OK grades one answer, not a phantom 0 on
   expect(Date.now() - t0, 'the two taps must land inside the guard to test it').toBeLessThan(250);
 
   await page.waitForTimeout(300);
-  const history = ((await readStats(page))?.trueCount as { history: { guess?: number }[] }).history;
+  const stats = await readStats(page);
+  expect(stats, 'no stats saved').not.toBeNull();
+  const history = (stats!.trueCount as { history: { guess?: number }[] }).history;
   expect(history).toHaveLength(1);
   expect(history[0]!.guess).toBe(1);
 });
@@ -82,7 +84,9 @@ test('produce the true count: the next round waits on Next instead of flashing u
   await page.waitForTimeout(1500);
   await expect(page.locator('.count-flash-area')).toHaveCount(0);
   await expect(page.getByTestId('result-strip')).toBeVisible();
-  expect(((await readStats(page))?.produceTc as { history: unknown[] }).history).toHaveLength(1);
+  const stats = await readStats(page);
+  expect(stats, 'no stats saved').not.toBeNull();
+  expect((stats!.produceTc as { history: unknown[] }).history).toHaveLength(1);
 
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.locator('.numpad')).toBeVisible();
