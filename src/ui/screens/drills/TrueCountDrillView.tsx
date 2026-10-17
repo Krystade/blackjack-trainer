@@ -5,6 +5,7 @@ import { DEFAULT_TC_ROUNDING } from '../../../engine/count';
 import type { TcRounding } from '../../../engine/count';
 import { gradeTcConversion, tcWorking, tcConventionNote, signedTc } from '../../../drills/tcFeedback';
 import { ResultStrip } from '../../components/ResultStrip';
+import { answerTooSoon } from '../../answerBounce';
 import './tcResultStrip.css';
 import type { TrueCountQuestion } from '../../../drills/trueCountDrill';
 import { NumPad } from '../../components/NumPad';
@@ -328,8 +329,15 @@ export function TrueCountDrillView({
     };
   }, []);
 
+  // Wave A (s05): when the question on screen appeared. The keypad stays up
+  // between questions (fast advance), so the second tap of a double-tap on OK
+  // used to land on the NEXT question and grade a phantom 0 the learner never
+  // saw -- and push the real answer's result off the strip.
+  const questionShownAtRef = useRef(performance.now());
+
   const start = () => {
     runIdRef.current += 1;
+    questionShownAtRef.current = performance.now();
     const q = makeTrueCountQuestion(randomSeed(), { maxDecks, rounding: activeProfile.tcRounding });
     setQuestion(q);
     setHonorCheck(false);
@@ -348,6 +356,7 @@ export function TrueCountDrillView({
 
   const handleSubmit = (value: number) => {
     if (!question) return;
+    if (answerTooSoon(questionShownAtRef.current)) return;
     // #54: the profile's convention ONLY. Accepting floor, round or truncate
     // put "Correct!" above a different stated answer and trained no rule.
     const correct = gradeTcConversion(value, question.runningCount, question.decksRemaining, rounding);

@@ -1650,10 +1650,12 @@ test('produce the true count: flash then produce a TC, graded within tolerance a
   await page.locator('.numpad-btn', { hasText: /^0$/ }).click();
   await page.getByRole('button', { name: 'OK', exact: true }).click();
 
-  // #54: fast advance -- straight into the next flash, result in the strip.
+  // Wave A (s05): the round stops on its result (strip over the tray, Next
+  // below); the next 52 cards no longer start flashing under it.
   const strip = page.getByTestId('result-strip');
   await expect(strip).toBeVisible();
-  await expect(page.locator('.drill-result')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
+  await expect(page.locator('.count-flash-area')).toHaveCount(0);
 
   const stats = await readStats(page);
   const history = (stats?.produceTc as { history: Record<string, number>[] } | undefined)?.history ?? [];

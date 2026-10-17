@@ -74,6 +74,8 @@ test('produce the true count: a one-deck profile never divides by more than one 
     expect(decks, `round ${round} divided by ${decks} decks in a 1-deck shoe`).toBeLessThanOrEqual(1);
     expect(decks).toBeGreaterThanOrEqual(0.5);
     seen.push(decks);
+    // Wave A (s05): each round stops on its result; Next starts the next one.
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
   }
 
   // Vacuity guard: the drill must actually be varying the depth, or the bound
