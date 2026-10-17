@@ -277,3 +277,33 @@ describe('phantom deviation on a soft extra', () => {
     ).toBe('basic-error');
   });
 });
+
+// C-R11: 6,6 v 3 is a split cell. Standing on it at TC 0 was filed as a
+// phantom of the 12v3 index, which is a HARD 12 index -- the real error is
+// basic strategy (split). Pair cells only match pair indexes.
+describe('classifyAction: 6,6 v 3 tc 0 (C-R11: a pair cell is not a hard 12)', () => {
+  const up = '3' as Rank;
+  it('standing on 6,6 v 3 is a basic-strategy error, not a phantom 12v3', () => {
+    const hand = cards('6', '6');
+    const withCount = correctPlay(hand, up, 0, ctx());
+    const basicOnly = basicPlay(hand, up, ctx());
+    expect(basicOnly.action).toBe('split');
+    const result = classifyAction('stand', withCount, basicOnly, hand, up, 0);
+    expect(result).toEqual({ classification: 'basic-error', correct: false });
+  });
+
+  it('hard 12 (10,2) v 3 standing below the index is still a phantom deviation', () => {
+    const hand = cards('10', '2');
+    const withCount = correctPlay(hand, up, 0, ctx());
+    const basicOnly = basicPlay(hand, up, ctx());
+    expect(classifyAction('stand', withCount, basicOnly, hand, up, 0).classification).toBe('phantom-deviation');
+  });
+
+  it('6,6 v 3 with no split allowed plays as hard 12, so the index applies', () => {
+    const hand = cards('6', '6');
+    const noSplit = ctx({ canSplit: false });
+    const withCount = correctPlay(hand, up, 0, noSplit);
+    const basicOnly = basicPlay(hand, up, noSplit);
+    expect(classifyAction('stand', withCount, basicOnly, hand, up, 0).classification).toBe('phantom-deviation');
+  });
+});
