@@ -30,6 +30,7 @@ import { releaseAudioFocus } from '../audio/audioFocus';
 import { installAudioUnlock } from '../audio/unlock';
 import { installAudioContextKeepAlive } from '../audio/audioContext';
 import { useActivityLive } from './activityLive';
+import { mayLeave } from './leaveGuard';
 
 declare global {
   interface Window {
@@ -253,6 +254,8 @@ function App() {
   }, []);
 
   const navigate = (next: Screen) => {
+    // A screen with unsaved work (the Profile editor) may ask first (F13).
+    if (next !== screen && !mayLeave()) return;
     if (screen === 'profiles' && next !== 'profiles') {
       setActiveProfileState(getActiveProfile());
     }
