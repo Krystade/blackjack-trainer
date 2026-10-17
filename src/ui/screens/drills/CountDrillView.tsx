@@ -73,6 +73,7 @@ import { makeCountTable, tableRounds, TABLE_ROUND_CHOICES } from '../../../drill
 import type { TableRound } from '../../../drills/countTable';
 import './countTable.css';
 import './countPause.css';
+import { COUNT_PAUSED_LINE } from '../../../drills/countPause';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -948,8 +949,8 @@ export function CountDrillView({
   // so it runs AFTER the cleanup that cancels the card being spoken.
   useEffect(() => {
     if (!paused) return;
-    if (eyesFree || voiceOn) speak('Paused.', speechOptsFrom(settings.audio, { interrupt: true }));
-    else audio.sayFull('Paused.');
+    if (eyesFree || voiceOn) speak(COUNT_PAUSED_LINE, speechOptsFrom(settings.audio, { interrupt: true }));
+    else audio.sayFull(COUNT_PAUSED_LINE);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused]);
 

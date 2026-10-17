@@ -50,6 +50,7 @@ import {
 } from '../src/audio/narrate';
 import { hiLoTag } from '../src/engine/count';
 import { SPEED_QUESTION } from '../src/drills/speedDrill';
+import { COUNT_PAUSED_LINE } from '../src/drills/countPause';
 import {
   BET_UNIT_WORDS_MAX,
   narrateBetQuestion,
@@ -293,6 +294,8 @@ export function drillSentences(): string[] {
     add(narrateBetVerdict(false, units));
   }
   for (const decks of [6.5, 7, 7.5, 8]) add(narrateTcQuestion(0, decks));
+  // C-R2: a count run paused from the wheel.
+  add(COUNT_PAUSED_LINE);
   // The Test kit's word step: its intro, order and spoken retry.
   add(CALIBRATION_INTRO);
   add(calibrationOrderLine());
