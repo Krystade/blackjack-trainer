@@ -225,6 +225,13 @@ function isPhantomDeviation(taken: Action, cards: Card[], up: Rank, rules: Strat
       if (dev.up === undefined) continue; // Should not happen
       if (upIndex(dev.up) !== upIdx) continue; // Different upcard
       return true; // Found a matching active hard deviation with the same action
+    } else if (dev.kind === 'soft') {
+      // Soft deviations (the opt-in BJA H17 extras) only match soft hands
+      if (!hv.soft) continue; // Not a soft hand
+      if (dev.total !== hv.total) continue; // Different total
+      if (dev.up === undefined) continue; // Should not happen
+      if (upIndex(dev.up) !== upIdx) continue; // Different upcard
+      return true; // Found a matching active soft deviation with the same action
     } else if (dev.kind === 'pair10') {
       // Pair10 deviations only match ten-value pairs
       if (!isTenPair) continue;

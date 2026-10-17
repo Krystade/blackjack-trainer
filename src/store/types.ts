@@ -406,6 +406,15 @@ export interface Profile {
    */
   surrenderIndices?: boolean;
   /**
+   * B9: play the opt-in BJA H17 extra indices (engine/deviations.ts
+   * BJA_H17_EXTRAS) on top of the Illustrious 18. OPTIONAL so profiles stored
+   * before this field load untouched, and absent means off.
+   *
+   * H17 only, and read ONLY through `strategyRulesFor` (which also gates it
+   * on the table's soft-17 rule) -- no other caller checks the flag.
+   */
+  bjaExtras?: boolean;
+  /**
    * Reveal the dealer's hole card even when no hand still needs a dealer
    * total. OPTIONAL so profiles stored before this field load untouched.
    *

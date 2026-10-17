@@ -66,16 +66,21 @@ function hardSoftChartAction(cards: Card[], dealerUp: Rank, chart: Chart): { act
   return { action: row[idx], total: hv.total, soft: hv.soft };
 }
 
-/** Find the active hard-total deviation matching (total, up) whose tc condition is met, if any. */
-function findHardDeviation(
+/**
+ * Find the active hard- or soft-total deviation matching (kind, total, up)
+ * whose tc condition is met, if any. The kind keeps a soft 19 from ever
+ * matching a hard-19 entry and vice versa.
+ */
+function findTotalDeviation(
   deviations: Deviation[],
+  kind: 'hard' | 'soft',
   total: number,
   dealerUp: Rank,
   tc: number,
 ): Deviation | undefined {
   const idx = upIndex(dealerUp);
   return deviations.find((d) => {
-    if (!d.active || d.kind !== 'hard' || d.total !== total || d.up === undefined) return false;
+    if (!d.active || d.kind !== kind || d.total !== total || d.up === undefined) return false;
     if (upIndex(d.up) !== idx) return false;
     return d.dir === 'gte' ? tc >= d.threshold : tc <= d.threshold;
   });
@@ -84,7 +89,7 @@ function findHardDeviation(
 /**
  * Find the surrender index for (total, up), if the active set carries one.
  *
- * Unlike `findHardDeviation` this does NOT test the count: the caller needs to
+ * Unlike `findTotalDeviation` this does NOT test the count: the caller needs to
  * distinguish "no index here, use the chart" from "indexed, but the count has
  * not reached it" -- those two resolve differently, and folding the threshold
  * test in here would collapse them into the same `undefined`.
@@ -107,7 +112,7 @@ function findSurrenderDeviation(
 
 /**
  * Resolve a hand as a hard/soft total (bypassing any pair-splitting), applying
- * basic surrender, then hard-total deviations, then the basic chart.
+ * basic surrender, then hard/soft total deviations, then the basic chart.
  * Used both for non-pair hands and for pairs re-looked-up because !canSplit.
  */
 function resolveAsTotal(
@@ -159,17 +164,17 @@ function resolveAsTotal(
     }
   }
 
-  // Step 3: hard-total deviations only apply to HARD hands.
-  if (!soft) {
-    const dev = findHardDeviation(deviations, total, dealerUp, tc);
-    if (dev) {
-      if (dev.action === 'double') {
-        if (ctx.canDouble) return deviation(dev, 'double');
-        // canDouble false: fall through to step 4.
-      } else {
-        // 'stand' | 'hit' deviations always apply once triggered.
-        return deviation(dev, dev.action as Action);
-      }
+  // Step 3: total deviations, matched by the hand's own kind -- hard entries
+  // for hard hands, soft entries (the opt-in BJA H17 extras) for soft hands.
+  // A soft entry matches any soft hand of that total, so A,2,6 is an A,8.
+  const dev = findTotalDeviation(deviations, soft ? 'soft' : 'hard', total, dealerUp, tc);
+  if (dev) {
+    if (dev.action === 'double') {
+      if (ctx.canDouble) return deviation(dev, 'double');
+      // canDouble false: fall through to step 4.
+    } else {
+      // 'stand' | 'hit' deviations always apply once triggered.
+      return deviation(dev, dev.action as Action);
     }
   }
 
@@ -232,7 +237,7 @@ function pairTotalIndex(
       return undefined; // basic surrender wins, as in resolveAsTotal
     }
   }
-  const dev = findHardDeviation(deviations, hv.total, dealerUp, tc);
+  const dev = findTotalDeviation(deviations, 'hard', hv.total, dealerUp, tc);
   if (dev) {
     if (dev.action !== 'double') return deviation(dev, dev.action as Action);
     if (ctx.canDouble) return deviation(dev, 'double');
@@ -265,10 +270,18 @@ export function play(
     if (rank === '10') {
       const idx = upIndex(dealerUp);
       if (ctx.canSplit) {
-        const ttv5 = deviations.find((d) => d.id === 'TTv5' && d.active);
-        const ttv6 = deviations.find((d) => d.id === 'TTv6' && d.active);
-        if (ttv5 && upIndex(ttv5.up!) === idx && tc >= ttv5.threshold) return deviation(ttv5, 'split');
-        if (ttv6 && upIndex(ttv6.up!) === idx && tc >= ttv6.threshold) return deviation(ttv6, 'split');
+        // Any active ten-pair split index for this up-card (TTv5/TTv6, plus
+        // TTv4 when the BJA extras are on) -- by kind, not by id, so a new
+        // pair10 entry needs no change here.
+        const split = deviations.find(
+          (d) =>
+            d.active &&
+            d.kind === 'pair10' &&
+            d.up !== undefined &&
+            upIndex(d.up) === idx &&
+            (d.dir === 'gte' ? tc >= d.threshold : tc <= d.threshold),
+        );
+        if (split) return deviation(split, 'split');
       }
       // Ten-pairs are absent from PAIRS -> basic fallback is always hard-20 stand.
       return basic('stand', `Basic stand vs dealer ${dealerUp}`);
