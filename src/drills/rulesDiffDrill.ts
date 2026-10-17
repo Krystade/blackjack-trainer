@@ -140,6 +140,13 @@ export function drawRulesQuestion(plan: RulesDrillPlan, seed: number, n: number)
 
 const exactRemaining = (q: { totalDecks: number; cardsDealt: number }) => (q.totalDecks * 52 - q.cardsDealt) / 52;
 
+/** The offered half-deck option closest to the exact depth. */
+function nearestDepthOption(q: { totalDecks: number; cardsDealt: number }): number {
+  const exact = exactRemaining(q);
+  const opts = depthOptions(q.totalDecks, 'half');
+  return opts.reduce((best, o) => (Math.abs(o - exact) < Math.abs(best - exact) ? o : best), opts[0]!);
+}
+
 function playAction(q: Extract<RulesQuestion, { kind: 'play' }>, rules: StrategyRules): Action {
   const ctx = questionCtx(rules);
   return q.tc === null ? basicPlay(q.cards, q.up, ctx, rules).action : correctPlay(q.cards, q.up, q.tc, ctx, rules).action;
@@ -153,7 +160,8 @@ export function expectedRulesAnswer(q: RulesQuestion, plan: RulesDrillPlan, roun
     case 'insurance':
       return insuranceCorrect(q.tc, rules) ? 'take-insurance' : 'decline-insurance';
     case 'tray-decks':
-      return exactRemaining(q);
+      // #52: the button to have tapped, not the exact depth (2.63 -> 2.5).
+      return nearestDepthOption(q);
     case 'tray-tc':
       return trueCount(q.rc, exactRemaining(q), rounding);
   }

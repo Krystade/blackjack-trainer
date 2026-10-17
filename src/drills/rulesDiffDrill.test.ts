@@ -3,7 +3,7 @@ import { DEFAULT_RULES, type StrategyRules } from '../engine/ruleset';
 import { generateAllCells } from './flashcards';
 import {
   diffSummary, drawRulesQuestion, expectedRulesAnswer, explainRulesQuestion, gradeRulesAnswer, inertNotes,
-  planRulesDrill, rulesAnswerOptions, rulesQuestionPrompt, sameChartNotice,
+  planRulesDrill, rulesAnswerLabel, rulesAnswerOptions, rulesQuestionPrompt, sameChartNotice,
   type RulesDrillPlan, type RulesQuestion, type Side,
 } from './rulesDiffDrill';
 
@@ -178,5 +178,24 @@ describe('copy', () => {
     expect(lines).toContain('11 v A at TC 0 and below: H17 doubles, S17 hits');
     expect(inertNotes(H17S17)).toEqual([
       '16 v 9: the index differs (H17 stand ≥ +4, S17 stand ≥ +5) but never changes a play at this table.']);
+  });
+});
+
+describe('#52 tray-decks miss names a button, never a raw float', () => {
+  it('the correct answer shown on a miss is one of the offered half-deck options', () => {
+    const plan = planRulesDrill(r({ decks: 6 }), r({ decks: 8 }));
+    for (let cardsDealt = 1; cardsDealt < 416; cardsDealt += 7) {
+      const q: RulesQuestion = { kind: 'tray-decks', side: 'b', totalDecks: 8, cardsDealt };
+      const correct = expectedRulesAnswer(q, plan);
+      const offered = rulesAnswerOptions(q, plan).map((o) => rulesAnswerLabel(q, o));
+      expect(offered).toContain(rulesAnswerLabel(q, correct));
+      // ...and it is a button the grader accepts.
+      expect(gradeRulesAnswer(q, plan, correct)).toBe(true);
+    }
+  });
+  it('279 of 416 dealt (2.63 decks left) reads 2.5', () => {
+    const plan = planRulesDrill(r({ decks: 6 }), r({ decks: 8 }));
+    const q: RulesQuestion = { kind: 'tray-decks', side: 'b', totalDecks: 8, cardsDealt: 279 };
+    expect(rulesAnswerLabel(q, expectedRulesAnswer(q, plan))).toBe('2.5');
   });
 });
