@@ -91,17 +91,26 @@ describe('makeDownswingShoe (ET1)', () => {
   it('betting the ramp for the shown TC scores 100% in-engine conformity (display TC == graded TC)', () => {
     const cfg: GameConfig = { ...soloCfg(), betSpreadOn: true, spread: DEFAULT_SPREAD };
     const game = Game.withRiggedShoe(cfg, makeDownswingShoe(40, 11));
+    let sized = 0;
     for (let r = 0; r < 40; r++) {
       const tc = game.trueCountNow; // exactly what the DownswingView HUD shows
       const before = game.events.length;
       game.startRound(rampBet(tc));
-      const betEvent = game.events.slice(before).find((e) => e.kind === 'bet');
-      expect(
-        betEvent?.correct,
-        `round ${r}: tc ${tc}, bet ${rampBet(tc)}, engine expected ${betEvent?.expected}`,
-      ).toBe(true);
+      // C-R6: a round grades ONE bet decision -- the bet size where the ramp
+      // says play, the wong where it says sit out. Either way, at the shown TC.
+      const graded = game.events.slice(before).filter((e) => e.kind === 'bet' || e.kind === 'wong');
+      expect(graded, `round ${r}: one graded bet decision`).toHaveLength(1);
+      expect(graded[0].tc, `round ${r}: graded at the shown TC`).toBe(tc);
+      if (graded[0].kind === 'bet') {
+        sized += 1;
+        expect(
+          graded[0].correct,
+          `round ${r}: tc ${tc}, bet ${rampBet(tc)}, engine expected ${graded[0].expected}`,
+        ).toBe(true);
+      }
       while (game.phase === 'player') game.act('stand');
     }
+    expect(sized, 'some rounds were at a play count').toBeGreaterThan(0);
   });
 
   it('the drawdown scales with the bet (the ramp) — bigger bets lose bigger', () => {

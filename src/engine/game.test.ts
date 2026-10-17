@@ -696,58 +696,63 @@ describe('RC visibility', () => {
 });
 
 describe('bet grading', () => {
-  it('betSpreadOn, pre-deal tc 0, startRound(4) -> bet event wrong (expected 1)', () => {
-    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('2', '5', '3', '4'));
-    game.startRound(4);
+  // C-R6: bet size is graded only on a round the ramp says to play, so these
+  // run at TC +1 (ramp: 2 units) rather than TC 0 (ramp: sit out).
+  function atTc1(overrides: Partial<GameConfig> = {}): Game {
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true, ...overrides }), rig('2', '5', '3', '4'));
+    game.runningCount = 6;
+    expect(game.trueCountNow).toBe(1);
+    return game;
+  }
+
+  it('betSpreadOn, pre-deal tc 1, startRound(8) -> bet event wrong (expected 2)', () => {
+    const game = atTc1();
+    game.startRound(8);
     const ev = game.events[0];
     expect(ev.kind).toBe('bet');
     expect(ev.correct).toBe(false);
-    expect(ev.expected).toBe('1');
-    expect(ev.taken).toBe('4');
+    expect(ev.expected).toBe('2');
+    expect(ev.taken).toBe('8');
   });
 
-  it('betSpreadOn, pre-deal tc 0, startRound(1) -> correct', () => {
-    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('2', '5', '3', '4'));
-    game.startRound(1);
+  it('betSpreadOn, pre-deal tc 1, startRound(2) -> correct', () => {
+    const game = atTc1();
+    game.startRound(2);
     const ev = game.events[0];
+    expect(ev.kind).toBe('bet');
     expect(ev.correct).toBe(true);
-    expect(ev.expected).toBe('1');
-    expect(ev.taken).toBe('1');
+    expect(ev.expected).toBe('2');
+    expect(ev.taken).toBe('2');
   });
 
   // RT#11: exact-conformity grading rewards the one behaviour surveillance
   // looks for. Cover mode accepts a bet one RUNG of the ramp either side.
   it('RT#11: cover off -- a bet one rung above the ramp is still wrong', () => {
-    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('2', '5', '3', '4'));
-    game.startRound(2); // expected 1, next rung up
+    const game = atTc1();
+    game.startRound(4); // expected 2, next rung up
+    expect(game.events[0].kind).toBe('bet');
     expect(game.events[0].correct).toBe(false);
   });
 
   it('RT#11: cover on -- that same bet is correct, and the reason says why', () => {
-    const game = Game.withRiggedShoe(
-      cfg({ betSpreadOn: true, coverBets: true }),
-      rig('2', '5', '3', '4'),
-    );
-    game.startRound(2);
+    const game = atTc1({ coverBets: true });
+    game.startRound(4);
+    expect(game.events[0].kind).toBe('bet');
     expect(game.events[0].correct).toBe(true);
     expect(game.events[0].reason).toContain('cover');
   });
 
   it('RT#11: cover is one rung, not a blank cheque', () => {
-    const game = Game.withRiggedShoe(
-      cfg({ betSpreadOn: true, coverBets: true }),
-      rig('2', '5', '3', '4'),
-    );
-    game.startRound(4); // expected 1; 4 is two rungs up
+    const game = atTc1({ coverBets: true });
+    game.startRound(8); // expected 2; 8 is two rungs up
+    expect(game.events[0].kind).toBe('bet');
     expect(game.events[0].correct).toBe(false);
   });
 
   it('RT#11: cover never turns an exact bet wrong', () => {
-    const game = Game.withRiggedShoe(
-      cfg({ betSpreadOn: true, coverBets: true }),
-      rig('2', '5', '3', '4'),
-    );
-    game.startRound(1);
+    const game = atTc1({ coverBets: true });
+    game.startRound(2);
+    expect(game.events[0].kind).toBe('bet');
     expect(game.events[0].correct).toBe(true);
   });
 });
@@ -867,25 +872,21 @@ describe('wong-out / sit-out (R5)', () => {
     expect(wong[0].expected).toBe('sit-out');
   });
 
-  it('RV7: the bet is still CORRECT on that round -- right size, wrong to be in the hand', () => {
-    // The asymmetry this fixes: a min bet at a should-wong count matched the
-    // spread exactly, so the only grade the round produced said "correct".
+  it('RV7 + C-R6: a min bet at a should-wong count grades no bet size -- only "wrong to be in the hand"', () => {
     const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('2', '5', '3', '4'));
     game.startRound(1);
-    const bet = game.events.filter((e) => e.kind === 'bet');
-    expect(bet).toHaveLength(1);
-    expect(bet[0].correct).toBe(true);
+    expect(game.events.filter((e) => e.kind === 'bet')).toHaveLength(0);
     expect(game.events.filter((e) => e.kind === 'wong')[0]!.correct).toBe(false);
   });
 
-  it('RV7: dealing in at a count the spread wants a real bet at grades CORRECT', () => {
+  it('C-R6: dealing in at a count the spread wants a real bet at grades the bet size, not the wong', () => {
     const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('5', 'K', '3', '4'));
-    game.runningCount = 6; // tc well into "bet up" territory, as in the sit-out test above
-    game.startRound(4);
-    const wong = game.events.filter((e) => e.kind === 'wong');
-    expect(wong).toHaveLength(1);
-    expect(wong[0].correct).toBe(true);
-    expect(wong[0].expected).toBe('play');
+    game.runningCount = 6;
+    game.startRound(2);
+    expect(game.events.filter((e) => e.kind === 'wong')).toHaveLength(0);
+    const bet = game.events.filter((e) => e.kind === 'bet');
+    expect(bet).toHaveLength(1);
+    expect(bet[0].correct).toBe(true);
   });
 
   it('RV7: betSpreadOn OFF grades no wong on a dealt round either', () => {
@@ -894,17 +895,53 @@ describe('wong-out / sit-out (R5)', () => {
     expect(game.events.filter((e) => e.kind === 'wong')).toHaveLength(0);
   });
 
-  it('RV7: one wong event per ROUND, after the bet event of every hand', () => {
-    // Positional: events[0] is the first hand's bet, which existing callers
-    // read directly. The wong lands last, once, however many hands were bet.
+  it('C-R6: multi-hand at a play count: one bet event per hand, no wong', () => {
+    // Positional: events[0] is the first hand's bet, which existing callers read directly.
+    const seats: SeatConfig = { bots: 0, playerHands: 2, playerPosition: 0, botMistakePct: 0 };
+    const game = Game.withRiggedShoe(
+      cfg({ betSpreadOn: true, seats }),
+      rig('2', '5', '3', '4', '6', '7'),
+    );
+    game.runningCount = 6;
+    game.startRound([2, 2]);
+    expect(game.events.map((e) => e.kind)).toEqual(['bet', 'bet']);
+  });
+
+  it('C-R6: multi-hand at a sit-out count: one wong event for the round, no bet sizes', () => {
     const seats: SeatConfig = { bots: 0, playerHands: 2, playerPosition: 0, botMistakePct: 0 };
     const game = Game.withRiggedShoe(
       cfg({ betSpreadOn: true, seats }),
       rig('2', '5', '3', '4', '6', '7'),
     );
     game.startRound([1, 1]);
-    const kinds = game.events.map((e) => e.kind);
-    expect(kinds).toEqual(['bet', 'bet', 'wong']);
+    expect(game.events.map((e) => e.kind)).toEqual(['wong']);
+  });
+});
+
+describe('C-R6: one graded bet decision per round', () => {
+  const kindsOf = (g: Game) => g.events.filter((e) => e.kind === 'bet' || e.kind === 'wong').map((e) => e.kind);
+
+  it('ramp says sit out, you played: only the play-or-sit decision is graded (no bet size)', () => {
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('2', '5', '3', '4'));
+    game.startRound(1);
+    expect(kindsOf(game)).toEqual(['wong']);
+    expect(game.events[0].correct).toBe(false);
+  });
+
+  it('ramp says play, you sat out: only the sit decision is graded', () => {
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('5', 'K', '3', '4'));
+    game.runningCount = 6;
+    game.sitOut();
+    expect(kindsOf(game)).toEqual(['wong']);
+    expect(game.events[0].correct).toBe(false);
+  });
+
+  it('both played: only the bet size is graded', () => {
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('5', 'K', '3', '4'));
+    game.runningCount = 6;
+    game.startRound(1);
+    expect(kindsOf(game)).toEqual(['bet']);
+    expect(game.events[0].correct).toBe(false);
   });
 });
 
@@ -1190,7 +1227,8 @@ describe('reshuffle', () => {
     game.startRound(1);
     expect(game.shuffledLastRound).toBe(true);
     // The bet is graded at the fresh shoe's count -- the count the warning named.
-    const bets = game.events.filter((e) => e.kind === 'bet');
+    // (C-R6: at TC 0 the ramp sits out, so the round's one grade is the wong.)
+    const bets = game.events.filter((e) => e.kind === 'bet' || e.kind === 'wong');
     expect(bets[bets.length - 1].tc).toBe(0);
   });
 
@@ -1448,23 +1486,24 @@ describe('multi-hand player (Cycle-2 Task 4)', () => {
     expect(game.bankroll).toBe(initialBankroll + 1 - 5);
   });
 
-  it('betSpreadOn, tc forced 0, startRound([1,1]) -> two bet GradedEvents, both graded', () => {
+  it('betSpreadOn, tc forced +1, startRound([2,2]) -> two bet GradedEvents, both graded', () => {
     const seats: SeatConfig = { playerHands: 2, bots: 0, botMistakePct: 0, playerPosition: 0 };
     const game = Game.withRiggedShoe(
       cfg({ betSpreadOn: true, seats }),
       rig('2', '3', '4', '5', '6', '7'),
     );
-    expect(game.trueCountNow).toBe(0);
-    game.startRound([1, 1]);
+    game.runningCount = 6; // C-R6: bet size is graded only at a play count
+    expect(game.trueCountNow).toBe(1);
+    game.startRound([2, 2]);
 
     const betEvents = game.events.filter((e) => e.kind === 'bet');
     expect(betEvents).toHaveLength(2);
     expect(betEvents[0].correct).toBe(true);
-    expect(betEvents[0].expected).toBe('1');
-    expect(betEvents[0].taken).toBe('1');
+    expect(betEvents[0].expected).toBe('2');
+    expect(betEvents[0].taken).toBe('2');
     expect(betEvents[1].correct).toBe(true);
-    expect(betEvents[1].expected).toBe('1');
-    expect(betEvents[1].taken).toBe('1');
+    expect(betEvents[1].expected).toBe('2');
+    expect(betEvents[1].taken).toBe('2');
   });
 
   it('scalar startRound(2) with playerHands 2 -> both hands bet 2 (back-compat)', () => {
