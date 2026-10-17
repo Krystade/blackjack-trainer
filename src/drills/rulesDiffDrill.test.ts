@@ -3,7 +3,7 @@ import { DEFAULT_RULES, type StrategyRules } from '../engine/ruleset';
 import { generateAllCells } from './flashcards';
 import {
   diffSummary, drawRulesQuestion, expectedRulesAnswer, explainRulesQuestion, gradeRulesAnswer, inertNotes,
-  planRulesDrill, rulesAnswerLabel, rulesAnswerOptions, rulesQuestionPrompt, sameChartNotice,
+  planRulesDrill, rulesAnswerLabel, rulesAnswerOptions, rulesQuestionPrompt, rulesResultLine, sameChartNotice,
   type RulesDrillPlan, type RulesQuestion, type Side,
 } from './rulesDiffDrill';
 
@@ -104,7 +104,6 @@ describe('drawRulesQuestion', () => {
     for (let seed = 0; seed < 150; seed++) {
       for (let n = 0; n < 4; n++) {
         const q = drawRulesQuestion(plan, seed, n)!;
-        expect(q.side).toBe(n % 2 === 0 ? 'a' : 'b');
         if (q.kind !== 'play' && q.kind !== 'insurance') throw new Error(`unexpected ${q.kind}`);
         expect(expectedRulesAnswer({ ...q, side: 'a' }, plan)).not.toEqual(expectedRulesAnswer({ ...q, side: 'b' }, plan));
         if (q.kind === 'play') {
@@ -151,9 +150,9 @@ describe('grading under the rules in force', () => {
 });
 
 describe('copy', () => {
-  it('prompts say which rules are in force', () => {
-    expect(rulesQuestionPrompt(play('soft-18-v-2', 'b', null), H17S17)).toBe('Under S17: A,7 v 2?');
-    expect(rulesQuestionPrompt(play('hard-12-v-6', 'a', -3), H17S17)).toBe('Under H17 at TC −3: 12 v 6?');
+  it('prompts ask the hand; the rules in force are the heading (#56)', () => {
+    expect(rulesQuestionPrompt(play('soft-18-v-2', 'b', null), H17S17)).toBe('A,7 v 2?');
+    expect(rulesQuestionPrompt({ kind: 'tray-tc', side: 'b', totalDecks: 8, cardsDealt: 182, rc: 9 }, H17S17)).toBe('RC +9. True count?');
   });
   it('explanations name both rules', () => {
     expect(explainRulesQuestion(play('soft-18-v-2', 'b', null), H17S17)).toBe('Basic strategy, A,7 v 2: H17 doubles, S17 stands.');
@@ -197,5 +196,32 @@ describe('#52 tray-decks miss names a button, never a raw float', () => {
     const plan = planRulesDrill(r({ decks: 6 }), r({ decks: 8 }));
     const q: RulesQuestion = { kind: 'tray-decks', side: 'b', totalDecks: 8, cardsDealt: 279 };
     expect(rulesAnswerLabel(q, expectedRulesAnswer(q, plan))).toBe('2.5');
+  });
+});
+
+describe('#56: one statement of the rules, a strip that says what you answered, and an unpredictable side', () => {
+  it('the prompt no longer repeats the rules in force (the heading states them)', () => {
+    expect(rulesQuestionPrompt(play('soft-18-v-2', 'b', null), H17S17)).toBe('A,7 v 2?');
+    expect(rulesQuestionPrompt(play('hard-12-v-6', 'a', -3), H17S17)).toBe('12 v 6?');
+    expect(rulesQuestionPrompt({ kind: 'insurance', side: 'a', tc: 2 }, H17S17)).toBe('Insurance?');
+  });
+
+  it('the result line names your answer and the right one', () => {
+    const q = play('hard-11-v-A', 'b', 0);
+    expect(rulesResultLine(q, 'double', 'hit', false)).toBe('You played Double · Right play Hit');
+    expect(rulesResultLine(q, 'hit', 'hit', true)).toBe('Correct — Hit');
+    const p68 = planRulesDrill(r({ decks: 6 }), r({ decks: 8 }));
+    const tray: RulesQuestion = { kind: 'tray-decks', side: 'b', totalDecks: 8, cardsDealt: 279 };
+    expect(rulesResultLine(tray, 4, expectedRulesAnswer(tray, p68), false)).toBe('You said 4 · Right 2.5');
+    const tc: RulesQuestion = { kind: 'tray-tc', side: 'b', totalDecks: 8, cardsDealt: 182, rc: 9 };
+    expect(rulesResultLine(tc, -1, 2, false)).toBe('You said −1 · Right +2');
+  });
+
+  it('which side is asked is not given away by the question number', () => {
+    for (const n of [0, 1, 2, 3]) {
+      const sides = new Set<string>();
+      for (let seed = 0; seed < 60; seed++) sides.add(drawRulesQuestion(H17S17, seed, n)!.side);
+      expect([...sides].sort(), `question ${n}`).toEqual(['a', 'b']);
+    }
   });
 });

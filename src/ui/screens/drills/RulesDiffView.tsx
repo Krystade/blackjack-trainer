@@ -13,6 +13,7 @@ import {
   rulesAnswerLabel,
   rulesAnswerOptions,
   rulesQuestionPrompt,
+  rulesResultLine,
   sameChartNotice,
   type RulesAnswer,
   type RulesQuestion,
@@ -51,13 +52,14 @@ const COMPARISONS: { value: Comparison; label: string }[] = [
 interface Feedback {
   id: number;
   ok: boolean;
+  taken: RulesAnswer;
   correct: RulesAnswer;
   explain: string;
 }
 
 /**
  * Wave B B10: Rules differences. Asks only the plays that change between two
- * rulesets, each question under one side's rules (alternating a, b). The
+ * rulesets, each question under one side's rules (drawn at random, #56). The
  * question model and all copy are drills/rulesDiffDrill.ts. No stats are
  * recorded (the spec asks for none) and eyes-free is not read.
  */
@@ -111,6 +113,7 @@ export function RulesDiffView({
     setFeedback({
       id: Date.now(),
       ok,
+      taken,
       correct: expectedRulesAnswer(question, plan, activeProfile.tcRounding),
       explain: explainRulesQuestion(question, plan, activeProfile.tcRounding),
     });
@@ -230,7 +233,7 @@ export function RulesDiffView({
         data-cards-dealt={question.kind === 'tray-decks' || question.kind === 'tray-tc' ? question.cardsDealt : undefined}
         data-rc={question.kind === 'tray-tc' ? question.rc : undefined}
       >
-        <div className="rules-diff-prompt">{rulesQuestionPrompt(question, plan)}</div>
+        <div className="rules-diff-prompt">{rulesQuestionPrompt(question)}</div>
         {question.kind === 'play' && (
           <>
             <div className="dealer-area">
@@ -281,7 +284,7 @@ export function RulesDiffView({
           <div className="tc-strip-wrap">
             <ResultStrip id={feedback.id} tone={feedback.ok ? 'ok' : 'miss'}>
               <div className="rules-verdict">
-                {feedback.ok ? 'Correct' : `Wrong — ${rulesAnswerLabel(question, feedback.correct)}`}
+                {rulesResultLine(question, feedback.taken, feedback.correct, feedback.ok)}
               </div>
               <div className="rules-explain">{feedback.explain}</div>
             </ResultStrip>

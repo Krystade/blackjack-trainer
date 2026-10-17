@@ -58,8 +58,6 @@ export function sideRules(plan: RulesDrillPlan, side: Side): StrategyRules {
   return side === 'a' ? plan.a : plan.b;
 }
 
-const sideName = (plan: RulesDrillPlan, side: Side) => plan.names[side === 'a' ? 0 : 1];
-
 let cellCache: Map<string, Cell> | null = null;
 function cellById(id: string): Cell | undefined {
   if (!cellCache) cellCache = new Map(generateAllCells().map((c) => [c.id, c]));
@@ -133,7 +131,9 @@ export function drawRulesQuestion(plan: RulesDrillPlan, seed: number, n: number)
     return { kind: 'tray-tc', side, totalDecks, cardsDealt: dealtDecks * 52, rc: rc === 0 ? 0 : rc };
   }
   const item = plan.pool[Math.floor(rng() * plan.pool.length)];
-  const side: Side = n % 2 === 0 ? 'a' : 'b';
+  // #56: drawn, not alternated -- a strict a, b, a, b told you the rules
+  // before you had read the heading.
+  const side: Side = rng() < 0.5 ? 'a' : 'b';
   if (item.kind === 'insurance') return { kind: 'insurance', side, tc: item.tcs[Math.floor(rng() * item.tcs.length)] };
   const tc = item.tcs === null ? null : item.tcs[Math.floor(rng() * item.tcs.length)];
   return { kind: 'play', side, cellId: item.cellId, cards: item.cards, up: item.up, tc };
@@ -219,18 +219,30 @@ function cellLabel(cellId: string): string {
 const tcText = (tc: number) => `TC ${signed(tc)}`;
 const decksText = (n: number) => `${Number(n.toFixed(2))} ${n === 1 ? 'deck' : 'decks'}`;
 
-export function rulesQuestionPrompt(q: RulesQuestion, plan: RulesDrillPlan): string {
-  const name = sideName(plan, q.side);
+/**
+ * The question itself. #56: the rules in force (and the TC) are stated once,
+ * by the screen's "Under H17 · TC +3" heading, not again in the prompt.
+ */
+export function rulesQuestionPrompt(q: RulesQuestion, _plan?: RulesDrillPlan): string {
   switch (q.kind) {
     case 'play':
-      return q.tc === null ? `Under ${name}: ${cellLabel(q.cellId)}?` : `Under ${name} at ${tcText(q.tc)}: ${cellLabel(q.cellId)}?`;
+      return `${cellLabel(q.cellId)}?`;
     case 'insurance':
-      return `Under ${name} at ${tcText(q.tc)}: insurance?`;
+      return 'Insurance?';
     case 'tray-decks':
-      return `Under ${name}: how many decks are left?`;
+      return 'How many decks are left?';
     case 'tray-tc':
-      return `Under ${name}: RC ${signed(q.rc)}. True count?`;
+      return `RC ${signed(q.rc)}. True count?`;
   }
+}
+
+/** #56: the strip's first line names what you answered, as Flashcards does. */
+export function rulesResultLine(q: RulesQuestion, taken: RulesAnswer, expected: RulesAnswer, ok: boolean): string {
+  if (ok) return `Correct — ${rulesAnswerLabel(q, expected)}`;
+  const isPlay = q.kind === 'play' || q.kind === 'insurance';
+  return isPlay
+    ? `You played ${rulesAnswerLabel(q, taken)} · Right play ${rulesAnswerLabel(q, expected)}`
+    : `You said ${rulesAnswerLabel(q, taken)} · Right ${rulesAnswerLabel(q, expected)}`;
 }
 
 const VERB: Record<Deviation['action'], string> = {
