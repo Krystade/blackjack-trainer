@@ -39,6 +39,7 @@ import './countHistory.css';
 import { strategyRulesFor } from '../../store/profiles';
 import { CATEGORY_LABELS } from './categoryLabels';
 import { betSizingRows } from './ladderRules';
+import { activeIndices } from './readiness';
 import { bestCleanCountRuns, formatCountRun } from '../../drills/countSpeed';
 import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, handCategoryProgress, pctDown } from './handProgress';
 import type { HandCategoryProgress } from './handProgress';
@@ -695,7 +696,9 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   // studied" over a box histogram summing to twenty, and a lapsed surrender
   // index appeared in "Most often forgotten" as the raw key `sur15v10`.
   const flashSrSummary = summarizeSrDeck(loadFlashSr(), generateAllCells().length, now);
-  const quizSrSummary = summarizeSrDeck(loadQuizSr(), indexSetFor(gradedRules).length, now);
+  // Wave B2 #22: the indexes the drills ask, as on Home (readiness.activeIndices).
+  const askedIndices = activeIndices(gradedRules);
+  const quizSrSummary = summarizeSrDeck(loadQuizSr(), askedIndices.length, now);
   const quizLabelFor = (key: string) =>
     indexSetFor(gradedRules).find((d) => d.id === key)?.label ?? key;
 
@@ -1083,7 +1086,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                   indices on is 24 rather than 18. The six Fab 4 tallies were
                   being written to `perIndex` and then had no row to appear
                   in. */}
-              {indexSetFor(gradedRules).map((dev) => {
+              {askedIndices.map((dev) => {
                 const tally = stats.perIndex[dev.id];
                 return (
                   <tr key={dev.id}>

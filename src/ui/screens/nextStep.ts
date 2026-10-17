@@ -6,7 +6,7 @@ import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, WEAK_CELL_BELOW, goalPct, handCa
 import { cellWindow, countBits } from '../../store/cellStats';
 import type { HandCategoryProgress, WeakCell } from './handProgress';
 import type { HandScope } from '../../drills/handScope';
-import { activeIndices } from './readiness';
+import { MIN_INDEX_ANSWERS, activeIndices, indexPractised } from './readiness';
 import { COUNT_RUNS_JUDGED, COUNT_RUNS_NEEDED, countFluency } from '../../drills/fluencyGate';
 import type { IndexRules } from './readiness';
 import type { SrDeck } from '../../drills/spacedRepetition';
@@ -111,7 +111,7 @@ export interface LadderContext {
 // W3: the category and cell thresholds live with the shared figures Home and
 // Stats both read; re-exported here for the callers that already import them.
 export { MIN_CATEGORY_ANSWERS, CATEGORY_TARGET, MIN_CELL_ANSWERS, WEAK_CELL_BELOW } from './handProgress';
-export const MIN_INDEX_ANSWERS = 3;
+export { MIN_INDEX_ANSWERS } from './readiness';
 export const INDEX_TARGET = 0.9;
 // F15: one counting-fluency rule, shared with the Drills picker.
 export { COUNT_RUNS_JUDGED, COUNT_RUNS_NEEDED } from '../../drills/fluencyGate';
@@ -229,10 +229,7 @@ function repairCard(weak: readonly WeakCell[], sweepDone: boolean): Card | null 
 /** Rung 5: deviations (the Wave A rule, unchanged). */
 function deviationsCard(stats: Stats, rules?: IndexRules): Card | null {
   const active = activeIndices(rules);
-  const unpractised = active.filter((d) => {
-    const t = stats.perIndex[d.id];
-    return (t?.right ?? 0) + (t?.wrong ?? 0) < MIN_INDEX_ANSWERS;
-  });
+  const unpractised = active.filter((d) => !indexPractised(stats, d.id));
   if (unpractised.length > 0) {
     return {
       kind: 'quiz',
@@ -280,9 +277,8 @@ export function ladder(stats: Stats, ctx: LadderContext): Ladder {
   const bets = betRampResult(stats);
   const play = playResult(stats);
   const active = activeIndices(ctx.rules);
-  const practised = active.filter(
-    (d) => (stats.perIndex[d.id]?.right ?? 0) + (stats.perIndex[d.id]?.wrong ?? 0) >= MIN_INDEX_ANSWERS,
-  ).length;
+  // Wave B2 #10: the same figure as Home's readiness tile.
+  const practised = active.filter((d) => indexPractised(stats, d.id)).length;
 
   const playCard: Card = {
     kind: 'play',

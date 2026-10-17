@@ -142,18 +142,21 @@ test('Stats counts the surrender indices it grades and drills', async ({ page })
   await page.getByRole('button', { name: 'Stats' }).first().click();
 
   const rows = page.locator('.index-table tbody tr');
+  // Wave B2 #22 (deliberate change): the table lists the indexes the drills
+  // ask, so the inactive H17 '11 v A' row is gone: 17 + the six Fab 4 = 23.
   await expect(rows, 'the six Fab 4 indices are drilled and tallied with no row to show it')
-    .toHaveCount(24);
+    .toHaveCount(23);
   await expect(page.locator('.index-table')).toContainText('15 v 10: surrender at TC');
 });
 
-test('the index table is 18 rows with the flag off, so the count is not hardcoded', async ({
+test('the index table is 17 rows with the flag off, so the count is not hardcoded', async ({
   page,
 }) => {
   await withProfile(page, { surrenderIndices: false });
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Stats' }).first().click();
-  await expect(page.locator('.index-table tbody tr')).toHaveCount(18);
+  // Wave B2 #22: 17, the H17 set the drills ask (11 v A is inactive under H17).
+  await expect(page.locator('.index-table tbody tr')).toHaveCount(17);
 });
 
 /**

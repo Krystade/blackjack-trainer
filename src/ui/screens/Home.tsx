@@ -104,9 +104,10 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
           </div>
           <div className="readiness-stat">
             <span className="readiness-value">
-              {r.indicesKnown}/{r.indicesTotal}
+              {r.indicesPractised}/{r.indicesTotal}
             </span>
-            <span className="readiness-label">indices seen</span>
+            {/* Wave B2 #10: the ladder's own figure and word. */}
+            <span className="readiness-label">indices practised</span>
           </div>
         </div>
 

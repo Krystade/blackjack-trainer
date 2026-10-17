@@ -3,6 +3,8 @@ import type { Category } from '../../engine/grade';
 import type { HandPrefix } from '../../store/cellStats';
 import { countBits, handWindow, judgedAccuracy } from '../../store/cellStats';
 import type { HandScope } from '../../drills/handScope';
+import { BJA_H17_EXTRAS, FAB_4_H17, FAB_4_S17, ILLUSTRIOUS_18, ILLUSTRIOUS_18_S17 } from '../../engine/deviations';
+import type { Deviation } from '../../engine/deviations';
 
 /**
  * Wave A / W3: the ONE place the hard / soft / pairs figures come from.
@@ -67,6 +69,47 @@ export interface HandCategoryProgress {
   legacy: boolean;
 }
 
+/** The hand category an index's answers can be tallied under (its hand, not its play). */
+const INDEX_CATEGORY: Record<Deviation['kind'], Category | null> = {
+  hard: 'hard',
+  surrender: 'hard',
+  soft: 'soft',
+  pair10: 'pairs',
+  insurance: null,
+};
+let indexIdsByCategory: Map<Category, string[]> | null = null;
+function indexIdsFor(category: Category): string[] {
+  if (!indexIdsByCategory) {
+    indexIdsByCategory = new Map();
+    for (const d of [...ILLUSTRIOUS_18, ...ILLUSTRIOUS_18_S17, ...FAB_4_H17, ...FAB_4_S17, ...BJA_H17_EXTRAS]) {
+      const c = INDEX_CATEGORY[d.kind];
+      if (!c) continue;
+      const ids = indexIdsByCategory.get(c) ?? [];
+      if (!ids.includes(d.id)) ids.push(d.id);
+      indexIdsByCategory.set(c, ids);
+    }
+  }
+  return indexIdsByCategory.get(category) ?? [];
+}
+
+/**
+ * Wave B2 #9: index answers (Deviation quiz, With-count and Play decisions
+ * where an index applied) are tallied in the category AND in perIndex, never
+ * in cellStats (F4). They are not answers from before per-hand tracking, so
+ * they come off the category tally before it is compared with the cells.
+ * Every answer an index of this hand type holds is taken off, an upper bound
+ * (a surrender index's answers may sit under Surrender instead): "older
+ * answers exist" is only said when they surely do.
+ */
+function indexAnswersIn(stats: Stats, category: Category): number {
+  let n = 0;
+  for (const id of indexIdsFor(category)) {
+    const t = stats.perIndex?.[id as keyof Stats['perIndex']];
+    n += (t?.right ?? 0) + (t?.wrong ?? 0);
+  }
+  return n;
+}
+
 export function handCategoryProgress(stats: Stats): HandCategoryProgress[] {
   const cells = Object.entries(stats.cellStats ?? {});
   return HAND_CATEGORIES.map(({ prefix, scope, category, label }) => {
@@ -101,7 +144,7 @@ export function handCategoryProgress(stats: Stats): HandCategoryProgress[] {
       onTarget: !thin && pct >= CATEGORY_TARGET,
       allRight: all.right,
       allN,
-      legacy: allN > n,
+      legacy: allN - indexAnswersIn(stats, category) > n,
     };
   });
 }

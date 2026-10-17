@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { EMPTY_STATS } from '../../store/types';
 import type { Stats } from '../../store/types';
-import { readiness, weakestCategories } from './readiness';
+import { activeIndices, readiness, weakestCategories } from './readiness';
+import { ladder } from './nextStep';
+import { indexTestSet } from '../../drills/indexTest';
+import { indexSetFor } from '../../engine/deviations';
+import { DEFAULT_RULES } from '../../engine/ruleset';
 
 function withCats(cats: Record<string, { right: number; wrong: number }>): Stats {
   const s = structuredClone(EMPTY_STATS);
@@ -28,13 +32,19 @@ describe('readiness', () => {
     expect(readiness(withCats({ hard: { right: 0, wrong: 0 } })).accuracyPct).toBeNull();
   });
 
-  it('counts an index as known once it has been answered right', () => {
+  // Wave B2 #10 (deliberate change): the tile used to count indexes answered
+  // RIGHT once ("seen"), beside the ladder's "practised" (3+ answers), so four
+  // misses read "1/17 practised" over "0/17 seen". One figure now.
+  it('counts an index as practised from three answers, right or wrong, as the ladder does', () => {
     const s = structuredClone(EMPTY_STATS);
     s.perIndex['16v10'] = { right: 1, wrong: 0 };
     s.perIndex['15v10'] = { right: 0, wrong: 3 };
+    s.perIndex['12v3'] = { right: 0, wrong: 4 };
     const r = readiness(s);
-    expect(r.indicesKnown).toBe(1);
-    expect(r.indicesTotal).toBeGreaterThan(10);
+    expect(r.indicesPractised).toBe(2);
+    expect(r.indicesTotal).toBe(17);
+    const rung = ladder(s, { sweepDone: true }).rungs.find((x) => x.id === 'deviations')!;
+    expect(rung.progress).toBe(`${r.indicesPractised}/${r.indicesTotal} indices practised`);
   });
 });
 
@@ -42,9 +52,37 @@ describe('readiness index set (F11)', () => {
   it('follows the profile: H17 17, S17 18 (11vA), and the Fab 4 on top', () => {
     const s = structuredClone(EMPTY_STATS);
     s.perIndex['11vA'] = { right: 1, wrong: 0 };
-    expect(readiness(s, { decks: 6, s17: false })).toMatchObject({ indicesTotal: 17, indicesKnown: 0 });
-    expect(readiness(s, { decks: 6, s17: true })).toMatchObject({ indicesTotal: 18, indicesKnown: 1 });
+    s.perIndex['11vA'] = { right: 3, wrong: 0 };
+    expect(readiness(s, { decks: 6, s17: false })).toMatchObject({ indicesTotal: 17, indicesPractised: 0 });
+    expect(readiness(s, { decks: 6, s17: true })).toMatchObject({ indicesTotal: 18, indicesPractised: 1 });
     expect(readiness(s, { decks: 6, s17: true, surrenderIndices: true }).indicesTotal).toBe(18 + 4);
+  });
+});
+
+describe('Wave B2 #22: Home counts the indexes the drills ask', () => {
+  const rules = (r: object) => ({ ...DEFAULT_RULES, ...r });
+  it.each([
+    ['H17', {}],
+    ['H17 with BJA extras', { bjaExtras: true }],
+    ['H17 with Fab 4 and extras', { surrenderIndices: true, bjaExtras: true }],
+    ['S17 with Fab 4', { s17: true, surrenderIndices: true }],
+    ['2-deck H17', { decks: 2 }],
+  ])('%s: the total is the Index test set, inactive and chart-played indexes left out', (_n, r) => {
+    const asked = indexTestSet(rules(r)).map((d) => d.id).sort();
+    expect(activeIndices(rules(r)).map((d) => d.id).sort()).toEqual(asked);
+    expect(readiness(structuredClone(EMPTY_STATS), rules(r)).indicesTotal).toBe(asked.length);
+    // No inactive index is counted.
+    const inactive = indexSetFor(rules(r)).filter((d) => !d.active).map((d) => d.id);
+    for (const id of inactive) expect(asked).not.toContain(id);
+  });
+  it('2-deck H17: 9 v 2 is never asked there, so it is not in the total (16, not 17)', () => {
+    expect(readiness(structuredClone(EMPTY_STATS), rules({ decks: 2 })).indicesTotal).toBe(16);
+    expect(activeIndices(rules({ decks: 2 })).map((d) => d.id)).not.toContain('9v2');
+  });
+  it('an inactive index with tallies does not count toward practised', () => {
+    const s = structuredClone(EMPTY_STATS);
+    s.perIndex['11vA'] = { right: 5, wrong: 0 };
+    expect(readiness(s, rules({}))).toMatchObject({ indicesPractised: 0, indicesTotal: 17 });
   });
 });
 
