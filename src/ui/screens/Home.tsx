@@ -7,6 +7,7 @@ import { CATEGORY_LABELS } from './categoryLabels';
 import { masterySweepDone, nextStep } from './nextStep';
 import { loadMasteryRun } from '../../drills/masteryChallenge';
 import { launchSettings, setDrillLaunch } from '../drillLaunch';
+import { strategyRulesFor } from '../../store/profiles';
 import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, pctDown } from './handProgress';
 import './nextStep.css';
 
@@ -40,11 +41,14 @@ function secs(ms: number | null): string {
  */
 export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: HomeProps) {
   const stats = loadStats();
-  const r = readiness(stats);
+  // F11: the index set the active profile is graded on (S17, Fab 4).
+  const gradedRules = strategyRulesFor(activeProfile);
+  const r = readiness(stats, gradedRules);
   const weak = weakestCategories(stats);
   // #28: one recommendation, with its reason.
   const step = nextStep(stats, {
     sweepDone: (stats.masterySweepsCompleted ?? 0) > 0 || masterySweepDone(loadMasteryRun()),
+    rules: gradedRules,
   });
   const openStep = () => {
     if (step.kind === 'play') {

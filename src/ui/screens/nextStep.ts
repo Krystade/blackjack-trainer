@@ -1,11 +1,13 @@
 import type { Stats } from '../../store/types';
-import { ILLUSTRIOUS_18 } from '../../engine/deviations';
 import { hydrateMasteryRun, isMasteryRunComplete } from '../../drills/masteryChallenge';
 import type { MasteryRun, PersistedMasteryRun } from '../../drills/masteryChallenge';
 import { generateAllCells } from '../../drills/flashcards';
 import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, WEAK_CELL_BELOW, handCategoryProgress, pctDown, weakCells } from './handProgress';
 import type { HandCategoryProgress, WeakCell } from './handProgress';
 import type { HandScope } from '../../drills/handScope';
+import { activeIndices } from './readiness';
+import { COUNT_RUNS_JUDGED, COUNT_RUNS_NEEDED, countFluency } from '../../drills/fluencyGate';
+import type { IndexRules } from './readiness';
 
 /**
  * #28: the ONE thing Home recommends next, and why. The first step in this
@@ -20,8 +22,9 @@ import type { HandScope } from '../../drills/handScope';
  *  3. mastery -- a Mastery sweep, until one has been completed.
  *  4. quiz    -- Deviations: until every active index has at least
  *                MIN_INDEX_ANSWERS answers and they are >= 90% together.
- *  5. count   -- Counting: until COUNT_RUNS_JUDGED count runs have been done
- *                and at least COUNT_RUNS_NEEDED of the last ones were right.
+ *  5. count   -- Counting: until COUNT_RUNS_NEEDED of the last
+ *                COUNT_RUNS_JUDGED paced, deck-long runs were right (F15:
+ *                the Drills picker's fluency rule, drills/fluencyGate.ts).
  *  6. play    -- Play a shoe.
  *
  * Per-cell figures are B3's cellStats (every hand drill and Play), so a
@@ -54,8 +57,8 @@ export interface NextStep {
 export { MIN_CATEGORY_ANSWERS, CATEGORY_TARGET, MIN_CELL_ANSWERS, WEAK_CELL_BELOW } from './handProgress';
 export const MIN_INDEX_ANSWERS = 3;
 export const INDEX_TARGET = 0.9;
-export const COUNT_RUNS_JUDGED = 5;
-export const COUNT_RUNS_NEEDED = 4;
+// F15: one counting-fluency rule, shared with the Drills picker.
+export { COUNT_RUNS_JUDGED, COUNT_RUNS_NEEDED } from '../../drills/fluencyGate';
 
 /**
  * Whether the saved Mastery run is a finished sweep of the WHOLE chart. Only
@@ -99,7 +102,14 @@ function weakCellsStep(weak: readonly WeakCell[], lead: string, progress?: HandC
   };
 }
 
-export function nextStep(stats: Stats, opts: { sweepDone: boolean }): NextStep {
+export function nextStep(
+  stats: Stats,
+  opts: {
+    sweepDone: boolean;
+    /** F11: the active profile's graded rules, so the deviations step counts its own index set. */
+    rules?: IndexRules;
+  },
+): NextStep {
   // 1. Basic strategy, category by category (W3: judged on the recent
   // window, see handProgress). Too few answers to judge comes first: it is
   // the reason the percentage cannot be trusted yet.
@@ -153,7 +163,7 @@ export function nextStep(stats: Stats, opts: { sweepDone: boolean }): NextStep {
   }
 
   // 4. Deviations.
-  const active = ILLUSTRIOUS_18.filter((d) => d.active);
+  const active = activeIndices(opts.rules);
   const unpractised = active.filter((d) => {
     const t = stats.perIndex[d.id];
     return (t?.right ?? 0) + (t?.wrong ?? 0) < MIN_INDEX_ANSWERS;
@@ -180,17 +190,17 @@ export function nextStep(stats: Stats, opts: { sweepDone: boolean }): NextStep {
     };
   }
 
-  // 5. Counting.
-  const runs = stats.countDrill.history.slice(-COUNT_RUNS_JUDGED);
-  const right = runs.filter((r) => r.correct).length;
-  if (runs.length < COUNT_RUNS_JUDGED || right < COUNT_RUNS_NEEDED) {
+  // 5. Counting. F15: the same rule as the Drills picker's fluency nudge
+  // (drills/fluencyGate.ts): paced runs of at least a deck.
+  const fluency = countFluency(stats.countDrill.history);
+  if (!fluency.fluent) {
     return {
       kind: 'count',
       title: 'Practise counting',
       why:
-        runs.length < COUNT_RUNS_JUDGED
-          ? `${runs.length} of ${COUNT_RUNS_JUDGED} count drill runs done.`
-          : `${right} of your last ${COUNT_RUNS_JUDGED} count runs were right; aim for ${COUNT_RUNS_NEEDED}.`,
+        fluency.judged < COUNT_RUNS_JUDGED
+          ? `${fluency.judged} of ${COUNT_RUNS_JUDGED} count drill runs done (dealt at a set pace, a deck or more).`
+          : `${fluency.right} of your last ${COUNT_RUNS_JUDGED} count runs were right; aim for ${COUNT_RUNS_NEEDED}.`,
     };
   }
 

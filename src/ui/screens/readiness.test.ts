@@ -38,6 +38,16 @@ describe('readiness', () => {
   });
 });
 
+describe('readiness index set (F11)', () => {
+  it('follows the profile: H17 17, S17 18 (11vA), and the Fab 4 on top', () => {
+    const s = structuredClone(EMPTY_STATS);
+    s.perIndex['11vA'] = { right: 1, wrong: 0 };
+    expect(readiness(s, { decks: 6, s17: false })).toMatchObject({ indicesTotal: 17, indicesKnown: 0 });
+    expect(readiness(s, { decks: 6, s17: true })).toMatchObject({ indicesTotal: 18, indicesKnown: 1 });
+    expect(readiness(s, { decks: 6, s17: true, surrenderIndices: true }).indicesTotal).toBe(18 + 4);
+  });
+});
+
 describe('weakestCategories', () => {
   it('ignores categories with too few attempts to mean anything', () => {
     // One miss out of one is not evidence of a weakness.

@@ -1,6 +1,6 @@
 import type { Stats } from '../../store/types';
 import { medianLatency } from '../../store/drillStats';
-import { ILLUSTRIOUS_18 } from '../../engine/deviations';
+import { indexSetFor } from '../../engine/deviations';
 import { CATEGORY_TARGET, handCategoryProgress } from './handProgress';
 
 /**
@@ -24,12 +24,21 @@ export interface Readiness {
   decisions: number;
 }
 
-export function readiness(stats: Stats): Readiness {
+/** The rule fields the index set depends on (F11). Default: the 6D H17 set. */
+export type IndexRules = { decks: number; s17: boolean; surrenderIndices?: boolean };
+const DEFAULT_INDEX_RULES: IndexRules = { decks: 6, s17: false };
+
+/** F11: the indices a profile is graded on -- its own set, not always H17's. */
+export function activeIndices(rules: IndexRules = DEFAULT_INDEX_RULES) {
+  return indexSetFor(rules).filter((d) => d.active);
+}
+
+export function readiness(stats: Stats, rules?: IndexRules): Readiness {
   const right = Object.values(stats.categories).reduce((n, c) => n + c.right, 0);
   const wrong = Object.values(stats.categories).reduce((n, c) => n + c.wrong, 0);
   const decisions = right + wrong;
 
-  const active = ILLUSTRIOUS_18.filter((d) => d.active);
+  const active = activeIndices(rules);
   const indicesKnown = active.filter((d) => (stats.perIndex[d.id]?.right ?? 0) > 0).length;
 
   return {

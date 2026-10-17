@@ -155,6 +155,22 @@ describe('nextStep (#28)', () => {
     expect(nextStep(withIndices(learned(), { right: 9, wrong: 1 }), { sweepDone: true }).kind).toBe('count');
   });
 
+  it('F11: the deviations step counts the index set of the profile', () => {
+    // Every H17 index practised: under H17 that is done; under S17, 11vA is
+    // active and unpractised, so the step stays on the deviations.
+    const s = withIndices(learned(), { right: 10, wrong: 0 });
+    expect(nextStep(s, { sweepDone: true, rules: { decks: 6, s17: false } }).kind).toBe('count');
+    const s17 = nextStep(s, { sweepDone: true, rules: { decks: 6, s17: true } });
+    expect(s17.kind).toBe('quiz');
+    expect(s17.why).toMatch(/^1 of 18 indices/);
+  });
+
+  it('F15: short or self-paced count runs do not count toward the counting step', () => {
+    const s = withIndices(learned(), { right: 10, wrong: 0 });
+    s.countDrill.history = Array.from({ length: 5 }, () => ({ date: '', cards: 20, intervalMs: 700, correct: true }));
+    expect(nextStep(s, { sweepDone: true }).why).toMatch(/^0 of 5 count drill runs/);
+  });
+
   it('5: counting until 4 of the last 5 runs are right', () => {
     const base = () => withIndices(learned(), { right: 10, wrong: 0 });
     expect(nextStep(withCountRuns(base(), [true, true, true, true]), { sweepDone: true }).kind).toBe('count');
