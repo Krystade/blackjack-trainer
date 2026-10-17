@@ -62,6 +62,8 @@ import { dealerFeltRow, playerFeltLayout, type FeltRow } from '../feltLayout';
 import { useViewportWidth } from '../useViewportWidth';
 import { DEAL_WORDS, isDealWord } from '../dealWord';
 import './feltWrap.css';
+import './tableVoiceFit.css';
+import './countSheetBanner.css';
 
 /** B5/W4: the row's card slots and fixed chrome, for cardSize.css's clamp. */
 function feltStyle(row: FeltRow): CSSProperties {
@@ -1175,6 +1177,23 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
 
       {game.countCheckOpen && (
         <BottomSheet title={countStage === 'rc' ? 'Running count?' : 'True count?'}>
+          {/* C-R10c: the sheet is stuck to the bottom and covers the felt's
+              round banner at 375x812, so the round's result is repeated here
+              -- the hand just played is what the count is asked after. */}
+          {game.phase === 'settled' && (
+            <p className="count-sheet-banner" data-testid="count-sheet-banner">
+              {game.hands.length === 0
+                ? 'Sat out — no bet.'
+                : game.hands
+                    .map((h, i) => ({ h, i }))
+                    .reverse()
+                    .map(({ h, i }) => {
+                      const b = roundBanner(h, handPlayNumber(i, game.hands.length), multiHand, game.dealerCards, game.holeRevealed);
+                      return `${b.head} · ${b.totals}`;
+                    })
+                    .join(' / ')}
+            </p>
+          )}
           {/* The spoken proposal, shown as well as said. A driver glancing
               at the screen at a light should be able to see what the app
               thinks it heard, and a passenger should be able to correct it

@@ -1,0 +1,25 @@
+/*
+ * C-R10b: with voice on, the voice strip (state, heard line, the words to say,
+ * the earpiece note -- about 150px at 375 wide) pushed the action bar below
+ * the screen on a 375x812 phone with the notch insets. The table screen is
+ * only a min-height column, so it grew instead of fitting.
+ *
+ * While the strip is showing, the column is held to the visible height and
+ * the STRIP is the one part that gives way: it shrinks (scrolling inside
+ * itself) and nothing else does -- cards, the message line, the peek dock
+ * and the action bar keep their size.
+ */
+.table-screen:has(> .voice-status) {
+  height: calc(100svh - var(--chrome-top, 0px));
+}
+
+.table-screen:has(> .voice-status) > * {
+  flex-shrink: 0;
+}
+
+.table-screen > .voice-status {
+  flex: 0 1 auto;
+  min-height: 2.4rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

@@ -473,7 +473,7 @@ button {
   margin-top: auto;
   display: flex;
   gap: 0.25rem; /* 0.35rem left "Surrender" a pixel short on a 375px phone */
-  padding: 0.6rem max(0.5rem, env(safe-area-inset-left)) calc(0.6rem + env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-right));
+  padding: 0.6rem max(0.5rem, env(safe-area-inset-left)) calc(0.6rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px))) max(0.5rem, env(safe-area-inset-right));
   background: var(--bg-sunken);
   border-top: 1px solid var(--raised);
   box-sizing: border-box;
