@@ -3,6 +3,8 @@ import {
   cellsForScope,
   startMasteryRun,
   advanceMasteryRun,
+  MASTERY_MISS_RETRY_AT,
+  placeMissedEarly,
   isMasteryRunComplete,
   currentCellId,
   hydrateMasteryRun,
@@ -278,5 +280,23 @@ describe('#29: the sweep is a seeded weighted shuffle by the flashcard SR weight
       expect(reset.index).toBe(0);
     }
     expect(first).toBeGreaterThan(80);
+  });
+});
+
+describe('Wave A F16: the missed cell comes back early in the next sweep', () => {
+  it('puts the just-missed cell at MASTERY_MISS_RETRY_AT for every seed', () => {
+    for (let seed = 1; seed < 60; seed++) {
+      let run = startMasteryRun(ids('all'), seed);
+      for (let k = 0; k < seed % 40; k++) run = advanceMasteryRun(run, true, 0);
+      const missed = run.order[run.index]!;
+      const reset = advanceMasteryRun(run, false, seed * 7 + 3);
+      expect(reset.order.indexOf(missed)).toBe(MASTERY_MISS_RETRY_AT);
+      expect([...reset.order].sort()).toEqual([...run.order].sort());
+    }
+  });
+  it('placeMissedEarly copes with a short run and an unknown cell', () => {
+    expect(placeMissedEarly(['a', 'b'], 'b')).toEqual(['a', 'b']);
+    expect(placeMissedEarly(['a', 'b', 'c', 'd'], 'a')).toEqual(['b', 'c', 'a', 'd']);
+    expect(placeMissedEarly(['a', 'b'], 'z')).toEqual(['a', 'b']);
   });
 });

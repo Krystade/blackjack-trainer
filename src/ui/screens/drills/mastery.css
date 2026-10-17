@@ -1,0 +1,7 @@
+/* Wave A (s10): a sweep in progress resumed over cells other than the Hands
+   picked now (the scope is shared with Flashcards and Speed). */
+.mastery-resumed {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--ink-dim);
+}

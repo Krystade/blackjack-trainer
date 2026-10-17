@@ -195,3 +195,35 @@ test('mastery #29: an overdue cell comes early in a new sweep', async ({ page })
   expect(order).toHaveLength(100);
   expect(order.indexOf('pair-8-v-A')).toBeLessThan(5);
 });
+
+/**
+ * Wave A (s10 high): the Hands scope is shared with Speed and Flashcards.
+ * Tapping Pairs in Speed used to overwrite a 61/330 sweep the moment Mastery
+ * opened. The sweep in progress now carries on over its own cells.
+ */
+test('mastery: a scope changed elsewhere does not destroy a sweep in progress', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return;
+    sessionStorage.setItem('seeded', '1');
+    window.localStorage.setItem('bjtrainer.masteryrun.v1', JSON.stringify({ scope: 'all', seed: 12345, index: 61 }));
+    window.localStorage.setItem('bjtrainer.settings.v1', JSON.stringify({ version: 1, drill: { scopes: ['pairs'] } }));
+  });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
+  await expect(page.getByTestId('mastery-progress')).toContainText('61 / 330 cleared');
+  await expect(page.getByTestId('mastery-resumed')).toBeVisible();
+  const stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('bjtrainer.masteryrun.v1') ?? '{}'));
+  expect(stored.index).toBe(61);
+  expect(stored.order).toHaveLength(330);
+
+  // Back to All: the same sweep, not a new one.
+  const scopeRow = page.locator('.settings-row', { hasText: 'Hands' });
+  await scopeRow.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(page.getByTestId('mastery-progress')).toContainText('61 / 330 cleared');
+  await expect(page.getByTestId('mastery-resumed')).toHaveCount(0);
+
+  // Changing Hands here is the explicit way to start over.
+  await scopeRow.getByRole('button', { name: 'Pairs', exact: true }).click();
+  await expect(page.getByTestId('mastery-progress')).toContainText('0 / 100 cleared');
+});
