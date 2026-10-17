@@ -282,23 +282,24 @@ test.describe('at 375x812', () => {
     await expect(page.locator('.charts-back-btn')).toBeInViewport({ ratio: 1 });
   });
 
-  test('#24: the disc is not moved on other screens', async ({ page }) => {
+  test('the disc sits on the same seat line on Home, Drills and Charts', async ({ page }) => {
     await withSettings(page, { audio: { enabled: true } });
     await page.goto('/?e2e=1');
-    // Elsewhere it stays at the very top of its reserved strip (no status-bar
-    // inset in a headless browser, so that is y = 0); only a chart nudges it
-    // down to the centre of the header bar.
+    // B1: there is no strip any more. Home's title row, the Drills picker and
+    // Charts' 56px bar share one seat line, (56 - 44) / 2 = 6px below the
+    // status-bar inset (0 in a headless browser), so the disc does not jump
+    // between them.
     const discTop = async () => (await page.locator('.mute-btn').boundingBox())!.y;
-    expect(await discTop(), 'Home').toBe(0);
+    expect(await discTop(), 'Home').toBe(6);
     await page.getByRole('button', { name: 'Drills', exact: true }).click();
     await expect(page.locator('.drills-picker')).toBeVisible();
-    expect(await discTop(), 'Drills').toBe(0);
+    expect(await discTop(), 'Drills').toBe(6);
     await page.getByRole('button', { name: 'Charts', exact: true }).click();
     await expect(page.locator('.charts-topbar')).toBeVisible();
-    expect(await discTop(), 'Charts').toBeGreaterThan(0);
+    expect(await discTop(), 'Charts').toBe(6);
     await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
     await expect(page.locator('.drills-picker')).toBeVisible();
-    expect(await discTop(), 'back on Drills').toBe(0);
+    expect(await discTop(), 'back on Drills').toBe(6);
   });
 });
 

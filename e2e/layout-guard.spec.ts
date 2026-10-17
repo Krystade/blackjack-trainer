@@ -1,91 +1,192 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { withSettings, openSettingsScreen } from './helpers';
+import { withSettings, withStats, openSettingsScreen, statsTab, shot } from './helpers'; // Task 2 adds openCountOptions
 
 /**
  * Cross-cutting layout guards at 375x812 (iPhone 13 mini).
  *
- * 1. The global mute button must never overlap a real control. It used to
- *    float bottom-left and covered Deal, Back to Home, the numpad minus key
- *    and the chip rows. It now lives in a strip the body reserves above every
- *    screen, so these specs measure boxes instead of trusting that.
+ * 1. B1 (D3): the global mute control sits in each screen's top bar, not in a
+ *    44px strip above every screen. On every screen, scrolled to the top and
+ *    to the bottom, no control and no heading text may be visible under the
+ *    disc, and no text may paint under the status bar. Run at no inset, at
+ *    the 13 mini's 47px inset, and at 375x667 (Safari with its toolbars up,
+ *    where the disc shrinks to 32px).
  * 2. Controls the operator hits one-handed are at least 44px in both axes.
  */
 test.use({ viewport: { width: 375, height: 812 } });
 
 const MUTE = '[data-testid~="mute-btn"]';
 
-/** Interactive elements the mute button's box intersects (should be none). */
-async function muteOverlaps(page: Page): Promise<string[]> {
-  await expect(page.locator(MUTE)).toBeVisible();
-  return page.evaluate((sel) => {
-    const m = document.querySelector(sel)!.getBoundingClientRect();
-    const out: string[] = [];
-    const els = document.querySelectorAll(
-      'button, input, select, textarea, a[href], [role="button"], [role="switch"]',
-    );
-    for (const el of els) {
-      if (el.matches(sel)) continue;
-      const r = el.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) continue;
-      if (getComputedStyle(el).visibility === 'hidden') continue;
-      const hit = m.left < r.right && r.left < m.right && m.top < r.bottom && r.top < m.bottom;
-      if (hit) out.push(`${el.tagName}.${el.className} "${(el.textContent ?? '').trim().slice(0, 20)}"`);
-    }
-    return out;
-  }, MUTE);
-}
-
-async function expectClear(page: Page, where: string): Promise<void> {
-  expect(await muteOverlaps(page), `mute button overlaps a control on ${where}`).toEqual([]);
-}
-
 async function openDrill(page: Page, name: string): Promise<void> {
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name, exact: true }).click();
 }
 
-test('mute button clears every control: Home, Table, drills', async ({ page }) => {
-  await withSettings(page, { audio: { enabled: true }, feedbackMode: 'test', countCheckEvery: 0 });
-  await page.goto('/?seed=4&e2e=1');
-  await expectClear(page, 'Home');
+const INTERACTIVE = 'button, input, select, textarea, a[href], [role="button"], [role="switch"], summary';
+const HEADING = 'h1, h2, h3, [class*="heading"], [class*="title"]';
 
-  // Table: bet screen, dealt, report.
-  await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await expectClear(page, 'Table (bet)');
-  await page.getByRole('button', { name: 'Deal', exact: true }).click();
-  await expect(page.locator('.action-bar')).toBeVisible();
-  await expectClear(page, 'Table (dealt)');
-  await page.locator('.end-btn').click(); // arms: the second tap ends
-  await page.locator('.end-btn').click();
-  await expect(page.locator('.report-screen')).toBeVisible();
-  await expectClear(page, 'Session report');
-  await page.getByRole('button', { name: /Back to Home/ }).click();
+/** Controls or heading WORDS visible under the disc (topmost at the overlap). [] = clear. */
+async function discOffenders(page: Page): Promise<string[]> {
+  return page.evaluate(([MUTE_SEL, INT, HEAD]) => {
+    const disc = document.querySelector(MUTE_SEL);
+    if (!disc) return ['no mute button'];
+    const d = disc.getBoundingClientRect();
+    if (d.bottom <= 0) return []; // scrolled away with the top of the page (absolute mode)
+    const visibleAt = (el: Element, x: number, y: number) => {
+      const top = document.elementsFromPoint(x, y).find((e) => !e.closest(MUTE_SEL));
+      return !!top && (top === el || el.contains(top));
+    };
+    const hit = (r: DOMRect) => {
+      const l = Math.max(r.left, d.left), t = Math.max(r.top, d.top);
+      const rr = Math.min(r.right, d.right), b = Math.min(r.bottom, d.bottom);
+      return rr > l && b > t ? [(l + rr) / 2, (t + b) / 2] : null;
+    };
+    const out = new Set<string>();
+    for (const el of document.querySelectorAll(INT)) {
+      if (el.closest(MUTE_SEL)) continue;
+      const p = hit(el.getBoundingClientRect());
+      if (p && visibleAt(el, p[0]!, p[1]!)) out.add(`control ${el.tagName}.${el.className} "${(el.textContent ?? '').trim().slice(0, 24)}"`);
+    }
+    for (const el of document.querySelectorAll(HEAD)) {
+      for (const node of el.childNodes) {
+        if (node.nodeType !== Node.TEXT_NODE || !node.textContent!.trim()) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const r of range.getClientRects()) {
+          const p = hit(r);
+          if (p && visibleAt(el, p[0]!, p[1]!)) out.add(`heading .${el.className} "${node.textContent!.trim().slice(0, 24)}"`);
+        }
+      }
+    }
+    return [...out];
+  }, [MUTE, INTERACTIVE, HEADING] as const);
+}
 
-  // True count drill numpad.
-  await openDrill(page, 'True count drill');
-  await page.getByRole('button', { name: 'Start', exact: true }).click();
-  await expect(page.locator('.numpad')).toBeVisible();
-  await expectClear(page, 'True count numpad');
+/** Visible text painted above `inset` (the status bar). [] = clear. */
+async function statusBarOffenders(page: Page, inset: number): Promise<string[]> {
+  if (inset === 0) return [];
+  return page.evaluate((inset) => {
+    const out = new Set<string>();
+    for (const el of document.querySelectorAll('body *')) {
+      for (const node of el.childNodes) {
+        if (node.nodeType !== Node.TEXT_NODE || !node.textContent!.trim()) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const r of range.getClientRects()) {
+          if (r.height === 0 || r.bottom <= 0 || r.top >= inset) continue;
+          const x = Math.min(Math.max(r.left + 2, 0), innerWidth - 1);
+          const y = Math.max(r.top, 0) + 1;
+          const top = document.elementsFromPoint(x, y)[0];
+          if (top && (top === el || el.contains(top))) out.add(`${el.className || el.tagName} "${node.textContent!.trim().slice(0, 24)}"`);
+        }
+      }
+    }
+    return [...out];
+  }, inset);
+}
 
-  // Deck estimation.
-  await page.goto('/?e2e=1');
-  await openDrill(page, 'Deck estimation');
-  await page.getByRole('button', { name: 'Start', exact: true }).click();
-  await expect(page.locator('.deck-guess-btn').first()).toBeVisible();
-  await expectClear(page, 'Deck estimation');
-});
+async function checkScreen(page: Page, name: string, inset: number): Promise<void> {
+  for (const where of ['top', 'bottom'] as const) {
+    if (where === 'bottom') {
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+    }
+    expect(await discOffenders(page), `${name} (${where}): under the mute control`).toEqual([]);
+    expect(await statusBarOffenders(page, inset), `${name} (${where}): under the status bar`).toEqual([]);
+    if (process.env.B1_SHOTS) await shot(page, `b1-${inset}-${name.replace(/\W+/g, '-')}-${where}`);
+  }
+}
 
-test('mute button clears controls on the scrolling tab screens too', async ({ page }) => {
+const SEED = {
+  cellStats: {
+    'hard-16-v-10': { right: 30, wrong: 0, lastAt: '' },
+    'soft-18-v-9': { right: 30, wrong: 0, lastAt: '' },
+    'pair-8-v-A': { right: 30, wrong: 0, lastAt: '' },
+  },
+  masterySweepsCompleted: 1,
+  countDrill: { history: Array.from({ length: 12 }, (_, i) => ({ date: new Date(Date.UTC(2026, 9, 1, 10, i)).toISOString(), cards: 52, intervalMs: 700, correct: i % 3 !== 0 })) },
+  sessions: [{ date: '2026-10-01T10:00:00.000Z', rounds: 40, graded: 60, correct: 55, bankrollDelta: -3 }],
+};
+
+const tab = (page: Page, name: string) => page.locator('.tab-bar').getByRole('button', { name, exact: true }).click();
+
+/** Every screen at 375 wide. Task 2 appends the screens other lanes own. */
+const SCREENS: { name: string; open: (page: Page) => Promise<void> }[] = [
+  { name: 'Home', open: async () => {} },
+  { name: 'Stats Play', open: async (p) => { await p.locator('.home-stats-link').click(); } },
+  { name: 'Stats Drills', open: async (p) => { await p.locator('.home-stats-link').click(); await statsTab(p, 'Drills'); } },
+  { name: 'Stats Progress', open: async (p) => { await p.locator('.home-stats-link').click(); await statsTab(p, 'Progress'); } },
+  { name: 'Settings', open: (p) => openSettingsScreen(p) },
+  { name: 'Profiles', open: async (p) => { await p.locator('.home-profile-chip').click(); } },
+  { name: 'Profile editor', open: async (p) => { await p.locator('.home-profile-chip').click(); await p.getByRole('button', { name: 'Edit', exact: true }).first().click(); } },
+  { name: 'Test kit', open: async (p) => { await openSettingsScreen(p); await p.getByTestId('settings-testkit-open').click(); } },
+  { name: 'Field test gate', open: async (p) => { await openSettingsScreen(p); await p.getByTestId('settings-testkit-open').click(); await p.getByTestId('fieldtest-open').click(); } },
+  { name: 'Charts (from Home)', open: (p) => tab(p, 'Charts') },
+];
+
+for (const [label, inset, height] of [['inset 0', 0, 812], ['inset 47', 47, 812], ['short 667', 0, 667]] as const) {
+  test(`B1: nothing under the mute control or the status bar, scrolled or not (${label})`, async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: 375, height });
+    await withSettings(page, { audio: { enabled: true } });
+    await withStats(page, SEED);
+    if (inset > 0) {
+      await page.addInitScript((px) => {
+        document.addEventListener('DOMContentLoaded', () => {
+          const s = document.createElement('style');
+          s.textContent = `:root { --safe-top: ${px}px; }`;
+          document.head.appendChild(s);
+        });
+      }, inset);
+    }
+    for (const s of SCREENS) {
+      await page.goto('/?e2e=1&seed=4');
+      await s.open(page);
+      await checkScreen(page, s.name, inset);
+    }
+  });
+}
+
+test('B1: the 44px strip is gone; the reclaimed space is content', async ({ page }) => {
   await withSettings(page, { audio: { enabled: true } });
   await page.goto('/?e2e=1');
-  for (const tab of ['Drills', 'Charts', 'Stats', 'Settings']) {
-    if (tab === 'Settings') await openSettingsScreen(page);
-    else await page.locator('.tab-bar').getByRole('button', { name: tab, exact: true }).click();
-    await expectClear(page, tab);
+  expect(await page.evaluate(() => getComputedStyle(document.body).paddingTop)).toBe('0px');
+  const head = await page.locator('.home-head').boundingBox();
+  expect(head!.y).toBeLessThan(44);
+  for (const open of [() => page.locator('.home-stats-link').click(), () => openSettingsScreen(page)]) {
+    await page.goto('/?e2e=1');
+    await open();
+    const bar = page.locator('.stats-topbar, .settings-topbar').first();
+    const [b, d] = [await bar.boundingBox(), await page.locator(MUTE).boundingBox()];
+    expect(d!.y, 'the disc sits inside the bar').toBeGreaterThanOrEqual(b!.y - 0.5);
+    expect(d!.y + d!.height).toBeLessThanOrEqual(b!.y + b!.height + 0.5);
   }
-  await page.getByRole('button', { name: 'Home', exact: true }).first().click();
-  await page.locator('.home-stats-link').click();
-  await expectClear(page, 'Stats');
+});
+
+/**
+ * Home has no bar, so the disc must leave with the top of the page rather than
+ * float over what scrolls up to it, and go under the status-bar strip as it
+ * leaves rather than be drawn over the clock. The tour above cannot see either
+ * yet: today's Home scrolls too little for anything it counts to reach the
+ * disc. 375x667 at the 47px inset, where Home scrolls well past 30px.
+ */
+test('B1: with no bar, the disc scrolls away with the page and under the status bar (Home)', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await withSettings(page, { audio: { enabled: true } });
+  await page.goto('/?e2e=1');
+  await page.addStyleTag({ content: ':root { --safe-top: 47px; }' });
+  const disc = page.locator(MUTE);
+  const before = (await disc.boundingBox())!;
+  expect(before.y, 'at rest the disc sits below the status bar').toBeGreaterThanOrEqual(47);
+  await page.evaluate(() => window.scrollTo(0, 30));
+  expect(await page.evaluate(() => window.scrollY), 'Home must scroll for this to mean anything').toBe(30);
+  const after = (await disc.boundingBox())!;
+  expect(after.y, 'the disc moved up with the page').toBeCloseTo(before.y - 30, 0);
+  expect(after.y, 'and is now partly inside the status bar').toBeLessThan(40);
+  const onTopInStatusBar = await page.evaluate((sel) => {
+    const r = document.querySelector(sel)!.getBoundingClientRect();
+    return document.elementsFromPoint(r.left + r.width / 2, 40)[0]?.closest(sel) ? 'disc' : 'strip';
+  }, MUTE);
+  expect(onTopInStatusBar, 'what is on top where the disc meets the status bar').toBe('strip');
 });
 
 test('hit targets are at least 44px', async ({ page }) => {

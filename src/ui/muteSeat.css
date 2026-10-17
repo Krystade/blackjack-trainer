@@ -1,0 +1,85 @@
+/*
+ * B1 (D3): THE MUTE DISC SITS IN EACH SCREEN'S TOP BAR, NOT IN A STRIP.
+ *
+ * The disc used to live in a 44px strip that `body` reserved above every
+ * screen (primitives.css, `--mute-h`). The strip was transparent and the page
+ * scrolled under it, so sticky bars slid beneath the disc, and the 44px it
+ * cost was dead space on every screen. Jack chose (D3) to drop the strip and
+ * give the disc a seat in each top bar instead, the way Charts has done since
+ * #24 (charts.css): an opaque bar, pinned below the status bar, with its
+ * right-hand end (`--mute-seat`) kept free for the disc.
+ *
+ * TWO MODES, because not every screen has a bar:
+ *   - Sticky bar (Stats, Settings, Profiles and the profile editor, the test
+ *     kit; Charts in charts.css): the shell's single fixed `.mute-btn` sits on
+ *     the bar's control line, and the bar keeps the seat free. Content scrolls
+ *     under the bar, never under the disc.
+ *   - No bar (Home, the Drills picker, the session report): a fixed disc would
+ *     float over content once the page scrolled, so the disc is
+ *     `position: absolute` and scrolls away with the top of the page. The
+ *     first row of the screen keeps the seat free instead.
+ *
+ * Imported last (App.tsx), so these rules win the cascade over primitives.css,
+ * app.css and the screens' own sheets at equal specificity.
+ */
+
+/* D3: no strip. The seat and the seat line every screen shares. */
+:root {
+  --mute-h: 0px;                                      /* D3: the strip is gone (overrides primitives.css, incl. its <700px block) */
+  --mute-seat: calc(var(--mute-disc, 44px) + 16px);   /* disc + 8px either side, kept free at the right of every top bar */
+  --topbar-h: calc(48px + 1.2rem);                    /* 0.6rem-padded bars holding 48px controls */
+  --mute-top: calc((56px - var(--mute-disc, 44px)) / 2); /* default seat line: Home head, picker, report, Charts' 56px bar */
+}
+.mute-btn { top: calc(var(--safe-top, 0px) + var(--mute-top)); }
+
+/* The 0.6rem bar family: centre the disc on the bar's 48px control line. */
+body[data-screen='stats'], body[data-screen='settings'], body[data-screen='profiles'],
+body[data-screen='testkit'],
+body[data-screen='drills']:not(:has(.drills-picker)),
+body[data-screen='table']:not(:has(.report-screen)) {
+  --mute-top: calc(0.6rem + (48px - var(--mute-disc, 44px)) / 2);
+}
+
+/* No bar: the disc scrolls away with the top of the page instead of floating over content. */
+body[data-screen='home'] .mute-btn,
+body:has(.drills-picker) .mute-btn,
+body:has(.report-screen) .mute-btn { position: absolute; }
+
+/* No bar, so nothing of the screen's own covers the status bar: the page
+   scrolls up beneath the shell's opaque strip (app.css `body::before`).
+   That strip was sized by env(), which no test can set, so it now follows
+   `--safe-top` like every other inset rule (the same value on a phone). On
+   these screens it also takes the taps that land on it, because whatever
+   lies beneath has scrolled out of sight, and the disc (z 60) goes under it
+   (z 55) with the rest of the page instead of being drawn over the clock.
+   54 still clears the modal backdrop (50) and the tab bar (40). */
+body::before { height: var(--safe-top, 0px); }
+body[data-screen='home']::before,
+body:has(.drills-picker)::before,
+body:has(.report-screen)::before { pointer-events: auto; }
+body[data-screen='home'] .mute-btn,
+body:has(.drills-picker) .mute-btn,
+body:has(.report-screen) .mute-btn { z-index: 54; }
+
+/* Home: the title row sits on the seat line and keeps the seat free. */
+.home-screen { padding-top: var(--mute-top); }
+.home-head { min-height: var(--mute-disc, 44px); padding-right: calc(var(--mute-seat) - var(--space-4)); }
+
+/* Sticky bars: pinned below the status bar, opaque cover over the inset, seat on the right. */
+.stats-topbar, .settings-topbar,
+body[data-screen='testkit'] .fieldtest-topbar {
+  position: sticky; top: var(--safe-top, 0px); z-index: 5;
+  min-height: var(--topbar-h); padding-right: var(--mute-seat);
+}
+.stats-topbar::before, .settings-topbar::before,
+body[data-screen='testkit'] .fieldtest-topbar::before,
+body[data-screen='fieldtest'] .fieldtest-topbar::before {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 100%;
+  height: var(--safe-top, 0px); background: inherit;
+}
+
+/* The field test keeps its own seat and height (app.css), but its bar stuck
+   at `top: 0`, so once the gate scrolled, "← Test kit" and the heading sat
+   under the status bar. Only where it sticks changes: unscrolled, and
+   wherever there is no inset, nothing moves. */
+body[data-screen='fieldtest'] .fieldtest-topbar { top: var(--safe-top, 0px); }
