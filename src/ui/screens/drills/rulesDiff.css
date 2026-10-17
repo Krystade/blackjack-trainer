@@ -1,0 +1,88 @@
+/* Wave B B10: the Rules differences drill. */
+.rules-diff-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 16px 0;
+}
+
+.rules-diff-label {
+  font-size: 14px;
+  opacity: 0.75;
+  margin-top: 4px;
+}
+
+.rules-diff-notice {
+  margin: 12px 16px 0;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.rules-diff-summary {
+  margin: 12px 16px 0;
+  padding-left: 20px;
+  font-size: 16px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.rules-diff-summary li + li {
+  margin-top: 4px;
+}
+
+.rules-diff-inert {
+  margin: 12px 16px 0;
+  font-size: 14px;
+  line-height: 1.4;
+  opacity: 0.75;
+}
+
+.rules-diff-inert p {
+  margin: 0 0 4px;
+}
+
+.rules-diff-inforce {
+  margin: 12px 16px 0;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.rules-diff-question {
+  margin: 8px 16px 0;
+}
+
+.rules-diff-prompt {
+  text-align: center;
+  font-size: 16px;
+  opacity: 0.85;
+  margin-bottom: 8px;
+}
+
+.rules-diff-answers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+  margin: 16px 16px 0;
+}
+
+.rules-diff-answers button {
+  min-height: 48px;
+  min-width: 44px;
+  font-size: 18px;
+  font-weight: 600;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+}
+
+.rules-diff-answers--done {
+  opacity: 0.45;
+}
+
+.rules-explain {
+  overflow-wrap: anywhere;
+}
