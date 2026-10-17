@@ -6,6 +6,7 @@ import { updateMustWait } from './ui/activityLive.ts';
 import { primeVoices } from './audio/speech.ts';
 import { dropRetiredKeys } from './store/persist.ts';
 import { registerOfflineWorker } from './offline/registerOffline.ts';
+import { requestPersistentStorage } from './store/storageHealth.ts';
 
 // OPEN THE VOICE LIST BEFORE ANYTHING WANTS TO SPEAK.
 //
@@ -23,6 +24,10 @@ dropRetiredKeys();
 // Serve the app from a cache when there is no network -- a plane, a tunnel, a
 // car park. Production only; see offline/registerOffline.ts.
 registerOfflineWorker();
+
+// Ask the browser to exempt this origin's storage from eviction (F24). Every
+// answer the operator has given lives in localStorage; refusal is normal.
+void requestPersistentStorage();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -10,6 +10,7 @@ import { ProfileEditor } from './screens/ProfileEditor';
 import { Charts } from './screens/Charts';
 import { TabBar } from './components/TabBar';
 import { MuteButton } from './components/MuteButton';
+import { StorageToast } from './components/StorageToast';
 import { FieldTest } from './screens/FieldTest';
 import { TestKit } from './screens/TestKit';
 import { KIT_PROGRESS_KEY, parseProgress } from '../diag/testKit';
@@ -393,6 +394,8 @@ function App() {
           app has to work on the immersive screens that stand the tab bar
           down, and on a screen that has just crashed. */}
       <MuteButton settings={settings} onSettingsChange={setSettings} />
+      {/* A save that did not land (F24): one toast for every caller. */}
+      <StorageToast />
       <TabBar current={screen} onNavigate={navigate} />
     </>
   );

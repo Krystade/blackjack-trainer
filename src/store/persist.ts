@@ -2,6 +2,7 @@ import { DEFAULT_SETTINGS, EMPTY_STATS, type Settings, type Stats } from './type
 import { capHistories } from './retention';
 import { diag } from '../diag/diagnosticLog';
 import { diffSettings, formatChanges } from '../diag/settingsDiff';
+import { DIAGNOSTICS_KEY, reportStorageFailure, shrinkDiagnostics } from './storageHealth';
 
 // Storage injection for testing (guards missing localStorage in node)
 let storage: Pick<Storage, 'getItem' | 'setItem'> | null = null;
@@ -314,10 +315,25 @@ export function loadSettings(): Settings {
  * the store layer simply never did.
  */
 function writeKey(key: string, value: string): boolean {
+  const store = getStorage();
   try {
-    getStorage().setItem(key, value);
+    store.setItem(key, value);
     return true;
   } catch {
+    // F24: MAKE ROOM, THEN SAY SO. The diagnostic log is the one large blob
+    // that is not the operator's progress, so it gives way first; if the write
+    // still fails, storageHealth tells the shell, which shows a toast instead
+    // of letting every later answer vanish without a sign.
+    if (key !== DIAGNOSTICS_KEY && shrinkDiagnostics(store as Parameters<typeof shrinkDiagnostics>[0])) {
+      try {
+        store.setItem(key, value);
+        diag('err', 'storage-full-recovered', { key });
+        return true;
+      } catch {
+        /* still full: reported below */
+      }
+    }
+    reportStorageFailure(key);
     return false;
   }
 }
