@@ -701,7 +701,7 @@ describe('store/stats', () => {
     ];
 
     const result = applyEvents(stats, events);
-    expect(result.latencyHistory).toEqual([{ category: 'hard', elapsedMs: 1234 }]);
+    expect(result.latencyHistory).toEqual([{ category: 'hard', elapsedMs: 1234, correct: true }]);
   });
 
   /**

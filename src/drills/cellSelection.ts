@@ -1,3 +1,4 @@
+import { judgedAccuracy } from '../store/cellStats';
 import type { Rank } from '../engine/cards';
 import type { CustomSelection, SelectionTier, Stats } from '../store/types';
 
@@ -212,12 +213,14 @@ export function clearSelection(sel: CustomSelection): CustomSelection {
   return { ...sel, tiers: {}, painted: {} };
 }
 
-/** right / (right + wrong), or undefined for a cell with no answers yet. */
+/**
+ * right / (right + wrong), or undefined for a cell with no answers yet.
+ * W3: judged on the cell's recent answers once it has enough of them (see
+ * cellStats.ts judgedAccuracy), the same figure Home's "Fix weak cells" uses,
+ * so a cell fixed lately is no longer painted Focus.
+ */
 export function accuracyOf(cellStats: CellStats, cellId: string): number | undefined {
-  const t = cellStats?.[cellId];
-  if (!t) return undefined;
-  const n = t.right + t.wrong;
-  return n > 0 ? t.right / n : undefined;
+  return judgedAccuracy(cellStats?.[cellId]);
 }
 
 /** wrong / (right + wrong); 0 for a cell with no answers yet. */

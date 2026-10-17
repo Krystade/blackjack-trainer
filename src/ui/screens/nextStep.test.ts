@@ -73,6 +73,41 @@ describe('nextStep (#28)', () => {
     expect(nextStep(s, { sweepDone: true }).kind).toBe('quiz');
   });
 
+  it('W3: a category is judged on its last 30 answers, so learning mistakes age out', () => {
+    const s = learned();
+    // Lifetime pairs at 70%: stuck on "Learn basic strategy" under the old rule.
+    s.cellStats!['pair-8-v-A'] = { right: 70, wrong: 30, lastAt: '' };
+    expect(nextStep(s, { sweepDone: true }).why).toMatch(/^Pairs are at 70%/);
+    // The last 30 pair answers were all right: the gate clears.
+    s.handRecent = { pair: '1'.repeat(30) };
+    s.cellStats!['pair-8-v-A']!.recent = '1'.repeat(10);
+    expect(nextStep(s, { sweepDone: true }).kind).toBe('quiz');
+    // A recent slump is caught even with a good lifetime figure.
+    s.cellStats!['pair-8-v-A'] = { right: 300, wrong: 5, lastAt: '' };
+    s.handRecent = { pair: '0'.repeat(6) + '1'.repeat(24) };
+    expect(nextStep(s, { sweepDone: true }).why).toBe('Pairs are at 80% over your last 30; get every category to 90%.');
+  });
+
+  it('W3: with fewer than 20 answers in the window the lifetime figure is used', () => {
+    const s = learned();
+    s.cellStats!['pair-8-v-A'] = { right: 70, wrong: 30, lastAt: '' };
+    s.handRecent = { pair: '1'.repeat(19) };
+    expect(nextStep(s, { sweepDone: true }).why).toMatch(/^Pairs are at 70%;/);
+  });
+
+  it('W3: a cell fumbled long ago but right on its last answers is not weak', () => {
+    const s = learned();
+    s.cellStats!['hard-16-v-10'] = { right: 1000, wrong: 0, lastAt: '' };
+    s.cellStats!['hard-12-v-3'] = { right: 2, wrong: 4, lastAt: '', recent: '11111' };
+    expect(nextStep(s, { sweepDone: true }).kind).toBe('quiz');
+    // Still weak while the window is short: lifetime decides.
+    s.cellStats!['hard-12-v-3'] = { right: 2, wrong: 4, lastAt: '', recent: '1111' };
+    expect(nextStep(s, { sweepDone: true }).kind).toBe('custom');
+    // And a recent run of misses is weak even with a good lifetime.
+    s.cellStats!['hard-12-v-3'] = { right: 40, wrong: 5, lastAt: '', recent: '1100000111' };
+    expect(nextStep(s, { sweepDone: true }).why).toMatch(/^Hard 12 v 3 is at 50%/);
+  });
+
   it('3: strategy in hand and no completed sweep -> Mastery', () => {
     expect(nextStep(learned(), { sweepDone: false }).kind).toBe('mastery');
   });

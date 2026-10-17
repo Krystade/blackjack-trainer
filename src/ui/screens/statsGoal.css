@@ -1,0 +1,13 @@
+/* Wave A / W3 + s02: the 90% goal drawn on the hand-category bars. */
+.goal-bar-track {
+  position: relative;
+}
+
+.goal-bar-target {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ink);
+}

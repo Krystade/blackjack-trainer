@@ -1,7 +1,7 @@
 import type { GradedEvent } from '../engine/grade';
 import type { Stats, TallyRW } from './types';
 import type { CellTally } from './cellStats';
-import { cellIdForEvent, cellUndone } from './cellStats';
+import { cellIdForEvent, cellUndone, handRecentUndone } from './cellStats';
 
 /**
  * #22 (spec 2026-10-13): "Wrong tap". The exact inverse of applying ONE graded
@@ -72,6 +72,10 @@ export function undoGradedEvent(stats: Stats, event: GradedEvent, cellBefore?: C
     else cellStats[cellId] = cell;
     if (Object.keys(cellStats).length === 0) delete result.cellStats;
     else result.cellStats = cellStats;
+    // W3: the per-hand-type window loses the same result.
+    const handRecent = handRecentUndone(stats.handRecent, cellId);
+    if (handRecent === undefined) delete result.handRecent;
+    else result.handRecent = handRecent;
   }
 
   result.mistakes = {

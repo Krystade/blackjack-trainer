@@ -3,6 +3,7 @@ import { ILLUSTRIOUS_18 } from '../../engine/deviations';
 import { hydrateMasteryRun, isMasteryRunComplete } from '../../drills/masteryChallenge';
 import type { MasteryRun, PersistedMasteryRun } from '../../drills/masteryChallenge';
 import { generateAllCells } from '../../drills/flashcards';
+import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, WEAK_CELL_BELOW, handCategoryProgress, pctDown, weakCells } from './handProgress';
 
 /**
  * #28: the ONE thing Home recommends next, and why. The first step in this
@@ -21,6 +22,8 @@ import { generateAllCells } from '../../drills/flashcards';
  *
  * Per-cell figures are B3's cellStats (every hand drill and Play), so a
  * category here is the sum of its cells, not the older per-category tally.
+ * W3: categories and cells are judged on their recent answers (see
+ * handProgress.ts), so a mistake made while learning ages out.
  * Pure: the caller supplies whether a sweep is complete.
  */
 export type NextStepKind = 'flash' | 'custom' | 'mastery' | 'quiz' | 'count' | 'play';
@@ -31,20 +34,13 @@ export interface NextStep {
   why: string;
 }
 
-export const MIN_CATEGORY_ANSWERS = 20;
-export const CATEGORY_TARGET = 0.9;
-export const MIN_CELL_ANSWERS = 5;
-export const WEAK_CELL_BELOW = 0.78;
+// W3: the category and cell thresholds live with the shared figures Home and
+// Stats both read; re-exported here for the callers that already import them.
+export { MIN_CATEGORY_ANSWERS, CATEGORY_TARGET, MIN_CELL_ANSWERS, WEAK_CELL_BELOW } from './handProgress';
 export const MIN_INDEX_ANSWERS = 3;
 export const INDEX_TARGET = 0.9;
 export const COUNT_RUNS_JUDGED = 5;
 export const COUNT_RUNS_NEEDED = 4;
-
-const HAND_CATEGORIES = [
-  { prefix: 'hard', label: 'Hard totals' },
-  { prefix: 'soft', label: 'Soft totals' },
-  { prefix: 'pair', label: 'Pairs' },
-] as const;
 
 /**
  * Whether the saved Mastery run is a finished sweep of the WHOLE chart. Only
@@ -64,11 +60,6 @@ export function isWholeChartSweep(run: MasteryRun): boolean {
   return all.length === inRun.size && all.every((id) => inRun.has(id));
 }
 
-/** A whole percent that never rounds a miss up to the target. */
-function pctDown(p: number): number {
-  return Math.floor(p * 100);
-}
-
 /** "hard-16-v-10" -> "Hard 16 v 10"; "pair-8-v-A" -> "8,8 v A". */
 export function cellLabel(id: string): string {
   const m = /^(hard|soft|pair)-([0-9]+|A)-v-([0-9]+|A)$/.exec(id);
@@ -79,23 +70,11 @@ export function cellLabel(id: string): string {
 }
 
 export function nextStep(stats: Stats, opts: { sweepDone: boolean }): NextStep {
-  const cells = Object.entries(stats.cellStats ?? {});
-
-  // 1. Basic strategy, category by category. Too few answers to judge comes
-  // first: it is the reason the percentage cannot be trusted yet.
-  const cats = HAND_CATEGORIES.map(({ prefix, label }) => {
-    let right = 0;
-    let wrong = 0;
-    for (const [id, t] of cells) {
-      if (id.startsWith(`${prefix}-`)) {
-        right += t.right;
-        wrong += t.wrong;
-      }
-    }
-    const n = right + wrong;
-    return { label, n, pct: n === 0 ? 0 : right / n };
-  });
-  const thin = cats.filter((c) => c.n < MIN_CATEGORY_ANSWERS).sort((a, b) => a.n - b.n)[0];
+  // 1. Basic strategy, category by category (W3: judged on the recent
+  // window, see handProgress). Too few answers to judge comes first: it is
+  // the reason the percentage cannot be trusted yet.
+  const cats = handCategoryProgress(stats);
+  const thin = cats.filter((c) => c.thin).sort((a, b) => a.n - b.n)[0];
   if (thin) {
     return {
       kind: 'flash',
@@ -108,15 +87,12 @@ export function nextStep(stats: Stats, opts: { sweepDone: boolean }): NextStep {
     return {
       kind: 'flash',
       title: 'Learn basic strategy',
-      why: `${low.label} are at ${pctDown(low.pct)}%; get every category to ${pctDown(CATEGORY_TARGET)}%.`,
+      why: `${low.label} are at ${pctDown(low.pct)}%${low.recent ? ` over your last ${low.judgedN}` : ''}; get every category to ${pctDown(CATEGORY_TARGET)}%.`,
     };
   }
 
-  // 2. Weak cells, worst first.
-  const weak = cells
-    .map(([id, t]) => ({ id, n: t.right + t.wrong, pct: t.right + t.wrong === 0 ? 1 : t.right / (t.right + t.wrong) }))
-    .filter((c) => c.n >= MIN_CELL_ANSWERS && c.pct < WEAK_CELL_BELOW)
-    .sort((a, b) => a.pct - b.pct || b.n - a.n || a.id.localeCompare(b.id));
+  // 2. Weak cells, worst first (W3: judged on each cell's recent answers).
+  const weak = weakCells(stats);
   if (weak.length > 0) {
     const w = weak[0]!;
     const more = weak.length > 1 ? ` and ${weak.length - 1} more cell${weak.length > 2 ? 's' : ''}` : '';

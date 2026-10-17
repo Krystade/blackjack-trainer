@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { cellIdForHand, cellIdForEvent } from './cellStats';
+import { cellIdForHand, cellIdForEvent, CELL_WINDOW, HAND_WINDOW, judgedAccuracy } from './cellStats';
 import { applyEvents } from './stats';
 import { undoGradedEvent, recordMisclick } from './undoEvent';
 import { EMPTY_STATS } from './types';
@@ -68,15 +68,15 @@ describe('applyEvents writes cellStats', () => {
   it('counts a drill answer and a table hand on the same cell', () => {
     const s = applyEvents(structuredClone(EMPTY_STATS), [flash, play, playPair]);
     expect(s.cellStats).toEqual({
-      'hard-16-v-10': { right: 1, wrong: 1, lastAt: '2026-10-14T10:00:00.000Z' },
-      'pair-8-v-A': { right: 1, wrong: 0, lastAt: '' },
+      'hard-16-v-10': { right: 1, wrong: 1, lastAt: '2026-10-14T10:00:00.000Z', recent: '01' },
+      'pair-8-v-A': { right: 1, wrong: 0, lastAt: '', recent: '1' },
     });
   });
 
   it('dates an undated (table) event from the caller, and never from nowhere', () => {
     const later = '2026-10-14T11:00:00.000Z';
     const s = applyEvents(applyEvents(structuredClone(EMPTY_STATS), [flash]), [play], later);
-    expect(s.cellStats!['hard-16-v-10']).toEqual({ right: 1, wrong: 1, lastAt: later });
+    expect(s.cellStats!['hard-16-v-10']).toEqual({ right: 1, wrong: 1, lastAt: later, recent: '01' });
     // No `at` and no fallback: the previous date stands.
     const kept = applyEvents(applyEvents(structuredClone(EMPTY_STATS), [flash]), [play]);
     expect(kept.cellStats!['hard-16-v-10']!.lastAt).toBe(flash.at);
@@ -152,7 +152,7 @@ describe('through the real grade path', () => {
     const wrong = card.correct === 'stand' ? 'hit' : 'stand';
     const graded = gradeFlashcardAnswer(card, wrong, DEFAULT_RULES, 1000, {}, NOW);
     expect(loadStats().cellStats!['hard-16-v-10']).toEqual({
-      right: 2, wrong: 6, lastAt: new Date(NOW).toISOString(),
+      right: 2, wrong: 6, lastAt: new Date(NOW).toISOString(), recent: '0',
     });
     expect(graded.cellBefore).toEqual(before.cellStats!['hard-16-v-10']);
     expect(recordMisclick(loadStats(), graded.event, graded.cellBefore)).toEqual({ ...before, misclicks: 1 });
@@ -162,7 +162,7 @@ describe('through the real grade path', () => {
     const before = loadStats();
     const card = cardFor('soft-18-v-9');
     const graded = gradeMasteryAnswer(card, card.correct, DEFAULT_RULES, 900, NOW);
-    expect(loadStats().cellStats!['soft-18-v-9']).toEqual({ right: 1, wrong: 0, lastAt: new Date(NOW).toISOString() });
+    expect(loadStats().cellStats!['soft-18-v-9']).toEqual({ right: 1, wrong: 0, lastAt: new Date(NOW).toISOString(), recent: '1' });
     expect(graded.cellBefore).toBeNull();
     expect(undoGradedEvent(loadStats(), graded.event, graded.cellBefore)).toEqual(before);
   });
@@ -174,7 +174,43 @@ describe('through the real grade path', () => {
     const graded = gradeQuizAnswer(item, wrong, DEFAULT_RULES, 2500, {}, NOW);
     const id = cellIdForEvent(graded.event)!;
     expect(id).toBe('hard-16-v-10');
-    expect(loadStats().cellStats![id]).toEqual({ right: 2, wrong: 6, lastAt: new Date(NOW).toISOString() });
+    expect(loadStats().cellStats![id]).toEqual({ right: 2, wrong: 6, lastAt: new Date(NOW).toISOString(), recent: '0' });
     expect(recordMisclick(loadStats(), graded.event, graded.cellBefore)).toEqual({ ...before, misclicks: 1 });
+  });
+});
+
+describe('W3: recent windows', () => {
+  it('each cell keeps its last CELL_WINDOW results, oldest first', () => {
+    let s = structuredClone(EMPTY_STATS);
+    for (let i = 0; i < CELL_WINDOW + 3; i++) s = applyEvents(s, [{ ...flash, correct: i < 3 }]);
+    const t = s.cellStats!['hard-16-v-10']!;
+    expect(t.recent).toBe('0'.repeat(CELL_WINDOW));
+    expect(t.right + t.wrong).toBe(CELL_WINDOW + 3);
+  });
+
+  it('each hand type keeps its last HAND_WINDOW results', () => {
+    let s = structuredClone(EMPTY_STATS);
+    for (let i = 0; i < HAND_WINDOW + 5; i++) s = applyEvents(s, [play]);
+    s = applyEvents(s, [flash, playPair]);
+    expect(s.handRecent!.hard).toBe('1'.repeat(HAND_WINDOW - 1) + '0');
+    expect(s.handRecent!.pair).toBe('1');
+    expect(s.handRecent!.soft).toBeUndefined();
+  });
+
+  it('judges a cell on its window once it holds 5 results, else on the lifetime tally', () => {
+    expect(judgedAccuracy({ right: 2, wrong: 4, lastAt: '', recent: '11111' })).toBe(1);
+    expect(judgedAccuracy({ right: 2, wrong: 4, lastAt: '', recent: '1111' })).toBeCloseTo(2 / 6);
+    expect(judgedAccuracy({ right: 2, wrong: 4, lastAt: '' })).toBeCloseTo(2 / 6);
+    expect(judgedAccuracy(undefined)).toBeUndefined();
+  });
+
+  it('Wrong tap restores both windows exactly', () => {
+    const before = applyEvents(structuredClone(EMPTY_STATS), [play, flash, playPair]);
+    const cellBefore = before.cellStats!['hard-16-v-10']!;
+    expect(undoGradedEvent(applyEvents(before, [flash]), flash, cellBefore)).toEqual(before);
+    // Without the snapshot the last result is still dropped.
+    const undone = undoGradedEvent(applyEvents(before, [flash]), flash);
+    expect(undone.cellStats!['hard-16-v-10']!.recent).toBe(cellBefore.recent);
+    expect(undone.handRecent).toEqual(before.handRecent);
   });
 });

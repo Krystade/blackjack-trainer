@@ -39,6 +39,9 @@ import './countHistory.css';
 import { strategyRulesFor } from '../../store/profiles';
 import { CATEGORY_LABELS } from './categoryLabels';
 import { bestCleanCountRuns, formatCountRun } from '../../drills/countSpeed';
+import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, handCategoryProgress, pctDown } from './handProgress';
+import type { HandCategoryProgress } from './handProgress';
+import './statsGoal.css';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -262,6 +265,40 @@ function SrStatusPanel({ deckLabel, summary, labelForKey }: SrStatusPanelProps) 
   );
 }
 
+
+/**
+ * W3 / s02: one hand category against the 90% goal, with the figure Home
+ * judges it on. The bar carries a tick at the target, and the row says when
+ * the goal is met, so 89% and 92% no longer look the same.
+ */
+function HandGoalRow({ row, latencyText }: { row: HandCategoryProgress; latencyText: string }) {
+  const judgedRight = Math.round(row.pct * row.judgedN);
+  const status = row.thin
+    ? `${row.n} of ${MIN_CATEGORY_ANSWERS} answers needed to judge`
+    : row.onTarget
+      ? 'On target'
+      : `${pctDown(CATEGORY_TARGET) - pctDown(row.pct)} points to the ${pctDown(CATEGORY_TARGET)}% goal`;
+  return (
+    <div className="category-row" data-hand={row.prefix} data-on-target={row.onTarget ? 'true' : 'false'}>
+      <div className="category-row-top">
+        <span className="category-label">{row.label}</span>
+        <span className="category-fraction">
+          {row.recent ? `last ${row.judgedN}: ` : ''}
+          {judgedRight}/{row.judgedN} ({row.judgedN === 0 ? '—' : `${pctDown(row.pct)}%`})
+        </span>
+      </div>
+      <div className="category-bar-track goal-bar-track">
+        <div className="category-bar-fill" style={{ width: `${row.pct * 100}%` }} />
+        <div className="goal-bar-target" style={{ left: `${CATEGORY_TARGET * 100}%` }} aria-hidden="true" />
+      </div>
+      <div className="category-latency">
+        {row.onTarget ? '✓ ' : ''}
+        {status}
+        {row.recent ? ` · all time ${row.right}/${row.n}` : ''} · Median decision time: {latencyText}
+      </div>
+    </div>
+  );
+}
 
 /**
  * Stats tabs (C5).
@@ -595,6 +632,8 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
   // units won / rounds * assumed rounds-per-hour, per spec §4.
   const unitsPerHourProxy = totalRounds === 0 ? null : (totalBankrollDelta / totalRounds) * 80;
   const cvcx = activeProfile.cvcx;
+  // W3: hard / soft / pairs, as Home's Next step judges them.
+  const handRows = handCategoryProgress(stats);
 
   return (
     <div className="stats-screen" data-active-tab={tab}>
@@ -693,6 +732,14 @@ export function Stats({ activeProfile, settings, onNavigate, onSettingsChange }:
       >
           <div className="category-list">
             {CATEGORY_ORDER.map((cat) => {
+              // W3 / s02: hard, soft and pairs read the SAME figure Home's
+              // Next step judges the 90% goal on (handProgress.ts), drawn
+              // against the target, so the two screens cannot disagree.
+              const hand = handRows.find((h) => h.scope === cat);
+              if (hand) {
+                const latencyMs = medianLatency(latencyRows.filter((e) => e.category === cat));
+                return <HandGoalRow key={cat} row={hand} latencyText={formatLatency(latencyMs)} />;
+              }
               const tally = stats.categories[cat];
               const total = tally.right + tally.wrong;
               const pctNum = total === 0 ? 0 : (tally.right / total) * 100;
