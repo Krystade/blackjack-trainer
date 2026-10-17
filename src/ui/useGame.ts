@@ -198,8 +198,14 @@ function botLabelFor(game: Game, seatIndex: number): string {
  * the mid-round bot HIT/DOUBLE cards get paced (see the narration-reveal
  * effect below), because those are the only cards the UI itself paces.
  */
-export function narrateDeal(game: Game, audio: Pick<AudioApi, 'say' | 'sayFull'>): void {
-  if (game.shuffledLastRound) {
+export function narrateDeal(
+  game: Game,
+  audio: Pick<AudioApi, 'say' | 'sayFull'>,
+  shuffleAlreadySaid = false,
+): void {
+  // Wave A: the shuffle is normally announced between rounds, before the bet
+  // (see narrateSettlement / submitCount); said here only if it was not.
+  if (game.shuffledLastRound && !shuffleAlreadySaid) {
     audio.say(narrateShuffle());
   }
   for (const seat of game.seats) {
@@ -231,8 +237,8 @@ export function narrateDeal(game: Game, audio: Pick<AudioApi, 'say' | 'sayFull'>
  * hand's result. The count check is NOT asked here any more (#36): it is
  * posed when the next deal is asked for -- see `poseCountCheckBeforeDeal`.
  */
-function narrateSettlement(game: Game, audio: AudioApi): void {
-  if (game.phase !== 'settled') return;
+function narrateSettlement(game: Game, audio: AudioApi): boolean {
+  if (game.phase !== 'settled') return false;
 
   if (game.holeRevealed) {
     for (const card of game.dealerCards.slice(1)) {
@@ -252,8 +258,15 @@ function narrateSettlement(game: Game, audio: AudioApi): void {
   }
 
   // s06: the cut card came out this round, so the next bet goes into a fresh
-  // shoe. Said now, before that bet, as the screen says it.
-  if (game.shuffleDue) audio.say(narrateShuffle());
+  // shoe. Said now, before that bet, as the screen says it -- unless a count
+  // check is owed: it grades the count BEFORE the shuffle, so "Shuffling."
+  // then "Running count?" would ask for a 0 that is marked wrong. Then it is
+  // said once the check is answered (submitCount). Returns whether it was said.
+  if (game.shuffleDue && !game.countCheckDue) {
+    audio.say(narrateShuffle());
+    return true;
+  }
+  return false;
 }
 
 /** What the player asked for when an owed count check interrupted it (#36).
@@ -338,14 +351,25 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
    */
   const pendingDealRef = useRef<PendingDeal | null>(null);
 
+  /**
+   * Wave A: "Shuffling." has been said between rounds (as the cut-card round
+   * settled, or as the count check owed on it was answered), so the deal that
+   * shuffles does not say it a second time. Cleared by every deal.
+   */
+  const shuffleSaidRef = useRef(false);
+  const settleAndNote = useCallback(() => {
+    if (narrateSettlement(game, audio)) shuffleSaidRef.current = true;
+  }, [game, audio]);
+
   const runDeal = useCallback(
     (betUnits?: number | number[]) => {
       realignLosingShoe(playGame);
       game.startRound(betUnits);
-      narrateDeal(game, audio);
-      narrateSettlement(game, audio); // instant dealer-blackjack / all-naturals rounds settle inside startRound()
+      narrateDeal(game, audio, shuffleSaidRef.current);
+      shuffleSaidRef.current = false;
+      settleAndNote(); // instant dealer-blackjack / all-naturals rounds settle inside startRound()
     },
-    [game, playGame, audio],
+    [game, playGame, audio, settleAndNote],
   );
 
   const runSitOut = useCallback(() => {
@@ -356,10 +380,11 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     // narrate: the player was dealt none. R5.
     realignLosingShoe(playGame);
     game.sitOut();
-    if (game.shuffledLastRound) audio.say(narrateShuffle());
+    if (game.shuffledLastRound && !shuffleSaidRef.current) audio.say(narrateShuffle());
+    shuffleSaidRef.current = false;
     audio.say(narrateSitOut());
-    narrateSettlement(game, audio);
-  }, [game, playGame, audio]);
+    settleAndNote();
+  }, [game, playGame, audio, settleAndNote]);
 
   /**
    * #36: if a count check is owed, ask it now -- on the way to the next
@@ -397,10 +422,10 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const insure = useCallback(
     (take: boolean) => {
       game.insuranceDecision(take);
-      narrateSettlement(game, audio);
+      settleAndNote();
       bump();
     },
-    [game, bump, audio],
+    [game, bump, settleAndNote],
   );
 
   const act = useCallback(
@@ -434,10 +459,10 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
           });
         }
       }
-      narrateSettlement(game, audio);
+      settleAndNote();
       bump();
     },
-    [game, bump, settings.feedbackMode, audio],
+    [game, bump, settings.feedbackMode, audio, settleAndNote],
   );
 
   const dismissOverlay = useCallback(() => setOverlay(null), []);
@@ -616,8 +641,24 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       // #36: the deal that was asked for happens right after the answer.
       const pending = pendingDealRef.current;
       pendingDealRef.current = null;
-      if (pending?.kind === 'deal') runDeal(pending.bets);
-      else if (pending?.kind === 'sitOut') runSitOut();
+      const next = pending?.kind === 'deal' || pending?.kind === 'sitOut';
+      // Wave A: the round just counted reached the cut card. Its shuffle was
+      // held back so as not to tell the player the count was 0 before the
+      // check (narrateSettlement); the check is answered, so say it now.
+      const shuffling = next && game.shuffleDue;
+      if (shuffling) {
+        audio.say(narrateShuffle());
+        shuffleSaidRef.current = true;
+      }
+      // With a spread on, the bet (or the sit-out) was chosen before the
+      // player knew the next hand is off a fresh shoe at count 0 -- and it is
+      // graded at that count (s06). So the deal waits for a bet placed with
+      // the cut card on screen, instead of running the stale one.
+      const holdForBet = shuffling && game.cfg.betSpreadOn;
+      if (!holdForBet) {
+        if (pending?.kind === 'deal') runDeal(pending.bets);
+        else if (pending?.kind === 'sitOut') runSitOut();
+      }
       bump();
       return { endNow: pending?.kind === 'end', check: { ...result, rcGuess: rc, tcGuess, round: roundAtCheck + 1 } };
     },

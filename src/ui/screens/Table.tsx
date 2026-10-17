@@ -968,8 +968,14 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         )}
         {game.shuffledLastRound && <div className="message-shuffle">Shuffling…</div>}
         {/* s06: the cut card is out, so the next deal shuffles. Said before the
-            bet, because that bet is graded at the fresh shoe's count of 0. */}
-        {game.roundNo > 0 && (game.phase === 'idle' || game.phase === 'settled') && game.shuffleDue && (
+            bet, because that bet is graded at the fresh shoe's count of 0.
+            Not while a count check is owed: it grades the count BEFORE the
+            shuffle, so "count 0" above the keypad gave the wrong answer.
+            Shown once it is answered, and the deal then waits for the bet. */}
+        {game.roundNo > 0 &&
+          (game.phase === 'idle' || game.phase === 'settled') &&
+          game.shuffleDue &&
+          !game.countCheckDue && (
           <div className="message-cut-card" data-testid="cut-card-cue">
             Cut card: the next hand is off a fresh shoe, count 0.
           </div>

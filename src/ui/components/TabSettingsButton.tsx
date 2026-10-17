@@ -164,7 +164,8 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
       <ResetBankrollRow onReset={() => setBankrollReset(true)} />
 
       {/* Wave A (s06): All settings has no way into profiles, so the bet
-          ramp and the rest of the profile get their own way out. */}
+          ramp and the rest of the profile get their own way out. Labelled for
+          where it lands -- the Profiles list; the ramp is under Edit. */}
       <button
         type="button"
         className="u-btn tab-sheet-all"
@@ -173,7 +174,7 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
           ctx.navigate('profiles');
         }}
       >
-        Edit profile and bet ramp
+        Profiles
       </button>
       <AllSettingsButton
         onClick={() => {

@@ -30,7 +30,7 @@ async function playRounds(page: Page, n: number): Promise<void> {
   }
 }
 
-test('settled rounds are in Stats before End, and survive a reload', async ({ page }) => {
+test('settled rounds are in Stats before End, with the bankroll they moved', async ({ page }) => {
   await withSettings(page, { countCheckEvery: 0, bankrollStart: 100 });
   await page.goto('/?seed=7&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -41,9 +41,16 @@ test('settled rounds are in Stats before End, and survive a reload', async ({ pa
   expect(graded).toBeGreaterThanOrEqual(3);
   expect(await sessionsInStats(page)).toHaveLength(0);
 
+  // The bankroll those rounds moved is stored with their events: a reload (or
+  // an eviction) reopens Play on it, not on the session's starting stake.
+  const bankroll = page.locator('.topbar-stat', { hasText: /^Bankroll: / });
+  const before = (await bankroll.innerText()).match(/Bankroll: (-?\d+)/)![1];
+  expect(before, 'vacuity guard: the three rounds must move the bankroll').not.toBe('100');
   await page.evaluate(() => window.localStorage.setItem('e2e.noReseed', '1'));
   await page.reload();
-  expect(await gradedInStats(page)).toBe(graded);
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(bankroll).toHaveText(new RegExp(`^Bankroll: ${before}(?!\\d)`));
+  await expect(page.locator('.topbar-stat', { hasText: /^Round / })).toHaveText('Round 0');
 });
 
 test('End writes the session row without counting the events twice', async ({ page }) => {

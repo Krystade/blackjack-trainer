@@ -171,3 +171,34 @@ describe('makeBetSitLeaveScenario across shoe sizes (V4-3)', () => {
     }
   });
 });
+
+describe('makeBetSitLeaveScenario is balanced by the answer (Wave A review)', () => {
+  /** Share of Sit answers over `n` seeds, graded by `spread`. */
+  const sitShare = (totalDecks: number, spread = DEFAULT_SPREAD, n = 2000): number => {
+    let sit = 0;
+    for (let seed = 0; seed < n; seed++) {
+      if (correctAction(makeBetSitLeaveScenario(seed, totalDecks, spread), spread) === 'sit') sit++;
+    }
+    return sit / n;
+  };
+
+  it('tapping Sit every time scores about half, not three in four, on the default ramp', () => {
+    // Before: 63% (1D) to 76% (8D) of answers were Sit once the drill sat at
+    // every count where the ramp bets its minimum (D1).
+    for (const totalDecks of [1, 2, 6, 8]) {
+      const share = sitShare(totalDecks);
+      expect(share, `${totalDecks}D`).toBeGreaterThan(0.42);
+      expect(share, `${totalDecks}D`).toBeLessThan(0.58);
+    }
+  });
+
+  it('follows the ramp it is given: one that raises late still gets half Bet answers', () => {
+    const late = [
+      { minTc: -99, units: 1 },
+      { minTc: 3, units: 4 },
+    ];
+    const share = sitShare(6, late);
+    expect(share).toBeGreaterThan(0.42);
+    expect(share).toBeLessThan(0.58);
+  });
+});

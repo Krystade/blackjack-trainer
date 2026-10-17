@@ -41,7 +41,7 @@ export function BetSitLeaveView({
   const totalDecks = activeProfile.rules.decks;
   const audio = useAudio(settings.audio);
   const [scenario, setScenario] = useState<BetSitLeaveScenario>(() =>
-    makeBetSitLeaveScenario(randomSeed(), totalDecks),
+    makeBetSitLeaveScenario(randomSeed(), totalDecks, activeProfile.spread),
   );
   const [feedback, setFeedback] = useState<{ correct: boolean; taken: TableAction } | null>(null);
   const shownAtRef = useRef(performance.now());
@@ -65,7 +65,7 @@ export function BetSitLeaveView({
   };
 
   const next = () => {
-    setScenario(makeBetSitLeaveScenario(randomSeed(), totalDecks));
+    setScenario(makeBetSitLeaveScenario(randomSeed(), totalDecks, activeProfile.spread));
     setFeedback(null);
     shownAtRef.current = performance.now();
   };
