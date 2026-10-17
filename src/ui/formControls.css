@@ -1,0 +1,100 @@
+/*
+ * NATIVE FORM CONTROLS IN THE APP'S OWN LOOK (s03, s04, s08).
+ *
+ * app.css gave `button` the app font and nothing else, so on WebKit (Jack's
+ * iPhone) the profile name rendered in Times, selects were grey native boxes
+ * in a serif, and checkboxes were glaring white squares on the dark themes.
+ *
+ * Low specificity (`:where`) for the defaults, so every existing class that
+ * sizes a control (the 44px settings toggles, the compact drill-setup boxes)
+ * still wins. Loaded after app.css.
+ */
+
+:where(input, select, textarea) {
+  font-family: inherit;
+}
+
+/* ---------- Checkboxes ---------- */
+
+:where(input[type='checkbox']) {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-content: center;
+  border: 2px solid var(--ink-dim);
+  border-radius: 5px;
+  background: var(--surface);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+/* The tick: two borders of a box, rotated. Scales with the control. */
+:where(input[type='checkbox'])::before {
+  content: '';
+  width: 0.62em;
+  height: 0.32em;
+  border-left: 0.17em solid var(--accent-ink);
+  border-bottom: 0.17em solid var(--accent-ink);
+  transform: translateY(-18%) rotate(-45deg);
+  opacity: 0;
+}
+
+:where(input[type='checkbox']:checked) {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+:where(input[type='checkbox']:checked)::before {
+  opacity: 1;
+}
+
+:where(input[type='checkbox']:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+:where(input[type='checkbox']:disabled) {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* The Settings/Profile toggles keep their green "on" (app.css accent-color
+   said --good), and a tick sized to their 44px box. */
+.settings-toggle {
+  font-size: 30px;
+}
+
+.settings-toggle:checked {
+  background: var(--good);
+  border-color: var(--good);
+}
+
+.settings-toggle::before {
+  border-color: var(--bg);
+}
+
+/* ---------- Selects ---------- */
+
+/* Drawn chevron (two gradients) instead of the native arrow, so it takes the
+   theme's ink; padding keeps text clear of it. */
+.settings-select,
+.quiz-index-select {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  padding-right: 2rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.05rem) 50%,
+    calc(100% - 0.7rem) 50%;
+  background-size:
+    0.35rem 0.35rem,
+    0.35rem 0.35rem;
+  background-repeat: no-repeat;
+}

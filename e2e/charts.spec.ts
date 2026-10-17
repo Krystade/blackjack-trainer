@@ -43,7 +43,7 @@ test('the header names the ACTIVE profile ruleset, so which chart is on screen i
   await withProfile(page, { rules: { decks: 2, s17: true, das: false, ls: false } });
   await openCharts(page);
 
-  await expect(page.locator('.charts-ruleset')).toHaveText('2 deck · S17 · No DAS · No surrender');
+  await expect(page.locator('.charts-ruleset')).toHaveText('2 decks · S17 · No DAS · No surrender');
 });
 
 test('a different ruleset renders a different chart, not a relabelled one', async ({ page }) => {
