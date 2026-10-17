@@ -44,3 +44,10 @@
   font-size: 13px;
   opacity: 0.8;
 }
+
+/* The centred column would shrink the tray to its label (Bet or sit's
+   .bsl-snapshot rule did this before B4 replaced it). */
+.bet-sizing-snapshot .table-discard-tray {
+  width: 100%;
+  max-width: 340px;
+}

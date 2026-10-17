@@ -91,5 +91,9 @@ test('bet sizing: 2-deck profile tray, 44px answers, no sideways scroll at 375',
   expect(boxes).toHaveLength(7);
   for (const b of boxes) { expect(b.w).toBeGreaterThanOrEqual(44); expect(b.h).toBeGreaterThanOrEqual(44); }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  // The tray is a picture to read, not a sliver: the centred column once
+  // shrank it to its label (about 90px wide).
+  const tray = await page.locator('.bet-sizing-snapshot .table-discard-tray').boundingBox();
+  expect(tray!.width).toBeGreaterThanOrEqual(300);
   await shot(page, 'bet-sizing-2d');
 });

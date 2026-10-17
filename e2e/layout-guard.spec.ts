@@ -131,7 +131,7 @@ const start = async (p: Page) => { await p.getByRole('button', { name: 'Start', 
 SCREENS.push(
   { name: 'Drills picker', open: (p) => tab(p, 'Drills') },
   drill('Flashcards'), drill('Deviation quiz'), drill('Mixed'), drill('Mastery challenge'), drill('Speed'),
-  drill('Custom'), drill('Pair cancellation'), drill('Bet or sit'),
+  drill('Custom'), drill('Pair cancellation'), drill('Bet sizing'), drill('Rules differences'),
   drill('Count drill', openCountOptions), drill('Count drill', start),
   drill('True count drill', start), drill('Deck estimation', start), drill('Produce the true count', start),
   { name: 'Table (bet)', open: (p) => tab(p, 'Play') },
