@@ -63,6 +63,16 @@ export interface WheelNumberDeps<H> {
    * would refuse.
    */
   clamp?: (value: number) => number;
+  /**
+   * Wave E E4 (L-4): where the first press of an entry starts from, default 0.
+   * Read on that first press, so one entry can serve answers with different
+   * starting points: the count drill's final running count starts from the
+   * count given at the run's last checkpoint, which is usually a few presses
+   * away rather than eight. The proposal stays absolute -- with origin 4 the
+   * first forward press proposes 5 and is read back as "plus 5" -- and
+   * forward then back submits the origin itself.
+   */
+  origin?: number | (() => number);
 }
 
 export interface WheelNumberEntry {
@@ -96,7 +106,8 @@ export function createWheelNumberEntry<H>(deps: WheelNumberDeps<H>): WheelNumber
   };
 
   const press = (direction: 'forward' | 'back'): number => {
-    const next = (value ?? 0) + (direction === 'forward' ? 1 : -1);
+    const from = value ?? (typeof deps.origin === 'function' ? deps.origin() : (deps.origin ?? 0));
+    const next = from + (direction === 'forward' ? 1 : -1);
     value = deps.clamp ? deps.clamp(next) : next;
 
     // BOTH timers restart on every press, and the commit one is the important

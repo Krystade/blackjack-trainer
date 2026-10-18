@@ -17,6 +17,8 @@ export function useWheelNumber(handlers: {
   readback: (value: number) => void;
   commit: (value: number) => void;
   clamp?: (value: number) => number;
+  /** Where an entry's first press starts from (E4); read at that press. */
+  origin?: () => number;
 }): WheelNumberEntry {
   const ref = useRef(handlers);
   ref.current = handlers;
@@ -29,6 +31,7 @@ export function useWheelNumber(handlers: {
         readback: (value) => ref.current.readback(value),
         commit: (value) => ref.current.commit(value),
         clamp: (value) => (ref.current.clamp ? ref.current.clamp(value) : value),
+        origin: () => ref.current.origin?.() ?? 0,
       }),
     [],
   );

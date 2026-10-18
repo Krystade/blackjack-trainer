@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Profile, Settings } from '../../../store/types';
-import { makeTrueCountQuestion } from '../../../drills/trueCountDrill';
+import { makeTrueCountQuestion, trueCountDrillDepths } from '../../../drills/trueCountDrill';
 import { DEFAULT_TC_ROUNDING } from '../../../engine/count';
 import type { TcRounding } from '../../../engine/count';
 import { gradeTcConversion, tcWorking, tcConventionNote, signedTc, tcAnswer, tcWrongLead } from '../../../drills/tcFeedback';
@@ -343,7 +343,13 @@ export function TrueCountDrillView({
   const start = () => {
     runIdRef.current += 1;
     questionShownAtRef.current = performance.now();
-    const q = makeTrueCountQuestion(randomSeed(), { maxDecks, rounding: activeProfile.tcRounding });
+    // Wave E E3 (W2-12): trays no deeper than Play's cut, and more of the
+    // depths missed lately.
+    const q = makeTrueCountQuestion(randomSeed(), {
+      ...trueCountDrillDepths(activeProfile, maxDecks),
+      rounding: activeProfile.tcRounding,
+      history: loadStats().trueCount.history,
+    });
     setQuestion(q);
     setHonorCheck(false);
     setPhase(

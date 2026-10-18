@@ -129,7 +129,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all ten D
   await expect(page.locator('.drill-result')).toBeVisible();
   await shot(page, 'smoke-06-count-drill-result');
 
-  await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click(); // E5: the result's one exit is the top bar's Back
   await expect(page.locator('.drills-picker')).toBeVisible();
 
   // ---------------------------------------------------------------

@@ -420,7 +420,7 @@ test('Count drill setup: Start is pinned and full width, Length and Eyes-free sh
   await page.screenshot({ path: 'e2e/screenshots/count-setup-375.png' });
 });
 
-test('Count drill result: one obvious primary, New run, on screen; Back is the quiet secondary', async ({ page }) => {
+test('Count drill result: one obvious primary, New run, on screen; the top bar Back is the only exit', async ({ page }) => {
   await withSettings(page, { drill: { countIntervalMs: 300, countLengthCards: 4, countGroup: 1 } });
   await page.setViewportSize(PHONE);
   await page.goto('/?e2e=1');
@@ -434,8 +434,10 @@ test('Count drill result: one obvious primary, New run, on screen; Back is the q
 
   await expectPrimaryBar(page, 'New run');
   await expect(page.locator('.drill-primary-bar .drill-primary-btn')).toHaveText('New run');
-  await expect(page.locator('.drill-primary-bar .drill-secondary-btn')).toHaveText('Back to Drills');
-  await expectInViewport(page, '.drill-secondary-btn', 'Back to Drills');
+  // Wave E E5: the "Back to Drills" secondary duplicated the top bar's Back.
+  await expect(page.locator('.drill-primary-bar .drill-secondary-btn')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /back/i })).toHaveCount(1);
+  await expectInViewport(page, '.drill-topbar .drill-back-btn', 'Back');
   await page.screenshot({ path: 'e2e/screenshots/count-result-375.png' });
 });
 

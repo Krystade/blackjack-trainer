@@ -96,7 +96,7 @@ test('count drill: flash 4 cards fast, submit RC, see result', async ({ page }) 
   await expect(page.locator('.result-correct, .result-wrong')).toBeVisible();
   await shot(page, '16-count-drill-result');
 
-  await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click(); // E5: the result's one exit is the top bar's Back
   await expect(page.locator('.drills-picker')).toBeVisible();
 });
 
@@ -207,7 +207,7 @@ test('count drill: timed challenge auto-advances and reports elapsed time + spee
   const countDrillHistory = (stats?.countDrill as { history: unknown[] } | undefined)?.history ?? [];
   expect(countDrillHistory).toHaveLength(0);
 
-  await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click(); // E5: the result's one exit is the top bar's Back
   await expect(page.locator('.drills-picker')).toBeVisible();
 });
 
@@ -621,7 +621,7 @@ test('count drill: relentless distractions interrupt mid-stream and grade countK
   expect(countDrillHistory).toHaveLength(1);
   expect(row.countKept).toBe(countDrillHistory[0]!.correct);
 
-  await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click(); // E5: the result's one exit is the top bar's Back
   await expect(page.locator('.drills-picker')).toBeVisible();
 });
 

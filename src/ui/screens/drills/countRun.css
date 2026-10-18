@@ -1,0 +1,114 @@
+/* Wave E E5 (W2-8): "Show the run" on the count drill's result. */
+
+.count-run {
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+/* The same chevron row as the drill Options disclosure. */
+.count-run > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  list-style: none;
+  color: var(--ink-dim);
+}
+
+.count-run > summary::-webkit-details-marker {
+  display: none;
+}
+
+.count-run > summary::before {
+  content: '\203A'; /* › */
+  font-size: 1.2rem;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.count-run[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .count-run > summary::before {
+    transition: none;
+  }
+}
+
+.count-run-size {
+  color: var(--ink-faint);
+}
+
+/* #, cards, tag, count. The cards column takes the slack and wraps a long
+   table round; the numbers sit right-aligned in fixed columns. */
+.count-run-head,
+.count-run-row {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) 2.75rem 3.25rem;
+  column-gap: 0.5rem;
+  align-items: baseline;
+}
+
+.count-run-head {
+  padding: 0 0.25rem 0.25rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+}
+
+.count-run-head > :nth-child(n + 3),
+.count-run-tag,
+.count-run-total {
+  text-align: right;
+}
+
+.count-run-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.count-run-row {
+  padding: 0.2rem 0.25rem;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+
+.count-run-n {
+  color: var(--ink-faint);
+}
+
+.count-run-cards {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.count-run-tag {
+  color: var(--ink-dim);
+}
+
+.count-run-total {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* A checkpoint is pinned under the row it was asked after, full width. */
+.count-run-cp {
+  grid-column: 1 / -1;
+  padding: 0.15rem 0 0.1rem 2.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.count-run-has-cp {
+  background: var(--accent-wash);
+}
+
+.count-run-hidden-label {
+  color: var(--ink-dim);
+}
