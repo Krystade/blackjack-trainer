@@ -192,11 +192,15 @@ test('clip playback (no ?e2e=1): eyes-free count drill fetches real clips and co
   await answerSelfReportIfPresent(page);
   await expect(page.locator('.drill-result')).toBeVisible({ timeout: 20_000 });
 
+  // Five random cards can repeat ranks (a 2-rank deal fetches 4 distinct
+  // files), so assert each KIND of clip was fetched rather than a count:
+  // a card, the running-count question and the spoken count.
   const distinctMp3Urls = new Set(harness.mp3Responses.map((r) => r.url()));
-  expect(
-    distinctMp3Urls.size,
-    `expected >=5 distinct mp3 fetches, got ${JSON.stringify([...distinctMp3Urls])}`,
-  ).toBeGreaterThanOrEqual(5);
+  const fetched = JSON.stringify([...distinctMp3Urls]);
+  const has = (re: RegExp) => [...distinctMp3Urls].some((u) => re.test(u));
+  expect(has(/-item\.mp3$/), `no card clip fetched: ${fetched}`).toBe(true);
+  expect(has(/whats-the-running-count-q\.mp3$/), `no question clip fetched: ${fetched}`).toBe(true);
+  expect(has(/the-count-is-[a-z-]+\.mp3$/), `no count clip fetched: ${fetched}`).toBe(true);
   for (const res of harness.mp3Responses) {
     expectServedOk(res);
   }
