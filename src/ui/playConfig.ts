@@ -25,6 +25,8 @@ export function playConfigFor(
     ...(profile.coverBets === undefined ? {} : { coverBets: profile.coverBets }),
     ...(profile.tcRounding === undefined ? {} : { tcRounding: profile.tcRounding }),
     spread: profile.spread,
+    // D-R1: absent keeps the engine's -2.
+    ...(profile.wongExitTc === undefined ? {} : { wongExitTc: profile.wongExitTc }),
     bankrollStart,
     countCheckEvery: profile.countCheckEvery,
     // #3 and #34: absent keeps the game's own default.

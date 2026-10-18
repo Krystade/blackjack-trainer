@@ -1,16 +1,26 @@
 import type { SpreadRow } from './game';
 
 /**
- * The play-or-sit line, ONE rule for Play and the Bet or sit drill (Wave A,
- * decision D1: follow the profile's own spread).
+ * The play-or-sit line, ONE rule for Play and the Bet sizing drill.
  *
- * Sitting out is right exactly when the spread calls only for its minimum bet
- * at this true count: the count gives no edge worth staking above the floor,
- * so back-counting beats playing at the minimum. Grounded entirely in the
- * profile's spread -- no hard-coded count threshold asserted as strategy
- * truth -- so a ramp that raises from TC +1 sits at TC 0 and below, and moving
- * the ramp moves the line. An empty spread never sits (nothing to grade by).
+ * Wave D, D-R1 (owner ruling): sitting out is right only at or below the
+ * player's Wong exit point (true count <= `wongExitTc`, default -2). Above it
+ * playing is right, even where the ramp bets its minimum -- TC 0 is a play.
+ * The exit point is a profile setting (`Profile.wongExitTc`, -5..0), so the
+ * line is the player's own, not a count asserted as strategy truth. An empty
+ * spread never sits (nothing to grade by).
  */
+
+/** The exit point when a profile sets none. */
+export const DEFAULT_WONG_EXIT_TC = -2;
+export const WONG_EXIT_MIN = -5;
+export const WONG_EXIT_MAX = 0;
+
+/** A stored exit point, clamped to the stepper's range; absent = the default. */
+export function wongExitTcOf(exit: number | undefined): number {
+  if (exit === undefined || !Number.isFinite(exit)) return DEFAULT_WONG_EXIT_TC;
+  return Math.min(WONG_EXIT_MAX, Math.max(WONG_EXIT_MIN, Math.round(exit)));
+}
 
 /** The bet the spread calls for: the last row (sorted asc by minTc) whose minTc <= tc. */
 export function spreadUnitsFor(tc: number, spread: readonly SpreadRow[]): number {
@@ -21,16 +31,15 @@ export function spreadUnitsFor(tc: number, spread: readonly SpreadRow[]): number
   return units;
 }
 
-export function sitOutIsCorrect(tc: number, spread: readonly SpreadRow[]): boolean {
+export function sitOutIsCorrect(tc: number, spread: readonly SpreadRow[], wongExitTc?: number): boolean {
   if (spread.length === 0) return false;
-  const minUnits = Math.min(...spread.map((r) => r.units));
-  return spreadUnitsFor(tc, spread) <= minUnits;
+  return tc <= wongExitTcOf(wongExitTc);
 }
 
 /**
  * The lowest true count at which the spread bets above its minimum, or null
- * when it never does. Only for explaining the line ("your ramp raises from
- * +1"); grading goes through `sitOutIsCorrect`.
+ * when it never does. Only for explaining the ramp ("your ramp raises from
+ * +1"); the play-or-sit line is `sitOutIsCorrect`.
  */
 export function firstRaiseTc(spread: readonly SpreadRow[]): number | null {
   if (spread.length === 0) return null;

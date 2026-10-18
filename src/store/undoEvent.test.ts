@@ -86,11 +86,27 @@ const correctMastery: GradedEvent = {
   at: '2026-10-14T10:00:02.000Z',
 };
 
+const wrongTableIndex: GradedEvent = {
+  kind: 'action',
+  source: 'table',
+  category: 'hard',
+  correct: false,
+  classification: 'missed-deviation',
+  taken: 'hit',
+  expected: 'stand',
+  reason: '16 v 10: stand at TC 0+',
+  deviationId: '16v10',
+  tc: 1,
+  hand: '16 v 10',
+  evCost: 0.02,
+};
+
 describe('undoGradedEvent is the inverse of applyEvents for one event', () => {
   for (const [name, event] of [
     ['a wrong flashcard (latency, EV cost, shot clock, new source bucket)', wrongFlash],
     ['a wrong quiz answer (perIndex, untimed shot-clock bucket)', wrongQuiz],
     ['a correct, untimed mastery answer', correctMastery],
+    ['D-R2: a wrong table index play (table-only tallies, sourced EV row)', wrongTableIndex],
   ] as const) {
     it(`${name}: on a busy blob`, () => {
       const before = busyStats();
@@ -103,7 +119,7 @@ describe('undoGradedEvent is the inverse of applyEvents for one event', () => {
     });
 
     it(`${name}: after other events, removing only its own trace`, () => {
-      const others = applyEvents(busyStats(), [wrongQuiz, correctMastery, wrongFlash].filter((e) => e !== event));
+      const others = applyEvents(busyStats(), [wrongQuiz, correctMastery, wrongFlash, wrongTableIndex].filter((e) => e !== event));
       expect(undoGradedEvent(applyEvents(others, [event]), event)).toEqual(others);
     });
   }

@@ -119,6 +119,18 @@ export function quizIndexSet(rules: StrategyRules): Deviation[] {
 }
 
 /**
+ * D-R3 (Wave D): THE indexes the drills ask under these rules -- H17/S17, the
+ * BJA extras when opted in, the deck count (redundantForChart) and the Fab 4.
+ * The quiz's set without inactive entries (11 v A under H17 is a basic-chart
+ * double, not an index). The quiz's own draw, the Index test, Home's "Indices
+ * seen", the Stats index tables and the quiz's spaced-repetition denominator
+ * all read this one function, so they cannot count different sets.
+ */
+export function askedIndexSet(rules: StrategyRules): Deviation[] {
+  return quizIndexSet(rules).filter((d) => d.active);
+}
+
+/**
  * The ctx an ITEM was drawn under, for everyone downstream of the draw.
  *
  * The grader and the action bar both need the same answer as `entryCtx`, and
@@ -627,9 +639,11 @@ export function drawQuizItem(
   // due-ness (RV4) -- this rng() draw only happens here, exactly as before
   // distractorPct existed.
   if (!entry) {
-    const weights = deviationSet.map((d) => srWeight(srDeck[d.id], now));
+    // D-R3: only the indexes the drills ask (askedIndexSet).
+    const asked = deviationSet.filter((d) => d.active);
+    const weights = asked.map((d) => srWeight(srDeck[d.id], now));
     const entryIndex = weightedIndex(rng, weights);
-    entry = deviationSet[entryIndex];
+    entry = asked[entryIndex];
   }
 
   // Generate tc: integer uniform in [threshold - 2, threshold + 2]

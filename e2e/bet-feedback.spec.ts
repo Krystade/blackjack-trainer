@@ -13,10 +13,11 @@ const speech = (page: Page) => page.evaluate(() => (window as unknown as { __spe
 
 test('dealing in at a count the ramp sits out: a strip and a spoken line, and the round plays on', async ({ page }) => {
   await withSettings(page, { feedbackMode: 'training', countCheckEvery: 0, dealSpeedMs: 0, audio: { enabled: true } });
-  await withProfile(page, { betSpreadOn: true, countCheckEvery: 0 });
+  // D-R1: exit point 0, so the fresh shoe's TC 0 is a sit-out count.
+  await withProfile(page, { betSpreadOn: true, countCheckEvery: 0, wongExitTc: 0 });
   await page.goto('/?seed=7&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  // Fresh shoe, TC 0: the ramp sits out (D1).
+  // Fresh shoe, TC 0: at the exit point, so the ramp sits out.
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   const strip = page.locator('.bet-miss');
   // C-R6: the ramp sits out, so the stake is not graded -- the line names the play.
@@ -31,6 +32,22 @@ test('dealing in at a count the ramp sits out: a strip and a spoken line, and th
   await page.getByRole('button', { name: 'Sit out', exact: true }).click();
   await expect(page.locator('.message-sat-out')).toBeVisible();
   await expect(strip).toHaveCount(0);
+});
+
+test('D-R1: at the default exit point (-2) TC 0 is a play: the minimum is right, sitting out is the miss', async ({ page }) => {
+  await withSettings(page, { feedbackMode: 'training', countCheckEvery: 0, dealSpeedMs: 0, audio: { enabled: true } });
+  await withProfile(page, { betSpreadOn: true, countCheckEvery: 0 });
+  await page.goto('/?seed=7&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  // Fresh shoe, TC 0, the minimum bet: no miss.
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await expect(page.locator('.action-bar[data-advice]')).toBeVisible();
+  await expect(page.locator('.bet-miss')).toHaveCount(0);
+  await playRoundByAdvice(page);
+  // Sitting out above the exit point is the miss.
+  await page.getByRole('button', { name: 'Sit out', exact: true }).click();
+  const strip = page.locator('.bet-miss');
+  await expect(strip).toHaveText(/^Play at TC (\+0|\+\d|−1) — you sat out$/);
 });
 
 test('test mode keeps the table quiet about bets', async ({ page }) => {

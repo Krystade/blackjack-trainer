@@ -45,7 +45,7 @@ export interface BetProposition {
  * proposed.
  */
 export function proposeBet(rng: () => number, tc: number, p: BetGradeProfile): BetProposition {
-  const correct = correctBetAnswer(tc, p.spread);
+  const correct = correctBetAnswer(tc, p.spread, p.wongExitTc);
   const wantRight = rng() < 0.5;
   if (!wantRight) {
     const options = betSizingOptions(p.spread);
@@ -95,7 +95,7 @@ export function betPropositionRow(
     decksRemaining: scenarioDecksRemaining(s),
     tc,
     taken: proposed,
-    correct: correctBetAnswer(tc, p.spread),
+    correct: correctBetAnswer(tc, p.spread, p.wongExitTc),
     ok: saidYes === gradeBetSizing(proposed, tc, p),
     saidYes,
   };

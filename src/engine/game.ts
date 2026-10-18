@@ -68,6 +68,8 @@ export interface GameConfig {
   /** V5-4: the counter's true-count rounding convention; defaults to floor. */
   tcRounding?: TcRounding;
   spread: SpreadRow[];
+  /** D-R1: sit out only at true count <= this (engine/wong.ts). Absent = -2. */
+  wongExitTc?: number;
   bankrollStart: number; // units
   countCheckEvery: number; // rounds; 0 = off
   /** #3: what each count check asks for. Absent = 'alternate' (the running
@@ -468,7 +470,7 @@ export class Game {
 
   /** The play-or-sit line: one shared rule with the Bet or sit drill (engine/wong.ts). */
   private sitOutIsCorrect(tc: number): boolean {
-    return sitOutIsCorrect(tc, this.cfg.spread);
+    return sitOutIsCorrect(tc, this.cfg.spread, this.cfg.wongExitTc);
   }
 
   /**
@@ -571,8 +573,8 @@ export class Game {
    * -- the count carried into your next bet is real. Bankroll is untouched.
    *
    * The sit-out is graded as a wong decision against the pre-deal true count
-   * (correct when `sitOutIsCorrect` -- the spread calls only for the table
-   * minimum), mirroring how startRound grades the bet, and only when
+   * (correct when `sitOutIsCorrect` -- at or below the Wong exit point,
+   * D-R1), mirroring how startRound grades the bet, and only when
    * betSpreadOn (the wong decision is meaningless without a spread, same gate
    * bet grading uses). R5, docs/BACKLOG.md.
    *

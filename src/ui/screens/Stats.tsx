@@ -40,8 +40,9 @@ import { strategyRulesFor } from '../../store/profiles';
 import { CATEGORY_LABELS } from './categoryLabels';
 import { betSizingRows } from './ladderRules';
 import { activeIndices } from './readiness';
+import { drillPerIndex, playFigures } from './playStats';
 import { bestCleanCountRuns, formatCountRun } from '../../drills/countSpeed';
-import { CATEGORY_TARGET, MIN_CATEGORY_ANSWERS, goalPct, handCategoryProgress, pctDown } from './handProgress';
+import { CATEGORY_TARGET, HAND_CATEGORIES, MIN_CATEGORY_ANSWERS, goalPct, handCategoryProgress, pctDown } from './handProgress';
 import type { HandCategoryProgress } from './handProgress';
 import './statsGoal.css';
 import './statsHistory.css';
@@ -392,6 +393,8 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Cost of mistakes': 'play',
   'Bet or sit': 'play',
   'Flashcards': 'drills',
+  'Bet sizing drill': 'drills',
+  'Basic strategy goal': 'progress',
   'Count drill': 'drills',
   'Timed count challenge': 'drills',
   'Distraction': 'drills',
@@ -600,11 +603,13 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   // picture: a missed deviation is a real mistake with no honest price (the EV
   // engine is count-blind), and it is counted under Mistake types above but
   // cannot appear here.
-  const evCostRows = inRange(stats.evCost.history);
+  // D-R2 (#4): the Play tab is the table's decisions only (playStats.ts).
+  const play = playFigures(stats);
+  const evCostRows = inRange(play.evCostRows);
   const evCostUndated =
-    range.id === 'all' ? 0 : stats.evCost.history.filter((r) => !r.date).length;
+    range.id === 'all' ? 0 : play.evCostRows.filter((r) => !r.date).length;
   const evCost = evCostSummary(evCostRows);
-  const totalMistakes = MISTAKE_ORDER.reduce((sum, cls) => sum + stats.mistakes[cls], 0);
+  const totalMistakes = MISTAKE_ORDER.reduce((sum, cls) => sum + play.mistakes[cls], 0);
   /*
    * s06: the table's bet-sizing, play-or-sit and count-check misses are all
    * classified 'basic-error' by the engine, so "Basic strategy errors" counted
@@ -612,12 +617,12 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
    * there are; they are shown on their own rows and taken out of that one.
    */
   const nonHandMisses: Record<NonHandMiss, number> = {
-    bet: stats.categories.bet.wrong,
-    wong: stats.categories.wong.wrong,
-    countCheck: stats.categories.countCheck.wrong,
+    bet: play.categories.bet.wrong,
+    wong: play.categories.wong.wrong,
+    countCheck: play.categories.countCheck.wrong,
   };
   const nonHandMissTotal = NON_HAND_MISSES.reduce((n, k) => n + nonHandMisses[k], 0);
-  const handBasicErrors = Math.max(0, stats.mistakes['basic-error'] - nonHandMissTotal);
+  const handBasicErrors = Math.max(0, play.mistakes['basic-error'] - nonHandMissTotal);
   /*
    * ONLY ON "ALL TIME", because only there do the two numbers describe the
    * same set of answers.
@@ -699,6 +704,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   const flashSrSummary = summarizeSrDeck(loadFlashSr(), generateAllCells().length, now);
   // Wave B2 #22: the indexes the drills ask, as on Home (readiness.activeIndices).
   const askedIndices = activeIndices(gradedRules);
+  const drillIndex = drillPerIndex(stats);
   const quizSrSummary = summarizeSrDeck(loadQuizSr(), askedIndices.length, now);
   const quizLabelFor = (key: string) =>
     indexSetFor(gradedRules).find((d) => d.id === key)?.label ?? key;
@@ -713,7 +719,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   const bslLeaveCorrect = bslLeaveRows.filter((h) => h.correct).length;
   // s06: Play's own bet and play-or-sit tallies (undated counters, all time).
   const tally = (c: Category) => {
-    const t = stats.categories[c];
+    const t = play.categories[c];
     return { right: t.right, n: t.right + t.wrong };
   };
   const tableBet = tally('bet');
@@ -856,7 +862,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
         <p className="u-note">
           {range.id === 'all'
             ? 'Showing all time.'
-            : 'The range applies to dated results. Accuracy by category adds an in-range line for timed drill answers. Its goal figures are always your latest answers (the last 30 per hand type), and Flashcards, Shot clock on vs off, Illustrious 18, Mistake types, the Bet or sit table rows and the spaced-repetition boxes are undated tallies, so they show all time.'}
+            : 'The range applies to dated results. Basic strategy goal adds an in-range line for timed drill answers. Its goal figures are always your latest answers (the last 30 per hand type), and Accuracy by category, Flashcards, Shot clock on vs off, Illustrious 18, Mistake types, the Bet or sit table rows and the spaced-repetition boxes are undated tallies, so they show all time.'}
         </p>
       </div>
 
@@ -894,32 +900,15 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
         dataTab={SECTION_TAB['Accuracy by category']}
         defaultOpen={false}
       >
-          <div className="category-list">
+          {/* D-R2 (#4): table decisions only. The hand goal Home judges on
+              (drills and table alike) is its own section on Progress. */}
+          <div className="category-list" data-testid="play-categories">
             {CATEGORY_ORDER.map((cat) => {
-              // W3 / s02: hard, soft and pairs read the SAME figure Home's
-              // Next step judges the 90% goal on (handProgress.ts), drawn
-              // against the target, so the two screens cannot disagree.
-              const hand = handRows.find((h) => h.scope === cat);
-              if (hand) {
-                const latencyMs = medianLatency(latencyRows.filter((e) => e.category === cat));
-                return (
-                  <HandGoalRow key={cat} row={hand} latencyText={formatLatency(latencyMs)} rangeText={inRangeText(cat)} />
-                );
-              }
-              const tally = stats.categories[cat];
+              const tally = play.categories[cat];
               const total = tally.right + tally.wrong;
               const pctNum = total === 0 ? 0 : (tally.right / total) * 100;
-              // R1: median decision time for this category, sourced from
-              // whichever drills currently capture elapsedMs (flashcards +
-              // deviation quiz) -- entries lacking it (e.g. table play) never
-              // reach latencyHistory at all (see stats.ts applyEvents), so the
-              // only filtering needed is the category and, since V3-5, the
-              // selected range. Undated rows predate V3-5 and are kept on "all
-              // time" only, so this figure no longer disagrees with the accuracy
-              // printed on the same line.
-              const latencyMs = medianLatency(latencyRows.filter((e) => e.category === cat));
               return (
-                <div className="category-row" key={cat}>
+                <div className="category-row" key={cat} data-category={cat}>
                   <div className="category-row-top">
                     <span className="category-label">{CATEGORY_LABELS[cat]}</span>
                     <span className="category-fraction">
@@ -929,19 +918,35 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                   <div className="category-bar-track">
                     <div className="category-bar-fill" style={{ width: `${pctNum}%` }} />
                   </div>
-                  <div className="category-latency">Median decision time: {formatLatency(latencyMs)}</div>
-                  {/* s02: hands whose right play is surrender are also in
-                      their hand type's per-cell goal figure above. */}
-                  {cat === 'surrender' && total > 0 && (
-                    <div className="category-legacy">These hands also count toward their hand type&apos;s goal above.</div>
-                  )}
-                  {inRangeText(cat) !== null && (
-                    <div className="category-in-range">{inRangeText(cat)}</div>
-                  )}
                 </div>
               );
             })}
           </div>
+          <p className="stats-detail">Decisions made at the Play table. Drill answers are on the Drills tab.</p>
+      </CollapsibleSection>
+
+      {/*
+        W3 / s02: hard, soft and pairs against the 90% goal, read from the
+        SAME figure Home's Next step judges (handProgress.ts), so the two
+        screens cannot disagree. D-R2: it pools drills and table, so it lives
+        on Progress, not Play.
+      */}
+      <CollapsibleSection
+        title={<>Basic strategy goal</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Basic strategy goal']}
+        defaultOpen={false}
+      >
+          <div className="category-list">
+            {handRows.map((hand) => {
+              const cat = HAND_CATEGORIES.find((h) => h.prefix === hand.prefix)!.category;
+              const latencyMs = medianLatency(latencyRows.filter((e) => e.category === cat));
+              return (
+                <HandGoalRow key={hand.prefix} row={hand} latencyText={formatLatency(latencyMs)} rangeText={inRangeText(cat)} />
+              );
+            })}
+          </div>
+          <p className="stats-detail">Every hand you answer counts here: the drills and the Play table.</p>
       </CollapsibleSection>
 
       {/*
@@ -1003,6 +1008,15 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
               </>
             );
           })()}
+          {/* #22: answers withdrawn with "Wrong tap" (a drill control). Not
+              mistakes -- they were taken out of every tally -- but counted, so
+              a habit of mis-tapping stays visible. */}
+          <ul className="mistake-list">
+            <li className="mistake-row" data-testid="stats-misclicks">
+              <span>Wrong taps (not counted)</span>
+              <span>{stats.misclicks ?? 0}</span>
+            </li>
+          </ul>
       </CollapsibleSection>
 
       {/*
@@ -1097,7 +1111,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                   being written to `perIndex` and then had no row to appear
                   in. */}
               {askedIndices.map((dev) => {
-                const tally = stats.perIndex[dev.id];
+                const tally = play.perIndex[dev.id];
                 return (
                   <tr key={dev.id}>
                     <td>{dev.label}</td>
@@ -1120,7 +1134,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
             {MISTAKE_ORDER.map((cls) => (
               <li className="mistake-row" key={cls}>
                 <span>{MISTAKE_LABELS[cls]}</span>
-                <span>{cls === 'basic-error' ? handBasicErrors : stats.mistakes[cls]}</span>
+                <span>{cls === 'basic-error' ? handBasicErrors : play.mistakes[cls]}</span>
               </li>
             ))}
             {/* s06: Play files these under basic-error; they are not hand plays. */}
@@ -1130,13 +1144,6 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                 <span>{nonHandMisses[k]}</span>
               </li>
             ))}
-            {/* #22: answers withdrawn with "Wrong tap". Not mistakes -- they
-                were taken out of every tally above -- but counted, so a
-                habit of mis-tapping stays visible. */}
-            <li className="mistake-row" data-testid="stats-misclicks">
-              <span>Wrong taps (not counted)</span>
-              <span>{stats.misclicks ?? 0}</span>
-            </li>
           </ul>
       </CollapsibleSection>
 
@@ -1447,10 +1454,11 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
         dataTab={SECTION_TAB['Bet or sit']}
         defaultOpen={false}
       >
-          {/* s06: the table's own bet and play-or-sit decisions, then the drill's. */}
-          {tableBet.n + tableWong.n === 0 && bslAttempts === 0 && betSizingDrill.length === 0 ? (
+          {/* s06: the table's own bet and play-or-sit decisions. D-R2: the
+              drills' answers are in "Bet sizing drill" on the Drills tab. */}
+          {tableBet.n + tableWong.n === 0 ? (
             <p className="stats-detail">
-              No bet or sit decisions yet. Play with a bet spread on, or try the Bet sizing drill.
+              No bet or sit decisions at the table yet. Play with a bet spread on.
             </p>
           ) : (
             <ul className="mistake-list">
@@ -1470,6 +1478,20 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                   </span>
                 </li>
               )}
+            </ul>
+          )}
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={<>Bet sizing drill</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Bet sizing drill']}
+        defaultOpen={false}
+      >
+          {bslAttempts === 0 && betSizingDrill.length === 0 ? (
+            <p className="stats-detail">No Bet sizing answers yet. Try the Bet sizing drill.</p>
+          ) : (
+            <ul className="mistake-list">
               {betSizingDrill.length > 0 && (
                 <li className="mistake-row" data-testid="bsl-drill-bet-sizing">
                   <span>Bet sizing drill</span>
@@ -1678,9 +1700,34 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
             <div className="stats-headline">
               <span className="stats-headline-value">{pct(quizRight, quizTotal)}</span>
               <span className="stats-headline-label">
-                {quizRight}/{quizTotal} correct, all time. Per index: Play tab, Illustrious 18.
+                {quizRight}/{quizTotal} correct, all time.
               </span>
             </div>
+          )}
+          {/* D-R2: the drills' per-index answers (the Play tab's Illustrious 18
+              is the table's). Rows: the indexes the drills ask (D-R3). */}
+          {Object.keys(drillIndex).length > 0 && (
+            <table className="index-table" data-testid="drill-index-table">
+              <thead>
+                <tr>
+                  <th>Index</th>
+                  <th>Right</th>
+                  <th>Wrong</th>
+                </tr>
+              </thead>
+              <tbody>
+                {askedIndices.map((dev) => {
+                  const tally = drillIndex[dev.id];
+                  return (
+                    <tr key={dev.id}>
+                      <td>{dev.label}</td>
+                      <td>{tally ? tally.right : '—'}</td>
+                      <td>{tally ? tally.wrong : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
       </CollapsibleSection>
 

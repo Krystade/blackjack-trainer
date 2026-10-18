@@ -11,4 +11,4 @@ export const BET_SIZING_DRILL = 'Bet sizing';
 export const BET_SIZING_PICKER = 'Read the running count and the tray, then sit out or bet your ramp: both decisions in one answer.';
 
 export const BET_SIZING_INTRO =
-  `Read the tray, divide, and bet your ramp; sit out where it bets its minimum. One answer covers two of Play's rows: “${CATEGORY_LABELS.wong}” and “${CATEGORY_LABELS.bet}”.`;
+  `Read the tray, divide, and bet your ramp; sit out at or below your exit point. One answer covers two of Play's rows: “${CATEGORY_LABELS.wong}” and “${CATEGORY_LABELS.bet}”.`;

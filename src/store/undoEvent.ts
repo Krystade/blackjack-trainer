@@ -86,6 +86,27 @@ export function undoGradedEvent(stats: Stats, event: GradedEvent, cellBefore?: C
     [event.classification]: Math.max(0, stats.mistakes[event.classification] - 1),
   };
 
+  // D-R2: the table-only tallies applyEvents writes for a table event.
+  if (event.source === 'table' && stats.tableMistakes) {
+    const tableMistakes = { ...stats.tableMistakes };
+    const left = Math.max(0, (tableMistakes[event.classification] ?? 0) - 1);
+    if (left === 0) delete tableMistakes[event.classification];
+    else tableMistakes[event.classification] = left;
+    const tablePerIndex = { ...stats.tablePerIndex };
+    if (event.deviationId) {
+      const t = dec(tablePerIndex[event.deviationId]);
+      if (isZero(t)) delete tablePerIndex[event.deviationId];
+      else tablePerIndex[event.deviationId] = t;
+    }
+    if (Object.keys(tableMistakes).length === 0 && Object.keys(tablePerIndex).length === 0) {
+      delete result.tableMistakes;
+      delete result.tablePerIndex;
+    } else {
+      result.tableMistakes = tableMistakes;
+      result.tablePerIndex = tablePerIndex;
+    }
+  }
+
   if (event.elapsedMs !== undefined) {
     const i = findLastIndex(
       stats.latencyHistory,
@@ -103,7 +124,8 @@ export function undoGradedEvent(stats: Stats, event: GradedEvent, cellBefore?: C
         r.taken === event.taken &&
         r.expected === event.expected &&
         r.units === event.evCost &&
-        r.date === event.at,
+        r.date === event.at &&
+        r.source === event.source,
     );
     if (i >= 0) result.evCost = { ...stats.evCost, history: without(stats.evCost.history, i) };
   }

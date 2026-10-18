@@ -366,10 +366,11 @@ test('stats: Endurance/fatigue shows the empty state before enough back-to-back 
  */
 test('the cost of mistakes is ranked by total units, not by how bad each one looked', async ({ page }) => {
   const row = (hand: string, expected: string, taken: string, units: number, times: number) =>
-    Array.from({ length: times }, () => ({ category: 'hard', hand, expected, taken, units }));
+    Array.from({ length: times }, () => ({ category: 'hard', hand, expected, taken, units, source: 'table' }));
 
+  // D-R2: the Play tab reads the table's own mistake tally.
   await withStats(page, {
-    mistakes: {
+    tableMistakes: {
       correct: 300,
       'basic-error': 21,
       'missed-deviation': 9,
@@ -422,11 +423,14 @@ test('#25: the cost of mistakes shows the five dearest rows, the rest behind "Sh
     expected: 'stand',
     taken: 'hit',
     units: 0.1 * (i + 1),
+    source: 'table',
   }));
-  // Play writes the cards ("9,7 v 10"), a flashcard the cell id: one habit.
+  // Written as cards ("9,7 v 10") or as a cell id, it is one habit.
   history.push(
-    { category: 'hard', hand: '9,7 v 10', expected: 'hit', taken: 'stand', units: 0.04 },
-    { category: 'hard', hand: 'hard-16-v-10', expected: 'hit', taken: 'stand', units: 0.04 },
+    { category: 'hard', hand: '9,7 v 10', expected: 'hit', taken: 'stand', units: 0.04, source: 'table' },
+    { category: 'hard', hand: 'hard-16-v-10', expected: 'hit', taken: 'stand', units: 0.04, source: 'table' },
+    // D-R2: a drill's priced miss is not a Play figure.
+    { category: 'hard', hand: 'hard-15-v-10', expected: 'hit', taken: 'stand', units: 9, source: 'flashcard' },
   );
   await withStats(page, { evCost: { history } });
   await page.goto('/?e2e=1');
@@ -556,17 +560,16 @@ test('the range picker reaches the sections that were reading lifetime totals', 
   await statsTab(page, 'Drills');
   await expect(section(page, 'True count drill')).toContainText('1/2');
   await expect(rowValue(page, 'Distraction', 'Attempts')).toHaveText('2');
-  await statsTab(page, 'Play');
-  await expect(rowValue(page, 'Bet or sit', 'Decisions')).toHaveText('2');
+  // D-R2: the drill's bet answers are on the Drills tab, not Play's Bet or sit.
+  await expect(rowValue(page, 'Bet sizing drill', 'Decisions')).toHaveText('2');
   // #48-51: the drill no longer asks "leave", but an old row that did still renders.
-  await expect(section(page, 'Bet or sit').locator('.mistake-row', { hasText: 'time to leave (old)' })).toHaveCount(1);
+  await expect(section(page, 'Bet sizing drill').locator('.mistake-row', { hasText: 'time to leave (old)' })).toHaveCount(1);
 
   // ...and the same window has to reach all three, or the screen is showing
   // two different questions answered side by side with nothing saying which
   // figure is which.
   await page.getByRole('button', { name: 'Last 7 days', exact: true }).click();
-  await expect(rowValue(page, 'Bet or sit', 'Decisions')).toHaveText('1');
-  await statsTab(page, 'Drills');
+  await expect(rowValue(page, 'Bet sizing drill', 'Decisions')).toHaveText('1');
   await expect(
     section(page, 'True count drill'),
     'the true-count section ignored the window',

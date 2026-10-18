@@ -130,6 +130,7 @@ describe('playOptionsDiffer: what the Play sheet counts as a change', () => {
     // The cut stepped up and back down stores the cut that was only derived.
     expect(playOptionsDiffer({ ...base, cutDecks: 1.5 }, base)).toBe(false);
     expect(playOptionsDiffer({ ...base, countCheckAsk: 'alternate', gradeDeviations: true }, base)).toBe(false);
+    expect(playOptionsDiffer({ ...base, wongExitTc: -2 }, base)).toBe(false);
   });
 
   it('every real change is one', () => {
@@ -139,5 +140,6 @@ describe('playOptionsDiffer: what the Play sheet counts as a change', () => {
     expect(playOptionsDiffer({ ...base, gradeDeviations: false }, base)).toBe(true);
     expect(playOptionsDiffer({ ...base, countCheckEvery: base.countCheckEvery + 1 }, base)).toBe(true);
     expect(playOptionsDiffer({ ...base, betSpreadOn: !base.betSpreadOn }, base)).toBe(true);
+    expect(playOptionsDiffer({ ...base, wongExitTc: -3 }, base)).toBe(true);
   });
 });

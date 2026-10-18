@@ -114,15 +114,15 @@ test('bet-spread grading against a profile ramp: a wrong bet is graded and shows
   await withProfile(page, {
     name: 'Bet Spread Test Profile',
     betSpreadOn: true,
-    // C-R6: the ramp sits where it bets its minimum, and a sit round grades
-    // no bet size, so the ramp must PLAY at the opening TC 0: 2u from TC -5.
-    spread: [{ minTc: -99, units: 1 }, { minTc: -5, units: 2 }],
+    // D-R1: TC 0 is a play (sit only at the exit point, -2), so the default
+    // ramp's minimum is the bet at the opening TC 0 and the size is graded.
+    spread: [{ minTc: -99, units: 1 }, { minTc: 1, units: 2 }, { minTc: 2, units: 4 }],
     countCheckEvery: 0,
   });
   await page.goto('/?seed=6&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
-  // Ramp says 2 units at TC 0; deliberately pick 8.
+  // Ramp says 1 unit at TC 0; deliberately pick 8.
   await expect(page.locator('.bet-chips')).toBeVisible();
   await page.locator('.chip-btn', { hasText: /^8$/ }).click();
   await shot(page, '44-profile-bet-chip-selected');
@@ -135,5 +135,7 @@ test('bet-spread grading against a profile ramp: a wrong bet is graded and shows
   await expect(page.locator('.report-screen')).toBeVisible();
   const betRow = page.locator('.report-categories tr', { hasText: 'bet' });
   await expect(betRow).toBeVisible();
+  // Graded as a bet size, not a sit-out: one wrong bet, no play-or-sit row.
+  await expect(page.locator('.report-categories tr', { hasText: 'Play or sit out' })).toHaveCount(0);
   await shot(page, '45-profile-bet-spread-report');
 });

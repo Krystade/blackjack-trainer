@@ -92,3 +92,32 @@ test('Bet sizing off eyes-free keeps its rung buttons and proposes nothing', asy
   await expect(page.locator('.bet-sizing-btn').first()).toBeVisible();
   await expect(page.getByTestId('bet-proposition')).toHaveCount(0);
 });
+
+/**
+ * D-R4: a replaced profile (here another tab's write, which re-reads the
+ * profile into a new object with the same ramp) must not repeat the proposal
+ * already made for this scenario.
+ */
+test('D-R4: Bet sizing, eyes-free: a profile replace does not repeat the proposal', async ({ page }) => {
+  await open(page, 'Bet sizing');
+  await page.getByRole('checkbox', { name: 'Eyes-free audio' }).check();
+  const isProposal = (l: string) => /^Running count .* (Bet .* units?\?|Sit out\?)$/.test(l);
+  await expect.poll(async () => (await spoken(page)).filter(isProposal).length).toBe(1);
+  const proposed = await page.getByTestId('bet-proposition').getAttribute('data-proposed');
+  const replaces = 3;
+  for (let i = 0; i < replaces; i++) {
+    await page.evaluate((n) => {
+      const key = 'bjtrainer.profiles.v1';
+      const value = localStorage.getItem(key);
+      window.dispatchEvent(new StorageEvent('storage', { key, oldValue: `stale-${n}`, newValue: value, storageArea: localStorage }));
+    }, i);
+  }
+  // Vacuity: proven by mutation (reverting the fix makes this fail; see the wave report).
+  await page.waitForTimeout(300);
+  expect((await spoken(page)).filter(isProposal)).toHaveLength(1);
+  await expect(page.getByTestId('bet-proposition')).toHaveAttribute('data-proposed', proposed!);
+  // The next scenario is still proposed.
+  await press(page, 'back');
+  await press(page, 'forward');
+  await expect.poll(async () => (await spoken(page)).filter(isProposal).length).toBe(2);
+});

@@ -176,6 +176,24 @@ test('the bet spread can be switched on from the Play gear (s06)', async ({ page
   await expect(page.getByRole('button', { name: /Sit out/i })).toBeVisible();
 });
 
+test('D-R1: the Wong exit point is a stepper under the bet spread, -2 by default, -5..0', async ({ page }) => {
+  await withProfile(page, { countCheckEvery: 5, betSpreadOn: true });
+  await openTable(page);
+  await page.getByRole('button', { name: 'Play settings' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  const row = sheet.locator('.settings-row', { hasText: 'Sit out at TC' });
+  await expect(row.locator('.stepper-value')).toHaveText('−2 or lower');
+  await expect(sheet.getByTestId('wong-exit-note')).toHaveText('Above −2 playing is right, even where the ramp bets its minimum.');
+  await row.getByRole('button', { name: '+' }).click();
+  await row.getByRole('button', { name: '+' }).click();
+  await expect(row.locator('.stepper-value')).toHaveText('0 or lower');
+  await expect(row.getByRole('button', { name: '+' })).toBeDisabled();
+  await row.getByRole('button', { name: '−' }).click();
+  await expect(sheet.getByTestId('tab-sheet-when')).toContainText('A new shoe is dealt when you close this');
+  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  expect((await storedProfile(page)).wongExitTc).toBe(-1);
+});
+
 test('Edit profile and bet ramp leaves the Play sheet for the profile editor', async ({ page }) => {
   await openTable(page);
   await page.getByRole('button', { name: 'Play settings' }).click();

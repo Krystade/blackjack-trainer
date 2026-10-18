@@ -70,7 +70,8 @@ test('B6: plays and count checks are separate, plays sorted by cost, headline is
 
 test('B6: a session that only sat out shows no per-100 headline', async ({ page }) => {
   await withSettings(page, { feedbackMode: 'test', dealSpeedMs: 0 });
-  await withProfile(page, { betSpreadOn: true, countCheckEvery: 0 });
+  // D-R1: exit point 0, so sitting out the fresh shoe's TC 0 is right.
+  await withProfile(page, { betSpreadOn: true, countCheckEvery: 0, wongExitTc: 0 });
   await page.goto('/?seed=4&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await page.getByRole('button', { name: 'Sit out', exact: true }).click();
@@ -124,10 +125,10 @@ test('B6 / B2 #46: Drill these hands deals exactly the missed cells, labelled, a
 
 test('B2 R3/#15: bet and sit misses are counted beside the headline and listed in plain words', async ({ page }) => {
   await withSettings(page, { feedbackMode: 'test', dealSpeedMs: 0 });
-  await withProfile(page, { betSpreadOn: true, countCheckEvery: 0 });
+  await withProfile(page, { betSpreadOn: true, countCheckEvery: 0, wongExitTc: 0 });
   await page.goto('/?seed=7&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  // Fresh shoe, TC 0: the ramp sits out (D1), so dealing in is a play-or-sit
+  // Fresh shoe, TC 0: at exit point 0 (D-R1) the ramp sits out, so dealing in is a play-or-sit
   // miss. C-R6 (deliberately changed): the 2u is not graded on top of it --
   // one round, one bet decision.
   await page.locator('.bet-chips .chip-btn', { hasText: /^2$/ }).click();

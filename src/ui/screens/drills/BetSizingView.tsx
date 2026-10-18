@@ -89,7 +89,7 @@ export function BetSizingView({
   const audio = useAudio(settings.audio);
   const options = betSizingOptions(activeProfile.spread);
   const [scenario, setScenario] = useState<BetSizingScenario>(() =>
-    makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread, floor),
+    makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread, floor, activeProfile.wongExitTc),
   );
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const resultShownAtRef = useRef(performance.now());
@@ -97,9 +97,19 @@ export function BetSizingView({
   // The proposal's own seed, drawn with each scenario, so a re-render never
   // changes the bet already proposed.
   const [proposalSeed, setProposalSeed] = useState(randomSeed);
+  // D-R4: keyed on what grades the bet, not on the profile object's identity.
+  // A profile replaced with the same ramp (a settings save, another tab's
+  // write) is a new object; it must not re-propose, or re-say, the same bet.
+  const gradeKey = JSON.stringify([
+    activeProfile.spread,
+    activeProfile.coverBets ?? false,
+    activeProfile.tcRounding ?? null,
+    activeProfile.wongExitTc ?? null,
+  ]);
   const proposal = useMemo(
     () => proposeBet(mulberry32(proposalSeed), scenarioTc(scenario, activeProfile.tcRounding), activeProfile),
-    [proposalSeed, scenario, activeProfile],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [proposalSeed, scenario, gradeKey],
   );
   const advanceTimerRef = useRef<number | null>(null);
   const clearAdvance = () => {
@@ -109,15 +119,26 @@ export function BetSizingView({
   useEffect(() => clearAdvance, []);
   const say = (text: string) => speak(text, speechOptsFrom(settings.audio, { interrupt: true }));
 
-  // Eyes-free: propose each scenario's bet out loud.
+  // Eyes-free: propose each scenario's bet out loud, once. D-R4: the last
+  // proposal said is remembered, so a re-render that lands on the same
+  // scenario and bet (a replaced profile) says nothing again.
+  const spokenRef = useRef<{ scenario: BetSizingScenario; proposed: BetAnswer } | null>(null);
   useEffect(() => {
-    if (eyesFree && !feedback) say(narrateBetProposition(scenario, proposal.proposed));
+    if (!eyesFree) {
+      spokenRef.current = null;
+      return;
+    }
+    if (feedback) return;
+    const last = spokenRef.current;
+    if (last && last.scenario === scenario && last.proposed === proposal.proposed) return;
+    spokenRef.current = { scenario, proposed: proposal.proposed };
+    say(narrateBetProposition(scenario, proposal.proposed));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scenario, proposal, eyesFree]);
 
   const nextScenario = () => {
     clearAdvance();
-    setScenario(makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread, floor));
+    setScenario(makeBetSizingScenario(randomSeed(), totalDecks, activeProfile.spread, floor, activeProfile.wongExitTc));
     setProposalSeed(randomSeed());
     setFeedback(null);
   };
@@ -160,7 +181,7 @@ export function BetSizingView({
       id: Date.now(),
       ok,
       taken,
-      correct: correctBetAnswer(tc, activeProfile.spread),
+      correct: correctBetAnswer(tc, activeProfile.spread, activeProfile.wongExitTc),
       working: betSizingWorking(scenario, activeProfile),
     });
   };

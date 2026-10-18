@@ -385,6 +385,12 @@ export interface Profile {
    */
   coverBets?: boolean;
   /**
+   * D-R1 (Wave D): the Wong exit point. Sitting out is graded right only at
+   * true count <= this; playing is right anywhere above it, even where the
+   * ramp bets its minimum. -5..0, absent = -2 (engine/wong.ts).
+   */
+  wongExitTc?: number;
+  /**
    * V5-4: how this counter's system resolves the leftover in a true-count
    * division. OPTIONAL so profiles stored before this field load untouched,
    * and absent means 'floor' -- the app's historical behaviour.
@@ -486,6 +492,13 @@ export interface Stats {
    * stays the pooled total so the existing sections are untouched.
    */
   bySource?: Partial<Record<EventSource, Record<Category, TallyRW>>>;
+  /**
+   * D-R2 (Wave D, #4): `perIndex` and `mistakes` for table (Play) decisions
+   * only, so Stats > Play can show the table without the drills mixed in.
+   * OPTIONAL: absent on blobs written before, which read as no table data.
+   */
+  tablePerIndex?: Partial<Record<DeviationId, TallyRW>>;
+  tableMistakes?: Partial<Record<MistakeClass, number>>;
   /**
    * V5-2 (docs/BACKLOG.md): hand-drill accuracy split by whether a shot clock
    * was running. OPTIONAL, so a blob written before this field loads
@@ -795,6 +808,8 @@ export interface Stats {
       expected: string;
       /** Units of the original bet, >= 0. */
       units: number;
+      /** D-R2: where the decision was made. Absent on rows written before. */
+      source?: EventSource;
       /** V3-5: the event's `at`, an ISO timestamp stamped by the calling
        * component. Optional and absent on every row written before V3-5 --
        * filterByRange keeps those on "all time" and drops them from a bounded
