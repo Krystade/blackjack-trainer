@@ -1,0 +1,106 @@
+/* Drive checks (DriveChecks.tsx): the live check, its spoken line, and the list. */
+.drive-checks .dc-live {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.drive-checks .dc-now {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+.drive-checks .dc-line {
+  min-height: 3.2em;
+  color: var(--ink-soft);
+  line-height: 1.35;
+}
+.drive-checks .dc-answers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.drive-checks .dc-answers .fieldtest-stamp {
+  align-self: stretch;
+  min-height: 56px;
+  text-align: center;
+}
+.drive-checks .dc-mute {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+}
+.drive-checks .dc-sample {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+}
+.drive-checks .dc-list {
+  list-style: none;
+  margin: 6px 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.drive-checks .dc-item {
+  display: grid;
+  grid-template-columns: 1.6em 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.drive-checks .dc-n {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+.drive-checks .dc-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.drive-checks .dc-parked {
+  opacity: 0.7;
+  font-size: var(--fs-sm);
+}
+.drive-checks .dc-status {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: var(--fs-sm);
+}
+.drive-checks .dc-status-pass {
+  color: var(--good);
+}
+.drive-checks .dc-status-fail {
+  color: var(--bad);
+}
+.drive-checks .dc-status-skipped,
+.drive-checks .dc-status-pending {
+  opacity: 0.6;
+}
+.drive-checks .dc-run {
+  min-height: 40px;
+  min-width: 72px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--ink);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.drive-checks .dc-run.dc-status-pending {
+  text-transform: none;
+}
+.drive-checks .dc-run.dc-status-pass {
+  color: var(--good);
+}
+.drive-checks .dc-run.dc-status-fail {
+  color: var(--bad);
+}
+.drive-checks .dc-run.dc-status-pending {
+  opacity: 1;
+}

@@ -30,6 +30,7 @@ import { drawQuizItem } from '../src/drills/deviationQuiz';
 import { reachableReasons, drillSentences } from './spokenPhrases';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 import { betMissFeedback } from '../src/ui/betFeedback';
+import { DC_LINES, QUEUE_TTS_LINE } from '../src/diag/driveChecks';
 import {
   narrateNotATag,
   narrateReadback,
@@ -364,6 +365,17 @@ describe('shipped clip coverage', () => {
      */
     it(`resolves the Settings "Test audio" line (${voice})`, () => {
       expect(segmentForClips(TEST_AUDIO_LINE, manifestFor(voice))).not.toBeNull();
+    });
+
+    /**
+     * Drive checks: every fixed line is recorded -- except the one check 4
+     * queues as LIVE speech behind a clip, which must stay unrecorded or the
+     * check stops testing a clip-then-TTS queue.
+     */
+    it(`resolves every drive-check line, and not the live queue line (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      expect(Object.values(DC_LINES).filter((t) => segmentForClips(t, manifest) === null)).toEqual([]);
+      expect(segmentForClips(QUEUE_TTS_LINE, manifest)).toBeNull();
     });
 
     /** "Correct." was covered and "Wrong." was not, for a long time. */
