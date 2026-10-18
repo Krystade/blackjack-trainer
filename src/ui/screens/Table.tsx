@@ -10,6 +10,7 @@ import type { DealSlot, Game, PlayerHand, Seat } from '../../engine/game';
 import { handPlayNumber } from '../../engine/game';
 import type { Action } from '../../engine/deviations';
 import type { PlayContext } from '../../engine/strategy';
+import type { RuleSet } from '../../engine/ruleset';
 import { basicPlay, correctPlay } from '../../engine/strategy';
 import { isBust } from '../../engine/hand';
 import { useGame } from '../useGame';
@@ -247,10 +248,13 @@ function RowTail({ row }: { row: MistakeRow }) {
 function ReportScreen({
   report,
   coverBetsOn,
+  rules,
   onDone,
   onDrill,
 }: {
   report: SessionReport;
+  /** H7: the session's rules, for the plays' chart-region reasons. */
+  rules: RuleSet;
   /** Whether this session graded with cover bets (one rung either side). */
   coverBetsOn: boolean;
   onDone: () => void;
@@ -361,7 +365,7 @@ function ReportScreen({
               data-units={row.unitsTotal !== null ? row.unitsTotal : undefined}
               data-cell={row.cellId ?? undefined}
             >
-              {playRowText(row.mistake)}
+              {playRowText(row.mistake, rules)}
               <RowTail row={row} />
             </li>
           ))}
@@ -870,6 +874,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       <ReportScreen
         report={report}
         coverBetsOn={game.cfg.coverBets === true}
+        rules={game.rules}
         onDone={handleReportDone}
         onDrill={handleReportDrill}
       />

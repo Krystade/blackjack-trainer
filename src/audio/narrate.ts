@@ -359,6 +359,13 @@ export function narrateTcQuestion(runningCount: number, decksRemaining: number):
 /** The produce-the-true-count drill's second sentence. */
 export const PRODUCE_TC_PROMPT = 'Produce the true count.';
 
+/**
+ * H5: Settings' "Test audio" line. Both sentences are recorded in every clip
+ * voice (scripts/clipCoverage.test.ts): the button exists to check the voice
+ * the car hears, and one unrecorded sentence sends the whole line to live TTS.
+ */
+export const TEST_AUDIO_LINE = 'Audio is working. True count plus three.';
+
 export function narrateProduceTcPrompt(decksRemaining: number): string {
   return `${capitalizeSpoken(narrateDecksRemaining(decksRemaining))}. ${PRODUCE_TC_PROMPT}`;
 }

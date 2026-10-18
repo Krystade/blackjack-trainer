@@ -34,6 +34,7 @@ import {
   narrateNotATag,
   narrateReadback,
   VOICE_CONVERSATION_LINES,
+  TEST_AUDIO_LINE,
 } from '../src/audio/narrate';
 
 /**
@@ -354,6 +355,15 @@ describe('shipped clip coverage', () => {
         }
       }
       expect([...lines].filter((t) => segmentForClips(t, manifest) === null)).toEqual([]);
+    });
+
+    /**
+     * H5: the Settings "Test audio" line. It exists to check the voice the
+     * car hears, and "Audio is working." had no recording, so the all-or-
+     * nothing cascade spoke the whole test in live TTS.
+     */
+    it(`resolves the Settings "Test audio" line (${voice})`, () => {
+      expect(segmentForClips(TEST_AUDIO_LINE, manifestFor(voice))).not.toBeNull();
     });
 
     /** "Correct." was covered and "Wrong." was not, for a long time. */

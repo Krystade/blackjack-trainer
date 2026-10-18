@@ -11,8 +11,9 @@ import { ALL_SCOPES, withScopes } from '../drills/handScope';
  * not something a reload should replay. Drills takes it (which clears it)
  * when it mounts; 'custom' means Custom with the Auto fill applied.
  */
-// C-R3: Home's Drive can also open Mixed and Produce the true count.
-export type DrillLaunch = Exclude<NextStepKind, 'play'> | 'mixed' | 'producetc';
+// C-R3: Home's Drive can also open Mixed and Produce the true count, and
+// (H3) Speed.
+export type DrillLaunch = Exclude<NextStepKind, 'play'> | 'mixed' | 'producetc' | 'speed';
 
 let pending: DrillLaunch | null = null;
 

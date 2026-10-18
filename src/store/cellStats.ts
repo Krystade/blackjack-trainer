@@ -34,15 +34,27 @@ function chartRank(rank: string): string {
 export function cellIdForHand(hand: string | undefined): string | null {
   if (!hand) return null;
   if (CELL_ID.test(hand)) return hand;
+  const parsed = tableHandCards(hand);
+  if (!parsed) return null;
+  const { cards } = parsed;
+  const up = chartRank(parsed.up);
+  if (isPair(cards)) return `pair-${pairRank(cards)}-v-${up}`;
+  const value = handValue(cards);
+  return `${value.soft ? 'soft' : 'hard'}-${value.total}-v-${up}`;
+}
+
+/**
+ * H7: the cards and up card of a hand in table notation ("9,7 v 10"), or
+ * null for anything else (a cell id, an insurance item, a one-card hand).
+ * Suits are not recorded, so every card is a spade.
+ */
+export function tableHandCards(hand: string | undefined): { cards: Card[]; up: Rank } | null {
+  if (!hand) return null;
   const m = TABLE_HAND.exec(hand);
   if (!m) return null;
   const ranks = m[1]!.split(',');
   if (!ranks.every((r) => RANKS.has(r)) || !RANKS.has(m[2]!)) return null;
-  const cards: Card[] = ranks.map((rank) => ({ rank: rank as Rank, suit: 's' }));
-  const up = chartRank(m[2]!);
-  if (isPair(cards)) return `pair-${pairRank(cards)}-v-${up}`;
-  const value = handValue(cards);
-  return `${value.soft ? 'soft' : 'hard'}-${value.total}-v-${up}`;
+  return { cards: ranks.map((rank) => ({ rank: rank as Rank, suit: 's' })), up: m[2]! as Rank };
 }
 
 /** The cell an event is tallied under: hand decisions only. */

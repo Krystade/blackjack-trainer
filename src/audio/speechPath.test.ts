@@ -8,6 +8,7 @@ import {
   _resetLastSpokenForTest,
 } from './speech';
 import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
+import { setClipsEnabled, CLIPS_ENABLED_DEFAULT } from './clips';
 
 /**
  * Which voice spoke a line, as a fact the app records rather than a question
@@ -60,11 +61,21 @@ describe('the app records which voice spoke', () => {
   });
 
   it('names WHY it fell back, since a missing recording and a setting need different fixes', async () => {
+    // H5: clips are on by default now (CLIPS_ENABLED_DEFAULT), so the setting
+    // is switched off here to reach the clips-off answer: the honest answer is
+    // then the setting -- not a missing recording, which would send someone
+    // hunting a clip that was never going to be used.
+    setClipsEnabled(false);
+    try {
+      await speakAsync('Basic hit versus dealer nine.');
+      expect(paths()[0]?.why).toBe('clips-off');
+    } finally {
+      setClipsEnabled(CLIPS_ENABLED_DEFAULT);
+    }
+    // With clips on and no manifest loaded here, it is the recording.
+    clearDiagnosticLog();
     await speakAsync('Basic hit versus dealer nine.');
-    // Clips are not enabled in this environment, so the honest answer is the
-    // setting -- not a missing recording, which would send someone hunting a
-    // clip that was never going to be used.
-    expect(paths()[0]?.why).toBe('clips-off');
+    expect(paths()[0]?.why).toBe('no-clip');
   });
 
   it('hands the decision back to the caller, so the app can state it instead of asking', async () => {

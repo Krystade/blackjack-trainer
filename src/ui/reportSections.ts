@@ -5,6 +5,10 @@
  */
 import type { GradedEvent } from '../engine/grade';
 import { tallyCellIdFor } from '../store/stats';
+import { cellIdForHand, tableHandCards } from '../store/cellStats';
+import type { RuleSet } from '../engine/ruleset';
+import { playMissReason } from './screens/playMissReason';
+import { regionRuleFor } from './screens/regionRule';
 import { ALL_PAINT_CELL_IDS } from '../drills/cellSelection';
 import { signed, MINUS } from '../drills/signed';
 import { playLabel } from './playLabel';
@@ -97,13 +101,43 @@ const INSURANCE_LABEL: Record<string, string> = { take: 'Take', decline: 'Declin
  * A Plays row: "{hand} · TC ±n · you played X · correct Y — reason". An
  * insurance row drops the reason (B2 #49): it only repeated the dealer card
  * and the TC, in lowercase with an ASCII hyphen.
+ *
+ * H7: a basic error's reason is the wrong-play card's (E6, playMissReason):
+ * the chart region and the dealer's bust chance, never the engine's "Basic
+ * hit vs dealer 7", which only named the verdict again. Index errors keep
+ * the index label. Without `rules` the engine reason stands.
  */
-export function playRowText(m: GradedEvent): string {
+export function playRowText(m: GradedEvent, rules?: RuleSet): string {
   if (m.kind === 'insurance') {
     const label = (v: string) => INSURANCE_LABEL[v] ?? playLabel(v);
     return `${m.hand ?? 'Insurance'} · TC ${tcText(m.tc)} · you played ${label(m.taken)} · correct ${label(m.expected)}`;
   }
-  return `${m.hand ?? m.kind} · TC ${tcText(m.tc)} · you played ${playLabel(m.taken)} · correct ${playLabel(m.expected)} — ${m.reason}`;
+  const reason = rules ? playRowReason(m, rules) : m.reason;
+  return `${m.hand ?? m.kind} · TC ${tcText(m.tc)} · you played ${playLabel(m.taken)} · correct ${playLabel(m.expected)} — ${reason}`;
+}
+
+/**
+ * The card's reason for a graded table decision. The event keeps the dealt
+ * cards as text but not whether splitting was legal, which the card reads
+ * from the overlay; a pair whose row says split, graded as anything else,
+ * could not have been split (max splits), so it is read as its total --
+ * exactly as strategy.ts graded it.
+ */
+function playRowReason(m: GradedEvent, rules: RuleSet): string {
+  const parsed = tableHandCards(m.hand);
+  if (!parsed) return m.reason;
+  const cell = cellIdForHand(m.hand);
+  const pairRule = cell?.startsWith('pair-') ? regionRuleFor(cell, rules) : null;
+  const splitRow = pairRule !== null && (pairRule.action === 'P' || pairRule.action === 'Rp');
+  const canSplit = !(splitRow && m.expected !== 'split' && m.expected !== 'surrender');
+  return playMissReason({
+    reason: m.reason,
+    classification: m.classification,
+    cards: parsed.cards,
+    dealerUp: parsed.up,
+    canSplit,
+    rules,
+  });
 }
 
 /**

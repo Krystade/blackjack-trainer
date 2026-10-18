@@ -68,6 +68,33 @@ test('B6: plays and count checks are separate, plays sorted by cost, headline is
   await shot(page, 'b6-report');
 });
 
+/**
+ * H7 (retest story 9): a Plays row's reason is the wrong-play card's (E6) --
+ * the chart region and the dealer's bust chance -- not the engine's "Basic hit
+ * vs dealer 7" placeholder, which only named the verdict again.
+ */
+test('H7: report play rows read the chart region and bust line, never "Basic X vs dealer N"', async ({ page }) => {
+  await withSettings(page, { feedbackMode: 'test', dealSpeedMs: 0 });
+  await withProfile(page, { gradeDeviations: false, countCheckEvery: 0 });
+  await page.goto('/?seed=4&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  for (let r = 0; r < 3; r++) {
+    await page.getByRole('button', { name: 'Deal', exact: true }).click();
+    await playRoundWithOneMistake(page);
+  }
+  await endWithReport(page);
+  await expect(page.locator('.report-screen')).toBeVisible();
+  const rows = await page.locator('.report-plays li[data-units]').allInnerTexts();
+  expect(rows.length, 'basic grading only: every play row is a priced basic error').toBeGreaterThanOrEqual(2);
+  for (const row of rows) {
+    expect(row).not.toMatch(/Basic \w+ vs dealer/);
+    // "— Hard 12–16 v 7–A: hit. Dealer busts 26% with a 7 up."
+    expect(row).toMatch(/ — (Hard|Soft|[0-9A,]+ v) [^:]*: [^.]+\. Dealer busts \d+% with\san?\s(\d+|ace)\sup\./);
+  }
+  await page.addStyleTag({ content: ':root { --safe-top: 47px; --safe-bottom: 34px; }' });
+  if (process.env.E2E_SHOTS_DIR) await page.screenshot({ path: `${process.env.E2E_SHOTS_DIR}/h7-report-plays.png`, fullPage: true });
+});
+
 test('B6: a session that only sat out shows no per-100 headline', async ({ page }) => {
   await withSettings(page, { feedbackMode: 'test', dealSpeedMs: 0 });
   // D-R1: exit point 0, so sitting out the fresh shoe's TC 0 is right.

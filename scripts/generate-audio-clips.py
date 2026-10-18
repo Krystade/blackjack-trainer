@@ -191,6 +191,10 @@ def build_vocabulary() -> list[str]:
     phrases.append("Shuffling.")
     phrases.append("Correct.")
     phrases.append("Insurance offered.")
+    # H5: Settings' "Test audio" line opens with this (narrate.ts
+    # TEST_AUDIO_LINE). Unrecorded, the all-or-nothing cascade sent the whole
+    # test to live TTS -- the button tested the voice the car does not use.
+    phrases.append("Audio is working.")
 
     # Flashcard sentences: "You have <phrase>." — hard totals, soft totals,
     # and pairs (narrateFlashcardPrompt's narrateHandTotalPhrase()).

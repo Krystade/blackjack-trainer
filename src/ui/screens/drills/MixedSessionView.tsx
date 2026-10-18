@@ -92,6 +92,19 @@ function mixedKey(c: MixedCurrent): string | null {
   return c.item.deviationId ? `quiz:${c.item.deviationId}` : null;
 }
 
+/**
+ * H2: the car line's hand part, one shape for both kinds -- the hand, then
+ * its true count. A Mixed flashcard is always dealt at a count (E1), and
+ * the count is what the eyes-free line must not leave off: without it the
+ * glance said "basic strategy" before the learner had judged it.
+ */
+function mixedCarHand(c: MixedCurrent): string {
+  if (c.type === 'flash') {
+    return shortCellLabel(c.card.cellId) + (c.card.tc !== undefined ? ` · TC ${formatSigned(c.card.tc)}` : '');
+  }
+  return `${handText(c.item.cards, c.item.up)} · TC ${formatSigned(c.item.tc)}`;
+}
+
 export function MixedSessionView({
   settings,
   activeProfile,
@@ -562,7 +575,9 @@ export function MixedSessionView({
           voiceOn={voiceOn}
           onVoiceChange={session.setVoiceOn}
           voiceStatus={voice.status}
-          car={handCarStatus(session, settings.drill.wheelMode, current.type === 'flash' ? shortCellLabel(current.card.cellId) : `${handText(current.item.cards, current.item.up)} · TC ${formatSigned(current.item.tc)}`, voice.status.state)}
+          // H2: a flashcard carries its count on the car line as a quiz item
+          // does (E1) -- a line without one said which kind the item was.
+          car={handCarStatus(session, settings.drill.wheelMode, mixedCarHand(current), voice.status.state)}
           // #27: set once, folded away like the flashcards' options.
           options={<DealToggles settings={settings} onChange={changeScopes} />}
         />

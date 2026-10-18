@@ -80,7 +80,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
   const [voiceAny] = useVoiceToggle('drills');
   useEffect(() => {
     if (mode === 'picker' || (!eyesFreeAny && !voiceAny)) return;
-    const next = recordDrive(settings, mode, voiceAny);
+    const next = recordDrive(settings, mode, voiceAny, eyesFreeAny);
     if (next === settings) return;
     saveSettings(next);
     onSettingsChange(next);
