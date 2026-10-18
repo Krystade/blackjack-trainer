@@ -1,0 +1,55 @@
+/* F5 (W2-17): the dealer-pace bar sits in the action bar's top padding, between
+   its rule and the buttons. It belongs to the peek dock (the row above) but is
+   positioned out of the dock's grid and hangs below it, so it costs no height
+   and the felt never moves when a decision starts or ends. Positioned, it paints
+   over the action bar's background. */
+.peek-dock {
+  position: relative;
+}
+
+.dealer-pace {
+  position: absolute;
+  left: max(16px, env(safe-area-inset-left));
+  right: max(16px, env(safe-area-inset-right));
+  bottom: -6px;
+  z-index: 1;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  pointer-events: none;
+  /* A neutral track, the shot clock's reasoning: a wash of the ink colour,
+     mixed in OKLab so it keeps its chroma; --bg-sunken where color-mix is
+     missing. */
+  background: var(--bg-sunken);
+  background: color-mix(in oklab, var(--ink) 14%, transparent);
+  /* Out of time: the whole track turns to the miss colour and stays. */
+  animation: dealer-pace-expired 1ms linear var(--pace-ms) forwards;
+}
+
+.dealer-pace-fill {
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  background: var(--accent);
+  animation: dealer-pace-drain var(--pace-ms) linear forwards;
+}
+
+.dealer-pace[data-paused='true'],
+.dealer-pace[data-paused='true'] .dealer-pace-fill {
+  animation-play-state: paused;
+}
+
+@keyframes dealer-pace-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes dealer-pace-expired {
+  to {
+    background: var(--bad);
+  }
+}

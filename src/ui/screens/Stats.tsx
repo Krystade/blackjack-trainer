@@ -611,6 +611,8 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   // cannot appear here.
   // D-R2 (#4): the Play tab is the table's decisions only (playStats.ts).
   const play = playFigures(stats);
+  // F5 (W2-17): table decisions only -- the drills' answer times are theirs.
+  const playDecisionMs = medianLatency(inRange(play.decisionRows));
   const evCostRows = inRange(play.evCostRows);
   const evCostUndated =
     range.id === 'all' ? 0 : play.evCostRows.filter((r) => !r.date).length;
@@ -930,6 +932,11 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
             })}
           </div>
           <p className="stats-detail">Decisions made at the Play table. Drill answers are on the Drills tab.</p>
+          {playDecisionMs !== null && (
+            <p className="stats-detail" data-testid="play-decision-time">
+              Median decision time: {formatLatency(playDecisionMs)}
+            </p>
+          )}
       </CollapsibleSection>
 
       {/*

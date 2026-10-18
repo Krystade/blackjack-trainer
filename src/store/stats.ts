@@ -123,6 +123,7 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
   let tableCopied = false;
   let directionCopied = false;
   let tableDirectionCopied = false;
+  let tableDecisionsCopied = false;
 
   for (const event of events) {
     // Update category tallies. The tally object itself is copied, not
@@ -251,7 +252,21 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
     // producer, e.g. table play) must stay absent from this history, never
     // be coerced to 0 -- medianLatency would otherwise be dragged toward a
     // false "instant" reading by events that were never timed at all.
-    if (event.elapsedMs !== undefined) {
+    if (event.elapsedMs !== undefined && event.source === 'table') {
+      // F5 (W2-17): a Play decision time goes in the table's own history, so
+      // the drills' latency figures (and the hand accuracy windowed from
+      // latencyHistory) stay drill-only, and Stats > Play reads table rows
+      // alone.
+      if (!tableDecisionsCopied) {
+        result.tableDecisions = { history: [...(stats.tableDecisions?.history ?? [])] };
+        tableDecisionsCopied = true;
+      }
+      result.tableDecisions!.history.push({
+        elapsedMs: event.elapsedMs,
+        ...(event.at === undefined ? {} : { date: event.at }),
+        ...(event.slow === true ? { slow: true as const } : {}),
+      });
+    } else if (event.elapsedMs !== undefined) {
       if (!latencyCopied) {
         result.latencyHistory = [...stats.latencyHistory];
         latencyCopied = true;

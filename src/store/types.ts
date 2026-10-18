@@ -40,6 +40,14 @@ export interface Settings {
   // #48-51 (spec 2026-10-13): Play deals from the rigged losing shoe
   // (drills/downswingShoe.ts) instead of a fair one. Absent = off.
   losingShoe?: boolean;
+  /**
+   * F5 (W2-17): Play's dealer-pace clock, a thin countdown over each decision.
+   * Absent = off. Expiry never plays the hand; it tags the decision slow.
+   * `dealerPaceSec` is 2..8, absent = 4 (ui/dealerPace.ts). Forced off
+   * eyes-free, where nobody is watching a bar.
+   */
+  dealerPaceOn?: boolean;
+  dealerPaceSec?: number;
   // C-R3 (W10): the last drill run eyes-free or by voice, for Home's one-tap
   // "Drive" button. `mode` is the Drills mode id; `voice` whether the
   // microphone was on. Absent = no such drill yet (no Drive button).
@@ -852,6 +860,22 @@ export interface Stats {
   // Home's "Learn basic strategy" gate is judged on this window so mistakes
   // made while learning age out. Absent = none recorded since it shipped.
   handRecent?: { hard?: string; soft?: string; pair?: string };
+  /**
+   * F5 (W2-17): Play decision times, one row per timed table action event --
+   * kept apart from `latencyHistory` so the drills' latency figures and the
+   * hand accuracy windowed from it stay drill-only. `date` is the event's
+   * `at`; `slow` marks a decision the dealer-pace clock ran out on. Absent =
+   * no timed table decisions yet.
+   */
+  tableDecisions?: { history: { elapsedMs: number; date?: string; slow?: true }[] };
+  /**
+   * F10 (L-2): local calendar days ('YYYY-MM-DD') on which a graded answer or
+   * Play round was recorded through applyEvents, newest last, capped
+   * (store/practiceDays.ts). Answers whose own rows carry no date (an idle or
+   * self-reported hand, an index-test answer) are only dated here. Absent on
+   * blobs written before it shipped; the dated histories cover those days.
+   */
+  practiceDays?: string[];
 }
 
 export const EMPTY_STATS: Stats = {

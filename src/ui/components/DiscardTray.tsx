@@ -1,9 +1,15 @@
 import { discardTicks } from './discardTicks';
 import './discardTray.css';
+import './discardTrayBare.css';
 
 interface DiscardTrayProps {
   cardsDealt: number;
   decks: number;
+  /**
+   * F6 (W2-18): draw the whole-deck marks. Play turns them off once deck
+   * estimation is on target (ui/trayFade.ts); the drills always draw them.
+   */
+  marks?: boolean;
 }
 
 /**
@@ -12,16 +18,20 @@ interface DiscardTrayProps {
  * be read by eye for the true count, the way a dealer's tray is read. Still no
  * exact count of cards: the estimate is the skill.
  */
-export function DiscardTray({ cardsDealt, decks }: DiscardTrayProps) {
+export function DiscardTray({ cardsDealt, decks, marks = true }: DiscardTrayProps) {
   const fillPct = Math.min(98, Math.max(1, (cardsDealt / (decks * 52)) * 100));
   return (
-    <div className="table-discard-tray discard-tray--ticked" aria-label="Discard tray">
+    <div
+      className="table-discard-tray discard-tray--ticked"
+      aria-label="Discard tray"
+      data-marks={marks ? undefined : 'off'}
+    >
       <span className="table-discard-label">Discards</span>
       <div className="discard-scale">
         <div className="table-discard-frame">
           <div className="table-discard-fill" style={{ width: `${fillPct}%` }} />
         </div>
-        {discardTicks(decks).map((t) => (
+        {marks && discardTicks(decks).map((t) => (
           <span
             key={t.decksDealt}
             className="discard-tick"

@@ -10,6 +10,7 @@ import { ResetBankrollRow } from './ResetBankrollRow';
 import { BetSpreadControl, CountCheckControls, CutCardControl, DeviationsControl } from './ProfilePlayControls';
 import { playOptionsDiffer } from '../profileOptions';
 import { setProfileLaunch } from '../profileLaunch';
+import { DEALER_PACE_MAX_SEC, DEALER_PACE_MIN_SEC, dealerPaceSec } from '../dealerPace';
 
 /**
  * #33: the gear in the topbar of Play, Drills and Charts, opening a sheet of
@@ -139,6 +140,26 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
         format={(v) => `${v}ms`}
         onChange={(v) => update({ dealSpeedMs: v })}
       />
+      {/* F5 (W2-17): read live, like deal speed -- no new shoe. */}
+      <Toggle
+        label="Dealer pace clock"
+        checked={settings.dealerPaceOn === true}
+        onChange={(v) => update({ dealerPaceOn: v })}
+      />
+      <Stepper
+        label="Dealer pace"
+        value={dealerPaceSec(settings)}
+        min={DEALER_PACE_MIN_SEC}
+        max={DEALER_PACE_MAX_SEC}
+        step={1}
+        format={(v) => `${v}s`}
+        disabled={settings.dealerPaceOn !== true}
+        onChange={(v) => update({ dealerPaceSec: v })}
+      />
+      <p className="settings-note">
+        A bar runs down over each decision. Running out never plays the hand; the report counts slow
+        decisions. Off eyes-free.
+      </p>
 
       <h3 className="tab-sheet-group">New shoe</h3>
       <p
