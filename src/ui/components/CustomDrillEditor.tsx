@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './customDrillEditor.css';
+import './paintTiersPaper.css';
 import type { CustomSelection, SelectionTier, Settings } from '../../store/types';
 import type { RuleSet } from '../../engine/ruleset';
 import { loadStats, saveSettings } from '../../store/persist';

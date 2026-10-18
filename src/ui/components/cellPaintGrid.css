@@ -5,7 +5,8 @@
  * share the row, so at 343px (375 less 16px gutters) that is a ~50px label
  * and ten ~28px cells, and nothing scrolls sideways.
  *
- * Cells are tinted with the app's action colours (themes.css --act-*). The
+ * Cells are tinted with the app's action colours (themes.css --act-*, the
+ * one palette since F8, each family with its own ink). The
  * tier is brightness: the action colour mixed into the surface in OKLab, so
  * a dim cell is a darker or paler version of its own hue rather than a
  * translucent wash averaging with whatever is behind it. Pips and the Focus
@@ -106,6 +107,7 @@
 
 .cpg-cell {
   --act: var(--act-hit);
+  --cell-ink: var(--act-hit-ink);
   --tier-mix: 82%;
   position: relative;
   display: flex;
@@ -115,7 +117,7 @@
   min-width: 0;
   border-radius: 3px;
   background: color-mix(in oklab, var(--act) var(--tier-mix), var(--surface));
-  color: var(--act-ink);
+  color: var(--cell-ink);
   /* The grid, not the page, owns a drag that starts on a cell. */
   touch-action: none;
   cursor: crosshair;
@@ -123,18 +125,22 @@
 
 .cpg-cell[data-act='stand'] {
   --act: var(--act-stand);
+  --cell-ink: var(--act-stand-ink);
 }
 
 .cpg-cell[data-act='double'] {
   --act: var(--act-double);
+  --cell-ink: var(--act-double-ink);
 }
 
 .cpg-cell[data-act='split'] {
   --act: var(--act-split);
+  --cell-ink: var(--act-split-ink);
 }
 
 .cpg-cell[data-act='surrender'] {
   --act: var(--act-surrender);
+  --cell-ink: var(--act-surrender-ink);
 }
 
 .cpg-cell[data-tier='off'] {

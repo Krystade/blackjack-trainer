@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import './cellPaintGrid.css';
+import './paintTiersPaper.css';
 import { getChart } from '../../engine/charts';
 import type { Chart, ChartAction } from '../../engine/charts';
 import type { RuleSet } from '../../engine/ruleset';
