@@ -24,7 +24,7 @@ export function chartNoteFor(args: {
   rules: StrategyRules;
   /** The graded expectation, from the event the overlay was opened over. */
   expected: string | undefined;
-  /** The engine's own prose for it, e.g. "16 v 10: stand at TC >= 0". */
+  /** The engine's own prose for it, e.g. "16 v 10: stand at TC ≥ 0". */
   reason?: string;
   /** True count the hand was graded at. */
   tc?: number;

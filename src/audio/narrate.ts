@@ -533,7 +533,7 @@ export function narrateQuizPrompt(cards: [Card, Card] | null, up: Rank, tc: numb
  * Reasons arrive in two shapes, and one of them is hostile to speech:
  *  - basic-strategy prose from strategy.ts — "Basic hit vs dealer 9";
  *  - Illustrious-18 INDEX LABELS from deviations.ts — "16 v 10: stand at
- *    TC ≥ 0", "13 v 2: hit at TC ≤ −1" (that is U+2212, not a hyphen),
+ *    TC ≥ 0", "13 v 2: stand at TC ≥ −1; hit below" (U+2212, not a hyphen),
  *    "10,10 v 5: split at TC ≥ +5", "16 v 9: stand at TC ≥ +4 (H17)".
  *
  * Those labels are written to be READ, in a table, by someone who already

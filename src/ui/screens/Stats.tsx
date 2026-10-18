@@ -141,7 +141,7 @@ interface SrStatusPanelProps {
   summary: SrDeckSummary;
   /** Renders a lapsed item's raw key as something readable: identity for
    * flashcards (cellId strings like "hard-16-v-9" are already legible), or
-   * a deviation's own label ("16 v 10: stand at TC >= 0") for the quiz deck. */
+   * a deviation's own label ("16 v 10: stand at TC ≥ 0") for the quiz deck. */
   labelForKey: (key: string) => string;
 }
 
