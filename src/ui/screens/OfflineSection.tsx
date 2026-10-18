@@ -54,10 +54,13 @@ export function OfflineSection({ clipVoice }: { clipVoice: string }) {
       const cache = await caches.open(OFFLINE_CACHE);
       // The running page already fetched exactly the files this build needs,
       // hashed names and all, so it is asked rather than guessed at.
-      const resources =
-        typeof performance === 'undefined'
-          ? []
-          : performance.getEntriesByType('resource').map((e) => e.name);
+      const resources = [
+        ...(typeof performance === 'undefined' ? [] : performance.getEntriesByType('resource').map((e) => e.name)),
+        // F11: and every chunk of this build, including the lazy screens'
+        // ones this page has not opened yet -- the build names them all in
+        // the document as <link rel="precache"> (vite.config.ts).
+        ...[...document.querySelectorAll<HTMLLinkElement>('link[rel="precache"]')].map((l) => l.href),
+      ];
       const voiceId = clipVoice || (await loadClipIndex())?.default || null;
 
       const warmed = await warmForFlight({

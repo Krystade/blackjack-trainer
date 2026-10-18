@@ -166,6 +166,41 @@ async function fetchDeployedId(href: string): Promise<string | null> {
 }
 
 /**
+ * Go to the deployed build -- at most once per deployed id per session (see
+ * RELOAD_MARK). Returns whether the reload was started.
+ */
+function reloadOnce(deployedId: string): boolean {
+  if (alreadyTried(deployedId)) return false;
+  markTried(deployedId);
+  window.location.replace(reloadUrl(window.location.href, deployedId));
+  return true;
+}
+
+/**
+ * F11: the same update path, asked for NOW, by a lazily loaded screen whose
+ * chunk failed to load.
+ *
+ * Since the bundle split, FieldTest, the Test Kit and the profile editor are
+ * separate files fetched the first time they are opened. A tab still running
+ * an older build asks for the older build's file names, and once a deploy
+ * has replaced them that import fails -- which is exactly "a newer build has
+ * shipped", so the answer is the reload this file already performs, with the
+ * same evidence rule and the same once-per-build ceiling. No new build (an
+ * offline phone missing a file, a server error) resolves false and leaves
+ * the failure to the screen's error boundary: reloading would not help, and
+ * a reload loop is the one outcome worse than an error panel.
+ *
+ * Not deferred by `deferWhile`: the screen the operator just asked for
+ * cannot render on this build at all.
+ */
+export async function reloadIfNewBuild(): Promise<boolean> {
+  const deployed = await fetchDeployedId(window.location.href);
+  if (!isStale(runningBuildId(), deployed)) return false;
+  diag('nav', 'chunk-load-reload', { deployed });
+  return reloadOnce(deployed!);
+}
+
+/**
  * Start watching for new builds: once now, and again each time the app comes
  * back to the foreground.
  *
@@ -213,9 +248,7 @@ export function startUpdateWatch(
       // so the next foreground event after it lapses tries again.
       return;
     }
-    if (alreadyTried(deployed!)) return;
-    markTried(deployed!);
-    window.location.replace(reloadUrl(window.location.href, deployed!));
+    reloadOnce(deployed!);
   };
 
   const onVisible = (): void => {

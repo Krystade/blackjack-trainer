@@ -22,8 +22,39 @@ const BUILD_ID =
  */
 const BUILT_AT = new Date().toISOString();
 
+/**
+ * F11 (W2-24): THE PRECACHE LIST, written into the document.
+ *
+ * Since the bundle split, the build is several files, and the lazy screens'
+ * chunks are fetched only when those screens are first opened -- so neither
+ * the HTML's own script tags nor the page's performance entries (what
+ * offline/offlineAssets.ts reads) name them, and an offline phone that had
+ * never opened FieldTest could not open it in the air.
+ *
+ * The service worker already treats the document as the list of files a
+ * build needs (public/sw.js: storeDocument fetches every `assets/` url the
+ * document names before storing it, and prunes anything it does not name).
+ * So every emitted chunk and stylesheet is named here, as a
+ * `<link rel="precache">`: a rel no browser acts on, so nothing is downloaded
+ * at launch, while the worker's href scan picks each one up. The Settings
+ * offline save reads the same links (OfflineSection.tsx).
+ */
+const PRECACHE_REL = 'precache';
+
 export default defineConfig({
   base: './',
+  build: {
+    rolldownOptions: {
+      output: {
+        // React and its scheduler in their own chunk: they change only on a
+        // dependency bump, so a deploy of app code leaves that file's name
+        // (and the phone's cached copy) alone.
+        codeSplitting: {
+          groups: [{ name: 'vendor', test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/ }],
+        },
+      },
+    },
+  },
   define: {
     __BUILD_ID__: JSON.stringify(BUILD_ID),
     __BUILT_AT__: JSON.stringify(BUILT_AT),
@@ -51,6 +82,25 @@ export default defineConfig({
           fileName: 'version.json',
           source: JSON.stringify({ buildId: BUILD_ID, builtAt: BUILT_AT }),
         });
+      },
+    },
+    {
+      name: 'precache-links',
+      apply: 'build',
+      transformIndexHtml: {
+        order: 'post',
+        handler(_html, ctx) {
+          if (!ctx.bundle) return [];
+          const files = Object.values(ctx.bundle)
+            .map((out) => out.fileName)
+            .filter((f) => f.startsWith('assets/') && /\.(js|css)$/.test(f))
+            .sort();
+          return files.map((f) => ({
+            tag: 'link',
+            attrs: { rel: PRECACHE_REL, href: `./${f}` },
+            injectTo: 'head' as const,
+          }));
+        },
       },
     },
   ],

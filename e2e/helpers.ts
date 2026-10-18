@@ -266,6 +266,13 @@ export async function switchFieldTestCondition(page: Page, label: string): Promi
         `have: ${FIELD_TEST_CONDITIONS.map((c) => c.label).join(', ')}`,
     );
   }
+  // F11: the field test is a lazily loaded chunk, so its screen (and the seam
+  // it registers) arrives a moment after the click that opens it. Wait for
+  // the seam rather than assume the screen rendered in the same tick; the
+  // error below still fires if it never comes.
+  await page
+    .waitForFunction(() => typeof window.__setFieldTestCondition === 'function', undefined, { timeout: 10_000 })
+    .catch(() => undefined);
   const took = await page.evaluate(
     (id) => window.__setFieldTestCondition?.(id) ?? false,
     found.id,
