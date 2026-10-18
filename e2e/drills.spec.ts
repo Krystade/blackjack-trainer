@@ -1482,7 +1482,14 @@ test('mixed session: interleaves flashcard + quiz items, grading each through it
 
   const categories = (stats?.categories as Record<string, { right: number; wrong: number }> | undefined) ?? {};
   const categoryGrades = Object.values(categories).reduce((sum, t) => sum + t.right + t.wrong, 0);
-  expect(categoryGrades, 'every graded item bumps exactly one category tally').toBe(6);
+  // H1: the 3 real-index quiz items are index-only, so only the 3 flash items
+  // reach the basic-strategy categories; `bySource` still counts all 6.
+  expect(categoryGrades, 'only the flash items bump a category tally').toBe(3);
+  const bySource = (stats?.bySource ?? {}) as Record<string, Record<string, { right: number; wrong: number }>>;
+  const sourceGrades = Object.values(bySource)
+    .flatMap((bucket) => Object.values(bucket))
+    .reduce((sum, t) => sum + t.right + t.wrong, 0);
+  expect(sourceGrades, 'every graded item bumps exactly one source tally').toBe(6);
 
   const perIndex = (stats?.perIndex as Record<string, { right: number; wrong: number }> | undefined) ?? {};
   const quizGrades = Object.values(perIndex).reduce((sum, t) => sum + t.right + t.wrong, 0);

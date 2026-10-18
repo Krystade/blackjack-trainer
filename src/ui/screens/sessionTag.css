@@ -1,0 +1,9 @@
+/* H10 (C-R9): the tags after a Table sessions row's accuracy (" · not ended",
+   " · Hot shoe", the peek flag). They were 0.75em of the row's --fs-sm, 10.2px,
+   too small to read at arm's length; now the row's own size from the type
+   scale, kept apart by the accent colour and weight. */
+.session-row .session-tag {
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}

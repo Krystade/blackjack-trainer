@@ -48,6 +48,7 @@ import type { HandCategoryProgress } from './handProgress';
 import './statsGoal.css';
 import './statsHistory.css';
 import './statsSessions.css';
+import './sessionTag.css';
 import { betMissText, formatLossValue, sessionsBetMisses, sessionsLossPer100, sessionsPlayAccuracy, sessionTag } from '../sessionFigures';
 import { dealerErrorsValue, sessionsDealerErrors } from '../dealerErrorCopy';
 
@@ -1700,8 +1701,15 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
         dataTab={SECTION_TAB['Deviation quiz']}
         defaultOpen={false}
       >
+          {/* H9: the table below pools every drill's index answers (With
+              count, Speed, answers from before the quiz kept its own tally),
+              so "no answers yet" is said only when it is empty too. */}
           {quizTotal === 0 ? (
-            <p className="stats-detail">No deviation quiz answers yet.</p>
+            Object.keys(drillIndex).length === 0 ? (
+              <p className="stats-detail">No deviation quiz answers yet.</p>
+            ) : (
+              <p className="stats-detail" data-testid="drill-index-caption">Index answers from drills</p>
+            )
           ) : (
             <div className="stats-headline">
               <span className="stats-headline-value">{pct(quizRight, quizTotal)}</span>
@@ -1773,9 +1781,9 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                         can't be read as unassisted (RT#5). Omitted for the common
                         0-peek session to keep the row uncluttered. */}
                     {assistedFlag(s.peeks) && (
-                      <span className="session-assisted"> · {assistedFlag(s.peeks)}</span>
+                      <span className="session-assisted session-tag"> · {assistedFlag(s.peeks)}</span>
                     )}
-                    {sessionTag(s) && <span className="session-assisted"> · {sessionTag(s)}</span>}
+                    {sessionTag(s) && <span className="session-tag"> · {sessionTag(s)}</span>}
                   </span>
                   {/* B2 #35: a Hot shoe session's bankroll was not kept (B8), so its
                       change is not shown as a result. */}

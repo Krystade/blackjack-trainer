@@ -23,7 +23,7 @@ export function publishedIndexText(dev: Deviation): string {
 }
 
 /** The play at and above the published index. */
-export function indexPlayAt(dev: Deviation): Deviation['action'] {
+export function indexPlayAt(dev: Pick<Deviation, 'id' | 'dir' | 'action' | 'above'>): Deviation['action'] {
   if (dev.dir === 'gte') return dev.action;
   if (!dev.above) throw new Error(`indexPlayAt: lte entry ${dev.id} has no 'above' play`);
   return dev.above;

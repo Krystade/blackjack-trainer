@@ -28,6 +28,12 @@ export interface Readiness {
   indicesTotal: number;
   /** Total graded decisions — the credibility of everything above. */
   decisions: number;
+  /**
+   * H1 fix round: answers on an index (`perIndex`, every source). Index-only
+   * answers (the quiz, the Index test, With-count) are not in `decisions`, so
+   * a quiz-only profile has decisions 0 and must not read "Nothing answered".
+   */
+  indexAnswers: number;
 }
 
 /**
@@ -67,12 +73,18 @@ export function readiness(stats: Stats, rules?: IndexRules): Readiness {
   const active = activeIndices(rules);
   const indicesPractised = active.filter((d) => indexPractised(stats, d.id)).length;
 
+  const indexAnswers = Object.values(stats.perIndex ?? {}).reduce(
+    (n, t) => n + (t?.right ?? 0) + (t?.wrong ?? 0),
+    0,
+  );
+
   return {
     accuracyPct: decisions === 0 ? null : (right / decisions) * 100,
     medianMs: medianLatency(stats.latencyHistory),
     indicesPractised,
     indicesTotal: active.length,
     decisions,
+    indexAnswers,
   };
 }
 

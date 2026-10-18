@@ -20,6 +20,7 @@ import { setVoiceOn } from '../voiceSession';
 import { speak } from '../../audio/speech';
 import { speechOptsFrom } from '../../audio/speechOpts';
 import { withAudioEnabled } from '../audioGate';
+import { useDayTick } from '../useDayTick';
 
 interface HomeProps {
   onNavigate: (screen: Screen) => void;
@@ -49,6 +50,9 @@ function secs(ms: number | null): string {
  * left the tab bar (#32): the per-tab settings sit behind each tab's gear.
  */
 export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: HomeProps) {
+  // H8: re-render at local midnight and on return, so the 7-day line and the
+  // ladder's due dates follow the clock while the app stays open.
+  useDayTick();
   const stats = loadStats();
   // F11: the index set the active profile is graded on (S17, Fab 4).
   const gradedRules = strategyRulesFor(activeProfile);
@@ -154,9 +158,17 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
           </div>
         </div>
 
-        {r.decisions === 0 ? (
+        {r.decisions === 0 && r.indexAnswers === 0 ? (
           <p className="u-note">
             Nothing answered yet. Start with the next step above.
+          </p>
+        ) : r.decisions === 0 ? (
+          // H1 fix round: index answers are not graded decisions, but they
+          // are answers -- "Nothing answered yet" beside "1/17 indices
+          // practised" was false.
+          <p className="u-note" data-testid="readiness-index-only">
+            No basic-strategy decisions graded yet · {r.indexAnswers} index{' '}
+            {r.indexAnswers === 1 ? 'answer' : 'answers'}
           </p>
         ) : (
           <p className="u-note">

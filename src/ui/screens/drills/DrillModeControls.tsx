@@ -44,6 +44,7 @@ export function DrillModeControls({
   voiceStatus,
   options,
   car,
+  dimOption = true,
 }: {
   settings: Settings;
   onSettingsChange: (settings: Settings) => void;
@@ -56,9 +57,17 @@ export function DrillModeControls({
   options?: ReactNode;
   /** F7: the car status line, shown only eyes-free. */
   car?: CarStatus;
+  /**
+   * H4: whether eyes-free offers "Dim screen". It blanks the ZonePad, so a
+   * drill without one (the Index test answers on a keypad) leaves it out --
+   * and with it an Options row that held nothing else and cost the keypad
+   * its OK button on a 375x812 phone.
+   */
+  dimOption?: boolean;
 }) {
   const carLine = eyesFree ? car : undefined;
-  const hasOptions = Boolean(options) || eyesFree;
+  const showDim = eyesFree && dimOption;
+  const hasOptions = Boolean(options) || showDim;
   return (
     <>
       <div className="drill-mode-row">
@@ -120,7 +129,7 @@ export function DrillModeControls({
             {options}
             {/* The ZonePad is labelled by default so its layout can be
                 learned; this blanks it (still tappable) for real driving. */}
-            {eyesFree && (
+            {showDim && (
               <label className="count-toggle">
                 <input
                   type="checkbox"
