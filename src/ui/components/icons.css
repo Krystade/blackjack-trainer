@@ -1,0 +1,11 @@
+/* G4: the inline icons in icons.tsx. Sized in em so each takes its button's
+   font-size step (the mute disc and the gear are both --fs-xl), which is the
+   size the emoji they replaced was drawn at. Block, so no baseline gap pushes
+   the glyph off the disc's centre. */
+.ui-icon {
+  display: block;
+  width: 1.1em;
+  height: 1.1em;
+  flex: none;
+  pointer-events: none;
+}

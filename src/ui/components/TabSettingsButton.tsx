@@ -6,6 +6,7 @@ import { SHOT_CLOCK_OPTIONS, shotClockLabel } from '../../drills/shotClock';
 import { Segmented, Stepper, Toggle } from '../screens/Settings';
 import { useTabSettings, type TabSettingsContextValue } from '../tabSettingsContext';
 import { TabSettingsSheet } from './TabSettingsSheet';
+import { GearIcon } from './icons';
 import { ResetBankrollRow } from './ResetBankrollRow';
 import { BetSpreadControl, CountCheckControls, CutCardControl, DeviationsControl } from './ProfilePlayControls';
 import { playOptionsDiffer } from '../profileOptions';
@@ -51,7 +52,7 @@ export function TabSettingsButton({ tab }: { tab: SettingsTab }) {
         data-testid={`tab-gear-${tab}`}
         onClick={() => setOpen(true)}
       >
-        <span aria-hidden="true">⚙</span>
+        <GearIcon />
       </button>
       {open && tab === 'play' && <PlaySheet title={title} ctx={ctx} onClosed={close} />}
       {open && tab === 'drills' && <DrillsSheet title={title} ctx={ctx} onClosed={close} />}
