@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { GradedEvent } from '../engine/grade';
+import type { Rank } from '../engine/cards';
+import { DEFAULT_RULES } from '../engine/ruleset';
+import { playMissReason } from './screens/playMissReason';
 import { reportSections, countMissText, drillCellIds, mistakeUnits, groupMistakes, betRowText, playRowText, unpricedNote } from './reportSections';
 
 const ev = (p: Partial<GradedEvent> & Pick<GradedEvent, 'kind'>): GradedEvent => ({
@@ -110,5 +113,51 @@ describe('playRowText (B2 #49): insurance reads like the play rows', () => {
   it('the unpriced note is singular for one miss', () => {
     expect(unpricedNote(1)).toBe('Plus 1 index or insurance miss with no price.');
     expect(unpricedNote(3)).toBe('Plus 3 index or insurance misses with no price.');
+  });
+});
+
+describe('H7: a play row reads the wrong-play card reason, not the engine placeholder', () => {
+  const card = (cards: string[], up: string, canSplit = true) =>
+    playMissReason({
+      reason: 'unused',
+      classification: 'basic-error',
+      cards: cards.map((rank) => ({ rank: rank as Rank, suit: 's' as const })),
+      dealerUp: up as Rank,
+      canSplit,
+      rules: DEFAULT_RULES,
+    });
+
+  it('a basic miss row carries the chart region and bust line, as the card does', () => {
+    const m = ev({ kind: 'action', hand: '9,4 v 10', taken: 'stand', expected: 'hit', reason: 'Basic hit vs dealer 10', evCost: 0.05 });
+    const row = playRowText(m, DEFAULT_RULES);
+    expect(row).not.toMatch(/Basic \w+ vs dealer/);
+    expect(row).toContain(card(['9', '4'], '10'));
+    expect(row).toMatch(/— Hard [^:]+: hit\. Dealer busts \d+%/);
+    expect(row.startsWith('9,4 v 10 · TC +0 · you played Stand · correct Hit — ')).toBe(true);
+    // Without the rules (an older caller) the engine reason stands.
+    expect(playRowText(m)).toContain('— Basic hit vs dealer 10');
+  });
+
+  it('a multi-card hand and a face-card up card read their cell too', () => {
+    const m = ev({ kind: 'action', hand: '5,4,7 v K', taken: 'stand', expected: 'hit', reason: 'Basic hit vs dealer K' });
+    const row = playRowText(m, DEFAULT_RULES);
+    expect(row).not.toMatch(/Basic \w+ vs dealer/);
+    expect(row).toContain(card(['5', '4', '7'], 'K'));
+  });
+
+  it('a pair graded as its total (no split left) reads the total, not the split row', () => {
+    const m = ev({ kind: 'action', hand: '8,8 v 10', taken: 'stand', expected: 'hit', reason: 'Basic hit vs dealer 10' });
+    const row = playRowText(m, DEFAULT_RULES);
+    expect(row).toContain(card(['8', '8'], '10', false));
+    expect(row).not.toMatch(/split/i);
+    // ...while a splittable pair reads its pair row.
+    const split = playRowText(ev({ kind: 'action', hand: '8,8 v 6', taken: 'hit', expected: 'split', reason: 'Basic split vs dealer 6' }), DEFAULT_RULES);
+    expect(split).toContain(card(['8', '8'], '6'));
+    expect(split).toMatch(/— 8,8 v [^:]+: split\./);
+  });
+
+  it('an index miss keeps its index label', () => {
+    const m = ev({ kind: 'action', hand: '10,6 v 10', taken: 'hit', expected: 'stand', classification: 'missed-deviation', deviationId: 'h16v10' as GradedEvent['deviationId'], reason: '16 v 10: stand at TC ≥ 0' });
+    expect(playRowText(m, DEFAULT_RULES)).toContain('— 16 v 10: stand at TC ≥ 0');
   });
 });

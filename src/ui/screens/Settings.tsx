@@ -14,11 +14,13 @@ import {
 } from '../../audio';
 import {
   setClipVoice,
+  setClipsEnabled,
   loadClipIndex,
   prewarmClips,
   type ClipVoiceInfo,
 } from '../../audio/clips';
 import { micSessionCostPaid } from '../../audio/micSessionCost';
+import { TEST_AUDIO_LINE } from '../../audio/narrate';
 import { MAX_VOLUME, effectiveVolume } from '../../audio/volume';
 import {
   readVoiceHistory,
@@ -167,6 +169,19 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
     void prewarmClips();
     updateAudio({ clipVoice: v });
   };
+
+  // H5: the useAudio half of the clip wiring, done here because Settings
+  // does not mount useAudio. A cold launch straight to Settings had clips
+  // off and no manifest warmed, so "Test audio" -- the one button that
+  // exists to check the car's voice -- spoke the live iOS voice instead.
+  // Warmed on mount: speech.ts's clip gate is synchronous, so the manifest
+  // has to be in hand before the tap.
+  const { useClips, clipVoice } = settings.audio;
+  useEffect(() => {
+    setClipsEnabled(useClips);
+    setClipVoice(clipVoice);
+    if (useClips) void prewarmClips();
+  }, [useClips, clipVoice]);
 
   const speechSupported = isSpeechSupported();
   const [voices, setVoices] = useState(() => listVoices());
@@ -418,7 +433,7 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
               className="settings-test-audio-btn"
               disabled={audioDisabled}
               onClick={() => {
-                speak('Audio is working. True count plus three.', {
+                speak(TEST_AUDIO_LINE, {
                   interrupt: true,
                   rate: settings.audio.rate,
                   voiceURI: settings.audio.voiceURI,

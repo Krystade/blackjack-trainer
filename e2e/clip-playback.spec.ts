@@ -702,3 +702,51 @@ test('play, which the car sends on its own, does not start or repeat anything', 
   ).toEqual([]);
   await expect(page.locator('.drill-result')).toBeVisible();
 });
+
+/* ------------------------------------------------------------------------ */
+/* H5: Settings "Test audio" on a cold launch                               */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * H5 (retest story 10): "Test audio" is the button that checks the voice the
+ * car hears, and on a cold launch straight to Settings it spoke live TTS.
+ * Two causes, both covered here: clips were off until useAudio mounted
+ * (Settings does not mount it), and "Audio is working." had no recording, so
+ * the all-or-nothing cascade could never have reached a clip anyway.
+ *
+ * Cold: Home, then Settings, no drill or Stats visit first, and no clip
+ * voice pinned -- the index default, as a fresh install has it. Muted by this
+ * file's beforeEach and the project's --mute-audio.
+ */
+test('H5: Settings "Test audio" plays the recorded clip on a cold launch', async ({ page }) => {
+  test.setTimeout(30_000);
+  await withSettings(page, { audio: { enabled: true } });
+  await withProfile(page, { name: 'Test Audio Cold Profile' });
+  await recordLiveSpeech(page);
+  const harness = attachClipHarness(page);
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.locator('.settings-heading')).toHaveText('Settings');
+  // The manifest is warmed by Settings itself (nothing else has run).
+  await expect
+    .poll(() => harness.manifestResponses.length, { message: 'Settings warms the clip manifest on mount' })
+    .toBeGreaterThan(0);
+  await page.waitForLoadState('networkidle');
+
+  await page.locator('details.settings-section', { hasText: 'Audio detail' }).first().locator('summary').click();
+  harness.mp3Responses.length = 0;
+  await page.getByRole('button', { name: 'Test audio', exact: true }).click();
+
+  await expect
+    .poll(() => harness.mp3Responses.map((r) => new URL(r.url()).pathname.split('/').pop()), {
+      timeout: 10_000,
+      message: 'expected both sentences of the test line fetched as clips',
+    })
+    .toEqual(expect.arrayContaining(['audio-is-working.mp3', 'true-count-plus-three.mp3']));
+  for (const res of harness.mp3Responses) expectServedOk(res);
+  // And not one word of it through live TTS.
+  const live = await liveSpeech(page);
+  expect(live.filter((l) => l.startsWith('Audio is working')), `live TTS: ${JSON.stringify(live)}`).toEqual([]);
+  expect(harness.pageErrors).toEqual([]);
+});

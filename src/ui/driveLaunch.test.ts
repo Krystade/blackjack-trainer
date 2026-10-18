@@ -28,6 +28,25 @@ describe('Home Drive button (C-R3)', () => {
     expect(recordDrive(once, 'mastery', false)).toBe(once);
   });
 
+  it('H3: Speed and Bet sizing run eyes-free are Drive drills, named as the picker names them', () => {
+    const speed = recordDrive(DEFAULT_SETTINGS, 'speed', false);
+    expect(speed.lastDrive).toEqual({ mode: 'speed', voice: false });
+    expect(driveTarget(speed)).toEqual({ mode: 'speed', voice: false, label: 'Speed' });
+    const bet = recordDrive(DEFAULT_SETTINGS, 'betsizing', false);
+    expect(bet.lastDrive).toEqual({ mode: 'betsizing', voice: false });
+    expect(driveTarget(bet)).toEqual({ mode: 'betsizing', voice: false, label: 'Bet sizing' });
+  });
+
+  it('H3: they have no microphone, so voice alone does not record them and Drive leaves it off', () => {
+    // Voice on but eyes-free off: nothing to drive.
+    expect(recordDrive(DEFAULT_SETTINGS, 'speed', true, false)).toBe(DEFAULT_SETTINGS);
+    expect(recordDrive(DEFAULT_SETTINGS, 'betsizing', true, false)).toBe(DEFAULT_SETTINGS);
+    // Eyes-free with the microphone left on elsewhere: recorded voice-off.
+    expect(recordDrive(DEFAULT_SETTINGS, 'speed', true, true).lastDrive).toEqual({ mode: 'speed', voice: false });
+    // A drill that has a microphone keeps the voice-only route.
+    expect(recordDrive(DEFAULT_SETTINGS, 'flash', true, false).lastDrive).toEqual({ mode: 'flash', voice: true });
+  });
+
   it('the auto-start is handed over once', () => {
     setDriveAutoStart();
     expect(takeDriveAutoStart()).toBe(true);

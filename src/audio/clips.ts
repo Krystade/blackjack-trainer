@@ -56,10 +56,14 @@ function hasWindow(): boolean {
  * useAudio.ts and Settings.tsx (which already depend on both) do the wiring.
  */
 
-// Default false: matches DEFAULT_AUDIO.useClips (store/types.ts) so a cold
-// app load -- before any Settings/useAudio wiring has run -- behaves
-// exactly like today (live TTS only) until something explicitly enables it.
-let clipsEnabled = false;
+// H5: default TRUE, matching DEFAULT_AUDIO.useClips (store/types.ts) -- and
+// persist.ts forces that setting on, so the recorded voice is no longer a
+// choice. It used to default false "until something explicitly enables it",
+// and the only thing that did was useAudio: a cold launch straight to
+// Settings (which does not mount useAudio) spoke "Test audio" in the live
+// iOS voice, testing the one path the car does not use.
+export const CLIPS_ENABLED_DEFAULT = true;
+let clipsEnabled = CLIPS_ENABLED_DEFAULT;
 
 export function setClipsEnabled(enabled: boolean): void {
   clipsEnabled = enabled;
@@ -1284,7 +1288,7 @@ export function playClipsResumable(
 /** Resets all module-level state between unit tests. Test-only -- never
  * called from app code (mirrors persist.ts's `_setStorage` convention). */
 export function _resetClipsForTest(): void {
-  clipsEnabled = false;
+  clipsEnabled = CLIPS_ENABLED_DEFAULT;
   currentClipVoice = '';
   indexPromise = null;
   indexCache = null;

@@ -14,6 +14,7 @@ import {
   _resetClipsForTest,
   type ClipManifest,
 } from './clips';
+import { DEFAULT_AUDIO } from '../store/types';
 import { _resetSharedAudioContextForTest } from './audioContext';
 import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 import { setSpeechActivityListener } from './speechActivity';
@@ -144,8 +145,22 @@ describe('segmentForClips — longest-first cascade', () => {
 describe('setClipsEnabled / isClipsEnabled', () => {
   afterEach(() => _resetClipsForTest());
 
-  it('defaults to false (matches DEFAULT_AUDIO.useClips)', () => {
-    expect(isClipsEnabled()).toBe(false);
+  /**
+   * H5: ON from a cold module load. DEFAULT_AUDIO.useClips is true and
+   * persist.ts forces it on, and the only other caller of setClipsEnabled is
+   * useAudio -- which Settings does not mount, so "Test audio" on a cold
+   * launch went to live TTS. A fresh import, not the reset, so this reads
+   * the module's own initial value.
+   */
+  it('defaults to true on a fresh module load (matches DEFAULT_AUDIO.useClips, forced on)', async () => {
+    vi.resetModules();
+    const fresh = await import('./clips');
+    expect(fresh.isClipsEnabled()).toBe(true);
+    expect(DEFAULT_AUDIO.useClips).toBe(true);
+    // And the test reset puts back that same value.
+    fresh.setClipsEnabled(false);
+    fresh._resetClipsForTest();
+    expect(fresh.isClipsEnabled()).toBe(true);
   });
 
   it('reflects the last value set', () => {
