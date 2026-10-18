@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { selectFieldTestCondition } from './helpers';
+import { selectFieldTestCondition, readStoredDiagnostics } from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
@@ -198,13 +198,12 @@ async function readLast(
   page: import('@playwright/test').Page,
   event: string,
 ): Promise<Record<string, unknown> | undefined> {
-  return page.evaluate((wanted) => {
-    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+  return readStoredDiagnostics(page).then((raw) => {
     const all = raw
       ? (JSON.parse(raw) as { category: string; event: string; detail?: Record<string, unknown> }[])
       : [];
-    return all.filter((e) => e.category === 'test' && e.event === wanted).at(-1)?.detail;
-  }, event);
+    return all.filter((e) => e.category === 'test' && e.event === event).at(-1)?.detail;
+  });
 }
 
 /**
@@ -284,8 +283,7 @@ test('a clip says how it ended, not merely that it did', async ({ page }) => {
   await expect
     .poll(
       async () =>
-        page.evaluate(() => {
-          const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+        readStoredDiagnostics(page).then((raw) => {
           const all = raw
             ? (JSON.parse(raw) as { category: string; event: string; detail?: Record<string, unknown> }[])
             : [];
@@ -295,8 +293,7 @@ test('a clip says how it ended, not merely that it did', async ({ page }) => {
     )
     .not.toBeUndefined();
 
-  const end = await page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+  const end = await readStoredDiagnostics(page).then((raw) => {
     const all = raw
       ? (JSON.parse(raw) as { category: string; event: string; detail?: Record<string, unknown> }[])
       : [];
@@ -316,8 +313,7 @@ test('the log says which build produced it', async ({ page }) => {
   await expect
     .poll(
       async () =>
-        page.evaluate(() => {
-          const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+        readStoredDiagnostics(page).then((raw) => {
           const all = raw
             ? (JSON.parse(raw) as { category: string; event: string; detail?: Record<string, unknown> }[])
             : [];
@@ -327,8 +323,7 @@ test('the log says which build produced it', async ({ page }) => {
     )
     .not.toBeUndefined();
 
-  const env = await page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+  const env = await readStoredDiagnostics(page).then((raw) => {
     const all = raw
       ? (JSON.parse(raw) as { category: string; event: string; detail?: Record<string, unknown> }[])
       : [];
@@ -343,8 +338,7 @@ test('the log says which build produced it', async ({ page }) => {
 async function allEvents(
   page: import('@playwright/test').Page,
 ): Promise<{ category: string; event: string; detail?: Record<string, unknown> }[]> {
-  return page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+  return readStoredDiagnostics(page).then((raw) => {
     return raw
       ? (JSON.parse(raw) as { category: string; event: string; detail?: Record<string, unknown> }[])
       : [];
@@ -630,8 +624,7 @@ test('the path the app guessed and the path it took are different lines', async 
     )
     .toBeGreaterThan(0);
 
-  const events = await page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+  const events = await readStoredDiagnostics(page).then((raw) => {
     const all = raw
       ? (JSON.parse(raw) as {
           category: string;

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, selectFieldTestCondition} from './helpers';
+import { withSettings, selectFieldTestCondition, readStoredDiagnostics } from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
@@ -72,8 +72,7 @@ test('a condition without Bluetooth walks past every wheel step', async ({ page 
   await expect
     .poll(
       () =>
-        page.evaluate(() => {
-          const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+        readStoredDiagnostics(page).then((raw) => {
           return raw
             ? (JSON.parse(raw) as { event: string; detail?: Record<string, unknown> }[])
                 .filter((e) => e.event === 'run-start')

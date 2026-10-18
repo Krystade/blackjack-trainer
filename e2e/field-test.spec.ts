@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { openSettingsScreen, withSettings, selectFieldTestCondition, switchFieldTestCondition} from './helpers';
+import { openSettingsScreen, withSettings, selectFieldTestCondition, switchFieldTestCondition, readStoredDiagnostics } from './helpers';
 
 /**
  * The field test, end to end.
@@ -100,8 +100,7 @@ function saidCount(page: Page): Promise<number> {
  * mounted at all. See the probe test below, which was doing exactly that.
  */
 async function rawLog(page: Page): Promise<string> {
-  return page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+  return readStoredDiagnostics(page).then((raw) => {
     const all = raw
       ? (JSON.parse(raw) as {
           category: string;
@@ -1968,8 +1967,7 @@ async function withFakeRecognition(page: Page): Promise<void> {
 
 /** The whole diagnostic log, as objects rather than the rendered text. */
 async function events(page: Page): Promise<{ event: string; detail?: Record<string, unknown> }[]> {
-  return page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+  return readStoredDiagnostics(page).then((raw) => {
     return raw === null
       ? []
       : (JSON.parse(raw) as { event: string; detail?: Record<string, unknown> }[]);

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile, openCountOptions } from './helpers';
+import { withSettings, withProfile, openCountOptions, readStoredDiagnostics } from './helpers';
 
 /**
  * "I didn't hear any chime indicating the mic was activated" -- Jack,
@@ -36,10 +36,8 @@ import { withSettings, withProfile, openCountOptions } from './helpers';
  * PRESENCE is.
  */
 
-const KEY = 'bjtrainer.diagnostics.v1';
-
 async function cueEvents(page: Page): Promise<Record<string, unknown>[]> {
-  const raw = await page.evaluate((k) => localStorage.getItem(k), KEY);
+  const raw = await readStoredDiagnostics(page);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as { entries?: Record<string, unknown>[] };

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile, openCountOptions } from './helpers';
+import { withSettings, withProfile, openCountOptions, readStoredDiagnostics } from './helpers';
 
 /**
  * The app grading its own voice, reported from the 2026-10-02 drive as "it was
@@ -30,8 +30,6 @@ import { withSettings, withProfile, openCountOptions } from './helpers';
  * and a test that passes because the timer happened to be open is a test that
  * passes with the fix deleted.
  */
-
-const KEY = 'bjtrainer.diagnostics.v1';
 
 async function withFakeEngine(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -76,7 +74,7 @@ async function spoken(page: Page): Promise<string[]> {
 }
 
 async function diagEvents(page: Page, event: string): Promise<Record<string, unknown>[]> {
-  const raw = await page.evaluate((k) => localStorage.getItem(k), KEY);
+  const raw = await readStoredDiagnostics(page);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as { entries?: Record<string, unknown>[] };

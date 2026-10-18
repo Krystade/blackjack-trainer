@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, selectFieldTestCondition} from './helpers';
+import { withSettings, selectFieldTestCondition, readStoredDiagnostics } from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 import { LOCK_PROBE_TICK_MS } from '../src/diag/lockProbe';
 
@@ -30,8 +30,7 @@ import { LOCK_PROBE_TICK_MS } from '../src/diag/lockProbe';
  */
 
 async function entries(page: Page): Promise<{ event: string; detail: Record<string, unknown> }[]> {
-  return page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+  return readStoredDiagnostics(page).then((raw) => {
     return raw
       ? (JSON.parse(raw) as { event: string; detail?: Record<string, unknown> }[]).map((e) => ({
           event: e.event,

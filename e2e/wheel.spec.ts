@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, openCountOptions } from './helpers';
+import { withSettings, openCountOptions, readStoredDiagnostics } from './helpers';
 
 /**
  * The steering wheel, end to end.
@@ -214,12 +214,8 @@ test('in talk mode, forward opens the microphone and closes it again', async ({ 
   await expect
     .poll(
       async () =>
-        await page.evaluate(() =>
-          (
-            JSON.parse(
-              localStorage.getItem('bjtrainer.diagnostics.v1') ?? '[]',
-            ) as { event: string }[]
-          ).some((e) => e.event === 'ptt-open'),
+        await readStoredDiagnostics(page).then((raw) =>
+          (JSON.parse(raw ?? '[]') as { event: string }[]).some((e) => e.event === 'ptt-open'),
         ),
       { timeout: 4000 },
     )
@@ -235,9 +231,8 @@ test('in answer mode, forward answers and never opens the microphone', async ({ 
   // Waited past the log's flush delay, so this is an absence rather than a
   // race: the test above proves the same read SEES the event when it happens.
   await page.waitForTimeout(1500);
-  const opened = await page.evaluate(() =>
-    (JSON.parse(localStorage.getItem('bjtrainer.diagnostics.v1') ?? '[]') as { event: string }[])
-      .some((e) => e.event === 'ptt-open'),
+  const opened = await readStoredDiagnostics(page).then((raw) =>
+    (JSON.parse(raw ?? '[]') as { event: string }[]).some((e) => e.event === 'ptt-open'),
   );
   expect(opened).toBe(false);
 });

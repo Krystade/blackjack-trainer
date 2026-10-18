@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { openSettingsScreen, shot } from './helpers';
+import { openSettingsScreen, shot, readStoredDiagnostics } from './helpers';
 
 /**
  * The diagnostic log, end to end.
@@ -152,9 +152,8 @@ test('Clear empties it, because it is a recording of an open microphone', async 
   await expect(section.getByText('nothing yet')).toBeVisible();
 
   // And it really is gone, not merely hidden behind a collapsed panel.
-  const stored = await page.evaluate(() =>
-    localStorage.getItem('bjtrainer.diagnostics.v1'),
-  );
+  // Every segment of it (G5), not just the legacy key.
+  const stored = await readStoredDiagnostics(page);
   expect(stored).toBeNull();
 });
 

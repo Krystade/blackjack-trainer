@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { readStoredDiagnostics } from './helpers';
 
 /**
  * Do the instruments the next car run depends on actually fire?
@@ -76,9 +77,8 @@ async function withFakeEngine(page: Page): Promise<void> {
  * FLUSH_DELAY_MS (1s) before they are written, so every read of this is polled.
  */
 async function loggedEvents(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
+  return readStoredDiagnostics(page).then((raw) => {
     try {
-      const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
       if (!raw) return [];
       return (JSON.parse(raw) as Array<{ event?: string }>).map((r) => r.event ?? '');
     } catch {
@@ -88,16 +88,15 @@ async function loggedEvents(page: Page): Promise<string[]> {
 }
 
 async function lastDetail(page: Page, event: string): Promise<Record<string, unknown> | null> {
-  return page.evaluate((wanted) => {
+  return readStoredDiagnostics(page).then((raw) => {
     try {
-      const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
       if (!raw) return null;
       const rows = JSON.parse(raw) as Array<{ event?: string; detail?: Record<string, unknown> }>;
-      return rows.filter((r) => r.event === wanted).pop()?.detail ?? null;
+      return rows.filter((r) => r.event === event).pop()?.detail ?? null;
     } catch {
       return null;
     }
-  }, event);
+  });
 }
 
 async function intoKit(page: Page, kit: RegExp): Promise<void> {

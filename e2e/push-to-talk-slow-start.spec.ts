@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings } from './helpers';
+import { withSettings, readStoredDiagnostics } from './helpers';
 
 /**
  * The first push-to-talk press of a cold page.
@@ -58,9 +58,9 @@ async function withSlowFirstEngine(page: Page): Promise<void> {
 }
 
 function micEvents(page: Page): Promise<string[]> {
-  return page.evaluate(() =>
+  return readStoredDiagnostics(page).then((raw) =>
     (
-      JSON.parse(localStorage.getItem('bjtrainer.diagnostics.v1') ?? '[]') as {
+      JSON.parse(raw ?? '[]') as {
         event: string;
       }[]
     ).map((e) => e.event),
@@ -160,9 +160,9 @@ test('a recognised word closes the window instead of running it out', async ({ p
   await expect
     .poll(
       async () =>
-        await page.evaluate(() =>
+        await readStoredDiagnostics(page).then((raw) =>
           (
-            JSON.parse(localStorage.getItem('bjtrainer.diagnostics.v1') ?? '[]') as {
+            JSON.parse(raw ?? '[]') as {
               event: string;
               detail?: { why?: string };
             }[]

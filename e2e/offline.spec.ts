@@ -280,6 +280,15 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
   const failed: string[] = [];
   page.on('requestfailed', (r) => failed.push(r.url()));
   /*
+   * THE REAL BOUNCE GUARD IS ON. `?e2e=1` zeroes it and this spec cannot carry
+   * that flag, so an answer tapped within ANSWER_BOUNCE_MS of its prompt
+   * appearing is dropped by design (answerBounce.ts) -- and the step after it
+   * then waits out the whole test timeout for feedback that was never going
+   * to come. The guard is a clock, so outlasting it is the only signal there
+   * is; it is the same wait the true count step below has always made.
+   */
+  const outlastBounceGuard = () => page.waitForTimeout(ANSWER_BOUNCE_MS + 100);
+  /*
    * AND COUNT WHAT WAS SERVED. Without this the test passes just as well
    * when no audio was ever requested -- 'nothing failed' is true of a walk
    * that never asked for a recording, which is precisely the silent-drill
@@ -303,12 +312,37 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
    * hand can be PLAYED and SETTLED with no network, not that the advice
    * engine was consulted; `game.spec.ts` owns that online.
    */
-  await resolveInsurance(page, false);
-  await page.locator('.action-bar .action-btn', { hasText: 'Stand' }).first().click();
-  await expect(
-    page.locator('.message-strip .message-result').first(),
-    'a hand could not be played and settled offline',
-  ).toBeVisible({ timeout: 30_000 });
+  /*
+   * THE HAND IS RANDOM, so act on what the table actually shows rather than
+   * assuming a Stand button. Without `?e2e=1` the deal is animated, which
+   * makes "no insurance offer yet" and "no insurance offer" look the same to
+   * an instant visibility check -- so wait for whichever definite state lands
+   * first: the insurance sheet (dealer Ace), the action bar (a live hand), or
+   * a result (a natural settles with nothing to act on).
+   */
+  const insuranceSheet = page.locator('.bottom-sheet', { hasText: 'Insurance?' });
+  const standBtn = page.locator('.action-bar .action-btn', { hasText: 'Stand' }).first();
+  const handResult = page.locator('.message-strip .message-result').first();
+  await expect(insuranceSheet.or(standBtn).or(handResult).first()).toBeVisible({ timeout: 30_000 });
+  if (await resolveInsurance(page, false)) {
+    await expect(standBtn.or(handResult).first()).toBeVisible({ timeout: 30_000 });
+  }
+  if (!(await handResult.isVisible())) await standBtn.click();
+  await expect(handResult, 'a hand could not be played and settled offline').toBeVisible({
+    timeout: 30_000,
+  });
+  /*
+   * STAND IS NOT ALWAYS RIGHT, and in training mode a wrong play docks the
+   * "Wrong play" sheet over the table, which swallows the End click below.
+   * The sheet is set in the same handler that settles the round
+   * (useGame.act), so once the result is on screen its presence is decided:
+   * dismiss it if it is there.
+   */
+  const wrongPlay = page.getByRole('dialog', { name: 'Wrong play' });
+  if (await wrongPlay.isVisible()) {
+    await wrongPlay.getByRole('button', { name: 'Continue', exact: true }).click();
+    await expect(wrongPlay).toHaveCount(0);
+  }
   await page.locator('.end-btn').click();
   await page.locator('.end-btn').click();
   await page.locator('.report-done-btn').click();
@@ -349,30 +383,46 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
   await expect(page.locator('.deck-guess-grid')).toBeVisible({ timeout: 30_000 });
   await page.locator('.deck-guess-btn').first().click();
   await expect(page.locator('.drill-result')).toBeVisible();
-  await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+  /*
+   * THE TOP BAR'S BACK, not the result's "Back to Drills". That one sits
+   * where the answer grid was, so it drops any tap inside the bounce guard
+   * (ANSWER_BOUNCE_MS, Wave A s05) -- which `?e2e=1` zeroes and this spec
+   * cannot carry. Clicked the instant the result appeared, it was swallowed
+   * and the next step waited out the whole test timeout for a picker that
+   * never came back. The top bar is out of a double tap's reach, unguarded,
+   * and the exit every other step here already uses.
+   */
+  await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
 
   // --- Flashcards ---------------------------------------------------------
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
+  await outlastBounceGuard();
   await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
-  await expect(page.locator('.feedback-cell')).toBeVisible();
+  // B1: the answer goes to the result strip and the next card is dealt at
+  // once; the old feedback panel (`.feedback-cell`) no longer appears here.
+  // The strip is absent until a first answer lands, so it proves the click
+  // was accepted rather than bounced.
+  await expect(page.getByTestId('result-strip')).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
 
   // --- Deviation quiz -----------------------------------------------------
   await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Deviation quiz');
+  await outlastBounceGuard();
   const insurance = page.locator('.quiz-insurance-prompt');
   if (await insurance.isVisible().catch(() => false)) {
     await page.getByRole('button', { name: 'Decline insurance', exact: true }).click();
   } else {
     await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
   }
-  await expect(page.locator('.quiz-label')).not.toHaveText('');
+  await expect(page.getByTestId('result-strip')).not.toHaveText('');
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
 
   // --- Pair cancellation --------------------------------------------------
   await page.getByRole('button', { name: 'Pair cancellation', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Pair cancellation');
+  await outlastBounceGuard();
   await page.locator('.pair-cancel-answers .action-btn').first().click();
   await expect(page.getByTestId('pair-result')).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
@@ -382,27 +432,33 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
   await expect(page.locator('.drill-heading')).toHaveText('Produce the true count');
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.numpad')).toBeVisible({ timeout: 40_000 });
+  await outlastBounceGuard();
   await submitZero(page);
-  await expect(page.locator('.drill-result')).toBeVisible();
+  // #54: fast advance -- the result is the strip over the next flash, as in
+  // smoke.spec.ts; `.drill-result` no longer appears after one answer.
+  await expect(page.getByTestId('result-strip')).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
 
   // --- Mixed --------------------------------------------------------------
   await page.getByRole('button', { name: 'Mixed', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Mixed');
+  await outlastBounceGuard();
   await page.locator('.action-bar button.action-btn').first().click();
-  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
+  await expect(page.getByTestId('result-strip')).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
 
   // --- Mastery challenge --------------------------------------------------
   await page.getByRole('button', { name: 'Mastery challenge', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Mastery challenge');
+  await outlastBounceGuard();
   await page.locator('.action-bar button.action-btn').first().click();
-  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
+  await expect(page.getByTestId('result-strip')).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
 
   // --- Bet sizing ---------------------------------------------------------
   await page.getByRole('button', { name: 'Bet sizing', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Bet sizing');
+  await outlastBounceGuard();
   await page.locator('.bet-sizing-answers button').first().click();
   await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeVisible();
   await page.locator('.drill-back-btn', { hasText: 'Back' }).click();
