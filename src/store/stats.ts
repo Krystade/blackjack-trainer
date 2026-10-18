@@ -78,6 +78,7 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
   let evCostCopied = false;
   let shotClockCopied = false;
   let cellStatsCopied = false;
+  let tableCopied = false;
 
   for (const event of events) {
     // Update category tallies. The tally object itself is copied, not
@@ -167,6 +168,22 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
     // Update mistakes tally by classification
     result.mistakes[event.classification] += 1;
 
+    // D-R2: the table's own index and mistake tallies, for Stats > Play.
+    if (event.source === 'table') {
+      if (!tableCopied) {
+        result.tableMistakes = { ...stats.tableMistakes };
+        result.tablePerIndex = { ...stats.tablePerIndex };
+        tableCopied = true;
+      }
+      result.tableMistakes![event.classification] = (result.tableMistakes![event.classification] ?? 0) + 1;
+      if (event.deviationId) {
+        const t = { ...(result.tablePerIndex![event.deviationId] ?? { right: 0, wrong: 0 }) };
+        if (event.correct) t.right += 1;
+        else t.wrong += 1;
+        result.tablePerIndex![event.deviationId] = t;
+      }
+    }
+
     // R1 (docs/BACKLOG.md): append to latencyHistory only when the producer
     // actually captured a decision time. A missing elapsedMs (every existing
     // producer, e.g. table play) must stay absent from this history, never
@@ -208,6 +225,7 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
         expected: event.expected,
         units: event.evCost,
         ...(event.at === undefined ? {} : { date: event.at }),
+        ...(event.source === undefined ? {} : { source: event.source }),
       });
     }
   }

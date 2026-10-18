@@ -14,7 +14,7 @@ import { correctPlay, insuranceCorrect } from '../engine/strategy';
 import type { GradedEvent } from '../engine/grade';
 import { actionCategory } from '../engine/grade';
 import { makeHardHand } from './buildHand';
-import { quizIndexSet, entryCtx, makeSoftHand, makePair10Cards } from './deviationQuiz';
+import { askedIndexSet, entryCtx, makeSoftHand, makePair10Cards } from './deviationQuiz';
 import { srWeight } from './spacedRepetition';
 import type { SrDeck } from './spacedRepetition';
 import { weightedIndex } from './weightedDraw';
@@ -50,7 +50,7 @@ export { publishedIndex } from './indexDisplay';
 
 /** The indexes the Index test asks: the quiz's set, active entries only. */
 export function indexTestSet(rules: StrategyRules): Deviation[] {
-  return quizIndexSet(rules).filter((d) => d.active);
+  return askedIndexSet(rules);
 }
 
 function cardsFor(dev: Deviation, rng: () => number): [Card, Card] {

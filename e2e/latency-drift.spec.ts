@@ -141,9 +141,11 @@ test('a bounded range says how many priced mistakes predate dating rather than d
           expected: 'stand',
           units: 0.5,
           date: new Date(Date.now() - 24 * 60 * MIN).toISOString(),
+          source: 'table',
         },
-        { category: 'soft', taken: 'stand', expected: 'hit', units: 0.25 },
-        { category: 'pairs', taken: 'hit', expected: 'split', units: 0.75 },
+        // D-R2: the Play tab prices table decisions only.
+        { category: 'soft', taken: 'stand', expected: 'hit', units: 0.25, source: 'table' },
+        { category: 'pairs', taken: 'hit', expected: 'split', units: 0.75, source: 'table' },
       ],
     },
   });

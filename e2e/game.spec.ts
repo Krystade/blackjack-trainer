@@ -766,10 +766,12 @@ test('cut card with a count check owed and no bet spread: the answer deals the f
  */
 test('RV7: dealing in at a should-wong count is graded, not just the min bet', async ({ page }) => {
   await withSettings(page, { feedbackMode: 'test', betSpreadOn: true, countCheckEvery: 0 });
+  // D-R1: exit point 0, so the top of the shoe (TC 0) is a sit-out count.
+  await withProfile(page, { betSpreadOn: true, countCheckEvery: 0, wongExitTc: 0 });
   await page.goto('/?seed=6&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
-  // Deal at the top of the shoe: TC 0, where the spread wants only the floor.
+  // Deal at the top of the shoe: TC 0, at the exit point.
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await playRoundByAdvice(page);
 
@@ -889,7 +891,8 @@ test('RT#11: eight rounds of exact ramp conformity are named as the tell', async
 
 test('eight rounds dealt in at a should-wong count are one grouped mistake, not eight', async ({ page }) => {
   await withSettings(page, { feedbackMode: 'test', countCheckEvery: 0 });
-  await withProfile(page, { name: 'Dead count', betSpreadOn: true });
+  // D-R1: exit point 0, so every count at the bottom of the ramp is a sit-out count.
+  await withProfile(page, { name: 'Dead count', betSpreadOn: true, wongExitTc: 0 });
   await page.goto('/?seed=6&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   for (let i = 0; i < 8; i++) {

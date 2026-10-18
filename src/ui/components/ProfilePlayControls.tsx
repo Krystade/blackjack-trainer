@@ -10,6 +10,8 @@ import {
   gradesDeviations,
   type CountCheckAsk,
 } from '../profileOptions';
+import { signed } from '../../drills/signed';
+import { WONG_EXIT_MAX, WONG_EXIT_MIN, wongExitTcOf } from '../../engine/wong';
 
 /**
  * The profile options Play reads, as controls (#3, #34, #39). One set, used
@@ -21,7 +23,7 @@ type ProfileView = Pick<
   Profile,
   'countCheckEvery' | 'countCheckAsk' | 'gradeDeviations' | 'cutDecks' | 'cutVary' | 'penetration' | 'rules'
 > &
-  Partial<Pick<Profile, 'betSpreadOn'>>;
+  Partial<Pick<Profile, 'betSpreadOn' | 'wongExitTc'>>;
 
 interface ControlProps {
   profile: ProfileView;
@@ -121,8 +123,33 @@ export function BetSpreadControl({ profile, onChange }: ControlProps) {
       <Toggle label="Vary bets with the count" checked={on} onChange={(v) => onChange({ betSpreadOn: v })} />
       <p className="settings-note profile-play-note">
         {on
-          ? 'Bets are graded on your bet ramp, and Sit out appears: sitting out is right where the ramp bets its minimum.'
+          ? 'Bets are graded on your bet ramp, and Sit out appears: sitting out is right at or below your exit point.'
           : 'Flat bets: no bet ramp, and no sitting out.'}
+      </p>
+      {on && <WongExitControl profile={profile} onChange={onChange} />}
+    </>
+  );
+}
+
+/**
+ * D-R1 (Wave D): the Wong exit point. Sitting out is graded right only at
+ * true count <= this; above it playing is right, even at the ramp's minimum.
+ */
+export function WongExitControl({ profile, onChange }: ControlProps) {
+  const exit = wongExitTcOf(profile.wongExitTc);
+  return (
+    <>
+      <Stepper
+        label="Sit out at TC"
+        value={exit}
+        min={WONG_EXIT_MIN}
+        max={WONG_EXIT_MAX}
+        step={1}
+        format={(v) => `${signed(v)} or lower`}
+        onChange={(v) => onChange({ wongExitTc: v })}
+      />
+      <p className="settings-note profile-play-note" data-testid="wong-exit-note">
+        Above {signed(exit)} playing is right, even where the ramp bets its minimum.
       </p>
     </>
   );

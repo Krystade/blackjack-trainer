@@ -33,6 +33,9 @@ const PROFILES: [string, Profile][] = [
   // at 2.5 decks: TC 0 bets, TC −1 sits), so dropping rounding fails here too.
   ['truncate, ramp raising at 0', { ...base, tcRounding: 'truncate', spread: [{ minTc: -99, units: 1 }, { minTc: 0, units: 2 }, { minTc: 2, units: 4 }] }],
   ['round rounding', { ...base, tcRounding: 'round' }],
+  // D-R1: the exit point reaches Play through playConfigFor.
+  ['exit point -4', { ...base, wongExitTc: -4 }],
+  ['exit point 0', { ...base, wongExitTc: 0 }],
   ['no floor row', { ...base, spread: [{ minTc: 0, units: 2 }, { minTc: 3, units: 5 }] }],
   ['unsorted ramp', { ...base, spread: [{ minTc: 3, units: 6 }, { minTc: -99, units: 1 }, { minTc: 1, units: 3 }, { minTc: 2, units: 3 }] }],
   ['one deck', { ...base, rules: { ...base.rules, decks: 1 } }],
@@ -80,9 +83,13 @@ describe('Bet sizing grades exactly as Play (D1, contract 1)', () => {
 });
 
 describe('answers', () => {
-  it('sits wherever the default ramp bets its minimum, else bets the rung', () => {
+  it('D-R1: sits at or below the exit point (-2), plays the minimum above it, else bets the rung', () => {
     expect(correctBetAnswer(-3, DEFAULT_SPREAD)).toBe('sit');
-    expect(correctBetAnswer(0, DEFAULT_SPREAD)).toBe('sit');
+    expect(correctBetAnswer(-2, DEFAULT_SPREAD)).toBe('sit');
+    expect(correctBetAnswer(-1, DEFAULT_SPREAD)).toBe(1);
+    expect(correctBetAnswer(0, DEFAULT_SPREAD)).toBe(1);
+    expect(correctBetAnswer(0, DEFAULT_SPREAD, 0)).toBe('sit');
+    expect(correctBetAnswer(-3, DEFAULT_SPREAD, -4)).toBe(1);
     expect(correctBetAnswer(1, DEFAULT_SPREAD)).toBe(2);
     expect(correctBetAnswer(2, DEFAULT_SPREAD)).toBe(4);
     expect(correctBetAnswer(5, DEFAULT_SPREAD)).toBe(12);
@@ -92,13 +99,25 @@ describe('answers', () => {
     expect(betSizingOptions(DEFAULT_SPREAD)).toEqual(['sit', 1, 2, 4, 8, 10, 12]);
     expect(betSizingOptions([{ minTc: 3, units: 5 }, { minTc: 0, units: 2 }, { minTc: 5, units: 5 }])).toEqual(['sit', 2, 5]);
   });
+  it('D-R1: TC 0 and -1 grade the minimum bet right and Sit wrong; -2 and -3 the reverse', () => {
+    for (const tc of [0, -1]) {
+      expect(gradeBetSizing(1, tc, base)).toBe(true);
+      expect(gradeBetSizing('sit', tc, base)).toBe(false);
+    }
+    for (const tc of [-2, -3]) {
+      expect(gradeBetSizing(1, tc, base)).toBe(false);
+      expect(gradeBetSizing('sit', tc, base)).toBe(true);
+    }
+    expect(gradeBetSizing('sit', -1, { ...base, wongExitTc: -1 })).toBe(true);
+  });
   it('labels', () => {
     expect(betAnswerLabel('sit')).toBe('Sit');
     expect(betAnswerLabel(4)).toBe('4u');
   });
   it('shows RC ÷ decks → TC → rung with real minus signs', () => {
     expect(betSizingWorking({ rc: 7, cardsDealt: 182, totalDecks: 6 }, base)).toBe('RC +7 ÷ 2.5 decks → TC +2 → 4u');
-    expect(betSizingWorking({ rc: -3, cardsDealt: 156, totalDecks: 6 }, base)).toBe('RC −3 ÷ 3 decks → TC −1 → Sit');
+    expect(betSizingWorking({ rc: -3, cardsDealt: 156, totalDecks: 6 }, base)).toBe('RC −3 ÷ 3 decks → TC −1 → 1u');
+    expect(betSizingWorking({ rc: -6, cardsDealt: 156, totalDecks: 6 }, base)).toBe('RC −6 ÷ 3 decks → TC −2 → Sit');
     expect(betSizingWorking({ rc: 2, cardsDealt: 260, totalDecks: 6 }, base)).toBe('RC +2 ÷ 1 deck → TC +2 → 4u');
   });
 });
@@ -123,15 +142,30 @@ describe('makeBetSizingScenario', () => {
       const a = correctBetAnswer(scenarioTc(makeBetSizingScenario(seed, decks, DEFAULT_SPREAD)), DEFAULT_SPREAD);
       counts.set(a, (counts.get(a) ?? 0) + 1);
     }
-    for (const a of ['sit', 2, 4, 8, 10, 12] as const) expect(counts.get(a) ?? 0).toBeGreaterThanOrEqual(48);
-    expect(counts.get('sit') ?? 0).toBeLessThanOrEqual(240);
-    expect(counts.get(1) ?? 0).toBe(0); // D1: the minimum rung is never the answer, Sit is
+    for (const a of ['sit', 1, 2, 4, 8, 10, 12] as const) expect(counts.get(a) ?? 0).toBeGreaterThanOrEqual(40);
+    expect(counts.get('sit') ?? 0).toBeLessThanOrEqual(200);
+    expect(counts.get(1) ?? 0).toBeLessThanOrEqual(200); // D-R1: the minimum rung is an answer now, but no free pass
   });
-  it('single-row ramp: terminates and always asks Sit', () => {
+  it('single-row ramp: terminates and asks only Sit or the one rung, by the exit point', () => {
     const flat = [{ minTc: -99, units: 1 }];
+    const seen = new Set<BetAnswer>();
     for (let seed = 0; seed < 50; seed++) {
-      expect(correctBetAnswer(scenarioTc(makeBetSizingScenario(seed, 6, flat)), flat)).toBe('sit');
+      const s = makeBetSizingScenario(seed, 6, flat);
+      const a = correctBetAnswer(scenarioTc(s), flat);
+      expect(a).toBe(scenarioTc(s) <= -2 ? 'sit' : 1);
+      seen.add(a);
     }
+    expect(seen).toEqual(new Set(['sit', 1]));
+  });
+  it('D-R1: the scenario balances by the exit point it is given', () => {
+    // Balanced over Sit and the six rungs, about one in seven asks Sit at the
+    // exit point it was given (balanced at the default -2 instead, ~41 of 600).
+    let sit = 0;
+    for (let seed = 0; seed < 600; seed++) {
+      const s = makeBetSizingScenario(seed, 6, DEFAULT_SPREAD, 0.5, -4);
+      if (correctBetAnswer(scenarioTc(s), DEFAULT_SPREAD, -4) === 'sit') sit++;
+    }
+    expect(sit).toBeGreaterThanOrEqual(70);
   });
 });
 

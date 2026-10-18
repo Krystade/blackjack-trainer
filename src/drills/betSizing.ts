@@ -34,6 +34,8 @@ export interface BetGradeProfile {
   spread: readonly SpreadRow[];
   coverBets?: boolean;
   tcRounding?: TcRounding;
+  /** D-R1: the Wong exit point (engine/wong.ts); absent = -2. */
+  wongExitTc?: number;
 }
 
 export type BetSizingRow = NonNullable<Stats['betSizing']>['history'][number];
@@ -62,24 +64,24 @@ export function betSizingOptions(spread: readonly SpreadRow[]): BetAnswer[] {
 }
 
 /**
- * D1: wherever the spread calls only for its minimum, the answer is Sit, so the
- * minimum rung itself is never the answer. Otherwise the rung the spread calls.
+ * D-R1: at or below the Wong exit point the answer is Sit; above it, the rung
+ * the spread calls -- the minimum rung included (TC 0 is a play).
  */
-export function correctBetAnswer(tc: number, spread: readonly SpreadRow[]): BetAnswer {
-  return sitOutIsCorrect(tc, spread) ? 'sit' : spreadUnitsFor(tc, spread);
+export function correctBetAnswer(tc: number, spread: readonly SpreadRow[], wongExitTc?: number): BetAnswer {
+  return sitOutIsCorrect(tc, spread, wongExitTc) ? 'sit' : spreadUnitsFor(tc, spread);
 }
 
 /**
  * Play's verdict on this action. Sitting out emits one wong event; betting emits
  * a bet event (a neighbouring rung passes with cover on) AND a wong event for
- * dealing in. A bet is right only when both are, which is why the minimum rung
- * is wrong wherever Sit is right.
+ * dealing in. A bet is right only when both are, so any bet is wrong wherever
+ * Sit is right (at or below the exit point).
  *
  * Graded by the spread even when the profile has `betSpreadOn` off (Play grades
  * nothing then): practising the ramp is the drill's purpose.
  */
 export function gradeBetSizing(taken: BetAnswer, tc: number, p: BetGradeProfile): boolean {
-  const shouldSit = sitOutIsCorrect(tc, p.spread);
+  const shouldSit = sitOutIsCorrect(tc, p.spread, p.wongExitTc);
   if (taken === 'sit') return shouldSit;
   const expected = spreadUnitsFor(tc, p.spread);
   const betOk = p.coverBets ? betWithinStep(taken, expected, p.spread) : taken === expected;
@@ -125,9 +127,9 @@ const BALANCE_REDRAWS = 100;
 
 /**
  * A seeded scenario, balanced by answer. Raw draws cluster near a neutral count,
- * so most would be Sit and tapping Sit every time would score well. The target
- * answer is picked first, evenly from Sit and every rung above the minimum (the
- * minimum is never the answer, see `correctBetAnswer`), then draws repeat until
+ * so tapping one answer every time could score well. The target answer is
+ * picked first, evenly from Sit and every rung (D-R1: the minimum rung is the
+ * answer between the exit point and the first raise), then draws repeat until
  * one has it. A rung the shoe cannot reach keeps the last draw, so this always
  * terminates, including on a one-row spread whose only answer is Sit.
  *
@@ -140,12 +142,13 @@ export function makeBetSizingScenario(
   totalDecks: number,
   spread: readonly SpreadRow[],
   minDecksRemaining = 0.5,
+  wongExitTc?: number,
 ): BetSizingScenario {
   const rng = mulberry32(seed);
-  const targets: BetAnswer[] = ['sit', ...spreadSteps(spread).slice(1)];
+  const targets: BetAnswer[] = ['sit', ...spreadSteps(spread)];
   const want = targets[Math.floor(rng() * targets.length)];
   let s = drawScenario(rng, totalDecks, minDecksRemaining);
-  for (let i = 0; i < BALANCE_REDRAWS && correctBetAnswer(scenarioTc(s), spread) !== want; i++) {
+  for (let i = 0; i < BALANCE_REDRAWS && correctBetAnswer(scenarioTc(s), spread, wongExitTc) !== want; i++) {
     s = drawScenario(rng, totalDecks, minDecksRemaining);
   }
   return s;
@@ -161,7 +164,7 @@ export function betSizingWorking(s: BetSizingScenario, p: BetGradeProfile): stri
   const decks = scenarioDecksRemaining(s);
   const tc = scenarioTc(s, p.tcRounding);
   const depth = decks === 1 ? '1 deck' : `${decks} decks`;
-  return `RC ${signed(s.rc)} ÷ ${depth} → TC ${signed(tc)} → ${betAnswerLabel(correctBetAnswer(tc, p.spread))}`;
+  return `RC ${signed(s.rc)} ÷ ${depth} → TC ${signed(tc)} → ${betAnswerLabel(correctBetAnswer(tc, p.spread, p.wongExitTc))}`;
 }
 
 /** The Stats row for one answer (contract 1). */
@@ -173,7 +176,7 @@ export function betSizingRow(s: BetSizingScenario, p: BetGradeProfile, taken: Be
     decksRemaining: scenarioDecksRemaining(s),
     tc,
     taken,
-    correct: correctBetAnswer(tc, p.spread),
+    correct: correctBetAnswer(tc, p.spread, p.wongExitTc),
     ok: gradeBetSizing(taken, tc, p),
   };
 }

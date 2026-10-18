@@ -1,3 +1,4 @@
+import { wongExitTcOf } from '../engine/wong';
 import type { Profile } from '../store/types';
 import { loadProfiles, saveProfiles, getActiveProfile } from '../store/profiles';
 
@@ -106,6 +107,8 @@ export function playOptionsDiffer(a: Profile, b: Profile): boolean {
     p.cutVary === true,
     // Wave A: the bet spread toggle is in the Play sheet too.
     p.betSpreadOn === true,
+    // D-R1: the Wong exit point sits under the bet spread toggle.
+    wongExitTcOf(p.wongExitTc),
   ];
   return JSON.stringify(effective(a)) !== JSON.stringify(effective(b));
 }

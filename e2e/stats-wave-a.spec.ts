@@ -49,7 +49,7 @@ test('s02: hand categories show the goal figure against a 90% marker', async ({ 
   await expect(page.locator('.category-row[data-hand="pair"]')).toContainText('0 of 20 answers needed to judge');
 });
 
-test('review: 1 point is singular, older answers are shown, surrender overlap is said', async ({ page }) => {
+test('review: 1 point is singular, older answers are shown', async ({ page }) => {
   await withStats(page, {
     categories: { pairs: { right: 380, wrong: 20 }, surrender: { right: 3, wrong: 1 } },
     cellStats: {
@@ -68,8 +68,9 @@ test('review: 1 point is singular, older answers are shown, surrender overlap is
     'All time 380/400 (95%), with answers from before per-hand tracking. The goal counts only answers since.',
   );
   await expect(hard.getByTestId('legacy-hard')).toHaveCount(0);
-  const surrender = page.locator('.category-row', { has: page.locator('.category-label', { hasText: 'Surrender' }) });
-  await expect(surrender).toContainText("These hands also count toward their hand type's goal above.");
+  // D-R2: the goal rows are their own section on Progress, apart from Play's table tallies.
+  await expect(section(page, 'Basic strategy goal').locator('.category-row[data-hand]')).toHaveCount(3);
+  await expect(section(page, 'Accuracy by category').locator('.category-row[data-hand]')).toHaveCount(0);
 });
 
 test('s10: table-only categories get no in-range line; the note says what the goal figures are', async ({ page }) => {
@@ -113,13 +114,13 @@ test('s10: a bounded range shows in-range hand accuracy from dated answers', asy
 test('s06: Bet or sit shows the table decisions, and betting misses are not basic strategy errors', async ({
   page,
 }) => {
+  // D-R2: Play reads the table's own slices.
+  const cats = { hard: { right: 120, wrong: 1 }, bet: { right: 43, wrong: 2 }, wong: { right: 10, wrong: 36 } };
   await withStats(page, {
-    categories: {
-      hard: { right: 120, wrong: 1 },
-      bet: { right: 43, wrong: 2 },
-      wong: { right: 10, wrong: 36 },
-    },
+    categories: cats,
     mistakes: { 'basic-error': 39 },
+    bySource: { table: cats },
+    tableMistakes: { 'basic-error': 39 },
   });
   await openStats(page);
   const bsl = section(page, 'Bet or sit');
@@ -174,4 +175,28 @@ test('F27: drill empty states print once', async ({ page }) => {
   await expect(section(page, 'True count drill').getByText('No true count drill attempts yet.')).toHaveCount(1);
   await expect(section(page, 'Deck estimation drill').getByText('No deck estimation attempts yet.')).toHaveCount(1);
   await expect(section(page, 'Timed count challenge').getByText('No timed runs yet.')).toHaveCount(1);
+});
+
+test('D-R2 (#4): Stats > Play shows table decisions only; Flashcards answers stay on Drills', async ({ page }) => {
+  // The finding's run: 4 flashcards (2 wrong, priced), then 11 table plays, all right.
+  await withStats(page, {
+    categories: { hard: { right: 13, wrong: 2 } },
+    mistakes: { correct: 13, 'basic-error': 2 },
+    bySource: { flashcard: { hard: { right: 2, wrong: 2 } }, table: { hard: { right: 11, wrong: 0 } } },
+    tableMistakes: { correct: 11 },
+    evCost: {
+      history: [
+        { category: 'hard', hand: 'hard-7-v-3', taken: 'stand', expected: 'hit', units: 0.2, source: 'flashcard' },
+        { category: 'hard', hand: 'hard-13-v-4', taken: 'hit', expected: 'stand', units: 0.1, source: 'flashcard' },
+      ],
+    },
+  });
+  await openStats(page);
+  const hard = section(page, 'Accuracy by category').locator('.category-row[data-category="hard"]');
+  await expect(hard.locator('.category-fraction')).toHaveText('11/11 (100%)');
+  const types = section(page, 'Mistake types');
+  await expect(types.locator('.mistake-row', { hasText: 'Basic strategy errors' }).locator('span').last()).toHaveText('0');
+  await expect(section(page, 'Cost of mistakes')).toContainText('No priced mistakes yet');
+  await statsTab(page, 'Drills');
+  await expect(section(page, 'Flashcards').first()).toContainText('2/4 correct');
 });

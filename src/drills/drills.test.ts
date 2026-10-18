@@ -214,10 +214,14 @@ describe('deviationQuiz', () => {
       }
     });
 
-    it('11vA (inactive): the ENGINE recomputation yields double at every sampled tc', () => {
+    it('D-R3: 11vA (inactive under H17) is never drawn unfiltered -- the drills ask only askedIndexSet', () => {
+      for (let i = 0; i < 500; i++) expect(drawQuizItem(6000 + i).deviationId).not.toBe('11vA');
+    });
+
+    it('11vA (inactive), asked by name: the ENGINE recomputation yields double at every sampled tc', () => {
       let seen = 0;
-      for (let i = 0; i < 500; i++) {
-        const item = drawQuizItem(6000 + i);
+      for (let i = 0; i < 100; i++) {
+        const item = drawQuizItem(6000 + i, '11vA');
         if (item.deviationId === '11vA') {
           seen++;
           // item.correct must come from the engine, and the engine must say double

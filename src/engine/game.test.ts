@@ -832,8 +832,10 @@ describe('wong-out / sit-out (R5)', () => {
     expect(game.bankroll).toBe(startBankroll);
   });
 
-  it('betSpreadOn: sitting out at tc<=0 grades the wong decision CORRECT (spread wants only the min bet)', () => {
+  it('betSpreadOn: sitting out at the exit point (tc -2) grades the wong decision CORRECT', () => {
     const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('5', 'K'));
+    game.runningCount = -12;
+    expect(game.trueCountNow).toBe(-2);
     game.sitOut();
     const wong = game.events.filter((e) => e.kind === 'wong');
     expect(wong).toHaveLength(1);
@@ -864,7 +866,8 @@ describe('wong-out / sit-out (R5)', () => {
   // spread said to leave was scored as a CORRECT bet and nothing else.
   it('RV7: dealing in at a should-wong count grades the wong decision WRONG', () => {
     const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('2', '5', '3', '4'));
-    game.startRound(1); // the table minimum, which is what the spread asks for
+    game.runningCount = -12; // tc -2: at the exit point
+    game.startRound(1); // the table minimum
     const wong = game.events.filter((e) => e.kind === 'wong');
     expect(wong).toHaveLength(1);
     expect(wong[0].correct).toBe(false);
@@ -874,6 +877,7 @@ describe('wong-out / sit-out (R5)', () => {
 
   it('RV7 + C-R6: a min bet at a should-wong count grades no bet size -- only "wrong to be in the hand"', () => {
     const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('2', '5', '3', '4'));
+    game.runningCount = -12;
     game.startRound(1);
     expect(game.events.filter((e) => e.kind === 'bet')).toHaveLength(0);
     expect(game.events.filter((e) => e.kind === 'wong')[0]!.correct).toBe(false);
@@ -913,8 +917,64 @@ describe('wong-out / sit-out (R5)', () => {
       cfg({ betSpreadOn: true, seats }),
       rig('2', '5', '3', '4', '6', '7'),
     );
+    game.runningCount = -12;
     game.startRound([1, 1]);
     expect(game.events.map((e) => e.kind)).toEqual(['wong']);
+  });
+});
+
+describe('D-R1: the Wong exit point (sit only at tc <= exit, default -2)', () => {
+  // rig('2','5','3','4') leaves the shoe so rc 6 reads tc +1 (see atTc1); rc = 6 * tc.
+  function at(tc: number, overrides: Partial<GameConfig> = {}): Game {
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true, ...overrides }), rig('2', '5', '3', '4'));
+    game.runningCount = 6 * tc;
+    expect(game.trueCountNow).toBe(tc);
+    return game;
+  }
+  const wongOf = (g: Game) => g.events.filter((e) => e.kind === 'wong');
+
+  it.each([
+    [0, false],
+    [-1, false],
+    [-2, true],
+    [-3, true],
+  ])('tc %i: sitting out is graded correct=%s', (tc, ok) => {
+    const game = at(tc);
+    game.sitOut();
+    expect(wongOf(game)).toHaveLength(1);
+    expect(wongOf(game)[0].correct).toBe(ok);
+    expect(wongOf(game)[0].expected).toBe(ok ? 'sit-out' : 'play');
+  });
+
+  it.each([
+    [0, true],
+    [-1, true],
+    [-2, false],
+    [-3, false],
+  ])('tc %i: playing the minimum is graded correct=%s', (tc, ok) => {
+    const game = at(tc);
+    game.startRound(1);
+    if (ok) {
+      // A play: only the bet size is graded, and the minimum is the ramp's bet here.
+      expect(wongOf(game)).toHaveLength(0);
+      const bet = game.events.filter((e) => e.kind === 'bet');
+      expect(bet).toHaveLength(1);
+      expect(bet[0].correct).toBe(true);
+      expect(bet[0].expected).toBe('1');
+    } else {
+      expect(wongOf(game)).toHaveLength(1);
+      expect(wongOf(game)[0].correct).toBe(false);
+      expect(game.events.some((e) => e.kind === 'bet')).toBe(false);
+    }
+  });
+
+  it('a custom exit point moves the line: exit 0 sits at tc 0, exit -4 plays at tc -3', () => {
+    const sit0 = at(0, { wongExitTc: 0 });
+    sit0.sitOut();
+    expect(wongOf(sit0)[0].correct).toBe(true);
+    const play3 = at(-3, { wongExitTc: -4 });
+    play3.sitOut();
+    expect(wongOf(play3)[0].correct).toBe(false);
   });
 });
 
@@ -923,6 +983,7 @@ describe('C-R6: one graded bet decision per round', () => {
 
   it('ramp says sit out, you played: only the play-or-sit decision is graded (no bet size)', () => {
     const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('2', '5', '3', '4'));
+    game.runningCount = -12;
     game.startRound(1);
     expect(kindsOf(game)).toEqual(['wong']);
     expect(game.events[0].correct).toBe(false);

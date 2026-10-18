@@ -18,7 +18,7 @@ import { drillLegalActions, rulesChipLabels } from '../../drills/legalActions';
 import { INSURANCE_HINT, playHint } from '../../audio/misheardLadder';
 import { gateDrillAnswer, gateQuizAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
-import { drawQuizItem, quizIndexSet, quizLegalActions, quizRulesChip, redundantForChart, tableMaskNote } from '../../drills/deviationQuiz';
+import { askedIndexSet, drawQuizItem, quizLegalActions, quizRulesChip, redundantForChart, tableMaskNote } from '../../drills/deviationQuiz';
 import type { QuizItem } from '../../drills/deviationQuiz';
 // R4 (docs/BACKLOG.md, interleaved mixed-session mode): the ONE shared grade
 // path -- gradeFlashcardAnswer/gradeQuizAnswer back the standalone
@@ -3129,7 +3129,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     const ids = takeReviewIndexes();
     if (launch !== 'quiz' || !ids) return null;
     // Only indexes the quiz can ask under this profile (drawQuizItem throws on others).
-    const askable = new Set(quizIndexSet(strategyRulesFor(activeProfile)).filter((d) => d.active).map((d) => d.id as string));
+    const askable = new Set(askedIndexSet(strategyRulesFor(activeProfile)).map((d) => d.id as string));
     const kept = ids.filter((id) => askable.has(id));
     return kept.length > 0 ? kept : null;
   });
