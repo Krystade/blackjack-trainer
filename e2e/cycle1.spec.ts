@@ -47,7 +47,9 @@ test('deviation quiz: an index filter of 16v10 keeps drawing the same scenario a
 
   const expectedLabel = '16 v 10: stand at TC ≥ 0';
   for (let cycle = 0; cycle < 3; cycle++) {
-    await expect(select).toHaveValue('16v10');
+    // W2-7: after the first answer the Index select folds into the summary.
+    if (cycle === 0) await expect(select).toHaveValue('16v10');
+    else await expect(page.getByTestId('controls-summary')).toContainText('16 v 10 (stand)');
     // B1: no Next; the next item is dealt at once and the strip names the
     // answered one's index, right or wrong.
     await answerAndReadStrip(page, page.locator('.action-bar button.action-btn', { hasText: 'Stand' }));

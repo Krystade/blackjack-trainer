@@ -32,6 +32,9 @@ test('reaching the goal says so', async ({ page }) => {
   await expect(page.getByTestId('flash-goal-met')).toHaveCount(0);
   await answerAndReadStrip(page, stand(page));
   await expect(page.getByTestId('flash-goal-met')).toContainText('Hard totals on target');
+  // W2-7: the goal line folds into the summary after the first answer.
+  await expect(page.getByTestId('controls-summary')).toContainText('✓');
+  await page.getByTestId('controls-summary').click();
   await expect(page.getByTestId('flash-progress')).toContainText('✓');
   await answerAndReadStrip(page, stand(page));
   await expect(page.getByTestId('flash-goal-met')).toHaveCount(0);
@@ -43,6 +46,8 @@ test('the line keeps the answer buttons on screen', async ({ page }) => {
   let tone: 'ok' | 'miss' = 'ok';
   for (let i = 0; i < 30 && tone !== 'miss'; i++) tone = await answerAndReadStrip(page, stand(page));
   expect(tone).toBe('miss');
+  // W2-7: folded after the first answer; opened, the line is back.
+  await page.getByTestId('controls-summary').click();
   await expect(page.getByTestId('flash-progress')).toBeVisible();
   const bar = await page.locator('.action-bar').boundingBox();
   expect(bar).not.toBeNull();

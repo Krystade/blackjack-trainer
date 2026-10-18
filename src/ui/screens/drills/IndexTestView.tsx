@@ -43,6 +43,8 @@ import { DrillModeControls } from './DrillModeControls';
 import { QuizAskSwitch } from './QuizAskSwitch';
 import './indexTest.css';
 import './indexTestFit.css';
+import { RungProgressLine } from './RungProgressLine';
+import { DRILL_RUNG } from './rungProgress';
 
 /** The answered item, frozen for the strip: never the live next item. */
 interface IndexResult {
@@ -368,6 +370,10 @@ export function IndexTestView({
               {result.review && <div className="index-test-review">{result.review}</div>}
             </div>
           </ResultStrip>
+        )}
+        {result && (
+          // L-3: the Home ladder rung this drill feeds.
+          <RungProgressLine rung={DRILL_RUNG.indextest} profile={activeProfile} />
         )}
       </div>
 

@@ -2,6 +2,8 @@ import type { ReactNode } from 'react';
 import { micSessionCostPaid } from '../../audio/micSessionCost';
 import type { VoiceStatus } from '../useVoiceControl';
 import { VOICE_STATE_LABEL, VOICE_WORDS, describeVerdict } from '../voiceLabels';
+import type { CarStatus } from '../carStatus';
+import { CarStatusLine } from './CarStatusLine';
 
 /**
  * The listening strip: what the microphone is doing, what it last heard, and
@@ -19,10 +21,12 @@ import { VOICE_STATE_LABEL, VOICE_WORDS, describeVerdict } from '../voiceLabels'
  * has opened and stay on the loud speaker, while the phone's own voice cannot
  * be routed that way and may use the earpiece. See audio/micSessionCost.ts.
  */
-export function VoiceStatusBar({ status, hint }: { status: VoiceStatus; hint?: ReactNode }) {
+export function VoiceStatusBar({ status, hint, car }: { status: VoiceStatus; hint?: ReactNode; car?: CarStatus }) {
   return (
     <div className="voice-status" data-voice-state={status.state}>
-      <span className="voice-status-state">{VOICE_STATE_LABEL[status.state]}</span>
+      {/* F7: eyes-free, the state row becomes the car line (hand, wheel,
+          mic, score); what was heard stays below it. */}
+      {car ? <CarStatusLine {...car} /> : <span className="voice-status-state">{VOICE_STATE_LABEL[status.state]}</span>}
       {status.heard && (
         <span className="voice-status-heard">
           &ldquo;{status.heard}&rdquo; &rarr; {describeVerdict(status.verdict, status.why)}

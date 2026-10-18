@@ -34,7 +34,12 @@ import { cancelSpeech, speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { useWheelCommand } from '../../useWheelCommand';
+import { shortCellLabel } from '../../../drills/missHistory';
+import { CarStatusLine } from '../../components/CarStatusLine';
+import { carMic, carScore, speedWheelLabel } from '../../carStatus';
 import { EyesFreeCheckbox } from './EyesFreeCheckbox';
+import { RungProgressLine } from './RungProgressLine';
+import { speedRung } from './rungProgress';
 import './speedDrill.css';
 
 function randomSeed(): number {
@@ -281,6 +286,15 @@ function SpeedSession({
         </div>
         <HandDeckControls settings={settings} onChange={onSettingsChange} />
         <EyesFreeCheckbox settings={settings} onSettingsChange={onSettingsChange} eyesFree={eyesFree} onChange={setEyesFree} />
+        {/* F7: eyes-free, one line for the car. No microphone here. */}
+        {eyesFree && question && (
+          <CarStatusLine
+            hand={shortCellLabel(question.cellId) + (question.tc !== null ? ` · TC ${formatSigned(question.tc)}` : '')}
+            wheel={speedWheelLabel(verdictPending)}
+            mic={carMic('off')}
+            score={carScore(score.right, score.total)}
+          />
+        )}
       </div>
 
       {question ? (
@@ -331,6 +345,11 @@ function SpeedSession({
               </div>
             </div>
           </ResultStrip>
+        )}
+        {last && (
+          // L-3: the Home ladder rung this question feeds (Basic strategy, or
+          // Deviations when an index decides it).
+          <RungProgressLine rung={speedRung(last.q)} profile={profile} />
         )}
       </div>
 

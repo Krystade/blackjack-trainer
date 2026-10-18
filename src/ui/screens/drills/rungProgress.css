@@ -1,0 +1,12 @@
+/* L-3: a drill's step progress on its result screen, styled as Flashcards'
+   goal line (flashProgress.css): one small line, truncated, never wrapped. */
+.rung-progress {
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 100%;
+  opacity: 0.8;
+  text-align: left;
+}
