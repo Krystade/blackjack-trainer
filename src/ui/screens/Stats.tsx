@@ -40,7 +40,8 @@ import { strategyRulesFor } from '../../store/profiles';
 import { CATEGORY_LABELS } from './categoryLabels';
 import { betSizingRows } from './ladderRules';
 import { activeIndices } from './readiness';
-import { drillPerIndex, playFigures } from './playStats';
+import { drillIndexDirection, drillPerIndex, playFigures } from './playStats';
+import { IndexTable } from '../components/IndexTable';
 import { bestCleanCountRuns, formatCountRun } from '../../drills/countSpeed';
 import { CATEGORY_TARGET, HAND_CATEGORIES, MIN_CATEGORY_ANSWERS, goalPct, handCategoryProgress, pctDown } from './handProgress';
 import type { HandCategoryProgress } from './handProgress';
@@ -388,7 +389,7 @@ const TAB_LABEL: Record<StatsTab, string> = {
 /** Which tab each section title belongs to. */
 const SECTION_TAB: Record<string, StatsTab> = {
   'Accuracy by category': 'play',
-  'Illustrious 18': 'play',
+  'Indexes': 'play',
   'Mistake types': 'play',
   'Cost of mistakes': 'play',
   'Bet or sit': 'play',
@@ -705,6 +706,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   // Wave B2 #22: the indexes the drills ask, as on Home (readiness.activeIndices).
   const askedIndices = activeIndices(gradedRules);
   const drillIndex = drillPerIndex(stats);
+  const drillDirection = drillIndexDirection(stats);
   const quizSrSummary = summarizeSrDeck(loadQuizSr(), askedIndices.length, now);
   const quizLabelFor = (key: string) =>
     indexSetFor(gradedRules).find((d) => d.id === key)?.label ?? key;
@@ -862,7 +864,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
         <p className="u-note">
           {range.id === 'all'
             ? 'Showing all time.'
-            : 'The range applies to dated results. Basic strategy goal adds an in-range line for timed drill answers. Its goal figures are always your latest answers (the last 30 per hand type), and Accuracy by category, Flashcards, Shot clock on vs off, Illustrious 18, Mistake types, the Bet or sit table rows and the spaced-repetition boxes are undated tallies, so they show all time.'}
+            : 'The range applies to dated results. Basic strategy goal adds an in-range line for timed drill answers. Its goal figures are always your latest answers (the last 30 per hand type), and Accuracy by category, Flashcards, Shot clock on vs off, Indexes, Mistake types, the Bet or sit table rows and the spaced-repetition boxes are undated tallies, so they show all time.'}
         </p>
       </div>
 
@@ -1092,36 +1094,20 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
       </CollapsibleSection>
 
       <CollapsibleSection
-        title={<>Illustrious 18</>}
+        title={<>Indexes</>}
         className="stats-section"
-        dataTab={SECTION_TAB['Illustrious 18']}
+        dataTab={SECTION_TAB['Indexes']}
         defaultOpen={false}
       >
-          <table className="index-table">
-            <thead>
-              <tr>
-                <th>Index</th>
-                <th>Right</th>
-                <th>Wrong</th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* Every index the profile is GRADED on, which with surrender
-                  indices on is 24 rather than 18. The six Fab 4 tallies were
-                  being written to `perIndex` and then had no row to appear
-                  in. */}
-              {askedIndices.map((dev) => {
-                const tally = play.perIndex[dev.id];
-                return (
-                  <tr key={dev.id}>
-                    <td>{dev.label}</td>
-                    <td>{tally ? tally.right : '—'}</td>
-                    <td>{tally ? tally.wrong : '—'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {/* E7: every index the profile is graded on (24 with surrender
+              indices on), the table's answers only (D-R2): worst first, with
+              which way each is missed; unanswered ones are one line. */}
+          <IndexTable
+            asked={askedIndices}
+            tally={play.perIndex}
+            direction={play.indexDirection}
+            testId="play-index-table"
+          />
       </CollapsibleSection>
 
       <CollapsibleSection
@@ -1704,30 +1690,17 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
               </span>
             </div>
           )}
-          {/* D-R2: the drills' per-index answers (the Play tab's Illustrious 18
-              is the table's). Rows: the indexes the drills ask (D-R3). */}
+          {/* D-R2: the drills' per-index answers (the Play tab's Indexes is
+              the table's). Rows: the indexes the drills ask (D-R3), in the
+              same E7 table: worst first, Early/Late, unanswered as one line.
+              An Index-test miss is wrong with no direction. */}
           {Object.keys(drillIndex).length > 0 && (
-            <table className="index-table" data-testid="drill-index-table">
-              <thead>
-                <tr>
-                  <th>Index</th>
-                  <th>Right</th>
-                  <th>Wrong</th>
-                </tr>
-              </thead>
-              <tbody>
-                {askedIndices.map((dev) => {
-                  const tally = drillIndex[dev.id];
-                  return (
-                    <tr key={dev.id}>
-                      <td>{dev.label}</td>
-                      <td>{tally ? tally.right : '—'}</td>
-                      <td>{tally ? tally.wrong : '—'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <IndexTable
+              asked={askedIndices}
+              tally={drillIndex}
+              direction={drillDirection}
+              testId="drill-index-table"
+            />
           )}
       </CollapsibleSection>
 

@@ -1,5 +1,6 @@
 import type { Category, GradedEvent } from '../engine/grade';
-import type { Stats, TallyRW } from './types';
+import type { DeviationId } from '../engine/deviations';
+import type { IndexDirection, Stats, TallyRW } from './types';
 import { cellAfter, cellIdForEvent, handRecentAfter } from './cellStats';
 
 /**
@@ -36,6 +37,47 @@ export function countsInCategory(event: GradedEvent): boolean {
 }
 
 const BASIC_CATEGORIES: ReadonlySet<Category> = new Set<Category>(['hard', 'soft', 'pairs', 'surrender']);
+
+/**
+ * E7: the answers a direction can be read off -- the five hand plays and the
+ * insurance answer. An Index-test answer is a number, so its miss is wrong
+ * with no direction.
+ */
+const PLAYS: ReadonlySet<string> = new Set(['hit', 'stand', 'double', 'split', 'surrender', 'take', 'decline']);
+
+/** E7: one index miss with a direction. `offTally`: not in `perIndex` (see IndexDirection). */
+export interface DirectedMiss {
+  id: DeviationId;
+  side: 'early' | 'late';
+  offTally: boolean;
+}
+
+/**
+ * E7 (W2-16): which index an event missed, and which way, or null.
+ *
+ * `late` is a missed deviation, filed under its `deviationId`. `early` is a
+ * phantom deviation, filed under `phantomOf` (Play, whose phantoms stay on
+ * their chart cell) or else `deviationId` (the drills, which file a phantom
+ * under the index, R9). Shared with the undo so the two never disagree.
+ */
+export function indexDirectionFor(event: GradedEvent): DirectedMiss | null {
+  if (!PLAYS.has(event.taken)) return null;
+  if (event.classification === 'missed-deviation') {
+    return event.deviationId ? { id: event.deviationId, side: 'late', offTally: false } : null;
+  }
+  if (event.classification === 'phantom-deviation') {
+    const id = event.phantomOf ?? event.deviationId;
+    return id ? { id, side: 'early', offTally: !event.deviationId } : null;
+  }
+  return null;
+}
+
+function directionAfter(before: IndexDirection | undefined, miss: DirectedMiss): IndexDirection {
+  const base = before ?? { early: 0, late: 0 };
+  const next: IndexDirection = { ...base, [miss.side]: base[miss.side] + 1 };
+  if (miss.offTally) next.offTally = (base.offTally ?? 0) + 1;
+  return next;
+}
 
 /**
  * Apply graded events to stats, returning a new Stats object (pure function).
@@ -79,6 +121,8 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
   let shotClockCopied = false;
   let cellStatsCopied = false;
   let tableCopied = false;
+  let directionCopied = false;
+  let tableDirectionCopied = false;
 
   for (const event of events) {
     // Update category tallies. The tally object itself is copied, not
@@ -163,6 +207,24 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
       result.cellStats![cellId] = cellAfter(result.cellStats![cellId], event, fallbackAt);
       // W3: the per-hand-type recent window Home's category gate reads.
       result.handRecent = handRecentAfter(result.handRecent, cellId, event.correct);
+    }
+
+    // E7: which way an index was missed (early/late), pooled and for the
+    // table alone. Leaves perIndex and cellStats exactly as above.
+    const miss = indexDirectionFor(event);
+    if (miss) {
+      if (!directionCopied) {
+        result.indexDirection = { ...stats.indexDirection };
+        directionCopied = true;
+      }
+      result.indexDirection![miss.id] = directionAfter(result.indexDirection![miss.id], miss);
+      if (event.source === 'table') {
+        if (!tableDirectionCopied) {
+          result.tableIndexDirection = { ...stats.tableIndexDirection };
+          tableDirectionCopied = true;
+        }
+        result.tableIndexDirection![miss.id] = directionAfter(result.tableIndexDirection![miss.id], miss);
+      }
     }
 
     // Update mistakes tally by classification
