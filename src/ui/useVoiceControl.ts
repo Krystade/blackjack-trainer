@@ -140,12 +140,12 @@ export function useVoiceControl({
   /**
    * C-R4 (W16): escalate repeated misses on one prompt. The first unrecognised
    * attempt still goes to `onNotUnderstood` (the "say again" tone); the second
-   * calls `reask` (say the prompt line again); the third and after call
-   * `hint` (name the accepted words). `promptKey` identifies the prompt -- a
+   * calls `reask` (say the prompt line again); after that they alternate,
+   * tone then re-ask (D-R5: no hint line). `promptKey` identifies the prompt -- a
    * new key starts the count again, as does any recognised answer.
    * Without it, every miss is the tone, as before.
    */
-  escalation?: { promptKey: unknown; reask: () => void; hint: () => void };
+  escalation?: { promptKey: unknown; reask: () => void };
 }): { status: VoiceStatus; cycleIfStale: () => void } {
   const [status, setStatus] = useState<VoiceStatus>(IDLE);
 
@@ -414,7 +414,6 @@ export function useVoiceControl({
           diag('speak', 'misheard', { step, context: contextRef.current });
           try {
             if (step === 'reask') esc?.reask();
-            else if (step === 'hint') esc?.hint();
             else unheardRef.current?.('rejected');
           } catch {
             // A screen's handler must never take the microphone down with it.

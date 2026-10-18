@@ -1,5 +1,5 @@
 import { saveSettings } from '../../store/persist';
-import { cancelSpeech } from '../../audio/speech';
+import { muteSpeech } from '../../audio/speech';
 import type { Settings } from '../../store/types';
 
 /**
@@ -45,7 +45,9 @@ export function MuteButton({
     // Stop the current utterance on the way INTO mute only. On the way out,
     // there is nothing to stop and cutting the queue would swallow whatever
     // the drill was about to say next.
-    if (!muted) cancelSpeech();
+    // D-R7: including a protected line -- the Drive tile's -- which survives
+    // every other cancel.
+    if (!muted) muteSpeech();
     saveSettings(next);
     onSettingsChange(next);
   };

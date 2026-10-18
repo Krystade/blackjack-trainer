@@ -1,15 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createMisheardLadder, hintLine, playHint } from './misheardLadder';
+import { createMisheardLadder } from './misheardLadder';
 
 describe('misheard-answer escalation (C-R4)', () => {
-  it('tone, then re-ask, then the hint, on one prompt', () => {
+  it('tone, then re-ask, then keeps alternating -- never a hint (D-R5)', () => {
     const ladder = createMisheardLadder();
     const prompt = {};
-    expect(ladder.miss(prompt)).toBe('tone');
-    expect(ladder.miss(prompt)).toBe('reask');
-    expect(ladder.miss(prompt)).toBe('hint');
-    // Keeps listening: further misses keep naming the words.
-    expect(ladder.miss(prompt)).toBe('hint');
+    const steps = Array.from({ length: 6 }, () => ladder.miss(prompt));
+    expect(steps).toEqual(['tone', 'reask', 'tone', 'reask', 'tone', 'reask']);
   });
 
   it('a recognised answer resets the count', () => {
@@ -37,21 +34,5 @@ describe('array prompt keys', () => {
     ladder.miss(['answering', round]);
     expect(ladder.miss(['answering', round])).toBe('reask');
     expect(ladder.miss(['feedback', round])).toBe('tone');
-  });
-});
-
-describe('hintLine', () => {
-  it('names the accepted words, with "or" before the last', () => {
-    expect(hintLine(['hit', 'stand', 'double', 'split', 'surrender'])).toBe(
-      'Say hit, stand, double, split or surrender.',
-    );
-    expect(hintLine(['yes', 'no'])).toBe('Say yes or no.');
-    expect(hintLine(['repeat'])).toBe('Say repeat.');
-  });
-});
-
-describe('playHint', () => {
-  it('names only the legal plays, in action-bar order', () => {
-    expect(playHint(['stand', 'hit', 'double'])).toBe('Say hit, stand or double.');
   });
 });

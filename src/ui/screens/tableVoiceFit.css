@@ -4,22 +4,52 @@
  * the screen on a 375x812 phone with the notch insets. The table screen is
  * only a min-height column, so it grew instead of fitting.
  *
- * While the strip is showing, the column is held to the visible height and
- * the STRIP is the one part that gives way: it shrinks (scrolling inside
- * itself) and nothing else does -- cards, the message line, the peek dock
- * and the action bar keep their size.
+ * While the strip is showing, the column is held to the visible height
+ * (D-R11: the app's --app-h, which is right in the installed app where svh
+ * leaves the top inset out) and nothing in it shrinks.
+ *
+ * D-R10: the strip used to be the part that gave way, scrolling inside itself
+ * -- which cut its text off half way through a line. Now it is sized to whole
+ * lines instead: state and the last-heard word on one line (the transcript
+ * ellipsised), the words to say clamped to three lines, and the earpiece note
+ * left to the drill screens and Settings. Short enough that it never has to
+ * shrink, so it never clips.
  */
 .table-screen:has(> .voice-status) {
-  height: calc(100svh - var(--chrome-top, 0px));
+  height: calc(var(--app-h, 100svh) - var(--chrome-top, 0px));
 }
 
 .table-screen:has(> .voice-status) > * {
   flex-shrink: 0;
 }
 
+/* State and heard share the first line; a grid row keeps them together. */
 .table-screen > .voice-status {
-  flex: 0 1 auto;
-  min-height: 2.4rem;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.2rem 0.7rem;
+  padding: 0.35rem 0.7rem;
+  overflow: hidden;
+}
+
+.table-screen > .voice-status .voice-status-heard {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-screen > .voice-status .voice-status-words {
+  grid-column: 1 / -1;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  line-height: 1.3;
+}
+
+.table-screen > .voice-status .voice-status-earpiece {
+  display: none;
 }

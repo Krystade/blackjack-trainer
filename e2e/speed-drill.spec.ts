@@ -28,19 +28,16 @@ test('speed: an answer deals the next hand and the strip describes the answered 
   }
   await expect(page.getByTestId('speed-median')).toHaveText(/^\d+\.\ds$/);
 
-  // Wave A F20 (this pinned the opposite before): a yes/no answer is not a
-  // full chart answer, so nothing reaches per-cell tallies, category
-  // accuracy, the index tallies or the latency history.
+  // D-R9: only the MISSES reach Stats (and Review); a right answer does not,
+  // and no Speed tap reaches the latency history.
+  const misses = 4 - Number((await page.getByTestId('speed-score').innerText()).split('/')[0]);
   const stats = (await readStats(page)) as {
     cellStats?: Record<string, { right: number; wrong: number }>;
-    bySource?: Record<string, unknown>;
-    perIndex?: Record<string, unknown>;
     latencyHistory?: unknown[];
   } | null;
-  const tallied = Object.values(stats?.cellStats ?? {}).reduce((n, c) => n + c.right + c.wrong, 0);
-  expect(tallied).toBe(0);
-  expect(stats?.bySource?.flashcard).toBeFalsy();
-  expect(Object.keys(stats?.perIndex ?? {})).toHaveLength(0);
+  const cells = Object.values(stats?.cellStats ?? {});
+  expect(cells.reduce((n, c) => n + c.right, 0)).toBe(0);
+  expect(cells.reduce((n, c) => n + c.wrong, 0)).toBe(misses);
   expect(stats?.latencyHistory ?? []).toHaveLength(0);
 });
 
@@ -117,4 +114,20 @@ test('speed: fits a 375px phone, big buttons at the bottom, opens at the top', a
   for (const m of ['surrender', 'deviation', 'double', 'split']) {
     expect((await page.getByTestId(`speed-mode-${m}`).boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }
+});
+
+/** D-R8: eyes-free, Yes and No are disabled while the verdict is being said. */
+test('speed: eyes-free answer buttons wait out the verdict', async ({ page }) => {
+  await withSettings(page, { audio: { enabled: true } });
+  await openSpeed(page);
+  await page.getByLabel('Eyes-free audio').check();
+  await page.waitForTimeout(300); // past the bounce guard
+  await page.getByTestId('speed-yes').click();
+  await expect(page.getByTestId('speed-score')).toHaveText(/\/1$/);
+  await expect(page.getByTestId('speed-yes')).toBeDisabled();
+  await expect(page.getByTestId('speed-no')).toBeDisabled();
+  // A tap meanwhile does nothing; once the next question is up they work again.
+  await page.getByTestId('speed-no').click({ force: true });
+  await expect(page.getByTestId('speed-yes')).toBeEnabled({ timeout: 10_000 });
+  await expect(page.getByTestId('speed-score')).toHaveText(/\/1$/);
 });

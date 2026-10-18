@@ -28,7 +28,6 @@ import {
 import { loadStats, saveStats } from '../../../store/persist';
 import { enableAudioNow } from '../../audioGate';
 import { useVoiceControl } from '../../useVoiceControl';
-import { NEXT_HINT, NUMBER_HINT } from '../../../audio/misheardLadder';
 import { useWheelCommand } from '../../useWheelCommand';
 import { useWheelNumber } from '../../useWheelNumber';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
@@ -615,11 +614,10 @@ export function TrueCountDrillView({
     // Eyes-free, a rejection is silence, and silence looks the same as a dead
     // microphone. A short cue says "say it again".
     onNotUnderstood: () => audio.ding('again'),
-    // C-R4: second miss on this question repeats it; third names what it takes.
+    // C-R4: second miss on this question repeats it; later misses alternate tone and re-ask.
     escalation: {
       promptKey: [phase, question],
       reask: () => handleVoiceCommand('repeat'),
-      hint: () => ((t: string) => sayBack(t, true))(phase === 'answering' ? NUMBER_HINT : NEXT_HINT),
     },
     biasPhrases: [...Object.keys(VOICE_ACTIONS), ...COUNT_BIAS_PHRASES],
     onListening: () => audio.dingWhenQuiet('ready'),

@@ -16,6 +16,8 @@ import {
   type SpeedMode,
   type SpeedQuestion,
 } from '../../../drills/speedDrill';
+import { gradeSpeedAnswer } from '../../../drills/speedGrade';
+import { BLIND_TAP_CHANNEL, SCREEN_CHANNEL } from '../../../drills/spacedRepetition';
 import { PlayingCard } from '../../components/PlayingCard';
 import { ResultStrip } from '../../components/ResultStrip';
 import { releaseAnswerFocus, resultHandLine } from '../../handResult';
@@ -121,6 +123,8 @@ function SpeedSession({
   const [eyesFree, setEyesFree] = useEyesFreeToggle('speed');
   /** Eyes-free only: the verdict is being said; the next question waits. */
   const feedbackRef = useRef<{ verdict: string; prev: string } | null>(null);
+  /** D-R8: the same, as state, so the answer buttons disable while it lasts. */
+  const [verdictPending, setVerdictPending] = useState(false);
   const advanceTimerRef = useRef<number | null>(null);
   const clearAdvance = () => {
     if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current);
@@ -160,6 +164,7 @@ function SpeedSession({
     if (!fb) return;
     clearAdvance();
     feedbackRef.current = null;
+    setVerdictPending(false);
     setQuestion(drawSpeedQuestion(mode, deck, rules, randomSeed(), fb.prev));
     shownAtRef.current = performance.now();
   };
@@ -169,11 +174,13 @@ function SpeedSession({
     // Review fix (c): a bounce's second touch lands on the next hand.
     if (answerTooSoon(shownAtRef.current)) return;
     const elapsedMs = performance.now() - shownAtRef.current;
-    const event = buildSpeedEvent(question, saidYes, elapsedMs, Date.now());
-    // Wave A F20: NOT written to Stats. "Double? No" on A,7 v 9 says nothing
-    // about whether you hit or stand it, yet it counted as a full chart
-    // answer: it cleared weak cells, could satisfy Home's index gate, and its
-    // 0.4s taps became the Surrender median. Speed keeps its own session score.
+    const now = Date.now();
+    const event = buildSpeedEvent(question, saidYes, elapsedMs, now);
+    // D-R9: only a MISS is written to Stats and the review schedule, so it
+    // feeds Review. A correct answer stays out (Wave A F20: "Double? No" on
+    // A,7 v 9 says nothing about whether you hit or stand it). Wheel and
+    // tapped alike.
+    gradeSpeedAnswer(question, saidYes, elapsedMs, now, eyesFree ? BLIND_TAP_CHANNEL : SCREEN_CHANNEL);
     idRef.current += 1;
     setLast({ id: idRef.current, q: question, saidYes, correct: event.correct });
     setScore((s) => ({ right: s.right + (event.correct ? 1 : 0), total: s.total + 1 }));
@@ -184,6 +191,7 @@ function SpeedSession({
       audio.ding(event.correct ? 'good' : 'bad');
       say(verdict);
       feedbackRef.current = { verdict, prev: question.cellId };
+      setVerdictPending(true);
       clearAdvance();
       advanceTimerRef.current = window.setTimeout(
         nextAfterVerdict,
@@ -332,7 +340,7 @@ function SpeedSession({
           className="speed-answer speed-answer-no"
           data-testid="speed-no"
           data-answer={yesNo(false)}
-          disabled={!question}
+          disabled={!question || verdictPending}
           onClick={() => answer(false)}
         >
           No
@@ -342,7 +350,7 @@ function SpeedSession({
           className="speed-answer speed-answer-yes"
           data-testid="speed-yes"
           data-answer={yesNo(true)}
-          disabled={!question}
+          disabled={!question || verdictPending}
           onClick={() => answer(true)}
         >
           Yes

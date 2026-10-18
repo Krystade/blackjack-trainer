@@ -4,7 +4,7 @@ import {
   type SpokenMatch,
   type VoiceAction,
 } from './voiceRecognition';
-import { looksLikeLateSelfEcho } from './selfEcho';
+import { looksLikeLateSelfEcho, looksLikeSelfEcho } from './selfEcho';
 import { msSinceInputDeviceChanged } from '../diag/deviceChurn';
 
 /**
@@ -94,6 +94,12 @@ export type SuppressedWhy = 'speaking' | 'tail' | 'echo';
 export interface VoiceControllerDeps {
   /** Returns null when the browser has no recognition API. */
   createRecognition: () => RecognitionLike | null;
+  /**
+   * D-R6: the post-speech tail, overriding SPEECH_TAIL_MS. Exists so the
+   * tests can try a candidate tail against the echo guard without changing
+   * what ships; production leaves it unset.
+   */
+  speechTailMs?: number;
   now: () => number;
   schedule: (fn: () => void, ms: number) => number;
   cancel: (handle: number) => void;
@@ -468,6 +474,14 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
    * this is the only other thing the app knows.
    */
   let lastSaid: string | null = null;
+  /**
+   * D-R6: when the last spoken line ended -- estimated from its duration when
+   * it starts, replaced by the real ending when `releaseSuppression` reports
+   * it. Only for the per-result timing line, so the tail can be set from car
+   * data rather than guessed.
+   */
+  let promptEndAt: number | null = null;
+  const tailMs = deps.speechTailMs ?? SPEECH_TAIL_MS;
   let restartHandle: number | null = null;
   /** The grace timer waiting for `onaudiostart`. Session-scoped. */
   let audioWaitHandle: number | null = null;
@@ -852,9 +866,24 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       });
 
       // The app's own voice, arriving back through the microphone.
+      /*
+       * D-R6: one line per result -- how long after the prompt ended it
+       * arrived, whether its words are the app's own, and what became of it.
+       * Read back after a drive, it is the data SPEECH_TAIL_MS is set from.
+       */
+      const timing = (outcome: 'accepted' | 'suppressed' | 'claimed' | 'rejected'): void => {
+        log('echo-timing', {
+          sincePromptEndMs: promptEndAt === null ? null : deps.now() - promptEndAt,
+          ownWords: looksLikeSelfEcho(heard, lastSaid),
+          outcome,
+          tailMs,
+        });
+      };
+
       if (isSuppressed(deps.now(), suppressedUntil)) {
         const why: SuppressedWhy = tailSince !== null && deps.now() >= tailSince ? 'tail' : 'speaking';
         log('suppressed', { heard, forMs: suppressedUntil - deps.now(), why });
+        timing('suppressed');
         deps.onHeard?.(heard, 'suppressed', why);
         return;
       }
@@ -862,6 +891,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       // A modal that owns the microphone answers first, or not at all.
       const claimed = deps.onTranscript?.(heard, offered);
       if (claimed) {
+        timing('claimed');
         deps.onHeard?.(heard, claimed);
         return;
       }
@@ -894,6 +924,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       const sinceClosed = deps.now() - suppressedUntil;
       if (looksLikeLateSelfEcho(heard, lastSaid, sinceClosed)) {
         log('suppressed-echo', { heard, sinceMs: sinceClosed, said: lastSaid });
+        timing('suppressed');
         deps.onHeard?.(heard, 'suppressed', 'echo');
         return;
       }
@@ -906,6 +937,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       const action = match?.action ?? null;
       const verdict = match === null ? 'rejected' : verdictFor(match);
       log('verdict', { heard, verdict });
+      timing(action ? 'accepted' : 'rejected');
       deps.onHeard?.(heard, verdict);
       if (!action) return;
       try {
@@ -987,7 +1019,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       setState('off');
     },
     suppressFor: (ms: number, said?: string) => {
-      const until = deps.now() + Math.max(0, ms) + SPEECH_TAIL_MS;
+      const until = deps.now() + Math.max(0, ms) + tailMs;
       // Never shorten an existing window: back-to-back utterances would
       // otherwise unmute the microphone while the app is still talking.
       if (until > suppressedUntil) suppressedUntil = until;
@@ -998,6 +1030,7 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       if (said !== undefined) {
         lastSaid = said;
         tailSince = null;
+        promptEndAt = deps.now() + Math.max(0, ms);
       }
     },
     suppressForTone: (ms: number) => {
@@ -1006,8 +1039,9 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
     },
     suppressedRemainingMs: () => Math.max(0, suppressedUntil - deps.now()),
     releaseSuppression: () => {
-      suppressedUntil = deps.now() + SPEECH_TAIL_MS;
+      suppressedUntil = deps.now() + tailMs;
       tailSince = deps.now();
+      promptEndAt = deps.now();
     },
     cycleIfStale: () => {
       if (!running) return;
