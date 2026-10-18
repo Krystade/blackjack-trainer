@@ -4,6 +4,8 @@ import {
   looksLikeLateSelfEcho,
   ECHO_GRACE_MS,
   ECHO_MIN_WORDS,
+  looksLikeShortSelfEcho,
+  SHORT_ECHO_WINDOW_MS,
 } from './selfEcho';
 import { VOICE_PHRASES } from './voiceRecognition';
 
@@ -139,5 +141,82 @@ describe('an echo that arrives after the deaf window closed', () => {
         ECHO_MIN_WORDS,
       );
     }
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* The SHORT echo, once the tail is 100ms                                    */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * 2026-10-18: SPEECH_TAIL_MS 700 -> 100. The tail used to be the only thing
+ * stopping "hit" out of "Correct play was hit" from being graded, since
+ * looksLikeLateSelfEcho only acts on three or more words.
+ */
+describe('a one- or two-word fragment of the last line', () => {
+  const CORRECTION = 'Wrong. Basic hit versus dealer three. Correct play was hit. True count was zero.';
+
+  it('rejects a one-word echo of a correction at 100, 700 and 2300ms after it ended', () => {
+    for (const ms of [100, 700, 2300]) expect(looksLikeShortSelfEcho('hit', CORRECTION, ms), `${ms}ms`).toBe(true);
+  });
+
+  it('covers the slowest delivery measured in the car (2258ms), with margin', () => {
+    expect(SHORT_ECHO_WINDOW_MS).toBeGreaterThanOrEqual(2258);
+    expect(SHORT_ECHO_WINDOW_MS).toBeLessThanOrEqual(3000);
+    expect(looksLikeShortSelfEcho('hit', CORRECTION, SHORT_ECHO_WINDOW_MS)).toBe(true);
+    expect(looksLikeShortSelfEcho('hit', CORRECTION, SHORT_ECHO_WINDOW_MS + 1)).toBe(false);
+  });
+
+  it('counts a line still playing (negative time) as inside the window', () => {
+    expect(looksLikeShortSelfEcho('hit', CORRECTION, -400)).toBe(true);
+  });
+
+  it('accepts a genuine answer at 150ms that the app did not just say', () => {
+    expect(looksLikeShortSelfEcho('stand', CORRECTION, 150)).toBe(false);
+    expect(looksLikeShortSelfEcho('double down', CORRECTION, 150)).toBe(false);
+  });
+
+  it('rejects two-word fragments too, and an answer echo ("Hit.")', () => {
+    expect(looksLikeShortSelfEcho('was hit', CORRECTION, 300)).toBe(true);
+    expect(looksLikeShortSelfEcho('hit', 'Hit.', 300)).toBe(true);
+    expect(looksLikeShortSelfEcho('hits', 'Player two hits.', 300)).toBe(true);
+  });
+
+  it('leaves three words and more to looksLikeLateSelfEcho', () => {
+    expect(looksLikeShortSelfEcho('correct play was hit', CORRECTION, 300)).toBe(false);
+  });
+
+  /*
+   * DO PROMPTS CONTAIN ANSWER WORDS? Yes. "Hit or stand?" style choices, the
+   * deviation quiz's questions, the field test's "say hit or stand out loud",
+   * and every count-drill verdict ends "Say yes to go again." The driver
+   * saying the word they were just offered is the most natural answer there
+   * is, so a sentence that ASKS is never a source of echo.
+   */
+  it('accepts a word the driver was just OFFERED in a question or choice', () => {
+    expect(looksLikeShortSelfEcho('stand', 'Soft eighteen against nine. Hit or stand?', 150)).toBe(false);
+    expect(looksLikeShortSelfEcho('hit', 'Say hit or stand out loud.', 150)).toBe(false);
+    expect(looksLikeShortSelfEcho('yes', 'Hit. Did you have it? Yes or no.', 150)).toBe(false);
+  });
+
+  it('accepts "yes" after an instruction to say it', () => {
+    expect(looksLikeShortSelfEcho('yes', 'Correct. The count is plus two. Say yes to go again.', 150)).toBe(false);
+    expect(looksLikeShortSelfEcho('yes', 'Okay. Say yes when you want another.', 150)).toBe(false);
+  });
+
+  it('still rejects the statement in a line that also asks something', () => {
+    // "Hit." is the reveal; "Did you have it?" is the question. The driver's
+    // answer is yes/no, so "hit" coming back is the reveal echoing.
+    expect(looksLikeShortSelfEcho('hit', 'Hit. Did you have it?', 300)).toBe(true);
+  });
+
+  it('says no with nothing said, or nothing heard', () => {
+    expect(looksLikeShortSelfEcho('hit', null, 100)).toBe(false);
+    expect(looksLikeShortSelfEcho('hit', '', 100)).toBe(false);
+    expect(looksLikeShortSelfEcho('  ', CORRECTION, 100)).toBe(false);
+  });
+
+  it('respects word boundaries ("and" is not in "stand")', () => {
+    expect(looksLikeShortSelfEcho('and', 'Correct play was stand.', 100)).toBe(false);
   });
 });

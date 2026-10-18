@@ -18,7 +18,7 @@ import {
   type HeardVerdict,
   type RecognitionLike,
 } from './voiceControl';
-import { ECHO_GRACE_MS } from './selfEcho';
+import { ECHO_GRACE_MS, SHORT_ECHO_WINDOW_MS } from './selfEcho';
 import type { VoiceAction } from './voiceRecognition';
 
 /**
@@ -387,11 +387,19 @@ describe('the app must not hear itself after the window has closed', () => {
     const h = harness();
     h.controller.start();
     h.controller.suppressFor(5000, 'Correct play was hit. True count was zero.');
-    h.advance(5000 + SPEECH_TAIL_MS + 500);
+    h.advance(5000);
+    h.controller.releaseSuppression();
     // THE CASE THAT MUST NOT REGRESS: the correction ends, the next hand is
     // dealt, and the operator says "hit". Containment alone calls that an echo
     // and the drill sits there in silence -- which is what a dead microphone
-    // sounds like, and the thing this app is most often accused of.
+    // sounds like, and the thing this app is most often accused of. With voice
+    // on, the next hand is always SPOKEN (FlashcardsView speaks the prompt
+    // whenever voiceOn), so it is the line the short-echo rule looks at.
+    h.advance(450); // POST_CORRECTION_BEAT_MS
+    h.controller.suppressFor(1200, 'Hard sixteen against ten.');
+    h.advance(1200);
+    h.controller.releaseSuppression();
+    h.advance(SPEECH_TAIL_MS + 50);
     h.current().say('hit');
 
     expect(h.actions, 'a real answer was thrown away as an echo').toEqual(['hit']);
@@ -1259,7 +1267,7 @@ describe('the deaf window after a sound', () => {
     h.current().say('stand');
     h.advance(1200);
     h.controller.releaseSuppression();
-    h.advance(500);
+    h.advance(SPEECH_TAIL_MS - 1);
     h.current().say('hit');
     expect(h.heard).toEqual([
       ['stand', 'suppressed'],
@@ -1302,11 +1310,15 @@ describe('D-R6: the echo tail against the word guard', () => {
     expect(h.actions).toEqual(['stand']);
   });
 
-  it('...and thrown away at the shipped 700ms tail', () => {
+  it('...and at the shipped 100ms tail (it was thrown away at the old 700ms)', () => {
     const h = promptThen();
     h.advance(300);
     h.current().say('stand');
-    expect(h.actions).toEqual([]);
+    expect(h.actions).toEqual(['stand']);
+    const old = promptThen(700);
+    old.advance(300);
+    old.current().say('stand');
+    expect(old.actions).toEqual([]);
   });
 
   for (const delay of [0, 300, 700, 2300]) {
@@ -1320,24 +1332,66 @@ describe('D-R6: the echo tail against the word guard', () => {
   }
 
   /*
-   * WHY THE TAIL STAYS AT 700. The guard only acts on three or more words
-   * (ECHO_MIN_WORDS), so a one-word fragment of the app's own line -- "hit"
-   * out of "Correct play was hit" -- is indistinguishable from an answer.
-   * Below 700ms only the clock stops it.
+   * WHY THE TAIL COULD COME DOWN TO 100 (2026-10-18). The long-echo guard only
+   * acts on three or more words (ECHO_MIN_WORDS), so a one-word fragment of the
+   * app's own line -- "hit" out of "Correct play was hit" -- used to be stopped
+   * by the 700ms clock alone. looksLikeShortSelfEcho now stops it by its words,
+   * for SHORT_ECHO_WINDOW_MS after the line ends.
    */
-  it('a ONE-word echo of the app 300ms after the prompt is graded at a 250ms tail', () => {
-    const h = promptThen(250);
-    h.advance(300);
+  for (const delay of [100, 700, 2300]) {
+    it(`a ONE-word echo of a correction ${delay}ms after it ended is suppressed as an echo at the shipped tail`, () => {
+      const h = promptThen();
+      h.advance(delay);
+      h.current().say('hit');
+      expect(h.actions).toEqual([]);
+      expect(h.heard.at(-1)).toEqual(['hit', 'suppressed']);
+      expect(h.why.at(-1)).toBe('echo');
+      expect(SPEECH_TAIL_MS).toBe(100);
+    });
+  }
+
+  it('a genuine answer 150ms after the line ended, not in it, is accepted', () => {
+    const h = promptThen();
+    h.advance(150);
+    h.current().say('double');
+    expect(h.actions).toEqual(['double']);
+  });
+
+  it('the same one-word fragment is taken as an answer once the window has passed', () => {
+    const h = promptThen();
+    h.advance(SHORT_ECHO_WINDOW_MS + 1);
     h.current().say('hit');
     expect(h.actions).toEqual(['hit']);
   });
 
-  it('the same one-word echo is suppressed at the shipped tail', () => {
+  it('a driver repeating a word from a CHOICE prompt is answering, not echoing', () => {
+    const h = harness();
+    h.controller.start();
+    h.controller.suppressFor(1500, 'Soft eighteen against nine. Hit or stand?');
+    h.advance(1500);
+    h.controller.releaseSuppression();
+    h.advance(150);
+    h.current().say('stand');
+    expect(h.actions).toEqual(['stand']);
+  });
+
+  it('...and the same for an instruction to speak ("Say yes to go again.")', () => {
+    const h = harness();
+    h.controller.start();
+    h.controller.suppressFor(3000, 'Correct. The count is plus two. Say yes to go again.');
+    h.advance(3000);
+    h.controller.releaseSuppression();
+    h.advance(150);
+    h.current().say('yes');
+    expect(h.actions).toEqual(['yes']);
+  });
+
+  it('logs a short echo under suppressed-echo, marked short', () => {
     const h = promptThen();
-    h.advance(300);
+    h.advance(700);
     h.current().say('hit');
-    expect(h.actions).toEqual([]);
-    expect(SPEECH_TAIL_MS).toBe(700);
+    const echo = h.logs.filter((l) => l.event === 'suppressed-echo').map((l) => l.detail);
+    expect(echo).toEqual([{ heard: 'hit', sinceMs: 700 - SPEECH_TAIL_MS, sincePromptEndMs: 700, said: SAID, short: true }]);
   });
 
   it('logs ms since prompt end, own-words match and outcome for every result', () => {
@@ -1348,8 +1402,8 @@ describe('D-R6: the echo tail against the word guard', () => {
     h.current().say('stand');
     const lines = h.logs.filter((l) => l.event === 'echo-timing').map((l) => l.detail);
     expect(lines).toEqual([
-      { sincePromptEndMs: 300, ownWords: true, outcome: 'suppressed', tailMs: 700 },
-      { sincePromptEndMs: 1300, ownWords: false, outcome: 'accepted', tailMs: 700 },
+      { sincePromptEndMs: 300, ownWords: true, outcome: 'suppressed', tailMs: SPEECH_TAIL_MS },
+      { sincePromptEndMs: 1300, ownWords: false, outcome: 'accepted', tailMs: SPEECH_TAIL_MS },
     ]);
   });
 
@@ -1362,6 +1416,6 @@ describe('D-R6: the echo tail against the word guard', () => {
     h.advance(900);
     h.current().say('wombat');
     const line = h.logs.filter((l) => l.event === 'echo-timing').at(-1)?.detail;
-    expect(line).toEqual({ sincePromptEndMs: 900, ownWords: false, outcome: 'rejected', tailMs: 700 });
+    expect(line).toEqual({ sincePromptEndMs: 900, ownWords: false, outcome: 'rejected', tailMs: SPEECH_TAIL_MS });
   });
 });

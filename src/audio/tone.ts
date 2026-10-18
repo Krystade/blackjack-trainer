@@ -70,34 +70,106 @@ function writeU16(bytes: Uint8Array, offset: number, value: number): void {
 export const TONE_SAMPLE_RATE = SAMPLE_RATE;
 
 /**
- * The tone as float samples in [-peak, peak]: one faded sine. The single
- * source of the waveform, shared by the WAV data URI (element path) and the
- * AudioBuffer (Web Audio path) so the two can never drift apart.
+ * One note of an earcon: a pitch (gliding to `endHz` when given) held for
+ * `ms`, then `gapMs` of silence before the next note.
  */
-export function toneSamples(frequencyHz: number, peak = 1, endHz = frequencyHz): Float32Array {
-  const frames = Math.round(SAMPLE_RATE * DURATION_S);
-  const fadeFrames = Math.max(1, Math.round(SAMPLE_RATE * FADE_S));
+export interface EarconNote {
+  readonly hz: number;
+  readonly endHz?: number;
+  readonly ms: number;
+  readonly gapMs?: number;
+}
+
+/**
+ * A short sequence of notes in one timbre.
+ *
+ * 2026-10-18, after Jack said from the car that the tones "don't sound right":
+ * every kind used to be the same 120ms pure sine at a different pitch. That
+ * left absolute pitch as the only cue, and pitch is the weakest one the
+ * earcon literature lists (Brewster: tell earcons apart by rhythm, note count
+ * and timbre first). So an earcon is now a list of notes plus `harmonics`:
+ * the relative amplitude of partials 1..n, with index 0 being the
+ * fundamental. `[1]` (the default) is the old pure sine. Odd partials sound
+ * harsh, which suits the error tones, and a soft 2nd partial sounds like a
+ * bell (IEC 60601-1-8 Annex D). Partials also lift a low fundamental into the
+ * 1-2kHz band that phone and car speakers actually reproduce.
+ */
+export interface Earcon {
+  readonly notes: readonly EarconNote[];
+  readonly harmonics?: readonly number[];
+}
+
+/** The old single tone as an earcon: one 120ms pure note. */
+export function singleNote(frequencyHz: number, endHz = frequencyHz): Earcon {
+  return { notes: [{ hz: frequencyHz, endHz, ms: DURATION_S * 1000 }] };
+}
+
+/** Milliseconds an earcon lasts, gaps included (a trailing gap counts too). */
+export function earconDurationMs(earcon: Earcon): number {
+  return earcon.notes.reduce((t, n) => t + n.ms + (n.gapMs ?? 0), 0);
+}
+
+/**
+ * An earcon as float samples in [-peak, peak]. The single source of the
+ * waveform, shared by the WAV data URI (element path) and the AudioBuffer
+ * (Web Audio path) so the two can never drift apart.
+ */
+export function earconSamples(earcon: Earcon, peak = 1): Float32Array {
   const safePeak = Math.min(1, Math.max(0, peak));
-  const out = new Float32Array(frames);
-  let phase = 0;
-  for (let i = 0; i < frames; i++) {
-    // The same shape the oscillator envelope had: up over FADE_S, flat, then
-    // down to nothing at the end. `Math.min` of the two ramps gives both
-    // without a branch, and handles a tone shorter than two fades.
-    const rampIn = i / fadeFrames;
-    const rampOut = (frames - 1 - i) / fadeFrames;
-    const envelope = Math.min(1, rampIn, rampOut);
-    // C-R4: a glide from frequencyHz to endHz, by accumulating phase (the
-    // instantaneous pitch moves linearly). Flat when endHz === frequencyHz,
-    // which is sample-for-sample the old single sine.
-    out[i] = Math.sin(phase) * envelope * safePeak;
-    phase += (2 * Math.PI * (frequencyHz + ((endHz - frequencyHz) * i) / frames)) / SAMPLE_RATE;
+  const partials = earcon.harmonics && earcon.harmonics.length > 0 ? earcon.harmonics : [1];
+  // Normalised so the partials summed in phase never exceed the peak.
+  const norm = partials.reduce((a, b) => a + Math.abs(b), 0) || 1;
+  const total = earcon.notes.reduce(
+    (t, n) => t + Math.round((SAMPLE_RATE * n.ms) / 1000) + Math.round((SAMPLE_RATE * (n.gapMs ?? 0)) / 1000),
+    0,
+  );
+  const out = new Float32Array(total);
+  let at = 0;
+  for (const note of earcon.notes) {
+    const frames = Math.round((SAMPLE_RATE * note.ms) / 1000);
+    // Every note gets its own fade, so a sequence does not click at each note
+    // boundary. The fade is FADE_S, but never more than a quarter of the note,
+    // so a short pip still has a flat top.
+    const fadeFrames = Math.max(1, Math.min(Math.round(SAMPLE_RATE * FADE_S), Math.floor(frames / 4)));
+    const endHz = note.endHz ?? note.hz;
+    let phase = 0;
+    for (let i = 0; i < frames; i++) {
+      // Up over the fade, flat, then down to nothing at the end. `Math.min`
+      // of the two ramps gives both without a branch.
+      const envelope = Math.min(1, i / fadeFrames, (frames - 1 - i) / fadeFrames);
+      let v = 0;
+      for (let k = 0; k < partials.length; k++) {
+        // Partials above Nyquist would alias into a wrong, lower pitch.
+        if ((k + 1) * Math.max(note.hz, endHz) >= SAMPLE_RATE / 2) break;
+        v += partials[k]! * Math.sin((k + 1) * phase);
+      }
+      out[at + i] = (v / norm) * envelope * safePeak;
+      // C-R4: a glide by accumulating phase, so the instantaneous pitch moves
+      // linearly from hz to endHz. Flat when they are equal.
+      phase += (2 * Math.PI * (note.hz + ((endHz - note.hz) * i) / frames)) / SAMPLE_RATE;
+    }
+    at += frames + Math.round((SAMPLE_RATE * (note.gapMs ?? 0)) / 1000);
   }
   return out;
 }
 
+/** An earcon, or the old (frequency, endHz) single tone. */
+export type ToneSpec = number | Earcon;
+
+function asEarcon(spec: ToneSpec, endHz?: number): Earcon {
+  return typeof spec === 'number' ? singleNote(spec, endHz ?? spec) : spec;
+}
+
 /**
- * A 16-bit mono WAV of one faded sine, as a `data:` URI.
+ * The old single faded sine: one 120ms note. This is now a thin wrapper over
+ * `earconSamples`, and it is still sample-for-sample what it always was.
+ */
+export function toneSamples(frequencyHz: number, peak = 1, endHz = frequencyHz): Float32Array {
+  return earconSamples(singleNote(frequencyHz, endHz), peak);
+}
+
+/**
+ * A 16-bit mono WAV of an earcon (or one faded sine), as a `data:` URI.
  *
  * Built at FULL amplitude and levelled by the element's own `volume`, so one
  * cached string serves every volume the setting can produce. Peak 1.0 would
@@ -105,8 +177,9 @@ export function toneSamples(frequencyHz: number, peak = 1, endHz = frequencyHz):
  * level (see `chimePeak`), and this is deliberately the loudest the tone can
  * be rather than the loudest it should be.
  */
-export function toneDataUri(frequencyHz: number, peak = 1, endHz = frequencyHz): string {
-  const frames = Math.round(SAMPLE_RATE * DURATION_S);
+export function toneDataUri(spec: ToneSpec, peak = 1, endHz?: number): string {
+  const samples = earconSamples(asEarcon(spec, endHz), peak);
+  const frames = samples.length;
   const dataBytes = frames * 2;
   const bytes = new Uint8Array(44 + dataBytes);
 
@@ -124,7 +197,6 @@ export function toneDataUri(frequencyHz: number, peak = 1, endHz = frequencyHz):
   writeAscii(bytes, 36, 'data');
   writeU32(bytes, 40, dataBytes);
 
-  const samples = toneSamples(frequencyHz, peak, endHz);
   for (let i = 0; i < frames; i++) {
     const value = Math.round(samples[i]! * 32767);
     writeU16(bytes, 44 + i * 2, value < 0 ? value + 0x10000 : value);
@@ -141,19 +213,20 @@ export function toneDataUri(frequencyHz: number, peak = 1, endHz = frequencyHz):
 }
 
 /**
- * One generated tone per frequency, for the life of the page.
+ * One generated tone per earcon, for the life of the page.
  *
- * Six kinds, each a few kilobytes, generated the first time it sounds. The
+ * One per kind, each a few kilobytes, generated the first time it sounds. The
  * alternative is rebuilding the same 2880 samples on every chime in a drill
  * that chimes after every answer.
  */
 const cache = new Map<string, string>();
 
-export function cachedToneDataUri(frequencyHz: number, endHz = frequencyHz): string {
-  const key = `${frequencyHz}>${endHz}`;
+export function cachedToneDataUri(spec: ToneSpec, endHz?: number): string {
+  const earcon = asEarcon(spec, endHz);
+  const key = JSON.stringify(earcon);
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
-  const built = toneDataUri(frequencyHz, 1, endHz);
+  const built = toneDataUri(earcon, 1);
   cache.set(key, built);
   return built;
 }

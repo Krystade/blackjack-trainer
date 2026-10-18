@@ -400,8 +400,9 @@ export function useVoiceControl({
         // suppressed utterance that must stay silent is the app hearing
         // itself -- hence the echo check rather than a blanket cue.
         // "Got it": the answer is taken and the app is about to talk, so the
-        // microphone is effectively closed. A distinct, lower tone than "your
-        // turn", played the moment the answer lands.
+        // microphone is effectively closed. A short high tick, distinct from the rising
+        // "your turn" glide (2026-10-18: it was a low tone, and Jack heard an
+        // accepted answer as a wrong one), played the moment the answer lands.
         if (verdict !== 'rejected' && verdict !== 'suppressed') {
           diag('speak', 'turn-cue', { kind: 'got-it', context: contextRef.current });
           chime('heard');
