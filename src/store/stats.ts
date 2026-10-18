@@ -24,19 +24,21 @@ export function tallyCellIdFor(event: GradedEvent): string | null {
 /**
  * R9 (#25): whether an event counts in `stats.categories`. An Index-test,
  * With-count index or (H1) real-index Deviation-quiz answer (`indexOnly`) is
- * index knowledge and is tallied in `perIndex` only -- never in the
- * basic-strategy hand categories (hard, soft, pairs, surrender), which the
- * per-cell goal and Home's accuracy read. Play and quiz distractors keep
- * counting; `bySource` still counts every answer.
+ * index knowledge and is tallied in `perIndex` only -- never in
+ * `categories`, which the per-cell goal and Home's accuracy read. Play and
+ * quiz distractors keep counting; `bySource` still counts every answer.
  * Counting them there showed a fresh profile's Index-test answers as "answers
- * from before per-hand tracking". Insurance has no basic play and keeps its
- * tally. Shared with the undo so the two never disagree.
+ * from before per-hand tracking".
+ * H1 fix round: that includes insurance. An index-only insurance answer is the
+ * `ins` index, held in `perIndex.ins`; R9 had kept it in `categories.insurance`,
+ * which Home's accuracy sums, so four quiz (or Index-test) insurance misses
+ * moved "100% · 30 decisions graded" to "88% · 34". A Play insurance decision
+ * is not index-only and keeps its tally. Shared with the undo so the two never
+ * disagree.
  */
 export function countsInCategory(event: GradedEvent): boolean {
-  return !event.indexOnly || !BASIC_CATEGORIES.has(event.category);
+  return !event.indexOnly;
 }
-
-const BASIC_CATEGORIES: ReadonlySet<Category> = new Set<Category>(['hard', 'soft', 'pairs', 'surrender']);
 
 /**
  * E7: the answers a direction can be read off -- the five hand plays and the

@@ -158,9 +158,17 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
           </div>
         </div>
 
-        {r.decisions === 0 ? (
+        {r.decisions === 0 && r.indexAnswers === 0 ? (
           <p className="u-note">
             Nothing answered yet. Start with the next step above.
+          </p>
+        ) : r.decisions === 0 ? (
+          // H1 fix round: index answers are not graded decisions, but they
+          // are answers -- "Nothing answered yet" beside "1/17 indices
+          // practised" was false.
+          <p className="u-note" data-testid="readiness-index-only">
+            No basic-strategy decisions graded yet · {r.indexAnswers} index{' '}
+            {r.indexAnswers === 1 ? 'answer' : 'answers'}
           </p>
         ) : (
           <p className="u-note">

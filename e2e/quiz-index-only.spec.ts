@@ -46,3 +46,83 @@ test('four 16 v 10 quiz misses leave Home accuracy alone and land in perIndex', 
   await expect(readiness).toContainText('30 decisions graded');
   await expect(readiness).not.toContainText('34 decisions graded');
 });
+
+/**
+ * H1 fix round: an insurance quiz answer on the real `ins` index is
+ * index-only too. R9 had kept index-only insurance in `categories.insurance`,
+ * which Home's accuracy sums: four misses read "88% · 34 decisions graded".
+ */
+test('four insurance quiz misses leave Home accuracy alone and land in perIndex.ins', async ({ page }) => {
+  await withStats(page, { categories: { hard: { right: 30, wrong: 0 } } });
+  await withSettings(page, { drill: { quizIndex: 'ins', quizDistractorPct: 0 } });
+  await page.goto('/?e2e=1');
+
+  const readiness = page.locator('section.readiness');
+  await expect(readiness).toContainText('100%');
+  await expect(readiness).toContainText('30 decisions graded');
+
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+  const screen = page.locator('.drill-screen');
+  for (let i = 0; i < 4; i++) {
+    await expect(screen).toHaveAttribute('data-item-key', 'ins');
+    const correct = await screen.getAttribute('data-correct');
+    const wrong = correct === 'take-insurance' ? 'Decline insurance' : 'Take insurance';
+    const tone = await answerAndReadStrip(page, page.locator('.action-bar button.action-btn', { hasText: wrong }));
+    expect(tone, `answer ${i} is a miss`).toBe('miss');
+  }
+
+  const stats = (await readStats(page)) as {
+    categories: Record<string, { right: number; wrong: number } | undefined>;
+    perIndex: Record<string, { right: number; wrong: number }>;
+  };
+  expect(stats.categories.hard).toEqual({ right: 30, wrong: 0 });
+  expect(stats.categories.insurance ?? { right: 0, wrong: 0 }).toEqual({ right: 0, wrong: 0 });
+  expect(stats.perIndex.ins).toEqual({ right: 0, wrong: 4 });
+
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(readiness).toContainText('100%');
+  await expect(readiness).toContainText('30 decisions graded');
+  await expect(readiness).not.toContainText('34 decisions graded');
+});
+
+/**
+ * H1 fix round (story 3 seed: strong cells, no category tally): quiz-only
+ * answers are not graded decisions, but Home must not call that "Nothing
+ * answered yet" beside "1/17 indices practised".
+ */
+test('a quiz-only profile reads "No basic-strategy decisions graded yet", not "Nothing answered"', async ({ page }) => {
+  await withStats(page, {
+    cellStats: {
+      'hard-16-v-10': { right: 30, wrong: 0, lastAt: '' },
+      'soft-18-v-9': { right: 30, wrong: 0, lastAt: '' },
+      'pair-8-v-A': { right: 30, wrong: 0, lastAt: '' },
+    },
+    masterySweepsCompleted: 1,
+  });
+  await withSettings(page, { drill: { quizIndex: '16v10', quizDistractorPct: 0 } });
+  await page.goto('/?e2e=1');
+
+  const readiness = page.locator('section.readiness');
+  await expect(readiness).toContainText('Nothing answered yet');
+
+  await page.getByRole('button', { name: 'Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Deviation quiz', exact: true }).click();
+  const screen = page.locator('.drill-screen');
+  for (let i = 0; i < 4; i++) {
+    await expect(screen).toHaveAttribute('data-item-key', '16v10');
+    const correct = await screen.getAttribute('data-correct');
+    const wrong = correct === 'hit' ? 'Stand' : 'Hit';
+    const tone = await answerAndReadStrip(page, page.locator('.action-bar button.action-btn', { hasText: wrong }));
+    expect(tone, `answer ${i} is a miss`).toBe('miss');
+  }
+
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(readiness).toContainText('1/');
+  await expect(readiness).not.toContainText('Nothing answered yet');
+  await expect(page.getByTestId('readiness-index-only')).toHaveText(
+    'No basic-strategy decisions graded yet · 4 index answers',
+  );
+});

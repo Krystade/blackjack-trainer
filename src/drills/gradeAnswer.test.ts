@@ -38,6 +38,7 @@ import type { Action } from '../engine/deviations';
 import { mulberry32 } from '../engine/cards';
 import { buildIndexTestEvent, indexTestSet, indexTestItemFor } from './indexTest';
 import { handCategoryProgress } from '../ui/screens/handProgress';
+import { readiness } from '../ui/screens/readiness';
 
 /**
  * R4 anti-drift guard (docs/BACKLOG.md): the mixed-session view and the two
@@ -1122,11 +1123,32 @@ describe('H1: a Deviation-quiz index answer is index-only', () => {
     expect(s.bySource?.quiz?.hard).toEqual({ right: 0, wrong: 4 });
   });
 
-  it('an insurance quiz answer is index-only and still tallied under insurance', () => {
+  it('an insurance quiz answer is index-only: perIndex.ins only, never categories (fix round)', () => {
     const ins: QuizItem = { cards: null, up: 'A', tc: 4, deviationId: 'ins', isDeviationSide: true, correct: 'take-insurance', label: 'Insurance', isDistractor: false } as QuizItem;
-    const event = buildQuizEvent(ins, 'take-insurance', DEFAULT_RULES, 100);
+    const event = buildQuizEvent(ins, 'decline-insurance', DEFAULT_RULES, 100);
     expect(event.indexOnly).toBe(true);
-    expect(applyEvents(EMPTY_STATS, [event]).categories.insurance).toEqual({ right: 1, wrong: 0 });
+    const seeded = { ...EMPTY_STATS, categories: { ...EMPTY_STATS.categories, hard: { right: 30, wrong: 0 } } };
+    const s = applyEvents(seeded, [event, event, event, event]);
+    expect(s.categories.insurance).toEqual({ right: 0, wrong: 0 });
+    expect(s.perIndex.ins).toEqual({ right: 0, wrong: 4 });
+    expect(s.bySource?.quiz?.insurance).toEqual({ right: 0, wrong: 4 });
+    // Home's accuracy reads categories: still 100% over 30 decisions.
+    const r = readiness(s);
+    expect(r.accuracyPct).toBe(100);
+    expect(r.decisions).toBe(30);
+    expect(r.indexAnswers).toBe(4);
+  });
+
+  it('an Index-test insurance answer stays out of categories too (it had leaked since R9)', () => {
+    const rules = { ...DEFAULT_RULES };
+    const dev = indexTestSet(rules).find((d) => d.id === 'ins')!;
+    const event = buildIndexTestEvent(indexTestItemFor(dev, rules, mulberry32(4)), 0);
+    expect(event.category).toBe('insurance');
+    expect(event.indexOnly).toBe(true);
+    const s = applyEvents(EMPTY_STATS, [event]);
+    expect(s.categories.insurance).toEqual({ right: 0, wrong: 0 });
+    expect((s.perIndex.ins?.right ?? 0) + (s.perIndex.ins?.wrong ?? 0)).toBe(1);
+    expect(readiness(s).decisions).toBe(0);
   });
 
   it('a distractor (no deviationId) still counts in its hand category', () => {
