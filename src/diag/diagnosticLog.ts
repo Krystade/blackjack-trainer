@@ -52,6 +52,7 @@
  */
 
 import { DIAG_BASE_KEY, listDiagKeys, segmentKey, segmentSeq } from './diagStore';
+import { driveChecksBlock } from './driveChecksReport';
 
 /**
  * How many entries were dropped since the page loaded.
@@ -1420,6 +1421,8 @@ export function formatDiagnosticLog(entries: readonly DiagEntry[], scope?: strin
     ),
     `# first ${first.at}`,
     `# last  ${last.at}`,
+    // The drive checks' results, gathered: one row per check, latest run.
+    ...driveChecksBlock(entries),
     '',
     ...lines,
     '',

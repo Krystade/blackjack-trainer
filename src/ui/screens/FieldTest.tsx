@@ -93,6 +93,7 @@ import { saveSettings } from '../../store/persist';
 import { Segmented } from './Settings';
 import type { Settings } from '../../store/types';
 import type { Screen } from '../App';
+import { DriveChecks } from './DriveChecks';
 
 declare global {
   interface Window {
@@ -405,8 +406,21 @@ export function FieldTest({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Drive checks: the guided car verifications, opened from the gate.
+  const [driveChecks, setDriveChecks] = useState(false);
+
   const condition =
     FIELD_TEST_CONDITIONS.find((c) => c.id === run.condition) ?? FIELD_TEST_CONDITIONS[0]!;
+
+  if (!run.active && driveChecks) {
+    return (
+      <DriveChecks
+        settings={settings}
+        onSettingsChange={onSettingsChange}
+        onBack={() => setDriveChecks(false)}
+      />
+    );
+  }
 
   if (!run.active) {
     return (
@@ -414,6 +428,7 @@ export function FieldTest({
         run={run}
         audio={settings.audio}
         onNavigate={onNavigate}
+        onDriveChecks={() => setDriveChecks(true)}
         onStart={() => {
           // AN EXISTING SNAPSHOT WINS OVER WHAT IS ON DISK NOW.
           //
@@ -550,6 +565,7 @@ function StartGate({
   onStart,
   onResume,
   onNavigate,
+  onDriveChecks,
 }: {
   run: FieldTestRun;
   /** The chosen voice and rate, for the arrival cue. */
@@ -557,6 +573,7 @@ function StartGate({
   onStart: () => void;
   onResume: () => void;
   onNavigate: (screen: Screen) => void;
+  onDriveChecks: () => void;
 }) {
   const condition =
     FIELD_TEST_CONDITIONS.find((c) => c.id === run.condition) ?? FIELD_TEST_CONDITIONS[0]!;
@@ -825,6 +842,16 @@ function StartGate({
                 }`
               : `Tap again to go back to step 1 of ${fieldTestStepCount({ condition: run.condition })}`
             : 'Start over from step 1'}
+      </button>
+
+      {/* The guided car verifications: spoken, answered on the wheel. */}
+      <button
+        type="button"
+        className="fieldtest-stamp"
+        data-testid="fieldtest-drive-checks"
+        onClick={onDriveChecks}
+      >
+        Drive checks — 10 car verifications
       </button>
 
       <ol className="fieldtest-steps">
