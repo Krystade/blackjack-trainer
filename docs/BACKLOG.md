@@ -932,9 +932,9 @@ train on. Its full drill manual is public and machine-readable, so every row bel
 from the primary document rather than from a forum summary.
 
 Blackjack Apprenticeship and CasinoCityTimes both returned HTTP 403 to automated fetches, so
-their drill advice is **snippet-only and therefore quarantined** — one item that looked
-promising (stating the divisor aloud, "12, 4, 3", to drill the divisor in) is recorded at the
-bottom as UNVERIFIED and must not be built on until a human can read the page.
+their drill advice was snippet-only at the time — one item that looked promising (stating the
+divisor aloud, "12, 4, 3", to drill the divisor in) is recorded at the bottom and is now
+**closed (2026-10-17): not on the page; the real advice is already covered.**
 
 **The good news first, because a diff is only useful if it says what is already fine.**
 Checked and genuinely covered: pair/triple-card counting (`countGroup`), count bias by shoe
@@ -1000,11 +1000,12 @@ decks must be read), which is exactly this app's True Count Drill vs Produce-the
   distraction training — D1 interrupts the count from outside, this splits attention between
   two internal counts — and would be the interesting part if a side count ever landed.
 
-UNVERIFIED (403, snippet-only, do not build on): Blackjack Apprenticeship's practice guide is
-reported to advise stating the divisor aloud during conversion — "a running +12 with four
-decks remaining would be '12, 4, 3' in your head, to drill the correct divisor in". If true it
-is cheap and it maps onto this app's eyes-free voice path almost directly. Needs a human to
-open the page and confirm before it becomes a candidate.
+CLOSED 2026-10-17 — not on the page; the real advice is already covered. A search snippet had
+Blackjack Apprenticeship's practice guide advising that you state the divisor aloud during
+conversion — "a running +12 with four decks remaining would be '12, 4, 3' in your head, to
+drill the correct divisor in". The 2026-10-16 competitor lens found the page does not say
+this (docs/superpowers/specs/2026-10-16-swarm-backlog.md, CMP), and true-count conversion
+itself is already drilled by the True Count drill and Produce-the-True-Count. Nothing to build.
 
 Sources:
 - Blackjack Vérité Drills manual (Norm Wattenberger / QFIT), full drill inventory, primary:
