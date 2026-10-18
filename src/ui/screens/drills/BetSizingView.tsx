@@ -42,6 +42,8 @@ import { speechOptsFrom } from '../../../audio/speechOpts';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { useWheelCommand } from '../../useWheelCommand';
 import { EyesFreeCheckbox } from './EyesFreeCheckbox';
+import { RungProgressLine } from './RungProgressLine';
+import { DRILL_RUNG } from './rungProgress';
 import './betProposition.css';
 
 function randomSeed(): number {
@@ -318,6 +320,8 @@ export function BetSizingView({
                 <div className="bet-cover">Cover bets on: one rung either side counts.</div>
               )}
             </ResultStrip>
+            {/* L-3: the Home ladder rung this drill feeds. */}
+            <RungProgressLine rung={DRILL_RUNG.betsizing} profile={activeProfile} />
           </div>
           <DrillPrimaryBar label="Next" variant="next" onPrimary={next} secondaryLabel="Back to Drills" onSecondary={back} />
         </>

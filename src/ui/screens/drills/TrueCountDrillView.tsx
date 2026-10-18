@@ -37,6 +37,8 @@ import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
+import { RungProgressLine } from './RungProgressLine';
+import { DRILL_RUNG } from './rungProgress';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -775,6 +777,8 @@ export function TrueCountDrillView({
               <ResultStrip id={lastResult.id} tone={lastResult.correct ? 'ok' : 'miss'}>
                 <TcResultLine result={lastResult} rounding={rounding} />
               </ResultStrip>
+              {/* L-3: the Home ladder rung this drill feeds. */}
+              <RungProgressLine rung={DRILL_RUNG.truecount} profile={activeProfile} />
             </div>
           )}
           <div className="count-flash-area">
@@ -859,6 +863,8 @@ export function TrueCountDrillView({
           <div className="result-detail">
             The true count was {formatSigned(question.correctTc)} &mdash; self-reported, and recorded
           </div>
+          {/* L-3: the Home ladder rung this drill feeds. */}
+          <RungProgressLine rung={DRILL_RUNG.truecount} profile={activeProfile} />
           <DrillPrimaryBar label="Next" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
         </div>
       )}
@@ -882,6 +888,8 @@ export function TrueCountDrillView({
               return note ? <> {note}.</> : null;
             })()}
           </div>
+          {/* L-3: the Home ladder rung this drill feeds. */}
+          <RungProgressLine rung={DRILL_RUNG.truecount} profile={activeProfile} />
           <DrillPrimaryBar label="Next" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
         </div>
       )}

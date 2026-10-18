@@ -35,6 +35,8 @@ import { speechOptsFrom } from '../../../audio/speechOpts';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { useWheelCommand } from '../../useWheelCommand';
 import { EyesFreeCheckbox } from './EyesFreeCheckbox';
+import { RungProgressLine } from './RungProgressLine';
+import { speedRung } from './rungProgress';
 import './speedDrill.css';
 
 function randomSeed(): number {
@@ -331,6 +333,11 @@ function SpeedSession({
               </div>
             </div>
           </ResultStrip>
+        )}
+        {last && (
+          // L-3: the Home ladder rung this question feeds (Basic strategy, or
+          // Deviations when an index decides it).
+          <RungProgressLine rung={speedRung(last.q)} profile={profile} />
         )}
       </div>
 

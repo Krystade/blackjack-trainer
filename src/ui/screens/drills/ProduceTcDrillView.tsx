@@ -50,6 +50,8 @@ import {
   isLastDeckTightened,
 } from '../../../drills/depthResolution';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
+import { RungProgressLine } from './RungProgressLine';
+import { DRILL_RUNG } from './rungProgress';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -592,6 +594,8 @@ export function ProduceTcDrillView({
           <ResultStrip id={lastResult.id} tone={lastResult.correct ? 'ok' : 'miss'}>
             <ProduceResultLine result={lastResult} rounding={rounding} />
           </ResultStrip>
+          {/* L-3: no Home ladder rung reads this drill's history, so no line. */}
+          <RungProgressLine rung={DRILL_RUNG.producetc} profile={activeProfile} />
         </div>
       )}
 

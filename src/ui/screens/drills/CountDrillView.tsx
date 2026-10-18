@@ -64,6 +64,8 @@ import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecogniti
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
+import { RungProgressLine } from './RungProgressLine';
+import { DRILL_RUNG } from './rungProgress';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { DrillPrimaryBar } from '../../components/DrillPrimaryBar';
@@ -2389,6 +2391,8 @@ export function CountDrillView({
           <div className="result-detail">
             The running count was {plainNumber(actualValue)}. Self-reported, and recorded.
           </div>
+          {/* L-3: the Home ladder rung this drill feeds. */}
+          <RungProgressLine rung={DRILL_RUNG.count} />
           {checkpointBlock}
           {runList}
           {/* E5: one exit. The top bar's Back is it; a second "Back to
@@ -2405,6 +2409,8 @@ export function CountDrillView({
           <div className="result-detail">
             You entered {plainNumber(enteredValue)}; the running count was {plainNumber(actualValue)}.
           </div>
+          {/* L-3: the Home ladder rung this drill feeds. */}
+          <RungProgressLine rung={DRILL_RUNG.count} />
           {checkpointBlock}
           {timedResult &&
             (() => {
