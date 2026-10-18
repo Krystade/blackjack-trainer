@@ -23,7 +23,7 @@
 
 .index-group-title {
   margin: 0.3rem 0.4rem 0.4rem;
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -46,7 +46,7 @@
   padding: 0.15rem 0 0.15rem 0.45rem;
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
 }
 
 .index-item + .index-item {
@@ -88,7 +88,7 @@
   padding: 0.3rem 0.25rem;
   border-radius: 3px;
   text-align: center;
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -222,7 +222,7 @@
     'Segoe UI',
     Roboto,
     sans-serif;
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
   line-height: 1.4;
   color: var(--ink-dim);
 }

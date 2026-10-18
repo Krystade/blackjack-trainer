@@ -20,7 +20,7 @@
 .bottom-sheet-title {
   margin: 0;
   padding: 0 var(--space-4) var(--space-1);
-  font-size: 1rem;
+  font-size: var(--fs-md);
   font-weight: 700;
   color: var(--ink);
 }
@@ -29,7 +29,7 @@
   margin: 0;
   padding: 0 var(--space-4) var(--space-2);
   color: var(--ink-dim);
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
 }
 
 /* Two full-width choices, side by side. */
@@ -46,7 +46,7 @@
   border: 1px solid var(--line);
   background: var(--raised);
   color: var(--ink);
-  font-size: 1rem;
+  font-size: var(--fs-md);
   font-weight: 700;
   cursor: pointer;
 }
@@ -70,7 +70,7 @@
 }
 .bottom-sheet .numpad-display {
   grid-area: display;
-  font-size: 1.25rem;
+  font-size: var(--fs-xl);
   padding: 0.2rem;
 }
 .bottom-sheet .numpad-grid {

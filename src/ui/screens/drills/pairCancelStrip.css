@@ -8,11 +8,11 @@
 
 .pair-result-hand {
   color: var(--ink-dim);
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
 }
 
 .pair-result .result-correct,
 .pair-result .result-wrong {
-  font-size: 1rem;
+  font-size: var(--fs-md);
   font-weight: 700;
 }

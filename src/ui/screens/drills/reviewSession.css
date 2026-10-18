@@ -1,7 +1,7 @@
 /* Wave B2 R7 (#40, #42): a review (or session deck) says what it is and how
    much is left, in place of the saved deck's controls, and ends visibly. */
 .review-status {
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--ink-dim);
   min-width: 0;

@@ -46,7 +46,7 @@
 .cde-slider-label {
   display: flex;
   justify-content: space-between;
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   color: var(--ink);
 }
 
@@ -74,7 +74,7 @@
   padding: 2px 8px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--line);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   text-align: center;
   color: var(--ink-dim);
 }
@@ -114,7 +114,7 @@
   border-radius: var(--radius-sm);
   background: none;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   font-weight: 650;
   color: var(--ink-dim);
   cursor: pointer;

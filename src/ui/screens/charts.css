@@ -160,7 +160,7 @@ body:has(.charts-screen) .mute-btn {
 }
 
 .charts-heading {
-  font-size: 1rem;
+  font-size: var(--fs-md);
   font-weight: 700;
   color: var(--brass);
 }
@@ -176,7 +176,7 @@ body:has(.charts-screen) .mute-btn {
   padding-bottom: 0.5rem;
   border-bottom: 1px solid rgba(216, 185, 105, 0.45);
   font-family: var(--mono);
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--brass);
@@ -184,7 +184,7 @@ body:has(.charts-screen) .mute-btn {
 
 .charts-provenance {
   margin: 0.5rem 1rem 0;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   line-height: 1.4;
   color: var(--ink-dim);
 }
@@ -223,7 +223,7 @@ body:has(.charts-screen) .mute-btn {
   border-bottom: 2px solid var(--brass);
   background: var(--surface-raised);
   box-shadow: 0 6px 12px -6px rgba(0, 0, 0, 0.55);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   line-height: 1.45;
   color: var(--ink);
 }
@@ -239,7 +239,7 @@ body:has(.charts-screen) .mute-btn {
 }
 
 .charts-order-label {
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -262,7 +262,7 @@ body:has(.charts-screen) .mute-btn {
   border-radius: 999px;
   background: transparent;
   color: var(--ink-dim);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   cursor: pointer;
 }
@@ -281,7 +281,7 @@ body:has(.charts-screen) .mute-btn {
 .charts-order-hint {
   flex-basis: 100%;
   margin: 0;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   line-height: 1.4;
   color: var(--ink-dim);
 }
@@ -303,7 +303,7 @@ body:has(.charts-screen) .mute-btn {
 
 .chart-legend-heading {
   margin: 0 0 0.6rem;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -329,7 +329,7 @@ body:has(.charts-screen) .mute-btn {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   line-height: 1.25;
   color: var(--ink);
 }
@@ -340,7 +340,7 @@ body:has(.charts-screen) .mute-btn {
 
 .chart-legend-note {
   margin: 0.7rem 0 0;
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
   line-height: 1.45;
   color: var(--ink-dim);
 }
@@ -356,7 +356,7 @@ body:has(.charts-screen) .mute-btn {
   flex-direction: column;
   gap: 0.15rem;
   margin: 0 0 0.5rem;
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -364,7 +364,7 @@ body:has(.charts-screen) .mute-btn {
 }
 
 .chart-section-blurb {
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
   font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
@@ -373,7 +373,7 @@ body:has(.charts-screen) .mute-btn {
 
 .chart-section-note {
   margin: 0.55rem 0 0;
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
   line-height: 1.45;
   color: var(--ink-dim);
 }
@@ -438,7 +438,7 @@ body:has(.charts-screen) .mute-btn {
 
 .chart-up {
   padding: 0.25rem 0;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   color: var(--ink-dim);
 }
@@ -459,7 +459,7 @@ body:has(.charts-screen) .mute-btn {
 }
 
 .chart-corner {
-  font-size: 0.56rem;
+  font-size: var(--fs-2xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -474,7 +474,7 @@ body:has(.charts-screen) .mute-btn {
   padding: 0;
   border-radius: 3px;
   text-align: center;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.01em;
 }
@@ -545,7 +545,7 @@ body:has(.charts-screen) .mute-btn {
   height: 1.6rem;
   border-radius: 3px;
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
 }
 

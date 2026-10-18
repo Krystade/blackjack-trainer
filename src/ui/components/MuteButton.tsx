@@ -1,6 +1,7 @@
 import { saveSettings } from '../../store/persist';
 import { muteSpeech } from '../../audio/speech';
 import type { Settings } from '../../store/types';
+import { SpeakerIcon, SpeakerMutedIcon } from './icons';
 
 /**
  * One button that silences the app, reachable from every screen.
@@ -65,7 +66,7 @@ export function MuteButton({
       aria-label={muted ? 'Unmute' : 'Mute'}
       title={muted ? 'Unmute' : 'Mute'}
     >
-      <span aria-hidden="true">{muted ? '🔇' : '🔊'}</span>
+      {muted ? <SpeakerMutedIcon /> : <SpeakerIcon />}
     </button>
   );
 }

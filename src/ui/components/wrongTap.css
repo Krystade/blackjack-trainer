@@ -10,12 +10,12 @@
   border: 0;
   background: none;
   color: var(--ink-soft);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   text-decoration: underline;
   cursor: pointer;
 }
 
 .hand-result-undone {
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }

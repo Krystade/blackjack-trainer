@@ -2,7 +2,7 @@
    same slot as the bar, so it reads as the clock's state rather than an error. */
 .shot-clock-idle {
   margin: 0 0 0.6rem;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
   text-align: center;
 }

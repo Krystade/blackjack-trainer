@@ -24,7 +24,7 @@
 .bet-sizing-answers button {
   min-height: 48px;
   min-width: 44px;
-  font-size: 18px;
+  font-size: var(--fs-lg);
   font-weight: 600;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -41,7 +41,7 @@
 }
 
 .bet-cover {
-  font-size: 13px;
+  font-size: var(--fs-sm);
   opacity: 0.8;
 }
 

@@ -15,13 +15,13 @@
 /* s10: the in-range accuracy line under a category (its own class, so
    selectors for the latency line stay unique). */
 .category-in-range {
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   color: var(--ink-dim);
 }
 
 /* Wave A review: a note under a category row -- a returning user's older
    answers, or the surrender hands that also count in a hand type's goal. */
 .category-legacy {
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   color: var(--ink-dim);
 }

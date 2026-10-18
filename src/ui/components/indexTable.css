@@ -36,7 +36,7 @@
 .index-dir-play {
   display: block;
   margin-top: 0.1rem;
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   line-height: 1.3;
   color: var(--ink-dim);
 }
@@ -49,12 +49,12 @@
 
 .index-dir-frac {
   display: block;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   color: var(--ink-dim);
 }
 
 .index-dir-unseen {
   margin: 0.5rem 0 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }

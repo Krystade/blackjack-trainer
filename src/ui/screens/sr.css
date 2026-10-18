@@ -100,7 +100,7 @@
    neutral "unseen" fill) happens to sit behind it -- deliberately avoids
    needing a separate contrast check per ramp stop per theme. */
 .sr-bar-count {
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
@@ -140,14 +140,14 @@
 .sr-bar-fill[data-box='5'] { background: var(--sr-box-5); }
 
 .sr-bar-label {
-  font-size: 0.65rem;
+  font-size: var(--fs-2xs);
   color: var(--ink-dim);
   text-align: center;
   line-height: 1.15;
 }
 
 .sr-lapses-title {
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   font-weight: 700;
   margin: 0 0 0.4rem;
   color: var(--ink);
