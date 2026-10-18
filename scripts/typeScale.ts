@@ -117,20 +117,45 @@ export function scale(): { name: string; rem: number }[] {
   return [...css.matchAll(/(--fs-[a-z0-9]+)\s*:\s*([\d.]+)rem\s*;/g)].map((m) => ({ name: m[1]!, rem: Number(m[2]) }));
 }
 
-const TOKEN = /^var\((--fs-[a-z0-9]+)\)$/;
+/** `var(--fs-x)`, or `var(--fs-x, <fallback>)` where a stylesheet may be missing. */
+export const TOKEN = /^var\((--fs-[a-z0-9]+)\s*(?:,\s*([^()]+?)\s*)?\)$/;
+
+/**
+ * Files whose inline sizes must still render with no stylesheet at all, so a
+ * token there has to carry a literal fallback equal to the step's value.
+ * ErrorBoundary: "app.css may itself be implicated, and this screen has to
+ * render no matter what".
+ */
+export const FALLBACK_REQUIRED: readonly string[] = ['ui/components/ErrorBoundary.tsx'];
 
 export function isAllowed(d: Decl): Allowed | undefined {
   return ALLOWED.find((a) => a.file === d.file && a.selector === d.selector && a.value === d.value);
 }
 
-/** Literal sizes not on the scale and not listed in ALLOWED. */
-export function offenders(decls = fontSizeDecls()): Decl[] {
-  const names = new Set(scale().map((s) => s.name));
-  return decls.filter((d) => {
+/** Why a token declaration is wrong, or undefined if it is fine. */
+function tokenProblem(d: Decl, t: RegExpExecArray, steps: Map<string, number>): string | undefined {
+  const name = t[1]!;
+  const fallback = t[2];
+  const rem = steps.get(name);
+  if (rem === undefined) return `${name} is not a step of the scale`;
+  if (fallback === undefined) {
+    return FALLBACK_REQUIRED.includes(d.file) ? `${name} needs a fallback (${rem}rem): this file renders without the stylesheet` : undefined;
+  }
+  const f = /^([\d.]+)rem$/.exec(fallback);
+  if (!f || Number(f[1]) !== rem) return `fallback ${fallback} is not ${name}'s value, ${rem}rem`;
+  return undefined;
+}
+
+/** Literal sizes not on the scale and not listed in ALLOWED, and tokens that are undefined or carry a wrong (or missing, where required) fallback. */
+export function offenders(decls = fontSizeDecls()): (Decl & { problem: string })[] {
+  const steps = new Map(scale().map((s) => [s.name, s.rem]));
+  const out: (Decl & { problem: string })[] = [];
+  for (const d of decls) {
     const t = TOKEN.exec(d.value);
-    if (t) return !names.has(t[1]!);
-    return !isAllowed(d);
-  });
+    const problem = t ? tokenProblem(d, t, steps) : isAllowed(d) ? undefined : 'literal off the scale';
+    if (problem) out.push({ ...d, problem });
+  }
+  return out;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -142,5 +167,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log(`  ${a ? 'allowed' : 'OFF-SCALE'}  ${d.file}:${d.line}  ${d.selector}  ${d.value}${a ? `  -- ${a.reason}` : ''}`);
   }
   const bad = offenders(decls);
+  for (const d of bad) console.log(`  BAD  ${d.file}:${d.line}  ${d.selector}  ${d.value}  -- ${d.problem}`);
   if (bad.length) process.exitCode = 1;
 }
