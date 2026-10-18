@@ -269,7 +269,12 @@ test('hit targets are at least 44px', async ({ page }) => {
   };
 
   await tall('.home-stats-link', 'Home All stats');
-  await tall('.ladder-row', 'Home ladder row');
+  // Wave I: the current rung keeps 44px; the rungs ahead are 36px single
+  // lines (layoutFit.css), a full-width target with no neighbour to mis-hit.
+  await tall('.ladder-row[data-state="current"]', 'Home ladder row (current)');
+  for (const h of await page.locator('.ladder-row:not([data-state="current"])').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height))) {
+    expect(h, 'Home ladder row (ahead) height').toBeGreaterThanOrEqual(36);
+  }
   await tall('.next-step-btn', 'Home Start');
   await tall(MUTE, 'mute');
 

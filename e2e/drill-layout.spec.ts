@@ -496,17 +496,22 @@ test('Table End takes two taps, reverts after 3s, and always shows the session r
   await expectInViewport(page, '.report-done-btn', 'the report button');
 });
 
-test('Home: top-aligned, the full profile name, Test kit is a small link under the build line', async ({ page }) => {
+test('Home: top-aligned, the profile name on one line, Test kit is a small link under the build line', async ({ page }) => {
   await withProfile(page, { name: 'Default (6D H17 DAS, 3:2 payout, late surrender)' });
   await page.setViewportSize(PHONE);
   await page.goto('/?e2e=1');
   const title = (await page.locator('.home-title').boundingBox())!;
   expect(title.y, 'the content is still vertically centred').toBeLessThan(120);
 
+  // Wave I: one line, ellipsised, so the head stays one row (layout-320.spec).
+  // The clip is visual: the text and the tooltip keep the whole name.
   const chip = page.locator('.home-profile-chip');
-  await expect(chip).toContainText('late surrender');
-  const overflow = await chip.evaluate((el) => el.scrollWidth - el.clientWidth);
-  expect(overflow, 'the profile name is truncated').toBeLessThanOrEqual(1);
+  await expect(chip).toHaveText('Default (6D H17 DAS, 3:2 payout, late surrender)');
+  await expect(chip).toHaveAttribute('title', /late surrender/);
+  const name = chip.locator('.home-profile-chip-name');
+  expect(await name.evaluate((el) => getComputedStyle(el).textOverflow)).toBe('ellipsis');
+  const nameBox = (await name.boundingBox())!;
+  expect(nameBox.height, 'the profile name wraps').toBeLessThan(30);
 
   // B2: the ladder sits first and Start is the fold's job (ladder.spec);
   // Play a shoe and Test kit are a scroll below it.

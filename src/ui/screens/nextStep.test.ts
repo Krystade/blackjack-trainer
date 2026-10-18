@@ -184,7 +184,7 @@ describe('nextStep (#28)', () => {
     s.categories.pairs = { right: 380, wrong: 20 };
     s.cellStats!['pair-8-v-A'] = { right: 12, wrong: 0, lastAt: '' };
     expect(nextStep(s, { sweepDone: false }).why).toBe(
-      'Pairs: 12 answers since per-hand tracking began, 20 needed to judge. Get every category to 90%.',
+      'Pairs: 12 answers since per-hand tracking began, 20 needed to judge (your 388 earlier answers predate it). Get every category to 90%.',
     );
   });
 

@@ -63,7 +63,7 @@
 .tab-sheet-body {
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--space-1) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  padding: var(--space-1) var(--space-4) calc(var(--space-4) + var(--safe-bottom, 0px));
 }
 
 .tab-sheet-group {

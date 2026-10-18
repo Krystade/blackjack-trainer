@@ -2,7 +2,7 @@
    draft has unsaved changes; in its normal place at the end otherwise. */
 .profile-edit-actions-dirty {
   position: sticky;
-  bottom: calc(var(--tab-bar-h) + env(safe-area-inset-bottom, 0px) + var(--vp-gap, 0px));
+  bottom: calc(var(--tab-bar-h) + var(--safe-bottom, 0px) + var(--vp-gap, 0px));
   z-index: 30;
   background: var(--bg-sunken);
   border-top: 2px solid var(--accent);

@@ -67,6 +67,13 @@ export interface HandCategoryProgress {
   allN: number;
   /** The all-time tally holds more answers than the cells: older answers exist. */
   legacy: boolean;
+  /**
+   * Wave I: how many of those older answers there are at least (the
+   * all-time tally, less index answers and the cells). 0 unless `legacy`.
+   * Next step names it, so "0 answers" beside Home's all-time accuracy
+   * reads as a different window, not a lost history.
+   */
+  older: number;
 }
 
 /** The hand category an index's answers can be tallied under (its hand, not its play). */
@@ -130,6 +137,7 @@ export function handCategoryProgress(stats: Stats): HandCategoryProgress[] {
     const thin = n < MIN_CATEGORY_ANSWERS;
     const all = stats.categories?.[category] ?? { right: 0, wrong: 0 };
     const allN = all.right + all.wrong;
+    const older = Math.max(0, allN - indexAnswersIn(stats, category) - n);
     return {
       prefix,
       scope,
@@ -144,7 +152,8 @@ export function handCategoryProgress(stats: Stats): HandCategoryProgress[] {
       onTarget: !thin && pct >= CATEGORY_TARGET,
       allRight: all.right,
       allN,
-      legacy: allN - indexAnswersIn(stats, category) > n,
+      legacy: older > 0,
+      older,
     };
   });
 }

@@ -473,7 +473,7 @@ button {
   margin-top: auto;
   display: flex;
   gap: 0.25rem; /* 0.35rem left "Surrender" a pixel short on a 375px phone */
-  padding: 0.6rem max(0.5rem, env(safe-area-inset-left)) calc(0.6rem + var(--safe-bottom, env(safe-area-inset-bottom, 0px))) max(0.5rem, env(safe-area-inset-right));
+  padding: 0.6rem max(0.5rem, env(safe-area-inset-left)) calc(0.6rem + var(--safe-bottom, 0px)) max(0.5rem, env(safe-area-inset-right));
   background: var(--bg-sunken);
   border-top: 1px solid var(--raised);
   box-sizing: border-box;
@@ -691,7 +691,7 @@ button {
   gap: 0.6rem;
   /* Same 16px gutter as the ActionBar; the keypad used to run to both screen
      edges with its label flush left (audit P2-6). */
-  padding: 0 var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  padding: 0 var(--space-4) calc(var(--space-3) + var(--safe-bottom, 0px));
 }
 
 .numpad-label {
@@ -911,7 +911,7 @@ button {
   flex-direction: column;
   gap: 0.25rem;
   padding: 0.75rem max(1rem, env(safe-area-inset-right))
-    calc(0.75rem + env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left));
+    calc(0.75rem + var(--safe-bottom, 0px)) max(1rem, env(safe-area-inset-left));
   background: var(--bg);
   border-top: 1px solid var(--line);
 }

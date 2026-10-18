@@ -1,0 +1,129 @@
+/*
+ * WAVE I: THE SHELL AND HOME FIT 320x693 AS WELL AS 375x812.
+ *
+ * From Jack's screenshot of the installed app (iPhone 13 mini, standard
+ * display, 375 CSS px): tab labels cut off at the bottom edge, a two-line
+ * title beside a two-line profile pill, the Next step reason squeezed into a
+ * column beside Start, and six 44px ladder rows saying one word each. These
+ * rules are checked at both widths by e2e/layout-320.spec.ts.
+ *
+ * Imported after muteSeat.css (App.tsx), so equal-specificity rules here win
+ * over primitives.css and app.css; Home's lazily loaded sheets are beaten on
+ * specificity instead (`.home-screen ...`).
+ */
+
+/* ---------- Tab bar: above the home indicator ----------
+   Every bottom inset in the stylesheets now reads `--safe-bottom` instead of
+   env() (the same value on a phone, primitives.css), because env() cannot be
+   set from a test and so nothing could assert that the tab labels clear the
+   home indicator. The bar's own height and padding were already right; what
+   pushed it off the screen was `--vp-gap` (src/ui/viewportGap.ts). Here: a
+   label never wraps or widens its fifth of a 320px bar. */
+.tab-btn {
+  min-width: 0;
+}
+
+.tab-label {
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+/* ---------- Home head: one row ---------- */
+.home-screen .home-head {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.home-screen .home-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: var(--fs-xl);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The pill gives way before the title does, down to a readable stub. */
+.home-screen .home-profile-chip {
+  flex: 0 1 auto;
+  min-width: 5.5rem;
+  max-width: none;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-profile-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A 320 phone (iOS Display Zoom on a mini, an SE) leaves the head ~244px
+   beside the mute seat: "Blackjack" alone, so the profile name stays whole. */
+@media (max-width: 359px) {
+  .home-title-tail {
+    display: none;
+  }
+}
+
+/* ---------- Next step: the reason gets the card's full width ---------- */
+.home-screen .next-step-head {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.home-screen .next-step-btn {
+  align-self: stretch;
+  width: 100%;
+}
+
+/* ---------- Ladder: the rungs ahead are one compact line each ----------
+   The current rung keeps its 44px row and its progress line; the others
+   say a number and a name, so they get a 36px row and never wrap. */
+.home-screen .ladder-row:not([data-state='current']) {
+  min-height: 36px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.home-screen .ladder-row:not([data-state='current']) .ladder-label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Play topbar at 320 ----------
+   tableTopbar.css's grid leaves the bankroll column 77px at 320 wide, so
+   "Bankroll: 100" broke after the colon and the profile name took two more
+   lines: a 66px stat block in a row of 44px controls. Narrow phones get a
+   slimmer End column (the armed "Tap again to end" still fits it with
+   tighter padding), one line of bankroll in the caption size, and the
+   profile name on one line, ellipsised (its full text is still the text). */
+@media (max-width: 359px) {
+  .table-screen > .topbar {
+    grid-template-columns: minmax(0, 1fr) auto 7.5rem;
+    column-gap: var(--space-2);
+  }
+
+  .table-screen > .topbar > .end-btn {
+    padding: 0 var(--space-2);
+  }
+
+  .table-screen > .topbar > .topbar-stat:first-child {
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+  }
+
+  .table-screen > .topbar .topbar-profile-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
