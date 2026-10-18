@@ -1,0 +1,5 @@
+/* F6 (W2-18): a bare tray (deck marks faded out once deck estimation is on
+   target) has no deck numbers under its frame, so it gives back their row. */
+.table-discard-tray[data-marks='off'] .discard-scale {
+  padding-bottom: 0;
+}

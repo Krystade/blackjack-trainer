@@ -18,6 +18,8 @@ export interface PlayFigures {
   indexDirection: Partial<Record<DeviationId, IndexDirection>>;
   mistakes: Record<MistakeClass, number>;
   evCostRows: Stats['evCost']['history'];
+  /** F5 (W2-17): timed table decisions, for the median decision time. */
+  decisionRows: NonNullable<Stats['tableDecisions']>['history'];
 }
 
 export function playFigures(stats: Stats): PlayFigures {
@@ -34,6 +36,7 @@ export function playFigures(stats: Stats): PlayFigures {
     indexDirection: { ...stats.tableIndexDirection },
     mistakes,
     evCostRows: stats.evCost.history.filter((r) => r.source === 'table'),
+    decisionRows: Array.isArray(stats.tableDecisions?.history) ? stats.tableDecisions.history : [],
   };
 }
 

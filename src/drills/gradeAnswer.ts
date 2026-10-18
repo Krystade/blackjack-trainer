@@ -36,6 +36,7 @@ import type { SrCard, SrDeck } from './spacedRepetition';
 import { loadStats, saveStats } from '../store/persist';
 import type { Stats } from '../store/types';
 import { applyEvents, tallyCellIdFor } from '../store/stats';
+import { notePracticeDay } from '../store/practiceDays';
 import type { CellTally } from '../store/cellStats';
 
 type RetentionRow = Stats['retention']['history'][number];
@@ -111,6 +112,13 @@ export function persistGrade(event: GradedEvent, retention: RetentionRow | null)
   let stats = applyEvents(before, [event]);
   if (retention) {
     stats = { ...stats, retention: { history: [...stats.retention.history, retention] } };
+  }
+  // F10: an answer with no time of its own (an Index test answer, an idle or
+  // untimed hand) writes no dated latency row, so its day goes in the
+  // per-day set Home's practice line reads. A timed answer is dated by its
+  // latency row already, and "Wrong tap" can still undo it without a trace.
+  if (event.elapsedMs === undefined && event.at !== undefined) {
+    stats = notePracticeDay(stats, event.at);
   }
   saveStats(stats);
   return cellBefore;

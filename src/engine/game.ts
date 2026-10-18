@@ -685,7 +685,13 @@ export class Game {
     }
   }
 
-  act(action: Action): void {
+  /**
+   * `timing` (F5, W2-17) is measured by the CALLER -- this engine has no
+   * clock. `elapsedMs` is how long the decision took (absent when it was not
+   * measured or was idle time); `slow` tags a decision the dealer-pace clock
+   * ran out on. Both land on the action event and nowhere else.
+   */
+  act(action: Action, timing?: { elapsedMs?: number; slow?: boolean }): void {
     if (this.phase !== 'player') throw new Error('act() called outside player phase');
     if (!this.legalActions().includes(action)) throw new Error(`Illegal action: ${action}`);
 
@@ -725,6 +731,8 @@ export class Game {
       tc,
       hand: describeHand(hand.cards, up),
       ...(evCost === undefined ? {} : { evCost }),
+      ...(timing?.elapsedMs === undefined ? {} : { elapsedMs: timing.elapsedMs }),
+      ...(timing?.slow === true ? { slow: true as const } : {}),
     });
 
     switch (action) {

@@ -6,6 +6,7 @@ import type { Category, GradedEvent, MistakeClass } from '../engine/grade';
 import type { Profile, Settings } from '../store/types';
 import { loadStats, saveStats } from '../store/persist';
 import { applyEvents } from '../store/stats';
+import { notePracticeDay } from '../store/practiceDays';
 import { resumeBankroll, storeBankrollNow } from './playBankroll';
 import { hotShoeActive } from '../engine/shoeBias';
 import { playConfigFor } from './playConfig';
@@ -109,6 +110,21 @@ export interface SessionReport {
   mistakeUnits: number;
   /** Wave B, B8: dealt from a Hot shoe, so the bankroll was not kept. */
   hotShoe: boolean;
+  /**
+   * F5 (W2-17): decisions taken with the dealer-pace clock running, and how
+   * many of those it ran out on. The report shows the slow count only when
+   * the clock ran for at least one decision.
+   */
+  pacedDecisions: number;
+  slowDecisions: number;
+}
+
+/** F5: what the screen measured about one Play decision (see Game.act). */
+export interface DecisionTiming {
+  elapsedMs?: number;
+  slow?: boolean;
+  /** The dealer-pace clock was running for this decision. */
+  paced?: boolean;
 }
 
 /**
@@ -145,7 +161,12 @@ function readSeed(): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-function buildReport(events: GradedEvent[], bankrollDelta: number, peeks: number, hands: number): Omit<SessionReport, 'hotShoe'> {
+function buildReport(
+  events: GradedEvent[],
+  bankrollDelta: number,
+  peeks: number,
+  hands: number,
+): Omit<SessionReport, 'hotShoe' | 'pacedDecisions'> {
   // RT#11: read the bets back off the graded events. `taken`/`expected` are
   // strings on the event, and a bet event always carries both as numbers, so
   // an unparseable pair means something upstream changed shape -- dropped
@@ -178,6 +199,7 @@ function buildReport(events: GradedEvent[], bankrollDelta: number, peeks: number
     cover: lockstepTell(betRounds),
     hands,
     mistakeUnits: mistakeUnits(events),
+    slowDecisions: events.filter((e) => e.slow === true).length,
   };
 }
 
@@ -335,6 +357,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const notePeek = useCallback(() => {
     peeksRef.current += 1;
   }, []);
+  /** F5: decisions taken with the dealer-pace clock running, this session. */
+  const pacedRef = useRef(0);
   /** What the last row write described, so an unchanged render writes nothing. */
   const rowKeyRef = useRef('');
   /** End has finalised the row; nothing may turn it provisional again. */
@@ -358,6 +382,9 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
         stats = applyEvents(stats, datedSessionEvents(game.events.slice(committedRef.current), now), now);
         committedRef.current = game.events.length;
       }
+      // F10: a Play round was recorded today (a session row's own date moves
+      // with every round, so a shoe played across midnight keeps both days).
+      stats = notePracticeDay(stats, now);
       stats = upsertSession(
         stats,
         sessionRowFor({
@@ -514,14 +541,15 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   );
 
   const act = useCallback(
-    (action: Action) => {
+    (action: Action, timing?: DecisionTiming) => {
       const before = game.events.length;
       // Snapshot BEFORE the engine mutates the hand -- see OverlayInfo.cards.
       const gradedHand = game.hands[game.active];
       const gradedCards = gradedHand ? [...gradedHand.cards] : undefined;
       const gradedUp = game.dealerCards[0]?.rank;
       const gradedCanSplit = game.legalActions().includes('split');
-      game.act(action);
+      game.act(action, timing);
+      if (timing?.paced) pacedRef.current += 1;
       const newEvents = game.events.slice(before);
       if (settings.feedbackMode === 'training') {
         const actionEvent = newEvents.find((e) => e.kind === 'action');
@@ -763,7 +791,11 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     const bankrollDelta = game.bankroll - game.cfg.bankrollStart;
     storedBankrollRef.current = game.bankroll;
     if (!hotShoe) storeBankrollNow(profileId, game.bankroll);
-    const rep = { ...buildReport(events, bankrollDelta, peeksRef.current, game.handsPlayed), hotShoe };
+    const rep = {
+      ...buildReport(events, bankrollDelta, peeksRef.current, game.handsPlayed),
+      hotShoe,
+      pacedDecisions: pacedRef.current,
+    };
     setReport(rep);
     return rep;
   }, [game, profileId, persistSession, hotShoe]);

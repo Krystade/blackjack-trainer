@@ -1,6 +1,6 @@
 import { strategyRulesFor } from '../../store/profiles';
 import { TabSettingsButton } from '../components/TabSettingsButton';
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings } from '../../store/types';
@@ -66,6 +66,14 @@ import { DEAL_WORDS, isDealWord } from '../dealWord';
 import './feltWrap.css';
 import './tableVoiceFit.css';
 import './countSheetBanner.css';
+import { DealerPaceBar } from '../components/DealerPaceBar';
+import { createDecisionTimer, holdWhileSpeaking, type DecisionTimer } from '../decisionTimer';
+import { dealerPaceMs, isSlowDecision, slowDecisionsText } from '../dealerPace';
+import { trackedElapsedMs } from '../../drills/idleAnswer';
+import { isAppSpeaking } from '../../audio/speech';
+import { useEyesFreeToggle } from '../eyesFreeSession';
+import { loadStats } from '../../store/persist';
+import { trayMarksShown } from '../trayFade';
 
 /** B5/W4: the row's card slots and fixed chrome, for cardSize.css's clamp. */
 function feltStyle(row: FeltRow): CSSProperties {
@@ -282,6 +290,12 @@ function ReportScreen({
         {!report.hotShoe && <> &middot; bankroll {formatSigned(report.bankrollDelta)}</>}
       </p>
       {assisted && <p className="report-assisted">{assisted}</p>}
+      {/* F5: only when the dealer-pace clock ran for some decision. */}
+      {report.pacedDecisions > 0 && (
+        <p className="report-slow" data-testid="report-slow" data-slow={report.slowDecisions}>
+          {slowDecisionsText(report.slowDecisions)}
+        </p>
+      )}
       {/* RT#11 (docs/BACKLOG.md): perfect conformity to the ramp IS the tell,
           so a session that had it is told so. Shown whether or not cover
           grading is on -- the tolerance makes room for cover, but only this
@@ -511,7 +525,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         audio.say(actionUnavailable(command));
         return;
       }
-      act(command);
+      timedAct(command);
       // Move the recogniser's restart gap into the pause after the action,
       // while the correction is being spoken, rather than leaving it to fall
       // in the middle of the next decision.
@@ -764,6 +778,50 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     setShowReport(true);
   }
 
+  /**
+   * F5 (W2-17): decision timing. A decision starts when its buttons enable
+   * (the player phase, on a new hand or a new card) and is held while a modal
+   * covers it, and -- eyes-free (the drills' eyes-free switch, or the table's
+   * microphone) -- while the app is speaking. ui/decisionTimer.ts.
+   */
+  const [eyesFreeSwitch] = useEyesFreeToggle('table');
+  const eyesFree = eyesFreeSwitch || voiceOn;
+  const paceMs = dealerPaceMs(settings, eyesFree);
+  const timerRef = useRef<DecisionTimer | null>(null);
+  timerRef.current ??= createDecisionTimer();
+  const decidingHand = game.phase === 'player' ? game.hands[game.active] : undefined;
+  const decisionKey = decidingHand
+    ? `${game.roundNo}|${game.active}|${game.hands.length}|${decidingHand.cards.length}`
+    : null;
+  const modalOverHand = overlay !== null || showChart;
+  useLayoutEffect(() => {
+    if (decisionKey === null) timerRef.current!.clear();
+    else timerRef.current!.start();
+  }, [decisionKey]);
+  useLayoutEffect(() => {
+    timerRef.current!.hold('modal', modalOverHand);
+  }, [modalOverHand]);
+  useEffect(() => {
+    if (!eyesFree) return;
+    return holdWhileSpeaking(timerRef.current!, isAppSpeaking);
+  }, [eyesFree]);
+  const timedAct = (action: Action) => {
+    const timer = timerRef.current!;
+    // The speech hold is sampled; take its state as of this tap.
+    if (eyesFree) timer.hold('speech', isAppSpeaking());
+    const measured = timer.take();
+    act(action, {
+      // An idle hand (#30's cap) still counts as slow, but has no time.
+      elapsedMs: measured === null ? undefined : trackedElapsedMs(Math.round(measured), false),
+      slow: isSlowDecision(measured, paceMs),
+      paced: paceMs !== null && measured !== null,
+    });
+  };
+
+  // F6 (W2-18): the tray's deck marks fade once deck estimation is on target.
+  // Read at mount: nothing at the table writes deck-estimation history.
+  const [trayMarks] = useState(() => trayMarksShown(loadStats()));
+
   // B2 #48: the report opens at its top. The table it replaces may be scrolled
   // (the count check's sheet at End scrolls the page), and that scroll used to
   // carry over and hide the report's title under the status bar.
@@ -818,7 +876,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
 
   let barMode: ActionBarMode;
   if (game.phase === 'player') {
-    barMode = { kind: 'actions', legal, onAction: act, advice };
+    barMode = { kind: 'actions', legal, onAction: timedAct, advice };
   } else if ((game.phase === 'idle' || game.phase === 'settled') && !game.countCheckOpen) {
     barMode = {
       kind: 'bet',
@@ -970,7 +1028,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           exact number) so the count-check still requires a real by-eye
           estimate — connecting that drill to its point of use. #38 adds a mark
           per whole deck, labelled decks dealt, so depth reads like a real tray. */}
-      <DiscardTray cardsDealt={game.shoe.cardsDealt} decks={activeProfile.rules.decks} />
+      <DiscardTray cardsDealt={game.shoe.cardsDealt} decks={activeProfile.rules.decks} marks={trayMarks} />
 
       <div className="dealer-area" style={feltStyle(dealerFeltRow(game.dealerCards.length))}>
         {game.dealerCards.map((c, i) => (
@@ -1165,6 +1223,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
               <path d="M2 3l6 5-6 5zM8 3l6 5-6 5z" fill="currentColor" />
             </svg>
           </button>
+        )}
+        {paceMs !== null && decisionKey !== null && (
+          <DealerPaceBar limitMs={paceMs} restartKey={decisionKey} paused={modalOverHand} />
         )}
       </div>
 

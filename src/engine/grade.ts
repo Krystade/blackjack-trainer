@@ -166,6 +166,14 @@ export interface GradedEvent {
    * OPTIONAL and purely additive, like the fields above.
    */
   phantomOf?: DeviationId;
+
+  /**
+   * F5 (W2-17): a Play decision taken after the optional dealer-pace clock
+   * ran out. The clock never acts for the player; it only tags the decision,
+   * so the session report can count them. Present (true) only on a slow
+   * decision, absent everywhere else -- the same additive contract as above.
+   */
+  slow?: true;
 }
 
 /**
