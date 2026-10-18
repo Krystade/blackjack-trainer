@@ -42,6 +42,8 @@ import { DrillModeControls } from './DrillModeControls';
 import { DealToggles } from './DealToggles';
 import { HandDeckControls } from './HandDeckControls';
 import { handDeckFor } from './handDeckFor';
+import { ControlsSummary } from './ControlsSummary';
+import { mixedSummaryLine } from './summaryLine';
 import './drillTiming.css';
 import './drillActionBar.css';
 import {
@@ -544,7 +546,10 @@ export function MixedSessionView({
       <DrillTopBar title="Mixed" onBack={handleBack} audioEnabled={settings.audio.enabled} onReplay={audio.replay} />
 
       <div className="drill-inline-controls" ref={session.controlsRef}>
-        <HandDeckControls settings={settings} onChange={changeScopes} />
+        {/* W2-7: folded into one line once the first answer is in. */}
+        <ControlsSummary answered={lastResult !== null} summary={mixedSummaryLine(settings.drill, activeProfile.rules)}>
+          <HandDeckControls settings={settings} onChange={changeScopes} />
+        </ControlsSummary>
         <DrillModeControls
           settings={settings}
           onSettingsChange={onSettingsChange}

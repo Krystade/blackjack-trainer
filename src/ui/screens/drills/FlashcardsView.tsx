@@ -52,6 +52,8 @@ import { HandDeckControls } from './HandDeckControls';
 import { scopesFrom } from '../../../drills/handScope';
 import { handDeckFor } from './handDeckFor';
 import { MarkableHand } from '../../components/MarkableHand';
+import { ControlsSummary } from './ControlsSummary';
+import { flashSummaryLine } from './summaryLine';
 import './drillTiming.css';
 import './drillActionBar.css';
 import './flashProgress.css';
@@ -634,10 +636,16 @@ export function FlashcardsView({
           <ReviewStatusLine text={reviewStatus(reviewSource, review.total, review.left, reviewNoun)} />
         ) : (
           <>
-            <HandDeckControls settings={settings} onChange={changeScopes} />
-            <div className="flash-progress" data-testid="flash-progress">
-              {flashProgressLine(progressStats, scopesFrom(settings.drill))}
-            </div>
+            {/* W2-7: folded into one line once the first answer is in. */}
+            <ControlsSummary
+              answered={lastResult !== null}
+              summary={flashSummaryLine(settings.drill, activeProfile.rules, progressStats)}
+            >
+              <HandDeckControls settings={settings} onChange={changeScopes} />
+              <div className="flash-progress" data-testid="flash-progress">
+                {flashProgressLine(progressStats, scopesFrom(settings.drill))}
+              </div>
+            </ControlsSummary>
             {goalMet && (
               <div className="flash-goal-met" role="status" data-testid="flash-goal-met">
                 {goalMet}

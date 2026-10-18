@@ -38,6 +38,8 @@ import type { ZoneId } from '../../../audio/zones';
 import { DrillModeControls } from './DrillModeControls';
 import { QuizAskSwitch } from './QuizAskSwitch';
 import { blurAfterChange } from '../../keyboardFocus';
+import { ControlsSummary } from './ControlsSummary';
+import { quizSummaryLine } from './summaryLine';
 import './drillTiming.css';
 import './drillActionBar.css';
 import { reviewDoneLine, reviewHeading, reviewStatus, useReviewSession } from './reviewSession';
@@ -527,6 +529,10 @@ export function DeviationQuizView({
     redundantForChart(d, strategyRulesFor(activeProfile)) ? { ...d, active: false } : d,
   );
 
+  // W2-7: the asked index, as the summary line names it.
+  const pinned = activeFilter === 'all' ? undefined : indexList.find((d) => d.id === activeFilter);
+  const indexName = pinned ? indexPickerText(pinned) : 'All indices';
+
   if (review.done) {
     return (
       <ReviewDone
@@ -561,7 +567,8 @@ export function DeviationQuizView({
         {review.active ? (
           <ReviewStatusLine text={reviewStatus('review', review.total, review.left, 'index')} />
         ) : (
-        <>
+        // W2-7: folded into one line once the first answer is in.
+        <ControlsSummary answered={lastResult !== null} summary={quizSummaryLine(indexName, activeProfile.rules)}>
         <QuizAskSwitch settings={settings} onSettingsChange={onSettingsChange} />
         <label className="settings-row">
           <span className="settings-label">Index</span>
@@ -587,7 +594,7 @@ export function DeviationQuizView({
             ))}
           </select>
         </label>
-        </>
+        </ControlsSummary>
         )}
 
         <DrillModeControls

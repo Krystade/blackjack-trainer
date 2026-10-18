@@ -1,0 +1,53 @@
+/* W2-7: the hand drills' folded controls -- one line, the text truncating
+   before the line wraps. 32px drawn, so the fold gives height back even
+   where it replaces a single 44px row (Mixed's chips); the ::before below
+   keeps the touch target 44px tall, reaching into the strip's 8px gap and
+   12px padding, which hold nothing else to tap. */
+.controls-summary {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.controls-summary::before {
+  content: '';
+  position: absolute;
+  inset: -7px -1px; /* from the padding box: 30 + 14 = 44px, edge to edge */
+}
+
+.controls-summary-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A chevron drawn with borders: down while closed, up while open. */
+.controls-summary-chevron {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: -3px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.controls-summary[aria-expanded='true'] .controls-summary-chevron {
+  margin-top: 3px;
+  transform: rotate(-135deg);
+}
