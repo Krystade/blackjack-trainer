@@ -36,7 +36,7 @@ import { HandDeckControls } from './HandDeckControls';
 import { DealToggles } from './DealToggles';
 import { mulberry32 } from '../../../engine/cards';
 import { maybeFallback, FULL_CTX } from '../../../drills/fallbackHand';
-import { KEY_TO_ACTION } from '../Drills';
+import { KEY_TO_ACTION } from './handDrillShared';
 import { focusSwallowsKey } from '../../keyboardFocus';
 import { isWholeChartSweep } from '../nextStep';
 import { loadStats, saveStats } from '../../../store/persist';
