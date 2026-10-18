@@ -1,6 +1,6 @@
 import type { Category, MistakeClass } from '../../engine/grade';
 import type { DeviationId } from '../../engine/deviations';
-import { EMPTY_STATS, type Stats, type TallyRW } from '../../store/types';
+import { EMPTY_STATS, type IndexDirection, type Stats, type TallyRW } from '../../store/types';
 
 /**
  * D-R2 (Wave D, #4): what Stats > Play shows -- decisions made at the Play
@@ -14,6 +14,8 @@ import { EMPTY_STATS, type Stats, type TallyRW } from '../../store/types';
 export interface PlayFigures {
   categories: Record<Category, TallyRW>;
   perIndex: Partial<Record<DeviationId, TallyRW>>;
+  /** E7: the table's early/late misses per index. */
+  indexDirection: Partial<Record<DeviationId, IndexDirection>>;
   mistakes: Record<MistakeClass, number>;
   evCostRows: Stats['evCost']['history'];
 }
@@ -29,6 +31,7 @@ export function playFigures(stats: Stats): PlayFigures {
   return {
     categories,
     perIndex: { ...stats.tablePerIndex },
+    indexDirection: { ...stats.tableIndexDirection },
     mistakes,
     evCostRows: stats.evCost.history.filter((r) => r.source === 'table'),
   };
@@ -46,6 +49,22 @@ export function drillPerIndex(stats: Stats): Partial<Record<DeviationId, TallyRW
     const right = Math.max(0, t.right - (tbl?.right ?? 0));
     const wrong = Math.max(0, t.wrong - (tbl?.wrong ?? 0));
     if (right + wrong > 0) out[id] = { right, wrong };
+  }
+  return out;
+}
+
+/**
+ * E7: the drills' side of the early/late tally, the same subtraction as
+ * `drillPerIndex` -- pooled minus the table's slice.
+ */
+export function drillIndexDirection(stats: Stats): Partial<Record<DeviationId, IndexDirection>> {
+  const out: Partial<Record<DeviationId, IndexDirection>> = {};
+  for (const [id, d] of Object.entries(stats.indexDirection ?? {}) as [DeviationId, IndexDirection][]) {
+    const tbl = stats.tableIndexDirection?.[id];
+    const early = Math.max(0, (d?.early ?? 0) - (tbl?.early ?? 0));
+    const late = Math.max(0, (d?.late ?? 0) - (tbl?.late ?? 0));
+    const offTally = Math.max(0, (d?.offTally ?? 0) - (tbl?.offTally ?? 0));
+    if (early + late + offTally > 0) out[id] = offTally > 0 ? { early, late, offTally } : { early, late };
   }
   return out;
 }

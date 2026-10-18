@@ -703,7 +703,7 @@ export class Game {
     // count; correctPlay's index plays are never asked for.
     const withCount: Advice =
       this.cfg.gradeDeviations === false ? basicOnly : correctPlay(hand.cards, up, tc, ctx, this.rules);
-    const { classification, correct } = classifyAction(action, withCount, basicOnly, hand.cards, up, tc, this.rules);
+    const { classification, correct, phantomOf } = classifyAction(action, withCount, basicOnly, hand.cards, up, tc, this.rules);
     const category = actionCategory(hand.cards, withCount.action);
     // #25: a basic error is priced, on the hand as it stood at the decision,
     // exactly as the hand drills price theirs.
@@ -719,6 +719,9 @@ export class Game {
       expected: withCount.action,
       reason: withCount.reason,
       deviationId: withCount.deviationId,
+      // E7: a phantom names the index it reached for, in its own field so the
+      // event stays on its chart cell (see GradedEvent.phantomOf).
+      ...(phantomOf === undefined ? {} : { phantomOf }),
       tc,
       hand: describeHand(hand.cards, up),
       ...(evCost === undefined ? {} : { evCost }),

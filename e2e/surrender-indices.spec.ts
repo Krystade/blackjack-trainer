@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { answerAndReadStrip, withProfile, withSettings } from './helpers';
+import { answerAndReadStrip, withProfile, withSettings, withStats } from './helpers';
 
 /**
  * RV3. The engine side is covered exhaustively by
@@ -141,12 +141,23 @@ test('Stats counts the surrender indices it grades and drills', async ({ page })
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Stats' }).first().click();
 
-  const rows = page.locator('.index-table tbody tr');
   // Wave B2 #22 (deliberate change): the table lists the indexes the drills
   // ask, so the inactive H17 '11 v A' row is gone: 17 + the six Fab 4 = 23.
-  await expect(rows, 'the six Fab 4 indices are drilled and tallied with no row to show it')
-    .toHaveCount(23);
-  await expect(page.locator('.index-table')).toContainText('15 v 10: surrender at TC');
+  // E7 (deliberate change): unanswered indexes are one "N not seen yet" line.
+  const table = page.getByTestId('play-index-table');
+  await expect(table.getByTestId('index-unseen'), 'the six Fab 4 indices are drilled and tallied with no row to show it')
+    .toHaveText('23 not seen yet');
+});
+
+test('E7: a Fab 4 answer at the table gets its row, in the published wording', async ({ page }) => {
+  await withProfile(page, { surrenderIndices: true });
+  await withStats(page, { perIndex: { sur15v10: { right: 1, wrong: 0 } }, tablePerIndex: { sur15v10: { right: 1, wrong: 0 } } });
+  await page.goto('/?e2e=1');
+  await page.getByRole('button', { name: 'Stats' }).first().click();
+  const table = page.getByTestId('play-index-table');
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await expect(table.locator('tbody tr')).toContainText('surrender at TC');
+  await expect(table.getByTestId('index-unseen')).toHaveText('22 not seen yet');
 });
 
 test('the index table is 17 rows with the flag off, so the count is not hardcoded', async ({
@@ -156,7 +167,8 @@ test('the index table is 17 rows with the flag off, so the count is not hardcode
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Stats' }).first().click();
   // Wave B2 #22: 17, the H17 set the drills ask (11 v A is inactive under H17).
-  await expect(page.locator('.index-table tbody tr')).toHaveCount(17);
+  // E7 (deliberate change): counted on the "not seen yet" line, not as rows.
+  await expect(page.getByTestId('play-index-table').getByTestId('index-unseen')).toHaveText('17 not seen yet');
 });
 
 /**

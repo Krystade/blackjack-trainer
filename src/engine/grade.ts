@@ -151,6 +151,21 @@ export interface GradedEvent {
    * and needs a monotonic clock, this is a POINT IN TIME and needs a wall one.
    */
   at?: string;
+
+  /**
+   * E7 (W2-16): the index a `phantom-deviation` reached for -- the play of an
+   * index taken short of it. Credits the index with an EARLY error in Stats'
+   * Indexes table.
+   *
+   * Its own field, NOT `deviationId`: a Play phantom is still graded on its
+   * chart cell (F4/R9 route an event with a `deviationId` away from
+   * cellStats), so that routing is unchanged. Drill phantoms already file
+   * under the index as `deviationId` (R9), which the direction tally reads
+   * when this is absent.
+   *
+   * OPTIONAL and purely additive, like the fields above.
+   */
+  phantomOf?: DeviationId;
 }
 
 /**
@@ -163,7 +178,8 @@ export interface GradedEvent {
  * @param up The dealer's up-card
  * @param tc The true count
  * @param rules The ruleset to use for phantom-deviation detection (defaults to H17)
- * @returns An object with classification and correct flag
+ * @returns An object with classification and correct flag, plus (E7) the index
+ *   a phantom deviation matched as `phantomOf`
  */
 export function classifyAction(
   taken: Action,
@@ -174,7 +190,7 @@ export function classifyAction(
   // Unused: the tc is already baked into withCount/basicOnly by the caller.
   _tc: number,
   rules: StrategyRules = DEFAULT_RULES,
-): { classification: MistakeClass; correct: boolean } {
+): { classification: MistakeClass; correct: boolean; phantomOf?: DeviationId } {
   // Step 1: taken === withCount.action -> correct
   if (taken === withCount.action) {
     return { classification: 'correct', correct: true };
@@ -196,26 +212,15 @@ export function classifyAction(
     // C-R11: a pair the chart splits is a PAIR cell -- a hard/soft total
     // index (12v3 on 6,6) does not apply to it, so only pair indexes match.
     const pairCell = basicOnly.action === 'split';
-    if (isPhantomDeviation(taken, cards, up, rules, pairCell)) {
-      return { classification: 'phantom-deviation', correct: false };
+    // E7: the matched index comes back with the verdict, so Play can credit
+    // it with an early error.
+    const phantomOf = phantomDeviationId(taken, cards, up, rules, pairCell);
+    if (phantomOf !== null) {
+      return { classification: 'phantom-deviation', correct: false, phantomOf };
     } else {
       return { classification: 'basic-error', correct: false };
     }
   }
-}
-
-/**
- * Check if there's an active deviation entry that the player guessed.
- * The player took an action that's offered by the Illustrious 18 for this hand/up,
- * but the count didn't justify it.
- *
- * @param taken The action the player took
- * @param cards The player's hand
- * @param up The dealer's up-card
- * @param rules The ruleset to determine which deviation set to use (H17 vs S17)
- */
-function isPhantomDeviation(taken: Action, cards: Card[], up: Rank, rules: StrategyRules = DEFAULT_RULES, pairCell = false): boolean {
-  return phantomDeviationId(taken, cards, up, rules, pairCell) !== null;
 }
 
 /**

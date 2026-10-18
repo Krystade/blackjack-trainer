@@ -34,29 +34,24 @@ for (const [name, profile] of PROFILES) {
     await page.goto('/?e2e=1');
     const home = await homeIndexFigure(page);
     await page.locator('.tab-bar').getByRole('button', { name: 'Stats', exact: true }).click();
-    // D-R2 (#4): Stats holds two index tables -- Play's (the table's own
-    // tallies) and the Deviation quiz's (drill answers) on the Drills tab --
-    // both in the DOM, one hidden by CSS. Each lists the asked index set (D-R3),
-    // so each has Home's total as its row count.
-    const rowsOf = (testId: string) => page.getByTestId(testId).locator('tbody tr');
+    // E7 (deliberate change): an index table lists the indexes answered and
+    // folds the rest into "N not seen yet", so its total is rows + N. These
+    // answers are drill answers (no table slice), so Play's Indexes is all
+    // "not seen" and the Drills tab's table holds them (D-R2).
     await statsTab(page, 'Play');
-    await expect(page.getByTestId('play-index-table')).toBeVisible();
-    await expect(rowsOf('play-index-table')).toHaveCount(home.total);
-    // The tallies seeded here are pooled with no table slice, so they are
-    // drill answers: Home's "practised" is read off the drills' table.
+    const play = page.getByTestId('play-index-table');
+    await expect(play.locator('tbody tr')).toHaveCount(0);
+    await expect(play.getByTestId('index-unseen')).toHaveText(`${home.total} not seen yet`);
     await statsTab(page, 'Drills');
-    await expect(page.getByTestId('drill-index-table')).toBeVisible();
-    const rows = rowsOf('drill-index-table');
-    await expect(rows).toHaveCount(home.total);
+    const drills = page.getByTestId('drill-index-table');
+    const rows = drills.locator('tbody tr');
+    const seen = await rows.count();
+    await expect(drills.getByTestId('index-unseen')).toHaveText(`${home.total - seen} not seen yet`);
     const practisedRows = await rows.evaluateAll((trs) =>
-      trs.filter((tr) => {
-        const [, r, w] = [...tr.querySelectorAll('td')].map((td) => Number(td.textContent) || 0);
-        return r + w >= 3;
-      }).length);
+      trs.filter((tr) => Number((tr.querySelector('.index-dir-frac')?.textContent ?? '0/0').split('/')[1]) >= 3).length);
     expect(practisedRows).toBe(home.practised);
-    // The inactive H17 '11 v A' row is gone from both, even with tallies.
-    await expect(page.locator('.index-table')).toHaveCount(2);
-    await expect(page.getByTestId('play-index-table')).not.toContainText('11 v A');
-    await expect(page.getByTestId('drill-index-table')).not.toContainText('11 v A');
+    // The inactive H17 '11 v A' row is gone, even with tallies.
+    await expect(drills).not.toContainText('11 v A');
+    await expect(play).not.toContainText('11 v A');
   });
 }

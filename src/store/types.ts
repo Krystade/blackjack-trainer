@@ -480,6 +480,27 @@ export interface TallyRW {
   wrong: number;
 }
 
+/**
+ * E7 (W2-16): which way an index was missed.
+ *
+ * `late` is a missed deviation (the count reached the index and the chart play
+ * was taken anyway); `early` is a phantom deviation (the index play taken
+ * short of the index). Index-test misses, wrong-anyway plays and timeouts are
+ * wrong with no direction, so they appear in neither.
+ */
+export interface IndexDirection {
+  early: number;
+  late: number;
+  /**
+   * The `early` misses `perIndex` never counted. A Play phantom stays graded
+   * on its chart cell (F4/R9), so it names the index in `phantomOf` rather
+   * than `deviationId` and is not in the index's right/wrong tally; the
+   * Indexes table adds these to its wrong answers so accuracy and Early agree.
+   * Absent = 0.
+   */
+  offTally?: number;
+}
+
 export interface Stats {
   version: 1;
   categories: Record<Category, TallyRW>;
@@ -499,6 +520,13 @@ export interface Stats {
    */
   tablePerIndex?: Partial<Record<DeviationId, TallyRW>>;
   tableMistakes?: Partial<Record<MistakeClass, number>>;
+  /**
+   * E7 (W2-16): per-index error direction, pooled across every source, and
+   * the table's own slice of it (as `perIndex` / `tablePerIndex`). OPTIONAL:
+   * absent on blobs written before, which read as no direction data.
+   */
+  indexDirection?: Partial<Record<DeviationId, IndexDirection>>;
+  tableIndexDirection?: Partial<Record<DeviationId, IndexDirection>>;
   /**
    * V5-2 (docs/BACKLOG.md): hand-drill accuracy split by whether a shot clock
    * was running. OPTIONAL, so a blob written before this field loads

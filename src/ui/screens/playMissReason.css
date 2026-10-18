@@ -1,0 +1,10 @@
+/*
+ * Wave E, E6: at the table the reason line carries the lesson -- the chart
+ * region and the dealer's bust chance (playMissReason.ts) -- so it reads at
+ * the note's size and ink, not as a dim 12px footnote under it.
+ */
+.mistake-card-table .mistake-reason {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--ink);
+}

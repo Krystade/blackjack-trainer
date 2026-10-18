@@ -1,8 +1,9 @@
 import type { GradedEvent } from '../engine/grade';
-import type { Stats, TallyRW } from './types';
+import type { IndexDirection, Stats, TallyRW } from './types';
 import type { CellTally } from './cellStats';
 import { cellUndone, handRecentUndone } from './cellStats';
-import { countsInCategory, tallyCellIdFor } from './stats';
+import { countsInCategory, indexDirectionFor, tallyCellIdFor } from './stats';
+import type { DirectedMiss } from './stats';
 
 /**
  * #22 (spec 2026-10-13): "Wrong tap". The exact inverse of applying ONE graded
@@ -107,6 +108,19 @@ export function undoGradedEvent(stats: Stats, event: GradedEvent, cellBefore?: C
     }
   }
 
+  // E7: the early/late tallies applyEvents writes for a directed index miss.
+  const miss = indexDirectionFor(event);
+  if (miss) {
+    const pooled = directionUndone(stats.indexDirection, miss);
+    if (pooled === undefined) delete result.indexDirection;
+    else result.indexDirection = pooled;
+    if (event.source === 'table') {
+      const table = directionUndone(stats.tableIndexDirection, miss);
+      if (table === undefined) delete result.tableIndexDirection;
+      else result.tableIndexDirection = table;
+    }
+  }
+
   if (event.elapsedMs !== undefined) {
     const i = findLastIndex(
       stats.latencyHistory,
@@ -147,6 +161,25 @@ export function recordMisclick(stats: Stats, event: GradedEvent, cellBefore?: Ce
   }
   result.misclicks = (stats.misclicks ?? 0) + 1;
   return result;
+}
+
+/** One directed miss withdrawn; an emptied entry, then an emptied map, is removed. */
+function directionUndone(
+  map: Stats['indexDirection'],
+  miss: DirectedMiss,
+): Stats['indexDirection'] {
+  const entry = map?.[miss.id];
+  if (!map || !entry) return map;
+  const next: IndexDirection = { ...entry, [miss.side]: Math.max(0, entry[miss.side] - 1) };
+  if (miss.offTally) {
+    const left = Math.max(0, (entry.offTally ?? 0) - 1);
+    if (left === 0) delete next.offTally;
+    else next.offTally = left;
+  }
+  const out = { ...map };
+  if (next.early === 0 && next.late === 0 && !next.offTally) delete out[miss.id];
+  else out[miss.id] = next;
+  return Object.keys(out).length === 0 ? undefined : out;
 }
 
 function findLastIndex<T>(rows: readonly T[], match: (row: T) => boolean): number {
