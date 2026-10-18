@@ -252,9 +252,9 @@ test('conversation that is not understood stays silent', async ({ page }) => {
 
 /**
  * C-R4 (W16): a word missed again and again on one prompt escalates --
- * the tone, then the prompt again, then a hint naming the accepted words.
+ * the tone, then the prompt again, then (D-R5) the tone again -- never a hint.
  */
-test('repeated misses escalate: tone, re-ask, then the accepted words', async ({ page }) => {
+test('repeated misses escalate: tone, re-ask, then tone again with no hint', async ({ page }) => {
   await openFlashcardsWithVoice(page);
   const log = () => page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
   const opening = await log();
@@ -272,9 +272,15 @@ test('repeated misses escalate: tone, re-ask, then the accepted words', async ({
 
   mark = (await log()).length;
   await sayOnceListening(page, 'wombat');
-  await expect
-    .poll(async () => (await log()).slice(mark).join('|'))
-    .toMatch(/Say hit, stand[a-z, ]* or [a-z]+\./);
+  await expect.poll(async () => (await log()).slice(mark)).toContain('chime:again');
+  await page.waitForTimeout(300);
+  expect((await log()).slice(mark), 'the third miss is the tone, not the prompt again').not.toContain(prompt);
+  expect((await log()).slice(mark).join('|')).not.toMatch(/\bSay /);
+
+  mark = (await log()).length;
+  await sayOnceListening(page, 'wombat');
+  await expect.poll(async () => (await log()).slice(mark)).toContain(prompt);
+  expect((await log()).join('|')).not.toMatch(/\bSay (hit|yes)/);
   // Still listening, and a recognised answer still grades the card.
   await sayOnceListening(page, 'stand');
   await expect(page.locator('.drill-feedback, [class*="feedback"]').first()).toBeVisible();

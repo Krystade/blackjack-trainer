@@ -137,3 +137,57 @@ test('C-R10c: the count-check sheet leaves the round banner readable, or repeats
   const uncovered = geometry.bannerBottom <= geometry.sheetTop + 0.5 && geometry.bannerTop >= 0;
   expect(uncovered || sheetText.includes(bannerText), `banner "${bannerText}" covered: ${JSON.stringify(geometry)}`).toBe(true);
 });
+
+/**
+ * D-R10: the strip must not be cut off part way through a line. It used to
+ * shrink and scroll inside itself; now every line it shows is whole.
+ */
+test('D-R10: with voice on, the voice strip shows whole lines, never one cut in half', async ({ page }) => {
+  await withFakeRecognition(page);
+  await withSettings(page, { countCheckEvery: 0, dealSpeedMs: 0 });
+  await withProfile(page, { countCheckEvery: 0 });
+  await page.goto('/?seed=7&e2e=1');
+  await page.addStyleTag({ content: INSET });
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.locator('.voice-btn').click();
+  await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
+  await resolveInsurance(page, false);
+  await expect(page.locator('.action-bar[data-advice]')).toBeVisible();
+  await shotIf(page, 'd-r10-voice-strip');
+  const fit = await page.locator('.voice-status').evaluate((el) => {
+    const strip = el.getBoundingClientRect();
+    return {
+      overflow: el.scrollHeight - el.clientHeight,
+      // Every visible child line ends inside the strip's padding box.
+      cut: [...el.children]
+        .filter((c) => getComputedStyle(c).display !== 'none')
+        .map((c) => ({ cls: c.className, bottom: c.getBoundingClientRect().bottom, limit: strip.bottom }))
+        .filter((c) => c.bottom > c.limit + 0.5),
+    };
+  });
+  expect(fit.overflow, 'the strip scrolls inside itself').toBeLessThanOrEqual(0);
+  expect(fit.cut).toEqual([]);
+  expectOnScreen(await boxes(page, '.action-bar[data-advice] button.action-btn'), 'action button');
+});
+
+/** D-R11: with the strip showing, the table is held to --app-h, not 100svh. */
+test('D-R11: the voice-on table height follows --app-h', async ({ page }) => {
+  await withFakeRecognition(page);
+  await withSettings(page, { countCheckEvery: 0, dealSpeedMs: 0 });
+  await withProfile(page, { countCheckEvery: 0 });
+  await page.goto('/?seed=7&e2e=1');
+  await page.addStyleTag({ content: ':root { --app-h: 700px !important; }' });
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.locator('.voice-btn').click();
+  await expect(page.locator('.voice-status')).toBeVisible();
+  const h = await page.locator('.table-screen').evaluate((el) => {
+    const probe = document.createElement('div');
+    probe.style.height = 'var(--chrome-top, 0px)';
+    el.appendChild(probe);
+    const chrome = probe.getBoundingClientRect().height;
+    probe.remove();
+    return { height: el.getBoundingClientRect().height, chrome };
+  });
+  expect(Math.abs(h.height - (700 - h.chrome))).toBeLessThanOrEqual(1);
+});

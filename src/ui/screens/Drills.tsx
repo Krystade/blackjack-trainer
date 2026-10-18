@@ -15,7 +15,6 @@ import { DealToggles } from './drills/DealToggles';
 import { plainCellLabel } from '../../drills/cellLabel';
 import { formatReviewPlain } from '../../drills/srStatus';
 import { drillLegalActions, rulesChipLabels } from '../../drills/legalActions';
-import { INSURANCE_HINT, playHint } from '../../audio/misheardLadder';
 import { gateDrillAnswer, gateQuizAnswer } from '../../drills/answerGate';
 import type { Flashcard } from '../../drills/flashcards';
 import { drawQuizItem, quizIndexSet, quizLegalActions, quizRulesChip, redundantForChart, tableMaskNote } from '../../drills/deviationQuiz';
@@ -994,11 +993,6 @@ function FlashcardsView({
     escalation: {
       promptKey: card,
       reask: handleRepeat,
-      hint: () =>
-        speak(
-          playHint(drillLegalActions(card.cards, activeProfile.rules, card.up, card.ctx)),
-          speechOptsFrom(settings.audio, { interrupt: true }),
-        ),
     },
     // Bias the engine toward the words it should be hearing. Reported from
     // real use: "stand" came back as "Stant" and was rejected -- unbiased,
@@ -1993,13 +1987,6 @@ function DeviationQuizView({
     escalation: {
       promptKey: item,
       reask: handleRepeat,
-      hint: () =>
-        speak(
-          item.cards === null
-            ? INSURANCE_HINT
-            : playHint(quizLegalActions(item, strategyRulesFor(activeProfile))),
-          speechOptsFrom(settings.audio, { interrupt: true }),
-        ),
     },
     biasPhrases: Object.keys(VOICE_ACTIONS),
     onListening: () => audio.dingWhenQuiet('ready'),
@@ -2799,17 +2786,6 @@ function MixedSessionView({
     escalation: {
       promptKey: current,
       reask: handleRepeat,
-      hint: () =>
-        speak(
-          isInsuranceItem
-            ? INSURANCE_HINT
-            : playHint(
-                current.type === 'quiz'
-                  ? quizLegalActions(current.item, strategyRulesFor(activeProfile))
-                  : drillLegalActions(current.card.cards, activeProfile.rules, current.card.up, current.card.ctx),
-              ),
-          speechOptsFrom(settings.audio, { interrupt: true }),
-        ),
     },
     biasPhrases: Object.keys(VOICE_ACTIONS),
     onListening: () => audio.dingWhenQuiet('ready'),

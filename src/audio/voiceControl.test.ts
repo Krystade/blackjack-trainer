@@ -88,6 +88,7 @@ function harness(
   opts: {
     create?: () => RecognitionLike | null;
     onTranscript?: (heard: string, offered: readonly string[]) => string | null;
+    speechTailMs?: number;
   } = {},
 ): Harness {
   const actions: VoiceAction[] = [];
@@ -109,6 +110,7 @@ function harness(
         return r;
       }),
     now: () => clock,
+    speechTailMs: opts.speechTailMs,
     schedule: (fn, ms) => {
       const handle = nextHandle++;
       timers.set(handle, { at: clock + ms, fn });
@@ -1274,5 +1276,92 @@ describe('the deaf window after a sound', () => {
     h.controller.suppressFor(3000, 'You have sixteen.');
     h.current().say('stand');
     expect(h.why).toEqual(['speaking']);
+  });
+});
+
+/**
+ * D-R6: could the tail come down to 250ms? Only if the word guard
+ * (looksLikeLateSelfEcho) rejects the app's own words at ANY delay once the
+ * clock no longer does. These tests run the controller at a candidate 250ms
+ * tail to answer that; SPEECH_TAIL_MS itself is what ships.
+ */
+describe('D-R6: the echo tail against the word guard', () => {
+  const SAID = 'Wrong. Basic hit versus dealer three. Correct play was hit. True count was zero.';
+  const promptThen = (tail?: number) => {
+    const h = harness({ speechTailMs: tail });
+    h.controller.start();
+    h.controller.suppressFor(1000, SAID);
+    h.advance(1000); // the prompt has just ended
+    return h;
+  };
+
+  it('a genuine answer 300ms after the prompt ends is accepted at a 250ms tail', () => {
+    const h = promptThen(250);
+    h.advance(300);
+    h.current().say('stand'); // not in SAID
+    expect(h.actions).toEqual(['stand']);
+  });
+
+  it('...and thrown away at the shipped 700ms tail', () => {
+    const h = promptThen();
+    h.advance(300);
+    h.current().say('stand');
+    expect(h.actions).toEqual([]);
+  });
+
+  for (const delay of [0, 300, 700, 2300]) {
+    it(`a multi-word echo of the app's line ${delay}ms after the prompt is never graded (250ms tail)`, () => {
+      const h = promptThen(250);
+      h.advance(delay);
+      h.current().say('correct play was hit');
+      expect(h.actions).toEqual([]);
+      expect(h.heard.at(-1)?.[1]).toBe('suppressed');
+    });
+  }
+
+  /*
+   * WHY THE TAIL STAYS AT 700. The guard only acts on three or more words
+   * (ECHO_MIN_WORDS), so a one-word fragment of the app's own line -- "hit"
+   * out of "Correct play was hit" -- is indistinguishable from an answer.
+   * Below 700ms only the clock stops it.
+   */
+  it('a ONE-word echo of the app 300ms after the prompt is graded at a 250ms tail', () => {
+    const h = promptThen(250);
+    h.advance(300);
+    h.current().say('hit');
+    expect(h.actions).toEqual(['hit']);
+  });
+
+  it('the same one-word echo is suppressed at the shipped tail', () => {
+    const h = promptThen();
+    h.advance(300);
+    h.current().say('hit');
+    expect(h.actions).toEqual([]);
+    expect(SPEECH_TAIL_MS).toBe(700);
+  });
+
+  it('logs ms since prompt end, own-words match and outcome for every result', () => {
+    const h = promptThen();
+    h.advance(300);
+    h.current().say('hit');
+    h.advance(1000);
+    h.current().say('stand');
+    const lines = h.logs.filter((l) => l.event === 'echo-timing').map((l) => l.detail);
+    expect(lines).toEqual([
+      { sincePromptEndMs: 300, ownWords: true, outcome: 'suppressed', tailMs: 700 },
+      { sincePromptEndMs: 1300, ownWords: false, outcome: 'accepted', tailMs: 700 },
+    ]);
+  });
+
+  it('measures from the real ending once it is reported', () => {
+    const h = harness();
+    h.controller.start();
+    h.controller.suppressFor(5000, SAID);
+    h.advance(2000);
+    h.controller.releaseSuppression(); // ended early, at 2000
+    h.advance(900);
+    h.current().say('wombat');
+    const line = h.logs.filter((l) => l.event === 'echo-timing').at(-1)?.detail;
+    expect(line).toEqual({ sincePromptEndMs: 900, ownWords: false, outcome: 'rejected', tailMs: 700 });
   });
 });

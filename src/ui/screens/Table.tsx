@@ -34,7 +34,6 @@ import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../audi
 import { narrateReadback, narrateTableCountPrompt } from '../../audio/narrate';
 import type { VoiceAction } from '../../audio/voiceRecognition';
 import { actionUnavailable } from '../../drills/answerGate';
-import { INSURANCE_HINT, hintLine, playHint } from '../../audio/misheardLadder';
 import { enableAudioNow } from '../audioGate';
 import { PlayingCard, formatCard } from '../components/PlayingCard';
 import { ActionBar } from '../components/ActionBar';
@@ -654,15 +653,6 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     escalation: {
       promptKey: `${game.roundNo}|${game.phase}|${game.active}|${game.hands.map((h) => h.cards.length).join(',')}|${overlay ? 'overlay' : ''}`,
       reask: () => audio.replay(),
-      hint: () =>
-        audio.say(
-          overlay || (game.phase !== 'player' && game.phase !== 'insurance')
-            ? hintLine(['yes'])
-            : game.phase === 'insurance'
-              ? INSURANCE_HINT
-              : playHint(game.legalActions()),
-          { interrupt: true },
-        ),
     },
     // ...and the state before that one. The table is played eyes-free too, and
     // the microphone can take seconds to come up on the first ask of a page.

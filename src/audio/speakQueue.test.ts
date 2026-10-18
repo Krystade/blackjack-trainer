@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { cancelSpeech, speak } from './speech';
+import { cancelSpeech, muteSpeech, speak } from './speech';
 
 /**
  * C-R5: one line at a time. A non-interrupting speak() issued while an
@@ -117,3 +117,19 @@ describe('a protected line (C-R3: Drive speaks from the tap)', () => {
   });
 });
 
+describe('Mute stops a protected line too (D-R7)', () => {
+  it('muteSpeech cancels the protected line and frees the queue', async () => {
+    const started = install();
+    let cancels = 0;
+    (globalThis as any).window.speechSynthesis.cancel = () => { cancels += 1; }; // eslint-disable-line @typescript-eslint/no-explicit-any
+    speak('Count drill.', { protect: true, interrupt: true });
+    const before = cancels;
+    muteSpeech();
+    expect(cancels, 'the engine was told to stop').toBe(before + 1);
+    // Nothing is left holding the queue: a new interrupt speaks at once,
+    // without waiting for an ending the cancelled line will never report.
+    speak('Seven.', { interrupt: true });
+    await flush();
+    expect(started.map((u) => u.text)).toEqual(['Count drill.', 'Seven.']);
+  });
+});

@@ -395,7 +395,10 @@ function resolveVoice(
 /** Stops any in-progress/queued speech and settles any pending speakAsync()
  * promise (Safari does not fire `onend` after `cancel()`, so we can't rely
  * on the event to unblock an awaiting caller). No-op when unsupported. */
-export function cancelSpeech(): void {
+export function cancelSpeech(opts?: { evenProtected?: boolean }): void {
+  // D-R7: Mute stops everything. `protect` shields a line from the queue and
+  // from interrupts, never from the operator silencing the app.
+  if (opts?.evenProtected) protectedSounding = false;
   // Clips play through HTMLAudioElement (or Web Audio), which speechSynthesis.cancel() knows
   // nothing about. `stopClips` existed for exactly this and had ZERO callers,
   // so leaving a screen mid-clip left the audio playing over whatever came
@@ -923,6 +926,11 @@ let speakInFlight = 0;
 /** Bumped by an interrupt or a cancel: everything older is stopped or dropped. */
 let speakQueueEpoch = 0;
 let speakQueueTail: Promise<void> = Promise.resolve();
+/** D-R7: what the Mute button calls -- stops even a protected line. */
+export function muteSpeech(): void {
+  cancelSpeech({ evenProtected: true });
+}
+
 /** C-R3: a `protect` line is sounding. */
 let protectedSounding = false;
 
