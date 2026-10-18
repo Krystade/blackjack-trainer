@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, goHomeAndNavigate } from './helpers';
+import { withSettings, goHomeAndNavigate, readStats, statsTab } from './helpers';
 
 /**
  * Answer mode, stated rather than inherited.
@@ -107,13 +107,20 @@ test('an admitted miss is filed apart from wrong plays', async ({ page }) => {
   await goHomeAndNavigate(page, '/?e2e=1', 'Stats');
   await expect(page.locator('.stats-heading')).toHaveText('Stats');
 
-  // Every class is listed whether or not it happened, so the LABEL proves
-  // nothing -- the count is the assertion.
-  const admitted = page.locator('.mistake-row', { hasText: 'Admitted misses (eyes-free)' });
+  // D-R2: Play's Mistake types are the table's only; an admitted miss is a
+  // drill answer, so its row is on the Drills tab and not on Play.
+  await statsTab(page, 'Play');
+  await expect(page.locator('[data-tab="play"] .mistake-row', { hasText: 'Admitted misses' })).toHaveCount(0);
+  await statsTab(page, 'Drills');
+  // The row is always rendered, so the LABEL proves nothing -- the count is the assertion.
+  const admitted = page.getByTestId('stats-admitted-misses');
+  await expect(admitted).toBeVisible();
   await expect(admitted.locator('span').nth(1)).toHaveText('1');
-  // And it did not land in the play taxonomy: no play was made.
-  const basic = page.locator('.mistake-row', { hasText: 'Basic strategy errors' });
-  await expect(basic.locator('span').nth(1)).toHaveText('0');
+  // And it did not land in the play taxonomy: no play was made. Play's figures
+  // are table-only, so the pooled tally is what can show a misfiling.
+  const stats = (await readStats(page)) as { mistakes: Record<string, number> };
+  expect(stats.mistakes['self-report']).toBe(1);
+  expect(stats.mistakes['basic-error'] ?? 0).toBe(0);
 });
 
 test('back repeats the hand rather than answering it', async ({ page }) => {

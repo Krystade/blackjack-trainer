@@ -635,6 +635,10 @@ function FlashcardsView({
     indexReviewRef.current = result.indexReview ?? null;
     // R7: a right answer takes the cell out of a review.
     review.answered(card.cellId, result.event.correct);
+    // The card just answered is the one not to deal straight back. next()
+    // sets this on every draw, but the FIRST card comes from the useState
+    // initialiser, which never did -- so a miss on it could be redealt.
+    lastCellRef.current = card.cellId;
     return { event: result.event, correctAction: result.correctAction, prevSr, cellBefore: result.cellBefore };
   };
 

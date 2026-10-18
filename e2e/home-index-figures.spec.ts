@@ -34,8 +34,19 @@ for (const [name, profile] of PROFILES) {
     await page.goto('/?e2e=1');
     const home = await homeIndexFigure(page);
     await page.locator('.tab-bar').getByRole('button', { name: 'Stats', exact: true }).click();
+    // D-R2 (#4): Stats holds two index tables -- Play's (the table's own
+    // tallies) and the Deviation quiz's (drill answers) on the Drills tab --
+    // both in the DOM, one hidden by CSS. Each lists the asked index set (D-R3),
+    // so each has Home's total as its row count.
+    const rowsOf = (testId: string) => page.getByTestId(testId).locator('tbody tr');
     await statsTab(page, 'Play');
-    const rows = page.locator('.index-table tbody tr');
+    await expect(page.getByTestId('play-index-table')).toBeVisible();
+    await expect(rowsOf('play-index-table')).toHaveCount(home.total);
+    // The tallies seeded here are pooled with no table slice, so they are
+    // drill answers: Home's "practised" is read off the drills' table.
+    await statsTab(page, 'Drills');
+    await expect(page.getByTestId('drill-index-table')).toBeVisible();
+    const rows = rowsOf('drill-index-table');
     await expect(rows).toHaveCount(home.total);
     const practisedRows = await rows.evaluateAll((trs) =>
       trs.filter((tr) => {
@@ -43,7 +54,9 @@ for (const [name, profile] of PROFILES) {
         return r + w >= 3;
       }).length);
     expect(practisedRows).toBe(home.practised);
-    // The inactive H17 '11 v A' row is gone, even with tallies.
-    await expect(page.locator('.index-table')).not.toContainText('11 v A');
+    // The inactive H17 '11 v A' row is gone from both, even with tallies.
+    await expect(page.locator('.index-table')).toHaveCount(2);
+    await expect(page.getByTestId('play-index-table')).not.toContainText('11 v A');
+    await expect(page.getByTestId('drill-index-table')).not.toContainText('11 v A');
   });
 }

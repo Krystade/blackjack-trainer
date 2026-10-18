@@ -80,9 +80,14 @@ const MISTAKE_ORDER: Exclude<MistakeClass, 'correct'>[] = [
   'phantom-deviation',
   'wrong-anyway',
   'timeout',
-  'self-report',
 ];
 
+/**
+ * D-R2 follow-up: an admitted miss is a drill answer (the eyes-free "did you
+ * have it?" self-report); the Play table never files one. Its row sits with
+ * the drills' figures on the Drills tab, read from the pooled tally, not in
+ * Play's table-only Mistake types where it could only ever read 0.
+ */
 const MISTAKE_LABELS: Record<Exclude<MistakeClass, 'correct'>, string> = {
   'basic-error': 'Basic strategy errors',
   'missed-deviation': 'Missed deviations',
@@ -1012,6 +1017,10 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
               mistakes -- they were taken out of every tally -- but counted, so
               a habit of mis-tapping stays visible. */}
           <ul className="mistake-list">
+            <li className="mistake-row" data-testid="stats-admitted-misses">
+              <span>{MISTAKE_LABELS['self-report']}</span>
+              <span>{stats.mistakes['self-report'] ?? 0}</span>
+            </li>
             <li className="mistake-row" data-testid="stats-misclicks">
               <span>Wrong taps (not counted)</span>
               <span>{stats.misclicks ?? 0}</span>
@@ -1097,7 +1106,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
         dataTab={SECTION_TAB['Illustrious 18']}
         defaultOpen={false}
       >
-          <table className="index-table">
+          <table className="index-table" data-testid="play-index-table">
             <thead>
               <tr>
                 <th>Index</th>

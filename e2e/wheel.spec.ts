@@ -366,11 +366,26 @@ test('the wheel answer to a distraction is the answer that gets graded', async (
   const SABOTAGE = 1;
   const intended: boolean[] = [];
 
-  for (let guard = 0; guard < 24; guard += 1) {
-    if (await page.locator('.drill-result').isVisible().catch(() => false)) break;
+  // The screen's state, read in ONE evaluate. A distraction poses its own
+  // NumPad, and the next one goes up ~200ms after the last is committed: with
+  // separate "distraction?" then "numpad?" probes, a distraction that appeared
+  // between the two was taken for the final count and answered 3, filing an
+  // ungraded-by-the-test row (the run's rows then outnumbered `intended`).
+  const screenState = () =>
+    page.evaluate(() => {
+      if (document.querySelector('.drill-result')) return 'result' as const;
+      const d = document.querySelector('.distraction-area .distraction-prompt');
+      if (d) return { prompt: (d as HTMLElement).innerText };
+      if (document.querySelector('.numpad')) return 'answer' as const;
+      return 'flashing' as const;
+    });
 
-    if (await page.locator('.distraction-area').isVisible().catch(() => false)) {
-      const answer = solve(await page.locator('.distraction-prompt').innerText());
+  for (let guard = 0; guard < 24; guard += 1) {
+    const state = await screenState();
+    if (state === 'result') break;
+
+    if (typeof state === 'object') {
+      const answer = solve(state.prompt);
       const sabotage = intended.length === SABOTAGE;
       await enter(sabotage ? answer + 1 : answer);
       intended.push(!sabotage);
@@ -378,7 +393,7 @@ test('the wheel answer to a distraction is the answer that gets graded', async (
       continue;
     }
 
-    if (await page.locator('.numpad').isVisible().catch(() => false)) {
+    if (state === 'answer') {
       await enter(3); // the final running count; its correctness is not the subject
       await page.waitForTimeout(COMMIT_MS + 600);
       continue;
