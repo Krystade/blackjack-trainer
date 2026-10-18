@@ -48,6 +48,11 @@ export interface Settings {
    */
   dealerPaceOn?: boolean;
   dealerPaceSec?: number;
+  /**
+   * G2 (L-8): Play's dealer makes the occasional payout error, to be caught
+   * with Foul (engine/dealerErrors.ts). Absent = off. Forced off eyes-free.
+   */
+  dealerMistakes?: boolean;
   // C-R3 (W10): the last drill run eyes-free or by voice, for Home's one-tap
   // "Drive" button. `mode` is the Drills mode id; `voice` whether the
   // microphone was on. Absent = no such drill yet (no Drive button).
@@ -77,6 +82,9 @@ export interface Settings {
     // Absent = off; run length then counts rounds (countTableRounds, default 10).
     countTableMode?: boolean;
     countTableRounds?: number;
+    // G1 (L-1): the count drill prints each flashed card's Hi-Lo value under
+    // it, and opens the result's run listing. A beginner aid. Absent = off.
+    countShowHiLo?: boolean;
     countGroup: 1 | 2 | 3;
     countIntervalMs: number;
     countLengthCards: number;
@@ -680,6 +688,10 @@ export interface Stats {
     // Wave B2, R3: bet and play-or-sit decisions graded wrong, counted beside
     // the per-100 figure (which prices play mistakes only).
     betMisses?: number;
+    // G2 (L-8): dealer payout errors made this session, how many were caught
+    // with Foul, and Foul calls on a correct payout. Present only on a session
+    // that played with Dealer mistakes on; kept out of every accuracy figure.
+    dealerErrors?: { made: number; caught: number; falseCalls: number };
   }[];
   // R1 (docs/BACKLOG.md, decision-latency telemetry): one entry per GRADED
   // EVENT that actually captured a decision time (flashcards + deviation

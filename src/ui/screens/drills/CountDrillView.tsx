@@ -79,6 +79,8 @@ import type { TableRound } from '../../../drills/countTable';
 import './countTable.css';
 import './countPause.css';
 import { COUNT_PAUSED_LINE } from '../../../drills/countPause';
+import { EASY_FIRST_RUN, hiLoLabel, hiLoShown, offersEasyFirstRun } from '../../../drills/hiLoAid';
+import './hiLoAid.css';
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -186,6 +188,12 @@ export function CountDrillView({
   const [countdownMode, setCountdownMode] = useState(false);
   // V3-4 soft gate: computed once at mount (fluency doesn't change mid-session).
   const [countFluent] = useState(() => isCountFluent(loadStats().countDrill.history));
+  // G1 (L-1): offered only before any count run is on record. Read at mount:
+  // the setup screen is only ever shown on the way in.
+  const [easyOffered] = useState(() => offersEasyFirstRun(loadStats()));
+  // G1: Easy first run writes its settings, then starts on the render that
+  // carries them -- start() reads settings from props.
+  const [easyStartPending, setEasyStartPending] = useState(false);
   const [phase, setPhaseState] = useState<CountPhase>('setup');
   /**
    * The phase, readable SYNCHRONOUSLY.
@@ -446,6 +454,8 @@ export function CountDrillView({
   // nor a Timed Challenge is a run of rounds, so it is offered only outside
   // all three; a stored "Table" under any of them deals ordinary cards.
   const tableChoosable = !countdownMode && !eyesFree && !timedChallenge;
+  // G1: Hi-Lo values under the flashed cards -- screen only, never eyes-free.
+  const showHiLo = hiLoShown(settings.drill, eyesFree);
   const tableOn = tableChoosable && settings.drill.countTableMode === true;
 
   const groups: Card[][] = countdownMode
@@ -1079,6 +1089,21 @@ export function CountDrillView({
     }
   };
 
+  /** G1: one deck, slow, values shown -- then go. */
+  const startEasyFirstRun = () => {
+    setCountdownMode(false);
+    setTimedChallenge(false);
+    setPractice(false);
+    updateDrill(EASY_FIRST_RUN);
+    setEasyStartPending(true);
+  };
+  useEffect(() => {
+    if (!easyStartPending) return;
+    setEasyStartPending(false);
+    start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [easyStartPending]);
+
   const handleBack = () => {
     // Bump runId synchronously (before onBack triggers any unmount) so any
     // in-flight speech-driven loop's next staleness check fails immediately,
@@ -1697,15 +1722,26 @@ export function CountDrillView({
   }, [voiceOn, phase]);
 
   const currentGroup = shownIndex < groups.length ? groups[shownIndex] : null;
+
+  /** G1: the card with its Hi-Lo value printed under it, when the aid is on. */
+  function withHiLo(node: ReactNode, c: Card, key: string): ReactNode {
+    if (!showHiLo) return node;
+    return (
+      <span key={key} className="hilo-card">
+        {node}
+        <span className="hilo-value" data-testid="hilo-value" data-rank={c.rank}>
+          {hiLoLabel(c)}
+        </span>
+      </span>
+    );
+  }
   const currentTable = tableRun && shownIndex < tableRun.length ? tableRun[shownIndex] : null;
 
   /** #47: the round laid out like Play -- dealer on top, seats below, read-only. */
   const tableLayout = currentTable && (
     <div className="count-table" data-testid="count-table">
       <div className="dealer-area count-table-dealer">
-        {currentTable.dealer.map((c, i) => (
-          <PlayingCard key={i} card={c} />
-        ))}
+        {currentTable.dealer.map((c, i) => withHiLo(<PlayingCard key={i} card={c} />, c, `d${i}`))}
       </div>
       <div className="bot-seats-row count-table-seats">
         {currentTable.players.map((hand, seat) => (
@@ -1713,9 +1749,7 @@ export function CountDrillView({
             <div className="bot-seat-label">P{seat + 1}</div>
             <div className="bot-hand">
               <div className="bot-hand-cards">
-                {hand.map((c, j) => (
-                  <PlayingCard key={j} card={c} size="compact" />
-                ))}
+                {hand.map((c, j) => withHiLo(<PlayingCard key={j} card={c} size="compact" />, c, `p${j}`))}
               </div>
             </div>
           </div>
@@ -1754,12 +1788,15 @@ export function CountDrillView({
 
   const renderFlashCard = (c: Card, i: number) => {
     const key = `${shownIndex}-${i}`;
-    if (!settings.drill.messyCards) return <PlayingCard key={key} card={c} />;
+    if (!settings.drill.messyCards) return withHiLo(<PlayingCard key={key} card={c} />, c, key);
     const jitter = jitterTransform(cardJitter(runSeedRef.current, shownIndex * 4 + i));
-    return (
+    // G1: the value sits outside the tilt, so it reads level under a messy card.
+    return withHiLo(
       <span key={key} className="messy-card" style={{ display: 'inline-block', transform: jitter }}>
         <PlayingCard card={c} />
-      </span>
+      </span>,
+      c,
+      key,
     );
   };
 
@@ -1840,6 +1877,7 @@ export function CountDrillView({
       groups={groups}
       checkpoints={checkpointReport?.results}
       {...(countdownMode && countdownRound ? { hidden: countdownRound.hidden } : {})}
+      defaultOpen={showHiLo}
     />
   );
 
@@ -2206,6 +2244,19 @@ export function CountDrillView({
             Messy cards (tilted and offset, as on a real table)
           </label>
 
+          {/* G1 (L-1): a beginner aid, screen only. Not offered eyes-free,
+              where nothing on screen is being read. */}
+          {!eyesFree && (
+            <label className="count-toggle">
+              <input
+                type="checkbox"
+                checked={settings.drill.countShowHiLo === true}
+                onChange={(e) => updateDrill({ countShowHiLo: e.target.checked })}
+              />
+              Show Hi-Lo values (+1, 0 or &minus;1 under each card, and the count after each card at the end)
+            </label>
+          )}
+
           {/* ET7: adversarial dealer-pace pressure. Only meaningful for the
               ordinary auto-flash count drill (Timed Challenge owns its own
               pacing; manual/eyes-free are self-paced), so it's noted as such. */}
@@ -2231,7 +2282,20 @@ export function CountDrillView({
             </div>
           </details>
 
-          <DrillPrimaryBar label="Start" variant="start" onPrimary={start} />
+          {/* G1: a first run made easy, offered until any count run is recorded. */}
+          {easyOffered && !eyesFree && (
+            <div className="settings-row settings-note-row easy-first-note" data-testid="easy-first-note">
+              New to counting? Easy first run deals one deck, slowly, with each card&apos;s Hi-Lo value shown.
+            </div>
+          )}
+          <DrillPrimaryBar
+            label="Start"
+            variant="start"
+            onPrimary={start}
+            {...(easyOffered && !eyesFree
+              ? { secondaryLabel: 'Easy first run', onSecondary: startEasyFirstRun }
+              : {})}
+          />
         </div>
       )}
 

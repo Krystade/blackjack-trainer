@@ -16,18 +16,21 @@ export function CountRunList({
   groups,
   checkpoints,
   hidden,
+  defaultOpen = false,
 }: {
   groups: readonly (readonly Card[])[];
   checkpoints?: readonly CountRunCheckpoint[];
   /** Countdown's undealt card, listed last. */
   hidden?: Card;
+  /** G1: opens on the result when the run showed Hi-Lo values. */
+  defaultOpen?: boolean;
 }) {
   if (groups.length === 0) return null;
   const rows = countRunRows(groups, checkpoints, hidden);
   const cards = groups.reduce((n, g) => n + g.length, 0) + (hidden ? 1 : 0);
   const grouped = groups.some((g) => g.length > 1);
   return (
-    <details className="count-run" data-testid="count-run">
+    <details className="count-run" data-testid="count-run" open={defaultOpen || undefined}>
       <summary>
         Show the run <span className="count-run-size">({cards} cards)</span>
       </summary>
