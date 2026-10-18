@@ -1439,18 +1439,23 @@ test('mixed session: interleaves flashcard + quiz items, grading each through it
   let sawQuiz = false;
 
   for (let i = 0; i < EXPECTED_TYPES.length; i++) {
-    // A quiz item shows a true count (.quiz-tc); a flashcard item never does.
-    // That visible cue IS the discrimination the mode trains.
+    // E1 (deliberate change): every item now shows a true count, so the
+    // screen no longer says which kind it is -- the kind is read from the
+    // spec-only `data-item-type` instead of from `.quiz-tc` being there.
     await expect(page.locator('.action-bar')).toBeVisible();
-    const isQuiz = (await page.locator('.quiz-tc').count()) > 0;
-    expect(isQuiz ? 'quiz' : 'flash', `item ${i} type`).toBe(EXPECTED_TYPES[i]);
+    await expect(page.locator('.drill-screen > .quiz-tc')).toHaveCount(1);
+    const type = await page.locator('.drill-screen').getAttribute('data-item-type');
+    expect(type, `item ${i} type`).toBe(EXPECTED_TYPES[i]);
 
-    // Answer via the SAME surfaces the standalone views expose: insurance
-    // items get Decline; everything else gets Stand.
-    const insurancePrompt = page.locator('.quiz-insurance-prompt');
-    const btn = (await insurancePrompt.isVisible().catch(() => false))
-      ? page.getByRole('button', { name: 'Decline insurance', exact: true })
-      : page.locator('.action-bar button.action-btn', { hasText: 'Stand' });
+    // Answer via the SAME surfaces the standalone views expose. E2 (deliberate
+    // change): answered RIGHT (the e2e-only `data-correct`), because a miss is
+    // now dealt again 3-6 items later and that slot beats the type coin, so a
+    // run of Stand answers no longer follows the pinned interleave.
+    const correct = (await page.locator('.drill-screen').getAttribute('data-correct'))!;
+    const btn =
+      correct === 'take-insurance' || correct === 'decline-insurance'
+        ? page.getByRole('button', { name: correct === 'take-insurance' ? 'Take insurance' : 'Decline insurance', exact: true })
+        : page.locator('.action-bar button.action-btn', { hasText: correct.charAt(0).toUpperCase() + correct.slice(1) });
     await answerAndReadStrip(page, btn);
 
     // B1: the strip holds the answered item and the next one is already up.

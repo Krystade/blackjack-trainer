@@ -307,7 +307,9 @@ test('a mixed session gates a quiz item the way the quiz does', async ({ page })
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills' }).first().click();
   await page.getByRole('button', { name: 'Mixed', exact: true }).click();
-  await expect(page.locator('.quiz-tc'), 'this run did not open on a quiz item').toBeVisible();
+  // E1 (deliberate change): a flash item shows a TC too, so `.quiz-tc` no
+  // longer proves the kind; the spec-only attribute does.
+  await expect(page.locator('.drill-screen'), 'this run did not open on a quiz item').toHaveAttribute('data-item-type', 'quiz');
 
   await page.getByLabel('Eyes-free audio').check();
   const pad = page.locator('.zone-pad');

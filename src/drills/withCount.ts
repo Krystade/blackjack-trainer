@@ -107,6 +107,78 @@ export function drawCountTc(
 }
 
 /**
+ * E1 (W2-11): the counts at which a Mixed basic-strategy item may be shown --
+ * ones where the hand is still played by the chart.
+ *
+ * Two rule sets, because Mixed has two: `gradeRules` grades the flashcard
+ * (the profile's own), and `rules` is the index set the learner is drilling
+ * (with the opted-in Fab 4 and BJA extras, as the quiz half asks). Every
+ * count offered is plain under `gradeRules` -- no index, the chart's play --
+ * so grading and stats routing (F4, R9) are exactly a basic answer's. Under
+ * `rules` the play must be the chart's too, or the two halves of one session
+ * would teach different plays for the same hand and count.
+ *
+ * Counts where no index fires at all come first. A few cells have none: with
+ * the Fab 4 on, 15 v 10 is a surrender from 0 up and a hit below it, so every
+ * count either carries the index or leaves the chart. There the counts where
+ * the index agrees with the chart are used (15 v 10 at 0 and up: surrender,
+ * both ways). The plain range first; the whole card range only if it has none.
+ */
+export function plainCounts(
+  cards: Card[],
+  up: Rank,
+  ctx: PlayContext,
+  rules: StrategyRules,
+  gradeRules: StrategyRules = rules,
+): number[] {
+  const chart = basicPlay(cards, up, ctx, rules).action;
+  const graded = (tc: number) => {
+    const advice = withCountAdvice(cards, up, tc, ctx, gradeRules);
+    return !advice.deviationId && advice.action === chart;
+  };
+  const noIndex = (tc: number) => {
+    const advice = withCountAdvice(cards, up, tc, ctx, rules);
+    return !advice.deviationId && advice.action === chart;
+  };
+  const agrees = (tc: number) => withCountAdvice(cards, up, tc, ctx, rules).action === chart;
+  for (const [lo, hi] of [[PLAIN_MIN, PLAIN_MAX], [TC_MIN, TC_MAX]] as const) {
+    for (const ok of [noIndex, agrees]) {
+      const out: number[] = [];
+      for (let tc = lo; tc <= hi; tc++) if (graded(tc) && ok(tc)) out.push(tc);
+      if (out.length > 0) return out;
+    }
+  }
+  return [];
+}
+
+/**
+ * E1 (W2-11): a seeded true count for a hand Mixed asks as BASIC STRATEGY.
+ *
+ * Mixed's flashcards used to show no count while its index items did, so the
+ * screen (and the voice) said which kind of question it was before the
+ * learner had to decide whether the count mattered -- the one judgment the
+ * session exists to train. Every item now shows a count; on a basic-strategy
+ * item it is one where the chart's play is the answer (`plainCounts`), so
+ * nothing about grading or stats routing moves.
+ *
+ * Uniform over `plainCounts`. The exhaustive test in mixedFlashCount.test.ts
+ * proves every cell has one under every rule set; the 0 is a backstop, never
+ * reached.
+ */
+export function drawPlainTc(
+  cards: Card[],
+  up: Rank,
+  ctx: PlayContext,
+  rules: StrategyRules,
+  rng: () => number,
+  gradeRules: StrategyRules = rules,
+): number {
+  const counts = plainCounts(cards, up, ctx, rules, gradeRules);
+  if (counts.length === 0) return 0;
+  return counts[Math.floor(rng() * counts.length)]!;
+}
+
+/**
  * The result strip's line for a With-count card: which index applied.
  *
  * Wave A (s03): with the hand given, a cell that HAS an index the count has

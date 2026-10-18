@@ -111,7 +111,9 @@ describe('gradeAnswer shared grade path (R4 anti-drift)', () => {
       expect(statsAfterA).toEqual(applyEvents(EMPTY_STATS, [a.event]));
     });
 
-    it('gradeFlashcardAnswer: a miss schedules the cell due-now at box 0; a correct answer promotes it to box 1 (SR)', () => {
+    // E2 (W2-2), deliberate change: one correct answer after a miss no longer
+    // promotes -- the learning step needs two, with another card between.
+    it('gradeFlashcardAnswer: a miss schedules the cell due-now at box 0; the second correct answer after it promotes it to box 1 (SR)', () => {
       const card = drawFlashcard('all', {}, 0, 777, DEFAULT_RULES);
       const wrong = card.correct === 'stand' ? 'hit' : 'stand';
 
@@ -120,8 +122,16 @@ describe('gradeAnswer shared grade path (R4 anti-drift)', () => {
       expect(missed.nextDeck[card.cellId].box).toBe(0);
       expect(missed.nextDeck[card.cellId].dueAt).toBe(NOW); // box-0 interval is 0 -> due now
 
-      const recovered = gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 10, missed.nextDeck, NOW);
-      expect(recovered.event.correct).toBe(true);
+      const first = gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 10, missed.nextDeck, NOW);
+      expect(first.event.correct).toBe(true);
+      expect(first.nextDeck[card.cellId].box).toBe(0); // the learning step: still box 0...
+      expect(first.nextDeck[card.cellId].dueAt).toBe(NOW); // ...and due now
+
+      // The same cell straight back, with no card between, banks nothing.
+      const repeated = gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 10, first.nextDeck, NOW, undefined, undefined, true);
+      expect(repeated.nextDeck[card.cellId].box).toBe(0);
+
+      const recovered = gradeFlashcardAnswer(card, card.correct, DEFAULT_RULES, 10, repeated.nextDeck, NOW);
       expect(recovered.nextDeck[card.cellId].box).toBe(1); // promoted one box
     });
   });
@@ -161,6 +171,18 @@ describe('gradeAnswer shared grade path (R4 anti-drift)', () => {
       const before: SrDeck = { '16v10': { box: 2, dueAt: 0, lastSeenAt: 0, lapses: 1, reviews: 3 } };
       const graded = gradeQuizAnswer(distractor, distractor.correct, DEFAULT_RULES, 10, before, NOW);
       expect(graded.nextDeck).toEqual(before); // untouched
+    });
+
+    it('E2 gradeQuizAnswer: the learning step -- a repeat banks nothing, the second spaced correct promotes', () => {
+      const item = drawQuizItem(55555, undefined, DEFAULT_RULES);
+      const id = item.deviationId!;
+      const wrong = item.correct === 'stand' ? 'hit' : 'stand';
+      const missed = gradeQuizAnswer(item, wrong, DEFAULT_RULES, 10, {}, NOW).nextDeck;
+      const first = gradeQuizAnswer(item, item.correct, DEFAULT_RULES, 10, missed, NOW).nextDeck;
+      expect([first[id]!.box, first[id]!.learningStep]).toEqual([0, 1]);
+      const repeated = gradeQuizAnswer(item, item.correct, DEFAULT_RULES, 10, first, NOW, undefined, undefined, true).nextDeck;
+      expect([repeated[id]!.box, repeated[id]!.learningStep]).toEqual([0, 1]);
+      expect(gradeQuizAnswer(item, item.correct, DEFAULT_RULES, 10, repeated, NOW).nextDeck[id]!.box).toBe(1);
     });
   });
 
