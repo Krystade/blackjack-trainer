@@ -43,6 +43,7 @@ import { DiscardTray } from '../components/DiscardTray';
 import { PeekButton } from '../components/PeekButton';
 import { MistakeCard } from '../components/MistakeCard';
 import { StudyChartOverlay } from '../components/StudyChartOverlay';
+import { playMissReason } from './playMissReason';
 import { NumPad } from '../components/NumPad';
 import { VoiceStatusBar } from '../components/VoiceStatusBar';
 import { VOICE_WORDS } from '../voiceLabels';
@@ -58,6 +59,7 @@ import './tableTopbar.css';
 import './tableCues.css';
 import './tableGlance.css';
 import './tableSheet.css';
+import './playMissReason.css';
 import { dealerFeltRow, playerFeltLayout, type FeltRow } from '../feltLayout';
 import { useViewportWidth } from '../useViewportWidth';
 import { DEAL_WORDS, isDealWord } from '../dealWord';
@@ -1251,7 +1253,16 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             taken={overlay.taken}
             expected={overlay.expected}
             variant="table"
-            reason={overlay.reason}
+            // E6: a basic error reads its chart region and the dealer's bust
+            // chance; index errors keep the engine's index label.
+            reason={playMissReason({
+              reason: overlay.reason,
+              classification: overlay.classification,
+              cards: overlay.cards,
+              dealerUp: overlay.dealerUp,
+              canSplit: overlay.canSplit,
+              rules: game.rules,
+            })}
             tc={overlay.tc}
             hand={overlay.hand}
             classification={overlay.classification}
