@@ -188,12 +188,17 @@ function basicCard(stats: Stats, cats: HandCategoryProgress[]): Card | null {
   const thin = cats.filter((c) => c.thin).sort((a, b) => a.n - b.n)[0];
   if (thin) {
     // cellStats has no backfill: a returning user's older answers are in the
-    // category tally only, so "so far" would be false for them.
+    // category tally only, so "so far" would be false for them. Wave I: and
+    // they are counted out loud -- "0 answers" over Home's all-time accuracy
+    // (97% on Jack's phone) read as if his history had been lost.
     const since = thin.legacy ? 'since per-hand tracking began' : 'so far';
+    const older = thin.legacy
+      ? ` (your ${thin.older} earlier answer${thin.older === 1 ? '' : 's'} predate${thin.older === 1 ? 's' : ''} it)`
+      : '';
     return {
       kind: 'flash',
       title: 'Learn basic strategy',
-      why: `${thin.label}: ${thin.n} answer${thin.n === 1 ? '' : 's'} ${since}, ${MIN_CATEGORY_ANSWERS} needed to judge. Get every category to ${pctDown(CATEGORY_TARGET)}%.`,
+      why: `${thin.label}: ${thin.n} answer${thin.n === 1 ? '' : 's'} ${since}, ${MIN_CATEGORY_ANSWERS} needed to judge${older}. Get every category to ${pctDown(CATEGORY_TARGET)}%.`,
       scope: thin.scope,
     };
   }

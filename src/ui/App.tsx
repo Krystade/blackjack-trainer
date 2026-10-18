@@ -38,6 +38,8 @@ const TestKit = lazyScreen('testkit', () => import('./screens/TestKit').then((m)
 const ProfileEditor = lazyScreen('profiles', () => import('./screens/ProfileEditor').then((m) => m.ProfileEditor));
 // Last, so the mute seat (B1) wins the cascade over every sheet above it.
 import './muteSeat.css';
+// Wave I: shell fit at 320 and 375 (tab bar above the home indicator, Home's one-row head).
+import './layoutFit.css';
 
 declare global {
   interface Window {

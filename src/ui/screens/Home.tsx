@@ -121,14 +121,20 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
   return (
     <div className="home-screen">
       <header className="home-head">
-        <h1 className="home-title">Blackjack Trainer</h1>
+        {/* Wave I: one row at 320 and 375. The tail drops first on a narrow
+            phone (layoutFit.css); the text stays whole for screen readers. */}
+        <h1 className="home-title">
+          Blackjack<span className="home-title-tail"> Trainer</span>
+        </h1>
+        {/* One line, ellipsised when it must be. The clip is visual only:
+            the text (the accessible name) and the tooltip keep the whole name. */}
         <button
           type="button"
           className="home-profile-chip"
-          title="Switch or edit profiles"
+          title={`${activeProfile.name}: switch or edit profiles`}
           onClick={() => onNavigate('profiles')}
         >
-          {activeProfile.name}
+          <span className="home-profile-chip-name">{activeProfile.name}</span>
         </button>
       </header>
 

@@ -8,6 +8,7 @@ import { dropRetiredKeys, loadSettings } from './store/persist.ts';
 import { applyTheme, normalizeTheme } from './ui/theme.ts';
 import { registerOfflineWorker } from './offline/registerOffline.ts';
 import { requestPersistentStorage } from './store/storageHealth.ts';
+import { watchViewportGap } from './ui/viewportGap.ts';
 
 // OPEN THE VOICE LIST BEFORE ANYTHING WANTS TO SPEAK.
 //
@@ -33,6 +34,10 @@ void requestPersistentStorage();
 // The stored theme before React's first render (index.html does it even
 // earlier, before the bundle loads; this covers a document served without it).
 applyTheme(normalizeTheme(loadSettings().theme));
+
+// Where a fixed bottom:0 bar really lands in the installed app (Wave I; see
+// ui/viewportGap.ts). A no-op in a browser tab.
+watchViewportGap();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

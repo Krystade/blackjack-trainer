@@ -44,7 +44,7 @@
 
 /* B5/W6: the wrong-play card docks to the bottom as a sheet. */
 .wrong-play-backdrop { align-items: flex-end; padding: 0; }
-.wrong-play-sheet { width: 100%; max-width: 480px; background: var(--surface); border-radius: 14px 14px 0 0; padding: 0.75rem var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom, 0px)); max-height: 85svh; overflow-y: auto; }
+.wrong-play-sheet { width: 100%; max-width: 480px; background: var(--surface); border-radius: 14px 14px 0 0; padding: 0.75rem var(--space-4) calc(var(--space-3) + var(--safe-bottom, 0px)); max-height: 85svh; overflow-y: auto; }
 .wrong-play-sheet .overlay-continue-btn { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); min-height: 52px; font-size: var(--fs-md); margin-top: 0.75rem; }
 .mistake-card-table .mistake-head { flex-wrap: nowrap; justify-content: flex-start; align-items: center; }
 .mistake-card-table .mistake-verdict { font-size: var(--fs-md); white-space: nowrap; }

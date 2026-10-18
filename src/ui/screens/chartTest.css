@@ -237,7 +237,7 @@
 
 .ct-bar {
   position: sticky;
-  bottom: calc(var(--tab-bar-h, 3.5rem) + env(safe-area-inset-bottom, 0px));
+  bottom: calc(var(--tab-bar-h, 3.5rem) + var(--safe-bottom, 0px));
   z-index: 5;
   display: flex;
   flex-direction: column;

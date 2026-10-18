@@ -9,7 +9,7 @@
 .floating-back-pill {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--vp-gap, 0px) + env(safe-area-inset-bottom, 0px) + 12px);
+  bottom: calc(var(--vp-gap, 0px) + var(--safe-bottom, 0px) + 12px);
   transform: translateX(-50%);
   z-index: 20;
   display: inline-flex;
