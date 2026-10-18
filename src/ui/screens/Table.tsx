@@ -67,6 +67,8 @@ import './feltWrap.css';
 import './tableVoiceFit.css';
 import './countSheetBanner.css';
 import { DealerPaceBar } from '../components/DealerPaceBar';
+import { FoulCall } from '../components/FoulCall';
+import { dealerErrorsValue, dealerMistakesOn } from '../dealerErrorCopy';
 import { createDecisionTimer, holdWhileSpeaking, type DecisionTimer } from '../decisionTimer';
 import { dealerPaceMs, isSlowDecision, slowDecisionsText } from '../dealerPace';
 import { trackedElapsedMs } from '../../drills/idleAnswer';
@@ -291,6 +293,17 @@ function ReportScreen({
       </p>
       {assisted && <p className="report-assisted">{assisted}</p>}
       {/* F5: only when the dealer-pace clock ran for some decision. */}
+      {/* G2: its own row, outside every accuracy figure above. */}
+      {report.dealerErrors && (
+        <p
+          className="report-dealer-errors"
+          data-testid="report-dealer-errors"
+          data-made={report.dealerErrors.made}
+          data-caught={report.dealerErrors.caught}
+        >
+          Dealer errors caught {dealerErrorsValue(report.dealerErrors)}
+        </p>
+      )}
       {report.pacedDecisions > 0 && (
         <p className="report-slow" data-testid="report-slow" data-slow={report.slowDecisions}>
           {slowDecisionsText(report.slowDecisions)}
@@ -426,6 +439,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     deal,
     act,
     insure,
+    callFoul,
     submitCount,
     requestEnd,
     overlay,
@@ -787,6 +801,12 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const [eyesFreeSwitch] = useEyesFreeToggle('table');
   const eyesFree = eyesFreeSwitch || voiceOn;
   const paceMs = dealerPaceMs(settings, eyesFree);
+  // G2 (L-8): read live, like the pace clock -- rounds that settle from here
+  // on use it. Off eyes-free.
+  const mistakesOn = dealerMistakesOn(settings, eyesFree);
+  useLayoutEffect(() => {
+    game.setDealerMistakes(mistakesOn);
+  }, [game, mistakesOn]);
   const timerRef = useRef<DecisionTimer | null>(null);
   timerRef.current ??= createDecisionTimer();
   const decidingHand = game.phase === 'player' ? game.hands[game.active] : undefined;
@@ -1187,6 +1207,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             )}
           </>
         )}
+        {/* G2: Foul from settlement until the next deal; a miss is said on the next round. */}
+        <FoulCall game={game} onFoul={callFoul} />
       </div>
 
       {/* #40: the peek under the left thumb, just above the bar. The skip

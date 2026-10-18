@@ -49,6 +49,7 @@ import './statsGoal.css';
 import './statsHistory.css';
 import './statsSessions.css';
 import { betMissText, formatLossValue, sessionsBetMisses, sessionsLossPer100, sessionsPlayAccuracy, sessionTag } from '../sessionFigures';
+import { dealerErrorsValue, sessionsDealerErrors } from '../dealerErrorCopy';
 
 interface StatsProps {
   activeProfile: Profile;
@@ -819,6 +820,9 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
     const bets = betMissText(sessionsBetMisses(profileSessions));
     profileRows.push(['Lost to playing mistakes', bets ? `${formatLossValue(lossPer100)} · ${bets}` : formatLossValue(lossPer100)]);
   }
+  // G2 (L-8): its own row -- never part of play accuracy above.
+  const dealerErrors = sessionsDealerErrors(profileSessions);
+  if (dealerErrors) profileRows.push(['Dealer errors caught', dealerErrorsValue(dealerErrors)]);
   // W3: hard / soft / pairs, as Home's Next step judges them.
   const handRows = handCategoryProgress(stats);
 

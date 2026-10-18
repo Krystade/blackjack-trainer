@@ -1,0 +1,31 @@
+/* G2 (L-8): the Foul call under the round banner. No font sizes here on
+   purpose: it inherits the message strip's, so the type-scale pass (G3) has
+   nothing new to fold in. */
+.foul-call {
+  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.foul-call > .result-strip {
+  flex: 1 1 100%;
+}
+
+/* A call against the house: the danger tint, but never the primary action --
+   Deal stays the one thing the thumb lands on. */
+.foul-btn {
+  min-width: 5.5rem;
+  min-height: 44px;
+  background: var(--bad-surface);
+  border-color: var(--bad-line);
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+.foul-hint {
+  color: var(--ink-dim);
+}

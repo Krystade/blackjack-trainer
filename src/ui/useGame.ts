@@ -17,6 +17,7 @@ import { lockstepTell, type BetRound, type LockstepTell } from '../engine/coverB
 import { mistakeUnits } from './reportSections';
 import { newSessionId, sessionRowFor, upsertSession } from './sessionRow';
 import { betMissFeedback, type BetMiss } from './betFeedback';
+import { sessionDealerErrors } from './dealerErrorCopy';
 import {
   narrateBotAction,
   narrateCard,
@@ -117,6 +118,12 @@ export interface SessionReport {
    */
   pacedDecisions: number;
   slowDecisions: number;
+  /**
+   * G2 (L-8): dealer payout errors made, caught with Foul, and false calls.
+   * Null for a session played with Dealer mistakes off. Not graded events:
+   * it moves no accuracy figure.
+   */
+  dealerErrors: { made: number; caught: number; falseCalls: number } | null;
 }
 
 /** F5: what the screen measured about one Play decision (see Game.act). */
@@ -166,7 +173,7 @@ function buildReport(
   bankrollDelta: number,
   peeks: number,
   hands: number,
-): Omit<SessionReport, 'hotShoe' | 'pacedDecisions'> {
+): Omit<SessionReport, 'hotShoe' | 'pacedDecisions' | 'dealerErrors'> {
   // RT#11: read the bets back off the graded events. `taken`/`expected` are
   // strings on the event, and a bet event always carries both as numbers, so
   // an unparseable pair means something upstream changed shape -- dropped
@@ -372,7 +379,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     (final: boolean) => {
       if (game.roundNo === 0 || endedRef.current) return;
       const fresh = game.events.length > committedRef.current;
-      const key = `${game.roundNo}|${game.events.length}|${game.bankroll}|${peeksRef.current}|${final}`;
+      const t = game.dealerErrorTally;
+      const key = `${game.roundNo}|${game.events.length}|${game.bankroll}|${peeksRef.current}|${t.made}/${t.caught}/${t.falseCalls}|${final}`;
       if (!fresh && key === rowKeyRef.current) return;
       const now = new Date().toISOString();
       let stats = loadStats();
@@ -400,6 +408,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
           peeks: peeksRef.current,
           hotShoe,
           provisional: !final,
+          ...sessionDealerErrors(game.dealerErrorTally, game.dealerMistakesUsed),
         }),
       );
       rowKeyRef.current = key;
@@ -472,6 +481,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       realignLosingShoe(playGame);
       const before = game.events.length;
       game.startRound(betUnits);
+      // G2: the last round's dealer error went uncalled; the strip says so.
+      if (game.missedDealerError) audio.ding('bad');
       // Said before the cards: it is about the bet just placed, and the cards
       // are what the next decision needs fresh.
       noteBetMiss(game.events.slice(before));
@@ -491,6 +502,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     realignLosingShoe(playGame);
     const before = game.events.length;
     game.sitOut();
+    if (game.missedDealerError) audio.ding('bad');
     if (game.shuffledLastRound && !shuffleSaidRef.current) audio.say(narrateShuffle());
     shuffleSaidRef.current = false;
     audio.say(narrateSitOut());
@@ -579,6 +591,18 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   );
 
   const dismissOverlay = useCallback(() => setOverlay(null), []);
+
+  /**
+   * G2 (L-8): call Foul on the settled round's payout. The engine grades it
+   * and, on a real error, corrects the payout; the bankroll and session row
+   * follow on the render this bump causes.
+   */
+  const callFoul = useCallback(() => {
+    const verdict = game.callFoul();
+    if (!verdict) return;
+    audio.ding(verdict.correct ? 'good' : 'bad');
+    bump();
+  }, [game, audio, bump]);
 
   /**
    * Paced bot-narration reveal (Cycle-2 Task 6). `game.botActionLog` is
@@ -786,6 +810,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
    */
   const endSession = useCallback((): SessionReport | null => {
     if (game.roundNo === 0) return null;
+    // G2: no deal follows End, so an error still uncalled is missed now.
+    game.closeDealerError();
     persistSession(true);
     const events = game.events;
     const bankrollDelta = game.bankroll - game.cfg.bankrollStart;
@@ -795,6 +821,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       ...buildReport(events, bankrollDelta, peeksRef.current, game.handsPlayed),
       hotShoe,
       pacedDecisions: pacedRef.current,
+      dealerErrors: sessionDealerErrors(game.dealerErrorTally, game.dealerMistakesUsed).dealerErrors ?? null,
     };
     setReport(rep);
     return rep;
@@ -808,6 +835,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     sitOut,
     act,
     insure,
+    callFoul,
     submitCount,
     requestEnd,
     overlay,

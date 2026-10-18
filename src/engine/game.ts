@@ -16,6 +16,13 @@ import type { GradedEvent } from './grade';
 import type { Action } from './deviations';
 import { DEFAULT_RULES } from './ruleset';
 import type { StrategyRules } from './ruleset';
+import {
+  dealerErrorSeed,
+  rollDealerError,
+  EMPTY_DEALER_ERROR_TALLY,
+  type DealerError,
+  type DealerErrorTally,
+} from './dealerErrors';
 
 export interface SeatConfig {
   playerHands: 1 | 2 | 3;
@@ -99,6 +106,22 @@ export interface GameConfig {
   /** B8: deal from a Hot shoe (shoeBias.ts), biased toward positive counts.
    * Absent or false = the normal shoe. */
   hotShoe?: boolean;
+  /** G2: the dealer makes the occasional payout error (engine/dealerErrors.ts).
+   * Absent or false = never. Can be changed between rounds with
+   * `setDealerMistakes`. */
+  dealerMistakes?: boolean;
+  /** Test hook only: the stream dealer errors are rolled on. Absent = a
+   * mulberry32 stream salted from `seed` (dealerErrorSeed), created the first
+   * time a roll is needed. */
+  dealerErrorRng?: () => number;
+}
+
+/** G2: what calling Foul came to. */
+export interface FoulVerdict {
+  /** True when there was an error to call. */
+  correct: boolean;
+  /** The error that was called, when there was one. */
+  error: DealerError | null;
 }
 
 /** #3: what a Play count check asks. 'running' = RC only, 'true' = TC only,
@@ -280,6 +303,24 @@ export class Game {
 
   private countCheckPromptCount = 0;
 
+  /** G2: dealer mistakes are on for rounds that settle from now on. */
+  private dealerMistakesOn: boolean;
+  /** G2: created on the first roll, so with the setting off nothing is drawn. */
+  private dealerErrorRng: (() => number) | null = null;
+  private readonly dealerErrorSeedBase: number;
+  /** G2: the error this round settled with, or null. Cleared by the next deal. */
+  dealerError: DealerError | null = null;
+  /** G2: what Foul said about THIS round, or null while it has not been called. */
+  foulVerdict: FoulVerdict | null = null;
+  /** G2: the previous round's error, left uncalled -- graded missed as this
+   * round was dealt. Null when there was none. */
+  missedDealerError: DealerError | null = null;
+  /** G2: this game's errors and calls. Kept apart from `events`: none of it
+   * is a play decision, and it must not move play accuracy. */
+  dealerErrorTally: DealerErrorTally = { ...EMPTY_DEALER_ERROR_TALLY };
+  /** G2: some round settled with the setting on. */
+  dealerMistakesUsed = false;
+
   constructor(cfg: GameConfig) {
     this.cfg = cfg;
     this.rules = cfg.rules ?? DEFAULT_RULES;
@@ -300,6 +341,78 @@ export class Game {
       order: cfg.hotShoe ? hotShoeOrder : undefined });
     this.bankroll = cfg.bankrollStart;
     this.rng = mulberry32(botRngSeed(cfg.seed ?? Date.now()));
+    this.dealerMistakesOn = cfg.dealerMistakes === true;
+    this.dealerErrorSeedBase = dealerErrorSeed(cfg.seed ?? Date.now());
+  }
+
+  /** G2: whether rounds that settle from now on can carry a dealer error. */
+  get dealerMistakes(): boolean {
+    return this.dealerMistakesOn;
+  }
+
+  setDealerMistakes(on: boolean): void {
+    this.dealerMistakesOn = on;
+  }
+
+  /** G2: Foul can be called now -- the round has settled with a hand of the
+   * player's on the felt, and Foul has not been called on it yet. */
+  get foulOpen(): boolean {
+    return this.phase === 'settled' && this.hands.length > 0 && this.foulVerdict === null;
+  }
+
+  /**
+   * G2: the player calls Foul on this round's payout.
+   *
+   * On an error it is graded right and the payout is put right: the hand gets
+   * its correct result and net, and the bankroll gives back (or gets) the
+   * difference. On a correct payout it is graded wrong. One call per round.
+   * Returns null when no call can be made (see `foulOpen`).
+   */
+  callFoul(): FoulVerdict | null {
+    if (!this.foulOpen) return null;
+    const err = this.dealerError;
+    if (err) {
+      const hand = this.hands[err.handIndex];
+      if (hand) {
+        hand.result = err.correctResult;
+        hand.net = err.correctNet;
+      }
+      this.bankroll += err.correctNet - err.paidNet;
+      this.dealerErrorTally = { ...this.dealerErrorTally, caught: this.dealerErrorTally.caught + 1 };
+      this.dealerError = null;
+      this.foulVerdict = { correct: true, error: err };
+    } else {
+      this.dealerErrorTally = { ...this.dealerErrorTally, falseCalls: this.dealerErrorTally.falseCalls + 1 };
+      this.foulVerdict = { correct: false, error: null };
+    }
+    return this.foulVerdict;
+  }
+
+  /**
+   * G2: grade this round's uncalled error as missed. The next deal does this
+   * (see beginRound); End calls it too, since no deal follows. Returns the
+   * error that was missed, or null.
+   */
+  closeDealerError(): DealerError | null {
+    const err = this.dealerError;
+    this.dealerError = null;
+    if (err) this.dealerErrorTally = { ...this.dealerErrorTally, missed: this.dealerErrorTally.missed + 1 };
+    return err;
+  }
+
+  /** G2: roll this round's error, on the settled player hands. Only with the setting on. */
+  private maybeMakeDealerError(): void {
+    if (!this.dealerMistakesOn || this.hands.length === 0) return;
+    this.dealerMistakesUsed = true;
+    this.dealerErrorRng ??= this.cfg.dealerErrorRng ?? mulberry32(this.dealerErrorSeedBase);
+    const err = rollDealerError(this.hands, this.dealerErrorRng);
+    if (!err) return;
+    const hand = this.hands[err.handIndex]!;
+    hand.result = err.paidResult;
+    hand.net = err.paidNet;
+    this.bankroll += err.paidNet - err.correctNet;
+    this.dealerError = err;
+    this.dealerErrorTally = { ...this.dealerErrorTally, made: this.dealerErrorTally.made + 1 };
   }
 
   /** SeatConfig for this game (falls back to DEFAULT_SEATS, v1 solo parity). */
@@ -442,6 +555,9 @@ export class Game {
    * your next bet is real either way (R5, docs/BACKLOG.md).
    */
   private beginRound(): void {
+    // G2: an error still standing when the next hand is dealt was missed.
+    this.missedDealerError = this.closeDealerError();
+    this.foulVerdict = null;
     this.roundNo += 1;
     this.countCheckDue = false;
     this.countCheckOpen = false;
@@ -1306,6 +1422,7 @@ export class Game {
 
   private finishRound(): void {
     this.handsPlayed += this.hands.length;
+    this.maybeMakeDealerError();
     this.phase = 'settled';
     if (this.cfg.countCheckEvery > 0 && this.roundNo % this.cfg.countCheckEvery === 0) {
       this.countCheckDue = true;

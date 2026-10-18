@@ -160,6 +160,16 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
         A bar runs down over each decision. Running out never plays the hand; the report counts slow
         decisions. Off eyes-free.
       </p>
+      {/* G2 (L-8): read live too -- rounds dealt from now on. */}
+      <Toggle
+        label="Dealer mistakes"
+        checked={settings.dealerMistakes === true}
+        onChange={(v) => update({ dealerMistakes: v })}
+      />
+      <p className="settings-note">
+        About one round in 30 the dealer pays a hand wrong. Tap Foul before the next deal to call it.
+        Scored apart from your play accuracy. Off eyes-free.
+      </p>
 
       <h3 className="tab-sheet-group">New shoe</h3>
       <p

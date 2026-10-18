@@ -1,0 +1,23 @@
+/* G1 (L-1): a flashed card with its Hi-Lo value under it. One wrapper per
+   card, so cardSize.css's child-count sizing (one, two or three cards across
+   375px) still counts cards. No font sizes here: the value inherits, so the
+   type-scale pass (G3) has nothing new to fold in. */
+.hilo-card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.hilo-value {
+  min-width: 2.5em;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  line-height: 1.6;
+}
