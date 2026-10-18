@@ -1,0 +1,37 @@
+/*
+ * F9 (W2-20): BIGGER CHART TEXT, still with no sideways scroll at 375px.
+ *
+ * The cells were 0.72rem (11.5px) and the corner label 0.56rem (9px) -- small
+ * enough to squint at on a 13 mini held at arm's length. The B4 tracks stay
+ * exactly as they are (a 15% label column and ten 8.5% dealer columns: about
+ * 50px and 28px of a 331px table), so the grid's width cannot grow; what grows
+ * is only what is drawn inside the tracks. Every code is at most two
+ * monospace letters (about 16px at 13px) plus the 3px fallback sliver, inside
+ * 28px. The row labels stay at 0.7rem: "A,9-10" is six letters in a box of
+ * about 43px once the padding and tile borders are taken, and at 13px in a
+ * 0.6em-wide mono (SF Mono, the face the phone actually uses) that is 47px.
+ * e2e/charts-text.spec.ts measures every label and code at 375x812, in the
+ * test machine's mono AND in a forced 0.6em one, so a bump that does not fit
+ * fails there.
+ *
+ * Its own file, loaded after charts.css, because charts.css is shared screen
+ * styling edited by several hands.
+ */
+
+/* Cells, the indexed cell's button (inherits) and the legend's swatches. */
+.chart-cell,
+.chart-code {
+  font-size: 0.8125rem; /* 13px */
+}
+
+/* Dealer column heads: two letters at most, read straight down onto the cells. */
+.chart-up {
+  font-size: 0.8125rem; /* 13px */
+}
+
+/* "DEALER": the narrowest slot on the grid, six capitals in a 45px box, so
+   the tracking comes in a little as the size goes up. */
+.chart-corner {
+  font-size: 0.6875rem; /* 11px */
+  letter-spacing: 0.02em;
+}
