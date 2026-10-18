@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { openSettingsScreen, readStoredDiagnostics, sayOnceListening, waitForMic } from './helpers';
 import { DC_LINES } from '../src/diag/driveChecks';
 import { COUNT_PAUSED_LINE } from '../src/drills/countPause';
+import { SPEECH_TAIL_MS } from '../src/audio/voiceControl';
 
 /**
  * Drive checks, end to end: reached from the field test, answered on the
@@ -268,7 +269,7 @@ test('voice timing: five prompts answered, D-R6 timings summarised into the resu
     });
   }
   const r = await result(page, 'voice-timing');
-  expect(r).toMatchObject({ status: 'pass', prompts: 5, timeouts: 0, tailMs: 700, answers: 5, accepted: 5, tailSuppressed: 0 });
+  expect(r).toMatchObject({ status: 'pass', prompts: 5, timeouts: 0, tailMs: SPEECH_TAIL_MS, answers: 5, accepted: 5, tailSuppressed: 0 });
   expect(typeof r.medianMs).toBe('number');
   expect(String(r.rows).split(',').length).toBe(r.answers);
 });
