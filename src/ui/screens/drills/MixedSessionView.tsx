@@ -39,6 +39,9 @@ import { isE2eAudioMode, speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
 import type { ZoneId } from '../../../audio/zones';
 import { DrillModeControls } from './DrillModeControls';
+import { handCarStatus } from './useAnswerSession';
+import { handText } from '../../handResult';
+import { shortCellLabel } from '../../../drills/missHistory';
 import { DealToggles } from './DealToggles';
 import { HandDeckControls } from './HandDeckControls';
 import { handDeckFor } from './handDeckFor';
@@ -559,6 +562,7 @@ export function MixedSessionView({
           voiceOn={voiceOn}
           onVoiceChange={session.setVoiceOn}
           voiceStatus={voice.status}
+          car={handCarStatus(session, settings.drill.wheelMode, current.type === 'flash' ? shortCellLabel(current.card.cellId) : `${handText(current.item.cards, current.item.up)} · TC ${formatSigned(current.item.tc)}`, voice.status.state)}
           // #27: set once, folded away like the flashcards' options.
           options={<DealToggles settings={settings} onChange={changeScopes} />}
         />

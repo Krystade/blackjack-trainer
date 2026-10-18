@@ -47,6 +47,8 @@ import { isE2eAudioMode, speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
 import type { ZoneId } from '../../../audio/zones';
 import { DrillModeControls } from './DrillModeControls';
+import { handCarStatus } from './useAnswerSession';
+import { shortCellLabel } from '../../../drills/missHistory';
 import { DealToggles } from './DealToggles';
 import { HandDeckControls } from './HandDeckControls';
 import { scopesFrom } from '../../../drills/handScope';
@@ -663,6 +665,7 @@ export function FlashcardsView({
           voiceOn={voiceOn}
           onVoiceChange={session.setVoiceOn}
           voiceStatus={voice.status}
+          car={handCarStatus(session, settings.drill.wheelMode, shortCellLabel(card.cellId) + (card.tc !== undefined ? ` · TC ${formatSigned(card.tc)}` : ''), voice.status.state)}
           options={review.active ? undefined :
             <>
               {/* #27 / #53: set once, so folded with the other options --

@@ -64,6 +64,8 @@ import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecogniti
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
+import { CarStatusLine } from '../../components/CarStatusLine';
+import { carMic, carScore, countPrompt, countWheelLabel, type CarStatus } from '../../carStatus';
 import { RungProgressLine } from './RungProgressLine';
 import { DRILL_RUNG } from './rungProgress';
 import { useVoiceToggle, usePushToTalk, startPushToTalk } from '../../voiceSession';
@@ -224,6 +226,8 @@ export function CountDrillView({
   // grading run unchanged on rounds.
   const [tableRun, setTableRun] = useState<TableRound[] | null>(null);
   const [shownIndex, setShownIndex] = useState(0);
+  // F7: this session's graded runs, for the car status line.
+  const [runScore, setRunScore] = useState({ right: 0, total: 0 });
   const [wasCorrect, setWasCorrect] = useState(false);
   const [actualValue, setActualValue] = useState(0);
   const [enteredValue, setEnteredValue] = useState(0);
@@ -1110,6 +1114,7 @@ export function CountDrillView({
         : null;
     setCheckpointReport(report);
     setWasCorrect(correct);
+    setRunScore((r) => ({ right: r.right + (correct ? 1 : 0), total: r.total + 1 }));
     setActualValue(actual);
     setEnteredValue(entered);
     setPhase('result');
@@ -1672,6 +1677,15 @@ export function CountDrillView({
   // `setPhase` above rather than in an effect -- see `wheelResetRef`.
   wheelResetRef.current = wheelNumber.reset;
 
+  // F7: the eyes-free car line -- the prompt, what the wheel does now (the
+  // same branches as the wheel handler above), the mic, and the runs so far.
+  const carStatus: CarStatus = {
+    hand: countPrompt(phase, Math.min(shownIndex + 1, groups.length), groups.length),
+    wheel: countWheelLabel(settings.drill.wheelMode, phase, paused),
+    mic: carMic(voice.status.state),
+    score: carScore(runScore.right, runScore.total),
+  };
+
   // Offer the next run out loud, and take the restart gap here -- the result
   // screen is the only moment in this drill that is reliably quiet, so a
   // recogniser cycled anywhere else would be deaf over an answer.
@@ -1842,8 +1856,14 @@ export function CountDrillView({
           hit, stand, double -- do nothing in a count drill, and listing
           them would invite a driver to say something the screen has just
           promised will work. */}
+      {eyesFree && !voiceOn && (
+        <div className="car-status-gutter">
+          <CarStatusLine {...carStatus} />
+        </div>
+      )}
       {voiceOn && (
         <VoiceStatusBar
+          car={eyesFree ? carStatus : undefined}
           status={voice.status}
           hint={
             <>

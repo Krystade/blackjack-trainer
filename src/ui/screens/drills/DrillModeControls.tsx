@@ -4,6 +4,8 @@ import { saveSettings } from '../../../store/persist';
 import { enableAudioNow } from '../../audioGate';
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import type { VoiceStatus } from '../../useVoiceControl';
+import type { CarStatus } from '../../carStatus';
+import { CarStatusLine } from '../../components/CarStatusLine';
 
 /* ---------------------------------------------------------------- */
 /* Answer-mode switches + Options, shared by the three hand drills.  */
@@ -41,6 +43,7 @@ export function DrillModeControls({
   onVoiceChange,
   voiceStatus,
   options,
+  car,
 }: {
   settings: Settings;
   onSettingsChange: (settings: Settings) => void;
@@ -51,7 +54,10 @@ export function DrillModeControls({
   onVoiceChange: (on: boolean) => void;
   voiceStatus: VoiceStatus;
   options?: ReactNode;
+  /** F7: the car status line, shown only eyes-free. */
+  car?: CarStatus;
 }) {
+  const carLine = eyesFree ? car : undefined;
   const hasOptions = Boolean(options) || eyesFree;
   return (
     <>
@@ -96,10 +102,16 @@ export function DrillModeControls({
       </div>
       {/* What the microphone last heard, whether or not it meant anything:
           a misheard word and a dead microphone look identical without it. */}
-      {voiceOn && (
+      {voiceOn ? (
         <div className="drill-voice-line">
-          <VoiceStatusBar status={voiceStatus} />
+          <VoiceStatusBar status={voiceStatus} car={carLine} />
         </div>
+      ) : (
+        carLine && (
+          <div className="drill-voice-line">
+            <CarStatusLine {...carLine} />
+          </div>
+        )
       )}
       {hasOptions && (
         <details className="drill-options">

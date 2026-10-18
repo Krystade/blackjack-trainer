@@ -27,6 +27,8 @@ import { withdrawAnswer, wrongTapOffered, type WrongTapRecord } from '../../wron
 import type { HandResult } from '../../handResult';
 import type { DrillHandResult } from './drillMiss';
 import { chartTargetFrom, type AnswerFeedback, type ChartTarget } from './handDrillShared';
+import type { ListenState } from '../../../audio/voiceControl';
+import { carMic, carScore, handWheelLabel, type CarStatus } from '../../carStatus';
 
 /*
  * W2-25: the answer plumbing the three hand drills (Flashcards, Deviation
@@ -94,6 +96,8 @@ export function useHandResult() {
   // by every graded answer (`clearWrongTap`), on every channel, so the link
   // never outlives the next answer.
   const [wrongTap, setWrongTap] = useState<WrongTapRecord | null>(null);
+  // F7: this session's graded answers, for the car status line.
+  const [score, setScore] = useState({ right: 0, total: 0 });
   const idRef = useRef(0);
   const nextResultId = () => {
     idRef.current += 1;
@@ -107,6 +111,7 @@ export function useHandResult() {
     cellBefore: CellTally | null | undefined,
   ) => {
     setLastResult(result);
+    setScore((s) => ({ right: s.right + (event.correct ? 1 : 0), total: s.total + 1 }));
     setWrongTap(wrongTapOffered(event) ? { resultId: result.id, event, revert, cellBefore } : null);
   };
   const clearWrongTap = () => setWrongTap(null);
@@ -116,11 +121,14 @@ export function useHandResult() {
     return () => {
       withdrawAnswer(wrongTap);
       setWrongTap(null);
+      // A withdrawn miss never happened: it leaves the score too.
+      setScore((s) => ({ ...s, total: Math.max(0, s.total - 1) }));
       setLastResult((r) => (r && r.id === wrongTap.resultId ? { ...r, undone: true } : r));
     };
   };
   return {
     lastResult,
+    score,
     chartTarget,
     setChartTarget,
     nextResultId,
@@ -668,4 +676,23 @@ export function insuranceKey(
     if (eyesFree) onZone('decline');
     else onAnswer('decline-insurance');
   }
+}
+
+/**
+ * F7: the car status line for a hand drill -- the wheel text follows the same
+ * phase useAnswerInputs routes the wheel by (as state, so it re-renders).
+ */
+export function handCarStatus(
+  session: Pick<AnswerSession, 'selfCheckOpen' | 'feedback' | 'score'>,
+  wheelMode: Settings['drill']['wheelMode'],
+  hand: string,
+  micState: ListenState,
+): CarStatus {
+  const phase = session.selfCheckOpen ? 'reporting' : session.feedback ? 'feedback' : 'asking';
+  return {
+    hand,
+    wheel: handWheelLabel(wheelMode, phase),
+    mic: carMic(micState),
+    score: carScore(session.score.right, session.score.total),
+  };
 }

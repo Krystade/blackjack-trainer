@@ -36,6 +36,8 @@ import { isE2eAudioMode, speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
 import type { ZoneId } from '../../../audio/zones';
 import { DrillModeControls } from './DrillModeControls';
+import { handCarStatus } from './useAnswerSession';
+import { handText } from '../../handResult';
 import { QuizAskSwitch } from './QuizAskSwitch';
 import { blurAfterChange } from '../../keyboardFocus';
 import { ControlsSummary } from './ControlsSummary';
@@ -606,6 +608,7 @@ export function DeviationQuizView({
           voiceOn={voiceOn}
           onVoiceChange={session.setVoiceOn}
           voiceStatus={voice.status}
+          car={handCarStatus(session, settings.drill.wheelMode, `${handText(item.cards, item.up)} · TC ${formatSigned(item.tc)}`, voice.status.state)}
           options={review.active ? undefined :
             <div className="settings-row">
               <span className="settings-label">Off-index hands</span>
