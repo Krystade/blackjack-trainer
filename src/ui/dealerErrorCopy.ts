@@ -2,16 +2,43 @@
  * G2 (L-8): what Play says about the dealer's mistakes and the Foul call.
  * The engine (engine/dealerErrors.ts) decides; this only words it.
  */
-import type { DealerError, DealerErrorTally } from '../engine/dealerErrors';
+import { toDealerMistakesMode } from '../engine/dealerErrors';
+import type { DealerError, DealerErrorTally, DealerMistakesMode } from '../engine/dealerErrors';
 import type { FoulVerdict } from '../engine/game';
 import type { Settings, Stats } from '../store/types';
 
 type SessionRow = Stats['sessions'][number];
 
-/** The setting, forced off eyes-free: a payout nobody is looking at cannot be called. */
-export function dealerMistakesOn(settings: Pick<Settings, 'dealerMistakes'>, eyesFree: boolean): boolean {
-  return settings.dealerMistakes === true && !eyesFree;
+type MistakesSettings = Pick<Settings, 'dealerMistakes' | 'dealerMistakesMode'>;
+
+/**
+ * Wave I: the saved setting. `dealerMistakesMode` when set; otherwise a G2
+ * save's boolean, where true was the one rate there was ('occasional').
+ */
+export function dealerMistakesSetting(settings: MistakesSettings): DealerMistakesMode {
+  const mode = settings.dealerMistakesMode;
+  if (mode === 'off' || mode === 'occasional' || mode === 'training') return mode;
+  return toDealerMistakesMode(settings.dealerMistakes === true);
 }
+
+/** The patch the Play sheet writes: the mode, and the G2 boolean kept in step. */
+export function dealerMistakesPatch(mode: DealerMistakesMode): Pick<Settings, 'dealerMistakes' | 'dealerMistakesMode'> {
+  return { dealerMistakesMode: mode, dealerMistakes: mode !== 'off' };
+}
+
+/** The mode Play deals with: the setting, forced off eyes-free. */
+export function dealerMistakesModeIn(settings: MistakesSettings, eyesFree: boolean): DealerMistakesMode {
+  return eyesFree ? 'off' : dealerMistakesSetting(settings);
+}
+
+/** The setting, forced off eyes-free: a payout nobody is looking at cannot be called. */
+export function dealerMistakesOn(settings: MistakesSettings, eyesFree: boolean): boolean {
+  return dealerMistakesModeIn(settings, eyesFree) !== 'off';
+}
+
+/** The session report's label for a Training session, like Hot shoe's. */
+export const DEALER_TRAINING_REPORT =
+  'Dealer mistakes training: about one round in 5 had a payout error on purpose. Missed errors stay in your bankroll.';
 
 /** "overpaid your win by 1 unit" -- after "The dealer ". */
 export function dealerErrorWords(e: Pick<DealerError, 'kind'>): string {
@@ -49,13 +76,25 @@ export function dealerErrorsValue(t: Pick<DealerErrorTally, 'made' | 'caught' | 
   return `${caughtFraction(t)}${calls}`;
 }
 
-/** The session row's field, or nothing for a session played with the setting off. */
+/**
+ * The session row's fields, or nothing for a session played with the setting
+ * off. Wave I: `dealerMistakesTraining` when some round was dealt on Training.
+ */
 export function sessionDealerErrors(
   t: DealerErrorTally,
   used: boolean,
-): { dealerErrors: { made: number; caught: number; falseCalls: number } } | Record<string, never> {
+  training = false,
+):
+  | {
+      dealerErrors: { made: number; caught: number; falseCalls: number };
+      dealerMistakesTraining?: true;
+    }
+  | Record<string, never> {
   if (!used && t.made === 0 && t.falseCalls === 0) return {};
-  return { dealerErrors: { made: t.made, caught: t.caught, falseCalls: t.falseCalls } };
+  return {
+    dealerErrors: { made: t.made, caught: t.caught, falseCalls: t.falseCalls },
+    ...(training ? { dealerMistakesTraining: true as const } : {}),
+  };
 }
 
 const count = (n: unknown): number => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0);

@@ -56,6 +56,28 @@ export const EMPTY_DEALER_ERROR_TALLY: DealerErrorTally = { made: 0, caught: 0, 
  */
 export const DEALER_ERROR_RATE = 1 / 15;
 
+/**
+ * Wave I: how often the dealer errs. 'occasional' is G2's rate (about one
+ * round in thirty, for a session whose main work is something else);
+ * 'training' is for a session spent on catching them -- about one round in
+ * five, by the same per-eligible-round reasoning (rate test in
+ * dealerErrors.test.ts). 'off' never rolls.
+ */
+export type DealerMistakesMode = 'off' | 'occasional' | 'training';
+
+export const DEALER_ERROR_TRAINING_RATE = 2 / 5;
+
+/** A config value as a mode: true is 'occasional' (G2's only rate), anything else unknown is 'off'. */
+export function toDealerMistakesMode(v: unknown): DealerMistakesMode {
+  if (v === 'occasional' || v === 'training') return v;
+  return v === true ? 'occasional' : 'off';
+}
+
+/** The per-eligible-round chance for a mode that rolls. */
+export function dealerErrorRate(mode: Exclude<DealerMistakesMode, 'off'>): number {
+  return mode === 'training' ? DEALER_ERROR_TRAINING_RATE : DEALER_ERROR_RATE;
+}
+
 /** Different from the bot (0x9e3779b9) and cut-card (0x85ebca6b) salts. */
 const DEALER_ERROR_SALT = 0xc2b2ae35;
 
@@ -98,15 +120,20 @@ export function erroneousPayout(
 
 /**
  * Roll for this round's error. `hands` are the player's settled hands. Draws
- * from `rng` only when some hand is eligible: once for the roll, and -- when it
- * hits -- once for which hand and once for which error.
+ * from `rng` only when some hand is eligible: once for the roll (an error when
+ * it is under `rate`), and -- when it hits -- once for which hand and once for
+ * which error.
  */
-export function rollDealerError(hands: readonly PlayerHand[], rng: () => number): DealerError | null {
+export function rollDealerError(
+  hands: readonly PlayerHand[],
+  rng: () => number,
+  rate: number = DEALER_ERROR_RATE,
+): DealerError | null {
   const eligible = hands
     .map((h, i) => ({ h, i, kinds: errorKindsFor(h) }))
     .filter((e) => e.kinds.length > 0);
   if (eligible.length === 0) return null;
-  if (rng() >= DEALER_ERROR_RATE) return null;
+  if (rng() >= rate) return null;
   const pick = eligible[Math.min(eligible.length - 1, Math.floor(rng() * eligible.length))]!;
   const kind = pick.kinds[Math.min(pick.kinds.length - 1, Math.floor(rng() * pick.kinds.length))]!;
   return makeDealerError(pick.h, pick.i, kind);

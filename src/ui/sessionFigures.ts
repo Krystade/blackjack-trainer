@@ -59,7 +59,12 @@ export function sessionsLossPer100(rows: readonly SessionRow[]): number | null {
  * shoe left without End -- B2, R1) says " · not ended".
  */
 export function sessionTag(row: SessionRow): string | null {
-  const tags = [row.hotShoe ? 'Hot shoe' : null, row.provisional ? 'not ended' : null].filter(Boolean);
+  const tags = [
+    row.hotShoe ? 'Hot shoe' : null,
+    // Wave I: errors came about one round in five, so the catch rate reads differently.
+    row.dealerMistakesTraining ? 'Foul training' : null,
+    row.provisional ? 'not ended' : null,
+  ].filter(Boolean);
   return tags.length > 0 ? tags.join(' · ') : null;
 }
 

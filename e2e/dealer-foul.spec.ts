@@ -173,12 +173,15 @@ test('the Play sheet turns Dealer mistakes on; off by default', async ({ page })
   await openPlay(page, 167);
   await page.getByTestId('tab-gear-play').click();
   const sheet = page.getByRole('dialog', { name: 'Play settings' });
-  const toggle = sheet.getByLabel('Dealer mistakes');
-  await expect(toggle).not.toBeChecked();
-  await toggle.check();
+  // Wave I: a three-way selector (Off / Occasional / Training) replaced the toggle.
+  const group = sheet.getByRole('group', { name: 'Dealer mistakes' });
+  const occasional = group.getByRole('button', { name: 'Occasional', exact: true });
+  await expect(group.getByRole('button', { name: 'Off', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await occasional.click();
+  await expect(occasional).toHaveAttribute('aria-pressed', 'true');
   if (SHOTS) {
     await page.addStyleTag({ content: NOTCH });
-    await toggle.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    await group.evaluate((el) => el.scrollIntoView({ block: 'center' }));
     await page.screenshot({ path: `${SHOTS}/g2-play-sheet-375x812.png` });
   }
   await sheet.getByRole('button', { name: 'Done', exact: true }).click();

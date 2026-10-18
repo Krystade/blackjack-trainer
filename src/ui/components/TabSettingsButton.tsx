@@ -12,6 +12,8 @@ import { BetSpreadControl, CountCheckControls, CutCardControl, DeviationsControl
 import { playOptionsDiffer } from '../profileOptions';
 import { setProfileLaunch } from '../profileLaunch';
 import { DEALER_PACE_MAX_SEC, DEALER_PACE_MIN_SEC, dealerPaceSec } from '../dealerPace';
+import { dealerMistakesPatch, dealerMistakesSetting } from '../dealerErrorCopy';
+import type { DealerMistakesMode } from '../../engine/dealerErrors';
 
 /**
  * #33: the gear in the topbar of Play, Drills and Charts, opening a sheet of
@@ -161,15 +163,25 @@ function PlaySheet({ title, ctx, onClosed }: SheetProps) {
         A bar runs down over each decision. Running out never plays the hand; the report counts slow
         decisions. Off eyes-free.
       </p>
-      {/* G2 (L-8): read live too -- rounds dealt from now on. */}
-      <Toggle
-        label="Dealer mistakes"
-        checked={settings.dealerMistakes === true}
-        onChange={(v) => update({ dealerMistakes: v })}
-      />
+      {/* G2 (L-8): read live too -- rounds dealt from now on. Wave I: a rate. */}
+      <div className="settings-row" role="group" aria-labelledby="dealer-mistakes-label">
+        <span className="settings-label" id="dealer-mistakes-label">
+          Dealer mistakes
+        </span>
+        <Segmented<DealerMistakesMode>
+          options={[
+            { value: 'off', label: 'Off' },
+            { value: 'occasional', label: 'Occasional' },
+            { value: 'training', label: 'Training' },
+          ]}
+          value={dealerMistakesSetting(settings)}
+          onChange={(v) => update(dealerMistakesPatch(v))}
+        />
+      </div>
       <p className="settings-note">
-        About one round in 30 the dealer pays a hand wrong. Tap Foul before the next deal to call it.
-        Scored apart from your play accuracy. Off eyes-free.
+        Now and then the dealer pays a hand wrong: <strong>Occasional</strong> about one round in 30,{' '}
+        <strong>Training</strong> about one in 5. Tap Foul before the next deal to call it. Scored apart
+        from your play accuracy. Off eyes-free.
       </p>
 
       <h3 className="tab-sheet-group">New shoe</h3>

@@ -124,6 +124,8 @@ export interface SessionReport {
    * it moves no accuracy figure.
    */
   dealerErrors: { made: number; caught: number; falseCalls: number } | null;
+  /** Wave I: some round was dealt with Dealer mistakes on Training (about 1 in 5). */
+  dealerMistakesTraining: boolean;
 }
 
 /** F5: what the screen measured about one Play decision (see Game.act). */
@@ -173,7 +175,7 @@ function buildReport(
   bankrollDelta: number,
   peeks: number,
   hands: number,
-): Omit<SessionReport, 'hotShoe' | 'pacedDecisions' | 'dealerErrors'> {
+): Omit<SessionReport, 'hotShoe' | 'pacedDecisions' | 'dealerErrors' | 'dealerMistakesTraining'> {
   // RT#11: read the bets back off the graded events. `taken`/`expected` are
   // strings on the event, and a bet event always carries both as numbers, so
   // an unparseable pair means something upstream changed shape -- dropped
@@ -380,7 +382,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       if (game.roundNo === 0 || endedRef.current) return;
       const fresh = game.events.length > committedRef.current;
       const t = game.dealerErrorTally;
-      const key = `${game.roundNo}|${game.events.length}|${game.bankroll}|${peeksRef.current}|${t.made}/${t.caught}/${t.falseCalls}|${final}`;
+      const key = `${game.roundNo}|${game.events.length}|${game.bankroll}|${peeksRef.current}|${t.made}/${t.caught}/${t.falseCalls}|${game.dealerMistakesTrainingUsed}|${final}`;
       if (!fresh && key === rowKeyRef.current) return;
       const now = new Date().toISOString();
       let stats = loadStats();
@@ -408,7 +410,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
           peeks: peeksRef.current,
           hotShoe,
           provisional: !final,
-          ...sessionDealerErrors(game.dealerErrorTally, game.dealerMistakesUsed),
+          ...sessionDealerErrors(game.dealerErrorTally, game.dealerMistakesUsed, game.dealerMistakesTrainingUsed),
         }),
       );
       rowKeyRef.current = key;
@@ -822,6 +824,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       hotShoe,
       pacedDecisions: pacedRef.current,
       dealerErrors: sessionDealerErrors(game.dealerErrorTally, game.dealerMistakesUsed).dealerErrors ?? null,
+      dealerMistakesTraining: game.dealerMistakesTrainingUsed,
     };
     setReport(rep);
     return rep;
