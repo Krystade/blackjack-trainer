@@ -58,11 +58,11 @@ describe('voice timing (D-R6 echo-timing lines)', () => {
     expect(rows).toEqual([{ sincePromptEndMs: 300, ownWords: false, outcome: 'suppressed', tailMs: SPEECH_TAIL_MS }]);
   });
 
-  it('summarises median and how many the 700ms tail suppressed', () => {
+  it('summarises median and how many the post-speech tail suppressed', () => {
     ms = 0;
     const rows = voiceTimingRows(
       [
-        timing(200, false, 'suppressed'), // inside the tail: counted
+        timing(50, false, 'suppressed'), // inside the 100ms tail: counted
         timing(-100, true, 'suppressed'), // while speaking: suppressed but not by the tail
         timing(800, false, 'accepted'),
         timing(1200, false, 'accepted'),
@@ -70,8 +70,8 @@ describe('voice timing (D-R6 echo-timing lines)', () => {
       FROM,
     );
     const s = summariseVoiceTiming(rows);
-    expect(s).toMatchObject({ answers: 4, medianMs: 500, accepted: 2, suppressed: 2, tailSuppressed: 1, ownWords: 1, tailMs: 700 });
-    expect(s.rows).toBe('200/real/suppressed,-100/own/suppressed,800/real/accepted,1200/real/accepted');
+    expect(s).toMatchObject({ answers: 4, medianMs: 425, accepted: 2, suppressed: 2, tailSuppressed: 1, ownWords: 1, tailMs: 100 });
+    expect(s.rows).toBe('50/real/suppressed,-100/own/suppressed,800/real/accepted,1200/real/accepted');
   });
 
   it('fails only when a real answer was thrown away', () => {
