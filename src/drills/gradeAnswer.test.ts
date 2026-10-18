@@ -1091,28 +1091,49 @@ describe('R9: Index-test answers never count toward basic-strategy categories', 
 });
 
 /**
- * R9's scope is the Index test and With-count index/phantom answers. The
- * Deviation quiz (and Mixed, which grades quiz items through it) still counts
- * in the hand category: a first cut that dropped every deviationId event
- * from categories zeroed those drills' graded counts.
+ * R9's scope was first the Index test and With-count index/phantom answers,
+ * with the Deviation quiz still counting in its hand category. H1 (wave H):
+ * a real-index quiz answer is index knowledge too -- four 16 v 10 misses at
+ * TC +3 showed Home "0% accuracy" on a profile whose 16 v 10 cell was 30/0.
+ * Drills that count graded answers read `bySource`, which still counts them.
+ * A distractor is a basic-strategy question and keeps counting.
  */
-describe('R9 scope: the Deviation quiz still counts in its hand category', () => {
-  it('a 16 v 10 quiz answer moves categories.hard and perIndex', () => {
-    const item: QuizItem = {
-      cards: [H('10'), H('6')],
-      up: '10',
-      tc: 3,
-      deviationId: '16v10',
-      isDeviationSide: true,
-      correct: 'stand',
-      label: '16 v 10: stand at TC ≥ 0',
-      isDistractor: false,
-    };
-    const event = buildQuizEvent(item, 'hit', DEFAULT_RULES, 100);
+describe('H1: a Deviation-quiz index answer is index-only', () => {
+  const ITEM: QuizItem = {
+    cards: [H('10'), H('6')],
+    up: '10',
+    tc: 3,
+    deviationId: '16v10',
+    isDeviationSide: true,
+    correct: 'stand',
+    label: '16 v 10: stand at TC ≥ 0',
+    isDistractor: false,
+  };
+
+  it('a 16 v 10 quiz miss leaves categories.hard unchanged and bumps perIndex', () => {
+    const event = buildQuizEvent(ITEM, 'hit', DEFAULT_RULES, 100);
+    expect(event.category).toBe('hard');
+    expect(event.indexOnly).toBe(true);
+    const seeded = { ...EMPTY_STATS, categories: { ...EMPTY_STATS.categories, hard: { right: 30, wrong: 0 } } };
+    const s = applyEvents(seeded, [event, event, event, event]);
+    expect(s.categories.hard).toEqual({ right: 30, wrong: 0 });
+    expect(s.perIndex['16v10']).toEqual({ right: 0, wrong: 4 });
+    // The quiz's own tally (Stats > Drills, double-tap specs) still counts it.
+    expect(s.bySource?.quiz?.hard).toEqual({ right: 0, wrong: 4 });
+  });
+
+  it('an insurance quiz answer is index-only and still tallied under insurance', () => {
+    const ins: QuizItem = { cards: null, up: 'A', tc: 4, deviationId: 'ins', isDeviationSide: true, correct: 'take-insurance', label: 'Insurance', isDistractor: false } as QuizItem;
+    const event = buildQuizEvent(ins, 'take-insurance', DEFAULT_RULES, 100);
+    expect(event.indexOnly).toBe(true);
+    expect(applyEvents(EMPTY_STATS, [event]).categories.insurance).toEqual({ right: 1, wrong: 0 });
+  });
+
+  it('a distractor (no deviationId) still counts in its hand category', () => {
+    const distractor: QuizItem = { ...ITEM, tc: -3, deviationId: undefined, isDeviationSide: false, correct: 'hit', isDistractor: true };
+    const event = buildQuizEvent(distractor, 'stand', DEFAULT_RULES, 100);
     expect(event.indexOnly).toBeUndefined();
-    const s = applyEvents(EMPTY_STATS, [event]);
-    expect(s.categories.hard).toEqual({ right: 0, wrong: 1 });
-    expect(s.perIndex['16v10']).toEqual({ right: 0, wrong: 1 });
+    expect(applyEvents(EMPTY_STATS, [event]).categories.hard).toEqual({ right: 0, wrong: 1 });
   });
 
   it('Index-test and With-count index events are marked index-only', () => {

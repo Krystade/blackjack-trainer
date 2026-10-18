@@ -306,6 +306,18 @@ export function buildFlashcardEvent(
 }
 
 /**
+ * H1 (R9): a Deviation-quiz answer on a real index is index knowledge, like an
+ * Index-test or With-count index answer -- tallied in `perIndex`, never in the
+ * basic-strategy hand categories Home's accuracy sums. Missing 16 v 10 at
+ * TC +1 four times read as "0% accuracy" on a profile whose 16 v 10 cell was
+ * 30/0. A distractor (no `deviationId`) is a plain basic-strategy question and
+ * keeps counting, as it is tallied on its chart cell too.
+ */
+function quizIndexOnly(item: Pick<QuizItem, 'deviationId'>): { indexOnly?: true } {
+  return item.deviationId ? { indexOnly: true } : {};
+}
+
+/**
  * Build the GradedEvent for a deviation-quiz answer (action or insurance).
  * Pure, deterministic given its inputs. `elapsedMs` is optional and purely
  * additive -- omitting it produces an untimed event, exactly as before R1.
@@ -345,6 +357,7 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: StrategyRul
       expected: item.correct === 'take-insurance' ? 'take' : 'decline',
       reason: item.label,
       deviationId: item.deviationId,
+      ...quizIndexOnly(item),
       tc: item.tc,
       hand: 'dealer A',
       ...elapsedField(elapsedMs, taken),
@@ -396,6 +409,7 @@ export function buildQuizEvent(item: QuizItem, taken: string, rules: StrategyRul
     expected: item.correct,
     reason: item.label,
     deviationId: item.deviationId,
+    ...quizIndexOnly(item),
     tc: item.tc,
     // B3: the dealt cards, as Play writes them, so the answer is tallied
     // against its chart cell and its priced mistakes group with Play's. The

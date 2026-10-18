@@ -21,6 +21,7 @@ import { basicPlay, correctPlay } from '../engine/strategy';
 import type { Advice, PlayContext } from '../engine/strategy';
 import type { StrategyRules } from '../engine/ruleset';
 import { redundantForChart } from './deviationQuiz';
+import { indexPlayAt } from './indexDisplay';
 
 /** The counts a With-count card can show. */
 export const TC_MIN = -6;
@@ -210,9 +211,14 @@ export function indexLine(
  * tell 15 v 10 stand from 15 v 10 surrender) without the threshold. The full
  * label stayed in the closed select above every question, so focused practice
  * on one index printed its answer on screen.
+ *
+ * H6 (R6): the play is the published one, AT the index (`indexPlayAt`). H17
+ * 12 v 6 is stored as "hit at TC ≤ −4" and published as "stand at TC ≥ −3";
+ * the picker and the summary chip said "12 v 6 (hit)" beside a label, a
+ * Charts row and an Index test that all say stand.
  */
-export function indexPickerText(dev: Pick<Deviation, 'label' | 'kind' | 'action'>): string {
+export function indexPickerText(dev: Pick<Deviation, 'id' | 'label' | 'kind' | 'action' | 'dir' | 'above'>): string {
   if (dev.kind === 'insurance') return 'Insurance';
   const hand = dev.label.split(':')[0]!.trim();
-  return `${hand} (${dev.action})`;
+  return `${hand} (${indexPlayAt(dev)})`;
 }

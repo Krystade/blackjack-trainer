@@ -22,12 +22,12 @@ export function tallyCellIdFor(event: GradedEvent): string | null {
 }
 
 /**
- * R9 (#25): whether an event counts in `stats.categories`. An Index-test or
- * With-count index answer (`indexOnly`) is index knowledge and is tallied in
- * `perIndex` only -- never in the basic-strategy hand categories (hard, soft,
- * pairs, surrender), which the per-cell goal reads beside `cellStats`. R9
- * names those two sources; the Deviation quiz and Play keep counting, as
- * Mixed's graded count and the drill specs rely on.
+ * R9 (#25): whether an event counts in `stats.categories`. An Index-test,
+ * With-count index or (H1) real-index Deviation-quiz answer (`indexOnly`) is
+ * index knowledge and is tallied in `perIndex` only -- never in the
+ * basic-strategy hand categories (hard, soft, pairs, surrender), which the
+ * per-cell goal and Home's accuracy read. Play and quiz distractors keep
+ * counting; `bySource` still counts every answer.
  * Counting them there showed a fresh profile's Index-test answers as "answers
  * from before per-hand tracking". Insurance has no basic play and keeps its
  * tally. Shared with the undo so the two never disagree.

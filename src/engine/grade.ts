@@ -63,9 +63,10 @@ export interface GradedEvent {
   reason: string; // Advice.reason or index label
   deviationId?: DeviationId;
   /**
-   * R9 (#8, #25): an Index-test or With-count index/phantom answer. Index
-   * knowledge only: tallied in perIndex, never in the basic-strategy hand
-   * categories. The Deviation quiz and Play keep counting there.
+   * R9 (#8, #25): an Index-test, With-count index/phantom or (H1) real-index
+   * Deviation-quiz answer. Index knowledge only: tallied in perIndex, never in
+   * the basic-strategy hand categories. Play and quiz distractors keep
+   * counting there.
    */
   indexOnly?: true;
   tc: number;

@@ -112,9 +112,13 @@ test('(b) with voice on, the next card waits for a tap answer\'s spoken correcti
   expect(prompt!.interrupt).toBe(false);
 });
 
+// H1: every graded drill answer, read off `bySource` -- a real-index quiz
+// answer is index-only and no longer lands in `categories`.
 function graded(stats: Record<string, unknown> | null): number {
-  const categories = (stats?.categories ?? {}) as Record<string, { right: number; wrong: number }>;
-  return Object.values(categories).reduce((n, t) => n + t.right + t.wrong, 0);
+  const bySource = (stats?.bySource ?? {}) as Record<string, Record<string, { right: number; wrong: number }>>;
+  return Object.values(bySource)
+    .flatMap((bucket) => Object.values(bucket))
+    .reduce((n, t) => n + t.right + t.wrong, 0);
 }
 
 for (const drill of ['Flashcards', 'Deviation quiz', 'Mixed', 'Mastery challenge'] as const) {

@@ -3,6 +3,7 @@ import { mulberry32 } from '../engine/cards';
 import type { Card } from '../engine/cards';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import { correctPlay } from '../engine/strategy';
+import { indexSetFor } from '../engine/deviations';
 import { drawFlashcard } from './flashcards';
 import { FULL_CTX } from './fallbackHand';
 import { drawCountTc, indexLine, indexPickerText, reachableIndexes, withCountAdvice, PLAIN_MIN, PLAIN_MAX, TC_MIN, TC_MAX } from './withCount';
@@ -57,9 +58,28 @@ describe('#53 indexLine', () => {
     expect(indexLine(correctPlay(none.cards, none.up, 0, FULL_CTX, NO_LS), NO_LS, none)).toBe('No index here');
   });
   it('Wave A: the picker text carries no threshold', () => {
-    expect(indexPickerText({ label: '9 v 2: double at TC ≥ +1', kind: 'hard', action: 'double' })).toBe('9 v 2 (double)');
-    expect(indexPickerText({ label: '15 v 10: surrender at TC ≥ 0', kind: 'surrender', action: 'surrender' })).toBe('15 v 10 (surrender)');
-    expect(indexPickerText({ label: 'Insurance: take at TC ≥ +3', kind: 'insurance', action: 'take-insurance' })).toBe('Insurance');
+    expect(indexPickerText({ id: '9v2', label: '9 v 2: double at TC ≥ +1', kind: 'hard', action: 'double', dir: 'gte' })).toBe('9 v 2 (double)');
+    expect(indexPickerText({ id: 'sur15v10', label: '15 v 10: surrender at TC ≥ 0', kind: 'surrender', action: 'surrender', dir: 'gte' })).toBe('15 v 10 (surrender)');
+    expect(indexPickerText({ id: 'ins', label: 'Insurance: take at TC ≥ +3', kind: 'insurance', action: 'take-insurance', dir: 'gte' })).toBe('Insurance');
+  });
+  it('H6 (R6): the picker names the published play, never the stored lte side', () => {
+    const h17 = indexSetFor({ ...DEFAULT_RULES, s17: false });
+    const t12v6 = h17.find((d) => d.id === '12v6')!;
+    expect(t12v6.dir).toBe('lte'); // stored as "hit at TC ≤ −4"
+    expect(indexPickerText(t12v6)).toBe('12 v 6 (stand)');
+    expect(indexPickerText(t12v6)).not.toContain('hit');
+    // Every lte entry, under every deck count and rule: the play in the
+    // picker is the play the label (published form) names.
+    for (const decks of [1, 2, 6, 8] as const) {
+      for (const s17 of [false, true]) {
+        for (const dev of indexSetFor({ ...DEFAULT_RULES, decks, s17, bjaExtras: true, surrenderIndices: true })) {
+          if (dev.kind === 'insurance') continue;
+          const play = /: (\w+) at TC/.exec(dev.label)?.[1];
+          if (!play) continue;
+          expect(indexPickerText(dev), `${decks}D s17=${s17} ${dev.id}`).toBe(`${dev.label.split(':')[0]!.trim()} (${play})`);
+        }
+      }
+    }
   });
 });
 

@@ -313,6 +313,7 @@ export function IndexTestView({
           voiceOn={voiceOn}
           onVoiceChange={setVoiceOn}
           voiceStatus={voice.status}
+          dimOption={false}
         />
       </div>
 
@@ -371,8 +372,10 @@ export function IndexTestView({
             </div>
           </ResultStrip>
         )}
-        {result && (
-          // L-3: the Home ladder rung this drill feeds.
+        {result && !spoken && (
+          // L-3: the Home ladder rung this drill feeds. H4: not while the
+          // drill is spoken -- nobody is reading it, and its line pushed OK
+          // under the home indicator once the listening line was up.
           <RungProgressLine rung={DRILL_RUNG.indextest} profile={activeProfile} />
         )}
       </div>

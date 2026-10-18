@@ -20,6 +20,7 @@ import { setVoiceOn } from '../voiceSession';
 import { speak } from '../../audio/speech';
 import { speechOptsFrom } from '../../audio/speechOpts';
 import { withAudioEnabled } from '../audioGate';
+import { useDayTick } from '../useDayTick';
 
 interface HomeProps {
   onNavigate: (screen: Screen) => void;
@@ -49,6 +50,9 @@ function secs(ms: number | null): string {
  * left the tab bar (#32): the per-tab settings sit behind each tab's gear.
  */
 export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: HomeProps) {
+  // H8: re-render at local midnight and on return, so the 7-day line and the
+  // ladder's due dates follow the clock while the app stays open.
+  useDayTick();
   const stats = loadStats();
   // F11: the index set the active profile is graded on (S17, Fab 4).
   const gradedRules = strategyRulesFor(activeProfile);
