@@ -32,10 +32,18 @@ export function flashCtx(card: Pick<Flashcard, 'ctx'>): PlayContext {
   return card.ctx ?? FULL_CTX;
 }
 
-/** #27 / #53: optional extras for a draw. Both off = the draw is unchanged. */
+/** #27 / #53: optional extras for a draw. All off = the draw is unchanged. */
 export interface FlashOptions {
   fallbacks?: boolean;
   withCount?: boolean;
+  /**
+   * E2 (drills/learningRedeal.ts): a missed cell whose re-deal is due. It is
+   * dealt instead of the weighted draw, when it is in the deck.
+   */
+  redeal?: string;
+  /** E2: missed cells still waiting for their re-deal, kept out of the draw
+   * unless nothing else is left. */
+  exclude?: ReadonlySet<string>;
 }
 
 /**
@@ -121,6 +129,22 @@ export function filterCellsByCategory<T extends { id: string }>(
 }
 
 /**
+ * E2: the cells a draw may deal once the learning step has had its say -- the
+ * due re-deal alone, or the deck without the cells still waiting. Either
+ * falls back to the whole deck rather than leave the draw nothing to deal.
+ */
+function redealCells<T extends { id: string }>(cells: T[], options: FlashOptions): T[] {
+  if (options.redeal !== undefined) {
+    const only = cells.filter((c) => c.id === options.redeal);
+    return only.length > 0 ? only : cells;
+  }
+  const exclude = options.exclude;
+  if (!exclude || exclude.size === 0) return cells;
+  const open = cells.filter((c) => !exclude.has(c.id));
+  return open.length > 0 ? open : cells;
+}
+
+/**
  * Draw a random flashcard from the specified category with weighted sampling.
  *
  * @param category - 'all', 'hard', 'soft', or 'pairs', or (#13) a set of
@@ -165,14 +189,19 @@ export function drawFlashcard(
   if (cells.length === 0) throw new Error('drawFlashcard: the deck has no cells in this scope');
   const deckWeight = (id: string) => (deckWeights ? deckWeights.get(id)! : 1);
 
+  // E2: the learning step. A due re-deal is the only cell on offer; cells
+  // still waiting for theirs sit out. Neither touches the rng, so with both
+  // absent the draw is exactly as before.
+  const learning = redealCells(cells, options);
+
   // RV4 (docs/BACKLOG.md, spaced-repetition): weight each cell by its SR due-ness
   // (unseen/overdue-low-box heaviest), shared with the deviation quiz via srWeight.
   // #52: "Follow with a look-alike" is a forced follow, not a soft bias. The
   // coin is only tossed when the option is on AND there is a previous cell, so
   // with it off the rng sequence -- and so the draw -- is exactly as before.
-  let pool = cells;
+  let pool = learning;
   if (byConfusability && previousCellId) {
-    const followers = cells.filter((c) => confusabilityWeight(c.id, previousCellId) > 1);
+    const followers = learning.filter((c) => confusabilityWeight(c.id, previousCellId) > 1);
     if (rng() < 0.5 && followers.length > 0) pool = followers;
   }
   const weights = pool.map((c) => srWeight(srDeck[c.id], now) * deckWeight(c.id));

@@ -53,6 +53,14 @@ export interface SrCard {
    * only ever caps promotion, never grants it.
    */
   channels?: number;
+  /**
+   * E2 (W2-2): present only while the item is in its LEARNING STEP, which a
+   * miss starts and leaving box 0 ends -- the correct answers banked toward
+   * leaving (0 straight after the miss, 1 after the first). See
+   * `LEARNING_STEPS`. Absent on decks written before learning steps and on
+   * any item not missed since, and those promote exactly as before.
+   */
+  learningStep?: number;
 }
 
 /**
@@ -139,6 +147,17 @@ export const PACE_ALPHA = 0.4;
  */
 export const CHANNEL_BASE_CAP = 3;
 
+/**
+ * E2 (W2-2): correct answers a missed item needs before it leaves box 0.
+ *
+ * One right answer straight after the correction was shown is mostly the
+ * correction remembered, and promoting on it sent a just-missed cell a whole
+ * day away. So the first correct answer after a miss keeps it in box 0, due
+ * now, and only a second one -- with at least one other card between the two
+ * (`ReviewContext.repeat`) -- promotes it to box 1.
+ */
+export const LEARNING_STEPS = 2;
+
 /** Draw-weight for an unseen item — high, so new material surfaces. */
 export const SR_NEW_WEIGHT = 8;
 /** Draw-weight for an item scheduled ahead (not yet due) — small but non-zero,
@@ -183,6 +202,21 @@ export interface ReviewContext {
    * hesitant answer, so a box-0 item stays due now and never jumps to tomorrow.
    */
   answerShown?: boolean;
+  /**
+   * E2: the answer just before this one was to this same item -- no other
+   * card came between. In the learning step such a correct answer banks
+   * nothing, because the two that lift a missed item out of box 0 must be
+   * separated by at least one other card. Outside the learning step it
+   * changes nothing.
+   */
+  repeat?: boolean;
+  /**
+   * E2: the answer came from a drill that re-deals a miss (Flashcards, the
+   * Deviation quiz, Mixed), so a miss starts the learning step. Other callers
+   * (the Index test, Speed) leave it unset and keep the one-correct promotion
+   * -- unless the item is already in a step, which a miss anywhere restarts.
+   */
+  learning?: boolean;
 }
 
 /**
@@ -191,7 +225,9 @@ export interface ReviewContext {
  *
  * A miss collapses to box 0 and schedules it due again this session,
  * incrementing `lapses` only if the item had been promoted past box 0 (a real
- * forget, not a still-learning item).
+ * forget, not a still-learning item). In a learning drill (`ctx.learning`) it
+ * also starts the item's learning step: it leaves box 0 only after
+ * `LEARNING_STEPS` correct answers, not one.
  *
  * A correct answer promotes one box, and `ctx` decides whether it actually
  * does. RIGHT IS NOT THE WHOLE STORY: an answer that took eight seconds was
@@ -214,6 +250,7 @@ export function reviewCard(
   let lapses = prev.lapses;
   let paceMs = prev.paceMs;
   let channels = prev.channels;
+  let learningStep = prev.learningStep;
 
   if (correct) {
     // A correct answer promotes ONE box, subject to two brakes -- and neither
@@ -221,9 +258,24 @@ export function reviewCard(
     // you were already looking at, is not a forget; it just does not buy a
     // longer gap.
     const hesitant = ctx.elapsedMs !== undefined && ctx.elapsedMs >= FLUENT_MS;
+    const held = hesitant || ctx.answerShown === true;
     const cap = ctx.channel ? channelBoxCap(ctx.channel) : MAX_BOX;
-    const target = hesitant || ctx.answerShown ? prev.box : Math.min(prev.box + 1, cap);
-    box = Math.max(prev.box, target);
+    const target = held ? prev.box : Math.min(prev.box + 1, cap);
+    if (learningStep === undefined) {
+      box = Math.max(prev.box, target);
+    } else {
+      // E2: in the learning step. A held answer, or one with no other card
+      // since the last, banks nothing; the item leaves box 0 only on the
+      // LEARNING_STEPS-th banked answer, and stays due now until then.
+      const banked = held || ctx.repeat === true ? learningStep : learningStep + 1;
+      if (banked >= LEARNING_STEPS) {
+        box = Math.max(prev.box, target);
+        learningStep = undefined;
+      } else {
+        box = prev.box;
+        learningStep = banked;
+      }
+    }
 
     if (ctx.elapsedMs !== undefined) {
       paceMs =
@@ -235,6 +287,9 @@ export function reviewCard(
   } else {
     if (prev.box >= LEARNED_BOX) lapses += 1;
     box = 0;
+    // E2: a miss in a learning drill starts the learning step; a miss of an
+    // item already in one restarts it.
+    if (ctx.learning === true || learningStep !== undefined) learningStep = 0;
   }
 
   return {
@@ -245,6 +300,7 @@ export function reviewCard(
     reviews: prev.reviews + 1,
     ...(paceMs === undefined ? {} : { paceMs }),
     ...(channels === undefined ? {} : { channels }),
+    ...(learningStep === undefined ? {} : { learningStep }),
   };
 }
 

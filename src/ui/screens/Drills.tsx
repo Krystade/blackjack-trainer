@@ -46,8 +46,10 @@ import {
 } from '../../drills/shotClock';
 import type { SrCard, SrDeck } from '../../drills/spacedRepetition';
 import { restoreSrCard } from '../../drills/spacedRepetition';
-import { pickMixedType } from '../../drills/mixedSession';
+import { drawMixedFlashcard, mixedFlashLabel, mixedPrompt, pickMixedType } from '../../drills/mixedSession';
 import type { MixedItemType } from '../../drills/mixedSession';
+import { keysOfDeck, redealOptions } from '../../drills/learningRedeal';
+import { useLearningRedeal } from './drills/useLearningRedeal';
 import { saveSettings, loadStats } from '../../store/persist';
 import { isCountFluent } from '../../drills/fluencyGate';
 import { PlayingCard } from '../components/PlayingCard';
@@ -330,10 +332,13 @@ function FlashcardsView({
     const ids = review.pool(previous);
     return { scopes: 'all' as const, ids, weights: new Map(ids.map((id) => [id, 1])) };
   };
+  // E2 (drills/learningRedeal.ts): a missed cell is dealt again 3-6 cards on,
+  // in a review too, and sits out the draw until then.
+  const learning = useLearningRedeal();
   const drawFrom = (drill: Settings['drill'], previous: string | null): Flashcard | null => {
     const deck = review.active ? reviewDeckFor(previous) : handDeckFor(drill, activeProfile);
     if (deck.ids.length === 0) return null;
-    return drawFlashcard(
+    const drawn = drawFlashcard(
       deck.scopes,
       srDeckRef.current,
       Date.now(),
@@ -342,11 +347,18 @@ function FlashcardsView({
       drill.flashByConfusability,
       previous,
       deck.weights,
-      // A review asks the cell itself: no count (an index answer would be
-      // reviewed in the quiz deck and leave the cell due), no fallback deal.
-      review.active ? { fallbacks: false, withCount: false } : flashOptionsFor(drill, eyesFree),
+      {
+        // A review asks the cell itself: no count (an index answer would be
+        // reviewed in the quiz deck and leave the cell due), no fallback deal.
+        ...(review.active ? { fallbacks: false, withCount: false } : flashOptionsFor(drill, eyesFree)),
+        ...redealOptions(learning.plan(deck.ids)),
+      },
     );
+    learning.dealt(drawn.cellId);
+    return drawn;
   };
+  /** E2: how many cells a miss's re-deal gap is measured against. */
+  const learningPoolSize = () => (review.active ? review.pool(null).length : handDeckFor(settings.drill, activeProfile).ids.length);
   const [card, setCard] = useState<Flashcard>(
     // The gate only mounts this view on a non-empty deck; the chart draw is
     // a backstop, never the expected path.
@@ -630,6 +642,7 @@ function FlashcardsView({
       // is what persists the event. Wave A review: a clock suspended
       // (eyes-free, voice) or stopped for idleness was not running.
       answeredUnderShotClock(shotClockMs, clockSuspended, clockIdle),
+      learning.isRepeat(card.cellId),
     );
     srDeckRef.current = result.nextDeck;
     indexReviewRef.current = result.indexReview ?? null;
@@ -639,6 +652,7 @@ function FlashcardsView({
     // sets this on every draw, but the FIRST card comes from the useState
     // initialiser, which never did -- so a miss on it could be redealt.
     lastCellRef.current = card.cellId;
+    learning.answered(card.cellId, result.event.correct, learningPoolSize());
     return { event: result.event, correctAction: result.correctAction, prevSr, cellBefore: result.cellBefore };
   };
 
@@ -706,6 +720,8 @@ function FlashcardsView({
       event,
       // #22: a withdrawn answer puts the card's schedule back as well.
       () => {
+        // E2: a withdrawn miss is not dealt again either.
+        learning.withdraw(cellId);
         // Wave A F4b: an index card was reviewed in the quiz deck instead.
         if (indexReview) {
           saveQuizSr(restoreSrCard(loadQuizSr(), indexReview.key, indexReview.prev));
@@ -828,6 +844,8 @@ function FlashcardsView({
     );
     srDeckRef.current = result.nextDeck;
     indexReviewRef.current = result.indexReview ?? null;
+    // E2: a timeout is a miss, so it is dealt again like one.
+    learning.answered(card.cellId, false, learningPoolSize());
 
     const spokenMs = speakCorrectionOnceGated(result.event, (text) =>
       eyesFree || voiceOn
@@ -1099,7 +1117,12 @@ function FlashcardsView({
   }
 
   return (
-    <div className="drill-screen" style={drillScreenStyle(padTop)}>
+    <div
+      className="drill-screen"
+      style={drillScreenStyle(padTop)}
+      // ?e2e=1 only: the card's SR key, so a spec can see a re-deal (E2).
+      data-item-key={isE2eAudioMode() ? card.cellId : undefined}
+    >
       <div className="drill-topbar">
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
@@ -1437,10 +1460,33 @@ function DeviationQuizView({
   // answered right, and the one just answered is not asked straight back.
   const review = useReviewSession(reviewIds);
   const lastIndexRef = useRef<string | null>(null);
+  // E2 (drills/learningRedeal.ts): a missed index is asked again 3-6 items
+  // on (pool - 1 when fewer than four can be asked), in a review too.
+  const learning = useLearningRedeal();
+  /** The indexes a draw may ask: the review's, the pinned one, or every asked index. */
+  const quizPoolIds = (filter: DeviationId | 'all'): string[] =>
+    review.active
+      ? review.pool(lastIndexRef.current)
+      : filter === 'all'
+        ? askedIndexSet(strategyRulesFor(activeProfile)).map((d) => d.id)
+        : [filter];
   const drawItem = (filter: DeviationId | 'all', distractorPct: number): QuizItem | null => {
+    const drawn = drawQuizFor(filter, distractorPct);
+    // A distractor has no index: it is one more item between, nothing else.
+    if (drawn) learning.dealt(drawn.deviationId ?? '');
+    return drawn;
+  };
+  const drawQuizFor = (filter: DeviationId | 'all', distractorPct: number): QuizItem | null => {
+    const poolIds = quizPoolIds(filter);
+    const plan = learning.plan(poolIds);
+    // A due re-deal is the real index, never a fake near it.
+    if ('redeal' in plan) {
+      return drawQuizItem(randomSeed(), plan.redeal as DeviationId, strategyRulesFor(activeProfile), 0, srDeckRef.current, Date.now());
+    }
     if (review.active) {
-      const pool = review.pool(lastIndexRef.current);
-      if (pool.length === 0) return null;
+      if (poolIds.length === 0) return null;
+      const open = poolIds.filter((id) => !plan.exclude.has(id));
+      const pool = open.length > 0 ? open : poolIds;
       const id = pool[Math.floor(Math.random() * pool.length)] as DeviationId;
       return drawQuizItem(randomSeed(), id, strategyRulesFor(activeProfile), 0, srDeckRef.current, Date.now());
     }
@@ -1451,8 +1497,11 @@ function DeviationQuizView({
       distractorPct,
       srDeckRef.current,
       Date.now(),
+      plan.exclude,
     );
   };
+  /** E2: how many indexes a miss's re-deal gap is measured against. */
+  const learningPoolSize = () => (review.active ? review.pool(null).length : quizPoolIds(activeFilter).length);
   const [item, setItem] = useState<QuizItem>(() => {
     const first = drawItem(activeFilter, settings.drill.quizDistractorPct)!;
     lastIndexRef.current = first.deviationId ?? null;
@@ -1702,11 +1751,13 @@ function DeviationQuizView({
       Date.now(),
       channel,
       answeredUnderShotClock(shotClockMs, clockSuspended, clockIdle), // V5-2: see the flashcard grader above.
+      srKey !== undefined && learning.isRepeat(srKey),
     );
     srDeckRef.current = result.nextDeck;
     cellBeforeRef.current = result.cellBefore;
     // R7: a right answer takes the index out of a review.
     review.answered(item.deviationId, result.event.correct);
+    learning.answered(srKey ?? null, result.event.correct, learningPoolSize());
     return result.event;
   };
 
@@ -1753,6 +1804,8 @@ function DeviationQuizView({
       event,
       () => {
         if (!prevSr) return;
+        // E2: a withdrawn miss is not asked again either.
+        learning.withdraw(prevSr.key);
         srDeckRef.current = restoreSrCard(srDeckRef.current, prevSr.key, prevSr.prev);
         saveQuizSr(srDeckRef.current);
       },
@@ -2092,7 +2145,13 @@ function DeviationQuizView({
   }
 
   return (
-    <div className="drill-screen" style={drillScreenStyle(padTop)} data-correct={isE2eAudioMode() ? item.correct : undefined}>
+    <div
+      className="drill-screen"
+      style={drillScreenStyle(padTop)}
+      data-correct={isE2eAudioMode() ? item.correct : undefined}
+      // ?e2e=1 only: the item's SR key, so a spec can see a re-deal (E2).
+      data-item-key={isE2eAudioMode() ? (item.deviationId ?? 'distractor') : undefined}
+    >
       <div className="drill-topbar">
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
@@ -2334,6 +2393,12 @@ function DeviationQuizView({
 
 type MixedCurrent = { type: 'flash'; card: Flashcard } | { type: 'quiz'; item: QuizItem };
 
+/** E2: a Mixed item's key in the session's one re-deal queue -- its deck, then its SR key. */
+function mixedKey(c: MixedCurrent): string | null {
+  if (c.type === 'flash') return `flash:${c.card.cellId}`;
+  return c.item.deviationId ? `quiz:${c.item.deviationId}` : null;
+}
+
 function MixedSessionView({
   settings,
   activeProfile,
@@ -2364,52 +2429,94 @@ function MixedSessionView({
   const itemIndexRef = useRef(0);
   const mixedLastCellRef = useRef<string | null>(null);
   const [eyesFree, setEyesFree] = useEyesFreeToggle('mixed-session');
+  // E2 (drills/learningRedeal.ts): one re-deal queue for both kinds of item,
+  // keyed "flash:<cell>" / "quiz:<index>" (mixedKey). A due re-deal beats the
+  // type coin as well as the weighted draw, so a miss is back 3-6 items on.
+  const learning = useLearningRedeal();
 
   // V5-1: same confusable-neighbour bias as the flashcards drill. The chain is
   // over FLASHCARDS only -- a quiz item in between does not reset it, since the
   // confusion being trained is between chart cells, not between drill types.
   // B2: from the deck the settings describe; null when it is empty.
-  const drawMixedFlash = (drill: Settings['drill'] = settings.drill): Flashcard | null => {
+  // E1: at a true count where no index applies (drawMixedFlashcard), so it
+  // shows a count like an index item does.
+  const drawMixedFlash = (
+    drill: Settings['drill'],
+    redeal: { redeal?: string; exclude?: ReadonlySet<string> },
+  ): Flashcard | null => {
     const deck = handDeckFor(drill, activeProfile);
     if (deck.ids.length === 0) return null;
-    const drawn = drawFlashcard(
-      deck.scopes,
-      flashSrRef.current,
-      Date.now(),
-      randomSeed(),
-      activeProfile.rules,
-      drill.flashByConfusability,
-      mixedLastCellRef.current,
-      deck.weights,
-      // #27: fallbacks only -- a Mixed flashcard is the no-count half.
-      { fallbacks: flashOptionsFor(drill, eyesFree).fallbacks },
-    );
+    const drawn = drawMixedFlashcard({
+      scopes: deck.scopes,
+      srDeck: flashSrRef.current,
+      now: Date.now(),
+      seed: randomSeed(),
+      rules: activeProfile.rules,
+      countRules: strategyRulesFor(activeProfile),
+      byConfusability: drill.flashByConfusability,
+      previousCellId: mixedLastCellRef.current,
+      deckWeights: deck.weights,
+      // #27: fallbacks only -- the count is Mixed's own, never With count's.
+      options: { fallbacks: flashOptionsFor(drill, eyesFree).fallbacks, ...redeal },
+    });
     mixedLastCellRef.current = drawn.cellId;
     return drawn;
   };
 
-  const drawFor = (type: MixedItemType): MixedCurrent => {
-    // An empty basic-strategy deck deals the index item instead; the gate
-    // replaces the screen on the same render anyway.
-    const card = type === 'flash' ? drawMixedFlash() : null;
-    if (card) return { type: 'flash', card };
+  /** The quiz half's pool: the pinned index, or every index the drills ask. */
+  const mixedQuizIds = (): string[] => {
     const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
-    return {
-      type: 'quiz',
-      item: drawQuizItem(
-        randomSeed(),
-        quizFilterArg(activeFilter),
-        // THE SAME RULES THE FILTER WAS VALIDATED AGAINST, two lines up.
-        // `getActiveQuizFilter` uses `strategyRulesFor`, so with surrender
-        // indices on it accepts `sur15v10` -- and passing the bare rules
-        // here handed that id to a draw whose index set does not contain
-        // it. `drawQuizItem` throws on an unknown id, and this call is a
-        // `useState` initialiser, so the throw took the whole screen.
-        strategyRulesFor(activeProfile),
-        settings.drill.quizDistractorPct,
-        quizSrRef.current,
-        Date.now(),
-      ) };
+    return activeFilter === 'all' ? askedIndexSet(strategyRulesFor(activeProfile)).map((d) => d.id) : [activeFilter];
+  };
+  /** Every item either half can deal, as re-deal keys. */
+  const mixedPoolIds = (drill: Settings['drill'] = settings.drill): string[] => [
+    ...handDeckFor(drill, activeProfile).ids.map((id) => `flash:${id}`),
+    ...mixedQuizIds().map((id) => `quiz:${id}`),
+  ];
+
+  const drawQuizHalf = (redealId: string | null, exclude: ReadonlySet<string>): QuizItem => {
+    const activeFilter = getActiveQuizFilter(settings.drill.quizIndex, activeProfile);
+    return drawQuizItem(
+      randomSeed(),
+      // E2: a due re-deal is the real index, never a fake near it.
+      redealId !== null ? (redealId as DeviationId) : quizFilterArg(activeFilter),
+      // THE SAME RULES THE FILTER WAS VALIDATED AGAINST, two lines up.
+      // `getActiveQuizFilter` uses `strategyRulesFor`, so with surrender
+      // indices on it accepts `sur15v10` -- and passing the bare rules
+      // here handed that id to a draw whose index set does not contain
+      // it. `drawQuizItem` throws on an unknown id, and this call is a
+      // `useState` initialiser, so the throw took the whole screen.
+      strategyRulesFor(activeProfile),
+      redealId !== null ? 0 : settings.drill.quizDistractorPct,
+      quizSrRef.current,
+      Date.now(),
+      exclude,
+    );
+  };
+
+  const drawFor = (type: MixedItemType): MixedCurrent => {
+    const plan = learning.plan(mixedPoolIds());
+    let drawn: MixedCurrent | null = null;
+    if ('redeal' in plan) {
+      const cut = plan.redeal.indexOf(':');
+      const id = plan.redeal.slice(cut + 1);
+      if (plan.redeal.slice(0, cut) === 'flash') {
+        const card = drawMixedFlash(settings.drill, { redeal: id });
+        if (card) drawn = { type: 'flash', card };
+      } else {
+        drawn = { type: 'quiz', item: drawQuizHalf(id, new Set()) };
+      }
+    }
+    if (!drawn) {
+      const exclude = 'exclude' in plan ? plan.exclude : new Set<string>();
+      // An empty basic-strategy deck deals the index item instead; the gate
+      // replaces the screen on the same render anyway.
+      const card = type === 'flash' ? drawMixedFlash(settings.drill, { exclude: keysOfDeck(exclude, 'flash') }) : null;
+      drawn = card ? { type: 'flash', card } : { type: 'quiz', item: drawQuizHalf(null, keysOfDeck(exclude, 'quiz')) };
+    }
+    // A distractor has no key: one more item between, nothing else.
+    learning.dealt(mixedKey(drawn) ?? '');
+    return drawn;
   };
 
   const [current, setCurrent] = useState<MixedCurrent>(() => drawFor(pickMixedType(sessionSeed(), 0)));
@@ -2471,16 +2578,14 @@ function MixedSessionView({
     };
   }, []);
 
-  const promptFor = (c: MixedCurrent): string =>
-    c.type === 'flash'
-      ? narrateFlashcardPrompt(c.card.cards, c.card.up)
-      : narrateQuizPrompt(c.item.cards, c.item.up, c.item.tc);
+  // E1: one prompt builder for both kinds, count included (mixedPrompt).
+  const promptFor = (c: MixedCurrent): string => mixedPrompt(c);
 
   // Narrate each new item. Eyes-free speaks every item (its primary output
-  // channel); visual mode mirrors each drill's standalone behavior -- the
-  // quiz's verbosity-gated sayFull, and the flashcard's silence -- reusing
-  // the same prompt builders (the quiz prompt includes the spoken TC, the
-  // flashcard prompt never does, making the discrimination audible too).
+  // channel); visual mode speaks it through the quiz's verbosity-gated
+  // sayFull. E1: the same sentence, count included, for both kinds -- a
+  // flashcard used to be the one item that stayed silent and countless,
+  // which told the ear what the eye was no longer being told.
   useEffect(() => {
     // Wave A review: voice is spoken to like eyes-free (see the quiz view).
     if (eyesFree || voiceOn) {
@@ -2492,8 +2597,8 @@ function MixedSessionView({
           if (runIdRef.current === runId && !feedbackRef.current) answerClockRef.current = performance.now();
         },
       });
-    } else if (current.type === 'quiz') {
-      audio.sayFull(narrateQuizPrompt(current.item.cards, current.item.up, current.item.tc));
+    } else {
+      audio.sayFull(promptFor(current));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, eyesFree, voiceOn]);
@@ -2535,8 +2640,12 @@ function MixedSessionView({
   const changeScopes = (nextSettings: Settings) => {
     onSettingsChange(nextSettings);
     if (current.type === 'flash' && !feedbackRef.current) {
-      const card = drawMixedFlash(nextSettings.drill);
+      // E2: the cells still waiting for a re-deal sit this draw out too.
+      const plan = learning.plan(mixedPoolIds(nextSettings.drill));
+      const exclude = keysOfDeck('exclude' in plan ? plan.exclude : [], 'flash');
+      const card = drawMixedFlash(nextSettings.drill, { exclude });
       if (!card) return; // empty deck: HandDeckGate takes the screen
+      learning.dealt(`flash:${card.cellId}`);
       setCurrent({ type: 'flash', card });
       promptShownAtRef.current = performance.now();
       answerClockRef.current = promptShownAtRef.current;
@@ -2575,13 +2684,29 @@ function MixedSessionView({
   const gradeCurrent = (taken: string): { correct: boolean; correctAction?: Action; event: GradedEvent } => {
     const elapsedMs = performance.now() - answerClockRef.current;
     clearWrongTap();
+    // E2: the item's re-deal key, and whether the last answer was to it too.
+    const itemKey = mixedKey(current);
+    const repeat = itemKey !== null && learning.isRepeat(itemKey);
     if (current.type === 'flash') {
       // #22: the card's schedule before this answer, for "Wrong tap".
       const key = current.card.cellId;
       prevSrRef.current = { deck: 'flash', key, prev: flashSrRef.current[key] };
-      const result = gradeFlashcard(current.card, taken as Action, activeProfile.rules, elapsedMs, flashSrRef.current, Date.now());
+      const result = gradeFlashcard(
+        current.card, taken as Action, activeProfile.rules, elapsedMs, flashSrRef.current, Date.now(),
+        SCREEN_CHANNEL, undefined, repeat,
+      );
       flashSrRef.current = result.nextDeck;
       cellBeforeRef.current = result.cellBefore;
+      // E1: with a count on the card, a phantom deviation is index knowledge
+      // (R9) and was reviewed in the QUIZ deck under that index (F4b), which
+      // the grader wrote straight to storage. The quiz ref is re-read, or the
+      // next quiz answer would save over it, and Wrong tap puts back the
+      // index's card rather than the untouched cell's.
+      if (result.indexReview) {
+        quizSrRef.current = loadQuizSr();
+        prevSrRef.current = { deck: 'quiz', key: result.indexReview.key, prev: result.indexReview.prev };
+      }
+      learning.answered(itemKey, result.event.correct, mixedPoolIds().length);
       return { correct: result.event.correct, correctAction: result.correctAction, event: result.event };
     }
     const quizKey = current.item.deviationId;
@@ -2589,9 +2714,13 @@ function MixedSessionView({
     // ...AND GRADED AGAINST THEM TOO. The standalone quiz grades with
     // `strategyRulesFor`; grading a surrender index with the bare rules
     // marks a correct surrender wrong.
-    const result = gradeQuiz(current.item, taken, strategyRulesFor(activeProfile), elapsedMs, quizSrRef.current, Date.now());
+    const result = gradeQuiz(
+      current.item, taken, strategyRulesFor(activeProfile), elapsedMs, quizSrRef.current, Date.now(),
+      SCREEN_CHANNEL, undefined, repeat,
+    );
     quizSrRef.current = result.nextDeck;
     cellBeforeRef.current = result.cellBefore;
+    learning.answered(itemKey, result.event.correct, mixedPoolIds().length);
     return { correct: result.event.correct, event: result.event };
   };
 
@@ -2621,8 +2750,10 @@ function MixedSessionView({
         ? snapshotResult(
             nextResultId(),
             event,
-            { cards: current.card.cards, up: current.card.up, tc: null },
-            { cellId: current.card.cellId },
+            // E1: asked at a count, so frozen with it, and labelled the way
+            // a quiz item is.
+            { cards: current.card.cards, up: current.card.up, tc: current.card.tc ?? null },
+            { cellId: current.card.cellId, label: mixedFlashLabel(current.card, strategyRulesFor(activeProfile)) },
           )
         : snapshotResult(
             nextResultId(),
@@ -2634,7 +2765,10 @@ function MixedSessionView({
             },
           );
     const prevSr = prevSrRef.current;
+    const answeredKey = mixedKey(current);
     showResult(withMissDetail(snapshot, event, cellBeforeRef.current ?? null, activeProfile.rules), event, () => {
+      // E2: a withdrawn miss is not dealt again either.
+      if (answeredKey !== null) learning.withdraw(answeredKey);
       if (!prevSr) return;
       if (prevSr.deck === 'flash') {
         flashSrRef.current = restoreSrCard(flashSrRef.current, prevSr.key, prevSr.prev);
@@ -2876,8 +3010,17 @@ function MixedSessionView({
     }
   };
 
+  const currentTc = current.type === 'flash' ? (current.card.tc ?? 0) : current.item.tc;
+
   return (
-    <div className="drill-screen" style={drillScreenStyle(padTop)}>
+    <div
+      className="drill-screen"
+      style={drillScreenStyle(padTop)}
+      // E1: which kind of item this is, for specs only -- the screen no longer says.
+      data-item-type={current.type}
+      data-correct={isE2eAudioMode() ? (current.type === 'flash' ? current.card.correct : current.item.correct) : undefined}
+      data-item-key={isE2eAudioMode() ? (mixedKey(current) ?? 'distractor') : undefined}
+    >
       <div className="drill-topbar">
         <button type="button" className="drill-back-btn" onClick={handleBack}>
           Back
@@ -2912,9 +3055,10 @@ function MixedSessionView({
         />
       </div>
 
-      {/* A quiz item shows its true count; a flashcard item shows none -- the
-          visible cue that tells the learner which regime applies. */}
-      {current.type === 'quiz' && <div className="quiz-tc">TC {formatSigned(current.item.tc)}</div>}
+      {/* E1: every item shows its true count, in the same place. A flashcard
+          used to show none, which told the learner which regime applied
+          before they had to work it out -- the judgment Mixed trains. */}
+      <div className="quiz-tc">TC {formatSigned(currentTc)}</div>
       {/* #26: the rules this item is graded under, before the answer. */}
       <RulesChip
         labels={
@@ -2981,11 +3125,13 @@ function MixedSessionView({
                 }
               />
             )}
-            {current.type === 'flash' ? (
-              <div className="feedback-cell">{current.card.cellId}</div>
-            ) : (
-              <div className="quiz-label">{current.item.label}</div>
-            )}
+            {/* E1: one label shape for both kinds -- a flashcard reads like the
+                quiz's own "no index applies" item, which is what it is. */}
+            <div className="quiz-label" data-cell-id={current.type === 'flash' ? current.card.cellId : undefined}>
+              {current.type === 'flash'
+                ? mixedFlashLabel(current.card, strategyRulesFor(activeProfile))
+                : current.item.label}
+            </div>
           </>
         )}
         {/* B1: the previous item's result, under the item now being asked. */}

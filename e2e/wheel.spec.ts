@@ -525,7 +525,9 @@ test('the mixed session takes a self-check on either kind of item', async ({ pag
 
   const seen = new Set<string>();
   for (let i = 0; i < 8 && seen.size < 2; i += 1) {
-    const kind = (await page.locator('.quiz-tc').count()) > 0 ? 'quiz' : 'flash';
+    // E1 (deliberate change): both kinds show a TC now, so the kind is read
+    // from the spec-only attribute rather than from `.quiz-tc` being there.
+    const kind = (await page.locator('.drill-screen').getAttribute('data-item-type'))!;
     await press(page, 'forward'); // reveal
     await expect(page.getByTestId('mixed-selfcheck')).toBeVisible();
     await press(page, 'forward'); // I had it

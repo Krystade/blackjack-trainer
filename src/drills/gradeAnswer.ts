@@ -438,6 +438,8 @@ export function gradeFlashcardAnswer(
   now: number,
   channel: AnswerChannel = SCREEN_CHANNEL,
   underShotClock?: boolean,
+  // E2: the last answer was to this same item (spacedRepetition.ts ReviewContext.repeat).
+  repeat = false,
 ): FlashGradeResult {
   const built = buildFlashcardEvent(card, taken, rules, elapsedMs);
   const { correctAction, correct } = built;
@@ -457,7 +459,7 @@ export function gradeFlashcardAnswer(
     ...(underShotClock === undefined ? {} : { underShotClock }),
   };
 
-  const review = { elapsedMs: trackedElapsedMs(elapsedMs, taken === TIMEOUT_ANSWER), channel };
+  const review = { elapsedMs: trackedElapsedMs(elapsedMs, taken === TIMEOUT_ANSWER), channel, repeat, learning: true };
 
   // Wave A F4b: a With-count card whose expected play came from an index was a
   // question about the INDEX. It is reviewed in the quiz deck under that
@@ -537,6 +539,8 @@ export function gradeQuizAnswer(
   now: number,
   channel: AnswerChannel = SCREEN_CHANNEL,
   underShotClock?: boolean,
+  // E2: the last answer was to this same index (spacedRepetition.ts ReviewContext.repeat).
+  repeat = false,
 ): QuizGradeResult {
   // V5-2: stamped here, not by the caller -- see gradeFlashcardAnswer.
   const event: GradedEvent = {
@@ -552,7 +556,7 @@ export function gradeQuizAnswer(
     retention = prev && isGapReview(prev, now) ? retentionRow(item.deviationId, prev, event.correct, now) : null;
     nextDeck = {
       ...deck,
-      [item.deviationId]: reviewCard(prev, event.correct, now, { elapsedMs: trackedElapsedMs(elapsedMs, taken === TIMEOUT_ANSWER), channel }),
+      [item.deviationId]: reviewCard(prev, event.correct, now, { elapsedMs: trackedElapsedMs(elapsedMs, taken === TIMEOUT_ANSWER), channel, repeat, learning: true }),
     };
     saveQuizSr(nextDeck);
   }

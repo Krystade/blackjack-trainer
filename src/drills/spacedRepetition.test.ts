@@ -370,3 +370,74 @@ describe('the two brakes together', () => {
     expect(missed.lapses).toBe(1);
   });
 });
+
+describe('E2 (W2-2): the learning step after a miss', () => {
+  // The drills that re-deal a miss say so; only they start a step.
+  const LEARN = { learning: true } as const;
+
+  it('miss -> box 0; correct -> still box 0, due now; correct on a later draw -> box 1', () => {
+    const missed = reviewCard(undefined, false, T0, LEARN);
+    expect(missed.box).toBe(0);
+    expect(missed.learningStep).toBe(0);
+
+    const first = reviewCard(missed, true, T0 + 10_000);
+    expect(first.box).toBe(0);
+    expect(first.dueAt).toBe(T0 + 10_000);
+    expect(first.learningStep).toBe(1);
+
+    const second = reviewCard(first, true, T0 + 60_000);
+    expect(second.box).toBe(1);
+    expect(second.dueAt).toBe(T0 + 60_000 + BOX_INTERVALS_MS[1]);
+    expect(second.learningStep).toBeUndefined();
+  });
+
+  it('a learned item that is missed comes back to box 1, not to where it was', () => {
+    const learned: SrCard = { box: 4, dueAt: T0, lastSeenAt: T0 - 14 * DAY, lapses: 0, reviews: 6 };
+    let c = reviewCard(learned, false, T0, LEARN);
+    expect([c.box, c.lapses, c.learningStep]).toEqual([0, 1, 0]);
+    c = reviewCard(c, true, T0 + 1);
+    expect([c.box, c.learningStep]).toEqual([0, 1]);
+    c = reviewCard(c, true, T0 + 2);
+    expect([c.box, c.learningStep]).toEqual([1, undefined]);
+  });
+
+  it('two right answers with no other card between bank only one', () => {
+    const first = reviewCard(reviewCard(undefined, false, T0, LEARN), true, T0 + 1);
+    const repeated = reviewCard(first, true, T0 + 2, { repeat: true });
+    expect([repeated.box, repeated.learningStep]).toEqual([0, 1]);
+    expect(repeated.dueAt).toBe(T0 + 2);
+    // ...and the next one after another card promotes.
+    expect(reviewCard(repeated, true, T0 + 3).box).toBe(1);
+  });
+
+  it('a held answer (slow, or the answer was shown) banks nothing', () => {
+    const missed = reviewCard(undefined, false, T0, LEARN);
+    expect(reviewCard(missed, true, T0 + 1, { elapsedMs: FLUENT_MS }).learningStep).toBe(0);
+    expect(reviewCard(missed, true, T0 + 1, { answerShown: true }).learningStep).toBe(0);
+  });
+
+  it('a miss during the step starts it again', () => {
+    const first = reviewCard(reviewCard(undefined, false, T0, LEARN), true, T0 + 1);
+    const again = reviewCard(first, false, T0 + 2);
+    expect([again.box, again.learningStep]).toEqual([0, 0]);
+    expect(reviewCard(again, true, T0 + 3).box).toBe(0);
+  });
+
+  it('outside the step nothing changes: a box-0 card with no step promotes on one right answer', () => {
+    const legacy: SrCard = { box: 0, dueAt: T0, lastSeenAt: T0, lapses: 0, reviews: 1 };
+    const c = reviewCard(legacy, true, T0 + 1);
+    expect(c.box).toBe(1);
+    expect(c.learningStep).toBeUndefined();
+    expect(reviewCard(undefined, true, T0, { repeat: true }).box).toBe(1);
+    expect('learningStep' in reviewCard(undefined, true, T0)).toBe(false);
+  });
+
+  it('a miss outside a learning drill (the Index test, Speed) starts no step: R8 promotion is unchanged', () => {
+    const missed = reviewCard(undefined, false, T0);
+    expect('learningStep' in missed).toBe(false);
+    expect(reviewCard(missed, true, T0 + 1).box).toBe(1);
+    // ...but an item already in a step has it restarted by a miss anywhere.
+    const inStep = reviewCard(reviewCard(undefined, false, T0, LEARN), true, T0 + 1);
+    expect(reviewCard(inStep, false, T0 + 2).learningStep).toBe(0);
+  });
+});

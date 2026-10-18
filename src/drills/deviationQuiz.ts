@@ -455,7 +455,9 @@ function fallbackCandidate(
 
 const NO_INDEX_LABEL = 'No index applies here — basic strategy.';
 
-function distractorLabel(near?: Deviation): string {
+/** A distractor's label -- and (E1) a Mixed basic-strategy item's, which is
+ * the same thing: a hand at a count where no index applies. */
+export function distractorLabel(near?: Deviation): string {
   return near ? `${NO_INDEX_LABEL} (near ${near.label})` : NO_INDEX_LABEL;
 }
 
@@ -601,6 +603,10 @@ function buildDistractorItem(
  *   identical to the pre-weighting `Math.floor(rng() * n)` (weightedIndex's
  *   "matches Math.floor" test).
  * @param now - wall-clock epoch ms, used to weight entries by SR due-ness
+ * @param exclude - E2 (drills/learningRedeal.ts): missed indexes waiting for
+ *   their re-deal, left out of the no-filter weighted pick unless nothing
+ *   else is left. Empty (the default) changes nothing, and it never touches
+ *   the rng. A due re-deal is asked through `filter` instead.
  * @returns A quiz item
  */
 export function drawQuizItem(
@@ -610,6 +616,7 @@ export function drawQuizItem(
   distractorPct = 0,
   srDeck: SrDeck = {},
   now = 0,
+  exclude: ReadonlySet<string> = new Set(),
 ): QuizItem {
   const rng = mulberry32(seed ?? Date.now());
   // Wave A (s08): without the indexes the profile's basic chart already plays.
@@ -640,7 +647,9 @@ export function drawQuizItem(
   // distractorPct existed.
   if (!entry) {
     // D-R3: only the indexes the drills ask (askedIndexSet).
-    const asked = deviationSet.filter((d) => d.active);
+    const active = deviationSet.filter((d) => d.active);
+    const open = exclude.size > 0 ? active.filter((d) => !exclude.has(d.id)) : active;
+    const asked = open.length > 0 ? open : active;
     const weights = asked.map((d) => srWeight(srDeck[d.id], now));
     const entryIndex = weightedIndex(rng, weights);
     entry = asked[entryIndex];
