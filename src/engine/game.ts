@@ -17,10 +17,13 @@ import type { Action } from './deviations';
 import { DEFAULT_RULES } from './ruleset';
 import type { StrategyRules } from './ruleset';
 import {
+  dealerErrorRate,
   dealerErrorSeed,
   rollDealerError,
+  toDealerMistakesMode,
   EMPTY_DEALER_ERROR_TALLY,
   type DealerError,
+  type DealerMistakesMode,
   type DealerErrorTally,
 } from './dealerErrors';
 
@@ -107,9 +110,10 @@ export interface GameConfig {
    * Absent or false = the normal shoe. */
   hotShoe?: boolean;
   /** G2: the dealer makes the occasional payout error (engine/dealerErrors.ts).
-   * Absent or false = never. Can be changed between rounds with
+   * Absent or false = never; true = 'occasional'. Wave I: 'training' errs
+   * about one round in five. Can be changed between rounds with
    * `setDealerMistakes`. */
-  dealerMistakes?: boolean;
+  dealerMistakes?: boolean | DealerMistakesMode;
   /** Test hook only: the stream dealer errors are rolled on. Absent = a
    * mulberry32 stream salted from `seed` (dealerErrorSeed), created the first
    * time a roll is needed. */
@@ -303,8 +307,8 @@ export class Game {
 
   private countCheckPromptCount = 0;
 
-  /** G2: dealer mistakes are on for rounds that settle from now on. */
-  private dealerMistakesOn: boolean;
+  /** G2: dealer mistakes for rounds that settle from now on ('off' = none). */
+  private dealerMistakesModeNow: DealerMistakesMode;
   /** G2: created on the first roll, so with the setting off nothing is drawn. */
   private dealerErrorRng: (() => number) | null = null;
   private readonly dealerErrorSeedBase: number;
@@ -320,6 +324,8 @@ export class Game {
   dealerErrorTally: DealerErrorTally = { ...EMPTY_DEALER_ERROR_TALLY };
   /** G2: some round settled with the setting on. */
   dealerMistakesUsed = false;
+  /** Wave I: some round settled in Training mode (about one error in five). */
+  dealerMistakesTrainingUsed = false;
 
   constructor(cfg: GameConfig) {
     this.cfg = cfg;
@@ -341,17 +347,23 @@ export class Game {
       order: cfg.hotShoe ? hotShoeOrder : undefined });
     this.bankroll = cfg.bankrollStart;
     this.rng = mulberry32(botRngSeed(cfg.seed ?? Date.now()));
-    this.dealerMistakesOn = cfg.dealerMistakes === true;
+    this.dealerMistakesModeNow = toDealerMistakesMode(cfg.dealerMistakes);
     this.dealerErrorSeedBase = dealerErrorSeed(cfg.seed ?? Date.now());
   }
 
   /** G2: whether rounds that settle from now on can carry a dealer error. */
   get dealerMistakes(): boolean {
-    return this.dealerMistakesOn;
+    return this.dealerMistakesModeNow !== 'off';
   }
 
-  setDealerMistakes(on: boolean): void {
-    this.dealerMistakesOn = on;
+  /** Wave I: which rate rounds that settle from now on roll at. */
+  get dealerMistakesMode(): DealerMistakesMode {
+    return this.dealerMistakesModeNow;
+  }
+
+  /** `true` is 'occasional' and `false` is 'off', as before Wave I. */
+  setDealerMistakes(mode: boolean | DealerMistakesMode): void {
+    this.dealerMistakesModeNow = toDealerMistakesMode(mode);
   }
 
   /** G2: Foul can be called now -- the round has settled with a hand of the
@@ -402,10 +414,12 @@ export class Game {
 
   /** G2: roll this round's error, on the settled player hands. Only with the setting on. */
   private maybeMakeDealerError(): void {
-    if (!this.dealerMistakesOn || this.hands.length === 0) return;
+    const mode = this.dealerMistakesModeNow;
+    if (mode === 'off' || this.hands.length === 0) return;
     this.dealerMistakesUsed = true;
+    if (mode === 'training') this.dealerMistakesTrainingUsed = true;
     this.dealerErrorRng ??= this.cfg.dealerErrorRng ?? mulberry32(this.dealerErrorSeedBase);
-    const err = rollDealerError(this.hands, this.dealerErrorRng);
+    const err = rollDealerError(this.hands, this.dealerErrorRng, dealerErrorRate(mode));
     if (!err) return;
     const hand = this.hands[err.handIndex]!;
     hand.result = err.paidResult;

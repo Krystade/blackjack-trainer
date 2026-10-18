@@ -69,7 +69,8 @@ import './tableVoiceFit.css';
 import './countSheetBanner.css';
 import { DealerPaceBar } from '../components/DealerPaceBar';
 import { FoulCall } from '../components/FoulCall';
-import { dealerErrorsValue, dealerMistakesOn } from '../dealerErrorCopy';
+import { DEALER_TRAINING_REPORT, dealerErrorsValue, dealerMistakesModeIn } from '../dealerErrorCopy';
+import './dealerTraining.css';
 import { createDecisionTimer, holdWhileSpeaking, type DecisionTimer } from '../decisionTimer';
 import { dealerPaceMs, isSlowDecision, slowDecisionsText } from '../dealerPace';
 import { trackedElapsedMs } from '../../drills/idleAnswer';
@@ -278,6 +279,12 @@ function ReportScreen({
       <h1>Session report</h1>
       {report.hotShoe && (
         <p className="report-hot-shoe">Hot shoe: the counts ran high on purpose, so this session&rsquo;s bankroll isn&rsquo;t kept.</p>
+      )}
+      {/* Wave I: a Training session's error rate is not a real table's. */}
+      {report.dealerMistakesTraining && (
+        <p className="report-dealer-training" data-testid="report-dealer-training">
+          {DEALER_TRAINING_REPORT}
+        </p>
       )}
       {(loss !== null || betMisses !== null) && (
         <p className="report-headline" data-units-total={report.mistakeUnits} data-hands={report.hands}>
@@ -806,11 +813,11 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const eyesFree = eyesFreeSwitch || voiceOn;
   const paceMs = dealerPaceMs(settings, eyesFree);
   // G2 (L-8): read live, like the pace clock -- rounds that settle from here
-  // on use it. Off eyes-free.
-  const mistakesOn = dealerMistakesOn(settings, eyesFree);
+  // on use it. Off eyes-free. Wave I: at the mode's rate.
+  const mistakesMode = dealerMistakesModeIn(settings, eyesFree);
   useLayoutEffect(() => {
-    game.setDealerMistakes(mistakesOn);
-  }, [game, mistakesOn]);
+    game.setDealerMistakes(mistakesMode);
+  }, [game, mistakesMode]);
   const timerRef = useRef<DecisionTimer | null>(null);
   timerRef.current ??= createDecisionTimer();
   const decidingHand = game.phase === 'player' ? game.hands[game.active] : undefined;

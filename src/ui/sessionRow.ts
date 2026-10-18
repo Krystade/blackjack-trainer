@@ -28,6 +28,8 @@ export interface SessionRowInput {
   provisional: boolean;
   /** G2: present only for a session played with Dealer mistakes on. */
   dealerErrors?: { made: number; caught: number; falseCalls: number };
+  /** Wave I: some round was dealt with Dealer mistakes on Training. */
+  dealerMistakesTraining?: true;
 }
 
 /** Bet-size and play-or-sit decisions graded wrong. */
@@ -57,6 +59,7 @@ export function sessionRowFor(i: SessionRowInput): SessionRow {
     ...(betMisses > 0 ? { betMisses } : {}),
     ...(i.provisional ? { provisional: true as const } : {}),
     ...(i.dealerErrors ? { dealerErrors: { ...i.dealerErrors } } : {}),
+    ...(i.dealerMistakesTraining ? { dealerMistakesTraining: true as const } : {}),
   };
 }
 

@@ -53,6 +53,13 @@ export interface Settings {
    * with Foul (engine/dealerErrors.ts). Absent = off. Forced off eyes-free.
    */
   dealerMistakes?: boolean;
+  /**
+   * Wave I: how often the dealer errs. 'occasional' is about one round in 30
+   * (G2's rate), 'training' about one in 5. Absent = read `dealerMistakes`
+   * (true = 'occasional'), so a G2 save keeps its setting
+   * (ui/dealerErrorCopy.ts, dealerMistakesSetting).
+   */
+  dealerMistakesMode?: 'off' | 'occasional' | 'training';
   // C-R3 (W10): the last drill run eyes-free or by voice, for Home's one-tap
   // "Drive" button. `mode` is the Drills mode id; `voice` whether the
   // microphone was on. Absent = no such drill yet (no Drive button).
@@ -692,6 +699,10 @@ export interface Stats {
     // with Foul, and Foul calls on a correct payout. Present only on a session
     // that played with Dealer mistakes on; kept out of every accuracy figure.
     dealerErrors?: { made: number; caught: number; falseCalls: number };
+    // Wave I: present (true) only when some round of the session was dealt
+    // with Dealer mistakes on Training (about one error in five rounds). The
+    // bankroll is still kept, missed errors and all.
+    dealerMistakesTraining?: true;
   }[];
   // R1 (docs/BACKLOG.md, decision-latency telemetry): one entry per GRADED
   // EVENT that actually captured a decision time (flashcards + deviation
