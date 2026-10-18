@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { answerAndReadStrip, readStats, waitForMic, withProfile, withSettings } from './helpers';
+import { answerAndReadStrip, readStats, shownHandRightPlay, waitForMic, withProfile, withSettings } from './helpers';
 
 /**
  * Wave A F3 + s09: when the hand drills' clocks start and stop.
@@ -90,20 +90,19 @@ test('a right answer gives the next card no reading delay', async ({ page }) => 
   await withSettings(page, { drill: { shotClockMs: 60_000, flashCategory: 'hard' } });
   await page.goto('/?e2e=1');
   await openFlashcards(page);
-  // Answer Stand until one is right; check the delay that follows each.
-  for (let i = 0; i < 30; i++) {
-    await page.waitForTimeout(300);
-    await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
-    const tone = await page.locator('[data-testid="result-strip"]').getAttribute('data-tone');
-    const fill = page.getByTestId('shot-clock').locator('.shot-clock-fill');
-    if (tone === 'miss') {
-      await expect(fill).toHaveAttribute('data-delay-ms', '2500');
-    } else {
-      await expect(fill).not.toHaveAttribute('data-delay-ms', /.*/);
-      return;
-    }
-  }
-  throw new Error('30 answers of Stand and none was right');
+  const strip = page.locator('[data-testid="result-strip"]');
+  const fill = page.getByTestId('shot-clock').locator('.shot-clock-fill');
+  // A deliberate miss first: the card dealt under it gets the reading delay.
+  const right = await shownHandRightPlay(page);
+  await page.locator('.action-bar button.action-btn', { hasText: right === 'Hit' ? 'Stand' : 'Hit' }).click();
+  await expect(strip).toHaveAttribute('data-tone', 'miss');
+  await expect(fill).toHaveAttribute('data-delay-ms', '2500');
+  // Then the right play for the hand on screen: no delay on the next card.
+  const prevId = await strip.locator('.hand-result').getAttribute('data-result-id');
+  await page.locator('.action-bar button.action-btn', { hasText: await shownHandRightPlay(page) }).click();
+  await expect(strip.locator('.hand-result')).not.toHaveAttribute('data-result-id', prevId!);
+  await expect(strip).toHaveAttribute('data-tone', 'ok');
+  await expect(fill).not.toHaveAttribute('data-delay-ms', /.*/);
 });
 
 test('eyes-free suspends the shot clock', async ({ page }) => {

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { readStats, withStats } from './helpers';
+import { readStats, shownHandRightPlay, withStats } from './helpers';
 import { EMPTY_STATS } from '../src/store/types';
 
 /**
@@ -76,12 +76,11 @@ test('wrong tap is offered only until the next answer, and never on a correct st
   const strip = page.locator('[data-testid="result-strip"]');
   await expect(strip.getByRole('button', { name: 'Wrong tap' })).toHaveCount(1);
 
-  // Answer until a CORRECT strip: it never carries the link, and the miss
-  // before it can no longer be withdrawn.
-  for (let i = 0; i < 40; i += 1) {
-    await page.locator('.action-bar button:not([disabled])').last().click();
-    if ((await strip.getAttribute('data-tone')) === 'ok') break;
-  }
+  // A CORRECT strip never carries the link, and the miss before it can no
+  // longer be withdrawn. Answer the shown hand's basic-strategy play.
+  const prevId = await strip.locator('.hand-result').getAttribute('data-result-id');
+  await page.locator('.action-bar button.action-btn', { hasText: await shownHandRightPlay(page) }).click();
+  await expect(strip.locator('.hand-result')).not.toHaveAttribute('data-result-id', prevId!);
   await expect(strip).toHaveAttribute('data-tone', 'ok');
   await expect(strip.getByRole('button', { name: 'Wrong tap' })).toHaveCount(0);
 });
