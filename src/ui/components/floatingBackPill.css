@@ -22,7 +22,7 @@
   border-radius: 999px;
   background: var(--accent);
   color: var(--accent-ink);
-  font-size: 1rem;
+  font-size: var(--fs-md);
   font-weight: 700;
   white-space: nowrap;
   box-shadow:
@@ -41,6 +41,6 @@
 }
 
 .floating-back-pill-arrow {
-  font-size: 1.1rem;
+  font-size: var(--fs-lg);
   line-height: 1;
 }

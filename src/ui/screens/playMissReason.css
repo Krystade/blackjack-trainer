@@ -4,7 +4,7 @@
  * the note's size and ink, not as a dim 12px footnote under it.
  */
 .mistake-card-table .mistake-reason {
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   line-height: 1.4;
   color: var(--ink);
 }

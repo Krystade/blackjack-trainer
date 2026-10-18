@@ -29,7 +29,7 @@
 .table-screen > .topbar .topbar-profile-name {
   display: block;
   margin-left: 0 !important;
-  font-size: 0.75rem !important;
+  font-size: 0.75rem !important; /* F28 floor: 12px, see scripts/typeScale.ts */
   opacity: 1 !important;
   font-weight: 600;
   color: var(--ink-dim);

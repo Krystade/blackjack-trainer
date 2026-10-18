@@ -1,6 +1,6 @@
 /* #53: the With-count line -- which index applied, or that none did. */
 .hand-result .hand-result-index {
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--ink-dim);
 }

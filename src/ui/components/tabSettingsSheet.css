@@ -42,7 +42,7 @@
 
 .tab-sheet-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--fs-md);
   font-weight: 700;
   color: var(--ink);
 }
@@ -68,7 +68,7 @@
 
 .tab-sheet-group {
   margin: var(--space-3) 0 0;
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -78,7 +78,7 @@
 /* The note under a group that says when its changes take effect. */
 .tab-sheet-when {
   margin: var(--space-1) 0 var(--space-2);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
@@ -95,7 +95,7 @@
    they read as the explanation they are. */
 .tab-sheet-body .settings-note {
   margin: 0 0 var(--space-2);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   line-height: 1.35;
   color: var(--ink-dim);
 }
@@ -113,7 +113,7 @@
   border-radius: 50%;
   background: var(--surface);
   color: var(--ink);
-  font-size: 1.2rem;
+  font-size: var(--fs-xl);
   line-height: 1;
   cursor: pointer;
 }

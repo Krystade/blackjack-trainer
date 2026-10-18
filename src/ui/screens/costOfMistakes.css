@@ -13,7 +13,7 @@
 
 .cost-head-meta {
   color: var(--ink-dim);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
@@ -27,7 +27,7 @@
   background: var(--raised);
   color: var(--ink);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   cursor: pointer;
 }

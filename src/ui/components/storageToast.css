@@ -15,7 +15,7 @@
   border: 1px solid var(--bad-line);
   border-left: 4px solid var(--bad);
   border-radius: var(--radius-md, 0.5rem);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   line-height: 1.35;
   box-shadow: 0 4px 16px rgb(0 0 0 / 30%);
 }
@@ -33,7 +33,7 @@
   background: transparent;
   color: var(--ink);
   font: inherit;
-  font-size: 1.4rem;
+  font-size: var(--fs-2xl);
   line-height: 1;
   cursor: pointer;
 }

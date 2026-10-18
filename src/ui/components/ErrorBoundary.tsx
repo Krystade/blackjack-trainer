@@ -110,7 +110,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return (
       <div style={panel} role="alert" className="error-boundary">
-        <h1 style={{ margin: 0, fontSize: '1.4rem' }}>Something broke on this screen.</h1>
+        <h1 style={{ margin: 0, fontSize: 'var(--fs-2xl)' }}>Something broke on this screen.</h1>
         <p style={{ margin: 0, maxWidth: '32ch', color: 'var(--ink-dim, #b7d3c2)' }}>
           Your profiles, stats and drill history are still saved on this device. Save a
           backup before you reset anything.
@@ -134,7 +134,7 @@ export class ErrorBoundary extends Component<Props, State> {
             style={{
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
-              fontSize: '0.75rem',
+              fontSize: 'var(--fs-xs)',
               color: 'var(--ink-faint, #7fa890)',
             }}
           >

@@ -1,6 +1,6 @@
 /* Wave B, B6/W12: the session report's headline and unpriced note. */
-.report-headline { font-size: 1.25rem; font-weight: 800; color: var(--ink); }
-.report-unpriced { font-size: 0.8rem; color: var(--ink-dim); }
+.report-headline { font-size: var(--fs-xl); font-weight: 800; color: var(--ink); }
+.report-unpriced { font-size: var(--fs-sm); color: var(--ink-dim); }
 
 /* B6 (contract 4): "Drill these hands" under the Plays list -- secondary,
    so End's Done stays the primary exit. */

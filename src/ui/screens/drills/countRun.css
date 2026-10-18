@@ -5,7 +5,7 @@
   width: 100%;
   min-width: 0;
   text-align: left;
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
 }
 
 /* The same chevron row as the drill Options disclosure. */
@@ -25,7 +25,7 @@
 
 .count-run > summary::before {
   content: '\203A'; /* › */
-  font-size: 1.2rem;
+  font-size: var(--fs-xl);
   line-height: 1;
   transition: transform 0.15s ease;
 }
@@ -58,7 +58,7 @@
   padding: 0 0.25rem 0.25rem;
   border-bottom: 1px solid var(--line);
   color: var(--ink-faint);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
 }
 
 .count-run-head > :nth-child(n + 3),
@@ -101,7 +101,7 @@
 .count-run-cp {
   grid-column: 1 / -1;
   padding: 0.15rem 0 0.1rem 2.5rem;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
 }
 

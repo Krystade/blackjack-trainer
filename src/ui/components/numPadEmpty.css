@@ -2,7 +2,7 @@
    reads as a typed answer, and OK stays dim until a digit is typed. The
    display's own font still sets the line box, so it does not change height. */
 .numpad-placeholder {
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   font-weight: 400;
   color: var(--ink-dim);
 }

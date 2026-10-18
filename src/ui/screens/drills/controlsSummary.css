@@ -16,7 +16,7 @@
   background: var(--surface);
   color: var(--ink-soft);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   text-align: left;
   cursor: pointer;

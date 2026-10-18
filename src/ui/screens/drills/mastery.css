@@ -2,6 +2,6 @@
    picked now (the scope is shared with Flashcards and Speed). */
 .mastery-resumed {
   margin-top: 0.35rem;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }

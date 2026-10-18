@@ -10,7 +10,7 @@
 }
 
 .hand-result-ok.result-correct {
-  font-size: 1rem;
+  font-size: var(--fs-md);
   font-weight: 700;
   color: var(--good);
 }
@@ -23,7 +23,7 @@
 }
 
 .hand-result-verdict.result-wrong {
-  font-size: 1rem;
+  font-size: var(--fs-md);
 }
 
 .hand-result-hand {
@@ -35,7 +35,7 @@
   margin: 0;
   padding: 2px 8px;
   align-self: flex-start;
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
 }
 
 .hand-result-plays {
@@ -59,7 +59,7 @@
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
@@ -76,7 +76,7 @@
   border-radius: 8px;
   background: transparent;
   color: var(--accent);
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   font-weight: 700;
   cursor: pointer;
 }
@@ -86,7 +86,7 @@
 }
 
 .hand-result .hand-result-label {
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
@@ -95,11 +95,11 @@
   border: 0;
   background: none;
   margin: 0;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
 .hand-result-sr {
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }

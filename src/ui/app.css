@@ -56,7 +56,7 @@ button {
 }
 
 .home-title {
-  font-size: 1.75rem;
+  font-size: var(--fs-4xl);
   text-align: center;
   color: var(--accent);
   letter-spacing: 0.02em;
@@ -76,7 +76,7 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 1.1rem;
+  font-size: var(--fs-lg);
   font-weight: 600;
   cursor: pointer;
 }
@@ -93,7 +93,7 @@ button {
   border: 1px solid var(--accent);
   background: var(--raised);
   color: var(--accent);
-  font-size: 0.95rem;
+  font-size: var(--fs-md);
   font-weight: 600;
   cursor: pointer;
   max-width: 22rem;
@@ -175,7 +175,7 @@ button {
 }
 
 .topbar-stat {
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--ink-soft);
   white-space: nowrap;
@@ -190,7 +190,7 @@ button {
   background: var(--surface);
   color: var(--ink);
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   user-select: none;
 }
 
@@ -235,14 +235,14 @@ button {
 }
 
 .hand-bet {
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   color: var(--ink-dim);
 }
 
 /* ---------- Multi-hand player labels (Cycle-2 Task 8) ---------- */
 
 .hand-label {
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   color: var(--accent);
   letter-spacing: 0.03em;
@@ -268,12 +268,12 @@ button {
 }
 
 .card-rank {
-  font-size: 1rem;
+  font-size: var(--fs-md);
   line-height: 1;
 }
 
 .card-suit {
-  font-size: 1.1rem;
+  font-size: var(--fs-lg);
   line-height: 1;
 }
 
@@ -300,11 +300,11 @@ button {
 }
 
 .card-compact .card-rank {
-  font-size: 0.65rem;
+  font-size: var(--fs-2xs);
 }
 
 .card-compact .card-suit {
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
 }
 
 /* Table Realism, Request B: cards fly in from the dealer rather than simply
@@ -379,7 +379,7 @@ button {
 }
 
 .bot-seat-label {
-  font-size: 0.65rem;
+  font-size: var(--fs-2xs);
   font-weight: 700;
   color: var(--ink-dim);
   letter-spacing: 0.03em;
@@ -403,7 +403,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.6rem;
+  font-size: var(--fs-2xs);
   font-weight: 700;
   line-height: 1;
   flex-shrink: 0;
@@ -433,7 +433,7 @@ button {
   gap: 0.15rem;
   padding: 0.25rem 0.75rem;
   text-align: center;
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
 }
 
 .message-shuffle {
@@ -448,7 +448,7 @@ button {
 
 .message-bot-narration {
   color: var(--ink-dim);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-style: italic;
 }
 
@@ -461,7 +461,7 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 1.3rem;
+  font-size: var(--fs-xl);
   cursor: pointer;
 }
 
@@ -592,7 +592,7 @@ button {
 }
 
 .bet-hand-label {
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-weight: 700;
   color: var(--accent);
   flex: 1 1 auto;
@@ -613,7 +613,7 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 1.1rem;
+  font-size: var(--fs-lg);
   font-weight: 700;
   cursor: pointer;
 }
@@ -656,7 +656,7 @@ button {
 
 .modal-title {
   margin: 0 0 0.75rem;
-  font-size: 1.1rem;
+  font-size: var(--fs-lg);
   color: var(--accent);
 }
 
@@ -695,12 +695,12 @@ button {
 }
 
 .numpad-label {
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
 .numpad-display {
-  font-size: 1.5rem;
+  font-size: var(--fs-2xl);
   font-weight: 700;
   text-align: center;
   padding: 0.4rem;
@@ -720,7 +720,7 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   cursor: pointer;
-  font-size: 1.1rem;
+  font-size: var(--fs-lg);
 }
 
 .numpad-ok {
@@ -759,7 +759,7 @@ button {
 }
 
 .drills-title {
-  font-size: 1.6rem;
+  font-size: var(--fs-3xl);
   text-align: center;
   color: var(--accent);
   letter-spacing: 0.02em;
@@ -779,7 +779,7 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 1.05rem;
+  font-size: var(--fs-md);
   font-weight: 600;
   cursor: pointer;
   /* Name over a one-line description of what the drill trains. */
@@ -797,7 +797,7 @@ button {
 }
 
 .drills-nav-desc {
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-weight: 400;
   line-height: 1.3;
   color: var(--ink-dim);
@@ -810,7 +810,7 @@ button {
 }
 
 .drills-nav-note {
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   font-weight: 400;
   color: var(--accent-dim);
 }
@@ -932,7 +932,7 @@ button {
   border: 1px solid var(--accent);
   background: var(--accent);
   color: var(--accent-ink);
-  font-size: 1.1rem;
+  font-size: var(--fs-lg);
   font-weight: 700;
   cursor: pointer;
 }
@@ -942,7 +942,7 @@ button {
   background: none;
   border: 0;
   color: var(--ink-dim);
-  font-size: 0.95rem;
+  font-size: var(--fs-md);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -954,7 +954,7 @@ button {
 }
 
 .drill-heading {
-  font-size: 1rem;
+  font-size: var(--fs-md);
   font-weight: 700;
   color: var(--accent);
 }
@@ -981,7 +981,7 @@ button {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  font-size: 0.95rem;
+  font-size: var(--fs-md);
   min-height: 48px;
   text-align: left;
 }
@@ -1007,7 +1007,7 @@ button {
   border-left: 3px solid var(--ink-faint);
   border-radius: 8px;
   background: var(--bg-sunken);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
@@ -1056,7 +1056,7 @@ button {
 .voice-status-words {
   width: 100%;
   color: var(--ink-faint);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
 }
 
 /* The earpiece line. Dim rather than alarming on purpose: there is no action to
@@ -1065,14 +1065,14 @@ button {
 .voice-status-earpiece {
   width: 100%;
   color: var(--ink-faint);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
 }
 
 .count-config {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
@@ -1092,7 +1092,7 @@ button {
 }
 
 .count-flash-progress {
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
@@ -1112,7 +1112,7 @@ button {
 }
 
 .pair-cancel-detail {
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
@@ -1144,7 +1144,7 @@ button {
 }
 
 .bsl-explain {
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
   text-align: center;
 }
@@ -1163,12 +1163,12 @@ button {
 }
 
 .distraction-label {
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
 .distraction-prompt {
-  font-size: 2rem;
+  font-size: var(--fs-5xl);
   font-weight: 700;
   color: var(--accent);
 }
@@ -1197,7 +1197,7 @@ button {
 }
 
 .manual-tap-hint {
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
@@ -1241,7 +1241,7 @@ button {
   gap: 0.4rem;
   cursor: pointer;
   list-style: none;
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
@@ -1253,7 +1253,7 @@ button {
    this is a single inline row rather than a list of headings. */
 .drill-options > summary::before {
   content: '\203A'; /* › */
-  font-size: 1.2rem;
+  font-size: var(--fs-xl);
   line-height: 1;
   transition: transform 0.15s ease;
 }
@@ -1301,7 +1301,7 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   padding: 0 0.5rem;
 }
 
@@ -1316,7 +1316,7 @@ button {
 }
 
 .tag-guess-label {
-  font-size: 1rem;
+  font-size: var(--fs-md);
   color: var(--ink);
 }
 
@@ -1332,7 +1332,7 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 1.2rem;
+  font-size: var(--fs-xl);
   font-weight: 700;
   cursor: pointer;
 }
@@ -1349,18 +1349,18 @@ button {
 }
 
 .result-detail {
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
 .result-correct {
-  font-size: 1.2rem;
+  font-size: var(--fs-xl);
   font-weight: 700;
   color: var(--good);
 }
 
 .result-wrong {
-  font-size: 1.2rem;
+  font-size: var(--fs-xl);
   font-weight: 700;
   color: var(--bad);
 }
@@ -1369,7 +1369,7 @@ button {
 
 .mastery-progress {
   color: var(--ink-dim);
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   padding: 0.25rem 0;
 }
 
@@ -1394,13 +1394,13 @@ button {
 /* ---------- Flashcards / Deviation Quiz ---------- */
 
 .feedback-cell {
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
 .quiz-tc {
   text-align: center;
-  font-size: 1.8rem;
+  font-size: var(--fs-4xl);
   font-weight: 800;
   color: var(--accent);
   padding: 0.75rem 0;
@@ -1413,11 +1413,11 @@ button {
   justify-content: center;
   padding: 1.5rem;
   text-align: center;
-  font-size: 1.05rem;
+  font-size: var(--fs-md);
 }
 
 .quiz-label {
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
   text-align: center;
   padding: 0 1rem;
@@ -1435,7 +1435,7 @@ button {
   border-left: 3px solid var(--accent);
   border-radius: 0 5px 5px 0;
   background: var(--surface);
-  font-size: 0.78rem;
+  font-size: var(--fs-xs);
   line-height: 1.4;
   text-align: left;
   color: var(--ink);
@@ -1474,7 +1474,7 @@ button {
    test-mode accuracy is never mistaken for an unassisted one. */
 .report-assisted {
   color: var(--accent);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   margin-top: -0.25rem;
 }
@@ -1487,7 +1487,7 @@ button {
 .report-categories {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
 }
 
 .report-categories th,
@@ -1504,7 +1504,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
 }
 
 .report-mistakes li {
@@ -1580,7 +1580,7 @@ button {
 
 .stats-heading,
 .settings-heading {
-  font-size: 1rem;
+  font-size: var(--fs-md);
   font-weight: 700;
   color: var(--accent);
 }
@@ -1597,13 +1597,13 @@ button {
 .stats-section-title,
 .settings-section-title {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--fs-md);
   color: var(--accent);
 }
 
 .stats-detail {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
@@ -1624,7 +1624,7 @@ button {
 .category-row-top {
   display: flex;
   justify-content: space-between;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   margin-bottom: 0.25rem;
 }
 
@@ -1652,7 +1652,7 @@ button {
 /* R1 (docs/BACKLOG.md, decision-latency telemetry): median decision time,
    shown right under the accuracy bar for the same category. */
 .category-latency {
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   color: var(--ink-dim);
 }
 
@@ -1661,7 +1661,7 @@ button {
 .index-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
 }
 
 .index-table th,
@@ -1697,7 +1697,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--bg-sunken);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
 }
 
 /* V3-8 "Cost of mistakes": the price column must not wrap. Left to the plain
@@ -1731,7 +1731,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--bg-sunken);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   flex-wrap: wrap;
 }
 
@@ -1770,7 +1770,7 @@ button {
 
 .stats-message {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--accent);
 }
 
@@ -1786,7 +1786,7 @@ button {
 }
 
 .settings-label {
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   color: var(--ink);
 }
 
@@ -1822,7 +1822,7 @@ button {
   background: var(--surface);
   color: var(--ink);
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
 }
 
@@ -1848,7 +1848,7 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 1.1rem;
+  font-size: var(--fs-lg);
   font-weight: 700;
   cursor: pointer;
 }
@@ -1862,7 +1862,7 @@ button {
   min-width: 4.5rem;
   text-align: center;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
 }
 
 .segmented-btn:disabled,
@@ -1881,7 +1881,7 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   padding: 0 0.5rem;
 }
 
@@ -1921,7 +1921,7 @@ button {
   color: var(--ink);
   cursor: pointer;
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
 }
 
 
@@ -1953,7 +1953,7 @@ button {
 }
 
 .spread-field-label {
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   color: var(--ink-dim);
 }
 
@@ -2039,7 +2039,7 @@ button {
   color: var(--ink);
   cursor: pointer;
   text-align: left;
-  font-size: 0.95rem;
+  font-size: var(--fs-md);
   padding: 0;
 }
 
@@ -2048,7 +2048,7 @@ button {
 }
 
 .profile-row-badge {
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   color: var(--accent);
   border: 1px solid var(--accent);
   border-radius: 999px;
@@ -2069,7 +2069,7 @@ button {
   background: var(--surface);
   color: var(--ink);
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
 }
 
 .profile-new-btn {
@@ -2091,7 +2091,7 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   padding: 0 0.6rem;
 }
 
@@ -2187,7 +2187,7 @@ button {
   background: var(--surface);
   color: var(--ink);
   font-family: monospace;
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   padding: 0.6rem;
   resize: vertical;
 }
@@ -2206,7 +2206,7 @@ button {
 }
 
 .cvcx-unit-label {
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   color: var(--ink);
 }
 
@@ -2217,7 +2217,7 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   padding: 0 0.6rem;
 }
 
@@ -2227,7 +2227,7 @@ button {
   background: rgba(235, 87, 87, 0.1);
   border: 1px solid var(--bad);
   color: var(--bad);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -2290,7 +2290,7 @@ button {
 
 .cvcx-preview-col {
   padding: 0.75rem;
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   text-align: center;
   color: var(--ink);
 }
@@ -2478,7 +2478,7 @@ button {
 }
 
 .deck-tray-context {
-  font-size: 0.95rem;
+  font-size: var(--fs-md);
   color: var(--ink-dim);
   letter-spacing: 0.02em;
   /* Reads as a caption under the tray. A no-op in the two flex-centred
@@ -2512,7 +2512,7 @@ button {
 }
 
 .table-discard-label {
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -2585,7 +2585,7 @@ button {
 }
 
 .deck-guess-question {
-  font-size: 1rem;
+  font-size: var(--fs-md);
   font-weight: 600;
   color: var(--ink);
   text-align: center;
@@ -2608,7 +2608,7 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 1rem;
+  font-size: var(--fs-md);
   font-weight: 600;
   cursor: pointer;
 }
@@ -2625,7 +2625,7 @@ button {
 }
 
 .deck-typed-display {
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--accent);
   text-align: center;
 }
@@ -2635,7 +2635,7 @@ button {
 .count-timed-badge {
   display: block;
   margin-top: 0.25rem;
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   color: var(--accent);
   letter-spacing: 0.02em;
 }
@@ -2649,18 +2649,18 @@ button {
 }
 
 .timed-result-time {
-  font-size: 1.6rem;
+  font-size: var(--fs-3xl);
   font-weight: 800;
   color: var(--ink);
 }
 
 .timed-result-spd {
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
 .timed-result-tier {
-  font-size: 1rem;
+  font-size: var(--fs-md);
   font-weight: 700;
   padding: 0.15rem 0.75rem;
   border-radius: 999px;
@@ -2690,7 +2690,7 @@ button {
 }
 
 .timed-result-benchmark {
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   color: var(--ink-faint);
   text-align: center;
   max-width: 20rem;
@@ -2700,7 +2700,7 @@ button {
    verdict on the just-finished Timed Challenge run. Reuses the existing
    timed-result palette rather than introducing a new one. */
 .timed-result-gate {
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   color: var(--ink-dim);
   text-align: center;
   max-width: 20rem;
@@ -2745,7 +2745,7 @@ button {
 }
 
 .mistake-verdict {
-  font-size: 1.15rem;
+  font-size: var(--fs-lg);
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2755,7 +2755,7 @@ button {
 /* The classification is the diagnosis, so it is labelled like one rather
    than styled as a decorative tag. */
 .mistake-class {
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2787,7 +2787,7 @@ button {
 }
 
 .mistake-play-role {
-  font-size: 0.65rem;
+  font-size: var(--fs-2xs);
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--ink-dim);
@@ -2797,7 +2797,7 @@ button {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 1rem;
+  font-size: var(--fs-md);
   font-weight: 700;
 }
 
@@ -2836,7 +2836,7 @@ button {
      Slate-copper (copper on gold); a filled cell passes in every theme. */
   background: var(--accent);
   color: var(--bg);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
@@ -2844,7 +2844,7 @@ button {
 .mistake-context {
   display: flex;
   gap: 0.6rem;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
   font-variant-numeric: tabular-nums;
 }
@@ -2856,14 +2856,14 @@ button {
 
 .mistake-note {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   line-height: 1.4;
   color: var(--ink);
 }
 
 .mistake-reason {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   line-height: 1.35;
   color: var(--ink-dim);
 }
@@ -2883,7 +2883,7 @@ button {
   border-radius: 0.45rem;
   background: transparent;
   color: var(--accent);
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   font-weight: 700;
   cursor: pointer;
 }
@@ -2902,7 +2902,7 @@ button {
 }
 
 .mistake-card-eyes-free .mistake-verdict {
-  font-size: 1.5rem;
+  font-size: var(--fs-2xl);
 }
 
 .mistake-eyes-free-answer {
@@ -2968,7 +2968,7 @@ button {
   border-radius: 0.4rem;
   background: transparent;
   color: var(--ink-dim);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
@@ -3007,7 +3007,7 @@ button {
 }
 
 .count-voice-hint {
-  font-size: 0.78rem;
+  font-size: var(--fs-xs);
   color: var(--ink-dim);
   line-height: 1.35;
 }
@@ -3021,7 +3021,7 @@ button {
   border-radius: 0.4rem;
   background: transparent;
   color: var(--ink-dim);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
@@ -3077,11 +3077,11 @@ button {
 
 .theme-option-name {
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: var(--fs-md);
 }
 
 .theme-option-note {
-  font-size: 0.78rem;
+  font-size: var(--fs-xs);
   line-height: 1.35;
   color: var(--ink-dim);
 }
@@ -3144,7 +3144,7 @@ button {
 
 .home-title {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--fs-xl);
   letter-spacing: 0.01em;
   color: var(--accent);
 }
@@ -3176,7 +3176,7 @@ button {
 }
 
 .readiness-value {
-  font-size: 1.5rem;
+  font-size: var(--fs-2xl);
   font-weight: 800;
   line-height: 1;
   color: var(--ink);
@@ -3184,7 +3184,7 @@ button {
 }
 
 .readiness-label {
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -3197,7 +3197,7 @@ button {
   background: none;
   color: var(--accent);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
   font-weight: 650;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -3212,7 +3212,7 @@ button {
 
 .home-play-btn {
   min-height: 3.25rem;
-  font-size: 1.05rem;
+  font-size: var(--fs-md);
 }
 
 /* Deliberately quiet: it is a thing to go and look at, never a thing to
@@ -3221,7 +3221,7 @@ button {
   margin: var(--space-3) 0 0;
   text-align: center;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   letter-spacing: 0.04em;
   color: var(--ink-faint, var(--ink-dim));
   user-select: text;
@@ -3277,7 +3277,7 @@ button {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-ink);
-  font-size: 1.1rem;
+  font-size: var(--fs-lg);
   font-weight: 700;
 }
 
@@ -3307,7 +3307,7 @@ button {
   background: transparent;
   color: var(--ink-dim);
   font: inherit;
-  font-size: 0.78rem;
+  font-size: var(--fs-xs);
   font-weight: 650;
   cursor: pointer;
 }
@@ -3345,7 +3345,7 @@ button {
   background: transparent;
   color: var(--ink-dim);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   font-weight: 650;
   cursor: pointer;
 }
@@ -3394,7 +3394,7 @@ button {
 }
 
 .table-discard-label {
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -3418,7 +3418,7 @@ button {
 
 .drills-group-title {
   margin: var(--space-4) 0 var(--space-1);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -3434,7 +3434,7 @@ button {
    list of action names gets long. */
 .settings-value {
   color: var(--ink-dim);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   text-align: right;
   word-break: break-word;
 }
@@ -3444,7 +3444,7 @@ button {
    the page scroll sideways. */
 .car-log {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   line-height: 1.45;
   color: var(--ink-dim);
   background: var(--bg-sunken);
@@ -3472,13 +3472,13 @@ button {
 
 .selfreport-question {
   text-align: center;
-  font-size: 1rem;
+  font-size: var(--fs-md);
   color: var(--ink-dim);
 }
 
 .selfreport-voice-hint {
   text-align: center;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
@@ -3488,7 +3488,7 @@ button {
   border-radius: 12px;
   border: 1px solid var(--line);
   font: inherit;
-  font-size: 1.25rem;
+  font-size: var(--fs-xl);
   font-weight: 700;
   color: var(--ink);
   cursor: pointer;
@@ -3514,14 +3514,14 @@ button {
 }
 
 .stats-headline-value {
-  font-size: 1.6rem;
+  font-size: var(--fs-3xl);
   font-weight: 800;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
 
 .stats-headline-label {
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
 }
 
@@ -3530,7 +3530,7 @@ button {
    misread the depth, the running count, or the division. */
 .result-question {
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   color: var(--accent);
   margin-bottom: 0.25rem;
 }
@@ -3617,14 +3617,14 @@ button {
 }
 
 .checkpoint-label {
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   color: var(--ink-dim);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .checkpoint-prompt {
-  font-size: 1.6rem;
+  font-size: var(--fs-3xl);
   font-weight: 700;
   color: var(--accent);
 }
@@ -3632,7 +3632,7 @@ button {
 .checkpoint-result {
   margin: 0.75rem 0;
   text-align: left;
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
 }
 
 .checkpoint-result-score {
@@ -3669,14 +3669,14 @@ button {
 /* ---------- RT#11 bet-cover readout on the session report ---------- */
 .report-cover {
   color: var(--ink-dim);
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
 }
 
 /* The tell is a finding, not a footnote. */
 .report-tell {
   color: var(--accent);
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
 }
 
 /* A repeated mistake is one habit, not N problems (see groupMistakes). */
@@ -3719,7 +3719,7 @@ details.settings-section > summary::after,
 details.stats-section > summary::after {
   content: '\203A'; /* › */
   color: var(--ink-dim);
-  font-size: 1.2rem;
+  font-size: var(--fs-xl);
   line-height: 1;
   transform: rotate(90deg);
   transition: transform 0.15s ease;
@@ -3752,7 +3752,7 @@ details.stats-section > summary::after {
 .selftest-failures {
   margin: 0.4rem 0 0;
   padding: 0 0 0 1.1rem;
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
   line-height: 1.4;
   color: var(--bad, #e0725e);
 }
@@ -3793,7 +3793,7 @@ details.stats-section > summary::after {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 20px;
+  font-size: var(--fs-xl);
   line-height: 1;
   display: flex;
   align-items: center;
@@ -3823,7 +3823,7 @@ details.stats-section > summary::after {
    a feedback panel. */
 .feedback-sr {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--ink-dim);
   letter-spacing: 0.01em;
 }
@@ -3844,12 +3844,12 @@ details.stats-section > summary::after {
 }
 
 .selfcheck-banner strong {
-  font-size: 22px;
+  font-size: var(--fs-2xl);
   letter-spacing: 0.02em;
 }
 
 .selfcheck-banner span {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--ink-dim);
 }
 
@@ -3873,7 +3873,7 @@ details.stats-section > summary::after {
 }
 
 .fieldtest-instruction {
-  font-size: 14px;
+  font-size: var(--fs-sm);
   line-height: 1.35;
 }
 
@@ -3896,7 +3896,7 @@ details.stats-section > summary::after {
      the head loses its own lines. */
   flex: 0 0 auto;
   margin: 2px 0 0;
-  font-size: 12.5px;
+  font-size: var(--fs-xs);
   font-style: italic;
   line-height: 1.35;
   color: var(--ink-dim);
@@ -3927,7 +3927,7 @@ details.stats-section > summary::after {
   color: var(--ink);
   cursor: pointer;
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--fs-sm);
   max-width: 100%;
   text-align: left;
 }
@@ -3999,12 +3999,12 @@ details.stats-section > summary::after {
 
 .fieldtest-heading {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--fs-lg);
 }
 
 .fieldtest-title {
   margin: 4px 0 0;
-  font-size: 20px;
+  font-size: var(--fs-xl);
   line-height: 1.2;
 }
 
@@ -4064,7 +4064,7 @@ details.stats-section > summary::after {
 /* No default paragraph margins: they were the other half of the movement. */
 .fieldtest-evidence-line {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   line-height: 1.35;
   color: var(--ink-dim);
 }
@@ -4083,7 +4083,7 @@ details.stats-section > summary::after {
   box-sizing: border-box;
   padding: 6px 8px;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--fs-sm);
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--line);
@@ -4485,7 +4485,7 @@ details.stats-section > summary::after {
 .fieldtest-say {
   display: block;
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--fs-xs);
   font-weight: 500;
   opacity: 0.75;
   font-variant-numeric: tabular-nums;
@@ -4501,7 +4501,7 @@ details.stats-section > summary::after {
   border: 1px solid var(--line);
   background: transparent;
   color: var(--ink-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 
@@ -4578,11 +4578,11 @@ details.stats-section > summary::after {
 .testkit-note {
   margin: 0;
   color: var(--ink-dim);
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
 }
 .testkit-title {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--fs-xl);
 }
 .testkit-kit {
   display: flex;
@@ -4593,16 +4593,16 @@ details.stats-section > summary::after {
   text-align: left;
 }
 .testkit-kit-label {
-  font-size: 1.1rem;
+  font-size: var(--fs-lg);
 }
 .testkit-kit-where {
   font-weight: 400;
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   opacity: 0.8;
 }
 .testkit-go {
   min-height: 3.25rem;
-  font-size: 1.1rem;
+  font-size: var(--fs-lg);
 }
 .testkit-answers {
   display: grid;
@@ -4637,7 +4637,7 @@ details.stats-section > summary::after {
   background: none;
   color: var(--ink-dim);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
@@ -4659,7 +4659,7 @@ details.stats-section > summary::after {
 .testkit-heard {
   margin: 0;
   text-align: center;
-  font-size: 1.05rem;
+  font-size: var(--fs-md);
 }
 .testkit-heard-right {
   color: var(--good, #4caf50);

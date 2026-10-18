@@ -7,7 +7,7 @@
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: 0.95rem;
+  font-size: var(--fs-md);
   line-height: 1.3;
   /* #27: a new result shows at once; only the fade-out is animated (below). */
   transition: none;

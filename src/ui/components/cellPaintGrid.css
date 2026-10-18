@@ -24,7 +24,7 @@
 
 .cpg-title {
   margin: 0 0 var(--space-2);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -75,7 +75,7 @@
 .cpg-corner {
   justify-content: flex-end;
   padding-right: 4px;
-  font-size: 0.55rem;
+  font-size: var(--fs-2xs);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -83,14 +83,14 @@
 .cpg-up {
   justify-content: center;
   height: 28px;
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   cursor: pointer;
 }
 
 .cpg-label {
   justify-content: flex-end;
   padding-right: 6px;
-  font-size: 0.75rem;
+  font-size: var(--fs-xs);
   color: var(--ink);
   white-space: nowrap;
   cursor: pointer;
@@ -161,7 +161,7 @@
 
 .cpg-code {
   margin-top: -6px;
-  font-size: 0.66rem;
+  font-size: var(--fs-2xs);
   font-weight: 700;
   line-height: 1;
 }

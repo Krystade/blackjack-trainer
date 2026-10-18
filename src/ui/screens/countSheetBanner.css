@@ -2,6 +2,6 @@
    the felt's banner. One quiet line under the question. */
 .bottom-sheet-body > .count-sheet-banner {
   padding-bottom: var(--space-1);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   color: var(--ink-soft);
 }
