@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withProfile, withSettings } from './helpers';
+import { shownHandRightPlay, withProfile, withSettings } from './helpers';
 
 /**
  * HOW the answer arrived, all the way from the screen to the schedule.
@@ -46,29 +46,25 @@ function firstPromoted(deck: Record<string, StoredCard>): StoredCard | undefined
 }
 
 /**
- * Answer cards until one of them is right, and return its stored entry.
+ * Give the shown hand's basic-strategy play and return the card it promoted.
  *
- * The drill draws at random and there is no seed hook, so which card comes up
- * cannot be chosen -- but "keep answering Stand until one lands" is
- * deterministic in its OUTCOME, which is all these assertions need. Stand is
- * correct across a large share of the chart, so this settles in a handful of
- * cards; the cap exists so a genuine wiring break fails loudly, with a message
- * saying which half broke, instead of hanging.
+ * The drill draws at random with no seed hook, and the E2 learning step
+ * re-deals a missed card a few cards later, so "keep answering Stand until one
+ * lands" can loop on Stand-is-wrong hands (each miss speaks a long correction
+ * in eyes-free) until the test times out. Reading the hand and answering it
+ * correctly makes one answer enough.
  *
- * `deliver` must not return until its answer has actually been recorded --
- * each input path has its own reason an attempt can be swallowed, and only the
- * caller knows how to retry it.
+ * `deliver` must not return until its answer has actually been recorded.
  */
-async function answerUntilCorrect(
+async function answerCorrectly(
   page: Page,
-  deliver: (before: number) => Promise<void>,
+  deliver: (play: string, before: number) => Promise<void>,
 ): Promise<StoredCard> {
-  for (let i = 0; i < 30; i++) {
-    await deliver(await reviewCount(page));
-    const hit = firstPromoted(await readFlashSr(page));
-    if (hit) return hit;
-  }
-  throw new Error('30 answers of "stand" and none was correct — is the deck being written at all?');
+  const play = await shownHandRightPlay(page);
+  await deliver(play, await reviewCount(page));
+  const hit = firstPromoted(await readFlashSr(page));
+  if (!hit) throw new Error(`answered ${play} (the right play) but no card was promoted`);
+  return hit;
 }
 
 /** Wait until one more review has been written than `before`. */
@@ -79,10 +75,8 @@ async function awaitReview(page: Page, before: number): Promise<void> {
 /**
  * Hard totals only, seeded rather than clicked.
  *
- * Stand is the right play on roughly two in five hard cells (every 17+, and
- * 12-16 against a small card), so the hunt above settles in a card or two
- * instead of a dozen. Across the whole chart it would still terminate, just
- * slowly enough to fight the test timeout on the paths that speak.
+ * Keeps the dealt hands to plain two-card hard totals, which is the shape
+ * shownHandRightPlay reads.
  */
 const HARD_ONLY = { drill: { flashCategory: 'hard' } };
 
@@ -100,12 +94,9 @@ test('an ActionBar click is recorded as the screen channel', async ({ page }) =>
   await page.goto('/?e2e=1');
   await openFlashcards(page);
 
-  const entry = await answerUntilCorrect(page, async (before) => {
-    await page.locator('.action-bar button', { hasText: 'Stand' }).click();
+  const entry = await answerCorrectly(page, async (play, before) => {
+    await page.locator('.action-bar button', { hasText: play }).click();
     await awaitReview(page, before);
-    // Eyes-on mode waits for a tap; clear the correction before the next card.
-    const next = page.getByRole('button', { name: 'Next', exact: true });
-    if (await next.isVisible().catch(() => false)) await next.click();
   });
 
   expect(entry.channels).toBe(0); // neither eyes-free nor hands-free
@@ -128,18 +119,23 @@ test('a blind zone tap is recorded as eyes-free but hands-on', async ({ page }) 
   const zonePad = page.locator('.zone-pad');
   await expect(page.locator('.zone-pad-quadrants')).toBeVisible();
 
-  const entry = await answerUntilCorrect(page, async (before) => {
-    // Top-RIGHT quadrant of the pad's own rect is 'stand' (audio/zones.ts).
+  const entry = await answerCorrectly(page, async (play, before) => {
+    // Zone layout from audio/zones.ts, as fractions of the pad's own rect:
+    // quadrants for hit/stand/double/split, the centre circle for surrender.
     // Computed from the live rect, not a fixed viewport point: the pad starts
     // below the control strip, whose height is measured at runtime.
+    const at: Record<string, [number, number]> = {
+      Hit: [0.1, 0.1],
+      Stand: [0.9, 0.1],
+      Double: [0.1, 0.9],
+      Split: [0.9, 0.9],
+      Surrender: [0.5, 0.5],
+    };
+    const [fx, fy] = at[play];
     const box = await zonePad.boundingBox();
     if (!box) throw new Error('ZonePad has no bounding box');
-    await page.mouse.click(box.x + box.width * 0.75, box.y + box.height * 0.25);
+    await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy);
     await awaitReview(page, before);
-    // Eyes-free auto-advances, but only once it has finished SPEAKING the
-    // correction, and a wrong answer's correction is a long sentence. The
-    // generous window is not slack -- it is the length of the sentence.
-    await expect(page.locator('.zone-pad-quadrants')).toBeVisible({ timeout: 20_000 });
   });
 
   expect(entry.channels).toBe(1);
@@ -186,7 +182,7 @@ test('a spoken answer is recorded as both eyes-free and hands-free', async ({ pa
   await page.getByRole('checkbox', { name: 'Voice answers' }).check();
   await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');
 
-  const entry = await answerUntilCorrect(page, async (before) => {
+  const entry = await answerCorrectly(page, async (play, before) => {
     // A word spoken while the app is talking is deliberately IGNORED -- that
     // guard is what stops the app grading its own correction as the next
     // answer -- so a single utterance is not enough here. Repeat until one is
@@ -194,11 +190,11 @@ test('a spoken answer is recorded as both eyes-free and hands-free', async ({ pa
     await expect
       .poll(
         async () => {
-          await page.evaluate(() => {
+          await page.evaluate((word) => {
             const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } })
               .__rec;
-            rec?.onresult?.({ results: [[{ transcript: 'stand' }]] });
-          });
+            rec?.onresult?.({ results: [[{ transcript: word }]] });
+          }, play.toLowerCase());
           return reviewCount(page);
         },
         { timeout: 20_000, intervals: [200] },
