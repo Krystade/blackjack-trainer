@@ -1573,6 +1573,8 @@ export type ChimeKind = "good" | "bad" | "attention" | "mark" | "blocked" | "rea
 
 /** Bell-like: a soft 2nd and 4th partial. */
 const BELL = [1, 0.35, 0, 0.12] as const;
+/** Round: a soft 2nd partial only -- fuller than a sine, softer than BELL. */
+const ROUND = [1, 0.25] as const;
 /** Buzzy: odd partials only, the "harsh" quality of an error. */
 const BUZZ = [1, 0, 0.55, 0, 0.3, 0, 0.15] as const;
 
@@ -1602,10 +1604,14 @@ const CHIME_EARCON: Record<ChimeKind, Earcon> = {
   // like an assistant's listening cue. Its own kind so the live cue stays
   // countable as the once-per-request event it is.
   turn: { notes: [{ hz: 659, endHz: 988, ms: 90 }] },
-  // GOT IT: a brief high tick, G6. A neutral acknowledgement, like an
-  // assistant's end-of-request blip. It used to be the low 392Hz tone that
-  // Jack heard as "wrong".
-  heard: { notes: [{ hz: 1568, ms: 50 }] },
+  // GOT IT: a quick legato blip up a fourth, E6 -> A6, 80ms, no gap, round
+  // timbre (soft 2nd partial only). An assistant's "end of request" blip:
+  // brief and positive. It was the low 392Hz tone Jack heard as "wrong",
+  // then a bare 50ms G6 tick he did not like either (thin, and a pure tone
+  // that short is easy to lose in a car). Told apart from `good` (two
+  // separated bell notes an octave lower, 195ms) by register, length and
+  // having no gap; from `turn`/`again` by stepping rather than gliding.
+  heard: { notes: [{ hz: 1319, ms: 35 }, { hz: 1760, ms: 45 }], harmonics: ROUND },
   // C-R4 SAY AGAIN (not understood): the speak-now glide TWICE, D5 -> G5. A
   // re-prompt, not a verdict, so it rises and is pure. It was an octave fall,
   // which sounded exactly like "wrong", and it is distinct from `turn` by count.

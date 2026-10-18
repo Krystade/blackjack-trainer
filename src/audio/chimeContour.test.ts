@@ -92,14 +92,19 @@ describe('what each chime means, by its shape', () => {
     }
   });
 
-  it('"got it" is a short, high, neutral tick: not the lowest-but-one tone it used to be', () => {
+  it('"got it" is a short, high, rising blip: not the low tone it used to be', () => {
     const heard = chimeEarconForTest('heard');
-    expect(heard.notes.length).toBe(1);
-    expect(earconDurationMs(heard)).toBeLessThanOrEqual(80);
+    expect(earconDurationMs(heard)).toBeLessThan(150);
+    // Legato: no gap, which is part of what separates it from `good` and `mark`.
+    for (const n of heard.notes) expect(n.gapMs ?? 0).toBe(0);
     // Above every "speak now" pitch and far above anything negative.
-    for (const kind of ['ready', 'turn', 'bad', 'blocked'] as const) {
+    for (const kind of ['ready', 'turn', 'again', 'bad', 'blocked'] as const) {
       for (const n of chimeEarconForTest(kind).notes) expect(heard.notes[0]!.hz).toBeGreaterThan(n.endHz ?? n.hz);
     }
+    // Not a small `good`: starts above where `good` ends, and under half as long.
+    const [, goodEnd] = chimeContourForTest('good');
+    expect(heard.notes[0]!.hz).toBeGreaterThan(goodEnd);
+    expect(earconDurationMs(heard) * 2).toBeLessThan(earconDurationMs(chimeEarconForTest('good')));
   });
 
   it('"say again" is a re-prompt, not a verdict: unlike "wrong" in contour, timbre and pitch', () => {
@@ -136,10 +141,12 @@ describe('no two chimes share a shape', () => {
     const steps = e.notes.slice(1).map((n, i) => Math.sign(n.hz - (e.notes[i]!.endHz ?? e.notes[i]!.hz))).join(',');
     const h = e.harmonics ?? [1];
     const timbre = hasOddPartials(e) ? 'buzz' : h.some((a, i) => i > 0 && a > 0) ? 'bell' : 'pure';
-    return `${e.notes.length}|${glide}|${steps}|${timbre}`;
+    // Rhythm (Brewster): separated notes or legato, and short or long.
+    const rhythm = `${e.notes.some((n, i) => i < e.notes.length - 1 && (n.gapMs ?? 0) > 0) ? 'gaps' : 'legato'}|${earconDurationMs(e) < 100 ? 'short' : 'long'}`;
+    return `${e.notes.length}|${glide}|${steps}|${timbre}|${rhythm}`;
   };
 
-  it('note count, glide, step direction and timbre differ for every pair', () => {
+  it('note count, glide, step direction, timbre and rhythm differ for every pair', () => {
     const seen = new Map<string, ChimeKind>();
     for (const kind of KINDS) {
       const s = shape(kind);
