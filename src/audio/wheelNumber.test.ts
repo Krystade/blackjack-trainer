@@ -39,7 +39,7 @@ function fakeClock() {
   };
 }
 
-function harness(clamp?: (v: number) => number) {
+function harness(clamp?: (v: number) => number, origin?: number | (() => number)) {
   const clock = fakeClock();
   const readbacks: number[] = [];
   const commits: number[] = [];
@@ -49,6 +49,7 @@ function harness(clamp?: (v: number) => number) {
     readback: (v) => readbacks.push(v),
     commit: (v) => commits.push(v),
     ...(clamp ? { clamp } : {}),
+    ...(origin !== undefined ? { origin } : {}),
   });
   return { clock, readbacks, commits, entry };
 }
@@ -167,5 +168,55 @@ describe('walking a number with two buttons', () => {
     // three to undo three -- a clamp that stored the overshoot would feel
     // broken in exactly the moment it was being corrected.
     expect(entry.press('back')).toBe(0);
+  });
+});
+
+/**
+ * Wave E E4 (L-4): an entry can start somewhere other than zero. The count
+ * drill's final running count starts from the count given at the run's last
+ * checkpoint.
+ */
+describe('starting from an origin', () => {
+  it('with origin 4, the first forward press proposes 5 and the first back press 3', () => {
+    expect(harness(undefined, 4).entry.press('forward')).toBe(5);
+    expect(harness(undefined, 4).entry.press('back')).toBe(3);
+  });
+
+  it('reads back and submits the absolute value, not the distance from the origin', () => {
+    const { entry, clock, readbacks, commits } = harness(undefined, -3);
+    entry.press('forward');
+    entry.press('forward');
+    clock.advance(COMMIT_MS);
+    expect(readbacks).toEqual([-1]);
+    expect(commits).toEqual([-1]);
+  });
+
+  it('forward then back submits the origin itself', () => {
+    const { entry, clock, commits } = harness(undefined, 4);
+    entry.press('forward');
+    entry.press('back');
+    clock.advance(COMMIT_MS);
+    expect(commits).toEqual([4]);
+  });
+
+  it('reads a getter at the first press of each entry, and only then', () => {
+    let origin = 2;
+    const { entry, clock, commits } = harness(undefined, () => origin);
+    expect(entry.press('forward')).toBe(3);
+    // Mid-entry the proposal is what accumulates; the origin is not re-read.
+    origin = 10;
+    expect(entry.press('forward')).toBe(4);
+    clock.advance(COMMIT_MS);
+    expect(commits).toEqual([4]);
+    // The next entry starts from wherever the origin is now.
+    expect(entry.press('back')).toBe(9);
+    entry.reset();
+    origin = 0;
+    expect(entry.press('back')).toBe(-1);
+  });
+
+  it('the clamp applies to the first press from an origin too', () => {
+    const { entry } = harness((v) => Math.max(-1, Math.min(1, v)), 4);
+    expect(entry.press('forward')).toBe(1);
   });
 });

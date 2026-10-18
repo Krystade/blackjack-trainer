@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { ANSWER_BOUNCE_MS } from '../src/drills/answerBounce';
 import {
   withSettings,
   withProfile,
@@ -326,16 +327,20 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
   await page.locator('.numpad-btn', { hasText: /^3$/ }).click();
   await page.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(page.locator('.drill-result')).toBeVisible();
-  await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click(); // E5: the result's one exit is the top bar's Back
 
   // --- True count drill ---------------------------------------------------
   await page.getByRole('button', { name: 'True count drill', exact: true }).click();
   await expect(page.locator('.count-setup')).toBeVisible();
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.locator('.numpad')).toBeVisible({ timeout: 30_000 });
+  // No ?e2e=1 here, so the real bounce guard drops an answer this soon after
+  // the question appears.
+  await page.waitForTimeout(ANSWER_BOUNCE_MS + 100);
   await submitZero(page);
-  await expect(page.locator('.drill-result')).toBeVisible();
-  await page.getByRole('button', { name: 'Back to Drills', exact: true }).click();
+  // #54: eyes-on answers fast-advance; the result is the strip over the next question.
+  await expect(page.getByTestId('result-strip')).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
 
   // --- Deck estimation ----------------------------------------------------
   await page.getByRole('button', { name: 'Deck estimation', exact: true }).click();

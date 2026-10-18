@@ -59,6 +59,7 @@ import { enableAudioNow } from '../../audioGate';
 import { useVoiceControl } from '../../useVoiceControl';
 import { useWheelCommand } from '../../useWheelCommand';
 import { useWheelNumber } from '../../useWheelNumber';
+import { CountRunList } from './CountRunList';
 import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
 import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { parseCountSpeech, speakableCount, COUNT_BIAS_PHRASES } from '../../../audio/voiceNumber';
@@ -1574,6 +1575,12 @@ export function CountDrillView({
     // A countdown answer is a tag, not a count: three legal values and no
     // others, so the readback must never offer a fourth.
     ...(countdownMode ? { clamp: (v: number) => Math.max(-1, Math.min(1, v)) } : {}),
+    // Wave E E4 (L-4): the FINAL running count starts from the count given at
+    // the run's last checkpoint -- the end of a long run is usually a few
+    // presses from there and eight or more from zero. Checkpoints themselves,
+    // distraction answers and Countdown's tag all start from 0.
+    origin: () =>
+      phaseRef.current === 'answering' && !countdownMode ? (checkpointRowsRef.current.at(-1)?.answer ?? 0) : 0,
   });
 
   /**
@@ -1809,6 +1816,15 @@ export function CountDrillView({
         </div>
       )}
     </div>
+  );
+
+  /** E5 (W2-8): the dealt run, closed under "Show the run". */
+  const runList = (
+    <CountRunList
+      groups={groups}
+      checkpoints={checkpointReport?.results}
+      {...(countdownMode && countdownRound ? { hidden: countdownRound.hidden } : {})}
+    />
   );
 
   return (
@@ -2374,7 +2390,10 @@ export function CountDrillView({
             The running count was {plainNumber(actualValue)}. Self-reported, and recorded.
           </div>
           {checkpointBlock}
-          <DrillPrimaryBar label="New run" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
+          {runList}
+          {/* E5: one exit. The top bar's Back is it; a second "Back to
+              Drills" here did the same thing. */}
+          <DrillPrimaryBar label="New run" onPrimary={start} />
         </div>
       )}
 
@@ -2414,7 +2433,10 @@ export function CountDrillView({
                 </div>
               );
             })()}
-          <DrillPrimaryBar label="New run" onPrimary={start} secondaryLabel="Back to Drills" onSecondary={handleBack} />
+          {runList}
+          {/* E5: one exit. The top bar's Back is it; a second "Back to
+              Drills" here did the same thing. */}
+          <DrillPrimaryBar label="New run" onPrimary={start} />
         </div>
       )}
     </div>
