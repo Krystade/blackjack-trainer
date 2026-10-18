@@ -1,21 +1,18 @@
-import { useMemo, useRef } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import { useMemo } from 'react';
 import './cellPaintGrid.css';
 import './paintTiersPaper.css';
 import { getChart } from '../../engine/charts';
-import type { Chart, ChartAction } from '../../engine/charts';
 import type { RuleSet } from '../../engine/ruleset';
-import type { Rank } from '../../engine/cards';
 import type { CustomSelection } from '../../store/types';
 import {
   PAINT_SECTIONS,
   PAINT_UPCARDS,
   cellIdAt,
   cellsInRect,
-  cellsOnLine,
   tierOf,
 } from '../../drills/cellSelection';
-import type { PaintRow } from '../../drills/cellSelection';
+import { actionAt, familyOf } from '../../drills/chartFamily';
+import { usePaintStroke } from './usePaintStroke';
 
 /**
  * B2 + B4 (#9): the Custom drill's painter -- the chart, fit to the phone's
@@ -26,50 +23,11 @@ import type { PaintRow } from '../../drills/cellSelection';
  * on a cell painted by hand (Auto leaves those alone).
  *
  * Painting: press a cell and drag; every cell the finger crosses takes the
- * brush. `touch-action: none` sits on the CELLS only, so the page still
- * scrolls from the row labels, the headings and everything around the grid.
- * The stroke is captured to the grid (setPointerCapture) and the cell under
- * the finger is found with elementFromPoint, because a captured pointer's
- * events all target the capturing element. A tap is a one-cell stroke.
- * Tapping a row label or a dealer heading paints that whole row or column.
+ * brush (usePaintStroke, shared with the chart test). `touch-action: none`
+ * sits on the CELLS only, so the page still scrolls from the row labels, the
+ * headings and everything around the grid. Tapping a row label or a dealer
+ * heading paints that whole row or column.
  */
-
-type Family = 'hit' | 'stand' | 'double' | 'split' | 'surrender';
-
-function familyOf(action: ChartAction): Family {
-  switch (action) {
-    case 'H':
-      return 'hit';
-    case 'S':
-      return 'stand';
-    case 'Dh':
-    case 'Ds':
-      return 'double';
-    case 'P':
-    case 'Ph':
-    case 'Pd':
-    case 'Ps':
-      return 'split';
-    default:
-      return 'surrender';
-  }
-}
-
-/**
- * The chart action governing a painter cell. A pair rank with no PAIRS row
- * (5,5 and 10,10 in every shipped chart) plays as its hard total, as the
- * engine does.
- */
-function actionAt(chart: Chart, row: PaintRow, col: number): ChartAction {
-  if (row.section === 'pair') {
-    const pairRow = chart.PAIRS[row.key as Rank];
-    if (pairRow) return pairRow[col]!;
-    const v = row.key === 'A' ? 11 : Number(row.key);
-    return chart.HARD[v * 2]?.[col] ?? 'S';
-  }
-  const table = row.section === 'hard' ? chart.HARD : chart.SOFT;
-  return table[Number(row.key)]?.[col] ?? 'S';
-}
 
 const PIPS = { off: 0, rare: 1, regular: 2, focus: 3 } as const;
 const TIER_NAME = { off: 'Off', rare: 'Rare', regular: 'Regular', focus: 'Focus' } as const;
@@ -88,42 +46,7 @@ export function CellPaintGrid({
   onStrokeEnd: () => void;
 }) {
   const chart = useMemo(() => getChart(rules), [rules]);
-  const stroke = useRef<{ pointerId: number; last: string } | null>(null);
-
-  const cellUnder = (x: number, y: number): string | undefined => {
-    const el = document.elementFromPoint(x, y);
-    return (el?.closest('[data-cell]') as HTMLElement | null)?.dataset.cell;
-  };
-
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    const id = ((e.target as Element).closest('[data-cell]') as HTMLElement | null)?.dataset.cell;
-    if (!id) return;
-    e.preventDefault();
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      /* a synthetic or already-released pointer: painting still works */
-    }
-    stroke.current = { pointerId: e.pointerId, last: id };
-    onPaint([id]);
-  };
-
-  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const s = stroke.current;
-    if (!s || s.pointerId !== e.pointerId) return;
-    const id = cellUnder(e.clientX, e.clientY);
-    if (!id || id === s.last) return;
-    onPaint(cellsOnLine(s.last, id));
-    s.last = id;
-  };
-
-  const endStroke = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const s = stroke.current;
-    if (!s || s.pointerId !== e.pointerId) return;
-    stroke.current = null;
-    onStrokeEnd();
-  };
+  const strokeHandlers = usePaintStroke(onPaint, onStrokeEnd);
 
   const paintAll = (ids: string[]) => {
     onPaint(ids);
@@ -131,14 +54,7 @@ export function CellPaintGrid({
   };
 
   return (
-    <div
-      className="cpg"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={endStroke}
-      onPointerCancel={endStroke}
-      onLostPointerCapture={endStroke}
-    >
+    <div className="cpg" {...strokeHandlers}>
       {PAINT_SECTIONS.map((section) => {
         const first = section.rows[0]!;
         const last = section.rows[section.rows.length - 1]!;

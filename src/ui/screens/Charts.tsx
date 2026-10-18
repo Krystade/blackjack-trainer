@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { TabSettingsButton } from '../components/TabSettingsButton';
+import { ChartTest } from './ChartTest';
+import { useEyesFreeToggle } from '../eyesFreeSession';
 import './charts.css';
 import './chartsText.css';
 import './chartsThemes.css';
@@ -301,6 +303,14 @@ export function Charts({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [highlightKey]);
 
+  // F12: "Test me" -- only on the Charts screen itself (not the study
+  // overlay over a live hand, nor the first-run intro), and never in
+  // eyes-free, where nothing on screen is being looked at.
+  const [eyesFree] = useEyesFreeToggle('charts');
+  const canTest = backPlacement === 'topbar' && !eyesFree;
+  const [modeChoice, setModeChoice] = useState<'chart' | 'test'>('chart');
+  const mode = canTest ? modeChoice : 'chart';
+
   const goBack = () => (onBack ? onBack() : onNavigate('home'));
   const backText = backTextProp ?? `Back to ${backLabel ?? 'Home'}`;
 
@@ -326,238 +336,259 @@ export function Charts({
       {backPlacement === 'floating' && <FloatingBackPill label={backText} onClick={goBack} />}
 
       <p className="charts-ruleset">{rulesetSummary(activeProfile.rules)}</p>
-      {/* WHAT IT IS, rather than a promise it cannot keep. The old line --
-          "Exactly the chart the trainer grades you against." -- is true of
-          basic strategy and false of every counted hand, and this page is
-          reached from corrections, including the deviations that contradict
-          the cell being rung. */}
-      <p className="charts-provenance">
-        The basic strategy chart the trainer grades you against. A cell with a corner mark has a
-        count index that can change it: tap the cell to see it. Every index is listed under
-        Indexes, below the charts.
-      </p>
-      {note && <p className="charts-note">{note}</p>}
-
-      <div className="charts-order" role="group" aria-label="Row order">
-        <span className="charts-order-label">Row order</span>
-        <div className="charts-order-group">
-          {(['descending', 'ascending'] as const).map((value) => (
+      {canTest && (
+        <div className="charts-modes" role="group" aria-label="Charts mode">
+          {(['chart', 'test'] as const).map((value) => (
             <button
               key={value}
               type="button"
-              className={`charts-order-btn${order === value ? ' charts-order-btn-active' : ''}`}
-              aria-pressed={order === value}
-              onClick={() => chooseOrder(value)}
+              className="charts-mode-btn"
+              aria-pressed={mode === value}
+              onClick={() => setModeChoice(value)}
             >
-              {value === 'descending' ? 'Highest first' : 'Lowest first'}
+              {value === 'chart' ? 'Chart' : 'Test me'}
             </button>
           ))}
         </div>
-        <p className="charts-order-hint">
-          {order === 'descending'
-            ? 'Highest totals at the top, like most printed charts.'
-            : 'Lowest totals at the top.'}
-        </p>
-      </div>
+      )}
+      {mode === 'test' ? (
+        <ChartTest rules={activeProfile.rules} />
+      ) : (
+        <>
+          {/* WHAT IT IS, rather than a promise it cannot keep. The old line --
+              "Exactly the chart the trainer grades you against." -- is true of
+              basic strategy and false of every counted hand, and this page is
+              reached from corrections, including the deviations that contradict
+              the cell being rung. */}
+          <p className="charts-provenance">
+            The basic strategy chart the trainer grades you against. A cell with a corner mark has a
+            count index that can change it: tap the cell to see it. Every index is listed under
+            Indexes, below the charts.
+          </p>
+          {note && <p className="charts-note">{note}</p>}
 
-      <div className="chart-legend">
-        <h2 className="chart-legend-heading">Cell codes</h2>
-        <ul className="chart-legend-list">
-          {ACTION_LEGEND.map((entry) => (
-            <li className="chart-legend-item" key={entry.code}>
-              <span className="chart-code" data-action={entry.code} aria-hidden="true">
-                {entry.code}
-              </span>
-              <span className="chart-legend-text">{entry.label}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="chart-legend-note">
-          A second letter is the play to make when the first isn&rsquo;t allowed. Those cells have a
-          stripe down the left edge.
-        </p>
-        <p className="chart-legend-note chart-legend-mark">
-          <span className="chart-code chart-code-indexed" data-action="S" aria-hidden="true">
-            S
-          </span>
-          <span>A corner mark means the count can change that cell. Tap it to see the index.</span>
-        </p>
-      </div>
-
-      {rowsBySection.map((section) => (
-        <section className="chart-section" data-section={section.id} key={section.id}>
-          <h2 className="chart-section-title">
-            {section.title}
-            <span className="chart-section-blurb">{section.blurb}</span>
-          </h2>
-
-          <div className="chart-frame">
-            {/* B4: ten dealer columns and the row label fit the width of the
-                phone (fixed layout, percentage columns), so nothing scrolls
-                sideways and no column hides behind a fade. */}
-            <div className="chart-grid">
-              <table className="chart-table">
-                <caption className="chart-caption">
-                  {section.title} — {rulesetSummary(activeProfile.rules)}
-                </caption>
-                <colgroup>
-                  <col className="chart-col-label" />
-                  {DEALER_UPCARDS.map((up) => (
-                    <col className="chart-col-up" key={up} />
-                  ))}
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th scope="col" className="chart-corner">
-                      Dealer
-                    </th>
-                    {DEALER_UPCARDS.map((up) => (
-                      <th scope="col" className="chart-up" key={up}>
-                        {up}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {section.rows.map((row) => {
-                    const rowHit = isHighlighted(row, section.id, activeHighlight);
-                    const noteUp = DEALER_UPCARDS.findIndex((up) => openIndexCell === `${row.id}:${up}`);
-                    const noteEntries =
-                      noteUp >= 0 ? indexesAtCell(indexes.entries, section.id, row, DEALER_UPCARDS[noteUp]) : [];
-                    const noteSurrenderFirst = noteEntries.filter((e) =>
-                      surrenderComesFirst(e, row.actions[noteUp] ?? null),
-                    );
-                    return (
-                      <Fragment key={row.id}>
-                        <tr data-row={row.id}>
-                          <th scope="row" className="chart-rowlabel">
-                            {row.label}
-                          </th>
-                          {row.actions.map((action, i) => {
-                            const up = DEALER_UPCARDS[i];
-                            const hit = rowHit && activeHighlight!.dealerUp === up;
-                            const cellKey = `${row.id}:${up}`;
-                            const indexed = indexesAtCell(indexes.entries, section.id, row, up).length > 0;
-                            const open = openIndexCell === cellKey;
-                            const description = `${row.label} vs dealer ${up}: ${LEGEND_TEXT.get(action) ?? action}`;
-                            return (
-                              <td
-                                key={up}
-                                className="chart-cell"
-                                data-action={action}
-                                data-up={up}
-                                data-highlight={hit ? 'true' : undefined}
-                                data-index={indexed ? 'true' : undefined}
-                                // aria-current, not an extra hidden span: a cell's
-                                // text content must stay exactly its code, so any
-                                // reader (or test) can take it at face value.
-                                aria-current={hit ? 'true' : undefined}
-                                ref={hit ? cellRef : undefined}
-                                title={`${description}${indexed ? ' — has a count index' : ''}${
-                                  hit ? ' — your hand' : ''
-                                }`}
-                              >
-                                {indexed ? (
-                                  // #23: only an indexed cell is a control, and its
-                                  // text is still exactly the code.
-                                  <button
-                                    type="button"
-                                    className="chart-cell-btn"
-                                    data-index-cell={cellKey}
-                                    aria-expanded={open}
-                                    aria-controls={open ? indexNoteId : undefined}
-                                    aria-label={`${description}. Show its count index`}
-                                    onClick={() => setOpenIndexCell(open ? null : cellKey)}
-                                  >
-                                    {action}
-                                  </button>
-                                ) : (
-                                  action
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                        {noteEntries.length > 0 && (
-                          <tr className="chart-index-note-row">
-                            <td colSpan={DEALER_UPCARDS.length + 1} className="chart-index-note-cell">
-                              <div
-                                className="chart-index-note"
-                                id={indexNoteId}
-                                role="note"
-                                data-testid="chart-index-note"
-                                style={{ '--caret': columnCentre(noteUp) } as CSSProperties}
-                              >
-                                <ul className="index-list">
-                                  {noteEntries.map((e) => (
-                                    <li className="index-item" key={e.id} data-index-id={e.id}>
-                                      <IndexLine entry={e} />
-                                    </li>
-                                  ))}
-                                </ul>
-                                {noteSurrenderFirst.length > 0 && (
-                                  <p className="chart-index-aside" data-testid="chart-index-surrender-first">
-                                    {surrenderFirstLine(noteSurrenderFirst.map((e) => e.play))}
-                                  </p>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
+          <div className="charts-order" role="group" aria-label="Row order">
+            <span className="charts-order-label">Row order</span>
+            <div className="charts-order-group">
+              {(['descending', 'ascending'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`charts-order-btn${order === value ? ' charts-order-btn-active' : ''}`}
+                  aria-pressed={order === value}
+                  onClick={() => chooseOrder(value)}
+                >
+                  {value === 'descending' ? 'Highest first' : 'Lowest first'}
+                </button>
+              ))}
             </div>
+            <p className="charts-order-hint">
+              {order === 'descending'
+                ? 'Highest totals at the top, like most printed charts.'
+                : 'Lowest totals at the top.'}
+            </p>
           </div>
 
-          {section.id === 'PAIRS' && (
-            <p className="chart-section-note">
-              5,5 and 10,10 aren&rsquo;t listed because you never split them. Play 5,5 as hard 10 and 10,10 as
-              hard 20.
+          <div className="chart-legend">
+            <h2 className="chart-legend-heading">Cell codes</h2>
+            <ul className="chart-legend-list">
+              {ACTION_LEGEND.map((entry) => (
+                <li className="chart-legend-item" key={entry.code}>
+                  <span className="chart-code" data-action={entry.code} aria-hidden="true">
+                    {entry.code}
+                  </span>
+                  <span className="chart-legend-text">{entry.label}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="chart-legend-note">
+              A second letter is the play to make when the first isn&rsquo;t allowed. Those cells have a
+              stripe down the left edge.
             </p>
-          )}
-        </section>
-      ))}
+            <p className="chart-legend-note chart-legend-mark">
+              <span className="chart-code chart-code-indexed" data-action="S" aria-hidden="true">
+                S
+              </span>
+              <span>A corner mark means the count can change that cell. Tap it to see the index.</span>
+            </p>
+          </div>
 
-      <section className="chart-indexes" aria-labelledby="chart-indexes-title" data-testid="chart-indexes">
-        <h2 className="chart-section-title" id="chart-indexes-title">
-          Indexes
-          <span className="chart-section-blurb">
-            Plays the true count changes. Once the count reaches the index, make that play;
-            otherwise play the chart.
-          </span>
-        </h2>
-        {INDEX_GROUPS.map((group) => {
-          const entries = indexes.entries.filter((e) => e.group === group.id);
-          if (entries.length === 0) return null;
-          return (
-            <div className="index-group" key={group.id} data-group={group.id}>
-              <h3 className="index-group-title">{group.title}</h3>
-              <ul className="index-list">
-                {entries.map((e) => (
-                  <li className="index-item" key={e.id} data-index-id={e.id}>
-                    <IndexLine entry={e} />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })}
-        {surrenderFirst.length > 0 && (
-          <p className="chart-section-note" data-testid="chart-indexes-surrender-first">
-            {surrenderFirst.map((e) => `${e.hand} v ${e.dealer}`).join(', ')} sit on cells the chart
-            surrenders. Surrender comes first while it&rsquo;s allowed; those indexes are for when it
-            isn&rsquo;t, e.g. after a hit.
-          </p>
-        )}
-        {indexes.inactive.map((line) => (
-          <p className="chart-section-note" key={line}>
-            {line}
-          </p>
-        ))}
-      </section>
+          {rowsBySection.map((section) => (
+            <section className="chart-section" data-section={section.id} key={section.id}>
+              <h2 className="chart-section-title">
+                {section.title}
+                <span className="chart-section-blurb">{section.blurb}</span>
+              </h2>
+
+              <div className="chart-frame">
+                {/* B4: ten dealer columns and the row label fit the width of the
+                    phone (fixed layout, percentage columns), so nothing scrolls
+                    sideways and no column hides behind a fade. */}
+                <div className="chart-grid">
+                  <table className="chart-table">
+                    <caption className="chart-caption">
+                      {section.title} — {rulesetSummary(activeProfile.rules)}
+                    </caption>
+                    <colgroup>
+                      <col className="chart-col-label" />
+                      {DEALER_UPCARDS.map((up) => (
+                        <col className="chart-col-up" key={up} />
+                      ))}
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th scope="col" className="chart-corner">
+                          Dealer
+                        </th>
+                        {DEALER_UPCARDS.map((up) => (
+                          <th scope="col" className="chart-up" key={up}>
+                            {up}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {section.rows.map((row) => {
+                        const rowHit = isHighlighted(row, section.id, activeHighlight);
+                        const noteUp = DEALER_UPCARDS.findIndex((up) => openIndexCell === `${row.id}:${up}`);
+                        const noteEntries =
+                          noteUp >= 0 ? indexesAtCell(indexes.entries, section.id, row, DEALER_UPCARDS[noteUp]) : [];
+                        const noteSurrenderFirst = noteEntries.filter((e) =>
+                          surrenderComesFirst(e, row.actions[noteUp] ?? null),
+                        );
+                        return (
+                          <Fragment key={row.id}>
+                            <tr data-row={row.id}>
+                              <th scope="row" className="chart-rowlabel">
+                                {row.label}
+                              </th>
+                              {row.actions.map((action, i) => {
+                                const up = DEALER_UPCARDS[i];
+                                const hit = rowHit && activeHighlight!.dealerUp === up;
+                                const cellKey = `${row.id}:${up}`;
+                                const indexed = indexesAtCell(indexes.entries, section.id, row, up).length > 0;
+                                const open = openIndexCell === cellKey;
+                                const description = `${row.label} vs dealer ${up}: ${LEGEND_TEXT.get(action) ?? action}`;
+                                return (
+                                  <td
+                                    key={up}
+                                    className="chart-cell"
+                                    data-action={action}
+                                    data-up={up}
+                                    data-highlight={hit ? 'true' : undefined}
+                                    data-index={indexed ? 'true' : undefined}
+                                    // aria-current, not an extra hidden span: a cell's
+                                    // text content must stay exactly its code, so any
+                                    // reader (or test) can take it at face value.
+                                    aria-current={hit ? 'true' : undefined}
+                                    ref={hit ? cellRef : undefined}
+                                    title={`${description}${indexed ? ' — has a count index' : ''}${
+                                      hit ? ' — your hand' : ''
+                                    }`}
+                                  >
+                                    {indexed ? (
+                                      // #23: only an indexed cell is a control, and its
+                                      // text is still exactly the code.
+                                      <button
+                                        type="button"
+                                        className="chart-cell-btn"
+                                        data-index-cell={cellKey}
+                                        aria-expanded={open}
+                                        aria-controls={open ? indexNoteId : undefined}
+                                        aria-label={`${description}. Show its count index`}
+                                        onClick={() => setOpenIndexCell(open ? null : cellKey)}
+                                      >
+                                        {action}
+                                      </button>
+                                    ) : (
+                                      action
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                            {noteEntries.length > 0 && (
+                              <tr className="chart-index-note-row">
+                                <td colSpan={DEALER_UPCARDS.length + 1} className="chart-index-note-cell">
+                                  <div
+                                    className="chart-index-note"
+                                    id={indexNoteId}
+                                    role="note"
+                                    data-testid="chart-index-note"
+                                    style={{ '--caret': columnCentre(noteUp) } as CSSProperties}
+                                  >
+                                    <ul className="index-list">
+                                      {noteEntries.map((e) => (
+                                        <li className="index-item" key={e.id} data-index-id={e.id}>
+                                          <IndexLine entry={e} />
+                                        </li>
+                                      ))}
+                                    </ul>
+                                    {noteSurrenderFirst.length > 0 && (
+                                      <p className="chart-index-aside" data-testid="chart-index-surrender-first">
+                                        {surrenderFirstLine(noteSurrenderFirst.map((e) => e.play))}
+                                      </p>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {section.id === 'PAIRS' && (
+                <p className="chart-section-note">
+                  5,5 and 10,10 aren&rsquo;t listed because you never split them. Play 5,5 as hard 10 and 10,10 as
+                  hard 20.
+                </p>
+              )}
+            </section>
+          ))}
+
+          <section className="chart-indexes" aria-labelledby="chart-indexes-title" data-testid="chart-indexes">
+            <h2 className="chart-section-title" id="chart-indexes-title">
+              Indexes
+              <span className="chart-section-blurb">
+                Plays the true count changes. Once the count reaches the index, make that play;
+                otherwise play the chart.
+              </span>
+            </h2>
+            {INDEX_GROUPS.map((group) => {
+              const entries = indexes.entries.filter((e) => e.group === group.id);
+              if (entries.length === 0) return null;
+              return (
+                <div className="index-group" key={group.id} data-group={group.id}>
+                  <h3 className="index-group-title">{group.title}</h3>
+                  <ul className="index-list">
+                    {entries.map((e) => (
+                      <li className="index-item" key={e.id} data-index-id={e.id}>
+                        <IndexLine entry={e} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+            {surrenderFirst.length > 0 && (
+              <p className="chart-section-note" data-testid="chart-indexes-surrender-first">
+                {surrenderFirst.map((e) => `${e.hand} v ${e.dealer}`).join(', ')} sit on cells the chart
+                surrenders. Surrender comes first while it&rsquo;s allowed; those indexes are for when it
+                isn&rsquo;t, e.g. after a hit.
+              </p>
+            )}
+            {indexes.inactive.map((line) => (
+              <p className="chart-section-note" key={line}>
+                {line}
+              </p>
+            ))}
+          </section>
+        </>
+      )}
     </div>
   );
 }
