@@ -1,0 +1,34 @@
+/*
+ * F8 (W2-19, D4): the mistake card's chart cell in the ONE action palette.
+ *
+ * app.css drew it as a solid accent (gold) cell, so the correction's "chart
+ * cell" was the one cell in the app that was not in its action's colour -- a
+ * double correction showed gold where every chart shows teal. It now reads the
+ * same --act-* fill and ink as Charts and the painter (themes.css), and keeps
+ * the accent only as its ring. Each family's ink is AA on its own fill in all
+ * four themes (B2 #32 guards it in play-glance.spec.ts).
+ */
+.mistake-cell[data-act='hit'] {
+  background: var(--act-hit);
+  color: var(--act-hit-ink);
+}
+
+.mistake-cell[data-act='stand'] {
+  background: var(--act-stand);
+  color: var(--act-stand-ink);
+}
+
+.mistake-cell[data-act='double'] {
+  background: var(--act-double);
+  color: var(--act-double-ink);
+}
+
+.mistake-cell[data-act='split'] {
+  background: var(--act-split);
+  color: var(--act-split-ink);
+}
+
+.mistake-cell[data-act='surrender'] {
+  background: var(--act-surrender);
+  color: var(--act-surrender-ink);
+}

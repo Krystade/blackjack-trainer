@@ -33,17 +33,8 @@
   --ink: #eaf3ec;
   --ink-dim: #8fbba1;
 
-  /* --- action families: background + its own ink */
-  --act-hit: #8e2f3b;
-  --act-hit-ink: #ffe1e5;
-  --act-stand: #7d611a;
-  --act-stand-ink: #ffeec4;
-  --act-double: #145d63;
-  --act-double-ink: #c9f2f7;
-  --act-split: #4b3a8a;
-  --act-split-ink: #e2daff;
-  --act-surrender: #4c5a66;
-  --act-surrender-ink: #e3ebf2;
+  /* --- action families (--act-*, fill + its own ink) live in themes.css
+         since F8: one palette for Charts, the painter and the mistake card. */
 
   /* --- fallback slivers: the light tone of the family being fallen back to */
   --bar-hit: #f08a97;
@@ -611,6 +602,7 @@ body:has(.charts-screen) .mute-btn {
  * The action colours keep their own identity rather than becoming pastel:
  * these cells are read at a glance and the families must stay separable, so
  * the light set is darkened for contrast against paper instead of tinted.
+ * That set now lives in themes.css (F8), shared with the painter.
  */
 :root[data-theme='bone-ink'] .charts-screen {
   --felt: #f2ece0;
@@ -620,17 +612,6 @@ body:has(.charts-screen) .mute-btn {
   --brass: #82541a;
   --ink: #201c16;
   --ink-dim: #6f6455;
-
-  --act-hit: #a52f2a;
-  --act-hit-ink: #fff1ef;
-  --act-stand: #8a6a1e;
-  --act-stand-ink: #fff8e6;
-  --act-double: #10666d;
-  --act-double-ink: #eafcff;
-  --act-split: #4b3a8a;
-  --act-split-ink: #f0ecff;
-  --act-surrender: #4c5a66;
-  --act-surrender-ink: #eef4f9;
 
   --bar-hit: #7a1d19;
   --bar-stand: #5e4712;

@@ -4,6 +4,7 @@ import type { Action } from '../../engine/deviations';
 import type { MistakeClass } from '../../engine/grade';
 import { plainCellLabel } from '../../drills/cellLabel';
 import { CLASS_COPY } from '../mistakeCopy';
+import './mistakeCell.css';
 
 /**
  * The shared "here is what you got wrong" panel, used by the table overlay
@@ -156,7 +157,13 @@ export function MistakeCard({
         <div className="mistake-play mistake-play-expected">
           <span className="mistake-play-role">Correct</span>
           <span className="mistake-play-value">
-            {expectedLetter && <span className="mistake-cell">{expectedLetter}</span>}
+            {/* F8: the cell wears its action family's colour from the one
+                palette (themes.css --act-*), as it does on the chart. */}
+            {expectedLetter && (
+              <span className="mistake-cell" data-act={expected}>
+                {expectedLetter}
+              </span>
+            )}
             {playLabel(expected)}
           </span>
         </div>

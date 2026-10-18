@@ -45,7 +45,12 @@ export type EventKind = 'action' | 'insurance' | 'bet' | 'countCheck' | 'wong';
  * `kind: 'action'`, so kind cannot answer "how am I doing at flashcards" --
  * which is why nothing in Stats could.
  */
-export type EventSource = 'table' | 'flashcard' | 'quiz' | 'mastery';
+/*
+ * 'chartTest' (F12): a cell missed on the Charts "Test me" blank chart. Only
+ * misses are ever recorded under it (see drills/chartTest.ts). Additive: the
+ * one persisted shape keyed by source, `Stats.bySource`, is a Partial record.
+ */
+export type EventSource = 'table' | 'flashcard' | 'quiz' | 'mastery' | 'chartTest';
 export type Category = 'hard' | 'soft' | 'pairs' | 'surrender' | 'insurance' | 'bet' | 'countCheck' | 'wong';
 
 export interface GradedEvent {

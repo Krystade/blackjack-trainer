@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import './app.css';
 import './themeCues.css';
 import './formControls.css';
@@ -7,13 +7,10 @@ import { Table } from './screens/Table';
 import { Drills } from './screens/Drills';
 import { Stats } from './screens/Stats';
 import { Settings } from './screens/Settings';
-import { ProfileEditor } from './screens/ProfileEditor';
 import { Charts } from './screens/Charts';
 import { TabBar } from './components/TabBar';
 import { MuteButton } from './components/MuteButton';
 import { StorageToast } from './components/StorageToast';
-import { FieldTest } from './screens/FieldTest';
-import { TestKit } from './screens/TestKit';
 import { KIT_PROGRESS_KEY, parseProgress } from '../diag/testKit';
 import { fieldTestRunIsResumable } from '../diag/fieldTestRun';
 import { loadSettings, saveSettings } from '../store/persist';
@@ -32,6 +29,13 @@ import { installAudioUnlock } from '../audio/unlock';
 import { installAudioContextKeepAlive } from '../audio/audioContext';
 import { useActivityLive } from './activityLive';
 import { mayLeave } from './leaveGuard';
+import { lazyScreen } from './lazyScreen';
+
+// F11 (W2-24): rarely opened screens, each its own chunk (see lazyScreen.ts).
+// Everything a drill or the table needs stays in the entry chunk.
+const FieldTest = lazyScreen('fieldtest', () => import('./screens/FieldTest').then((m) => m.FieldTest));
+const TestKit = lazyScreen('testkit', () => import('./screens/TestKit').then((m) => m.TestKit));
+const ProfileEditor = lazyScreen('profiles', () => import('./screens/ProfileEditor').then((m) => m.ProfileEditor));
 // Last, so the mute seat (B1) wins the cascade over every sheet above it.
 import './muteSeat.css';
 
@@ -390,7 +394,10 @@ function App() {
           simply navigate somewhere else. */}
       <ErrorBoundary key={screen} onReset={() => navigate('home')}>
         <TabSettingsContext.Provider value={tabSettings}>
-          {crashRequested ? <CrashOnDemand /> : body}
+          {/* A lazy screen's first open waits on its chunk (from the
+              service worker's cache once saved): nothing is shown for those
+              few milliseconds rather than a spinner that only flickers. */}
+          <Suspense fallback={null}>{crashRequested ? <CrashOnDemand /> : body}</Suspense>
         </TabSettingsContext.Provider>
       </ErrorBoundary>
       {/* Rendered for every screen; app.css stands it down in the
