@@ -33,6 +33,7 @@ import {
   stopClips,
 } from "./clips";
 import { chimePeak, utteranceVolume } from "./volume";
+import type { Earcon } from "./tone";
 // Only the test reset is still wanted here: nothing in speech.ts touches the
 // Web Audio graph any more. The chimes were the last thing that did.
 import { _resetSharedAudioContextForTest } from "./audioContext";
@@ -1542,64 +1543,110 @@ export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
  * moment it arrived, so the operator spoke into a microphone that was not
  * listening yet.
  *
- * Chosen to be distinguishable without pitch memory: `mark` sits a fourth
- * below `good` and so reads as "held, not finished" next to it, and `blocked`
- * is an octave below `bad`, which is already the lowest answer tone. `ready`
- * is deliberately NOT in a simple ratio with any of the verdict tones -- no
- * octave, no fifth -- because it is not a verdict, and a cue that reads as
- * "correct" in the one mode where sound is the only channel is worse than no
- * cue. No two kinds share a frequency -- `speech.test.ts` asserts exactly
- * that, because a duplicate would silently undo the distinction this table
- * exists for.
+ * REDESIGNED 2026-10-18. Jack, from the car: "The tones don't sound right ...
+ * A low tone seems to play to indicate the wrong thing. One tone sounds like
+ * an incorrect tone when it isn't marking that." He was right twice over.
+ * "Got it" was a lone 392Hz sine, the second-lowest tone in the app, so an
+ * ACCEPTED answer sounded like a rejection. "Say again" was a 698->349
+ * octave fall, which is the textbook "wrong" contour. And `bad`/`blocked` were
+ * pure 220/110Hz sines, which a phone speaker barely reproduces and road noise
+ * covers. Every kind was the same 120ms pure sine, so the ear had nothing to
+ * go on but absolute pitch, and absolute pitch is the weakest cue there is.
+ * The rules now (sources: Brewster's earcon guidelines, IEC 60601-1-8
+ * Annex D, Google's conversation-design earcon guidance, and the
+ * melodic-contour valence studies; see the tones-tail commit message):
+ *
+ *  - VALENCE BY CONTOUR AND TIMBRE. Rising reads as positive or "go", falling
+ *    and low as negative; dissonance and odd harmonics (a buzz) read as
+ *    error. Only `bad` and `blocked` fall, buzz, or sit below 500Hz. Every
+ *    other kind ends at or above where it starts and is pure or bell-like.
+ *    chimeEarcon.test.ts enforces it.
+ *  - DISTINCT BY RHYTHM AND NOTE COUNT, not only pitch (Brewster's earcon
+ *    guidelines). One, two or three notes, glides against steps, and pips
+ *    against held notes. No two kinds share that shape.
+ *  - IN THE 500-3000Hz BAND that alarm and in-vehicle guidance prefers and a
+ *    phone speaker reproduces. The two low negative tones carry 3rd and 5th
+ *    partials, so most of their energy lands at 1-2kHz.
+ *  - SHORT: 50-220ms, always under CHIME_ACTIVITY_MS.
  */
 export type ChimeKind = "good" | "bad" | "attention" | "mark" | "blocked" | "ready" | "turn" | "heard" | "again";
 
-const CHIME_FREQUENCY_HZ: Record<ChimeKind, number> = {
-  good: 880,
-  bad: 220,
-  attention: 1320,
-  mark: 660,
-  blocked: 110,
-  ready: 523,
-  // "Your turn" after each prompt: the same pitch as the live cue, because it
-  // means the same thing -- speak now -- but its own kind, so the live cue
-  // stays countable as the once-per-request event it is.
-  turn: 523,
-  // "Got it" -- below "ready" and well above "bad", so the pair a listener
-  // must tell apart (your turn / got it) are a fourth apart, not a semitone.
-  heard: 392,
-  // C-R4 "say again": the answer was not understood. Starts at a pitch no
-  // other kind uses and GLIDES DOWN an octave (CHIME_END_HZ), so it differs
-  // from the flat "your turn" / "mic open" tones in contour, not only note.
-  again: 698,
+/** Bell-like: a soft 2nd and 4th partial. */
+const BELL = [1, 0.35, 0, 0.12] as const;
+/** Round: a soft 2nd partial only -- fuller than a sine, softer than BELL. */
+const ROUND = [1, 0.25] as const;
+/** Buzzy: odd partials only, the "harsh" quality of an error. */
+const BUZZ = [1, 0, 0.55, 0, 0.3, 0, 0.15] as const;
+
+const CHIME_EARCON: Record<ChimeKind, Earcon> = {
+  // CORRECT. Two notes up a fourth, landing on the tonic: the climbing "yes"
+  // every quiz app uses. G5 -> C6, bell timbre.
+  good: { notes: [{ hz: 784, ms: 70, gapMs: 15 }, { hz: 1047, ms: 110 }], harmonics: BELL },
+  // WRONG. Two notes DOWN a tritone (the dissonant interval), buzzy. Bb4 -> E4,
+  // with odd partials up to 1.6kHz so it survives a phone speaker. The only
+  // kind with a falling step.
+  bad: { notes: [{ hz: 466, ms: 90, gapMs: 10 }, { hz: 330, ms: 120 }], harmonics: BUZZ },
+  // NEUTRAL "ding": a tap or event that is neither right nor wrong (field test).
+  // One held bell note, C6.
+  attention: { notes: [{ hz: 1047, ms: 110 }], harmonics: BELL },
+  // ARMED, STEP STILL OPEN: two equal pips, "noted, more to come". Not a
+  // verdict, so neither up nor down. A5.
+  mark: { notes: [{ hz: 880, ms: 45, gapMs: 45 }, { hz: 880, ms: 45 }] },
+  // REFUSED TAP: one flat low buzz, a "nope". Shares the buzz with `bad`
+  // (both mean "that did not count") but is a single note, not a fall.
+  blocked: { notes: [{ hz: 392, ms: 140 }], harmonics: BUZZ },
+  // MICROPHONE LIVE: a quick rising arpeggio, C5-E5-G5. The "start of request"
+  // cue, a bigger gesture than `turn` because it fires once per mic opening.
+  ready: {
+    notes: [{ hz: 523, ms: 45, gapMs: 10 }, { hz: 659, ms: 45, gapMs: 10 }, { hz: 784, ms: 50 }],
+  },
+  // YOUR TURN after each prompt: one short rising glide, E5 -> B5. "Speak now",
+  // like an assistant's listening cue. Its own kind so the live cue stays
+  // countable as the once-per-request event it is.
+  turn: { notes: [{ hz: 659, endHz: 988, ms: 90 }] },
+  // GOT IT: a quick legato blip up a fourth, E6 -> A6, 80ms, no gap, round
+  // timbre (soft 2nd partial only). An assistant's "end of request" blip:
+  // brief and positive. It was the low 392Hz tone Jack heard as "wrong",
+  // then a bare 50ms G6 tick he did not like either (thin, and a pure tone
+  // that short is easy to lose in a car). Told apart from `good` (two
+  // separated bell notes an octave lower, 195ms) by register, length and
+  // having no gap; from `turn`/`again` by stepping rather than gliding.
+  heard: { notes: [{ hz: 1319, ms: 35 }, { hz: 1760, ms: 45 }], harmonics: ROUND },
+  // C-R4 SAY AGAIN (not understood): the speak-now glide TWICE, D5 -> G5. A
+  // re-prompt, not a verdict, so it rises and is pure. It was an octave fall,
+  // which sounded exactly like "wrong", and it is distinct from `turn` by count.
+  again: {
+    notes: [{ hz: 587, endHz: 784, ms: 55, gapMs: 45 }, { hz: 587, endHz: 784, ms: 55 }],
+  },
 };
 
-/** C-R4: kinds whose pitch moves across the tone; every other kind is flat. */
-const CHIME_END_HZ: Partial<Record<ChimeKind, number>> = {
-  again: 349,
-};
+/** The earcon a kind plays, for the tests that assert what it means. */
+export function chimeEarconForTest(kind: ChimeKind): Earcon {
+  return CHIME_EARCON[kind];
+}
 
-/** [start, end] pitch of a kind, for the test that asserts the contours differ. */
+/** [start, end] pitch of a kind: the first note's start, the last note's end. */
 export function chimeContourForTest(kind: ChimeKind): readonly [number, number] {
-  const start = CHIME_FREQUENCY_HZ[kind];
-  return [start, CHIME_END_HZ[kind] ?? start];
+  const notes = CHIME_EARCON[kind].notes;
+  const last = notes[notes.length - 1]!;
+  return [notes[0]!.hz, last.endHz ?? last.hz];
 }
 
 /**
- * Plays a short (0.12s) gain-ramped sine tone. In e2e mode, records
- * `chime:<kind>` into `window.__speechLog` instead. Never throws.
- */
-/**
- * The tone a kind plays at, for a test that has to assert they differ.
+ * The pitch a kind STARTS at, for a test that has to assert the kinds differ.
  *
  * Exported rather than duplicated in the spec: a test carrying its own copy
  * of the table would keep passing after the table changed, which is the
  * shape of test this codebase keeps finding and deleting.
  */
 export function chimeFrequencyForTest(kind: ChimeKind): number {
-  return CHIME_FREQUENCY_HZ[kind];
+  return CHIME_EARCON[kind].notes[0]!.hz;
 }
 
+/**
+ * Plays the kind's short earcon (50-220ms, see CHIME_EARCON). In e2e mode,
+ * records `chime:<kind>` into `window.__speechLog` instead. Never throws.
+ */
 export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
   // Before the e2e short-circuit, exactly as speak() does: the microphone's
   // bookkeeping is part of the behaviour under test, not part of the sound.
@@ -1678,7 +1725,7 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
    * in a car.
    */
   try {
-    playChimeTone(CHIME_FREQUENCY_HZ[kind], chimePeak(opts?.volume ?? 1), CHIME_END_HZ[kind]);
+    playChimeTone(CHIME_EARCON[kind], chimePeak(opts?.volume ?? 1));
   } catch {
     // never throw
   }

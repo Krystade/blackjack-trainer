@@ -106,3 +106,62 @@ export function looksLikeLateSelfEcho(
   if (h.split(' ').length < ECHO_MIN_WORDS) return false;
   return looksLikeSelfEcho(heard, said);
 }
+
+/**
+ * How long after the app's last line ended a ONE- or TWO-word transcript of
+ * it is still treated as the app's own voice.
+ *
+ * WHY THIS EXISTS. 2026-10-18: SPEECH_TAIL_MS came down from 700ms to 100ms,
+ * because Jack wants to answer as soon as the app stops talking. The 700ms
+ * tail had been the only thing stopping a short fragment ("hit" from "Correct
+ * play was hit") from being graded, since `looksLikeLateSelfEcho` only acts
+ * on three or more words. This rule takes over from that tail.
+ *
+ * 2500ms: the slowest delivery measured in the car is 2258ms after the audio
+ * stopped (2026-10-02), plus about 10% margin. It is a bound and not the
+ * 8000ms grace because, unlike a long echo, a short one IS a plausible
+ * answer. The window has to be tight enough that a genuine answer to the
+ * NEXT line is out of it, and in the drills that line comes at least 450ms
+ * (POST_CORRECTION_BEAT_MS) plus a whole prompt later.
+ */
+export const SHORT_ECHO_WINDOW_MS = 2500;
+
+/**
+ * Does this sentence ASK the driver to say something? A question ("Hit or
+ * stand?", "Did you have it?"), a choice ("... hit or stand ..."), or an
+ * instruction to speak ("Say yes to go again.", which ends every count-drill
+ * verdict). If it does, its words are what the driver is being asked to say,
+ * so hearing one back is an answer and not an echo.
+ */
+function asksForAnswer(sentence: string): boolean {
+  return sentence.includes('?') || /\b(or|say)\b/i.test(sentence);
+}
+
+/**
+ * Is a SHORT transcript (one or two words) a fragment of the app's last line?
+ *
+ * Only a fragment of a STATEMENT counts: a verdict, a correction, an answer
+ * echo ("Correct play was hit.", "Hit.", "Player two hits."). A sentence that
+ * asks for an answer is skipped, so a driver saying the word they were
+ * offered ("Say yes to go again." -> "yes") is still an answer. Only the LAST line is checked, and only for SHORT_ECHO_WINDOW_MS
+ * after it ended. An older correction can only collide with an answer to a
+ * newer prompt, and that collision is exactly the false positive this must
+ * not make.
+ *
+ * `sinceSaidEndedMs` may be negative (the line is still playing), which counts
+ * as inside the window.
+ */
+export function looksLikeShortSelfEcho(
+  heard: string,
+  said: string | null | undefined,
+  sinceSaidEndedMs: number,
+): boolean {
+  if (!(sinceSaidEndedMs <= SHORT_ECHO_WINDOW_MS)) return false;
+  const h = normalize(heard);
+  if (!h || !said) return false;
+  if (h.split(' ').length >= ECHO_MIN_WORDS) return false;
+  // Sentences as the app wrote them: the punctuation is what says which ones
+  // are questions, so split BEFORE normalising.
+  const sentences = said.match(/[^.!?]+[.!?]*/g) ?? [];
+  return sentences.some((s) => !asksForAnswer(s) && looksLikeSelfEcho(heard, s));
+}

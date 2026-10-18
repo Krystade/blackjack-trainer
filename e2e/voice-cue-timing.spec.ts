@@ -5,7 +5,8 @@ import { readStoredDiagnostics } from './helpers';
  * B2 #5, #6, #7: when the app tells the driver to speak, the microphone must
  * already be taking answers.
  *
- * The microphone stays deaf for SPEECH_TAIL_MS (700ms) after a prompt ends,
+ * The microphone stays deaf for SPEECH_TAIL_MS (100ms since 2026-10-18, was
+ * 700ms) after a prompt ends,
  * because the recogniser's results lag the audio. The "your turn" tone used to
  * sound 350ms after the ending, inside that window, so an answer given on the
  * tone was thrown away as "the app was speaking" (#5). The "say again" chime
@@ -126,10 +127,10 @@ test('#6: saying it again after the "say again" chime is heard', async ({ page }
   await voiceOn(page);
   const lineMs = await repeatLineMs(page);
 
-  // Answer 100ms after the line ends: inside the 700ms speech tail, so it is
+  // Answer 20ms after the line ends: inside the 100ms speech tail, so it is
   // dropped and cued with "say again". Say it again 800ms after that chime,
   // once the line's own tail has passed. The chime itself must not have
-  // bought another 700ms speech tail on top of its tone.
+  // bought another speech tail on top of its tone.
   const result = await page.evaluate(
     (lineMs) =>
       new Promise<{ attention: number }>((resolve, reject) => {
@@ -148,7 +149,7 @@ test('#6: saying it again after the "say again" chime is heard', async ({ page }
             rec()?.onresult?.({ results: [[{ transcript: 'double' }]] });
             resolve({ attention });
           }, 800);
-        }, lineMs + 100);
+        }, lineMs + 20);
       }),
     lineMs,
   );
@@ -168,7 +169,7 @@ test('#5: an answer lost to the speech tail says it was too soon, not that the a
           const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
           rec?.onresult?.({ results: [[{ transcript: 'double' }]] });
           resolve();
-        }, lineMs + 100);
+        }, lineMs + 20);
       }),
     lineMs,
   );

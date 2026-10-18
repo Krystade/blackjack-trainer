@@ -32,7 +32,7 @@
 
 import { elementVolume } from './volume';
 import { getLiveAudioContext, liveAudioContextNow, markAudioClockSuspect, onAudioContextReplaced } from './audioContext';
-import { cachedToneDataUri, toneSamples, TONE_SAMPLE_RATE } from './tone';
+import { cachedToneDataUri, earconSamples, singleNote, TONE_SAMPLE_RATE, type ToneSpec } from './tone';
 import { isVoiceCaptureActive, micSessionCostPaid } from './micSessionCost';
 import { diag } from '../diag/diagnosticLog';
 import { notifySpeechEnded } from './speechActivity';
@@ -620,11 +620,12 @@ export function chimeWantsWebAudio(): boolean {
   return isVoiceCaptureActive() || micSessionCostPaid();
 }
 
-/** Decoded-equivalent tone buffers, per context and frequency. */
+/** Decoded-equivalent tone buffers, per context and earcon. */
 const toneBuffers = new WeakMap<AudioContext, Map<string, AudioBuffer>>();
 
-function toneBuffer(ctx: AudioContext, frequencyHz: number, endHz = frequencyHz): AudioBuffer {
-  const key = `${frequencyHz}>${endHz}`;
+function toneBuffer(ctx: AudioContext, spec: ToneSpec, endHz?: number): AudioBuffer {
+  const earcon = typeof spec === 'number' ? singleNote(spec, endHz ?? spec) : spec;
+  const key = JSON.stringify(earcon);
   let perCtx = toneBuffers.get(ctx);
   if (!perCtx) {
     perCtx = new Map();
@@ -632,7 +633,7 @@ function toneBuffer(ctx: AudioContext, frequencyHz: number, endHz = frequencyHz)
   }
   const hit = perCtx.get(key);
   if (hit) return hit;
-  const samples = toneSamples(frequencyHz, 1, endHz);
+  const samples = earconSamples(earcon, 1);
   const buffer = ctx.createBuffer(1, samples.length, TONE_SAMPLE_RATE);
   buffer.getChannelData(0).set(samples);
   perCtx.set(key, buffer);
@@ -647,15 +648,15 @@ function toneBuffer(ctx: AudioContext, frequencyHz: number, endHz = frequencyHz)
  * arithmetic the element's `volume` did. NOT a chain, so it never stops a
  * prompt. Never throws.
  */
-export function playChimeTone(frequencyHz: number, peak: number, endHz = frequencyHz): void {
+export function playChimeTone(spec: ToneSpec, peak: number, endHz?: number): void {
   const onElement = () => {
-    void playPooledTone(cachedToneDataUri(frequencyHz, endHz), peak);
+    void playPooledTone(cachedToneDataUri(spec, endHz), peak);
   };
   if (!chimeWantsWebAudio()) return onElement();
   const startTone = (ctx: AudioContext) => {
     try {
       const src = ctx.createBufferSource();
-      src.buffer = toneBuffer(ctx, frequencyHz, endHz);
+      src.buffer = toneBuffer(ctx, spec, endHz);
       const gain = ctx.createGain();
       gain.gain.value = Math.min(1, Math.max(0, peak));
       src.connect(gain);

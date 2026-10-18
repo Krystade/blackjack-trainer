@@ -4,7 +4,7 @@ import {
   type SpokenMatch,
   type VoiceAction,
 } from './voiceRecognition';
-import { looksLikeLateSelfEcho, looksLikeSelfEcho } from './selfEcho';
+import { looksLikeLateSelfEcho, looksLikeSelfEcho, looksLikeShortSelfEcho } from './selfEcho';
 import { msSinceInputDeviceChanged } from '../diag/deviceChurn';
 
 /**
@@ -193,8 +193,14 @@ export const CYCLE_AFTER_MS = 45_000;
  * Silence after the app stops speaking, before the microphone is trusted
  * again. Recognition results arrive well behind the audio that produced them,
  * so a tail is required; too short and the app grades its own voice.
+ *
+ * 100ms since 2026-10-18 (was 700). Jack: the tail should be about 100ms, so
+ * he can answer the moment the app stops. The 700ms was what kept a ONE-word
+ * fragment of the app's own line ("hit" from "Correct play was hit") from
+ * being graded. That job is now `looksLikeShortSelfEcho` (audio/selfEcho.ts),
+ * which judges by the words and a bounded window rather than by deafness.
  */
-export const SPEECH_TAIL_MS = 700;
+export const SPEECH_TAIL_MS = 100;
 
 /**
  * Delay before re-starting. Restarting synchronously inside `onend` throws on
@@ -924,6 +930,21 @@ export function createVoiceController(deps: VoiceControllerDeps): VoiceControlle
       const sinceClosed = deps.now() - suppressedUntil;
       if (looksLikeLateSelfEcho(heard, lastSaid, sinceClosed)) {
         log('suppressed-echo', { heard, sinceMs: sinceClosed, said: lastSaid });
+        timing('suppressed');
+        deps.onHeard?.(heard, 'suppressed', 'echo');
+        return;
+      }
+      /*
+       * THE SAME VOICE, SHORT AND LATE. With a 100ms tail the clock no longer
+       * covers a one-word fragment of a correction ("hit" from "Correct play
+       * was hit"), and the check above deliberately ignores anything that
+       * short. This one takes it, but only from a statement in the LAST line
+       * and only within SHORT_ECHO_WINDOW_MS of that line ending. See
+       * looksLikeShortSelfEcho.
+       */
+      const sinceSaidEnded = promptEndAt === null ? Number.POSITIVE_INFINITY : deps.now() - promptEndAt;
+      if (looksLikeShortSelfEcho(heard, lastSaid, sinceSaidEnded)) {
+        log('suppressed-echo', { heard, sinceMs: sinceClosed, sincePromptEndMs: sinceSaidEnded, said: lastSaid, short: true });
         timing('suppressed');
         deps.onHeard?.(heard, 'suppressed', 'echo');
         return;
