@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { readStoredDiagnostics } from './helpers';
 
 /**
  * The audio unlock, in a real browser.
@@ -19,10 +20,8 @@ import { test, expect, type Page } from '@playwright/test';
  * would have made the car quieter until this existed.
  */
 
-const KEY = 'bjtrainer.diagnostics.v1';
-
 async function unlockEntries(page: Page): Promise<Record<string, unknown>[]> {
-  const raw = await page.evaluate((k) => localStorage.getItem(k), KEY);
+  const raw = await readStoredDiagnostics(page);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as { entries?: Record<string, unknown>[] };

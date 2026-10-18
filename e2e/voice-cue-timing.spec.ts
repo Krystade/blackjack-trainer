@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { readStoredDiagnostics } from './helpers';
 
 /**
  * B2 #5, #6, #7: when the app tells the driver to speak, the microphone must
@@ -103,14 +104,15 @@ test('#5: an answer given on the "your turn" tone is graded, not ignored', async
 async function repeatLineMs(page: Page): Promise<number> {
   await page.evaluate(() => window.__wheelPress?.('back'));
   const said = (await log(page)).at(-1);
-  const readMs = () => page.evaluate((text) => {
-    const raw = JSON.parse(localStorage.getItem('bjtrainer.diagnostics.v1') || '{}') as
+  const readMs = () => readStoredDiagnostics(page).then((stored) => {
+    const text = said;
+    const raw = JSON.parse(stored || '{}') as
       | { entries?: { event?: string; detail?: { ms?: number; said?: string } }[] }
       | { event?: string; detail?: { ms?: number; said?: string } }[];
     const entries = Array.isArray(raw) ? raw : (raw.entries ?? []);
     const hit = [...entries].reverse().find((e) => e.event === 'deafen' && e.detail?.said === text);
     return hit?.detail?.ms ?? -1;
-  }, said);
+  });
   // The diagnostics log is written behind the event; wait for the entry.
   await expect.poll(readMs, { message: 'no deafen entry for the repeated line' }).toBeGreaterThan(0);
   const ms = await readMs();

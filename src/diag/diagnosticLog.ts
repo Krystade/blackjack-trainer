@@ -37,7 +37,9 @@
  *      the interesting part of a bad session is often just before that.
  *   3. It must not itself cost what it is measuring. localStorage writes are
  *      synchronous; writing on every event would add jank to the exact path
- *      being diagnosed. Hence the buffered flush.
+ *      being diagnosed. Hence the buffered flush -- and hence a flush that
+ *      APPENDS its new entries as a segment of their own instead of reading,
+ *      re-serialising and rewriting the whole log every second (diagStore.ts).
  *   4. It must be pasteable. The whole point is that the operator can copy it
  *      out of Settings and hand it over, so the text format is the product
  *      here, not the JSON.
@@ -48,6 +50,8 @@
  * contain transcripts of what an open microphone heard, which is not a small
  * thing -- so the Settings panel says so plainly, next to the delete button.
  */
+
+import { DIAG_BASE_KEY, listDiagKeys, segmentKey, segmentSeq } from './diagStore';
 
 /**
  * How many entries were dropped since the page loaded.
@@ -89,7 +93,11 @@ let malformedEntries = 0;
  */
 const DROPPED_KEY = 'bjtrainer.diagnostics.dropped.v1';
 
-const STORAGE_KEY = 'bjtrainer.diagnostics.v1';
+/**
+ * The legacy single key. Kept as a name because it is still READ (an older
+ * build's log, or one seeded by a test) -- see diagStore.ts for the layout.
+ */
+const STORAGE_KEY = DIAG_BASE_KEY;
 
 /**
  * Entries kept. Sized against the job: a fifteen-minute drive with voice on
@@ -121,6 +129,24 @@ export const MAX_BYTES = 1_200_000;
 
 /** How long a burst of events is allowed to accumulate before it is written. */
 export const FLUSH_DELAY_MS = 1000;
+
+/**
+ * The size a segment is merged up to, in characters of JSON.
+ *
+ * Small enough that trimming the oldest segment at the cap -- the one rewrite
+ * a full log needs per flush -- costs a few kilobytes rather than the whole
+ * log; large enough that a full log is about a hundred keys, not thousands.
+ */
+export const SEGMENT_TARGET_BYTES = 16_384;
+
+/**
+ * How many small segments may pile up before they are merged.
+ *
+ * A flush a second makes one small segment a second. Merging them in a batch
+ * rather than on every flush keeps the merge's rewrite off most flushes; the
+ * bound keeps the key count, and so the cost of listing the log, finite.
+ */
+export const MAX_SMALL_SEGMENTS = 32;
 
 export type DiagCategory =
   /** Recognition session lifecycle: start, end, error, restart, watchdog. */
@@ -259,34 +285,61 @@ let storageUsable = true;
 let flushHandle: ReturnType<typeof setTimeout> | null = null;
 let listeners: Array<() => void> = [];
 
+/**
+ * Is this stored value an entry the renderer can print?
+ *
+ * EVERY FIELD THE RENDERER TOUCHES, not just `event`.
+ *
+ * `formatDiagnosticLog` called `e.category.padEnd(5)` unguarded, so one
+ * stored entry without a `category` threw during Settings' render -- and
+ * Settings formats the log whether or not the panel is open. The
+ * ErrorBoundary then bounced to home, which puts Export, View and Clear all
+ * inside the panel that will not render: the log could not be read, sent or
+ * cleared without devtools. Anything malformed is dropped and counted, so
+ * the header admits the hole instead of the export dying on it.
+ */
+function isEntry(e: unknown): e is DiagEntry {
+  return (
+    !!e &&
+    typeof e === 'object' &&
+    typeof (e as DiagEntry).event === 'string' &&
+    typeof (e as DiagEntry).category === 'string' &&
+    typeof (e as DiagEntry).at === 'string' &&
+    typeof (e as DiagEntry).ms === 'number' &&
+    typeof (e as DiagEntry).session === 'string'
+  );
+}
+
+/**
+ * One stored segment: its readable entries and how many were not readable.
+ * Null when the value is not a JSON array at all (or is missing).
+ */
+function parseSegment(raw: string | null): { kept: DiagEntry[]; bad: number } | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    const kept = parsed.filter(isEntry);
+    return { kept, bad: parsed.length - kept.length };
+  } catch {
+    return null;
+  }
+}
+
 function readStored(): DiagEntry[] {
   const s = storage();
   if (!s) return [];
   try {
-    const raw = s.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    // EVERY FIELD THE RENDERER TOUCHES, not just `event`.
-    //
-    // `formatDiagnosticLog` called `e.category.padEnd(5)` unguarded, so one
-    // stored entry without a `category` threw during Settings' render -- and
-    // Settings formats the log whether or not the panel is open. The
-    // ErrorBoundary then bounced to home, which puts Export, View and Clear all
-    // inside the panel that will not render: the log could not be read, sent or
-    // cleared without devtools. Anything malformed is dropped and counted, so
-    // the header admits the hole instead of the export dying on it.
-    const before = parsed.length;
-    const kept = parsed.filter(
-      (e): e is DiagEntry =>
-        !!e &&
-        typeof e === 'object' &&
-        typeof (e as DiagEntry).event === 'string' &&
-        typeof (e as DiagEntry).category === 'string' &&
-        typeof (e as DiagEntry).at === 'string' &&
-        typeof (e as DiagEntry).ms === 'number' &&
-        typeof (e as DiagEntry).session === 'string',
-    );
+    const out: DiagEntry[] = [];
+    let bad = 0;
+    // Oldest segment first, so the stored part reads back in the order it
+    // was flushed -- the order the single key used to hold.
+    for (const key of listDiagKeys(s)) {
+      const seg = parseSegment(s.getItem(key));
+      if (!seg) continue;
+      bad += seg.bad;
+      for (const e of seg.kept) out.push(e);
+    }
     /**
      * COUNTED ONCE PER ENTRY, not once per read.
      *
@@ -304,8 +357,8 @@ function readStored(): DiagEntry[] {
      * times the same storage is read, the answer is the number of bad
      * entries in it.
      */
-    if (kept.length < before) malformedEntries = Math.max(malformedEntries, before - kept.length);
-    return kept;
+    if (bad > 0) malformedEntries = Math.max(malformedEntries, bad);
+    return out;
   } catch {
     return [];
   }
@@ -455,12 +508,251 @@ function trim(entries: DiagEntry[]): DiagEntry[] {
   return out;
 }
 
+/** What a flush needs to know about a stored segment without reading it back. */
+interface SegmentMeta {
+  /** Readable entries in it. */
+  count: number;
+  /** Its stored length in characters, which is what the byte cap counts. */
+  bytes: number;
+}
+
+/**
+ * The stored segments, oldest first, as far as this page load knows them.
+ *
+ * Kept so a flush can enforce the caps by arithmetic instead of reading the
+ * log back -- reading it back every second is the cost the segment layout
+ * exists to remove. Re-synced against the key NAMES on every flush (cheap), so
+ * a segment removed by someone else drops out of it; a segment another tab
+ * rewrote is forgotten through the `storage` event below and re-measured.
+ */
+let segIndex: Map<string, SegmentMeta> | null = null;
+
+/**
+ * Split serialised entries into JSON arrays of at most SEGMENT_TARGET_BYTES
+ * (never fewer than one entry each). `'[' + parts.join(',') + ']'` is exactly
+ * what `JSON.stringify` makes of the array, without serialising twice.
+ */
+function chunkSerialised(parts: string[]): { json: string; count: number }[] {
+  const out: { json: string; count: number }[] = [];
+  let start = 0;
+  let size = 2;
+  for (let i = 0; i < parts.length; i++) {
+    const cost = parts[i]!.length + 1;
+    if (i > start && size + cost - 1 > SEGMENT_TARGET_BYTES) {
+      out.push({ json: `[${parts.slice(start, i).join(',')}]`, count: i - start });
+      start = i;
+      size = 2;
+    }
+    size += cost;
+  }
+  if (start < parts.length) {
+    out.push({ json: `[${parts.slice(start).join(',')}]`, count: parts.length - start });
+  }
+  return out;
+}
+
+function sumBytes(chunks: { json: string }[]): number {
+  let n = 0;
+  for (const c of chunks) n += c.json.length;
+  return n;
+}
+
+/**
+ * Size up one stored segment, tidying it the way the old whole-log rewrite
+ * did on its next flush: a value that is not an array goes, and unreadable
+ * entries are carried forward no further.
+ */
+function measureSegment(s: Storage, key: string): { meta: SegmentMeta | null; bad: number } {
+  const raw = s.getItem(key);
+  if (raw === null) return { meta: null, bad: 0 };
+  const seg = parseSegment(raw);
+  if (!seg || seg.kept.length === 0) {
+    s.removeItem(key);
+    return { meta: null, bad: seg?.bad ?? 0 };
+  }
+  if (seg.bad === 0) return { meta: { count: seg.kept.length, bytes: raw.length }, bad: 0 };
+  const json = JSON.stringify(seg.kept);
+  s.setItem(key, json);
+  return { meta: { count: seg.kept.length, bytes: json.length }, bad: seg.bad };
+}
+
+/**
+ * Fold the legacy single key into numbered segments, ahead of any that exist.
+ *
+ * Once per upgraded device (or per write from a tab still running an older
+ * build). The old key is removed BEFORE its copy is written, so the move
+ * never needs room for two logs at once on a phone whose quota may be the
+ * very problem; if the copy fails anyway the old key is put back as it was.
+ */
+function migrateLegacy(s: Storage, keys: readonly string[]): void {
+  const raw = s.getItem(STORAGE_KEY);
+  const seg = parseSegment(raw);
+  if (seg && seg.bad > 0) malformedEntries = Math.max(malformedEntries, seg.bad);
+  s.removeItem(STORAGE_KEY);
+  if (!seg || seg.kept.length === 0 || raw === null) return;
+  const chunks = chunkSerialised(seg.kept.map((e) => JSON.stringify(e)));
+  const firstNumbered = keys.length > 1 ? segmentSeq(keys[1]!) : null;
+  const base = firstNumbered === null ? 0 : firstNumbered - chunks.length;
+  const written: string[] = [];
+  try {
+    chunks.forEach((c, i) => {
+      const key = segmentKey(base + i);
+      s.setItem(key, c.json);
+      written.push(key);
+    });
+  } catch (e) {
+    for (const key of written) {
+      try {
+        s.removeItem(key);
+      } catch {
+        /* best effort */
+      }
+    }
+    try {
+      s.setItem(STORAGE_KEY, raw);
+    } catch {
+      /* best effort: it fitted a moment ago */
+    }
+    throw e;
+  }
+}
+
+/** Bring the index up to date with what is actually stored. */
+function syncIndex(s: Storage): Map<string, SegmentMeta> {
+  let keys = listDiagKeys(s);
+  if (keys[0] === STORAGE_KEY) {
+    migrateLegacy(s, keys);
+    keys = listDiagKeys(s);
+  }
+  const prev = segIndex;
+  const next = new Map<string, SegmentMeta>();
+  let bad = 0;
+  for (const key of keys) {
+    const known = prev?.get(key);
+    if (known) {
+      next.set(key, known);
+      continue;
+    }
+    const m = measureSegment(s, key);
+    bad += m.bad;
+    if (m.meta) next.set(key, m.meta);
+  }
+  if (bad > 0) malformedEntries = Math.max(malformedEntries, bad);
+  segIndex = next;
+  return next;
+}
+
+/** The first free segment number after every one this load knows of. */
+function nextSeq(s: Storage, idx: Map<string, SegmentMeta>): number {
+  let seq = 0;
+  for (const key of idx.keys()) {
+    const n = segmentSeq(key);
+    if (n !== null && n >= seq) seq = n + 1;
+  }
+  // Another tab may have taken it since this load last looked.
+  while (s.getItem(segmentKey(seq)) !== null) seq += 1;
+  return seq;
+}
+
+/**
+ * Trim, OLDEST FIRST, at least `count` entries and at least `bytes`
+ * characters. A segment wholly inside the excess is removed without being
+ * read; only the one the cut falls inside is rewritten, which at the cap is
+ * the one rewrite a flush makes -- a segment's worth, not the log's.
+ */
+function dropOldest(s: Storage, idx: Map<string, SegmentMeta>, count: number, bytes: number): void {
+  for (const [key, m] of [...idx]) {
+    if (count <= 0 && bytes <= 0) return;
+    if (m.count <= count || m.bytes <= bytes) {
+      s.removeItem(key);
+      idx.delete(key);
+      droppedEntries += m.count;
+      count -= m.count;
+      bytes -= m.bytes;
+      continue;
+    }
+    const kept = parseSegment(s.getItem(key))?.kept ?? [];
+    // Each entry costs itself plus one comma, so the cut is exact.
+    let k = Math.min(Math.max(0, count), kept.length);
+    let freed = 0;
+    for (let i = 0; i < k; i++) freed += JSON.stringify(kept[i]).length + 1;
+    while (freed < bytes && k < kept.length) {
+      freed += JSON.stringify(kept[k]).length + 1;
+      k += 1;
+    }
+    if (k >= kept.length) {
+      s.removeItem(key);
+      idx.delete(key);
+      droppedEntries += kept.length;
+      count -= kept.length;
+      bytes -= m.bytes;
+      continue;
+    }
+    const rest = kept.slice(k);
+    const json = JSON.stringify(rest);
+    s.setItem(key, json);
+    idx.set(key, { count: rest.length, bytes: json.length });
+    droppedEntries += k;
+    count -= k;
+    bytes -= m.bytes - json.length;
+  }
+}
+
+/**
+ * Merge runs of small segments, so a flush a second does not become a key a
+ * second. Merged into the OLDEST key of each run (order holds) and written
+ * before the rest of the run is removed, so a kill in between duplicates a
+ * few lines rather than losing them.
+ */
+function compactSegments(s: Storage, idx: Map<string, SegmentMeta>): void {
+  const half = SEGMENT_TARGET_BYTES / 2;
+  let small = 0;
+  for (const m of idx.values()) if (m.bytes < half) small += 1;
+  if (small <= MAX_SMALL_SEGMENTS) return;
+
+  let run: string[] = [];
+  let runBytes = 0;
+  const mergeRun = (): void => {
+    if (run.length > 1) {
+      const entries: DiagEntry[] = [];
+      for (const key of run) {
+        for (const e of parseSegment(s.getItem(key))?.kept ?? []) entries.push(e);
+      }
+      const json = JSON.stringify(entries);
+      s.setItem(run[0]!, json);
+      for (const key of run.slice(1)) {
+        s.removeItem(key);
+        idx.delete(key);
+      }
+      idx.set(run[0]!, { count: entries.length, bytes: json.length });
+    }
+    run = [];
+    runBytes = 0;
+  };
+  for (const [key, m] of [...idx]) {
+    if (m.bytes >= half) {
+      mergeRun();
+      continue;
+    }
+    if (run.length > 0 && runBytes + m.bytes > SEGMENT_TARGET_BYTES) mergeRun();
+    run.push(key);
+    runBytes += m.bytes;
+  }
+  mergeRun();
+}
+
 /**
  * Write the buffer through to localStorage.
  *
  * Exported because the page can go away without warning -- `pagehide` on iOS
  * is often the last callback a backgrounded PWA ever gets -- and a buffered
  * log that loses its last second is a log that loses the interesting second.
+ *
+ * APPEND ONLY (G5). The new entries are written as a segment of their own;
+ * nothing already stored is read, re-serialised or rewritten, except the one
+ * oldest segment a cap cuts into and the occasional merge of small segments.
+ * The caps are the same caps, enforced the same way -- oldest first, counted
+ * into `droppedEntries` -- from the index rather than from a read-back.
  */
 export function flushDiagnostics(): void {
   if (flushHandle !== null) {
@@ -478,13 +770,71 @@ export function flushDiagnostics(): void {
   // page lives, which is long enough to copy it out of Settings.
   const s = storageUsable ? storage() : null;
   if (!s) return;
+  const written: string[] = [];
   try {
-    s.setItem(STORAGE_KEY, JSON.stringify(trim([...readStored(), ...buffer])));
+    const idx = syncIndex(s);
+    let fresh = buffer;
+    let chunks = chunkSerialised(fresh.map((e) => JSON.stringify(e)));
+    let freshBytes = sumBytes(chunks);
+    if (freshBytes > MAX_BYTES) {
+      // This flush alone is over the byte cap (a burst of oversized lines).
+      // Everything stored is older than all of it, so all of it goes, and the
+      // new entries are cut the way the single key always was.
+      dropOldest(s, idx, Infinity, Infinity);
+      fresh = trim(fresh);
+      chunks = chunkSerialised(fresh.map((e) => JSON.stringify(e)));
+      freshBytes = sumBytes(chunks);
+      // Each extra segment adds a character over one array; shave to fit.
+      while (freshBytes > MAX_BYTES && fresh.length > 1) {
+        fresh = fresh.slice(1);
+        droppedEntries += 1;
+        chunks = chunkSerialised(fresh.map((e) => JSON.stringify(e)));
+        freshBytes = sumBytes(chunks);
+      }
+    } else {
+      let storedCount = 0;
+      let storedBytes = 0;
+      for (const m of idx.values()) {
+        storedCount += m.count;
+        storedBytes += m.bytes;
+      }
+      // Room is made BEFORE the write, as it always was, so what reaches
+      // setItem is never past the cap.
+      dropOldest(
+        s,
+        idx,
+        storedCount + fresh.length - MAX_ENTRIES,
+        storedBytes + freshBytes - MAX_BYTES,
+      );
+    }
+    for (const c of chunks) {
+      const key = segmentKey(nextSeq(s, idx));
+      s.setItem(key, c.json);
+      written.push(key);
+      idx.set(key, { count: c.count, bytes: c.json.length });
+    }
     buffer = [];
+    try {
+      compactSegments(s, idx);
+    } catch {
+      // A merge that cannot land loses nothing -- every segment it read is
+      // still there -- and the next flush tries again.
+      segIndex = null;
+    }
     // Written beside the entries, so a reload inherits the count rather than
     // starting again at zero while the trimmed entries stay gone.
     persistDropped();
   } catch (e) {
+    // A flush that half-landed is unwound, so the buffer (which still holds
+    // every one of those entries) is not exported twice.
+    for (const key of written) {
+      try {
+        s.removeItem(key);
+      } catch {
+        /* best effort */
+      }
+    }
+    segIndex = null;
     // Quota, or a private window. Stop trying -- a doomed write every second
     // costs real time on the main thread -- and let the buffer BE the log.
     storageUsable = false;
@@ -500,6 +850,27 @@ export function flushDiagnostics(): void {
       buffered: buffer.length,
     });
   }
+}
+
+/**
+ * Another tab's flush, trim or merge changes segments behind this page's
+ * index. The browser says which key changed (not in the tab that wrote it),
+ * so that segment is forgotten and re-measured on the next flush.
+ */
+try {
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', (e: StorageEvent) => {
+      if (!segIndex) return;
+      if (e.storageArea && e.storageArea !== storage()) return;
+      if (e.key === null) {
+        segIndex = null;
+        return;
+      }
+      if (e.key === STORAGE_KEY || segmentSeq(e.key) !== null) segIndex.delete(e.key);
+    });
+  }
+} catch {
+  /* no window: nothing else can write */
 }
 
 function scheduleFlush(): void {
@@ -636,8 +1007,11 @@ export function clearDiagnosticLog(): void {
     clearTimeout(flushHandle);
     flushHandle = null;
   }
+  segIndex = null;
   try {
-    storage()?.removeItem(STORAGE_KEY);
+    // Every segment, and the legacy key if it is still there.
+    const s = storage();
+    if (s) for (const key of listDiagKeys(s)) s.removeItem(key);
     // ...AND THE PERSISTED COUNT WITH IT. Now that the count outlives the page
     // load it also has to die with the entries it counted, or a freshly cleared
     // log carries a TRIMMED header above a single line -- which makes a reader

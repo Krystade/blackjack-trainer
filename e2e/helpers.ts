@@ -5,6 +5,49 @@ import { FULL_CTX } from '../src/drills/fallbackHand';
 import { DEFAULT_RULES, type RuleSet } from '../src/engine/ruleset';
 import type { Rank } from '../src/engine/cards';
 
+/**
+ * THE STORED DIAGNOSTIC LOG, as one JSON array string, oldest first -- what
+ * `localStorage.getItem('bjtrainer.diagnostics.v1')` returned before G5 -- or
+ * null when nothing is stored.
+ *
+ * G5 split the log into segments (src/diag/diagStore.ts): the legacy key,
+ * then `bjtrainer.diagnostics.v1.<n>` in numeric order, each a JSON array of
+ * the entries one flush appended. A spec reading the legacy key alone now
+ * sees nothing, or only an older build's leftovers.
+ *
+ * Runs IN THE PAGE, so it is self-contained: `page.evaluate` serialises the
+ * function's source and nothing it closes over comes with it.
+ */
+export function storedDiagnosticsJson(): string | null {
+  const BASE = 'bjtrainer.diagnostics.v1';
+  const found: { key: string; seq: number }[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k === null) continue;
+    if (k === BASE) found.push({ key: k, seq: -Infinity });
+    else if (k.startsWith(`${BASE}.`) && /^-?\d{1,15}$/.test(k.slice(BASE.length + 1))) {
+      found.push({ key: k, seq: Number(k.slice(BASE.length + 1)) });
+    }
+  }
+  if (found.length === 0) return null;
+  found.sort((a, b) => a.seq - b.seq);
+  const all: unknown[] = [];
+  for (const { key } of found) {
+    try {
+      const v: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
+      if (Array.isArray(v)) for (const e of v) all.push(e);
+    } catch {
+      /* an unreadable segment reads as empty, as it does in the app */
+    }
+  }
+  return JSON.stringify(all);
+}
+
+/** `storedDiagnosticsJson`, run in `page`. */
+export function readStoredDiagnostics(page: Page): Promise<string | null> {
+  return page.evaluate(storedDiagnosticsJson);
+}
+
 /** Screenshot to e2e/screenshots/<name>.png (gitignored; reviewed set lives in e2e/screenshots-reviewed/). */
 export async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: `e2e/screenshots/${name}.png` });

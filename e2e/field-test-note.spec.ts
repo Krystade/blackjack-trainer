@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { openSettingsScreen, withSettings, selectFieldTestCondition, switchFieldTestCondition} from './helpers';
+import { openSettingsScreen, withSettings, selectFieldTestCondition, switchFieldTestCondition, readStoredDiagnostics } from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
@@ -14,8 +14,7 @@ import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
  */
 
 async function entries(page: Page): Promise<{ event: string; detail: Record<string, unknown> }[]> {
-  return page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+  return readStoredDiagnostics(page).then((raw) => {
     return raw
       ? (JSON.parse(raw) as { event: string; detail?: Record<string, unknown> }[]).map((e) => ({
           event: e.event,
@@ -98,8 +97,7 @@ test('a saved note is in storage before anything waits for it', async ({ page })
   await note.press('Enter');
   await expect(page.getByTestId('fieldtest-noted')).toBeVisible();
 
-  const stored = await page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+  const stored = await readStoredDiagnostics(page).then((raw) => {
     return raw
       ? (JSON.parse(raw) as { event: string; detail?: { text?: string } }[]).filter(
           (e) => e.event === 'note',

@@ -1,3 +1,5 @@
+import { DIAG_BASE_KEY, listDiagKeys } from '../diag/diagStore';
+
 /**
  * WHEN A SAVE DOES NOT LAND, SAY SO (backlog F24).
  *
@@ -49,17 +51,68 @@ export function lastStorageFailure(): StorageFailure | null {
   return lastFailure;
 }
 
-/** Where diag/diagnosticLog.ts keeps its entries. */
-export const DIAGNOSTICS_KEY = 'bjtrainer.diagnostics.v1';
+/** Where diag/diagnosticLog.ts keeps its entries: the legacy key, and the prefix of its segments. */
+export const DIAGNOSTICS_KEY = DIAG_BASE_KEY;
 
-type MinimalStore = Pick<Storage, 'getItem' | 'setItem'> & { removeItem?: (k: string) => void };
+type MinimalStore = Pick<Storage, 'getItem' | 'setItem'> & {
+  removeItem?: (k: string) => void;
+  key?: (i: number) => string | null;
+  length?: number;
+};
 
 /**
  * Make room by keeping only the newest quarter of the stored diagnostic log
  * (or dropping it outright if even that cannot be written). Returns true when
  * something was freed, so the caller knows a retry is worth it.
+ *
+ * G5: the log is a run of segment keys now (diag/diagStore.ts). Whole OLDEST
+ * segments are removed until about the newest quarter of the entries is
+ * left; a log still held in the single legacy key is sliced as before.
+ * Segments are only ever removed here, never rewritten, so the log's own
+ * index of them (which notices a missing key on its next flush) stays true.
  */
 export function shrinkDiagnostics(store: MinimalStore, keepFraction = 0.25): boolean {
+  let keys: string[];
+  try {
+    keys = listDiagKeys(store);
+  } catch {
+    return false;
+  }
+  if (keys.length === 0) return false;
+  if (keys.length === 1 && keys[0] === DIAGNOSTICS_KEY) return shrinkSingleKey(store, keepFraction);
+
+  try {
+    const counts = keys.map((k) => {
+      try {
+        const parsed: unknown = JSON.parse(store.getItem(k) ?? '[]');
+        return Array.isArray(parsed) ? parsed.length : 0;
+      } catch {
+        return 0;
+      }
+    });
+    let remaining = counts.reduce((a, b) => a + b, 0);
+    const keep = Math.max(1, Math.floor(remaining * keepFraction));
+    let freed = false;
+    for (let i = 0; i < keys.length; i++) {
+      // Always free something; past that, stop before the newest quarter.
+      if (freed && remaining - counts[i]! < keep) break;
+      removeOrBlank(store, keys[i]!);
+      remaining -= counts[i]!;
+      freed = true;
+    }
+    return freed;
+  } catch {
+    return false;
+  }
+}
+
+function removeOrBlank(store: MinimalStore, key: string): void {
+  if (typeof store.removeItem === 'function') store.removeItem(key);
+  else store.setItem(key, '[]');
+}
+
+/** The single-key log an older build wrote: keep its newest quarter. */
+function shrinkSingleKey(store: MinimalStore, keepFraction: number): boolean {
   let raw: string | null;
   try {
     raw = store.getItem(DIAGNOSTICS_KEY);
@@ -81,8 +134,7 @@ export function shrinkDiagnostics(store: MinimalStore, keepFraction = 0.25): boo
     /* unparseable or still too big: drop it below */
   }
   try {
-    if (typeof store.removeItem === 'function') store.removeItem(DIAGNOSTICS_KEY);
-    else store.setItem(DIAGNOSTICS_KEY, '[]');
+    removeOrBlank(store, DIAGNOSTICS_KEY);
     return true;
   } catch {
     return false;

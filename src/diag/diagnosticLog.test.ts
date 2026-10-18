@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { listDiagKeys } from './diagStore';
 
 /**
  * The log runs in node here, which is the point: it has to work with no
@@ -8,8 +9,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
  * a car.
  */
 
-function installStorage(impl?: Partial<Storage>): Record<string, string> {
-  const data: Record<string, string> = {};
+function installStorage(impl?: Partial<Storage>, backing?: Record<string, string>): Record<string, string> {
+  // `backing` lets a double that overrides getItem/setItem keep key()/length
+  // describing the same data (a spread getter would be frozen at install).
+  const data: Record<string, string> = backing ?? {};
   const store: Storage = {
     getItem: (k) => (k in data ? data[k]! : null),
     setItem: (k, v) => {
@@ -29,6 +32,32 @@ function installStorage(impl?: Partial<Storage>): Record<string, string> {
   };
   (globalThis as { localStorage?: Storage }).localStorage = store;
   return data;
+}
+
+/**
+ * The stored log as the app lays it out (diagStore.ts): the legacy key, then
+ * the numbered segments, oldest first. Read through the same lister the app
+ * uses, so a test cannot quietly look at one key while the log is in others.
+ */
+function storedRaws(data: Record<string, string>): string[] {
+  const shim = {
+    getItem: (k: string) => (k in data ? data[k]! : null),
+    key: (i: number) => Object.keys(data)[i] ?? null,
+    get length() {
+      return Object.keys(data).length;
+    },
+  };
+  return listDiagKeys(shim).map((k) => data[k]!);
+}
+
+/** Characters the stored log occupies -- what the byte cap counts. */
+function storedChars(data: Record<string, string>): number {
+  return storedRaws(data).reduce((n, raw) => n + raw.length, 0);
+}
+
+/** Every stored entry, oldest first. */
+function storedEntries(data: Record<string, string>): { event: string }[] {
+  return storedRaws(data).flatMap((raw) => JSON.parse(raw) as { event: string }[]);
 }
 
 function uninstallStorage(): void {
@@ -168,8 +197,10 @@ describe('staying small', () => {
     for (let i = 0; i < log.MAX_ENTRIES; i++) log.diag('heard', 'utterance', { heard: big });
     log.flushDiagnostics();
 
-    const stored = data['bjtrainer.diagnostics.v1'] ?? '';
-    expect(stored.length, 'the write is past the cap the device will refuse').toBeLessThanOrEqual(
+    // Summed over every segment (G5): one key past the cap and the whole log
+    // past it are the same quota problem.
+    expect(storedChars(data), 'nothing reached storage, so the cap check below is empty').toBeGreaterThan(0);
+    expect(storedChars(data), 'the write is past the cap the device will refuse').toBeLessThanOrEqual(
       log.MAX_BYTES,
     );
     // ...AND THE LOOP RAN. Without this the assertion above passes for the
@@ -192,7 +223,8 @@ describe('staying small', () => {
     const log = await fresh();
     for (let i = 0; i < 50; i++) log.diag('heard', 'utterance', { heard: 'x'.repeat(200) });
     log.flushDiagnostics();
-    expect((data['bjtrainer.diagnostics.v1'] ?? '').length).toBeLessThan(log.MAX_BYTES);
+    expect(storedEntries(data)).toHaveLength(50);
+    expect(storedChars(data)).toBeLessThan(log.MAX_BYTES);
     expect(log.diagnosticEntriesDropped(), 'a log that fits was reported as trimmed').toBe(0);
     expect(log.readDiagnosticLog().length).toBe(50);
   });
@@ -641,8 +673,7 @@ describe('the parts of the log that were never pinned', () => {
     log.diag('mic', 'session-start');
     log.flushDiagnostics();
     log.flushDiagnostics();
-    const stored = JSON.parse(data['bjtrainer.diagnostics.v1']!) as { event: string }[];
-    expect(stored.map((e) => e.event)).toEqual(['session-start']);
+    expect(storedEntries(data).map((e) => e.event)).toEqual(['session-start']);
   });
 
   it('lets storage recover after the log is cleared', async () => {
@@ -660,7 +691,10 @@ describe('the parts of the log that were never pinned', () => {
       removeItem: (k) => {
         delete data[k];
       },
-    });
+      // Enumerated over the SAME data (G5: the log finds its segments by
+      // listing keys, so a double whose key()/length describe a different
+      // store hides every segment it holds).
+    }, data);
     const log = await fresh();
     log.diag('mic', 'session-start');
     log.flushDiagnostics();
@@ -910,8 +944,8 @@ describe('an oversized non-string detail', () => {
     log.diag('speak', 'clip-chain', { files: Array.from({ length: 200_000 }, (_, i) => 'f' + i) });
     log.flushDiagnostics();
 
-    const stored = store['bjtrainer.diagnostics.v1'] ?? '';
-    expect(stored.length, 'a single entry wrote past the byte cap').toBeLessThan(log.MAX_BYTES);
+    expect(storedEntries(store).map((e) => e.event), 'the entry never reached storage').toEqual(['clip-chain']);
+    expect(storedChars(store), 'a single entry wrote past the byte cap').toBeLessThan(log.MAX_BYTES);
   });
 
   it('leaves a small object intact, so the cap is not just deleting detail', async () => {

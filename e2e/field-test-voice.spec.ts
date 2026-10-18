@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { selectFieldTestCondition, withSettings } from './helpers';
+import { selectFieldTestCondition, withSettings, readStoredDiagnostics } from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
@@ -70,8 +70,7 @@ async function hear(page: Page, transcript: string): Promise<void> {
 
 /** Every diagnostic entry, straight out of storage, without leaving the run. */
 async function entries(page: Page): Promise<{ event: string; detail: Record<string, unknown> }[]> {
-  return page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+  return readStoredDiagnostics(page).then((raw) => {
     return raw
       ? (JSON.parse(raw) as { event: string; detail?: Record<string, unknown> }[]).map((e) => ({
           event: e.event,
@@ -150,11 +149,15 @@ async function sayUntilHeard(page: Page, transcript: string): Promise<void> {
     const landed = await page
       .waitForFunction(
         (want) => {
-          const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
-          const rows = JSON.parse(raw ?? '[]') as {
-            event: string;
-            detail?: { text?: string };
-          }[];
+          // Every segment of the log (G5: src/diag/diagStore.ts). Order does
+          // not matter to `some`, so the keys are simply all read.
+          const rows: { event: string; detail?: { text?: string } }[] = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k !== 'bjtrainer.diagnostics.v1' && !k?.startsWith('bjtrainer.diagnostics.v1.')) continue;
+            const v: unknown = JSON.parse(localStorage.getItem(k) ?? '[]');
+            if (Array.isArray(v)) rows.push(...(v as typeof rows));
+          }
           return rows.some((r) => r.event === 'heard-text' && r.detail?.text === want);
         },
         transcript,

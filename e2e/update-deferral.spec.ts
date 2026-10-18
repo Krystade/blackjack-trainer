@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { readStoredDiagnostics } from './helpers';
 
 /**
  * F2: A DEPLOY FOUND MID-RUN MUST NOT RELOAD THE APP.
@@ -64,8 +65,7 @@ async function takeACall(page: Page, deploy: Deploy): Promise<void> {
 
 /** How many times the watch has logged holding a reload off. */
 function deferrals(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.diagnostics.v1');
+  return readStoredDiagnostics(page).then((raw) => {
     const list = raw ? (JSON.parse(raw) as { event?: string }[]) : [];
     return list.filter((e) => e.event === 'update-deferred').length;
   });
