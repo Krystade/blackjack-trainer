@@ -70,3 +70,19 @@ describe('wongIn tallies', () => {
     expect(before).toEqual(snapshot);
   });
 });
+
+describe('Wave J: hand-count misses of a two-hand ramp', () => {
+  const bet = (correct: boolean, handsTaken?: number, handsExpected?: number): GradedEvent => ({
+    source: 'table', kind: 'bet', category: 'bet', correct, classification: correct ? 'correct' : 'basic-error',
+    taken: '8', expected: '8', reason: 'Spread bet at tc 4', tc: 4,
+    ...(handsTaken === undefined ? {} : { handsTaken, handsExpected }),
+  });
+  it('counts the bets missed on the hand count, which are bet misses too', () => {
+    const after = applyEvents(oldBlob(), [bet(false, 1, 2), bet(false, 2, 2), bet(true, 2, 2), bet(false, 2, 1), bet(false)]);
+    expect(after.betHandsMisses).toBe(2);
+    expect(after.categories.bet).toEqual({ right: 1, wrong: 4 });
+  });
+  it('none missed, nothing written', () => {
+    expect(applyEvents(oldBlob(), [bet(false), bet(true, 2, 2)]).betHandsMisses).toBeUndefined();
+  });
+});

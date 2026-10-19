@@ -1,5 +1,6 @@
 import type { Action } from '../../engine/deviations';
 import './watchChoice.css';
+import './handsChoice.css';
 
 /** One bet-entry row per player hand. Length 1 (solo, the v1/parity case) or
  * playerHands (Cycle-2 Task 8 multi-hand bet entry). */
@@ -30,6 +31,12 @@ export type ActionBarMode =
       watching?: boolean;
       /** Wave J: the sit-out button's label (a seated back-counter's is "Leave"). */
       sitOutLabel?: string;
+      /**
+       * Wave J: the ramp spreads to two hands, so the round opens with one or
+       * two -- chosen here, staked at the selected chip each. Absent on every
+       * other table, which keeps its bar exactly as it was.
+       */
+      handsChoice?: { hands: 1 | 2; onHands: (hands: 1 | 2) => void };
     }
   | { kind: 'hidden' };
 
@@ -46,6 +53,26 @@ const ACTION_BUTTONS: { key: Action; label: string }[] = [
   { key: 'split', label: 'Split' },
   { key: 'surrender', label: 'Surrender' },
 ];
+
+/** Wave J: one hand or two, for a ramp that spreads hands. */
+function HandsChoice({ hands, onHands, disabled }: { hands: 1 | 2; onHands: (h: 1 | 2) => void; disabled?: boolean }) {
+  return (
+    <div className="hands-choice" role="group" aria-label="Hands this round" data-hands={hands}>
+      {([1, 2] as const).map((n) => (
+        <button
+          key={n}
+          type="button"
+          className={`hands-choice-btn${hands === n ? ' hands-choice-on' : ''}`}
+          aria-pressed={hands === n}
+          disabled={disabled}
+          onClick={() => onHands(n)}
+        >
+          {n === 1 ? '1 hand' : '2 hands'}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /** Wave J: the watcher's two choices, in place of Deal and Sit out. */
 function WatchChoice({ onWatch, onSitIn, disabled }: { onWatch?: () => void; onSitIn: () => void; disabled?: boolean }) {
@@ -91,6 +118,9 @@ export function ActionBar({ mode }: ActionBarProps) {
     const single = mode.hands[0];
     return (
       <div className="action-bar action-bar-bet">
+        {mode.handsChoice && (
+          <HandsChoice hands={mode.handsChoice.hands} onHands={mode.handsChoice.onHands} disabled={mode.disabled} />
+        )}
         {mode.betSpreadOn && single && (
           <div className="bet-chips">
             {BET_CHIPS.map((units) => (

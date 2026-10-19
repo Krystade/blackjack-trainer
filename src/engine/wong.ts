@@ -83,3 +83,22 @@ export function sitInIsCorrect(tc: number, wongInTc?: number): boolean {
  */
 export const BACK_COUNT_BOTS = 3;
 
+/**
+ * Wave J, spreading to two hands: how many hands the row in force calls for
+ * (absent = 1). Same row rule as `spreadUnitsFor`: the last row whose minTc
+ * <= tc, and the first row below every row. Only meaningful when the seat is
+ * set to ONE hand -- a fixed 2- or 3-hand seat ignores it (Game.spreadsHands).
+ */
+export function spreadHandsFor(tc: number, spread: readonly SpreadRow[]): 1 | 2 {
+  let hands: 1 | 2 = spread.length > 0 && spread[0].hands === 2 ? 2 : 1;
+  for (const row of spread) {
+    if (row.minTc <= tc) hands = row.hands === 2 ? 2 : 1;
+  }
+  return hands;
+}
+
+/** Wave J: does any row of the ramp spread to two hands? */
+export function spreadHasTwoHands(spread: readonly SpreadRow[]): boolean {
+  return spread.some((row) => row.hands === 2);
+}
+

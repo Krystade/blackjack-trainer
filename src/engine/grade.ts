@@ -193,6 +193,15 @@ export interface GradedEvent {
    * have changed since. Absent on every other kind.
    */
   wongInTc?: number;
+
+  /**
+   * Wave J: on a `bet` event from a ramp that spreads to two hands, how many
+   * hands the player opened and how many the row in force called for. The
+   * event is wrong when they differ, whatever the stake. Absent on every
+   * other bet (a one-hand ramp, a fixed multi-hand seat).
+   */
+  handsTaken?: number;
+  handsExpected?: number;
 }
 
 /**

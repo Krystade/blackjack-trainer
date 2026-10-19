@@ -474,6 +474,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       if (!miss) return;
       audio.ding('bad');
       audio.say(miss.spoken);
+      // Wave J: the hand count a two-hand ramp called for, on its own.
+      if (miss.spokenAfter) audio.say(miss.spokenAfter);
     },
     [game, audio, settings.feedbackMode],
   );

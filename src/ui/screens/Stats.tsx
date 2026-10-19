@@ -745,6 +745,8 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   const wongInMisses = stats.wongInMisses;
   const entryMissed = typeof wongInMisses?.missed === 'number' ? wongInMisses.missed : 0;
   const entryEarly = typeof wongInMisses?.early === 'number' ? wongInMisses.early : 0;
+  // Wave J: of the bet misses, how many were the hand count of a two-hand ramp.
+  const betHandsMisses = typeof stats.betHandsMisses === 'number' ? stats.betHandsMisses : 0;
   // Wave B2 #12: the Bet sizing drill (which replaced Bet or sit) writes its
   // own history; it is read here, in range, beside the table's figures.
   const betSizingDrill = inRange(betSizingRows(stats));
@@ -1485,6 +1487,12 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                   <span>
                     {tableBet.right}/{tableBet.n} ({pct(tableBet.right, tableBet.n)})
                   </span>
+                </li>
+              )}
+              {betHandsMisses > 0 && (
+                <li className="mistake-row" data-testid="bsl-table-bet-hands">
+                  <span>Of those missed: one hand or two</span>
+                  <span>{betHandsMisses}</span>
                 </li>
               )}
               {tableWong.n > 0 && (

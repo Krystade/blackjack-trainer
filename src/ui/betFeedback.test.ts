@@ -72,3 +72,33 @@ describe('Wave J: the back-count entry miss', () => {
     });
   });
 });
+
+describe('Wave J: a two-hand ramp names the hands', () => {
+  const bet = (taken: string, expected: string, tc: number, handsTaken: number, handsExpected: number): GradedEvent => ({
+    source: 'table', kind: 'bet', category: 'bet', correct: false, classification: 'basic-error',
+    taken, expected, reason: `Spread bet at tc ${tc}`, tc, handsTaken, handsExpected,
+  });
+  it('one hand where the ramp spreads to two: the stake line, then the hand count on its own', () => {
+    expect(betMissFeedback([bet('8', '8', 4, 1, 2)])).toEqual({
+      text: 'Bet two hands of 8u at TC +4 — you bet one hand of 8u',
+      spoken: 'Your ramp bets eight. True count plus four.',
+      spokenAfter: 'Two hands.',
+    });
+  });
+  it('two hands where the ramp plays one', () => {
+    expect(betMissFeedback([bet('8', '8', 3, 2, 1)])).toEqual({
+      text: 'Bet one hand of 8u at TC +3 — you bet two hands of 8u',
+      spoken: 'Your ramp bets eight. True count plus three.',
+      spokenAfter: 'One hand.',
+    });
+  });
+  it('the right hands on the wrong stake: the stake line alone', () => {
+    expect(betMissFeedback([bet('4', '12', 5, 2, 2)])).toEqual({
+      text: 'Bet two hands of 12u at TC +5 — you bet two hands of 4u',
+      spoken: 'Your ramp bets twelve. True count plus five.',
+    });
+  });
+  it('one hand on both sides reads as any bet does', () => {
+    expect(betMissFeedback([bet('4', '2', 1, 1, 1)])?.text).toBe('Bet 2u at TC +1 — you bet 4u');
+  });
+});

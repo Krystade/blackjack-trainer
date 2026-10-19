@@ -476,6 +476,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   // array sized to the profile would make startRound throw.
   const playerHandsCount = game.cfg.seats?.playerHands ?? activeProfile.seats.playerHands;
   const [selectedBets, setSelectedBets] = useState<number[]>(() => new Array(playerHandsCount).fill(1));
+  // Wave J: a ramp that spreads to two hands opens each round with one or two.
+  const [spreadHands, setSpreadHands] = useState<1 | 2>(1);
   const setBetForHand = (i: number, units: number) => {
     setSelectedBets((prev) => prev.map((v, idx) => (idx === i ? units : v)));
   };
@@ -743,6 +745,12 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   });
 
   const handleDeal = () => {
+    // Wave J: one hand or two, each at the selected chip.
+    if (game.spreadsHands) {
+      deal(new Array<number>(spreadHands).fill(selectedBets[0] ?? 1));
+      setCountStage('rc');
+      return;
+    }
     if (playerHandsCount > 1) {
       deal(activeProfile.betSpreadOn ? selectedBets : undefined);
     } else {
@@ -967,6 +975,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       // Wave J: watching, the two are Watch and Sit in; seated at a
       // back-count table, sitting out is leaving it.
       ...(game.watching ? { watching: true } : game.backCountOn ? { sitOutLabel: 'Leave' } : {}),
+      ...(game.spreadsHands ? { handsChoice: { hands: spreadHands, onHands: setSpreadHands } } : {}),
     };
   } else {
     barMode = { kind: 'hidden' };
@@ -1095,6 +1104,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
                   you down; seated, &ldquo;leave&rdquo; leaves the table.
                 </>
               )}
+              {/* Wave J: the hand count is not a spoken word, as the bet is
+                  not: "yes" deals what the toggle and chip are set to. */}
+              {game.spreadsHands && <> &ldquo;Yes&rdquo; deals the hands and bet set on screen.</>}
             </>
           }
         />

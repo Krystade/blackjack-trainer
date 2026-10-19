@@ -12,6 +12,7 @@ import { regionRuleFor } from './screens/regionRule';
 import { ALL_PAINT_CELL_IDS } from '../drills/cellSelection';
 import { signed, MINUS } from '../drills/signed';
 import { playLabel } from './playLabel';
+import { handsOf } from './betFeedback';
 
 export interface MistakeRow {
   mistake: GradedEvent;
@@ -159,6 +160,11 @@ export function betRowText(m: GradedEvent): string {
     return m.taken === 'sit-out' ? `${tc} · you sat out · your ramp plays` : `${tc} · you played · your ramp sits out`;
   }
   const cover = /cover/i.test(m.reason) ? ' (one rung either side allowed)' : '';
+  // Wave J: a two-hand ramp's bet names the hands -- the "hands" reason.
+  const { handsTaken, handsExpected } = m;
+  if (handsTaken !== undefined && handsExpected !== undefined && (handsTaken === 2 || handsExpected === 2)) {
+    return `${tc} · you bet ${handsOf(handsTaken, m.taken)} · your ramp bets ${handsOf(handsExpected, m.expected)}${cover}`;
+  }
   return `${tc} · you bet ${m.taken}u · your ramp bets ${m.expected}u${cover}`;
 }
 

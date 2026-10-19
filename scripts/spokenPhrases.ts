@@ -37,6 +37,7 @@ import {
   narrateRampBets,
   narrateRampPlays,
   narrateRampSitsOut,
+  narrateRampHands,
   narrateNotATag,
   narrateReadback,
   narrateAnswerEcho,
@@ -196,6 +197,9 @@ export function tableSentences(): string[] {
     for (let units = 1; units <= 20; units++) lines.push(narrateRampBets(units, tc));
     for (const line of lines) for (const sentence of splitIntoSentences(line)) sentences.add(sentence);
   }
+  // Wave J: the hand count a two-hand ramp called for, said after the stake.
+  sentences.add(narrateRampHands(1));
+  sentences.add(narrateRampHands(2));
 
   for (const seat of SEAT_LABELS) {
     for (const action of ACTIONS) {

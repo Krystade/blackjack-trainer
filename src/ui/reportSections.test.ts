@@ -185,3 +185,21 @@ describe('Wave J: back-count rows', () => {
     expect(s.plays).toEqual([]);
   });
 });
+
+describe('Wave J: a two-hand ramp bet row names the hands', () => {
+  it('the hands reason', () => {
+    expect(betRowText(ev({ kind: 'bet', category: 'bet', taken: '8', expected: '8', tc: 4, handsTaken: 1, handsExpected: 2, reason: 'Spread bet at tc 4, two hands' }))).toBe(
+      'TC +4 · you bet one hand of 8u · your ramp bets two hands of 8u',
+    );
+  });
+  it('with cover on, the tolerance note stays', () => {
+    expect(
+      betRowText(ev({ kind: 'bet', category: 'bet', taken: '4', expected: '8', tc: 4, handsTaken: 2, handsExpected: 2, reason: 'Spread bet at tc 4, two hands (cover: one rung either side)' })),
+    ).toBe('TC +4 · you bet two hands of 4u · your ramp bets two hands of 8u (one rung either side allowed)');
+  });
+  it('one hand on both sides is the plain row', () => {
+    expect(betRowText(ev({ kind: 'bet', category: 'bet', taken: '4', expected: '2', tc: 1, handsTaken: 1, handsExpected: 1, reason: 'Spread bet at tc 1, one hand' }))).toBe(
+      'TC +1 · you bet 4u · your ramp bets 2u',
+    );
+  });
+});

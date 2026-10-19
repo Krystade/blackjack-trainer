@@ -668,6 +668,21 @@ function ProfileEditForm({
                       </button>
                     </div>
                   </div>
+                  {/* Wave J: spread to two hands at this count. A one-hand seat
+                      only: a fixed 2- or 3-hand seat ignores the column. */}
+                  {draft.seats.playerHands === 1 && (
+                    <div className="spread-field spread-hands" data-testid="spread-hands">
+                      <span className="spread-field-label">Hands</span>
+                      <Segmented<'1' | '2'>
+                        options={[
+                          { value: '1', label: '×1' },
+                          { value: '2', label: '×2' },
+                        ]}
+                        value={row.hands === 2 ? '2' : '1'}
+                        onChange={(v) => updateSpreadRow(i, { hands: v === '2' ? 2 : undefined })}
+                      />
+                    </div>
+                  )}
                   <button
                     type="button"
                     className="spread-remove-btn"
@@ -693,6 +708,13 @@ function ProfileEditForm({
               </button>
             </div>
             <p className="stats-detail">Rows are sorted by true count when you save.</p>
+            {draft.seats.playerHands === 1 && (
+              <p className="stats-detail" data-testid="spread-hands-note">
+                {/* Wave J */}
+                ×2 plays two hands of that many units. Play then asks for one hand or two each
+                round, and grades the hand count with the bet.
+              </p>
+            )}
 
             {/* D-R1: where sitting out is right. */}
             <WongExitControl profile={draft} onChange={update} />

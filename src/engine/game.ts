@@ -1,7 +1,15 @@
 import { Shoe, rankValue, mulberry32 } from './cards';
 import { makeRiggedShoe, botRngSeed, type RiggedShoe } from './riggedShoe';
 import { betWithinStep } from './coverBets';
-import { sitOutIsCorrect, spreadUnitsFor, sitInIsCorrect, wongInTcOf, BACK_COUNT_BOTS } from './wong';
+import {
+  sitOutIsCorrect,
+  spreadUnitsFor,
+  sitInIsCorrect,
+  wongInTcOf,
+  BACK_COUNT_BOTS,
+  spreadHandsFor,
+  spreadHasTwoHands,
+} from './wong';
 import { cutCardsFor, cutRngSeed, usesCutCards } from './cut';
 import { priceMistake } from './mistakeCost';
 import { hotShoeOrder } from './shoeBias';
@@ -53,6 +61,12 @@ export const DEFAULT_SEATS: SeatConfig = {
 export interface SpreadRow {
   minTc: number;
   units: number;
+  /**
+   * Wave J: at this count, spread to two hands of `units` each. Read only
+   * when the seat is set to one hand (Game.spreadsHands); a fixed 2- or
+   * 3-hand seat ignores it. Absent = one hand.
+   */
+  hands?: 1 | 2;
 }
 
 // sorted asc; bet = last row with minTc <= tc
@@ -487,6 +501,21 @@ export class Game {
     return wongInTcOf(this.cfg.wongInTc);
   }
 
+  /**
+   * Wave J: the ramp spreads to two hands. A one-hand seat, a spread on, and
+   * a ×2 row: each round then opens with one hand or two (`startRound`'s bets
+   * array), and the bet decision is graded on the hand count as well as the
+   * stake. A fixed 2- or 3-hand seat ignores the ramp's hand column.
+   */
+  get spreadsHands(): boolean {
+    return this.cfg.betSpreadOn && this.seatCfg.playerHands === 1 && spreadHasTwoHands(this.cfg.spread);
+  }
+
+  /** The most hands the player can open a round with: the reserve is sized to it. */
+  private get maxPlayerHands(): number {
+    return this.spreadsHands ? 2 : this.seatCfg.playerHands;
+  }
+
   /** v1-compatible view: the player seat's hands (getter over `seats`, not a
    * separate array — mutations to the returned array, e.g. splice on split,
    * write straight through to the seat). */
@@ -608,7 +637,8 @@ export class Game {
    * the count the player was told they were betting into (Wave A, s06).
    */
   get shuffleDue(): boolean {
-    const totalHands = this.seatCfg.bots + this.seatCfg.playerHands;
+    // Wave J: a round that may open with two hands is reserved for two.
+    const totalHands = this.seatCfg.bots + this.maxPlayerHands;
     const needed = 4 * totalHands + 20;
     const tooShallow = !this.shoeIsRigged && this.shoe.cardsRemaining < needed;
     // Wave J: leaving the table is walking to a fresh shoe.
@@ -663,6 +693,10 @@ export class Game {
   /** The stake of a round being played: one bet event per hand, left to right (Cycle-2 Task 4). */
   private gradeBetSizes(preDealTc: number, betArray: readonly number[]): void {
     const expectedUnits = spreadUnitsFor(preDealTc, this.cfg.spread);
+    if (this.spreadsHands) {
+      this.gradeSpreadHands(preDealTc, betArray, expectedUnits);
+      return;
+    }
     for (const bet of betArray) {
       // RT#11: with cover on, a bet one rung either side of the spread's
       // number is not an error -- see engine/coverBets.ts for why the
@@ -697,8 +731,10 @@ export class Game {
 
     // Validate BEFORE mutating anything. This check used to sit below the
     // round-number increment and the reshuffle, so a rejected call left the
-    // Game wedged in a half-advanced state.
-    if (Array.isArray(bets) && bets.length !== playerHandsCount) {
+    // Game wedged in a half-advanced state. Wave J: a ramp that spreads to
+    // two hands opens each round with one or two -- the array says which.
+    const handsAllowed = this.spreadsHands ? [1, 2] : [playerHandsCount];
+    if (Array.isArray(bets) && !handsAllowed.includes(bets.length)) {
       throw new Error(`startRound: bets array length ${bets.length} does not match playerHands ${playerHandsCount}`);
     }
 
@@ -817,6 +853,39 @@ export class Game {
     const preDealTc = this.trueCountNow;
     if (this.cfg.betSpreadOn) this.gradeSitOut(preDealTc, 'sit-out');
     this.dealWithoutPlayer();
+  }
+
+  /**
+   * Wave J: a ramp that spreads to two hands. ONE bet decision for the round
+   * -- how many hands, and how much on each -- graded against the row in
+   * force. Cover tolerance (RT#11) applies to the stake only: a neighbouring
+   * rung is still right, the hand count must match. `taken` is the first
+   * stake off the ramp (or the stake, when none is), so the report and the
+   * cover tell keep reading a number there.
+   */
+  private gradeSpreadHands(preDealTc: number, betArray: readonly number[], expectedUnits: number): void {
+    const handsExpected = spreadHandsFor(preDealTc, this.cfg.spread);
+    const handsTaken = betArray.length;
+    const stakeOk = (bet: number) =>
+      this.cfg.coverBets ? betWithinStep(bet, expectedUnits, this.cfg.spread) : bet === expectedUnits;
+    const off = betArray.find((bet) => !stakeOk(bet));
+    const correct = handsTaken === handsExpected && off === undefined;
+    const handsText = handsExpected === 2 ? 'two hands' : 'one hand';
+    this.events.push({
+      source: 'table',
+      kind: 'bet',
+      category: 'bet',
+      correct,
+      classification: correct ? 'correct' : 'basic-error',
+      taken: String(off ?? betArray[0] ?? 1),
+      expected: String(expectedUnits),
+      reason: this.cfg.coverBets
+        ? `Spread bet at tc ${preDealTc}, ${handsText} (cover: one rung either side)`
+        : `Spread bet at tc ${preDealTc}, ${handsText}`,
+      tc: preDealTc,
+      handsTaken,
+      handsExpected,
+    });
   }
 
   /** The play-or-sit decision, taken as a sit-out (or, at a back-count table, a leave). */

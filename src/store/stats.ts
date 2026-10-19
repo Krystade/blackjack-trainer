@@ -238,6 +238,17 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
     // Wave J: which way a back-count entry was missed -- watching through a
     // count that called for a seat (missed), or sitting in short of the entry
     // point (early).
+    // Wave J: a two-hand ramp's bet missed on the hand count.
+    if (
+      event.kind === 'bet' &&
+      !event.correct &&
+      event.handsTaken !== undefined &&
+      event.handsExpected !== undefined &&
+      event.handsTaken !== event.handsExpected
+    ) {
+      result.betHandsMisses = (result.betHandsMisses ?? 0) + 1;
+    }
+
     if (event.kind === 'wongIn' && !event.correct) {
       const before = result.wongInMisses ?? { missed: 0, early: 0 };
       result.wongInMisses =

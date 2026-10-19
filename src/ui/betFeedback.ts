@@ -10,16 +10,27 @@
  */
 import type { GradedEvent } from '../engine/grade';
 import { signed } from '../drills/signed';
-import { narrateRampBets, narrateRampPlays, narrateRampSitsOut } from '../audio/narrate';
+import { narrateRampBets, narrateRampHands, narrateRampPlays, narrateRampSitsOut } from '../audio/narrate';
 
 export interface BetMiss {
   /** "Bet 8u at TC +3 — you bet 1u", "Sit out at TC −1 — you bet 2u". */
   text: string;
   /** "Your ramp bets eight. True count plus three." */
   spoken: string;
+  /**
+   * Wave J: "Two hands." -- the hand count a two-hand ramp called for, when
+   * the player opened the wrong number. Said as its own utterance after
+   * `spoken`. Absent on every other miss.
+   */
+  spokenAfter?: string;
 }
 
 const tcText = (tc: number) => `TC ${signed(tc, { plusZero: true })}`;
+
+/** Wave J: "two hands of 8u", "one hand of 8u". */
+export function handsOf(hands: number, units: string): string {
+  return `${hands === 2 ? 'two hands' : 'one hand'} of ${units}u`;
+}
 
 /**
  * Wave J: the back-counter's entry, said against the entry point -- "TC +2 —
@@ -58,6 +69,16 @@ export function betMissFeedback(events: readonly GradedEvent[]): BetMiss | null 
   }
   const bet = bets.find((e) => !e.correct);
   if (!bet) return null;
+  // Wave J: a ramp that spreads to two hands grades the hand count with the
+  // stake. Named whenever two hands were called for or opened.
+  const { handsTaken, handsExpected } = bet;
+  if (handsTaken !== undefined && handsExpected !== undefined && (handsTaken === 2 || handsExpected === 2)) {
+    return {
+      text: `Bet ${handsOf(handsExpected, bet.expected)} at ${tcText(bet.tc)} — you bet ${handsOf(handsTaken, bet.taken)}`,
+      spoken: narrateRampBets(Number(bet.expected), bet.tc),
+      ...(handsTaken !== handsExpected ? { spokenAfter: narrateRampHands(handsExpected) } : {}),
+    };
+  }
   return {
     text: `Bet ${bet.expected}u at ${tcText(bet.tc)} — you bet ${bet.taken}u`,
     spoken: narrateRampBets(Number(bet.expected), bet.tc),

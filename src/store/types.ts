@@ -565,6 +565,13 @@ export interface Stats {
    */
   wongInMisses?: { missed: number; early: number };
   /**
+   * Wave J: bets graded wrong on the HAND COUNT (a two-hand ramp row opened
+   * with one hand, or the reverse). Each is also a wrong `categories.bet`:
+   * this says how many of those misses were the hands. Play only. OPTIONAL:
+   * absent = none recorded.
+   */
+  betHandsMisses?: number;
+  /**
    * D-R2 (Wave D, #4): `perIndex` and `mistakes` for table (Play) decisions
    * only, so Stats > Play can show the table without the drills mixed in.
    * OPTIONAL: absent on blobs written before, which read as no table data.

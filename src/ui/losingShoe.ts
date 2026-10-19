@@ -45,7 +45,14 @@ export function makePlayGame(cfg: GameConfig, losingShoe: boolean): PlayGame {
   // Wave J: the script is solo rounds, so a back-count table (bots added,
   // rounds watched) would deal off the end of every scripted round.
   const game = Game.withRiggedShoe(
-    { ...cfg, seats: LOSING_SHOE_SEATS, penetration: last / script.cards.length, backCount: false },
+    {
+      ...cfg,
+      seats: LOSING_SHOE_SEATS,
+      penetration: last / script.cards.length,
+      backCount: false,
+      // Wave J: a second hand would eat the script's cards like a bot does.
+      spread: cfg.spread.map(({ minTc, units }) => ({ minTc, units })),
+    },
     script.cards,
   );
   return { game, boundaries: script.boundaries };

@@ -261,6 +261,17 @@ export function narrateRampSitsOut(tc: number): string {
   return `Your ramp sits out. True count ${narrateTc(tc)}.`;
 }
 
+/**
+ * Wave J: the hand count a two-hand ramp called for, said after
+ * `narrateRampBets` when the player opened the wrong number of hands -- the
+ * stake line alone ("Your ramp bets eight") would be right about the stake and
+ * silent about the miss. Its own utterance, so the recorded stake line keeps
+ * its clips whether or not these two have been recorded yet.
+ */
+export function narrateRampHands(hands: number): string {
+  return hands === 2 ? 'Two hands.' : 'One hand.';
+}
+
 export function narrateSitOut(): string {
   return 'Sitting out.';
 }
