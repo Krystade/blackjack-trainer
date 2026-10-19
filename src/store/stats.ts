@@ -1,6 +1,6 @@
 import type { Category, GradedEvent } from '../engine/grade';
 import type { DeviationId } from '../engine/deviations';
-import type { IndexDirection, Stats, TallyRW } from './types';
+import type { CategoryTallies, IndexDirection, Stats, TallyRW } from './types';
 import { cellAfter, cellIdForEvent, handRecentAfter } from './cellStats';
 
 /**
@@ -131,7 +131,8 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
     // Update category tallies. The tally object itself is copied, not
     // mutated, so sibling categories stay shared with the input.
     if (countsInCategory(event)) {
-      const categoryTally = { ...result.categories[event.category] };
+      // Wave J: `wongIn` is optional on a blob from before it existed.
+      const categoryTally = { ...(result.categories[event.category] ?? { right: 0, wrong: 0 }) };
       if (event.correct) {
         categoryTally.right += 1;
       } else {
@@ -169,12 +170,13 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
       }
       const existing = result.bySource![event.source];
       // A blob written before this field existed has no branch to copy.
-      const bucket: Record<Category, TallyRW> = existing
+      const bucket: CategoryTallies = existing
         ? { ...existing }
         : (Object.fromEntries(
             Object.keys(stats.categories).map((k) => [k, { right: 0, wrong: 0 }]),
           ) as Record<Category, TallyRW>);
-      const tally = { ...bucket[event.category] };
+      // Wave J: a bucket written before `wongIn` existed has no tally for it.
+      const tally = { ...(bucket[event.category] ?? { right: 0, wrong: 0 }) };
       if (event.correct) tally.right += 1;
       else tally.wrong += 1;
       bucket[event.category] = tally;
@@ -232,6 +234,15 @@ export function applyEvents(stats: Stats, events: GradedEvent[], fallbackAt?: st
 
     // Update mistakes tally by classification
     result.mistakes[event.classification] += 1;
+
+    // Wave J: which way a back-count entry was missed -- watching through a
+    // count that called for a seat (missed), or sitting in short of the entry
+    // point (early).
+    if (event.kind === 'wongIn' && !event.correct) {
+      const before = result.wongInMisses ?? { missed: 0, early: 0 };
+      result.wongInMisses =
+        event.taken === 'watch' ? { ...before, missed: before.missed + 1 } : { ...before, early: before.early + 1 };
+    }
 
     // D-R2: the table's own index and mistake tallies, for Stats > Play.
     if (event.source === 'table') {

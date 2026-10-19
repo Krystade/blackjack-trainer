@@ -21,7 +21,13 @@ import {
 import { parseCvcxRamp } from '../../store/cvcxParse';
 import { Segmented, Stepper } from './Settings';
 import type { TcRounding } from '../../engine/count';
-import { CountCheckControls, CutCardControl, DeviationsControl, WongExitControl } from '../components/ProfilePlayControls';
+import {
+  BackCountControl,
+  CountCheckControls,
+  CutCardControl,
+  DeviationsControl,
+  WongExitControl,
+} from '../components/ProfilePlayControls';
 import { syncPenetration } from '../profileOptions';
 
 interface ProfileEditorProps {
@@ -690,6 +696,8 @@ function ProfileEditForm({
 
             {/* D-R1: where sitting out is right. */}
             <WongExitControl profile={draft} onChange={update} />
+            {/* Wave J: where sitting in is right, for a back-counter. */}
+            <BackCountControl profile={draft} onChange={update} />
 
             {/* RT#11 (docs/BACKLOG.md): exact-conformity grading rewards the one
                 thing surveillance looks for. Off by default -- how you want to

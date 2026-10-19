@@ -1,0 +1,28 @@
+/* Wave J: the player's spot while back-counting. Quiet on purpose -- the felt
+   is for the cards being counted -- but present, so an empty spot reads as
+   "you are watching" rather than as a missing hand. Slim, and the row it sits
+   in gives up its card-height floor: a watched table deals to three bots, and
+   every pixel the spot keeps pushes Watch and Sit in further down a 375x812
+   screen. */
+.hands-row:has(> .player-watching) {
+  min-height: 0;
+  padding-top: var(--space-1, 0.25rem);
+  padding-bottom: var(--space-1, 0.25rem);
+}
+
+.player-watching {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 7.5rem;
+  min-height: 36px;
+  padding: 0.25rem 0.9rem;
+  box-sizing: border-box;
+  border: 2px dashed var(--line);
+  border-radius: 10px;
+  color: var(--ink-dim);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}

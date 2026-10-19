@@ -108,6 +108,19 @@ describe('a value too big to print', () => {
     expect(line).toBe('spread: [1,1,2,4] -> [1,2,4,8]');
   });
 
+  it('Wave J: prints a real bet ramp row by row, two-hand rows marked', () => {
+    const before = [{ minTc: -99, units: 1 }, { minTc: 1, units: 2 }, { minTc: 5, units: 8 }];
+    const after = [{ minTc: -99, units: 1 }, { minTc: 1, units: 2 }, { minTc: 5, units: 8, hands: 2 }];
+    const line = formatChanges(diffSettings({ spread: before }, { spread: after }));
+    expect(line).toBe('spread: [any:1u,1:2u,5:8u] -> [any:1u,1:2u,5:8ux2]');
+    expect(line).not.toContain('object Object');
+  });
+
+  it('Wave J: the back-count fields appear as any profile field does', () => {
+    const line = formatChanges(diffSettings({ P: { wongExitTc: -2 } }, { P: { wongExitTc: -2, backCount: true, wongInTc: 2 } }));
+    expect(line).toBe('P.backCount: (unset) -> true; P.wongInTc: (unset) -> 2');
+  });
+
   it('summarises an array only when it is too long to read', () => {
     const long = Array.from({ length: 60 }, (_, i) => i);
     const line = formatChanges(diffSettings({ xs: [] }, { xs: long }));

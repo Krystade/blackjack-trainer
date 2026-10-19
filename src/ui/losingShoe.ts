@@ -42,8 +42,10 @@ export function makePlayGame(cfg: GameConfig, losingShoe: boolean): PlayGame {
   // padding tail, which is pushes rather than losses. The tail only absorbs
   // a round that ran over its script.
   const last = script.boundaries[script.boundaries.length - 1]!;
+  // Wave J: the script is solo rounds, so a back-count table (bots added,
+  // rounds watched) would deal off the end of every scripted round.
   const game = Game.withRiggedShoe(
-    { ...cfg, seats: LOSING_SHOE_SEATS, penetration: last / script.cards.length },
+    { ...cfg, seats: LOSING_SHOE_SEATS, penetration: last / script.cards.length, backCount: false },
     script.cards,
   );
   return { game, boundaries: script.boundaries };

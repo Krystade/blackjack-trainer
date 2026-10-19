@@ -55,6 +55,14 @@ describe('Play losing shoe (#48-51)', () => {
     },
   );
 
+  it('Wave J: a back-count profile still deals the scripted solo rounds, seated', () => {
+    const pg = makePlayGame({ ...cfg, backCount: true }, true);
+    expect(pg.game.watching).toBe(false);
+    expect(play(pg, 10, 'stand')).toBe(10);
+    // Off the rig, the same profile back-counts.
+    expect(makePlayGame({ ...cfg, backCount: true }, false).game.watching).toBe(true);
+  });
+
   it('grades the bet against the normal ramp', () => {
     const pg = makePlayGame(cfg, true);
     play(pg, 5, 'stand');

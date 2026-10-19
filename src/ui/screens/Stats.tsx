@@ -68,7 +68,8 @@ interface StatsProps {
   onSettingsChange: (settings: Settings) => void;
 }
 
-const CATEGORY_ORDER: Category[] = ['hard', 'soft', 'pairs', 'surrender', 'insurance', 'bet', 'countCheck', 'wong'];
+// Wave J: `wongIn` (back-count entries) is listed only once there is one.
+const CATEGORY_ORDER: Category[] = ['hard', 'soft', 'pairs', 'surrender', 'insurance', 'bet', 'countCheck', 'wong', 'wongIn'];
 
 /** #25: rows shown before "Show all". */
 const COST_ROWS_SHOWN = 5;
@@ -100,11 +101,13 @@ const MISTAKE_LABELS: Record<Exclude<MistakeClass, 'correct'>, string> = {
   'self-report': 'Admitted misses (eyes-free)' };
 
 /** s06: Play's non-hand misses, which the engine files under 'basic-error'. */
-type NonHandMiss = 'bet' | 'wong' | 'countCheck';
-const NON_HAND_MISSES: readonly NonHandMiss[] = ['bet', 'wong', 'countCheck'];
+type NonHandMiss = 'bet' | 'wong' | 'wongIn' | 'countCheck';
+const NON_HAND_MISSES: readonly NonHandMiss[] = ['bet', 'wong', 'wongIn', 'countCheck'];
 const NON_HAND_MISS_LABEL: Record<NonHandMiss, string> = {
   bet: 'Bet size mistakes (when playing)',
   wong: 'Play or sit-out mistakes',
+  // Wave J: the back-counter's entry, filed under basic-error like the rest.
+  wongIn: 'Watch or sit-in mistakes',
   countCheck: 'Count check misses',
 };
 
@@ -629,6 +632,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   const nonHandMisses: Record<NonHandMiss, number> = {
     bet: play.categories.bet.wrong,
     wong: play.categories.wong.wrong,
+    wongIn: play.categories.wongIn.wrong,
     countCheck: play.categories.countCheck.wrong,
   };
   const nonHandMissTotal = NON_HAND_MISSES.reduce((n, k) => n + nonHandMisses[k], 0);
@@ -653,6 +657,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
     const parts: string[] = [];
     if (nonHandMisses.bet > 0) parts.push(`${nonHandMisses.bet} bet-sizing`);
     if (nonHandMisses.wong > 0) parts.push(`${nonHandMisses.wong} play-or-sit`);
+    if (nonHandMisses.wongIn > 0) parts.push(`${nonHandMisses.wongIn} watch-or-sit-in`);
     if (nonHandMisses.countCheck > 0) parts.push(`${nonHandMisses.countCheck} count-check`);
     const kinds = parts.length === 0 ? '' : ` ${joinList(parts)} ${nonHandMissTotal === 1 ? 'mistake is' : 'mistakes are'} not hand plays, so they have no price.`;
     const hand =
@@ -735,6 +740,11 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
   };
   const tableBet = tally('bet');
   const tableWong = tally('wong');
+  // Wave J: back-count entries, and which way the misses went.
+  const tableWongIn = tally('wongIn');
+  const wongInMisses = stats.wongInMisses;
+  const entryMissed = typeof wongInMisses?.missed === 'number' ? wongInMisses.missed : 0;
+  const entryEarly = typeof wongInMisses?.early === 'number' ? wongInMisses.early : 0;
   // Wave B2 #12: the Bet sizing drill (which replaced Bet or sit) writes its
   // own history; it is read here, in range, beside the table's figures.
   const betSizingDrill = inRange(betSizingRows(stats));
@@ -917,7 +927,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
           {/* D-R2 (#4): table decisions only. The hand goal Home judges on
               (drills and table alike) is its own section on Progress. */}
           <div className="category-list" data-testid="play-categories">
-            {CATEGORY_ORDER.map((cat) => {
+            {CATEGORY_ORDER.filter((cat) => cat !== 'wongIn' || play.categories.wongIn.right + play.categories.wongIn.wrong > 0).map((cat) => {
               const tally = play.categories[cat];
               const total = tally.right + tally.wrong;
               const pctNum = total === 0 ? 0 : (tally.right / total) * 100;
@@ -1463,7 +1473,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
       >
           {/* s06: the table's own bet and play-or-sit decisions. D-R2: the
               drills' answers are in "Bet sizing drill" on the Drills tab. */}
-          {tableBet.n + tableWong.n === 0 ? (
+          {tableBet.n + tableWong.n + tableWongIn.n === 0 ? (
             <p className="stats-detail">
               No bet or sit decisions at the table yet. Play with a bet spread on.
             </p>
@@ -1482,6 +1492,22 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
                   <span>At the table: play or sit out</span>
                   <span>
                     {tableWong.right}/{tableWong.n} ({pct(tableWong.right, tableWong.n)})
+                  </span>
+                </li>
+              )}
+              {tableWongIn.n > 0 && (
+                <li className="mistake-row" data-testid="bsl-table-wong-in">
+                  <span>At the table: watch or sit in</span>
+                  <span>
+                    {tableWongIn.right}/{tableWongIn.n} ({pct(tableWongIn.right, tableWongIn.n)})
+                  </span>
+                </li>
+              )}
+              {entryMissed + entryEarly > 0 && (
+                <li className="mistake-row" data-testid="bsl-table-wong-in-misses">
+                  <span>Entries missed · early</span>
+                  <span>
+                    {entryMissed} · {entryEarly}
                   </span>
                 </li>
               )}

@@ -22,10 +22,13 @@ export interface PlayFigures {
   decisionRows: NonNullable<Stats['tableDecisions']>['history'];
 }
 
+/** Every category, `wongIn` included -- EMPTY_STATS leaves it out (Wave J, store/types.ts). */
+const PLAY_CATEGORIES: readonly Category[] = [...(Object.keys(EMPTY_STATS.categories) as Category[]), 'wongIn'];
+
 export function playFigures(stats: Stats): PlayFigures {
   const table = stats.bySource?.table;
   const categories = Object.fromEntries(
-    (Object.keys(EMPTY_STATS.categories) as Category[]).map((c) => [c, { ...(table?.[c] ?? { right: 0, wrong: 0 }) }]),
+    PLAY_CATEGORIES.map((c) => [c, { ...(table?.[c] ?? { right: 0, wrong: 0 }) }]),
   ) as Record<Category, TallyRW>;
   const mistakes = Object.fromEntries(
     (Object.keys(EMPTY_STATS.mistakes) as MistakeClass[]).map((m) => [m, stats.tableMistakes?.[m] ?? 0]),

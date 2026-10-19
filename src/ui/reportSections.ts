@@ -65,7 +65,8 @@ export function reportSections(mistakes: readonly GradedEvent[]): {
   return {
     plays: [...priced, ...unpriced],
     counts: of('countCheck'),
-    bets: [...of('bet'), ...of('wong')],
+    // Wave J: the back-count entry is a bet decision too, listed after the exits.
+    bets: [...of('bet'), ...of('wong'), ...of('wongIn')],
   };
 }
 
@@ -148,7 +149,13 @@ function playRowReason(m: GradedEvent, rules: RuleSet): string {
  */
 export function betRowText(m: GradedEvent): string {
   const tc = `TC ${tcText(m.tc)}`;
+  // Wave J: "TC +2 · you watched · you enter at +1".
+  if (m.kind === 'wongIn') {
+    const at = `you enter at ${tcText(m.wongInTc ?? 1)}`;
+    return m.taken === 'watch' ? `${tc} · you watched · ${at}` : `${tc} · you sat in · ${at}`;
+  }
   if (m.kind === 'wong') {
+    if (m.taken === 'leave') return `${tc} · you left · your ramp plays`;
     return m.taken === 'sit-out' ? `${tc} · you sat out · your ramp plays` : `${tc} · you played · your ramp sits out`;
   }
   const cover = /cover/i.test(m.reason) ? ' (one rung either side allowed)' : '';

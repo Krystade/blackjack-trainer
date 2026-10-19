@@ -142,4 +142,10 @@ describe('playOptionsDiffer: what the Play sheet counts as a change', () => {
     expect(playOptionsDiffer({ ...base, betSpreadOn: !base.betSpreadOn }, base)).toBe(true);
     expect(playOptionsDiffer({ ...base, wongExitTc: -3 }, base)).toBe(true);
   });
+
+  it('Wave J: back-counting and its entry point are changes; their defaults are not', () => {
+    expect(playOptionsDiffer({ ...base, backCount: true }, base)).toBe(true);
+    expect(playOptionsDiffer({ ...base, wongInTc: 3 }, base)).toBe(true);
+    expect(playOptionsDiffer({ ...base, backCount: false, wongInTc: 1 }, base)).toBe(false);
+  });
 });

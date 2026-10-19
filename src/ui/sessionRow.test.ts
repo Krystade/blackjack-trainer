@@ -64,3 +64,10 @@ describe('upsertSession (B2, R1)', () => {
     expect(stats.sessions.map((s) => s.id)).toEqual([undefined, 's-1', 's-2']);
   });
 });
+
+describe('Wave J: betMissCount', () => {
+  it('counts a missed back-count entry as a bet decision off', () => {
+    const miss = { source: 'table', kind: 'wongIn', category: 'wongIn', correct: false, classification: 'basic-error', taken: 'watch', expected: 'sit-in', reason: '', tc: 2 } as const;
+    expect(betMissCount([miss, { ...miss, correct: true }])).toBe(1);
+  });
+});

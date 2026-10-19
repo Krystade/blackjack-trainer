@@ -503,12 +503,32 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     // narrate: the player was dealt none. R5.
     realignLosingShoe(playGame);
     const before = game.events.length;
+    // Wave J: at a back-count table this is a WATCH (watching) or a LEAVE
+    // (seated) -- read before the engine changes which.
+    const watching = game.watching;
+    const leaving = game.backCountOn && !watching;
     game.sitOut();
+    if (leaving) {
+      // Nothing is dealt: the settled round stays on the felt, and the walk
+      // to a new table is a shuffle, said now -- before the next decision, as
+      // the cut card's is -- so the deal that makes it does not say it again.
+      // A right leave leaves the round's own strip alone.
+      const fresh = game.events.slice(before);
+      if (fresh.some((e) => !e.correct)) noteBetMiss(fresh);
+      audio.say(narrateShuffle());
+      shuffleSaidRef.current = true;
+      return;
+    }
     if (game.missedDealerError) audio.ding('bad');
     if (game.shuffledLastRound && !shuffleSaidRef.current) audio.say(narrateShuffle());
     shuffleSaidRef.current = false;
     audio.say(narrateSitOut());
     noteBetMiss(game.events.slice(before));
+    // Wave J: a watched round is there to be COUNTED, so its opening cards
+    // are read out as a seated round's are (the bots' draws and the dealer's
+    // follow, paced and at settlement). A plain sit-out still reads none of
+    // them -- see the lane report.
+    if (watching) narrateDeal(game, audio, true);
     settleAndNote();
   }, [game, playGame, audio, settleAndNote, noteBetMiss]);
 

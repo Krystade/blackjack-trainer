@@ -37,7 +37,13 @@ export type MistakeClass =
    * wrong.
    */
   | 'self-report';
-export type EventKind = 'action' | 'insurance' | 'bet' | 'countCheck' | 'wong';
+/**
+ * Wave J: `wongIn` is the back-counter's ENTRY decision -- watch this round,
+ * or sit in -- graded against the profile's entry point (engine/wong.ts). Its
+ * own kind and category, apart from `wong` (the play-or-sit / leave decision
+ * at the exit point), so entries and exits are tallied separately.
+ */
+export type EventKind = 'action' | 'insurance' | 'bet' | 'countCheck' | 'wong' | 'wongIn';
 
 /**
  * WHERE a graded decision came from, as opposed to what kind of decision it
@@ -51,7 +57,7 @@ export type EventKind = 'action' | 'insurance' | 'bet' | 'countCheck' | 'wong';
  * one persisted shape keyed by source, `Stats.bySource`, is a Partial record.
  */
 export type EventSource = 'table' | 'flashcard' | 'quiz' | 'mastery' | 'chartTest';
-export type Category = 'hard' | 'soft' | 'pairs' | 'surrender' | 'insurance' | 'bet' | 'countCheck' | 'wong';
+export type Category = 'hard' | 'soft' | 'pairs' | 'surrender' | 'insurance' | 'bet' | 'countCheck' | 'wong' | 'wongIn';
 
 export interface GradedEvent {
   kind: EventKind;
@@ -180,6 +186,13 @@ export interface GradedEvent {
    * decision, absent everywhere else -- the same additive contract as above.
    */
   slow?: true;
+
+  /**
+   * Wave J: on a `wongIn` event, the entry point it was graded against, so the
+   * feedback can say "you enter at +1" without re-reading a profile that may
+   * have changed since. Absent on every other kind.
+   */
+  wongInTc?: number;
 }
 
 /**

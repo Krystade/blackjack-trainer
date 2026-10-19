@@ -18,4 +18,6 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   // on, not only the rounds actually sat out -- so 'Wong-outs' would name a
   // subset of what it counts.
   wong: 'Play or sit out',
+  // Wave J: the back-counter's entry, kept apart from the exit above.
+  wongIn: 'Watch or sit in',
 };

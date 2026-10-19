@@ -41,3 +41,34 @@ describe('betMissFeedback (B2 #13, R2)', () => {
     expect(betMissFeedback([bet(4, 4, 2), bet(1, 4, 2), wong('play', 'play', 2)])?.text).toBe('Bet 4u at TC +2 — you bet 1u');
   });
 });
+
+describe('Wave J: the back-count entry miss', () => {
+  const entry = (taken: 'watch' | 'sit-in', tc: number, wongInTc = 1): GradedEvent => ({
+    source: 'table', kind: 'wongIn', category: 'wongIn', correct: false, classification: 'basic-error',
+    taken, expected: taken === 'watch' ? 'sit-in' : 'watch', reason: `Back-count entry at tc ${tc} (enter at ${wongInTc})`, tc, wongInTc,
+  });
+  it('watching through a count at the entry point: sit in, and the recorded "ramp plays" line', () => {
+    expect(betMissFeedback([entry('watch', 2)])).toEqual({
+      text: 'TC +2 — sit in (you enter at +1)',
+      spoken: 'Your ramp plays. True count plus two.',
+    });
+  });
+  it('sitting in short of it: keep watching, and the recorded "ramp sits out" line', () => {
+    expect(betMissFeedback([entry('sit-in', 0)])).toEqual({
+      text: 'TC +0 — keep watching (you enter at +1)',
+      spoken: 'Your ramp sits out. True count zero.',
+    });
+  });
+  it('names the entry point the decision was graded at', () => {
+    expect(betMissFeedback([entry('sit-in', 2, 3)])?.text).toBe('TC +2 — keep watching (you enter at +3)');
+  });
+  it('a right entry says nothing', () => {
+    expect(betMissFeedback([{ ...entry('watch', 0), correct: true, classification: 'correct', expected: 'watch' }])).toBeNull();
+  });
+  it('leaving a back-count table above the exit point', () => {
+    expect(betMissFeedback([wong('leave' as 'sit-out', 'play', 1)])).toEqual({
+      text: 'Play at TC +1 — you left',
+      spoken: 'Your ramp plays. True count plus one.',
+    });
+  });
+});

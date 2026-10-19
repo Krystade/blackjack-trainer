@@ -47,3 +47,39 @@ export function firstRaiseTc(spread: readonly SpreadRow[]): number | null {
   const raised = [...spread].sort((a, b) => a.minTc - b.minTc).find((r) => r.units > minUnits);
   return raised ? raised.minTc : null;
 }
+
+/**
+ * Wave J, back-counting ("Wonging in"): the ENTRY point. Standing behind the
+ * table, the player sits in only at true count >= this; below it, watching
+ * is right. A profile setting (`Profile.wongInTc`, 0..+5, default +1), the
+ * mirror of the exit point above.
+ *
+ * The ranges cannot cross: entry >= 0 >= exit. They can MEET, at 0 -- enter at
+ * >= 0 and leave at <= 0. The overlap is ruled one way per state: while
+ * WATCHING the entry wins (TC 0 is a sit-in), while SEATED the exit wins (TC 0
+ * is a leave). So a counter set to 0/0 who sits in at a fresh shoe is told to
+ * leave on the next round if the count has not moved -- which is what those
+ * two numbers say.
+ */
+export const DEFAULT_WONG_IN_TC = 1;
+export const WONG_IN_MIN = 0;
+export const WONG_IN_MAX = 5;
+
+/** A stored entry point, clamped to the stepper's range; absent = the default. */
+export function wongInTcOf(entry: number | undefined): number {
+  if (entry === undefined || !Number.isFinite(entry)) return DEFAULT_WONG_IN_TC;
+  return Math.min(WONG_IN_MAX, Math.max(WONG_IN_MIN, Math.round(entry)));
+}
+
+/** While watching: is sitting in right at this true count? */
+export function sitInIsCorrect(tc: number, wongInTc?: number): boolean {
+  return tc >= wongInTcOf(wongInTc);
+}
+
+/**
+ * The bots a back-counter watches when the profile seats none. A back-counter
+ * stands behind a table WITH players; a dealer dealing to nobody is not a
+ * thing, and it would give the watcher two cards a round to count.
+ */
+export const BACK_COUNT_BOTS = 3;
+

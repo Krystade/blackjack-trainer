@@ -1,7 +1,7 @@
 import { Shoe, rankValue, mulberry32 } from './cards';
 import { makeRiggedShoe, botRngSeed, type RiggedShoe } from './riggedShoe';
 import { betWithinStep } from './coverBets';
-import { sitOutIsCorrect, spreadUnitsFor } from './wong';
+import { sitOutIsCorrect, spreadUnitsFor, sitInIsCorrect, wongInTcOf, BACK_COUNT_BOTS } from './wong';
 import { cutCardsFor, cutRngSeed, usesCutCards } from './cut';
 import { priceMistake } from './mistakeCost';
 import { hotShoeOrder } from './shoeBias';
@@ -80,6 +80,16 @@ export interface GameConfig {
   spread: SpreadRow[];
   /** D-R1: sit out only at true count <= this (engine/wong.ts). Absent = -2. */
   wongExitTc?: number;
+  /**
+   * Wave J: back-counting. Every shoe starts with the player WATCHING (dealt
+   * no hand) and each round asks Watch or Sit in, graded at `wongInTc`. Once
+   * seated, sitting out means leaving the table: the next round is a fresh
+   * shoe at a new table, watched. In force only with `betSpreadOn` (the same
+   * gate the wong decision has). Absent or false = off.
+   */
+  backCount?: boolean;
+  /** Wave J: sit in only at true count >= this (engine/wong.ts). Absent = +1. */
+  wongInTc?: number;
   bankrollStart: number; // units
   countCheckEvery: number; // rounds; 0 = off
   /** #3: what each count check asks for. Absent = 'alternate' (the running
@@ -324,6 +334,18 @@ export class Game {
   dealerErrorTally: DealerErrorTally = { ...EMPTY_DEALER_ERROR_TALLY };
   /** G2: some round settled with the setting on. */
   dealerMistakesUsed = false;
+
+  /**
+   * Wave J, back-counting: the player holds a seat for the NEXT round. False
+   * at the start of every shoe (the player watches); set by sitting in; cleared
+   * by leaving the table and by the shoe running out under a seated player.
+   * Meaningless with back-count off (see `watching`).
+   */
+  private seated = false;
+  /** Wave J: the player left the table; the next round is a new table, fresh shoe. */
+  private newTablePending = false;
+  /** Wave J: the round just dealt was the first at a new table (its shuffle was a walk). */
+  newTableLastRound = false;
   /** Wave I: some round settled in Training mode (about one error in five). */
   dealerMistakesTrainingUsed = false;
 
@@ -429,9 +451,40 @@ export class Game {
     this.dealerErrorTally = { ...this.dealerErrorTally, made: this.dealerErrorTally.made + 1 };
   }
 
-  /** SeatConfig for this game (falls back to DEFAULT_SEATS, v1 solo parity). */
+  /**
+   * SeatConfig for this game (falls back to DEFAULT_SEATS, v1 solo parity).
+   *
+   * Wave J: a back-counter with no bots configured watches a table of
+   * BACK_COUNT_BOTS -- there is nothing to count behind an empty table.
+   */
   private get seatCfg(): SeatConfig {
-    return this.cfg.seats ?? DEFAULT_SEATS;
+    const seats = this.cfg.seats ?? DEFAULT_SEATS;
+    if (this.backCountOn && seats.bots === 0) return { ...seats, bots: BACK_COUNT_BOTS };
+    return seats;
+  }
+
+  /** Wave J: back-counting is in force (the profile asks for it, with a spread on). */
+  get backCountOn(): boolean {
+    return this.cfg.backCount === true && this.cfg.betSpreadOn;
+  }
+
+  /**
+   * Wave J: the player is not seated. Between rounds that means the next
+   * decision is Watch or Sit in; during a watched round, that the player was
+   * dealt nothing. Always false with back-count off.
+   */
+  get watching(): boolean {
+    return this.backCountOn && !this.seated;
+  }
+
+  /** Wave J: the player has just left; the next round deals at a new table. */
+  get newTableNext(): boolean {
+    return this.newTablePending;
+  }
+
+  /** Wave J: the entry point in force (absent = +1). */
+  get wongInTc(): number {
+    return wongInTcOf(this.cfg.wongInTc);
   }
 
   /** v1-compatible view: the player seat's hands (getter over `seats`, not a
@@ -558,7 +611,8 @@ export class Game {
     const totalHands = this.seatCfg.bots + this.seatCfg.playerHands;
     const needed = 4 * totalHands + 20;
     const tooShallow = !this.shoeIsRigged && this.shoe.cardsRemaining < needed;
-    return this.shoe.cutCardReached || tooShallow;
+    // Wave J: leaving the table is walking to a fresh shoe.
+    return this.shoe.cutCardReached || tooShallow || this.newTablePending;
   }
 
   /**
@@ -593,14 +647,43 @@ export class Game {
       this.shoe.shuffle();
       this.runningCount = 0;
       this.shuffledLastRound = true;
+      this.newTableLastRound = this.newTablePending;
+      this.newTablePending = false;
     } else {
       this.shuffledLastRound = false;
+      this.newTableLastRound = false;
     }
   }
 
   /** The play-or-sit line: one shared rule with the Bet or sit drill (engine/wong.ts). */
   private sitOutIsCorrect(tc: number): boolean {
     return sitOutIsCorrect(tc, this.cfg.spread, this.cfg.wongExitTc);
+  }
+
+  /** The stake of a round being played: one bet event per hand, left to right (Cycle-2 Task 4). */
+  private gradeBetSizes(preDealTc: number, betArray: readonly number[]): void {
+    const expectedUnits = spreadUnitsFor(preDealTc, this.cfg.spread);
+    for (const bet of betArray) {
+      // RT#11: with cover on, a bet one rung either side of the spread's
+      // number is not an error -- see engine/coverBets.ts for why the
+      // tolerance is a RUNG rather than a unit.
+      const correct = this.cfg.coverBets
+        ? betWithinStep(bet, expectedUnits, this.cfg.spread)
+        : bet === expectedUnits;
+      this.events.push({
+        source: 'table',
+        kind: 'bet',
+        category: 'bet',
+        correct,
+        classification: correct ? 'correct' : 'basic-error',
+        taken: String(bet),
+        expected: String(expectedUnits),
+        reason: this.cfg.coverBets
+          ? `Spread bet at tc ${preDealTc} (cover: one rung either side)`
+          : `Spread bet at tc ${preDealTc}`,
+        tc: preDealTc,
+      });
+    }
   }
 
   /**
@@ -626,7 +709,29 @@ export class Game {
       ? bets
       : new Array(playerHandsCount).fill(bets ?? 1);
 
-    if (this.cfg.betSpreadOn) {
+    // Wave J: a watching player who deals in is SITTING IN -- the entry
+    // decision, graded at the entry point. It replaces the exit check for this
+    // round (entry wins while watching, see engine/wong.ts). A correct entry
+    // also grades the stake, as any seated round does; an early one is graded
+    // as the entry alone -- the stake is moot when you should not be in (C-R6).
+    if (this.watching) {
+      const entry = this.wongInTc;
+      const correct = sitInIsCorrect(preDealTc, entry);
+      this.events.push({
+        source: 'table',
+        kind: 'wongIn',
+        category: 'wongIn',
+        correct,
+        classification: correct ? 'correct' : 'basic-error',
+        taken: 'sit-in',
+        expected: correct ? 'sit-in' : 'watch',
+        reason: `Back-count entry at tc ${preDealTc} (enter at ${entry})`,
+        tc: preDealTc,
+        wongInTc: entry,
+      });
+      this.seated = true;
+      if (correct) this.gradeBetSizes(preDealTc, betArray);
+    } else if (this.cfg.betSpreadOn) {
       /**
        * C-R6: one round, one graded bet decision. When the ramp says sit out,
        * dealing in is the error and the stake size is moot -- only the
@@ -650,28 +755,7 @@ export class Game {
           tc: preDealTc,
         });
       } else {
-        const expectedUnits = spreadUnitsFor(preDealTc, this.cfg.spread);
-        for (const bet of betArray) {
-          // RT#11: with cover on, a bet one rung either side of the spread's
-          // number is not an error -- see engine/coverBets.ts for why the
-          // tolerance is a RUNG rather than a unit.
-          const correct = this.cfg.coverBets
-            ? betWithinStep(bet, expectedUnits, this.cfg.spread)
-            : bet === expectedUnits;
-          this.events.push({
-            source: 'table',
-            kind: 'bet',
-            category: 'bet',
-            correct,
-            classification: correct ? 'correct' : 'basic-error',
-            taken: String(bet),
-            expected: String(expectedUnits),
-            reason: this.cfg.coverBets
-              ? `Spread bet at tc ${preDealTc} (cover: one rung either side)`
-              : `Spread bet at tc ${preDealTc}`,
-            tc: preDealTc,
-          });
-        }
+        this.gradeBetSizes(preDealTc, betArray);
       }
     }
 
@@ -716,24 +800,83 @@ export class Game {
    * never prompts insurance here: there is no stake to insure.
    */
   sitOut(): void {
+    // Wave J: watching, there is no seat to leave -- this is a watch.
+    if (this.watching) {
+      this.watch();
+      return;
+    }
+    // Wave J: seated at a back-count table, sitting out is LEAVING. Graded as
+    // the sit-out is (the exit point), then the player walks: nothing is
+    // dealt here, and the next round is a fresh shoe at a new table, watched.
+    if (this.backCountOn) {
+      this.leaveTable();
+      return;
+    }
     this.beginRound();
 
     const preDealTc = this.trueCountNow;
-    if (this.cfg.betSpreadOn) {
-      const correct = this.sitOutIsCorrect(preDealTc);
-      this.events.push({
-        source: 'table',
-        kind: 'wong',
-        category: 'wong',
-        correct,
-        classification: correct ? 'correct' : 'basic-error',
-        taken: 'sit-out',
-        expected: correct ? 'sit-out' : 'play',
-        reason: `Wong decision at tc ${preDealTc}`,
-        tc: preDealTc,
-      });
-    }
+    if (this.cfg.betSpreadOn) this.gradeSitOut(preDealTc, 'sit-out');
+    this.dealWithoutPlayer();
+  }
 
+  /** The play-or-sit decision, taken as a sit-out (or, at a back-count table, a leave). */
+  private gradeSitOut(preDealTc: number, taken: 'sit-out' | 'leave'): void {
+    const correct = this.sitOutIsCorrect(preDealTc);
+    this.events.push({
+      source: 'table',
+      kind: 'wong',
+      category: 'wong',
+      correct,
+      classification: correct ? 'correct' : 'basic-error',
+      taken,
+      expected: correct ? taken : 'play',
+      reason: `Wong decision at tc ${preDealTc}`,
+      tc: preDealTc,
+    });
+  }
+
+  /**
+   * Wave J: leave a back-count table. The exit decision is graded at the count
+   * the player is leaving, then the seat is given up and the next deal
+   * shuffles: a new table, a fresh shoe, the player watching. Deals nothing,
+   * so the settled round stays on the felt until the next deal.
+   */
+  private leaveTable(): void {
+    this.gradeSitOut(this.trueCountNow, 'leave');
+    this.seated = false;
+    this.newTablePending = true;
+  }
+
+  /**
+   * Wave J: watch a round from behind the table. The round is dealt to the
+   * bots and the dealer exactly as a sit-out is -- the count and the shoe move
+   * as they would with the player in -- and the choice is graded as the entry
+   * decision: watching is right below the entry point. Only while watching;
+   * a seated player's sit-out is `sitOut`.
+   */
+  watch(): void {
+    if (!this.watching) throw new Error('watch() called while seated');
+    this.beginRound();
+    const preDealTc = this.trueCountNow;
+    const entry = this.wongInTc;
+    const correct = !sitInIsCorrect(preDealTc, entry);
+    this.events.push({
+      source: 'table',
+      kind: 'wongIn',
+      category: 'wongIn',
+      correct,
+      classification: correct ? 'correct' : 'basic-error',
+      taken: 'watch',
+      expected: correct ? 'watch' : 'sit-in',
+      reason: `Back-count entry at tc ${preDealTc} (enter at ${entry})`,
+      tc: preDealTc,
+      wongInTc: entry,
+    });
+    this.dealWithoutPlayer();
+  }
+
+  /** Deal and play out a round with the player seat empty (sit-out and watch, R5). */
+  private dealWithoutPlayer(): void {
     this.dealerCards = [];
     this.holeRevealed = false;
     this._active = 0;
@@ -983,7 +1126,7 @@ export class Game {
    * display in playDealerAndSettle()/settleDealerBlackjack() -- bots never
    * touch the bankroll (Cycle-2 Task 3). */
   private buildSeats(bets: number[]): void {
-    const seatCfg = this.cfg.seats ?? DEFAULT_SEATS;
+    const seatCfg = this.seatCfg;
     const clampedPos = Math.min(Math.max(seatCfg.playerPosition, 0), seatCfg.bots);
 
     const seats: Seat[] = [];
@@ -1438,6 +1581,9 @@ export class Game {
     this.handsPlayed += this.hands.length;
     this.maybeMakeDealerError();
     this.phase = 'settled';
+    // Wave J: the shoe ran out under a seated back-counter. The next shoe is
+    // a fresh one, and every shoe starts with the player watching.
+    if (this.backCountOn && this.seated && this.shuffleDue) this.seated = false;
     if (this.cfg.countCheckEvery > 0 && this.roundNo % this.cfg.countCheckEvery === 0) {
       this.countCheckDue = true;
       this.countCheckPromptCount += 1;

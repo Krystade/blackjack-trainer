@@ -27,6 +27,9 @@ export function playConfigFor(
     spread: profile.spread,
     // D-R1: absent keeps the engine's -2.
     ...(profile.wongExitTc === undefined ? {} : { wongExitTc: profile.wongExitTc }),
+    // Wave J: back-counting and its entry point; absent keeps both off/default.
+    ...(profile.backCount ? { backCount: true } : {}),
+    ...(profile.wongInTc === undefined ? {} : { wongInTc: profile.wongInTc }),
     bankrollStart,
     countCheckEvery: profile.countCheckEvery,
     // #3 and #34: absent keeps the game's own default.

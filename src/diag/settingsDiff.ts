@@ -44,11 +44,27 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
  */
 const MAX_VALUE_CHARS = 80;
 
+/**
+ * Wave J: a bet-ramp row, as a diff prints it -- "1:2u", "5:8ux2" for a row
+ * that spreads to two hands, "any:1u" for the floor row. The spread is an
+ * array of objects, which `join` printed as "[object Object]" for every row:
+ * a ramp edit (and now a hands edit) was logged as having happened without a
+ * word of what it was.
+ */
+function isSpreadRow(v: unknown): v is { minTc: number; units: number; hands?: number } {
+  return isPlainObject(v) && typeof v.minTc === 'number' && typeof v.units === 'number';
+}
+
+function spreadRowText(r: { minTc: number; units: number; hands?: number }): string {
+  return `${r.minTc <= -20 ? 'any' : r.minTc}:${r.units}u${r.hands === 2 ? 'x2' : ''}`;
+}
+
 function render(v: unknown): string {
   if (v === undefined) return '(unset)';
   if (v === null) return 'null';
   if (Array.isArray(v)) {
-    const joined = `[${v.join(',')}]`;
+    const items = v.length > 0 && v.every(isSpreadRow) ? v.map(spreadRowText) : v;
+    const joined = `[${items.join(',')}]`;
     return joined.length <= MAX_VALUE_CHARS ? joined : `[${v.length} values]`;
   }
   if (typeof v === 'object') {

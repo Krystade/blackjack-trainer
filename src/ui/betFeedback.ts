@@ -21,13 +21,34 @@ export interface BetMiss {
 
 const tcText = (tc: number) => `TC ${signed(tc, { plusZero: true })}`;
 
+/**
+ * Wave J: the back-counter's entry, said against the entry point -- "TC +2 —
+ * sit in (you enter at +1)". The spoken line keeps the ramp lines' shape and
+ * their recordings: "Your ramp plays" is the count calling for a seat, "Your
+ * ramp sits out" the count calling for watching. Both are already clips, so a
+ * miss never drops the car's head unit to live speech.
+ */
+function entryMiss(e: GradedEvent): BetMiss {
+  const at = `you enter at ${signed(e.wongInTc ?? 1, { plusZero: true })}`;
+  return e.taken === 'watch'
+    ? { text: `${tcText(e.tc)} — sit in (${at})`, spoken: narrateRampPlays(e.tc) }
+    : { text: `${tcText(e.tc)} — keep watching (${at})`, spoken: narrateRampSitsOut(e.tc) };
+}
+
 /** The first wrong bet or play-or-sit decision among a deal's (or sit-out's) events. */
 export function betMissFeedback(events: readonly GradedEvent[]): BetMiss | null {
+  // Wave J: the entry is the round's one play-or-sit decision when present.
+  const entry = events.find((e) => e.kind === 'wongIn' && !e.correct);
+  if (entry) return entryMiss(entry);
   const wong = events.find((e) => e.kind === 'wong' && !e.correct);
   const bets = events.filter((e) => e.kind === 'bet');
   if (wong) {
     if (wong.taken === 'sit-out') {
       return { text: `Play at ${tcText(wong.tc)} — you sat out`, spoken: narrateRampPlays(wong.tc) };
+    }
+    // Wave J: leaving a back-count table above the exit point.
+    if (wong.taken === 'leave') {
+      return { text: `Play at ${tcText(wong.tc)} — you left`, spoken: narrateRampPlays(wong.tc) };
     }
     const taken = bets[0]?.taken;
     return {

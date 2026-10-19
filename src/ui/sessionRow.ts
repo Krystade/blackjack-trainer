@@ -32,9 +32,9 @@ export interface SessionRowInput {
   dealerMistakesTraining?: true;
 }
 
-/** Bet-size and play-or-sit decisions graded wrong. */
+/** Bet-size and play-or-sit decisions graded wrong (Wave J: the back-count entry included). */
 export function betMissCount(events: readonly GradedEvent[]): number {
-  return events.filter((e) => (e.kind === 'bet' || e.kind === 'wong') && !e.correct).length;
+  return events.filter((e) => (e.kind === 'bet' || e.kind === 'wong' || e.kind === 'wongIn') && !e.correct).length;
 }
 
 export function sessionRowFor(i: SessionRowInput): SessionRow {

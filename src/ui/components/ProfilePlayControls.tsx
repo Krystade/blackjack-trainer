@@ -11,7 +11,15 @@ import {
   type CountCheckAsk,
 } from '../profileOptions';
 import { signed } from '../../drills/signed';
-import { WONG_EXIT_MAX, WONG_EXIT_MIN, wongExitTcOf } from '../../engine/wong';
+import {
+  BACK_COUNT_BOTS,
+  WONG_EXIT_MAX,
+  WONG_EXIT_MIN,
+  WONG_IN_MAX,
+  WONG_IN_MIN,
+  wongExitTcOf,
+  wongInTcOf,
+} from '../../engine/wong';
 
 /**
  * The profile options Play reads, as controls (#3, #34, #39). One set, used
@@ -23,7 +31,7 @@ type ProfileView = Pick<
   Profile,
   'countCheckEvery' | 'countCheckAsk' | 'gradeDeviations' | 'cutDecks' | 'cutVary' | 'penetration' | 'rules'
 > &
-  Partial<Pick<Profile, 'betSpreadOn' | 'wongExitTc'>>;
+  Partial<Pick<Profile, 'betSpreadOn' | 'wongExitTc' | 'backCount' | 'wongInTc' | 'seats'>>;
 
 interface ControlProps {
   profile: ProfileView;
@@ -127,6 +135,7 @@ export function BetSpreadControl({ profile, onChange }: ControlProps) {
           : 'Flat bets: no bet ramp, and no sitting out.'}
       </p>
       {on && <WongExitControl profile={profile} onChange={onChange} />}
+      {on && <BackCountControl profile={profile} onChange={onChange} />}
     </>
   );
 }
@@ -150,6 +159,49 @@ export function WongExitControl({ profile, onChange }: ControlProps) {
       />
       <p className="settings-note profile-play-note" data-testid="wong-exit-note">
         Above {signed(exit)} playing is right, even where the ramp bets its minimum.
+      </p>
+    </>
+  );
+}
+
+/**
+ * Wave J: back-counting. Each shoe is watched from behind the table and the
+ * round's decision is Watch or Sit in, graded at the entry point; seated, Sit
+ * out becomes Leave (graded at the exit point above), and leaving walks to a
+ * new table's fresh shoe. Under the exit control because it is the other half
+ * of the same decision, and needs the ramp as the exit does.
+ */
+export function BackCountControl({ profile, onChange }: ControlProps) {
+  const on = profile.backCount === true;
+  const entry = wongInTcOf(profile.wongInTc);
+  const exit = wongExitTcOf(profile.wongExitTc);
+  const noBots = (profile.seats?.bots ?? 0) === 0;
+  return (
+    <>
+      <Toggle label="Back-count" checked={on} onChange={(v) => onChange({ backCount: v })} />
+      {on && (
+        <Stepper
+          label="Enter at TC ≥"
+          value={entry}
+          min={WONG_IN_MIN}
+          max={WONG_IN_MAX}
+          step={1}
+          format={(v) => signed(v)}
+          onChange={(v) => onChange({ wongInTc: v })}
+        />
+      )}
+      <p className="settings-note profile-play-note" data-testid="back-count-note">
+        {on ? (
+          <>
+            Every shoe starts with you watching. Each round, Watch or Sit in: sitting in is right at{' '}
+            {signed(entry)} or higher. Seated, Sit out becomes Leave, and the next shoe is a new table.
+            {/* The overlap at 0, said where it can be set (wong.ts). */}
+            {entry === 0 && exit === 0 && ' At 0 you sit in while watching, and leave once seated.'}
+            {noBots && ` With no bots set, you watch a table of ${BACK_COUNT_BOTS}.`}
+          </>
+        ) : (
+          'Off: you are seated from the first hand of every shoe.'
+        )}
       </p>
     </>
   );

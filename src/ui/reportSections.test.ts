@@ -161,3 +161,27 @@ describe('H7: a play row reads the wrong-play card reason, not the engine placeh
     expect(playRowText(m, DEFAULT_RULES)).toContain('— 16 v 10: stand at TC ≥ 0');
   });
 });
+
+describe('Wave J: back-count rows', () => {
+  it('the entry, both ways, against the entry point', () => {
+    expect(betRowText(ev({ kind: 'wongIn', category: 'wongIn', taken: 'watch', expected: 'sit-in', tc: 2, wongInTc: 1 }))).toBe(
+      'TC +2 · you watched · you enter at +1',
+    );
+    expect(betRowText(ev({ kind: 'wongIn', category: 'wongIn', taken: 'sit-in', expected: 'watch', tc: -1, wongInTc: 0 }))).toBe(
+      'TC −1 · you sat in · you enter at +0',
+    );
+  });
+  it('leaving above the exit point', () => {
+    expect(betRowText(ev({ kind: 'wong', category: 'wong', taken: 'leave', expected: 'play', tc: 1 }))).toBe(
+      'TC +1 · you left · your ramp plays',
+    );
+  });
+  it('entries are listed with the bets, after the exits', () => {
+    const s = reportSections([
+      ev({ kind: 'wongIn', category: 'wongIn', taken: 'watch', expected: 'sit-in', tc: 2, wongInTc: 1 }),
+      ev({ kind: 'wong', category: 'wong', taken: 'leave', expected: 'play', tc: 1 }),
+    ]);
+    expect(s.bets.map((r) => r.mistake.kind)).toEqual(['wong', 'wongIn']);
+    expect(s.plays).toEqual([]);
+  });
+});

@@ -1,4 +1,4 @@
-import { wongExitTcOf } from '../engine/wong';
+import { wongExitTcOf, wongInTcOf } from '../engine/wong';
 import type { Profile } from '../store/types';
 import { loadProfiles, saveProfiles, getActiveProfile } from '../store/profiles';
 
@@ -109,6 +109,9 @@ export function playOptionsDiffer(a: Profile, b: Profile): boolean {
     p.betSpreadOn === true,
     // D-R1: the Wong exit point sits under the bet spread toggle.
     wongExitTcOf(p.wongExitTc),
+    // Wave J: and back-counting with its entry point, under that.
+    p.backCount === true,
+    wongInTcOf(p.wongInTc),
   ];
   return JSON.stringify(effective(a)) !== JSON.stringify(effective(b));
 }

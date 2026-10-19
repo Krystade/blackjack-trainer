@@ -24,6 +24,15 @@ describe('playConfigFor', () => {
     expect('cutDecks' in plain || 'cutVary' in plain).toBe(false);
   });
 
+  it('Wave J: carries back-count and its entry point through, and neither when unset', () => {
+    const cfg = playConfigFor({ ...base, backCount: true, wongInTc: 2 }, 100, 1);
+    expect(cfg.backCount).toBe(true);
+    expect(cfg.wongInTc).toBe(2);
+    const plain = playConfigFor(base, 100, 1);
+    expect('backCount' in plain || 'wongInTc' in plain).toBe(false);
+    expect('backCount' in playConfigFor({ ...base, backCount: false }, 100, 1)).toBe(false);
+  });
+
   it('takes the session bankroll and seed it is given', () => {
     const cfg = playConfigFor(base, 137, 9);
     expect(cfg.bankrollStart).toBe(137);

@@ -414,6 +414,18 @@ export interface Profile {
    */
   wongExitTc?: number;
   /**
+   * Wave J: back-counting ("Wonging in"). Every shoe starts with the player
+   * watching from behind the table; each round asks Watch or Sit in, graded at
+   * `wongInTc`; once seated, sitting out is leaving for a new table. Needs a
+   * bet spread on. OPTIONAL, absent = off (engine/game.ts `backCount`).
+   */
+  backCount?: boolean;
+  /**
+   * Wave J: the back-count ENTRY point. Sitting in is graded right only at
+   * true count >= this. 0..+5, absent = +1 (engine/wong.ts).
+   */
+  wongInTc?: number;
+  /**
    * V5-4: how this counter's system resolves the leftover in a true-count
    * division. OPTIONAL so profiles stored before this field load untouched,
    * and absent means 'floor' -- the app's historical behaviour.
@@ -524,9 +536,18 @@ export interface IndexDirection {
   offTally?: number;
 }
 
+/**
+ * Wave J: the per-category tallies. `wongIn` (the back-counter's watch or sit
+ * in decision) is OPTIONAL: every blob, export and fixture written before it
+ * lacks the key, and must load unchanged -- so `EMPTY_STATS` does not carry
+ * it either (the merge would add it to every blob). Readers treat a missing
+ * tally as zero; the first graded entry writes it.
+ */
+export type CategoryTallies = Record<Exclude<Category, 'wongIn'>, TallyRW> & Partial<Record<'wongIn', TallyRW>>;
+
 export interface Stats {
   version: 1;
-  categories: Record<Category, TallyRW>;
+  categories: CategoryTallies;
   perIndex: Partial<Record<DeviationId, TallyRW>>;
   /**
    * The same tallies as `categories`, split by where the decision came from.
@@ -535,7 +556,14 @@ export interface Stats {
    * reader and the writer must cope rather than migrate eagerly. `categories`
    * stays the pooled total so the existing sections are untouched.
    */
-  bySource?: Partial<Record<EventSource, Record<Category, TallyRW>>>;
+  bySource?: Partial<Record<EventSource, CategoryTallies>>;
+  /**
+   * Wave J: the back-count entry misses by direction -- `missed` watched
+   * through a count at or above the entry point, `early` sat in below it.
+   * Their right/wrong total is `categories.wongIn`. Play only. OPTIONAL:
+   * absent = none recorded.
+   */
+  wongInMisses?: { missed: number; early: number };
   /**
    * D-R2 (Wave D, #4): `perIndex` and `mistakes` for table (Play) decisions
    * only, so Stats > Play can show the table without the drills mixed in.
@@ -912,6 +940,8 @@ export const EMPTY_STATS: Stats = {
     bet: { right: 0, wrong: 0 },
     countCheck: { right: 0, wrong: 0 },
     wong: { right: 0, wrong: 0 },
+    // Wave J: no `wongIn` here, deliberately -- the merge would then add it to
+    // every stored blob, and an old blob must load exactly as it was saved.
   },
   perIndex: {},
   mistakes: {

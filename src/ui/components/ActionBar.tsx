@@ -1,4 +1,5 @@
 import type { Action } from '../../engine/deviations';
+import './watchChoice.css';
 
 /** One bet-entry row per player hand. Length 1 (solo, the v1/parity case) or
  * playerHands (Cycle-2 Task 8 multi-hand bet entry). */
@@ -20,6 +21,15 @@ export type ActionBarMode =
        * decision is practiceable. R5, docs/BACKLOG.md. */
       onSitOut?: () => void;
       disabled?: boolean;
+      /**
+       * Wave J: back-counting, and the player is watching. Deal and Sit out
+       * give way to the watcher's two choices, side by side and equal:
+       * Watch (`onSitOut`: the round is dealt without them) and Sit in
+       * (`onDeal`). The chips stay, for the bet a sit-in is made with.
+       */
+      watching?: boolean;
+      /** Wave J: the sit-out button's label (a seated back-counter's is "Leave"). */
+      sitOutLabel?: string;
     }
   | { kind: 'hidden' };
 
@@ -36,6 +46,20 @@ const ACTION_BUTTONS: { key: Action; label: string }[] = [
   { key: 'split', label: 'Split' },
   { key: 'surrender', label: 'Surrender' },
 ];
+
+/** Wave J: the watcher's two choices, in place of Deal and Sit out. */
+function WatchChoice({ onWatch, onSitIn, disabled }: { onWatch?: () => void; onSitIn: () => void; disabled?: boolean }) {
+  return (
+    <div className="watch-choice" role="group" aria-label="Watch or sit in">
+      <button type="button" className="watch-btn" disabled={disabled} onClick={onWatch}>
+        Watch
+      </button>
+      <button type="button" className="sit-in-btn" disabled={disabled} onClick={onSitIn}>
+        Sit in
+      </button>
+    </div>
+  );
+}
 
 export function ActionBar({ mode }: ActionBarProps) {
   if (mode.kind === 'hidden') {
@@ -82,18 +106,24 @@ export function ActionBar({ mode }: ActionBarProps) {
             ))}
           </div>
         )}
-        <button type="button" className="deal-btn" disabled={mode.disabled} onClick={mode.onDeal}>
-          Deal
-        </button>
-        {mode.onSitOut && (
-          <button
-            type="button"
-            className="sit-out-btn"
-            disabled={mode.disabled}
-            onClick={mode.onSitOut}
-          >
-            Sit out
-          </button>
+        {mode.watching ? (
+          <WatchChoice onWatch={mode.onSitOut} onSitIn={mode.onDeal} disabled={mode.disabled} />
+        ) : (
+          <>
+            <button type="button" className="deal-btn" disabled={mode.disabled} onClick={mode.onDeal}>
+              Deal
+            </button>
+            {mode.onSitOut && (
+              <button
+                type="button"
+                className="sit-out-btn"
+                disabled={mode.disabled}
+                onClick={mode.onSitOut}
+              >
+                {mode.sitOutLabel ?? 'Sit out'}
+              </button>
+            )}
+          </>
         )}
       </div>
     );
@@ -140,13 +170,19 @@ export function ActionBar({ mode }: ActionBarProps) {
           })}
         </div>
       )}
-      <button type="button" className="deal-btn" disabled={mode.disabled} onClick={mode.onDeal}>
-        Deal
-      </button>
-      {mode.onSitOut && (
-        <button type="button" className="sit-out-btn" disabled={mode.disabled} onClick={mode.onSitOut}>
-          Sit out
-        </button>
+      {mode.watching ? (
+        <WatchChoice onWatch={mode.onSitOut} onSitIn={mode.onDeal} disabled={mode.disabled} />
+      ) : (
+        <>
+          <button type="button" className="deal-btn" disabled={mode.disabled} onClick={mode.onDeal}>
+            Deal
+          </button>
+          {mode.onSitOut && (
+            <button type="button" className="sit-out-btn" disabled={mode.disabled} onClick={mode.onSitOut}>
+              {mode.sitOutLabel ?? 'Sit out'}
+            </button>
+          )}
+        </>
       )}
     </div>
   );

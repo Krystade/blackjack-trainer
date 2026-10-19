@@ -64,6 +64,8 @@ import './playMissReason.css';
 import { dealerFeltRow, playerFeltLayout, type FeltRow } from '../feltLayout';
 import { useViewportWidth } from '../useViewportWidth';
 import { DEAL_WORDS, isDealWord } from '../dealWord';
+import { BACK_COUNT_WORDS, backCountWordIn } from '../backCountWords';
+import './backCount.css';
 import './feltWrap.css';
 import './tableVoiceFit.css';
 import './countSheetBanner.css';
@@ -559,9 +561,11 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     }
 
     // Between rounds. "Yes" deals the next hand, so a whole shoe can be
-    // played without touching the screen.
+    // played without touching the screen. Wave J: a watcher's next hand is
+    // dealt without them -- "yes" watches, and only "sit in" sits down.
     if ((game.phase === 'idle' || game.phase === 'settled') && command === 'yes') {
-      handleDeal();
+      if (game.watching) handleSitOut();
+      else handleDeal();
     }
   };
 
@@ -583,6 +587,20 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
    */
   const interpretCountSpeech = (heard: string, offered: readonly string[] = [heard]): string | null => {
     if (!game.countCheckOpen) {
+      // Wave J: the back-counter's words, between rounds, with the same gates
+      // as "deal" below -- which, watching, is one of them (a watch).
+      const readings = offered.length > 0 ? offered : [heard];
+      if (game.backCountOn && !showChart && !overlay && (game.phase === 'idle' || game.phase === 'settled')) {
+        const word = backCountWordIn(readings, game.watching ? 'watching' : 'seated');
+        if (word === 'sit-in') {
+          handleDeal();
+          return 'sit in';
+        }
+        if (word === 'watch' || word === 'leave') {
+          handleSitOut();
+          return word;
+        }
+      }
       // B2 #37: "deal" between rounds deals, exactly as "yes" does there. It
       // is not in the command vocabulary (it means nothing anywhere else), so
       // it is claimed here, with the same gates handleVoiceCommand applies.
@@ -675,6 +693,19 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       }
       return;
     }
+    // Wave J: watching, forward is "yes" -- a watch -- and back sits in, so
+    // both of a watcher's choices are on the wheel. Repeat waits until seated.
+    if (
+      command === 'back' &&
+      game.watching &&
+      (game.phase === 'idle' || game.phase === 'settled') &&
+      !game.countCheckOpen &&
+      !overlay &&
+      !showChart
+    ) {
+      handleDeal();
+      return;
+    }
     handleVoiceCommand(command === 'forward' ? 'yes' : 'repeat');
   });
 
@@ -701,7 +732,13 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     // Biased toward the commands AND the count words at once. The phrase list
     // is fixed for the life of a session, and rebuilding the recogniser as
     // the prompt opens would cost a deaf gap exactly when an answer is due.
-    biasPhrases: [...Object.keys(VOICE_ACTIONS), ...DEAL_WORDS, ...COUNT_BIAS_PHRASES],
+    biasPhrases: [
+      ...Object.keys(VOICE_ACTIONS),
+      ...DEAL_WORDS,
+      ...COUNT_BIAS_PHRASES,
+      // Wave J: only at a back-count table, which a session never switches.
+      ...(game.backCountOn ? BACK_COUNT_WORDS.filter((w) => !DEAL_WORDS.includes(w)) : []),
+    ],
     context: 'table',
   });
 
@@ -927,6 +964,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       // Wong-out only makes sense against a spread (the same gate the engine
       // uses to grade it); a flat-bet table hides the Sit Out button entirely.
       onSitOut: activeProfile.betSpreadOn ? handleSitOut : undefined,
+      // Wave J: watching, the two are Watch and Sit in; seated at a
+      // back-count table, sitting out is leaving it.
+      ...(game.watching ? { watching: true } : game.backCountOn ? { sitOutLabel: 'Leave' } : {}),
     };
   } else {
     barMode = { kind: 'hidden' };
@@ -1048,6 +1088,13 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           hint={
             <>
               Say: {VOICE_WORDS}. &ldquo;Yes&rdquo; or &ldquo;deal&rdquo; deals the next hand; &ldquo;yes&rdquo; takes insurance, &ldquo;no&rdquo; declines it.
+              {game.backCountOn && (
+                <>
+                  {' '}
+                  Watching, &ldquo;yes&rdquo;, &ldquo;deal&rdquo; or &ldquo;watch&rdquo; watches and &ldquo;sit in&rdquo; sits
+                  you down; seated, &ldquo;leave&rdquo; leaves the table.
+                </>
+              )}
             </>
           }
         />
@@ -1124,6 +1171,12 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         data-wrap={feltLayout.wrap ? '' : undefined}
         style={feltStyle(feltLayout.row)}
       >
+        {/* Wave J: an empty spot while back-counting is the player watching. */}
+        {game.watching && game.hands.length === 0 && (
+          <div className="player-watching" data-testid="player-watching">
+            Watching
+          </div>
+        )}
         {game.hands.map((hand, i) => (
           <div
             key={i}
@@ -1173,7 +1226,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             <span className="bet-miss">{betMiss.text}</span>
           </ResultStrip>
         )}
-        {game.shuffledLastRound && <div className="message-shuffle">Shuffling…</div>}
+        {game.shuffledLastRound && (
+          <div className="message-shuffle">{game.newTableLastRound ? 'New table…' : 'Shuffling…'}</div>
+        )}
         {/* s06: the cut card is out, so the next deal shuffles. Said before the
             bet, because that bet is graded at the fresh shoe's count of 0.
             Not while a count check is owed: it grades the count BEFORE the
@@ -1183,9 +1238,16 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           (game.phase === 'idle' || game.phase === 'settled') &&
           game.shuffleDue &&
           !game.countCheckDue && (
-          <div className="message-cut-card" data-testid="cut-card-cue">
-            Cut card: the next hand is off a fresh shoe, count 0.
-          </div>
+          // Wave J: a back-counter who left walks to a new table's fresh shoe.
+          game.newTableNext ? (
+            <div className="message-cut-card" data-testid="new-table-cue">
+              New table: the next hand is off a fresh shoe, count 0.
+            </div>
+          ) : (
+            <div className="message-cut-card" data-testid="cut-card-cue">
+              Cut card: the next hand is off a fresh shoe, count 0.
+            </div>
+          )
         )}
         {botNarrationLines.map((line, i) => (
           <div key={i} className="message-bot-narration">
@@ -1199,7 +1261,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
                 staked. Uniquely identifiable — every staked round has ≥1 hand,
                 and the pre-round state is phase 'idle', never 'settled'. */}
             {game.hands.length === 0 && (
-              <div className="message-result message-sat-out">Sat out — no bet.</div>
+              <div className="message-result message-sat-out">
+                {/* Wave J: at a back-count table an empty round is a watched one. */}
+                {game.backCountOn ? 'Watching — no bet.' : 'Sat out — no bet.'}
+              </div>
             )}
             {/* In order of play (#1): rightmost hand first, as "Hand 1". */}
             {game.hands
@@ -1287,7 +1352,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           {game.phase === 'settled' && (
             <p className="count-sheet-banner" data-testid="count-sheet-banner">
               {game.hands.length === 0
-                ? 'Sat out — no bet.'
+                ? game.backCountOn
+                  ? 'Watching — no bet.'
+                  : 'Sat out — no bet.'
                 : game.hands
                     .map((h, i) => ({ h, i }))
                     .reverse()
