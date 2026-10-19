@@ -493,6 +493,51 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     const h = `${bar.offsetHeight}px`;
     if (el.style.getPropertyValue('--table-bar-h') !== h) el.style.setProperty('--table-bar-h', h);
   });
+  /**
+   * Fix round 2: the player's own cards are never under the dock. A crowded
+   * table (three bots, two hands, narration) is taller than a phone, and the
+   * sticky dock covers whatever is behind it -- so when a round is dealt,
+   * settles or splits, the page is scrolled to its end, where the felt ends
+   * just above the dock (sticky or in the flow), and back up only as far as
+   * keeps the top of the player's hands (or the Watching spot) on screen.
+   */
+  const handScrollKey = `${game.roundNo}:${game.phase}:${game.hands.length}:${game.watching}`;
+  useLayoutEffect(() => {
+    const el = screenRef.current;
+    const scroller = document.scrollingElement;
+    if (!el || !scroller || typeof window.scrollTo !== 'function') return;
+    let placedAt = -1;
+    const place = () => {
+      // Only when the page has grown or shrunk -- never fighting a scroll.
+      // Not once the table has gone (the report replaces it in place).
+      if (!el.isConnected || scroller.scrollHeight === placedAt) return;
+      placedAt = scroller.scrollHeight;
+      const spots = el.querySelectorAll<HTMLElement>('.player-hand, .player-watching');
+      if (spots.length === 0 || scroller.scrollHeight <= window.innerHeight) return;
+      window.scrollTo(0, scroller.scrollHeight);
+      // The topbar stays pinned at the top, so the hand must clear it too.
+      const topbar = el.querySelector<HTMLElement>('.topbar');
+      const floor = topbar ? Math.max(0, topbar.getBoundingClientRect().bottom) : 0;
+      const top = Math.min(...[...spots].map((s) => s.getBoundingClientRect().top));
+      if (top < floor) window.scrollBy(0, top - floor - 4);
+    };
+    place();
+    // The narration and the bots' cards keep arriving after the phase
+    // changes, so keep placing for a moment -- until the player scrolls.
+    if (typeof ResizeObserver !== 'function') return;
+    const ro = new ResizeObserver(place);
+    ro.observe(el);
+    const stop = () => ro.disconnect();
+    const timer = window.setTimeout(stop, 2000);
+    window.addEventListener('wheel', stop, { once: true, passive: true });
+    window.addEventListener('touchstart', stop, { once: true, passive: true });
+    return () => {
+      stop();
+      window.clearTimeout(timer);
+      window.removeEventListener('wheel', stop);
+      window.removeEventListener('touchstart', stop);
+    };
+  }, [handScrollKey]);
   const setBetForHand = (i: number, units: number) => {
     setSelectedBets((prev) => prev.map((v, idx) => (idx === i ? units : v)));
   };
