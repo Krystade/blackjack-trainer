@@ -99,8 +99,10 @@ export function agoText(days: number): string {
   if (days <= 0) return 'today';
   if (days === 1) return 'yesterday';
   if (days < 60) return `${days} days ago`;
-  if (days < 730) return `${Math.floor(days / 30.4)} months ago`;
-  return `${Math.floor(days / 365.25)} years ago`;
+  // Floored, but never below 2: "1 months ago" / "1 years ago" read wrong,
+  // and 60 days is closer to two months than one.
+  if (days < 730) return `${Math.max(2, Math.floor(days / 30.4))} months ago`;
+  return `${Math.max(2, Math.floor(days / 365.25))} years ago`;
 }
 
 /** "Sat 12 Oct" (and the year when it is not this one). */

@@ -162,8 +162,14 @@ const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object
 
 const EPOCH = '1970-01-01T00:00:00.000Z';
 
+/**
+ * An ISO timestamp, or null. The shape is required, not just parseability:
+ * V8's Date.parse reads "1" as the year 2001 and "March 3" as a date, so a
+ * malformed import would otherwise land a nonsense start.
+ */
+const ISO_SHAPE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 function iso(x: unknown): string | null {
-  if (typeof x !== 'string' || x === '') return null;
+  if (typeof x !== 'string' || !ISO_SHAPE.test(x)) return null;
   return Number.isFinite(Date.parse(x)) ? x : null;
 }
 
@@ -307,6 +313,14 @@ function quarantine(raw: string): void {
   } catch {
     /* full storage is when this matters most and works least; never fail the load */
   }
+}
+
+/**
+ * Keep bytes an imported file carried as unreadable, unless this device
+ * already holds its own (the copy closest to the original wins, as on load).
+ */
+export function keepUnreadable(raw: string): void {
+  quarantine(raw);
 }
 
 /** The bytes a previous load could not read, if any were kept. */
@@ -592,6 +606,12 @@ export interface MergeReport {
   kept: number;
   /** Entries in the file that could not be read. */
   skipped: number;
+  /**
+   * Sessions left running beside the live one after the merge (another
+   * device's open session, or an export taken mid-session). Only the latest
+   * is the live card; the others wait in the history to be ended.
+   */
+  extraRunning: number;
 }
 
 function mergeById<T extends { id: string; updatedAt: string }>(
@@ -623,7 +643,10 @@ function mergeById<T extends { id: string; updatedAt: string }>(
  * Merge an export file (or a raw stored blob) into the local log: by id, the
  * newer `updatedAt` wins, a tie keeps what is here. Nothing is deleted.
  */
-export function mergeImport(local: CasinoLog, text: string): { ok: true; log: CasinoLog; report: MergeReport } | { ok: false; error: string } {
+export function mergeImport(
+  local: CasinoLog,
+  text: string,
+): { ok: true; log: CasinoLog; report: MergeReport; unreadable: string | null } | { ok: false; error: string } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -644,8 +667,11 @@ export function mergeImport(local: CasinoLog, text: string): { ok: true; log: Ca
   const incSettingsNewer =
     inc.settings.updatedAt !== null &&
     (local.settings.updatedAt === null || Date.parse(inc.settings.updatedAt) > Date.parse(local.settings.updatedAt));
+  const open = sessions.items.filter((s) => s.end === null).length;
   return {
     ok: true,
+    // Bytes the file was carrying because its own device could not read them.
+    unreadable: typeof parsed.unreadable === 'string' ? parsed.unreadable : null,
     log: {
       ...local,
       casinos: casinos.items,
@@ -659,6 +685,7 @@ export function mergeImport(local: CasinoLog, text: string): { ok: true; log: Ca
       sessionsUpdated: sessions.updated,
       kept: casinos.kept + sessions.kept,
       skipped: migrated.skipped,
+      extraRunning: Math.max(0, open - 1),
     },
   };
 }

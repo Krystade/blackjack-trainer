@@ -1,8 +1,10 @@
-import { useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import {
   casinoById,
   exportFileName,
   hasCasinoData,
+  keepUnreadable,
+  loadCasinoLog,
   markExported,
   mergeImport,
   quarantinedCasinoLog,
@@ -60,7 +62,9 @@ export function CasinoHome({ log, commit, go }: Props) {
 
   return (
     <div className="cas-home">
-      {exportIsDue(log, now, hasData) && <ExportNudge log={log} commit={commit} now={now} />}
+      {/* Mid-session the live card is what is used at the table, so the
+          backup nudge waits below it; otherwise it leads. */}
+      {!live && exportIsDue(log, now, hasData) && <ExportNudge log={log} commit={commit} now={now} />}
       {quarantinedCasinoLog() !== null && (
         <p className="cas-note cas-pad">
           An earlier copy of this log could not be read. It is kept aside and goes into every export, so nothing is lost.
@@ -68,7 +72,10 @@ export function CasinoHome({ log, commit, go }: Props) {
       )}
 
       {live ? (
-        <LiveCard key={live.id} log={log} session={live} commit={commit} go={go} />
+        <>
+          <LiveCard key={live.id} log={log} session={live} commit={commit} go={go} />
+          {exportIsDue(log, now, hasData) && <ExportNudge log={log} commit={commit} now={now} />}
+        </>
       ) : (
         <div className="cas-pad">
           <button type="button" className="u-btn u-btn-primary cas-wide cas-start" onClick={() => go({ kind: 'start' })}>
@@ -148,7 +155,7 @@ function ExportNudge({ log, commit, now }: { log: CasinoLog; commit: Props['comm
         <strong>Back up your casino log.</strong> {when} iOS can clear a web app&rsquo;s storage, and this record exists
         nowhere else.
       </p>
-      <button type="button" className="u-btn cas-wide" onClick={() => downloadExport(log, commit)}>
+      <button type="button" className="u-btn cas-wide" onClick={() => void exportLog(log, commit)}>
         Export now
       </button>
     </section>
@@ -264,9 +271,10 @@ function SessionHistory({ log, go, now, live }: { log: CasinoLog; go: Props['go'
                   </span>
                   <span className="cas-hist-side">
                     <span className="cas-hist-net" data-sign={net === null ? 0 : Math.sign(net)}>
-                      {net === null ? 'open' : signedMoney(net)}
+                      {net !== null ? signedMoney(net) : s.end === null ? 'running' : 'no cash-out'}
                     </span>
-                    <span className="cas-hist-hours">{hoursText(sessionHours(s, now))}</span>
+                    {/* A second running session (from an import) has no end to count to. */}
+                    <span className="cas-hist-hours">{s.end === null ? '—' : hoursText(sessionHours(s, now))}</span>
                   </span>
                   {s.heat !== 'none' && (
                     <span className="cas-hist-badges">
@@ -283,25 +291,61 @@ function SessionHistory({ log, go, now, live }: { log: CasinoLog; go: Props['go'
   );
 }
 
-/** Download the export file and remember when. */
-function downloadExport(log: CasinoLog, commit: Props['commit']): void {
+type ExportResult = 'shared' | 'downloaded' | 'cancelled';
+
+/**
+ * Hand the export file over, and remember when -- but only once it really
+ * was handed over (review S3).
+ *
+ * Where the browser can share a file (iOS: the share sheet, with Save to
+ * Files) that is the path, and the log counts as exported only when the share
+ * completes: a dismissed sheet saved nothing, and marking it would hide the
+ * backup nudge for 30 days with no backup. Elsewhere it is a download, which
+ * a desktop browser completes without asking.
+ */
+async function exportLog(log: CasinoLog, commit: Props['commit']): Promise<ExportResult> {
   const now = Date.now();
-  const blob = new Blob([serializeExport(log, now)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
+  const name = exportFileName(now);
+  const text = serializeExport(log, now);
+  const nav = navigator as Navigator & { canShare?: (data: ShareData) => boolean };
+  let file: File | null = null;
+  try {
+    file = new File([text], name, { type: 'application/json' });
+  } catch {
+    file = null;
+  }
+  if (file && typeof nav.canShare === 'function' && typeof nav.share === 'function' && nav.canShare({ files: [file] })) {
+    try {
+      await nav.share({ files: [file] });
+    } catch {
+      return 'cancelled';
+    }
+    // Re-read: the sheet was up for a while, and this must not save a stale copy.
+    commit(markExported(loadCasinoLog(), now));
+    return 'shared';
+  }
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = exportFileName(now);
+  a.download = name;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  // Revoked on the next turn: Safari can still be reading the URL when a
+  // Revoked on a later turn: Safari can still be reading the URL when a
   // synchronous revoke runs, and saves an empty file.
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   commit(markExported(log, now));
+  return 'downloaded';
 }
 
 function BankrollAndBackup({ log, commit }: { log: CasinoLog; commit: Props['commit'] }) {
   const [start, setStart] = useState(() => moneyText(log.settings.startingBankroll));
+  // Another tab (or an import) changed it: show the stored value, not the old text.
+  const storedStart = log.settings.startingBankroll;
+  const storedAt = log.settings.updatedAt;
+  useEffect(() => {
+    setStart(moneyText(storedStart));
+  }, [storedStart, storedAt]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -329,7 +373,13 @@ function BankrollAndBackup({ log, commit }: { log: CasinoLog; commit: Props['com
         setMessage(`Import failed: ${r.error}`);
         return;
       }
-      commit(r.log);
+      if (!commit(r.log)) {
+        // The red save-failed banner says why; claiming "Imported" beside it would contradict it.
+        setMessage('Import not saved: storage is full or unavailable.');
+        return;
+      }
+      // Bytes the file carried from a corrupt blob: kept aside here too, not dropped.
+      if (r.unreadable !== null) keepUnreadable(r.unreadable);
       setStart(moneyText(r.log.settings.startingBankroll));
       const p = r.report;
       const parts = [
@@ -340,7 +390,11 @@ function BankrollAndBackup({ log, commit }: { log: CasinoLog; commit: Props['com
       ];
       if (p.kept > 0) parts.push(`${p.kept} already up to date`);
       if (p.skipped > 0) parts.push(`${p.skipped} unreadable skipped`);
-      setMessage(`Imported: ${parts.join(', ')}.`);
+      const extra =
+        p.extraRunning > 0
+          ? ` ${p.extraRunning} running session${p.extraRunning === 1 ? '' : 's'} from the file left open: end ${p.extraRunning === 1 ? 'it' : 'them'} from history.`
+          : '';
+      setMessage(`Imported: ${parts.join(', ')}.${extra}`);
     };
     reader.onerror = () => setMessage('Import failed: the file could not be read.');
     reader.readAsText(file);
@@ -369,7 +423,15 @@ function BankrollAndBackup({ log, commit }: { log: CasinoLog; commit: Props['com
           )}
         </label>
         <div className="cas-btn-row">
-          <button type="button" className="u-btn" onClick={() => downloadExport(log, commit)}>
+          <button
+            type="button"
+            className="u-btn"
+            onClick={() =>
+              void exportLog(log, commit).then((r) => {
+                if (r === 'cancelled') setMessage('Export cancelled: nothing was saved.');
+              })
+            }
+          >
             Export JSON
           </button>
           <button type="button" className="u-btn" onClick={() => fileRef.current?.click()}>

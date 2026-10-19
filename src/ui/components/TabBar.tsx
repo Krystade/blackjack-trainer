@@ -74,12 +74,20 @@ export function TabBar({
             // comes out as "◎Drills" and no longer matches the label anyone
             // (or any spec) would look for.
             aria-label={tab.label}
+            // The name stays "Casino" (specs and voice control find it by
+            // that); the running session is its description instead.
+            aria-describedby={tab.screen === 'casino' && casinoLive ? 'casino-tab-live-desc' : undefined}
             aria-current={active ? 'page' : undefined}
             onClick={() => onNavigate(tab.screen)}
           >
             <span className="tab-glyph" aria-hidden="true">{tab.glyph}</span>
             {tab.screen === 'casino' && casinoLive && (
-              <span className="tab-live-dot" data-testid="casino-tab-live" aria-hidden="true" />
+              <>
+                <span className="tab-live-dot" data-testid="casino-tab-live" aria-hidden="true" />
+                <span id="casino-tab-live-desc" className="u-sr-only">
+                  Session running
+                </span>
+              </>
             )}
             <span className="tab-label">{tab.label}</span>
           </button>

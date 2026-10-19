@@ -102,6 +102,9 @@ describe('dates and last visit', () => {
     expect(agoText(1)).toBe('yesterday');
     expect(agoText(23)).toBe('23 days ago');
     expect(agoText(120)).toBe('3 months ago');
+    // Review N1: never "1 months ago".
+    for (let d = 2; d < 3000; d++) expect(agoText(d)).not.toMatch(/^1 /);
+    expect(agoText(60)).toBe('2 months ago');
     expect(agoText(800)).toBe('2 years ago');
   });
 

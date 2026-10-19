@@ -72,8 +72,10 @@ export function SessionForm({
   };
   const setBuyIn = (i: number, v: string) => set({ buyIns: text.buyIns.map((b, j) => (j === i ? v : b)) });
 
-  const start = fromLocalInput(text.start);
-  const end = fromLocalInput(text.end);
+  // The fields are minute precision: an untouched time keeps the stored one
+  // exactly, so an unrelated edit does not shave seconds off the hours.
+  const start = session.start && text.start === toLocalInput(session.start) ? session.start : fromLocalInput(text.start);
+  const end = session.end && text.end === toLocalInput(session.end) ? session.end : fromLocalInput(text.end);
   const buyIns = text.buyIns.map(parseMoney);
   const cashOut = parseMoney(text.cashOut);
   const previewNet =
@@ -88,6 +90,11 @@ export function SessionForm({
     }
     if (Date.parse(end) < Date.parse(start)) {
       setError('The end is before the start.');
+      return;
+    }
+    if (cashOut === null) {
+      // A finished session without one drops out of every total, silently.
+      setError('Enter what you cashed out, in dollars (0 if nothing).');
       return;
     }
     const avgBet = parseMoney(text.avgBet);

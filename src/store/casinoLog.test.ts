@@ -13,6 +13,7 @@ import {
   markExported,
   mergeImport,
   migrateCasinoLog,
+  normSession,
   quarantinedCasinoLog,
   runningSession,
   saveCasino,
@@ -262,7 +263,7 @@ describe('export and import', () => {
     expect(r.log.casinos).toEqual(log.casinos);
     expect(r.log.sessions).toEqual(log.sessions);
     expect(r.log.settings).toEqual(log.settings);
-    expect(r.report).toEqual({ casinosAdded: 1, casinosUpdated: 0, sessionsAdded: 1, sessionsUpdated: 0, kept: 0, skipped: 0 });
+    expect(r.report).toEqual({ casinosAdded: 1, casinosUpdated: 0, sessionsAdded: 1, sessionsUpdated: 0, kept: 0, skipped: 0, extraRunning: 0 });
   });
 
   it('merges by id: the newer updatedAt wins, a tie or older keeps the local copy', () => {
@@ -297,6 +298,32 @@ describe('export and import', () => {
     expect(r.log.casinos.map((c) => c.name)).toEqual(['Golden Nugget', 'Resorts World']);
     expect(r.log.sessions).toHaveLength(1);
     expect(r.report).toMatchObject({ casinosAdded: 1, skipped: 1 });
+  });
+
+  it('an import that would leave two sessions running says so (review S4)', () => {
+    const { log, id } = withCasino();
+    const here = startSession(log, id, T0 + H)!;
+    const there = startSession(log, id, T0)!; // another device's running session, started earlier
+    const r = mergeImport(here.log, serializeExport(there.log, T0, null));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.log.sessions.filter((s) => s.end === null)).toHaveLength(2);
+    expect(runningSession(r.log)?.id).toBe(here.session.id);
+    expect(r.report.extraRunning).toBe(1);
+    // One running session imported into a log with none: nothing extra.
+    const clean = mergeImport(emptyCasinoLog(), serializeExport(there.log, T0, null));
+    expect(clean.ok && clean.report.extraRunning).toBe(0);
+  });
+
+  it('hands back bytes the file carried as unreadable, so they can be kept (review N3)', () => {
+    const file = JSON.stringify({ version: 1, casinos: [], sessions: [], unreadable: '{"lost' });
+    const r = mergeImport(emptyCasinoLog(), file);
+    expect(r.ok && r.unreadable).toBe('{"lost');
+  });
+
+  it('refuses timestamps that are not ISO, which Date.parse would otherwise accept (review N2)', () => {
+    expect(normSession({ id: 's', casinoId: 'c', start: '1' })).toBeNull();
+    expect(normSession({ id: 's', casinoId: 'c', start: 'March 3 2026' })).toBeNull();
+    expect(normSession({ id: 's', casinoId: 'c', start: '2026-10-01T20:00:00Z' })).not.toBeNull();
   });
 
   it('rejects files that are not a casino log', () => {

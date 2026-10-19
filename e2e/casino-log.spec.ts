@@ -29,8 +29,15 @@ async function elapsedSeconds(page: Page): Promise<number> {
   return h * 3600 + m * 60 + s;
 }
 
+/** No Web Share with files: the export falls back to a download. */
+const noFileShare = (page: Page) =>
+  page.addInitScript(() => {
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true });
+  });
+
 test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the backup round trip', async ({ page }) => {
   await page.clock.install({ time: T0 });
+  await noFileShare(page);
   await page.goto('/?e2e=1');
   await openCasino(page);
   await expect(page.getByRole('heading', { name: 'Your real-play notebook' })).toBeVisible();
@@ -61,6 +68,14 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   await expect(live.getByTestId('casino-buyin-total')).toHaveText('$1,000 in');
   // The tab carries the live dot from every screen.
   await expect(page.getByTestId('casino-tab-live')).toBeVisible();
+  // Review N5: the dot is drawn only; a screen reader hears it as the tab's description.
+  const casinoTab = page.getByRole('button', { name: 'Casino', exact: true });
+  await expect(casinoTab).toHaveAccessibleDescription('Session running');
+  // Review S2: mid-session the live card comes first; the backup nudge waits below it.
+  await expect(page.getByTestId('casino-export-nudge')).toBeVisible();
+  const liveTop = (await live.boundingBox())!.y;
+  const nudgeTop = (await page.getByTestId('casino-export-nudge').boundingBox())!.y;
+  expect(liveTop, 'the nudge pushes the live card down').toBeLessThan(nudgeTop);
 
   // --- An hour later, a rebuy; half an hour after that, a reload.
   await page.clock.fastForward('01:00:00');
@@ -105,6 +120,7 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   // --- The casino is burned, the session is in the history, the totals add up.
   await expect(page.getByTestId('casino-live')).toHaveCount(0);
   await expect(page.getByTestId('casino-tab-live')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Casino', exact: true })).toHaveAccessibleDescription('');
   const burned = page.locator('.cas-group[data-group="burned"]').getByTestId('casino-row');
   await expect(burned).toHaveCount(1);
   await expect(burned).toContainText('Golden Nugget');
@@ -210,8 +226,9 @@ test('a trespass offers an indefinite burn, and leaving it unticked leaves the c
 });
 
 test('a finished session can be edited and deleted, and the figures follow', async ({ page }) => {
-  const start = new Date(T0 - 3 * 86_400_000).toISOString();
-  const endAt = new Date(T0 - 3 * 86_400_000 + 2 * 3_600_000).toISOString();
+  // Seconds on both ends: the form's fields are minute precision (review N4).
+  const start = new Date(T0 - 3 * 86_400_000 + 37_000).toISOString();
+  const endAt = new Date(T0 - 3 * 86_400_000 + 2 * 3_600_000 + 37_000).toISOString();
   await page.clock.install({ time: T0 });
   await page.addInitScript(
     ([k, blob]) => {
@@ -238,6 +255,15 @@ test('a finished session can be edited and deleted, and the figures follow', asy
 
   await page.getByTestId('history-row').click();
   const form = page.getByTestId('session-form');
+  // Review S1: a finished session cannot lose its cash-out (it would leave every total).
+  await form.locator('input[name="cashOut"]').fill('');
+  await form.getByRole('button', { name: 'Save session' }).click();
+  await expect(form.getByRole('alert')).toContainText('Enter what you cashed out');
+  await form.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByTestId('casino-net')).toHaveText('+$300');
+  await expect(page.getByTestId('history-row')).toContainText('+$300');
+
+  await page.getByTestId('history-row').click();
   await form.getByRole('button', { name: '+ Add a buy-in' }).click();
   await form.locator('input[name="buyIn1"]').fill('200');
   await form.locator('input[name="cashOut"]').fill('650');
@@ -246,6 +272,9 @@ test('a finished session can be edited and deleted, and the figures follow', asy
   await form.getByRole('button', { name: 'Save session' }).click();
   await expect(page.getByTestId('casino-net')).toHaveText('−$50');
   await expect(page.getByTestId('history-row').getByTestId('heat-badge')).toHaveText('Shuffle-up');
+  // Review N4: times left alone are kept to the second, not cut to the minute.
+  const saved = await page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? '{}').sessions[0], KEY);
+  expect([saved.start, saved.end]).toEqual([start, endAt]);
 
   // Delete asks first, in words, then goes.
   await page.getByTestId('history-row').click();
@@ -288,6 +317,76 @@ test('a half-filled end-of-session form asks before a stray tab tap throws it aw
   await page.locator('.tab-bar').getByRole('button', { name: 'Home', exact: true }).click();
   await expect(page.locator('.tab-bar [aria-current="page"]')).toHaveText(/Home/);
   expect(asked).toHaveLength(1);
+});
+
+test('export by the share sheet counts only when a file was actually handed over', async ({ page }) => {
+  await page.clock.install({ time: T0 });
+  // Review S3: a share sheet can be dismissed. Stub one that is dismissed once, then completes.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __shared: string[]; __shareCalls: number };
+    w.__shared = [];
+    w.__shareCalls = 0;
+    Object.defineProperty(navigator, 'canShare', {
+      value: (d: { files?: File[] }) => Boolean(d.files?.length),
+      configurable: true,
+    });
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      value: async (d: { files: File[] }) => {
+        w.__shareCalls += 1;
+        if (w.__shareCalls === 1) throw new DOMException('dismissed', 'AbortError');
+        w.__shared.push(d.files[0]!.name);
+      },
+    });
+  });
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await page.getByRole('button', { name: 'Start session' }).click();
+  await page.locator('input[name="newCasinoName"]').fill('Wynn');
+  await page.getByRole('button', { name: 'Add and start' }).click();
+  const nudge = page.getByTestId('casino-export-nudge');
+  await expect(nudge).toBeVisible();
+
+  await nudge.getByRole('button', { name: 'Export now' }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __shareCalls: number }).__shareCalls)).toBe(1);
+  await expect(nudge).toBeVisible();
+  expect((JSON.parse((await stored(page))!) as { lastExportAt: unknown }).lastExportAt).toBeNull();
+
+  await nudge.getByRole('button', { name: 'Export now' }).click();
+  await expect(nudge).toHaveCount(0);
+  expect(await page.evaluate(() => (window as unknown as { __shared: string[] }).__shared)).toEqual([
+    'casino-log-2026-10-18.json',
+  ]);
+  expect((JSON.parse((await stored(page))!) as { lastExportAt: unknown }).lastExportAt).not.toBeNull();
+});
+
+test("a second tab sees the first tab's buy-in, and ending there keeps it", async ({ context }) => {
+  // Review S5: the cross-tab refresh. Without it, tab A would save its stale log over B's buy-in.
+  const a = await context.newPage();
+  await a.goto('/?e2e=1');
+  await openCasino(a);
+  await a.getByRole('button', { name: 'Start session' }).click();
+  await a.locator('input[name="newCasinoName"]').fill('Aria');
+  await a.getByRole('button', { name: 'Add and start' }).click();
+  await a.locator('input[name="buyIn"]').fill('1000');
+  await a.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(a.getByTestId('casino-buyin-total')).toHaveText('$1,000 in');
+
+  const b = await context.newPage();
+  await b.goto('/?e2e=1');
+  await openCasino(b);
+  await b.getByTestId('casino-live').getByRole('button', { name: 'Add buy-in' }).click();
+  await b.locator('input[name="buyIn"]').fill('500');
+  await b.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(b.getByTestId('casino-buyin-total')).toHaveText('$1,500 in');
+
+  await expect(a.getByTestId('casino-buyin-total')).toHaveText('$1,500 in');
+  await a.getByTestId('casino-live').getByRole('button', { name: 'End session' }).click();
+  await a.locator('input[name="cashOut"]').fill('2000');
+  await a.getByTestId('end-session').getByRole('button', { name: 'End session' }).click();
+  await expect(a.getByTestId('casino-net')).toHaveText('+$500');
+  const log = JSON.parse((await stored(a))!) as { sessions: { buyIns: number[]; cashOut: number }[] };
+  expect(log.sessions[0]).toMatchObject({ buyIns: [1000, 500], cashOut: 2000 });
 });
 
 test('an unreadable stored log does not crash the tab, and is kept aside', async ({ page }) => {
