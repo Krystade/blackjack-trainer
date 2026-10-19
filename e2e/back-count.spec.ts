@@ -140,6 +140,12 @@ test('a right entry, then leaving: nothing is dealt, and the next round is a new
   await expect(page.getByTestId('new-table-cue')).toHaveText('New table: the next hand is off a fresh shoe, count 0.');
   await expect(page.getByTestId('cut-card-cue')).toHaveCount(0);
   await expect.poll(async () => (await speech(page)).slice(saidBefore)).toContain('Shuffling.');
+  // Review S4: then a recorded "Watching.", so eyes-free the next forward
+  // press is known to watch rather than deal.
+  await expect.poll(async () => {
+    const said = (await speech(page)).slice(saidBefore);
+    return said[said.indexOf('Shuffling.') + 1];
+  }).toBe('Watching.');
   await expect(watchBtn(page)).toBeVisible();
   await expect(sitInBtn(page)).toBeVisible();
 
@@ -153,7 +159,7 @@ test('a right entry, then leaving: nothing is dealt, and the next round is a new
   expect((await speech(page)).slice(saidBefore).filter((l) => l === 'Shuffling.')).toHaveLength(1);
 });
 
-test('the wheel does both: forward watches, back sits in', async ({ page }) => {
+test('the wheel between rounds: forward carries on (watch, deal), back changes seat (sit in, leave)', async ({ page }) => {
   await withSettings(page, { ...SETTINGS, drill: { wheelMode: 'answer' } });
   await withProfile(page, { ...BACK_COUNT, wongInTc: 1 });
   await page.goto('/?seed=7&e2e=1');
@@ -167,6 +173,46 @@ test('the wheel does both: forward watches, back sits in', async ({ page }) => {
   expect(await press('back')).toBe(true);
   await expect(page.locator('.player-hand')).toHaveCount(1);
   await expect(page.getByTestId('player-watching')).toHaveCount(0);
+  await playRoundByAdvice(page);
+
+  // Seated (review S2): forward deals the next round, seated...
+  const before = await roundNo(page);
+  expect(await press('forward')).toBe(true);
+  await expect.poll(() => roundNo(page)).toBe(before + 1);
+  await expect(page.locator('.player-hand')).toHaveCount(1);
+  await playRoundByAdvice(page);
+  // ...and back leaves: graded, a new table, watched.
+  await expect(page.getByTestId('new-table-cue')).toHaveCount(0);
+  expect(await press('back')).toBe(true);
+  await expect(page.getByTestId('new-table-cue')).toBeVisible();
+  await expect(watchBtn(page)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Leave', exact: true })).toHaveCount(0);
+});
+
+test('the gear sheet turns back-counting on and sets the entry point (review S3a)', async ({ page }) => {
+  await withSettings(page, SETTINGS);
+  await withProfile(page, { betSpreadOn: true, countCheckEvery: 0 });
+  await page.goto('/?seed=7&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
+  await expect(watchBtn(page)).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Play settings' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  await sheet.getByRole('checkbox', { name: 'Back-count' }).check();
+  const row = sheet.locator('.settings-row', { hasText: 'Enter at TC' });
+  await expect(row.locator('.stepper-value')).toHaveText('+1');
+  await row.getByRole('button', { name: '+' }).click();
+  await expect(row.locator('.stepper-value')).toHaveText('+2');
+  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+
+  const stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('bjtrainer.profiles.v1') ?? '[]')[0]);
+  expect(stored).toMatchObject({ backCount: true, wongInTc: 2 });
+  await expect(watchBtn(page)).toBeVisible();
+  await expect(sitInBtn(page)).toBeVisible();
+  // Entry +2 at the fresh shoe's TC 0: sitting in is early.
+  await sitInBtn(page).click();
+  await expect(page.locator('.bet-miss')).toHaveText('TC +0 — keep watching (you enter at +2)');
 });
 
 /** The recogniser, faked as voice-table.spec.ts fakes it; `sayOnceListening` delivers a transcript. */
@@ -208,7 +254,9 @@ test('out loud: "yes" and "watch" watch, "sit in" sits down, "leave" leaves', as
   await expect(page.locator('.voice-status')).toContainText('“sit in” sits you down');
 
   // "Yes" deals a seated round; a watcher's next round is dealt without them.
-  await sayOnceListening(page, 'yes');
+  // Review S1: with "in" ranked under it -- a runner-up never outranks the
+  // command the engine heard first.
+  await sayOnceListening(page, 'yes', ['in']);
   await expect(page.locator('.topbar-stat', { hasText: 'Round' })).toHaveText('Round 1');
   await expect(page.locator('.message-sat-out')).toHaveText('Watching — no bet.');
   await sayOnceListening(page, 'watch');

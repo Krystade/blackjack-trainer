@@ -38,6 +38,7 @@ import {
   narrateRampPlays,
   narrateRampSitsOut,
   narrateRampHands,
+  narrateWatching,
   narrateNotATag,
   narrateReadback,
   narrateAnswerEcho,
@@ -200,6 +201,8 @@ export function tableSentences(): string[] {
   // Wave J: the hand count a two-hand ramp called for, said after the stake.
   sentences.add(narrateRampHands(1));
   sentences.add(narrateRampHands(2));
+  // Wave J (review S4): after "Shuffling." at a back-count table.
+  sentences.add(narrateWatching());
 
   for (const seat of SEAT_LABELS) {
     for (const action of ACTIONS) {

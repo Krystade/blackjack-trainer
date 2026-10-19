@@ -328,3 +328,29 @@ describe('back-count: the card reserve counts the table the back-counter watches
     expect(deep(true).shuffleDue).toBe(true);
   });
 });
+
+describe('review N4 / N5', () => {
+  it('leaving is refused under a live hand', () => {
+    // Player 10/6 (a decision is pending), three bots on 20, dealer 10/7.
+    const g = game([['10', '10', '10', '10', '6', '10', '10', '10', '10', '7']]);
+    g.runningCount = 6;
+    g.startRound(2);
+    expect(g.phase).toBe('player');
+    expect(() => g.sitOut()).toThrow();
+    expect(g.events.filter((e) => e.kind === 'wong')).toHaveLength(0);
+  });
+
+  it("the entry is graded at the profile's TC rounding (rc 5 on 6 decks)", () => {
+    const watchAt = (tcRounding: 'floor' | 'truncate' | 'round') => {
+      const g = game([WATCHED_ROUND], { tcRounding, wongInTc: 1 });
+      g.runningCount = 5;
+      g.watch();
+      return entries(g)[0]!;
+    };
+    // 5 / 6 = 0.83: floor and truncate say 0 (watch is right), round says +1 (watch is the miss).
+    expect(watchAt('floor').correct).toBe(true);
+    expect(watchAt('truncate').correct).toBe(true);
+    expect(watchAt('round').correct).toBe(false);
+    expect(watchAt('round').tc).toBe(1);
+  });
+});

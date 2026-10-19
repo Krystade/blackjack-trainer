@@ -268,6 +268,15 @@ export function narrateRampSitsOut(tc: number): string {
  * silent about the miss. Its own utterance, so the recorded stake line keeps
  * its clips whether or not these two have been recorded yet.
  */
+/**
+ * Wave J (review S4): said after "Shuffling." at a back-count table -- the
+ * next shoe starts with the player watching, so a forward press there
+ * watches instead of dealing, and eyes-free that has to be heard first.
+ */
+export function narrateWatching(): string {
+  return 'Watching.';
+}
+
 export function narrateRampHands(hands: number): string {
   return hands === 2 ? 'Two hands.' : 'One hand.';
 }

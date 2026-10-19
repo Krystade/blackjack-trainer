@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BACK_COUNT_WORDS, backCountWordIn } from './backCountWords';
+import { BACK_COUNT_BIAS, BACK_COUNT_WORDS, backCountWordIn } from './backCountWords';
 import { VOICE_PHRASES } from '../audio/voiceRecognition';
 import { ECHO_MIN_WORDS } from '../audio/selfEcho';
 import { narrateRampPlays, narrateRampSitsOut, narrateSitOut, narrateShuffle } from '../audio/narrate';
@@ -52,5 +52,18 @@ describe('back-count words', () => {
         expect(backCountWordIn([sentence], 'seated'), sentence).toBeNull();
       }
     }
+  });
+
+  it('review S1: a runner-up never outranks a command above it', () => {
+    expect(backCountWordIn(['yes', 'in'], 'watching')).toBeNull();
+    expect(backCountWordIn(['repeat', 'play'], 'watching')).toBeNull();
+    expect(backCountWordIn(['hit me', 'leave'], 'seated')).toBeNull();
+    // A reading that is no command does not stop the scan.
+    expect(backCountWordIn(['sitting', 'sit in'], 'watching')).toBe('sit-in');
+  });
+
+  it('review S1: only two-word forms are courted by the recogniser', () => {
+    expect(BACK_COUNT_BIAS).toEqual(expect.arrayContaining(['sit in', 'leave table', 'keep watching']));
+    for (const w of ['in', 'play', 'sit', 'next', 'deal me']) expect(BACK_COUNT_BIAS).not.toContain(w);
   });
 });

@@ -64,8 +64,10 @@ import './playMissReason.css';
 import { dealerFeltRow, playerFeltLayout, type FeltRow } from '../feltLayout';
 import { useViewportWidth } from '../useViewportWidth';
 import { DEAL_WORDS, isDealWord } from '../dealWord';
-import { BACK_COUNT_WORDS, backCountWordIn } from '../backCountWords';
+import { BACK_COUNT_BIAS, backCountWordIn } from '../backCountWords';
 import './backCount.css';
+import './tableDock.css';
+import { spreadHasTwoHands } from '../../engine/wong';
 import './feltWrap.css';
 import './tableVoiceFit.css';
 import './countSheetBanner.css';
@@ -478,6 +480,19 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   const [selectedBets, setSelectedBets] = useState<number[]>(() => new Array(playerHandsCount).fill(1));
   // Wave J: a ramp that spreads to two hands opens each round with one or two.
   const [spreadHands, setSpreadHands] = useState<1 | 2>(1);
+  /**
+   * Review B1: the bottom dock (peek row + bar) is sticky on a tall screen,
+   * and the peek row sits on top of the bar -- at the bar's height, which
+   * changes with its mode, so it is measured after every render.
+   */
+  const screenRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = screenRef.current;
+    const bar = el?.querySelector<HTMLElement>(':scope > .action-bar');
+    if (!el || !bar) return;
+    const h = `${bar.offsetHeight}px`;
+    if (el.style.getPropertyValue('--table-bar-h') !== h) el.style.setProperty('--table-bar-h', h);
+  });
   const setBetForHand = (i: number, units: number) => {
     setSelectedBets((prev) => prev.map((v, idx) => (idx === i ? units : v)));
   };
@@ -695,17 +710,22 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       }
       return;
     }
-    // Wave J: watching, forward is "yes" -- a watch -- and back sits in, so
-    // both of a watcher's choices are on the wheel. Repeat waits until seated.
+    // Wave J, one rule at a back-count table between rounds: FORWARD CARRIES
+    // ON ("yes": watching, watch; seated, deal) and BACK CHANGES SEAT (watching,
+    // sit in; seated, leave). Both seat changes are on the wheel, so a
+    // wheel-only driver can Wong in AND out. Back still repeats in play, in
+    // insurance, under the count check and in talk mode; between rounds here
+    // the Repeat button and the spoken "repeat" still replay.
     if (
       command === 'back' &&
-      game.watching &&
+      game.backCountOn &&
       (game.phase === 'idle' || game.phase === 'settled') &&
       !game.countCheckOpen &&
       !overlay &&
       !showChart
     ) {
-      handleDeal();
+      if (game.watching) handleDeal();
+      else handleSitOut();
       return;
     }
     handleVoiceCommand(command === 'forward' ? 'yes' : 'repeat');
@@ -739,7 +759,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       ...DEAL_WORDS,
       ...COUNT_BIAS_PHRASES,
       // Wave J: only at a back-count table, which a session never switches.
-      ...(game.backCountOn ? BACK_COUNT_WORDS.filter((w) => !DEAL_WORDS.includes(w)) : []),
+      // Two-word forms only (review S1): see BACK_COUNT_BIAS.
+      ...(game.backCountOn ? BACK_COUNT_BIAS : []),
     ],
     context: 'table',
   });
@@ -1042,7 +1063,11 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   };
 
   return (
-    <div className="table-screen" style={{ ['--deal-speed']: `${settings.dealSpeedMs}ms` } as CSSProperties}>
+    <div
+      ref={screenRef}
+      className="table-screen"
+      style={{ ['--deal-speed']: `${settings.dealSpeedMs}ms` } as CSSProperties}
+    >
       <div className="topbar">
         <div className="topbar-stat">
           Bankroll: {game.bankroll}
@@ -1084,6 +1109,14 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         </button>
       </div>
       {losingShoe && <LosingShoeBadge />}
+      {/* Wave J (review N3): the rig plays solo, so say what it switched off. */}
+      {losingShoe &&
+        activeProfile.betSpreadOn &&
+        (activeProfile.backCount === true || spreadHasTwoHands(activeProfile.spread)) && (
+          <p className="losing-shoe-solo-note" data-testid="losing-shoe-solo-note">
+            The losing shoe plays solo: back-counting and two hands are off.
+          </p>
+        )}
       {hotShoe && (
         <div className="hot-shoe-badge" data-testid="hot-shoe-badge">
           {/* B2 #35: the topbar bankroll still moves, so say it is thrown away. */}
@@ -1101,7 +1134,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
                 <>
                   {' '}
                   Watching, &ldquo;yes&rdquo;, &ldquo;deal&rdquo; or &ldquo;watch&rdquo; watches and &ldquo;sit in&rdquo; sits
-                  you down; seated, &ldquo;leave&rdquo; leaves the table.
+                  you down; seated, &ldquo;leave&rdquo; leaves the table. On the wheel between rounds, forward
+                  carries on and back sits in or leaves.
                 </>
               )}
               {/* Wave J: the hand count is not a spoken word, as the bet is
@@ -1257,7 +1291,10 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             </div>
           ) : (
             <div className="message-cut-card" data-testid="cut-card-cue">
-              Cut card: the next hand is off a fresh shoe, count 0.
+              {/* Wave J (S4): every shoe starts with a back-counter watching. */}
+              {game.backCountOn
+                ? 'Cut card: the next shoe starts with you watching, count 0.'
+                : 'Cut card: the next hand is off a fresh shoe, count 0.'}
             </div>
           )
         )}

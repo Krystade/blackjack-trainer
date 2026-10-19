@@ -20,7 +20,8 @@ describe('reportSections (B6/W12)', () => {
     ]);
     expect(s.plays.map((r) => r.mistake.kind)).toEqual(['action', 'insurance']);
     expect(s.counts.map((r) => r.mistake.kind)).toEqual(['countCheck']);
-    expect(s.bets.map((r) => r.mistake.kind)).toEqual(['bet', 'wong']);
+    // Wave J (review N2): bet decisions in the order they were made.
+    expect(s.bets.map((r) => r.mistake.kind)).toEqual(['wong', 'bet']);
   });
   it('plays are sorted by units lost; unpriced rows follow in the order they happened', () => {
     const s = reportSections([
@@ -176,12 +177,12 @@ describe('Wave J: back-count rows', () => {
       'TC +1 · you left · your ramp plays',
     );
   });
-  it('entries are listed with the bets, after the exits', () => {
+  it('entries are listed with the bets, in the order they were made', () => {
     const s = reportSections([
       ev({ kind: 'wongIn', category: 'wongIn', taken: 'watch', expected: 'sit-in', tc: 2, wongInTc: 1 }),
       ev({ kind: 'wong', category: 'wong', taken: 'leave', expected: 'play', tc: 1 }),
     ]);
-    expect(s.bets.map((r) => r.mistake.kind)).toEqual(['wong', 'wongIn']);
+    expect(s.bets.map((r) => r.mistake.kind)).toEqual(['wongIn', 'wong']);
     expect(s.plays).toEqual([]);
   });
 });

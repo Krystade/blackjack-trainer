@@ -28,6 +28,7 @@ import {
   narrateInsuranceOffer,
   narrateShuffle,
   narrateSitOut,
+  narrateWatching,
   narrateTableCountPrompt,
 } from '../audio/narrate';
 
@@ -306,10 +307,20 @@ function narrateSettlement(game: Game, audio: AudioApi): boolean {
   // then "Running count?" would ask for a 0 that is marked wrong. Then it is
   // said once the check is answered (submitCount). Returns whether it was said.
   if (game.shuffleDue && !game.countCheckDue) {
-    audio.say(narrateShuffle());
+    sayShuffleBetweenRounds(game, audio);
     return true;
   }
   return false;
+}
+
+/**
+ * "Shuffling." between rounds -- and, at a back-count table, "Watching.":
+ * every shoe starts with the player watching (a cut card under a seated
+ * player, or a leave), and the next forward press then watches (review S4).
+ */
+function sayShuffleBetweenRounds(game: Game, audio: Pick<AudioApi, 'say'>): void {
+  audio.say(narrateShuffle());
+  if (game.backCountOn) audio.say(narrateWatching());
 }
 
 /** What the player asked for when an owed count check interrupted it (#36).
@@ -517,7 +528,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       // A right leave leaves the round's own strip alone.
       const fresh = game.events.slice(before);
       if (fresh.some((e) => !e.correct)) noteBetMiss(fresh);
-      audio.say(narrateShuffle());
+      sayShuffleBetweenRounds(game, audio);
       shuffleSaidRef.current = true;
       return;
     }
@@ -808,7 +819,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       // check (narrateSettlement); the check is answered, so say it now.
       const shuffling = next && game.shuffleDue;
       if (shuffling) {
-        audio.say(narrateShuffle());
+        sayShuffleBetweenRounds(game, audio);
         shuffleSaidRef.current = true;
       }
       // With a spread on, the bet (or the sit-out) was chosen before the

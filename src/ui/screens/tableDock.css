@@ -1,0 +1,34 @@
+/* Wave J (review B1): on a phone-height screen the table's bottom dock -- the
+   peek row and the action bar -- stays on screen while the felt above it
+   scrolls. A full table (three bots wrapping to two rows, the narration lines,
+   two hands) pushed Watch / Sit in, and Deal, below the fold, and a decision
+   asked every round must not need a scroll to reach.
+
+   The peek row rides on top of the bar at the bar's measured height
+   (--table-bar-h, set by Table after each render). Under 700px tall the dock
+   would cover most of the felt, so it stays in the flow there. */
+@media (min-height: 700px) {
+  .table-screen > .action-bar:not(.action-bar-hidden) {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+  }
+
+  /* Only when the bar below it shows: under a bottom sheet (insurance, the
+     count check) the bar is hidden and the sheet is the sticky one, so the
+     dock stays in the flow above it as before rather than covering its title. */
+  .table-screen > .peek-dock:has(+ .action-bar:not(.action-bar-hidden)) {
+    position: sticky;
+    bottom: var(--table-bar-h, 0px);
+    z-index: 5;
+    background: var(--bg);
+  }
+}
+
+/* Review N3: why the losing shoe shows no Watch or hands choice. */
+.losing-shoe-solo-note {
+  margin: 0.25rem 1rem 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+  text-align: center;
+}

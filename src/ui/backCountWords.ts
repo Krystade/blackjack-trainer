@@ -1,5 +1,6 @@
 import { normaliseAlias } from '../audio/voiceAliases';
 import { DEAL_WORDS } from './dealWord';
+import { matchVoiceAction } from '../audio/voiceRecognition';
 
 /**
  * Wave J: the back-counter's words at the table, between rounds.
@@ -25,16 +26,31 @@ export const SIT_IN_WORDS: readonly string[] = ['sit', 'sit in', 'sit down', 'in
 /** Seated: leave the table (the back-counter's sit-out). */
 export const LEAVE_WORDS: readonly string[] = ['leave', 'leave table', 'sit out'];
 
-/** Every word above, for the recogniser's bias list. */
+/** Every word above. */
 export const BACK_COUNT_WORDS: readonly string[] = [...new Set([...WATCH_WORDS, ...SIT_IN_WORDS, ...LEAVE_WORDS])];
+
+/**
+ * The recogniser's bias list: the two-word forms only. Biasing it toward
+ * bare "in", "play", "sit" or "next" makes them likelier as RUNNERS-UP to
+ * whatever was really said (review S1) -- they stay accepted, just not courted.
+ */
+export const BACK_COUNT_BIAS: readonly string[] = BACK_COUNT_WORDS.filter((w) => w.includes(' ') && !DEAL_WORDS.includes(w));
 
 export type BackCountWord = 'watch' | 'sit-in' | 'leave';
 
 /**
  * The back-count decision in a set of readings, best reading first, or null.
  * Watching, a reading is a watch or a sit-in; seated, only a leave.
+ *
+ * Review S1: a runner-up never outranks a command above it. ["yes", "in"]
+ * is a "yes" (a watch), not a sit-in: the scan stops at the first reading
+ * that is a command (`isCommand`, the shipped and user vocabulary by default).
  */
-export function backCountWordIn(readings: readonly string[], seat: 'watching' | 'seated'): BackCountWord | null {
+export function backCountWordIn(
+  readings: readonly string[],
+  seat: 'watching' | 'seated',
+  isCommand: (reading: string) => boolean = (r) => matchVoiceAction(r) !== null,
+): BackCountWord | null {
   for (const reading of readings) {
     const said = normaliseAlias(reading);
     if (seat === 'watching') {
@@ -43,6 +59,7 @@ export function backCountWordIn(readings: readonly string[], seat: 'watching' | 
     } else if (LEAVE_WORDS.includes(said)) {
       return 'leave';
     }
+    if (isCommand(reading)) return null;
   }
   return null;
 }

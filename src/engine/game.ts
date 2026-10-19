@@ -911,6 +911,10 @@ export class Game {
    * so the settled round stays on the felt until the next deal.
    */
   private leaveTable(): void {
+    // Review N4: only between rounds -- never under a live hand.
+    if (this.phase !== 'idle' && this.phase !== 'settled') {
+      throw new Error(`leave called in phase ${this.phase}`);
+    }
     this.gradeSitOut(this.trueCountNow, 'leave');
     this.seated = false;
     this.newTablePending = true;

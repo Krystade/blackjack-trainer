@@ -1,19 +1,32 @@
-/* Wave J: one hand or two, above the chips, for a ramp that spreads hands.
-   A slim two-way switch rather than a third big button: the stake is still
-   the chip, and Deal is still the act. */
+/* Wave J: one hand or two, at the END of the chip row (review B1: a row of its
+   own cost ~52px on every two-hand table and pushed the bar off a 375x812
+   screen). Six chips and the two-way switch share one row at 375px (343px
+   inside the padding: 6 x 42 + 5 x 2 + 2 + 2 + 74 = 340), so the chips give
+   up a little width and the gaps shrink, in that row only. A longer ramp
+   wraps the switch to a line of its own rather than overflowing. */
+.bet-chips.bet-chips-hands {
+  gap: 2px;
+  align-items: center;
+}
+
+.bet-chips-hands > .chip-btn {
+  min-width: 42px;
+  min-height: 44px;
+  padding: 0;
+}
+
 .hands-choice {
   display: flex;
-  align-self: center;
-  margin-bottom: 0.4rem;
+  margin-left: 2px;
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
 }
 
 .hands-choice-btn {
-  min-width: 6.5rem;
+  min-width: 36px;
   min-height: 44px;
-  padding: 0 0.9rem;
+  padding: 0 0.3rem;
   border: none;
   background: var(--surface);
   color: var(--ink-dim);

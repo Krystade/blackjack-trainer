@@ -66,8 +66,9 @@ export function reportSections(mistakes: readonly GradedEvent[]): {
   return {
     plays: [...priced, ...unpriced],
     counts: of('countCheck'),
-    // Wave J: the back-count entry is a bet decision too, listed after the exits.
-    bets: [...of('bet'), ...of('wong'), ...of('wongIn')],
+    // Wave J: the back-count entry is a bet decision too. In the order they
+    // were made (review N2), not grouped by kind.
+    bets: of('bet', 'wong', 'wongIn'),
   };
 }
 

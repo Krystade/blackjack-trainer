@@ -270,3 +270,36 @@ describe('the card reserve is sized for two hands', () => {
     expect(g.hands).toHaveLength(2);
   });
 });
+
+describe('review S3b: back-counting with a ramp that spreads hands', () => {
+  it('a watcher sits in with two hands at a two-hand count: the entry, then one bet decision on both', () => {
+    // Three bots on 20 (the 0-bot profile watches three), two player hands of 19, dealer 10/7.
+    // Pass 1: hand 1, hand 0, bots x3, up; pass 2 the same; hole.
+    const cards = rig('10', '10', '10', '10', '10', '10', '9', '9', '10', '10', '10', '7');
+    const g = Game.withRiggedShoe(cfg({ backCount: true }), cards);
+    expect(g.watching).toBe(true);
+    g.runningCount = 24; // tc +4: enter (+1), two hands of 8
+    g.startRound([8, 8]);
+    expect(g.events.map((e) => [e.kind, e.correct])).toEqual([
+      ['wongIn', true],
+      ['bet', true],
+    ]);
+    const bet = g.events.at(-1)!;
+    expect([bet.handsTaken, bet.handsExpected]).toEqual([2, 2]);
+    expect(g.hands).toHaveLength(2);
+    expect(g.seats.filter((s) => s.kind === 'bot')).toHaveLength(3);
+  });
+
+  it('the reserve counts three watched bots and two hands: 4 x (3 + 2) + 20 = 40', () => {
+    // 95% of 6 decks: the cut at 296. At 275 dealt, 37 left: enough for
+    // 3 bots + 1 hand (36), not for 3 bots + 2 hands (40).
+    const deep = (spread: SpreadRow[]) => {
+      const g = new Game(cfg({ penetration: 0.95, backCount: true, spread }));
+      for (let i = 0; i < 275; i++) g.shoe.draw();
+      expect(g.shoe.cutCardReached).toBe(false);
+      return g;
+    };
+    expect(deep(RAMP.map(({ minTc, units }) => ({ minTc, units }))).shuffleDue).toBe(false);
+    expect(deep(RAMP).shuffleDue).toBe(true);
+  });
+});

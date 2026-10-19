@@ -64,10 +64,11 @@ function HandsChoice({ hands, onHands, disabled }: { hands: 1 | 2; onHands: (h: 
           type="button"
           className={`hands-choice-btn${hands === n ? ' hands-choice-on' : ''}`}
           aria-pressed={hands === n}
+          aria-label={n === 1 ? '1 hand' : '2 hands'}
           disabled={disabled}
           onClick={() => onHands(n)}
         >
-          {n === 1 ? '1 hand' : '2 hands'}
+          ×{n}
         </button>
       ))}
     </div>
@@ -118,11 +119,10 @@ export function ActionBar({ mode }: ActionBarProps) {
     const single = mode.hands[0];
     return (
       <div className="action-bar action-bar-bet">
-        {mode.handsChoice && (
-          <HandsChoice hands={mode.handsChoice.hands} onHands={mode.handsChoice.onHands} disabled={mode.disabled} />
-        )}
         {mode.betSpreadOn && single && (
-          <div className="bet-chips">
+          // Review B1: the hands toggle ends the chip row rather than taking a
+          // row of its own above it.
+          <div className={`bet-chips${mode.handsChoice ? ' bet-chips-hands' : ''}`}>
             {BET_CHIPS.map((units) => (
               <button
                 key={units}
@@ -134,6 +134,9 @@ export function ActionBar({ mode }: ActionBarProps) {
                 {units}
               </button>
             ))}
+            {mode.handsChoice && (
+              <HandsChoice hands={mode.handsChoice.hands} onHands={mode.handsChoice.onHands} disabled={mode.disabled} />
+            )}
           </div>
         )}
         {mode.watching ? (

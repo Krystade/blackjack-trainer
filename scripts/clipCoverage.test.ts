@@ -165,13 +165,6 @@ function everyCardUtterance(): string[] {
 // voices). Keep this empty: a new entry means a sentence shipped unrecorded.
 const NEEDS_RECORDING: string[] = [];
 
-/**
- * Wave J: the hand count of a two-hand ramp's bet miss. Listed in
- * scripts/spoken-phrases.json; one generator run records both. Empty this
- * (the test below then requires both to resolve) as they land.
- */
-const HANDS_NEED_RECORDING: string[] = ['One hand.', 'Two hands.'];
-
 describe('shipped clip coverage', () => {
   const voices = voiceIds();
 
@@ -367,11 +360,10 @@ describe('shipped clip coverage', () => {
 
     /**
      * Wave J: a two-hand ramp's bet miss. The stake line is the recorded ramp
-     * line above; the hand count is its own utterance, and its two sentences
-     * have no recording yet (no generator run on this machine). Pinned, so
-     * the test fails when they are recorded and the pin can be removed.
+     * line above; the hand count is its own utterance (recorded 2026-10-18,
+     * local Kokoro, all three voices).
      */
-    it(`a two-hand bet miss: the stake line is recorded, the hand count is pinned as not yet (${voice})`, () => {
+    it(`a two-hand bet miss: the stake line and the hand count are both recorded (${voice})`, () => {
       const manifest = manifestFor(voice);
       const miss = betMissFeedback([
         {
@@ -382,7 +374,15 @@ describe('shipped clip coverage', () => {
       expect(segmentForClips(miss.spoken, manifest)).not.toBeNull();
       expect(miss.spokenAfter).toBe('Two hands.');
       const handLines = ['One hand.', 'Two hands.'];
-      expect(handLines.filter((t) => segmentForClips(t, manifest) === null)).toEqual(HANDS_NEED_RECORDING);
+      expect(handLines.filter((t) => segmentForClips(t, manifest) === null)).toEqual([]);
+    });
+
+    /**
+     * Wave J (review S4): "Watching." follows "Shuffling." at a back-count
+     * table, so an eyes-free driver hears that the next forward press watches.
+     */
+    it(`resolves the back-count "Watching." cue (${voice})`, () => {
+      expect(segmentForClips('Watching.', manifestFor(voice))).not.toBeNull();
     });
 
     /**
