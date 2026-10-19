@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Card, Rank } from './cards';
 import { Game, DEFAULT_SPREAD } from './game';
 import type { GameConfig, SeatConfig } from './game';
-import { BACK_COUNT_BOTS, DEFAULT_WONG_IN_TC, sitInIsCorrect, startShoeOutOf, wongInTcOf } from './wong';
+import { BACK_COUNT_BOTS, DEFAULT_WONG_IN_TC, entryTcOf, sitInIsCorrect, startShoeOutOf, wongInTcOf } from './wong';
 
 /**
  * Wave J, toggle rework: the table's In/Out toggle. Deal deals the next round
@@ -29,6 +29,9 @@ function cfg(overrides: Partial<GameConfig> = {}): GameConfig {
     penetration: 1,
     betSpreadOn: true,
     seats: THREE_BOTS,
+    // Pinned at +1 so the hysteresis band (-2 < tc < +1) has counts in it;
+    // the default entry is 0 (toggle fix round, S3) and is tested on its own.
+    wongInTc: 1,
     spread: DEFAULT_SPREAD,
     bankrollStart: 100,
     countCheckEvery: 0,
@@ -65,13 +68,20 @@ function wasOut(rounds: Rank[][], overrides: Partial<GameConfig> = {}): Game {
 }
 
 describe('wong.ts: the entry point and "start each shoe out"', () => {
-  it('the entry defaults to +1 and clamps to 0..+5', () => {
-    expect(DEFAULT_WONG_IN_TC).toBe(1);
-    expect(wongInTcOf(undefined)).toBe(1);
+  it('the entry defaults to 0 (S3: D-R1 says TC 0 is a play) and clamps to 0..+5', () => {
+    expect(DEFAULT_WONG_IN_TC).toBe(0);
+    expect(wongInTcOf(undefined)).toBe(0);
     expect(wongInTcOf(-3)).toBe(0);
     expect(wongInTcOf(9)).toBe(5);
     expect(wongInTcOf(2.4)).toBe(2);
-    expect(wongInTcOf(Number.NaN)).toBe(1);
+    expect(wongInTcOf(Number.NaN)).toBe(0);
+  });
+
+  it('review N2: the entry in force is held at least one above the exit', () => {
+    expect(entryTcOf(undefined, undefined)).toBe(0);
+    expect(entryTcOf(0, -1)).toBe(0);
+    expect(entryTcOf(0, 0)).toBe(1);
+    expect(entryTcOf(3, 0)).toBe(3);
   });
 
   it.each([
@@ -296,17 +306,29 @@ describe('hysteresis: between the exit and the entry point either state is right
     expect(getIn.events.filter((e) => e.kind === 'wongIn').at(-1)!.correct).toBe(false);
   });
 
-  it('entry == exit == 0: In says get out at 0, Out says get in', () => {
+  it('review N2: entry 0 with exit 0 grades at +1 -- TC 0 never asks for a flip from both states', () => {
     const stayIn = wasIn([IN_ROUND], { wongInTc: 0, wongExitTc: 0 });
     stayIn.runningCount = 0;
     stayIn.startRound(1);
+    // In at the exit point: getting out is right, staying in the miss.
     expect(last(stayIn).kind).toBe('wong');
     expect(last(stayIn).correct).toBe(false);
 
-    const getIn = wasOut([IN_ROUND], { wongInTc: 0, wongExitTc: 0 });
-    getIn.runningCount = 0;
-    getIn.startRound(1);
-    expect(getIn.events.filter((e) => e.kind === 'wongIn').at(-1)!.correct).toBe(true);
+    const stayOut = wasOut([OUT_ROUND], { wongInTc: 0, wongExitTc: 0 });
+    stayOut.runningCount = 0;
+    stayOut.sitOut();
+    // Out at TC 0: below the +1 in force, staying out is right.
+    expect(last(stayOut).correct).toBe(true);
+    expect(last(stayOut).wongInTc).toBe(1);
+  });
+
+  it('S3: at the default entry (0), coming back in at TC 0 is right', () => {
+    const g = wasOut([IN_ROUND], { wongInTc: undefined });
+    g.runningCount = 0;
+    g.startRound(1);
+    const entry = g.events.filter((e) => e.kind === 'wongIn').at(-1)!;
+    expect(entry.correct).toBe(true);
+    expect(entry.wongInTc).toBe(0);
   });
 
   it('a flat-bet table grades neither', () => {
@@ -346,18 +368,43 @@ describe('"start each shoe out"', () => {
   });
 });
 
-describe('the card reserve counts the table a player Out watches', () => {
-  it('a real shoe 33 cards from empty is too shallow for 3 bots + 1 hand, not for a solo seat', () => {
-    // 90% penetration on 6 decks: the cut is at 280, so at 279 dealt only the
-    // depth guard can call the shuffle. 4 x (3 + 1) + 20 = 36 > 33; solo 24.
-    const deep = (startShoeOut: boolean) => {
-      const g = new Game(cfg({ penetration: 0.9, startShoeOut, seats: { bots: 0, playerHands: 1, playerPosition: 0, botMistakePct: 0 } }));
-      for (let i = 0; i < 279; i++) g.shoe.draw();
-      expect(g.shoe.cutCardReached).toBe(false);
-      return g;
-    };
-    expect(deep(false).shuffleDue).toBe(false);
-    expect(deep(true).shuffleDue).toBe(true);
+describe('the card reserve counts the table a player Out watches, In or Out (review S1)', () => {
+  const SOLO: SeatConfig = { bots: 0, playerHands: 1, playerPosition: 0, botMistakePct: 0 };
+  /** 6 decks at 95% (the cut at 296), `left` cards from empty; the depth guard alone can shuffle. */
+  const deep = (left: number, overrides: Partial<GameConfig> = {}) => {
+    const g = new Game(cfg({ penetration: 0.95, seats: SOLO, ...overrides }));
+    for (let i = 0; i < 312 - left; i++) g.shoe.draw();
+    expect(g.shoe.cutCardReached).toBe(false);
+    return g;
+  };
+
+  it('a 0-bot shoe 33 cards from empty is too shallow for 3 bots + 1 hand, In or Out', () => {
+    // 4 x (3 + 1) + 20 = 36 > 33, whichever way the toggle is set.
+    expect(deep(33).shuffleDue).toBe(true);
+    expect(deep(33, { startShoeOut: true }).shuffleDue).toBe(true);
+  });
+
+  it.each([30, 40])('%i cards left: flipping Out never moves the shuffle', (left) => {
+    const g = deep(left);
+    const before = g.shuffleDue;
+    g.setIn(false);
+    expect(g.shuffleDue).toBe(before);
+    g.setIn(true);
+    expect(g.shuffleDue).toBe(before);
+  });
+
+  it('a get-out decided on a shoe is graded at the count of that shoe, not a fresh one', () => {
+    // 40 left: no shuffle either way. Deep negative count: getting out is right.
+    const g = deep(40);
+    g.runningCount = -12;
+    const decided = g.trueCountNow;
+    expect(decided).toBeLessThan(-2);
+    g.setIn(false);
+    g.sitOut();
+    expect(g.shuffledLastRound).toBe(false);
+    const e = g.events.find((x) => x.kind === 'wong')!;
+    expect(e.tc).toBe(decided);
+    expect(e.correct).toBe(true);
   });
 });
 

@@ -569,8 +569,13 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
   const setIn = useCallback(
     (value: boolean) => {
       // The losing shoe's script is solo rounds: Out would add the bots a
-      // watcher needs and eat its cards, so its toggle stays In.
-      if (game.isIn === value || losingShoe) return;
+      // watcher needs and eat its cards, so its toggle stays In -- and says
+      // so, rather than swallowing a spoken "out" in silence (review N1).
+      if (losingShoe) {
+        audio.say(narrateInOut(true));
+        return;
+      }
+      if (game.isIn === value) return;
       game.setIn(value);
       audio.say(narrateInOut(value));
       bump();

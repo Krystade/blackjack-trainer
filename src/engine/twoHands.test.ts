@@ -250,11 +250,13 @@ describe('mixed one- and two-hand rounds in one shoe', () => {
 
 describe('the card reserve is sized for two hands', () => {
   it('a shoe deep enough for one hand but not two shuffles when the ramp can spread', () => {
-    // 6 decks at 95%: the cut at floor(296.4) = 296. At 286 dealt, 26 left:
-    // one hand needs 4 x 1 + 20 = 24, two need 4 x 2 + 20 = 28.
+    // 6 decks at 95%: the cut at floor(296.4) = 296. At 274 dealt, 38 left.
+    // The reserve is sized for the three bots a 0-bot player Out watches,
+    // In or Out (toggle fix round, S1): one hand needs 4 x (3 + 1) + 20 = 36,
+    // two need 4 x (3 + 2) + 20 = 40.
     const deep = (spread: SpreadRow[]) => {
       const g = new Game(cfg({ penetration: 0.95, spread }));
-      for (let i = 0; i < 286; i++) g.shoe.draw();
+      for (let i = 0; i < 274; i++) g.shoe.draw();
       expect(g.shoe.cutCardReached).toBe(false);
       return g;
     };
@@ -264,7 +266,7 @@ describe('the card reserve is sized for two hands', () => {
 
   it('the deal that shuffles opens two hands on a full shoe', () => {
     const g = new Game(cfg({ penetration: 0.95 }));
-    for (let i = 0; i < 286; i++) g.shoe.draw();
+    for (let i = 0; i < 274; i++) g.shoe.draw();
     g.startRound([1, 1]);
     expect(g.shuffledLastRound).toBe(true);
     expect(g.hands).toHaveLength(2);

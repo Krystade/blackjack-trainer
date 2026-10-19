@@ -5,7 +5,7 @@ import {
   sitOutIsCorrect,
   spreadUnitsFor,
   sitInIsCorrect,
-  wongInTcOf,
+  entryTcOf,
   wongExitTcOf,
   startShoeOutOf,
   BACK_COUNT_BOTS,
@@ -504,9 +504,9 @@ export class Game {
     return !this.toggleIn;
   }
 
-  /** Wave J: the entry point in force (absent = +1). */
+  /** Wave J: the entry point in force (absent = 0), held above the exit point (review N2). */
   get wongInTc(): number {
-    return wongInTcOf(this.cfg.wongInTc);
+    return entryTcOf(this.cfg.wongInTc, this.cfg.wongExitTc);
   }
 
   /**
@@ -646,7 +646,12 @@ export class Game {
    */
   get shuffleDue(): boolean {
     // Wave J: a round that may open with two hands is reserved for two.
-    const totalHands = this.seatCfg.bots + this.maxPlayerHands;
+    // Toggle fix round (review S1): reserved for the table a player Out
+    // watches, whether the toggle is In or Out -- so flipping it can never
+    // move the shuffle, and a get-out decided on this shoe is graded on it.
+    const seats = this.cfg.seats ?? DEFAULT_SEATS;
+    const bots = seats.bots === 0 ? BACK_COUNT_BOTS : seats.bots;
+    const totalHands = bots + this.maxPlayerHands;
     const needed = 4 * totalHands + 20;
     const tooShallow = !this.shoeIsRigged && this.shoe.cardsRemaining < needed;
     return this.shoe.cutCardReached || tooShallow;

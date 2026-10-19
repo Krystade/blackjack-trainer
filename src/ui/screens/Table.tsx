@@ -766,21 +766,15 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       }
       return;
     }
-    // Wave J, one rule between rounds: FORWARD DEALS in the toggle's state
-    // ("yes") and BACK FLIPS the In/Out toggle, saying the new state -- so a
-    // wheel-only driver can get in AND out. Back still repeats in play, in
-    // insurance, under the count check and in talk mode; between rounds the
-    // Repeat button and the spoken "repeat" still replay.
-    if (
-      command === 'back' &&
-      (game.phase === 'idle' || game.phase === 'settled') &&
-      !game.countCheckOpen &&
-      !overlay &&
-      !showChart
-    ) {
-      setIn(!game.isIn);
-      return;
-    }
+    // Toggle fix round (review S2): back is REPEAT everywhere on this table,
+    // as on main -- the owner's verdict was "repeat is useful but yes is not",
+    // and between rounds is when a result line most wants hearing again.
+    // Forward deals in the toggle's state. The In/Out flip has no wheel
+    // gesture: the car has two buttons, its seek events alias its skips, and
+    // a doubled delivery of one press is still an open question
+    // (docs/research/2026-09-27-drive-branches.md), so a double-press could
+    // flip on a press nobody made twice. Eyes-free, the toggle is set by
+    // voice -- with the mic off, through push-to-talk (wheelMode 'talk').
     handleVoiceCommand(command === 'forward' ? 'yes' : 'repeat');
   });
 
@@ -1187,8 +1181,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
               Say: {VOICE_WORDS}. &ldquo;Yes&rdquo; or &ldquo;deal&rdquo; deals the next hand; &ldquo;yes&rdquo; takes insurance, &ldquo;no&rdquo; declines it.
               {' '}
               &ldquo;In&rdquo; or &ldquo;sit in&rdquo; and &ldquo;out&rdquo; or &ldquo;sit out&rdquo; set the toggle;
-              the next deal goes in or out as it says. On the wheel between rounds, forward deals and back flips In
-              and Out.
+              the next deal goes in or out as it says. On the wheel, forward deals as the toggle says and back
+              repeats.
               {/* Wave J: the hand count is not a spoken word, as the bet is
                   not: "yes" deals what the toggle and chip are set to. */}
               {game.spreadsHands && <> &ldquo;Yes&rdquo; deals the hands and bet set on screen.</>}

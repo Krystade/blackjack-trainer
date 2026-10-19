@@ -146,6 +146,8 @@ describe('playOptionsDiffer: what the Play sheet counts as a change', () => {
   it('Wave J: back-counting and its entry point are changes; their defaults are not', () => {
     expect(playOptionsDiffer({ ...base, backCount: true }, base)).toBe(true);
     expect(playOptionsDiffer({ ...base, wongInTc: 3 }, base)).toBe(true);
-    expect(playOptionsDiffer({ ...base, backCount: false, wongInTc: 1 }, base)).toBe(false);
+    // Toggle fix round (S3): the default entry is 0.
+    expect(playOptionsDiffer({ ...base, backCount: false, wongInTc: 0 }, base)).toBe(false);
+    expect(playOptionsDiffer({ ...base, wongInTc: 1 }, base)).toBe(true);
   });
 });

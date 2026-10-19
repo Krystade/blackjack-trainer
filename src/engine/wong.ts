@@ -54,14 +54,14 @@ export function firstRaiseTc(spread: readonly SpreadRow[]): number | null {
  * is right. A profile setting (`Profile.wongInTc`, 0..+5, default +1), the
  * mirror of the exit point above.
  *
- * The ranges cannot cross: entry >= 0 >= exit. They can MEET, at 0 -- enter at
- * >= 0 and leave at <= 0. The overlap is ruled one way per state: while
- * WATCHING the entry wins (TC 0 is a sit-in), while SEATED the exit wins (TC 0
- * is a leave). So a counter set to 0/0 who sits in at a fresh shoe is told to
- * leave on the next round if the count has not moved -- which is what those
- * two numbers say.
+ * The ranges cannot cross: entry >= 0 >= exit. Toggle fix round (review N2):
+ * nor can they MEET -- the entry in force is held at least one above the
+ * exit (`entryTcOf`), so no count is both a get-out and a get-in and the
+ * grading never asks for a flip every round. Toggle fix round (S3): the
+ * default is 0, so coming back in at TC 0 is right, consistent with D-R1
+ * ("TC 0 is a play"); the stepper can raise it.
  */
-export const DEFAULT_WONG_IN_TC = 1;
+export const DEFAULT_WONG_IN_TC = 0;
 export const WONG_IN_MIN = 0;
 export const WONG_IN_MAX = 5;
 
@@ -69,6 +69,14 @@ export const WONG_IN_MAX = 5;
 export function wongInTcOf(entry: number | undefined): number {
   if (entry === undefined || !Number.isFinite(entry)) return DEFAULT_WONG_IN_TC;
   return Math.min(WONG_IN_MAX, Math.max(WONG_IN_MIN, Math.round(entry)));
+}
+
+/**
+ * The entry point in force: the stored one, held at least one above the exit
+ * point (review N2). Only an exit of 0 is affected (entry 0 reads as +1).
+ */
+export function entryTcOf(entry: number | undefined, exit: number | undefined): number {
+  return Math.max(wongInTcOf(entry), wongExitTcOf(exit) + 1);
 }
 
 /** While watching: is sitting in right at this true count? */

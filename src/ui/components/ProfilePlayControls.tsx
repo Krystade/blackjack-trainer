@@ -19,7 +19,7 @@ import {
   WONG_IN_MIN,
   startShoeOutOf,
   wongExitTcOf,
-  wongInTcOf,
+  entryTcOf,
 } from '../../engine/wong';
 
 /**
@@ -175,8 +175,9 @@ export function WongExitControl({ profile, onChange }: ControlProps) {
 export function BackCountControl({ profile, onChange }: ControlProps) {
   const startOut = startShoeOutOf(profile);
   const spreadOn = profile.betSpreadOn === true;
-  const entry = wongInTcOf(profile.wongInTc);
   const exit = wongExitTcOf(profile.wongExitTc);
+  // Review N2: the entry is held at least one above the exit.
+  const entry = entryTcOf(profile.wongInTc, profile.wongExitTc);
   const noBots = (profile.seats?.bots ?? 0) === 0;
   return (
     <>
@@ -184,7 +185,7 @@ export function BackCountControl({ profile, onChange }: ControlProps) {
         <Stepper
           label="Get in at TC ≥"
           value={entry}
-          min={WONG_IN_MIN}
+          min={Math.max(WONG_IN_MIN, exit + 1)}
           max={WONG_IN_MAX}
           step={1}
           format={(v) => signed(v)}
@@ -200,10 +201,10 @@ export function BackCountControl({ profile, onChange }: ControlProps) {
       <p className="settings-note profile-play-note" data-testid="back-count-note">
         {spreadOn && (
           <>
-            Out, getting in is right at {signed(entry)} or higher; between {signed(exit)} and {signed(entry)} either is
-            right.
-            {/* The overlap at 0, said where it can be set (wong.ts). */}
-            {entry === 0 && exit === 0 && ' At 0, In says get out and Out says get in.'}{' '}
+            Out, getting in is right at {signed(entry)} or higher.
+            {/* Hysteresis: the counts strictly between the two points. */}
+            {entry - exit > 1 &&
+              ` Above ${signed(exit)} and below ${signed(entry)}, staying In or staying Out are both right.`}{' '}
           </>
         )}
         {startOut ? 'Every shoe starts with the toggle Out.' : 'The toggle stays where you put it, shoe to shoe.'}

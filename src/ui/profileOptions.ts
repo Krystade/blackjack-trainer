@@ -1,4 +1,4 @@
-import { startShoeOutOf, wongExitTcOf, wongInTcOf } from '../engine/wong';
+import { entryTcOf, startShoeOutOf, wongExitTcOf } from '../engine/wong';
 import type { Profile } from '../store/types';
 import { loadProfiles, saveProfiles, getActiveProfile } from '../store/profiles';
 
@@ -111,7 +111,7 @@ export function playOptionsDiffer(a: Profile, b: Profile): boolean {
     wongExitTcOf(p.wongExitTc),
     // Wave J: and "start each shoe out" with the entry point, under that.
     startShoeOutOf(p),
-    wongInTcOf(p.wongInTc),
+    entryTcOf(p.wongInTc, p.wongExitTc),
   ];
   return JSON.stringify(effective(a)) !== JSON.stringify(effective(b));
 }

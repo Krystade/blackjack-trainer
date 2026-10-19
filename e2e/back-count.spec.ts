@@ -219,7 +219,9 @@ test('the gear sheet: "Start each shoe out" and the entry point (review S3a)', a
   await expect(box).toBeChecked();
   await box.uncheck();
   const row = sheet.locator('.settings-row', { hasText: 'Get in at TC' });
-  await expect(row.locator('.stepper-value')).toHaveText('+1');
+  // Toggle fix round (S3): the default entry is 0.
+  await expect(row.locator('.stepper-value')).toHaveText('0');
+  await row.getByRole('button', { name: '+' }).click();
   await row.getByRole('button', { name: '+' }).click();
   await expect(row.locator('.stepper-value')).toHaveText('+2');
   await expect(sheet.locator('.settings-row', { hasText: 'Get out at TC' })).toBeVisible();
@@ -237,33 +239,57 @@ test('the gear sheet: "Start each shoe out" and the entry point (review S3a)', a
   expect(stored).toMatchObject({ startShoeOut: true, wongInTc: 2 });
 });
 
-test('the wheel between rounds: back flips the toggle and says so, forward deals as it says', async ({ page }) => {
+test('the wheel (answer mode): back repeats, between rounds and in play, and never flips; forward deals as the toggle says', async ({ page }) => {
+  // Toggle fix round (review S2): back is repeat everywhere on the table, as on main.
   await withSettings(page, { ...SETTINGS, drill: { wheelMode: 'answer' } });
   await withProfile(page, { ...TABLE, wongInTc: 5, wongExitTc: 0 });
   await page.goto('/?seed=7&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   const press = (c: 'forward' | 'back') => page.evaluate((cmd) => window.__wheelPress?.(cmd) ?? false, c);
 
+  // Between rounds, before any deal: back repeats, the toggle stays In.
   await expectIn(page, true);
+  let n = (await speech(page)).length;
   expect(await press('back')).toBe(true);
-  await expectIn(page, false);
-  await expect.poll(async () => (await speech(page)).at(-1)).toBe('Out.');
-  // Back deals nothing.
+  await expectIn(page, true);
   await expect(round(page)).toHaveText('Round 0');
+  expect((await speech(page)).slice(n)).not.toContain('Out.');
 
+  // Forward deals In.
   expect(await press('forward')).toBe(true);
   await expect(round(page)).toHaveText('Round 1');
+  await expect(page.locator('.player-hand')).toHaveCount(1);
+  await resolveInsurance(page, false);
+  // In play: back re-says the decision and plays nothing.
+  if (await page.locator('.action-bar[data-advice]').isVisible().catch(() => false)) {
+    await expect.poll(async () => (await speech(page)).length).toBeGreaterThan(0);
+    const said = await speech(page);
+    const lastLine = said.filter((l) => !l.startsWith('chime:')).at(-1)!;
+    n = said.length;
+    expect(await press('back')).toBe(true);
+    await expect.poll(async () => (await speech(page)).slice(n)).toContain(lastLine);
+    await expect(page.locator('.action-bar[data-advice]')).toBeVisible();
+    await playRoundByAdvice(page);
+  }
+
+  // Settled: back re-says the result line, and the toggle does not move.
+  await expect(dealBtn(page)).toBeVisible();
+  await expect.poll(async () => (await speech(page)).filter((l) => !l.startsWith('chime:')).length).toBeGreaterThan(0);
+  const settledSaid = await speech(page);
+  const resultLine = settledSaid.filter((l) => !l.startsWith('chime:')).at(-1)!;
+  n = settledSaid.length;
+  expect(await press('back')).toBe(true);
+  await expect.poll(async () => (await speech(page)).slice(n)).toContain(resultLine);
+  await expectIn(page, true);
+  await expect(round(page)).toHaveText('Round 1');
+
+  // Tapped Out, forward deals the round out.
+  await outBtn(page).click();
+  expect(await press('forward')).toBe(true);
+  await expect(round(page)).toHaveText('Round 2');
   await expect(page.locator('.message-sat-out')).toHaveText('Out — no bet.');
   await expect(page.locator('.player-hand')).toHaveCount(0);
   await expectIn(page, false);
-
-  expect(await press('back')).toBe(true);
-  await expectIn(page, true);
-  await expect.poll(async () => (await speech(page)).at(-1)).toBe('In.');
-  await expect(round(page)).toHaveText('Round 1');
-  expect(await press('forward')).toBe(true);
-  await expect(round(page)).toHaveText('Round 2');
-  await expect(page.locator('.player-hand')).toHaveCount(1);
 });
 
 /** The recogniser, faked as voice-table.spec.ts fakes it; `sayOnceListening` delivers a transcript. */
@@ -330,4 +356,33 @@ test('out loud: "out" and "sit in" set the toggle, "yes" deals as it says, and a
 
   await sayOnceListening(page, 'sit out');
   await expectIn(page, false);
+});
+
+test('push to talk (the default wheel mode): forward opens the microphone, and "out" sets the toggle', async ({ page }) => {
+  // Toggle fix round (S2): the wheel has no flip gesture; with the mic off,
+  // the eyes-free way to the toggle is push-to-talk.
+  await withFakeEngine(page);
+  await withSettings(page, { ...SETTINGS, drill: { wheelMode: 'talk' } });
+  await withProfile(page, { ...TABLE, wongInTc: 5, wongExitTc: 0 });
+  await page.goto('/?seed=7&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expectIn(page, true);
+  const n = (await speech(page)).length;
+  expect(await page.evaluate(() => window.__wheelPress?.('forward') ?? false)).toBe(true);
+  // The push-to-talk window shows no voice bar: wait for the engine it
+  // started, then hand it the phrase as a real engine would.
+  await expect.poll(() => page.evaluate(() => Boolean((window as unknown as { __rec?: unknown }).__rec))).toBe(true);
+  await expect
+    .poll(async () => {
+      await page.evaluate(() => {
+        const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
+        rec?.onresult?.({ results: [[{ transcript: 'out' }]] });
+      });
+      return outBtn(page).getAttribute('aria-pressed');
+    })
+    .toBe('true');
+  await expectIn(page, false);
+  await expect.poll(async () => (await speech(page)).slice(n)).toContain('Out.');
+  // Setting the toggle dealt nothing.
+  await expect(round(page)).toHaveText('Round 0');
 });
