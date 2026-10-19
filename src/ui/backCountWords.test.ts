@@ -1,69 +1,48 @@
 import { describe, it, expect } from 'vitest';
-import { BACK_COUNT_BIAS, BACK_COUNT_WORDS, backCountWordIn } from './backCountWords';
+import { TOGGLE_BIAS, TOGGLE_WORDS, toggleWordIn } from './backCountWords';
 import { VOICE_PHRASES } from '../audio/voiceRecognition';
 import { ECHO_MIN_WORDS } from '../audio/selfEcho';
-import { narrateRampPlays, narrateRampSitsOut, narrateSitOut, narrateShuffle } from '../audio/narrate';
+import { narrateInOut, narrateRampPlays, narrateRampSitsOut, narrateSitOut, narrateShuffle } from '../audio/narrate';
 
-describe('back-count words', () => {
-  it('watching: watch, next and deal watch; sit, sit in, in and play sit in', () => {
-    for (const w of ['watch', 'Next', 'deal', 'Deal me.', 'keep watching']) {
-      expect(backCountWordIn([w], 'watching'), w).toBe('watch');
-    }
-    for (const w of ['sit', 'Sit in', 'in', 'play', 'sit down']) {
-      expect(backCountWordIn([w], 'watching'), w).toBe('sit-in');
-    }
-  });
-
-  it('seated: only a leave is claimed -- deal and sit in are not', () => {
-    expect(backCountWordIn(['leave'], 'seated')).toBe('leave');
-    expect(backCountWordIn(['sit out'], 'seated')).toBe('leave');
-    expect(backCountWordIn(['deal'], 'seated')).toBeNull();
-    expect(backCountWordIn(['sit in'], 'seated')).toBeNull();
-    // ...and a leave word is nothing while watching: there is no seat to leave.
-    expect(backCountWordIn(['leave'], 'watching')).toBeNull();
+describe('In/Out toggle words', () => {
+  it('"in" and "sit in" set In; "out" and "sit out" set Out', () => {
+    for (const w of ['in', 'In.', 'Sit in', 'get in']) expect(toggleWordIn([w]), w).toBe('in');
+    for (const w of ['out', 'Out!', 'sit out', 'get out']) expect(toggleWordIn([w]), w).toBe('out');
   });
 
   it('only a whole reading counts', () => {
-    expect(backCountWordIn(['I will sit in a minute'], 'watching')).toBeNull();
-    expect(backCountWordIn(['watch this'], 'watching')).toBeNull();
+    expect(toggleWordIn(['I will sit in a minute'])).toBeNull();
+    expect(toggleWordIn(['out of here'])).toBeNull();
+    expect(toggleWordIn(['deal'])).toBeNull();
   });
 
-  it('the best reading that is a word wins; runners-up are tried', () => {
-    expect(backCountWordIn(['sitting', 'sit in'], 'watching')).toBe('sit-in');
-    expect(backCountWordIn(['watch', 'sit in'], 'watching')).toBe('watch');
+  it('review S1: only the top reading counts -- a runner-up never flips the toggle', () => {
+    expect(toggleWordIn(['yes', 'in'])).toBeNull();
+    expect(toggleWordIn(['repeat', 'out'])).toBeNull();
+    expect(toggleWordIn(['sitting', 'sit in'])).toBeNull();
+    expect(toggleWordIn(['in', 'out'])).toBe('in');
+    expect(toggleWordIn([])).toBeNull();
   });
 
   it('no word collides with the command vocabulary', () => {
-    for (const w of BACK_COUNT_WORDS) {
-      if (w === 'deal' || w === 'deal me') continue;
-      expect(VOICE_PHRASES, w).not.toContain(w);
-    }
+    for (const w of TOGGLE_WORDS) expect(VOICE_PHRASES, w).not.toContain(w);
   });
 
   it('every word is short enough for the self-echo contract', () => {
-    for (const w of BACK_COUNT_WORDS) expect(w.split(' ').length, w).toBeLessThan(ECHO_MIN_WORDS);
+    for (const w of TOGGLE_WORDS) expect(w.split(' ').length, w).toBeLessThan(ECHO_MIN_WORDS);
   });
 
-  it("none of the app's own back-count lines is itself a word", () => {
+  it("the app's own lines are not words -- except the toggle's cue, which names the state it set", () => {
     const lines = [narrateRampPlays(2), narrateRampSitsOut(-3), narrateSitOut(), narrateShuffle()];
     for (const line of lines) {
-      for (const sentence of line.split(/(?<=\.)\s*/)) {
-        expect(backCountWordIn([sentence], 'watching'), sentence).toBeNull();
-        expect(backCountWordIn([sentence], 'seated'), sentence).toBeNull();
-      }
+      for (const sentence of line.split(/(?<=\.)\s*/)) expect(toggleWordIn([sentence]), sentence).toBeNull();
     }
-  });
-
-  it('review S1: a runner-up never outranks a command above it', () => {
-    expect(backCountWordIn(['yes', 'in'], 'watching')).toBeNull();
-    expect(backCountWordIn(['repeat', 'play'], 'watching')).toBeNull();
-    expect(backCountWordIn(['hit me', 'leave'], 'seated')).toBeNull();
-    // A reading that is no command does not stop the scan.
-    expect(backCountWordIn(['sitting', 'sit in'], 'watching')).toBe('sit-in');
+    // Heard back, the cue asks for the state it announced: a no-op.
+    expect(toggleWordIn([narrateInOut(true)])).toBe('in');
+    expect(toggleWordIn([narrateInOut(false)])).toBe('out');
   });
 
   it('review S1: only two-word forms are courted by the recogniser', () => {
-    expect(BACK_COUNT_BIAS).toEqual(expect.arrayContaining(['sit in', 'leave table', 'keep watching']));
-    for (const w of ['in', 'play', 'sit', 'next', 'deal me']) expect(BACK_COUNT_BIAS).not.toContain(w);
+    expect(TOGGLE_BIAS).toEqual(['sit in', 'get in', 'sit out', 'get out']);
   });
 });

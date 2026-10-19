@@ -3,7 +3,7 @@ import { withSettings, withProfile, resolveInsurance, playRoundByAdvice } from '
 
 /**
  * C-R10: the Play table at 375x812 with the notch insets (iPhone 13 mini).
- * (a) with a bet spread on, Sit out is fully on screen;
+ * (a) with a bet spread on, the bet bar (In/Out toggle and Deal) is fully on screen;
  * (b) with voice on, the voice strip does not push the action bar off screen;
  * (c) the count-check sheet may cover the felt, but the round banner stays
  *     readable or is repeated in the sheet.
@@ -81,13 +81,13 @@ async function withFakeRecognition(page: Page): Promise<void> {
   });
 }
 
-test('C-R10a: with a bet spread, Sit out is fully on screen inside the notch insets', async ({ page }) => {
+test('C-R10a: with a bet spread, the In/Out toggle and Deal are fully on screen inside the notch insets', async ({ page }) => {
   await withSettings(page, { countCheckEvery: 0, dealSpeedMs: 0 });
   await withProfile(page, { betSpreadOn: true, countCheckEvery: 0 });
   await page.goto('/?seed=7&e2e=1');
   await page.addStyleTag({ content: INSET });
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Sit out', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'In or out' }).getByRole('button', { name: 'Out', exact: true })).toBeVisible();
   await shotIf(page, 'c-r10a-bet-bar');
   expectOnScreen(await boxes(page, '.action-bar-bet button'), 'bet bar button');
 });

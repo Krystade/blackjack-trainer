@@ -28,7 +28,7 @@ import {
   narrateInsuranceOffer,
   narrateShuffle,
   narrateSitOut,
-  narrateWatching,
+  narrateInOut,
   narrateTableCountPrompt,
 } from '../audio/narrate';
 
@@ -314,13 +314,13 @@ function narrateSettlement(game: Game, audio: AudioApi): boolean {
 }
 
 /**
- * "Shuffling." between rounds -- and, at a back-count table, "Watching.":
- * every shoe starts with the player watching (a cut card under a seated
- * player, or a leave), and the next forward press then watches (review S4).
+ * "Shuffling." between rounds -- and, with "start each shoe out", "Out.": the
+ * fresh shoe starts with the toggle Out, and the next forward press then deals
+ * the player out (review S4, toggle rework).
  */
 function sayShuffleBetweenRounds(game: Game, audio: Pick<AudioApi, 'say'>): void {
   audio.say(narrateShuffle());
-  if (game.backCountOn) audio.say(narrateWatching());
+  if (game.startShoeOut) audio.say(narrateInOut(false));
 }
 
 /** What the player asked for when an owed count check interrupted it (#36).
@@ -516,32 +516,16 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     // narrate: the player was dealt none. R5.
     realignLosingShoe(playGame);
     const before = game.events.length;
-    // Wave J: at a back-count table this is a WATCH (watching) or a LEAVE
-    // (seated) -- read before the engine changes which.
-    const watching = game.watching;
-    const leaving = game.backCountOn && !watching;
     game.sitOut();
-    if (leaving) {
-      // Nothing is dealt: the settled round stays on the felt, and the walk
-      // to a new table is a shuffle, said now -- before the next decision, as
-      // the cut card's is -- so the deal that makes it does not say it again.
-      // A right leave leaves the round's own strip alone.
-      const fresh = game.events.slice(before);
-      if (fresh.some((e) => !e.correct)) noteBetMiss(fresh);
-      sayShuffleBetweenRounds(game, audio);
-      shuffleSaidRef.current = true;
-      return;
-    }
     if (game.missedDealerError) audio.ding('bad');
     if (game.shuffledLastRound && !shuffleSaidRef.current) audio.say(narrateShuffle());
     shuffleSaidRef.current = false;
     audio.say(narrateSitOut());
     noteBetMiss(game.events.slice(before));
-    // Wave J: a watched round is there to be COUNTED, so its opening cards
-    // are read out as a seated round's are (the bots' draws and the dealer's
-    // follow, paced and at settlement). A plain sit-out still reads none of
-    // them -- see the lane report.
-    if (watching) narrateDeal(game, audio, true);
+    // Wave J: a round out is there to be COUNTED, so its opening cards are
+    // read out as a round in's are (the bots' draws and the dealer's follow,
+    // paced and at settlement).
+    narrateDeal(game, audio, true);
     settleAndNote();
   }, [game, playGame, audio, settleAndNote, noteBetMiss]);
 
@@ -577,6 +561,22 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     runSitOut();
     bump();
   }, [poseCountCheckBeforeDeal, runSitOut, bump]);
+
+  /**
+   * Wave J toggle rework: flip the In/Out toggle. Nothing is dealt; the cue
+   * says the new state, so eyes-free the next forward press is known.
+   */
+  const setIn = useCallback(
+    (value: boolean) => {
+      // The losing shoe's script is solo rounds: Out would add the bots a
+      // watcher needs and eat its cards, so its toggle stays In.
+      if (game.isIn === value || losingShoe) return;
+      game.setIn(value);
+      audio.say(narrateInOut(value));
+      bump();
+    },
+    [game, audio, bump, losingShoe],
+  );
 
   const insure = useCallback(
     (take: boolean) => {
@@ -869,6 +869,7 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     hotShoe,
     deal,
     sitOut,
+    setIn,
     act,
     insure,
     callFoul,

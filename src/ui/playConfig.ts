@@ -1,6 +1,7 @@
 import { strategyRulesFor } from '../store/profiles';
 import type { Profile } from '../store/types';
 import type { GameConfig } from '../engine/game';
+import { startShoeOutOf } from '../engine/wong';
 
 /**
  * The Play table's GameConfig, built from the ACTIVE PROFILE. Every grading,
@@ -27,8 +28,8 @@ export function playConfigFor(
     spread: profile.spread,
     // D-R1: absent keeps the engine's -2.
     ...(profile.wongExitTc === undefined ? {} : { wongExitTc: profile.wongExitTc }),
-    // Wave J: back-counting and its entry point; absent keeps both off/default.
-    ...(profile.backCount ? { backCount: true } : {}),
+    // Wave J: "start each shoe out" (or the legacy backCount) and the entry point.
+    ...(startShoeOutOf(profile) ? { startShoeOut: true } : {}),
     ...(profile.wongInTc === undefined ? {} : { wongInTc: profile.wongInTc }),
     bankrollStart,
     countCheckEvery: profile.countCheckEvery,

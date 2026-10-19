@@ -1,65 +1,41 @@
 import { normaliseAlias } from '../audio/voiceAliases';
-import { DEAL_WORDS } from './dealWord';
-import { matchVoiceAction } from '../audio/voiceRecognition';
 
 /**
- * Wave J: the back-counter's words at the table, between rounds.
+ * Wave J toggle rework: the In/Out toggle's words at the table, between
+ * rounds. "In" or "sit in" sets the toggle In, "out" or "sit out" sets it
+ * Out; neither deals -- "deal" or "yes" then deals the next round in the
+ * state the toggle shows.
  *
- * None of these is in the command vocabulary (`VOICE_ACTIONS`): each means
- * something only at a back-count table, and only between rounds, so the table
+ * None of these is in the command vocabulary (`VOICE_ACTIONS`): the table
  * claims them itself the way it claims "deal" (ui/dealWord.ts). As there, only
- * a WHOLE reading counts -- "sit in" is a sit-in, "I'll sit in a minute" is
- * not -- and every form is at most two words, the ceiling `selfEcho.ts` needs
- * to keep telling the app's own voice from an answer.
- *
- * Watching, "deal" and "next" are a WATCH: they ask for the next round, and a
- * watcher who asks for the next round is dealt nothing. "Yes" does the same
- * (handleVoiceCommand), so the one word that deals a seated round never sits a
- * watcher down by accident.
- *
- * None of them occurs in what the app says at a back-count table: "Sitting
- * out." and "Your ramp sits out." are not "sit out", and "Your ramp plays."
- * is not "play" -- a whole reading has to MATCH.
+ * a WHOLE reading counts -- "sit in" is In, "I'll sit in a minute" is not --
+ * and every form is at most two words, the ceiling `selfEcho.ts` needs to keep
+ * telling the app's own voice from an answer. The app's own "In." and "Out."
+ * would match, and set the toggle to the state it already shows.
  */
-export const WATCH_WORDS: readonly string[] = ['watch', 'next', 'keep watching', ...DEAL_WORDS];
-export const SIT_IN_WORDS: readonly string[] = ['sit', 'sit in', 'sit down', 'in', 'play'];
-/** Seated: leave the table (the back-counter's sit-out). */
-export const LEAVE_WORDS: readonly string[] = ['leave', 'leave table', 'sit out'];
+export const IN_WORDS: readonly string[] = ['in', 'sit in', 'get in'];
+export const OUT_WORDS: readonly string[] = ['out', 'sit out', 'get out'];
 
 /** Every word above. */
-export const BACK_COUNT_WORDS: readonly string[] = [...new Set([...WATCH_WORDS, ...SIT_IN_WORDS, ...LEAVE_WORDS])];
+export const TOGGLE_WORDS: readonly string[] = [...IN_WORDS, ...OUT_WORDS];
 
 /**
- * The recogniser's bias list: the two-word forms only. Biasing it toward
- * bare "in", "play", "sit" or "next" makes them likelier as RUNNERS-UP to
- * whatever was really said (review S1) -- they stay accepted, just not courted.
+ * The recogniser's bias list: the two-word forms only. Biasing it toward a
+ * bare "in" or "out" makes them likelier as RUNNERS-UP to whatever was really
+ * said (review S1) -- they stay accepted, just not courted.
  */
-export const BACK_COUNT_BIAS: readonly string[] = BACK_COUNT_WORDS.filter((w) => w.includes(' ') && !DEAL_WORDS.includes(w));
-
-export type BackCountWord = 'watch' | 'sit-in' | 'leave';
+export const TOGGLE_BIAS: readonly string[] = TOGGLE_WORDS.filter((w) => w.includes(' '));
 
 /**
- * The back-count decision in a set of readings, best reading first, or null.
- * Watching, a reading is a watch or a sit-in; seated, only a leave.
- *
- * Review S1: a runner-up never outranks a command above it. ["yes", "in"]
- * is a "yes" (a watch), not a sit-in: the scan stops at the first reading
- * that is a command (`isCommand`, the shipped and user vocabulary by default).
+ * The toggle state asked for, or null. Review S1, kept: only the TOP reading
+ * counts -- a runner-up "in" under "yes" is the recogniser's guess, not what
+ * was said, and must never flip the toggle.
  */
-export function backCountWordIn(
-  readings: readonly string[],
-  seat: 'watching' | 'seated',
-  isCommand: (reading: string) => boolean = (r) => matchVoiceAction(r) !== null,
-): BackCountWord | null {
-  for (const reading of readings) {
-    const said = normaliseAlias(reading);
-    if (seat === 'watching') {
-      if (WATCH_WORDS.includes(said)) return 'watch';
-      if (SIT_IN_WORDS.includes(said)) return 'sit-in';
-    } else if (LEAVE_WORDS.includes(said)) {
-      return 'leave';
-    }
-    if (isCommand(reading)) return null;
-  }
+export function toggleWordIn(readings: readonly string[]): 'in' | 'out' | null {
+  const top = readings[0];
+  if (top === undefined) return null;
+  const said = normaliseAlias(top);
+  if (IN_WORDS.includes(said)) return 'in';
+  if (OUT_WORDS.includes(said)) return 'out';
   return null;
 }

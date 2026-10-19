@@ -24,13 +24,19 @@ describe('playConfigFor', () => {
     expect('cutDecks' in plain || 'cutVary' in plain).toBe(false);
   });
 
-  it('Wave J: carries back-count and its entry point through, and neither when unset', () => {
-    const cfg = playConfigFor({ ...base, backCount: true, wongInTc: 2 }, 100, 1);
-    expect(cfg.backCount).toBe(true);
+  it('Wave J: carries "start each shoe out" and the entry point through, and neither when unset', () => {
+    const cfg = playConfigFor({ ...base, startShoeOut: true, wongInTc: 2 }, 100, 1);
+    expect(cfg.startShoeOut).toBe(true);
     expect(cfg.wongInTc).toBe(2);
     const plain = playConfigFor(base, 100, 1);
-    expect('backCount' in plain || 'wongInTc' in plain).toBe(false);
-    expect('backCount' in playConfigFor({ ...base, backCount: false }, 100, 1)).toBe(false);
+    expect('startShoeOut' in plain || 'backCount' in plain || 'wongInTc' in plain).toBe(false);
+    expect('startShoeOut' in playConfigFor({ ...base, startShoeOut: false }, 100, 1)).toBe(false);
+  });
+
+  it('old data: a stored backCount: true starts each shoe out; startShoeOut: false overrides it', () => {
+    expect(playConfigFor({ ...base, backCount: true }, 100, 1).startShoeOut).toBe(true);
+    expect('startShoeOut' in playConfigFor({ ...base, backCount: false }, 100, 1)).toBe(false);
+    expect('startShoeOut' in playConfigFor({ ...base, backCount: true, startShoeOut: false }, 100, 1)).toBe(false);
   });
 
   it('takes the session bankroll and seed it is given', () => {

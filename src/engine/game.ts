@@ -6,6 +6,8 @@ import {
   spreadUnitsFor,
   sitInIsCorrect,
   wongInTcOf,
+  wongExitTcOf,
+  startShoeOutOf,
   BACK_COUNT_BOTS,
   spreadHandsFor,
   spreadHasTwoHands,
@@ -95,12 +97,12 @@ export interface GameConfig {
   /** D-R1: sit out only at true count <= this (engine/wong.ts). Absent = -2. */
   wongExitTc?: number;
   /**
-   * Wave J: back-counting. Every shoe starts with the player WATCHING (dealt
-   * no hand) and each round asks Watch or Sit in, graded at `wongInTc`. Once
-   * seated, sitting out means leaving the table: the next round is a fresh
-   * shoe at a new table, watched. In force only with `betSpreadOn` (the same
-   * gate the wong decision has). Absent or false = off.
+   * Wave J toggle rework: "Start each shoe out". The player's In/Out toggle
+   * is set to Out whenever a fresh shoe starts. Absent or false = the toggle
+   * stays where the player put it.
    */
+  startShoeOut?: boolean;
+  /** Legacy (wave J, first cut): `backCount: true` is read as `startShoeOut`. */
   backCount?: boolean;
   /** Wave J: sit in only at true count >= this (engine/wong.ts). Absent = +1. */
   wongInTc?: number;
@@ -350,22 +352,26 @@ export class Game {
   dealerMistakesUsed = false;
 
   /**
-   * Wave J, back-counting: the player holds a seat for the NEXT round. False
-   * at the start of every shoe (the player watches); set by sitting in; cleared
-   * by leaving the table and by the shoe running out under a seated player.
-   * Meaningless with back-count off (see `watching`).
+   * Wave J toggle rework: the In/Out toggle -- whether the NEXT round deals
+   * the player in. It stays where it was put across rounds and shoes, except
+   * that "Start each shoe out" turns it Out as a fresh shoe starts.
    */
-  private seated = false;
-  /** Wave J: the player left the table; the next round is a new table, fresh shoe. */
-  private newTablePending = false;
-  /** Wave J: the round just dealt was the first at a new table (its shuffle was a walk). */
-  newTableLastRound = false;
+  private toggleIn = true;
+  /**
+   * Whether the player was in the LAST round: the state the next decision is
+   * graded from (hysteresis -- in, staying in is right above the exit point;
+   * out, staying out is right below the entry point).
+   */
+  private lastIn = true;
   /** Wave I: some round settled in Training mode (about one error in five). */
   dealerMistakesTrainingUsed = false;
 
   constructor(cfg: GameConfig) {
     this.cfg = cfg;
     this.rules = cfg.rules ?? DEFAULT_RULES;
+    // Wave J toggle rework: the first shoe starts Out with "start each shoe out".
+    this.toggleIn = !this.startShoeOut;
+    this.lastIn = this.toggleIn;
     const cutSpec = {
       penetration: cfg.penetration,
       cutDecks: cfg.cutDecks,
@@ -468,32 +474,34 @@ export class Game {
   /**
    * SeatConfig for this game (falls back to DEFAULT_SEATS, v1 solo parity).
    *
-   * Wave J: a back-counter with no bots configured watches a table of
-   * BACK_COUNT_BOTS -- there is nothing to count behind an empty table.
+   * Wave J: a player who is Out (or whose shoes start Out) with no bots
+   * configured watches a table of BACK_COUNT_BOTS -- there is nothing to
+   * count behind an empty table.
    */
   private get seatCfg(): SeatConfig {
     const seats = this.cfg.seats ?? DEFAULT_SEATS;
-    if (this.backCountOn && seats.bots === 0) return { ...seats, bots: BACK_COUNT_BOTS };
+    if ((!this.toggleIn || this.startShoeOut) && seats.bots === 0) return { ...seats, bots: BACK_COUNT_BOTS };
     return seats;
   }
 
-  /** Wave J: back-counting is in force (the profile asks for it, with a spread on). */
-  get backCountOn(): boolean {
-    return this.cfg.backCount === true && this.cfg.betSpreadOn;
+  /** Wave J toggle rework: "start each shoe out" (or its legacy name, `backCount`). */
+  get startShoeOut(): boolean {
+    return startShoeOutOf(this.cfg);
   }
 
-  /**
-   * Wave J: the player is not seated. Between rounds that means the next
-   * decision is Watch or Sit in; during a watched round, that the player was
-   * dealt nothing. Always false with back-count off.
-   */
+  /** Wave J toggle rework: the In/Out toggle -- the next round deals the player in. */
+  get isIn(): boolean {
+    return this.toggleIn;
+  }
+
+  /** Flip the toggle. Takes effect at the next deal; any time is fine. */
+  setIn(value: boolean): void {
+    this.toggleIn = value;
+  }
+
+  /** Wave J: the player is Out -- the next round (or the round on the felt) is watched. */
   get watching(): boolean {
-    return this.backCountOn && !this.seated;
-  }
-
-  /** Wave J: the player has just left; the next round deals at a new table. */
-  get newTableNext(): boolean {
-    return this.newTablePending;
+    return !this.toggleIn;
   }
 
   /** Wave J: the entry point in force (absent = +1). */
@@ -641,8 +649,7 @@ export class Game {
     const totalHands = this.seatCfg.bots + this.maxPlayerHands;
     const needed = 4 * totalHands + 20;
     const tooShallow = !this.shoeIsRigged && this.shoe.cardsRemaining < needed;
-    // Wave J: leaving the table is walking to a fresh shoe.
-    return this.shoe.cutCardReached || tooShallow || this.newTablePending;
+    return this.shoe.cutCardReached || tooShallow;
   }
 
   /**
@@ -677,11 +684,8 @@ export class Game {
       this.shoe.shuffle();
       this.runningCount = 0;
       this.shuffledLastRound = true;
-      this.newTableLastRound = this.newTablePending;
-      this.newTablePending = false;
     } else {
       this.shuffledLastRound = false;
-      this.newTableLastRound = false;
     }
   }
 
@@ -745,12 +749,15 @@ export class Game {
       ? bets
       : new Array(playerHandsCount).fill(bets ?? 1);
 
-    // Wave J: a watching player who deals in is SITTING IN -- the entry
-    // decision, graded at the entry point. It replaces the exit check for this
-    // round (entry wins while watching, see engine/wong.ts). A correct entry
-    // also grades the stake, as any seated round does; an early one is graded
-    // as the entry alone -- the stake is moot when you should not be in (C-R6).
-    if (this.watching) {
+    // Wave J toggle rework: dealing in sets the toggle In. Graded from the
+    // LAST round's state: out last round, this is getting in -- the entry
+    // decision, at the entry point. A correct entry also grades the stake, as
+    // any round in does; an early one is graded as the entry alone -- the
+    // stake is moot when you should not be in (C-R6).
+    const wasIn = this.lastIn;
+    this.toggleIn = true;
+    this.lastIn = true;
+    if (!wasIn && this.cfg.betSpreadOn) {
       const entry = this.wongInTc;
       const correct = sitInIsCorrect(preDealTc, entry);
       this.events.push({
@@ -765,7 +772,6 @@ export class Game {
         tc: preDealTc,
         wongInTc: entry,
       });
-      this.seated = true;
       if (correct) this.gradeBetSizes(preDealTc, betArray);
     } else if (this.cfg.betSpreadOn) {
       /**
@@ -789,6 +795,7 @@ export class Game {
           expected: 'sit-out',
           reason: `Wong decision at tc ${preDealTc}`,
           tc: preDealTc,
+          wongExitTc: wongExitTcOf(this.cfg.wongExitTc),
         });
       } else {
         this.gradeBetSizes(preDealTc, betArray);
@@ -836,22 +843,24 @@ export class Game {
    * never prompts insurance here: there is no stake to insure.
    */
   sitOut(): void {
-    // Wave J: watching, there is no seat to leave -- this is a watch.
-    if (this.watching) {
-      this.watch();
-      return;
+    // Wave J toggle rework: a round Out sets the toggle Out, at the same
+    // table -- the shoe and the count move on exactly as with the player in.
+    // Graded from the last round's state: in last round, this is getting out
+    // (the exit point); out, it is staying out (the entry point).
+    // Review N4: only between rounds -- never under a live hand.
+    if (this.phase !== 'idle' && this.phase !== 'settled') {
+      throw new Error(`sitOut called in phase ${this.phase}`);
     }
-    // Wave J: seated at a back-count table, sitting out is LEAVING. Graded as
-    // the sit-out is (the exit point), then the player walks: nothing is
-    // dealt here, and the next round is a fresh shoe at a new table, watched.
-    if (this.backCountOn) {
-      this.leaveTable();
-      return;
-    }
+    const wasIn = this.lastIn;
+    this.toggleIn = false;
+    this.lastIn = false;
     this.beginRound();
 
     const preDealTc = this.trueCountNow;
-    if (this.cfg.betSpreadOn) this.gradeSitOut(preDealTc, 'sit-out');
+    if (this.cfg.betSpreadOn) {
+      if (wasIn) this.gradeSitOut(preDealTc);
+      else this.gradeStayOut(preDealTc);
+    }
     this.dealWithoutPlayer();
   }
 
@@ -888,8 +897,8 @@ export class Game {
     });
   }
 
-  /** The play-or-sit decision, taken as a sit-out (or, at a back-count table, a leave). */
-  private gradeSitOut(preDealTc: number, taken: 'sit-out' | 'leave'): void {
+  /** The play-or-sit decision, taken as getting out (in last round): right at or below the exit point. */
+  private gradeSitOut(preDealTc: number): void {
     const correct = this.sitOutIsCorrect(preDealTc);
     this.events.push({
       source: 'table',
@@ -897,40 +906,19 @@ export class Game {
       category: 'wong',
       correct,
       classification: correct ? 'correct' : 'basic-error',
-      taken,
-      expected: correct ? taken : 'play',
+      taken: 'sit-out',
+      expected: correct ? 'sit-out' : 'play',
       reason: `Wong decision at tc ${preDealTc}`,
       tc: preDealTc,
+      wongExitTc: wongExitTcOf(this.cfg.wongExitTc),
     });
   }
 
   /**
-   * Wave J: leave a back-count table. The exit decision is graded at the count
-   * the player is leaving, then the seat is given up and the next deal
-   * shuffles: a new table, a fresh shoe, the player watching. Deals nothing,
-   * so the settled round stays on the felt until the next deal.
+   * Staying out (out last round): the entry decision, graded at the entry
+   * point -- staying out is right below it.
    */
-  private leaveTable(): void {
-    // Review N4: only between rounds -- never under a live hand.
-    if (this.phase !== 'idle' && this.phase !== 'settled') {
-      throw new Error(`leave called in phase ${this.phase}`);
-    }
-    this.gradeSitOut(this.trueCountNow, 'leave');
-    this.seated = false;
-    this.newTablePending = true;
-  }
-
-  /**
-   * Wave J: watch a round from behind the table. The round is dealt to the
-   * bots and the dealer exactly as a sit-out is -- the count and the shoe move
-   * as they would with the player in -- and the choice is graded as the entry
-   * decision: watching is right below the entry point. Only while watching;
-   * a seated player's sit-out is `sitOut`.
-   */
-  watch(): void {
-    if (!this.watching) throw new Error('watch() called while seated');
-    this.beginRound();
-    const preDealTc = this.trueCountNow;
+  private gradeStayOut(preDealTc: number): void {
     const entry = this.wongInTc;
     const correct = !sitInIsCorrect(preDealTc, entry);
     this.events.push({
@@ -945,7 +933,6 @@ export class Game {
       tc: preDealTc,
       wongInTc: entry,
     });
-    this.dealWithoutPlayer();
   }
 
   /** Deal and play out a round with the player seat empty (sit-out and watch, R5). */
@@ -1654,9 +1641,13 @@ export class Game {
     this.handsPlayed += this.hands.length;
     this.maybeMakeDealerError();
     this.phase = 'settled';
-    // Wave J: the shoe ran out under a seated back-counter. The next shoe is
-    // a fresh one, and every shoe starts with the player watching.
-    if (this.backCountOn && this.seated && this.shuffleDue) this.seated = false;
+    // Wave J toggle rework: "start each shoe out" -- the shoe ran out, so the
+    // fresh one starts with the toggle Out, and its first decision is graded
+    // as one taken from Out (staying out is right below the entry point).
+    if (this.startShoeOut && this.shuffleDue) {
+      this.toggleIn = false;
+      this.lastIn = false;
+    }
     if (this.cfg.countCheckEvery > 0 && this.roundNo % this.cfg.countCheckEvery === 0) {
       this.countCheckDue = true;
       this.countCheckPromptCount += 1;

@@ -378,11 +378,12 @@ describe('shipped clip coverage', () => {
     });
 
     /**
-     * Wave J (review S4): "Watching." follows "Shuffling." at a back-count
-     * table, so an eyes-free driver hears that the next forward press watches.
+     * Wave J toggle rework: the In/Out toggle says its new state on every
+     * change, eyes-free -- so both words are recorded.
      */
-    it(`resolves the back-count "Watching." cue (${voice})`, () => {
-      expect(segmentForClips('Watching.', manifestFor(voice))).not.toBeNull();
+    it(`resolves the In/Out toggle cues (${voice})`, () => {
+      const manifest = manifestFor(voice);
+      expect(['In.', 'Out.'].filter((t) => segmentForClips(t, manifest) === null)).toEqual([]);
     });
 
     /**

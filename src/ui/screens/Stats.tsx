@@ -105,9 +105,9 @@ type NonHandMiss = 'bet' | 'wong' | 'wongIn' | 'countCheck';
 const NON_HAND_MISSES: readonly NonHandMiss[] = ['bet', 'wong', 'wongIn', 'countCheck'];
 const NON_HAND_MISS_LABEL: Record<NonHandMiss, string> = {
   bet: 'Bet size mistakes (when playing)',
-  wong: 'Play or sit-out mistakes',
-  // Wave J: the back-counter's entry, filed under basic-error like the rest.
-  wongIn: 'Watch or sit-in mistakes',
+  // Wave J toggle rework: exits (you were In) and entries (you were Out).
+  wong: 'Stay in or get out mistakes',
+  wongIn: 'Stay out or get in mistakes',
   countCheck: 'Count check misses',
 };
 
@@ -656,8 +656,8 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
     if (unpricedMistakes === 0) return '';
     const parts: string[] = [];
     if (nonHandMisses.bet > 0) parts.push(`${nonHandMisses.bet} bet-sizing`);
-    if (nonHandMisses.wong > 0) parts.push(`${nonHandMisses.wong} play-or-sit`);
-    if (nonHandMisses.wongIn > 0) parts.push(`${nonHandMisses.wongIn} watch-or-sit-in`);
+    if (nonHandMisses.wong > 0) parts.push(`${nonHandMisses.wong} stay-in-or-get-out`);
+    if (nonHandMisses.wongIn > 0) parts.push(`${nonHandMisses.wongIn} stay-out-or-get-in`);
     if (nonHandMisses.countCheck > 0) parts.push(`${nonHandMisses.countCheck} count-check`);
     const kinds = parts.length === 0 ? '' : ` ${joinList(parts)} ${nonHandMissTotal === 1 ? 'mistake is' : 'mistakes are'} not hand plays, so they have no price.`;
     const hand =
@@ -1497,7 +1497,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
               )}
               {tableWong.n > 0 && (
                 <li className="mistake-row" data-testid="bsl-table-wong">
-                  <span>At the table: play or sit out</span>
+                  <span>At the table: stay in or get out</span>
                   <span>
                     {tableWong.right}/{tableWong.n} ({pct(tableWong.right, tableWong.n)})
                   </span>
@@ -1505,7 +1505,7 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
               )}
               {tableWongIn.n > 0 && (
                 <li className="mistake-row" data-testid="bsl-table-wong-in">
-                  <span>At the table: watch or sit in</span>
+                  <span>At the table: stay out or get in</span>
                   <span>
                     {tableWongIn.right}/{tableWongIn.n} ({pct(tableWongIn.right, tableWongIn.n)})
                   </span>

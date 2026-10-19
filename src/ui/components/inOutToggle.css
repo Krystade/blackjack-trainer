@@ -1,0 +1,51 @@
+/* Wave J toggle rework: the bet bar's bottom row -- the In/Out toggle, then
+   Deal. One row on every table, so the toggle costs the dock no height (it
+   replaces the Sit out row), and both sit under the thumb at 320px. */
+.deal-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.deal-row > .deal-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 52px;
+  font-size: var(--fs-lg);
+}
+
+/* A two-state switch: two halves in one frame, the state in force filled. */
+.in-out-toggle {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  border: 2px solid var(--accent-line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.in-out-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 52px;
+  border: none;
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.in-out-btn + .in-out-btn {
+  border-left: 2px solid var(--accent-line);
+}
+
+.in-out-btn.in-out-on {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.in-out-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}

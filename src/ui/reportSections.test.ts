@@ -163,16 +163,24 @@ describe('H7: a play row reads the wrong-play card reason, not the engine placeh
   });
 });
 
-describe('Wave J: back-count rows', () => {
+describe('Wave J: In/Out toggle rows', () => {
   it('the entry, both ways, against the entry point', () => {
     expect(betRowText(ev({ kind: 'wongIn', category: 'wongIn', taken: 'watch', expected: 'sit-in', tc: 2, wongInTc: 1 }))).toBe(
-      'TC +2 · you watched · you enter at +1',
+      'TC +2 · you stayed out · you enter at +1',
     );
     expect(betRowText(ev({ kind: 'wongIn', category: 'wongIn', taken: 'sit-in', expected: 'watch', tc: -1, wongInTc: 0 }))).toBe(
-      'TC −1 · you sat in · you enter at +0',
+      'TC −1 · you got in · you enter at +0',
     );
   });
-  it('leaving above the exit point', () => {
+  it('the exit, both ways, against the exit point', () => {
+    expect(betRowText(ev({ kind: 'wong', category: 'wong', taken: 'play', expected: 'sit-out', tc: -3, wongExitTc: -2 }))).toBe(
+      'TC −3 · you stayed in · you leave at −2',
+    );
+    expect(betRowText(ev({ kind: 'wong', category: 'wong', taken: 'sit-out', expected: 'play', tc: 0, wongExitTc: -2 }))).toBe(
+      'TC +0 · you got out · you leave at −2',
+    );
+  });
+  it('old data: leaving above the exit point', () => {
     expect(betRowText(ev({ kind: 'wong', category: 'wong', taken: 'leave', expected: 'play', tc: 1 }))).toBe(
       'TC +1 · you left · your ramp plays',
     );

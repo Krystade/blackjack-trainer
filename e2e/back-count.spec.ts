@@ -1,25 +1,22 @@
 import { test, expect, type Page } from '@playwright/test';
-import { withSettings, withProfile, playRoundByAdvice, statsTab, sayOnceListening } from './helpers';
+import { withSettings, withProfile, playRoundByAdvice, statsTab, sayOnceListening, resolveInsurance } from './helpers';
 
 /**
- * Wave J: back-counting. Every shoe starts with the player watching -- dealt
- * nothing, the round going to the bots and the dealer -- and each round asks
- * Watch or Sit in, graded at the entry point. Seated, Sit out is Leave: the
- * exit is graded, and the next round is a new table, a fresh shoe, watched.
+ * Wave J toggle rework: back-counting is the table's In/Out toggle. It sits
+ * beside Deal on every table; Deal deals the next round with the player in or
+ * out as it says, at the SAME table and shoe, and it stays where it is put
+ * until flipped. Each round is graded from the last round's state, with
+ * hysteresis: In, staying in is right unless TC <= the exit point; Out,
+ * staying out is right unless TC >= the entry point -- between the two,
+ * either is right. "Start each shoe out" (the old back-count mode, which old
+ * data maps to) turns it Out as every fresh shoe starts.
  *
- * Fixed seeds throughout, and every decision is placed at a count the test
- * KNOWS: a fresh shoe is TC 0, which is why the entry point is moved (0 or
- * +1) to make the same count a right or a wrong entry. The one count read
- * mid-shoe (before a leave) is read off the peek and pinned, so a change in
- * the dealt path fails here by name instead of grading the other branch.
+ * Fixed seeds throughout, and every graded decision is placed on a fresh
+ * shoe, at a TC 0 the test KNOWS; the exit and entry points are moved around
+ * it to make the same count a right or a wrong choice.
  */
 
 test.use({ viewport: { width: 375, height: 812 } });
-
-/** Seed 7, entry 0, sat in at the fresh shoe and played by the advice: the count then. */
-const LEAVE_TC = 0;
-/** ...above the default exit point (-2), so leaving is the miss. */
-const LEAVE_MISS = 'Play at TC +0 — you left';
 
 const SETTINGS = {
   feedbackMode: 'training',
@@ -27,192 +24,246 @@ const SETTINGS = {
   dealSpeedMs: 0,
   audio: { enabled: true, verbosity: 'full' },
 };
-/** No bots configured: a back-counter watches a table of three anyway. */
-const BACK_COUNT = { betSpreadOn: true, backCount: true, countCheckEvery: 0, seats: { bots: 0 } };
+/** No bots configured: a player Out watches a table of three anyway. */
+const TABLE = { betSpreadOn: true, countCheckEvery: 0, seats: { bots: 0 } };
 
 const speech = (page: Page) => page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
-const watchBtn = (page: Page) => page.getByRole('button', { name: 'Watch', exact: true });
-const sitInBtn = (page: Page) => page.getByRole('button', { name: 'Sit in', exact: true });
-const roundNo = async (page: Page) => Number((await page.locator('.topbar-stat', { hasText: 'Round' }).innerText()).replace(/\D/g, ''));
+const toggle = (page: Page) => page.getByRole('group', { name: 'In or out' });
+const inBtn = (page: Page) => toggle(page).getByRole('button', { name: 'In', exact: true });
+const outBtn = (page: Page) => toggle(page).getByRole('button', { name: 'Out', exact: true });
+const dealBtn = (page: Page) => page.getByRole('button', { name: 'Deal', exact: true });
+const round = (page: Page) => page.locator('.topbar-stat', { hasText: 'Round' });
+
+async function expectIn(page: Page, isIn: boolean): Promise<void> {
+  await expect(inBtn(page)).toHaveAttribute('aria-pressed', String(isIn));
+  await expect(outBtn(page)).toHaveAttribute('aria-pressed', String(!isIn));
+}
 
 async function openTable(page: Page, profile: Record<string, unknown>, seed = 7): Promise<void> {
   await withSettings(page, SETTINGS);
-  await withProfile(page, { ...BACK_COUNT, ...profile });
+  await withProfile(page, { ...TABLE, ...profile });
   await page.goto(`/?seed=${seed}&e2e=1`);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 }
 
-/** The graded TC, read off the held peek (#40/#41). */
-async function peekTc(page: Page): Promise<number> {
-  const peek = page.locator('.tc-peek-btn');
-  await peek.focus();
-  await page.keyboard.down('Enter');
-  const tc = Number(await peek.getAttribute('data-tc'));
-  await page.keyboard.up('Enter');
-  return tc;
-}
+test('every table has the toggle, In; Out deals the rounds to three bots at the same table, and stays Out', async ({ page }) => {
+  // Exit 0: getting out at the fresh shoe's TC 0 is right. Entry +5: staying out is.
+  await openTable(page, { wongExitTc: 0, wongInTc: 5 });
+  await expectIn(page, true);
+  await expect(dealBtn(page)).toBeVisible();
+  // The old buttons are gone.
+  for (const gone of ['Sit out', 'Watch', 'Sit in', 'Leave']) {
+    await expect(page.getByRole('button', { name: gone, exact: true })).toHaveCount(0);
+  }
 
-test('every shoe starts watching: three bots, no player hand, Watch and Sit in in place of Deal', async ({ page }) => {
-  // Entry +5: three rounds off a fresh shoe are all watches.
-  await openTable(page, { wongInTc: 5 });
-  await expect(page.getByTestId('player-watching')).toHaveText('Watching');
-  await expect(watchBtn(page)).toBeVisible();
-  await expect(sitInBtn(page)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Sit out', exact: true })).toHaveCount(0);
+  await outBtn(page).click();
+  await expectIn(page, false);
+  // Flipping deals nothing; it says the new state.
+  await expect(round(page)).toHaveText('Round 0');
+  await expect.poll(async () => (await speech(page)).at(-1)).toBe('Out.');
 
-  for (let round = 1; round <= 3; round++) {
-    await watchBtn(page).click();
-    await expect(page.locator('.topbar-stat', { hasText: 'Round' })).toHaveText(`Round ${round}`);
-    await expect(page.locator('.message-sat-out')).toHaveText('Watching — no bet.');
+  for (let r = 1; r <= 3; r++) {
+    await dealBtn(page).click();
+    await expect(round(page)).toHaveText(`Round ${r}`);
+    await expect(page.locator('.message-sat-out')).toHaveText('Out — no bet.');
     await expect(page.getByTestId('player-watching')).toBeVisible();
     await expect(page.locator('.player-hand')).toHaveCount(0);
     // 0 bots configured, three dealt to.
     await expect(page.locator('.bot-seat')).toHaveCount(3);
-    await expect(page.locator('.bot-seat').first().locator('.card').first()).toBeVisible();
-    // A right watch: no strip.
+    // The same table: no shuffle, no new shoe.
+    await expect(page.locator('.message-shuffle')).toHaveCount(0);
+    // Right every time: no strip.
     await expect(page.locator('.bet-miss')).toHaveCount(0);
+    await expectIn(page, false);
   }
-  // A watched round says so, and reads out its cards to be counted -- a
-  // plain sit-out reads none of them.
+  // A round out reads its cards out, to be counted.
   const said = await speech(page);
   expect(said.filter((l) => l === 'Sitting out.')).toHaveLength(3);
   expect(said.filter((l) => l.startsWith('Dealer shows '))).toHaveLength(3);
+
+  // Back in: the same shoe goes on.
+  await inBtn(page).click();
+  await expect.poll(async () => (await speech(page)).at(-1)).toBe('In.');
+  await dealBtn(page).click();
+  await expect(round(page)).toHaveText('Round 4');
+  await expect(page.locator('.player-hand')).toHaveCount(1);
+  await expect(page.locator('.message-shuffle')).toHaveCount(0);
 });
 
-test('sitting in short of the entry point is an early entry: the strip, the spoken line, the report and Stats', async ({ page }) => {
-  await openTable(page, { wongInTc: 1 });
-  // Fresh shoe, TC 0, entry +1: the count says keep watching.
-  await sitInBtn(page).click();
-  await expect(page.locator('.bet-miss')).toHaveText('TC +0 — keep watching (you enter at +1)');
+/*
+ * Hysteresis, at the fresh shoe's TC 0 with the exit at -2 and the entry at
+ * +1: between the two points, staying where you are is right from either
+ * state, and changing state is the miss either way.
+ */
+for (const [startOut, flip, miss] of [
+  [false, false, null],
+  [true, false, null],
+  [false, true, 'TC +0 — stay in (you leave at −2)'],
+  [true, true, 'TC +0 — stay out (you enter at +1)'],
+] as const) {
+  const from = startOut ? 'Out' : 'In';
+  const to = flip ? (startOut ? 'In' : 'Out') : from;
+  test(`hysteresis, TC 0 between exit -2 and entry +1: ${from} -> ${to} is ${miss ? 'the miss' : 'right'}`, async ({ page }) => {
+    await openTable(page, { wongExitTc: -2, wongInTc: 1, startShoeOut: startOut });
+    await expectIn(page, !startOut);
+    if (flip) await (startOut ? inBtn(page) : outBtn(page)).click();
+    await dealBtn(page).click();
+    await expect(round(page)).toHaveText('Round 1');
+    await resolveInsurance(page, false);
+    if (miss) await expect(page.locator('.bet-miss')).toHaveText(miss);
+    else await expect(page.locator('.bet-miss')).toHaveCount(0);
+    await expect(page.locator('.player-hand')).toHaveCount(to === 'In' ? 1 : 0);
+  });
+}
+
+test('getting in short of the entry point is early: the strip, the spoken line, the report and Stats', async ({ page }) => {
+  await openTable(page, { startShoeOut: true, wongInTc: 1 });
+  await expectIn(page, false);
+  await inBtn(page).click();
+  await dealBtn(page).click();
+  await expect(page.locator('.bet-miss')).toHaveText('TC +0 — stay out (you enter at +1)');
   await expect.poll(async () => (await speech(page)).includes('Your ramp sits out. True count zero.')).toBe(true);
-  // Not a modal, and the hand is dealt: the player sat in.
   await expect(page.locator('.modal-backdrop')).toHaveCount(0);
   await expect(page.locator('.player-hand')).toHaveCount(1);
   await expect(page.getByTestId('player-watching')).toHaveCount(0);
   await playRoundByAdvice(page);
-  // Seated: Deal, and Sit out is Leave.
-  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Leave', exact: true })).toBeVisible();
-  await expect(watchBtn(page)).toHaveCount(0);
+  // It stays In.
+  await expectIn(page, true);
 
   await page.locator('.end-btn').click();
   await page.locator('.end-btn').click();
-  await expect(page.locator('.report-bets li')).toHaveText(['TC +0 · you sat in · you enter at +1']);
+  await expect(page.locator('.report-bets li')).toHaveText(['TC +0 · you got in · you enter at +1']);
   await page.getByRole('button', { name: 'Back to Home', exact: true }).click();
 
   await page.getByRole('button', { name: 'Stats', exact: true }).click();
   await statsTab(page, 'Play');
+  await expect(page.getByTestId('bsl-table-wong-in')).toContainText('At the table: stay out or get in');
   await expect(page.getByTestId('bsl-table-wong-in')).toContainText('0/1');
   await expect(page.getByTestId('bsl-table-wong-in-misses')).toHaveText(/Entries missed · early\s*0 · 1/);
 });
 
-test('watching through the entry point is a missed entry', async ({ page }) => {
-  await openTable(page, { wongInTc: 0 });
-  // Entry 0: the fresh shoe's TC 0 calls for a seat.
-  await watchBtn(page).click();
-  await expect(page.locator('.bet-miss')).toHaveText('TC +0 — sit in (you enter at +0)');
+test('staying out through the entry point is a missed entry', async ({ page }) => {
+  await openTable(page, { startShoeOut: true, wongInTc: 0 });
+  await dealBtn(page).click();
+  await expect(page.locator('.bet-miss')).toHaveText('TC +0 — get in (you enter at +0)');
   await expect.poll(async () => (await speech(page)).includes('Your ramp plays. True count zero.')).toBe(true);
   await expect(page.locator('.player-hand')).toHaveCount(0);
 });
 
-test('a right entry, then leaving: nothing is dealt, and the next round is a new table, a fresh shoe, watched', async ({ page }) => {
-  await openTable(page, { wongInTc: 0 });
-  await sitInBtn(page).click();
-  // TC 0 at entry 0, a 1-unit chip at the ramp's 1 unit: nothing wrong.
-  await expect(page.locator('.player-hand')).toHaveCount(1);
-  await expect(page.locator('.bet-miss')).toHaveCount(0);
-  await playRoundByAdvice(page);
-  const leaveBtn = page.getByRole('button', { name: 'Leave', exact: true });
-  await expect(leaveBtn).toBeVisible();
-
-  // Pinned: this seed's count after its first round (see the header).
-  const tc = await peekTc(page);
-  expect(tc, 'seed 7 changed its first round').toBe(LEAVE_TC);
-  const before = await roundNo(page);
-  const saidBefore = (await speech(page)).length;
-  await leaveBtn.click();
-  // The exit is graded at the default exit point, -2: above it, leaving is the miss.
-  await expect(page.locator('.bet-miss')).toHaveText(LEAVE_MISS);
-  // Nothing was dealt: same round, the settled hand still on the felt.
-  expect(await roundNo(page)).toBe(before);
-  await expect(page.locator('.player-hand')).toHaveCount(1);
-  await expect(page.getByTestId('new-table-cue')).toHaveText('New table: the next hand is off a fresh shoe, count 0.');
-  await expect(page.getByTestId('cut-card-cue')).toHaveCount(0);
-  await expect.poll(async () => (await speech(page)).slice(saidBefore)).toContain('Shuffling.');
-  // Review S4: then a recorded "Watching.", so eyes-free the next forward
-  // press is known to watch rather than deal.
-  await expect.poll(async () => {
-    const said = (await speech(page)).slice(saidBefore);
-    return said[said.indexOf('Shuffling.') + 1];
-  }).toBe('Watching.');
-  await expect(watchBtn(page)).toBeVisible();
-  await expect(sitInBtn(page)).toBeVisible();
-
-  // The new table: a fresh shoe at TC 0 -- which, at entry 0, a watch misses.
-  await watchBtn(page).click();
-  await expect(page.locator('.message-shuffle')).toHaveText('New table…');
-  await expect(page.locator('.bet-miss')).toHaveText('TC +0 — sit in (you enter at +0)');
-  await expect(page.getByTestId('player-watching')).toBeVisible();
-  await expect(page.getByTestId('new-table-cue')).toHaveCount(0);
-  // "Shuffling." was said once, for the walk -- not again as the shoe is dealt.
-  expect((await speech(page)).slice(saidBefore).filter((l) => l === 'Shuffling.')).toHaveLength(1);
+test('staying in at the exit point is a missed exit, named against the exit point', async ({ page }) => {
+  await openTable(page, { wongExitTc: 0, wongInTc: 1 });
+  await dealBtn(page).click();
+  await expect(page.locator('.bet-miss')).toHaveText('TC +0 — get out (you leave at +0)');
+  await expect.poll(async () => (await speech(page)).includes('Your ramp sits out. True count zero.')).toBe(true);
+  await resolveInsurance(page, false);
+  if (await page.locator('.action-bar[data-advice]').isVisible().catch(() => false)) await playRoundByAdvice(page);
+  await page.locator('.end-btn').click();
+  await page.locator('.end-btn').click();
+  await expect(page.locator('.report-bets li')).toHaveText(['TC +0 · you stayed in · you leave at +0']);
 });
 
-test('the wheel between rounds: forward carries on (watch, deal), back changes seat (sit in, leave)', async ({ page }) => {
+test('"start each shoe out": the cut card turns the toggle Out for the next shoe, and says so', async ({ page }) => {
+  await withSettings(page, SETTINGS);
+  await withProfile(page, { ...TABLE, rules: { decks: 1 }, penetration: 0.1, startShoeOut: true, wongInTc: 1 });
+  await page.goto('/?seed=3&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expectIn(page, false);
+  // Get in for the round that reaches the cut card.
+  await inBtn(page).click();
+  await dealBtn(page).click();
+  await resolveInsurance(page, false);
+  if (await page.locator('.action-bar[data-advice]').isVisible().catch(() => false)) await playRoundByAdvice(page);
+  await expect(page.getByTestId('cut-card-cue')).toHaveText('Cut card: the next shoe starts with you out, count 0.');
+  await expectIn(page, false);
+  await expect.poll(async () => {
+    const said = await speech(page);
+    return said[said.lastIndexOf('Shuffling.') + 1];
+  }).toBe('Out.');
+});
+
+test('without "start each shoe out", the toggle stays where it was put across the shuffle', async ({ page }) => {
+  await withSettings(page, SETTINGS);
+  await withProfile(page, { ...TABLE, rules: { decks: 1 }, penetration: 0.1, wongInTc: 1 });
+  await page.goto('/?seed=3&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await dealBtn(page).click();
+  await resolveInsurance(page, false);
+  if (await page.locator('.action-bar[data-advice]').isVisible().catch(() => false)) await playRoundByAdvice(page);
+  await expect(page.getByTestId('cut-card-cue')).toHaveText(/count 0/);
+  await expect(page.getByTestId('cut-card-cue')).not.toContainText('out');
+  await expectIn(page, true);
+});
+
+test('old data: a stored backCount: true starts the table Out, and reads as "Start each shoe out"', async ({ page }) => {
+  await openTable(page, { backCount: true, wongInTc: 5 });
+  await expectIn(page, false);
+  await dealBtn(page).click();
+  await expect(page.locator('.message-sat-out')).toHaveText('Out — no bet.');
+  await expect(page.locator('.bot-seat')).toHaveCount(3);
+
+  await page.getByRole('button', { name: 'Play settings' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  await expect(sheet.getByRole('checkbox', { name: 'Start each shoe out' })).toBeChecked();
+  await expect(sheet.getByRole('checkbox', { name: 'Back-count' })).toHaveCount(0);
+});
+
+test('the gear sheet: "Start each shoe out" and the entry point (review S3a)', async ({ page }) => {
+  await withSettings(page, SETTINGS);
+  await withProfile(page, { betSpreadOn: true, countCheckEvery: 0, backCount: true });
+  await page.goto('/?seed=7&e2e=1');
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Play settings' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  const box = sheet.getByRole('checkbox', { name: 'Start each shoe out' });
+  await expect(box).toBeChecked();
+  await box.uncheck();
+  const row = sheet.locator('.settings-row', { hasText: 'Get in at TC' });
+  await expect(row.locator('.stepper-value')).toHaveText('+1');
+  await row.getByRole('button', { name: '+' }).click();
+  await expect(row.locator('.stepper-value')).toHaveText('+2');
+  await expect(sheet.locator('.settings-row', { hasText: 'Get out at TC' })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+
+  // Off overrides the old field, which is cleared.
+  let stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('bjtrainer.profiles.v1') ?? '[]')[0]);
+  expect(stored).toMatchObject({ startShoeOut: false, wongInTc: 2 });
+  expect('backCount' in stored).toBe(false);
+
+  await page.getByRole('button', { name: 'Play settings' }).click();
+  await sheet.getByRole('checkbox', { name: 'Start each shoe out' }).check();
+  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('bjtrainer.profiles.v1') ?? '[]')[0]);
+  expect(stored).toMatchObject({ startShoeOut: true, wongInTc: 2 });
+});
+
+test('the wheel between rounds: back flips the toggle and says so, forward deals as it says', async ({ page }) => {
   await withSettings(page, { ...SETTINGS, drill: { wheelMode: 'answer' } });
-  await withProfile(page, { ...BACK_COUNT, wongInTc: 1 });
+  await withProfile(page, { ...TABLE, wongInTc: 5, wongExitTc: 0 });
   await page.goto('/?seed=7&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   const press = (c: 'forward' | 'back') => page.evaluate((cmd) => window.__wheelPress?.(cmd) ?? false, c);
 
+  await expectIn(page, true);
+  expect(await press('back')).toBe(true);
+  await expectIn(page, false);
+  await expect.poll(async () => (await speech(page)).at(-1)).toBe('Out.');
+  // Back deals nothing.
+  await expect(round(page)).toHaveText('Round 0');
+
   expect(await press('forward')).toBe(true);
-  await expect(page.locator('.message-sat-out')).toHaveText('Watching — no bet.');
+  await expect(round(page)).toHaveText('Round 1');
+  await expect(page.locator('.message-sat-out')).toHaveText('Out — no bet.');
   await expect(page.locator('.player-hand')).toHaveCount(0);
+  await expectIn(page, false);
 
   expect(await press('back')).toBe(true);
-  await expect(page.locator('.player-hand')).toHaveCount(1);
-  await expect(page.getByTestId('player-watching')).toHaveCount(0);
-  await playRoundByAdvice(page);
-
-  // Seated (review S2): forward deals the next round, seated...
-  const before = await roundNo(page);
+  await expectIn(page, true);
+  await expect.poll(async () => (await speech(page)).at(-1)).toBe('In.');
+  await expect(round(page)).toHaveText('Round 1');
   expect(await press('forward')).toBe(true);
-  await expect.poll(() => roundNo(page)).toBe(before + 1);
+  await expect(round(page)).toHaveText('Round 2');
   await expect(page.locator('.player-hand')).toHaveCount(1);
-  await playRoundByAdvice(page);
-  // ...and back leaves: graded, a new table, watched.
-  await expect(page.getByTestId('new-table-cue')).toHaveCount(0);
-  expect(await press('back')).toBe(true);
-  await expect(page.getByTestId('new-table-cue')).toBeVisible();
-  await expect(watchBtn(page)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Leave', exact: true })).toHaveCount(0);
-});
-
-test('the gear sheet turns back-counting on and sets the entry point (review S3a)', async ({ page }) => {
-  await withSettings(page, SETTINGS);
-  await withProfile(page, { betSpreadOn: true, countCheckEvery: 0 });
-  await page.goto('/?seed=7&e2e=1');
-  await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
-  await expect(watchBtn(page)).toHaveCount(0);
-
-  await page.getByRole('button', { name: 'Play settings' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Play settings' });
-  await sheet.getByRole('checkbox', { name: 'Back-count' }).check();
-  const row = sheet.locator('.settings-row', { hasText: 'Enter at TC' });
-  await expect(row.locator('.stepper-value')).toHaveText('+1');
-  await row.getByRole('button', { name: '+' }).click();
-  await expect(row.locator('.stepper-value')).toHaveText('+2');
-  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
-
-  const stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('bjtrainer.profiles.v1') ?? '[]')[0]);
-  expect(stored).toMatchObject({ backCount: true, wongInTc: 2 });
-  await expect(watchBtn(page)).toBeVisible();
-  await expect(sitInBtn(page)).toBeVisible();
-  // Entry +2 at the fresh shoe's TC 0: sitting in is early.
-  await sitInBtn(page).click();
-  await expect(page.locator('.bet-miss')).toHaveText('TC +0 — keep watching (you enter at +2)');
 });
 
 /** The recogniser, faked as voice-table.spec.ts fakes it; `sayOnceListening` delivers a transcript. */
@@ -246,30 +297,37 @@ async function withFakeEngine(page: Page): Promise<void> {
   });
 }
 
-test('out loud: "yes" and "watch" watch, "sit in" sits down, "leave" leaves', async ({ page }) => {
+test('out loud: "out" and "sit in" set the toggle, "yes" deals as it says, and a runner-up never flips it', async ({ page }) => {
   await withFakeEngine(page);
-  await openTable(page, { wongInTc: 5 });
+  await openTable(page, { wongInTc: 5, wongExitTc: 0 });
   await page.locator('.voice-btn').click();
   await expect(page.locator('.voice-status')).toHaveAttribute('data-voice-state', 'listening');
-  await expect(page.locator('.voice-status')).toContainText('“sit in” sits you down');
+  await expect(page.locator('.voice-status')).toContainText('“In” or “sit in” and “out” or “sit out” set the toggle');
 
-  // "Yes" deals a seated round; a watcher's next round is dealt without them.
-  // Review S1: with "in" ranked under it -- a runner-up never outranks the
-  // command the engine heard first.
+  // Voice on, a chime follows each line: the cue is read off what was said since.
+  const saidSince = async (n: number) => (await speech(page)).slice(n);
+  let n = (await speech(page)).length;
+  await sayOnceListening(page, 'out');
+  await expectIn(page, false);
+  await expect.poll(() => saidSince(n)).toContain('Out.');
+  await expect(round(page)).toHaveText('Round 0');
+
+  // Review S1: "in" ranked under "yes" -- the runner-up never outranks the
+  // command the engine heard first. "Yes" deals, Out.
   await sayOnceListening(page, 'yes', ['in']);
-  await expect(page.locator('.topbar-stat', { hasText: 'Round' })).toHaveText('Round 1');
-  await expect(page.locator('.message-sat-out')).toHaveText('Watching — no bet.');
-  await sayOnceListening(page, 'watch');
-  await expect(page.locator('.topbar-stat', { hasText: 'Round' })).toHaveText('Round 2');
-  await expect(page.locator('.player-hand')).toHaveCount(0);
+  await expect(round(page)).toHaveText('Round 1');
+  await expect(page.locator('.message-sat-out')).toHaveText('Out — no bet.');
+  await expectIn(page, false);
 
+  n = (await speech(page)).length;
   await sayOnceListening(page, 'sit in');
+  await expectIn(page, true);
+  await expect.poll(() => saidSince(n)).toContain('In.');
+  await sayOnceListening(page, 'yes');
+  await expect(round(page)).toHaveText('Round 2');
   await expect(page.locator('.player-hand')).toHaveCount(1);
   await playRoundByAdvice(page);
-  // Seated, "sit in" is nothing, and "leave" walks.
-  await sayOnceListening(page, 'sit in');
-  await expect(page.getByTestId('new-table-cue')).toHaveCount(0);
-  await sayOnceListening(page, 'leave');
-  await expect(page.getByTestId('new-table-cue')).toBeVisible();
-  await expect(watchBtn(page)).toBeVisible();
+
+  await sayOnceListening(page, 'sit out');
+  await expectIn(page, false);
 });

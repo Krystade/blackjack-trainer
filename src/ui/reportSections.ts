@@ -151,10 +151,14 @@ function playRowReason(m: GradedEvent, rules: RuleSet): string {
  */
 export function betRowText(m: GradedEvent): string {
   const tc = `TC ${tcText(m.tc)}`;
-  // Wave J: "TC +2 · you watched · you enter at +1".
+  // Wave J toggle rework: "TC +2 · you stayed out · you enter at +1".
   if (m.kind === 'wongIn') {
     const at = `you enter at ${tcText(m.wongInTc ?? 1)}`;
-    return m.taken === 'watch' ? `${tc} · you watched · ${at}` : `${tc} · you sat in · ${at}`;
+    return m.taken === 'watch' ? `${tc} · you stayed out · ${at}` : `${tc} · you got in · ${at}`;
+  }
+  if (m.kind === 'wong' && m.wongExitTc !== undefined) {
+    const at = `you leave at ${tcText(m.wongExitTc)}`;
+    return m.taken === 'sit-out' ? `${tc} · you got out · ${at}` : `${tc} · you stayed in · ${at}`;
   }
   if (m.kind === 'wong') {
     if (m.taken === 'leave') return `${tc} · you left · your ramp plays`;

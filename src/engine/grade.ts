@@ -195,6 +195,13 @@ export interface GradedEvent {
   wongInTc?: number;
 
   /**
+   * Wave J toggle rework: on a `wong` event (an exit decision -- you were In),
+   * the exit point it was graded against, so the feedback can say "you leave
+   * at −2". Absent on older events and every other kind.
+   */
+  wongExitTc?: number;
+
+  /**
    * Wave J: on a `bet` event from a ramp that spreads to two hands, how many
    * hands the player opened and how many the row in force called for. The
    * event is wrong when they differ, whatever the stake. Absent on every

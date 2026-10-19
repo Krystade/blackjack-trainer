@@ -138,6 +138,6 @@ test('bet-spread grading against a profile ramp: a wrong bet is graded and shows
   const betRow = page.locator('.report-categories tr', { hasText: 'bet' });
   await expect(betRow).toBeVisible();
   // Graded as a bet size, not a sit-out: one wrong bet, no play-or-sit row.
-  await expect(page.locator('.report-categories tr', { hasText: 'Play or sit out' })).toHaveCount(0);
+  await expect(page.locator('.report-categories tr', { hasText: 'Stay in or get out' })).toHaveCount(0);
   await shot(page, '45-profile-bet-spread-report');
 });

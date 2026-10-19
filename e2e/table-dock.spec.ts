@@ -5,7 +5,8 @@ import { withSettings, withProfile, playRoundByAdvice } from './helpers';
  * Wave J (review B1): on a phone the table's decision buttons are on screen
  * without a scroll. A full table -- three bots, a back-counter's narration,
  * a ×2 ramp's hands toggle, two hands on the felt -- is taller than 812px,
- * and Watch / Sit in (and Deal / Leave) used to sit below the fold.
+ * and the bet bar's buttons (now the In/Out toggle and Deal) used to sit
+ * below the fold.
  *
  * Every click here is a dispatched event, and the page is scrolled to the top
  * before each check, so Playwright's actionability scroll can never be what
@@ -18,10 +19,10 @@ import { withSettings, withProfile, playRoundByAdvice } from './helpers';
 test.use({ viewport: { width: 375, height: 812 } });
 
 const SETTINGS = { feedbackMode: 'training', countCheckEvery: 0, dealSpeedMs: 0, audio: { enabled: true } };
-/** 1u below 0; two hands of 2u from 0 up. Entry 0, three bots. */
+/** 1u below 0; two hands of 2u from 0 up. Entry 0, three bots, each shoe started Out. */
 const PROFILE = {
   betSpreadOn: true,
-  backCount: true,
+  startShoeOut: true,
   wongInTc: 0,
   countCheckEvery: 0,
   seats: { bots: 3 },
@@ -63,40 +64,42 @@ async function atTopAllInView(page: Page, buttons: Locator[]): Promise<void> {
   }
 }
 
-test('watching and seated at a full table, the decision buttons are on screen at the top of the page', async ({ page }) => {
+test('out and in at a full table, the decision buttons are on screen at the top of the page', async ({ page }) => {
   await notch(page);
   await withSettings(page, SETTINGS);
   await withProfile(page, PROFILE);
   await page.goto('/?seed=7&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
-  const watch = page.getByRole('button', { name: 'Watch', exact: true });
-  const sitIn = page.getByRole('button', { name: 'Sit in', exact: true });
-  // Watched rounds put the bots' hands and the narration on the felt: the
+  const toggle = page.getByRole('group', { name: 'In or out' });
+  const inBtn = toggle.getByRole('button', { name: 'In', exact: true });
+  const outBtn = toggle.getByRole('button', { name: 'Out', exact: true });
+  const deal = page.getByRole('button', { name: 'Deal', exact: true });
+  // Rounds out put the bots' hands and the narration on the felt: the
   // reviewer's state is round 2 of seed 7.
+  await expect(outBtn).toHaveAttribute('aria-pressed', 'true');
   for (const round of [1, 2]) {
-    await watch.dispatchEvent('click');
+    await deal.dispatchEvent('click');
     await expect(page.locator('.topbar-stat', { hasText: 'Round' })).toHaveText(`Round ${round}`);
-    await expect(page.locator('.message-sat-out')).toHaveText('Watching — no bet.');
+    await expect(page.locator('.message-sat-out')).toHaveText('Out — no bet.');
   }
   await expect(page.locator('.bot-seat')).toHaveCount(3);
-  await atTopAllInView(page, [watch, sitIn]);
+  await atTopAllInView(page, [inBtn, outBtn, deal]);
 
-  // Seated: sit in, then two hands at the ×2 count.
-  await sitIn.dispatchEvent('click');
+  // In, then two hands at the ×2 count.
+  await inBtn.dispatchEvent('click');
+  await deal.dispatchEvent('click');
   await expect(page.locator('.player-hand')).toHaveCount(1);
   await playRoundByAdvice(page);
   const two = page.getByRole('button', { name: '2 hands', exact: true });
   await two.dispatchEvent('click');
   await expect(two).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.chip-btn', { hasText: /^2$/ }).dispatchEvent('click');
-  const deal = page.getByRole('button', { name: 'Deal', exact: true });
   await deal.dispatchEvent('click');
   await expect(page.locator('.player-hand')).toHaveCount(2);
   await playRoundByAdvice(page);
-  const leave = page.getByRole('button', { name: 'Leave', exact: true });
   await expect(deal).toBeVisible();
-  await atTopAllInView(page, [deal, leave, two, page.locator('.chip-btn', { hasText: /^2$/ })]);
+  await atTopAllInView(page, [deal, inBtn, outBtn, two, page.locator('.chip-btn', { hasText: /^2$/ })]);
 });
 
 /**
@@ -106,7 +109,7 @@ test('watching and seated at a full table, the decision buttons are on screen at
  *     action buttons on screen;
  *   - a settled round: the dealer's whole hand, every player hand and every
  *     result line, with the dock;
- *   - a watched round: the dealer and the Watching spot.
+ *   - a round out: the dealer and the Watching spot.
  * At 375x812 (notch) and 320x568 (no notch), 1 and 3 bots, one hand and two,
  * over enough rounds that a four-card hand is among them. Clicks are
  * dispatched, so the scroll is always the app's own.
@@ -205,8 +208,9 @@ for (const [w, h] of [[375, 812], [320, 568]] as const) {
         maxCards = Math.max(maxCards, r.maxCards);
       };
 
+      // "Start each shoe out": the first rounds are dealt Out.
       for (const round of [1, 2]) {
-        await btn('Watch').dispatchEvent('click');
+        await btn('Deal').dispatchEvent('click');
         await expect(page.locator('.topbar-stat', { hasText: 'Round' })).toHaveText(`Round ${round}`);
         const r = await regions(page);
         for (const c of r.dealerCards) inBand(r, c, `watching round ${round}, a dealer card`);
@@ -214,7 +218,8 @@ for (const [w, h] of [[375, 812], [320, 568]] as const) {
         inBand(r, r.watching[0], `watching round ${round}, the Watching spot`);
         dockOnScreen(r, `watching round ${round}`);
       }
-      await btn('Sit in').dispatchEvent('click');
+      await page.getByRole('group', { name: 'In or out' }).getByRole('button', { name: 'In', exact: true }).dispatchEvent('click');
+      await btn('Deal').dispatchEvent('click');
       await expect(page.locator('.player-hand')).toHaveCount(1);
       await playChecked('one hand, round 3');
       await btn('Deal').dispatchEvent('click');

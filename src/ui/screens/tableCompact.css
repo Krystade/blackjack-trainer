@@ -11,7 +11,6 @@
  *   - bot cards overlap like a fanned hand, still readable by their corner;
  *   - the dealer and player cards are capped, and the felt's padding trimmed;
  *   - the result banner drops a size so a hand's result is one line;
- *   - between rounds, Deal and Sit out / Leave share a row.
  * Table also scrolls the page so those regions sit in the band (the up-card
  * never leaves the screen while a decision is due).
  */
@@ -87,20 +86,6 @@
     line-height: 1.2;
   }
 
-  .table-screen.table-crowded .action-bar-bet {
-    flex-flow: row wrap;
-    column-gap: 0.4rem;
-    row-gap: 0.4rem;
-  }
-
-  .table-screen.table-crowded .action-bar-bet > :not(.deal-btn, .sit-out-btn) {
-    flex: 1 0 100%;
-  }
-
-  .table-screen.table-crowded .action-bar-bet > :is(.deal-btn, .sit-out-btn) {
-    flex: 1 1 0;
-    margin-top: 0;
-  }
 }
 
 /* 320px: the dealer and the hands take smaller cards again. */

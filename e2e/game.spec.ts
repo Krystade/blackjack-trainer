@@ -252,22 +252,23 @@ test('bet spread: a deliberately bad bet is graded and shows in the test-mode re
   await shot(page, '09-bet-spread-report');
 });
 
-test('wong-out (R5): Sit Out plays the round unstaked, keeps the bankroll flat, and grades the wong', async ({
+test('wong-out (R5): a round Out plays unstaked, keeps the bankroll flat, and grades the wong', async ({
   page,
 }) => {
   await withSettings(page, { feedbackMode: 'test', betSpreadOn: true, countCheckEvery: 0 });
   await page.goto('/?seed=6&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
 
-  // The Sit Out button appears beside Deal only when a spread is configured
-  // (wong-out is meaningless flat-betting) — the same gate the engine grades on.
-  const sitOut = page.getByRole('button', { name: 'Sit out', exact: true });
-  await expect(sitOut).toBeVisible();
-  await sitOut.click();
+  // Wave J toggle rework: the In/Out toggle sits beside Deal on every table;
+  // Out, Deal deals the round without the player.
+  const out = page.getByRole('group', { name: 'In or out' }).getByRole('button', { name: 'Out', exact: true });
+  await expect(out).toBeVisible();
+  await out.click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
 
   // The round settled with NO player hand: the wong-out message shows and no
   // player-result row appears — nothing was staked.
-  await expect(page.locator('.message-sat-out')).toHaveText('Sat out — no bet.');
+  await expect(page.locator('.message-sat-out')).toHaveText('Out — no bet.');
   await expect(page.locator('.hands-row .player-hand')).toHaveCount(0);
   await shot(page, '30-wong-sit-out');
 
@@ -279,7 +280,7 @@ test('wong-out (R5): Sit Out plays the round unstaked, keeps the bankroll flat, 
   await page.locator('.end-btn').click(); // arms: the second tap ends
   await page.locator('.end-btn').click();
   await expect(page.locator('.report-screen')).toBeVisible();
-  await expect(page.locator('.report-categories tr', { hasText: 'Play or sit out' })).toBeVisible();
+  await expect(page.locator('.report-categories tr', { hasText: 'Stay in or get out' })).toBeVisible();
   await expect(page.locator('.report-categories tr', { hasText: /^Bet size when playing/ })).toHaveCount(0); // Wave B2 #14 label
   await shot(page, '31-wong-report');
 });
@@ -781,10 +782,10 @@ test('RV7: dealing in at a should-wong count is graded, not just the min bet', a
 
   // C-R6 (deliberately changed): the round grades ONE bet decision. The ramp
   // sits out here, so being in the hand is the miss and the size is not graded.
-  const wongRow = page.locator('.report-categories tr', { hasText: 'Play or sit out' });
+  const wongRow = page.locator('.report-categories tr', { hasText: 'Stay in or get out' });
   await expect(wongRow).toBeVisible();
   // Columns are right / wrong / percent, so the row reads "wong 0 1 0%".
-  await expect(wongRow.locator('td')).toHaveText(['Play or sit out', '0', '1', '0%']);
+  await expect(wongRow.locator('td')).toHaveText(['Stay in or get out', '0', '1', '0%']);
   await expect(page.locator('.report-categories tr', { hasText: /^Bet size when playing/ })).toHaveCount(0);
 });
 

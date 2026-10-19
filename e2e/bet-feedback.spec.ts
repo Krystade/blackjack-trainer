@@ -21,7 +21,7 @@ test('dealing in at a count the ramp sits out: a strip and a spoken line, and th
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
   const strip = page.locator('.bet-miss');
   // C-R6: the ramp sits out, so the stake is not graded -- the line names the play.
-  await expect(strip).toHaveText('Sit out at TC +0 — you played');
+  await expect(strip).toHaveText('TC +0 — get out (you leave at +0)');
   // Not a modal: nothing to dismiss, the hand is still to be played.
   await expect(page.locator('.modal-backdrop')).toHaveCount(0);
   await expect.poll(async () => (await speech(page)).some((l) => l.includes('Your ramp sits out. True count zero.'))).toBe(true);
@@ -29,7 +29,9 @@ test('dealing in at a count the ramp sits out: a strip and a spoken line, and th
   await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
   // It stays with that round, and goes when the next decision is right.
   await expect(strip).toBeVisible();
-  await page.getByRole('button', { name: 'Sit out', exact: true }).click();
+  // Wave J toggle rework: Out, then Deal -- getting out at the exit point.
+  await page.getByRole('group', { name: 'In or out' }).getByRole('button', { name: 'Out', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await expect(page.locator('.message-sat-out')).toBeVisible();
   await expect(strip).toHaveCount(0);
 });
@@ -44,10 +46,11 @@ test('D-R1: at the default exit point (-2) TC 0 is a play: the minimum is right,
   await expect(page.locator('.action-bar[data-advice]')).toBeVisible();
   await expect(page.locator('.bet-miss')).toHaveCount(0);
   await playRoundByAdvice(page);
-  // Sitting out above the exit point is the miss.
-  await page.getByRole('button', { name: 'Sit out', exact: true }).click();
+  // Getting out above the exit point is the miss.
+  await page.getByRole('group', { name: 'In or out' }).getByRole('button', { name: 'Out', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
   const strip = page.locator('.bet-miss');
-  await expect(strip).toHaveText(/^Play at TC (\+0|\+\d|−1) — you sat out$/);
+  await expect(strip).toHaveText(/^TC (\+0|\+\d|−1) — stay in \(you leave at −2\)$/);
 });
 
 test('test mode keeps the table quiet about bets', async ({ page }) => {

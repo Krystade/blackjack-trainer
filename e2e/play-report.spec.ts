@@ -101,7 +101,8 @@ test('B6: a session that only sat out shows no per-100 headline', async ({ page 
   await withProfile(page, { betSpreadOn: true, countCheckEvery: 0, wongExitTc: 0 });
   await page.goto('/?seed=4&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await page.getByRole('button', { name: 'Sit out', exact: true }).click();
+  await page.getByRole('group', { name: 'In or out' }).getByRole('button', { name: 'Out', exact: true }).click();
+  await page.getByRole('button', { name: 'Deal', exact: true }).click();
   await endWithReport(page);
   await expect(page.locator('.report-screen')).toBeVisible();
   await expect(page.locator('.report-headline')).toHaveCount(0);
@@ -166,7 +167,7 @@ test('B2 R3/#15: bet and sit misses are counted beside the headline and listed i
   const head = page.locator('.report-headline');
   await expect(head).toHaveText(/^(−\d+\.\d\d u|0 u|Under 0\.01 u) lost to playing mistakes per 100 hands · 1 bet decision off$/);
   const rows = page.locator('.report-bets li');
-  await expect(rows).toHaveText(['TC +0 · you played · your ramp sits out']);
+  await expect(rows).toHaveText(['TC +0 · you stayed in · you leave at +0']);
   await expect(page.locator('.report-bets')).not.toContainText(/wong|sit-out|played play|tc \d/);
   await shot(page, 'b2-r3-bet-misses');
 });

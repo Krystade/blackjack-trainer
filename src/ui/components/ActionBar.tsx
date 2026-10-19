@@ -1,5 +1,5 @@
 import type { Action } from '../../engine/deviations';
-import './watchChoice.css';
+import './inOutToggle.css';
 import './handsChoice.css';
 
 /** One bet-entry row per player hand. Length 1 (solo, the v1/parity case) or
@@ -15,22 +15,16 @@ export type ActionBarMode =
       kind: 'bet';
       betSpreadOn: boolean;
       hands: BetHandEntry[];
+      /** Deal the next round -- with the player in or out, as the toggle says. */
       onDeal: () => void;
-      /** Wong-out: sit the round out (staked nothing) while the shoe/count
-       * still runs. Rendered as a second button beside Deal only when
-       * provided — the Table wires it when a bet spread is on, so the exit
-       * decision is practiceable. R5, docs/BACKLOG.md. */
-      onSitOut?: () => void;
-      disabled?: boolean;
       /**
-       * Wave J: back-counting, and the player is watching. Deal and Sit out
-       * give way to the watcher's two choices, side by side and equal:
-       * Watch (`onSitOut`: the round is dealt without them) and Sit in
-       * (`onDeal`). The chips stay, for the bet a sit-in is made with.
+       * Wave J toggle rework: the In/Out toggle, beside Deal on every table.
+       * It replaces Sit out and the watcher's Watch / Sit in pair: Out, the
+       * round is dealt without the player at the same table (the shoe and the
+       * count move on); it stays where it is put until flipped.
        */
-      watching?: boolean;
-      /** Wave J: the sit-out button's label (a seated back-counter's is "Leave"). */
-      sitOutLabel?: string;
+      inOut: { isIn: boolean; onSet: (isIn: boolean) => void; locked?: boolean };
+      disabled?: boolean;
       /**
        * Wave J: the ramp spreads to two hands, so the round opens with one or
        * two -- chosen here, staked at the selected chip each. Absent on every
@@ -75,15 +69,36 @@ function HandsChoice({ hands, onHands, disabled }: { hands: 1 | 2; onHands: (h: 
   );
 }
 
-/** Wave J: the watcher's two choices, in place of Deal and Sit out. */
-function WatchChoice({ onWatch, onSitIn, disabled }: { onWatch?: () => void; onSitIn: () => void; disabled?: boolean }) {
+/**
+ * Wave J toggle rework: In or Out, a two-state switch. Two halves, the one in
+ * force pressed (aria-pressed), each a full thumb-sized target.
+ */
+function InOutToggle({ isIn, onSet, disabled }: { isIn: boolean; onSet: (isIn: boolean) => void; disabled?: boolean }) {
   return (
-    <div className="watch-choice" role="group" aria-label="Watch or sit in">
-      <button type="button" className="watch-btn" disabled={disabled} onClick={onWatch}>
-        Watch
-      </button>
-      <button type="button" className="sit-in-btn" disabled={disabled} onClick={onSitIn}>
-        Sit in
+    <div className="in-out-toggle" role="group" aria-label="In or out" data-in={isIn ? 'true' : 'false'}>
+      {([true, false] as const).map((v) => (
+        <button
+          key={String(v)}
+          type="button"
+          className={`in-out-btn in-out-${v ? 'in' : 'out'}${isIn === v ? ' in-out-on' : ''}`}
+          aria-pressed={isIn === v}
+          disabled={disabled}
+          onClick={() => onSet(v)}
+        >
+          {v ? 'In' : 'Out'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The bottom row of the bet bar: the toggle, then Deal. */
+function DealRow({ mode }: { mode: Extract<ActionBarMode, { kind: 'bet' }> }) {
+  return (
+    <div className="deal-row">
+      <InOutToggle isIn={mode.inOut.isIn} onSet={mode.inOut.onSet} disabled={mode.disabled || mode.inOut.locked} />
+      <button type="button" className="deal-btn" disabled={mode.disabled} onClick={mode.onDeal}>
+        Deal
       </button>
     </div>
   );
@@ -139,25 +154,7 @@ export function ActionBar({ mode }: ActionBarProps) {
             )}
           </div>
         )}
-        {mode.watching ? (
-          <WatchChoice onWatch={mode.onSitOut} onSitIn={mode.onDeal} disabled={mode.disabled} />
-        ) : (
-          <>
-            <button type="button" className="deal-btn" disabled={mode.disabled} onClick={mode.onDeal}>
-              Deal
-            </button>
-            {mode.onSitOut && (
-              <button
-                type="button"
-                className="sit-out-btn"
-                disabled={mode.disabled}
-                onClick={mode.onSitOut}
-              >
-                {mode.sitOutLabel ?? 'Sit out'}
-              </button>
-            )}
-          </>
-        )}
+        <DealRow mode={mode} />
       </div>
     );
   }
@@ -203,20 +200,7 @@ export function ActionBar({ mode }: ActionBarProps) {
           })}
         </div>
       )}
-      {mode.watching ? (
-        <WatchChoice onWatch={mode.onSitOut} onSitIn={mode.onDeal} disabled={mode.disabled} />
-      ) : (
-        <>
-          <button type="button" className="deal-btn" disabled={mode.disabled} onClick={mode.onDeal}>
-            Deal
-          </button>
-          {mode.onSitOut && (
-            <button type="button" className="sit-out-btn" disabled={mode.disabled} onClick={mode.onSitOut}>
-              {mode.sitOutLabel ?? 'Sit out'}
-            </button>
-          )}
-        </>
-      )}
+      <DealRow mode={mode} />
     </div>
   );
 }

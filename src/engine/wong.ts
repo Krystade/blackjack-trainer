@@ -84,6 +84,14 @@ export function sitInIsCorrect(tc: number, wongInTc?: number): boolean {
 export const BACK_COUNT_BOTS = 3;
 
 /**
+ * Wave J toggle rework: "Start each shoe out", read off a stored profile (or
+ * a game config). The first cut's `backCount: true` means it.
+ */
+export function startShoeOutOf(p: { startShoeOut?: boolean; backCount?: boolean }): boolean {
+  return p.startShoeOut ?? p.backCount === true;
+}
+
+/**
  * Wave J, spreading to two hands: how many hands the row in force calls for
  * (absent = 1). Same row rule as `spreadUnitsFor`: the last row whose minTc
  * <= tc, and the first row below every row. Only meaningful when the seat is

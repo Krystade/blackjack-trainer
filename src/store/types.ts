@@ -414,12 +414,17 @@ export interface Profile {
    */
   wongExitTc?: number;
   /**
-   * Wave J: back-counting ("Wonging in"). Every shoe starts with the player
-   * watching from behind the table; each round asks Watch or Sit in, graded at
-   * `wongInTc`; once seated, sitting out is leaving for a new table. Needs a
-   * bet spread on. OPTIONAL, absent = off (engine/game.ts `backCount`).
+   * Wave J, first cut: back-counting as a mode. Superseded by the In/Out
+   * toggle; a stored `true` is read as `startShoeOut` (see `startShoeOutOf`).
+   * Kept so stored profiles load untouched; never written by the app now.
    */
   backCount?: boolean;
+  /**
+   * Wave J toggle rework: "Start each shoe out". The table's In/Out toggle
+   * turns Out as every fresh shoe starts. OPTIONAL, absent = the legacy
+   * `backCount`, else off.
+   */
+  startShoeOut?: boolean;
   /**
    * Wave J: the back-count ENTRY point. Sitting in is graded right only at
    * true count >= this. 0..+5, absent = +1 (engine/wong.ts).

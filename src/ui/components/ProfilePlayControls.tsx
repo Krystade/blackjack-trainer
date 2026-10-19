@@ -17,6 +17,7 @@ import {
   WONG_EXIT_MIN,
   WONG_IN_MAX,
   WONG_IN_MIN,
+  startShoeOutOf,
   wongExitTcOf,
   wongInTcOf,
 } from '../../engine/wong';
@@ -31,7 +32,7 @@ type ProfileView = Pick<
   Profile,
   'countCheckEvery' | 'countCheckAsk' | 'gradeDeviations' | 'cutDecks' | 'cutVary' | 'penetration' | 'rules'
 > &
-  Partial<Pick<Profile, 'betSpreadOn' | 'wongExitTc' | 'backCount' | 'wongInTc' | 'seats'>>;
+  Partial<Pick<Profile, 'betSpreadOn' | 'wongExitTc' | 'backCount' | 'startShoeOut' | 'wongInTc' | 'seats'>>;
 
 interface ControlProps {
   profile: ProfileView;
@@ -131,11 +132,11 @@ export function BetSpreadControl({ profile, onChange }: ControlProps) {
       <Toggle label="Vary bets with the count" checked={on} onChange={(v) => onChange({ betSpreadOn: v })} />
       <p className="settings-note profile-play-note">
         {on
-          ? 'Bets are graded on your bet ramp, and Sit out appears: sitting out is right at or below your exit point.'
-          : 'Flat bets: no bet ramp, and no sitting out.'}
+          ? 'Bets are graded on your bet ramp, and so is the In/Out toggle: getting out is right at or below your exit point, getting in at or above your entry point.'
+          : 'Flat bets: no bet ramp, and the In/Out toggle is not graded.'}
       </p>
       {on && <WongExitControl profile={profile} onChange={onChange} />}
-      {on && <BackCountControl profile={profile} onChange={onChange} />}
+      <BackCountControl profile={profile} onChange={onChange} />
     </>
   );
 }
@@ -149,7 +150,7 @@ export function WongExitControl({ profile, onChange }: ControlProps) {
   return (
     <>
       <Stepper
-        label="Sit out at TC"
+        label="Get out at TC"
         value={exit}
         min={WONG_EXIT_MIN}
         max={WONG_EXIT_MAX}
@@ -158,30 +159,30 @@ export function WongExitControl({ profile, onChange }: ControlProps) {
         onChange={(v) => onChange({ wongExitTc: v })}
       />
       <p className="settings-note profile-play-note" data-testid="wong-exit-note">
-        Above {signed(exit)} playing is right, even where the ramp bets its minimum.
+        In, above {signed(exit)} staying in is right, even where the ramp bets its minimum.
       </p>
     </>
   );
 }
 
 /**
- * Wave J: back-counting. Each shoe is watched from behind the table and the
- * round's decision is Watch or Sit in, graded at the entry point; seated, Sit
- * out becomes Leave (graded at the exit point above), and leaving walks to a
- * new table's fresh shoe. Under the exit control because it is the other half
- * of the same decision, and needs the ramp as the exit does.
+ * Wave J toggle rework: the In/Out toggle's other half. "Start each shoe
+ * out" turns the table's toggle Out as every fresh shoe starts; the entry
+ * point is where getting in is right (Out, staying out is right below it).
+ * Between the exit and the entry point either state is right. The entry
+ * point needs the ramp, as the exit does; the switch does not.
  */
 export function BackCountControl({ profile, onChange }: ControlProps) {
-  const on = profile.backCount === true;
+  const startOut = startShoeOutOf(profile);
+  const spreadOn = profile.betSpreadOn === true;
   const entry = wongInTcOf(profile.wongInTc);
   const exit = wongExitTcOf(profile.wongExitTc);
   const noBots = (profile.seats?.bots ?? 0) === 0;
   return (
     <>
-      <Toggle label="Back-count" checked={on} onChange={(v) => onChange({ backCount: v })} />
-      {on && (
+      {spreadOn && (
         <Stepper
-          label="Enter at TC ≥"
+          label="Get in at TC ≥"
           value={entry}
           min={WONG_IN_MIN}
           max={WONG_IN_MAX}
@@ -190,18 +191,23 @@ export function BackCountControl({ profile, onChange }: ControlProps) {
           onChange={(v) => onChange({ wongInTc: v })}
         />
       )}
+      <Toggle
+        label="Start each shoe out"
+        checked={startOut}
+        // The legacy `backCount` is cleared as the new field is written.
+        onChange={(v) => onChange({ startShoeOut: v, backCount: undefined })}
+      />
       <p className="settings-note profile-play-note" data-testid="back-count-note">
-        {on ? (
+        {spreadOn && (
           <>
-            Every shoe starts with you watching. Each round, Watch or Sit in: sitting in is right at{' '}
-            {signed(entry)} or higher. Seated, Sit out becomes Leave, and the next shoe is a new table.
+            Out, getting in is right at {signed(entry)} or higher; between {signed(exit)} and {signed(entry)} either is
+            right.
             {/* The overlap at 0, said where it can be set (wong.ts). */}
-            {entry === 0 && exit === 0 && ' At 0 you sit in while watching, and leave once seated.'}
-            {noBots && ` With no bots set, you watch a table of ${BACK_COUNT_BOTS}.`}
+            {entry === 0 && exit === 0 && ' At 0, In says get out and Out says get in.'}{' '}
           </>
-        ) : (
-          'Off: you are seated from the first hand of every shoe.'
         )}
+        {startOut ? 'Every shoe starts with the toggle Out.' : 'The toggle stays where you put it, shoe to shoe.'}
+        {noBots && ` Out with no bots set, you watch a table of ${BACK_COUNT_BOTS}.`}
       </p>
     </>
   );

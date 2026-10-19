@@ -265,7 +265,14 @@ describe('G2: grading Foul', () => {
   });
 
   it('a sit-out is a next deal too', () => {
-    const g = erred();
+    // The round out deals to the three bots a solo player Out watches.
+    const g = Game.withRiggedShoe(
+      cfg({ dealerMistakes: true, dealerErrorRng: scripted([0, 0, 0]) }),
+      rig('10', '10', '9', '8', '10', '10', '10', '10', '10', '10', '10', '7'),
+    );
+    g.startRound();
+    g.act('stand');
+    expect(g.dealerError?.kind).toBe('overpay');
     g.sitOut();
     expect(g.missedDealerError?.kind).toBe('overpay');
     expect(g.dealerErrorTally.missed).toBe(1);

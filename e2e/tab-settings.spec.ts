@@ -166,14 +166,17 @@ test('All settings leaves the sheet for the Settings screen', async ({ page }) =
 
 test('the bet spread can be switched on from the Play gear (s06)', async ({ page }) => {
   await openTable(page);
-  await expect(page.getByRole('button', { name: /Sit out/i })).toHaveCount(0);
+  // Wave J toggle rework: the In/Out toggle is on every table, spread or not.
+  await expect(page.getByRole('group', { name: 'In or out' })).toBeVisible();
   await page.getByRole('button', { name: 'Play settings' }).click();
   const sheet = page.getByRole('dialog', { name: 'Play settings' });
+  await expect(sheet.locator('.settings-row', { hasText: 'Get out at TC' })).toHaveCount(0);
   await sheet.getByRole('checkbox', { name: 'Vary bets with the count' }).check();
+  await expect(sheet.locator('.settings-row', { hasText: 'Get out at TC' })).toBeVisible();
   await expect(sheet.getByTestId('tab-sheet-when')).toContainText('A new shoe is dealt when you close this');
   await sheet.getByRole('button', { name: 'Done', exact: true }).click();
   expect((await storedProfile(page)).betSpreadOn).toBe(true);
-  await expect(page.getByRole('button', { name: /Sit out/i })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'In or out' })).toBeVisible();
 });
 
 test('D-R1: the Wong exit point is a stepper under the bet spread, -2 by default, -5..0', async ({ page }) => {
@@ -181,9 +184,9 @@ test('D-R1: the Wong exit point is a stepper under the bet spread, -2 by default
   await openTable(page);
   await page.getByRole('button', { name: 'Play settings' }).click();
   const sheet = page.getByRole('dialog', { name: 'Play settings' });
-  const row = sheet.locator('.settings-row', { hasText: 'Sit out at TC' });
+  const row = sheet.locator('.settings-row', { hasText: 'Get out at TC' });
   await expect(row.locator('.stepper-value')).toHaveText('−2 or lower');
-  await expect(sheet.getByTestId('wong-exit-note')).toHaveText('Above −2 playing is right, even where the ramp bets its minimum.');
+  await expect(sheet.getByTestId('wong-exit-note')).toHaveText('In, above −2 staying in is right, even where the ramp bets its minimum.');
   await row.getByRole('button', { name: '+' }).click();
   await row.getByRole('button', { name: '+' }).click();
   await expect(row.locator('.stepper-value')).toHaveText('0 or lower');

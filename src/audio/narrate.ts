@@ -268,17 +268,17 @@ export function narrateRampSitsOut(tc: number): string {
  * silent about the miss. Its own utterance, so the recorded stake line keeps
  * its clips whether or not these two have been recorded yet.
  */
-/**
- * Wave J (review S4): said after "Shuffling." at a back-count table -- the
- * next shoe starts with the player watching, so a forward press there
- * watches instead of dealing, and eyes-free that has to be heard first.
- */
-export function narrateWatching(): string {
-  return 'Watching.';
-}
-
 export function narrateRampHands(hands: number): string {
   return hands === 2 ? 'Two hands.' : 'One hand.';
+}
+
+/**
+ * Wave J toggle rework: the In/Out toggle's new state, said on every change
+ * -- by tap, voice, wheel, or a fresh shoe under "start each shoe out" -- so
+ * eyes-free the player knows what the next forward press deals.
+ */
+export function narrateInOut(isIn: boolean): string {
+  return isIn ? 'In.' : 'Out.';
 }
 
 export function narrateSitOut(): string {

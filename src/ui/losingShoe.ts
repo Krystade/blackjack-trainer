@@ -50,6 +50,7 @@ export function makePlayGame(cfg: GameConfig, losingShoe: boolean): PlayGame {
       seats: LOSING_SHOE_SEATS,
       penetration: last / script.cards.length,
       backCount: false,
+      startShoeOut: false,
       // Wave J: a second hand would eat the script's cards like a bot does.
       spread: cfg.spread.map(({ minTc, units }) => ({ minTc, units })),
     },

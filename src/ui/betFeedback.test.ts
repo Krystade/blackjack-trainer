@@ -42,34 +42,56 @@ describe('betMissFeedback (B2 #13, R2)', () => {
   });
 });
 
-describe('Wave J: the back-count entry miss', () => {
+describe('Wave J toggle rework: the entry miss (you were Out)', () => {
   const entry = (taken: 'watch' | 'sit-in', tc: number, wongInTc = 1): GradedEvent => ({
     source: 'table', kind: 'wongIn', category: 'wongIn', correct: false, classification: 'basic-error',
     taken, expected: taken === 'watch' ? 'sit-in' : 'watch', reason: `Back-count entry at tc ${tc} (enter at ${wongInTc})`, tc, wongInTc,
   });
-  it('watching through a count at the entry point: sit in, and the recorded "ramp plays" line', () => {
+  it('staying out at the entry point: get in, and the recorded "ramp plays" line', () => {
     expect(betMissFeedback([entry('watch', 2)])).toEqual({
-      text: 'TC +2 — sit in (you enter at +1)',
+      text: 'TC +2 — get in (you enter at +1)',
       spoken: 'Your ramp plays. True count plus two.',
     });
   });
-  it('sitting in short of it: keep watching, and the recorded "ramp sits out" line', () => {
+  it('getting in short of it: stay out, and the recorded "ramp sits out" line', () => {
     expect(betMissFeedback([entry('sit-in', 0)])).toEqual({
-      text: 'TC +0 — keep watching (you enter at +1)',
+      text: 'TC +0 — stay out (you enter at +1)',
       spoken: 'Your ramp sits out. True count zero.',
     });
   });
   it('names the entry point the decision was graded at', () => {
-    expect(betMissFeedback([entry('sit-in', 2, 3)])?.text).toBe('TC +2 — keep watching (you enter at +3)');
+    expect(betMissFeedback([entry('sit-in', 2, 3)])?.text).toBe('TC +2 — stay out (you enter at +3)');
   });
   it('a right entry says nothing', () => {
     expect(betMissFeedback([{ ...entry('watch', 0), correct: true, classification: 'correct', expected: 'watch' }])).toBeNull();
   });
-  it('leaving a back-count table above the exit point', () => {
+  it('old data: leaving a back-count table above the exit point', () => {
     expect(betMissFeedback([wong('leave' as 'sit-out', 'play', 1)])).toEqual({
       text: 'Play at TC +1 — you left',
       spoken: 'Your ramp plays. True count plus one.',
     });
+  });
+});
+
+describe('Wave J toggle rework: the exit miss (you were In) names the exit point', () => {
+  const exit = (taken: 'play' | 'sit-out', tc: number, wongExitTc = -2): GradedEvent => ({
+    ...wong(taken, taken === 'play' ? 'sit-out' : 'play', tc),
+    wongExitTc,
+  });
+  it('staying in at the exit point: get out', () => {
+    expect(betMissFeedback([exit('play', -3)])).toEqual({
+      text: 'TC −3 — get out (you leave at −2)',
+      spoken: 'Your ramp sits out. True count minus three.',
+    });
+  });
+  it('getting out above it: stay in', () => {
+    expect(betMissFeedback([exit('sit-out', 0)])).toEqual({
+      text: 'TC +0 — stay in (you leave at −2)',
+      spoken: 'Your ramp plays. True count zero.',
+    });
+  });
+  it('a custom exit point', () => {
+    expect(betMissFeedback([exit('sit-out', 1, 0)])?.text).toBe('TC +1 — stay in (you leave at +0)');
   });
 });
 

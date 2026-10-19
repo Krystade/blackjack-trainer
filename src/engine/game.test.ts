@@ -759,9 +759,12 @@ describe('bet grading', () => {
 
 describe('wong-out / sit-out (R5)', () => {
   const seats2Bots: SeatConfig = { bots: 2, playerHands: 1, playerPosition: 1, botMistakePct: 0 };
+  // Wave J toggle rework: Out at a solo table, the player watches three bots
+  // (there must be someone to watch). Bots on 20, dealer 5/K draws a 5.
+  const OUT_SOLO = ['10', '10', '10', '5', '10', '10', '10', 'K', '5'] as const;
 
-  it('solo sit-out: no player hand, dealer up counted, bankroll untouched, phase settled', () => {
-    const game = Game.withRiggedShoe(cfg(), rig('5', 'K'));
+  it('a round out at a solo table: three bots to watch, no player hand, bankroll untouched, phase settled', () => {
+    const game = Game.withRiggedShoe(cfg(), rig(...OUT_SOLO));
     const startBankroll = game.bankroll;
     game.sitOut();
 
@@ -769,11 +772,11 @@ describe('wong-out / sit-out (R5)', () => {
     expect(game.bankroll).toBe(startBankroll); // wong-out never stakes
     expect(game.phase).toBe('settled');
     expect(game.roundNo).toBe(1);
-    expect(game.dealerCards.map((c) => c.rank)).toEqual(['5', 'K']);
-    // Only the face-up dealer card counts; the hole stays hidden/uncounted
-    // because with no live hand the dealer never plays out.
-    expect(game.runningCount).toBe(hiLoTag('5'));
-    expect(game.holeRevealed).toBe(false);
+    expect(game.seats.filter((s) => s.kind === 'bot')).toHaveLength(3);
+    expect(game.dealerCards.map((c) => c.rank)).toEqual(['5', 'K', '5']);
+    // Every card is face up: six tens, the 5 and K, and the dealer's 5.
+    expect(game.runningCount).toBe(-6 + hiLoTag('5') + hiLoTag('K') + hiLoTag('5'));
+    expect(game.holeRevealed).toBe(true);
   });
 
   it('sit-out still burns the shoe + advances the count with bots at the table', () => {
@@ -796,7 +799,7 @@ describe('wong-out / sit-out (R5)', () => {
   });
 
   it('a later staked round continues the SAME shoe (no reshuffle) after a sit-out', () => {
-    const game = Game.withRiggedShoe(cfg(), rig('5', 'K', '10', '9', '6', '8', '5'));
+    const game = Game.withRiggedShoe(cfg(), rig(...OUT_SOLO, '10', '9', '6', '8', '5'));
     game.sitOut();
     expect(game.hands).toHaveLength(0);
     const dealtAfterSit = game.shoe.cardsDealt;
@@ -812,7 +815,8 @@ describe('wong-out / sit-out (R5)', () => {
   });
 
   it('dealer Ace on a sit-out never prompts insurance (no stake to insure)', () => {
-    const game = Game.withRiggedShoe(cfg(), rig('A', '5')); // Ace up, no dealer BJ
+    // Ace up, no dealer BJ (A/5 draws a 4 to soft 20).
+    const game = Game.withRiggedShoe(cfg(), rig('10', '10', '10', 'A', '10', '10', '10', '5', '4'));
     game.sitOut();
     expect(game.phase).toBe('settled');
     expect(game.phase).not.toBe('insurance');
@@ -833,7 +837,7 @@ describe('wong-out / sit-out (R5)', () => {
   });
 
   it('betSpreadOn: sitting out at the exit point (tc -2) grades the wong decision CORRECT', () => {
-    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('5', 'K'));
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig(...OUT_SOLO));
     game.runningCount = -12;
     expect(game.trueCountNow).toBe(-2);
     game.sitOut();
@@ -847,7 +851,7 @@ describe('wong-out / sit-out (R5)', () => {
   });
 
   it('betSpreadOn: sitting out at a high +tc grades WRONG (the count wanted a real bet)', () => {
-    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('5', 'K'));
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig(...OUT_SOLO));
     game.runningCount = 6; // decksRemaining≈0.5 => tc≈12, well into "bet up" territory
     game.sitOut();
     const wong = game.events.filter((e) => e.kind === 'wong');
@@ -857,7 +861,7 @@ describe('wong-out / sit-out (R5)', () => {
   });
 
   it('betSpreadOn OFF: a sit-out grades nothing (no spread to judge the wong against)', () => {
-    const game = Game.withRiggedShoe(cfg({ betSpreadOn: false }), rig('5', 'K'));
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: false }), rig(...OUT_SOLO));
     game.sitOut();
     expect(game.events.filter((e) => e.kind === 'wong')).toHaveLength(0);
   });
@@ -924,9 +928,10 @@ describe('wong-out / sit-out (R5)', () => {
 });
 
 describe('D-R1: the Wong exit point (sit only at tc <= exit, default -2)', () => {
-  // rig('2','5','3','4') leaves the shoe so rc 6 reads tc +1 (see atTc1); rc = 6 * tc.
+  // rc = 6 * tc (see atTc1). The script deals a solo round in, or a round out
+  // to the three bots a solo player Out watches.
   function at(tc: number, overrides: Partial<GameConfig> = {}): Game {
-    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true, ...overrides }), rig('2', '5', '3', '4'));
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true, ...overrides }), rig('10', '10', '10', '5', '10', '10', '10', 'K', '5'));
     game.runningCount = 6 * tc;
     expect(game.trueCountNow).toBe(tc);
     return game;
@@ -990,7 +995,7 @@ describe('C-R6: one graded bet decision per round', () => {
   });
 
   it('ramp says play, you sat out: only the sit decision is graded', () => {
-    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('5', 'K', '3', '4'));
+    const game = Game.withRiggedShoe(cfg({ betSpreadOn: true }), rig('10', '10', '10', '5', '10', '10', '10', 'K', '5'));
     game.runningCount = 6;
     game.sitOut();
     expect(kindsOf(game)).toEqual(['wong']);

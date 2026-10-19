@@ -33,17 +33,40 @@ export function handsOf(hands: number, units: string): string {
 }
 
 /**
- * Wave J: the back-counter's entry, said against the entry point -- "TC +2 —
- * sit in (you enter at +1)". The spoken line keeps the ramp lines' shape and
- * their recordings: "Your ramp plays" is the count calling for a seat, "Your
- * ramp sits out" the count calling for watching. Both are already clips, so a
- * miss never drops the car's head unit to live speech.
+ * Wave J toggle rework: an entry decision (you were Out), said against the
+ * entry point -- "TC +2 — get in (you enter at +1)", "TC +0 — stay out (you
+ * enter at +1)". The spoken line keeps the ramp lines' shape and their
+ * recordings: "Your ramp plays" is the count calling for In, "Your ramp sits
+ * out" for Out. Both are already clips, so a miss never drops the car's head
+ * unit to live speech.
  */
 function entryMiss(e: GradedEvent): BetMiss {
   const at = `you enter at ${signed(e.wongInTc ?? 1, { plusZero: true })}`;
   return e.taken === 'watch'
-    ? { text: `${tcText(e.tc)} — sit in (${at})`, spoken: narrateRampPlays(e.tc) }
-    : { text: `${tcText(e.tc)} — keep watching (${at})`, spoken: narrateRampSitsOut(e.tc) };
+    ? { text: `${tcText(e.tc)} — get in (${at})`, spoken: narrateRampPlays(e.tc) }
+    : { text: `${tcText(e.tc)} — stay out (${at})`, spoken: narrateRampSitsOut(e.tc) };
+}
+
+/**
+ * An exit decision (you were In), said against the exit point -- "TC −3 — get
+ * out (you leave at −2)", "TC +0 — stay in (you leave at −2)". Events from
+ * before the toggle carry no exit point and keep their old wording.
+ */
+function exitMiss(e: GradedEvent, betTaken: string | undefined): BetMiss {
+  const gotOut = e.taken === 'sit-out' || e.taken === 'leave';
+  if (e.wongExitTc !== undefined) {
+    const at = `you leave at ${signed(e.wongExitTc, { plusZero: true })}`;
+    return gotOut
+      ? { text: `${tcText(e.tc)} — stay in (${at})`, spoken: narrateRampPlays(e.tc) }
+      : { text: `${tcText(e.tc)} — get out (${at})`, spoken: narrateRampSitsOut(e.tc) };
+  }
+  if (gotOut) {
+    return { text: `Play at ${tcText(e.tc)} — you ${e.taken === 'leave' ? 'left' : 'sat out'}`, spoken: narrateRampPlays(e.tc) };
+  }
+  return {
+    text: `Sit out at ${tcText(e.tc)}${betTaken !== undefined ? ` — you bet ${betTaken}u` : ' — you played'}`,
+    spoken: narrateRampSitsOut(e.tc),
+  };
 }
 
 /** The first wrong bet or play-or-sit decision among a deal's (or sit-out's) events. */
@@ -53,20 +76,7 @@ export function betMissFeedback(events: readonly GradedEvent[]): BetMiss | null 
   if (entry) return entryMiss(entry);
   const wong = events.find((e) => e.kind === 'wong' && !e.correct);
   const bets = events.filter((e) => e.kind === 'bet');
-  if (wong) {
-    if (wong.taken === 'sit-out') {
-      return { text: `Play at ${tcText(wong.tc)} — you sat out`, spoken: narrateRampPlays(wong.tc) };
-    }
-    // Wave J: leaving a back-count table above the exit point.
-    if (wong.taken === 'leave') {
-      return { text: `Play at ${tcText(wong.tc)} — you left`, spoken: narrateRampPlays(wong.tc) };
-    }
-    const taken = bets[0]?.taken;
-    return {
-      text: `Sit out at ${tcText(wong.tc)}${taken !== undefined ? ` — you bet ${taken}u` : ' — you played'}`,
-      spoken: narrateRampSitsOut(wong.tc),
-    };
-  }
+  if (wong) return exitMiss(wong, bets[0]?.taken);
   const bet = bets.find((e) => !e.correct);
   if (!bet) return null;
   // Wave J: a ramp that spreads to two hands grades the hand count with the

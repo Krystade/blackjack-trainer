@@ -17,7 +17,8 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   // RV7: this covers the play-or-sit decision on EVERY round with a spread
   // on, not only the rounds actually sat out -- so 'Wong-outs' would name a
   // subset of what it counts.
-  wong: 'Play or sit out',
-  // Wave J: the back-counter's entry, kept apart from the exit above.
-  wongIn: 'Watch or sit in',
+  // Wave J toggle rework: in toggle words -- the exit, from In.
+  wong: 'Stay in or get out',
+  // Wave J: the entry, from Out, kept apart from the exit above.
+  wongIn: 'Stay out or get in',
 };
