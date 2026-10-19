@@ -1,0 +1,827 @@
+/*
+ * WAVE J (lane C): THE CASINO TAB.
+ *
+ * Phone-first at 375 (and whole at 320): one column, 48px targets, 16px
+ * inputs (iOS zooms into anything smaller), every colour a theme token.
+ * Loaded with the screen's chunk, so after every entry stylesheet.
+ */
+
+.casino-screen {
+  min-height: 100vh;
+  min-height: 100svh;
+  background: var(--bg);
+  color: var(--ink);
+  /* A win's green, nudged toward the ink: Bone & Ink's --good is 4.3:1 on its
+     cream, under AA for these 16px figures. Mixing toward the ink (in OKLab,
+     so it stays green rather than going grey) darkens it on the light theme
+     and lightens it on the dark ones -- more contrast in every theme. */
+  --cas-good: color-mix(in oklab, var(--good) 75%, var(--ink));
+}
+
+body:has(.tab-bar) .casino-screen {
+  padding-bottom: calc(var(--tab-bar-h) + var(--safe-bottom, 0px) + var(--space-4));
+}
+
+/* The sticky bar family (muteSeat.css): the mute disc sits on its control line. */
+body[data-screen='casino'] {
+  --mute-top: calc(0.6rem + (48px - var(--mute-disc, 44px)) / 2);
+}
+
+.casino-topbar {
+  position: sticky;
+  top: var(--safe-top, 0px);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--topbar-h);
+  box-sizing: border-box;
+  padding: 0.6rem 0.75rem;
+  padding-right: var(--mute-seat);
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--raised);
+}
+
+.casino-topbar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: var(--safe-top, 0px);
+  background: inherit;
+}
+
+.casino-heading {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cas-back {
+  flex: none;
+  min-height: 48px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---------- Layout helpers ---------- */
+
+.cas-pad {
+  padding: var(--space-4);
+}
+
+.cas-pad-x {
+  padding-left: var(--space-4);
+  padding-right: var(--space-4);
+}
+
+.cas-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cas-wide {
+  width: 100%;
+}
+
+.cas-btn-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--space-2);
+}
+
+.cas-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.cas-inline {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+
+.cas-inline > .cas-money {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cas-inline > .u-btn {
+  flex: none;
+}
+
+.cas-section {
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--surface);
+}
+
+.cas-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 2.75rem;
+  padding: 0 var(--space-4) var(--space-2);
+}
+
+.cas-head-btn {
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.cas-note {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+
+.cas-message {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--accent);
+}
+
+.cas-file {
+  display: none;
+}
+
+.cas-link {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.cas-save-failed {
+  margin: var(--space-3) var(--space-4) 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--bad-line);
+  background: var(--bad-surface);
+  font-size: var(--fs-sm);
+}
+
+/* Won green, lost red, wherever a figure carries its sign. */
+.casino-screen [data-sign='1'] {
+  color: var(--cas-good);
+}
+
+.casino-screen [data-sign='-1'] {
+  color: var(--bad);
+}
+
+/* ---------- Start / empty ---------- */
+
+.cas-start {
+  min-height: 3.25rem;
+  font-size: var(--fs-lg);
+}
+
+.cas-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cas-empty-title {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+
+.cas-empty-text {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+/* ---------- Backup nudge ---------- */
+
+.cas-nudge {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: var(--space-4) var(--space-4) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-wash);
+}
+
+.cas-nudge.cas-pad-x {
+  padding: var(--space-3);
+}
+
+.cas-nudge-text {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+/* ---------- Live session card ---------- */
+
+.cas-live {
+  margin: var(--space-4);
+  padding: var(--space-4);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cas-live-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.cas-live-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.cas-live-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--bad);
+}
+
+.cas-live-clock {
+  font-size: var(--fs-3xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.cas-live-name {
+  margin: 0;
+  font-size: var(--fs-xl);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.cas-live-figs {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.cas-live-figs > span:first-child {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.cas-live-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+/* Sized by their words, so "Heat" gives its room to the two long labels and
+   none of them breaks onto a second line at 320. */
+.cas-live-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.cas-live-actions > .u-btn {
+  flex: 1 1 auto;
+  min-height: 48px;
+  padding: 0 var(--space-2);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+/* A 320 phone: the card gives back some of its frame to the buttons. */
+@media (max-width: 359px) {
+  .cas-live {
+    margin: var(--space-3);
+    padding: var(--space-3);
+  }
+}
+
+/* ---------- Summary ---------- */
+
+.cas-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--surface);
+}
+
+.cas-summary-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.cas-summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--surface);
+}
+
+.cas-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cas-stat-right {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.cas-stat-label {
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.cas-stat-value {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cas-stat-big {
+  font-size: var(--fs-2xl);
+}
+
+/* ---------- Casino list ---------- */
+
+.cas-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cas-group-title {
+  margin: var(--space-2) var(--space-4) var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.cas-row,
+.cas-hist {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  min-height: 56px;
+  box-sizing: border-box;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-top: 1px solid var(--surface);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cas-row:active,
+.cas-hist:active {
+  background: var(--surface);
+}
+
+.cas-hist:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.cas-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.cas-row-name {
+  min-width: 0;
+  font-size: var(--fs-md);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.cas-row-net {
+  flex: none;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cas-row-meta {
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+
+.cas-row-game {
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.cas-row-badges,
+.cas-hist-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: 2px;
+}
+
+.cas-pick-go {
+  flex: none;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  color: var(--accent);
+}
+
+.cas-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid currentColor;
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.cas-badge[data-tone='warn'] {
+  color: var(--accent);
+}
+
+.cas-badge[data-tone='bad'] {
+  color: var(--bad);
+}
+
+.cas-badge[data-tone='good'] {
+  color: var(--cas-good);
+}
+
+/* ---------- Session history ---------- */
+
+.cas-hist {
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-3);
+}
+
+.cas-hist-main,
+.cas-hist-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cas-hist-side {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.cas-hist-date {
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+}
+
+.cas-hist-casino {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.cas-hist-net {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cas-hist-hours {
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.cas-hist-badges {
+  grid-column: 1 / -1;
+}
+
+.cas-there-totals {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.cas-there-totals > span {
+  font-weight: 700;
+}
+
+/* ---------- Forms ---------- */
+
+.cas-form-top {
+  padding-top: var(--space-4);
+}
+
+.cas-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cas-field-label {
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.cas-field-hint {
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+
+.cas-field-error {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--bad);
+}
+
+.cas-input {
+  width: 100%;
+  min-height: 48px;
+  box-sizing: border-box;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  /* 16px, never less: iOS zooms the page into a smaller input on focus. */
+  font-size: var(--fs-md);
+  font-family: inherit;
+}
+
+.cas-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.cas-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.cas-input-short {
+  max-width: 8rem;
+}
+
+.cas-textarea {
+  min-height: 6rem;
+  padding: 0.6rem 0.75rem;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.cas-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.05rem) 50%,
+    calc(100% - 0.7rem) 50%;
+  background-size:
+    0.35rem 0.35rem,
+    0.35rem 0.35rem;
+  background-repeat: no-repeat;
+}
+
+/* iOS draws date fields at their content width and centred; make them read as fields. */
+.cas-input[type='date'],
+.cas-input[type='datetime-local'] {
+  display: block;
+  text-align: left;
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  line-height: 46px;
+}
+
+.cas-money {
+  position: relative;
+  display: block;
+}
+
+.cas-money-sign {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-dim);
+  font-size: var(--fs-md);
+  pointer-events: none;
+}
+
+.cas-money-input {
+  padding-left: 1.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cas-choice .segmented-btn {
+  min-width: 0;
+  padding: 0 0.3rem;
+}
+
+.cas-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 48px;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.cas-buyins {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cas-remove {
+  min-width: 48px;
+  padding: 0;
+  font-size: var(--fs-xl);
+  line-height: 1;
+}
+
+.cas-preview {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.cas-preview strong {
+  font-size: var(--fs-lg);
+  color: var(--ink);
+}
+
+.cas-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--bad-line);
+  background: var(--bad-surface);
+}
+
+.cas-confirm-q {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+/* ---------- Heat chooser ---------- */
+
+.cas-heat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.cas-heat-opt {
+  /* The severity is an edge, not the text's colour: red words on Midnight
+     Felt's green button were 2.8:1. Drawn as an inset shadow so the chosen
+     state's ring can stack on it without moving the text. */
+  --cas-tone: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 56px;
+  padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) + 4px);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--raised);
+  box-shadow: inset 4px 0 0 var(--cas-tone);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cas-heat-opt[data-tone='warn'] {
+  --cas-tone: var(--accent);
+}
+
+.cas-heat-opt[data-tone='bad'] {
+  --cas-tone: var(--bad);
+}
+
+.cas-heat-opt[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  box-shadow:
+    inset 4px 0 0 var(--cas-tone),
+    inset 0 0 0 1px var(--accent);
+}
+
+.cas-heat-opt-name {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.cas-heat-opt-hint {
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  color: var(--ink-soft);
+}
+
+/* ---------- End session ---------- */
+
+.cas-end-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--surface);
+  margin-bottom: var(--space-4);
+}
+
+.cas-end-name {
+  margin: 0;
+  font-size: var(--fs-xl);
+  overflow-wrap: anywhere;
+}
+
+.cas-end-figs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.cas-burn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--bad-line);
+  background: var(--bad-surface);
+}

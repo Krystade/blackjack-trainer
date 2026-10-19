@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react';
 import type { Screen } from '../App';
+import { loadCasinoLog, runningSession, subscribeCasinoLog } from '../../store/casinoLog';
+import './tabLive.css';
 
 /**
  * Persistent bottom navigation (C4).
@@ -7,6 +10,8 @@ import type { Screen } from '../App';
  * every destination — an IA where every move between two sections cost two
  * taps and a full-screen detour. The five tabs are the places you actually
  * move between while training.
+ *
+ * Wave J: a sixth tab, Casino, for real play (screens/casino).
  *
  * #32 (spec 2026-10-13): Stats has a tab and Settings does not. The settings
  * that get changed mid-session now sit behind a gear on the tab they belong
@@ -25,7 +30,28 @@ const TABS: { screen: Screen; label: string; glyph: string }[] = [
   { screen: 'drills', label: 'Drills', glyph: '◎' },
   { screen: 'charts', label: 'Charts', glyph: '▦' },
   { screen: 'stats', label: 'Stats', glyph: '◔' },
+  // Wave J: real play, after everything that is practice. The club to Play's
+  // spade: the same family of text glyph, so it takes the bar's ink and size.
+  { screen: 'casino', label: 'Casino', glyph: '♣' },
 ];
+
+/**
+ * Is a real casino session on the clock? The Casino tab carries a dot while
+ * one is, so a session left running is seen from every tab -- its hours keep
+ * counting until it is ended.
+ */
+function useCasinoLive(): boolean {
+  const read = () => {
+    try {
+      return runningSession(loadCasinoLog()) !== null;
+    } catch {
+      return false;
+    }
+  };
+  const [live, setLive] = useState(read);
+  useEffect(() => subscribeCasinoLog(() => setLive(read())), []);
+  return live;
+}
 
 export function TabBar({
   current,
@@ -34,6 +60,7 @@ export function TabBar({
   current: Screen;
   onNavigate: (screen: Screen) => void;
 }) {
+  const casinoLive = useCasinoLive();
   return (
     <nav className="tab-bar" aria-label="Main">
       {TABS.map((tab) => {
@@ -51,6 +78,9 @@ export function TabBar({
             onClick={() => onNavigate(tab.screen)}
           >
             <span className="tab-glyph" aria-hidden="true">{tab.glyph}</span>
+            {tab.screen === 'casino' && casinoLive && (
+              <span className="tab-live-dot" data-testid="casino-tab-live" aria-hidden="true" />
+            )}
             <span className="tab-label">{tab.label}</span>
           </button>
         );

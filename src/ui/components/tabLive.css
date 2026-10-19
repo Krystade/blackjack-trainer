@@ -1,0 +1,12 @@
+/* Wave J: the Casino tab's dot while a real session is on the clock.
+   Beside the glyph, clear of the active tab's top bar (themeCues.css). */
+.tab-live-dot {
+  position: absolute;
+  top: 9px;
+  left: calc(50% + 9px);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bad);
+  box-shadow: 0 0 0 2px var(--bg-sunken);
+}

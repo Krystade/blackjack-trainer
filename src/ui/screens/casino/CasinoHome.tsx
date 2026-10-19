@@ -1,0 +1,402 @@
+import { useRef, useState, type ChangeEvent } from 'react';
+import {
+  casinoById,
+  exportFileName,
+  hasCasinoData,
+  markExported,
+  mergeImport,
+  quarantinedCasinoLog,
+  runningSession,
+  serializeExport,
+  setStartingBankroll,
+  type Casino,
+  type CasinoLog,
+  type CasinoSession,
+} from '../../../store/casinoLog';
+import {
+  agoText,
+  bankrollNow,
+  burnedText,
+  gameSummary,
+  hoursText,
+  lastVisitText,
+  money,
+  parseMoney,
+  sessionHours,
+  sessionNet,
+  sessionsAt,
+  shortDate,
+  signedMoney,
+  sortCasinos,
+  standing,
+  totals,
+  warnBadges,
+  worstHeat,
+  daysBetween,
+  localDateKey,
+  exportIsDue,
+  type Standing,
+} from '../../casinoFigures';
+import { HeatBadge, MoneyInput } from './fields';
+import { moneyText } from './casinoInputs';
+import { LiveCard } from './LiveCard';
+import type { CasinoView } from './Casino';
+
+interface Props {
+  log: CasinoLog;
+  commit: (next: CasinoLog) => boolean;
+  go: (view: CasinoView) => void;
+}
+
+const GROUP_TITLE: Record<Standing, string> = { playable: 'Playable', avoid: 'Avoid', burned: 'Burned' };
+
+export function CasinoHome({ log, commit, go }: Props) {
+  const now = Date.now();
+  const live = runningSession(log);
+  const hasData = hasCasinoData(log);
+  const t = totals(log.sessions);
+  const bankroll = bankrollNow(log);
+  const empty = log.casinos.length === 0 && log.sessions.length === 0;
+
+  return (
+    <div className="cas-home">
+      {exportIsDue(log, now, hasData) && <ExportNudge log={log} commit={commit} now={now} />}
+      {quarantinedCasinoLog() !== null && (
+        <p className="cas-note cas-pad">
+          An earlier copy of this log could not be read. It is kept aside and goes into every export, so nothing is lost.
+        </p>
+      )}
+
+      {live ? (
+        <LiveCard key={live.id} log={log} session={live} commit={commit} go={go} />
+      ) : (
+        <div className="cas-pad">
+          <button type="button" className="u-btn u-btn-primary cas-wide cas-start" onClick={() => go({ kind: 'start' })}>
+            Start session
+          </button>
+        </div>
+      )}
+
+      {empty ? (
+        <section className="cas-empty cas-pad" aria-label="Getting started">
+          <h2 className="cas-empty-title">Your real-play notebook</h2>
+          <p className="cas-empty-text">
+            Keep the casinos you play &mdash; the game, the heat, when a cool-off ends &mdash; and every real session&rsquo;s
+            buy-ins and cash-out. It stays on this phone and is never sent anywhere.
+          </p>
+          <button type="button" className="u-btn cas-wide" onClick={() => go({ kind: 'casino', id: null })}>
+            Add a casino
+          </button>
+        </section>
+      ) : (
+        <>
+          <section className="cas-summary cas-pad" aria-label="Summary" data-testid="casino-summary">
+            <div className="cas-summary-hero">
+              <div className="cas-stat">
+                <span className="cas-stat-label">Bankroll</span>
+                <span className="cas-stat-value cas-stat-big" data-testid="casino-bankroll">
+                  {bankroll === null ? '—' : money(bankroll)}
+                </span>
+              </div>
+              <div className="cas-stat cas-stat-right">
+                <span className="cas-stat-label">All-time net</span>
+                <span className="cas-stat-value cas-stat-big" data-sign={Math.sign(t.net)} data-testid="casino-net">
+                  {signedMoney(t.net)}
+                </span>
+              </div>
+            </div>
+            <div className="cas-summary-row">
+              <div className="cas-stat">
+                <span className="cas-stat-label">Hours</span>
+                <span className="cas-stat-value" data-testid="casino-hours">
+                  {t.hours.toFixed(1)}
+                </span>
+              </div>
+              <div className="cas-stat">
+                <span className="cas-stat-label">Per hour</span>
+                <span className="cas-stat-value" data-testid="casino-per-hour">
+                  {t.perHour === null ? '—' : signedMoney(Math.round(t.perHour))}
+                </span>
+              </div>
+              <div className="cas-stat">
+                <span className="cas-stat-label">Sessions</span>
+                <span className="cas-stat-value" data-testid="casino-sessions">
+                  {t.sessions}
+                </span>
+              </div>
+            </div>
+            {bankroll === null && <p className="cas-note">Set a starting bankroll below to see the bankroll now.</p>}
+          </section>
+
+          <CasinoList log={log} go={go} now={now} />
+          <SessionHistory log={log} go={go} now={now} live={live} />
+        </>
+      )}
+
+      <BankrollAndBackup log={log} commit={commit} />
+    </div>
+  );
+}
+
+function ExportNudge({ log, commit, now }: { log: CasinoLog; commit: Props['commit']; now: number }) {
+  const when = log.lastExportAt
+    ? `Last export ${agoText(daysBetween(localDateKey(Date.parse(log.lastExportAt)), localDateKey(now)))}.`
+    : 'Never exported.';
+  return (
+    <section className="cas-nudge cas-pad-x" aria-label="Back up" data-testid="casino-export-nudge">
+      <p className="cas-nudge-text">
+        <strong>Back up your casino log.</strong> {when} iOS can clear a web app&rsquo;s storage, and this record exists
+        nowhere else.
+      </p>
+      <button type="button" className="u-btn cas-wide" onClick={() => downloadExport(log, commit)}>
+        Export now
+      </button>
+    </section>
+  );
+}
+
+function CasinoList({ log, go, now }: { log: CasinoLog; go: Props['go']; now: number }) {
+  const sorted = sortCasinos(log, now);
+  const groups: Standing[] = ['playable', 'avoid', 'burned'];
+  return (
+    <section className="cas-section" aria-labelledby="cas-casinos-title">
+      <div className="cas-section-head">
+        <h2 className="u-section-title" id="cas-casinos-title">
+          Casinos
+        </h2>
+        <button type="button" className="cas-head-btn" onClick={() => go({ kind: 'casino', id: null })}>
+          + Add casino
+        </button>
+      </div>
+      {log.casinos.length === 0 && <p className="cas-note cas-pad-x">No casinos yet.</p>}
+      {groups.map((g) => {
+        const rows = sorted.filter((c) => standing(c, now).group === g);
+        if (rows.length === 0) return null;
+        return (
+          <div key={g} className="cas-group" data-group={g}>
+            <h3 className="cas-group-title">{GROUP_TITLE[g]}</h3>
+            <ul className="cas-list">
+              {rows.map((c) => (
+                <CasinoRow key={c.id} casino={c} log={log} now={now} onOpen={() => go({ kind: 'casino', id: c.id })} />
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+function CasinoRow({ casino, log, now, onOpen }: { casino: Casino; log: CasinoLog; now: number; onOpen: () => void }) {
+  const sessions = sessionsAt(log, casino.id);
+  const t = totals(sessions);
+  const { group, coolOffOver } = standing(casino, now);
+  const heat = worstHeat(sessions);
+  const warns = warnBadges(casino);
+  return (
+    <li>
+      <button type="button" className="cas-row" onClick={onOpen} data-testid="casino-row" data-casino={casino.name}>
+        <span className="cas-row-top">
+          <span className="cas-row-name">{casino.name}</span>
+          {t.sessions > 0 && (
+            <span className="cas-row-net" data-sign={Math.sign(t.net)}>
+              {signedMoney(t.net)}
+            </span>
+          )}
+        </span>
+        <span className="cas-row-meta">
+          {[casino.area, lastVisitText(sessions, now), t.sessions > 0 ? hoursText(t.hours) : null].filter(Boolean).join(' · ')}
+        </span>
+        <span className="cas-row-game">{gameSummary(casino.game)}</span>
+        {(group === 'burned' || coolOffOver || heat !== 'none' || warns.length > 0) && (
+          <span className="cas-row-badges">
+            {group === 'burned' && (
+              <span className="cas-badge" data-tone="bad" data-testid="burned-badge">
+                Burned {burnedText(casino)}
+              </span>
+            )}
+            {coolOffOver && (
+              <span className="cas-badge" data-tone="good" data-testid="cooloff-badge">
+                Cool-off over
+              </span>
+            )}
+            <HeatBadge heat={heat} prefix="Worst: " />
+            {warns.map((w) => (
+              <span key={w} className="cas-badge" data-tone="warn" data-testid="warn-badge">
+                {w}
+              </span>
+            ))}
+          </span>
+        )}
+      </button>
+    </li>
+  );
+}
+
+function SessionHistory({ log, go, now, live }: { log: CasinoLog; go: Props['go']; now: number; live: CasinoSession | null }) {
+  const rows = log.sessions
+    .filter((s) => s.id !== live?.id)
+    .sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
+  return (
+    <section className="cas-section" aria-labelledby="cas-history-title">
+      <div className="cas-section-head">
+        <h2 className="u-section-title" id="cas-history-title">
+          Sessions
+        </h2>
+      </div>
+      {rows.length === 0 ? (
+        <p className="cas-note cas-pad-x">No finished sessions yet.</p>
+      ) : (
+        <ul className="cas-list">
+          {rows.map((s) => {
+            const net = sessionNet(s);
+            return (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  className="cas-hist"
+                  data-testid="history-row"
+                  onClick={() => go({ kind: 'session', sessionId: s.id, from: { kind: 'home' } })}
+                >
+                  <span className="cas-hist-main">
+                    <span className="cas-hist-date">{shortDate(s.start, now)}</span>
+                    <span className="cas-hist-casino">{casinoById(log, s.casinoId)?.name ?? 'Deleted casino'}</span>
+                  </span>
+                  <span className="cas-hist-side">
+                    <span className="cas-hist-net" data-sign={net === null ? 0 : Math.sign(net)}>
+                      {net === null ? 'open' : signedMoney(net)}
+                    </span>
+                    <span className="cas-hist-hours">{hoursText(sessionHours(s, now))}</span>
+                  </span>
+                  {s.heat !== 'none' && (
+                    <span className="cas-hist-badges">
+                      <HeatBadge heat={s.heat} />
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Download the export file and remember when. */
+function downloadExport(log: CasinoLog, commit: Props['commit']): void {
+  const now = Date.now();
+  const blob = new Blob([serializeExport(log, now)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = exportFileName(now);
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Revoked on the next turn: Safari can still be reading the URL when a
+  // synchronous revoke runs, and saves an empty file.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  commit(markExported(log, now));
+}
+
+function BankrollAndBackup({ log, commit }: { log: CasinoLog; commit: Props['commit'] }) {
+  const [start, setStart] = useState(() => moneyText(log.settings.startingBankroll));
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const parsed = parseMoney(start);
+  const changed = (Number.isNaN(parsed) ? 'x' : parsed) !== log.settings.startingBankroll;
+
+  const saveStart = () => {
+    if (Number.isNaN(parsed)) {
+      setError('Enter an amount in dollars, or leave it empty.');
+      return;
+    }
+    setError(null);
+    commit(setStartingBankroll(log, parsed, Date.now()));
+    setMessage(parsed === null ? 'Starting bankroll cleared.' : `Starting bankroll set to ${money(parsed)}.`);
+  };
+
+  const onFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const r = mergeImport(log, String(reader.result ?? ''));
+      if (!r.ok) {
+        setMessage(`Import failed: ${r.error}`);
+        return;
+      }
+      commit(r.log);
+      setStart(moneyText(r.log.settings.startingBankroll));
+      const p = r.report;
+      const parts = [
+        `${p.casinosAdded} casino${p.casinosAdded === 1 ? '' : 's'} added`,
+        `${p.casinosUpdated} updated`,
+        `${p.sessionsAdded} session${p.sessionsAdded === 1 ? '' : 's'} added`,
+        `${p.sessionsUpdated} updated`,
+      ];
+      if (p.kept > 0) parts.push(`${p.kept} already up to date`);
+      if (p.skipped > 0) parts.push(`${p.skipped} unreadable skipped`);
+      setMessage(`Imported: ${parts.join(', ')}.`);
+    };
+    reader.onerror = () => setMessage('Import failed: the file could not be read.');
+    reader.readAsText(file);
+  };
+
+  return (
+    <section className="cas-section cas-backup" aria-labelledby="cas-backup-title">
+      <div className="cas-section-head">
+        <h2 className="u-section-title" id="cas-backup-title">
+          Bankroll and backup
+        </h2>
+      </div>
+      <div className="cas-pad-x cas-stack">
+        <label className="cas-field">
+          <span className="cas-field-label">Starting bankroll</span>
+          <span className="cas-inline">
+            <MoneyInput name="startingBankroll" value={start} onChange={setStart} placeholder="Not set" />
+            <button type="button" className="u-btn" onClick={saveStart} disabled={!changed}>
+              Save
+            </button>
+          </span>
+          {error && (
+            <span className="cas-field-error" role="alert">
+              {error}
+            </span>
+          )}
+        </label>
+        <div className="cas-btn-row">
+          <button type="button" className="u-btn" onClick={() => downloadExport(log, commit)}>
+            Export JSON
+          </button>
+          <button type="button" className="u-btn" onClick={() => fileRef.current?.click()}>
+            Import JSON
+          </button>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json,application/json"
+          className="cas-file"
+          data-testid="casino-import-file"
+          onChange={onFile}
+        />
+        {message && (
+          <p className="cas-message" role="status">
+            {message}
+          </p>
+        )}
+        <p className="cas-note">
+          {log.lastExportAt
+            ? `Last exported ${agoText(daysBetween(localDateKey(Date.parse(log.lastExportAt)), localDateKey(Date.now())))}. `
+            : ''}
+          The casino log stays on this phone. It is not in the Stats backup and is never sent anywhere. Import merges a file
+          into what is here: the newer copy of each casino or session wins.
+        </p>
+      </div>
+    </section>
+  );
+}

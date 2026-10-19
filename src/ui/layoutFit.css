@@ -18,7 +18,7 @@
    set from a test and so nothing could assert that the tab labels clear the
    home indicator. The bar's own height and padding were already right; what
    pushed it off the screen was `--vp-gap` (src/ui/viewportGap.ts). Here: a
-   label never wraps or widens its fifth of a 320px bar. */
+   label never wraps or widens its sixth of a 320px bar. */
 .tab-btn {
   min-width: 0;
 }
