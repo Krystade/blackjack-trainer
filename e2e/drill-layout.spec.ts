@@ -41,27 +41,20 @@ async function intoFlashcards(page: Page): Promise<void> {
 }
 
 test('Split is offered when the hand is a pair', async ({ page }) => {
+  // Scoped to pairs, so the very first hand is one. Dealing until a pair
+  // happened to turn up made this a coin flip under load ("never dealt a
+  // pair in 40 tries").
+  await withSettings(page, { drill: { scopes: ['pairs'], flashCategory: 'pairs' } });
   await intoFlashcards(page);
 
-  // Deal until a pair turns up, reading the prompt the app itself renders so
-  // the test cannot disagree with the screen about what the hand is.
-  let sawPair = false;
-  for (let i = 0; i < 40 && !sawPair; i++) {
-    const body = await page.evaluate(() => document.body.innerText);
-    if (/pair of/i.test(body)) {
-      sawPair = true;
-      const split = page.getByRole('button', { name: 'Split', exact: true });
-      if ((await split.count()) > 0) {
-        await expect(split, 'Split is dead on a pair hand').toBeEnabled();
-      }
-      await page.screenshot({ path: 'e2e/screenshots/drill-pair.png' });
-      break;
-    }
-    // B1: answering deals the next card at once. Stand is always legal; the
-    // grade is not the subject.
-    await answerAndReadStrip(page, page.getByRole('button', { name: 'Stand', exact: true }));
-  }
-  expect(sawPair, 'never dealt a pair in 40 tries, so nothing was tested').toBe(true);
+  // Read the prompt the app itself renders, so the test cannot disagree with
+  // the screen about what the hand is.
+  await expect(page.locator('body')).toContainText(/pair of/i);
+  await expect(
+    page.getByRole('button', { name: 'Split', exact: true }),
+    'Split is dead on a pair hand',
+  ).toBeEnabled();
+  await page.screenshot({ path: 'e2e/screenshots/drill-pair.png' });
 });
 
 test('the action bar fits the phone without overlapping itself', async ({ page }) => {
