@@ -367,6 +367,8 @@ const NOT_BACKED_UP: Record<string, string> = {
     'written and deleted inside one run of the device check, to find out whether this browser can store anything at all -- it holds no state to back up',
   'bjtrainer.chartIntro.v1':
     'B7 one-shot "seen" flag for the first-run chart intro; a restore carrying any hand history suppresses the intro anyway',
+  'bjtrainer.casinoLog.v1':
+    'real casino sessions in dollars: personal financial data with its own deliberate export on the Casino tab -- the training backup is the file a user may hand to someone to debug a drill',
   'bjtrainer.stats.v1.corrupt':
     'written by the reader, not the app, and already carried verbatim by exportAll when present',
 };

@@ -48,6 +48,10 @@ export const OWNED_KEYS = [
   // operator collected in the car vanish, which is the precise failure the
   // run store was written to end.
   'bjtrainer.fieldTestRun.v1',
+  // The real-play casino log (store/casinoLog.ts): one whole blob, cached in
+  // the Casino screen's state. A stale tab ending a session would otherwise
+  // write back a log missing the other tab's buy-in.
+  'bjtrainer.casinoLog.v1',
 ] as const;
 
 export interface ExternalWrite {
