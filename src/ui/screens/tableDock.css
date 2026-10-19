@@ -27,15 +27,6 @@
   background: var(--bg);
 }
 
-/* Fix round 2: on a short screen two hands stack, and with the dock pinned
-   the band between the topbar and the dock is ~210px at 320x568. Two hands
-   take smaller cards there so both fit in it. */
-@media (max-height: 700px) {
-  .table-screen .hands-row:has(> .player-hand + .player-hand) > .player-hand {
-    --card-w: 50px;
-  }
-}
-
 /* ...and at 320px the six chips and the x1/x2 switch share one row
    (304px inside the padding: 6 x 37 + 5 x 2 + 2 + 2 + 66 = 302). */
 @media (max-width: 340px) {

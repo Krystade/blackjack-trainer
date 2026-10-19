@@ -67,6 +67,7 @@ import { DEAL_WORDS, isDealWord } from '../dealWord';
 import { BACK_COUNT_BIAS, backCountWordIn } from '../backCountWords';
 import './backCount.css';
 import './tableDock.css';
+import './tableCompact.css';
 import { spreadHasTwoHands } from '../../engine/wong';
 import './feltWrap.css';
 import './tableVoiceFit.css';
@@ -494,14 +495,15 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     if (el.style.getPropertyValue('--table-bar-h') !== h) el.style.setProperty('--table-bar-h', h);
   });
   /**
-   * Fix round 2: the player's own cards are never under the dock. A crowded
-   * table (three bots, two hands, narration) is taller than a phone, and the
-   * sticky dock covers whatever is behind it -- so when a round is dealt,
-   * settles or splits, the page is scrolled to its end, where the felt ends
-   * just above the dock (sticky or in the flow), and back up only as far as
-   * keeps the top of the player's hands (or the Watching spot) on screen.
+   * Fix rounds 2 and 3: what a phone must show is kept between the pinned
+   * topbar and the docked bar. A decision needs the dealer's up-card and the
+   * hand being played; a settled round, the dealer's hand, the player's hands
+   * and the result line; a watched one, the dealer and the Watching spot.
+   * tableCompact.css shrinks a crowded table so that region fits; this
+   * scrolls the least that puts it in the band -- and if it ever did not fit,
+   * keeps its TOP (the dealer) on screen rather than its bottom.
    */
-  const handScrollKey = `${game.roundNo}:${game.phase}:${game.hands.length}:${game.watching}`;
+  const handScrollKey = `${game.roundNo}:${game.phase}:${game.hands.length}:${game.active}:${game.watching}`;
   useLayoutEffect(() => {
     const el = screenRef.current;
     const scroller = document.scrollingElement;
@@ -512,14 +514,28 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       // Not once the table has gone (the report replaces it in place).
       if (!el.isConnected || scroller.scrollHeight === placedAt) return;
       placedAt = scroller.scrollHeight;
-      const spots = el.querySelectorAll<HTMLElement>('.player-hand, .player-watching');
-      if (spots.length === 0 || scroller.scrollHeight <= window.innerHeight) return;
-      window.scrollTo(0, scroller.scrollHeight);
-      // The topbar stays pinned at the top, so the hand must clear it too.
-      const topbar = el.querySelector<HTMLElement>('.topbar');
-      const floor = topbar ? Math.max(0, topbar.getBoundingClientRect().bottom) : 0;
-      const top = Math.min(...[...spots].map((s) => s.getBoundingClientRect().top));
-      if (top < floor) window.scrollBy(0, top - floor - 4);
+      if (scroller.scrollHeight <= window.innerHeight) return;
+      const dealer = el.querySelector<HTMLElement>(':scope > .dealer-area');
+      const active = el.querySelector<HTMLElement>('.player-hand.hand-active');
+      const spots = active
+        ? [active]
+        : [...el.querySelectorAll<HTMLElement>('.player-hand, .player-watching, .message-strip .message-result')];
+      if (!dealer || spots.length === 0) return;
+      const y = window.scrollY;
+      const topbar = el.querySelector<HTMLElement>(':scope > .topbar');
+      const bandTop = topbar ? Math.max(0, topbar.getBoundingClientRect().bottom) : 0;
+      // The docked rows sit at the bottom of the viewport whatever the scroll.
+      const docked = [...el.querySelectorAll<HTMLElement>(':scope > .peek-dock, :scope > .action-bar')].filter(
+        (d) => getComputedStyle(d).position === 'sticky',
+      );
+      const bandBottom = window.innerHeight - docked.reduce((h, d) => h + d.offsetHeight, 0);
+      const regionTop =
+        Math.min(...[dealer, ...dealer.querySelectorAll<HTMLElement>('.card')].map((d) => d.getBoundingClientRect().top)) + y;
+      const regionBottom = Math.max(...spots.map((s) => s.getBoundingClientRect().bottom)) + y;
+      const least = regionBottom - bandBottom; // the smallest scroll showing the bottom
+      const most = regionTop - bandTop; // the largest keeping the top
+      const target = Math.max(0, least > most ? most : Math.min(Math.max(y, least), most));
+      if (Math.abs(target - y) > 0.5) window.scrollTo(0, target);
     };
     place();
     // The narration and the bots' cards keep arriving after the phase
@@ -1110,7 +1126,7 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
   return (
     <div
       ref={screenRef}
-      className="table-screen"
+      className={`table-screen${hasBots || game.spreadsHands ? ' table-crowded' : ''}`}
       style={{ ['--deal-speed']: `${settings.dealSpeedMs}ms` } as CSSProperties}
     >
       <div className="topbar">
