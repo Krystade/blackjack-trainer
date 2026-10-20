@@ -16,6 +16,11 @@ describe('vpGapPx', () => {
     expect(vpGapPx(811.7, 812)).toBe(0);
   });
 
+  it('measures against the viewport, so a web view drawn under the status bar reads no gap', () => {
+    // Jack's phone, 2026-10-19: screen 812, viewport 762, probe ends at 762.
+    expect(vpGapPx(762, 762)).toBe(0);
+  });
+
   it('distrusts readings no status bar explains', () => {
     expect(vpGapPx(500, 812)).toBe(0);
     expect(vpGapPx(Number.NaN, 812)).toBe(0);

@@ -195,3 +195,27 @@ test('the tab bar is not pushed off the screen by an assumed viewport gap', asyn
     expect(box).toBeLessThanOrEqual(812);
   }
 });
+
+/**
+ * 2026-10-19, Jack's screenshot: the bar 50px low again. His installed app
+ * draws the web view below the status bar, so `screen` (812) is taller than
+ * the viewport (762) and a gap measured against the screen read -50px. Staged
+ * here by a screen 50px taller than the viewport; the gap must still be 0.
+ */
+test('a screen taller than the viewport (web view under the status bar) is not read as a gap', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 762 });
+  await page.addInitScript(() => {
+    const real = window.matchMedia.bind(window);
+    window.matchMedia = (q: string) =>
+      q.includes('display-mode: standalone')
+        ? ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} } as unknown as MediaQueryList)
+        : real(q);
+    Object.defineProperty(window.screen, 'height', { get: () => 812 });
+    Object.defineProperty(window.screen, 'width', { get: () => 375 });
+  });
+  await page.goto('/?e2e=1');
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--vp-gap'))).toBe('0px');
+  for (const bottom of await page.locator('.tab-label').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().bottom))) {
+    expect(bottom, 'a tab label runs off the bottom of the viewport').toBeLessThanOrEqual(762);
+  }
+});

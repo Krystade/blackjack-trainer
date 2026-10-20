@@ -14,12 +14,17 @@
  * the screen. Which of the two a phone does is not knowable from CSS.
  *
  * So the gap is measured: a zero-height fixed probe at `bottom: 0` says where
- * the fixed box actually ends, and `screen` says how tall the screen is (a
- * standalone, viewport-fit=cover app covers all of it). Not `100vh`: if a
- * WebKit made `vh` too tall rather than `svh` too short, a vh reference would
- * push the bar off the screen all over again. Their difference is exactly how far a pinned bar must move: ~-47px on the
- * old WebKit, 0 on one that resolves fixed boxes against the screen. Only in
- * standalone; a browser tab keeps app.css's own value (0 there).
+ * the fixed box actually ends, and `innerHeight` says where the viewport ends.
+ * Both are in the viewport's own coordinates. Their difference is exactly how
+ * far a pinned bar must move: ~-47px on the old WebKit, 0 on one that resolves
+ * fixed boxes against the whole viewport. Only in standalone; a browser tab
+ * keeps app.css's own value (0 there).
+ *
+ * 2026-10-19: NOT `screen.height`, which Wave I used. Jack's phone draws the
+ * web view BELOW the status bar (screen 812, viewport ~762), so the probe
+ * ending at 762 read as a -50px gap against the screen and the tab bar was
+ * pushed 50px off the bottom again, labels cut in half. A rect and the screen
+ * are different frames; a rect and `innerHeight` are the same one.
  */
 
 /** The largest correction believed: a status bar plus slack. Anything beyond is a bad reading. */
@@ -27,12 +32,12 @@ const MAX_GAP_PX = 120;
 
 /**
  * How far to move bottom-pinned bars (CSS px, never positive): where a fixed
- * `bottom: 0` box ends, less the screen height. 0 when they agree, when the
- * fixed box reaches further than the screen, or when a reading is unusable.
+ * `bottom: 0` box ends, less the viewport height (`innerHeight`). 0 when they agree, when the
+ * fixed box reaches further than the viewport, or when a reading is unusable.
  */
-export function vpGapPx(fixedBottom: number, screenHeight: number): number {
-  if (!Number.isFinite(fixedBottom) || !Number.isFinite(screenHeight) || screenHeight <= 0) return 0;
-  const gap = fixedBottom - screenHeight;
+export function vpGapPx(fixedBottom: number, viewportHeight: number): number {
+  if (!Number.isFinite(fixedBottom) || !Number.isFinite(viewportHeight) || viewportHeight <= 0) return 0;
+  const gap = fixedBottom - viewportHeight;
   if (gap >= -0.5 || gap < -MAX_GAP_PX) return 0;
   return Math.round(gap);
 }
@@ -49,10 +54,7 @@ export function applyViewportGap(doc: Document = document): number | null {
     return el;
   };
   const fixed = probe('position:fixed;bottom:0;height:0');
-  // iOS reports `screen` in portrait whatever the orientation.
-  const { width, height } = win.screen;
-  const screenHeight = win.innerWidth > win.innerHeight ? Math.min(width, height) : Math.max(width, height);
-  const gap = vpGapPx(fixed.getBoundingClientRect().bottom, screenHeight);
+  const gap = vpGapPx(fixed.getBoundingClientRect().bottom, win.innerHeight);
   fixed.remove();
   doc.documentElement.style.setProperty('--vp-gap', `${gap}px`);
   return gap;
