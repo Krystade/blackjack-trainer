@@ -587,6 +587,47 @@ describe('review S2: the v2 log has its own key, and an older build\'s writes ar
     expect(serializeExport(loadCasinoLog(), T0)).not.toContain('legacySeen');
   });
 
+  it('re-review R1: a casino, its sessions and a session deleted here stay deleted when an old tab writes v1 again', () => {
+    const sess = (id: string, casinoId: string, updatedAt = AT) => ({
+      id, casinoId, start: AT, end: AT, buyIns: [500], cashOut: 700, heat: 'none', notes: '', createdAt: AT, updatedAt,
+    });
+    store.map.set(
+      LEGACY_CASINO_LOG_KEY,
+      v1Blob([v1Casino(), v1Casino({ id: 'c2', name: 'Binions' })], [sess('s1', 'c1'), sess('s2', 'c2'), sess('s3', 'c1')]),
+    );
+    const first = loadCasinoLog();
+    expect(first.sessions.map((x) => x.id)).toEqual(['s1', 's2', 's3']);
+    expect(saveCasinoLog(deleteSession(deleteCasino(first, 'c2'), 's3'))).toBe(true);
+    // The old tab, still holding all of it, edits the deleted records and adds new ones.
+    store.map.set(
+      LEGACY_CASINO_LOG_KEY,
+      v1Blob(
+        [v1Casino(), v1Casino({ id: 'c2', name: 'Binions', notes: 'edited', updatedAt: LATER }), v1Casino({ id: 'c3', name: 'Four Queens', updatedAt: LATER })],
+        [sess('s1', 'c1'), sess('s2', 'c2', LATER), sess('s3', 'c1', LATER), sess('s4', 'c3', LATER), sess('s5', 'c1', LATER)],
+      ),
+    );
+    const log = loadCasinoLog();
+    expect(log.casinos.map((c) => c.id)).toEqual(['c1', 'c3']);
+    expect(log.sessions.map((x) => x.id)).toEqual(['s1', 's4', 's5']);
+    expect(serializeExport(log, T0)).not.toContain('legacyIds');
+    // Saved and loaded again, the ids are remembered.
+    saveCasinoLog(log);
+    expect(loadCasinoLog().legacyIds).toEqual({ casinos: ['c1', 'c2', 'c3'], sessions: ['s1', 's2', 's3', 's4', 's5'] });
+  });
+
+  it('re-review R1: a log saved before R1 learns the v1 ids from the blob it already took in', () => {
+    store.map.set(LEGACY_CASINO_LOG_KEY, v1Blob([v1Casino(), v1Casino({ id: 'c2', name: 'Binions' })]));
+    const first = loadCasinoLog();
+    const { legacyIds: _drop, ...preR1 } = deleteCasino(first, 'c2');
+    void _drop;
+    store.map.set(CASINO_LOG_KEY, JSON.stringify(preR1));
+    const relearned = loadCasinoLog();
+    expect(relearned.legacyIds).toEqual({ casinos: ['c1', 'c2'], sessions: [] });
+    saveCasinoLog(relearned);
+    store.map.set(LEGACY_CASINO_LOG_KEY, v1Blob([v1Casino(), v1Casino({ id: 'c2', name: 'Binions', updatedAt: LATER })]));
+    expect(loadCasinoLog().casinos.map((c) => c.id)).toEqual(['c1']);
+  });
+
   it('an unreadable v1 blob is kept aside, not merged and not lost', () => {
     upgraded();
     store.map.set(LEGACY_CASINO_LOG_KEY, '{"version":1,"casinos":[{"id":"c1"');

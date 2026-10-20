@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRanking, bestGameOf, exitMinutesOf, gameFigures, needsCompute } from './casinoRanking';
+import { buildRanking, bestGameOf, evTargetMet, exitMinutesOf, gameFigures, needsCompute, type GameFigures } from './casinoRanking';
 import { emptyCasinoLog, blankGame, type Casino, type CasinoGame, type CasinoLog } from '../store/casinoLog';
 import { resultState, simInputFor, type GameResult } from '../store/casinoGameStats';
 import { emptyAccum, type Accum } from '../engine/casinoSim';
@@ -269,5 +269,16 @@ describe('the cache key', () => {
     expect(f.methods).toBeNull();
     expect(f.edge).toBeCloseTo(0.1 / 25, 12);
     expect(f.evHour).toBeCloseTo(-0.1 * 100, 9);
+  });
+});
+
+describe('re-review R2: the +/-10% EV target is judged at the minutes shown', () => {
+  const fig = (evHour: number, evHourCi: number) => ({ best: { hours: { evHour, evHourCi } } }) as unknown as Pick<GameFigures, 'best'>;
+  it('met within 10% of the EV, missed beyond it or at zero; a shuffler has no EV target', () => {
+    expect(evTargetMet(fig(60, 6))).toBe(true);
+    expect(evTargetMet(fig(60, 6.01))).toBe(false);
+    expect(evTargetMet(fig(-20, 2))).toBe(true);
+    expect(evTargetMet(fig(0, 0))).toBe(false);
+    expect(evTargetMet({ best: null })).toBe(true);
   });
 });

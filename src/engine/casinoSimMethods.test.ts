@@ -89,9 +89,16 @@ describe('straight from the round stream', () => {
       ['wong-1', -1],
       ['wong0', 0],
     ] as const) {
-      const expected = shoes(base.rounds).filter((shoe) => shoe.slice(1).some((r) => r.tc <= exit)).length;
+      // Re-review R3: an exit counts (costs time) only when the shoe deals
+      // at least one more round after it.
+      const leaveAt = (shoe: Round[]) => shoe.findIndex((r, j) => j > 0 && r.tc <= exit);
+      const expected = shoes(base.rounds).filter((shoe) => leaveAt(shoe) !== -1 && leaveAt(shoe) < shoe.length - 1).length;
       expect(base.accs.get(id)!.exits, id).toBe(expected);
       expect(expected, `${id}: the check needs exits to count`).toBeGreaterThan(100);
+      if (id === 'wong-1') {
+        const onLastRound = shoes(base.rounds).filter((shoe) => leaveAt(shoe) === shoe.length - 1).length;
+        expect(onLastRound, 'some shoes are left on their last round, and those exits are free').toBeGreaterThan(5);
+      }
     }
     // At or below, not below: some shoes are left at EXACTLY the exit count.
     const atExactly = shoes(base.rounds).filter((shoe) => {
@@ -164,6 +171,7 @@ function reference(rounds: Round[], s: SimSpec): Map<string, Accum> {
     const spread = methodSpread(m, s.spread);
     let seated = m.entryTc === null;
     let left = false;
+    let pending = false;
     let y = 0;
     let x = 0;
     let e = 0;
@@ -183,16 +191,22 @@ function reference(rounds: Round[], s: SimSpec): Map<string, Accum> {
       close();
       seated = m.entryTc === null;
       left = false;
+      pending = false;
       inShoe = roundsIn;
     };
     for (const r of rounds) {
       if (r.shuffled) fresh(0);
       a.dealt += 1;
       const exitNow = !left && seated && m.exitTc !== null && inShoe > 0 && r.tc <= m.exitTc;
-      if (exitNow) {
-        left = true;
+      if (left && pending) {
+        // The shoe dealt on after the exit: now it costs time.
+        pending = false;
         a.exits += 1;
         e += 1;
+      }
+      if (exitNow) {
+        left = true;
+        pending = true;
       } else if (!left) {
         if (!seated && m.entryTc !== null && r.tc >= m.entryTc) seated = true;
         if (!seated) {

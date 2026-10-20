@@ -102,7 +102,12 @@ export interface SimSpec {
 export interface Accum {
   observed: number;
   played: number;
-  /** Exits: shoes the method left before they were dealt out. */
+  /**
+   * Exits: shoes the method left with at least one more round still to be
+   * dealt from them. Re-review R3: leaving on a shoe's last round before the
+   * cut costs no table time -- the shuffle was coming anyway, as it does for
+   * every method -- so it is not counted (and not charged).
+   */
   exits: number;
   /** Every round dealt while the method was in the simulation, played or not. */
   dealt: number;
@@ -143,6 +148,8 @@ interface MethodState {
   shoeNet: number;
   shoeObs: number;
   shoeExits: number;
+  /** Left this shoe, and no round has been dealt from it since (R3: not yet an exit that costs time). */
+  exitPending: boolean;
   acc: Accum;
 }
 
@@ -271,6 +278,7 @@ export class CasinoSim {
             shoeNet: 0,
             shoeObs: 0,
             shoeExits: 0,
+            exitPending: false,
             acc: emptyAccum(),
           }))
         : [];
@@ -323,6 +331,8 @@ export class CasinoSim {
       m.shoeNet = 0;
       m.shoeObs = 0;
       m.shoeExits = 0;
+      // R3: left on the shoe's last round: the shuffle came anyway, no time lost.
+      m.exitPending = false;
       m.seated = m.method.entryTc === null;
       m.left = false;
     }
@@ -468,16 +478,24 @@ export class CasinoSim {
     const m = this.methods[mi]!;
     const a = m.acc;
     a.dealt += 1;
-    if (m.left) return;
+    if (m.left) {
+      // R3: the shoe went on past the exit, so leaving cost a table change.
+      if (m.exitPending) {
+        m.exitPending = false;
+        a.exits += 1;
+        m.shoeExits += 1;
+      }
+      return;
+    }
     const { entryTc, exitTc } = m.method;
     if (m.seated && exitTc !== null && this.roundInShoe > 0 && tc <= exitTc) {
       // Exit (a wong-out, or a seated back-counter at its exit count): this
       // shoe is over for the method. The rest of it is neither played nor
-      // watched; the exit is counted, and its time -- finding another table
-      // -- is added at display time (see Accum).
+      // watched. The exit is counted once the shoe deals another round (R3,
+      // see Accum), and its time -- finding another table -- is added at
+      // display time.
       m.left = true;
-      a.exits += 1;
-      m.shoeExits += 1;
+      m.exitPending = true;
       return;
     }
     if (!m.seated) {

@@ -2,7 +2,7 @@ import { casinoById, type CasinoLog } from '../../../store/casinoLog';
 import { simRules, type GameResult } from '../../../store/casinoGameStats';
 import { describeMethod, methodBadge } from '../../../engine/betMethods';
 import { gameSummary, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
-import { buildRanking, exitMinutesOf, gameFigures, roundsPerHourOf, type GameFigures, type RankRow } from '../../casinoRanking';
+import { buildRanking, evTargetMet, exitMinutesOf, gameFigures, roundsPerHourOf, type GameFigures, type RankRow } from '../../casinoRanking';
 import { ASSUMED_TEXT, ciText, edgeText, evHourText, n0Text, roundsText, rorText, sdHourText } from '../../casinoStatsText';
 import { enqueue, cancelAll } from './simRunner';
 import { useActiveProfile, useGameResults, useRunner } from './useGameStats';
@@ -128,7 +128,15 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
                   </span>{' '}
                 </>
               )}
-              Computed {shortDate(row.state.result.computedAt, Date.now())}. {STATUS_NOTE[row.state.result.status]}
+              Computed {shortDate(row.state.result.computedAt, Date.now())}.{' '}
+              {row.state.result.status === 'done' && figures && !evTargetMet(figures) ? (
+                <span data-testid="ev-target-missed">
+                  House edge target met; at {exitMinutes} min per exit the best EV/hour is {ciText(figures.best!.hours.evHourCi)}, wider than the
+                  ±10% target. Re-run to tighten it.
+                </span>
+              ) : (
+                STATUS_NOTE[row.state.result.status]
+              )}
             </p>
             <button type="button" className="u-btn cas-wide" onClick={compute} data-testid="rerun-game">
               Re-run
@@ -220,7 +228,7 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
           {!game.csm && (
             <p data-testid="gs-exit-cost">
               <strong>Leaving:</strong> each exit (a wong-out, or a back-counter leaving at its exit count) costs {exitMinutes} min of table time,{' '}
-              {exitWhat} (Casino settings).
+              {exitWhat} (Casino settings). Leaving on the last round before the cut costs nothing: the shuffle was coming anyway.
             </p>
           )}
           {row.input.assumed.length > 0 && (

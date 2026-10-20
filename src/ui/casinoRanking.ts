@@ -2,7 +2,7 @@ import type { Casino, CasinoGame, CasinoLog, GeoPoint } from '../store/casinoLog
 import { DEFAULT_EXIT_FIND_MINUTES, DEFAULT_EXIT_WAIT_MINUTES, DEFAULT_ROUNDS_PER_HOUR, DEFAULT_SESSION_HOURS } from '../store/casinoLog';
 import type { Profile } from '../store/types';
 import { resultState, simInputFor, type GameResult, type ResultState, type SimInput } from '../store/casinoGameStats';
-import { hourly, houseEdge, summarize, type HourlyStats, type RoundStats } from '../engine/casinoStats';
+import { EV_REL_TARGET, hourly, houseEdge, summarize, type HourlyStats, type RoundStats } from '../engine/casinoStats';
 import type { BetMethod } from '../engine/betMethods';
 import { distanceMinutes, distanceOf, evPerTripHour, standing, warnBadges, type Distance } from './casinoFigures';
 
@@ -210,4 +210,17 @@ export function bestGameOf(casino: Casino, rows: readonly RankRow[]): CasinoGame
     if (!best || r.figures.evHour > best.figures!.evHour) best = r;
   }
   return best?.game ?? casino.games[0]!;
+}
+
+/**
+ * Re-review R2: whether the best method's EV/hour meets the run's +/-10%
+ * target at the exit minutes the figures were drawn at. A run stops when it
+ * meets it at the minutes in force THEN; after the minutes change, the same
+ * rounds can fall short, and the card must not say "met". True with no
+ * methods (a shuffler: only the house-edge target applies).
+ */
+export function evTargetMet(f: Pick<GameFigures, 'best'>): boolean {
+  if (!f.best) return true;
+  const { evHour, evHourCi } = f.best.hours;
+  return evHour !== 0 && evHourCi <= EV_REL_TARGET * Math.abs(evHour);
 }

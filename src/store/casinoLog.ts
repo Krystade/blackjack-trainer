@@ -47,9 +47,12 @@ import { normMethod, type BetMethod } from '../engine/betMethods';
  * fingerprint of the v1 bytes it has already taken in (`legacySeen`), and v1
  * bytes that differ are merged by id, the newer `updatedAt` winning, with a
  * casino coming from v1 keeping the games, drive time and spot only v2 knows
- * (`fromV1Casino`). What the merge cannot do: a casino deleted in this build
- * comes back if the old tab still holds it -- nothing here is ever deleted
- * by a merge, the import's rule.
+ * (`fromV1Casino`). Re-review R1: the log also remembers every casino and
+ * session id it has taken in from v1 (`legacyIds`). One of those that is no
+ * longer here was deleted here, so a later v1 blob that still holds it does
+ * not bring it back -- nor its sessions, which went with it (a deletion here
+ * wins even over a newer edit in the old tab). A record the old tab created
+ * since is new to `legacyIds` and is taken in.
  */
 
 export const CASINO_LOG_KEY = 'bjtrainer.casinoLog.v2';
@@ -188,7 +191,19 @@ export interface CasinoLog {
    * since. Storage bookkeeping: never exported.
    */
   legacySeen?: string;
+  /**
+   * Re-review R1: the casino and session ids taken in from v1 so far. Storage
+   * bookkeeping, never exported.
+   */
+  legacyIds?: LegacyIds;
 }
+
+export interface LegacyIds {
+  casinos: string[];
+  sessions: string[];
+}
+
+const idList = (x: unknown): string[] => (Array.isArray(x) ? x.filter((v): v is string => typeof v === 'string') : []);
 
 export function emptyCasinoLog(): CasinoLog {
   return {
@@ -456,6 +471,7 @@ export function migrateCasinoLog(parsed: unknown): { log: CasinoLog; skipped: nu
     lastExportAt: iso(parsed.lastExportAt),
   };
   if (v === 2 && typeof parsed.legacySeen === 'string') log.legacySeen = parsed.legacySeen;
+  if (v === 2 && isObj(parsed.legacyIds)) log.legacyIds = { casinos: idList(parsed.legacyIds.casinos), sessions: idList(parsed.legacyIds.sessions) };
   return { log, skipped: casinos.skipped + sessions.skipped };
 }
 
@@ -528,14 +544,41 @@ export function loadCasinoLog(): CasinoLog {
   }
   if (!legacy) return log ?? emptyCasinoLog();
   const seen = fingerprint(legacy);
-  if (log && log.legacySeen === seen) return log;
+  if (log && log.legacySeen === seen) {
+    if (log.legacyIds) return log;
+    // Saved by a build before R1: the v1 blob it took in is still this one.
+    const taken = readBlob(legacy);
+    return taken ? { ...log, legacyIds: idsOf(taken) } : log;
+  }
   const old = readBlob(legacy);
   if (!old) {
     quarantine(legacy);
     return { ...(log ?? emptyCasinoLog()), legacySeen: seen };
   }
-  if (!log) return { ...old, legacySeen: seen };
-  return { ...mergeLogs(log, old, true).log, legacySeen: seen };
+  if (!log) return { ...old, legacySeen: seen, legacyIds: idsOf(old) };
+  // Re-review R1: what was taken in from v1 before and is gone now was deleted here.
+  const prev = log.legacyIds ?? { casinos: [], sessions: [] };
+  const deletedCasinos = new Set(prev.casinos.filter((id) => !log.casinos.some((c) => c.id === id)));
+  const deletedSessions = new Set(prev.sessions.filter((id) => !log.sessions.some((x) => x.id === id)));
+  const fresh: CasinoLog = {
+    ...old,
+    casinos: old.casinos.filter((c) => !deletedCasinos.has(c.id)),
+    sessions: old.sessions.filter((x) => !deletedSessions.has(x.id) && !deletedCasinos.has(x.casinoId)),
+  };
+  const ids = idsOf(old);
+  return {
+    ...mergeLogs(log, fresh, true).log,
+    legacySeen: seen,
+    legacyIds: { casinos: union(prev.casinos, ids.casinos), sessions: union(prev.sessions, ids.sessions) },
+  };
+}
+
+function idsOf(log: CasinoLog): LegacyIds {
+  return { casinos: log.casinos.map((c) => c.id), sessions: log.sessions.map((x) => x.id) };
+}
+
+function union(a: readonly string[], b: readonly string[]): string[] {
+  return [...new Set([...a, ...b])];
 }
 
 type Listener = () => void;

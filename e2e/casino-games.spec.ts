@@ -192,6 +192,7 @@ test('the minutes an exit costs are a setting, applied to the stored result with
   expect(exits5).toBeGreaterThan(0);
 
   // Leaving made free, then made slow: the same stored rounds, charged differently.
+  // The same net over less (more) time: EV/h grows (shrinks) in size, whichever its sign.
   await back(page);
   await ranked(page).getByRole('button', { name: 'Settings' }).click();
   await page.locator('input[name="exitFindMinutes"]').fill('0');
@@ -201,7 +202,8 @@ test('the minutes an exit costs are a setting, applied to the stored result with
   await goodRow.click();
   await expect(card).toHaveAttribute('data-state', 'current');
   const at0 = await wongEv();
-  expect(at0).toBeGreaterThan(at5);
+  expect(at5).not.toBe(0);
+  expect(Math.abs(at0)).toBeGreaterThan(Math.abs(at5));
   expect(await exitsPerHour()).toBeGreaterThan(exits5);
   await expect(card.getByTestId('gs-exit-cost')).toContainText('0 min');
 
@@ -212,7 +214,7 @@ test('the minutes an exit costs are a setting, applied to the stored result with
   await back(page);
   await goodRow.click();
   await expect(card).toHaveAttribute('data-state', 'current');
-  expect(await wongEv()).toBeLessThan(at5);
+  expect(Math.abs(await wongEv())).toBeLessThan(Math.abs(at5));
 });
 
 test('custom methods can be edited, and a duplicate of a default says so', async ({ page }) => {

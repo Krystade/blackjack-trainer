@@ -42,8 +42,9 @@ export const GAME_STATS_KEY = 'bjtrainer.casinoGameStats.v1';
 /**
  * Bump when the simulator changes what it computes, so every entry goes stale.
  * 2: exits are counted and their time charged (entries from 1 have no exit sums).
+ * 3: an exit on a shoe's last round is not counted (re-review R3).
  */
-export const SIM_VERSION = 2;
+export const SIM_VERSION = 3;
 
 export type AssumedField = 'decks' | 's17' | 'das' | 'surrender' | 'payout' | 'cut' | 'minBet';
 
