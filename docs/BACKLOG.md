@@ -39,35 +39,6 @@ rather than averaged, and the weakest rows marked as weak in the data file itsel
 
 ## Candidates — operator-sourced
 
-### AP1 · Baccarat side-bet counting (operator pick 2026-10-19) — **OPEN, needs research**
-Count an 8-deck baccarat shoe for the side bets that turn positive late in the shoe:
-EZ Baccarat's **Dragon 7** (banker wins with a 3-card 7, 40:1) and **Panda 8** (player wins
-with a 3-card 8, 25:1). Ballpark from memory (2026-10-19 chat, NOT for data): +10–25% on the
-bet when it triggers, about 1 hand in 10–15, roughly $10–40/hr at $25–100 per side bet,
-very high variance.
-Sketch: a baccarat engine (third-card rules, 8D shoe, cut card), a count drill on baccarat
-hands, a "bet the side or not" trigger drill at a true count, and a playable baccarat table
-with the side bet graded like the bet ramp; eyes-free like the blackjack drills.
-**Before any code:** source the tags, the true-count conversion and the trigger points from a
-named source (Wizard of Odds / Eliot Jacobson's analyses) and record each with its source,
-per the standing rule above. Check which casinos near the operator still deal EZ Baccarat.
-
-### AP2 · Advantage slots (operator pick 2026-10-19) — **OPEN, needs research**
-Machines that become +EV in a known state: **must-hit-by progressives** (the meter close to its
-cap) and **persistent-state** machines (a banked bonus or meter one player leaves for the
-next). Ballpark from memory (2026-10-19 chat, NOT for data): +$5–50 per play, roughly
-$20–60/hr for a scout.
-Sketch: per-machine-type "play / walk past" cut-offs (meter level vs cap, hold, bet size),
-a scouting drill (here is a machine's state: play it or not, how many spins), and a machine
-notes list beside the Casino tab (location, game, cut-off, last seen state).
-**Before any code:** source the cut-off math (MHB EV formula: meter, cap, reset, hit-point
-distribution, base-game hold) and any per-title persistent-state cut-offs from named sources;
-no cut-off values from memory. Machine titles change by casino, so the data must be editable.
-
-Declined the same day: video poker (operator: full-pay machines unlikely) and promo /
-free-play maths (operator: not worth the bother).
-
-
 ### D1 · Distraction training (operator idea 2026-07-23) — HIGH interest — **✅ SHIPPED (parts 1+2)**
 Mid-drill interruptions that simulate the real-table cost of talking while counting:
 pause the card stream, inject a challenge that MUST be answered, then resume; the final
