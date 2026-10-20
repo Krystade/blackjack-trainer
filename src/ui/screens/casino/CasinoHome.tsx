@@ -14,12 +14,12 @@ import {
   type Casino,
   type CasinoLog,
   type CasinoSession,
+  type GeoPoint,
 } from '../../../store/casinoLog';
 import {
   agoText,
   bankrollNow,
   burnedText,
-  gameSummary,
   hoursText,
   lastVisitText,
   money,
@@ -32,7 +32,10 @@ import {
   sortCasinos,
   standing,
   totals,
-  warnBadges,
+  casinoWarnBadges,
+  distanceOf,
+  labelledSummary,
+  notesFirstLine,
   worstHeat,
   daysBetween,
   localDateKey,
@@ -42,6 +45,9 @@ import {
 import { HeatBadge, MoneyInput } from './fields';
 import { moneyText } from './casinoInputs';
 import { LiveCard } from './LiveCard';
+import { GamesRanked } from './GamesRanked';
+import { buildRanking, bestGameOf } from '../../casinoRanking';
+import { useActiveProfile, useGameResults, useHere } from './useGameStats';
 import type { CasinoView } from './Casino';
 
 interface Props {
@@ -54,6 +60,7 @@ const GROUP_TITLE: Record<Standing, string> = { playable: 'Playable', avoid: 'Av
 
 export function CasinoHome({ log, commit, go }: Props) {
   const now = Date.now();
+  const here = useHere();
   const live = runningSession(log);
   const hasData = hasCasinoData(log);
   const t = totals(log.sessions);
@@ -135,7 +142,8 @@ export function CasinoHome({ log, commit, go }: Props) {
             {bankroll === null && <p className="cas-note">Set a starting bankroll below to see the bankroll now.</p>}
           </section>
 
-          <CasinoList log={log} go={go} now={now} />
+          <GamesRanked log={log} go={go} here={here} />
+          <CasinoList log={log} go={go} now={now} here={here.state.here} />
           <SessionHistory log={log} go={go} now={now} live={live} />
         </>
       )}
@@ -162,8 +170,14 @@ function ExportNudge({ log, commit, now }: { log: CasinoLog; commit: Props['comm
   );
 }
 
-function CasinoList({ log, go, now }: { log: CasinoLog; go: Props['go']; now: number }) {
+function CasinoList({ log, go, now, here }: { log: CasinoLog; go: Props['go']; now: number; here: GeoPoint | null }) {
   const sorted = sortCasinos(log, now);
+  // Each row's game line is the casino's best game by EV per hour, burned
+  // casinos included (the ranking itself leaves them out).
+  const profile = useActiveProfile();
+  const results = useGameResults(log);
+  const unburned = { ...log, casinos: log.casinos.map((c) => ({ ...c, status: 'ok' as const })) };
+  const ranked = buildRanking(unburned, profile, results, now, null, 'ev');
   const groups: Standing[] = ['playable', 'avoid', 'burned'];
   return (
     <section className="cas-section" aria-labelledby="cas-casinos-title">
@@ -184,7 +198,15 @@ function CasinoList({ log, go, now }: { log: CasinoLog; go: Props['go']; now: nu
             <h3 className="cas-group-title">{GROUP_TITLE[g]}</h3>
             <ul className="cas-list">
               {rows.map((c) => (
-                <CasinoRow key={c.id} casino={c} log={log} now={now} onOpen={() => go({ kind: 'casino', id: c.id })} />
+                <CasinoRow
+                  key={c.id}
+                  casino={c}
+                  log={log}
+                  now={now}
+                  best={labelledSummary(bestGameOf(c, ranked))}
+                  here={here}
+                  onOpen={() => go({ kind: 'casino', id: c.id })}
+                />
               ))}
             </ul>
           </div>
@@ -194,12 +216,29 @@ function CasinoList({ log, go, now }: { log: CasinoLog; go: Props['go']; now: nu
   );
 }
 
-function CasinoRow({ casino, log, now, onOpen }: { casino: Casino; log: CasinoLog; now: number; onOpen: () => void }) {
+function CasinoRow({
+  casino,
+  log,
+  now,
+  best,
+  here,
+  onOpen,
+}: {
+  casino: Casino;
+  log: CasinoLog;
+  now: number;
+  best: string;
+  here: GeoPoint | null;
+  onOpen: () => void;
+}) {
   const sessions = sessionsAt(log, casino.id);
   const t = totals(sessions);
   const { group, coolOffOver } = standing(casino, now);
   const heat = worstHeat(sessions);
-  const warns = warnBadges(casino);
+  const warns = casinoWarnBadges(casino);
+  const more = casino.games.length - 1;
+  const distance = distanceOf(casino, here);
+  const noteLine = notesFirstLine(casino.notes);
   return (
     <li>
       <button type="button" className="cas-row" onClick={onOpen} data-testid="casino-row" data-casino={casino.name}>
@@ -212,9 +251,17 @@ function CasinoRow({ casino, log, now, onOpen }: { casino: Casino; log: CasinoLo
           )}
         </span>
         <span className="cas-row-meta">
-          {[casino.area, lastVisitText(sessions, now), t.sessions > 0 ? hoursText(t.hours) : null].filter(Boolean).join(' · ')}
+          {[casino.area, distance?.text, lastVisitText(sessions, now), t.sessions > 0 ? hoursText(t.hours) : null].filter(Boolean).join(' · ')}
         </span>
-        <span className="cas-row-game">{gameSummary(casino.game)}</span>
+        <span className="cas-row-game" data-testid="casino-row-game">
+          {best}
+          {more > 0 && <span className="cas-row-more"> +{more} more</span>}
+        </span>
+        {noteLine && (
+          <span className="cas-row-note" data-testid="casino-row-note">
+            {noteLine}
+          </span>
+        )}
         {(group === 'burned' || coolOffOver || heat !== 'none' || warns.length > 0) && (
           <span className="cas-row-badges">
             {group === 'burned' && (

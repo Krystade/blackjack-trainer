@@ -1,3 +1,5 @@
+import type { CasinoGame } from '../../../store/casinoLog';
+
 /**
  * Converting between the log's values and the text in the Casino tab's form
  * fields. Kept apart from the components (fields.tsx) so that file exports
@@ -21,4 +23,17 @@ export function fromLocalInput(v: string): string | null {
 /** An amount as the text a money field starts with. */
 export function moneyText(n: number | null | undefined): string {
   return n === null || n === undefined ? '' : String(n);
+}
+
+/** Wave K: a game's number fields as the form holds them, text until Save. */
+export interface GameText {
+  minBet: string;
+  maxBet: string;
+  cut: string;
+  roundsPerHour: string;
+}
+
+export function gameText(g: CasinoGame): GameText {
+  const t = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(n));
+  return { minBet: t(g.minBet), maxBet: t(g.maxBet), cut: t(g.cutDecksLeft), roundsPerHour: t(g.roundsPerHour) };
 }

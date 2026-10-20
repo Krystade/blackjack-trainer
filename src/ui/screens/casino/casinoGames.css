@@ -1,0 +1,329 @@
+/* Wave K: the Casino tab's games -- the ranking, a game's stats card, the
+   per-game editor, the notes section and the Casino settings. A new file so
+   casino.css does not grow; every colour comes from the theme tokens the
+   rest of the tab uses, so light and dark follow. */
+
+/* ---------------------------------------------------------- ranking */
+
+.cas-rank-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.cas-rank-controls .cas-choice .segmented-btn {
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+}
+
+.cas-rank-here {
+  min-height: 44px;
+}
+
+.cas-rank-busy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 48px;
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+
+.cas-rank-list {
+  counter-reset: none;
+}
+
+.cas-rank-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.cas-rank-place {
+  flex: none;
+  min-width: 1.4em;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.cas-rank-row .cas-row-game,
+.cas-rank-row .cas-rank-meta,
+.cas-rank-row .cas-row-badges {
+  padding-left: calc(1.4em + var(--space-2));
+}
+
+.cas-rank-row[data-greyed='true'] {
+  opacity: 0.55;
+}
+
+.cas-rank-row[data-state='none'] .cas-row-net {
+  font-weight: 500;
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+}
+
+/* ---------------------------------------------------------- casino rows */
+
+.cas-row-more {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.cas-row-note {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-xs);
+  font-style: italic;
+  color: var(--ink-dim);
+}
+
+/* ---------------------------------------------------------- stats card */
+
+.cas-gs-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-bottom: var(--space-2);
+}
+
+.cas-gs-casino {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  color: var(--ink-dim);
+}
+
+.cas-gs-title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.cas-gs-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+}
+
+.cas-gs-state {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+  line-height: 1.4;
+}
+
+.cas-gs-stale {
+  color: var(--ink);
+}
+
+.cas-gs-bar {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.cas-gs-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.cas-gs-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  border-top: 1px solid var(--surface);
+  border-bottom: 1px solid var(--surface);
+}
+
+.cas-gs-hero[data-stale='true'] .cas-stat-value {
+  color: var(--ink-dim);
+}
+
+.cas-gs-sub {
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.cas-gs-method {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--surface);
+}
+
+.cas-gs-method[data-best='true'] {
+  background: var(--accent-wash);
+}
+
+.cas-gs-method-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.cas-gs-method-name {
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.cas-gs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+}
+
+.cas-gs-fig {
+  min-width: 0;
+}
+
+.cas-gs-fig dt {
+  font-size: var(--fs-2xs);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.cas-gs-fig dd {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.cas-gs-fig-sub {
+  font-size: var(--fs-2xs);
+  font-weight: 500;
+  color: var(--ink-dim);
+}
+
+.cas-gs-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.cas-gs-notes p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------- game editor */
+
+.cas-ge {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+
+.cas-ge-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 32px;
+}
+
+.cas-ge-title {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.cas-ge-actions {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.cas-ge-actions .cas-link {
+  min-height: 44px;
+}
+
+.cas-ge-remove {
+  color: var(--bad);
+}
+
+/* ---------------------------------------------------------- location + notes */
+
+.cas-spot-row {
+  align-items: center;
+}
+
+.cas-spot-text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.cas-notes-box {
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cas-notes-status {
+  margin: 0;
+}
+
+/* ---------------------------------------------------------- settings */
+
+.cas-cs-list {
+  border-bottom: 1px solid var(--surface);
+}
+
+.cas-cs-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--surface);
+  font-size: var(--fs-sm);
+}
+
+.cas-cs-custom {
+  font-weight: 650;
+}
+
+.cas-cs-custom .cas-link {
+  flex: none;
+  min-height: 44px;
+  color: var(--bad);
+}
+
+.cas-cs-add-title {
+  margin: var(--space-2) 0 0;
+}

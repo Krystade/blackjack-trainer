@@ -21,9 +21,16 @@ import {
   standing,
   totals,
   warnBadges,
+  casinoWarnBadges,
+  labelledSummary,
+  notesFirstLine,
+  haversineMiles,
+  distanceOf,
+  milesText,
+  evPerTripHour,
   worstHeat,
 } from './casinoFigures';
-import { blankCasinoDraft, emptyCasinoLog, type CasinoLog, type CasinoSession, type HeatLevel } from '../store/casinoLog';
+import { blankCasinoDraft, blankGame, emptyCasinoLog, type CasinoLog, type CasinoSession, type HeatLevel } from '../store/casinoLog';
 
 const H = 3_600_000;
 const D = 24 * H;
@@ -218,8 +225,56 @@ describe('game summary and warnings', () => {
   });
 
   it('warns about 6:5, a shuffler and no mid-shoe entry', () => {
-    expect(warnBadges({ game: { payout: '6:5' }, csm: true, midShoeEntry: 'no' })).toEqual(['6:5', 'CSM', 'No mid-shoe']);
-    expect(warnBadges({ game: { payout: '3:2' }, csm: false, midShoeEntry: 'unknown' })).toEqual([]);
+    expect(warnBadges({ payout: '6:5', csm: true, midShoeEntry: 'no' })).toEqual(['6:5', 'CSM', 'No mid-shoe']);
+    expect(warnBadges({ payout: '3:2', csm: false, midShoeEntry: 'unknown' })).toEqual([]);
+  });
+
+  it('a casino carries a warning only when every one of its games does', () => {
+    const bad = { ...blankGame('a'), payout: '6:5' as const, csm: true };
+    const good = { ...blankGame('b'), payout: '3:2' as const, csm: true };
+    expect(casinoWarnBadges({ games: [bad] })).toEqual(['6:5', 'CSM']);
+    expect(casinoWarnBadges({ games: [bad, good] })).toEqual(['CSM']);
+  });
+
+  it('labels a game and takes the first written line of the notes', () => {
+    expect(labelledSummary({ ...blankGame('a'), label: 'DD pit 3', decks: 2 })).toBe('DD pit 3: 2D');
+    expect(notesFirstLine('\n  \n  Ask for Maria  \nsecond')).toBe('Ask for Maria');
+    expect(notesFirstLine('   ')).toBeNull();
+  });
+});
+
+describe('distance and trip hours', () => {
+  it('haversine: a degree of latitude, a known city pair, and zero', () => {
+    // One degree of latitude on a sphere of radius R is R * pi / 180.
+    expect(haversineMiles({ lat: 0, lon: 0 }, { lat: 1, lon: 0 })).toBeCloseTo((3958.8 * Math.PI) / 180, 6);
+    // Along the equator a degree of longitude is the same arc.
+    expect(haversineMiles({ lat: 0, lon: 10 }, { lat: 0, lon: 11 })).toBeCloseTo((3958.8 * Math.PI) / 180, 6);
+    // Antipodes: half the circumference.
+    expect(haversineMiles({ lat: 10, lon: 20 }, { lat: -10, lon: -160 })).toBeCloseTo(3958.8 * Math.PI, 3);
+    expect(haversineMiles({ lat: 36.1, lon: -115.2 }, { lat: 36.1, lon: -115.2 })).toBe(0);
+    // Symmetric.
+    const a = { lat: 36.17, lon: -115.14 };
+    const b = { lat: 34.05, lon: -118.24 };
+    expect(haversineMiles(a, b)).toBeCloseTo(haversineMiles(b, a), 9);
+  });
+
+  it('shows live miles when both points exist, else the drive time, else nothing', () => {
+    const here = { lat: 0, lon: 0 };
+    expect(distanceOf({ location: { lat: 0.05, lon: 0 }, driveMinutes: 30 }, here)?.text).toBe('3.5 mi');
+    expect(distanceOf({ location: { lat: 0.05, lon: 0 }, driveMinutes: 30 }, null)?.text).toBe('30 min drive');
+    expect(distanceOf({ location: null, driveMinutes: 75 }, here)?.text).toBe('1 h 15 min drive');
+    expect(distanceOf({ location: null, driveMinutes: null }, here)).toBeNull();
+    expect(milesText(37.4)).toBe('37 mi');
+  });
+
+  it('EV per trip hour spreads the session EV over the drive both ways', () => {
+    // $40/h for 4 h = $160, over 4 h + 2 x 30 min = 5 h -> $32 per trip hour.
+    expect(evPerTripHour(40, 4, 30)).toBeCloseTo(32, 9);
+    // No drive: the session rate itself.
+    expect(evPerTripHour(40, 4, 0)).toBe(40);
+    expect(evPerTripHour(40, 4, null)).toBeNull();
+    // A loss stays a loss, diluted the same way.
+    expect(evPerTripHour(-10, 2, 60)).toBeCloseTo(-5, 9);
   });
 });
 

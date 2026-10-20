@@ -188,6 +188,11 @@ describe('OWNED_KEYS', () => {
     // every character a storage event in the other tab, and the last writer
     // would win a half-typed line rather than either box being right.
     'bjtrainer.fieldTestDraft.v1': 'in-flight keystrokes, last writer wins a half line',
+    // Wave K: two per-device conveniences of the casino ranking, read once
+    // when it opens. Another tab's choice changing under this one would only
+    // re-sort a list the user is looking at.
+    'bjtrainer.casinoUseLocation.v1': 'per-device toggle, read when the ranking opens',
+    'bjtrainer.casinoRankSort.v1': 'per-device sort choice, read when the ranking opens',
   };
 
   /**

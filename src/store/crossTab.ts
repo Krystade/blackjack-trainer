@@ -52,6 +52,9 @@ export const OWNED_KEYS = [
   // the Casino screen's state. A stale tab ending a session would otherwise
   // write back a log missing the other tab's buy-in.
   'bjtrainer.casinoLog.v1',
+  // Wave K: the casino ranking's cached simulations, so a result computed in
+  // one tab shows in the other.
+  'bjtrainer.casinoGameStats.v1',
 ] as const;
 
 export interface ExternalWrite {

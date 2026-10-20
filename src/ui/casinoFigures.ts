@@ -1,5 +1,5 @@
 import { MINUS } from '../drills/signed';
-import type { Casino, CasinoGame, CasinoLog, CasinoSession, HeatLevel } from '../store/casinoLog';
+import type { Casino, CasinoGame, CasinoLog, CasinoSession, GameRules, GeoPoint, HeatLevel } from '../store/casinoLog';
 import { HEAT_LEVELS } from '../store/casinoLog';
 
 /**
@@ -229,7 +229,7 @@ export function burnSuggestion(heat: HeatLevel, sessionDayKey: string): { until:
 // ---------------------------------------------------------------- game summary
 
 /** "6D S17 DAS LS 3:2 · cut 1.0"; unknown rules are left out rather than guessed. */
-export function gameSummary(g: CasinoGame): string {
+export function gameSummary(g: GameRules): string {
   const parts: string[] = [];
   if (g.decks) parts.push(`${g.decks}D`);
   if (g.s17 === true) parts.push('S17');
@@ -246,13 +246,88 @@ export function gameSummary(g: CasinoGame): string {
   return [rules, cut].filter(Boolean).join(' · ') || 'Game not logged';
 }
 
-/** The conditions that change whether a casino is worth playing at all. */
-export function warnBadges(c: Pick<Casino, 'game' | 'csm' | 'midShoeEntry'>): string[] {
+/** The conditions that change whether a game is worth playing at all. */
+export function warnBadges(g: Pick<CasinoGame, 'payout' | 'csm' | 'midShoeEntry'>): string[] {
   const out: string[] = [];
-  if (c.game.payout === '6:5') out.push('6:5');
-  if (c.csm) out.push('CSM');
-  if (c.midShoeEntry === 'no') out.push('No mid-shoe');
+  if (g.payout === '6:5') out.push('6:5');
+  if (g.csm) out.push('CSM');
+  if (g.midShoeEntry === 'no') out.push('No mid-shoe');
   return out;
+}
+
+/** A casino's badges: the warnings every one of its games carries (one good game clears a warning). */
+export function casinoWarnBadges(c: Pick<Casino, 'games'>): string[] {
+  const per = c.games.map((g) => warnBadges(g));
+  if (per.length === 0) return [];
+  return per[0]!.filter((w) => per.every((ws) => ws.includes(w)));
+}
+
+/** "DD pit 3: 2D H17 · cut 0.75", or the summary alone without a label. */
+export function labelledSummary(g: CasinoGame): string {
+  return g.label ? `${g.label}: ${gameSummary(g)}` : gameSummary(g);
+}
+
+/** The first line of a casino's notes, for its row; null when there are none. */
+export function notesFirstLine(notes: string): string | null {
+  const line = notes.split(/\r?\n/).find((l) => l.trim() !== '');
+  return line ? line.trim() : null;
+}
+
+// ---------------------------------------------------------------- distance
+
+const EARTH_MILES = 3958.8;
+
+/**
+ * Great-circle distance in miles: the haversine formula (a definition of the
+ * sphere's geometry), on the mean Earth radius. Straight-line, not road miles.
+ */
+export function haversineMiles(a: GeoPoint, b: GeoPoint): number {
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLon = rad(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_MILES * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/** "4.2 mi" under ten miles, "37 mi" beyond. */
+export function milesText(mi: number): string {
+  return mi < 10 ? `${mi.toFixed(1)} mi` : `${Math.round(mi)} mi`;
+}
+
+/** "25 min drive", "1 h 10 min drive". */
+export function driveText(minutes: number): string {
+  const m = Math.round(minutes);
+  if (m < 60) return `${m} min drive`;
+  const h = Math.floor(m / 60);
+  return `${h} h${m % 60 ? ` ${m % 60} min` : ''} drive`;
+}
+
+export type Distance = { kind: 'miles'; miles: number; text: string } | { kind: 'drive'; minutes: number; text: string };
+
+/**
+ * How far a casino is, as a row shows it: live miles when the phone's position
+ * is known and the casino has a saved spot, else the logged drive time, else nothing.
+ */
+export function distanceOf(c: Pick<Casino, 'location' | 'driveMinutes'>, here: GeoPoint | null): Distance | null {
+  if (here && c.location) {
+    const miles = haversineMiles(here, c.location);
+    return { kind: 'miles', miles, text: milesText(miles) };
+  }
+  if (c.driveMinutes !== null && c.driveMinutes !== undefined) {
+    return { kind: 'drive', minutes: c.driveMinutes, text: driveText(c.driveMinutes) };
+  }
+  return null;
+}
+
+/**
+ * EV per hour of the whole trip: the session's expected win spread over the
+ * session plus the drive there and back,
+ * (EV/h x session h) / (session h + 2 x drive minutes / 60).
+ * Null without a drive time.
+ */
+export function evPerTripHour(evHour: number, sessionHours: number, driveMinutes: number | null | undefined): number | null {
+  if (driveMinutes === null || driveMinutes === undefined || !(sessionHours > 0)) return null;
+  return (evHour * sessionHours) / (sessionHours + (2 * driveMinutes) / 60);
 }
 
 // ---------------------------------------------------------------- formatting

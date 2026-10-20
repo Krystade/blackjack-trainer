@@ -369,6 +369,10 @@ const NOT_BACKED_UP: Record<string, string> = {
     'B7 one-shot "seen" flag for the first-run chart intro; a restore carrying any hand history suppresses the intro anyway',
   'bjtrainer.casinoLog.v1':
     'real casino sessions in dollars: personal financial data with its own deliberate export on the Casino tab -- the training backup is the file a user may hand to someone to debug a drill',
+  'bjtrainer.casinoGameStats.v1':
+    'wave K ranking cache: simulation sums derived from the casino log and the profile, recomputable at any time, and it belongs with the casino data, not the training backup',
+  'bjtrainer.casinoUseLocation.v1': 'a per-device yes/no for "Use my location" in the casino ranking',
+  'bjtrainer.casinoRankSort.v1': 'which order the casino ranking was last sorted in, on this device',
   'bjtrainer.stats.v1.corrupt':
     'written by the reader, not the app, and already carried verbatim by exportAll when present',
 };

@@ -1,5 +1,6 @@
 import { reportStorageFailure, shrinkDiagnostics } from './storageHealth';
 import { subscribeToExternalWrites } from './crossTab';
+import { normMethod, type BetMethod } from '../engine/betMethods';
 
 /**
  * WAVE J (lane C): THE REAL-PLAY NOTEBOOK. Casinos and the sessions played in
@@ -24,6 +25,20 @@ import { subscribeToExternalWrites } from './crossTab';
  * The functions that change the log are pure (log in, new log out) so the
  * merge, the end-of-session burn and the rest are testable without storage;
  * `saveCasinoLog` is the one place that writes.
+ *
+ * WAVE K: VERSION 2. A casino deals several games (a six-deck shoe at $25, a
+ * double deck at $50), so `Casino.games` replaces v1's single `game` and the
+ * casino-level min/max bet, mid-shoe entry and CSM, which were always facts
+ * about a game, not a building. Ruling: those v1 fields are NOT kept as
+ * fallbacks -- one place for each fact -- and a v1 blob or v1 export file is
+ * migrated on read: its `game` plus those four fields become `games[0]`,
+ * under the id `g-<casino id>`, the same id every time, so importing the
+ * same v1 file twice is still a no-op and a cached ranking result stays
+ * attached to its game. The storage key keeps its name (`.v1` is part of an
+ * identifier, not a claim about the blob); the blob's own `version` says 2.
+ * Additive in v2: a casino's `driveMinutes` and saved `location`, a game's
+ * label, rounds per hour and notes, and the Casino settings' custom betting
+ * methods and session length.
  */
 
 export const CASINO_LOG_KEY = 'bjtrainer.casinoLog.v1';
@@ -40,11 +55,14 @@ export type HeatLevel = 'none' | 'attention' | 'shuffle-up' | 'flat-bet' | 'back
 export const HEAT_LEVELS: readonly HeatLevel[] = ['none', 'attention', 'shuffle-up', 'flat-bet', 'back-off', 'trespass'];
 
 /**
- * The game as dealt there. Every field is optional and `null` means "not
+ * One game as dealt there. Every rule is optional and `null` means "not
  * known yet": a first visit often learns the decks and the payout and nothing
  * else, and an unknown must not be shown as a rule.
  */
 export interface CasinoGame {
+  id: string;
+  /** "DD pit 3". */
+  label?: string;
   decks?: DeckCount | null;
   /** true = dealer stands on soft 17, false = hits it. */
   s17?: boolean | null;
@@ -58,19 +76,38 @@ export interface CasinoGame {
    * percentage needs arithmetic you should not be seen doing.
    */
   cutDecksLeft?: number | null;
-}
-
-export interface Casino {
-  id: string;
-  name: string;
-  area?: string;
-  game: CasinoGame;
   minBet?: number | null;
   maxBet?: number | null;
   /** Back-counting (wonging in) depends on it. */
   midShoeEntry: MidShoeEntry;
   /** A continuous shuffler: counting is impossible. */
   csm: boolean;
+  /** Rounds dealt per hour at this game; absent = DEFAULT_ROUNDS_PER_HOUR. */
+  roundsPerHour?: number | null;
+  notes?: string;
+}
+
+/** Rounds an hour when a game does not say: a typical shoe game with a few players. */
+export const DEFAULT_ROUNDS_PER_HOUR = 80;
+
+/** The game's rules as the summary and the simulator read them. */
+export type GameRules = Pick<CasinoGame, 'decks' | 's17' | 'das' | 'surrender' | 'payout' | 'cutDecksLeft'>;
+
+export interface GeoPoint {
+  lat: number;
+  lon: number;
+}
+
+export interface Casino {
+  id: string;
+  name: string;
+  area?: string;
+  /** At least one. */
+  games: CasinoGame[];
+  /** One way, from home, in minutes. */
+  driveMinutes?: number | null;
+  /** Saved with "Save this spot" while standing there; never captured otherwise. */
+  location?: GeoPoint | null;
   status: CasinoStatus;
   /** Local date (YYYY-MM-DD) the cool-off ends; null = indefinitely. Only read when burned. */
   burnedUntil?: string | null;
@@ -104,10 +141,16 @@ export interface CasinoSession {
 export interface CasinoLogSettings {
   startingBankroll: number | null;
   updatedAt: string | null;
+  /** Wave K: betting methods the user added to the default set. */
+  methods?: BetMethod[];
+  /** Wave K: hours a casino visit lasts, for EV per trip hour; absent = DEFAULT_SESSION_HOURS. */
+  sessionHours?: number | null;
 }
 
+export const DEFAULT_SESSION_HOURS = 4;
+
 export interface CasinoLog {
-  version: 1;
+  version: 2;
   casinos: Casino[];
   sessions: CasinoSession[];
   settings: CasinoLogSettings;
@@ -117,7 +160,7 @@ export interface CasinoLog {
 
 export function emptyCasinoLog(): CasinoLog {
   return {
-    version: 1,
+    version: 2,
     casinos: [],
     sessions: [],
     settings: { startingBankroll: null, updatedAt: null },
@@ -184,8 +227,7 @@ function boolOrNull(x: unknown): boolean | null {
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
-function normGame(x: unknown): CasinoGame {
-  const g = isObj(x) ? x : {};
+function normRules(g: Record<string, unknown>): Required<GameRules> {
   const decks = DECK_COUNTS.includes(g.decks as DeckCount) ? (g.decks as DeckCount) : null;
   const payout = g.payout === '3:2' || g.payout === '6:5' ? g.payout : null;
   const cut = typeof g.cutDecksLeft === 'number' && Number.isFinite(g.cutDecksLeft) && g.cutDecksLeft >= 0 ? g.cutDecksLeft : null;
@@ -197,6 +239,76 @@ function normGame(x: unknown): CasinoGame {
     payout,
     cutDecksLeft: cut,
   };
+}
+
+/** A positive count in a sane range, or null. */
+function boundedOrNull(x: unknown, lo: number, hi: number): number | null {
+  return typeof x === 'number' && Number.isFinite(x) && x >= lo && x <= hi ? x : null;
+}
+
+const NOTES_MAX = 20_000;
+const notesOf = (x: unknown) => (typeof x === 'string' ? x.slice(0, NOTES_MAX) : '');
+
+/**
+ * A stored or imported game, repaired. `legacy` carries a v1 casino's
+ * casino-level fields, which a v1 game sat beside; `fallbackId` names a
+ * game that arrived without one.
+ */
+export function normGame(x: unknown, fallbackId: string, legacy?: Record<string, unknown>): CasinoGame {
+  const g = isObj(x) ? x : {};
+  const src = legacy ?? g;
+  const game: CasinoGame = {
+    id: typeof g.id === 'string' && g.id !== '' ? g.id : fallbackId,
+    ...normRules(g),
+    minBet: money(src.minBet),
+    maxBet: money(src.maxBet),
+    midShoeEntry: src.midShoeEntry === 'allowed' || src.midShoeEntry === 'no' ? src.midShoeEntry : 'unknown',
+    csm: src.csm === true,
+    roundsPerHour: boundedOrNull(g.roundsPerHour, 1, 1000),
+  };
+  if (typeof g.label === 'string' && g.label.trim() !== '') game.label = g.label.trim().slice(0, 60);
+  const notes = notesOf(g.notes);
+  if (notes !== '') game.notes = notes;
+  return game;
+}
+
+/** A game with nothing known: every rule "?". */
+export function blankGame(id: string = makeCasinoId('g')): CasinoGame {
+  return {
+    id,
+    decks: null,
+    s17: null,
+    das: null,
+    surrender: null,
+    payout: null,
+    cutDecksLeft: null,
+    minBet: null,
+    maxBet: null,
+    midShoeEntry: 'unknown',
+    csm: false,
+    roundsPerHour: null,
+  };
+}
+
+function normGames(x: Record<string, unknown>, casinoId: string): CasinoGame[] {
+  // v1: one `game`, with the betting facts on the casino beside it.
+  if (!Array.isArray(x.games)) return [normGame(x.game, `g-${casinoId}`, { ...(isObj(x.game) ? x.game : {}), ...x })];
+  const seen = new Set<string>();
+  const games: CasinoGame[] = [];
+  x.games.forEach((raw, i) => {
+    const g = normGame(raw, `g-${casinoId}-${i}`);
+    if (seen.has(g.id)) return;
+    seen.add(g.id);
+    games.push(g);
+  });
+  return games.length > 0 ? games : [blankGame(`g-${casinoId}`)];
+}
+
+function normPoint(x: unknown): GeoPoint | null {
+  if (!isObj(x)) return null;
+  const lat = boundedOrNull(x.lat, -90, 90);
+  const lon = boundedOrNull(x.lon, -180, 180);
+  return lat === null || lon === null ? null : { lat, lon };
 }
 
 /** A stored or imported casino, repaired field by field; null when it has no id or name. */
@@ -211,14 +323,12 @@ export function normCasino(x: unknown): Casino | null {
     id,
     name,
     area: typeof x.area === 'string' && x.area.trim() !== '' ? x.area.trim() : undefined,
-    game: normGame(x.game),
-    minBet: money(x.minBet),
-    maxBet: money(x.maxBet),
-    midShoeEntry: x.midShoeEntry === 'allowed' || x.midShoeEntry === 'no' ? x.midShoeEntry : 'unknown',
-    csm: x.csm === true,
+    games: normGames(x, id),
+    driveMinutes: boundedOrNull(x.driveMinutes, 0, 24 * 60),
+    location: normPoint(x.location),
     status,
     burnedUntil: typeof x.burnedUntil === 'string' && DATE_ONLY.test(x.burnedUntil) ? x.burnedUntil : null,
-    notes: typeof x.notes === 'string' ? x.notes : '',
+    notes: notesOf(x.notes),
     createdAt,
     updatedAt: iso(x.updatedAt) ?? createdAt,
   };
@@ -273,29 +383,38 @@ function normList<T extends { id: string }>(x: unknown, norm: (v: unknown) => T 
 
 function normSettings(x: unknown): CasinoLogSettings {
   const s = isObj(x) ? x : {};
-  return { startingBankroll: money(s.startingBankroll), updatedAt: iso(s.updatedAt) };
+  const out: CasinoLogSettings = { startingBankroll: money(s.startingBankroll), updatedAt: iso(s.updatedAt) };
+  // Additive (v2): written only when set, so a v1 blob's settings read back exactly.
+  if (Array.isArray(s.methods)) {
+    const seen = new Set<string>();
+    out.methods = s.methods.map(normMethod).filter((m): m is BetMethod => m !== null && !seen.has(m.id) && (seen.add(m.id), true));
+  }
+  const hours = boundedOrNull(s.sessionHours, 0.25, 24);
+  if (hours !== null) out.sessionHours = hours;
+  return out;
 }
 
 /**
  * Bring any blob this build understands up to the current shape.
  *
- * Version 1 is the first, so "migrating" today means repairing: a partial or
- * hand-edited v1 blob gets every missing field filled and every bad entry
- * dropped. A blob with no version but the two lists is read as v1 (an
- * export edited by hand loses the wrapper first). Anything else -- a newer
- * version this build does not know -- is refused, so it is quarantined
- * rather than flattened into this build's idea of it.
+ * Version 1 moves each casino's single game into `games` (see the header);
+ * either version is also repaired: a partial or hand-edited blob gets every
+ * missing field filled and every bad entry dropped. A blob with no version
+ * but the two lists is read as v1 (an export edited by hand loses the
+ * wrapper first). Anything else -- a newer version this build does not know
+ * -- is refused, so it is quarantined rather than flattened into this
+ * build's idea of it.
  */
 export function migrateCasinoLog(parsed: unknown): { log: CasinoLog; skipped: number } | null {
   if (!isObj(parsed)) return null;
   const v = parsed.version;
-  const looksV1 = v === 1 || (v === undefined && (Array.isArray(parsed.casinos) || Array.isArray(parsed.sessions)));
-  if (!looksV1) return null;
+  const readable = v === 1 || v === 2 || (v === undefined && (Array.isArray(parsed.casinos) || Array.isArray(parsed.sessions)));
+  if (!readable) return null;
   const casinos = normList(parsed.casinos, normCasino);
   const sessions = normList(parsed.sessions, normSession);
   return {
     log: {
-      version: 1,
+      version: 2,
       casinos: casinos.items,
       sessions: sessions.items,
       settings: normSettings(parsed.settings),
@@ -399,7 +518,7 @@ export function subscribeCasinoLog(fn: Listener): () => void {
 
 // ---------------------------------------------------------------- ids and time
 
-export function makeCasinoId(prefix: 'c' | 's'): string {
+export function makeCasinoId(prefix: 'c' | 's' | 'g' | 'm'): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return `${prefix}-${crypto.randomUUID()}`;
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
@@ -435,11 +554,9 @@ export function blankCasinoDraft(name = ''): CasinoDraft {
   return {
     name,
     area: undefined,
-    game: { decks: null, s17: null, das: null, surrender: null, payout: null, cutDecksLeft: null },
-    minBet: null,
-    maxBet: null,
-    midShoeEntry: 'unknown',
-    csm: false,
+    games: [blankGame()],
+    driveMinutes: null,
+    location: null,
     status: 'ok',
     burnedUntil: null,
     notes: '',
@@ -565,7 +682,39 @@ export function deleteSession(log: CasinoLog, id: string): CasinoLog {
 }
 
 export function setStartingBankroll(log: CasinoLog, amount: number | null, now: number): CasinoLog {
-  return { ...log, settings: { startingBankroll: money(amount), updatedAt: stamp(now) } };
+  return { ...log, settings: { ...log.settings, startingBankroll: money(amount), updatedAt: stamp(now) } };
+}
+
+/** Wave K: the Casino settings beside the bankroll -- custom methods and session length. */
+export function setCasinoSettings(
+  log: CasinoLog,
+  patch: { methods?: BetMethod[]; sessionHours?: number | null },
+  now: number,
+): CasinoLog {
+  const next = normSettings({ ...log.settings, ...patch, updatedAt: stamp(now) });
+  if (patch.sessionHours === null) delete next.sessionHours;
+  return { ...log, settings: next };
+}
+
+/**
+ * Wave K: save one casino's notes in place (the detail screen's Notes
+ * section). Moves `updatedAt`, so an import keeps whichever copy was written
+ * last. Unknown casino or unchanged text: the same log back.
+ */
+export function setCasinoNotes(log: CasinoLog, casinoId: string, notes: string, now: number): CasinoLog {
+  const text = notesOf(notes);
+  const c = casinoById(log, casinoId);
+  if (!c || c.notes === text) return log;
+  return { ...log, casinos: log.casinos.map((x) => (x.id === casinoId ? { ...x, notes: text, updatedAt: stamp(now) } : x)) };
+}
+
+/** Wave K: save (or clear, with null) a casino's spot. */
+export function setCasinoLocation(log: CasinoLog, casinoId: string, location: GeoPoint | null, now: number): CasinoLog {
+  const loc = location === null ? null : normPoint(location);
+  return {
+    ...log,
+    casinos: log.casinos.map((x) => (x.id === casinoId ? { ...x, location: loc, updatedAt: stamp(now) } : x)),
+  };
 }
 
 export function markExported(log: CasinoLog, now: number): CasinoLog {
@@ -587,7 +736,7 @@ export function exportFileName(now: number): string {
 export function serializeExport(log: CasinoLog, now: number, corrupt: string | null = quarantinedCasinoLog()): string {
   const out: Record<string, unknown> = {
     app: EXPORT_APP,
-    version: 1,
+    version: 2,
     exportedAt: stamp(now),
     casinos: log.casinos,
     sessions: log.sessions,
@@ -656,10 +805,11 @@ export function mergeImport(
   if (!isObj(parsed) || (!Array.isArray(parsed.casinos) && !Array.isArray(parsed.sessions))) {
     return { ok: false, error: 'That file is not a casino log export.' };
   }
-  if (parsed.version !== undefined && parsed.version !== 1) {
+  if (parsed.version !== undefined && parsed.version !== 1 && parsed.version !== 2) {
     return { ok: false, error: `That file is version ${String(parsed.version)}, newer than this app reads.` };
   }
-  const migrated = migrateCasinoLog({ ...parsed, version: 1 });
+  // A v1 file is migrated exactly as a v1 blob is (each casino's game -> games[0]).
+  const migrated = migrateCasinoLog({ ...parsed, version: parsed.version ?? 1 });
   if (!migrated) return { ok: false, error: 'That file is not a casino log export.' };
   const inc = migrated.log;
   const casinos = mergeById(local.casinos, inc.casinos);

@@ -7,7 +7,10 @@ import { CasinoForm } from './CasinoForm';
 import { StartSession } from './StartSession';
 import { EndSession } from './EndSession';
 import { SessionForm } from './SessionForm';
+import { GameStats } from './GameStats';
+import { CasinoSettings } from './CasinoSettings';
 import './casino.css';
+import './casinoGames.css';
 
 /**
  * WAVE J (lane C): THE CASINO TAB. The real-play notebook -- casinos, their
@@ -25,7 +28,9 @@ export type CasinoView =
   | { kind: 'casino'; id: string | null }
   | { kind: 'start' }
   | { kind: 'end'; sessionId: string }
-  | { kind: 'session'; sessionId: string; from: CasinoView };
+  | { kind: 'session'; sessionId: string; from: CasinoView }
+  | { kind: 'game'; casinoId: string; gameId: string }
+  | { kind: 'settings' };
 
 const DISCARD_PROMPT = 'Discard what you entered on this form?';
 
@@ -51,6 +56,7 @@ export function Casino() {
   const home = useCallback(() => go({ kind: 'home' }), [go]);
 
   const back = view.kind === 'session' ? () => go(view.from) : home;
+  // A game's stats card goes back to the ranking it was opened from (home).
   const title =
     view.kind === 'home'
       ? 'Casino'
@@ -62,7 +68,11 @@ export function Casino() {
           ? 'Start a session'
           : view.kind === 'end'
             ? 'End session'
-            : 'Edit session';
+            : view.kind === 'game'
+              ? 'Game stats'
+              : view.kind === 'settings'
+                ? 'Casino settings'
+                : 'Edit session';
 
   let body;
   switch (view.kind) {
@@ -77,6 +87,12 @@ export function Casino() {
       break;
     case 'end':
       body = <EndSession log={log} sessionId={view.sessionId} commit={commit} go={go} onDirty={setDirty} />;
+      break;
+    case 'game':
+      body = <GameStats log={log} casinoId={view.casinoId} gameId={view.gameId} go={go} />;
+      break;
+    case 'settings':
+      body = <CasinoSettings log={log} commit={commit} />;
       break;
     case 'session':
       body = (

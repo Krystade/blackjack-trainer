@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import {
   blankCasinoDraft,
+  blankGame,
   casinoById,
   deleteCasino,
   saveCasino,
   type CasinoDraft,
+  type CasinoGame,
   type CasinoLog,
   type CasinoStatus,
-  type DeckCount,
-  type MidShoeEntry,
+  type GeoPoint,
 } from '../../../store/casinoLog';
 import {
   hoursText,
@@ -23,31 +24,21 @@ import {
   standing,
   totals,
 } from '../../casinoFigures';
-import { Choice, DeleteButton, Field, FieldGroup, HeatBadge, MoneyInput } from './fields';
-import { moneyText } from './casinoInputs';
+import { Choice, DeleteButton, Field, HeatBadge } from './fields';
+import { GameEditor } from './GameEditor';
+import { gameText, type GameText } from './casinoInputs';
+import { NotesEditor } from './NotesEditor';
 import type { CasinoView } from './Casino';
 
 /**
- * A casino's page: everything known about its game and how it treats you,
+ * A casino's page: everything known about its games and how it treats you,
  * then the sessions played there. Every rule can stay "?" -- an unknown is
  * not a rule, and the summary line leaves it out rather than guessing.
+ *
+ * Wave K: several games per casino (each its own block), the drive from home
+ * and the spot itself (saved only on a tap of "Save this spot"), and the
+ * casino's notes as their own always-open section that saves as you type.
  */
-
-type Tri = 'unknown' | 'yes' | 'no';
-const tri = (b: boolean | null | undefined): Tri => (b === true ? 'yes' : b === false ? 'no' : 'unknown');
-const fromTri = (t: Tri): boolean | null => (t === 'yes' ? true : t === 'no' ? false : null);
-
-const YES_NO = [
-  { value: 'unknown', label: '?' },
-  { value: 'yes', label: 'Yes' },
-  { value: 'no', label: 'No' },
-] as const;
-
-interface FormText {
-  minBet: string;
-  maxBet: string;
-  cut: string;
-}
 
 export function CasinoForm({
   log,
@@ -64,13 +55,13 @@ export function CasinoForm({
 }) {
   const existing = id ? casinoById(log, id) : undefined;
   const [draft, setDraft] = useState<CasinoDraft>(() => (existing ? { ...existing } : blankCasinoDraft()));
-  const [text, setText] = useState<FormText>(() => ({
-    minBet: moneyText(existing?.minBet),
-    maxBet: moneyText(existing?.maxBet),
-    cut: moneyText(existing?.game.cutDecksLeft),
-  }));
+  const [texts, setTexts] = useState<Record<string, GameText>>(() =>
+    Object.fromEntries((existing?.games ?? draft.games).map((g) => [g.id, gameText(g)])),
+  );
+  const [drive, setDrive] = useState(() => (existing?.driveMinutes === null || existing?.driveMinutes === undefined ? '' : String(existing.driveMinutes)));
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [locMsg, setLocMsg] = useState<string | null>(null);
 
   useEffect(() => onDirty(touched), [touched, onDirty]);
 
@@ -89,13 +80,40 @@ export function CasinoForm({
     setDraft((d) => ({ ...d, ...patch }));
     setTouched(true);
   };
-  const updateGame = (patch: Partial<CasinoDraft['game']>) => {
-    setDraft((d) => ({ ...d, game: { ...d.game, ...patch } }));
+  const updateGame = (gid: string, patch: Partial<CasinoGame>) => {
+    setDraft((d) => ({ ...d, games: d.games.map((g) => (g.id === gid ? { ...g, ...patch } : g)) }));
     setTouched(true);
   };
-  const updateText = (patch: Partial<FormText>) => {
-    setText((t) => ({ ...t, ...patch }));
+  const updateText = (gid: string, patch: Partial<GameText>) => {
+    setTexts((t) => ({ ...t, [gid]: { ...t[gid]!, ...patch } }));
     setTouched(true);
+  };
+  const addGame = () => {
+    const g = blankGame();
+    setDraft((d) => ({ ...d, games: [...d.games, g] }));
+    setTexts((t) => ({ ...t, [g.id]: gameText(g) }));
+    setTouched(true);
+  };
+  const removeGame = (gid: string) => {
+    setDraft((d) => ({ ...d, games: d.games.filter((g) => g.id !== gid) }));
+    setTouched(true);
+  };
+
+  const saveSpot = () => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocMsg('This browser cannot tell where you are.');
+      return;
+    }
+    setLocMsg('Finding you…');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc: GeoPoint = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        update({ location: loc });
+        setLocMsg('Spot saved with the casino when you tap Save.');
+      },
+      (err) => setLocMsg(err.code === 1 ? 'Location is blocked for this app in the browser settings.' : 'Could not get a location. Try again outside.'),
+      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 },
+    );
   };
 
   const save = () => {
@@ -103,14 +121,27 @@ export function CasinoForm({
       setError('Give the casino a name.');
       return;
     }
-    const minBet = parseMoney(text.minBet);
-    const maxBet = parseMoney(text.maxBet);
-    const cut = parseMoney(text.cut);
-    if ([minBet, maxBet, cut].some((n) => Number.isNaN(n))) {
-      setError('Bets are dollar amounts and the cut a number of decks. Fix or clear them.');
+    const driveMinutes = drive.trim() === '' ? null : Number(drive);
+    if (driveMinutes !== null && !(Number.isFinite(driveMinutes) && driveMinutes >= 0 && driveMinutes <= 1440)) {
+      setError('Drive time is minutes, one way. Fix or clear it.');
       return;
     }
-    const r = saveCasino(log, { ...draft, minBet, maxBet, game: { ...draft.game, cutDecksLeft: cut } }, Date.now(), id ?? undefined);
+    const games: CasinoGame[] = [];
+    for (const g of draft.games) {
+      const t = texts[g.id] ?? gameText(g);
+      const minBet = parseMoney(t.minBet);
+      const maxBet = parseMoney(t.maxBet);
+      const cut = parseMoney(t.cut);
+      const rph = parseMoney(t.roundsPerHour);
+      if ([minBet, maxBet, cut, rph].some((n) => Number.isNaN(n)) || (rph !== null && (rph < 1 || rph > 1000))) {
+        setError('Bets are dollar amounts, the cut a number of decks and rounds per hour a count. Fix or clear them.');
+        return;
+      }
+      games.push({ ...g, minBet, maxBet, cutDecksLeft: cut, roundsPerHour: rph, label: g.label?.trim() || undefined, notes: g.notes?.trim() ? g.notes : undefined });
+    }
+    // The notes save themselves on this page; take the stored copy, not the one this form opened with.
+    const notes = existing ? (casinoById(log, existing.id)?.notes ?? '') : draft.notes;
+    const r = saveCasino(log, { ...draft, games, driveMinutes, notes }, Date.now(), id ?? undefined);
     if (!r) {
       setError('Give the casino a name.');
       return;
@@ -123,6 +154,7 @@ export function CasinoForm({
   const sessions = existing ? sessionsAt(log, existing.id).sort((a, b) => Date.parse(b.start) - Date.parse(a.start)) : [];
   const t = totals(sessions);
   const coolOff = existing ? standing(existing, now).coolOffOver : false;
+  const savedIds = new Set(existing?.games.map((g) => g.id) ?? []);
 
   return (
     <div className="cas-form" data-testid="casino-form">
@@ -130,113 +162,84 @@ export function CasinoForm({
         <Field label="Name">
           <input className="cas-input" name="name" autoComplete="off" value={draft.name} onChange={(e) => update({ name: e.target.value })} />
         </Field>
-        <Field label="Area">
-          <input
-            className="cas-input"
-            name="area"
-            autoComplete="off"
-            placeholder="City or region"
-            value={draft.area ?? ''}
-            onChange={(e) => update({ area: e.target.value })}
-          />
-        </Field>
+        <div className="cas-pair">
+          <Field label="Area">
+            <input
+              className="cas-input"
+              name="area"
+              autoComplete="off"
+              placeholder="City or region"
+              value={draft.area ?? ''}
+              onChange={(e) => update({ area: e.target.value })}
+            />
+          </Field>
+          <Field label="Drive, minutes">
+            <input
+              className="cas-input"
+              name="driveMinutes"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="One way"
+              value={drive}
+              onChange={(e) => {
+                setDrive(e.target.value);
+                setTouched(true);
+              }}
+            />
+          </Field>
+        </div>
+        <div className="cas-field cas-spot" data-testid="casino-spot">
+          <span className="cas-field-label">Location</span>
+          {draft.location ? (
+            <span className="cas-inline cas-spot-row">
+              <span className="cas-spot-text" data-testid="spot-saved">
+                Spot saved ({draft.location.lat.toFixed(4)}, {draft.location.lon.toFixed(4)})
+              </span>
+              <button
+                type="button"
+                className="u-btn"
+                onClick={() => {
+                  update({ location: null });
+                  setLocMsg(null);
+                }}
+              >
+                Clear
+              </button>
+            </span>
+          ) : (
+            <button type="button" className="u-btn cas-wide" onClick={saveSpot} data-testid="save-spot">
+              Save this spot (I&rsquo;m here)
+            </button>
+          )}
+          <span className="cas-field-hint">{locMsg ?? 'Only when you tap. Stays on this phone, for distances in the ranking.'}</span>
+        </div>
       </div>
+
+      {existing && <NotesEditor log={log} casinoId={existing.id} commit={commit} />}
 
       <section className="cas-section" aria-labelledby="cas-game-title">
         <div className="cas-section-head">
           <h2 className="u-section-title" id="cas-game-title">
-            Game
+            {draft.games.length === 1 ? 'Game' : `Games (${draft.games.length})`}
           </h2>
+          <button type="button" className="cas-head-btn" onClick={addGame} data-testid="add-game">
+            + Add game
+          </button>
         </div>
         <div className="cas-pad-x cas-stack">
-          <FieldGroup label="Decks">
-            <Choice
-              label="Decks"
-              value={draft.game.decks ? String(draft.game.decks) : 'unknown'}
-              options={[
-                { value: 'unknown', label: '?' },
-                { value: '1', label: '1' },
-                { value: '2', label: '2' },
-                { value: '6', label: '6' },
-                { value: '8', label: '8' },
-              ]}
-              onChange={(v) => updateGame({ decks: v === 'unknown' ? null : (Number(v) as DeckCount) })}
+          {draft.games.map((g, i) => (
+            <GameEditor
+              key={g.id}
+              game={g}
+              text={texts[g.id] ?? gameText(g)}
+              index={i}
+              count={draft.games.length}
+              onChange={(patch) => updateGame(g.id, patch)}
+              onText={(patch) => updateText(g.id, patch)}
+              onRemove={() => removeGame(g.id)}
+              onStats={existing && !touched && savedIds.has(g.id) ? () => go({ kind: 'game', casinoId: existing.id, gameId: g.id }) : undefined}
             />
-          </FieldGroup>
-          <FieldGroup label="Dealer soft 17">
-            <Choice
-              label="Dealer soft 17"
-              value={draft.game.s17 === true ? 's17' : draft.game.s17 === false ? 'h17' : 'unknown'}
-              options={[
-                { value: 'unknown', label: '?' },
-                { value: 's17', label: 'Stands (S17)' },
-                { value: 'h17', label: 'Hits (H17)' },
-              ]}
-              onChange={(v) => updateGame({ s17: v === 's17' ? true : v === 'h17' ? false : null })}
-            />
-          </FieldGroup>
-          <div className="cas-pair">
-            <FieldGroup label="Double after split">
-              <Choice label="Double after split" value={tri(draft.game.das)} options={YES_NO} onChange={(v) => updateGame({ das: fromTri(v) })} />
-            </FieldGroup>
-            <FieldGroup label="Late surrender">
-              <Choice
-                label="Late surrender"
-                value={tri(draft.game.surrender)}
-                options={YES_NO}
-                onChange={(v) => updateGame({ surrender: fromTri(v) })}
-              />
-            </FieldGroup>
-          </div>
-          <div className="cas-pair">
-            <FieldGroup label="Blackjack pays">
-              <Choice
-                label="Blackjack pays"
-                value={draft.game.payout ?? 'unknown'}
-                options={[
-                  { value: 'unknown', label: '?' },
-                  { value: '3:2', label: '3:2' },
-                  { value: '6:5', label: '6:5' },
-                ]}
-                onChange={(v) => updateGame({ payout: v === 'unknown' ? null : v })}
-              />
-            </FieldGroup>
-            <Field label="Cut at, decks left">
-              <input
-                className="cas-input"
-                name="cutDecksLeft"
-                inputMode="decimal"
-                autoComplete="off"
-                placeholder="e.g. 1.5"
-                value={text.cut}
-                onChange={(e) => updateText({ cut: e.target.value })}
-              />
-            </Field>
-          </div>
-          <div className="cas-pair">
-            <Field label="Min bet">
-              <MoneyInput name="minBet" value={text.minBet} onChange={(v) => updateText({ minBet: v })} />
-            </Field>
-            <Field label="Max bet">
-              <MoneyInput name="maxBet" value={text.maxBet} onChange={(v) => updateText({ maxBet: v })} />
-            </Field>
-          </div>
-          <FieldGroup label="Mid-shoe entry" hint="Back-counting needs it.">
-            <Choice
-              label="Mid-shoe entry"
-              value={draft.midShoeEntry}
-              options={[
-                { value: 'unknown', label: '?' },
-                { value: 'allowed', label: 'Allowed' },
-                { value: 'no', label: 'Not allowed' },
-              ]}
-              onChange={(v: MidShoeEntry) => update({ midShoeEntry: v })}
-            />
-          </FieldGroup>
-          <label className="cas-check">
-            <input type="checkbox" name="csm" checked={draft.csm} onChange={(e) => update({ csm: e.target.checked })} />
-            <span>Continuous shuffler (CSM): counting is impossible</span>
-          </label>
+          ))}
         </div>
       </section>
 
@@ -276,9 +279,11 @@ export function CasinoForm({
               />
             </Field>
           )}
-          <Field label="Notes" hint="Pit names, shift changes, good dealers.">
-            <textarea className="cas-input cas-textarea" name="notes" rows={4} value={draft.notes} onChange={(e) => update({ notes: e.target.value })} />
-          </Field>
+          {!existing && (
+            <Field label="Notes" hint="Pit names, shift changes, good dealers.">
+              <textarea className="cas-input cas-textarea" name="notes" rows={4} value={draft.notes} onChange={(e) => update({ notes: e.target.value })} />
+            </Field>
+          )}
           {error && (
             <p className="cas-field-error" role="alert">
               {error}

@@ -51,7 +51,7 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   await page.getByRole('group', { name: 'Double after split' }).getByRole('button', { name: 'Yes' }).click();
   await page.getByRole('group', { name: 'Late surrender' }).getByRole('button', { name: 'Yes' }).click();
   await page.getByRole('group', { name: 'Blackjack pays' }).getByRole('button', { name: '3:2' }).click();
-  await page.locator('input[name="cutDecksLeft"]').fill('1.5');
+  await page.locator('input[name="cutDecksLeft-0"]').fill('1.5');
   await page.getByRole('button', { name: 'Save casino' }).click();
   const row = page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' });
   await expect(row).toContainText('Downtown · never visited');
@@ -136,7 +136,14 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   await expect(hist.getByTestId('heat-badge')).toHaveText('Back-off');
   await expect(page.getByTestId('casino-net')).toHaveText('+$600');
   await expect(page.getByTestId('casino-hours')).toHaveText('1.5');
-  await expect(page.getByTestId('casino-per-hour')).toHaveText('+$400');
+  // +$600 over the session's stored length: 1.5 h of fast-forward plus the
+  // test's own 5 s runFor plus whatever real time leaked into the installed
+  // clock, so the exact figure is worked out from what was stored (~ +$400).
+  const [sess] = JSON.parse((await stored(page))!).sessions as { start: string; end: string }[];
+  const perHour = Math.round(600 / ((Date.parse(sess!.end) - Date.parse(sess!.start)) / 3_600_000));
+  expect(perHour).toBeGreaterThanOrEqual(395);
+  expect(perHour).toBeLessThanOrEqual(400);
+  await expect(page.getByTestId('casino-per-hour')).toHaveText(`+$${perHour}`);
   await expect(page.getByTestId('casino-sessions')).toHaveText('1');
   await expect(page.getByTestId('casino-bankroll')).toHaveText('—');
   await page.locator('input[name="startingBankroll"]').fill('10000');

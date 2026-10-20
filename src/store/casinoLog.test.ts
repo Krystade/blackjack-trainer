@@ -13,6 +13,11 @@ import {
   markExported,
   mergeImport,
   migrateCasinoLog,
+  normCasino,
+  blankGame,
+  setCasinoNotes,
+  setCasinoLocation,
+  setCasinoSettings,
   normSession,
   quarantinedCasinoLog,
   runningSession,
@@ -118,7 +123,7 @@ describe('corrupt and partial blobs', () => {
   });
 
   it('quarantines a version this build does not know instead of flattening it', () => {
-    const FUTURE = JSON.stringify({ version: 2, casinos: [{ id: 'c1', name: 'X' }], sessions: [] });
+    const FUTURE = JSON.stringify({ version: 3, casinos: [{ id: 'c1', name: 'X' }], sessions: [] });
     store.map.set(CASINO_LOG_KEY, FUTURE);
     expect(loadCasinoLog().casinos).toEqual([]);
     expect(quarantinedCasinoLog()).toBe(FUTURE);
@@ -147,10 +152,23 @@ describe('corrupt and partial blobs', () => {
     expect(log.casinos).toHaveLength(1);
     const c = log.casinos[0]!;
     expect(c.name).toBe('Bellagio');
-    expect(c.game).toEqual({ decks: null, s17: null, das: null, surrender: null, payout: '6:5', cutDecksLeft: null });
-    expect(c.minBet).toBeNull();
+    expect(c.games).toEqual([
+      {
+        id: 'g-c1',
+        decks: null,
+        s17: null,
+        das: null,
+        surrender: null,
+        payout: '6:5',
+        cutDecksLeft: null,
+        minBet: null,
+        maxBet: null,
+        midShoeEntry: 'unknown',
+        csm: false,
+        roundsPerHour: null,
+      },
+    ]);
     expect(c.status).toBe('ok');
-    expect(c.midShoeEntry).toBe('unknown');
     expect(log.sessions.map((s) => s.id)).toEqual(['s1', 's3']);
     expect(log.sessions[0]!.buyIns).toEqual([100]);
     expect(log.sessions[0]!.heat).toBe('none');
@@ -165,6 +183,110 @@ describe('corrupt and partial blobs', () => {
     expect(migrateCasinoLog({ hello: 1 })).toBeNull();
     expect(migrateCasinoLog([])).toBeNull();
     expect(migrateCasinoLog(null)).toBeNull();
+  });
+});
+
+describe('wave K: version 2, several games per casino', () => {
+  const V1_CASINO = {
+    id: 'c1',
+    name: 'El Cortez',
+    area: 'Downtown',
+    game: { decks: 6, s17: false, das: true, surrender: true, payout: '3:2', cutDecksLeft: 1.25 },
+    minBet: 15,
+    maxBet: 500,
+    midShoeEntry: 'no',
+    csm: false,
+    status: 'avoid',
+    notes: 'Swing shift is friendly',
+    createdAt: '2026-10-01T20:00:00.000Z',
+    updatedAt: '2026-10-02T20:00:00.000Z',
+  };
+  const V1_GAME = {
+    id: 'g-c1',
+    decks: 6,
+    s17: false,
+    das: true,
+    surrender: true,
+    payout: '3:2',
+    cutDecksLeft: 1.25,
+    minBet: 15,
+    maxBet: 500,
+    midShoeEntry: 'no',
+    csm: false,
+    roundsPerHour: null,
+  };
+
+  it('loads a stored v1 blob with its game and casino-level bets as games[0], meaning unchanged', () => {
+    store.map.set(CASINO_LOG_KEY, JSON.stringify({ version: 1, casinos: [V1_CASINO], sessions: [], settings: { startingBankroll: 5000, updatedAt: null }, lastExportAt: null }));
+    const log = loadCasinoLog();
+    expect(log.version).toBe(2);
+    const c = log.casinos[0]!;
+    expect(c.games).toEqual([V1_GAME]);
+    expect(c).toMatchObject({ name: 'El Cortez', area: 'Downtown', status: 'avoid', notes: 'Swing shift is friendly', updatedAt: V1_CASINO.updatedAt });
+    expect(c).not.toHaveProperty('game');
+    expect(c).not.toHaveProperty('minBet');
+    expect(log.settings).toEqual({ startingBankroll: 5000, updatedAt: null });
+    expect(quarantinedCasinoLog()).toBeNull();
+    // Saved back, it is a v2 blob that loads to the same thing.
+    saveCasinoLog(log);
+    expect(JSON.parse(store.map.get(CASINO_LOG_KEY)!).version).toBe(2);
+    expect(loadCasinoLog()).toEqual(log);
+  });
+
+  it('imports a v1 export file, migrating it the same way, and a second import of it is a no-op', () => {
+    const file = JSON.stringify({ app: 'bjtrainer-casino-log', version: 1, casinos: [V1_CASINO], sessions: [] });
+    const r = mergeImport(emptyCasinoLog(), file);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.log.casinos[0]!.games).toEqual([V1_GAME]);
+    const again = mergeImport(r.log, file);
+    if (!again.ok) throw new Error(again.error);
+    expect(again.report).toMatchObject({ casinosAdded: 0, casinosUpdated: 0, kept: 1 });
+    expect(again.log.casinos[0]!.games).toEqual([V1_GAME]);
+  });
+
+  it('round-trips two games, drive time, a saved spot, notes and the Casino settings through export', () => {
+    const draft = blankCasinoDraft('Rampart');
+    const g1 = { ...blankGame('g1'), label: 'Shoe', decks: 6 as const, minBet: 25, roundsPerHour: 70, notes: 'pit 2' };
+    const g2 = { ...blankGame('g2'), label: 'DD pit 3', decks: 2 as const, minBet: 50, midShoeEntry: 'no' as const };
+    const saved = saveCasino(emptyCasinoLog(), { ...draft, games: [g1, g2], driveMinutes: 25, location: { lat: 36.2, lon: -115.3 } }, T0)!;
+    let log = setCasinoNotes(saved.log, saved.casino.id, 'Ask for Maria\nNo mid-shoe on DD', T0 + H);
+    log = setCasinoSettings(log, { methods: [{ id: 'm1', entryTc: 3, exitTc: 0, rampStartTc: null }], sessionHours: 3 }, T0);
+    const r = mergeImport(emptyCasinoLog(), serializeExport(log, T0, null));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.log.casinos).toEqual(log.casinos);
+    expect(r.log.settings).toEqual(log.settings);
+    const c = r.log.casinos[0]!;
+    expect(c.games.map((g) => g.label)).toEqual(['Shoe', 'DD pit 3']);
+    expect(c.driveMinutes).toBe(25);
+    expect(c.location).toEqual({ lat: 36.2, lon: -115.3 });
+    expect(c.notes).toBe('Ask for Maria\nNo mid-shoe on DD');
+    expect(c.updatedAt).toBe(new Date(T0 + H).toISOString());
+  });
+
+  it('repairs games: bad fields, duplicate ids, and an empty list gets one blank game', () => {
+    const c1 = normCasino({ id: 'c1', name: 'A', games: [{ id: 'x', decks: 4, roundsPerHour: -3 }, { id: 'x' }, 'junk'] })!;
+    expect(c1.games.map((g) => g.id)).toEqual(['x', 'g-c1-2']);
+    expect(c1.games[0]!.decks).toBeNull();
+    expect(c1.games[0]!.roundsPerHour).toBeNull();
+    expect(normCasino({ id: 'c2', name: 'B', games: [] })!.games).toEqual([blankGame('g-c2')]);
+    expect(normCasino({ id: 'c3', name: 'C', location: { lat: 99, lon: 0 }, driveMinutes: 'far' })).toMatchObject({ location: null, driveMinutes: null });
+  });
+
+  it('setCasinoNotes moves updatedAt only when the text changed; setCasinoLocation saves and clears', () => {
+    const { log, id } = withCasino();
+    const a = setCasinoNotes(log, id, 'hello', T0 + H);
+    expect(a.casinos[0]!.updatedAt).toBe(new Date(T0 + H).toISOString());
+    expect(setCasinoNotes(a, id, 'hello', T0 + 2 * H)).toBe(a);
+    const b = setCasinoLocation(a, id, { lat: 1, lon: 2 }, T0 + 3 * H);
+    expect(b.casinos[0]!.location).toEqual({ lat: 1, lon: 2 });
+    expect(setCasinoLocation(b, id, null, T0 + 4 * H).casinos[0]!.location).toBeNull();
+  });
+
+  it('refuses a custom method whose entry is not above its exit, and an import of version 3', () => {
+    const log = setCasinoSettings(emptyCasinoLog(), { methods: [{ id: 'bad', entryTc: 0, exitTc: 0, rampStartTc: null }] }, T0);
+    expect(log.settings.methods).toEqual([]);
+    const r = mergeImport(emptyCasinoLog(), JSON.stringify({ version: 3, casinos: [], sessions: [] }));
+    expect(r.ok).toBe(false);
   });
 });
 
