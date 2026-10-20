@@ -1,4 +1,4 @@
-import { saveGameResult, type SimInput } from '../../../store/casinoGameStats';
+import { loadGameResults, saveGameResult, type SimInput } from '../../../store/casinoGameStats';
 import type { RunProgress } from '../../../engine/casinoRun';
 import type { SimMessage, SimRequest } from './casinoSim.worker';
 
@@ -10,11 +10,27 @@ import type { SimMessage, SimRequest } from './casinoSim.worker';
 
 /** About a minute on a phone, then it shows what it has, with its interval. */
 export const TIME_CAP_MS = 60_000;
+/**
+ * Review S3: a game whose last run was cut off by the cap is partial, so
+ * Compute all runs it again. The same seed deals the same rounds, so a
+ * re-run with the same cap would stop in the same place: it gets the last
+ * run's time plus another minute, up to this.
+ */
+export const MAX_TIME_CAP_MS = 5 * 60_000;
 
 export interface QueuedRun {
   gameId: string;
   input: SimInput;
   profileName: string;
+  /** Rounds one exit costs at this game (rounds/hour x exit minutes / 60), for the stopping rule. */
+  exitRounds?: number;
+}
+
+/** The cap for this run: a minute, or more when the last run of the same inputs hit the cap. */
+export function timeCapFor(run: QueuedRun): number {
+  const prev = loadGameResults()[run.gameId];
+  if (!prev || prev.key !== run.input.key || prev.status !== 'time') return TIME_CAP_MS;
+  return Math.min(MAX_TIME_CAP_MS, Math.max(TIME_CAP_MS, prev.ms + TIME_CAP_MS));
 }
 
 export interface RunnerState {
@@ -107,7 +123,7 @@ function startNext(): void {
     worker = null;
     startNext();
   };
-  const req: SimRequest = { spec: run.input.spec, seed: run.input.seed, timeCapMs: TIME_CAP_MS };
+  const req: SimRequest = { spec: run.input.spec, seed: run.input.seed, timeCapMs: timeCapFor(run), exitRounds: run.exitRounds ?? 0 };
   const b = budget();
   if (b !== undefined) req.maxRounds = b;
   w.postMessage(req);

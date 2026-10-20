@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { defaultMethods, describeMethod, methodBadge, methodBet, methodSpread, methodsFor, normMethod, type BetMethod } from './betMethods';
+import { defaultMethods, describeMethod, duplicateOf, methodBadge, methodBet, methodSpread, methodsFor, normMethod, type BetMethod } from './betMethods';
 import { DEFAULT_SPREAD } from './game';
 
 const m = (over: Partial<BetMethod>): BetMethod => ({ id: 'x', entryTc: null, exitTc: null, rampStartTc: null, ...over });
@@ -75,6 +75,27 @@ describe('methodsFor', () => {
     expect(defaultMethods({ spread: DEFAULT_SPREAD }).map((x) => x.id)).toEqual([
       'flat', 'ramp', 'wong-1', 'wong-2', 'wong-profile', 'start+1', 'start+2', 'bc+1-1', 'bc+2+0', 'bc-profile',
     ]);
+  });
+});
+
+describe('review N4: duplicateOf', () => {
+  const p = { spread: DEFAULT_SPREAD };
+  it('names the default a custom method plays exactly like, and nothing for one of its own', () => {
+    const same = m({ id: 'c1', exitTc: -1 });
+    expect(duplicateOf(p, [same], same)?.id).toBe('wong-1');
+    // Before it is saved, too.
+    expect(duplicateOf(p, [], m({ id: 'new', exitTc: -1 }))?.id).toBe('wong-1');
+    // A ramp start at the profile's own first raise is the plain ramp.
+    expect(duplicateOf(p, [], m({ id: 'new', rampStartTc: 1 }))?.id).toBe('ramp');
+    const own = m({ id: 'c2', exitTc: -4 });
+    expect(duplicateOf(p, [own], own)).toBeNull();
+  });
+
+  it('a second custom method like the first is a duplicate of the first, not the other way round', () => {
+    const first = m({ id: 'c1', exitTc: -4 });
+    const second = m({ id: 'c2', exitTc: -4, label: 'Mine' });
+    expect(duplicateOf(p, [first, second], first)).toBeNull();
+    expect(duplicateOf(p, [first, second], second)?.id).toBe('c1');
   });
 });
 

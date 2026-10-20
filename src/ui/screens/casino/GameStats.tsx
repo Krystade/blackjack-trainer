@@ -2,7 +2,7 @@ import { casinoById, type CasinoLog } from '../../../store/casinoLog';
 import { simRules, type GameResult } from '../../../store/casinoGameStats';
 import { describeMethod, methodBadge } from '../../../engine/betMethods';
 import { gameSummary, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
-import { buildRanking, gameFigures, roundsPerHourOf, type GameFigures, type RankRow } from '../../casinoRanking';
+import { buildRanking, exitMinutesOf, gameFigures, roundsPerHourOf, type GameFigures, type RankRow } from '../../casinoRanking';
 import { ASSUMED_TEXT, ciText, edgeText, evHourText, n0Text, roundsText, rorText, sdHourText } from '../../casinoStatsText';
 import { enqueue, cancelAll } from './simRunner';
 import { useActiveProfile, useGameResults, useRunner } from './useGameStats';
@@ -56,8 +56,11 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
   const queued = runner.queue.includes(gameId);
   const live: GameResult | null = running?.progress ? progressResult(running.progress, row.input.spec.unit) : null;
   const shown = live ?? (row.state.kind === 'none' ? null : row.state.result);
-  const figures: GameFigures | null = shown ? gameFigures(shown, rph, bankroll) : null;
-  const compute = () => enqueue([{ gameId, input: row.input, profileName: profile.name }]);
+  const exitMinutes = exitMinutesOf(log, game);
+  const exitWhat = game.midShoeEntry === 'no' ? 'waiting for a fresh shoe, as mid-shoe entry is barred here' : 'finding another table';
+  const figures: GameFigures | null = shown ? gameFigures(shown, rph, bankroll, exitMinutes) : null;
+  const staleShown = row.state.kind === 'stale' && !live;
+  const compute = () => enqueue([{ gameId, input: row.input, profileName: profile.name, exitRounds: row.exitRounds }]);
   const { rules } = simRules(game);
 
   return (
@@ -117,7 +120,14 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
           </>
         ) : (
           <>
-            <p className="cas-gs-state">
+            <p className="cas-gs-state" data-testid="gs-status">
+              {row.state.result.status !== 'done' && (
+                <>
+                  <span className="cas-badge" data-tone="warn" data-testid="partial-badge">
+                    Partial
+                  </span>{' '}
+                </>
+              )}
               Computed {shortDate(row.state.result.computedAt, Date.now())}. {STATUS_NOTE[row.state.result.status]}
             </p>
             <button type="button" className="u-btn cas-wide" onClick={compute} data-testid="rerun-game">
@@ -130,7 +140,7 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
 
       {figures && shown && (
         <>
-          <section className="cas-gs-hero cas-pad" data-testid="gs-hero" data-stale={row.state.kind === 'stale' && !live ? 'true' : undefined}>
+          <section className="cas-gs-hero cas-pad" data-testid="gs-hero" data-stale={staleShown ? 'true' : undefined}>
             <div className="cas-stat">
               <span className="cas-stat-label">{figures.best ? 'Best EV' : 'EV, flat min bet'}</span>
               <span className="cas-stat-value cas-stat-big" data-sign={Math.sign(Math.round(figures.evHour))} data-testid="gs-best-ev">
@@ -150,11 +160,16 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
           </section>
 
           {figures.methods && (
-            <section className="cas-section" aria-labelledby="gs-methods-title">
+            <section className="cas-section cas-gs-methods-section" aria-labelledby="gs-methods-title" data-stale={staleShown ? 'true' : undefined}>
               <div className="cas-section-head">
                 <h2 className="u-section-title" id="gs-methods-title">
                   Betting methods
                 </h2>
+                {staleShown && (
+                  <span className="cas-badge" data-tone="warn" data-testid="methods-stale">
+                    Stale
+                  </span>
+                )}
               </div>
               <ul className="cas-list cas-gs-methods">
                 {figures.methods.map((m) => {
@@ -177,6 +192,7 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
                         <Fig label="Avg bet" value={money(Math.round(m.stats.avgBet))} />
                         <Fig label="RoR*" value={rorText(m.hours.ror)} />
                         <Fig label="Rounds played" value={`${Math.round(m.stats.playedShare * 100)}%`} />
+                        <Fig label="Exits/h" value={m.method.exitTc === null ? '—' : m.hours.exitsPerHour.toFixed(1)} sub={m.method.exitTc === null ? undefined : `${exitMinutes} min each`} testId="gs-exits" />
                         <Fig label="Per 100" value={`${(m.hours.evPer100 / shown.unit).toFixed(1)} u`} sub={`${money(Math.round(m.hours.evPer100))} · SD ${money(Math.round(m.hours.sdPer100))}`} />
                         <Fig label="Style" value={methodBadge(m.method)} />
                       </dl>
@@ -201,6 +217,12 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
             , no resplit of aces, min bet {money(row.input.spec.unit)}
             {row.input.spec.maxBet !== null ? `, max ${money(row.input.spec.maxBet)}` : ', no table max'}, {rph} rounds/h.
           </p>
+          {!game.csm && (
+            <p data-testid="gs-exit-cost">
+              <strong>Leaving:</strong> each exit (a wong-out, or a back-counter leaving at its exit count) costs {exitMinutes} min of table time,{' '}
+              {exitWhat} (Casino settings).
+            </p>
+          )}
           {row.input.assumed.length > 0 && (
             <p data-testid="gs-assumed">
               <strong>Assumed</strong> (not logged, so the conservative choice): {row.input.assumed.map((a) => ASSUMED_TEXT[a]).join('; ')}.
@@ -219,8 +241,8 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
           )}
           <p className="cas-note">
             Every method is scored on the same simulated rounds, played every round at one seat; a method that sits out would in reality change the
-            cards slightly for the rounds after, which this ignores (the standard approximation in counting simulators). A wong-out leaves for a
-            fresh shoe at no cost in time. *Risk of ruin is the diffusion approximation exp(&minus;2&middot;EV&middot;B/SD&sup2;) at your starting
+            cards slightly for the rounds after, which this ignores (the standard approximation in counting simulators). After an exit the method
+            sits down at a fresh shoe once the {exitMinutes} min are up; "Rounds played" is the share of the rounds dealt that it played. *Risk of ruin is the diffusion approximation exp(&minus;2&middot;EV&middot;B/SD&sup2;) at your starting
             bankroll{bankroll === null ? ' (not set, so not shown)' : ` of ${money(bankroll)}`}. N0 is (SD/EV)&sup2;; DI is 1000&middot;EV/SD per round played.
           </p>
         </div>
@@ -229,9 +251,9 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
   );
 }
 
-function Fig({ label, value, sub, sign }: { label: string; value: string; sub?: string; sign?: number }) {
+function Fig({ label, value, sub, sign, testId }: { label: string; value: string; sub?: string; sign?: number; testId?: string }) {
   return (
-    <div className="cas-gs-fig">
+    <div className="cas-gs-fig" data-testid={testId}>
       <dt>{label}</dt>
       <dd data-sign={sign}>
         {value}

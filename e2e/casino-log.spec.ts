@@ -15,7 +15,9 @@ import { worstContrast } from './contrast';
 
 test.use({ viewport: { width: 375, height: 812 } });
 
-const KEY = 'bjtrainer.casinoLog.v1';
+/** Wave K (review S2): the log's own key; the v1 key is only read, as the migration source. */
+const KEY = 'bjtrainer.casinoLog.v2';
+const LEGACY_KEY = 'bjtrainer.casinoLog.v1';
 /** 7pm local on 18 Oct 2026: a back-off today cools off until 18 Apr 2027. */
 const T0 = new Date(2026, 9, 18, 19, 0, 0).getTime();
 
@@ -27,6 +29,23 @@ async function elapsedSeconds(page: Page): Promise<number> {
   const text = (await page.getByTestId('casino-elapsed').textContent()) ?? '';
   const [h, m, s] = text.split(':').map(Number) as [number, number, number];
   return h * 3600 + m * 60 + s;
+}
+
+/**
+ * Review N6: with the clock paused, React's own timers (the Suspense reveal of
+ * a lazy screen) are held too. Step the fake clock 100 ms at a time until
+ * `target` shows, and return the fake milliseconds that cost, so the caller
+ * can account for them.
+ */
+async function stepUntilVisible(page: Page, target: ReturnType<Page['getByTestId']>): Promise<number> {
+  let spent = 0;
+  while (!(await target.isVisible())) {
+    if (spent >= 3000) break;
+    await page.clock.runFor(100);
+    spent += 100;
+  }
+  await expect(target).toBeVisible();
+  return spent;
 }
 
 /** No Web Share with files: the export falls back to a download. */
@@ -41,6 +60,9 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   await page.goto('/?e2e=1');
   await openCasino(page);
   await expect(page.getByRole('heading', { name: 'Your real-play notebook' })).toBeVisible();
+  // Review N6: from here the clock is paused, so real time cannot leak into
+  // the session's length: only the fast-forwards and runFor below move it.
+  await page.clock.pauseAt(T0 + 60_000);
 
   // --- Add a casino, with what a first visit learns.
   await page.getByRole('button', { name: 'Add a casino' }).click();
@@ -87,6 +109,9 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   await page.reload();
   await expect(page.getByTestId('casino-tab-live')).toBeVisible();
   await openCasino(page);
+  const stepped = await stepUntilVisible(page, live);
+  // The $400 an hour below holds while the session runs under 1.5 h + 6.7 s.
+  expect(stepped, 'fake time spent bringing the screen back').toBeLessThanOrEqual(2000);
   await expect(live).toContainText('Golden Nugget');
   await expect(live.getByTestId('casino-buyin-total')).toHaveText('$1,500 in');
   // The clock is the stored start against now, so the reload lost nothing.
@@ -94,8 +119,8 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   expect(await elapsedSeconds(page)).toBeLessThan(91 * 60);
   // And it keeps ticking.
   const before = await elapsedSeconds(page);
-  await page.clock.runFor(5000);
-  await expect.poll(() => elapsedSeconds(page)).toBeGreaterThanOrEqual(before + 4);
+  await page.clock.runFor(2000);
+  await expect.poll(() => elapsedSeconds(page)).toBeGreaterThanOrEqual(before + 2);
 
   // --- Heat mid-session, then cash out after a back-off.
   await live.getByRole('button', { name: 'Heat', exact: true }).click();
@@ -136,14 +161,11 @@ test('a real session: casino, buy-ins, reload, back-off, burn, figures, and the 
   await expect(hist.getByTestId('heat-badge')).toHaveText('Back-off');
   await expect(page.getByTestId('casino-net')).toHaveText('+$600');
   await expect(page.getByTestId('casino-hours')).toHaveText('1.5');
-  // +$600 over the session's stored length: 1.5 h of fast-forward plus the
-  // test's own 5 s runFor plus whatever real time leaked into the installed
-  // clock, so the exact figure is worked out from what was stored (~ +$400).
-  const [sess] = JSON.parse((await stored(page))!).sessions as { start: string; end: string }[];
-  const perHour = Math.round(600 / ((Date.parse(sess!.end) - Date.parse(sess!.start)) / 3_600_000));
-  expect(perHour).toBeGreaterThanOrEqual(395);
-  expect(perHour).toBeLessThanOrEqual(400);
-  await expect(page.getByTestId('casino-per-hour')).toHaveText(`+$${perHour}`);
+  // 1.5 h of fast-forward, the 2 s runFor and at most 2 s of steps: +$600 over
+  // at most 1.5011 h is $399.7 or more, so exactly +$400.
+  await expect(page.getByTestId('casino-per-hour')).toHaveText('+$400');
+  // The session is over and its length is fixed; the rest runs on real time again.
+  await page.clock.resume();
   await expect(page.getByTestId('casino-sessions')).toHaveText('1');
   await expect(page.getByTestId('casino-bankroll')).toHaveText('—');
   await page.locator('input[name="startingBankroll"]').fill('10000');
@@ -242,7 +264,7 @@ test('a finished session can be edited and deleted, and the figures follow', asy
       if (!localStorage.getItem(k)) localStorage.setItem(k, blob);
     },
     [
-      KEY,
+      LEGACY_KEY,
       JSON.stringify({
         version: 1,
         casinos: [{ id: 'c1', name: 'El Cortez', game: { decks: 2 }, midShoeEntry: 'no', csm: false, status: 'ok', notes: '', createdAt: start, updatedAt: start }],
@@ -282,6 +304,11 @@ test('a finished session can be edited and deleted, and the figures follow', asy
   // Review N4: times left alone are kept to the second, not cut to the minute.
   const saved = await page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? '{}').sessions[0], KEY);
   expect([saved.start, saved.end]).toEqual([start, endAt]);
+  // Review S2: the edit went to the v2 key; the v1 blob an older build reads is untouched.
+  expect(await page.evaluate((k) => JSON.parse(localStorage.getItem(k)!).version, KEY)).toBe(2);
+  const legacy = JSON.parse((await page.evaluate((k) => localStorage.getItem(k), LEGACY_KEY))!);
+  expect(legacy.version).toBe(1);
+  expect(legacy.sessions[0].cashOut).toBe(800);
 
   // Delete asks first, in words, then goes.
   await page.getByTestId('history-row').click();
@@ -464,7 +491,8 @@ function richLog(now: number): string {
 for (const theme of ['midnight-felt', 'bone-ink', 'amoled-night', 'slate-copper'] as const) {
   test(`the Casino tab's small text reaches 4.5:1 in ${theme}`, async ({ page }) => {
     await withSettings(page, { theme });
-    await page.addInitScript(([k, blob]) => localStorage.setItem(k, blob), [KEY, richLog(Date.now())] as const);
+    // A v1 blob under the v1 key, as an older build left it: read through the migration.
+    await page.addInitScript(([k, blob]) => localStorage.setItem(k, blob), [LEGACY_KEY, richLog(Date.now())] as const);
     await page.goto('/?e2e=1');
     await openCasino(page);
     await expect(page.getByTestId('casino-live')).toBeVisible();

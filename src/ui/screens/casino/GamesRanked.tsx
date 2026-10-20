@@ -2,8 +2,8 @@ import { useState } from 'react';
 import type { CasinoLog } from '../../../store/casinoLog';
 import { methodBadge } from '../../../engine/betMethods';
 import { labelledSummary } from '../../casinoFigures';
-import { buildRanking, type RankRow, type RankSort } from '../../casinoRanking';
-import { evHourText, n0Text, pctText, roundsText } from '../../casinoStatsText';
+import { buildRanking, needsCompute, type RankRow, type RankSort } from '../../casinoRanking';
+import { ciText, evHourText, n0Text, pctText, roundsText } from '../../casinoStatsText';
 import { Choice } from './fields';
 import { cancelAll, enqueue } from './simRunner';
 import { useActiveProfile, useGameResults, useRunner, type useHere } from './useGameStats';
@@ -35,7 +35,8 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
   const [sort, setSort] = useState<RankSort>(readSort);
   const rows = buildRanking(log, profile, results, Date.now(), here.here, sort);
   if (rows.length === 0) return null;
-  const todo = rows.filter((r) => r.state.kind !== 'current');
+  // Review S3: a partial run (cancelled, cut off by the time cap) is run again too.
+  const todo = rows.filter(needsCompute);
   const busy = runner.running !== null;
   const changeSort = (v: RankSort) => {
     setSort(v);
@@ -45,7 +46,7 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
       /* per-device convenience */
     }
   };
-  const computeAll = () => enqueue(todo.map((r) => ({ gameId: r.game.id, input: r.input, profileName: profile.name })));
+  const computeAll = () => enqueue(todo.map((r) => ({ gameId: r.game.id, input: r.input, profileName: profile.name, exitRounds: r.exitRounds })));
 
   return (
     <section className="cas-section cas-rank" aria-labelledby="cas-rank-title" data-testid="games-ranked">
@@ -77,6 +78,9 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
             {here.on && here.status === 'unavailable' ? ' (not available)' : ''}
           </span>
         </label>
+        <p className="cas-note" data-testid="use-location-hint">
+          While this is on, your position is read each time you open Casino, for the miles to each saved spot. It is never stored.
+        </p>
         <p className="cas-note">
           With {profile.name}&rsquo;s counting setup, 1 unit = each game&rsquo;s min bet.
           {sort === 'trip' ? ' EV per trip hour counts the drive both ways.' : ''}
@@ -94,7 +98,10 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
         ) : (
           todo.length > 0 && (
             <button type="button" className="u-btn cas-wide" onClick={computeAll} data-testid="compute-all">
-              {todo.length === rows.length ? 'Compute all' : `Compute ${todo.length} not current`} &middot; about {todo.length} min
+              <span className="cas-rank-compute-part">
+                {todo.every((r) => r.state.kind === 'none') && todo.length === rows.length ? 'Compute all' : `Compute ${todo.length} not done`} &middot;
+              </span>{' '}
+              <span className="cas-rank-compute-part">about {todo.length} min</span>
             </button>
           )
         )}
@@ -144,9 +151,19 @@ function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: 
               {methodBadge(f.best.method)}
             </span>
           )}
+          {row.midShoeUnknown && (
+            <span className="cas-badge" data-tone="warn" data-testid="midshoe-unknown-badge">
+              Mid-shoe ?
+            </span>
+          )}
           {row.state.kind === 'stale' && (
             <span className="cas-badge" data-tone="warn" data-testid="stale-badge">
               Stale
+            </span>
+          )}
+          {f?.partial && (
+            <span className="cas-badge" data-tone="warn" data-testid="partial-badge">
+              Partial {ciText(f.evHourCi)}/h
             </span>
           )}
           {row.greyed && <span className="cas-badge">Avoid</span>}

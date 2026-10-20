@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   CASINO_LOG_KEY,
+  LEGACY_CASINO_LOG_KEY,
   _setCasinoStorage,
   addBuyIn,
   blankCasinoDraft,
@@ -217,7 +218,8 @@ describe('wave K: version 2, several games per casino', () => {
   };
 
   it('loads a stored v1 blob with its game and casino-level bets as games[0], meaning unchanged', () => {
-    store.map.set(CASINO_LOG_KEY, JSON.stringify({ version: 1, casinos: [V1_CASINO], sessions: [], settings: { startingBankroll: 5000, updatedAt: null }, lastExportAt: null }));
+    const v1 = JSON.stringify({ version: 1, casinos: [V1_CASINO], sessions: [], settings: { startingBankroll: 5000, updatedAt: null }, lastExportAt: null });
+    store.map.set(LEGACY_CASINO_LOG_KEY, v1);
     const log = loadCasinoLog();
     expect(log.version).toBe(2);
     const c = log.casinos[0]!;
@@ -227,9 +229,11 @@ describe('wave K: version 2, several games per casino', () => {
     expect(c).not.toHaveProperty('minBet');
     expect(log.settings).toEqual({ startingBankroll: 5000, updatedAt: null });
     expect(quarantinedCasinoLog()).toBeNull();
-    // Saved back, it is a v2 blob that loads to the same thing.
+    // Saved back, it is a v2 blob under its own key that loads to the same
+    // thing; the v1 bytes are left exactly as they were.
     saveCasinoLog(log);
     expect(JSON.parse(store.map.get(CASINO_LOG_KEY)!).version).toBe(2);
+    expect(store.map.get(LEGACY_CASINO_LOG_KEY)).toBe(v1);
     expect(loadCasinoLog()).toEqual(log);
   });
 
@@ -486,5 +490,138 @@ describe('privacy: the casino log stays out of the training backup', () => {
     } finally {
       _setStorage(null);
     }
+  });
+});
+
+describe('review S2: the v2 log has its own key, and an older build\'s writes are merged in', () => {
+  const AT = '2026-10-01T00:00:00.000Z';
+  const LATER = '2026-10-05T00:00:00.000Z';
+  const v1Casino = (over: Record<string, unknown> = {}) => ({
+    id: 'c1',
+    name: 'El Cortez',
+    game: { decks: 6, s17: false, das: true, surrender: true, payout: '3:2', cutDecksLeft: 1.25 },
+    minBet: 15,
+    maxBet: 500,
+    midShoeEntry: 'allowed',
+    csm: false,
+    status: 'ok',
+    notes: 'first notes',
+    createdAt: AT,
+    updatedAt: AT,
+    ...over,
+  });
+  const v1Blob = (casinos: unknown[], sessions: unknown[] = [], settings = { startingBankroll: 5000, updatedAt: AT }) =>
+    JSON.stringify({ version: 1, casinos, sessions, settings, lastExportAt: null });
+
+  /** This build takes the v1 log in, the user adds a second game, a drive time, a spot and a method, and it saves. */
+  function upgraded(): CasinoLog {
+    store.map.set(LEGACY_CASINO_LOG_KEY, v1Blob([v1Casino()]));
+    const first = loadCasinoLog();
+    const c = first.casinos[0]!;
+    const games = [{ ...c.games[0]!, label: 'Main pit', roundsPerHour: 90 }, { ...blankGame('g-dd'), decks: 2 as const }];
+    const r = saveCasino(first, { ...c, games, driveMinutes: 25, location: { lat: 36.17, lon: -115.14 } }, Date.parse('2026-10-02T00:00:00.000Z'), c.id)!;
+    const log = setCasinoSettings(r.log, { methods: [{ id: 'm1', entryTc: null, exitTc: -3, rampStartTc: null }] }, Date.parse('2026-10-02T00:00:00.000Z'));
+    expect(saveCasinoLog(log)).toBe(true);
+    return loadCasinoLog();
+  }
+
+  it('never writes the v1 key, and keeps v2 data where an older build cannot see it', () => {
+    const before = v1Blob([v1Casino()]);
+    upgraded();
+    expect(store.map.get(LEGACY_CASINO_LOG_KEY)).toBe(before);
+    expect(CASINO_LOG_KEY).toBe('bjtrainer.casinoLog.v2');
+    expect(JSON.parse(store.map.get(CASINO_LOG_KEY)!).casinos[0].games).toHaveLength(2);
+  });
+
+  it('merges what an older tab wrote since: newer records win, and a casino from v1 keeps its games, drive time and spot', () => {
+    upgraded();
+    // The old tab edits El Cortez (rules and notes), adds a casino and a session, and saves the bankroll.
+    store.map.set(
+      LEGACY_CASINO_LOG_KEY,
+      v1Blob(
+        [
+          v1Casino({ notes: 'old tab notes', minBet: 25, game: { decks: 6, s17: true, das: true, surrender: true, payout: '3:2', cutDecksLeft: 1 }, updatedAt: LATER }),
+          v1Casino({ id: 'c2', name: 'Binion\'s', updatedAt: LATER }),
+        ],
+        [{ id: 's9', casinoId: 'c2', start: LATER, end: null, buyIns: [500], cashOut: null, heat: 'none', notes: '', createdAt: LATER, updatedAt: LATER }],
+        { startingBankroll: 8000, updatedAt: LATER },
+      ),
+    );
+    const log = loadCasinoLog();
+    const c1 = log.casinos.find((c) => c.id === 'c1')!;
+    expect(c1.notes).toBe('old tab notes');
+    expect(c1.games).toHaveLength(2);
+    // The v1 game updated its own game's v1 facts, and kept what only v2 knows.
+    expect(c1.games[0]).toMatchObject({ id: 'g-c1', s17: true, cutDecksLeft: 1, minBet: 25, label: 'Main pit', roundsPerHour: 90 });
+    expect(c1.games[1]!.id).toBe('g-dd');
+    expect(c1.driveMinutes).toBe(25);
+    expect(c1.location).toEqual({ lat: 36.17, lon: -115.14 });
+    expect(log.casinos.map((c) => c.id)).toEqual(['c1', 'c2']);
+    expect(log.sessions.map((x) => x.id)).toEqual(['s9']);
+    // The bankroll came from the old tab; the v2-only settings stayed.
+    expect(log.settings.startingBankroll).toBe(8000);
+    expect(log.settings.methods).toHaveLength(1);
+  });
+
+  it('an older record from v1 loses to the newer one here', () => {
+    upgraded();
+    store.map.set(LEGACY_CASINO_LOG_KEY, v1Blob([v1Casino({ notes: 'stale', updatedAt: '2026-09-01T00:00:00.000Z' })], [], { startingBankroll: 1, updatedAt: '2026-09-01T00:00:00.000Z' }));
+    const log = loadCasinoLog();
+    expect(log.casinos[0]!.notes).toBe('first notes');
+    expect(log.casinos[0]!.games).toHaveLength(2);
+    expect(log.settings.startingBankroll).toBe(5000);
+  });
+
+  it('load never writes; once saved, the same v1 bytes are not merged again', () => {
+    upgraded();
+    store.map.set(LEGACY_CASINO_LOG_KEY, v1Blob([v1Casino(), v1Casino({ id: 'c2', name: 'Binion\'s', updatedAt: LATER })]));
+    const v2Before = store.map.get(CASINO_LOG_KEY);
+    const merged = loadCasinoLog();
+    expect(store.map.get(CASINO_LOG_KEY)).toBe(v2Before);
+    expect(loadCasinoLog()).toEqual(merged);
+    expect(merged.casinos.map((c) => c.id)).toEqual(['c1', 'c2']);
+    // Deleted here and saved: the unchanged v1 blob does not bring it back.
+    saveCasinoLog(deleteCasino(merged, 'c2'));
+    expect(loadCasinoLog().casinos.map((c) => c.id)).toEqual(['c1']);
+    // The fingerprint is storage bookkeeping, never exported.
+    expect(serializeExport(loadCasinoLog(), T0)).not.toContain('legacySeen');
+  });
+
+  it('an unreadable v1 blob is kept aside, not merged and not lost', () => {
+    upgraded();
+    store.map.set(LEGACY_CASINO_LOG_KEY, '{"version":1,"casinos":[{"id":"c1"');
+    const log = loadCasinoLog();
+    expect(log.casinos[0]!.games).toHaveLength(2);
+    expect(quarantinedCasinoLog()).toBe('{"version":1,"casinos":[{"id":"c1"');
+  });
+
+  it('review N8: a newer casino in a v1 export file keeps the games, drive time and spot here', () => {
+    const local = upgraded();
+    const file = JSON.stringify({ app: 'bjtrainer-casino-log', version: 1, casinos: [v1Casino({ notes: 'from the old phone', updatedAt: LATER })], sessions: [] });
+    const r = mergeImport(local, file);
+    if (!r.ok) throw new Error(r.error);
+    const c = r.log.casinos[0]!;
+    expect(c.notes).toBe('from the old phone');
+    expect(c.games.map((g) => g.id)).toEqual(['g-c1', 'g-dd']);
+    expect(c.games[0]!.label).toBe('Main pit');
+    expect(c.driveMinutes).toBe(25);
+    expect(c.location).not.toBeNull();
+    // A v2 file replaces the whole record, as before.
+    const v2 = JSON.stringify({ app: 'bjtrainer-casino-log', version: 2, casinos: [{ ...local.casinos[0]!, games: [blankGame('g-x')], driveMinutes: null, location: null, updatedAt: LATER }], sessions: [] });
+    const r2 = mergeImport(local, v2);
+    if (!r2.ok) throw new Error(r2.error);
+    expect(r2.log.casinos[0]!.games.map((g) => g.id)).toEqual(['g-x']);
+  });
+
+  it('review B1: the exit minutes are settings, 0 allowed, out of range refused, null clears', () => {
+    let log = setCasinoSettings(emptyCasinoLog(), { exitFindMinutes: 0, exitWaitMinutes: 20 }, T0);
+    expect(log.settings).toMatchObject({ exitFindMinutes: 0, exitWaitMinutes: 20 });
+    log = setCasinoSettings(log, { exitFindMinutes: 500 }, T0);
+    expect(log.settings.exitFindMinutes).toBeUndefined();
+    log = setCasinoSettings(log, { exitWaitMinutes: null }, T0);
+    expect(log.settings.exitWaitMinutes).toBeUndefined();
+    const back = mergeImport(emptyCasinoLog(), serializeExport(setCasinoSettings(emptyCasinoLog(), { exitFindMinutes: 7 }, T0), T0));
+    if (!back.ok) throw new Error(back.error);
+    expect(back.log.settings.exitFindMinutes).toBe(7);
   });
 });

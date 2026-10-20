@@ -152,6 +152,12 @@
   color: var(--ink-dim);
 }
 
+/* Review N5: the methods below a stale hero are as stale as it is. */
+.cas-gs-methods-section[data-stale='true'] .cas-gs-fig dd,
+.cas-gs-methods-section[data-stale='true'] .cas-gs-method-name {
+  color: var(--ink-dim);
+}
+
 .cas-gs-sub {
   font-size: var(--fs-xs);
   color: var(--ink-dim);
@@ -324,6 +330,56 @@
   color: var(--bad);
 }
 
+/* Review N4: Edit beside Remove; the duplicate note under the method. */
+.cas-cs-custom-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cas-cs-dup {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--ink-dim);
+}
+
+.cas-cs-actions {
+  display: flex;
+  flex: none;
+  gap: var(--space-3);
+}
+
+.cas-cs-custom .cas-cs-actions .cas-link:first-child {
+  color: var(--accent);
+}
+
+.cas-cs-custom[data-editing='true'] {
+  background: var(--surface);
+}
+
 .cas-cs-add-title {
   margin: var(--space-2) 0 0;
+}
+
+/* At 320 a two-line label pushes one box down: rows shared across the pair keep the boxes level. */
+.cas-cs-exits {
+  row-gap: 6px;
+}
+
+.cas-cs-exits > .cas-field {
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  gap: 6px;
+  align-content: start;
+}
+
+.cas-cs-exits .cas-field-label {
+  align-self: end;
+}
+
+/* "Compute 3 not done · about 3 min" breaks only before the estimate. */
+.cas-rank-compute-part {
+  white-space: nowrap;
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRanking, bestGameOf, gameFigures } from './casinoRanking';
+import { buildRanking, bestGameOf, exitMinutesOf, gameFigures, needsCompute } from './casinoRanking';
 import { emptyCasinoLog, blankGame, type Casino, type CasinoGame, type CasinoLog } from '../store/casinoLog';
 import { resultState, simInputFor, type GameResult } from '../store/casinoGameStats';
 import { emptyAccum, type Accum } from '../engine/casinoSim';
@@ -90,17 +90,19 @@ describe('buildRanking', () => {
     expect(buildRanking(log, profile, results, NOW, null, 'ev')[0]!.casino.id).toBe('none');
   });
 
-  it('distance: live miles first (nearest first), then drive times, then neither', () => {
+  it('distance: nearest first, live miles and drive minutes on one scale (40 mph), then neither', () => {
     const here = { lat: 36.1, lon: -115.17 };
     const log = logOf([
       casino('noinfo', [a]),
+      casino('drive60', [game('gx')], { driveMinutes: 60 }),
       casino('drive', [b], { driveMinutes: 30 }),
+      // 0.4 degrees of latitude = 27.6 miles = 41 minutes at 40 mph: between the two drive times.
       casino('far', [c], { location: { lat: 36.5, lon: -115.17 } }),
       casino('close', [game('gd')], { location: { lat: 36.11, lon: -115.17 }, driveMinutes: 90 }),
     ]);
-    expect(buildRanking(log, profile, {}, NOW, here, 'distance').map((r) => r.casino.id)).toEqual(['close', 'far', 'drive', 'noinfo']);
+    expect(buildRanking(log, profile, {}, NOW, here, 'distance').map((r) => r.casino.id)).toEqual(['close', 'drive', 'far', 'drive60', 'noinfo']);
     // Without the user's location, the saved spots count for nothing: drive times only.
-    expect(buildRanking(log, profile, {}, NOW, null, 'distance').map((r) => r.casino.id)).toEqual(['drive', 'close', 'noinfo', 'far']);
+    expect(buildRanking(log, profile, {}, NOW, null, 'distance').map((r) => r.casino.id)).toEqual(['drive', 'drive60', 'close', 'noinfo', 'far']);
   });
 
   it("a casino's row shows its best computed game", () => {
@@ -108,6 +110,110 @@ describe('buildRanking', () => {
     const rows = buildRanking(log, profile, { gb: resultFor(b, 2), ga: resultFor(a, 1) }, NOW, null, 'ev');
     expect(bestGameOf(log.casinos[0]!, rows).id).toBe('gb');
     expect(bestGameOf(log.casinos[0]!, []).id).toBe('ga');
+  });
+});
+
+/** A method's sums: `net` dollars over `observed` rounds in `shoes` equal shoes, leaving `exits` times. */
+function accX(net: number, observed: number, exits: number, shoes = 10): Accum {
+  const a = emptyAccum();
+  a.observed = a.played = a.dealt = observed;
+  a.exits = exits;
+  a.net = net;
+  a.net2 = observed * 25 * 25 * 9;
+  a.wagered = observed * 25;
+  a.shoes = shoes;
+  const x = observed / shoes;
+  const y = net / shoes;
+  const e = exits / shoes;
+  // Shoes that differ a little, so the interval is finite.
+  for (let i = 0; i < shoes; i++) {
+    const yi = y + (i % 2 === 0 ? 5 : -5);
+    a.sy2 += yi * yi;
+    a.sxy += x * yi;
+    a.sx2 += x * x;
+    a.se2 += e * e;
+    a.sey += e * yi;
+    a.sxe += x * e;
+  }
+  return a;
+}
+
+describe('review B1: leaving costs time', () => {
+  const g = game('gw');
+  const methods = simInputFor(g, profile, []).methods;
+  const ramp = methods.find((m) => m.id === 'ramp')!;
+  const wong = methods.find((m) => m.id === 'wong-1')!;
+  const result = (status: GameResult['status'] = 'done'): GameResult => ({
+    ...resultFor(g, 0),
+    status,
+    // Play all: $1 a round. Wong out: $1.50 a round over the rounds it stays, leaving 20 times in 100 rounds.
+    methods: [
+      { method: ramp, acc: accX(100, 100, 0) },
+      { method: wong, acc: accX(150, 100, 20) },
+    ],
+  });
+
+  it('a wong-out that wins when leaving is free loses once a new table takes five minutes', () => {
+    const free = gameFigures(result(), 80, null, 0);
+    expect(free.best!.method.id).toBe('wong-1');
+    expect(free.evHour).toBeCloseTo(150 * 0.8, 9);
+    const five = gameFigures(result(), 80, null, 5);
+    // 20 exits x (80 x 5 / 60 = 6.67 rounds) = 133 rounds more: 150 / 233 a round.
+    expect(five.methods![1]!.hours.evHour).toBeCloseTo((80 * 150) / (100 + 20 * (400 / 60)), 9);
+    expect(five.best!.method.id).toBe('ramp');
+    expect(five.methods![1]!.hours.exitsPerHour).toBeCloseTo((80 * 20) / (100 + 20 * (400 / 60)), 9);
+  });
+
+  it('the minutes are the settings, by whether mid-shoe entry is barred', () => {
+    const log = logOf([]);
+    expect(exitMinutesOf(log, g)).toBe(5);
+    expect(exitMinutesOf(log, { ...g, midShoeEntry: 'unknown' })).toBe(5);
+    expect(exitMinutesOf(log, { ...g, midShoeEntry: 'no' })).toBe(15);
+    const set = logOf([], { exitFindMinutes: 0, exitWaitMinutes: 30 });
+    expect(exitMinutesOf(set, g)).toBe(0);
+    expect(exitMinutesOf(set, { ...g, midShoeEntry: 'no' })).toBe(30);
+  });
+
+  it('the ranking charges them: same result, different minutes, a different best method and no re-run', () => {
+    const at = (settings: Partial<CasinoLog['settings']>) =>
+      buildRanking(logOf([casino('c1', [g])], settings), profile, { gw: result() }, NOW, null, 'ev')[0]!;
+    expect(at({ exitFindMinutes: 0 }).figures!.best!.method.id).toBe('wong-1');
+    expect(at({}).figures!.best!.method.id).toBe('ramp');
+    expect(at({}).state.kind).toBe('current');
+    expect(at({}).exitRounds).toBeCloseTo(400 / 60, 12);
+  });
+});
+
+describe('review S3 and S4: partial runs and unknown mid-shoe entry', () => {
+  const a = game('ga');
+  const b = game('gb', { cutDecksLeft: 2 });
+
+  it('a partial run is marked, ranks after finished ones, and Compute all runs it again', () => {
+    const log = logOf([casino('c1', [a, b])]);
+    const results = { ga: { ...resultFor(a, 3), status: 'cancelled' as const }, gb: resultFor(b, 1) };
+    const rows = buildRanking(log, profile, results, NOW, null, 'ev');
+    expect(rows.map((r) => r.game.id)).toEqual(['gb', 'ga']);
+    expect(rows[1]!.figures!.partial).toBe(true);
+    expect(rows[1]!.state.kind).toBe('current');
+    expect(rows.map(needsCompute)).toEqual([false, true]);
+    for (const status of ['time', 'budget'] as const) {
+      const r = buildRanking(log, profile, { ga: { ...resultFor(a, 3), status } }, NOW, null, 'ev');
+      expect(r.find((x) => x.game.id === 'ga')!.figures!.partial, status).toBe(true);
+    }
+  });
+
+  it('a back-count best at a game whose mid-shoe entry is unknown is flagged', () => {
+    const bcResult = (g: CasinoGame): GameResult => {
+      const ms = simInputFor(g, profile, []).methods;
+      return { ...resultFor(g, 0), methods: ms.map((m) => ({ method: m, acc: accX(m.id === 'bc+2+0' ? 200 : 10, 100, 0) })) };
+    };
+    const unknown = game('gu', { midShoeEntry: 'unknown' });
+    const allowed = game('gl', { midShoeEntry: 'allowed' });
+    const rows = buildRanking(logOf([casino('c1', [unknown, allowed])]), profile, { gu: bcResult(unknown), gl: bcResult(allowed) }, NOW, null, 'ev');
+    const byId = new Map(rows.map((r) => [r.game.id, r]));
+    expect(byId.get('gu')!.figures!.best!.method.id).toBe('bc+2+0');
+    expect(byId.get('gu')!.midShoeUnknown).toBe(true);
+    expect(byId.get('gl')!.midShoeUnknown).toBe(false);
   });
 });
 

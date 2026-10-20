@@ -34,15 +34,30 @@ import { normMethod, type BetMethod } from '../engine/betMethods';
  * migrated on read: its `game` plus those four fields become `games[0]`,
  * under the id `g-<casino id>`, the same id every time, so importing the
  * same v1 file twice is still a no-op and a cached ranking result stays
- * attached to its game. The storage key keeps its name (`.v1` is part of an
- * identifier, not a claim about the blob); the blob's own `version` says 2.
- * Additive in v2: a casino's `driveMinutes` and saved `location`, a game's
- * label, rounds per hour and notes, and the Casino settings' custom betting
- * methods and session length.
+ * attached to its game. Additive in v2: a casino's `driveMinutes` and saved
+ * `location`, a game's label, rounds per hour and notes, and the Casino
+ * settings' custom betting methods, session length and exit times.
+ *
+ * A NEW KEY FOR V2 (review S2). The v2 blob lives under
+ * `bjtrainer.casinoLog.v2`; the v1 key is only ever READ, as a migration
+ * source, and this build never writes it. A tab still running an older build
+ * reads and writes only the v1 key, so it can never see a v2 blob (which it
+ * would quarantine as unreadable) nor overwrite one. What such a tab writes
+ * is merged in on the next load (`loadCasinoLog`): the v2 blob remembers a
+ * fingerprint of the v1 bytes it has already taken in (`legacySeen`), and v1
+ * bytes that differ are merged by id, the newer `updatedAt` winning, with a
+ * casino coming from v1 keeping the games, drive time and spot only v2 knows
+ * (`fromV1Casino`). What the merge cannot do: a casino deleted in this build
+ * comes back if the old tab still holds it -- nothing here is ever deleted
+ * by a merge, the import's rule.
  */
 
-export const CASINO_LOG_KEY = 'bjtrainer.casinoLog.v1';
+export const CASINO_LOG_KEY = 'bjtrainer.casinoLog.v2';
+/** The v1 blob's key: read as a migration source, never written. */
+export const LEGACY_CASINO_LOG_KEY = 'bjtrainer.casinoLog.v1';
 const CORRUPT_KEY = `${CASINO_LOG_KEY}.corrupt`;
+/** Where an older build quarantined what it could not read. */
+const LEGACY_CORRUPT_KEY = `${LEGACY_CASINO_LOG_KEY}.corrupt`;
 
 // ---------------------------------------------------------------- types
 
@@ -145,9 +160,20 @@ export interface CasinoLogSettings {
   methods?: BetMethod[];
   /** Wave K: hours a casino visit lasts, for EV per trip hour; absent = DEFAULT_SESSION_HOURS. */
   sessionHours?: number | null;
+  /**
+   * Wave K (review B1): minutes a wong-out or back-count exit costs where
+   * mid-shoe entry is allowed or unknown -- finding another table. Absent =
+   * DEFAULT_EXIT_FIND_MINUTES; 0 = free.
+   */
+  exitFindMinutes?: number | null;
+  /** Minutes an exit costs where mid-shoe entry is barred: waiting for a fresh shoe. Absent = DEFAULT_EXIT_WAIT_MINUTES. */
+  exitWaitMinutes?: number | null;
 }
 
 export const DEFAULT_SESSION_HOURS = 4;
+export const DEFAULT_EXIT_FIND_MINUTES = 5;
+export const DEFAULT_EXIT_WAIT_MINUTES = 15;
+export const EXIT_MINUTES_MAX = 120;
 
 export interface CasinoLog {
   version: 2;
@@ -156,6 +182,12 @@ export interface CasinoLog {
   settings: CasinoLogSettings;
   /** When the log was last exported to a file (ISO), for the backup nudge. */
   lastExportAt: string | null;
+  /**
+   * A fingerprint of the v1 blob (LEGACY_CASINO_LOG_KEY) this log has already
+   * merged in; v1 bytes that no longer match were written by an older build
+   * since. Storage bookkeeping: never exported.
+   */
+  legacySeen?: string;
 }
 
 export function emptyCasinoLog(): CasinoLog {
@@ -391,6 +423,10 @@ function normSettings(x: unknown): CasinoLogSettings {
   }
   const hours = boundedOrNull(s.sessionHours, 0.25, 24);
   if (hours !== null) out.sessionHours = hours;
+  const find = boundedOrNull(s.exitFindMinutes, 0, EXIT_MINUTES_MAX);
+  if (find !== null) out.exitFindMinutes = find;
+  const wait = boundedOrNull(s.exitWaitMinutes, 0, EXIT_MINUTES_MAX);
+  if (wait !== null) out.exitWaitMinutes = wait;
   return out;
 }
 
@@ -412,16 +448,25 @@ export function migrateCasinoLog(parsed: unknown): { log: CasinoLog; skipped: nu
   if (!readable) return null;
   const casinos = normList(parsed.casinos, normCasino);
   const sessions = normList(parsed.sessions, normSession);
-  return {
-    log: {
-      version: 2,
-      casinos: casinos.items,
-      sessions: sessions.items,
-      settings: normSettings(parsed.settings),
-      lastExportAt: iso(parsed.lastExportAt),
-    },
-    skipped: casinos.skipped + sessions.skipped,
+  const log: CasinoLog = {
+    version: 2,
+    casinos: casinos.items,
+    sessions: sessions.items,
+    settings: normSettings(parsed.settings),
+    lastExportAt: iso(parsed.lastExportAt),
   };
+  if (v === 2 && typeof parsed.legacySeen === 'string') log.legacySeen = parsed.legacySeen;
+  return { log, skipped: casinos.skipped + sessions.skipped };
+}
+
+/** FNV-1a over the text, plus its length: tells one stored v1 blob from another. */
+function fingerprint(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return `${(h >>> 0).toString(36)}:${text.length.toString(36)}`;
 }
 
 function quarantine(raw: string): void {
@@ -442,10 +487,19 @@ export function keepUnreadable(raw: string): void {
   quarantine(raw);
 }
 
-/** The bytes a previous load could not read, if any were kept. */
+/** The bytes a previous load could not read, if any were kept (this build's, else an older build's). */
 export function quarantinedCasinoLog(): string | null {
   try {
-    return store().getItem(CORRUPT_KEY);
+    const s = store();
+    return s.getItem(CORRUPT_KEY) ?? s.getItem(LEGACY_CORRUPT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function readBlob(raw: string): CasinoLog | null {
+  try {
+    return migrateCasinoLog(JSON.parse(raw) as unknown)?.log ?? null;
   } catch {
     return null;
   }
@@ -453,24 +507,35 @@ export function quarantinedCasinoLog(): string | null {
 
 /**
  * Read the log. Never throws: absent reads as empty, unreadable is
- * quarantined and reads as empty, partial is repaired.
+ * quarantined and reads as empty, partial is repaired. A v1 blob an older
+ * build wrote since this log last took it in is merged in (see the header);
+ * the result carries the v1 fingerprint, and the next save records it. Load
+ * itself never writes the log.
  */
 export function loadCasinoLog(): CasinoLog {
   let raw: string | null;
+  let legacy: string | null;
   try {
     raw = store().getItem(CASINO_LOG_KEY);
+    legacy = store().getItem(LEGACY_CASINO_LOG_KEY);
   } catch {
     return emptyCasinoLog();
   }
-  if (!raw) return emptyCasinoLog();
-  try {
-    const migrated = migrateCasinoLog(JSON.parse(raw) as unknown);
-    if (migrated) return migrated.log;
-  } catch {
-    /* fall through to quarantine */
+  let log: CasinoLog | null = null;
+  if (raw) {
+    log = readBlob(raw);
+    if (!log) quarantine(raw);
   }
-  quarantine(raw);
-  return emptyCasinoLog();
+  if (!legacy) return log ?? emptyCasinoLog();
+  const seen = fingerprint(legacy);
+  if (log && log.legacySeen === seen) return log;
+  const old = readBlob(legacy);
+  if (!old) {
+    quarantine(legacy);
+    return { ...(log ?? emptyCasinoLog()), legacySeen: seen };
+  }
+  if (!log) return { ...old, legacySeen: seen };
+  return { ...mergeLogs(log, old, true).log, legacySeen: seen };
 }
 
 type Listener = () => void;
@@ -509,7 +574,8 @@ export function saveCasinoLog(log: CasinoLog): boolean {
  */
 export function subscribeCasinoLog(fn: Listener): () => void {
   listeners.add(fn);
-  const offExternal = subscribeToExternalWrites([CASINO_LOG_KEY], () => fn());
+  // The v1 key too: an older build in another tab writes only that.
+  const offExternal = subscribeToExternalWrites([CASINO_LOG_KEY, LEGACY_CASINO_LOG_KEY], () => fn());
   return () => {
     listeners.delete(fn);
     offExternal();
@@ -688,11 +754,13 @@ export function setStartingBankroll(log: CasinoLog, amount: number | null, now: 
 /** Wave K: the Casino settings beside the bankroll -- custom methods and session length. */
 export function setCasinoSettings(
   log: CasinoLog,
-  patch: { methods?: BetMethod[]; sessionHours?: number | null },
+  patch: { methods?: BetMethod[]; sessionHours?: number | null; exitFindMinutes?: number | null; exitWaitMinutes?: number | null },
   now: number,
 ): CasinoLog {
   const next = normSettings({ ...log.settings, ...patch, updatedAt: stamp(now) });
   if (patch.sessionHours === null) delete next.sessionHours;
+  if (patch.exitFindMinutes === null) delete next.exitFindMinutes;
+  if (patch.exitWaitMinutes === null) delete next.exitWaitMinutes;
   return { ...log, settings: next };
 }
 
@@ -766,6 +834,8 @@ export interface MergeReport {
 function mergeById<T extends { id: string; updatedAt: string }>(
   local: T[],
   incoming: T[],
+  /** How a newer incoming entry replaces the one here; absent = whole. */
+  replace: (cur: T, inc: T) => T = (_cur, inc) => inc,
 ): { items: T[]; added: number; updated: number; kept: number } {
   const byId = new Map(local.map((x) => [x.id, x]));
   let added = 0;
@@ -777,7 +847,7 @@ function mergeById<T extends { id: string; updatedAt: string }>(
       byId.set(inc.id, inc);
       added += 1;
     } else if (Date.parse(inc.updatedAt) > Date.parse(cur.updatedAt)) {
-      byId.set(inc.id, inc);
+      byId.set(inc.id, replace(cur, inc));
       updated += 1;
     } else {
       kept += 1;
@@ -786,6 +856,46 @@ function mergeById<T extends { id: string; updatedAt: string }>(
   // Local order first, then the new ones in file order.
   const items = [...local.map((x) => byId.get(x.id)!), ...incoming.filter((x) => !local.some((l) => l.id === x.id))];
   return { items, added, updated, kept };
+}
+
+/** The game fields a v1 record carries (its `game` plus the casino-level four). */
+const V1_GAME_FIELDS = ['decks', 's17', 'das', 'surrender', 'payout', 'cutDecksLeft', 'minBet', 'maxBet', 'midShoeEntry', 'csm'] as const;
+
+/**
+ * Review N8: a newer casino record that came from v1 (an older build's export
+ * or stored blob) knows one game and no drive time or spot. It replaces the
+ * casino's own fields, but the games, drive time and spot here stay: its one
+ * game (id `g-<casino id>`, the migration's) updates the v1 facts of the game
+ * with that id, keeping the label, rounds per hour and notes only v2 has.
+ */
+function fromV1Casino(cur: Casino, inc: Casino): Casino {
+  const incGame = inc.games[0];
+  const games = cur.games.map((g) => {
+    if (!incGame || g.id !== incGame.id) return g;
+    const next: CasinoGame = { ...g };
+    for (const f of V1_GAME_FIELDS) (next as unknown as Record<string, unknown>)[f] = incGame[f];
+    return next;
+  });
+  return { ...inc, games, driveMinutes: cur.driveMinutes ?? null, location: cur.location ?? null };
+}
+
+/**
+ * Two logs merged by id: the newer `updatedAt` wins, a tie keeps what is
+ * here, nothing is deleted. `fromV1`: the incoming log was a v1 blob or file
+ * (see `fromV1Casino`; its settings only carry the bankroll).
+ */
+function mergeLogs(local: CasinoLog, inc: CasinoLog, fromV1: boolean) {
+  const casinos = mergeById(local.casinos, inc.casinos, fromV1 ? fromV1Casino : undefined);
+  const sessions = mergeById(local.sessions, inc.sessions);
+  const incSettingsNewer =
+    inc.settings.updatedAt !== null &&
+    (local.settings.updatedAt === null || Date.parse(inc.settings.updatedAt) > Date.parse(local.settings.updatedAt));
+  const settings = !incSettingsNewer
+    ? local.settings
+    : fromV1
+      ? { ...local.settings, startingBankroll: inc.settings.startingBankroll, updatedAt: inc.settings.updatedAt }
+      : inc.settings;
+  return { log: { ...local, casinos: casinos.items, sessions: sessions.items, settings }, casinos, sessions };
 }
 
 /**
@@ -811,23 +921,13 @@ export function mergeImport(
   // A v1 file is migrated exactly as a v1 blob is (each casino's game -> games[0]).
   const migrated = migrateCasinoLog({ ...parsed, version: parsed.version ?? 1 });
   if (!migrated) return { ok: false, error: 'That file is not a casino log export.' };
-  const inc = migrated.log;
-  const casinos = mergeById(local.casinos, inc.casinos);
-  const sessions = mergeById(local.sessions, inc.sessions);
-  const incSettingsNewer =
-    inc.settings.updatedAt !== null &&
-    (local.settings.updatedAt === null || Date.parse(inc.settings.updatedAt) > Date.parse(local.settings.updatedAt));
+  const { log, casinos, sessions } = mergeLogs(local, migrated.log, parsed.version !== 2);
   const open = sessions.items.filter((s) => s.end === null).length;
   return {
     ok: true,
     // Bytes the file was carrying because its own device could not read them.
     unreadable: typeof parsed.unreadable === 'string' ? parsed.unreadable : null,
-    log: {
-      ...local,
-      casinos: casinos.items,
-      sessions: sessions.items,
-      settings: incSettingsNewer ? inc.settings : local.settings,
-    },
+    log,
     report: {
       casinosAdded: casinos.added,
       casinosUpdated: casinos.updated,

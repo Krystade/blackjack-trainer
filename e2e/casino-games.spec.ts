@@ -15,7 +15,7 @@ import { worstContrast } from './contrast';
 
 test.use({ viewport: { width: 375, height: 812 } });
 
-const KEY = 'bjtrainer.casinoLog.v1';
+const KEY = 'bjtrainer.casinoLog.v2';
 const STATS_KEY = 'bjtrainer.casinoGameStats.v1';
 const AT = '2026-10-01T00:00:00.000Z';
 
@@ -78,7 +78,11 @@ test('compute all, then the ranking follows the figures; the cards say what they
   await ranked(page).getByTestId('compute-all').click();
   await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3, { timeout: 30_000 });
   await expect(ranked(page).getByTestId('rank-busy')).toHaveCount(0);
-  await expect(ranked(page).getByTestId('compute-all')).toHaveCount(0);
+  // Review S3: a run stopped by the round budget is partial -- marked with its
+  // interval in every row, and Compute all offers to run them again.
+  await expect(rows(page).getByTestId('partial-badge')).toHaveCount(3);
+  for (const t of await rows(page).getByTestId('partial-badge').allTextContents()) expect(t).toMatch(/^Partial ±\$\d[\d,]*\/h$/);
+  await expect(ranked(page).getByTestId('compute-all')).toContainText('Compute 3 not done');
 
   // Sorted by EV per hour, highest first.
   const evs = (await rows(page).getByTestId('rank-ev').allTextContents()).map(money);
@@ -96,6 +100,13 @@ test('compute all, then the ranking follows the figures; the cards say what they
   const card = page.getByTestId('game-stats');
   await expect(card).toHaveAttribute('data-state', 'current');
   await expect(card).toContainText('Stopped at the test round budget.');
+  await expect(card.getByTestId('partial-badge')).toHaveText('Partial');
+  // Review B1: a wong-out shows what leaving costs; a method that never leaves shows none.
+  const wong = card.getByTestId('gs-method').filter({ hasText: 'wong out at −1' });
+  await expect(wong.getByTestId('gs-exits')).toContainText('5 min each');
+  await expect(card.getByTestId('gs-method').filter({ hasText: 'Profile ramp, play all' }).getByTestId('gs-exits')).toContainText('—');
+  await expect(card.getByTestId('gs-exit-cost')).toContainText('5 min');
+  await expect(card).not.toContainText('no cost in time');
   expect(await card.getByTestId('gs-method').count()).toBeGreaterThanOrEqual(6);
   await expect(card.locator('[data-testid="gs-method"][data-best="true"]')).toHaveCount(1);
   await expect(card.getByTestId('gs-profile')).toContainText('Default (6D H17)');
@@ -163,6 +174,72 @@ test('editing a rule makes the result stale; Re-run makes it current again', asy
   await expect(goodRow).toHaveAttribute('data-state', 'current');
 });
 
+test('the minutes an exit costs are a setting, applied to the stored result without a re-run', async ({ page }) => {
+  await seed(page, 20_000);
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  const goodRow = rows(page).and(page.locator('[data-game="g-good"]'));
+  await goodRow.click();
+  const card = page.getByTestId('game-stats');
+  await card.getByTestId('compute-game').click();
+  await expect(card).toHaveAttribute('data-state', 'current', { timeout: 20_000 });
+  const wongEv = async () =>
+    money((await card.getByTestId('gs-method').filter({ hasText: 'wong out at −1' }).locator('.cas-gs-fig').first().locator('dd').textContent())!);
+  const exitsPerHour = async () =>
+    Number((await card.getByTestId('gs-method').filter({ hasText: 'wong out at −1' }).getByTestId('gs-exits').locator('dd').textContent())!.match(/^[\d.]+/)![0]);
+  const at5 = await wongEv();
+  const exits5 = await exitsPerHour();
+  expect(exits5).toBeGreaterThan(0);
+
+  // Leaving made free, then made slow: the same stored rounds, charged differently.
+  await back(page);
+  await ranked(page).getByRole('button', { name: 'Settings' }).click();
+  await page.locator('input[name="exitFindMinutes"]').fill('0');
+  await page.getByTestId('save-exit-minutes').click();
+  await expect(page.getByRole('status').filter({ hasText: '0 min to find a table' })).toBeVisible();
+  await back(page);
+  await goodRow.click();
+  await expect(card).toHaveAttribute('data-state', 'current');
+  const at0 = await wongEv();
+  expect(at0).toBeGreaterThan(at5);
+  expect(await exitsPerHour()).toBeGreaterThan(exits5);
+  await expect(card.getByTestId('gs-exit-cost')).toContainText('0 min');
+
+  await back(page);
+  await ranked(page).getByRole('button', { name: 'Settings' }).click();
+  await page.locator('input[name="exitFindMinutes"]').fill('30');
+  await page.getByTestId('save-exit-minutes').click();
+  await back(page);
+  await goodRow.click();
+  await expect(card).toHaveAttribute('data-state', 'current');
+  expect(await wongEv()).toBeLessThan(at5);
+});
+
+test('custom methods can be edited, and a duplicate of a default says so', async ({ page }) => {
+  await seed(page);
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await ranked(page).getByRole('button', { name: 'Settings' }).click();
+  const settings = page.getByTestId('casino-settings');
+  // Wong out at -1 is a default already.
+  await settings.getByRole('group', { name: 'Leave' }).getByRole('button', { name: 'Wong out' }).click();
+  await settings.locator('select[name="exitTc"]').selectOption('-1');
+  await settings.getByTestId('add-method').click();
+  await expect(settings.getByTestId('method-message')).toContainText('plays exactly like');
+  await expect(settings.getByTestId('custom-duplicate')).toContainText('Profile ramp, wong out at −1');
+  // Edit it into its own method: leave at -4.
+  await settings.getByRole('button', { name: /^Edit / }).click();
+  await expect(settings.locator('select[name="exitTc"]')).toHaveValue('-1');
+  await settings.locator('select[name="exitTc"]').selectOption('-4');
+  await settings.getByTestId('save-method').click();
+  await expect(settings.getByTestId('custom-method')).toHaveCount(1);
+  await expect(settings.getByTestId('custom-method')).toContainText('wong out at −4');
+  await expect(settings.getByTestId('custom-duplicate')).toHaveCount(0);
+  const stored = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)!).settings.methods, KEY);
+  expect(stored).toHaveLength(1);
+  expect(stored[0].exitTc).toBe(-4);
+});
+
 test('a running compute shows its progress and can be cancelled', async ({ page }) => {
   // A budget big enough to still be running when we look.
   await seed(page, 30_000_000);
@@ -192,6 +269,8 @@ test.describe('distance', () => {
     await expect(nugget).toContainText('20 min drive');
     await expect(page.getByTestId('casino-row').filter({ hasText: 'El Cortez' })).toContainText('1 h 30 min drive');
 
+    // Review N1: turning it on says the position is read each time Casino opens.
+    await expect(ranked(page).getByTestId('use-location-hint')).toContainText('each time you open Casino');
     await ranked(page).getByTestId('use-location').check();
     await expect(nugget).toContainText('0.7 mi');
     await expect(page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' })).toContainText('0.7 mi');
@@ -250,6 +329,87 @@ test('casino notes save as you type, survive a reload, and head the casino row',
   await expect(page.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).getByTestId('casino-row-note')).toHaveText(
     'Swing shift 2am, pit boss Ray watches',
   );
+});
+
+test('review S5: tapping into the notes and out again without typing keeps what another tab saved', async ({ context }) => {
+  // Seeded once per context (a second tab has its own sessionStorage, so `seed` would re-seed).
+  await context.addInitScript(
+    ([k, log]) => {
+      if (!localStorage.getItem(k as string)) localStorage.setItem(k as string, log as string);
+    },
+    [KEY, JSON.stringify(LOG)],
+  );
+  const a = await context.newPage();
+  await a.goto('/?e2e=1');
+  await openCasino(a);
+  await a.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).click();
+  const boxA = a.locator('textarea[name="casinoNotes"]');
+  await boxA.click();
+  await expect(boxA).toBeFocused();
+
+  const b = await context.newPage();
+  await b.goto('/?e2e=1');
+  await openCasino(b);
+  await b.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).click();
+  const boxB = b.locator('textarea[name="casinoNotes"]');
+  await boxB.fill('Written in tab B');
+  await boxB.blur();
+  await expect(b.getByTestId('notes-status')).toHaveText('Saved');
+
+  // Tab A, focused all along, is left alone under the cursor...
+  await expect(boxA).toHaveValue('');
+  // ...and leaving it without a keystroke takes B's text instead of writing '' back.
+  await boxA.blur();
+  await expect(boxA).toHaveValue('Written in tab B');
+  const notes = await a.evaluate((k) => JSON.parse(localStorage.getItem(k)!).casinos[1].notes, KEY);
+  expect(notes).toBe('Written in tab B');
+});
+
+test('review S6: typing is saved when the page is hidden or closed, before the pause in typing', async ({ page }) => {
+  await seed(page);
+  await page.clock.install();
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await page.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).click();
+  // Paused: the 700 ms save-after-a-pause can never fire, so only the page events can save.
+  await page.clock.pauseAt(new Date(Date.now() + 3_600_000));
+  const box = page.locator('textarea[name="casinoNotes"]');
+  const storedNotes = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? '{"casinos":[{},{"notes":""}]}').casinos[1].notes ?? '', KEY);
+  await box.click();
+  await box.pressSequentially('Pit 3');
+  await expect(page.getByTestId('notes-status')).toHaveText('Saving…');
+  expect(await storedNotes()).toBe('');
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  expect(await storedNotes()).toBe('Pit 3');
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+  });
+  await box.pressSequentially(' closes at 2');
+  expect(await storedNotes()).toBe('Pit 3');
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+  expect(await storedNotes()).toBe('Pit 3 closes at 2');
+  await expect(box).toBeFocused();
+});
+
+test('review N9: a notes save that does not land says "Not saved"', async ({ page }) => {
+  await seed(page);
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await page.getByTestId('casino-row').filter({ hasText: 'El Cortez' }).click();
+  await page.evaluate((k) => {
+    const orig = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key: string, value: string) {
+      if (key === k) throw new DOMException('full', 'QuotaExceededError');
+      return orig.call(this, key, value);
+    };
+  }, KEY);
+  const box = page.locator('textarea[name="casinoNotes"]');
+  await box.fill('This will not fit');
+  await box.blur();
+  await expect(page.getByTestId('notes-status')).toHaveText('Not saved');
 });
 
 for (const theme of ['midnight-felt', 'bone-ink'] as const) {

@@ -28,6 +28,8 @@ import {
   distanceOf,
   milesText,
   evPerTripHour,
+  distanceMinutes,
+  ASSUMED_MPH,
   worstHeat,
 } from './casinoFigures';
 import { blankCasinoDraft, blankGame, emptyCasinoLog, type CasinoLog, type CasinoSession, type HeatLevel } from '../store/casinoLog';
@@ -273,8 +275,16 @@ describe('distance and trip hours', () => {
     // No drive: the session rate itself.
     expect(evPerTripHour(40, 4, 0)).toBe(40);
     expect(evPerTripHour(40, 4, null)).toBeNull();
-    // A loss stays a loss, diluted the same way.
-    expect(evPerTripHour(-10, 2, 60)).toBeCloseTo(-5, 9);
+    // Review N3: a loss is not shrunk toward zero by the drive (that would
+    // rank a far losing game above a near one); it stays at its EV per hour.
+    expect(evPerTripHour(-10, 2, 60)).toBe(-10);
+    expect(evPerTripHour(-30, 4, 90)).toBeLessThan(evPerTripHour(-20, 4, 5)!);
+  });
+
+  it('the Distance sort puts live miles and drive minutes on one scale, at 40 mph', () => {
+    expect(ASSUMED_MPH).toBe(40);
+    expect(distanceMinutes({ kind: 'miles', miles: 20, text: '' })).toBeCloseTo(30, 12);
+    expect(distanceMinutes({ kind: 'drive', minutes: 25, text: '' })).toBe(25);
   });
 });
 

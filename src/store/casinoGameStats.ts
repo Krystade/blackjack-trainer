@@ -29,11 +29,21 @@ import type { RuleSet } from '../engine/ruleset';
  * changes a single simulated round; they only scale the stored per-round
  * sums into hours and risk, which the screen does at display time, so
  * editing them updates the figures at once instead of forcing a re-run.
+ * Nor are the minutes an exit costs (review B1): the sums carry each
+ * method's exits and their per-shoe cross sums, so the time is charged at
+ * display time too (casinoStats.ts `summarize`).
+ *
+ * The key is new with wave K, so no older build reads it: no v1/v2 key
+ * split is needed here (unlike the casino log); SIM_VERSION covers changes
+ * in what a stored entry holds.
  */
 
 export const GAME_STATS_KEY = 'bjtrainer.casinoGameStats.v1';
-/** Bump when the simulator changes what it computes, so every entry goes stale. */
-export const SIM_VERSION = 1;
+/**
+ * Bump when the simulator changes what it computes, so every entry goes stale.
+ * 2: exits are counted and their time charged (entries from 1 have no exit sums).
+ */
+export const SIM_VERSION = 2;
 
 export type AssumedField = 'decks' | 's17' | 'das' | 'surrender' | 'payout' | 'cut' | 'minBet';
 

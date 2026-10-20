@@ -91,12 +91,21 @@ export interface SimSpec {
 /**
  * Running sums for one betting method (or the basic-strategy house edge).
  * Money is dollars. "Observed" rounds are the ones the method spends time on:
- * played, or watched while back-counting. Rounds after a wong-out exit are
- * neither -- the player has left that shoe for a fresh one (`MethodState`).
+ * played, or watched while back-counting. Rounds after an exit (a wong-out,
+ * or a back-counter leaving at its exit count) are neither -- the player has
+ * left that shoe for a fresh one -- but the EXIT itself costs time: finding
+ * another table, or waiting for a shuffle where mid-shoe entry is barred.
+ * That time is a setting (minutes per exit, Casino settings) turned into
+ * rounds at display time (casinoStats.ts `summarize`), so the simulator
+ * counts exits and keeps the per-shoe cross sums the interval needs.
  */
 export interface Accum {
   observed: number;
   played: number;
+  /** Exits: shoes the method left before they were dealt out. */
+  exits: number;
+  /** Every round dealt while the method was in the simulation, played or not. */
+  dealt: number;
   /** Rounds played with two hands. */
   twoHands: number;
   net: number;
@@ -108,16 +117,22 @@ export interface Accum {
    * Shoe-by-shoe sums for an honest standard error: rounds in a shoe are not
    * independent (the bet follows the count), so the error of the mean is
    * taken over shoes, the ratio estimator's variance
-   * sum((y - R x)^2) / (sum x)^2 with y = a shoe's net, x = its observed rounds.
+   * sum((y - R t)^2) / (sum t)^2 with y = a shoe's net and t = its time:
+   * x observed rounds plus e exits at k rounds each, t = x + k e. k is only
+   * known at display time, so the sum of every product is kept.
    */
   sy2: number;
   sxy: number;
   sx2: number;
+  /** Per shoe: sums of e^2, e y and x e. */
+  se2: number;
+  sey: number;
+  sxe: number;
   shoes: number;
 }
 
 export function emptyAccum(): Accum {
-  return { observed: 0, played: 0, twoHands: 0, net: 0, net2: 0, wagered: 0, sy2: 0, sxy: 0, sx2: 0, shoes: 0 };
+  return { observed: 0, played: 0, exits: 0, dealt: 0, twoHands: 0, net: 0, net2: 0, wagered: 0, sy2: 0, sxy: 0, sx2: 0, se2: 0, sey: 0, sxe: 0, shoes: 0 };
 }
 
 interface MethodState {
@@ -127,6 +142,7 @@ interface MethodState {
   left: boolean;
   shoeNet: number;
   shoeObs: number;
+  shoeExits: number;
   acc: Accum;
 }
 
@@ -175,6 +191,18 @@ function newHand(origin: number): SimHand {
 
 const SUITS = ['s', 'h', 'd', 'c'] as const;
 
+/** Close one shoe into the sums: y its net, x its observed rounds, e its exits. */
+function addShoe(a: Accum, y: number, x: number, e: number): void {
+  if (x === 0 && e === 0) return;
+  a.sy2 += y * y;
+  a.sxy += x * y;
+  a.sx2 += x * x;
+  a.se2 += e * e;
+  a.sey += e * y;
+  a.sxe += x * e;
+  a.shoes += 1;
+}
+
 const isTenUp = (r: Rank) => VAL[r] === 10;
 
 export class CasinoSim {
@@ -204,8 +232,10 @@ export class CasinoSim {
   private readonly handsAt: (1 | 2)[] = [];
   rounds = 0;
   /** Test hook: every round's pre-deal count and results, per unit bet. */
-  onRound?: (r: { tc: number; hands: 1 | 2; first: number; total: number; shuffled: boolean }) => void;
+  onRound?: (r: { tc: number; hands: 1 | 2; first: number; total: number; shuffled: boolean; midShuffle: boolean }) => void;
   private shuffledThisRound = false;
+  /** The shoe ran dry inside this round and a fresh one finished it (see `draw`). */
+  private midShuffle = false;
   /** Per method, per clamped pre-deal count: units on each hand and hands. */
   private readonly unitsAt: number[][] = [];
   private readonly methodHandsAt: (1 | 2)[][] = [];
@@ -240,6 +270,7 @@ export class CasinoSim {
             left: false,
             shoeNet: 0,
             shoeObs: 0,
+            shoeExits: 0,
             acc: emptyAccum(),
           }))
         : [];
@@ -265,38 +296,33 @@ export class CasinoSim {
 
   /** Each method's sums, in the order of `spec.methods`. */
   methodAccums(): { method: BetMethod; acc: Accum }[] {
-    return this.methods.map((m) => ({ method: m.method, acc: this.withOpenShoe(m.acc, m.shoeNet, m.shoeObs) }));
+    return this.methods.map((m) => ({ method: m.method, acc: this.withOpenShoe(m.acc, m.shoeNet, m.shoeObs, m.shoeExits) }));
   }
 
   basicAccum(): Accum {
-    return this.withOpenShoe(this.basic, this.basicShoeNet, this.basicShoeObs);
+    return this.withOpenShoe(this.basic, this.basicShoeNet, this.basicShoeObs, 0);
   }
 
   private basicShoeNet = 0;
   private basicShoeObs = 0;
 
   /** The sums with the shoe in progress counted as if it ended now. */
-  private withOpenShoe(a: Accum, y: number, x: number): Accum {
-    if (x === 0) return { ...a };
-    return { ...a, sy2: a.sy2 + y * y, sxy: a.sxy + x * y, sx2: a.sx2 + x * x, shoes: a.shoes + 1 };
+  private withOpenShoe(a: Accum, y: number, x: number, e: number): Accum {
+    const out = { ...a };
+    addShoe(out, y, x, e);
+    return out;
   }
 
   private closeShoe(): void {
     if (this.roundInShoe === 0) return;
-    const close = (a: Accum, y: number, x: number) => {
-      if (x === 0) return;
-      a.sy2 += y * y;
-      a.sxy += x * y;
-      a.sx2 += x * x;
-      a.shoes += 1;
-    };
-    close(this.basic, this.basicShoeNet, this.basicShoeObs);
+    addShoe(this.basic, this.basicShoeNet, this.basicShoeObs, 0);
     this.basicShoeNet = 0;
     this.basicShoeObs = 0;
     for (const m of this.methods) {
-      close(m.acc, m.shoeNet, m.shoeObs);
+      addShoe(m.acc, m.shoeNet, m.shoeObs, m.shoeExits);
       m.shoeNet = 0;
       m.shoeObs = 0;
+      m.shoeExits = 0;
       m.seated = m.method.entryTc === null;
       m.left = false;
     }
@@ -345,9 +371,12 @@ export class CasinoSim {
     // cutCardsFor never leaves fewer than half a deck behind the cut, so a
     // round only runs the shoe dry on a freak run of splits and small cards.
     // A dealer then shuffles the discards back in; a fresh shoe stands in.
+    // Review N7: the round is scored in the old shoe, then that shoe is closed
+    // like any other (`step`), so a method that had left comes back for it.
     if (this.pos >= this.cards.length) {
       this.shuffleShoe();
       this.rc = 0;
+      this.midShuffle = true;
     }
     return this.cards[this.pos++]!;
   }
@@ -408,13 +437,14 @@ export class CasinoSim {
     const first = this.lastFirst;
     const total = this.lastTotal;
     this.rounds += 1;
-    this.onRound?.({ tc, hands: handsN, first, total, shuffled: this.shuffledThisRound });
+    this.onRound?.({ tc, hands: handsN, first, total, shuffled: this.shuffledThisRound, midShuffle: this.midShuffle });
 
     if (!counting) {
       const net = first * this.spec.unit;
       const a = this.basic;
       a.observed += 1;
       a.played += 1;
+      a.dealt += 1;
       a.net += net;
       a.net2 += net * net;
       a.wagered += this.spec.unit;
@@ -424,20 +454,32 @@ export class CasinoSim {
       for (let i = 0; i < this.methods.length; i++) this.score(i, clamped + TC_CLAMP, tc, handsN, first, total);
     }
     this.roundInShoe += 1;
+    if (this.midShuffle) {
+      // The cards already dealt from the fresh shoe make its next round its
+      // second, so the exit check (never on a shoe's first round) applies.
+      this.midShuffle = false;
+      this.closeShoe();
+      this.roundInShoe = 1;
+    }
   }
 
   /** One round, as this method would have met it. */
   private score(mi: number, tcIdx: number, tc: number, simHands: 1 | 2, first: number, total: number): void {
     const m = this.methods[mi]!;
+    const a = m.acc;
+    a.dealt += 1;
     if (m.left) return;
     const { entryTc, exitTc } = m.method;
     if (m.seated && exitTc !== null && this.roundInShoe > 0 && tc <= exitTc) {
-      // Wong out: this shoe is over for the method. It walks to a fresh one,
-      // and the walk is free -- the rest of this shoe is neither played nor timed.
+      // Exit (a wong-out, or a seated back-counter at its exit count): this
+      // shoe is over for the method. The rest of it is neither played nor
+      // watched; the exit is counted, and its time -- finding another table
+      // -- is added at display time (see Accum).
       m.left = true;
+      a.exits += 1;
+      m.shoeExits += 1;
       return;
     }
-    const a = m.acc;
     if (!m.seated) {
       if (entryTc !== null && tc >= entryTc) {
         m.seated = true;

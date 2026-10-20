@@ -367,8 +367,10 @@ const NOT_BACKED_UP: Record<string, string> = {
     'written and deleted inside one run of the device check, to find out whether this browser can store anything at all -- it holds no state to back up',
   'bjtrainer.chartIntro.v1':
     'B7 one-shot "seen" flag for the first-run chart intro; a restore carrying any hand history suppresses the intro anyway',
-  'bjtrainer.casinoLog.v1':
+  'bjtrainer.casinoLog.v2':
     'real casino sessions in dollars: personal financial data with its own deliberate export on the Casino tab -- the training backup is the file a user may hand to someone to debug a drill',
+  'bjtrainer.casinoLog.v1':
+    'the casino log as an older build wrote it: read only, as the migration source of the v2 log; the same personal financial data, with its own export',
   'bjtrainer.casinoGameStats.v1':
     'wave K ranking cache: simulation sums derived from the casino log and the profile, recomputable at any time, and it belongs with the casino data, not the training backup',
   'bjtrainer.casinoUseLocation.v1': 'a per-device yes/no for "Use my location" in the casino ranking',

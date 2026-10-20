@@ -50,7 +50,10 @@ export const OWNED_KEYS = [
   'bjtrainer.fieldTestRun.v1',
   // The real-play casino log (store/casinoLog.ts): one whole blob, cached in
   // the Casino screen's state. A stale tab ending a session would otherwise
-  // write back a log missing the other tab's buy-in.
+  // write back a log missing the other tab's buy-in. Wave K (review S2): the
+  // v2 blob has its own key; the v1 key stays here because a tab still on an
+  // older build writes it, and this build merges what it wrote.
+  'bjtrainer.casinoLog.v2',
   'bjtrainer.casinoLog.v1',
   // Wave K: the casino ranking's cached simulations, so a result computed in
   // one tab shows in the other.

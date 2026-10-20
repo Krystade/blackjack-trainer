@@ -13,6 +13,8 @@ export interface SimRequest {
   seed: number;
   timeCapMs: number;
   maxRounds?: number;
+  /** Rounds one exit costs, for the stopping rule (casinoRun.ts `RunOptions.exitRounds`). */
+  exitRounds?: number;
 }
 
 export type SimMessage = { type: 'progress'; progress: RunProgress } | { type: 'done'; progress: RunProgress } | { type: 'error'; message: string };
@@ -25,9 +27,9 @@ const ctx = self as unknown as {
 };
 
 ctx.onmessage = (e: MessageEvent<SimRequest>) => {
-  const { spec, seed, timeCapMs, maxRounds } = e.data;
+  const { spec, seed, timeCapMs, maxRounds, exitRounds } = e.data;
   try {
-    const run = runGame(spec, { seed, timeCapMs, maxRounds, now: () => performance.now() });
+    const run = runGame(spec, { seed, timeCapMs, maxRounds, exitRounds, now: () => performance.now() });
     for (;;) {
       const step = run.next();
       ctx.postMessage({ type: step.done ? 'done' : 'progress', progress: step.value } satisfies SimMessage);

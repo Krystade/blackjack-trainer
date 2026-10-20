@@ -35,6 +35,12 @@ export interface RunOptions {
   /** A round budget per simulation (tests, and the e2e hook); absent = none. */
   maxRounds?: number;
   now: () => number;
+  /**
+   * Rounds of table time one exit costs (rounds/hour x minutes per exit / 60),
+   * for the stopping rule and the progress bar only: the stored sums carry
+   * the exits, and the figures charge whatever the setting is when shown.
+   */
+  exitRounds?: number;
   /** Rounds per chunk; the defaults keep a chunk well under 100 ms on a phone. */
   basicChunk?: number;
   countChunk?: number;
@@ -58,6 +64,7 @@ export function* runGame(spec: SimSpec, opts: RunOptions): Generator<RunProgress
   const countCap = Math.min(budget ?? Infinity, MAX_COUNT_ROUNDS);
   const basicChunk = opts.basicChunk ?? 50_000;
   const countChunk = opts.countChunk ?? 25_000;
+  const exitRounds = opts.exitRounds ?? 0;
 
   const basicDone = () => basic.rounds >= basicCap || (basic.rounds >= minRounds && edgePrecise(basic.basicAccum(), spec.unit));
   const countDone = () => {
@@ -65,15 +72,15 @@ export function* runGame(spec: SimSpec, opts: RunOptions): Generator<RunProgress
     if (count.rounds >= countCap) return true;
     if (count.rounds < minRounds) return false;
     const accs = count.methodAccums().map((m) => m.acc);
-    const best = bestIndex(accs);
-    return best >= 0 && evPrecise(accs[best]!);
+    const best = bestIndex(accs, exitRounds);
+    return best >= 0 && evPrecise(accs[best]!, exitRounds);
   };
 
   const snapshot = (status: RunStatus): RunProgress => {
     const ms = opts.now() - start;
     // Progress toward the round counts the targets need, never past 99% while running.
     const bFrac = basicDone() ? 1 : Math.min(0.99, basic.rounds / Math.max(minRounds, roundsForEdge(basic, spec.unit)));
-    const cFrac = countDone() ? 1 : Math.min(0.99, count ? count.rounds / Math.max(minRounds, roundsForEv(count)) : 1);
+    const cFrac = countDone() ? 1 : Math.min(0.99, count ? count.rounds / Math.max(minRounds, roundsForEv(count, exitRounds)) : 1);
     const clock = ms / opts.timeCapMs;
     return {
       status,
@@ -110,12 +117,14 @@ function roundsForEdge(sim: CasinoSim, unit: number): number {
 }
 
 /** Rounds the best method's EV needs for +/-10%, for the progress bar. */
-function roundsForEv(sim: CasinoSim): number {
+function roundsForEv(sim: CasinoSim, exitRounds: number): number {
   const accs = sim.methodAccums().map((m) => m.acc);
-  const best = bestIndex(accs);
+  const best = bestIndex(accs, exitRounds);
   const a = accs[best];
   if (!a || a.observed < 2 || a.net <= 0) return MAX_COUNT_ROUNDS;
-  const mean = a.net / a.observed;
-  const sd = Math.sqrt(Math.max(0, a.net2 / a.observed - mean * mean));
-  return ((1.96 * sd) / (0.1 * mean)) ** 2;
+  const time = a.observed + exitRounds * a.exits;
+  const mean = a.net / time;
+  const sd = Math.sqrt(Math.max(0, a.net2 / time - mean * mean));
+  // Rounds of table time per simulated round, so the estimate is in simulated rounds.
+  return ((1.96 * sd) / (0.1 * mean)) ** 2 * (sim.rounds / time);
 }

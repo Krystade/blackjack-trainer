@@ -140,6 +140,21 @@ function signature(m: BetMethod, spread: readonly SpreadRow[]): string {
 }
 
 /**
+ * Review N4: the method listed before `m` -- a default, or an earlier custom
+ * one -- that plays exactly like it, so `methodsFor` computes it once under
+ * that one; null when `m` is its own. `m` need not be in `custom` yet (the
+ * add form asks before saving).
+ */
+export function duplicateOf(p: RampSource, custom: readonly BetMethod[], m: BetMethod): BetMethod | null {
+  const sig = signature(m, p.spread);
+  for (const x of [...defaultMethods(p), ...custom]) {
+    if (x.id === m.id) return null;
+    if (signature(x, p.spread) === sig) return x;
+  }
+  return null;
+}
+
+/**
  * The methods a game is worked out with: the defaults, then the user's own,
  * dropping any that would play exactly like one already listed (the profile's
  * own exit is often -1 or -2; a ramp start often equals the profile's own

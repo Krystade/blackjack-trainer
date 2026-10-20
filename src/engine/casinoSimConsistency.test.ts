@@ -73,7 +73,7 @@ describe('internal consistency', () => {
     const ev = (cutDecks: number) => {
       const sim = new CasinoSim(spec({ cutDecks }), 'count', 3);
       sim.run(400_000);
-      return summarize(sim.methodAccums()[0]!.acc).evObserved;
+      return summarize(sim.methodAccums()[0]!.acc).evTime;
     };
     const deep = ev(0.75);
     const shallow = ev(2.5);
@@ -166,6 +166,13 @@ describe('the flat simulation agrees with the exact infinite-deck arithmetic', (
    * and the cut card costs a sliver. Each of those is a few hundredths of a
    * percent; 0.15% covers them all with room. On top of that the sim has its
    * own 95% interval. So: |sim - exact| < 0.15% + the interval.
+   *
+   * A COARSE CHECK (review N2): the band is about 0.3% wide all told, near
+   * half the house edge, so a sim-only rule slip worth less than that -- DAS
+   * is worth ~0.14% -- would pass it. Tightening it to ~0.05% needs ~20
+   * million rounds (12 s here), too slow for the unit suite. What guards the
+   * rule handling is the round-by-round parity with `Game`
+   * (casinoSim.test.ts); this only catches a gross error in the whole.
    */
   it('6D-style rules dealt from 8 decks, H17 DAS LS 3:2', () => {
     const rules = { ...BASE, decks: 8 as const };

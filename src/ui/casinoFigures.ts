@@ -324,10 +324,26 @@ export function distanceOf(c: Pick<Casino, 'location' | 'driveMinutes'>, here: G
  * session plus the drive there and back,
  * (EV/h x session h) / (session h + 2 x drive minutes / 60).
  * Null without a drive time.
+ *
+ * Review N3: a game that loses is NOT shrunk toward zero by a long drive (the
+ * formula would rank a far losing game above a near one); it stays at its EV
+ * per hour, so losing games sort among themselves by how much they lose.
  */
 export function evPerTripHour(evHour: number, sessionHours: number, driveMinutes: number | null | undefined): number | null {
   if (driveMinutes === null || driveMinutes === undefined || !(sessionHours > 0)) return null;
+  if (evHour <= 0) return evHour;
   return (evHour * sessionHours) / (sessionHours + (2 * driveMinutes) / 60);
+}
+
+/**
+ * Review N3: live miles and drive minutes on one scale, for the Distance
+ * sort -- minutes, a mile taken at ASSUMED_MPH. The miles are straight-line
+ * and the minutes are by road, so this is a rough common scale for ordering,
+ * never shown.
+ */
+export const ASSUMED_MPH = 40;
+export function distanceMinutes(d: Distance): number {
+  return d.kind === 'drive' ? d.minutes : (d.miles / ASSUMED_MPH) * 60;
 }
 
 // ---------------------------------------------------------------- formatting
