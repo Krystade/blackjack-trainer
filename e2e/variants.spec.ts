@@ -142,12 +142,21 @@ test('a casino game can be a variant: the card shows its house edge and says cou
     lastExportAt: AT,
   };
   await page.addInitScript((l) => {
+    // A round budget: were the variant ever run, it would land well inside the hold below.
+    (window as unknown as { __bjCasinoSimBudget: number }).__bjCasinoSimBudget = 4000;
     if (!sessionStorage.getItem('seeded')) {
       localStorage.setItem('bjtrainer.casinoLog.v2', l);
       sessionStorage.setItem('seeded', '1');
     }
   }, JSON.stringify(log));
+  // Review S5: hidden until the game is a variant, so the standard game it starts as is never run.
+  const setHidden = (hidden: boolean) =>
+    page.evaluate((h) => {
+      Object.defineProperty(document, 'visibilityState', { value: h ? 'hidden' : 'visible', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, hidden);
   await page.goto('/?e2e=1');
+  await setHidden(true);
   await tab(page, 'Casino');
   await page.getByTestId('casino-row').filter({ hasText: 'Rio' }).click();
   await page.getByTestId('game-variant').selectOption('freebet');
@@ -156,12 +165,12 @@ test('a casino game can be a variant: the card shows its house edge and says cou
   const row = page.getByTestId('games-ranked').getByTestId('rank-row');
   await expect(row.getByTestId('rank-ev')).toHaveText('not modelled');
   await expect(row).toContainText('Free Bet');
-  // A variant game is never simulated: nothing is queued or stored for it.
-  const simmed = await page.evaluate(() => {
-    const raw = localStorage.getItem('bjtrainer.casinoGameStats.v1');
-    return raw ? Object.keys(JSON.parse(raw).results ?? JSON.parse(raw)).length : 0;
-  });
-  expect(simmed).toBe(0);
+  // A variant game is never simulated: shown, with nothing to do, it stays idle and nothing is stored.
+  await page.evaluate(() => localStorage.removeItem('bjtrainer.casinoGameStats.v1'));
+  await setHidden(false);
+  await page.waitForTimeout(1500);
+  await expect(page.getByTestId('rank-auto')).toHaveAttribute('data-phase', 'idle');
+  expect(await page.evaluate(() => localStorage.getItem('bjtrainer.casinoGameStats.v1'))).toBeNull();
   await row.click();
   const card = page.getByTestId('game-stats');
   await expect(card).toHaveAttribute('data-state', 'variant');
