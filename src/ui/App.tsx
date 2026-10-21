@@ -135,7 +135,15 @@ function App() {
    * whatever drill or table you had open to go and check a cell.
    */
   const [chartsReturn, setChartsReturn] = useState<Screen>('home');
-  const [settings, setSettings] = useState<SettingsData>(() => loadSettings());
+  const [settings, setSettings] = useState<SettingsData>(() => {
+    const loaded = loadSettings();
+    // Review N2: seeded with the settings themselves, before any child mounts.
+    // The effect below runs after every child's effects, so a chime fired from
+    // a child's mount effect on a muted cold load would otherwise read the
+    // module default (volume 1). Idempotent: it only stores two numbers.
+    setChimeLevels(effectiveVolume(loaded.audio), loaded.audio.chimeVolume);
+    return loaded;
+  });
   const [activeProfile, setActiveProfileState] = useState<Profile>(() => getActiveProfile());
   /**
    * Bumped to deal a new table on purpose (#33). The Table's key already

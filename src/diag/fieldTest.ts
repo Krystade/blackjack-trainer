@@ -2020,8 +2020,16 @@ export function logFieldTestRunStart(
   runId: string | undefined,
   steps: number,
   answerByVoice: boolean,
+  /**
+   * Review N3 (Wave M): the Chime volume the run's chime stimuli play at. The
+   * protocol imposes volume, clips and mute but not this, so since Wave M its
+   * chimes follow the operator's setting (default 0.35, about 9 dB under the
+   * runs before it). Recorded so runs on either side stay comparable.
+   */
+  chimeLevel?: number,
 ): void {
   diag('test', 'run-start', {
+    ...(chimeLevel !== undefined ? { chimeLevel } : {}),
     // THE RUN ID, which this line of all lines was missing.
     //
     // `runId` exists because "two runs under the same condition in one export

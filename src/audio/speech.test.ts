@@ -469,6 +469,36 @@ describe('speak()/speakAsync() — opts.volume', () => {
     }
   });
 
+  it('cancelSpeech ends a muted line at once, as it does a spoken one (review N1)', async () => {
+    // Otherwise an interrupt left the app "speaking" for the cancelled line's
+    // estimate: the microphone and held cues waited it out, and onEnd and a
+    // muted speakAsync settled late.
+    vi.useFakeTimers();
+    try {
+      _resetSpeakQueueForTest();
+      installFakeSpeechEnv([]);
+      // Start from silence: nothing an earlier test left sounding.
+      cancelSpeech({ evenProtected: true });
+      _resetLastSpokenForTest();
+      expect(isAppSpeaking()).toBe(false);
+      let ended = 0;
+      speak('a fairly long muted line that would take a few seconds', { volume: 0, onEnd: () => (ended += 1) });
+      let settled = false;
+      void speakAsync('another muted line', { volume: 0 }).then(() => (settled = true));
+      expect(isAppSpeaking()).toBe(true);
+      cancelSpeech();
+      await Promise.resolve();
+      expect(isAppSpeaking()).toBe(false);
+      expect(ended).toBe(1);
+      expect(settled).toBe(true);
+      // The estimate's timer is gone: no second ending later.
+      vi.advanceTimersByTime(20_000);
+      expect(ended).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('leaves the utterance volume untouched when none is given (engine default)', () => {
     const spoken = installFakeSpeechEnv([]);
     speak('hello');

@@ -64,7 +64,7 @@ import {
   ensureMediaSessionHandlers,
   type SpeechPathRecord,
 } from '../../audio/speech';
-import { effectiveVolume } from '../../audio/volume';
+import { DEFAULT_CHIME_LEVEL, effectiveVolume } from '../../audio/volume';
 import { isWheelPress, setMediaSessionProbe } from '../../audio/mediaSession';
 import { holdAudioFocus, releaseAudioFocus } from '../../audio/audioFocus';
 import {
@@ -467,6 +467,7 @@ export function FieldTest({
             readFieldTestRun().runId,
             fieldTestStepCount({ condition: run.condition }),
             run.answerByVoice === true,
+            settings.audio.chimeVolume ?? DEFAULT_CHIME_LEVEL,
           );
           // THE GRAPH EXISTS BEFORE THE FIRST SAMPLE, not partway through the
           // first pair.
@@ -504,6 +505,8 @@ export function FieldTest({
             // The switch, on the row that is joined to the run: the
             // `answer-by-voice` row is written from the gate and is not.
             answerByVoice: run.answerByVoice === true,
+            // Review N3: the level its chime stimuli play at (see run-start).
+            chimeLevel: settings.audio.chimeVolume ?? DEFAULT_CHIME_LEVEL,
             step: FIELD_TEST_STEPS[run.stepIndex]?.id,
             atStep: run.stepIndex,
           });

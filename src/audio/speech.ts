@@ -423,6 +423,7 @@ export function cancelSpeech(opts?: { evenProtected?: boolean }): void {
   speakInFlight = 0;
   stopClips();
   settleAllPendingSpeeches();
+  endMutedLines();
   if (!isSpeechSupported()) return;
   try {
     window.speechSynthesis.cancel();
@@ -646,15 +647,32 @@ function isMutedRequest(opts?: { volume?: number }): boolean {
   return opts?.volume !== undefined && utteranceVolume(opts.volume) === 0;
 }
 
+/**
+ * The muted lines still notionally sounding, each with the function that ends
+ * it. Review N1: `cancelSpeech` ends them at once, as it does a real line, so
+ * an interrupt does not leave the microphone and held cues waiting out a
+ * cancelled line's estimate (and its `onEnd` firing late).
+ */
+const mutedLinesSounding = new Set<() => void>();
+
 /** Run a muted line: logged, no element or utterance started, ends at the estimate. */
 function runMutedUtterance(text: string, opts: SpeechOpts | undefined, ended: () => void): void {
   recordSpeechPath({ path: "muted", text, for: text, tag: opts?.tag });
   mutedUtterancesSounding += 1;
-  setTimeout(() => {
+  const finish = () => {
+    if (!mutedLinesSounding.delete(finish)) return;
+    clearTimeout(timer);
     mutedUtterancesSounding = Math.max(0, mutedUtterancesSounding - 1);
     notifySpeechEnded();
     ended();
-  }, estimateSpeechMs(text, opts?.rate));
+  };
+  mutedLinesSounding.add(finish);
+  const timer = setTimeout(finish, estimateSpeechMs(text, opts?.rate));
+}
+
+/** End every muted line now (cancelSpeech). */
+function endMutedLines(): void {
+  for (const finish of [...mutedLinesSounding]) finish();
 }
 
 /** Is the app making a noise right now, by any path? */
@@ -809,6 +827,7 @@ export function _resetLastSpokenForTest(): void {
   // opens.
   e2eUtterancesSounding = 0;
   mutedUtterancesSounding = 0;
+  mutedLinesSounding.clear();
 }
 
 /**
