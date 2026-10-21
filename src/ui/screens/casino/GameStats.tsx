@@ -7,7 +7,8 @@ import { gameSummary, kindBadge, labelledSummary, money, shortDate, warnBadges }
 import { buildRanking, evTargetMet, exitMinutesOf, gameFigures, roundsPerHourOf, type GameFigures, type RankRow } from '../../casinoRanking';
 import { ASSUMED_TEXT, assumedDirectionText, assumedLabel, assumedRules, ciText, edgeText, evHourText, isBestCase, n0Text, roundsText, rorText, sdHourText } from '../../casinoStatsText';
 import { canRunLonger, runAnotherMinute } from './simRunner';
-import { capOf } from '../../casinoAutoSim';
+import { workFor } from '../../casinoAutoSim';
+import { statusNote, type Hold } from '../../casinoRunNote';
 import { useActiveProfile, useGameCache, useRunner } from './useGameStats';
 import type { CasinoView } from './Casino';
 import { MAX_COUNT_ROUNDS, type RunProgress } from '../../../engine/casinoRun';
@@ -23,25 +24,6 @@ import { SideBetsCard } from './SideBetsCard';
  * figures shown, marked, until the new ones land), or finished. Only a run
  * that stopped at its time cap offers "Run another minute".
  */
-
-/** "the one-minute cap", "the 3-minute cap". */
-function capText(ms: number): string {
-  const min = Math.round(ms / 60_000);
-  return min === 1 ? 'the one-minute cap' : `the ${min}-minute cap`;
-}
-
-function statusNote(r: GameResult): string {
-  switch (r.status) {
-    case 'done':
-      return 'Both targets met (house edge ±0.05%, best EV/hour ±10%).';
-    case 'time':
-      return `Stopped at ${capText(capOf(r))}; the intervals say how close it got.`;
-    case 'budget':
-      return 'Stopped at the test round budget.';
-    default:
-      return `An estimate from ${roundsText(r.basicRounds + r.countRounds)} rounds; it firms up on its own while Casino is open.`;
-  }
-}
 
 export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casinoId: string; gameId: string; go: (v: CasinoView) => void }) {
   const profile = useActiveProfile();
@@ -83,6 +65,8 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
   const staleShown = row.state.kind === 'stale' && !live;
   const { rules } = simRules(game);
   const current = row.state.kind === 'current' ? row.state.result : null;
+  const hold: Hold =
+    runner.failed[row.input.key] !== undefined ? 'failed' : runner.unsaved.includes(row.input.key) ? 'unsaved' : runner.holdRefines ? 'session' : 'none';
   // Review S1: only when another minute would deal rounds.
   const canLonger = current !== null && canRunLonger(current, row.input.spec, row.exitRounds);
 
@@ -148,7 +132,7 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
             <p className="cas-gs-state" data-testid="gs-status">
               {current!.status !== 'done' && (
                 <>
-                  {current!.status === 'time' || current!.status === 'budget' ? (
+                  {workFor(current!) !== 'refine' ? (
                     <span className="cas-badge" data-tone="warn" data-testid="partial-badge">
                       Partial
                     </span>
@@ -171,7 +155,7 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
                       : 'It has had the five minutes a game can take.'}
                 </span>
               ) : (
-                statusNote(current!)
+                statusNote(current!, hold)
               )}
             </p>
             {canLonger && (

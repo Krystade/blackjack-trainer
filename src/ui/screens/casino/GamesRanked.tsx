@@ -7,6 +7,7 @@ import { buildRanking, rankedEvHour, type RankRow, type RankSort } from '../../c
 import { assumedLabel, assumedRulesBadge, ciText, evHourText, materialAssumedRules, n0Text, pctText, roundsText } from '../../casinoStatsText';
 import { Choice } from './fields';
 import type { RunnerState } from './simRunner';
+import { workFor } from '../../casinoAutoSim';
 import { useActiveProfile, useGameCache, useRunner, type useHere } from './useGameStats';
 import type { CasinoView } from './Casino';
 import './casinoAuto.css';
@@ -177,6 +178,8 @@ function AutoStatus({ runner, rows }: { runner: RunnerState; rows: readonly Rank
 function RankItem({ row, place, sort, running, failed, onOpen }: { row: RankRow; place: number; sort: RankSort; running: boolean; failed: string | undefined; onOpen: () => void }) {
   const f = row.figures;
   const status = row.state.kind === 'none' ? null : row.state.result.status;
+  // Review N2: an estimate is one with firming up to come; one that has had its time is partial, like a run at its cap.
+  const estimate = row.state.kind !== 'none' && workFor(row.state.result) === 'refine';
   const value = !f ? null : sort === 'trip' && row.tripEv !== null ? row.tripEv : rankedEvHour(row);
   // Review S4: the figure rests on guesses for these rules (conservative, or
   // the best case for the split cap and double-on, Wave P); only the ones
@@ -251,12 +254,12 @@ function RankItem({ row, place, sort, running, failed, onOpen }: { row: RankRow;
             </span>
           )}
           {/* Wave Q: a first estimate, or one paused part way: more to come, on its own. */}
-          {f && row.state.kind === 'current' && (status === 'partial' || status === 'cancelled') && (
+          {f && row.state.kind === 'current' && estimate && (
             <span className="cas-badge" data-tone="info" data-testid="estimate-badge">
               Estimate {ciText(f.evHourCi)}/h
             </span>
           )}
-          {f && row.state.kind === 'current' && (status === 'time' || status === 'budget') && (
+          {f && row.state.kind === 'current' && status !== 'done' && !estimate && (
             <span className="cas-badge" data-tone="warn" data-testid="partial-badge">
               Partial {ciText(f.evHourCi)}/h
             </span>
