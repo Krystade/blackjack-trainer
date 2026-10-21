@@ -7,6 +7,7 @@ import { PRESETS } from './rules';
 import type { VariantRules } from './rules';
 import {
   actionValues,
+  afterDraw,
   decisionValues,
   drawWeights,
   evTable,
@@ -310,5 +311,18 @@ describe('house edges against the published figures', () => {
     const rdd = -roundReturn(PRESETS['s21-h17-rdd']) * 100;
     expect(h17 - rdd).toBeCloseTo(0.76 - 0.42, 1);
     expect(h17 - s17).toBeGreaterThan(0.3);
+  });
+});
+
+describe('afterDraw (review N8)', () => {
+  it('soft 21 drawing an ace is hard 12, not soft 22', () => {
+    expect(afterDraw(21, true, 11)).toEqual({ total: 12, soft: false });
+  });
+  it('keeps the usual cases', () => {
+    expect(afterDraw(15, true, 11)).toEqual({ total: 16, soft: true }); // A,4 + A
+    expect(afterDraw(15, false, 11)).toEqual({ total: 16, soft: false });
+    expect(afterDraw(17, true, 9)).toEqual({ total: 16, soft: false });
+    expect(afterDraw(10, false, 11)).toEqual({ total: 21, soft: true });
+    expect(afterDraw(11, true, 11)).toEqual({ total: 12, soft: true }); // A,A
   });
 });

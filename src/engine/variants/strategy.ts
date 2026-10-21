@@ -12,12 +12,14 @@ import { rankValue } from '../cards';
 import { handValue } from '../hand';
 import type { Action } from '../deviations';
 import type { PlayContext } from '../strategy';
-import type { AfterDoubleRow, GenCell, GenPreset, SectionId, SwitchValueRow } from './chartGen';
+import type { AfterDoubleRow, GenCell, GenPreset, GenTable, SectionId, SwitchValueRow } from './chartGen';
 import type { Disagreement } from './compare';
 import type { PresetId } from './rules';
 import { PRESETS } from './rules';
 import { fallbackOf, parseCode, playFor } from './cellCode';
 import type { SuitState, VAct } from './ev';
+// The import attribute is for Node ESM: the Playwright specs import this
+// module directly, and Node refuses a bare JSON import. Vite accepts it too.
 import generated from './generated.json' with { type: 'json' };
 
 export interface VariantData {
@@ -35,6 +37,49 @@ export function presetData(id: PresetId): GenPreset {
 
 export function switchValueRows(): SwitchValueRow[] {
   return VARIANT_DATA.presets.switch.switchValues ?? [];
+}
+
+/**
+ * The disagreement on one cell, if the computed chart and the published one
+ * differ there. Keyed like compare.ts: preset:table:SECTION:row:up (up 2-11).
+ */
+const DISAGREEMENT_BY_KEY = new Map(VARIANT_DATA.disagreements.map((d) => [d.key, d]));
+
+export function disagreementAt(preset: PresetId, table: string, section: string, row: number, col: number): Disagreement | null {
+  return DISAGREEMENT_BY_KEY.get(`${preset}:${table}:${section}:${row}:${col === 9 ? 11 : col + 2}`) ?? null;
+}
+
+/**
+ * The code a cell is graded as and shown with: the published code where the
+ * disagreement is graded 'published', the computed code otherwise. `other` is
+ * the code it is not, for the note on the cell (and, for 'either', a second
+ * right answer).
+ */
+export interface GradedCell {
+  code: string;
+  /** True when `code` is not the computed code (its noDouble/noSurrender do not apply). */
+  overridden: boolean;
+  note: Disagreement | null;
+  other: string | null;
+}
+
+export function gradedCell(preset: PresetId, table: string, section: SectionId, row: number, col: number, cell: GenCell): GradedCell {
+  const d = disagreementAt(preset, table, section, row, col);
+  if (!d) return { code: cell.code, overridden: false, note: null, other: null };
+  if (d.grade === 'published') return { code: d.published, overridden: true, note: d, other: cell.code };
+  return { code: cell.code, overridden: false, note: d, other: d.published };
+}
+
+/** A preset's table with every cell's code as graded: what the Charts tab paints. */
+export function gradedTable(preset: PresetId, table: GenTable): GenTable {
+  const sections = {} as GenTable['sections'];
+  for (const section of ['HARD', 'SOFT', 'PAIRS'] as const) {
+    sections[section] = table.sections[section].map((r) => ({
+      key: r.key,
+      cells: r.cells.map((c, i) => ({ ...c, code: gradedCell(preset, table.id, section, r.key, i, c).code })),
+    }));
+  }
+  return { ...table, sections };
 }
 
 /** Column index of a dealer up card: 2-9, ten (J/Q/K too), ace. */
@@ -57,6 +102,8 @@ const ACTION_OF: Record<VAct, Action> = {
 export interface VariantCellRef {
   section: SectionId;
   row: number;
+  /** Column 0-9. */
+  col: number;
   cell: GenCell;
 }
 
@@ -76,7 +123,7 @@ export function variantCellFor(
   const col = upColumn(up);
   if (cards.length === 2 && canSplit && rankValue(cards[0]!.rank) === rankValue(cards[1]!.rank)) {
     const row = rankValue(cards[0]!.rank);
-    return { section: 'PAIRS', row, cell: t.sections.PAIRS.find((r) => r.key === row)!.cells[col]! };
+    return { section: 'PAIRS', row, col, cell: t.sections.PAIRS.find((r) => r.key === row)!.cells[col]! };
   }
   const { total, soft } = handValue([...cards]);
   const section: SectionId = soft ? 'SOFT' : 'HARD';
@@ -84,7 +131,7 @@ export function variantCellFor(
   // A soft 12 (two aces that may not split) reads as the lowest soft row, as
   // strategy.ts reads its own charts.
   const row = rows.find((r) => r.key === total) ?? rows[0]!;
-  return { section, row: row.key, cell: row.cells[col]! };
+  return { section, row: row.key, col, cell: row.cells[col]! };
 }
 
 /** Suit state of a two-card Spanish 21 6-7-8 / 7-7-7 start, or null when it is not one. */
@@ -104,6 +151,10 @@ export interface VariantAdvice {
   row: number;
   /** In the shape strategy.ts writes, so the spoken correction stays clip-covered. */
   reason: string;
+  /** A second play graded right ('either' cells): the other chart's play. */
+  alsoRight?: Action;
+  /** The cell's disagreement with the published chart, when it has one. */
+  note?: Disagreement;
 }
 
 function basicReason(action: Action, up: Rank): string {
@@ -124,20 +175,39 @@ export function variantPlay(
   ctx: PlayContext,
 ): VariantAdvice {
   const ref = variantCellFor(preset, table, cards, up, ctx.canSplit);
-  const code = ref.cell.code;
+  const graded = gradedCell(preset, table, ref.section, ref.row, ref.col, ref.cell);
+  const code = graded.code;
   const suit = PRESETS[preset].cardBonuses ? setStartSuit(cards) : null;
-  const play = playFor(code, cards.length, suit);
-  let act: VAct = play;
-  if (play === 'R' && !ctx.canSurrender) {
-    act = ref.cell.noSurrender ?? fallbackOf(parseCode(code).base);
+  // The computed cell's no-double / no-surrender plays belong to the computed
+  // code; a published code falls back by its own second letter.
+  const fallbacks = graded.overridden ? {} : ref.cell;
+  const action = actionFor(code, cards.length, suit, ctx, fallbacks);
+  const advice: VariantAdvice = { action, code, section: ref.section, row: ref.row, reason: basicReason(action, up) };
+  if (graded.note) advice.note = graded.note;
+  if (graded.note?.grade === 'either' && graded.other !== null) {
+    const other = actionFor(graded.other, cards.length, suit, ctx, {});
+    if (other !== action) advice.alsoRight = other;
+  }
+  return advice;
+}
+
+function actionFor(
+  code: string,
+  n: number,
+  suit: SuitState | null,
+  ctx: PlayContext,
+  fallbacks: Pick<GenCell, 'noDouble' | 'noSurrender'>,
+): Action {
+  let act: VAct = playFor(code, n, suit);
+  if (act === 'R' && !ctx.canSurrender) {
+    act = fallbacks.noSurrender ?? fallbackOf(parseCode(code).base);
   }
   if ((act === 'D' || act === 'FD') && !ctx.canDouble) {
     const base = parseCode(code).base;
-    act = ref.cell.noDouble ?? (base === 'Dh' || base === 'Ds' ? fallbackOf(base) : 'H');
+    act = fallbacks.noDouble ?? (base === 'Dh' || base === 'Ds' ? fallbackOf(base) : 'H');
   }
   if ((act === 'P' || act === 'FP') && !ctx.canSplit) act = 'H';
-  const action = ACTION_OF[act];
-  return { action, code, section: ref.section, row: ref.row, reason: basicReason(action, up) };
+  return ACTION_OF[act];
 }
 
 /**
@@ -147,9 +217,18 @@ export function variantPlay(
 export function afterDoublePlay(preset: PresetId, total: number, soft: boolean, up: Rank): VariantAdvice {
   const rows: AfterDoubleRow[] = presetData(preset).afterDouble ?? [];
   const row = rows.find((r) => r.key === total && r.soft === soft);
-  const act: VAct = row ? row.cells[upColumn(up)]! : 'S';
+  const col = upColumn(up);
+  const computed: VAct = row ? row.cells[col]! : 'S';
+  const d = DISAGREEMENT_BY_KEY.get(`${preset}:afterDouble:${soft ? 'soft' : 'hard'}:${total}:${col === 9 ? 11 : col + 2}`);
+  const act: VAct = d?.grade === 'published' ? (d.published as VAct) : computed;
   const action = ACTION_OF[act];
-  return { action, code: act, section: soft ? 'SOFT' : 'HARD', row: total, reason: basicReason(action, up) };
+  const advice: VariantAdvice = { action, code: act, section: soft ? 'SOFT' : 'HARD', row: total, reason: basicReason(action, up) };
+  if (d) advice.note = d;
+  if (d?.grade === 'either') {
+    const other = ACTION_OF[d.published as VAct];
+    if (other !== action) advice.alsoRight = other;
+  }
+  return advice;
 }
 
 /** The plays a variant hand may make. */

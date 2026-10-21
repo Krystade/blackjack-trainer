@@ -62,3 +62,25 @@ describe('Wave L: a casino game can be a variant', () => {
     expect(labelledSummary(game('g'))).not.toMatch(/Switch|Free Bet|Spanish/);
   });
 });
+
+describe('Wave L S3: a variant game honours its logged rules', () => {
+  it('Free Bet logged 6:5 shows the 6:5 edge, about 1.35 points worse', async () => {
+    const { variantEdgeFor } = await import('./casinoVariant');
+    const a = variantEdgeFor({ payout: '3:2' }, 'freebet');
+    const b = variantEdgeFor({ payout: '6:5' }, 'freebet');
+    expect(b.payout).toBe('6:5');
+    expect(b.edge - a.edge).toBeGreaterThan(1.2);
+    expect(b.edge - a.edge).toBeLessThan(1.5);
+    // Spanish 21 has no 6:5 figure: the preset's 3:2 edge, said as 3:2.
+    expect(variantEdgeFor({ payout: '6:5' }, 's21-h17').payout).toBe('3:2');
+  });
+
+  it('names logged rules that differ from the preset', async () => {
+    const { variantMismatches } = await import('./casinoVariant');
+    expect(variantMismatches({ decks: 6, s17: false, payout: '3:2' }, 's21-h17')).toEqual([]);
+    expect(variantMismatches({ decks: 8, s17: null, payout: null }, 'freebet')[0]).toMatch(/8 decks/);
+    expect(variantMismatches({ decks: null, s17: true, payout: null }, 's21-h17')[0]).toMatch(/Spanish 21, S17/);
+    expect(variantMismatches({ decks: null, s17: true, payout: null }, 'switch')[0]).toMatch(/Logged S17; this preset is H17/);
+    expect(variantMismatches({ decks: null, s17: null, payout: '3:2' }, 'switch')[0]).toMatch(/1:1/);
+  });
+});

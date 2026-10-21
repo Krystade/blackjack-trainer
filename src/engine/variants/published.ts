@@ -26,6 +26,7 @@ export const SOURCES = {
   spanish21: 'https://wizardofodds.com/games/spanish-21/',
   switch: 'https://wizardofodds.com/games/blackjack/switch/',
   switchValues: 'https://wizardofodds.com/games/blackjack/switch/appendix/1/',
+  spanish21Rules: 'https://en.wikipedia.org/wiki/Spanish_21',
 } as const;
 
 export interface PublishedTable {
@@ -236,7 +237,9 @@ export const PUBLISHED: readonly PublishedTable[] = [
     sections: {
       HARD: [
         '5-8:H H H H H H H H H H',
-        '9:H H H H Dh H H H H H',
+        // "If 6 decks are used the player should double 9 against a 5." The
+        // preset is six decks, so the note is applied to the eight-deck row.
+        '9:H H H Dh Dh H H H H H',
         '10:Dh Dh Dh Dh Dh Dh Dh H H H',
         '11:Dh Dh Dh Dh Dh Dh Dh Dh H H',
         '12:H H H S S H H H H H',
@@ -264,7 +267,7 @@ export const PUBLISHED: readonly PublishedTable[] = [
         '11:P P P P P P P P P P',
       ],
     },
-    note: 'Eight-deck Las Vegas rules chart; the page adds that with six decks 9 v 5 is a double.',
+    note: 'Eight-deck Las Vegas rules chart, with the page\'s six-deck note applied: "If 6 decks are used the player should double 9 against a 5."',
   },
 ];
 
@@ -310,6 +313,19 @@ export const PUBLISHED_HOUSE_EDGE: Readonly<Record<PresetId, { edge: number; dec
 
 /** Free Bet / Switch page: P(dealer draws to 22), six decks, H17. */
 export const PUBLISHED_P22 = { p: 0.073536, source: SOURCES.switch };
+
+/**
+ * Wikipedia's Spanish 21 rule-change table ("Rule Changes" / "Change in House
+ * Edge"), percent, transcribed row by row: what removing a preset's rule costs
+ * the player. Checked against the engine in scripts/variantCharts.test.ts.
+ */
+export const PUBLISHED_S21_RULE_EFFECTS: readonly { rule: 'ls' | 'splitAcesDraw'; preset: PresetId; effect: number; quote: string }[] = [
+  { rule: 'ls', preset: 's21-h17', effect: 0.018, quote: 'No surrender (H17) | 0.018%' },
+  { rule: 'ls', preset: 's21-s17', effect: 0.006, quote: 'No surrender (S17) | 0.006%' },
+  { rule: 'splitAcesDraw', preset: 's21-h17', effect: 0.28, quote: 'No draws on split Aces (H17 or S17) | 0.28%' },
+  { rule: 'splitAcesDraw', preset: 's21-s17', effect: 0.28, quote: 'No draws on split Aces (H17 or S17) | 0.28%' },
+  { rule: 'splitAcesDraw', preset: 's21-h17-rdd', effect: 0.29, quote: 'No draws on split Aces (H17 with redoubling) | 0.29%' },
+];
 
 /**
  * Wizard of Odds Blackjack Switch appendix 1: each starting hand's expected
@@ -362,12 +378,31 @@ export const PUBLISHED_SWITCH_VALUES: readonly string[] = [
  * on any entry here that no longer disagrees -- so this list is always exactly
  * the current set.
  */
-export const DISAGREEMENT_REASONS: Readonly<Record<string, string>> = buildReasons();
+/**
+ * Which play the drill grades in a disagreeing cell, and which the chart shows:
+ *  - 'published': the published (finite six-deck) play. These are composition
+ *    effects the infinite deck cannot see; scripts/variantFinite.test.ts checks
+ *    a six-deck shoe flips each class tested to the published play.
+ *  - 'computed': the computed play (the published cell is a slip, a merged
+ *    row, or a rule this app does not model).
+ *  - 'either': both plays are graded right (a rule the casino decides, or a
+ *    call a six-deck shoe leaves too close to name).
+ * The other play is shown as a note on the chart cell.
+ */
+export type DisagreementGrade = 'published' | 'computed' | 'either';
 
-function buildReasons(): Record<string, string> {
+const BUILT = buildReasons();
+export const DISAGREEMENT_REASONS: Readonly<Record<string, string>> = BUILT.reasons;
+export const DISAGREEMENT_GRADES: Readonly<Record<string, DisagreementGrade>> = BUILT.grades;
+
+function buildReasons(): { reasons: Record<string, string>; grades: Record<string, DisagreementGrade> } {
   const out: Record<string, string> = {};
-  const add = (reason: string, keys: string[]) => {
-    for (const k of keys) out[k] = reason;
+  const grades: Record<string, DisagreementGrade> = {};
+  const add = (reason: string, grade: DisagreementGrade, keys: string[]) => {
+    for (const k of keys) {
+      out[k] = reason;
+      grades[k] = grade;
+    }
   };
 
   // A two-card call the infinite deck makes the other way by a few
@@ -376,8 +411,9 @@ function buildReasons(): Record<string, string> {
   // of soft double too.
   const BORDERLINE =
     'Borderline: under the infinite deck the computed play is better by the margin shown (a few thousandths of a bet); ' +
-    "the Wizard's finite-shoe analysis, which removes the player's own cards, tips it the other way. Kept as computed.";
-  add(BORDERLINE, [
+    "a six-deck shoe, with the player's own cards removed, tips it the other way (scripts/variantFinite.test.ts). " +
+    'Graded as published; the infinite-deck play is the note.';
+  add(BORDERLINE, 'published', [
     'freebet:real:SOFT:16:6',
     'freebet:real:SOFT:17:5',
     'freebet:free:SOFT:17:5',
@@ -389,7 +425,8 @@ function buildReasons(): Record<string, string> {
 
   add(
     'The published "Splits" chart is one table for real and free hands alike. On a free hand a loss costs nothing, which makes ' +
-      'free-splitting 5,5 v 6 worth 0.004 more than the free double here; the real-money hand matches the chart (FD).',
+      'free-splitting 5,5 v 6 worth 0.004 more than the free double here; the real-money hand matches the chart (FD). Graded as computed.',
+    'computed',
     ['freebet:free:PAIRS:5:6'],
   );
 
@@ -401,8 +438,9 @@ function buildReasons(): Record<string, string> {
   const CARD_STEP =
     'Card-count step one card earlier than published: an n-card hand of this total is all small cards, and removing them ' +
     'from a real six-deck shoe makes standing or doubling a little better than the infinite deck allows. Every step ' +
-    'disagreement goes this one way (computed hits sooner); the margin is what the published step costs under the infinite deck.';
-  add(CARD_STEP, [
+    'disagreement goes this one way (computed hits sooner); the margin is what the published step costs under the infinite deck. ' +
+    'A six-deck shoe flips the cells tested to the published step (scripts/variantFinite.test.ts), so the published step is graded.';
+  add(CARD_STEP, 'published', [
     's21-h17:main:HARD:9:6',
     's21-h17:main:HARD:10:4',
     's21-h17:main:HARD:14:5',
@@ -421,8 +459,6 @@ function buildReasons(): Record<string, string> {
     's21-s17:main:SOFT:19:11',
     's21-h17-rdd:main:HARD:8:5',
     's21-h17-rdd:main:HARD:10:4',
-    's21-h17-rdd:main:HARD:10:7',
-    's21-h17-rdd:main:HARD:10:8',
     's21-h17-rdd:main:HARD:14:5',
     's21-h17-rdd:main:HARD:14:6',
     's21-h17-rdd:main:HARD:15:4',
@@ -430,23 +466,32 @@ function buildReasons(): Record<string, string> {
     's21-h17-rdd:main:HARD:16:2',
     's21-h17-rdd:main:SOFT:18:6',
   ]);
+  add(
+    'Card-count step (redouble game): a six-deck shoe still hits the 4-card 10 v 7 / 10 v 8 by 0.004 / 0.0015 for the compositions ' +
+      'tried, against the published double; too close, and too composition-dependent, to name one. Either is graded right.',
+    'either',
+    ['s21-h17-rdd:main:HARD:10:7', 's21-h17-rdd:main:HARD:10:8'],
+  );
 
   add(
-    'Spade-only 6-7-8 mark: computed stands on a spaded 7-8 v 6 too (the spade 6 is 1 card in 48), the published S17 chart hits it. ' +
-      'Suit composition is exactly what an infinite deck flattens; the H17 chart has no mark here either.',
+    'Spade-only 6-7-8 mark: computed stands on a spaded 7-8 v 6 too; the published S17 chart hits it. Not a deck effect: a six-deck ' +
+      'shoe still stands, by 0.016 (0.018 infinite), and the H17 chart has no mark here. A chart or transcription slip; graded as computed.',
+    'computed',
     ['s21-s17:main:HARD:15:6'],
   );
 
   add(
     'The published S17 chart merges soft 19-21 into one row, so its S6 v 10 reads onto soft 20 and soft 21 as well. Computed: ' +
-      'soft 19 v 10 is S6 (matching), a soft 20 stands whatever its card count, and 21 always wins in Spanish 21.',
+      'soft 19 v 10 is S6 (matching), a soft 20 stands whatever its card count, and 21 always wins in Spanish 21. Graded as computed.',
+    'computed',
     ['s21-s17:main:SOFT:20:10', 's21-s17:main:SOFT:21:10'],
   );
 
   add(
     'Rule assumption: bonuses are not paid on split hands (most casinos, per the Wizard; ev.ts header). With them paid after a ' +
       'split (bonusAfterSplit, the game as designed) the computed play flips to split, matching the chart -- ' +
-      'variantCharts.test.ts checks that flip.',
+      'variantCharts.test.ts checks that flip. Whether bonuses are paid after a split is the casino\'s rule, so either play is graded right.',
+    'either',
     [
       's21-h17:main:PAIRS:2:2',
       's21-h17:main:PAIRS:2:8',
@@ -458,31 +503,46 @@ function buildReasons(): Record<string, string> {
   );
   add(
     'Rule assumption plus a borderline call: with bonuses paid after a split 3,3 v 2 still hits by 0.0008 under H17; the split ' +
-      'the chart shows needs the finite-shoe effect as well.',
+      'the chart shows needs the finite-shoe effect as well. Graded as published.',
+    'published',
     ['s21-h17:main:PAIRS:3:2', 's21-h17-rdd:main:PAIRS:3:2'],
   );
 
   add(
     'P$ is "split, except hit with suited sevens": the Super Bonus (suited 7-7-7 v a dealer 7 pays $1000/$5000, a dollar amount, ' +
-      'not odds) is not modelled. Unsuited, both say split.',
+      'not odds) is not modelled. Unsuited, both say split; the drill deals only unsuited sevens.',
+    'computed',
     ['s21-h17:main:PAIRS:7:7', 's21-s17:main:PAIRS:7:7', 's21-h17-rdd:main:PAIRS:7:7'],
   );
 
   add(
     "Likely a chart slip: a redouble cannot change how a 6-card 17 is played (it is not a doubling decision), so this cell should " +
-      'match the no-redouble H17 chart, which says S -- as computed. Hitting costs 0.133 here.',
+      'match the no-redouble H17 chart, which says S -- as computed. Hitting costs 0.133 here. Graded as computed.',
+    'computed',
     ['s21-h17-rdd:main:HARD:17:7'],
   );
   add(
     'Likely a chart slip: the no-redouble H17 chart says D4 here, as computed, and a redouble only helps a double of 11 when ' +
-      'the card is an ace (12, redoubled v 7/8): it adds about 0.013 to the double, against a 0.065 / 0.124 gap.',
+      'the card is an ace (12, redoubled v 7/8): it adds about 0.013 to the double, against a 0.065 / 0.124 gap. A six-deck ' +
+      'shoe still hits by 0.046 / 0.113. Graded as computed.',
+    'computed',
     ['s21-h17-rdd:main:HARD:11:7', 's21-h17-rdd:main:HARD:11:8'],
   );
 
   add(
-    'After a double (redouble game): a doubled hard 6 is all small cards (2,2 + 2 or similar). Computed stands; the published ' +
-      'redouble is worth 0.024-0.033 less under the infinite deck, the same small-card shoe effect as the card-count steps.',
+    'After a double (redouble game): a doubled hard 6 is all small cards (2,2 then a 2). Computed stands; the published ' +
+      'redouble is worth 0.024-0.033 less under the infinite deck, and a six-deck shoe only narrows that to 0.006 / 0.002, so ' +
+      'computed still wins. Graded as computed.',
+    'computed',
     ['s21-h17-rdd:afterDouble:hard:6:3', 's21-h17-rdd:afterDouble:hard:6:7'],
   );
-  return out;
+
+  add(
+    'Six decks: the Switch page\'s strategy table is for eight decks and adds "If 6 decks are used the player should double 9 ' +
+      'against a 5." The preset is six decks; the infinite deck hits by the margin shown, a six-deck shoe doubles ' +
+      '(scripts/variantFinite.test.ts). Graded as published.',
+    'published',
+    ['switch:main:HARD:9:5'],
+  );
+  return { reasons: out, grades };
 }

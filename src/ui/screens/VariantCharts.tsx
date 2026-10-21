@@ -1,23 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import "./variantCharts.css";
-import type { PresetId } from "../../engine/variants/rules";
-import {
-  PRESETS,
-  PRESET_LABEL,
-  presetSummary,
-  presetsOf,
-} from "../../engine/variants/rules";
-import { chartRules } from "../../engine/variants/chartGen";
-import type { GenTable, SectionId } from "../../engine/variants/chartGen";
-import { evTable, switchChoice } from "../../engine/variants/ev";
-import { SOURCES } from "../../engine/variants/published";
-import {
-  VARIANT_DATA,
-  presetData,
-  switchValueRows,
-} from "../../engine/variants/strategy";
-import { DEALER_UPCARDS } from "./chartRows";
-import type { RowOrder } from "./chartRows";
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import './variantCharts.css';
+import type { PresetId } from '../../engine/variants/rules';
+import { PRESETS, PRESET_LABEL, presetSummary, presetsOf } from '../../engine/variants/rules';
+import { chartRules } from '../../engine/variants/chartGen';
+import type { GenTable, SectionId } from '../../engine/variants/chartGen';
+import { evTable, switchChoice } from '../../engine/variants/ev';
+import { SOURCES } from '../../engine/variants/published';
+import { VARIANT_DATA, disagreementAt, gradedTable, presetData, switchValueRows } from '../../engine/variants/strategy';
+import type { Disagreement } from '../../engine/variants/compare';
+import { DEALER_UPCARDS } from './chartRows';
+import type { RowOrder } from './chartRows';
 import {
   MARK_TEXT,
   codeFamily,
@@ -27,9 +19,10 @@ import {
   formatSwitchValue,
   legendFor,
   rowHolds,
+  rowKeyNumbers,
   variantSectionRows,
-} from "./variantChartView";
-import type { VariantHighlight } from "./variantChartView";
+} from './variantChartView';
+import type { VariantHighlight } from './variantChartView';
 
 /**
  * Wave L: the Free Bet, Spanish 21 and Switch charts.
@@ -41,9 +34,9 @@ import type { VariantHighlight } from "./variantChartView";
  */
 
 const SECTIONS: readonly { id: SectionId; title: string }[] = [
-  { id: "HARD", title: "Hard totals" },
-  { id: "SOFT", title: "Soft totals" },
-  { id: "PAIRS", title: "Pairs" },
+  { id: 'HARD', title: 'Hard totals' },
+  { id: 'SOFT', title: 'Soft totals' },
+  { id: 'PAIRS', title: 'Pairs' },
 ];
 
 const SOURCE_OF: Record<string, string> = SOURCES;
@@ -52,30 +45,46 @@ function pct(n: number): string {
   return `${n.toFixed(2)}%`;
 }
 
+/** One line for a noted cell: what is graded, and the other chart's play. */
+function noteLine(d: Disagreement): string {
+  const shown = d.grade === 'published' ? d.published : d.computed;
+  const other = d.grade === 'published' ? d.computed : d.published;
+  const otherName = d.grade === 'published' ? 'infinite-deck (computed)' : 'published';
+  const graded =
+    d.grade === 'either' ? `${shown} or ${other} are both graded right` : `${shown} is graded`;
+  return `${disagreementLabel(d)}: ${graded}; the ${otherName} chart says ${other}. ${d.reason ?? ''}`;
+}
+
 function VariantTable({
+  preset,
   table,
   order,
   highlight,
   showTitle,
   cellRef,
+  openNote,
+  onNote,
 }: {
+  preset: PresetId;
   table: GenTable;
   order: RowOrder;
   highlight?: VariantHighlight;
   showTitle: boolean;
   cellRef: React.MutableRefObject<HTMLTableCellElement | null>;
+  openNote: string | null;
+  onNote: (key: string | null) => void;
 }) {
   return (
     <div className="variant-table" data-table={table.id}>
       {showTitle && <h2 className="variant-table-title">{table.title}</h2>}
       {SECTIONS.map((section) => {
         const rows = variantSectionRows(table, section.id, order);
+        const notesAt = (row: (typeof rows)[number], i: number): Disagreement[] =>
+          rowKeyNumbers(row, section.id)
+            .map((k) => disagreementAt(preset, table.id, section.id, k, i))
+            .filter((d): d is Disagreement => d !== null);
         return (
-          <section
-            className="chart-section"
-            data-section={section.id}
-            key={section.id}
-          >
+          <section className="chart-section" data-section={section.id} key={section.id}>
             <h3 className="chart-section-title">{section.title}</h3>
             <div className="chart-frame">
               <div className="chart-grid">
@@ -108,14 +117,20 @@ function VariantTable({
                         highlight.table === table.id &&
                         highlight.section === section.id &&
                         rowHolds(row, section.id, highlight.row);
+                      const noteCol = row.actions.findIndex((_, i) => openNote === `${table.id}:${row.id}:${i}`);
+                      const openNotes = noteCol >= 0 ? notesAt(row, noteCol) : [];
                       return (
-                        <tr data-row={row.id} key={row.id}>
+                        <Fragment key={row.id}>
+                        <tr data-row={row.id}>
                           <th scope="row" className="chart-rowlabel">
                             {row.label}
                           </th>
                           {row.actions.map((action, i) => {
                             const code = action as string;
                             const hit = rowHit && highlight!.col === i;
+                            const notes = notesAt(row, i);
+                            const noteKey = `${table.id}:${row.id}:${i}`;
+                            const label = `${row.label} vs dealer ${DEALER_UPCARDS[i]}: ${describeCode(code)}`;
                             return (
                               <td
                                 key={DEALER_UPCARDS[i]}
@@ -124,16 +139,42 @@ function VariantTable({
                                 data-code={code}
                                 data-long={code.length > 2 ? 'true' : undefined}
                                 data-up={DEALER_UPCARDS[i]}
-                                data-highlight={hit ? "true" : undefined}
-                                aria-current={hit ? "true" : undefined}
+                                data-note={notes.length > 0 ? notes[0]!.grade ?? 'note' : undefined}
+                                data-highlight={hit ? 'true' : undefined}
+                                aria-current={hit ? 'true' : undefined}
                                 ref={hit ? cellRef : undefined}
-                                title={`${row.label} vs dealer ${DEALER_UPCARDS[i]}: ${describeCode(code)}${hit ? " — your hand" : ""}`}
+                                title={`${label}${notes.length > 0 ? ' — differs from the published chart' : ''}${hit ? ' — your hand' : ''}`}
                               >
-                                {code}
+                                {notes.length > 0 ? (
+                                  <button
+                                    type="button"
+                                    className="chart-cell-btn"
+                                    data-note-cell={noteKey}
+                                    aria-expanded={openNote === noteKey}
+                                    aria-label={`${label}. Show how this differs from the published chart`}
+                                    onClick={() => onNote(openNote === noteKey ? null : noteKey)}
+                                  >
+                                    {code}
+                                  </button>
+                                ) : (
+                                  code
+                                )}
                               </td>
                             );
                           })}
                         </tr>
+                        {openNotes.length > 0 && (
+                          <tr className="chart-index-note-row">
+                            <td colSpan={DEALER_UPCARDS.length + 1} className="chart-index-note-cell">
+                              <div className="chart-index-note variant-cell-note" role="note" data-testid="variant-cell-note">
+                                {openNotes.map((d) => (
+                                  <p key={d.key}>{noteLine(d)}</p>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -152,18 +193,15 @@ function AfterDoubleTable({ preset }: { preset: PresetId }) {
   const rows = presetData(preset).afterDouble ?? [];
   const rdd = PRESETS[preset].maxDoubles > 1;
   // Only the rows where the play is ever something other than stand.
-  const shown = rows.filter((r) => r.cells.some((c) => c !== "S"));
+  const shown = rows.filter((r) => r.cells.some((c) => c !== 'S'));
   return (
-    <section
-      className="chart-section variant-after-double"
-      data-testid="variant-after-double"
-    >
+    <section className="chart-section variant-after-double" data-testid="variant-after-double">
       <h3 className="chart-section-title">
         After a double
         <span className="chart-section-blurb">
           {rdd
-            ? "Doubled hands: stand, double again, or rescue (take back the double and the bet, lose half). Rows not shown: stand."
-            : "Doubled hands: stand or rescue (take back the double, lose half the bet). Rows not shown: stand."}
+            ? 'Doubled hands: stand, double again, or rescue (take back the double and the bet, lose half). Rows not shown: stand.'
+            : 'Doubled hands: stand or rescue (take back the double, lose half the bet). Rows not shown: stand.'}
         </span>
       </h3>
       <div className="chart-frame">
@@ -189,19 +227,17 @@ function AfterDoubleTable({ preset }: { preset: PresetId }) {
             </thead>
             <tbody>
               {shown.map((r) => (
-                <tr key={`${r.soft ? "s" : "h"}${r.key}`}>
+                <tr key={`${r.soft ? 's' : 'h'}${r.key}`}>
                   <th scope="row" className="chart-rowlabel">
                     {r.soft ? `soft ${r.key}` : r.key}
                   </th>
                   {r.cells.map((c, i) => {
-                    const code = c === "R" ? "R" : c === "D" ? "D" : "S";
+                    const code = c === 'R' ? 'R' : c === 'D' ? 'D' : 'S';
                     return (
                       <td
                         key={i}
                         className="chart-cell variant-cell"
-                        data-action={
-                          code === "R" ? "Rs" : code === "D" ? "D" : "S"
-                        }
+                        data-action={code === 'R' ? 'Rs' : code === 'D' ? 'D' : 'S'}
                         data-code={code}
                       >
                         {code}
@@ -219,9 +255,9 @@ function AfterDoubleTable({ preset }: { preset: PresetId }) {
 }
 
 const SWITCH_CARDS: readonly { label: string; value: number }[] = [
-  { label: "A", value: 11 },
+  { label: 'A', value: 11 },
   ...[2, 3, 4, 5, 6, 7, 8, 9].map((v) => ({ label: String(v), value: v })),
-  { label: "10", value: 10 },
+  { label: '10', value: 10 },
 ];
 
 /** The two blackjack rows, short enough for the label column. */
@@ -230,12 +266,10 @@ const ROW_SHORT: Record<string, string> = { 'BJ (switched)': 'A,10', 'BJ (natura
 /** Switch: the hand values, and a checker for one deal. */
 function SwitchGuide() {
   const rows = switchValueRows();
-  const [cards, setCards] = useState<[number, number, number, number]>([
-    10, 6, 11, 7,
-  ]);
+  const [cards, setCards] = useState<[number, number, number, number]>([10, 6, 11, 7]);
   const [up, setUp] = useState(10);
   const choice = useMemo(() => {
-    const t = evTable(chartRules("switch"), up);
+    const t = evTable(chartRules('switch'), up);
     return switchChoice(cards[0], cards[1], cards[2], cards[3], t);
   }, [cards, up]);
   const label = (v: number) => SWITCH_CARDS.find((c) => c.value === v)!.label;
@@ -244,11 +278,7 @@ function SwitchGuide() {
     next[i] = v;
     setCards(next);
   };
-  const select = (
-    value: number,
-    onChange: (v: number) => void,
-    aria: string,
-  ) => (
+  const select = (value: number, onChange: (v: number) => void, aria: string) => (
     <select
       className="variant-select"
       value={value}
@@ -266,34 +296,27 @@ function SwitchGuide() {
     <section className="variant-switch" data-testid="variant-switch-guide">
       <h2 className="variant-table-title">When to switch</h2>
       <p className="variant-note">
-        Switch the second cards when the two new hands are worth more than the
-        two you were dealt. The table gives each hand&rsquo;s value against each
-        dealer card, in hundredths of a bet; add the two values for each pairing
-        and keep the larger. A dealt blackjack pays 1:1; a switched A,10 is only
-        21.
+        Switch the second cards when the two new hands are worth more than the two you were dealt. The table gives each
+        hand&rsquo;s value against each dealer card, in hundredths of a bet; add the two values for each pairing and
+        keep the larger. A dealt blackjack pays 1:1; a switched A,10 is only 21.
       </p>
       <div className="variant-checker" data-testid="variant-switch-checker">
         <div className="variant-checker-row">
           <span>Hand 1</span>
-          {select(cards[0], (v) => setCard(0, v), "Hand 1 first card")}
-          {select(cards[1], (v) => setCard(1, v), "Hand 1 second card")}
+          {select(cards[0], (v) => setCard(0, v), 'Hand 1 first card')}
+          {select(cards[1], (v) => setCard(1, v), 'Hand 1 second card')}
           <span>Hand 2</span>
-          {select(cards[2], (v) => setCard(2, v), "Hand 2 first card")}
-          {select(cards[3], (v) => setCard(3, v), "Hand 2 second card")}
+          {select(cards[2], (v) => setCard(2, v), 'Hand 2 first card')}
+          {select(cards[3], (v) => setCard(3, v), 'Hand 2 second card')}
           <span>Dealer</span>
-          {select(up, setUp, "Dealer up card")}
+          {select(up, setUp, 'Dealer up card')}
         </div>
-        <p
-          className="variant-checker-result"
-          data-testid="variant-switch-result"
-          data-switch={choice.switchIt}
-        >
+        <p className="variant-checker-result" data-testid="variant-switch-result" data-switch={choice.switchIt}>
           {choice.switchIt
             ? `Switch: ${label(cards[0])},${label(cards[3])} and ${label(cards[2])},${label(cards[1])}`
-            : `Keep: ${label(cards[0])},${label(cards[1])} and ${label(cards[2])},${label(cards[3])}`}{" "}
+            : `Keep: ${label(cards[0])},${label(cards[1])} and ${label(cards[2])},${label(cards[3])}`}{' '}
           <span className="variant-dim">
-            (keep {formatSwitchValue(choice.keep)}, switch{" "}
-            {formatSwitchValue(choice.swap)})
+            (keep {formatSwitchValue(choice.keep)}, switch {formatSwitchValue(choice.swap)})
           </span>
         </p>
       </div>
@@ -325,11 +348,7 @@ function SwitchGuide() {
                     {ROW_SHORT[r.label] ?? r.label}
                   </th>
                   {r.values.map((v, i) => (
-                    <td
-                      key={i}
-                      className="variant-value"
-                      data-sign={v >= 0 ? "plus" : "minus"}
-                    >
+                    <td key={i} className="variant-value" data-sign={v >= 0 ? 'plus' : 'minus'}>
                       {formatSwitchValue(v)}
                     </td>
                   ))}
@@ -345,43 +364,42 @@ function SwitchGuide() {
 
 function VariantNotes({ preset }: { preset: PresetId }) {
   const rules = PRESETS[preset];
-  if (rules.variant === "freebet") {
+  if (rules.variant === 'freebet') {
     return (
       <ul className="variant-notes">
         <li>
-          <strong>Free doubles</strong> on any hard 9, 10 or 11: the casino puts
-          up the extra bet. A free double (FD) is never refused.
+          <strong>Free doubles</strong> on any hard 9, 10 or 11: the casino puts up the extra bet. A free double (FD) is
+          never refused.
         </li>
         <li>
-          <strong>Free splits</strong> on every pair but tens (FP). A hand a
-          free split makes is a <em>free hand</em>: only the casino&rsquo;s
-          token rides on it, so it plays from the second chart, more
-          aggressively.
+          <strong>Free splits</strong> on every pair but tens (FP). A hand a free split makes is a <em>free hand</em>:
+          only the casino&rsquo;s token rides on it, so it plays from the second chart, more aggressively.
         </li>
         <li>
-          <strong>Push 22:</strong> a dealer 22 pushes every hand still standing
-          (a player blackjack still wins).
+          <strong>Push 22:</strong> a dealer 22 pushes every hand still standing (a player blackjack still wins).
         </li>
       </ul>
     );
   }
-  if (rules.variant === "spanish21") {
+  if (rules.variant === 'spanish21') {
     return (
       <ul className="variant-notes">
         <li>
-          <strong>Card counts:</strong> a number after a letter is a step: S4
-          means stand, but hit once you hold four or more cards; D4 means
-          double, but hit from four cards. The five-, six- and seven-card 21
-          bonuses (3:2, 2:1, 3:1) are why.
+          <strong>Card counts:</strong> a number after a letter is a step: S4 means stand, but hit once you hold four or
+          more cards; D4 means double, but hit from four cards. The five-, six- and seven-card 21 bonuses (3:2, 2:1,
+          3:1) are why.
         </li>
         <li>
-          <strong>6-7-8 and 7-7-7</strong> pay a bonus, more when suited or in
-          spades. A mark on a cell means play it differently when that bonus is
-          still possible.
+          <strong>6-7-8 and 7-7-7</strong> pay a bonus, more when suited or in spades. A mark on a cell means play it
+          differently when that bonus is still possible.
         </li>
         <li>
-          <strong>Player 21 always wins</strong>, and late surrender is allowed.
-          Double on any number of cards; after a double, see the rescue table.
+          <strong>Player 21 always wins</strong>, and late surrender is allowed. Double on any number of cards; after a
+          double, see the rescue table.
+        </li>
+        <li>
+          <strong>Split hands:</strong> the card-count bonuses are not paid on a split hand at most casinos (assumed here), so
+          the steps do not apply after a split: play a split hand by its total.
         </li>
       </ul>
     );
@@ -389,12 +407,11 @@ function VariantNotes({ preset }: { preset: PresetId }) {
   return (
     <ul className="variant-notes">
       <li>
-        <strong>Two hands, one switch:</strong> you may swap the second cards
-        between your two hands before playing them.
+        <strong>Two hands, one switch:</strong> you may swap the second cards between your two hands before playing
+        them.
       </li>
       <li>
-        <strong>Blackjack pays 1:1</strong> and a dealer 22 pushes, so stiff
-        hands stand less and doubles shrink.
+        <strong>Blackjack pays 1:1</strong> and a dealer 22 pushes, so stiff hands stand less and doubles shrink.
       </li>
     </ul>
   );
@@ -414,32 +431,23 @@ export function VariantCharts({
 }) {
   const data = presetData(preset);
   const rules = PRESETS[preset];
-  const legend = useMemo(() => legendFor(data.tables), [data]);
-  const groups = useMemo(
-    () => disagreementGroups(VARIANT_DATA.disagreements, preset),
-    [preset],
-  );
+  // The tables as graded: published six-deck codes where a six-deck shoe plays
+  // them (published.ts DISAGREEMENT_GRADES), the computed code elsewhere.
+  const tables = useMemo(() => data.tables.map((t) => gradedTable(preset, t)), [data, preset]);
+  const legend = useMemo(() => legendFor(tables), [tables]);
+  const [openNote, setOpenNote] = useState<string | null>(null);
+  const groups = useMemo(() => disagreementGroups(VARIANT_DATA.disagreements, preset), [preset]);
   const siblings = presetsOf(rules.variant);
   const cellRef = useRef<HTMLTableCellElement | null>(null);
-  const hlKey = highlight
-    ? `${highlight.table}:${highlight.section}:${highlight.row}:${highlight.col}`
-    : "";
+  const hlKey = highlight ? `${highlight.table}:${highlight.section}:${highlight.row}:${highlight.col}` : '';
   useEffect(() => {
-    cellRef.current?.scrollIntoView({ block: "center", inline: "nearest" });
+    cellRef.current?.scrollIntoView({ block: 'center', inline: 'nearest' });
   }, [hlKey]);
 
   return (
-    <div
-      className="variant-charts"
-      data-testid="variant-charts"
-      data-preset={preset}
-    >
+    <div className="variant-charts" data-testid="variant-charts" data-preset={preset}>
       {onPreset && siblings.length > 1 && (
-        <div
-          className="charts-modes variant-rules"
-          role="group"
-          aria-label="Rule set"
-        >
+        <div className="charts-modes variant-rules" role="group" aria-label="Rule set">
           {siblings.map((id) => (
             <button
               key={id}
@@ -448,14 +456,14 @@ export function VariantCharts({
               aria-pressed={id === preset}
               onClick={() => onPreset(id)}
             >
-              {PRESET_LABEL[id].replace("Spanish 21, ", "")}
+              {PRESET_LABEL[id].replace('Spanish 21, ', '')}
             </button>
           ))}
         </div>
       )}
       <p className="charts-ruleset">{presetSummary(rules)}</p>
       <p className="variant-edge" data-testid="variant-house-edge">
-        House edge with this chart: <strong>{pct(data.houseEdge)}</strong>{" "}
+        House edge with this chart: <strong>{pct(data.houseEdge)}</strong>{' '}
         <span className="variant-dim">(computed, infinite deck)</span>
       </p>
       <VariantNotes preset={preset} />
@@ -479,8 +487,7 @@ export function VariantCharts({
         </ul>
         {legend.steps && (
           <p className="chart-legend-note">
-            A digit is a card-count step: S5 means stand with up to four cards
-            and hit with five or more.
+            A digit is a card-count step: S5 means stand with up to four cards and hit with five or more.
           </p>
         )}
         {legend.marks.map((m) => (
@@ -488,11 +495,25 @@ export function VariantCharts({
             <strong>{m}</strong> {MARK_TEXT[m]}
           </p>
         ))}
+        {groups.length > 0 && (
+          <p className="chart-legend-note chart-legend-mark">
+            <span className="chart-code variant-note-dot" data-action="S" aria-hidden="true">
+              S
+            </span>
+            <span>
+              A dot means this cell differs from the published chart. The six-deck play is shown and graded where a
+              six-deck shoe plays it; tap the cell for the other play and why.
+            </span>
+          </p>
+        )}
       </div>
 
-      {data.tables.map((t) => (
+      {tables.map((t) => (
         <VariantTable
           key={t.id}
+          preset={preset}
+          openNote={openNote}
+          onNote={setOpenNote}
           table={t}
           order={order}
           highlight={highlight}
@@ -501,21 +522,16 @@ export function VariantCharts({
         />
       ))}
       {data.afterDouble && <AfterDoubleTable preset={preset} />}
-      {rules.variant === "switch" && <SwitchGuide />}
+      {rules.variant === 'switch' && <SwitchGuide />}
 
       <section className="variant-differs" data-testid="variant-differs">
-        <h2 className="variant-table-title">
-          Where this differs from the published chart
-        </h2>
+        <h2 className="variant-table-title">Where this differs from the published chart</h2>
         <p className="variant-note">
-          Checked cell by cell against{" "}
+          Checked cell by cell against{' '}
           <a href={SOURCE_OF[rules.variant]} target="_blank" rel="noreferrer">
             Wizard of Odds
           </a>
-          .{" "}
-          {groups.length === 0
-            ? "Every cell agrees."
-            : "Each difference, and why:"}
+          . {groups.length === 0 ? 'Every cell agrees.' : 'Each difference, and why:'}
         </p>
         {groups.map((g) => (
           <div className="variant-differs-group" key={g.reason}>
@@ -523,14 +539,12 @@ export function VariantCharts({
             <ul className="variant-differs-list">
               {g.cells.map((d) => (
                 <li key={d.key}>
-                  {disagreementLabel(d)}: published <code>{d.published}</code>,
-                  computed <code>{d.computed}</code>
-                  {d.margin !== null && (
-                    <span className="variant-dim">
-                      {" "}
-                      ({d.margin.toFixed(4)} a bet)
-                    </span>
-                  )}
+                  {disagreementLabel(d)}: published <code>{d.published}</code>, computed <code>{d.computed}</code>
+                  {d.margin !== null && <span className="variant-dim"> ({d.margin.toFixed(4)} a bet, infinite deck)</span>}
+                  <span className="variant-dim" data-grade={d.grade}>
+                    {' '}
+                    &middot; {d.grade === 'published' ? 'graded as published' : d.grade === 'either' ? 'either graded right' : 'graded as computed'}
+                  </span>
                 </li>
               ))}
             </ul>

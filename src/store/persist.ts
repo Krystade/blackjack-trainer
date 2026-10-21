@@ -435,6 +435,10 @@ const EXTRA_KEYS: { key: string; field: string }[] = [
   // why it has its own key (see Charts.tsx) -- and why it was missed. It is
   // still something the operator chose and would have to choose again.
   { key: 'bjtrainer.chartOrder.v1', field: 'chartOrder' },
+  // Wave L: the Variant hands drill's right/wrong tally -- practice history,
+  // backed up like the SR decks. The variant being studied
+  // (bjtrainer.variant.v1) is a device preference and stays out.
+  { key: 'bjtrainer.variantTally.v1', field: 'variantTally' },
 ];
 
 /**

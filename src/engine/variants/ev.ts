@@ -157,12 +157,15 @@ export function variantDealer(upValue: number, rules: VariantRules): VariantDeal
 
 export function afterDraw(total: number, soft: boolean, card: number): { total: number; soft: boolean } {
   let next = total + card;
-  let nextSoft = soft || card === 11;
-  if (next > 21 && nextSoft) {
+  // Aces still counted as 11: the soft hand's one, plus the card if an ace.
+  // Two of them (soft 21 drawing an ace: 32) take two steps down, to hard 12
+  // -- one step left a "soft 22" (review N8).
+  let elevens = (soft ? 1 : 0) + (card === 11 ? 1 : 0);
+  while (next > 21 && elevens > 0) {
     next -= 10;
-    nextSoft = soft && card === 11;
+    elevens -= 1;
   }
-  return { total: next, soft: nextSoft };
+  return { total: next, soft: elevens > 0 };
 }
 
 /**

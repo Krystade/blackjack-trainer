@@ -46,7 +46,7 @@
   background: var(--act-double);
   color: var(--act-double-ink);
   outline: 1px dashed var(--act-double-ink);
-  outline-offset: -3px;
+  outline-offset: -1px;
 }
 
 .chart-cell[data-action='FP'],
@@ -54,7 +54,7 @@
   background: var(--act-split);
   color: var(--act-split-ink);
   outline: 1px dashed var(--act-split-ink);
-  outline-offset: -3px;
+  outline-offset: -1px;
 }
 
 .variant-code {
@@ -168,4 +168,46 @@
 
 .variant-differs a {
   color: var(--brass);
+}
+
+/*
+ * A cell that differs from the published chart: a dot in the corner (the
+ * standard chart's index mark is a triangle, so the two never read alike).
+ * Tap it for the other chart's play and the reason.
+ */
+.variant-cell[data-note]::before,
+.variant-note-dot::before {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  pointer-events: none;
+}
+
+.variant-note-dot {
+  position: relative;
+}
+
+.variant-cell-note p {
+  margin: 0;
+  font-size: var(--fs-xs);
+}
+
+.variant-cell-note p + p {
+  margin-top: 0.35rem;
+}
+
+/* N7: four pills, and "H17, redouble", on one line at 320. */
+@media (max-width: 360px) {
+  .variant-picker .charts-mode-btn,
+  .variant-rules .charts-mode-btn {
+    padding-left: 0.2rem;
+    padding-right: 0.2rem;
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+  }
 }

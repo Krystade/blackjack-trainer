@@ -49,8 +49,12 @@ const SUITS: Suit[] = ['h', 'd', 'c', 's'];
 const RANK_OF: Record<number, Rank> = { 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9', 11: 'A' };
 const TENS: Rank[] = ['10', 'J', 'Q', 'K'];
 
+/** A Spanish deck has no 10s: its ten-value cards are J, Q and K. */
+const SPANISH_TENS: Rank[] = ['J', 'Q', 'K'];
+let tensInPlay: readonly Rank[] = TENS;
+
 function rankFor(value: number, rng: () => number): Rank {
-  return value === 10 ? TENS[Math.floor(rng() * 4)]! : RANK_OF[value]!;
+  return value === 10 ? tensInPlay[Math.floor(rng() * tensInPlay.length)]! : RANK_OF[value]!;
 }
 
 function pick<T>(xs: readonly T[], rng: () => number): T {
@@ -183,7 +187,8 @@ function afterDoubleItem(preset: PresetId, rng: () => number): VariantItem {
   for (;;) {
     const up = pick(UPS, rng);
     // The totals a double can leave a hand on that are worth asking about.
-    const total = rdd ? 6 + Math.floor(rng() * 12) : 12 + Math.floor(rng() * 6); // 6-17 or 12-17
+    // 8-17 or 12-17: a doubled 6 or 7 needs a 2,2 or 2,3 double, too rare to drill.
+    const total = rdd ? 8 + Math.floor(rng() * 10) : 12 + Math.floor(rng() * 6);
     const values = hardCards(total, 3, rng);
     if (!values) continue;
     const cards = values.map((v) => ({ rank: rankFor(v, rng), suit: pick(SUITS, rng) }));
@@ -205,6 +210,7 @@ function afterDoubleItem(preset: PresetId, rng: () => number): VariantItem {
 export function drawVariantItem(preset: PresetId, seed: number): VariantItem {
   const rng = mulberry32(seed);
   const rules = PRESETS[preset];
+  tensInPlay = rules.spanishDeck ? SPANISH_TENS : TENS;
   const roll = rng();
   if (rules.variant === 'freebet') return twoCardItem(preset, roll < 0.75 ? 'hand' : 'free', rng);
   if (rules.variant === 'spanish21') {
@@ -230,7 +236,9 @@ export interface VariantGrade {
 }
 
 export function gradeVariantItem(item: VariantItem, taken: Action): VariantGrade {
-  return { correct: taken === item.advice.action, expected: item.advice.action, reason: item.advice.reason };
+  // An 'either' cell (published.ts) grades the other chart's play right too.
+  const correct = taken === item.advice.action || taken === item.advice.alsoRight;
+  return { correct, expected: correct ? taken : item.advice.action, reason: item.advice.reason };
 }
 
 /* ---------------------------------------------------------------- */

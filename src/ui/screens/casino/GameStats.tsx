@@ -1,6 +1,6 @@
 import { casinoById, type CasinoGame, type CasinoLog } from '../../../store/casinoLog';
 import { PRESETS, PRESET_LABEL, presetSummary } from '../../../engine/variants/rules';
-import { presetData } from '../../../engine/variants/strategy';
+import { variantEdgeFor, variantMismatches } from '../../casinoVariant';
 import { simRules, type GameResult } from '../../../store/casinoGameStats';
 import { describeMethod, methodBadge } from '../../../engine/betMethods';
 import { gameSummary, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
@@ -270,13 +270,30 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
  */
 function VariantGameStats({ casinoName, game }: { casinoName: string; game: CasinoGame }) {
   const preset = game.variant!;
-  const data = presetData(preset);
+  const { edge, payout } = variantEdgeFor(game, preset);
+  const mismatches = variantMismatches(game, preset);
   return (
     <div className="cas-gs" data-testid="game-stats" data-state="variant" data-variant={preset}>
       <header className="cas-pad cas-gs-head">
         <p className="cas-gs-casino">{casinoName}</p>
         <h2 className="cas-gs-title">{labelledSummary(game)}</h2>
+        {mismatches.length > 0 && (
+          <span className="cas-row-badges">
+            <span className="cas-badge" data-tone="warn" data-testid="gs-variant-mismatch-badge">
+              Rules differ
+            </span>
+          </span>
+        )}
       </header>
+      {mismatches.length > 0 && (
+        <section className="cas-pad-x" data-testid="gs-variant-mismatch">
+          {mismatches.map((m) => (
+            <p className="cas-field-error" key={m}>
+              {m}
+            </p>
+          ))}
+        </section>
+      )}
       <section className="cas-gs-hero cas-pad" data-testid="gs-hero">
         <div className="cas-stat">
           <span className="cas-stat-label">Counting</span>
@@ -288,16 +305,17 @@ function VariantGameStats({ casinoName, game }: { casinoName: string; game: Casi
         <div className="cas-stat cas-stat-right">
           <span className="cas-stat-label">House edge</span>
           <span className="cas-stat-value" data-testid="gs-edge">
-            {data.houseEdge.toFixed(2)}%
+            {edge.toFixed(2)}%
           </span>
-          <span className="cas-gs-sub">flat bet, its own chart</span>
+          <span className="cas-gs-sub">flat bet, its own chart, blackjack {payout}</span>
         </div>
       </section>
       <section className="cas-section">
         <div className="cas-pad-x cas-gs-notes">
           <p data-testid="gs-variant-rules">
             <strong>Rules used:</strong> {presetSummary(PRESETS[preset])}. Computed in the app for an infinite deck, playing the{' '}
-            {PRESET_LABEL[preset]} chart on the Charts tab perfectly. This game&rsquo;s logged decks, soft 17 and payout are not applied.
+            {PRESET_LABEL[preset]} chart on the Charts tab perfectly
+            {payout === '6:5' && PRESETS[preset].bjPays !== 1.2 ? ', with blackjack paying 6:5 as logged' : ''}.
           </p>
           <p className="cas-note">
             The count simulator models standard blackjack only. Counting {PRESET_LABEL[preset]} needs its own indexes and its own

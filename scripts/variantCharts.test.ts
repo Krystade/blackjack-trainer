@@ -3,7 +3,16 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { generateAll } from '../src/engine/variants/chartGen';
 import { compareAll, upLabel } from '../src/engine/variants/compare';
-import { DISAGREEMENT_REASONS, PUBLISHED, SOURCES } from '../src/engine/variants/published';
+import {
+  DISAGREEMENT_REASONS,
+  PUBLISHED,
+  PUBLISHED_HOUSE_EDGE,
+  PUBLISHED_S21_RULE_EFFECTS,
+  PUBLISHED_SWITCH_VALUES,
+  SOURCES,
+} from '../src/engine/variants/published';
+import { PRESETS } from '../src/engine/variants/rules';
+import { roundReturn } from '../src/engine/variants/ev';
 
 const JSON_PATH = fileURLToPath(new URL('../src/engine/variants/generated.json', import.meta.url));
 
@@ -60,6 +69,10 @@ describe('variant charts', () => {
     expect(derived.disagreements.filter((d) => d.reason === null).map((d) => d.key)).toEqual([]);
   });
 
+  it('every disagreement has a grade: which play the drill grades and the chart shows', () => {
+    expect(derived.disagreements.filter((d) => d.grade === null).map((d) => d.key)).toEqual([]);
+  });
+
   it('no recorded reason is stale: each names a cell that still disagrees', () => {
     const live = new Set(derived.disagreements.map((d) => d.key));
     expect(Object.keys(DISAGREEMENT_REASONS).filter((k) => !live.has(k))).toEqual([]);
@@ -81,4 +94,80 @@ describe('variant charts', () => {
     expect(compared).toBeGreaterThan(1500);
     expect(derived.disagreements.length / compared).toBeLessThan(0.05);
   });
+});
+
+/**
+ * Review N4 (a): the Switch edge is a property of the switch layer, not only of
+ * the engine's own hand values. Fed the Wizard's PUBLISHED per-hand values
+ * (appendix 1, six decks), the same keep-or-switch maximisation must land on
+ * the published six-deck edge -- so a wrong switch rule fails even where the
+ * engine's hand values would hide it.
+ */
+describe('Switch layer on the published hand values', () => {
+  const table = new Map<string, number[]>();
+  for (const line of PUBLISHED_SWITCH_VALUES) {
+    const [label, rest] = line.split(':') as [string, string];
+    table.set(label, rest.split(' ').map(Number));
+  }
+  const label = (x: number, y: number, natural: boolean): string => {
+    const [a, b] = x <= y ? [x, y] : [y, x];
+    if (a === 10 && b === 11) return natural ? 'BJ (natural)' : 'BJ (switched)';
+    if (a === 11 && b === 11) return 'A,A';
+    if (b === 11) return `A,${a}`;
+    if (a === b) return `${a},${a}`;
+    return String(a + b);
+  };
+  const VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  const P = (v: number) => (v === 10 ? 4 / 13 : 1 / 13);
+  const value = (x: number, y: number, natural: boolean, col: number) => {
+    const row = table.get(label(x, y, natural));
+    if (!row) throw new Error(`no published row for ${label(x, y, natural)}`);
+    return row[col]!;
+  };
+
+  it('every two-card hand has a published row', () => {
+    for (const x of VALUES) for (const y of VALUES) for (const n of [true, false]) expect(() => value(x, y, n, 0)).not.toThrow();
+  });
+
+  it(`lands on the published ${PUBLISHED_HOUSE_EDGE.switch.decks}-deck edge (${PUBLISHED_HOUSE_EDGE.switch.edge}%)`, () => {
+    const pBj = 2 * P(10) * P(11);
+    let total = 0;
+    VALUES.forEach((up, col) => {
+      const pNat = up === 11 ? P(10) : up === 10 ? P(11) : 0;
+      // Against a dealer natural both hands lose, but a dealt natural pushes.
+      const vsNatural = -2 * (1 - pBj);
+      let live = 0;
+      for (const a of VALUES)
+        for (const b of VALUES)
+          for (const c of VALUES)
+            for (const d of VALUES) {
+              const keep = value(a, b, true, col) + value(c, d, true, col);
+              const swap = value(a, d, false, col) + value(c, b, false, col);
+              live += P(a) * P(b) * P(c) * P(d) * Math.max(keep, swap);
+            }
+      total += P(up) * (pNat * vsNatural + (1 - pNat) * live);
+    });
+    const edge = (-total / 2) * 100;
+    // The appendix values are rounded to 4 dp and the edge to 2.
+    expect(Math.abs(edge - PUBLISHED_HOUSE_EDGE.switch.edge)).toBeLessThan(0.01);
+  });
+});
+
+/**
+ * Review N4 (b): the Spanish 21 rule effects against Wikipedia's rule-change
+ * table. Published to 2-3 significant figures; the engine is infinite-deck, so
+ * the tolerance is a rounding step plus a small deck-count effect.
+ */
+describe('Spanish 21 rule effects against the published table', () => {
+  for (const row of PUBLISHED_S21_RULE_EFFECTS) {
+    it(`${row.quote} (${SOURCES.spanish21Rules})`, () => {
+      const rules = PRESETS[row.preset];
+      expect(rules[row.rule]).toBe(true);
+      const effect = (roundReturn(rules) - roundReturn({ ...rules, [row.rule]: false })) * 100;
+      const tolerance = row.rule === 'ls' ? 0.003 : 0.012;
+      expect(Math.abs(effect - row.effect)).toBeLessThan(tolerance);
+      // And it is a cost, not a gain.
+      expect(effect).toBeGreaterThan(0);
+    });
+  }
 });

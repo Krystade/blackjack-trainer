@@ -26,10 +26,35 @@ describe('variant drill grading', () => {
     expect(variantPlay('freebet', 'real', [c('10'), c('6')], '10', { ...FULL, canSurrender: false }).action).toBe('hit');
   });
 
-  it('Spanish 21: 16 v 2 stands with two cards and hits with five', () => {
+  it('Spanish 21: 16 v 2 stands up to five cards and hits with six (the published six-deck step, S6)', () => {
+    const noSplit = { ...FULL, canSplit: false, canSurrender: false };
     expect(variantPlay('s21-h17', 'main', [c('10'), c('6')], '2', FULL).action).toBe('stand');
-    const five = [c('2'), c('2', 's'), c('3'), c('4'), c('5')];
-    expect(variantPlay('s21-h17', 'main', five, '2', { ...FULL, canSplit: false, canSurrender: false }).action).toBe('hit');
+    const five = [c('2'), c('3'), c('3', 's'), c('4'), c('4', 's')];
+    const advice = variantPlay('s21-h17', 'main', five, '2', noSplit);
+    expect(advice.action).toBe('stand');
+    expect(advice.code).toBe('S6');
+    // The infinite-deck step (S5, hit at five) is kept as the cell's note.
+    expect(advice.note?.computed).toBe('S5');
+    const six = [c('2'), c('2', 's'), c('3'), c('3', 's'), c('2', 'd'), c('4')];
+    expect(variantPlay('s21-h17', 'main', six, '2', noSplit).action).toBe('hit');
+  });
+
+  it('grades the published six-deck play where a six-deck shoe flips the call (B1)', () => {
+    // Free Bet A,5 v 6 and Switch 9 v 5: the infinite deck hits, six decks double.
+    expect(variantPlay('freebet', 'real', [c('A'), c('5')], '6', FULL).action).toBe('double');
+    expect(variantPlay('switch', 'main', [c('5'), c('4')], '5', FULL).action).toBe('double');
+    expect(variantPlay('switch', 'main', [c('5'), c('4')], '5', FULL).note?.grade).toBe('published');
+  });
+
+  it('keeps the computed play where six decks agree with it, and accepts either on a casino rule', () => {
+    // Redouble 11 v 7, four cards: the published D5 is a chart slip; computed D4 hits at four.
+    const four = [c('2'), c('3'), c('2', 's'), c('4')];
+    const rdd = variantPlay('s21-h17-rdd', 'main', four, '7', { ...FULL, canSplit: false, canSurrender: false });
+    expect(rdd.action).toBe('hit');
+    expect(rdd.alsoRight).toBeUndefined();
+    // 2,2 v 8: split only if the casino pays bonuses after a split.
+    const pair = variantPlay('s21-h17', 'main', [c('2'), c('2', 's')], '8', FULL);
+    expect(new Set([pair.action, pair.alsoRight])).toEqual(new Set(['hit', 'split']));
   });
 
   it('Spanish 21: 14 v 4 is stand from 10,4 and hit from a 6,8 (a 7 makes 6-7-8)', () => {
@@ -46,6 +71,25 @@ describe('variant drill grading', () => {
   it('Switch: hit 11 v 10 and 8,8 v 10, where the standard chart doubles and splits', () => {
     expect(variantPlay('switch', 'main', [c('6'), c('5')], '10', FULL).action).toBe('hit');
     expect(variantPlay('switch', 'main', [c('8'), c('8', 's')], 'K', FULL).action).toBe('hit');
+  });
+
+  it('an either cell grades both plays right, and only those', () => {
+    let item = drawVariantItem('s21-h17', 1);
+    for (let seed = 1; seed < 5000 && item.advice.alsoRight === undefined; seed++) item = drawVariantItem('s21-h17', seed + 1);
+    expect(gradeVariantItem(item, item.advice.action).correct).toBe(true);
+    expect(gradeVariantItem(item, item.advice.alsoRight!).correct).toBe(true);
+    const wrong = variantItemLegal(item).find((x) => x !== item.advice.action && x !== item.advice.alsoRight)!;
+    expect(gradeVariantItem(item, wrong).correct).toBe(false);
+  });
+
+  it('a Spanish deck never deals a 10', () => {
+    for (let seed = 1; seed <= 500; seed++) {
+      for (const p of ['s21-h17', 's21-s17', 's21-h17-rdd'] as const) {
+        expect(drawVariantItem(p, seed).cards.map((x) => x.rank)).not.toContain('10');
+      }
+    }
+    const fb = Array.from({ length: 300 }, (_, i) => drawVariantItem('freebet', i + 1).cards.map((x) => x.rank)).flat();
+    expect(fb).toContain('10');
   });
 
   it('grades a right and a wrong answer', () => {

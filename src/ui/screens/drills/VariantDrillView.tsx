@@ -15,12 +15,18 @@ import {
 } from '../../../drills/variantDrill';
 import type { VariantGrade, VariantItem, VariantTally } from '../../../drills/variantDrill';
 import { narrateVariantCorrection, narrateVariantPrompt, variantOpener } from '../../../audio/narrateVariant';
-import { narrateActionNotAsked } from '../../../audio/narrate';
+import { narrateActionNotAsked, narrateAnswerEcho } from '../../../audio/narrate';
 import { autoAdvanceDelayMs, spokenPauseFor } from '../../../drills/answerPause';
 import { useAudio } from '../../../audio/useAudio';
 import { cancelSpeech, isE2eAudioMode, speak } from '../../../audio/speech';
 import { speechOptsFrom } from '../../../audio/speechOpts';
+import { detectVoiceSupport, VOICE_ACTIONS } from '../../../audio/voiceRecognition';
+import type { VoiceAction } from '../../../audio/voiceRecognition';
 import { useEyesFreeToggle } from '../../eyesFreeSession';
+import { startPushToTalk, usePushToTalk, useVoiceToggle } from '../../voiceSession';
+import { useVoiceControl } from '../../useVoiceControl';
+import { WHEEL_TALK, carMic, carScore, handWheelLabel } from '../../carStatus';
+import type { CarStatus } from '../../carStatus';
 import { useWheelCommand } from '../../useWheelCommand';
 import { answerTooSoon } from '../../answerBounce';
 import { focusSwallowsKey } from '../../keyboardFocus';
@@ -29,7 +35,8 @@ import { ActionBar } from '../../components/ActionBar';
 import { ZonePad } from '../../components/ZonePad';
 import { FloatingBackPill } from '../../components/FloatingBackPill';
 import { NextBar } from './HandDrillParts';
-import { EyesFreeCheckbox } from './EyesFreeCheckbox';
+import { DrillModeControls } from './DrillModeControls';
+import { zoneLabel } from './handDrillShared';
 import { VariantCharts } from '../VariantCharts';
 import type { VariantHighlight } from '../variantChartView';
 import '../../components/studyChartOverlay.css';
@@ -47,7 +54,16 @@ import './variantDrill.css';
  * Spanish 21 chart and then opening this drill drills Spanish 21. Eyes-free
  * works as in Speed: the prompt is spoken, the five-zone pad answers, the
  * correction is spoken and the next hand follows once it has been said.
+ *
+ * Voice answers (review B2) run through the same pipeline as Flashcards:
+ * useVoiceControl with the misheard ladder (tone, then the hand again), the
+ * same per-session toggle and push-to-talk wheel, the answer echoed back and
+ * refused out loud when the hand does not offer it. "Rescue this" is the
+ * surrender word on a doubled Spanish 21 hand (voiceRecognition.ts).
  */
+
+/** The phrases the recogniser is biased toward here: the drill words plus Spanish 21's rescue. */
+const VARIANT_BIAS = [...Object.keys(VOICE_ACTIONS), 'rescue this'];
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -109,6 +125,14 @@ export function VariantDrillView({
   const [tally, setTally] = useState<VariantTally>(loadVariantTally);
   const [showChart, setShowChart] = useState(false);
   const [eyesFree, setEyesFree] = useEyesFreeToggle('variant');
+  // Voice answers: per page load like Flashcards' (ui/voiceSession.ts), hidden
+  // where the browser has no speech API.
+  const [voiceOn, setVoiceOn] = useVoiceToggle('variant');
+  const pushToTalkOpen = usePushToTalk();
+  const [voiceSupported] = useState(() => detectVoiceSupport().api);
+  // Spoken prompts and corrections, and the timed advance: eyes-free, or
+  // answering out loud (voice IS an eyes-free channel).
+  const spoken = eyesFree || voiceOn;
   const shownAtRef = useRef(performance.now());
   const advanceRef = useRef<number | null>(null);
   const clearAdvance = () => {
@@ -120,6 +144,11 @@ export function VariantDrillView({
   const resultRef = useRef<HTMLDivElement | null>(null);
 
   const say = (text: string) => speak(text, speechOptsFrom(settings.audio, { interrupt: true }));
+  /** Queued behind the answer echo, as Flashcards queues its correction. */
+  const sayQueued = (text: string) => speak(text, speechOptsFrom(settings.audio));
+  const correctionText = (f: Feedback) => narrateVariantCorrection(f.grade.correct, f.grade.expected, f.grade.reason);
+  /** "Repeat": the correction while one is up, else the hand. */
+  const repeat = () => say(feedback ? correctionText(feedback) : narrateVariantPrompt(item));
 
   const nextItem = () => {
     clearAdvance();
@@ -132,11 +161,11 @@ export function VariantDrillView({
     if (feedback) resultRef.current?.scrollIntoView({ block: 'nearest' });
   }, [feedback]);
 
-  // Eyes-free: say each hand as it comes up (and on switching it on).
+  // Eyes-free or voice: say each hand as it comes up (and on switching on).
   useEffect(() => {
-    if (eyesFree && !feedback) say(narrateVariantPrompt(item));
+    if (spoken && !feedback) say(narrateVariantPrompt(item));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item, eyesFree]);
+  }, [item, spoken]);
 
   const choose = (p: PresetId) => {
     if (p === preset) return;
@@ -145,19 +174,31 @@ export function VariantDrillView({
     nextItem();
   };
 
-  const answer = (taken: Action) => {
+  /**
+   * One answer, from any channel. `echo`: a blind channel (the zone pad,
+   * voice) says back what it understood before the correction, so the
+   * speaker knows the word landed -- the Flashcards zone/voice path.
+   */
+  const answer = (taken: Action, echo = false) => {
     if (feedback || answerTooSoon(shownAtRef.current)) return;
     if (!variantItemLegal(item).includes(taken)) {
-      if (eyesFree) say(narrateActionNotAsked(taken));
+      // Refused out loud: a dark button cannot be seen by someone driving.
+      if (spoken) say(narrateActionNotAsked(taken));
       return;
     }
     const grade = gradeVariantItem(item, taken);
     setTally((t) => recordVariantAnswer(t, preset, grade.correct));
     audio.ding(grade.correct ? 'good' : 'bad');
-    setFeedback({ id: Date.now(), taken, grade });
-    if (eyesFree) {
-      const text = narrateVariantCorrection(grade.correct, grade.expected, grade.reason);
-      say(text);
+    const f: Feedback = { id: Date.now(), taken, grade };
+    setFeedback(f);
+    if (spoken) {
+      const text = correctionText(f);
+      if (echo) {
+        say(narrateAnswerEcho(zoneLabel(taken)));
+        sayQueued(text);
+      } else {
+        say(text);
+      }
       clearAdvance();
       advanceRef.current = window.setTimeout(
         () => nextItem(),
@@ -166,21 +207,59 @@ export function VariantDrillView({
     }
   };
 
+  /** A spoken answer: the same path as a zone tap, as in Flashcards. */
+  const handleVoiceAction = (action: VoiceAction) => {
+    if (action === 'repeat') {
+      repeat();
+      return;
+    }
+    // Yes/no answer insurance prompts, which this drill never asks.
+    if (action === 'yes' || action === 'no') return;
+    // Modal chart, or already answered: a second word would grade the next
+    // hand against something said about this one.
+    if (showChart || feedback) return;
+    answer(action, true);
+    // Restart a stale recogniser in the pause while the answer is read back.
+    voice.cycleIfStale();
+  };
+
+  const voice = useVoiceControl({
+    enabled: voiceOn || pushToTalkOpen,
+    onAction: handleVoiceAction,
+    onNotUnderstood: () => audio.ding('again'),
+    // The misheard ladder (C-R4): the tone first, then the hand said again.
+    escalation: { promptKey: item, reask: repeat },
+    biasPhrases: VARIANT_BIAS,
+    onListening: () => audio.dingWhenQuiet('ready'),
+    context: 'variant',
+  });
+
   const next = () => {
     if (answerTooSoon(shownAtRef.current)) return;
     nextItem();
   };
 
-  // The wheel, eyes-free: forward goes on from a correction, back says the
-  // hand (or the correction) again. It cannot state a five-way play.
+  // The wheel, eyes-free or voice: forward goes on from a correction, back
+  // says the hand (or the correction) again. It cannot state a five-way play.
+  // In push-to-talk mode forward opens the microphone instead, as in the
+  // other hand drills (useAnswerInputs).
   useWheelCommand((command) => {
-    if (feedback) {
-      if (command === 'forward') nextItem();
-      else say(narrateVariantCorrection(feedback.grade.correct, feedback.grade.expected, feedback.grade.reason));
+    if (settings.drill.wheelMode === 'talk') {
+      if (command === 'forward') {
+        startPushToTalk('variant');
+        audio.ding('attention');
+      } else {
+        repeat();
+      }
       return;
     }
-    if (command === 'back') say(narrateVariantPrompt(item));
-  }, eyesFree);
+    if (feedback) {
+      if (command === 'forward') nextItem();
+      else repeat();
+      return;
+    }
+    if (command === 'back') repeat();
+  }, spoken || settings.drill.wheelMode === 'talk');
 
   // Keyboard: H S D P R answer, Enter / Space is Next.
   useEffect(() => {
@@ -197,13 +276,14 @@ export function VariantDrillView({
       const a = KEYS[e.key.toLowerCase()];
       if (a) {
         e.preventDefault();
-        answer(a);
+        // Eyes-free, a key is a blind answer like a zone tap: echoed.
+        answer(a, eyesFree);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item, feedback, showChart, eyesFree]);
+  }, [item, feedback, showChart, eyesFree, voiceOn]);
 
   const leave = () => {
     clearAdvance();
@@ -220,6 +300,18 @@ export function VariantDrillView({
       ? undefined
       : { table: item.table, section: item.advice.section, row: item.advice.row, col: upColumn(item.up) };
   const kind = kindLine(item);
+  // F7's car line: the hand, what the wheel does now, the mic, the score.
+  const car: CarStatus = {
+    hand: `${item.cards.map((c) => c.rank).join(',')} v ${item.up}`,
+    wheel:
+      settings.drill.wheelMode === 'talk'
+        ? WHEEL_TALK
+        : feedback
+          ? handWheelLabel('answer', 'feedback')
+          : '◀ repeat',
+    mic: carMic(voice.status.state),
+    score: carScore(score.right, score.right + score.wrong),
+  };
 
   if (showChart) {
     return (
@@ -276,14 +368,22 @@ export function VariantDrillView({
             ))}
           </div>
         )}
-        <EyesFreeCheckbox
+        <DrillModeControls
           settings={settings}
           onSettingsChange={onSettingsChange}
           eyesFree={eyesFree}
-          onChange={(on) => {
-            if (!on) clearAdvance();
+          onEyesFreeChange={(on) => {
+            if (!on && !voiceOn) clearAdvance();
             setEyesFree(on);
           }}
+          voiceSupported={voiceSupported}
+          voiceOn={voiceOn}
+          onVoiceChange={(on) => {
+            if (!on && !eyesFree) clearAdvance();
+            setVoiceOn(on);
+          }}
+          voiceStatus={voice.status}
+          car={car}
         />
       </div>
 
@@ -337,9 +437,9 @@ export function VariantDrillView({
           <ZonePad
             mode="action"
             onAnswer={(zone) => {
-              if (zone !== 'take' && zone !== 'decline') answer(zone);
+              if (zone !== 'take' && zone !== 'decline') answer(zone, true);
             }}
-            onRepeat={() => say(narrateVariantPrompt(item))}
+            onRepeat={repeat}
             visible={!settings.audio.dimZones}
             legal={legal}
           />

@@ -6,7 +6,8 @@
  * about) and fails if any disagreement has no recorded reason.
  */
 
-import { PUBLISHED, PUBLISHED_AFTER_DOUBLE, PUBLISHED_RESCUE, DISAGREEMENT_REASONS } from './published';
+import { PUBLISHED, PUBLISHED_AFTER_DOUBLE, PUBLISHED_RESCUE, DISAGREEMENT_GRADES, DISAGREEMENT_REASONS } from './published';
+import type { DisagreementGrade } from './published';
 import type { GenPreset, SectionId } from './chartGen';
 import { UP_VALUES, chartRules, feasible } from './chartGen';
 import type { PresetId } from './rules';
@@ -35,6 +36,8 @@ export interface Disagreement {
   /** Where that first difference is: '2 cards', '5 cards', 'suited 6-7-8 start' ... */
   at: string | null;
   reason: string | null;
+  /** Which play is graded and shown (published.ts DISAGREEMENT_GRADES); null = not yet decided. */
+  grade: DisagreementGrade | null;
 }
 
 /** Expand '5-8:H H ...' into one entry per key. */
@@ -148,9 +151,9 @@ export function upLabel(up: number): string {
 
 export function compareAll(gen: Record<PresetId, GenPreset>): Disagreement[] {
   const out: Disagreement[] = [];
-  const push = (d: Omit<Disagreement, 'key' | 'reason'>) => {
+  const push = (d: Omit<Disagreement, 'key' | 'reason' | 'grade'>) => {
     const key = `${d.preset}:${d.table}:${d.section}:${d.row}:${d.up}`;
-    out.push({ ...d, key, reason: DISAGREEMENT_REASONS[key] ?? null });
+    out.push({ ...d, key, reason: DISAGREEMENT_REASONS[key] ?? null, grade: DISAGREEMENT_GRADES[key] ?? null });
   };
 
   for (const pub of PUBLISHED) {

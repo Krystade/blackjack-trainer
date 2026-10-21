@@ -88,6 +88,11 @@ export interface GenPreset {
   preset: PresetId;
   /** House edge in percent, playing this strategy perfectly (infinite deck). */
   houseEdge: number;
+  /**
+   * Free Bet: the house edge with blackjack paying 6:5 instead (the strategy
+   * barely moves; the edge does), for a casino game logged 6:5.
+   */
+  houseEdge65?: number;
   tables: GenTable[];
   afterDouble?: AfterDoubleRow[];
   switchValues?: SwitchValueRow[];
@@ -284,6 +289,7 @@ export function generatePreset(preset: PresetId): GenPreset {
   return {
     preset,
     houseEdge,
+    ...(rules.variant === 'freebet' ? { houseEdge65: round4(-roundReturn({ ...rules, bjPays: 1.2 }) * 100) } : {}),
     tables,
     ...(rules.variant === 'spanish21' ? { afterDouble: afterDoubleTable(rules) } : {}),
     ...(rules.variant === 'switch' ? { switchValues: switchValues(rules) } : {}),
