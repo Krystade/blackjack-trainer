@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { openSettingsScreen, withSettings, selectFieldTestCondition, switchFieldTestCondition, readStoredDiagnostics } from './helpers';
+import { openSettingsScreen, withSettings, selectFieldTestCondition, switchFieldTestCondition, readStoredDiagnostics, flushStoredDiagnostics } from './helpers';
 import { FIELD_TEST_STEPS } from '../src/diag/fieldTest';
 
 /**
@@ -77,6 +77,9 @@ test('a note lands in the log against the step, and is not an answer', async ({ 
   await expect(page.getByTestId('fieldtest-progress')).toHaveText(progress);
   await expect(note).toHaveValue('');
   await expect(page.getByTestId('fieldtest-noted')).toContainText('sounded like it came from');
+  // The note flushes itself; a stamp would not (diag/fieldTest.ts), so flush
+  // before reading, or a buffered `answer` row reads as none.
+  await flushStoredDiagnostics(page);
   expect((await entries(page)).filter((e) => e.event === 'answer')).toHaveLength(0);
 });
 

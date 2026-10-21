@@ -43,6 +43,20 @@ export function storedDiagnosticsJson(): string | null {
   return JSON.stringify(all);
 }
 
+/**
+ * Write the diagnostic buffer to storage now, so a read of storage straight
+ * after an action is not a read of the log from before it.
+ *
+ * The log flushes a second after an entry (FLUSH_DELAY_MS) and on lifecycle
+ * events. `freeze` is the one lifecycle event with no listener but the log's
+ * own (diag/environment.ts): it records `life freeze` and flushes
+ * synchronously, so after this resolves storage holds everything logged so
+ * far. An ABSENCE read from storage without it can be a buffered entry.
+ */
+export async function flushStoredDiagnostics(page: Page): Promise<void> {
+  await page.evaluate(() => document.dispatchEvent(new Event('freeze')));
+}
+
 /** `storedDiagnosticsJson`, run in `page`. */
 export function readStoredDiagnostics(page: Page): Promise<string | null> {
   return page.evaluate(storedDiagnosticsJson);
