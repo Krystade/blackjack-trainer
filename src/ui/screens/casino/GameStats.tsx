@@ -5,7 +5,7 @@ import { simRules, type GameResult } from '../../../store/casinoGameStats';
 import { describeMethod, methodBadge } from '../../../engine/betMethods';
 import { gameSummary, kindBadge, labelledSummary, money, shortDate, warnBadges } from '../../casinoFigures';
 import { buildRanking, evTargetMet, exitMinutesOf, gameFigures, roundsPerHourOf, type GameFigures, type RankRow } from '../../casinoRanking';
-import { ASSUMED_TEXT, assumedRules, ciText, edgeText, evHourText, n0Text, roundsText, rorText, sdHourText } from '../../casinoStatsText';
+import { ASSUMED_TEXT, assumedDirectionText, assumedLabel, assumedRules, ciText, edgeText, evHourText, isBestCase, n0Text, roundsText, rorText, sdHourText } from '../../casinoStatsText';
 import { enqueue, cancelAll } from './simRunner';
 import { useActiveProfile, useGameResults, useRunner } from './useGameStats';
 import type { CasinoView } from './Casino';
@@ -96,10 +96,7 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
             <span className="cas-badge" data-tone="warn">
               Assumed
             </span>{' '}
-            {assumedRules(row.input.assumed)
-              .map((a) => ASSUMED_TEXT[a])
-              .join('; ')}
-            . Not logged, so every figure here uses the conservative choice.
+            {assumedRules(row.input.assumed).map(assumedLabel).join('; ')}. {assumedDirectionText(assumedRules(row.input.assumed))}
           </p>
         )}
       </header>
@@ -286,7 +283,8 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
           )}
           {row.input.assumed.length > 0 && (
             <p data-testid="gs-assumed">
-              <strong>Assumed</strong> (not logged, so the conservative choice): {row.input.assumed.map((a) => ASSUMED_TEXT[a]).join('; ')}.
+              <strong>Assumed</strong> (not logged, so {row.input.assumed.some(isBestCase) ? 'the conservative choice except where marked best case' : 'the conservative choice'}):{' '}
+              {row.input.assumed.map(assumedLabel).join('; ')}.
             </p>
           )}
           {game.midShoeEntry === 'unknown' && !game.csm && <p>Mid-shoe entry unknown: back-count methods are shown, marked by their style, but may not be allowed.</p>}

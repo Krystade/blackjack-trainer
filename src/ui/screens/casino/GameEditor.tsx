@@ -156,7 +156,7 @@ export function GameEditor({
         </FieldGroup>
       </div>
       <div className="cas-pair">
-        <FieldGroup label="Split to, hands">
+        <FieldGroup label="Split to, hands" hint="? = 4, the best case.">
           <Choice
             label="Split to, hands"
             value={game.maxSplitHands ? String(game.maxSplitHands) : 'unknown'}
@@ -173,7 +173,7 @@ export function GameEditor({
           <MoneyInput name={n('commission')} value={text.commission} onChange={(v) => onText({ commission: v })} />
         </Field>
       </div>
-      <FieldGroup label="Double on">
+      <FieldGroup label="Double on" hint="? = any two, the best case.">
         <Choice
           label="Double on"
           value={game.doubleOn ?? 'unknown'}

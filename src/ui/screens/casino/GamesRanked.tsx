@@ -4,7 +4,7 @@ import { methodBadge } from '../../../engine/betMethods';
 import { gameLogged, kindBadge, labelledSummary } from '../../casinoFigures';
 import { useSideRuns } from './sideRunner';
 import { buildRanking, needsCompute, rankedEvHour, type RankRow, type RankSort } from '../../casinoRanking';
-import { ASSUMED_TEXT, assumedRulesBadge, ciText, evHourText, materialAssumedRules, n0Text, pctText, roundsText } from '../../casinoStatsText';
+import { assumedLabel, assumedRulesBadge, ciText, evHourText, materialAssumedRules, n0Text, pctText, roundsText } from '../../casinoStatsText';
 import { Choice } from './fields';
 import { cancelAll, enqueue } from './simRunner';
 import { useActiveProfile, useGameResults, useRunner, type useHere } from './useGameStats';
@@ -121,8 +121,9 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
 function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: number; sort: RankSort; running: boolean; onOpen: () => void }) {
   const f = row.figures;
   const value = !f ? null : sort === 'trip' && row.tripEv !== null ? row.tripEv : rankedEvHour(row);
-  // Review S4: the figure rests on conservative guesses for these rules; only
-  // the ones that can move it by 0.05% of action or more (the card lists all).
+  // Review S4: the figure rests on guesses for these rules (conservative, or
+  // the best case for the split cap and double-on, Wave P); only the ones
+  // that can move it by 0.05% of action or more (the card lists all).
   // A variant game is never simulated, so the standard game's guesses are not
   // behind anything on its row. Nor is anything assumed of a game with no
   // rules logged at all ("Game not logged"): every rule is a guess there.
@@ -189,7 +190,7 @@ function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: 
             </span>
           )}
           {assumed.length > 0 && (
-            <span className="cas-badge" data-tone="warn" data-testid="assumed-badge" title={assumed.map((a) => ASSUMED_TEXT[a]).join('; ')}>
+            <span className="cas-badge" data-tone="warn" data-testid="assumed-badge" title={assumed.map(assumedLabel).join('; ')}>
               {assumedRulesBadge(assumed.length)}
             </span>
           )}

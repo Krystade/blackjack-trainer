@@ -360,15 +360,16 @@ test.describe('the casino stats card', () => {
     test.setTimeout(90_000);
     await page.getByRole('button', { name: 'Compute', exact: true }).click();
     const line = page.getByTestId('gs-side-combined');
+    // The split cap and double-on are not logged: simulated at the best case (Wave P, SIM_VERSION 5).
     // The line shows the running figures too; wait for the run's end. 200,000 rounds (the time cap's floor):
     // it stops on its budget, so it is marked partial.
     await expect(page.getByTestId('gs-status')).toContainText('Stopped at the test round budget.', { timeout: 60_000 });
     await expect(line).toHaveText(
-      'Best with a side bet: none — nothing here wins: the best method back-counts and still loses (−$39 ±$34/h). ' +
-        "Seated play with Over 13 still loses (−$81 ±$10/h), so it isn't worth sitting for. Partial run.",
+      'Best with a side bet: none — nothing here wins: the best method back-counts and still loses (−$56 ±$35/h). ' +
+        "Seated play with Over 13 still loses (−$77 ±$11/h), so it isn't worth sitting for. Partial run.",
     );
     // A figure and its interval never wrap apart.
-    await expect(line.locator('.cas-sb-fig')).toHaveText(['−$39 ±$34/h', '−$81 ±$10/h']);
+    await expect(line.locator('.cas-sb-fig')).toHaveText(['−$56 ±$35/h', '−$77 ±$11/h']);
     await expect(line.locator('.cas-sb-fig').first()).toHaveCSS('white-space', 'nowrap');
     await line.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `e2e/screenshots/side-cardroom-line-${info.project.name}.png` });

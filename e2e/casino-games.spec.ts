@@ -139,8 +139,10 @@ test('compute all, then the ranking follows the figures; the cards say what they
 
 /*
  * Wave M review S4: games logged before the split / double rules existed are
- * simulated at split-to-2 and double-10-11, which can decide their place in
- * the ranking, so the row and the card say a rule was assumed, and which.
+ * simulated at assumed rules, which can decide their place in the ranking, so
+ * the row and the card say a rule was assumed, and which. Wave P: the split
+ * cap and double-on are assumed at the best case (split to 4, double any two),
+ * and the card says that can flatter the figures.
  */
 test('rows and stats cards mark the rules their figures assumed', async ({ page }) => {
   await seed(page);
@@ -156,7 +158,9 @@ test('rows and stats cards mark the rules their figures assumed', async ({ page 
   await deepRow.click();
   const head = page.getByTestId('gs-assumed-rules');
   await expect(head).toBeVisible();
-  for (const t of ['no resplitting aces', 'no doubling split aces', 'split to 2 hands only', 'double on 10-11 only']) await expect(head).toContainText(t);
+  for (const t of ['no resplitting aces', 'no doubling split aces', 'split to 4 hands (best case)', 'double on any two cards (best case)']) await expect(head).toContainText(t);
+  await expect(head).toContainText('the conservative choice except where marked best case: if one of those is wrong, it flatters every figure here.');
+  await expect(page.getByTestId('gs-assumed')).toContainText('(not logged, so the conservative choice except where marked best case): no resplitting aces; no doubling split aces; split to 4 hands (best case)');
   // The cut is logged here and the min bet is never a rule: neither is in the marker.
   await expect(head).not.toContainText('cut');
   await expect(head).not.toContainText('min bet');

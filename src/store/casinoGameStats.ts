@@ -15,7 +15,9 @@ import type { RuleSet } from '../engine/ruleset';
  * THE INPUT. Unknown rules are simulated as the conservative choice and the
  * screen says "assumed" beside each one: 6 decks, H17, no DAS, no surrender,
  * 6:5 (the worse payout), the cut 1.5 decks from the end, the profile's unit
- * as the minimum bet. Resplitting aces is never logged, so never assumed.
+ * as the minimum bet. Two exceptions, by the owner's ruling (Wave P): an
+ * unknown split cap is 4 hands and an unknown double-on is any two cards --
+ * the best case, so those two can only flatter a game (BEST_CASE_ASSUMED).
  *
  * THE CACHE lives under its own key, not in the casino log: it is derived,
  * rebuildable data, it must never ride along in the log's export, and a
@@ -45,8 +47,10 @@ export const GAME_STATS_KEY = 'bjtrainer.casinoGameStats.v1';
  * 3: an exit on a shoe's last round is not counted (re-review R3).
  * 4: Wave M -- RSA, doubling split aces, the split cap, double-on and card-room
  *    commission are simulated; 4- and 5-deck shoes.
+ * 5: Wave P -- an unknown split cap is simulated at 4 hands and an unknown
+ *    double-on at any two cards (were 2 hands and 10-11).
  */
-export const SIM_VERSION = 4;
+export const SIM_VERSION = 5;
 
 export type AssumedField =
   | 'decks' | 's17' | 'das' | 'surrender' | 'payout' | 'cut' | 'minBet'
@@ -54,21 +58,27 @@ export type AssumedField =
   | 'rsa' | 'doubleSplitAces' | 'maxSplitHands' | 'doubleOn' | 'commission';
 
 /**
- * Wave M: the conservative choice for each new rule when the game does not
- * say -- no resplitting or doubling of aces, two hands at most, doubling on
- * 10-11 only. Commission: none at a casino (they do not charge it); at a
- * card room, ASSUMED_COMMISSION_PER_100, which is what every California card
- * room in the owner's notes that states one charges ($1 per $100).
+ * Wave M: the choice for each new rule when the game does not say -- no
+ * resplitting or doubling of aces (the conservative choice). Commission: none
+ * at a casino (they do not charge it); at a card room,
+ * ASSUMED_COMMISSION_PER_100, which is what every California card room in the
+ * owner's notes that states one charges ($1 per $100).
+ *
+ * Wave P, owner's ruling: the split cap and double-on are assumed at the BEST
+ * case, split to 4 hands and double any two cards, not the conservative 2 /
+ * 10-11. Those two are the only assumptions that can make a figure too good.
  */
-export const ASSUMED_MAX_SPLIT_HANDS = 2;
-export const ASSUMED_DOUBLE_ON = '10-11' as const;
+export const ASSUMED_MAX_SPLIT_HANDS: 2 | 3 | 4 = 4;
+export const ASSUMED_DOUBLE_ON: 'any2' | '9-11' | '10-11' = 'any2';
 export const ASSUMED_COMMISSION_PER_100 = 1;
+/** The assumed fields simulated at the best case rather than the conservative choice. */
+export const BEST_CASE_ASSUMED: readonly AssumedField[] = ['maxSplitHands', 'doubleOn'];
 
 export interface SimInput {
   spec: SimSpec;
   key: string;
   seed: number;
-  /** Rules simulated at the conservative choice because the game does not say. */
+  /** Fields the game does not say, simulated at the assumed choice (conservative, or BEST_CASE_ASSUMED). */
   assumed: AssumedField[];
   /** The cut the simulator actually used, in decks (clamped to the shoe). */
   cutUsed: number;
@@ -81,7 +91,7 @@ export const ASSUMED_CUT = 1.5;
 export const ASSUMED_DECKS = 6;
 export const FALLBACK_UNIT = 25;
 
-/** The game's rules, every unknown filled with the conservative choice. */
+/** The game's RuleSet rules, every unknown filled with the conservative choice. */
 export function simRules(game: CasinoGame): { rules: RuleSet; assumed: AssumedField[] } {
   const assumed: AssumedField[] = [];
   const pick = <T>(v: T | null | undefined, fallback: T, field: AssumedField): T => {
@@ -105,7 +115,7 @@ export function simRules(game: CasinoGame): { rules: RuleSet; assumed: AssumedFi
   return { rules, assumed };
 }
 
-/** Wave M: the rules RuleSet has no room for, unknowns filled conservatively. */
+/** Wave M: the rules RuleSet has no room for, unknowns filled with the assumed choice (best case for the split cap and double-on). */
 export function simExtras(
   game: CasinoGame,
   kind: 'casino' | 'cardroom' | undefined,

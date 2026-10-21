@@ -2,9 +2,20 @@ import { describe, it, expect } from 'vitest';
 import { roundReturn } from '../engine/variants/ev';
 import type { VariantRules } from '../engine/variants/rules';
 import { blankGame, type CasinoGame } from '../store/casinoLog';
-import { simInputFor } from '../store/casinoGameStats';
+import { ASSUMED_DOUBLE_ON, ASSUMED_MAX_SPLIT_HANDS, simInputFor } from '../store/casinoGameStats';
 import { makeDefaultProfile } from '../store/profiles';
-import { ASSUMED_EFFECT_PCT, MATERIAL_ASSUMED_PCT, assumedEffect, assumedRules, materialAssumedRules } from './casinoStatsText';
+import {
+  ASSUMED_EFFECT_PCT,
+  ASSUMED_TEXT,
+  DOUBLE_ON_EFFECT_PCT,
+  MATERIAL_ASSUMED_PCT,
+  SPLIT_CAP_EFFECT_PCT,
+  assumedDirectionText,
+  assumedEffect,
+  assumedLabel,
+  assumedRules,
+  materialAssumedRules,
+} from './casinoStatsText';
 
 /**
  * Merge of Wave L and Wave M: a ranking row flags only the assumed rules that
@@ -39,7 +50,12 @@ const STANDARD: VariantRules = {
 
 /** House edge in % of action. */
 const edge = (over: Partial<VariantRules> = {}) => -roundReturn({ ...STANDARD, ...over }) * 100;
-/** What the conservative choice `worse` costs against `better`, % of action. */
+/**
+ * What `worse` costs against `better`, % of action. For a conservative
+ * assumption `worse` is the assumed rule and `better` the best real one; for a
+ * best-case one (Wave P: the split cap, double-on) `better` is the assumed rule
+ * and `worse` the worst real one -- the EV the figure overstates.
+ */
 const cost = (worse: Partial<VariantRules>, better: Partial<VariantRules> = {}) => edge(worse) - edge(better);
 
 describe('the cost of each assumed rule', () => {
@@ -51,6 +67,7 @@ describe('the cost of each assumed rule', () => {
       payout: cost({ bjPays: 1.2 }),
       rsa: cost({}, { rsa: true }),
       doubleSplitAces: cost({}, { doubleSplitAces: true }),
+      // Best case assumed (split to 4, double any two): what a real cap of 2 / double 10-11 takes away.
       maxSplitHands: cost({ maxHands: 2 }),
       doubleOn: cost({ doubleOn: '10-11' }),
     } as const;
@@ -63,6 +80,59 @@ describe('the cost of each assumed rule', () => {
     // Checks on the engine against the Wizard of Odds' published figures: hitting split aces 0.19%, double 9-11 0.09%.
     expect(cost({}, { splitAcesDraw: true })).toBeCloseTo(0.19, 1);
     expect(cost({ doubleOn: '9-11' })).toBeCloseTo(0.09, 1);
+  });
+
+  it('Wave P: the split cap and double-on are assumed at the best case, split to 4 and double any two', () => {
+    expect(ASSUMED_MAX_SPLIT_HANDS).toBe(4);
+    expect(ASSUMED_DOUBLE_ON).toBe('any2');
+    const spec = simInputFor(blankGame('b'), makeDefaultProfile(), []).spec;
+    // The simulator reads an absent field as 4 hands / any two (casinoSim.ts).
+    expect(spec.maxSplitHands ?? 4).toBe(4);
+    expect(spec.doubleOn ?? 'any2').toBe('any2');
+    expect(ASSUMED_TEXT.maxSplitHands).toBe('split to 4 hands');
+    expect(ASSUMED_TEXT.doubleOn).toBe('double on any two cards');
+    expect(assumedLabel('doubleOn')).toBe('double on any two cards (best case)');
+    expect(assumedLabel('das')).toBe('no double after split');
+  });
+
+  it('the card says which way the assumptions can be wrong', () => {
+    expect(assumedDirectionText(['das', 'rsa'])).toBe('Not logged, so every figure here uses the conservative choice.');
+    expect(assumedDirectionText(['maxSplitHands', 'doubleOn'])).toMatch(/best case: if the real rule is worse, it flatters every figure here/);
+    expect(assumedDirectionText(['das', 'doubleOn'])).toMatch(/conservative choice except where marked best case: .*flatters every figure here/);
+  });
+
+  /*
+   * Wave P: the best-case assumptions' cost moves with the logged rules. Each
+   * figure is the engine's, over every combination of the rules it does not
+   * depend on (S17, surrender, payout, double-on or the cap), and each lands
+   * on the same side of the line as the table says.
+   */
+  it('the split cap and double-on cost what the engine says where DAS, RSA or DSA is logged', () => {
+    const others: Partial<VariantRules>[] = [];
+    for (const s17 of [false, true]) for (const ls of [false, true]) for (const bjPays of [1.5, 1.2]) others.push({ s17, ls, bjPays });
+    const check = (table: number, ctx: Partial<VariantRules>, real: Partial<VariantRules>, label: string) => {
+      for (const o of others) {
+        const pct = cost({ ...o, ...ctx, ...real }, { ...o, ...ctx });
+        expect(Math.abs(table - pct), `${label} ${JSON.stringify(o)}`).toBeLessThan(0.01);
+        expect(table >= MATERIAL_ASSUMED_PCT, label).toBe(pct >= MATERIAL_ASSUMED_PCT);
+      }
+    };
+    check(SPLIT_CAP_EFFECT_PCT.base, {}, { maxHands: 2 }, 'cap base');
+    check(SPLIT_CAP_EFFECT_PCT.noDas, { das: false }, { maxHands: 2 }, 'cap no DAS');
+    check(SPLIT_CAP_EFFECT_PCT.rsa, { rsa: true }, { maxHands: 2 }, 'cap RSA');
+    check(SPLIT_CAP_EFFECT_PCT.rsaNoDas, { rsa: true, das: false }, { maxHands: 2 }, 'cap RSA no DAS');
+    check(DOUBLE_ON_EFFECT_PCT.base, {}, { doubleOn: '10-11' }, 'double base');
+    check(DOUBLE_ON_EFFECT_PCT.noDas, { das: false }, { doubleOn: '10-11' }, 'double no DAS');
+    check(DOUBLE_ON_EFFECT_PCT.dsa, { doubleSplitAces: true }, { doubleOn: '10-11' }, 'double DSA');
+    // Under the line where doubling after a split is barred: the cap costs ~0.04%.
+    expect(SPLIT_CAP_EFFECT_PCT.noDas).toBeLessThan(MATERIAL_ASSUMED_PCT);
+    expect(assumedEffect('maxSplitHands', { das: false, doubleOn: null, maxSplitHands: null })).toBe(SPLIT_CAP_EFFECT_PCT.noDas);
+    expect(assumedEffect('maxSplitHands', { das: false, doubleOn: null, maxSplitHands: null, rsa: true })).toBe(SPLIT_CAP_EFFECT_PCT.rsaNoDas);
+    expect(assumedEffect('maxSplitHands', { das: null, doubleOn: null, maxSplitHands: null, rsa: true })).toBe(SPLIT_CAP_EFFECT_PCT.rsa);
+    expect(assumedEffect('maxSplitHands', { das: null, doubleOn: null, maxSplitHands: null })).toBe(ASSUMED_EFFECT_PCT.maxSplitHands);
+    expect(assumedEffect('doubleOn', { das: false, doubleOn: null, maxSplitHands: null, doubleSplitAces: true })).toBe(DOUBLE_ON_EFFECT_PCT.noDas);
+    expect(assumedEffect('doubleOn', { das: true, doubleOn: null, maxSplitHands: null, doubleSplitAces: true })).toBe(DOUBLE_ON_EFFECT_PCT.dsa);
+    expect(assumedEffect('doubleOn', { das: null, doubleOn: null, maxSplitHands: null })).toBe(ASSUMED_EFFECT_PCT.doubleOn);
   });
 
   it('a rule the logged ones make moot costs nothing, in the engine and in the table', () => {
@@ -116,6 +186,17 @@ describe('which assumed rules a ranking row flags', () => {
     expect(listed(capped)).toEqual(['rsa']);
     expect(flagged(capped)).toEqual([]);
     expect(flagged({ ...capped, maxSplitHands: 3 })).toEqual(['rsa']);
+  });
+
+  it('Wave P: the best-case split cap and double-on are flagged, the cap only where it can cost 0.05%', () => {
+    const open = logged({ maxSplitHands: null, doubleOn: null, doubleSplitAces: false });
+    expect(listed(open)).toEqual(['maxSplitHands', 'doubleOn']);
+    expect(flagged(open)).toEqual(['maxSplitHands', 'doubleOn']);
+    // No double after a split: a cap of 2 loses only ~0.04%, so the row drops it; the card keeps it.
+    expect(listed({ ...open, das: false })).toEqual(['maxSplitHands', 'doubleOn']);
+    expect(flagged({ ...open, das: false })).toEqual(['doubleOn']);
+    // ...unless aces may be resplit: a cap of 2 stops that too.
+    expect(flagged({ ...open, das: false, rsa: true })).toEqual(['maxSplitHands', 'doubleOn']);
   });
 
   it('a game with nothing logged flags every rule; the threshold decides, not the list', () => {

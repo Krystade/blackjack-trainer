@@ -1,6 +1,6 @@
 import { MINUS } from '../drills/signed';
 import { money, signedMoney } from './casinoFigures';
-import type { AssumedField } from '../store/casinoGameStats';
+import { BEST_CASE_ASSUMED, type AssumedField } from '../store/casinoGameStats';
 import type { CasinoGame } from '../store/casinoLog';
 
 /**
@@ -73,33 +73,61 @@ export const ASSUMED_TEXT: Record<AssumedField, string> = {
   // Wave M
   rsa: 'no resplitting aces',
   doubleSplitAces: 'no doubling split aces',
-  maxSplitHands: 'split to 2 hands only',
-  doubleOn: 'double on 10-11 only',
+  maxSplitHands: 'split to 4 hands',
+  doubleOn: 'double on any two cards',
   commission: 'commission $1 per $100 (card room)',
 };
+
+/** Wave P: an assumption simulated at the best case (split to 4, double any two): it can only flatter the figures. */
+export function isBestCase(field: AssumedField): boolean {
+  return BEST_CASE_ASSUMED.includes(field);
+}
+
+/** An assumed field as the screen names it: "split to 4 hands (best case)". */
+export function assumedLabel(field: AssumedField): string {
+  return isBestCase(field) ? `${ASSUMED_TEXT[field]} (best case)` : ASSUMED_TEXT[field];
+}
+
+/**
+ * Wave P: what the stats card says after its list of assumed rules, honest
+ * about direction. A conservative guess can only make a figure too poor; a
+ * best-case guess (the split cap, double-on) can only make it too good.
+ */
+export function assumedDirectionText(assumed: readonly AssumedField[]): string {
+  const best = assumed.some(isBestCase);
+  const worst = assumed.some((a) => !isBestCase(a));
+  if (!best) return 'Not logged, so every figure here uses the conservative choice.';
+  if (!worst) return 'Not logged, so the best case: if the real rule is worse, it flatters every figure here.';
+  return 'Not logged, so the conservative choice except where marked best case: if one of those is wrong, it flatters every figure here.';
+}
 
 /**
  * Wave M review S4: the assumed fields that are table RULES the simulator
  * models (everything but the cut and the min bet, which are conditions of the
- * visit). An unlogged rule is simulated at the conservative choice, and that
- * choice can decide a game's place in the ranking (split to 2 + double 10-11
- * alone cost about 0.22% of action), so rows and the stats card say so.
+ * visit). An unlogged rule is simulated at an assumed choice, and that choice
+ * can decide a game's place in the ranking (a cap of 2 hands + double 10-11
+ * cost about 0.24% of action against the best case the simulator assumes for
+ * them), so rows and the stats card say so.
  */
 export function assumedRules(assumed: readonly AssumedField[]): AssumedField[] {
   return assumed.filter((a) => a !== 'cut' && a !== 'minBet');
 }
 
 /**
- * What each assumed rule can cost, in % of action: the gap between the
- * conservative choice the simulator plays and the best the house could
- * really deal. Standard rules (H17, DAS, 3:2, split to 4), infinite deck,
- * from the app's own engine (engine/variants/ev.ts roundReturn), which gives
- * the published Wizard of Odds figures for the rules both list (S17 0.22, DAS
- * 0.14, RSA 0.08, double 10-11 0.18, hitting split aces 0.19).
- * casinoAssumedEffect.test.ts recomputes every engine figure. Decks: the
- * Wizard's single-deck figure, the most an unknown shoe can be better than six.
- * Doubling split aces is 0.08%, not negligible: a soft double against a weak
- * dealer card on each of two hands, on one round in 169.
+ * How far each assumed rule can move the figures, in % of action: the gap
+ * between the choice the simulator plays and the real rule at the other end.
+ * For a conservative choice that is the best the house could really deal
+ * (the figure may be too poor by this much); for a best-case choice, the
+ * split cap (4 hands) and double-on (any two), it is the worst (split to 2,
+ * double 10-11 only: the figure may be too good by this much). Standard rules
+ * (H17, DAS, 3:2, split to 4), infinite deck, from the app's own engine
+ * (engine/variants/ev.ts roundReturn), which gives the published Wizard of
+ * Odds figures for the rules both list (S17 0.22, DAS 0.14, RSA 0.08, double
+ * 10-11 0.18, hitting split aces 0.19). casinoAssumedEffect.test.ts
+ * recomputes every engine figure. Decks: the Wizard's single-deck figure, the
+ * most an unknown shoe can be better than six. Doubling split aces is 0.08%,
+ * not negligible: a soft double against a weak dealer card on each of two
+ * hands, on one round in 169.
  */
 export const ASSUMED_EFFECT_PCT: Record<AssumedField, number> = {
   decks: 0.48,
@@ -121,14 +149,39 @@ export const ASSUMED_EFFECT_PCT: Record<AssumedField, number> = {
 export const MATERIAL_ASSUMED_PCT = 0.05;
 
 /**
+ * Wave P: the best-case assumptions' cost where the LOGGED rules change it
+ * (engine, as above; casinoAssumedEffect.test.ts). A cap of 2 hands costs
+ * less where doubling after a split is barred (fewer good splits to lose:
+ * 0.04%, under the line) and more where aces may be resplit (the cap stops
+ * that too). Double 10-11 costs more where split aces may double (doubling
+ * them goes too) and a little less where doubling after a split is barred.
+ */
+export const SPLIT_CAP_EFFECT_PCT = { base: ASSUMED_EFFECT_PCT.maxSplitHands, noDas: 0.04, rsa: 0.13, rsaNoDas: 0.11 } as const;
+export const DOUBLE_ON_EFFECT_PCT = { base: ASSUMED_EFFECT_PCT.doubleOn, noDas: 0.16, dsa: 0.26 } as const;
+
+/** The logged rules an assumption's cost depends on. */
+export type EffectRules = Pick<CasinoGame, 'das' | 'doubleOn' | 'maxSplitHands'> & Partial<Pick<CasinoGame, 'rsa' | 'doubleSplitAces'>>;
+
+/**
  * What this assumption can cost at this game, % of action. A rule that the
  * game's LOGGED rules make moot costs nothing: split aces cannot double where
  * doubling after a split is barred or doubling is 9-11 / 10-11 only (a split
  * ace is soft 12-21), and aces cannot be resplit where the split stops at 2 hands.
+ * An unknown rule is taken as the standard one (DAS, no RSA, no DSA).
  */
-export function assumedEffect(field: AssumedField, game: Pick<CasinoGame, 'das' | 'doubleOn' | 'maxSplitHands'>): number {
+export function assumedEffect(field: AssumedField, game: EffectRules): number {
   if (field === 'doubleSplitAces' && (game.das === false || game.doubleOn === '9-11' || game.doubleOn === '10-11')) return 0;
   if (field === 'rsa' && game.maxSplitHands === 2) return 0;
+  if (field === 'maxSplitHands') {
+    const c = SPLIT_CAP_EFFECT_PCT;
+    if (game.rsa === true) return game.das === false ? c.rsaNoDas : c.rsa;
+    return game.das === false ? c.noDas : c.base;
+  }
+  if (field === 'doubleOn') {
+    const c = DOUBLE_ON_EFFECT_PCT;
+    if (game.das === false) return c.noDas;
+    return game.doubleSplitAces === true ? c.dsa : c.base;
+  }
   return ASSUMED_EFFECT_PCT[field];
 }
 
@@ -138,7 +191,7 @@ export function assumedEffect(field: AssumedField, game: Pick<CasinoGame, 'das' 
  */
 export function materialAssumedRules(
   assumed: readonly AssumedField[],
-  game: Pick<CasinoGame, 'das' | 'doubleOn' | 'maxSplitHands'>,
+  game: EffectRules,
   threshold = MATERIAL_ASSUMED_PCT,
 ): AssumedField[] {
   return assumedRules(assumed).filter((a) => assumedEffect(a, game) >= threshold);

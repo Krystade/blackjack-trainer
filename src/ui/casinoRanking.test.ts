@@ -254,12 +254,14 @@ describe('the cache key', () => {
     expect(row.figures).not.toBeNull();
   });
 
-  it('unknown rules are simulated at the conservative choice and listed as assumed', () => {
+  it('unknown rules are simulated at the conservative choice (the split cap and double-on at the best case) and listed as assumed', () => {
     const input = simInputFor(blankGame('b'), profile, []);
     // Wave M adds rsa, doubling split aces, the split cap and double-on.
     expect(input.assumed).toEqual(['decks', 's17', 'das', 'surrender', 'rsa', 'payout', 'doubleSplitAces', 'maxSplitHands', 'doubleOn', 'cut', 'minBet']);
     expect(input.spec.rules).toMatchObject({ decks: 6, s17: false, das: false, ls: false, rsa: false, bj65: true });
-    expect(input.spec).toMatchObject({ maxSplitHands: 2, doubleOn: '10-11' });
+    // Wave P, owner's ruling: split to 4 and double any two, which the simulator plays when the spec is silent.
+    expect(input.spec).not.toHaveProperty('maxSplitHands');
+    expect(input.spec).not.toHaveProperty('doubleOn');
     expect(input.spec.commissionPct).toBeUndefined();
     expect(input.cutUsed).toBe(1.5);
   });
