@@ -46,6 +46,7 @@ import { lazyScreen, preloadWhenIdle } from '../lazyScreen';
 // Wave O: these two carry the generated side-bet and variant-chart tables
 // (~240KB), so they load when first opened (precached for offline).
 const SideCountDrillView = lazyScreen('sidecountdrill', () => import('./drills/SideCountDrillView').then((m) => m.SideCountDrillView));
+const LAZY_DRILLS: ReadonlySet<string> = new Set(['sidecount', 'variant']);
 const VariantDrillView = lazyScreen('variantdrill', () => import('./drills/VariantDrillView').then((m) => m.VariantDrillView));
 
 interface DrillsProps {
@@ -383,9 +384,11 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         className={`drills-nav-btn${gated ? ' drills-nav-btn-advanced' : ''}`}
         aria-label={name}
         aria-describedby={descId}
-        // Wave O: a transition, so the picker stays up while a lazy drill's
-        // chunk loads instead of the screen going blank.
-        onClick={() => startTransition(() => setMode(target))}
+        // Wave O: a lazy drill opens in a transition, so the picker stays up
+        // while its chunk loads instead of the screen going blank. The eager
+        // drills open synchronously, as before (a transition there let a
+        // test's first clicks land on the picker).
+        onClick={() => (LAZY_DRILLS.has(target) ? startTransition(() => setMode(target)) : setMode(target))}
       >
         <span className="drills-nav-name">{name}</span>
         <span className="drills-nav-desc" id={descId}>
