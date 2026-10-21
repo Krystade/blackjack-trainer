@@ -23,7 +23,7 @@ import { mulberry32 } from '../engine/cards';
 import { handValue } from '../engine/hand';
 import type { Action } from '../engine/deviations';
 import type { PlayContext } from '../engine/strategy';
-import { PRESETS, isPresetId } from '../engine/variants/rules';
+import { PRESETS } from '../engine/variants/rules';
 import type { PresetId } from '../engine/variants/rules';
 import { afterDoublePlay, variantLegal, variantPlay } from '../engine/variants/strategy';
 import type { VariantAdvice } from '../engine/variants/strategy';
@@ -265,27 +265,11 @@ export function gradeVariantItem(item: VariantItem, taken: Action): VariantGrade
  * picking Spanish 21 on Charts opens the drill on Spanish 21. Its own key,
  * like the chart row order -- a study preference, not part of a profile.
  */
-export const VARIANT_CHOICE_KEY = 'bjtrainer.variant.v1';
+// Wave O: the choice lives in variantChoice.ts so Charts can read it without
+// pulling this drill's variant strategy tables into the entry chunk.
+export { VARIANT_CHOICE_KEY, loadVariantChoice, saveVariantChoice } from './variantChoice';
+export type { VariantChoice } from './variantChoice';
 export const VARIANT_TALLY_KEY = 'bjtrainer.variantTally.v1';
-
-export type VariantChoice = 'standard' | PresetId;
-
-export function loadVariantChoice(): VariantChoice {
-  try {
-    const raw = window.localStorage.getItem(VARIANT_CHOICE_KEY);
-    return raw === 'standard' || isPresetId(raw) ? raw : 'standard';
-  } catch {
-    return 'standard';
-  }
-}
-
-export function saveVariantChoice(choice: VariantChoice): void {
-  try {
-    window.localStorage.setItem(VARIANT_CHOICE_KEY, choice);
-  } catch {
-    // A preference that cannot be saved is still applied for this visit.
-  }
-}
 
 export type VariantTally = Partial<Record<PresetId, { right: number; wrong: number }>>;
 

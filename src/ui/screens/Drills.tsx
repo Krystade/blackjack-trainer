@@ -42,8 +42,11 @@ import { chartIntroDue, loadChartIntroSeen, saveChartIntroSeen } from '../../dri
 import { FlashcardsView } from './drills/FlashcardsView';
 import { DeviationQuizView } from './drills/DeviationQuizView';
 import { MixedSessionView } from './drills/MixedSessionView';
-import { SideCountDrillView } from './drills/SideCountDrillView';
-import { VariantDrillView } from './drills/VariantDrillView';
+import { lazyScreen } from '../lazyScreen';
+// Wave O: these two carry the generated side-bet and variant-chart tables
+// (~240KB), so they load when first opened (precached for offline).
+const SideCountDrillView = lazyScreen('sidecountdrill', () => import('./drills/SideCountDrillView').then((m) => m.SideCountDrillView));
+const VariantDrillView = lazyScreen('variantdrill', () => import('./drills/VariantDrillView').then((m) => m.VariantDrillView));
 
 interface DrillsProps {
   settings: Settings;

@@ -3,16 +3,13 @@ import './app.css';
 import './themeCues.css';
 import './formControls.css';
 import { Home } from './screens/Home';
-import { Table } from './screens/Table';
 import { Drills } from './screens/Drills';
-import { Stats } from './screens/Stats';
 import { Settings } from './screens/Settings';
 import { Charts } from './screens/Charts';
 import { TabBar } from './components/TabBar';
 import { MuteButton } from './components/MuteButton';
 import { StorageToast } from './components/StorageToast';
 import { HabitToasts } from './components/HabitToasts';
-import { Progress } from './screens/Progress';
 import { installHabits, ensureBackfilled } from '../habits/progressStore';
 import { isEyesFreeOn } from './eyesFreeSession';
 import { KIT_PROGRESS_KEY, parseProgress } from '../diag/testKit';
@@ -46,6 +43,13 @@ const ProfileEditor = lazyScreen('profiles', () => import('./screens/ProfileEdit
 // waits in its own chunk (precached like the rest for an offline casino floor).
 const SideBets = lazyScreen('sidebets', () => import('./screens/SideBets').then((m) => m.SideBets));
 const Casino = lazyScreen('casino', () => import('./screens/casino/Casino').then((m) => m.Casino));
+// Wave O: not needed at first paint (the entry chunk had grown to 845KB).
+// Never opened eyes-free, so a chunk fetch on first open costs no drill.
+const Stats = lazyScreen('stats', () => import('./screens/Stats').then((m) => m.Stats));
+// Play: the table, its game engine glue and the side-bet tables it plays.
+const Table = lazyScreen('table', () => import('./screens/Table').then((m) => m.Table));
+const Progress = lazyScreen('progress', () => import('./screens/Progress').then((m) => m.Progress));
+
 // Last, so the mute seat (B1) wins the cascade over every sheet above it.
 import './muteSeat.css';
 // Wave I: shell fit at 320 and 375 (tab bar above the home indicator, Home's one-row head).

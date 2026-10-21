@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { Settings } from '../../../store/types';
 import type { Action } from '../../../engine/deviations';
 import type { PresetId, VariantId } from '../../../engine/variants/rules';
@@ -37,7 +37,9 @@ import { FloatingBackPill } from '../../components/FloatingBackPill';
 import { NextBar } from './HandDrillParts';
 import { DrillModeControls } from './DrillModeControls';
 import { zoneLabel } from './handDrillShared';
-import { VariantCharts } from '../VariantCharts';
+import { lazyScreen } from '../../lazyScreen';
+// Wave O: the variant charts (and their EV tables) load when first shown.
+const VariantCharts = lazyScreen('variantcharts', () => import('../VariantCharts').then((m) => m.VariantCharts));
 import type { VariantHighlight } from '../variantChartView';
 import '../../components/studyChartOverlay.css';
 import '../charts.css';
@@ -321,7 +323,9 @@ export function VariantDrillView({
             <div className="charts-heading">{PRESET_LABEL[preset]}</div>
           </div>
           <FloatingBackPill label="Back to hand" onClick={() => setShowChart(false)} />
-          <VariantCharts preset={preset} order="descending" highlight={highlight} />
+          <Suspense fallback={null}>
+            <VariantCharts preset={preset} order="descending" highlight={highlight} />
+          </Suspense>
         </div>
       </div>
     );

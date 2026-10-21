@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Fragment, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { TabSettingsButton } from '../components/TabSettingsButton';
 import { ChartTest } from './ChartTest';
@@ -25,9 +25,11 @@ import {
   rulesetSummary,
 } from './chartRows';
 import type { ChartHighlight, ChartSection, RowOrder } from './chartRows';
-import { VariantCharts } from './VariantCharts';
-import { loadVariantChoice, saveVariantChoice } from '../../drills/variantDrill';
-import type { VariantChoice } from '../../drills/variantDrill';
+import { lazyScreen } from '../lazyScreen';
+// Wave O: the variant charts (and their EV tables) load when first shown.
+const VariantCharts = lazyScreen('variantcharts', () => import('./VariantCharts').then((m) => m.VariantCharts));
+import { loadVariantChoice, saveVariantChoice } from '../../drills/variantChoice';
+import type { VariantChoice } from '../../drills/variantChoice';
 import { DEFAULT_PRESET, PRESETS, VARIANT_LABEL } from '../../engine/variants/rules';
 import type { ChartVariant } from '../../engine/variants/rules';
 
@@ -373,7 +375,9 @@ export function Charts({
         </div>
       )}
       {shownVariant !== 'standard' ? (
-        <VariantCharts preset={shownVariant} order={order} onPreset={chooseVariant} />
+        <Suspense fallback={null}>
+          <VariantCharts preset={shownVariant} order={order} onPreset={chooseVariant} />
+        </Suspense>
       ) : (
       <>
       <p className="charts-ruleset">{rulesetSummary(activeProfile.rules)}</p>

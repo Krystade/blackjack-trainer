@@ -88,7 +88,29 @@ test('every chunk is precached: FieldTest and the profile editor open offline th
   await expect(page.locator('.home-profile-chip')).toBeVisible({ timeout: 20_000 });
   await page.locator('.home-profile-chip').click();
   await expect(page.locator('.profile-editor-screen')).toBeVisible();
+
+  // Wave O: Play and Stats are lazy too, and open offline though never opened online.
+  await page.reload();
+  await page.locator('.tab-bar').getByRole('button', { name: 'Stats', exact: true }).click({ timeout: 20_000 });
+  await expect(page.locator('.tab-bar [aria-current="page"]')).toContainText('Stats');
+  await page.locator('.tab-bar').getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('Something broke on this screen.')).toHaveCount(0);
   await context.setOffline(false);
+});
+
+test('Wave O: Play, Stats and the side-bet tables are not fetched at launch', async ({ page }) => {
+  const seen = chunkRequests(page);
+  await page.goto('/?e2e=1');
+  await expect(page.getByTestId('testkit-open')).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  for (const name of ['Table', 'Stats', 'Progress', 'VariantCharts', 'SideCountDrillView', 'VariantDrillView']) {
+    expect(seen, name).not.toContain(name);
+  }
+  const table = page.waitForRequest(CHUNK('Table'));
+  await page.locator('.tab-bar').getByRole('button', { name: 'Play', exact: true }).click();
+  await table;
+  await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
 });
 
 test('a chunk that fails to load reloads onto a newer deployed build', async ({ page }) => {
