@@ -178,6 +178,17 @@ ship.
   `-item` clips; `clipCoverage.test.ts` walks every dealt card and every flashed group at
   all three detail levels against the shipped manifests. All resolve. The item clips had
   in fact existed all along — nothing had ever checked, which is why the entry sat here.
+- **Tab-bar glyphs don't match each other** (redesign diagnosis, tell 6; still open
+  2026-10-21). `TabBar.tsx:28-31` mixes four unrelated text glyphs — `◆` Home, `♠` Play,
+  `◎` Drills, `▦` Charts — then `◔` Stats and `♣` Casino: geometric shapes, a card suit and
+  a box-drawing grid from different Unicode blocks, so they share no style. Wave G4 moved
+  only the mute and gear icons to SVG. Fix: one icon family (SVG, same stroke and box)
+  across all six tabs.
+- **The build line still shows on Home** (redesign diagnosis, tell 7; still open
+  2026-10-21). `Home.tsx:222` prints `build <id> <time>` under the ladder on the main
+  screen. It is there on purpose — the one place to confirm a deploy landed, and specs read
+  `data-build` — so the fix is to move it somewhere quieter (Settings, About, or the Test kit)
+  and keep the attribute, not to delete it.
 
 ## Candidates — from the adversarial/research loop
 
