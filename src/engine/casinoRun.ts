@@ -79,6 +79,27 @@ export const MAX_COUNT_ROUNDS = 30_000_000;
 
 const SALT_COUNT = 0x9e3779b9;
 
+/**
+ * Review S1: whether continuing a result would deal any rounds at all -- a
+ * target still open below its round ceiling. The same tests runGame stops on:
+ * the house edge until it is precise or MAX_BASIC_ROUNDS, the best method's
+ * EV/hour (counted games) until it is precise or MAX_COUNT_ROUNDS. A count
+ * whose EV sits near zero can miss the ±10% target at the ceiling; continuing
+ * it adds nothing.
+ */
+export function wouldContinue(
+  r: { basic: Accum; basicRounds: number; methods: { method: BetMethod; acc: Accum }[] | null; countRounds: number },
+  spec: Pick<SimSpec, 'unit' | 'csm'>,
+  exitRounds = 0,
+): boolean {
+  if (r.basicRounds < MAX_BASIC_ROUNDS && !edgePrecise(r.basic, spec.unit)) return true;
+  if (spec.csm || !r.methods || r.methods.length === 0) return false;
+  if (r.countRounds >= MAX_COUNT_ROUNDS) return false;
+  const accs = r.methods.map((m) => m.acc);
+  const best = bestIndex(accs, exitRounds);
+  return !(best >= 0 && evPrecise(accs[best]!, exitRounds));
+}
+
 export function* runGame(spec: SimSpec, opts: RunOptions): Generator<RunProgress, RunProgress> {
   const start = opts.now();
   const basic = new CasinoSim(spec, 'basic', opts.seed >>> 0);

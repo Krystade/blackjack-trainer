@@ -1,5 +1,6 @@
 import { gameStatsUnsaved, loadGameCache, resultForKey, runSeed, saveGameResult, type GameResult, type ResultStatus } from '../../../store/casinoGameStats';
-import { MIN_ROUNDS, type RunPrior, type RunProgress } from '../../../engine/casinoRun';
+import { MIN_ROUNDS, wouldContinue, type RunPrior, type RunProgress } from '../../../engine/casinoRun';
+import type { SimSpec } from '../../../engine/casinoSim';
 import {
   AUTO_CAP_MS,
   EXTEND_MS,
@@ -338,9 +339,13 @@ export function runAnotherMinute(gameId: string, result: GameResult): void {
   kick();
 }
 
-/** Whether "Run another minute" can do anything for this result. */
-export function canRunLonger(result: GameResult): boolean {
-  return result.ms < MAX_TIME_CAP_MS && (result.status === 'time' || result.status === 'done');
+/**
+ * Whether "Run another minute" can do anything for this result: a finished
+ * run under the five-minute ceiling with rounds still to deal (review S1: a
+ * count capped at its round ceiling adds none, so it gets no button).
+ */
+export function canRunLonger(result: GameResult, spec: Pick<SimSpec, 'unit' | 'csm'>, exitRounds = 0): boolean {
+  return result.ms < MAX_TIME_CAP_MS && (result.status === 'time' || result.status === 'done') && wouldContinue(result, spec, exitRounds);
 }
 
 // ---------------------------------------------------------------- tests

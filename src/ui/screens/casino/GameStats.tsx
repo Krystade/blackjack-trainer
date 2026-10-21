@@ -10,7 +10,7 @@ import { canRunLonger, runAnotherMinute } from './simRunner';
 import { capOf } from '../../casinoAutoSim';
 import { useActiveProfile, useGameCache, useRunner } from './useGameStats';
 import type { CasinoView } from './Casino';
-import type { RunProgress } from '../../../engine/casinoRun';
+import { MAX_COUNT_ROUNDS, type RunProgress } from '../../../engine/casinoRun';
 import { SideBetsCard } from './SideBetsCard';
 
 /**
@@ -83,6 +83,8 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
   const staleShown = row.state.kind === 'stale' && !live;
   const { rules } = simRules(game);
   const current = row.state.kind === 'current' ? row.state.result : null;
+  // Review S1: only when another minute would deal rounds.
+  const canLonger = current !== null && canRunLonger(current, row.input.spec, row.exitRounds);
 
   return (
     <div className="cas-gs" data-testid="game-stats" data-state={running ? 'running' : row.state.kind} data-status={current?.status}>
@@ -161,13 +163,18 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
               {current!.status === 'done' && figures && !evTargetMet(figures) ? (
                 <span data-testid="ev-target-missed">
                   House edge target met; at {exitMinutes} min per exit the best EV/hour is {ciText(figures.best!.hours.evHourCi)}, wider than the
-                  ±10% target. Run another minute to tighten it.
+                  ±10% target.{' '}
+                  {canLonger
+                    ? 'Run another minute to tighten it.'
+                    : current!.countRounds >= MAX_COUNT_ROUNDS
+                      ? `±10% is out of reach at an EV this close to zero (${roundsText(current!.countRounds)} rounds simulated).`
+                      : 'It has had the five minutes a game can take.'}
                 </span>
               ) : (
                 statusNote(current!)
               )}
             </p>
-            {canRunLonger(current!) && (current!.status === 'time' || (figures !== null && !evTargetMet(figures))) && (
+            {canLonger && (
               <button type="button" className="u-btn cas-wide" onClick={() => runAnotherMinute(gameId, current!)} data-testid="refine-game">
                 Run another minute
               </button>

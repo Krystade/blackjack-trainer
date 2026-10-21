@@ -231,7 +231,7 @@ describe('the automatic runner', () => {
     const r = loadGameResults().ga!;
     expect(r.status).toBe('time');
     expect(runnerState().running).toBeNull();
-    expect(canRunLonger(r)).toBe(true);
+    expect(canRunLonger(r, A.input.spec)).toBe(true);
     runAnotherMinute('ga', r);
     expect(loadGameResults().ga).toMatchObject({ status: 'partial', capMs: AUTO_CAP_MS + 30 + EXTEND_MS });
     expect(lastReq()).toMatchObject({ timeCapMs: AUTO_CAP_MS + 30 + EXTEND_MS, prior: { ms: AUTO_CAP_MS + 30 } });
@@ -239,8 +239,10 @@ describe('the automatic runner', () => {
     live()[0]!.emit({ type: 'done', progress: progress({ methods: M }, { status: 'time', ms: AUTO_CAP_MS + 30 + EXTEND_MS }) });
     expect(loadGameResults().ga).toMatchObject({ status: 'time', capMs: AUTO_CAP_MS + 30 + EXTEND_MS });
     // Never past five minutes.
-    expect(canRunLonger({ ...r, ms: 5 * 60_000 })).toBe(false);
-    expect(canRunLonger({ ...r, status: 'partial' })).toBe(false);
+    expect(canRunLonger({ ...r, ms: 5 * 60_000 }, A.input.spec)).toBe(false);
+    expect(canRunLonger({ ...r, status: 'partial' }, A.input.spec)).toBe(false);
+    // Review S1: a count at its round ceiling (the edge settled too) gets no button: another minute adds no rounds.
+    expect(canRunLonger({ ...r, status: 'done', countRounds: 30_000_000, basicRounds: 60_000_000 }, A.input.spec)).toBe(false);
   });
 
   it('the e2e round budget: a first pass at the budget is final', () => {

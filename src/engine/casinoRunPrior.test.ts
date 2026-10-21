@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { emptyAccum, mergeAccum, type Accum, type SimSpec } from './casinoSim';
-import { MIN_ROUNDS, runGame, type RunOptions, type RunProgress } from './casinoRun';
+import { MAX_BASIC_ROUNDS, MAX_COUNT_ROUNDS, MIN_ROUNDS, runGame, wouldContinue, type RunOptions, type RunProgress } from './casinoRun';
+import { edgePrecise, evPrecise } from './casinoStats';
 import { DEFAULT_SPREAD } from './game';
 
 /**
@@ -118,5 +119,42 @@ describe('runGame with a prior run', () => {
     const m = finish({ seed: 2, timeCapMs: 1e9, maxRounds: 100_000, prior: prior(a) }, csm).last;
     expect(m.methods).toBeNull();
     expect(m.basic).toEqual(mergeAccum(a.basic, b.basic));
+  });
+});
+
+describe('review S1: wouldContinue -- whether another run would deal any rounds', () => {
+  const { last } = finish({ seed: 7, timeCapMs: 60_000, maxRounds: MIN_ROUNDS });
+  // Every sum times k: the same figure, sqrt(k) times tighter -- precise, as a long run is.
+  const scale = (a: Accum, k: number): Accum => Object.fromEntries(Object.entries(a).map(([f, v]) => [f, v * k])) as unknown as Accum;
+  const methods = (k: number) => last.methods!.map((m) => ({ ...m, acc: scale(m.acc, k) }));
+  const r = (over: Partial<Parameters<typeof wouldContinue>[0]> = {}) => ({ basic: last.basic, basicRounds: last.basicRounds, methods: last.methods, countRounds: last.countRounds, ...over });
+
+  it('(the scaled sums are precise; the raw ones are not)', () => {
+    expect(edgePrecise(last.basic, SPEC.unit)).toBe(false);
+    expect(edgePrecise(scale(last.basic, 10_000), SPEC.unit)).toBe(true);
+    expect(methods(1e6).some((m) => evPrecise(m.acc))).toBe(true);
+  });
+
+  it('a target open below its ceiling: yes', () => {
+    expect(wouldContinue(r(), SPEC)).toBe(true);
+    // The edge precise, the count not, below its ceiling.
+    expect(wouldContinue(r({ basic: scale(last.basic, 10_000) }), SPEC)).toBe(true);
+    // The count at its ceiling, the edge still open.
+    expect(wouldContinue(r({ countRounds: MAX_COUNT_ROUNDS }), SPEC)).toBe(true);
+  });
+
+  it('the count at its ceiling with the edge settled: no rounds to deal, though its EV target is missed', () => {
+    expect(wouldContinue(r({ basic: scale(last.basic, 10_000), countRounds: MAX_COUNT_ROUNDS }), SPEC)).toBe(false);
+    expect(wouldContinue(r({ basicRounds: MAX_BASIC_ROUNDS, countRounds: MAX_COUNT_ROUNDS }), SPEC)).toBe(false);
+  });
+
+  it('both targets met: no', () => {
+    expect(wouldContinue(r({ basic: scale(last.basic, 10_000), methods: methods(1e6) }), SPEC)).toBe(false);
+  });
+
+  it('a shuffler: only the edge, to its own ceiling', () => {
+    const csm = { ...SPEC, csm: true };
+    expect(wouldContinue(r({ methods: null, countRounds: 0 }), csm)).toBe(true);
+    expect(wouldContinue(r({ methods: null, countRounds: 0, basicRounds: MAX_BASIC_ROUNDS }), csm)).toBe(false);
   });
 });
