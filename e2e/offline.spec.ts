@@ -5,7 +5,6 @@ import {
   withProfile,
   openCountOptions,
   answerSelfReportIfPresent,
-  resolveInsurance,
   readStats,
   statsTab,
   submitZero,
@@ -300,49 +299,27 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
   });
   await expect(page.locator('.home-title')).toBeVisible({ timeout: 20_000 });
 
-  // --- Play: deal a hand and play it out by the advice the app gives -------
+  // --- Play: deal a hand and play it out ---------------------------------
+  /*
+   * SEEDED (review S5): the shoe is read from `?seed=` when the table opens,
+   * and an offline reload cannot carry a new query, so the seed goes into the
+   * URL in place. Seed 4 deals the player 9-10 against a dealer 9: no
+   * insurance, no natural, and Stand is the right play -- one fixed path, and
+   * a graded hand, so Flashcards below never opens on its one-time chart intro.
+   */
+  await page.evaluate(() => history.replaceState(null, '', '?seed=4'));
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   await expect(page.locator('.table-screen')).toBeVisible();
   await page.getByRole('button', { name: 'Deal', exact: true }).click();
-  /*
-   * STAND, rather than `playRoundByAdvice`. That helper returns as soon as
-   * `.action-bar[data-advice]` is absent, and without `?e2e=1` the advice
-   * attribute is not there the instant the cards land -- so it walked away
-   * from a live hand and the result never came. The claim here is that a
-   * hand can be PLAYED and SETTLED with no network, not that the advice
-   * engine was consulted; `game.spec.ts` owns that online.
-   */
-  /*
-   * THE HAND IS RANDOM, so act on what the table actually shows rather than
-   * assuming a Stand button. Without `?e2e=1` the deal is animated, which
-   * makes "no insurance offer yet" and "no insurance offer" look the same to
-   * an instant visibility check -- so wait for whichever definite state lands
-   * first: the insurance sheet (dealer Ace), the action bar (a live hand), or
-   * a result (a natural settles with nothing to act on).
-   */
-  const insuranceSheet = page.locator('.bottom-sheet', { hasText: 'Insurance?' });
   const standBtn = page.locator('.action-bar .action-btn', { hasText: 'Stand' }).first();
   const handResult = page.locator('.message-strip .message-result').first();
-  await expect(insuranceSheet.or(standBtn).or(handResult).first()).toBeVisible({ timeout: 30_000 });
-  if (await resolveInsurance(page, false)) {
-    await expect(standBtn.or(handResult).first()).toBeVisible({ timeout: 30_000 });
-  }
-  if (!(await handResult.isVisible())) await standBtn.click();
+  await expect(standBtn).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.bottom-sheet', { hasText: 'Insurance?' })).toHaveCount(0);
+  await standBtn.click();
   await expect(handResult, 'a hand could not be played and settled offline').toBeVisible({
     timeout: 30_000,
   });
-  /*
-   * STAND IS NOT ALWAYS RIGHT, and in training mode a wrong play docks the
-   * "Wrong play" sheet over the table, which swallows the End click below.
-   * The sheet is set in the same handler that settles the round
-   * (useGame.act), so once the result is on screen its presence is decided:
-   * dismiss it if it is there.
-   */
-  const wrongPlay = page.getByRole('dialog', { name: 'Wrong play' });
-  if (await wrongPlay.isVisible()) {
-    await wrongPlay.getByRole('button', { name: 'Continue', exact: true }).click();
-    await expect(wrongPlay).toHaveCount(0);
-  }
+  await expect(page.getByRole('dialog', { name: 'Wrong play' })).toHaveCount(0);
   await page.locator('.end-btn').click();
   await page.locator('.end-btn').click();
   await page.locator('.report-done-btn').click();
@@ -397,11 +374,8 @@ test('every drill, a played hand and the counting all work offline', async ({ pa
   // --- Flashcards ---------------------------------------------------------
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
   await expect(page.locator('.drill-heading')).toHaveText('Flashcards');
-  // Wave O: the chart intro shows once when no hand has been graded yet,
-  // which is the case when the random Play hand above was a natural.
-  const intro = page.getByTestId('chart-intro');
-  await expect(intro.or(page.locator('.action-bar button.action-btn').first()).first()).toBeVisible();
-  if (await intro.isVisible()) await intro.locator('.chart-intro-start').first().click();
+  // The seeded Play hand above was graded, so the one-time chart intro is not due.
+  await expect(page.getByTestId('chart-intro')).toHaveCount(0);
   await outlastBounceGuard();
   await page.locator('.action-bar button.action-btn', { hasText: 'Stand' }).click();
   // B1: the answer goes to the result strip and the next card is dealt at
