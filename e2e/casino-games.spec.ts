@@ -102,6 +102,8 @@ test('figures appear on their own, the ranking follows them, and the cards say w
   await expect(rows(page).getByTestId('rank-ev')).not.toContainText(['estimating…']);
   // Review S3: a run stopped by the round budget is partial -- marked with its interval in every row.
   await expect(rows(page).getByTestId('partial-badge')).toHaveCount(3);
+  // Review N6: a finished run's edge is shown bare (its interval is on the card).
+  for (const meta of await rows(page).locator('.cas-rank-meta').allTextContents()) expect(meta).not.toContain('±');
   for (const t of await rows(page).getByTestId('partial-badge').allTextContents()) expect(t).toMatch(/^Partial ±\$\d[\d,]*\/h$/);
   await noComputeButtons(page);
 
@@ -494,6 +496,9 @@ test('a casino session running: every game gets its estimate, and the firming up
   await expect(page.getByTestId('casino-live')).toBeVisible();
   await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3, { timeout: 30_000 });
   await expect(rows(page).getByTestId('estimate-badge')).toHaveCount(3);
+  // Review N6: an estimate names no best method, and its edge carries its interval.
+  await expect(rows(page).getByTestId('best-style')).toHaveCount(0);
+  for (const meta of await rows(page).locator('.cas-rank-meta').allTextContents()) expect(meta).toMatch(/^edge −?\d+\.\d\d% ±\d+\.\d\d%/);
   await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'held');
   await expect(ranked(page).getByTestId('rank-held')).toHaveText('3 estimates firm up after this session');
   const at = (await stored(page, 'g-good'))!;

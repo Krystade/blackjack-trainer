@@ -219,7 +219,8 @@ function RankItem({ row, place, sort, running, failed, onOpen }: { row: RankRow;
         <span className="cas-row-game">{labelledSummary(row.game)}</span>
         {f && (
           <span className="cas-row-meta cas-rank-meta">
-            {[`edge ${pctText(f.edge)}`, f.best ? `N0 ${n0Text(f.n0Hours)}` : null, row.distance?.text ?? null].filter(Boolean).join(' · ')}
+            {/* Review N6: an estimate's edge carries its interval (±0.5% at the first pass). */}
+            {[`edge ${pctText(f.edge)}${estimate ? ` ±${pctText(f.edgeCi)}` : ''}`, f.best ? `N0 ${n0Text(f.n0Hours)}` : null, row.distance?.text ?? null].filter(Boolean).join(' · ')}
           </span>
         )}
         {!f && row.distance && <span className="cas-row-meta">{row.distance.text}</span>}
@@ -230,7 +231,8 @@ function RankItem({ row, place, sort, running, failed, onOpen }: { row: RankRow;
           </span>
         )}
         <span className="cas-row-badges">
-          {f?.best && (
+          {/* Review N6: not on an estimate -- its best method is the final one's barely more often than not. */}
+          {f?.best && !estimate && (
             <span className="cas-badge" data-tone="good" data-testid="best-style">
               {/* Review S1: with a side bet, the seated method it rides on. */}
               {methodBadge(row.withSide?.method?.method ?? f.best.method)}
