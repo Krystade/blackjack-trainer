@@ -321,6 +321,13 @@ describe('Wave L merge, review S7: side bets on a variant game add nothing', () 
   });
 });
 
+/** The figures with every method's 95% interval (and the game's) set to `ci` dollars an hour. */
+function withCi(f: GameFigures, ci: number): GameFigures {
+  const methods = f.methods?.map((m) => ({ ...m, hours: { ...m.hours, evHourCi: ci } })) ?? null;
+  const best = f.best && methods ? (methods.find((m) => m.method.id === f.best!.method.id) ?? null) : null;
+  return { ...f, methods, best, evHourCi: ci };
+}
+
 describe('review S1: a side bet rides only on a method that stays seated', () => {
   const g = game('gs', { s17: true, sideBets: [{ bet: 'buster', payTable: 'bu-evo', minBet: 25, maxBet: null }] });
   /** Every method wins `rest` a round, except the ones named. */
@@ -343,15 +350,64 @@ describe('review S1: a side bet rides only on a method that stays seated', () =>
     expect(rankedEvHour(row)).toBeCloseTo(240, 9);
     expect(row.sideEvHour).toBeUndefined();
     expect(row.withSide).toBeUndefined();
-    expect(sideCombinedText(row.figures!, 'Buster', sideAlone)).toMatch(/^none — the best method wongs out \(\+\$240\/h\), so Buster is not added to it\. Seated with Buster: \+\$\d+\/h$/);
+    const side = Math.round(160 + sideAlone);
+    expect(sideCombinedText(withCi(row.figures!, 20), 'Buster', sideAlone)).toBe(
+      `none — the best method wongs out (+$240 ±$20/h), so Buster is not added to it. Seated with Buster: +$${side} ±$20/h.`,
+    );
   });
 
   it('Wave O: seated play plus the side bet still loses: said plainly, not as a figure to sit for', () => {
     // ramp loses $3/round = -$240/h, far more than the side bet wins back.
     const row = rowFor(result({ 'wong-1': 3, ramp: -3 }, -3));
-    const text = sideCombinedText(row.figures!, 'Buster', sideAlone);
-    expect(text).toMatch(/\. Seated play loses here \(−\$\d+\/h\), so Buster isn't worth sitting for$/);
+    const text = sideCombinedText(withCi(row.figures!, 20), 'Buster', sideAlone);
+    expect(text).toMatch(/\. Seated play with Buster still loses \(−\$\d+ ±\$20\/h\), so it isn't worth sitting for\.$/);
     expect(text).not.toContain('Seated with');
+  });
+
+  describe('review S3: the interval decides the wording', () => {
+    // wong-1 +$240/h is best; ramp $1/round = $80/h, so ramp + side is just under it.
+    const loss = (ci: number) => sideCombinedText(withCi(rowFor(result({ 'wong-1': 3, ramp: -1 }, -3)).figures!, ci), 'Buster', sideAlone);
+
+    it('a seated loss inside its interval is about break-even, not a loss', () => {
+      const total = -80 + sideAlone; // ramp -$80/h plus the side bet
+      expect(total).toBeLessThan(0);
+      const roundedTotal = Math.round(total);
+      // Just wider than the loss: about break-even. Just narrower: a loss.
+      expect(loss(-total + 0.5)).toContain(`Seated play with Buster is about break-even (−$${-roundedTotal} ±$${Math.ceil(-total + 0.5)}/h).`);
+      expect(loss(-total - 0.5)).toContain(`Seated play with Buster still loses (−$${-roundedTotal} ±$${Math.ceil(-total - 0.5)}/h), so it isn't worth sitting for.`);
+    });
+
+    it('an infinite interval is never a win or a loss', () => {
+      expect(loss(Infinity)).toContain('is about break-even (');
+      expect(loss(Infinity)).toContain('±?/h');
+    });
+
+    it('review N1: when the best method itself loses, nothing here wins', () => {
+      // Every method loses $3/round; wong-1 loses least (-$1/round).
+      const row = rowFor(result({ 'wong-1': -1, ramp: -2 }, -3));
+      expect(row.figures!.best!.method.id).toBe('wong-1');
+      const text = sideCombinedText(withCi(row.figures!, 10), 'Buster', sideAlone);
+      expect(text).toMatch(/^none — nothing here wins: the best method wongs out and still loses \(−\$80 ±\$10\/h\)\. Seated play with Buster still loses \(−\$\d+ ±\$10\/h\), so it isn't worth sitting for\.$/);
+      expect(text).not.toContain('is not added to it');
+      // The same best method with a wide interval is about break-even, so its leaving the table is the reason again.
+      expect(sideCombinedText(withCi(row.figures!, 100), 'Buster', sideAlone)).toMatch(
+        /^none — the best method wongs out \(about break-even, −\$80 ±\$100\/h\), so Buster is not added to it\. /,
+      );
+    });
+
+    it('a partial run is marked', () => {
+      const f = withCi(rowFor(result({ 'wong-1': 3, ramp: -1 }, -3)).figures!, 20);
+      expect(sideCombinedText({ ...f, partial: true }, 'Buster', sideAlone)).toMatch(/\. Partial run\.$/);
+      expect(sideCombinedText(f, 'Buster', sideAlone)).not.toContain('Partial');
+    });
+
+    it('the other two lines carry the interval too', () => {
+      const f = withCi(rowFor(result({ 'wong-1': 3, ramp: -1 }, -3)).figures!, 20);
+      expect(sideCombinedText(f, null, 0)).toBe('+$240 ±$20/h — no side bet here is worth making.');
+      const ramp = withCi(rowFor(result({ ramp: 2 })).figures!, 20);
+      expect(sideCombinedText(ramp, 'Buster', sideAlone)).toMatch(/^\+\$\d+ ±\$20\/h \(Profile ramp, play all \+\$160\/h \+ Buster \+\$\d+\/h\)\.$/);
+      expect(sideCombinedText(withCi(rowFor(result({ ramp: 2 })).figures!, 1000), 'Buster', sideAlone)).toMatch(/^about break-even, \+\$\d+ ±\$1000\/h \(/);
+    });
   });
 
   it('best method wongs out but ramp + side beats it: ranked on ramp + side, never wong + side', () => {

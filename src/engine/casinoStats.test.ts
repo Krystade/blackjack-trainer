@@ -200,7 +200,7 @@ describe('the run', () => {
 
   it('stops at the time cap with what it has, and reports progress on the way', () => {
     let t = 0;
-    const run = runGame(spec, { seed: 1, timeCapMs: 1000, now: () => t, basicChunk: 1000, countChunk: 1000 });
+    const run = runGame(spec, { seed: 1, timeCapMs: 1000, now: () => t, basicChunk: 50_000, countChunk: 50_000 });
     const seen: number[] = [];
     let step = run.next();
     while (!step.done) {
@@ -209,9 +209,23 @@ describe('the run', () => {
       step = run.next();
     }
     expect(step.value.status).toBe('time');
-    expect(step.value.basicRounds).toBe(4000);
+    expect(step.value.basicRounds).toBe(MIN_ROUNDS);
     expect(seen.length).toBe(4);
     expect(seen.every((f) => f > 0 && f < 1)).toBe(true);
+  });
+
+  it('review S3: the time cap does not end a run short of the minimum rounds', () => {
+    let t = 0;
+    // The cap passes after two chunks (100k rounds); the run carries on to the floor, then stops on the clock.
+    const run = runGame(spec, { seed: 1, timeCapMs: 500, now: () => t, basicChunk: 50_000, countChunk: 50_000 });
+    let step = run.next();
+    while (!step.done) {
+      t += 300;
+      step = run.next();
+    }
+    expect(step.value.status).toBe('time');
+    expect(step.value.basicRounds).toBe(MIN_ROUNDS);
+    expect(step.value.countRounds).toBe(MIN_ROUNDS);
   });
 
   it('never stops on a target before the minimum rounds without a budget', () => {

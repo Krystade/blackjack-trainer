@@ -46,7 +46,13 @@ export interface RunOptions {
   countChunk?: number;
 }
 
-/** No stopping on a lucky early streak: both runs go at least this far. */
+/**
+ * No stopping on a lucky early streak: both runs go at least this far. Review
+ * S3: the time cap does not end a run short of it either, so a busy phone (or
+ * a worker suspended while the screen was locked) cannot hand back a figure
+ * from a few thousand rounds. Past it, the clock still decides how far a
+ * capped run gets, and the figures carry their interval.
+ */
 export const MIN_ROUNDS = 200_000;
 /** Beyond these the targets are out of reach anyway (an EV near zero). */
 export const MAX_BASIC_ROUNDS = 60_000_000;
@@ -100,7 +106,8 @@ export function* runGame(spec: SimSpec, opts: RunOptions): Generator<RunProgress
       const hitBudget = (budget !== undefined && basic.rounds >= budget) || (count !== null && budget !== undefined && count.rounds >= budget);
       return snapshot(hitBudget ? 'budget' : 'done');
     }
-    if (opts.now() - start >= opts.timeCapMs) return snapshot('time');
+    const floorMet = basic.rounds >= minRounds && (!count || count.rounds >= minRounds);
+    if (floorMet && opts.now() - start >= opts.timeCapMs) return snapshot('time');
     if (!bd) basic.run(Math.min(basicChunk, basicCap - basic.rounds));
     if (!cd && count) count.run(Math.min(countChunk, countCap - count.rounds));
     yield snapshot('running');

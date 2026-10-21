@@ -4,7 +4,7 @@ import type { Profile } from '../store/types';
 import { resultState, simInputFor, type GameResult, type ResultState, type SimInput } from '../store/casinoGameStats';
 import { EV_REL_TARGET, hourly, houseEdge, summarize, type HourlyStats, type RoundStats } from '../engine/casinoStats';
 import { describeMethod, type BetMethod } from '../engine/betMethods';
-import { evHourText } from './casinoStatsText';
+import { evCiText, evHourText } from './casinoStatsText';
 import { bestSideEvHour, gameSideFigures } from './casinoSideFigures';
 import { distanceMinutes, distanceOf, evPerTripHour, standing, tripMinutesOf, warnBadges, type Distance } from './casinoFigures';
 
@@ -120,27 +120,62 @@ export function bestSeated(f: GameFigures): MethodFigures | null {
   return seated;
 }
 
+/** Review S3: what a figure's 95% interval says -- a win or a loss only when all of it is on that side of zero. */
+export type Verdict = 'wins' | 'loses' | 'even';
+
+export function verdictOf(ev: number, ci: number): Verdict {
+  if (!Number.isFinite(ci)) return 'even';
+  if (ev - ci > 0) return 'wins';
+  if (ev + ci < 0) return 'loses';
+  return 'even';
+}
+
 /**
  * The stats card's "Best with a side bet" line, by the ranking's own rule
- * (withSideBet): "$41/h (Profile ramp, play all $30/h + Lucky Ladies $11/h)",
- * or why the side bet is left out.
+ * (withSideBet): "+$41 ±$6/h (Profile ramp, play all +$30/h + Lucky Ladies
+ * +$11/h).", or why the side bet is left out.
+ *
+ * Review S3: every total carries its 95% interval, and a total is said to
+ * lose (or win) only when the whole interval is below (or above) zero;
+ * otherwise it is "about break-even". The interval is the method's: the side
+ * figure comes from a fixed generated row and carries none of its own. A run
+ * that stopped short of its targets is marked partial.
  */
 export function sideCombinedText(f: GameFigures, betName: string | null, sideEvHour: number): string {
-  if (!betName || !(sideEvHour > 0)) return `${evHourText(f.evHour)} — no side bet here is worth making`;
+  const partial = f.partial ? ' Partial run.' : '';
+  if (!betName || !(sideEvHour > 0)) return `${evCiText(f.evHour, f.evHourCi)} — no side bet here is worth making.${partial}`;
   const ws = withSideBet(f, sideEvHour);
   if (ws) {
+    const ci = ws.method ? ws.method.hours.evHourCi : f.evHourCi;
     const base = ws.method ? `${describeMethod(ws.method.method)} ${evHourText(ws.method.hours.evHour)}` : evHourText(f.evHour);
-    return `${evHourText(ws.evHour)} (${base} + ${betName} ${evHourText(sideEvHour)})`;
+    return `${evenOr(ws.evHour, ci)} (${base} + ${betName} ${evHourText(sideEvHour)}).${partial}`;
   }
   // The best method leaves the table for rounds the side figure counts.
-  const seated = bestSeated(f);
   const leaves = f.best?.method.entryTc != null ? 'back-counts' : 'wongs out';
-  const why = `none — the best method ${leaves} (${evHourText(f.evHour)}), so ${betName} is not added to it`;
-  if (!seated) return why;
-  const seatedTotal = seated.hours.evHour + sideEvHour;
+  const bestLoses = verdictOf(f.evHour, f.evHourCi) === 'loses';
+  // Review N1: when the best method itself loses, leaving the table is not why: nothing here wins.
+  const why = bestLoses
+    ? `none — nothing here wins: the best method ${leaves} and still loses (${evCiText(f.evHour, f.evHourCi)})`
+    : `none — the best method ${leaves} (${evenOr(f.evHour, f.evHourCi)}), so ${betName} is not added to it`;
+  const seated = bestSeated(f);
+  if (!seated) return `${why}.${partial}`;
+  const total = seated.hours.evHour + sideEvHour;
+  const ci = seated.hours.evHourCi;
+  const fig = evCiText(total, ci);
   // Wave O: "Seated with Over 13: -$18/h" read as a recommendation. A loss is said plainly.
-  if (seatedTotal < 0) return `${why}. Seated play loses here (${evHourText(seatedTotal)}), so ${betName} isn't worth sitting for`;
-  return `${why}. Seated with ${betName}: ${evHourText(seatedTotal)}`;
+  const verdict = verdictOf(total, ci);
+  const seatedLine =
+    verdict === 'wins'
+      ? `Seated with ${betName}: ${fig}.`
+      : verdict === 'even'
+        ? `Seated play with ${betName} is about break-even (${fig}).`
+        : `Seated play with ${betName} still loses (${fig}), so it isn't worth sitting for.`;
+  return `${why}. ${seatedLine}${partial}`;
+}
+
+/** The figure, or "about break-even, " before it when its interval straddles zero. */
+function evenOr(ev: number, ci: number): string {
+  return verdictOf(ev, ci) === 'even' ? `about break-even, ${evCiText(ev, ci)}` : evCiText(ev, ci);
 }
 
 /** What the game is worth with its best side bet counted, when that beats the game alone. */

@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import './casinoSideBets.css';
+import './sideCombinedLine.css';
 import type { CasinoGame } from '../../../store/casinoLog';
 import { sideRowSpec } from '../../../store/casinoSideRows';
 import { BET_NAMES, payTableOf } from '../../../engine/sideBets/payTables';
@@ -108,7 +109,7 @@ export function SideBetsCard({
       </ul>
       {figures && (
         <p className="cas-pad-x cas-sb-combined" data-testid="gs-side-combined">
-          <strong>Best with a side bet:</strong> {sideCombinedText(figures, best.fig ? BET_NAMES[best.fig.sb.bet] : null, best.evHour)}
+          <strong>Best with a side bet:</strong> {keepFigures(sideCombinedText(figures, best.fig ? BET_NAMES[best.fig.sb.bet] : null, best.evHour))}
         </p>
       )}
       <p className="cas-pad-x cas-note">
@@ -122,6 +123,21 @@ export function SideBetsCard({
         </p>
       )}
     </section>
+  );
+}
+
+/** Review S3: "−$81 ±$10/h" (casinoStatsText.evCiText), kept on one line. */
+const FIGURE = /([+−]?\$[\d,]+ ±(?:\$\d+|\?)\/h)/;
+
+function keepFigures(text: string): ReactNode[] {
+  return text.split(FIGURE).map((part, i) =>
+    i % 2 === 1 ? (
+      <span key={i} className="cas-sb-fig">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
   );
 }
 

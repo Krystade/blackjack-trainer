@@ -19,6 +19,11 @@ export function ciText(ci: number): string {
   return `±$${Math.max(1, Math.ceil(ci))}`;
 }
 
+/** Review S3: a figure with its interval, "−$65 ±$20/h". */
+export function evCiText(ev: number, ci: number): string {
+  return `${signedMoney(Math.round(ev))} ${ciText(ci)}/h`;
+}
+
 /** "0.62%", "−0.18%" (a player edge reads negative). */
 export function pctText(fraction: number, digits = 2): string {
   const v = fraction * 100;

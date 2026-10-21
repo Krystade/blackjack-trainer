@@ -343,21 +343,33 @@ test.describe('the casino stats card', () => {
   test('Wave O: a card room where seated play loses says so plainly', async ({ page }, info) => {
     const room = { ...game, id: 'g-room', commissionPer100: 4, sideBets: [{ bet: 'over13', payTable: 'ou-even', minBet: 25, maxBet: 100 }] };
     const log = { ...LOG, casinos: [{ ...LOG.casinos[0]!, name: 'Card Room', kind: 'cardroom', games: [room] }] };
-    await page.addInitScript((l) => {
-      if (!sessionStorage.getItem('seeded')) {
-        localStorage.setItem('bjtrainer.casinoLog.v2', l);
-        sessionStorage.setItem('seeded', '1');
-      }
-    }, JSON.stringify(log));
+    // Review S3: a round budget, so the run (and the figure) is the same every time, whatever the machine's load.
+    await page.addInitScript(
+      ([l, b]) => {
+        (window as unknown as { __bjCasinoSimBudget: number }).__bjCasinoSimBudget = b as number;
+        if (!sessionStorage.getItem('seeded')) {
+          localStorage.setItem('bjtrainer.casinoLog.v2', l as string);
+          sessionStorage.setItem('seeded', '1');
+        }
+      },
+      [JSON.stringify(log), 200_000],
+    );
     await page.goto('/?e2e=1');
     await page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true }).click();
     await page.getByTestId('games-ranked').getByTestId('rank-row').first().click();
-    test.setTimeout(240_000);
+    test.setTimeout(90_000);
     await page.getByRole('button', { name: 'Compute', exact: true }).click();
     const line = page.getByTestId('gs-side-combined');
-    await expect(line).toContainText('Best with a side bet:', { timeout: 200_000 });
-    await expect(line).toContainText(/Seated play loses here \(−\$\d+\/h\), so Over 13 isn't worth sitting for$/);
-    await expect(line).not.toContainText('Seated with');
+    // The line shows the running figures too; wait for the run's end. 200,000 rounds (the time cap's floor):
+    // it stops on its budget, so it is marked partial.
+    await expect(page.getByTestId('gs-status')).toContainText('Stopped at the test round budget.', { timeout: 60_000 });
+    await expect(line).toHaveText(
+      'Best with a side bet: none — nothing here wins: the best method back-counts and still loses (−$39 ±$34/h). ' +
+        "Seated play with Over 13 still loses (−$81 ±$10/h), so it isn't worth sitting for. Partial run.",
+    );
+    // A figure and its interval never wrap apart.
+    await expect(line.locator('.cas-sb-fig')).toHaveText(['−$39 ±$34/h', '−$81 ±$10/h']);
+    await expect(line.locator('.cas-sb-fig').first()).toHaveCSS('white-space', 'nowrap');
     await line.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `e2e/screenshots/side-cardroom-line-${info.project.name}.png` });
   });

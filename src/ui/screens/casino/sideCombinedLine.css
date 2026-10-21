@@ -1,0 +1,4 @@
+/* Review S3: a figure and its interval ("−$81 ±$10/h") never wrap apart on a narrow screen. */
+.cas-sb-fig {
+  white-space: nowrap;
+}
