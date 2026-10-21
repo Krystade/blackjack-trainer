@@ -208,7 +208,8 @@ describe('the automatic runner', () => {
     finishFirst();
     // The twin's first estimate is A's: next up is refining, not a second first pass.
     expect(runnerState().running).toMatchObject({ work: 'refine' });
-    expect(runnerState().todo).toEqual({ first: 0, refine: 2 });
+    // One run to make for the two (review N5).
+    expect(runnerState().todo).toEqual({ first: 0, refine: 1 });
   });
 
   it('a long refine is saved as it goes', () => {
