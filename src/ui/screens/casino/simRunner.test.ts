@@ -260,10 +260,27 @@ describe('the automatic runner', () => {
     attachAuto();
     live()[0]!.emit({ type: 'error', message: 'boom' });
     expect(runnerState().error).toBe('boom');
+    expect(runnerState().failed).toEqual({ [A.input.key]: 'boom' });
     expect(runnerState().running).toMatchObject({ gameId: 'gb' });
+    // Review S2: the failed game is not counted as work to come.
+    expect(runnerState().todo).toEqual({ first: 1, refine: 0 });
     finishFirst();
     // A is not tried again; B is refined.
     expect(runnerState().running).toMatchObject({ gameId: 'gb', work: 'refine' });
+    live()[0]!.emit({ type: 'done', progress: progress({ methods: M }, { status: 'done' }) });
+    expect(runnerState().running).toBeNull();
+    expect(runnerState().todo).toEqual({ first: 0, refine: 0 });
+  });
+
+  it('a worker that cannot start fails every game, each with the message, and nothing is left pending', () => {
+    _setWorkerFactory(() => {
+      throw new Error('no workers here');
+    });
+    setAutoPlan([A, B], null);
+    attachAuto();
+    expect(runnerState().failed).toEqual({ [A.input.key]: 'no workers here', [B.input.key]: 'no workers here' });
+    expect(runnerState().running).toBeNull();
+    expect(runnerState().todo).toEqual({ first: 0, refine: 0 });
   });
 });
 

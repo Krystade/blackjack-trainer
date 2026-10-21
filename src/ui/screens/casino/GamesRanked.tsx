@@ -101,7 +101,7 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
             place={i + 1}
             sort={sort}
             running={runner.running !== null && runner.running.key === r.input.key}
-            failed={runner.failed.includes(r.input.key)}
+            failed={runner.failed[r.input.key]}
             onOpen={() => go({ kind: 'game', casinoId: r.casino.id, gameId: r.game.id })}
           />
         ))}
@@ -127,7 +127,8 @@ function AutoStatus({ runner, rows }: { runner: RunnerState; rows: readonly Rank
       <span className="cas-auto-rounds">{roundsText(r.progress.basicRounds + r.progress.countRounds)} rounds</span>
     </>
   ) : null;
-  const phase = first > 0 ? 'estimating' : refine > 0 ? 'refining' : runner.error ? 'error' : 'idle';
+  const nFailed = rows.filter((x) => runner.failed[x.input.key] !== undefined).length;
+  const phase = first > 0 ? 'estimating' : refine > 0 ? 'refining' : nFailed > 0 ? 'error' : 'idle';
   return (
     <div className="cas-auto" data-testid="rank-auto" data-phase={phase}>
       {phase === 'estimating' && (
@@ -149,9 +150,10 @@ function AutoStatus({ runner, rows }: { runner: RunnerState; rows: readonly Rank
           </span>
         </p>
       )}
-      {phase === 'error' && (
-        <p className="cas-field-error" role="alert">
-          The simulator stopped: {runner.error}
+      {/* Review S2: said whenever a game failed, whatever else is still running. */}
+      {nFailed > 0 && (
+        <p className="cas-field-error" role="alert" data-testid="rank-failed-line">
+          The simulator failed on {nFailed} game{nFailed === 1 ? '' : 's'}: {runner.error}
         </p>
       )}
       {/* Review B1: the figures show this session, but are not kept; nothing more is worked out for them. */}
@@ -165,7 +167,7 @@ function AutoStatus({ runner, rows }: { runner: RunnerState; rows: readonly Rank
   );
 }
 
-function RankItem({ row, place, sort, running, failed, onOpen }: { row: RankRow; place: number; sort: RankSort; running: boolean; failed: boolean; onOpen: () => void }) {
+function RankItem({ row, place, sort, running, failed, onOpen }: { row: RankRow; place: number; sort: RankSort; running: boolean; failed: string | undefined; onOpen: () => void }) {
   const f = row.figures;
   const status = row.state.kind === 'none' ? null : row.state.result.status;
   const value = !f ? null : sort === 'trip' && row.tripEv !== null ? row.tripEv : rankedEvHour(row);
@@ -198,8 +200,8 @@ function RankItem({ row, place, sort, running, failed, onOpen }: { row: RankRow;
             {row.notModelled
               ? 'not modelled'
               : value === null
-                ? failed
-                  ? 'not computed'
+                ? failed !== undefined
+                  ? 'not worked out'
                   : 'estimating…'
                 : `${evHourText(value)}${sort === 'trip' && row.tripEv !== null ? ' trip' : ''}`}
           </span>
@@ -211,6 +213,12 @@ function RankItem({ row, place, sort, running, failed, onOpen }: { row: RankRow;
           </span>
         )}
         {!f && row.distance && <span className="cas-row-meta">{row.distance.text}</span>}
+        {/* Review S2: why this game has no figures, and will not get them this session. */}
+        {failed !== undefined && (
+          <span className="cas-row-meta cas-rank-failed" data-testid="rank-failed">
+            The simulator failed: {failed}
+          </span>
+        )}
         <span className="cas-row-badges">
           {f?.best && (
             <span className="cas-badge" data-tone="good" data-testid="best-style">

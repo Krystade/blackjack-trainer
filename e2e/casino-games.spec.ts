@@ -433,6 +433,23 @@ test("review B1: storage full -- the figures show, the ranking says they couldn'
   expect(await page.evaluate((k) => localStorage.getItem(k), STATS_KEY)).toBeNull();
 });
 
+test('review S2: a simulator that fails says so on the line, the row and the card, and leaves nothing pending', async ({ page }) => {
+  await seed(page);
+  await page.route(/casinoSim\.worker/, (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: "self.onmessage = () => self.postMessage({ type: 'error', message: 'test failure' });" }),
+  );
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await expect(rows(page).getByTestId('rank-ev')).toHaveText(['not worked out', 'not worked out', 'not worked out']);
+  await expect(rows(page).getByTestId('rank-failed')).toHaveText(Array(3).fill('The simulator failed: test failure'));
+  await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'error');
+  await expect(ranked(page).getByTestId('rank-failed-line')).toHaveText('The simulator failed on 3 games: test failure');
+  await expect(ranked(page).getByTestId('rank-auto')).not.toContainText('Estimating');
+  for (const sel of ['.cas-rank-failed', '[data-testid="rank-failed-line"]']) expect(await worstContrast(page, sel), sel).toBeGreaterThanOrEqual(4.5);
+  await rows(page).and(page.locator('[data-game="g-good"]')).click();
+  await expect(page.getByTestId('gs-failed')).toContainText('The simulator failed on this game: test failure');
+});
+
 test('an import: every game gets its figures on its own, and two games dealt alike are worked out once', async ({ page }) => {
   await page.addInitScript((b) => {
     (window as unknown as { __bjCasinoSimBudget: number }).__bjCasinoSimBudget = b;

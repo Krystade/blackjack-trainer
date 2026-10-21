@@ -46,16 +46,16 @@ export interface RunnerState {
   todo: { first: number; refine: number };
   /** Nothing runs: no Casino screen, or the page is hidden. */
   paused: boolean;
-  /** The last failure's message, and the inputs (keys) that failed: not tried again this session. */
+  /** The last failure's message, and each input (key) that failed with its message: not tried again this session, nor counted in `todo` (review S2). */
   error: string | null;
-  failed: readonly string[];
+  failed: Readonly<Record<string, string>>;
   /** Review B1: figures worked out this session could not be saved (the phone's storage is full). */
   storageFull: boolean;
   /** The keys whose figures could not be saved: shown, not worked on again this session. */
   unsaved: readonly string[];
 }
 
-let state: RunnerState = { running: null, todo: { first: 0, refine: 0 }, paused: true, error: null, failed: [], storageFull: false, unsaved: [] };
+let state: RunnerState = { running: null, todo: { first: 0, refine: 0 }, paused: true, error: null, failed: {}, storageFull: false, unsaved: [] };
 const listeners = new Set<() => void>();
 
 interface Running {
@@ -73,7 +73,7 @@ let hidden = false;
 let running: Running | null = null;
 let worker: Worker | null = null;
 /** Keys whose run failed: not tried again this session (it would only fail again). */
-const failed = new Set<string>();
+const failed = new Map<string, string>();
 /**
  * Review B1: keys whose figures could not be saved. They show this session
  * (store/casinoGameStats.ts keeps them in memory) and are not worked on again:
@@ -129,7 +129,7 @@ function publish(): void {
     todo: workCounts(cands, lookup, skipped()),
     paused: attached === 0 || hidden,
     error,
-    failed: [...failed],
+    failed: Object.fromEntries(failed),
     storageFull: unsavedKeys.size > 0 || gameStatsUnsaved(),
     unsaved: [...unsavedKeys],
   };
@@ -178,7 +178,7 @@ function save(run: Running, p: RunProgress, status: ResultStatus): void {
 
 /** Keys not to schedule: a failed run, or figures that could not be saved. */
 function skipped(): Set<string> {
-  return new Set([...failed, ...unsavedKeys]);
+  return new Set([...failed.keys(), ...unsavedKeys]);
 }
 
 function finalStatus(p: RunProgress): ResultStatus {
@@ -220,7 +220,7 @@ function start(job: AutoJob): void {
       worker = makeWorker();
     } catch (err) {
       error = err instanceof Error ? err.message : 'This browser cannot run the simulator.';
-      failed.add(job.cand.input.key);
+      failed.set(job.cand.input.key, error);
       return;
     }
     const w = worker;
@@ -256,7 +256,7 @@ function onMessage(msg: SimMessage): void {
     dropWorker();
     running = null;
     error = msg.message;
-    failed.add(run.job.cand.input.key);
+    failed.set(run.job.cand.input.key, msg.message);
     kick();
     return;
   }
@@ -290,8 +290,13 @@ function kick(): void {
       pause();
       start(pick);
     }
-  } else if (pick) {
-    start(pick);
+  } else {
+    // A worker that cannot start fails its key; the next is tried (and fails the same way, said on each row).
+    let next = pick;
+    while (next && !running) {
+      start(next);
+      if (!running) next = pickJob(cands, lookupFn(), visible, skipped());
+    }
   }
   publish();
 }
@@ -375,5 +380,5 @@ export function _resetRunner(): void {
   if (paintTimer !== null) clearTimeout(paintTimer);
   paintTimer = null;
   lastPaint = 0;
-  state = { running: null, todo: { first: 0, refine: 0 }, paused: true, error: null, failed: [], storageFull: false, unsaved: [] };
+  state = { running: null, todo: { first: 0, refine: 0 }, paused: true, error: null, failed: {}, storageFull: false, unsaved: [] };
 }

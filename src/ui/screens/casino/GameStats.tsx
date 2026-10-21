@@ -181,7 +181,12 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
             )}
           </>
         )}
-        {runner.error && !running && <p className="cas-field-error">{runner.error}</p>}
+        {/* Review S2: this game's own failure, not whichever game failed last. */}
+        {runner.failed[row.input.key] !== undefined && !running && (
+          <p className="cas-field-error" data-testid="gs-failed">
+            The simulator failed on this game: {runner.failed[row.input.key]}. It is not tried again until the app is reopened.
+          </p>
+        )}
       </section>
 
       {figures && shown && (

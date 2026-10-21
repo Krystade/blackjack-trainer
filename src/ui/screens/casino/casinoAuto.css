@@ -55,3 +55,8 @@
   line-height: 1.45;
   color: var(--ink-dim);
 }
+
+/* Review S2: why a row has no figures. */
+.cas-rank-failed {
+  color: var(--bad);
+}
