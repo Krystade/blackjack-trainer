@@ -746,6 +746,26 @@ describe('last-utterance tracking', () => {
     expect(lastSpeechPath()?.tag).toBeUndefined();
   });
 
+  it('Wave O: a noRepeat line (the daily-goal aside) leaves Repeat on the verdict before it', () => {
+    const spoken = installFakeSpeechEnv([]);
+    speak('Correct. Stand.');
+    speak('Daily goal done. Three days in a row.', { protect: true, noRepeat: true });
+    expect(getLastSpoken()).toBe('Correct. Stand.');
+    expect(repeatLast()).toBe(true);
+    expect(spoken.map((u) => u.text).at(-1)).toBe('Correct. Stand.');
+  });
+
+  it('Wave O: the goal moment said at a pause is not what Repeat replays', async () => {
+    const { queueMoment, sayMomentAtPause, _resetMomentForTest } = await import('../habits/moment');
+    const { DEFAULT_SETTINGS } = await import('../store/types');
+    _resetMomentForTest();
+    installFakeSpeechEnv([]);
+    speak('Wrong. Hit.');
+    queueMoment('Daily goal done. Three days in a row.');
+    expect(sayMomentAtPause({ ...DEFAULT_SETTINGS.audio, enabled: true, volume: 1 })).toBeGreaterThan(0);
+    expect(getLastSpoken()).toBe('Wrong. Hit.');
+  });
+
   it('repeatLast() does nothing and returns false with nothing to repeat', () => {
     const spoken = installFakeSpeechEnv([]);
     expect(repeatLast()).toBe(false);

@@ -468,6 +468,12 @@ export interface SpeechOpts {
    * only what is queued. `speak()` only; one short line at a time.
    */
   protect?: boolean;
+  /**
+   * Wave O: not remembered for Repeat. For an aside said at a pause (the
+   * daily-goal line): Repeat must still replay the prompt or verdict before
+   * it, never the aside.
+   */
+  noRepeat?: boolean;
 }
 
 /** Run `opts.onEnd` once, never letting it throw into the speech path. */
@@ -540,11 +546,13 @@ let lastSpokenOpts: SpeechOpts | null = null;
 /** Records an utterance. Called by every public speaking entry point, and by
  * nothing else — see `chime()`, which pointedly does not call it. */
 function rememberSpoken(text: string, opts?: SpeechOpts): void {
+  if (opts?.noRepeat) return;
   lastSpoken = text;
   // `tag` is deliberately dropped: it correlates ONE request with ONE path
   // entry, and reusing it would file the repeat's path under the original
   // request, which is exactly the adjacency confusion tags exist to remove.
-  const { tag: _tag, interrupt: _interrupt, ...rest } = opts ?? {};
+  // `protect` belongs to one line's first saying, not to its repeats.
+  const { tag: _tag, interrupt: _interrupt, protect: _protect, ...rest } = opts ?? {};
   lastSpokenOpts = rest;
 }
 

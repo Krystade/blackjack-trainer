@@ -93,7 +93,7 @@ export function sayMomentAtPause(audio: AudioSettings): number {
   // Protected, as Home's Drive line is: the next prompt speaks with
   // `interrupt`, and a deep voice runs past the estimate; a protected line
   // makes that prompt wait instead of cutting it off. Mute still stops it.
-  speak(line, { ...speechOptsFrom(audio), protect: true });
+  speak(line, { ...speechOptsFrom(audio), protect: true, noRepeat: true });
   return estimateSpeechMs(line, audio.rate) + 300;
 }
 
