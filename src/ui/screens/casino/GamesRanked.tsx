@@ -136,7 +136,7 @@ function AutoStatus({ runner, rows }: { runner: RunnerState; rows: readonly Rank
         <p className="cas-auto-line" role="status">
           <span className="cas-auto-dot" aria-hidden="true" />
           <span>
-            Estimating {first} game{first === 1 ? '' : 's'}
+            Making {first} estimate{first === 1 ? '' : 's'}
             {rounds}
           </span>
         </p>

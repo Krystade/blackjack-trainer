@@ -89,6 +89,12 @@ describe('pickJob', () => {
   it('counts what is left, by kind', () => {
     expect(workCounts([a, b, c], stored({ a: result(), b: result({ status: 'done' }) }))).toEqual({ first: 1, refine: 1 });
   });
+
+  it('review N5: counts runs, not games -- two games dealt alike are one; a skipped key is none', () => {
+    const twin = cand('t', 'key-a');
+    expect(workCounts([a, twin, b], stored({}))).toEqual({ first: 2, refine: 0 });
+    expect(workCounts([a, twin, b], stored({}), new Set(['key-a']))).toEqual({ first: 1, refine: 0 });
+  });
 });
 
 describe('shouldPreempt', () => {

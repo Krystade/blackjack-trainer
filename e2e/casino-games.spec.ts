@@ -274,7 +274,7 @@ test('editing a rule: the old figures are marked Updating, and the new ones land
   await expect(goodRow.getByTestId('stale-badge')).toHaveText('Updating');
   await expect(goodRow).toContainText('S17');
   await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'estimating');
-  await expect(ranked(page).getByTestId('rank-auto')).toContainText('Estimating 1 game');
+  await expect(ranked(page).getByTestId('rank-auto')).toContainText('Making 1 estimate');
   // Held for longer than a run at this budget takes: still nothing, as the page is hidden.
   await page.waitForTimeout(1500);
   expect((await stored(page, 'g-good'))!.key).toBe(before);
@@ -478,7 +478,7 @@ test('review S2: a simulator that fails says so on the line, the row and the car
   await expect(rows(page).getByTestId('rank-failed')).toHaveText(Array(3).fill('The simulator failed: test failure'));
   await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'error');
   await expect(ranked(page).getByTestId('rank-failed-line')).toHaveText('The simulator failed on 3 games: test failure');
-  await expect(ranked(page).getByTestId('rank-auto')).not.toContainText('Estimating');
+  await expect(ranked(page).getByTestId('rank-auto')).not.toContainText('Making');
   for (const sel of ['.cas-rank-failed', '[data-testid="rank-failed-line"]']) expect(await worstContrast(page, sel), sel).toBeGreaterThanOrEqual(4.5);
   await rows(page).and(page.locator('[data-game="g-good"]')).click();
   await expect(page.getByTestId('gs-failed')).toContainText('The simulator failed on this game: test failure');
