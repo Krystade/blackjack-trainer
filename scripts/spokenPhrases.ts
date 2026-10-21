@@ -23,6 +23,7 @@
  */
 
 import { CALIBRATION_INTRO, CALIBRATION_RETRY, calibrationOrderLine } from '../src/diag/testKit';
+import { DC_LINES } from '../src/diag/driveChecks';
 import { correctPlay } from '../src/engine/strategy';
 import { DEFAULT_RULES } from '../src/engine/ruleset';
 import type { RuleSet } from '../src/engine/ruleset';
@@ -320,6 +321,10 @@ export function drillSentences(): string[] {
   add(CALIBRATION_INTRO);
   add(calibrationOrderLine());
   add(CALIBRATION_RETRY);
+  // Drive checks (review S2): every fixed line, WHOLE -- each is recorded as
+  // one clip, so splitting it would ask for sentences nobody says alone.
+  // QUEUE_TTS_LINE is left out on purpose: check 4 needs it live.
+  for (const line of Object.values(DC_LINES)) sentences.add(line);
   return [...sentences];
 }
 

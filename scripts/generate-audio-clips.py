@@ -43,6 +43,7 @@ enumerated at all — those stay on the live-TTS runtime fallback.
 Usage:
     pip install edge-tts                          # --engine edge (default)
     python scripts/generate-audio-clips.py --list  # print vocab, no synth, no backend import
+    python scripts/generate-audio-clips.py --list-json  # the vocab as a JSON list (scripts/clipManifest.test.ts)
 
     # Single voice, default backend (edge-tts):
     python scripts/generate-audio-clips.py --voice en-US-AriaNeural
@@ -65,6 +66,15 @@ Output layout (multi-voice):
     public/clips/<voiceId>/<slug>.mp3
     public/clips/<voiceId>/manifest.json   { "clips": { "<text>": "<slug>.mp3", ... } }
     public/clips/index.json                { "voices": [{"id","label"}, ...], "default": "<id>" }
+
+A run MERGES into what is already there (Wave L review S2): an existing
+manifest entry outside today's vocabulary is kept, with a warning, as long as
+its file is still on disk, and index.json keeps the voices this run did not
+touch. Overwriting used to drop every hand-recorded line at once (31 Drive
+checks lines per voice) and every other voice from the index.
+scripts/clipManifest.test.ts holds the other half: every shipped manifest key
+must be in build_vocabulary(), so a line recorded by hand without being
+derived fails there rather than lingering as a kept orphan.
 """
 
 from __future__ import annotations
@@ -307,6 +317,54 @@ def build_manifest(vocab: list[str]) -> dict[str, str]:
     return manifest
 
 
+def merge_manifest(
+    fresh: dict[str, str], previous: dict[str, str], file_exists
+) -> tuple[dict[str, str], list[str]]:
+    """Today's manifest plus every previous entry it lacks whose file still
+    exists. Returns (merged, kept): `kept` names the entries carried over, so
+    the run can say so. A fresh entry always wins for its own text."""
+    merged = dict(fresh)
+    kept: list[str] = []
+    taken = set(fresh.values())
+    for text, filename in previous.items():
+        if text in merged or filename in taken or not file_exists(filename):
+            continue
+        merged[text] = filename
+        taken.add(filename)
+        kept.append(text)
+    return merged, kept
+
+
+def read_manifest(path: Path) -> dict[str, str]:
+    """The clips map of an existing manifest.json, or {} when there is none."""
+    try:
+        with path.open(encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        return {}
+    clips = data.get("clips", {}) if isinstance(data, dict) else {}
+    return {k: v for k, v in clips.items() if isinstance(k, str) and isinstance(v, str)}
+
+
+def merge_index(previous: dict, voices: list[str], labels: dict[str, str]) -> dict:
+    """index.json with this run's voices added (or relabelled where --label
+    says so) and every other voice kept. The default stays unless it is gone."""
+    entries = [v for v in previous.get("voices", []) if isinstance(v, dict) and "id" in v]
+    by_id = {v["id"]: v for v in entries}
+    for v in voices:
+        if v in by_id:
+            if v in labels:
+                by_id[v]["label"] = labels[v]
+        else:
+            entry = {"id": v, "label": labels.get(v, default_label(v))}
+            entries.append(entry)
+            by_id[v] = entry
+    default = previous.get("default")
+    if default not in by_id:
+        default = voices[0]
+    return {"voices": entries, "default": default}
+
+
 # --- TTS backends. Each module is imported lazily, inside its synth ---------
 # --- function, so `--list` (and picking a different --engine) never pays ---
 # --- for or requires the other backends' dependencies. -----------------------
@@ -429,6 +487,11 @@ async def main_async(args: argparse.Namespace) -> int:
     vocab = build_vocabulary()
     manifest = build_manifest(vocab)
 
+    if args.list_json:
+        # ASCII-escaped: a Windows console would re-encode a raw em dash.
+        print(json.dumps(vocab))
+        return 0
+
     if args.list:
         for text in vocab:
             print(f"{slug(text):45s}  {text}")
@@ -474,21 +537,31 @@ async def main_async(args: argparse.Namespace) -> int:
             continue
 
         manifest_path = voice_dir / "manifest.json"
+        merged, kept = merge_manifest(
+            manifest, read_manifest(manifest_path), lambda f, d=voice_dir: (d / f).exists()
+        )
+        if kept:
+            print(f"[{voice}] kept {len(kept)} recorded clip(s) outside the vocabulary "
+                  f"(derive them in scripts/spokenPhrases.ts; clipManifest.test.ts fails until then):",
+                  file=sys.stderr)
+            for text in kept:
+                print(f"  {text!r}", file=sys.stderr)
         manifest_path.write_text(
-            json.dumps({"clips": manifest}, indent=2, ensure_ascii=False) + "\n",
+            json.dumps({"clips": merged}, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
         total = sum(
-            (voice_dir / f).stat().st_size for f in manifest.values() if (voice_dir / f).exists()
+            (voice_dir / f).stat().st_size for f in merged.values() if (voice_dir / f).exists()
         )
         print(f"[{voice}] generated {len(vocab)} clips ({total / 1024:.0f} KB) -> {voice_dir}")
         print(f"[{voice}] manifest: {manifest_path}")
 
-    index = {
-        "voices": [{"id": v, "label": labels.get(v, default_label(v))} for v in voices],
-        "default": voices[0],
-    }
     index_path = out_root / "index.json"
+    try:
+        previous_index = json.loads(index_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        previous_index = {}
+    index = merge_index(previous_index if isinstance(previous_index, dict) else {}, voices, labels)
     index_path.write_text(
         json.dumps(index, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
@@ -520,6 +593,8 @@ def main() -> int:
                         help="re-synthesize even if a clip file already exists")
     parser.add_argument("--list", action="store_true",
                         help="print the vocabulary and exit (no synthesis, no backend import)")
+    parser.add_argument("--list-json", action="store_true",
+                        help="print the vocabulary as a JSON list and exit")
     args = parser.parse_args()
     return asyncio.run(main_async(args))
 
