@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRanking, bestGameOf, evTargetMet, exitMinutesOf, gameFigures, needsCompute, rankedEvHour, sideCombinedText, withSideBet, type GameFigures } from './casinoRanking';
+import { buildRanking, bestGameOf, evTargetMet, exitMinutesOf, gameFigures, needsCompute, rankedEvHour, seatedThroughout, sideCombinedText, withSideBet, type GameFigures } from './casinoRanking';
 import { emptyCasinoLog, blankGame, type Casino, type CasinoGame, type CasinoLog } from '../store/casinoLog';
 import { resultState, simInputFor, type GameResult } from '../store/casinoGameStats';
 import { emptyAccum, type Accum } from '../engine/casinoSim';
@@ -345,6 +345,18 @@ describe('review S1: a side bet rides only on a method that stays seated', () =>
   it('a back-count best method is treated the same', () => {
     const row = rowFor(result({ 'bc+1-1': 3, ramp: 2 }));
     expect(row.figures!.best!.method.id).toBe('bc+1-1');
+    expect(rankedEvHour(row)).toBeCloseTo(240, 9);
+    expect(row.withSide).toBeUndefined();
+  });
+
+  it('re-review R2: a back-count entry with no exit is not seated either (it sits out until the count rises)', () => {
+    const base = result({ ramp: 2 });
+    const bc = base.methods!.find((m) => m.method.id === 'bc+1-1')!.method;
+    const backIn = { ...bc, id: 'bc+1', exitTc: null };
+    expect(seatedThroughout(backIn)).toBe(false);
+    // Back-counted in at $3/round = $240/h; ramp + side is below that, so the side bet is not added to it.
+    const row = rowFor({ ...base, methods: [...base.methods!, { method: backIn, acc: acc(3) }] });
+    expect(row.figures!.best!.method.id).toBe('bc+1');
     expect(rankedEvHour(row)).toBeCloseTo(240, 9);
     expect(row.withSide).toBeUndefined();
   });

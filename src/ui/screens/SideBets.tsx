@@ -104,8 +104,10 @@ function BetSection({ bet, s17, mine }: { bet: SideBetId; s17: boolean; mine: st
       {payTablesFor(bet).map((t) => (
         <details key={t.id} className="side-ref-table" open={t.id === mine}>
           <summary>
-            {t.name}
-            {t.weak && <span className="side-ref-weak">· weak source</span>}
+            <span className="side-ref-table-name">
+              {t.name}
+              {t.weak && <span className="side-ref-weak"> · weak source</span>}
+            </span>
           </summary>
           <PaysList table={t} />
           <TableRows table={t} s17={s17} />

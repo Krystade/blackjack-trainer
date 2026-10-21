@@ -158,3 +158,38 @@ describe('review S6: "bet the side?" is a real question', () => {
     });
   }
 });
+
+describe('re-review R1: decks left does not answer "bet the side?"', () => {
+  // Before: a fresh depth per try, kept on the first that matched the coin, so
+  // bet runs ended ~1 deck deeper and "bet if <= X decks left" scored 64-70%
+  // without counting a card.
+  const rows: [SideBetId, string, number][] = [
+    ['over13', 'ou-even', 6],
+    ['royalMatch', 'rm-v3', 6],
+    ['twentyOnePlus3', '213-v1', 2],
+  ];
+  for (const [bet, table, decks] of rows) {
+    it(`${bet} ${table}, ${decks} decks: "bet if <= X decks left" scores about half, at every X`, () => {
+      const plan = sidePlan(bet, table, decks, true)!;
+      const lite = { always: plan.always, count: plan.count, trigger: plan.trigger, betBelow: plan.betBelow };
+      const N = 1000;
+      const runs: { left: number; bet: boolean }[] = [];
+      for (let seed = 0; seed < N; seed++) {
+        const q = betQ(makeSideCountRun({ count: plan.count!, plan: lite, decks, cutDecks: decks > 2 ? 1 : 0.5, cards: 26, groupSize: 1, checkpoints: 'one', withHiLo: false, seed }));
+        runs.push({ left: q.decksLeft, bet: q.actual });
+      }
+      const lefts = [...new Set(runs.map((r) => r.left))].sort((a, b) => a - b);
+      expect(lefts.length).toBeGreaterThan(1);
+      for (const x of lefts) {
+        const right = runs.filter((r) => r.left <= x === r.bet).length / N;
+        expect(right, `bet if <= ${x} decks left`).toBeGreaterThan(0.45);
+        expect(right, `bet if <= ${x} decks left`).toBeLessThan(0.55);
+      }
+      const mean = (b: boolean) => {
+        const v = runs.filter((r) => r.bet === b).map((r) => r.left);
+        return v.reduce((a, c) => a + c, 0) / v.length;
+      };
+      expect(Math.abs(mean(true) - mean(false))).toBeLessThan(0.2);
+    }, 60_000);
+  }
+});

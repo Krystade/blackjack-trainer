@@ -27,9 +27,15 @@
   min-height: 44px;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0 0.35rem;
+  gap: 0.35rem;
   list-style: none;
+}
+
+/* Re-review R4: a long name wraps under itself, beside the marker, not onto a line under a lone marker. */
+.side-ref-table-name {
+  min-width: 0;
+  padding-left: 1.1em;
+  text-indent: -1.1em;
 }
 
 .side-ref-table > summary::-webkit-details-marker {
@@ -37,12 +43,15 @@
 }
 
 /* The disclosure's own marker, drawn: flex on <summary> drops the native one. */
-.side-ref-table > summary::before {
+.side-ref-table-name::before {
   content: '▸';
   color: var(--accent);
+  display: inline-block;
+  width: 1.1em;
+  text-indent: 0;
 }
 
-.side-ref-table[open] > summary::before {
+.side-ref-table[open] .side-ref-table-name::before {
   content: '▾';
 }
 

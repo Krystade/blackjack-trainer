@@ -1,8 +1,9 @@
 import type { Card } from '../engine/cards';
 import { mulberry32, Shoe, snapDecksRemaining } from '../engine/cards';
-import { hiLoTag } from '../engine/count';
+import { hiLoTag, trueCount } from '../engine/count';
+import { RANK_INDEX, SUIT_INDEX } from '../engine/sideBets/comp';
 import type { SideCountDef } from '../engine/sideBets/counts';
-import { SideCounter, sideExpected } from '../engine/sideBets/tableBet';
+import { SIDE_TC_ROUNDING, SideCounter, sideExpected } from '../engine/sideBets/tableBet';
 import type { SidePlanLite } from '../engine/sideBets/tableBet';
 import { checkpointIndices } from './countCheckpoints';
 import type { CheckpointFreq } from './countCheckpoints';
@@ -24,8 +25,10 @@ import type { CheckpointFreq } from './countCheckpoints';
  * runs (by the seed) are chosen to end where the count says bet, half where
  * it says no bet, that half within NEAR_TRIGGER of the trigger when it can
  * be, so it is a real call and not a count near zero. The cards are a genuine
- * shuffled shoe either way: only WHICH shoe is used is chosen, by trying
- * seeds until one ends the way the coin asked (SEED_TRIES).
+ * shuffled shoe either way: only WHICH shoe, and where it ends, is chosen.
+ * The end depth is drawn without the coin and kept only when a pool of shoes
+ * (SEED_TRIES) deals both endings there (re-review R1), so the decks left do
+ * not give the answer away.
  *
  * A suit count cannot be carried as one number (the spread depends on which
  * suit is high), so its start is the four suit tallies, each above the lowest.
@@ -80,8 +83,10 @@ export interface SideRunSpec {
   seed: number;
 }
 
-/** Shoes tried per run for the ending the coin asked for. */
-export const SEED_TRIES = 600;
+/** Shoes in a run's pool, each tried at every depth for both endings. */
+export const SEED_TRIES = 400;
+/** Depths tried before falling back to whatever ending was found. */
+export const DEPTH_TRIES = 40;
 /** A no-bet ending within this many true counts of the trigger is "near". */
 export const NEAR_TRIGGER = 2;
 /**
@@ -167,18 +172,82 @@ export function makeSideCountRun(spec: SideRunSpec): SideCountRun {
   const n = Math.max(1, Math.min(spec.cards, deepest));
   // A plan that bets every hand, or never, has no call to make: a fresh shoe.
   if (spec.plan.always || spec.plan.trigger === null) return attempt(spec, spec.seed, n, n).run;
-  const rng = mulberry32((spec.seed ^ 0x51de) >>> 0);
-  const wantBet = rng() < 0.5;
-  let fallback: Attempt | null = null;
-  for (let k = 0; k < SEED_TRIES; k++) {
-    const endAt = n + Math.floor(rng() * (deepest - n + 1));
-    const a = attempt(spec, (spec.seed + Math.imul(k, 0x9e3779b1)) >>> 0, endAt, n);
-    if (!a.speakable) continue;
-    if (a.bet === wantBet && (wantBet || a.near)) return a.run;
-    // No near miss to be had: the first ending the coin asked for, else the first speakable one.
-    if (!fallback || (a.bet === wantBet && fallback.bet !== wantBet)) fallback = a;
+  const wantBet = mulberry32((spec.seed ^ 0x51de) >>> 0)() < 0.5;
+  // Re-review R1: the depth must not depend on the answer, or "decks left"
+  // answers the question without a count (a fresh depth per try, kept on the
+  // first try that matched the coin, put bet runs ~1 deck deeper). So a depth
+  // is drawn without the coin and kept only when BOTH endings can be dealt at
+  // it -- a bet and a near no-bet, from the same pool of shoes -- and only then
+  // does the coin pick one. Which depths survive is the same for both answers.
+  const depths = mulberry32((spec.seed ^ 0xde97) >>> 0);
+  const pool: Prefix[] = [];
+  const shoeAt = (k: number): Prefix => (pool[k] ??= prefixOf(spec, (spec.seed + Math.imul(k, 0x9e3779b1)) >>> 0, deepest));
+  let fallback: { k: number; endAt: number } | null = null;
+  for (let d = 0; d < DEPTH_TRIES; d++) {
+    const endAt = n + Math.floor(depths() * (deepest - n + 1));
+    let yes: Attempt | null = null;
+    let no: Attempt | null = null;
+    for (let k = 0; k < SEED_TRIES && !(yes && no); k++) {
+      const p = shoeAt(k);
+      const end = quickEnding(spec, p, endAt, n);
+      if (end === null || (end === 'bet' ? yes : no)) continue;
+      // Dealt in full: the quick look checks the start and the end, the run checks every stop.
+      const a = attempt(spec, p.seed, endAt, n);
+      if (!a.speakable || a.bet !== (end === 'bet')) continue;
+      if (a.bet) yes = a;
+      else no = a;
+      if (!fallback && a.bet === wantBet) fallback = { k, endAt };
+    }
+    if (yes && no) return (wantBet ? yes : no).run;
   }
-  return (fallback ?? attempt(spec, spec.seed, n, n)).run;
+  // No depth deals both: the first ending the coin asked for, else a fresh shoe.
+  return fallback ? attempt(spec, shoeAt(fallback.k).seed, fallback.endAt, n).run : attempt(spec, spec.seed, n, n).run;
+}
+
+/** One shuffled shoe's counts after each card, so a depth is tested without dealing it again. */
+interface Prefix {
+  seed: number;
+  /** A tag count's running count after i cards (null for a suit count). */
+  side: Int16Array | null;
+  /** A suit count's four tallies after i cards, at [4i .. 4i+3] (null for a tag count). */
+  suits: Int16Array | null;
+  hiLo: Int16Array;
+}
+
+function prefixOf(spec: SideRunSpec, seed: number, upto: number): Prefix {
+  const shoe = new Shoe({ decks: spec.decks, seed });
+  const tags = spec.count.kind === 'suit' ? null : (spec.count.tags ?? []);
+  const side = tags ? new Int16Array(upto + 1) : null;
+  const suits = tags ? null : new Int16Array(4 * (upto + 1));
+  const hiLo = new Int16Array(upto + 1);
+  for (let i = 0; i < upto; i++) {
+    const c = shoe.draw();
+    hiLo[i + 1] = hiLo[i]! + hiLoTag(c.rank);
+    if (side) side[i + 1] = side[i]! + (tags![RANK_INDEX[c.rank]] ?? 0);
+    if (suits) {
+      for (let s = 0; s < 4; s++) suits[4 * (i + 1) + s] = suits[4 * i + s]!;
+      suits[4 * (i + 1) + SUIT_INDEX[c.suit]]! += 1;
+    }
+  }
+  return { seed, side, suits, hiLo };
+}
+
+/** The side count after `at` cards: the running count, or a suit count's spread. */
+function sideAt(p: Prefix, at: number): number {
+  if (p.side) return p.side[at]!;
+  const s = p.suits!;
+  const t = [s[4 * at]!, s[4 * at + 1]!, s[4 * at + 2]!, s[4 * at + 3]!];
+  return Math.max(...t) - Math.min(...t);
+}
+
+/** How a run ending after `endAt` cards would end -- 'bet', 'near' (a near no-bet) or null -- from the start and end counts alone. */
+function quickEnding(spec: SideRunSpec, p: Prefix, endAt: number, n: number): 'bet' | 'near' | null {
+  const start = endAt - n;
+  if (Math.abs(sideAt(p, start)) > RUN_COUNT_MAX || Math.abs(p.hiLo[start]!) > RUN_COUNT_MAX) return null;
+  if (Math.abs(sideAt(p, endAt)) > RUN_COUNT_MAX || (spec.withHiLo && Math.abs(p.hiLo[endAt]!) > RUN_COUNT_MAX)) return null;
+  const tc = trueCount(sideAt(p, endAt), snapDecksRemaining(spec.decks * 52 - endAt, spec.decks), SIDE_TC_ROUNDING);
+  if (sideExpected(spec.plan, tc)) return 'bet';
+  return spec.plan.trigger !== null && Math.abs(tc - spec.plan.trigger) <= NEAR_TRIGGER ? 'near' : null;
 }
 
 /** The side count the run starts from: the running count, or a suit count's spread. */
