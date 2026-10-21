@@ -20,6 +20,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+.cas-auto-rounds {
+  white-space: nowrap;
+}
+
 /* A steady dot, pulsing only where motion is welcome. */
 .cas-auto-dot {
   flex: none;

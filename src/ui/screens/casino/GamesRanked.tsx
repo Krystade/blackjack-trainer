@@ -120,23 +120,33 @@ function AutoStatus({ runner, rows }: { runner: RunnerState; rows: readonly Rank
   const { first, refine } = runner.todo;
   const r = runner.running;
   const name = r ? rows.find((x) => x.input.key === r.key)?.casino.name : undefined;
-  const rounds = r?.progress ? ` · ${roundsText(r.progress.basicRounds + r.progress.countRounds)} rounds` : '';
+  // The round count never wraps apart (at 320 it would leave "rounds" alone on a line).
+  const rounds = r?.progress ? (
+    <>
+      {' · '}
+      <span className="cas-auto-rounds">{roundsText(r.progress.basicRounds + r.progress.countRounds)} rounds</span>
+    </>
+  ) : null;
   const phase = first > 0 ? 'estimating' : refine > 0 ? 'refining' : runner.error ? 'error' : 'idle';
   return (
     <div className="cas-auto" data-testid="rank-auto" data-phase={phase}>
       {phase === 'estimating' && (
         <p className="cas-auto-line" role="status">
           <span className="cas-auto-dot" aria-hidden="true" />
-          Estimating {first} game{first === 1 ? '' : 's'}
-          {rounds}
+          <span>
+            Estimating {first} game{first === 1 ? '' : 's'}
+            {rounds}
+          </span>
         </p>
       )}
       {phase === 'refining' && (
         <p className="cas-auto-line" role="status">
           <span className="cas-auto-dot" aria-hidden="true" />
-          Firming up {refine} estimate{refine === 1 ? '' : 's'}
-          {name ? ` · ${name}` : ''}
-          {rounds}
+          <span>
+            Firming up {refine} estimate{refine === 1 ? '' : 's'}
+            {name ? ` · ${name}` : ''}
+            {rounds}
+          </span>
         </p>
       )}
       {phase === 'error' && (
