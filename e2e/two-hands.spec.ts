@@ -95,6 +95,8 @@ test('the ramp editor: ×2 per row, and hidden for a fixed two-hand seat', async
   await withProfile(page, { betSpreadOn: true, countCheckEvery: 0 });
   await page.goto('/?seed=7&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
+  // The table is lazy; its own control proves it mounted before the absence.
+  await expect(page.getByRole('button', { name: 'Play settings' })).toBeVisible();
   await expect(handsChoice(page)).toHaveCount(0);
   await page.getByRole('button', { name: 'Play settings' }).click();
   await page.getByRole('dialog', { name: 'Play settings' }).getByRole('button', { name: 'Edit profile and bet ramp', exact: true }).click();
@@ -113,6 +115,8 @@ test('a fixed two-hand seat: no hands column, no toggle', async ({ page }) => {
   await withProfile(page, { ...PROFILE, seats: { playerHands: 2 } });
   await page.goto('/?seed=7&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
+  // The table is lazy; its own control proves it mounted before the absence.
+  await expect(page.getByRole('button', { name: 'Play settings' })).toBeVisible();
   await expect(handsChoice(page)).toHaveCount(0);
   await page.getByRole('button', { name: 'Play settings' }).click();
   await page.getByRole('dialog', { name: 'Play settings' }).getByRole('button', { name: 'Edit profile and bet ramp', exact: true }).click();

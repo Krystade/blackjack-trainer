@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { openSettingsScreen, withSettings, selectFieldTestCondition, switchFieldTestCondition, readStoredDiagnostics } from './helpers';
+import { openSettingsScreen, withSettings, selectFieldTestCondition, switchFieldTestCondition, readStoredDiagnostics, flushStoredDiagnostics } from './helpers';
 
 /**
  * The field test, end to end.
@@ -99,6 +99,9 @@ function saidCount(page: Page): Promise<number> {
  * then "presses a wheel button on a route step" is pressing it with no step
  * mounted at all. See the probe test below, which was doing exactly that.
  */
+/** Flush the diagnostic buffer first: see `flushStoredDiagnostics`. */
+const flushLog = flushStoredDiagnostics;
+
 async function rawLog(page: Page): Promise<string> {
   return readStoredDiagnostics(page).then((raw) => {
     const all = raw
@@ -641,6 +644,7 @@ test('the probe is let go when the step is not about the wheel', async ({ page }
   // all. `fieldtest-wheel` only exists inside the running screen, so
   // `toHaveCount(0)` held for the wrong reason entirely: a probe that really
   // did leak onto a route step passed this test.
+  await flushLog(page);
   const before = (await rawLog(page)).split('field-test-arrival').length;
   // Still on the route step, and asserted as such before anything is pressed.
   await expect(page.getByTestId('fieldtest-title')).toBeVisible();
@@ -649,6 +653,10 @@ test('the probe is let go when the step is not about the wheel', async ({ page }
   expect(await press(page, 'nexttrack')).toBe(true);
   await expect(page.getByTestId('fieldtest-wheel')).toHaveCount(0);
 
+  // The log is buffered and written a second later (FLUSH_DELAY_MS), so a
+  // read straight after the press saw storage from BEFORE it whatever the
+  // probe did. Flushed first, the arrival -- had it been filed -- is there.
+  await flushLog(page);
   const after = (await rawLog(page)).split('field-test-arrival').length;
   expect(after, 'a press on a non-wheel step was filed as step evidence').toBe(before);
 });
@@ -888,8 +896,17 @@ test('an armed Finish disarms when the step changes', async ({ page }) => {
   await expect(finish).toHaveText('Tap again to end');
 
   // Think better of it and carry on with the run instead.
+  const step = await page.getByTestId('fieldtest-title').getAttribute('data-step');
   await page.getByTestId('fieldtest-skip').click();
-  await expect(finish, 'Finish stayed armed into the next step').not.toHaveText('Tap again to end');
+  // ONE LOOK, once the step has moved and two frames have passed. The latch
+  // also disarms itself after ARMED_MS (5s), so a retrying not.toHaveText --
+  // whose own timeout is 5s -- passed by waiting for that timer even when a
+  // step change left the latch armed.
+  await expect(page.getByTestId('fieldtest-title')).not.toHaveAttribute('data-step', step!);
+  await page.evaluate(
+    () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))),
+  );
+  expect(await finish.innerText(), 'Finish stayed armed into the next step').not.toBe('Tap again to end');
   // ...and the run is still up, rather than having ended on that one tap.
   await expect(page.getByTestId('fieldtest-answers')).toBeVisible();
 });
@@ -1554,17 +1571,20 @@ test('a driven condition says so before the run starts', async ({ page }) => {
     await page.getByTestId('fieldtest-open').click();
   }
 
-  await switchFieldTestCondition(page, 'Car, parked');
-  await expect(
-    page.getByTestId('fieldtest-motion-warning'),
-    'a parked condition was warned about as though it were driven',
-  ).toHaveCount(0);
-
+  // Driven first, so the parked absence below is a warning that WENT: the
+  // condition is set through a seam (not a click) and renders a moment later,
+  // and a parked check taken first could pass before any render at all.
   await switchFieldTestCondition(page, 'Freeway');
   await expect(
     page.getByTestId('fieldtest-motion-warning'),
     'a driven condition started with nothing said about it',
   ).toBeVisible();
+
+  await switchFieldTestCondition(page, 'Car, parked');
+  await expect(
+    page.getByTestId('fieldtest-motion-warning'),
+    'a parked condition was warned about as though it were driven',
+  ).toHaveCount(0);
 });
 
 /**
@@ -2397,6 +2417,9 @@ test('a launch with nothing to come back to opens where it always did', async ({
     window.localStorage.setItem('e2e.noReseed', '1');
   });
   await page.reload();
+  // Home is the positive: it is what "where it always did" means, and until
+  // React commits the gate is absent from an empty page as well.
+  await expect(page.locator('.home-title')).toBeVisible();
   await expect(
     page.getByTestId('fieldtest-screen'),
     'the field test hijacked a launch that had no run behind it',

@@ -56,6 +56,9 @@ test('a count check accepted through the depth band repeats what you typed', asy
   const strip = page.getByTestId('result-strip');
   for (let round = 1; round <= 70; round++) {
     await playRoundByAdvice(page);
+    // Settled first (playRoundByAdvice returns once the action bar goes, which
+    // can be before the dealer has finished): the owed check starts here.
+    await expect(page.getByRole('button', { name: 'Deal', exact: true })).toBeVisible();
     await expect(page.locator('.tc-peek-btn')).toHaveCount(0); // #31: no peek while the check is owed
     const actual = tcs[round - 1];
 

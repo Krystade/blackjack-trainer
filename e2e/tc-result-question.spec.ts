@@ -50,10 +50,11 @@ test('an answer goes straight to the next question, and the strip shows the aske
   await enter(page, floor);
 
   // No result screen, no Next tap: the keypad is back for the next question.
-  await expect(page.locator('.drill-result')).toHaveCount(0);
-  await expect(page.locator('.numpad')).toBeVisible();
+  // The strip is the proof the answer was graded; the absence follows it.
   const strip = page.getByTestId('result-strip');
   await expect(strip).toHaveAttribute('data-tone', 'ok');
+  await expect(page.locator('.drill-result')).toHaveCount(0);
+  await expect(page.locator('.numpad')).toBeVisible();
   await expect(strip).toContainText(`Correct! ${signed(rc)} ÷ ${plain(decks)} = ${plain(rc / decks)}`);
   await expect(strip).toContainText('floor');
 

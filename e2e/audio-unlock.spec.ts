@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { readStoredDiagnostics } from './helpers';
+import { flushStoredDiagnostics, readStoredDiagnostics } from './helpers';
 
 /**
  * The audio unlock, in a real browser.
@@ -40,6 +40,12 @@ test('nothing claims an unlock before the operator has touched anything', async 
   // waiting. An unlock recorded here would mean the app believed it had a user
   // activation it never had, which is the bug in the other direction: it would
   // consume the one-shot on nothing and leave the real tap unserved.
+  // FLUSHED FIRST: the log reaches storage a second after an entry, so a read
+  // straight after mount saw an empty store whatever had been logged. The
+  // `life freeze` row is the proof the read below includes the buffer.
+  await flushStoredDiagnostics(page);
+  const raw = (await readStoredDiagnostics(page)) ?? '';
+  expect(raw, 'the flush did not reach storage, so the read below proves nothing').toContain('"freeze"');
   expect(await unlockEntries(page)).toHaveLength(0);
 });
 

@@ -40,8 +40,8 @@ for (const [name, profile] of PROFILES) {
     // "not seen" and the Drills tab's table holds them (D-R2).
     await statsTab(page, 'Play');
     const play = page.getByTestId('play-index-table');
-    await expect(play.locator('tbody tr')).toHaveCount(0);
     await expect(play.getByTestId('index-unseen')).toHaveText(`${home.total} not seen yet`);
+    await expect(play.locator('tbody tr')).toHaveCount(0);
     await statsTab(page, 'Drills');
     const drills = page.getByTestId('drill-index-table');
     const rows = drills.locator('tbody tr');

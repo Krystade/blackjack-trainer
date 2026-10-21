@@ -460,10 +460,12 @@ test('on a quiz self-check, forward is "I had it" and back is "I missed it"', as
   await openQuiz(page);
   await press(page, 'forward');
   await press(page, 'back'); // I missed it
-  await expect(page.locator('.message-strip .result-correct')).toHaveCount(0);
   // The app has its own words for an admitted miss, and they are not the
-  // words for a wrong play -- no play was made.
+  // words for a wrong play -- no play was made. They are also the proof the
+  // press has been handled (it arrives off the event loop, not as a click),
+  // so the absence is read after them, not before.
   await expect(page.locator('.message-strip')).toContainText(/Admitted miss|Said you missed it/);
+  await expect(page.locator('.message-strip .result-correct')).toHaveCount(0);
 });
 
 /**

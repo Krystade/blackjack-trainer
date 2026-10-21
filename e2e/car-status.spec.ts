@@ -30,6 +30,8 @@ async function open(page: Page, name: string, drill: Record<string, unknown> = {
   await page.addStyleTag({ content: INSET });
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name, exact: true }).click();
+  // The drill is up before any absence on it is asserted.
+  await expect(page.getByLabel('Eyes-free audio')).toBeVisible();
 }
 
 /** One row, inside the drill gutter, with the wheel and score whole. */

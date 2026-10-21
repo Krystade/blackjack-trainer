@@ -134,7 +134,10 @@ test('B5: the skip control is a styled button, not an emoji', async ({ page }) =
   expect(await ff.innerText()).not.toMatch(/\p{Extended_Pictographic}/u);
   expect((await ff.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await ff.click();
-  await expect(ff).toHaveCount(0);
+  // Read once: at 400ms a card the deal ends by itself in a second or two, and
+  // the control goes with it, so a retrying count(0) passes on a dead button.
+  // The click is a discrete event; React has committed by the time it returns.
+  expect(await ff.count(), 'Skip did not dismiss itself').toBe(0);
 });
 
 for (const [group, min] of [[1, 96], [3, 70]] as const) {

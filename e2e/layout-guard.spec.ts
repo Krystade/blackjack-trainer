@@ -227,6 +227,7 @@ test('B1/s09: the Charts bar is one line from every origin; Back only where it g
     const r = document.createRange(); r.selectNodeContents(el); return r.getClientRects().length;
   });
   await tab(page, 'Charts');
+  await expect(page.locator('.charts-heading')).toBeVisible();
   await expect(page.locator('.charts-back-btn')).toHaveCount(0);
   expect(await oneLine('.charts-heading')).toBe(1);
   for (const origin of ['Drills', 'Settings'] as const) {

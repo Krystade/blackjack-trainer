@@ -142,6 +142,11 @@ test('A1 eyes-free: an unavailable action is refused out loud, not graded', asyn
   await expect(page.locator('.zone-pad')).toBeVisible();
 
   await page.evaluate(() => { window.__speechLog = []; });
+  const storedGrades = () =>
+    page.evaluate(() =>
+      ['bjtrainer.stats.v1', 'bjtrainer.flashsr.v1'].map((k) => window.localStorage.getItem(k)),
+    );
+  const before = await storedGrades();
 
   // Tap the actual Split quadrant. Driving the real pad matters here: the
   // regression WAS that this path alone bypassed the gate, and the keyboard
@@ -156,7 +161,11 @@ test('A1 eyes-free: an unavailable action is refused out loud, not graded', asyn
   await page.waitForFunction(() =>
     (window.__speechLog ?? []).some((l) => /isn't available/i.test(l)));
 
-  // ...and critically, it did NOT grade. No verdict, no correction panel.
-  await expect(page.locator('.mistake-card')).toHaveCount(0);
-  await expect(page.locator('.message-strip .result-correct')).toHaveCount(0);
+  // ...and critically, it did NOT grade. No verdict, no correction panel --
+  // read once, now: a panel that did open auto-advances away within seconds,
+  // so a retrying count(0) would wait for it to leave and pass. And nothing
+  // reached Stats or the review deck, which outlive the screen.
+  expect(await page.locator('.mistake-card').count()).toBe(0);
+  expect(await page.locator('.message-strip .result-correct').count()).toBe(0);
+  expect(await storedGrades()).toEqual(before);
 });

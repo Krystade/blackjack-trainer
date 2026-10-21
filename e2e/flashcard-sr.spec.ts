@@ -15,6 +15,7 @@ async function openFlashcards(page: import('@playwright/test').Page) {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  await expect(page.locator('.action-bar button').first()).toBeVisible();
 }
 
 /** Answer whatever is on screen, however it grades. */

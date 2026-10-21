@@ -498,6 +498,8 @@ test('a history with no checkpoints says nothing about them, rather than claimin
   await page.goto('/?e2e=1');
   await page.locator('.home-stats-link').click();
   await statsTab(page, 'Drills');
+  // The Drills tab is up (Stats is lazy) before its silence is read.
+  await expect(page.locator('[data-tab="drills"]').first()).toBeVisible();
 
   await expect(page.getByText(/Checkpoints held/)).toHaveCount(0);
   await expect(page.getByText(/right count by luck/)).toHaveCount(0);

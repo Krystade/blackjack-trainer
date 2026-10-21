@@ -24,6 +24,9 @@ test('there is no mute button until the app has a voice', async ({ page }) => {
   // rather than inherited -- audio ships on now (store/types.ts).
   await withSettings(page, { audio: { enabled: false } });
   await page.goto('/?e2e=1');
+  // The button renders in the same commit as Home, so Home being up proves the
+  // absence is the setting's doing and not a first paint that has not landed.
+  await expect(page.locator('.home-title')).toBeVisible();
   await expect(page.locator(MUTE)).toHaveCount(0);
 });
 

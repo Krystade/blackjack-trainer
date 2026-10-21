@@ -89,11 +89,13 @@ test('the checkpoint says nothing about the answer — feedback would reset the 
   // Answered deliberately, absurdly wrong: 99 is unreachable over ten cards.
   await enterNumber(page, 99);
 
-  // Back to counting, with no verdict of any kind on the screen.
-  await expect(checkpointArea(page)).toHaveCount(0);
-  await expect(page.locator('.checkpoint-result')).toHaveCount(0);
-  await expect(page.locator('.result-correct, .result-wrong')).toHaveCount(0);
+  // Back to counting, with no verdict of any kind on the screen. The tap zone
+  // is the positive; the verdicts are then read once, not retried -- a
+  // verdict that flashed up and timed out would satisfy a retrying count(0).
   await expect(page.locator('.manual-tap-zone')).toBeVisible();
+  await expect(checkpointArea(page)).toHaveCount(0);
+  expect(await page.locator('.checkpoint-result').count()).toBe(0);
+  expect(await page.locator('.result-correct, .result-wrong').count()).toBe(0);
 });
 
 /**

@@ -156,6 +156,7 @@ test('E7: with no table answers Play > Indexes is the one not-seen line', async 
   await page.goto('/?e2e=1');
   await page.locator('.tab-bar').getByRole('button', { name: 'Stats', exact: true }).click();
   const table = page.getByTestId('play-index-table');
-  await expect(table.locator('table')).toHaveCount(0);
+  // Stats is lazy: the not-seen line proves the card rendered first.
   await expect(table.getByTestId('index-unseen')).toHaveText(`${ASKED.length} not seen yet`);
+  await expect(table.locator('table')).toHaveCount(0);
 });

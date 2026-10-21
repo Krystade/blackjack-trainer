@@ -96,6 +96,17 @@ test('prefers-reduced-motion: reduce suppresses the skip control entirely (nothi
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await withSettings(page, { dealSpeedMs: 5000 });
   await withProfile(page, { name: 'Deal Animation Reduced Motion Profile' });
+  // "Never waits for it" needs a watcher, not a retrying count: toHaveCount(0)
+  // DOES wait, and passes the moment a flicker has ended. This records whether
+  // the control was ever in the document at all, from the first paint on.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __ffSeen: boolean };
+    w.__ffSeen = false;
+    const look = () => {
+      if (document.querySelector('.fast-forward-btn')) w.__ffSeen = true;
+    };
+    new MutationObserver(look).observe(document, { childList: true, subtree: true });
+  });
 
   await page.goto('/?seed=1&e2e=1');
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -103,5 +114,9 @@ test('prefers-reduced-motion: reduce suppresses the skip control entirely (nothi
   await resolveInsurance(page, false);
 
   await expect(page.locator('.player-hand .hand-cards .card')).toHaveCount(2);
-  await expect(page.locator('.fast-forward-btn')).toHaveCount(0);
+  expect(await page.locator('.fast-forward-btn').count()).toBe(0);
+  expect(
+    await page.evaluate(() => (window as unknown as { __ffSeen: boolean }).__ffSeen),
+    'the skip control flickered on under reduced motion',
+  ).toBe(false);
 });

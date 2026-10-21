@@ -206,6 +206,10 @@ test('eyes-free: neither the option nor Easy first run is offered', async ({ pag
   await withSettings(page, { audio: { enabled: true } });
   await openCountSetup(page);
   await expect(page.getByRole('button', { name: 'Easy first run', exact: true })).toBeVisible();
+  // The option is offered with eyes-free off -- seen first, so its absence
+  // below is eyes-free's doing and not a label that no longer matches.
+  await openCountOptions(page);
+  await expect(page.getByLabel(/Show Hi-Lo values/)).toBeVisible();
   await page.getByLabel('Eyes-free audio').check();
   await expect(page.getByRole('button', { name: 'Easy first run', exact: true })).toHaveCount(0);
   await openCountOptions(page);

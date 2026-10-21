@@ -21,6 +21,7 @@ test('a save that cannot land shows a toast, and the drill carries on', async ({
   });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/?e2e=1');
+  await expect(page.locator('.home-title')).toBeVisible();
   await expect(page.getByTestId('storage-toast')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
@@ -81,7 +82,16 @@ test('saves that land show no toast', async ({ page }) => {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  const stored = () => page.evaluate(() => window.localStorage.getItem('bjtrainer.stats.v1'));
+  const before = await stored();
   await page.locator('.action-bar button').first().click();
   await expect(page.locator('.message-strip')).toBeVisible();
-  await expect(page.getByTestId('storage-toast')).toHaveCount(0);
+  // The save itself is the positive: once it has landed and a frame has
+  // rendered, a toast it raised would be on screen. Asserting the absence
+  // before then would pass on a toast that was merely late.
+  await expect.poll(stored).not.toBe(before);
+  await page.evaluate(
+    () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))),
+  );
+  expect(await page.getByTestId('storage-toast').count()).toBe(0);
 });

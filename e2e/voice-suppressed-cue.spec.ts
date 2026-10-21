@@ -66,6 +66,13 @@ async function say(page: Page, transcript: string): Promise<void> {
   }, transcript);
 }
 
+/** What a grade writes, whatever the screen shows by the time anyone looks. */
+async function graded(page: Page): Promise<unknown> {
+  return page.evaluate(() =>
+    ['bjtrainer.stats.v1', 'bjtrainer.flashsr.v1'].map((k) => window.localStorage.getItem(k)),
+  );
+}
+
 function spoken(page: Page): Promise<string[]> {
   return page.evaluate(() => window.__speechLog ?? []);
 }
@@ -88,13 +95,19 @@ test('an answer said over the app earns a cue instead of vanishing', async ({ pa
 
   await startTalking(page);
   const before = (await spoken(page)).length;
+  const stored = await graded(page);
 
   await say(page, 'double');
 
   const after = await spoken(page);
   expect(after.slice(before)).toContain('chime:again');
-  // Suppressed, not acted on: the card must not have been graded.
-  await expect(page.locator('.feedback-cell')).toHaveCount(0);
+  // Suppressed, not acted on: the card must not have been graded. The cue is
+  // the reaction to this result, so the panel is looked at once, now -- a
+  // retrying check could be satisfied by the panel's own auto-advance -- and
+  // the stored stats say whether a grade happened at all.
+  await expect(page.locator('.voice-status-heard')).toContainText('the app was speaking');
+  expect(await page.locator('.feedback-cell').count()).toBe(0);
+  expect(await graded(page)).toEqual(stored);
 });
 
 test('the app hearing its own voice stays silent', async ({ page }) => {
@@ -108,6 +121,10 @@ test('the app hearing its own voice stays silent', async ({ page }) => {
   const echo = said.replace(/[^A-Za-z ]/g, ' ').trim().split(/\s+/).slice(0, 2).join(' ');
   await say(page, echo);
 
+  // The verdict is the app's reaction to the echo; the cue the test before
+  // this one shows is logged in the same handler, so once the verdict is on
+  // screen a cue would already be in the log.
+  await expect(page.locator('.voice-status-heard')).toContainText('ignored');
   expect((await spoken(page)).slice(before)).not.toContain('chime:again');
 });
 

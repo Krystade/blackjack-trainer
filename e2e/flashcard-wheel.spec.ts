@@ -49,6 +49,8 @@ async function openFlashcards(page: Page): Promise<void> {
   await page.goto('/?e2e=1');
   await page.getByRole('button', { name: 'Drills', exact: true }).click();
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
+  // The drill is up: an absence asserted next is about the card, not Drills.
+  await expect(page.locator('.action-bar button').first()).toBeVisible();
 }
 
 test('forward reveals the right play and asks whether you had it', async ({ page }) => {
@@ -128,15 +130,19 @@ test('back repeats the hand rather than answering it', async ({ page }) => {
   await openFlashcards(page);
 
   const before = (await spoken(page)).length;
+  const statsBefore = await readStats(page);
   await press(page, 'back');
 
-  // Nothing was graded and nothing was revealed...
-  await expect(page.getByTestId('flash-selfcheck')).toHaveCount(0);
-  await expect(page.locator('.feedback-cell')).toHaveCount(0);
-  // ...but the hand was said again.
+  // The hand was said again -- the press's own reaction, and the moment after
+  // which a reveal or a grade from the same press would already be showing.
+  await expect.poll(async () => (await spoken(page)).length).toBeGreaterThan(before);
   const after = await spoken(page);
-  expect(after.length).toBeGreaterThan(before);
   expect(after[after.length - 1]).toMatch(/dealer/i);
+  // Nothing was graded and nothing was revealed: one look at the screen, and
+  // the stored stats, which a grade would have written whatever the screen did.
+  expect(await page.getByTestId('flash-selfcheck').count()).toBe(0);
+  expect(await page.locator('.feedback-cell').count()).toBe(0);
+  expect(await readStats(page)).toEqual(statsBefore);
 });
 
 /**
