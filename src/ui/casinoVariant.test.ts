@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildRanking, needsCompute } from './casinoRanking';
+import { buildRanking } from './casinoRanking';
+import { orderCandidates } from './casinoAutoSim';
 import { labelledSummary } from './casinoFigures';
 import { blankGame, emptyCasinoLog, normGame, type Casino, type CasinoGame } from '../store/casinoLog';
 import { simInputFor, type GameResult } from '../store/casinoGameStats';
@@ -53,8 +54,8 @@ describe('Wave L: a casino game can be a variant', () => {
     const row = rows.find((r) => r.game.id === 'gfb')!;
     expect(row.notModelled).toBe(true);
     expect(row.figures).toBeNull();
-    expect(needsCompute(row)).toBe(false);
-    expect(needsCompute(rows.find((r) => r.game.id === 'gstd')!)).toBe(true);
+    // Wave Q: never worked out on its own either; the standard game beside it is.
+    expect(orderCandidates(rows, new Map(), 'p').map((c) => c.gameId)).toEqual(['gstd']);
   });
 
   it('names the variant in the game summary', () => {

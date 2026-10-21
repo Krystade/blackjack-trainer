@@ -1,20 +1,26 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { loadGameResults, pruneGameResults, subscribeGameResults, type GameResult } from '../../../store/casinoGameStats';
+import { loadGameCache, pruneGameResults, subscribeGameResults, type GameResult } from '../../../store/casinoGameStats';
 import { getActiveProfile } from '../../../store/profiles';
 import type { CasinoLog, GeoPoint } from '../../../store/casinoLog';
 import type { Profile } from '../../../store/types';
 import { runnerState, subscribeRunner, type RunnerState } from './simRunner';
 
+export interface GameCache {
+  results: Record<string, GameResult>;
+  /** Wave Q: results by key for inputs no game has now (casinoGameStats.ts). */
+  archive: Record<string, GameResult>;
+}
+
 /** Cached results, re-read whenever one is saved (here or in another tab). */
-export function useGameResults(log: CasinoLog): Record<string, GameResult> {
-  const [results, setResults] = useState(() => loadGameResults());
-  useEffect(() => subscribeGameResults(() => setResults(loadGameResults())), []);
-  // Results for games that are gone go with them.
+export function useGameCache(log: CasinoLog): GameCache {
+  const [cache, setCache] = useState(() => loadGameCache());
+  useEffect(() => subscribeGameResults(() => setCache(loadGameCache())), []);
+  // Results for games that are gone go to the archive.
   const ids = useMemo(() => new Set(log.casinos.flatMap((c) => c.games.map((g) => g.id))), [log]);
   useEffect(() => {
     if (ids.size > 0) pruneGameResults(ids);
   }, [ids]);
-  return results;
+  return cache;
 }
 
 export function useRunner(): RunnerState {

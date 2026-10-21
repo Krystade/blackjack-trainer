@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { buildRanking, bestGameOf, evTargetMet, exitMinutesOf, gameFigures, needsCompute, rankedEvHour, seatedThroughout, sideCombinedText, withSideBet, type GameFigures } from './casinoRanking';
+import { buildRanking, bestGameOf, evTargetMet, exitMinutesOf, gameFigures, rankedEvHour, seatedThroughout, sideCombinedText, withSideBet, type GameFigures } from './casinoRanking';
 import { emptyCasinoLog, blankGame, type Casino, type CasinoGame, type CasinoLog } from '../store/casinoLog';
 import { resultState, simInputFor, type GameResult } from '../store/casinoGameStats';
+import { workFor } from './casinoAutoSim';
 import { emptyAccum, type Accum } from '../engine/casinoSim';
 import { makeDefaultProfile } from '../store/profiles';
 
@@ -79,7 +80,8 @@ describe('buildRanking', () => {
     const near = casino('near', [a], { driveMinutes: 15 });
     const far = casino('far', [c], { driveMinutes: 240 });
     const none = casino('none', [b]);
-    const log = logOf([far, none, near, casino('todo', [game('ge')], { driveMinutes: 5 })], { sessionHours: 4 });
+    // Wave Q: dealt differently from 'ga' (a twin would share its result, resultForKey).
+    const log = logOf([far, none, near, casino('todo', [game('ge', { minBet: 10 })], { driveMinutes: 5 })], { sessionHours: 4 });
     // far earns more per hour (3 vs 2), but 8 hours on the road buries it.
     const results = { ga: resultFor(a, 2), gc: resultFor(c, 3), gb: resultFor(b, 9) };
     const rows = buildRanking(log, profile, results, NOW, null, 'trip');
@@ -188,14 +190,14 @@ describe('review S3 and S4: partial runs and unknown mid-shoe entry', () => {
   const a = game('ga');
   const b = game('gb', { cutDecksLeft: 2 });
 
-  it('a partial run is marked, ranks after finished ones, and Compute all runs it again', () => {
+  it('a partial run is marked, ranks after finished ones, and is run again on its own', () => {
     const log = logOf([casino('c1', [a, b])]);
     const results = { ga: { ...resultFor(a, 3), status: 'cancelled' as const }, gb: resultFor(b, 1) };
     const rows = buildRanking(log, profile, results, NOW, null, 'ev');
     expect(rows.map((r) => r.game.id)).toEqual(['gb', 'ga']);
     expect(rows[1]!.figures!.partial).toBe(true);
     expect(rows[1]!.state.kind).toBe('current');
-    expect(rows.map(needsCompute)).toEqual([false, true]);
+    expect(rows.map((r) => workFor(r.state.kind === 'current' ? r.state.result : undefined))).toEqual([null, 'refine']);
     for (const status of ['time', 'budget'] as const) {
       const r = buildRanking(log, profile, { ga: { ...resultFor(a, 3), status } }, NOW, null, 'ev');
       expect(r.find((x) => x.game.id === 'ga')!.figures!.partial, status).toBe(true);
