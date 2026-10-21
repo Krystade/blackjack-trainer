@@ -1,10 +1,10 @@
 /* Wave L: the side-bet reference page. */
 .side-ref-intro {
-  margin: 0 0 0.75rem;
+  margin: 0 16px 0.75rem;
 }
 
 .side-ref-bet {
-  padding: 0.75rem 0;
+  padding: 0.75rem 16px;
   border-top: 1px solid var(--accent-line);
 }
 
@@ -28,6 +28,26 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
+  gap: 0 0.35rem;
+  list-style: none;
+}
+
+.side-ref-table > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* The disclosure's own marker, drawn: flex on <summary> drops the native one. */
+.side-ref-table > summary::before {
+  content: '▸';
+  color: var(--accent);
+}
+
+.side-ref-table[open] > summary::before {
+  content: '▾';
+}
+
+.side-ref a {
+  color: var(--accent);
 }
 
 .side-ref-weak {

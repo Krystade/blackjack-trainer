@@ -92,7 +92,7 @@ function countableBets(profile: Profile): { bet: SideBetId; payTable: string; pl
 }
 
 function questionLabel(q: SideQuestion): string {
-  if (q.kind === 'bet') return `${decksText(q.decksLeft)} decks left — bet the side?`;
+  if (q.kind === 'bet') return `${decksText(q.decksLeft)} ${q.decksLeft === 1 ? 'deck' : 'decks'} left — bet the side?`;
   return q.count === 'hilo' ? 'Hi-Lo running count?' : 'Side running count?';
 }
 
@@ -429,7 +429,16 @@ export function SideCountDrillView({
 
       {phase === 'flashing' && (
         <div className="side-drill-flash" data-testid="side-drill-flash">
-          {shownCards && !eyesFree ? shownCards.map((c, i) => <PlayingCard key={`${shown}-${i}`} card={c} />) : <div className="side-drill-blank" />}
+          {/* The count drill's card stage (cardSize.css): the same card size. */}
+          {shownCards && !eyesFree ? (
+            <div className="count-flash-cards">
+              {shownCards.map((c, i) => (
+                <PlayingCard key={`${shown}-${i}`} card={c} />
+              ))}
+            </div>
+          ) : (
+            <div className="side-drill-blank" />
+          )}
           <div className="side-drill-progress">
             {Math.max(0, shown + 1)} / {run?.groups.length ?? 0}
           </div>
@@ -439,7 +448,7 @@ export function SideCountDrillView({
       {phase === 'asking' && question && (
         <div className="side-drill-ask" data-testid="side-drill-ask" data-kind={question.kind}>
           <div className="side-drill-question" data-testid="side-drill-question">
-            {questionLabel(question)}
+            {question.kind === 'count' ? `After ${stop!.cardsShown} cards` : questionLabel(question)}
           </div>
           {question.kind === 'count' ? (
             <NumPad

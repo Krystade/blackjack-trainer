@@ -11,7 +11,7 @@
   justify-content: center;
   gap: 1px;
   padding: 0 4px;
-  border: 2px dashed var(--accent-line);
+  border: 2px dashed var(--ink-dim);
   border-radius: 999px;
   background: transparent;
   color: var(--ink-dim);

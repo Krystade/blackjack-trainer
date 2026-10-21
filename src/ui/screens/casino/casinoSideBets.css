@@ -43,3 +43,9 @@
 .cas-sb-combined {
   margin: 0.5rem 0;
 }
+
+/* Each side bet on the card: the methods' row rhythm and gutter. */
+.cas-sb-item {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--surface);
+}

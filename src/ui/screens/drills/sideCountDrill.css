@@ -23,6 +23,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+.side-drill-ask,
+.side-drill-result,
+.side-drill-flash {
+  padding-inline: 16px;
+}
+
 .side-drill-ask {
   display: flex;
   flex-direction: column;
@@ -62,6 +68,12 @@
   margin: 0;
   padding-left: 1.1rem;
   font-size: var(--fs-sm);
+}
+
+.side-drill-answers li.result-correct,
+.side-drill-answers li.result-wrong {
+  font-size: var(--fs-sm);
+  font-weight: 600;
 }
 
 .side-drill-answers li + li {

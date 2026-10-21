@@ -177,7 +177,8 @@ test.describe('the side count drill', () => {
     };
     // Checkpoint: the right count.
     await expect(ask).toHaveAttribute('data-kind', 'count');
-    await expect(page.getByTestId('side-drill-question')).toHaveText('Side running count?');
+    await expect(page.getByTestId('side-drill-question')).toHaveText(`After ${run.stops[0]!.cardsShown} cards`);
+    await expect(ask.locator('.numpad-label')).toHaveText('Side running count?');
     await shot(page, 'side-drill-checkpoint');
     const first = run.stops[0]!.questions[0]!;
     if (first.kind !== 'count') throw new Error('expected a count question');
