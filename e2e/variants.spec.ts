@@ -156,7 +156,12 @@ test('a casino game can be a variant: the card shows its house edge and says cou
   const row = page.getByTestId('games-ranked').getByTestId('rank-row');
   await expect(row.getByTestId('rank-ev')).toHaveText('not modelled');
   await expect(row).toContainText('Free Bet');
-  await expect(page.getByTestId('compute-all')).toHaveCount(0);
+  // A variant game is never simulated: nothing is queued or stored for it.
+  const simmed = await page.evaluate(() => {
+    const raw = localStorage.getItem('bjtrainer.casinoGameStats.v1');
+    return raw ? Object.keys(JSON.parse(raw).results ?? JSON.parse(raw)).length : 0;
+  });
+  expect(simmed).toBe(0);
   await row.click();
   const card = page.getByTestId('game-stats');
   await expect(card).toHaveAttribute('data-state', 'variant');
