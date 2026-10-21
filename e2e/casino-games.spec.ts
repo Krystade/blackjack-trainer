@@ -4,13 +4,15 @@ import { worstContrast } from './contrast';
 
 /**
  * Wave K: several games per casino, each worked out by the in-app simulator,
- * and the "Games ranked" list built from them.
+ * and the "Games ranked" list built from them. Wave Q: worked out on their
+ * own -- there is no Compute button -- whenever a game's inputs change.
  *
  * The simulator runs in a Web Worker; `window.__bjCasinoSimBudget` caps each
- * run at a few thousand rounds so a compute finishes in about a second. The
- * figures at that budget are noisy, so nothing here pins a dollar amount: the
- * spec checks the ORDER against the figures shown, the states a result moves
- * through (none -> current -> stale -> current), and what each card says.
+ * game at a few thousand rounds so it finishes in about a second, the same
+ * every time. The figures at that budget are noisy, so nothing here pins a
+ * dollar amount: the spec checks the ORDER against the figures shown, the
+ * states a result moves through (none -> current -> stale -> current), and
+ * what each card says.
  */
 
 test.use({ viewport: { width: 375, height: 812 } });
@@ -59,6 +61,22 @@ const back = (page: Page) => page.getByRole('button', { name: /Back$/ }).click()
 const ranked = (page: Page) => page.getByTestId('games-ranked');
 const rows = (page: Page) => ranked(page).getByTestId('rank-row');
 
+/** Wave Q: no button anywhere asks for a run. */
+async function noComputeButtons(page: Page): Promise<void> {
+  for (const id of ['compute-all', 'compute-game', 'rerun-game']) await expect(page.getByTestId(id)).toHaveCount(0);
+}
+
+/** Wave Q: the page as the phone hides it (locked, another app): the runner stops. */
+const setHidden = (page: Page, hidden: boolean) =>
+  page.evaluate((h) => {
+    Object.defineProperty(document, 'visibilityState', { value: h ? 'hidden' : 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, hidden);
+
+/** The stored result for a game, read from the page. */
+const stored = (page: Page, id: string) =>
+  page.evaluate(([k, g]) => (JSON.parse(localStorage.getItem(k!) ?? '{"results":{}}').results[g!] ?? null) as { key: string; status: string; basicRounds: number; countRounds: number } | null, [STATS_KEY, id]);
+
 /** "+$123/h" / "−$45/h" -> number. */
 function money(text: string): number {
   const m = /([+−-])?\$([\d,.]+)/.exec(text);
@@ -67,26 +85,25 @@ function money(text: string): number {
   return m[1] === '−' || m[1] === '-' ? -v : v;
 }
 
-test('compute all, then the ranking follows the figures; the cards say what they are', async ({ page }) => {
+test('figures appear on their own, the ranking follows them, and the cards say what they are', async ({ page }) => {
   await seed(page);
   await page.goto('/?e2e=1');
   await openCasino(page);
 
-  // Three games listed (the burned casino's is left out), none computed yet.
+  // Three games listed (the burned casino's is left out); nothing to press.
   await expect(rows(page)).toHaveCount(3);
   await expect(ranked(page)).not.toContainText('Burned Palace');
-  await expect(rows(page).getByTestId('rank-ev')).toHaveText(['not computed', 'not computed', 'not computed']);
-  await expect(ranked(page).getByTestId('compute-all')).toContainText('Compute all');
+  await noComputeButtons(page);
 
-  // One at a time, then all done.
-  await ranked(page).getByTestId('compute-all').click();
+  // Worked out one at a time, on their own, then the line goes quiet.
   await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3, { timeout: 30_000 });
-  await expect(ranked(page).getByTestId('rank-busy')).toHaveCount(0);
-  // Review S3: a run stopped by the round budget is partial -- marked with its
-  // interval in every row, and Compute all offers to run them again.
+  await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'idle');
+  await expect(ranked(page).getByTestId('rank-auto')).toContainText('on their own, while Casino is open');
+  await expect(rows(page).getByTestId('rank-ev')).not.toContainText(['estimating…']);
+  // Review S3: a run stopped by the round budget is partial -- marked with its interval in every row.
   await expect(rows(page).getByTestId('partial-badge')).toHaveCount(3);
   for (const t of await rows(page).getByTestId('partial-badge').allTextContents()) expect(t).toMatch(/^Partial ±\$\d[\d,]*\/h$/);
-  await expect(ranked(page).getByTestId('compute-all')).toContainText('Compute 3 not done');
+  await noComputeButtons(page);
 
   // Sorted by EV per hour, highest first.
   const evs = (await rows(page).getByTestId('rank-ev').allTextContents()).map(money);
@@ -235,19 +252,16 @@ test('a game with nothing logged reads "Game not logged" and flags no assumed ru
   await expect(row('g-dsa').getByTestId('assumed-badge')).toHaveText('1 rule assumed');
 });
 
-test('editing a rule makes the result stale; Re-run makes it current again', async ({ page }) => {
+test('editing a rule: the old figures are marked Updating, and the new ones land without pressing anything', async ({ page }) => {
   await seed(page);
   await page.goto('/?e2e=1');
   await openCasino(page);
   const goodRow = rows(page).and(page.locator('[data-game="g-good"]'));
-  await goodRow.click();
-  const card = page.getByTestId('game-stats');
-  await expect(card).toHaveAttribute('data-state', 'none');
-  await card.getByTestId('compute-game').click();
-  await expect(card).toHaveAttribute('data-state', 'current', { timeout: 20_000 });
-  const before = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)!).results['g-good'].key as string, STATS_KEY);
-  await back(page);
+  await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3, { timeout: 30_000 });
+  const before = (await stored(page, 'g-good'))!.key;
 
+  // Hidden, nothing runs, so the in-between state holds still to be read.
+  await setHidden(page, true);
   // Open Golden Nugget, two games in its editor; switch the first to S17.
   await page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' }).click();
   const editors = page.getByTestId('game-editor');
@@ -255,21 +269,32 @@ test('editing a rule makes the result stale; Re-run makes it current again', asy
   await editors.nth(0).getByRole('group', { name: 'Dealer soft 17' }).getByRole('button', { name: 'Stands (S17)' }).click();
   await page.getByRole('button', { name: 'Save casino' }).click();
 
-  // Stale in the list and on the card, the old figures still shown and marked.
+  // The old figures still shown, marked as on their way out; the line says it is waiting to run.
   await expect(goodRow).toHaveAttribute('data-state', 'stale');
-  await expect(goodRow.getByTestId('stale-badge')).toHaveText('Stale');
+  await expect(goodRow.getByTestId('stale-badge')).toHaveText('Updating');
   await expect(goodRow).toContainText('S17');
+  await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'estimating');
+  await expect(ranked(page).getByTestId('rank-auto')).toContainText('Estimating 1 game');
+  // Held for longer than a run at this budget takes: still nothing, as the page is hidden.
+  await page.waitForTimeout(1500);
+  expect((await stored(page, 'g-good'))!.key).toBe(before);
   await goodRow.click();
+  const card = page.getByTestId('game-stats');
   await expect(card).toHaveAttribute('data-state', 'stale');
-  await expect(card.getByTestId('stale-note')).toBeVisible();
+  await expect(card.getByTestId('stale-note')).toContainText('Updating');
   await expect(card.getByTestId('gs-hero')).toHaveAttribute('data-stale', 'true');
-  await card.getByTestId('rerun-game').click();
+  await noComputeButtons(page);
+
+  // Shown again: the new figures land on their own.
+  await setHidden(page, false);
   await expect(card).toHaveAttribute('data-state', 'current', { timeout: 20_000 });
-  const after = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)!).results['g-good'].key as string, STATS_KEY);
+  const after = (await stored(page, 'g-good'))!.key;
   expect(after).not.toBe(before);
+  await back(page);
+  await expect(goodRow).toHaveAttribute('data-state', 'current');
+  await expect(goodRow.getByTestId('stale-badge')).toHaveCount(0);
 
   // Rounds per hour is applied when shown, not simulated: changing it keeps the result current.
-  await back(page);
   await page.getByTestId('casino-row').filter({ hasText: 'Golden Nugget' }).click();
   await page.locator('input[name="roundsPerHour-0"]').fill('120');
   await page.getByRole('button', { name: 'Save casino' }).click();
@@ -283,7 +308,6 @@ test('the minutes an exit costs are a setting, applied to the stored result with
   const goodRow = rows(page).and(page.locator('[data-game="g-good"]'));
   await goodRow.click();
   const card = page.getByTestId('game-stats');
-  await card.getByTestId('compute-game').click();
   await expect(card).toHaveAttribute('data-state', 'current', { timeout: 20_000 });
   const wongEv = async () =>
     money((await card.getByTestId('gs-method').filter({ hasText: 'wong out at −1' }).locator('.cas-gs-fig').first().locator('dd').textContent())!);
@@ -344,21 +368,82 @@ test('custom methods can be edited, and a duplicate of a default says so', async
   expect(stored[0].exitTc).toBe(-4);
 });
 
-test('a running compute shows its progress and can be cancelled', async ({ page }) => {
+/** "1.2M rounds" / "850k rounds" / "4,000 rounds" -> a number (to the precision shown). */
+function roundsOf(text: string): number {
+  const m = /([\d.,]+)(M|k)? rounds/.exec(text);
+  if (!m) throw new Error(`no rounds in "${text}"`);
+  return Number(m[1]!.replace(/,/g, '')) * (m[2] === 'M' ? 1e6 : m[2] === 'k' ? 1e3 : 1);
+}
+
+test('a long run shows its progress live, stops while the page is hidden, and picks up where it left off', async ({ page }) => {
   // A budget big enough to still be running when we look.
   await seed(page, 30_000_000);
   await page.goto('/?e2e=1');
   await openCasino(page);
   await rows(page).and(page.locator('[data-game="g-good"]')).click();
   const card = page.getByTestId('game-stats');
-  await card.getByTestId('compute-game').click();
+  // The open card's game goes first: running, live, with nothing pressed.
   await expect(card).toHaveAttribute('data-state', 'running');
   await expect(card.getByTestId('sim-running')).toContainText('rounds', { timeout: 10_000 });
   await expect(card.getByRole('progressbar')).toBeVisible();
-  await card.getByRole('button', { name: 'Cancel' }).click();
+  // The first estimate lands, then it keeps firming up.
+  await expect(card.getByTestId('sim-running')).toContainText('Firming up', { timeout: 20_000 });
+  expect((await stored(page, 'g-good'))!.status).toBe('partial');
+
+  await setHidden(page, true);
   await expect(card).not.toHaveAttribute('data-state', 'running');
-  // Enough had run to keep (>= 20,000 rounds by then, or nothing): either way the worker stopped.
   await expect(card.getByTestId('sim-running')).toHaveCount(0);
+  await expect(card.getByTestId('estimate-badge')).toHaveText('Estimate');
+  // What it had was kept...
+  const paused = (await stored(page, 'g-good'))!;
+  expect(paused.status).toBe('partial');
+  expect(paused.basicRounds).toBeGreaterThan(200_000);
+  // ...and nothing more runs while hidden (watched for longer than many chunks and a checkpoint's paint).
+  await page.waitForTimeout(2000);
+  const still = (await stored(page, 'g-good'))!;
+  expect([still.basicRounds, still.countRounds]).toEqual([paused.basicRounds, paused.countRounds]);
+  await expect(card).not.toHaveAttribute('data-state', 'running');
+
+  // Shown again: it carries on from those rounds, not from zero.
+  await setHidden(page, false);
+  await expect(card).toHaveAttribute('data-state', 'running');
+  await expect(card.getByTestId('sim-running')).toContainText('rounds');
+  const live = roundsOf((await card.getByTestId('sim-running').textContent())!);
+  expect(live).toBeGreaterThanOrEqual(Math.floor((paused.basicRounds + paused.countRounds) / 1e5) * 1e5);
+});
+
+test('an import: every game gets its figures on its own, and two games dealt alike are worked out once', async ({ page }) => {
+  await page.addInitScript((b) => {
+    (window as unknown as { __bjCasinoSimBudget: number }).__bjCasinoSimBudget = b;
+  }, 4000);
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  const file = {
+    app: 'blackjack-trainer',
+    version: 2,
+    exportedAt: AT,
+    casinos: [
+      { ...base, id: 'i1', name: 'Pala', games: [{ ...good, id: 'i-g1' }, { ...deep, id: 'i-g2' }] },
+      // Dealt exactly like Pala's first game: one run serves both.
+      { ...base, id: 'i2', name: 'Pauma', games: [{ ...good, id: 'i-g3' }] },
+      { ...base, id: 'i3', name: 'Viejas', games: [{ ...csm, id: 'i-g4' }, { id: 'i-gv', decks: 6, s17: false, das: null, surrender: null, payout: '3:2', cutDecksLeft: null, minBet: 25, maxBet: null, midShoeEntry: 'unknown', csm: false, variant: 'freebet' }] },
+    ],
+    sessions: [],
+    settings: { startingBankroll: null, updatedAt: null },
+  };
+  await page.getByTestId('casino-import-file').setInputFiles({ name: 'casino.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) });
+  await expect(page.getByRole('status').filter({ hasText: 'Imported' })).toBeVisible();
+  await expect(rows(page)).toHaveCount(5);
+  await noComputeButtons(page);
+  // Every standard game ends with its figures; the variant is not modelled.
+  await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(4, { timeout: 30_000 });
+  await expect(rows(page).and(page.locator('[data-game="i-gv"]')).getByTestId('rank-ev')).toHaveText('not modelled');
+  for (const ev of await rows(page).and(page.locator(':not([data-game="i-gv"])')).getByTestId('rank-ev').allTextContents()) expect(ev).toMatch(/\$\d/);
+  await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'idle');
+  // Three distinct games, three runs: the twins share one stored result.
+  const keys = await page.evaluate((k) => Object.values(JSON.parse(localStorage.getItem(k)!).results as Record<string, { key: string }>).map((r) => r.key), STATS_KEY);
+  expect(keys).toHaveLength(3);
+  expect(new Set(keys).size).toBe(3);
 });
 
 test.describe('distance', () => {
@@ -523,7 +608,6 @@ for (const theme of ['midnight-felt', 'bone-ink'] as const) {
     await seed(page);
     await page.goto('/?e2e=1');
     await openCasino(page);
-    await ranked(page).getByTestId('compute-all').click();
     await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3, { timeout: 30_000 });
     const bad: string[] = [];
     const check = async (sels: string[]) => {
