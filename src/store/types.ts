@@ -9,6 +9,7 @@ import type { DistractionMode, DistractionFreq } from '../drills/distraction';
 import type { CheckpointFreq } from '../drills/countCheckpoints';
 import type { CountDrillBias } from '../drills/countDrill';
 import type { DepthResolution } from '../drills/depthResolution';
+import type { SideBetId } from '../engine/sideBets/payTables';
 
 /** B2 (#9): one painted Custom-drill selection. Cells not in `tiers` are Off. */
 export type SelectionTier = 'rare' | 'regular' | 'focus';
@@ -513,6 +514,44 @@ export interface Profile {
   /** B8: deal Play from a Hot shoe (biased toward positive counts). Opt-in;
    * absent = off. */
   hotShoe?: boolean;
+  /**
+   * Wave L: a side bet offered at the Play table, graded against its count
+   * (engine/sideBets). OPTIONAL; absent or `enabled: false` = none.
+   */
+  sideBet?: ProfileSideBet;
+}
+
+/** Wave L: one bet's Play decisions and money. */
+export interface SideBetTally {
+  right: number;
+  wrong: number;
+  placed: number;
+  /** Dollars won (+) or lost (-) on the side bet. */
+  net: number;
+}
+
+/** Wave L: Stats.sideBets. */
+export interface SideBetStats {
+  play: Partial<Record<SideBetId, SideBetTally>>;
+  /** Side count drill runs, newest last. */
+  drill: {
+    date: string;
+    bet: SideBetId;
+    /** Kept Hi-Lo too (two counts at once). */
+    withHiLo: boolean;
+    checkpoints: number;
+    correct: number;
+  }[];
+}
+
+/** Wave L: which side bet Play offers, on which pay table, for how much. */
+export interface ProfileSideBet {
+  enabled: boolean;
+  bet: SideBetId;
+  /** A preset pay table id (engine/sideBets/payTables.ts). */
+  payTable: string;
+  /** Dollars per side bet. */
+  stake: number;
 }
 
 export interface TallyRW {
@@ -743,7 +782,15 @@ export interface Stats {
     // with Dealer mistakes on Training (about one error in five rounds). The
     // bankroll is still kept, missed errors and all.
     dealerMistakesTraining?: true;
+    // Wave L: the side bet's decisions (right / wrong) and its net in
+    // dollars. Present only on a session played with a side bet on.
+    sideBet?: { right: number; wrong: number; net: number };
   }[];
+  /**
+   * Wave L: side bets -- Play's decisions and money, per bet, and the side
+   * count drill's runs. OPTIONAL: absent = none recorded.
+   */
+  sideBets?: SideBetStats;
   // R1 (docs/BACKLOG.md, decision-latency telemetry): one entry per GRADED
   // EVENT that actually captured a decision time (flashcards + deviation
   // quiz today; table play doesn't set GradedEvent.elapsedMs yet, so its

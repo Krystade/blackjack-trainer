@@ -38,6 +38,7 @@ const TestKit = lazyScreen('testkit', () => import('./screens/TestKit').then((m)
 const ProfileEditor = lazyScreen('profiles', () => import('./screens/ProfileEditor').then((m) => m.ProfileEditor));
 // Wave J: the real-play notebook. Opened at a casino, never in the car, so it
 // waits in its own chunk (precached like the rest for an offline casino floor).
+const SideBets = lazyScreen('sidebets', () => import('./screens/SideBets').then((m) => m.SideBets));
 const Casino = lazyScreen('casino', () => import('./screens/casino/Casino').then((m) => m.Casino));
 // Last, so the mute seat (B1) wins the cascade over every sheet above it.
 import './muteSeat.css';
@@ -69,7 +70,8 @@ export type Screen =
   | 'charts'
   | 'fieldtest'
   | 'testkit'
-  | 'casino';
+  | 'casino'
+  | 'sidebets';
 
 /** Human names for the "Back to ..." affordance. */
 const SCREEN_LABEL: Record<Screen, string> = {
@@ -83,6 +85,7 @@ const SCREEN_LABEL: Record<Screen, string> = {
   fieldtest: 'the field test',
   testkit: 'the test kit',
   casino: 'Casino',
+  sidebets: 'Side bets',
 };
 
 /**
@@ -376,6 +379,9 @@ function App() {
         return <TestKit onNavigate={navigate} />;
       case 'casino':
         return <Casino />;
+      // Wave L: the side-bet reference, reached from the profile's Side bet section.
+      case 'sidebets':
+        return <SideBets activeProfile={activeProfile} onNavigate={navigate} />;
       case 'charts':
         // Charts reads getChart(activeProfile.rules) at render time, so unlike
         // Table it needs no remount key -- there is no long-lived Game instance

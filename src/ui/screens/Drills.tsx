@@ -41,6 +41,7 @@ import { chartIntroDue, loadChartIntroSeen, saveChartIntroSeen } from '../../dri
 import { FlashcardsView } from './drills/FlashcardsView';
 import { DeviationQuizView } from './drills/DeviationQuizView';
 import { MixedSessionView } from './drills/MixedSessionView';
+import { SideCountDrillView } from './drills/SideCountDrillView';
 
 interface DrillsProps {
   settings: Settings;
@@ -66,7 +67,8 @@ type DrillMode =
   | 'producetc'
   | 'mastery'
   | 'custom'
-  | 'speed';
+  | 'speed'
+  | 'sidecount';
 
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
   // #28: Home's Next step can hand over the drill to open.
@@ -283,6 +285,16 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
       />
     );
   }
+  if (mode === 'sidecount') {
+    return (
+      <SideCountDrillView
+        settings={settings}
+        activeProfile={activeProfile}
+        onBack={() => setMode('picker')}
+        onSettingsChange={onSettingsChange}
+      />
+    );
+  }
   if (mode === 'paircancel') {
     return <PairCancelView settings={settings} onBack={() => setMode('picker')} />;
   }
@@ -347,6 +359,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         {entry('deckest', 'Deck estimation', 'Judge decks remaining from the discard tray. It is what you divide by.')}
         {entry('truecount', 'True count drill', 'Turn a running count and decks remaining into the true count, which sets your bet.')}
         {entry('producetc', 'Produce the true count', 'Count the cards, read the tray, give the true count: the whole job, as at the table.')}
+        {entry('sidecount', 'Side count', 'Keep a side bet’s own count, then say whether the bet is worth making.')}
 
         <h2 className="drills-group-title">Knowing the plays</h2>
         {entry('flash', 'Flashcards', 'Basic strategy, one hand at a time. It decides most of your hands.')}

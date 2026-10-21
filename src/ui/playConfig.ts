@@ -2,6 +2,7 @@ import { strategyRulesFor } from '../store/profiles';
 import type { Profile } from '../store/types';
 import type { GameConfig } from '../engine/game';
 import { startShoeOutOf } from '../engine/wong';
+import { sideBetConfigFor } from './sideBetConfig';
 
 /**
  * The Play table's GameConfig, built from the ACTIVE PROFILE. Every grading,
@@ -41,6 +42,8 @@ export function playConfigFor(
     dealerAlwaysPlaysOut: profile.dealerAlwaysPlaysOut,
     // B8: absent keeps the normal shoe.
     ...(profile.hotShoe ? { hotShoe: true } : {}),
+    // Wave L: the side bet, when the profile offers one this build can read.
+    ...(sideBetConfigFor(profile) ? { sideBet: sideBetConfigFor(profile) } : {}),
     seed,
   };
 }

@@ -8,6 +8,7 @@ import { enqueue, cancelAll } from './simRunner';
 import { useActiveProfile, useGameResults, useRunner } from './useGameStats';
 import type { CasinoView } from './Casino';
 import type { RunProgress } from '../../../engine/casinoRun';
+import { SideBetsCard } from './SideBetsCard';
 
 /**
  * Wave K: ONE GAME'S STATS CARD. Every betting method side by side, the house
@@ -212,6 +213,9 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
           )}
         </>
       )}
+
+      {/* Wave L: a row per side bet the game offers. */}
+      <SideBetsCard game={game} roundsPerHour={rph} mainEvHour={figures ? figures.evHour : null} />
 
       <section className="cas-section" aria-labelledby="gs-assume-title">
         <div className="cas-section-head">

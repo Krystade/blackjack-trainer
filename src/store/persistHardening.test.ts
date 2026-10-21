@@ -373,6 +373,8 @@ const NOT_BACKED_UP: Record<string, string> = {
     'the casino log as an older build wrote it: read only, as the migration source of the v2 log; the same personal financial data, with its own export',
   'bjtrainer.casinoGameStats.v1':
     'wave K ranking cache: simulation sums derived from the casino log and the profile, recomputable at any time, and it belongs with the casino data, not the training backup',
+  'bjtrainer.casinoSideBets.v1':
+    'wave L side-bet simulations at a casino game’s own cut: recomputable from the game, and casino data, not training data',
   'bjtrainer.casinoUseLocation.v1': 'a per-device yes/no for "Use my location" in the casino ranking',
   'bjtrainer.casinoRankSort.v1': 'which order the casino ranking was last sorted in, on this device',
   'bjtrainer.stats.v1.corrupt':

@@ -56,6 +56,7 @@ import {
 import { hiLoTag } from '../src/engine/count';
 import { SPEED_QUESTION } from '../src/drills/speedDrill';
 import { COUNT_PAUSED_LINE } from '../src/drills/countPause';
+import { sideBetSentences } from '../src/ui/sideBetFeedback';
 import {
   BET_UNIT_WORDS_MAX,
   narrateBetQuestion,
@@ -331,6 +332,8 @@ export function spokenSentences(): string[] {
       ...voiceSentences(),
       ...answerEchoSentences(),
       ...drillSentences(),
+      // Wave L: the side bet at the table and in its drill.
+      ...sideBetSentences(DECK_DEPTHS).flatMap(splitIntoSentences),
     ]),
   ].sort();
 }

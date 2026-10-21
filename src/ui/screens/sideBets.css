@@ -1,0 +1,91 @@
+/* Wave L: the side-bet reference page. */
+.side-ref-intro {
+  margin: 0 0 0.75rem;
+}
+
+.side-ref-bet {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--accent-line);
+}
+
+.side-ref-title {
+  margin: 0 0 0.25rem;
+  font-size: var(--fs-lg);
+}
+
+.side-ref-rule {
+  margin: 0 0 0.5rem;
+}
+
+.side-ref-table {
+  margin: 0.5rem 0;
+}
+
+.side-ref-table > summary {
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.side-ref-weak {
+  color: var(--ink-dim);
+  font-weight: 400;
+}
+
+.side-ref-pays {
+  list-style: none;
+  margin: 0.25rem 0 0.5rem;
+  padding: 0;
+  font-size: var(--fs-sm);
+}
+
+.side-ref-pays li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.side-ref-num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.side-ref-grid {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  gap: 0.25rem 0.6rem;
+  font-size: var(--fs-sm);
+}
+
+.side-ref-grid-head,
+.side-ref-grid-row {
+  display: contents;
+}
+
+.side-ref-grid-head > span {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+.side-ref-grid-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.side-ref-pub,
+.side-ref-off {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+}
+
+.side-ref-off {
+  text-decoration: underline dotted;
+}
+
+.side-ref-source {
+  margin-top: 0.4rem;
+}

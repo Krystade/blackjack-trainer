@@ -4,6 +4,7 @@ import type { Profile } from '../store/types';
 import { resultState, simInputFor, type GameResult, type ResultState, type SimInput } from '../store/casinoGameStats';
 import { EV_REL_TARGET, hourly, houseEdge, summarize, type HourlyStats, type RoundStats } from '../engine/casinoStats';
 import type { BetMethod } from '../engine/betMethods';
+import { bestSideEvHour, gameSideFigures } from './casinoSideFigures';
 import { distanceMinutes, distanceOf, evPerTripHour, standing, warnBadges, type Distance } from './casinoFigures';
 
 /**
@@ -114,6 +115,17 @@ export interface RankRow {
   midShoeUnknown: boolean;
   /** Rounds one exit costs at this game now: rounds/hour x exit minutes / 60. */
   exitRounds: number;
+  /**
+   * Wave L: what the game's best side bet adds per hour, counted (0 when none
+   * is worth making or none is logged). The EV sorts rank on the game's EV
+   * plus this.
+   */
+  sideEvHour?: number;
+}
+
+/** Wave L: the EV per hour a row is ranked on -- the game's, plus its best side bet. */
+export function rankedEvHour(r: RankRow): number | null {
+  return r.figures ? r.figures.evHour + (r.sideEvHour ?? 0) : null;
 }
 
 /** A row with no result, a stale one, or a partial one: what "Compute all" runs. */
@@ -149,6 +161,7 @@ export function buildRanking(
       const input = simInputFor(game, profile, custom);
       const state = resultState(results[game.id], input.key);
       const figures = state.kind === 'none' ? null : gameFigures(state.result, roundsPerHourOf(game), bankroll, exitMinutesOf(log, game));
+      const sideEvHour = bestSideEvHour(gameSideFigures(game, roundsPerHourOf(game))).evHour;
       rows.push({
         casino,
         game,
@@ -158,9 +171,10 @@ export function buildRanking(
         greyed: group === 'avoid',
         warns: warnBadges(game),
         distance,
-        tripEv: figures ? evPerTripHour(figures.evHour, session, casino.driveMinutes) : null,
+        tripEv: figures ? evPerTripHour(figures.evHour + sideEvHour, session, casino.driveMinutes) : null,
         midShoeUnknown: game.midShoeEntry === 'unknown' && figures?.best?.method.entryTc != null,
         exitRounds: (roundsPerHourOf(game) * exitMinutesOf(log, game)) / 60,
+        ...(sideEvHour > 0 ? { sideEvHour } : {}),
       });
     }
   }
@@ -177,7 +191,7 @@ export function buildRanking(
   // Finished runs, then partial ones, then none.
   const done = (r: RankRow) => (r.figures === null ? 2 : r.figures.partial ? 1 : 0);
   if (sort === 'ev') {
-    return rows.sort((a, b) => done(a) - done(b) || desc((r) => r.figures?.evHour ?? null)(a, b));
+    return rows.sort((a, b) => done(a) - done(b) || desc(rankedEvHour)(a, b));
   }
   if (sort === 'trip') {
     // Within finished and within partial runs: games with a drive time
@@ -190,7 +204,7 @@ export function buildRanking(
       const t = tier(a) - tier(b);
       if (t !== 0) return t;
       if (a.figures && tier(a) === 0) return desc((r) => r.tripEv)(a, b);
-      return desc((r) => r.figures?.evHour ?? null)(a, b);
+      return desc(rankedEvHour)(a, b);
     });
   }
   return rows.sort((a, b) => {
@@ -198,7 +212,7 @@ export function buildRanking(
     const t = tier(a) - tier(b);
     if (t !== 0) return t;
     const v = (r: RankRow) => (r.distance === null ? 0 : distanceMinutes(r.distance));
-    return v(a) - v(b) || desc((r) => r.figures?.evHour ?? null)(a, b);
+    return v(a) - v(b) || desc(rankedEvHour)(a, b);
   });
 }
 
@@ -207,7 +221,7 @@ export function bestGameOf(casino: Casino, rows: readonly RankRow[]): CasinoGame
   let best: RankRow | null = null;
   for (const r of rows) {
     if (r.casino.id !== casino.id || !r.figures) continue;
-    if (!best || r.figures.evHour > best.figures!.evHour) best = r;
+    if (!best || rankedEvHour(r)! > rankedEvHour(best)!) best = r;
   }
   return best?.game ?? casino.games[0]!;
 }

@@ -282,3 +282,23 @@ describe('re-review R2: the +/-10% EV target is judged at the minutes shown', ()
     expect(evTargetMet({ best: null })).toBe(true);
   });
 });
+
+describe('Wave L: side bets in the ranking', () => {
+  it('a game whose side bet is worth making ranks on its EV plus the side bet', () => {
+    const plainGame = game('gp', { s17: true });
+    // Same rules and cut (6 decks, cut at 1: the generated table's), plus a countable side bet.
+    const withSide = game('gs', { s17: true, sideBets: [{ bet: 'buster', payTable: 'bu-evo', minBet: 25, maxBet: null }] });
+    const log = logOf([casino('c1', [plainGame]), casino('c2', [withSide])]);
+    // Equal main-game EV, so the side bet decides the order.
+    const rows = buildRanking(log, profile, { gp: resultFor(plainGame, 2), gs: resultFor(withSide, 2) }, NOW, null, 'ev');
+    const side = rows.find((r) => r.game.id === 'gs')!;
+    expect(side.sideEvHour).toBeGreaterThan(0);
+    expect(rows[0]!.game.id).toBe('gs');
+    expect(rows.find((r) => r.game.id === 'gp')!.sideEvHour).toBeUndefined();
+    // A side bet that loses (not countable here) adds nothing and does not reorder.
+    const losing = game('gl', { s17: true, sideBets: [{ bet: 'perfectPairs', payTable: 'pp-a', minBet: 25, maxBet: null }] });
+    const rows2 = buildRanking(logOf([casino('c1', [plainGame]), casino('c3', [losing])]), profile, { gp: resultFor(plainGame, 2), gl: resultFor(losing, 2) }, NOW, null, 'ev');
+    expect(rows2.map((r) => r.game.id)).toEqual(['gp', 'gl']);
+    expect(rows2[1]!.sideEvHour).toBeUndefined();
+  });
+});

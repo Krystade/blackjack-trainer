@@ -22,6 +22,8 @@ import { setDrillLaunch, setReviewDeck } from '../drillLaunch';
 import type { MistakeRow } from '../reportSections';
 import { lossPer100, formatLossPer100, betMissText } from '../sessionFigures';
 import { betMissCount } from '../sessionRow';
+import { SIDE_BIAS, sideResultText, sideWordIn, dollars } from '../sideBetFeedback';
+import { BET_SHORT } from '../../engine/sideBets/payTables';
 import './sessionReport.css';
 import { useAudio } from '../../audio/useAudio';
 import { useVoiceControl } from '../useVoiceControl';
@@ -464,6 +466,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
     endSession,
     notePeek,
     betMiss,
+    sideMiss,
+    setSideOn,
     botNarrationRevealed,
     fastForwardNarration,
     sitOut,
@@ -673,6 +677,14 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
           setIn(word === 'in');
           return word;
         }
+        // Wave L: "side on" / "side off" set the side-bet chip, with the
+        // toggle's gates. No wheel gesture: the wheel's two buttons are
+        // already yes (deal) and repeat between rounds.
+        const side = game.cfg.sideBet ? sideWordIn(readings) : null;
+        if (side !== null) {
+          setSideOn(side);
+          return side ? 'side on' : 'side off';
+        }
       }
       // B2 #37: "deal" between rounds deals, exactly as "yes" does there. It
       // is not in the command vocabulary (it means nothing anywhere else), so
@@ -807,6 +819,8 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       ...COUNT_BIAS_PHRASES,
       // Wave J: the toggle's words, two-word forms only (review S1).
       ...TOGGLE_BIAS,
+      // Wave L: only at a table with a side bet (fixed for the session).
+      ...(game.cfg.sideBet ? SIDE_BIAS : []),
     ],
     context: 'table',
   });
@@ -1045,6 +1059,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
       // Wong-out only makes sense against a spread (the same gate the engine
       // uses to grade it); a flat-bet table hides the Sit Out button entirely.
       inOut: { isIn: game.isIn, onSet: setIn, locked: losingShoe },
+      ...(game.cfg.sideBet
+        ? { side: { on: game.sideOn, label: BET_SHORT[game.cfg.sideBet.bet], stake: dollars(game.cfg.sideBet.stake).replace('+', ''), onSet: setSideOn } }
+        : {}),
       ...(game.spreadsHands ? { handsChoice: { hands: spreadHands, onHands: setSpreadHands } } : {}),
     };
   } else {
@@ -1318,6 +1335,19 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
             <span className="bet-miss">{betMiss.text}</span>
           </ResultStrip>
         )}
+        {/* Wave L: a wrong side-bet call, in the bet-miss style. */}
+        {sideMiss && sideMiss.round === game.roundNo && (
+          <ResultStrip id={`side-${sideMiss.round}`} tone="miss">
+            <span className="bet-miss" data-testid="side-miss">{sideMiss.text}</span>
+          </ResultStrip>
+        )}
+        {(() => {
+          const d = game.sideDecisionThisRound;
+          const text = game.cfg.sideBet && d && game.phase === 'settled' ? sideResultText(game.cfg.sideBet, d) : null;
+          return text ? (
+            <div className="side-result" data-testid="side-result">{text}</div>
+          ) : null;
+        })()}
         {game.shuffledLastRound && (
           <div className="message-shuffle">Shuffling…</div>
         )}

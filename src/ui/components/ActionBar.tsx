@@ -1,5 +1,6 @@
 import type { Action } from '../../engine/deviations';
 import './inOutToggle.css';
+import './sideBetChip.css';
 import './handsChoice.css';
 
 /** One bet-entry row per player hand. Length 1 (solo, the v1/parity case) or
@@ -31,6 +32,11 @@ export type ActionBarMode =
        * other table, which keeps its bar exactly as it was.
        */
       handsChoice?: { hands: 1 | 2; onHands: (hands: 1 | 2) => void };
+      /**
+       * Wave L: the profile's side bet, a chip that stays where it is put (as
+       * the In/Out toggle does). Absent on every table without one.
+       */
+      side?: { on: boolean; label: string; stake: string; onSet: (on: boolean) => void };
     }
   | { kind: 'hidden' };
 
@@ -97,6 +103,20 @@ function DealRow({ mode }: { mode: Extract<ActionBarMode, { kind: 'bet' }> }) {
   return (
     <div className="deal-row">
       <InOutToggle isIn={mode.inOut.isIn} onSet={mode.inOut.onSet} disabled={mode.disabled || mode.inOut.locked} />
+      {mode.side && (
+        <button
+          type="button"
+          className={`side-chip${mode.side.on ? ' side-chip-on' : ''}`}
+          aria-pressed={mode.side.on}
+          aria-label={`Side bet: ${mode.side.label}, ${mode.side.stake}`}
+          data-testid="side-chip"
+          disabled={mode.disabled || !mode.inOut.isIn}
+          onClick={() => mode.side!.onSet(!mode.side!.on)}
+        >
+          <span className="side-chip-name">{mode.side.label}</span>
+          <span className="side-chip-stake">{mode.side.stake}</span>
+        </button>
+      )}
       <button type="button" className="deal-btn" disabled={mode.disabled} onClick={mode.onDeal}>
         Deal
       </button>

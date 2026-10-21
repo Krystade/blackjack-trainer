@@ -1,6 +1,7 @@
 import { reportStorageFailure, shrinkDiagnostics } from './storageHealth';
 import { subscribeToExternalWrites } from './crossTab';
 import { normMethod, type BetMethod } from '../engine/betMethods';
+import { normSideBets, type CasinoSideBet } from './casinoSideBets';
 
 /**
  * WAVE J (lane C): THE REAL-PLAY NOTEBOOK. Casinos and the sessions played in
@@ -103,6 +104,8 @@ export interface CasinoGame {
   /** Rounds dealt per hour at this game; absent = DEFAULT_ROUNDS_PER_HOUR. */
   roundsPerHour?: number | null;
   notes?: string;
+  /** Wave L: side bets offered at this game (additive, optional). */
+  sideBets?: CasinoSideBet[];
 }
 
 /** Rounds an hour when a game does not say: a typical shoe game with a few players. */
@@ -316,6 +319,8 @@ export function normGame(x: unknown, fallbackId: string, legacy?: Record<string,
   if (typeof g.label === 'string' && g.label.trim() !== '') game.label = g.label.trim().slice(0, 60);
   const notes = notesOf(g.notes);
   if (notes !== '') game.notes = notes;
+  const sideBets = normSideBets(g.sideBets);
+  if (sideBets.length > 0) game.sideBets = sideBets;
   return game;
 }
 

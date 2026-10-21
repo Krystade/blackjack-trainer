@@ -2,6 +2,7 @@ import type { CasinoGame, DeckCount, MidShoeEntry } from '../../../store/casinoL
 import { DEFAULT_ROUNDS_PER_HOUR } from '../../../store/casinoLog';
 import { Choice, Field, FieldGroup, MoneyInput } from './fields';
 import type { GameText } from './casinoInputs';
+import { SideBetsEditor } from './SideBetsEditor';
 
 /**
  * Wave K: one game's block in the casino form. A casino can deal several;
@@ -155,6 +156,8 @@ export function GameEditor({
           onChange={(e) => onText({ roundsPerHour: e.target.value })}
         />
       </Field>
+      {/* Wave L: side bets offered at this game. */}
+      <SideBetsEditor sideBets={game.sideBets ?? []} name={n('side')} onChange={(sideBets) => onChange({ sideBets: sideBets.length > 0 ? sideBets : undefined })} />
       <Field label="Game notes">
         <input className="cas-input" name={n('gameNotes')} autoComplete="off" value={game.notes ?? ''} onChange={(e) => onChange({ notes: e.target.value })} />
       </Field>

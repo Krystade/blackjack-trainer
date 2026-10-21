@@ -1,0 +1,40 @@
+/* Wave L: the profile editor's side-bet facts -- a two-column list. */
+.side-bet-rule {
+  margin: 0.25rem 0 0.5rem;
+}
+
+.side-bet-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 0.5rem;
+  font-size: var(--fs-sm);
+}
+
+.side-bet-facts dt {
+  color: var(--ink-dim);
+}
+
+.side-bet-facts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.side-bet-tags {
+  display: block;
+  color: var(--ink-dim);
+  font-size: var(--fs-xs);
+}
+
+.side-bet-ref-link {
+  min-height: 44px;
+  padding: 0 0.25rem;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}

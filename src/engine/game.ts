@@ -36,6 +36,8 @@ import {
   type DealerMistakesMode,
   type DealerErrorTally,
 } from './dealerErrors';
+import { EMPTY_SIDE_TALLY, SideCounter, settleSide, sideExpected } from './sideBets/tableBet';
+import type { SideBetConfig, SideBetDecision, SideTally } from './sideBets/tableBet';
 
 export interface SeatConfig {
   playerHands: 1 | 2 | 3;
@@ -140,6 +142,12 @@ export interface GameConfig {
    * about one round in five. Can be changed between rounds with
    * `setDealerMistakes`. */
   dealerMistakes?: boolean | DealerMistakesMode;
+  /**
+   * Wave L: a side bet offered every round (sideBets/tableBet.ts). Placing it
+   * or not is graded against its count's trigger, apart from `events`, so it
+   * never moves play accuracy. Absent = no side bet.
+   */
+  sideBet?: SideBetConfig;
   /** Test hook only: the stream dealer errors are rolled on. Absent = a
    * mulberry32 stream salted from `seed` (dealerErrorSeed), created the first
    * time a roll is needed. */
@@ -366,6 +374,18 @@ export class Game {
   /** Wave I: some round settled in Training mode (about one error in five). */
   dealerMistakesTrainingUsed = false;
 
+  /** Wave L: the side bet's chip -- whether the next round in places it. Stays where it is put, like the In/Out toggle. */
+  sideOn = false;
+  /** Wave L: the cards seen since the shuffle, for the side count. */
+  readonly sideCounter = new SideCounter();
+  /** Wave L: every side-bet decision this game, one per round dealt in. */
+  sideDecisions: SideBetDecision[] = [];
+  /** Wave L: the decisions and the money, summed. */
+  sideTally: SideTally = { ...EMPTY_SIDE_TALLY };
+  /** Wave L: this round's decision, while its bet is unsettled; and the cards it is settled on. */
+  private sideOpen: SideBetDecision | null = null;
+  private sidePlayerCards: [Card, Card] | null = null;
+
   constructor(cfg: GameConfig) {
     this.cfg = cfg;
     this.rules = cfg.rules ?? DEFAULT_RULES;
@@ -497,6 +517,72 @@ export class Game {
   /** Flip the toggle. Takes effect at the next deal; any time is fine. */
   setIn(value: boolean): void {
     this.toggleIn = value;
+  }
+
+  /** Wave L: set the side bet's chip. Takes effect at the next deal. */
+  setSideOn(value: boolean): void {
+    this.sideOn = value;
+  }
+
+  /** Wave L: the side count's running count now (the plan's count; Hi-Lo when the plan has none). */
+  get sideRunningCount(): number {
+    const count = this.cfg.sideBet?.plan.count;
+    return count ? this.sideCounter.rc(count) : this.runningCount;
+  }
+
+  /** Wave L: the side count's true count now, in the profile's rounding. */
+  get sideTrueCount(): number {
+    const count = this.cfg.sideBet?.plan.count;
+    return count ? this.sideCounter.tc(count, this.shoe.decksRemaining, this.cfg.tcRounding) : this.trueCountNow;
+  }
+
+  /** Wave L: one card shown at the table: Hi-Lo and the side count both see it. */
+  private see(c: Card): void {
+    this.runningCount += hiLoTag(c.rank);
+    this.sideCounter.see(c);
+  }
+
+  /** Wave L: the side-bet decision for a round dealt in, graded before the cards come. */
+  private gradeSideBet(): void {
+    const cfg = this.cfg.sideBet;
+    this.sideOpen = null;
+    this.sidePlayerCards = null;
+    if (!cfg) return;
+    const tc = this.sideTrueCount;
+    const expected = sideExpected(cfg.plan, tc);
+    const placed = this.sideOn;
+    const d: SideBetDecision = { round: this.roundNo, placed, expected, correct: placed === expected, rc: this.sideRunningCount, tc };
+    this.sideDecisions.push(d);
+    this.sideTally = {
+      ...this.sideTally,
+      right: this.sideTally.right + (d.correct ? 1 : 0),
+      wrong: this.sideTally.wrong + (d.correct ? 0 : 1),
+      placed: this.sideTally.placed + (placed ? 1 : 0),
+    };
+    if (placed) this.sideOpen = d;
+  }
+
+  /** Wave L: a placed Buster bet keeps the dealer playing to the end, whatever the player's hands did. */
+  private get busterLive(): boolean {
+    return this.sideOpen !== null && this.cfg.sideBet?.bet === 'buster';
+  }
+
+  /** Wave L: settle this round's side bet, if one was placed. */
+  private settleSideBet(): void {
+    const cfg = this.cfg.sideBet;
+    const d = this.sideOpen;
+    this.sideOpen = null;
+    if (!cfg || !d || !this.sidePlayerCards) return;
+    const { outcome, net } = settleSide(cfg, this.sidePlayerCards, this.dealerCards);
+    d.outcome = outcome;
+    d.net = net;
+    this.sideTally = { ...this.sideTally, net: this.sideTally.net + net };
+  }
+
+  /** Wave L: the decision of the round on the felt, when there was one. */
+  get sideDecisionThisRound(): SideBetDecision | null {
+    const d = this.sideDecisions.at(-1);
+    return d && d.round === this.roundNo ? d : null;
   }
 
   /** Wave J: the player is Out -- the next round (or the round on the felt) is watched. */
@@ -688,6 +774,7 @@ export class Game {
     if (this.shuffleDue) {
       this.shoe.shuffle();
       this.runningCount = 0;
+      this.sideCounter.reset();
       this.shuffledLastRound = true;
     } else {
       this.shuffledLastRound = false;
@@ -811,8 +898,15 @@ export class Game {
     this.holeRevealed = false;
     this._active = 0;
     this.buildSeats(betArray);
+    // Wave L: the side bet goes down with the main bet, at the count before the deal.
+    this.gradeSideBet();
 
     this.dealTwoPassRound();
+    if (this.sideOpen) {
+      // The first hand dealt is the rightmost (#1); its two opening cards decide the bet.
+      const first = this.hands[this.hands.length - 1]!;
+      this.sidePlayerCards = [first.cards[0]!, first.cards[1]!];
+    }
 
     const upRank = this.dealerCards[0].rank;
     if (upRank === 'A') {
@@ -1219,7 +1313,7 @@ export class Game {
   private drawToHand(hand: PlayerHand): void {
     const c = this.shoe.draw();
     hand.cards.push(c);
-    this.runningCount += hiLoTag(c.rank);
+    this.see(c);
   }
 
   /** Deal the two-pass casino sequence -- one card to every hand of every seat
@@ -1252,7 +1346,7 @@ export class Game {
     }
     const up = this.shoe.draw();
     this.dealerCards.push(up);
-    this.runningCount += hiLoTag(up.rank);
+    this.see(up);
     this.dealOrder.push({ kind: 'dealer', cardIndex: 0 });
 
     for (let s = 0; s < this.seats.length; s++) {
@@ -1275,7 +1369,7 @@ export class Game {
   private revealHole(): void {
     if (this.holeRevealed) return;
     this.holeRevealed = true;
-    this.runningCount += hiLoTag(this.dealerCards[1].rank);
+    this.see(this.dealerCards[1]);
   }
 
   /** Resolve every bot seat SEATED BEFORE the player, in seat order --
@@ -1534,7 +1628,7 @@ export class Game {
     // the dealer draw cards nobody needs -- playDealerAndSettle only draws
     // for live hands, and inventing draws would pull cards out of the shoe
     // that a real table never exposes, biasing the count the other way.
-    if (!someHandUnresolved && !this.cfg.dealerAlwaysPlaysOut) {
+    if (!someHandUnresolved && !this.cfg.dealerAlwaysPlaysOut && !this.busterLive) {
       this.finishRound();
       return;
     }
@@ -1604,11 +1698,12 @@ export class Game {
     const liveHands = allHands.filter(
       (h) => h.result === undefined && !h.surrendered && !isBust(h.cards),
     );
-    if (liveHands.length > 0) {
+    // Wave L: a Buster bet is settled on the dealer's whole hand, so the dealer draws for it too.
+    if (liveHands.length > 0 || this.busterLive) {
       while (this.dealerShouldHit()) {
         const c = this.shoe.draw();
         this.dealerCards.push(c);
-        this.runningCount += hiLoTag(c.rank);
+        this.see(c);
       }
     }
 
@@ -1643,6 +1738,7 @@ export class Game {
   }
 
   private finishRound(): void {
+    this.settleSideBet();
     this.handsPlayed += this.hands.length;
     this.maybeMakeDealerError();
     this.phase = 'settled';

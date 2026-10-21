@@ -2,7 +2,8 @@ import { useState } from 'react';
 import type { CasinoLog } from '../../../store/casinoLog';
 import { methodBadge } from '../../../engine/betMethods';
 import { labelledSummary } from '../../casinoFigures';
-import { buildRanking, needsCompute, type RankRow, type RankSort } from '../../casinoRanking';
+import { useSideRuns } from './sideRunner';
+import { buildRanking, needsCompute, rankedEvHour, type RankRow, type RankSort } from '../../casinoRanking';
 import { ciText, evHourText, n0Text, pctText, roundsText } from '../../casinoStatsText';
 import { Choice } from './fields';
 import { cancelAll, enqueue } from './simRunner';
@@ -31,6 +32,8 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
   const profile = useActiveProfile();
   const results = useGameResults(log);
   const runner = useRunner();
+  // Wave L: a side-bet run finishing can reorder the list.
+  useSideRuns();
   const { state: here, toggle: toggleHere } = where;
   const [sort, setSort] = useState<RankSort>(readSort);
   const rows = buildRanking(log, profile, results, Date.now(), here.here, sort);
@@ -117,7 +120,7 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
 
 function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: number; sort: RankSort; running: boolean; onOpen: () => void }) {
   const f = row.figures;
-  const value = !f ? null : sort === 'trip' && row.tripEv !== null ? row.tripEv : f.evHour;
+  const value = !f ? null : sort === 'trip' && row.tripEv !== null ? row.tripEv : rankedEvHour(row);
   return (
     <li>
       <button
@@ -149,6 +152,12 @@ function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: 
           {f?.best && (
             <span className="cas-badge" data-tone="good" data-testid="best-style">
               {methodBadge(f.best.method)}
+            </span>
+          )}
+          {/* Wave L: the figure includes the game's best side bet, counted. */}
+          {f && row.sideEvHour !== undefined && (
+            <span className="cas-badge" data-tone="good" data-testid="side-bet-badge">
+              + side bet
             </span>
           )}
           {row.midShoeUnknown && (

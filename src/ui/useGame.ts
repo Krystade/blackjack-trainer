@@ -18,6 +18,9 @@ import { mistakeUnits } from './reportSections';
 import { newSessionId, sessionRowFor, upsertSession } from './sessionRow';
 import { betMissFeedback, type BetMiss } from './betFeedback';
 import { sessionDealerErrors } from './dealerErrorCopy';
+import { addSideDecisions } from '../store/sideBetStats';
+import { SIDE_OFF_LINE, SIDE_ON_LINE, SIDE_WINS_LINE, sideMissFeedback } from './sideBetFeedback';
+import type { SideMiss } from './sideBetFeedback';
 import {
   narrateBotAction,
   narrateCard,
@@ -290,6 +293,10 @@ function narrateSettlement(game: Game, audio: AudioApi): boolean {
     }
   }
 
+  // Wave L: a side bet that won is said (a loss is the bet's normal end, and silent).
+  const side = game.sideDecisionThisRound;
+  if (side?.placed && side.net !== undefined && side.net > 0) audio.say(SIDE_WINS_LINE);
+
   // In order of play (#1): the rightmost hand is played first and is "hand
   // one", so results are read from the right.
   for (let i = game.hands.length - 1; i >= 0; i--) {
@@ -370,6 +377,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
    * first round.
    */
   const committedRef = useRef(0);
+  /** Wave L: side-bet decisions committed to Stats so far (as `committedRef`). */
+  const sideCommittedRef = useRef(0);
   const sessionIdRef = useRef<string | null>(null);
   sessionIdRef.current ??= newSessionId();
   /** R7: peek reveals this session, counted here so the provisional row has them. */
@@ -393,8 +402,10 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       if (game.roundNo === 0 || endedRef.current) return;
       const fresh = game.events.length > committedRef.current;
       const t = game.dealerErrorTally;
-      const key = `${game.roundNo}|${game.events.length}|${game.bankroll}|${peeksRef.current}|${t.made}/${t.caught}/${t.falseCalls}|${game.dealerMistakesTrainingUsed}|${final}`;
-      if (!fresh && key === rowKeyRef.current) return;
+      const side = game.cfg.sideBet;
+      const freshSide = side !== undefined && game.sideDecisions.length > sideCommittedRef.current;
+      const key = `${game.roundNo}|${game.events.length}|${game.bankroll}|${peeksRef.current}|${t.made}/${t.caught}/${t.falseCalls}|${game.dealerMistakesTrainingUsed}|${game.sideDecisions.length}/${game.sideTally.net}|${final}`;
+      if (!fresh && !freshSide && key === rowKeyRef.current) return;
       const now = new Date().toISOString();
       let stats = loadStats();
       if (fresh) {
@@ -402,6 +413,11 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
         // the cost-of-mistakes history inside a Stats time range.
         stats = applyEvents(stats, datedSessionEvents(game.events.slice(committedRef.current), now), now);
         committedRef.current = game.events.length;
+      }
+      // Wave L: the side bet's settled decisions, by bet.
+      if (side && freshSide) {
+        stats = addSideDecisions(stats, side.bet, game.sideDecisions.slice(sideCommittedRef.current));
+        sideCommittedRef.current = game.sideDecisions.length;
       }
       // F10: a Play round was recorded today (a session row's own date moves
       // with every round, so a shoe played across midnight keeps both days).
@@ -424,6 +440,14 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
           ...sessionDealerErrors(game.dealerErrorTally, game.dealerMistakesUsed, game.dealerMistakesTrainingUsed),
         }),
       );
+      if (side && game.sideDecisions.length > 0) {
+        const at = stats.sessions.findIndex((r) => r.id === sessionIdRef.current);
+        if (at !== -1) {
+          const sessions = stats.sessions.slice();
+          sessions[at] = { ...sessions[at]!, sideBet: { right: game.sideTally.right, wrong: game.sideTally.wrong, net: game.sideTally.net } };
+          stats = { ...stats, sessions };
+        }
+      }
       rowKeyRef.current = key;
       if (final) endedRef.current = true;
       saveStats(stats);
@@ -491,6 +515,18 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     [game, audio, settings.feedbackMode],
   );
 
+  /** Wave L: a wrong side-bet call, shown with its round, said after any bet miss. */
+  const [sideMiss, setSideMiss] = useState<(SideMiss & { round: number }) | null>(null);
+  const noteSideMiss = useCallback((): void => {
+    const cfg = game.cfg.sideBet;
+    const d = game.sideDecisionThisRound;
+    const miss = cfg && d && settings.feedbackMode === 'training' ? sideMissFeedback(cfg, d) : null;
+    setSideMiss(miss ? { ...miss, round: game.roundNo } : null);
+    if (!miss) return;
+    audio.ding('bad');
+    audio.say(miss.spoken);
+  }, [game, audio, settings.feedbackMode]);
+
   const runDeal = useCallback(
     (betUnits?: number | number[]) => {
       realignLosingShoe(playGame);
@@ -501,11 +537,12 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       // Said before the cards: it is about the bet just placed, and the cards
       // are what the next decision needs fresh.
       noteBetMiss(game.events.slice(before));
+      noteSideMiss();
       narrateDeal(game, audio, shuffleSaidRef.current);
       shuffleSaidRef.current = false;
       settleAndNote(); // instant dealer-blackjack / all-naturals rounds settle inside startRound()
     },
-    [game, playGame, audio, settleAndNote, noteBetMiss],
+    [game, playGame, audio, settleAndNote, noteBetMiss, noteSideMiss],
   );
 
   const runSitOut = useCallback(() => {
@@ -581,6 +618,19 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
       bump();
     },
     [game, audio, bump, losingShoe],
+  );
+
+  /** Wave L: set the side bet's chip; the cue says the new state, as the In/Out toggle's does. */
+  const setSideOn = useCallback(
+    (value: boolean) => {
+      if (!game.cfg.sideBet) return;
+      if (game.sideOn !== value) {
+        game.setSideOn(value);
+        bump();
+      }
+      audio.say(value ? SIDE_ON_LINE : SIDE_OFF_LINE);
+    },
+    [game, audio, bump],
   );
 
   const insure = useCallback(
@@ -886,6 +936,8 @@ export function useGame(settings: Settings, profile: Profile, audio: AudioApi) {
     endSession,
     notePeek,
     betMiss,
+    sideMiss,
+    setSideOn,
     botNarrationRevealed,
     fastForwardNarration,
     dealAnimating,

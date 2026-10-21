@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { playLabel } from '../playLabel';
 import { CollapsibleSection } from '../components/CollapsibleSection';
+import { SideBetStatsSection } from '../components/SideBetStatsSection';
 import type { ChangeEvent } from 'react';
 import type { Screen } from '../App';
 import type { Profile, Settings, Stats as StatsData } from '../../store/types';
@@ -410,6 +411,7 @@ const SECTION_TAB: Record<string, StatsTab> = {
   'Timed count challenge': 'drills',
   'Distraction': 'drills',
   'Pair cancellation': 'drills',
+  'Side bets': 'play',
   'True count drill': 'drills',
   'Produce TC': 'drills',
   'Deviation quiz': 'drills',
@@ -1376,6 +1378,16 @@ export function Stats({ activeProfile, settings, onSettingsChange }: StatsProps)
               </li>
             </ul>
           )}
+      </CollapsibleSection>
+
+      {/* Wave L: Play's side-bet calls and the side count drill. */}
+      <CollapsibleSection
+        title={<>Side bets</>}
+        className="stats-section"
+        dataTab={SECTION_TAB['Side bets']}
+        defaultOpen={false}
+      >
+          <SideBetStatsSection stats={stats} />
       </CollapsibleSection>
 
       <CollapsibleSection

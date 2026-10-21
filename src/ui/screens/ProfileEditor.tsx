@@ -6,6 +6,7 @@ import { plainNumber } from '../../drills/signed';
 import { takeProfileLaunch } from '../profileLaunch';
 import { isFloorRow, spreadTcText, stepMinTc } from '../spreadRows';
 import { CollapsibleSection } from '../components/CollapsibleSection';
+import { SideBetControl } from '../components/SideBetControl';
 import type { Screen } from '../App';
 import type { Profile } from '../../store/types';
 import type { SpreadRow } from '../../engine/game';
@@ -265,6 +266,7 @@ export function ProfileEditor({ onNavigate }: ProfileEditorProps) {
       onSave={saveDraft}
       onCancel={cancelEdit}
       onDelete={() => deleteProfile(mode.draft.id)}
+      onReference={() => onNavigate('sidebets')}
     />
   );
 }
@@ -284,6 +286,7 @@ function ProfileEditForm({
   onSave,
   onCancel,
   onDelete,
+  onReference,
 }: {
   draft: Profile;
   isNew: boolean;
@@ -292,6 +295,8 @@ function ProfileEditForm({
   onSave: (draft: Profile) => void;
   onCancel: () => void;
   onDelete: () => void;
+  /** Wave L: the Side bets reference page (the leave guard asks about unsaved edits). */
+  onReference: () => void;
 }) {
   const [draft, setDraft] = useState<Profile>(initialDraft);
   const [cvcxImport, setCvcxImport] = useState<CvcxImportState>({ kind: 'closed' });
@@ -808,6 +813,14 @@ function ProfileEditForm({
         </CollapsibleSection>
         </div>
       )}
+
+      {/* Wave L: a side bet, played by its own count. */}
+      <CollapsibleSection
+        title={<>Side bet</>}
+        defaultOpen={draft.sideBet?.enabled ?? false}
+      >
+          <SideBetControl profile={draft} onChange={update} onReference={onReference} />
+      </CollapsibleSection>
 
       <CollapsibleSection
         title={<>CVCX</>}
