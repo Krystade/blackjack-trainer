@@ -16,7 +16,7 @@ import { generateAllCells, filterCellsByCategory } from './flashcards';
 import type { Cell } from './flashcards';
 import { fisherYatesShuffle, mulberry32 } from '../engine/cards';
 import type { Card } from '../engine/cards';
-import { pickComposition } from './buildHand';
+import { eitherOrder, pickComposition } from './buildHand';
 import type { HandScope } from './handScope';
 import { srWeight } from './spacedRepetition';
 import type { SrDeck } from './spacedRepetition';
@@ -170,9 +170,11 @@ export function runCoversExactly(run: MasteryRun, cellIds: readonly string[]): b
  * between sweeps. Pairs and soft cells keep their stored cards.
  */
 export function presentedCards(cell: Cell, run: Pick<MasteryRun, 'seed' | 'index'>): [Card, Card] {
+  const seed = (run.seed ^ Math.imul(run.index + 1, 0x9e3779b1)) | 0;
+  // Wave M: soft hands ace-first or ace-second, stable for this position.
+  if (cell.id.startsWith('soft-')) return eitherOrder(cell.cards, mulberry32(seed));
   if (!cell.id.startsWith('hard-')) return cell.cards;
   const total = Number(cell.id.split('-')[1]);
-  const seed = (run.seed ^ Math.imul(run.index + 1, 0x9e3779b1)) | 0;
   return pickComposition(total, mulberry32(seed)) ?? cell.cards;
 }
 

@@ -7,7 +7,7 @@ import { drawCountTc } from './withCount';
 import type { Action } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import type { StrategyRules } from '../engine/ruleset';
-import { makeHardHand } from './buildHand';
+import { eitherOrder, makeHardHand } from './buildHand';
 import { weightedIndex } from './weightedDraw';
 import { srWeight } from './spacedRepetition';
 import { confusabilityWeight } from './confusability';
@@ -214,9 +214,12 @@ export function drawFlashcard(
   // which lets a learner memorise a card pair that does not transfer to the
   // 9+7 they get dealt. The cellId is deliberately untouched -- it keys the
   // SR deck, and varying the composition must not reset anyone's schedule.
+  // Wave M: a soft hand is dealt ace-first or ace-second, half each.
   const varied = baseCell.id.startsWith('hard-')
     ? makeHardHand(Number(baseCell.id.split('-')[1]), rng)
-    : null;
+    : baseCell.id.startsWith('soft-')
+      ? eitherOrder(baseCell.cards, rng)
+      : null;
   const cell: Cell = varied ? { ...baseCell, cards: varied } : baseCell;
 
   // #27: sometimes the hand is dealt so double/surrender is gone. Draws

@@ -191,3 +191,39 @@ describe('#27 drawFlashcard with fallbacks', () => {
     expect(fallbacks).toBeGreaterThan(20);
   });
 });
+
+/**
+ * Wave M (owner, 2026-10-20): soft hands always read "ace, four", never
+ * "four, ace". A table deals the ace second half the time.
+ */
+describe('soft hands are dealt in both orders', () => {
+  it('shows the ace first and second, with the same cell and the same play', async () => {
+    const { narrateFlashcardPrompt } = await import('../audio/narrate');
+    const { presentedCards } = await import('./masteryChallenge');
+    let aceFirst = 0;
+    let aceSecond = 0;
+    for (let seed = 0; seed < 200; seed++) {
+      const card = drawFlashcard('soft', {}, 0, seed);
+      if (card.cards[0]!.rank === 'A' && card.cards[1]!.rank === 'A') continue;
+      if (card.cards[0]!.rank === 'A') aceFirst++;
+      else if (card.cards[1]!.rank === 'A') aceSecond++;
+      const flipped = [card.cards[1]!, card.cards[0]!];
+      expect(correctPlay(flipped, card.up, 0, { canDouble: true, canSplit: true, canSurrender: true }, DEFAULT_RULES).action)
+        .toBe(correctPlay(card.cards, card.up, 0, { canDouble: true, canSplit: true, canSurrender: true }, DEFAULT_RULES).action);
+      expect(card.cellId).toBe(`soft-${handValue(card.cards).total}-v-${card.up}`);
+    }
+    expect(aceFirst).toBeGreaterThan(60);
+    expect(aceSecond).toBeGreaterThan(60);
+    // Spoken in the order shown.
+    expect(narrateFlashcardPrompt([{ rank: '4', suit: 'h' }, { rank: 'A', suit: 's' }], '9')).toMatch(/^You have four, ace\./);
+    // Mastery presents both orders too, stable per position.
+    const cell = generateAllCells().find((c) => c.id === 'soft-15-v-9')!;
+    const orders = new Set<string>();
+    for (let index = 0; index < 40; index++) {
+      const a = presentedCards(cell, { seed: 7, index });
+      expect(presentedCards(cell, { seed: 7, index })).toEqual(a);
+      orders.add(a[0]!.rank);
+    }
+    expect(orders).toEqual(new Set(['A', '4']));
+  });
+});

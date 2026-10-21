@@ -7,7 +7,7 @@ import { indexSetFor } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import { drillLegalActions, rulesChipLabels } from './legalActions';
 import type { StrategyRules } from '../engine/ruleset';
-import { makeHardHand } from './buildHand';
+import { eitherOrder, makeHardHand } from './buildHand';
 import { weightedIndex } from './weightedDraw';
 import { srWeight } from './spacedRepetition';
 import type { SrDeck } from './spacedRepetition';
@@ -63,7 +63,7 @@ export function makeSoftHand(total: number): [Card, Card] {
 /** The two cards an index is asked on: a ten pair, a soft hand, or a varied hard total. */
 function handFor(entry: Deviation, rng: () => number): [Card, Card] | null {
   if (entry.kind === 'pair10') return makePair10Cards();
-  if (entry.kind === 'soft') return makeSoftHand(entry.total!);
+  if (entry.kind === 'soft') return eitherOrder(makeSoftHand(entry.total!), rng);
   return makeHardHand(entry.total!, rng);
 }
 
