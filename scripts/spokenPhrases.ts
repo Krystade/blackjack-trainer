@@ -31,8 +31,7 @@ import type { Card, Rank, Suit } from '../src/engine/cards';
 import { indexSetFor } from '../src/engine/deviations';
 import type { Action } from '../src/engine/deviations';
 import { drawQuizItem } from '../src/drills/deviationQuiz';
-import { indexTestSet, indexTestItemFor, narrateIndexTestPrompt, narrateIndexTestCorrection } from '../src/drills/indexTest';
-import { mulberry32 } from '../src/engine/cards';
+import { indexTestSet, everyIndexTestItem, narrateIndexTestPrompt, narrateIndexTestCorrection } from '../src/drills/indexTest';
 import type { StrategyRules } from '../src/engine/ruleset';
 import {
   narrateBotAction,
@@ -344,9 +343,10 @@ export function drillSentences(): string[] {
 
 /**
  * Wave O: every WHOLE utterance the Index test can speak -- its prompt for
- * every index under every rule variant and training option (the hand's cards
- * come from an rng, so many draws per index), and both corrections. The full
- * prompt ("... Index to double?") never had a recording and fell to live TTS.
+ * every index under every rule variant and training option, on every hand it
+ * can deal for that index (review N2: everyIndexTestItem enumerates them, no
+ * rng sample), and both corrections. The full prompt ("... Index to
+ * double?") never had a recording and fell to live TTS.
  */
 export function indexTestUtterances(): string[] {
   const out = new Set<string>();
@@ -358,8 +358,7 @@ export function indexTestUtterances(): string[] {
   ]);
   for (const rules of variants) {
     for (const dev of indexTestSet(rules)) {
-      for (let seed = 1; seed <= 40; seed++) {
-        const item = indexTestItemFor(dev, rules, mulberry32(seed));
+      for (const item of everyIndexTestItem(dev, rules)) {
         out.add(narrateIndexTestPrompt(item));
         out.add(narrateIndexTestCorrection(item, true));
         out.add(narrateIndexTestCorrection(item, false));

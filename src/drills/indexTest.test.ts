@@ -6,7 +6,7 @@ import type { StrategyRules } from '../engine/ruleset';
 import { entryCtx } from './deviationQuiz';
 import { reviewCard } from './spacedRepetition';
 import {
-  indexTestSet, indexTestItemFor, gradeIndexTest, publishedIndex, indexTestPlayLine,
+  indexTestSet, indexTestItemFor, everyCardsFor, everyIndexTestItem, gradeIndexTest, publishedIndex, indexTestPlayLine,
   indexTestPrompt, drawIndexTestItem, buildIndexTestEvent, NEW_INDEX_SESSION, afterIndexAnswer, answerWasShown,
 } from './indexTest';
 
@@ -166,5 +166,41 @@ describe('soft hands in both orders (Index test and quiz distractors)', () => {
     }
     expect(tally['distractor/first'] ?? 0, JSON.stringify(tally)).toBeGreaterThan(0);
     expect(tally['distractor/second'] ?? 0, JSON.stringify(tally)).toBeGreaterThan(0);
+  });
+});
+
+describe('review N2: the Index test hands are enumerated, not sampled', () => {
+  const key = (cards: readonly { rank: string; suit: string }[] | null) => (cards ? cards.map((c) => `${c.rank}${c.suit}`).join(',') : 'none');
+
+  for (const [name, rules] of [
+    ['H17', H17_ALL],
+    ['S17', S17_ALL],
+  ] as const) {
+    it(`every hand a seeded draw deals is in everyCardsFor (${name})`, () => {
+      for (const dev of indexTestSet(rules)) {
+        const all = new Set(everyCardsFor(dev).map(key));
+        expect(all.size).toBe(everyCardsFor(dev).length); // no duplicates
+        for (let seed = 0; seed < 400; seed++) {
+          const item = indexTestItemFor(dev, rules, mulberry32(seed));
+          if (dev.kind === 'insurance') expect(item.cards).toBeNull();
+          else expect(all.has(key(item.cards)), `${dev.id} seed ${seed}: ${key(item.cards)}`).toBe(true);
+        }
+      }
+    });
+  }
+
+  it('each item on an enumerated hand is graded like the drawn one', () => {
+    for (const dev of indexTestSet(H17_ALL)) {
+      const drawn = indexTestItemFor(dev, H17_ALL, mulberry32(1));
+      for (const item of everyIndexTestItem(dev, H17_ALL)) {
+        expect({ ...item, cards: null }).toEqual({ ...drawn, cards: null });
+      }
+    }
+  });
+
+  it('hard 16 v 10: both rank pairs, every ten-value face, suit and order', () => {
+    const dev = indexTestSet(H17_ALL).find((d) => d.id === '16v10')!;
+    // [6,10]: 1 x 4 faces; [7,9]: 1 x 1; each x 16 suit pairs x 2 orders.
+    expect(everyCardsFor(dev)).toHaveLength((4 + 1) * 16 * 2);
   });
 });

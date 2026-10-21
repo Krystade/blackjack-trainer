@@ -6,14 +6,14 @@
  * entry is one above the stored threshold: 13 v 2 is stored "hit at TC <= -2"
  * and published "stand at TC >= -1".
  */
-import type { Card, Rank } from '../engine/cards';
+import type { Card, Rank, Suit } from '../engine/cards';
 import { mulberry32 } from '../engine/cards';
 import type { Action, Deviation, DeviationId } from '../engine/deviations';
 import type { StrategyRules } from '../engine/ruleset';
 import { correctPlay, insuranceCorrect } from '../engine/strategy';
 import type { GradedEvent } from '../engine/grade';
 import { actionCategory } from '../engine/grade';
-import { eitherOrder, makeHardHand } from './buildHand';
+import { eitherOrder, makeHardHand, rankPairsForTotal } from './buildHand';
 import { askedIndexSet, entryCtx, makeSoftHand, makePair10Cards } from './deviationQuiz';
 import { srWeight } from './spacedRepetition';
 import type { SrDeck } from './spacedRepetition';
@@ -62,6 +62,49 @@ function cardsFor(dev: Deviation, rng: () => number): [Card, Card] {
   return cards;
 }
 
+const ALL_SUITS: readonly Suit[] = ['s', 'h', 'd', 'c'];
+
+/**
+ * Review N2: every hand `cardsFor` can deal for `dev` -- each hard rank pair
+ * (rankPairsForTotal), each ten-value face, each suit and both orders, as
+ * pickComposition draws them; a soft hand ace-first and ace-second; the one
+ * ten pair -- so the clip list is built from all of them, not a sample.
+ * indexTest.test.ts pins that every sampled draw is in this list.
+ */
+export function everyCardsFor(dev: Deviation): [Card, Card][] {
+  if (dev.kind === 'insurance') return [];
+  if (dev.kind === 'pair10') return [makePair10Cards()];
+  if (dev.kind === 'soft') {
+    const [a, b] = makeSoftHand(dev.total!);
+    return [
+      [a, b],
+      [b, a],
+    ];
+  }
+  const ranksOf = (value: number): Rank[] => (value === 10 ? ['10', 'J', 'Q', 'K'] : [String(value) as Rank]);
+  const out: [Card, Card][] = [];
+  for (const [low, high] of rankPairsForTotal(dev.total!)) {
+    for (const r1 of ranksOf(low)) {
+      for (const r2 of ranksOf(high)) {
+        for (const s1 of ALL_SUITS) {
+          for (const s2 of ALL_SUITS) {
+            const a: Card = { rank: r1, suit: s1 };
+            const b: Card = { rank: r2, suit: s2 };
+            out.push([a, b], [b, a]);
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** Review N2: the Index test's item for `dev` on every hand it can deal (everyCardsFor); one item for insurance. */
+export function everyIndexTestItem(dev: Deviation, rules: StrategyRules): IndexTestItem[] {
+  if (dev.kind === 'insurance') return [indexTestItemFor(dev, rules, () => 0)];
+  return everyCardsFor(dev).map((cards) => itemOn(dev, rules, cards));
+}
+
 export function indexTestItemFor(dev: Deviation, rules: StrategyRules, rng: () => number): IndexTestItem {
   const index = publishedIndex(dev);
   if (dev.kind === 'insurance') {
@@ -71,7 +114,11 @@ export function indexTestItemFor(dev: Deviation, rules: StrategyRules, rng: () =
     }
     return { deviationId: dev.id, cards: null, up: 'A', index, playAt: 'take-insurance', playBelow: 'decline-insurance', label: dev.label };
   }
-  const cards = cardsFor(dev, rng);
+  return itemOn(dev, rules, cardsFor(dev, rng));
+}
+
+function itemOn(dev: Deviation, rules: StrategyRules, cards: [Card, Card]): IndexTestItem {
+  const index = publishedIndex(dev);
   const ctx = entryCtx(dev);
   return {
     deviationId: dev.id,
