@@ -352,11 +352,18 @@ export function loadGameCache(): { results: Results; archive: Archive } {
 
 const listeners = new Set<() => void>();
 
-/** The newest ARCHIVE_MAX, minus any key a game's own result holds. */
+/**
+ * The newest ARCHIVE_MAX, minus any key a game's own result holds, and minus
+ * keys from another SIM_VERSION (review N9: no input can ever produce them again).
+ */
 function trimArchive(archive: Archive, results: Results): Archive {
   const live = new Set(Object.values(results).map((r) => r.key));
+  const otherVersion = (k: string) => {
+    const v = /^(\d+):/.exec(k);
+    return v !== null && Number(v[1]) !== SIM_VERSION;
+  };
   const kept = Object.entries(archive)
-    .filter(([k]) => !live.has(k))
+    .filter(([k]) => !live.has(k) && !otherVersion(k))
     .sort(([, a], [, b]) => Date.parse(b.computedAt) - Date.parse(a.computedAt))
     .slice(0, ARCHIVE_MAX);
   return Object.fromEntries(kept);

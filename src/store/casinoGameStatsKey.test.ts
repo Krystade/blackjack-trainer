@@ -223,6 +223,15 @@ describe('the stored results (Wave Q: by game, and by key)', () => {
     expect(Object.keys(JSON.parse(mem.get(GAME_STATS_KEY)!).results).sort()).toEqual(['g1', 'g2', 'g3']);
   });
 
+  it('review N9: the archive keeps no result from another SIM_VERSION', () => {
+    const old = `${SIM_VERSION - 1}:abc:1`;
+    const now = `${SIM_VERSION}:abc:1`;
+    saveGameResult('g1', result(old, 10));
+    saveGameResult('g1', result(now, 10));
+    saveGameResult('g1', result(`${SIM_VERSION}:def:1`, 10));
+    expect(Object.keys(loadGameArchive())).toEqual([now]);
+  });
+
   it("a game's result replaced for another key goes to the archive, and comes back when its inputs do", () => {
     saveGameResult('g1', result('A', 10));
     saveGameResult('g1', result('B', 20));
