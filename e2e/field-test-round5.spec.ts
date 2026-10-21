@@ -267,6 +267,8 @@ test('a run the operator ended does not own the next launch', async ({ page }) =
   // for two hours after a completed run, and the gate then chimed and said
   // "The field test is paused. Resume is the first button on the screen" --
   // out loud, about a run the operator had ended on purpose.
+  // Home first: before the first commit the gate is absent from an empty page.
+  await expect(page.locator('.home-title')).toBeVisible();
   await expect(
     page.getByTestId('fieldtest-screen'),
     'a finished run still hijacks the opening screen',

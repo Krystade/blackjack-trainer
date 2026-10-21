@@ -30,6 +30,9 @@ test('a render throw is caught instead of blanking the app', async ({ page }) =>
 
 test('the crash seam stays shut without the parameter', async ({ page }) => {
   await page.goto('/?e2e=1');
+  // Home must have rendered first: before React's first commit the boundary
+  // is absent too, so a bare toHaveCount(0) could pass on an empty #root.
+  await expect(page.locator('.home-title')).toBeVisible();
   await expect(page.locator('.error-boundary')).toHaveCount(0);
 });
 
