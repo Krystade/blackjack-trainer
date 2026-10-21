@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import type { CasinoLog } from '../../../store/casinoLog';
+import { runningSession, type CasinoLog } from '../../../store/casinoLog';
 import { buildRanking } from '../../casinoRanking';
 import { newEditTracker, noteKeys, orderCandidates } from '../../casinoAutoSim';
 import { attachAuto, setAutoPlan } from './simRunner';
@@ -26,6 +26,8 @@ const tracker = newEditTracker();
 export function AutoSim({ log, openGame }: { log: CasinoLog; openGame: string | null }) {
   const profile = useActiveProfile();
   const { results, archive } = useGameCache(log);
+  // At the table the phone is on and its battery matters: estimates only until the session ends.
+  const sessionRunning = runningSession(log) !== null;
   const rows = useMemo(() => buildRanking(log, profile, results, Date.now(), null, 'ev', archive), [log, profile, results, archive]);
 
   // The plan first, so attaching never starts a run from a previous visit's plan.
@@ -34,8 +36,8 @@ export function AutoSim({ log, openGame }: { log: CasinoLog; openGame: string | 
       tracker,
       rows.map((r) => ({ id: r.game.id, key: r.input.key })),
     );
-    setAutoPlan(orderCandidates(rows, tracker.editedAt, profile.name), openGame);
-  }, [rows, openGame, profile.name]);
+    setAutoPlan(orderCandidates(rows, tracker.editedAt, profile.name), openGame, { sessionRunning });
+  }, [rows, openGame, profile.name, sessionRunning]);
   useEffect(() => attachAuto(), []);
   useEffect(() => {
     for (const r of rows) {

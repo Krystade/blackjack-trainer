@@ -53,9 +53,11 @@ export interface RunnerState {
   storageFull: boolean;
   /** The keys whose figures could not be saved: shown, not worked on again this session. */
   unsaved: readonly string[];
+  /** A casino session is running: estimates only, the firming up waits until it ends. */
+  holdRefines: boolean;
 }
 
-let state: RunnerState = { running: null, todo: { first: 0, refine: 0 }, paused: true, error: null, failed: {}, storageFull: false, unsaved: [] };
+let state: RunnerState = { running: null, todo: { first: 0, refine: 0 }, paused: true, error: null, failed: {}, storageFull: false, unsaved: [], holdRefines: false };
 const listeners = new Set<() => void>();
 
 interface Running {
@@ -68,6 +70,8 @@ interface Running {
 
 let cands: AutoCandidate[] = [];
 let visible: string | null = null;
+/** A casino session is running (AutoSim.tsx): no refines until it ends. */
+let holdRefines = false;
 let attached = 0;
 let hidden = false;
 let running: Running | null = null;
@@ -132,6 +136,7 @@ function publish(): void {
     failed: Object.fromEntries(failed),
     storageFull: unsavedKeys.size > 0 || gameStatsUnsaved(),
     unsaved: [...unsavedKeys],
+    holdRefines,
   };
   for (const fn of [...listeners]) fn();
 }
@@ -283,7 +288,9 @@ function kick(): void {
     return;
   }
   if (running && !cands.some((c) => c.input.key === running!.job.cand.input.key)) abort();
-  const pick = pickJob(cands, lookupFn(), visible, skipped());
+  // A session started mid-refine: stop it, keeping what it has.
+  if (running && holdRefines && running.job.work === 'refine') pause();
+  const pick = pickJob(cands, lookupFn(), visible, skipped(), !holdRefines);
   if (running) {
     const r = running.job;
     if (pick && shouldPreempt({ gameId: r.cand.gameId, key: r.cand.input.key, work: r.work }, pick, visible)) {
@@ -295,16 +302,21 @@ function kick(): void {
     let next = pick;
     while (next && !running) {
       start(next);
-      if (!running) next = pickJob(cands, lookupFn(), visible, skipped());
+      if (!running) next = pickJob(cands, lookupFn(), visible, skipped(), !holdRefines);
     }
   }
   publish();
 }
 
-/** The Casino screen's plan: every game it could work out, in order, and the game whose card is open. */
-export function setAutoPlan(next: AutoCandidate[], openGame: string | null): void {
+/**
+ * The Casino screen's plan: every game it could work out, in order, the game
+ * whose card is open, and whether a casino session is running (then only
+ * first estimates are made: the firming up waits for the session's end).
+ */
+export function setAutoPlan(next: AutoCandidate[], openGame: string | null, opts: { sessionRunning?: boolean } = {}): void {
   cands = next;
   visible = openGame;
+  holdRefines = opts.sessionRunning === true;
   kick();
 }
 
@@ -372,6 +384,7 @@ export function _resetRunner(): void {
   running = null;
   cands = [];
   visible = null;
+  holdRefines = false;
   attached = 0;
   hidden = false;
   error = null;
@@ -380,5 +393,5 @@ export function _resetRunner(): void {
   if (paintTimer !== null) clearTimeout(paintTimer);
   paintTimer = null;
   lastPaint = 0;
-  state = { running: null, todo: { first: 0, refine: 0 }, paused: true, error: null, failed: {}, storageFull: false, unsaved: [] };
+  state = { running: null, todo: { first: 0, refine: 0 }, paused: true, error: null, failed: {}, storageFull: false, unsaved: [], holdRefines: false };
 }

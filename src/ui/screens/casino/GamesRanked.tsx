@@ -128,7 +128,7 @@ function AutoStatus({ runner, rows }: { runner: RunnerState; rows: readonly Rank
     </>
   ) : null;
   const nFailed = rows.filter((x) => runner.failed[x.input.key] !== undefined).length;
-  const phase = first > 0 ? 'estimating' : refine > 0 ? 'refining' : nFailed > 0 ? 'error' : 'idle';
+  const phase = first > 0 ? 'estimating' : refine > 0 ? (runner.holdRefines ? 'held' : 'refining') : nFailed > 0 ? 'error' : 'idle';
   return (
     <div className="cas-auto" data-testid="rank-auto" data-phase={phase}>
       {phase === 'estimating' && (
@@ -147,6 +147,13 @@ function AutoStatus({ runner, rows }: { runner: RunnerState; rows: readonly Rank
             Firming up {refine} estimate{refine === 1 ? '' : 's'}
             {name ? ` · ${name}` : ''}
             {rounds}
+          </span>
+        </p>
+      )}
+      {phase === 'held' && (
+        <p className="cas-auto-line" role="status" data-testid="rank-held">
+          <span>
+            {refine} estimate{refine === 1 ? '' : 's'} firm{refine === 1 ? 's' : ''} up after this session
           </span>
         </p>
       )}

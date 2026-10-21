@@ -43,7 +43,7 @@ const LOG = {
 };
 
 /** Seed the log once per test (a reload keeps what the page wrote), and set the tiny budget on every load. */
-async function seed(page: Page, budget = 4000): Promise<void> {
+async function seed(page: Page, budget = 4000, log: unknown = LOG): Promise<void> {
   await page.addInitScript(
     ([k, log, b]) => {
       (window as unknown as { __bjCasinoSimBudget: number }).__bjCasinoSimBudget = b as number;
@@ -52,7 +52,7 @@ async function seed(page: Page, budget = 4000): Promise<void> {
         sessionStorage.setItem('seeded', '1');
       }
     },
-    [KEY, JSON.stringify(LOG), budget],
+    [KEY, JSON.stringify(log), budget],
   );
 }
 
@@ -482,6 +482,27 @@ test('review S2: a simulator that fails says so on the line, the row and the car
   for (const sel of ['.cas-rank-failed', '[data-testid="rank-failed-line"]']) expect(await worstContrast(page, sel), sel).toBeGreaterThanOrEqual(4.5);
   await rows(page).and(page.locator('[data-game="g-good"]')).click();
   await expect(page.getByTestId('gs-failed')).toContainText('The simulator failed on this game: test failure');
+});
+
+test('a casino session running: every game gets its estimate, and the firming up waits for the session', async ({ page }) => {
+  const started = new Date(Date.now() - 30 * 60_000).toISOString();
+  const session = { id: 's1', casinoId: 'c1', start: started, end: null, buyIns: [500], cashOut: null, avgBet: null, maxBet: null, maxTc: null, heat: 'none', notes: '', createdAt: started, updatedAt: started };
+  // A budget big enough that a refine would show in the stored rounds.
+  await seed(page, 30_000_000, { ...LOG, sessions: [session] });
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await expect(page.getByTestId('casino-live')).toBeVisible();
+  await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3, { timeout: 30_000 });
+  await expect(rows(page).getByTestId('estimate-badge')).toHaveCount(3);
+  await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'held');
+  await expect(ranked(page).getByTestId('rank-held')).toHaveText('3 estimates firm up after this session');
+  const at = (await stored(page, 'g-good'))!;
+  expect(at.basicRounds).toBe(200_000);
+  // Held for longer than a refine's first chunks and its first paint: no rounds added, nothing running, even with its card open.
+  await rows(page).and(page.locator('[data-game="g-good"]')).click();
+  await page.waitForTimeout(2000);
+  await expect(page.getByTestId('game-stats')).not.toHaveAttribute('data-state', 'running');
+  expect((await stored(page, 'g-good'))!.basicRounds).toBe(200_000);
 });
 
 test('an import: every game gets its figures on its own, and two games dealt alike are worked out once', async ({ page }) => {

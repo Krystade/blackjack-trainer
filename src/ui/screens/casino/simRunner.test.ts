@@ -329,3 +329,37 @@ describe('review B1: storage full', () => {
     expect(runnerState().todo).toEqual({ first: 0, refine: 0 });
   });
 });
+
+describe('a casino session running: estimates only', () => {
+  it('first estimates are made; the firming up waits for the session to end, then carries on', () => {
+    setAutoPlan([A, B], null, { sessionRunning: true });
+    attachAuto();
+    finishFirst();
+    expect(lastReq().spec).toEqual(B.input.spec);
+    finishFirst();
+    // Both estimated: nothing more runs while the session does.
+    expect(runnerState().running).toBeNull();
+    expect(runnerState()).toMatchObject({ holdRefines: true, todo: { first: 0, refine: 2 } });
+    expect(workers.flatMap((w) => w.posted)).toHaveLength(2);
+    // Even the open card's game waits.
+    setAutoPlan([A, B], 'gb', { sessionRunning: true });
+    expect(runnerState().running).toBeNull();
+    // The session ends: the open card's game is firmed up from its estimate.
+    setAutoPlan([A, B], 'gb', { sessionRunning: false });
+    expect(runnerState().running).toMatchObject({ gameId: 'gb', work: 'refine' });
+    expect(lastReq().prior).toMatchObject({ basicRounds: QUICK_ROUNDS });
+  });
+
+  it('a session started mid-refine stops it, keeping its rounds; a game with no estimate still gets one', () => {
+    setAutoPlan([A], null);
+    attachAuto();
+    finishFirst();
+    live()[0]!.emit({ type: 'progress', progress: progress({ methods: M }, { basicRounds: 700_000, ms: 900 }) });
+    setAutoPlan([A], null, { sessionRunning: true });
+    expect(runnerState().running).toBeNull();
+    expect(live()).toHaveLength(0);
+    expect(loadGameResults().ga).toMatchObject({ status: 'partial', basicRounds: 700_000 });
+    setAutoPlan([A, C], null, { sessionRunning: true });
+    expect(runnerState().running).toMatchObject({ gameId: 'gc', work: 'first' });
+  });
+});
