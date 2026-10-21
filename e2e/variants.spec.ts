@@ -317,9 +317,13 @@ test('Variant hands by voice: a play the hand does not offer is refused out loud
   const seed = seedWhere((s) => !variantItemLegal(drawVariantItem('s21-h17', s)).includes('split'));
   await openVariantVoice(page, seed);
   const mark = (await speechLog(page)).length;
+  const tally = () => page.evaluate(() => localStorage.getItem('bjtrainer.variantTally.v1'));
+  const before = await tally();
   await sayOnceListening(page, 'split');
   await expect.poll(async () => (await speechLog(page)).slice(mark)).toContain(narrateActionNotAsked('split'));
-  await expect(page.getByTestId('variant-result')).toHaveCount(0);
+  // One look, not a retry the result's own auto-advance could satisfy, and the tally a grade writes.
+  expect(await page.getByTestId('variant-result').count()).toBe(0);
+  expect(await tally(), 'the refused play reached the tally').toBe(before);
   // A word the hand does offer still grades it.
   const item = drawVariantItem('s21-h17', seed);
   await sayOnceListening(page, item.advice.action);

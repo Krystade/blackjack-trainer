@@ -119,10 +119,10 @@ test('figures appear on their own, the ranking follows them, and the cards say w
   // The shuffler machine is a flat bet into the house edge: negative, and no style badge.
   const csmRow = rows(page).and(page.locator('[data-game="g-csm"]'));
   expect(money((await csmRow.getByTestId('rank-ev').textContent())!)).toBeLessThan(0);
-  await expect(csmRow.getByTestId('best-style')).toHaveCount(0);
-  await expect(csmRow.getByTestId('warn-badge')).toContainText(['6:5', 'CSM']);
-  // A countable game names its best style.
+  // A countable game names its best style (first: the badges are drawn, so the shuffler's missing one is missing).
   await expect(rows(page).and(page.locator('[data-game="g-good"]')).getByTestId('best-style')).toHaveText(/^(Back-count|Wong out|Play all|Flat)$/);
+  await expect(csmRow.getByTestId('warn-badge')).toContainText(['6:5', 'CSM']);
+  await expect(csmRow.getByTestId('best-style')).toHaveCount(0);
 
   // The countable card: every method side by side, the profile named, the best one marked.
   await rows(page).and(page.locator('[data-game="g-good"]')).click();
@@ -154,6 +154,8 @@ test('figures appear on their own, the ranking follows them, and the cards say w
 
   // No mid-shoe entry at El Cortez: no back-count method was even worked out.
   await rows(page).and(page.locator('[data-game="g-deep"]')).click();
+  // Its methods are drawn first, so the missing one is missing from a list.
+  await expect(card.getByTestId('gs-method').first()).toBeVisible();
   await expect(card.getByTestId('gs-method').filter({ hasText: /back-count/i })).toHaveCount(0);
 
   // The results survive a reload.
