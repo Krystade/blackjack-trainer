@@ -154,6 +154,12 @@ function AutoStatus({ runner, rows }: { runner: RunnerState; rows: readonly Rank
           The simulator stopped: {runner.error}
         </p>
       )}
+      {/* Review B1: the figures show this session, but are not kept; nothing more is worked out for them. */}
+      {runner.storageFull && (
+        <p className="cas-field-error" role="alert" data-testid="rank-storage-full">
+          Couldn&rsquo;t save figures &mdash; storage full
+        </p>
+      )}
       <p className="cas-note">Figures follow each game&rsquo;s rules and your profile: worked out on this phone, on their own, while Casino is open.</p>
     </div>
   );

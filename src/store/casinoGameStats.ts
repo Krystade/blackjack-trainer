@@ -244,9 +244,24 @@ let injected: MinimalStore | null = null;
 const memory = new Map<string, string>();
 const fallback: MinimalStore = { getItem: (k) => memory.get(k) ?? null, setItem: (k, v) => void memory.set(k, v) };
 
-/** Tests only. */
+/** Tests only. Also forgets the session's unsaved copy (below). */
 export function _setGameStatsStorage(s: MinimalStore | null): void {
   injected = s;
+  unsaved = null;
+}
+
+/**
+ * Wave Q review B1: the cache as it stands this session, when it could not be
+ * saved (the phone's storage is full). Read in place of storage until a save
+ * lands, so figures worked out this session still show -- and are not worked
+ * out again and again, each time failing to save (simRunner.ts stops
+ * scheduling a key whose save failed).
+ */
+let unsaved: { results: Results; archive: Archive } | null = null;
+
+/** Whether this session holds figures that could not be saved. */
+export function gameStatsUnsaved(): boolean {
+  return unsaved !== null;
 }
 
 function store(): MinimalStore {
@@ -271,6 +286,7 @@ const readMap = (x: unknown): Results => {
 };
 
 function readAll(): { results: Results; archive: Archive } {
+  if (unsaved) return unsaved;
   try {
     const raw = store().getItem(GAME_STATS_KEY);
     if (!raw) return { results: {}, archive: {} };
@@ -309,24 +325,29 @@ function trimArchive(archive: Archive, results: Results): Archive {
   return Object.fromEntries(kept);
 }
 
-function write(results: Results, archive: Archive): void {
+/** Whether the save landed. When it did not, the session keeps the cache in memory (`unsaved`). */
+function write(results: Results, archive: Archive): boolean {
+  const trimmed = trimArchive(archive, results);
+  let saved = false;
   try {
-    const trimmed = trimArchive(archive, results);
     const blob: { version: 1; results: Results; archive?: Archive } = { version: 1, results };
     if (Object.keys(trimmed).length > 0) blob.archive = trimmed;
     store().setItem(GAME_STATS_KEY, JSON.stringify(blob));
+    saved = true;
   } catch {
     /* a full phone loses a cache, not data: the result shows until reload */
   }
+  unsaved = saved ? null : { results, archive: trimmed };
   for (const fn of [...listeners]) fn();
+  return saved;
 }
 
-/** A game's result; one it replaces for another key goes to the archive. */
-export function saveGameResult(gameId: string, result: GameResult): void {
+/** A game's result; one it replaces for another key goes to the archive. False when it could not be saved (review B1). */
+export function saveGameResult(gameId: string, result: GameResult): boolean {
   const { results, archive } = readAll();
   const prev = results[gameId];
   const nextArchive = prev && prev.key !== result.key ? { ...archive, [prev.key]: prev } : archive;
-  write({ ...results, [gameId]: result }, nextArchive);
+  return write({ ...results, [gameId]: result }, nextArchive);
 }
 
 /** Results for games no longer in the log go to the archive (a twin, or an undo, may want them). */

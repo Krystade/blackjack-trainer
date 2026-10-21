@@ -4,6 +4,8 @@ import {
   GAME_STATS_KEY,
   SIM_VERSION,
   _setGameStatsStorage,
+  gameStatsUnsaved,
+  loadGameCache,
   loadGameArchive,
   loadGameResults,
   pruneGameResults,
@@ -170,6 +172,28 @@ describe('the stored results (Wave Q: by game, and by key)', () => {
   beforeEach(() => {
     mem = new Map();
     _setGameStatsStorage({ getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => void mem.set(k, v) });
+  });
+
+  it('review B1: a save that does not land says so, and the session keeps the figures until one does', () => {
+    let full = true;
+    _setGameStatsStorage({
+      getItem: (k) => mem.get(k) ?? null,
+      setItem: (k, v) => {
+        if (full) throw Object.assign(new Error('quota'), { name: 'QuotaExceededError' });
+        mem.set(k, v);
+      },
+    });
+    expect(saveGameResult('g1', result('k1', 10))).toBe(false);
+    expect(mem.size).toBe(0);
+    expect(gameStatsUnsaved()).toBe(true);
+    expect(loadGameCache().results['g1']?.key).toBe('k1');
+    expect(saveGameResult('g2', result('k2', 10))).toBe(false);
+    expect(Object.keys(loadGameResults()).sort()).toEqual(['g1', 'g2']);
+    // Room again: the next save writes everything the session held.
+    full = false;
+    expect(saveGameResult('g3', result('k3', 10))).toBe(true);
+    expect(gameStatsUnsaved()).toBe(false);
+    expect(Object.keys(JSON.parse(mem.get(GAME_STATS_KEY)!).results).sort()).toEqual(['g1', 'g2', 'g3']);
   });
 
   it("a game's result replaced for another key goes to the archive, and comes back when its inputs do", () => {

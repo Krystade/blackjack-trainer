@@ -412,6 +412,27 @@ test('a long run shows its progress live, stops while the page is hidden, and pi
   expect(live).toBeGreaterThanOrEqual(Math.floor((paused.basicRounds + paused.countRounds) / 1e5) * 1e5);
 });
 
+test("review B1: storage full -- the figures show, the ranking says they couldn't be saved, and nothing runs again", async ({ page }) => {
+  await seed(page);
+  await page.addInitScript((k) => {
+    const set = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key: string, value: string) {
+      if (key === k) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+      return set.call(this, key, value);
+    };
+  }, STATS_KEY);
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3, { timeout: 30_000 });
+  await expect(ranked(page).getByTestId('rank-storage-full')).toHaveText('Couldn’t save figures — storage full');
+  await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'idle');
+  // Held well past a run at this budget: still nothing running, nothing stored.
+  await page.waitForTimeout(1500);
+  await expect(rows(page).and(page.locator('[data-running="true"]'))).toHaveCount(0);
+  await expect(ranked(page).getByTestId('rank-auto')).toHaveAttribute('data-phase', 'idle');
+  expect(await page.evaluate((k) => localStorage.getItem(k), STATS_KEY)).toBeNull();
+});
+
 test('an import: every game gets its figures on its own, and two games dealt alike are worked out once', async ({ page }) => {
   await page.addInitScript((b) => {
     (window as unknown as { __bjCasinoSimBudget: number }).__bjCasinoSimBudget = b;

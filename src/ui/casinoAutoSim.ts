@@ -162,11 +162,16 @@ export function noteKeys(t: EditTracker, games: readonly { id: string; key: stri
   t.primed = true;
 }
 
-/** Games with work left, by kind, the running one included. */
-export function workCounts(cands: readonly AutoCandidate[], lookup: (c: AutoCandidate) => GameResult | undefined): { first: number; refine: number } {
+/** Games with work left, by kind, the running one included; keys in `skip` will not be worked on, so are not counted. */
+export function workCounts(
+  cands: readonly AutoCandidate[],
+  lookup: (c: AutoCandidate) => GameResult | undefined,
+  skip: ReadonlySet<string> = new Set(),
+): { first: number; refine: number } {
   let first = 0;
   let refine = 0;
   for (const c of cands) {
+    if (skip.has(c.input.key)) continue;
     const w = workFor(lookup(c));
     if (w === 'first') first += 1;
     else if (w === 'refine') refine += 1;

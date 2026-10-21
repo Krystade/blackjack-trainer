@@ -1,4 +1,4 @@
-import { loadGameCache, resultForKey, runSeed, saveGameResult, type GameResult, type ResultStatus } from '../../../store/casinoGameStats';
+import { gameStatsUnsaved, loadGameCache, resultForKey, runSeed, saveGameResult, type GameResult, type ResultStatus } from '../../../store/casinoGameStats';
 import { MIN_ROUNDS, type RunPrior, type RunProgress } from '../../../engine/casinoRun';
 import {
   AUTO_CAP_MS,
@@ -48,9 +48,13 @@ export interface RunnerState {
   /** The last failure's message, and the inputs (keys) that failed: not tried again this session. */
   error: string | null;
   failed: readonly string[];
+  /** Review B1: figures worked out this session could not be saved (the phone's storage is full). */
+  storageFull: boolean;
+  /** The keys whose figures could not be saved: shown, not worked on again this session. */
+  unsaved: readonly string[];
 }
 
-let state: RunnerState = { running: null, todo: { first: 0, refine: 0 }, paused: true, error: null, failed: [] };
+let state: RunnerState = { running: null, todo: { first: 0, refine: 0 }, paused: true, error: null, failed: [], storageFull: false, unsaved: [] };
 const listeners = new Set<() => void>();
 
 interface Running {
@@ -69,6 +73,13 @@ let running: Running | null = null;
 let worker: Worker | null = null;
 /** Keys whose run failed: not tried again this session (it would only fail again). */
 const failed = new Set<string>();
+/**
+ * Review B1: keys whose figures could not be saved. They show this session
+ * (store/casinoGameStats.ts keeps them in memory) and are not worked on again:
+ * every further run would fail to save too, and a first pass would never see
+ * its own result and start over, forever.
+ */
+const unsavedKeys = new Set<string>();
 let error: string | null = null;
 let paintTimer: ReturnType<typeof setTimeout> | null = null;
 let lastPaint = 0;
@@ -114,10 +125,12 @@ function publish(): void {
     running: running
       ? { gameId: running.job.cand.gameId, key: running.job.cand.input.key, work: running.job.work, progress: running.progress }
       : null,
-    todo: workCounts(cands, lookup),
+    todo: workCounts(cands, lookup, skipped()),
     paused: attached === 0 || hidden,
     error,
     failed: [...failed],
+    storageFull: unsavedKeys.size > 0 || gameStatsUnsaved(),
+    unsaved: [...unsavedKeys],
   };
   for (const fn of [...listeners]) fn();
 }
@@ -159,7 +172,12 @@ function save(run: Running, p: RunProgress, status: ResultStatus): void {
   };
   // A paused or checkpointed run that has used its time is finished.
   if (r.status === 'partial' && r.ms >= capOf(r)) r.status = 'time';
-  saveGameResult(cand.gameId, r);
+  if (!saveGameResult(cand.gameId, r)) unsavedKeys.add(cand.input.key);
+}
+
+/** Keys not to schedule: a failed run, or figures that could not be saved. */
+function skipped(): Set<string> {
+  return new Set([...failed, ...unsavedKeys]);
 }
 
 function finalStatus(p: RunProgress): ResultStatus {
@@ -264,7 +282,7 @@ function kick(): void {
     return;
   }
   if (running && !cands.some((c) => c.input.key === running!.job.cand.input.key)) abort();
-  const pick = pickJob(cands, lookupFn(), visible, failed);
+  const pick = pickJob(cands, lookupFn(), visible, skipped());
   if (running) {
     const r = running.job;
     if (pick && shouldPreempt({ gameId: r.cand.gameId, key: r.cand.input.key, work: r.work }, pick, visible)) {
@@ -348,8 +366,9 @@ export function _resetRunner(): void {
   hidden = false;
   error = null;
   failed.clear();
+  unsavedKeys.clear();
   if (paintTimer !== null) clearTimeout(paintTimer);
   paintTimer = null;
   lastPaint = 0;
-  state = { running: null, todo: { first: 0, refine: 0 }, paused: true, error: null, failed: [] };
+  state = { running: null, todo: { first: 0, refine: 0 }, paused: true, error: null, failed: [], storageFull: false, unsaved: [] };
 }

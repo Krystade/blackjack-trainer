@@ -264,3 +264,49 @@ describe('the automatic runner', () => {
     expect(runnerState().running).toMatchObject({ gameId: 'gb', work: 'refine' });
   });
 });
+
+describe('review B1: storage full', () => {
+  const quota = () => {
+    const e = new Error('The quota has been exceeded.');
+    e.name = 'QuotaExceededError';
+    throw e;
+  };
+
+  it('a first pass that cannot be saved is shown, said, and not run again', () => {
+    _setGameStatsStorage({ getItem: () => null, setItem: quota });
+    setAutoPlan([A, B], null);
+    attachAuto();
+    expect(lastReq().spec).toEqual(A.input.spec);
+    finishFirst();
+    // The next game, not the same one again.
+    expect(lastReq().spec).toEqual(B.input.spec);
+    finishFirst();
+    const all = workers.flatMap((w) => w.posted);
+    expect(all).toHaveLength(2);
+    // Both are first passes (partial): refining them would fail to save too, so nothing more runs.
+    expect(runnerState().running).toBeNull();
+    expect(runnerState().todo).toEqual({ first: 0, refine: 0 });
+    expect(runnerState().storageFull).toBe(true);
+    // The figures are there for this session.
+    expect(loadGameResults()[A.gameId]?.key).toBe(A.input.key);
+    expect(loadGameResults()[B.gameId]?.status).toBe('partial');
+  });
+
+  it('a refine whose checkpoint cannot be saved is not started again once stopped', () => {
+    setAutoPlan([A], null);
+    attachAuto();
+    finishFirst();
+    expect(lastReq().prior).toBeDefined();
+    _setGameStatsStorage({ getItem: (k) => mem.get(k) ?? null, setItem: quota });
+    const w = live()[0]!;
+    w.emit({ type: 'progress', progress: progress({ methods: M }, { basicRounds: 900_000, ms: 120 + CHECKPOINT_MS }) });
+    // Paused (its save fails too) and shown again: still under its cap, but not run again.
+    _setHidden(true);
+    expect(runnerState().storageFull).toBe(true);
+    expect(loadGameResults()[A.gameId]).toMatchObject({ status: 'partial', basicRounds: 900_000 });
+    _setHidden(false);
+    expect(workers.flatMap((x) => x.posted)).toHaveLength(2);
+    expect(runnerState().running).toBeNull();
+    expect(runnerState().todo).toEqual({ first: 0, refine: 0 });
+  });
+});
