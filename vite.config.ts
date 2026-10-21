@@ -55,6 +55,20 @@ export default defineConfig({
       },
     },
   },
+  server: {
+    watch: {
+      // THE LANE WORKTREES ARE NOT PART OF THIS APP. Parallel agents keep full
+      // checkouts under .claude/worktrees/ (16 of them, ~70k files outside
+      // node_modules, on 2026-10-21), and Vite's watcher ignores only .git,
+      // node_modules, test-results and its own outDir. Crawling them all after
+      // `vite` starts held every request on a fresh dev server for ~45s, while
+      // Playwright's readiness probe had already passed: the first spec of a
+      // run timed out on its first `page.goto('/')` with nothing wrong in the
+      // app. A worktree's own server is unaffected (it has no nested lanes).
+      // scripts/devServerWatch.test.ts.
+      ignored: ['**/.claude/**'],
+    },
+  },
   define: {
     __BUILD_ID__: JSON.stringify(BUILD_ID),
     __BUILT_AT__: JSON.stringify(BUILT_AT),
