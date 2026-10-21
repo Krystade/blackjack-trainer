@@ -64,6 +64,8 @@ test('#35: General comes first and open, then the rest closed, in order', async 
   await openSettings(page);
   await expect(page.locator('details.settings-section > summary')).toHaveText([
     'General',
+    // Wave N: the daily goal behind the Home streak card.
+    'Daily goal',
     'In the car',
     'Audio detail',
     /^Offline/,
@@ -73,7 +75,7 @@ test('#35: General comes first and open, then the rest closed, in order', async 
   ]);
   const sections = page.locator('details.settings-section');
   await expect(sections.first()).toHaveAttribute('open', '');
-  for (const i of [1, 2, 3, 4, 5, 6]) await expect(sections.nth(i)).not.toHaveAttribute('open', '');
+  for (const i of [1, 2, 3, 4, 5, 6, 7]) await expect(sections.nth(i)).not.toHaveAttribute('open', '');
   // General holds theme, audio on/off, volume and speech rate.
   const general = sections.first();
   await expect(general.getByText('Midnight Felt')).toBeVisible();

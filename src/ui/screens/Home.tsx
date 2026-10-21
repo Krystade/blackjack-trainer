@@ -21,6 +21,7 @@ import { speak } from '../../audio/speech';
 import { speechOptsFrom } from '../../audio/speechOpts';
 import { withAudioEnabled } from '../audioGate';
 import { useDayTick } from '../useDayTick';
+import { StreakCard } from '../components/StreakCard';
 
 interface HomeProps {
   onNavigate: (screen: Screen) => void;
@@ -137,6 +138,9 @@ export function Home({ onNavigate, activeProfile, settings, onSettingsChange }: 
           <span className="home-profile-chip-name">{activeProfile.name}</span>
         </button>
       </header>
+
+      {/* Wave N: the streak card, above everything else. */}
+      <StreakCard settings={settings} onOpen={() => onNavigate('progress')} />
 
       {/* B2: the ladder first, so Start sits above the fold. */}
       <LadderCard

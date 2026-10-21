@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CollapsibleSection } from '../components/CollapsibleSection';
+import { HabitGoalSettings } from '../components/HabitGoalSettings';
 import { OfflineSection } from './OfflineSection';
 import type { Screen } from '../App';
 import type { AudioSettings, Settings as SettingsData } from '../../store/types';
@@ -312,6 +313,9 @@ export function Settings({ settings, onNavigate, onSettingsChange }: SettingsPro
             disabled={audioDisabled}
           />
       </CollapsibleSection>
+
+      {/* Wave N: the daily goal behind the streak. */}
+      <HabitGoalSettings settings={settings} onChange={commit} />
 
       {/* The wheel, and what each button does. It was first and open while
           it shared a section with the on switch and the volume; those are

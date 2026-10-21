@@ -11,6 +11,9 @@ import { Charts } from './screens/Charts';
 import { TabBar } from './components/TabBar';
 import { MuteButton } from './components/MuteButton';
 import { StorageToast } from './components/StorageToast';
+import { HabitToasts } from './components/HabitToasts';
+import { Progress } from './screens/Progress';
+import { installHabits, ensureBackfilled } from '../habits/progressStore';
 import { KIT_PROGRESS_KEY, parseProgress } from '../diag/testKit';
 import { fieldTestRunIsResumable } from '../diag/fieldTestRun';
 import { loadSettings, saveSettings } from '../store/persist';
@@ -69,7 +72,8 @@ export type Screen =
   | 'charts'
   | 'fieldtest'
   | 'testkit'
-  | 'casino';
+  | 'casino'
+  | 'progress';
 
 /** Human names for the "Back to ..." affordance. */
 const SCREEN_LABEL: Record<Screen, string> = {
@@ -83,6 +87,7 @@ const SCREEN_LABEL: Record<Screen, string> = {
   fieldtest: 'the field test',
   testkit: 'the test kit',
   casino: 'Casino',
+  progress: 'Progress',
 };
 
 /**
@@ -169,6 +174,15 @@ function App() {
   useEffect(() => {
     startDiagnostics();
   }, []);
+
+  // Wave N: count every stats save toward the daily goal, and on a first run
+  // rebuild the habit record from history (one quiet summary toast).
+  // Before the first render, so Home's first paint already has the record.
+  useState(() => {
+    installHabits();
+    ensureBackfilled();
+    return 0;
+  });
 
   // AN UPDATE RELOAD WAITS WHILE A RUN IS OPEN (F2). The table holds a shoe and
   // the drill screen holds a drill; reloading either from the visibility change
@@ -376,6 +390,8 @@ function App() {
         return <TestKit onNavigate={navigate} />;
       case 'casino':
         return <Casino />;
+      case 'progress':
+        return <Progress settings={settings} onNavigate={navigate} />;
       case 'charts':
         // Charts reads getChart(activeProfile.rules) at render time, so unlike
         // Table it needs no remount key -- there is no long-lived Game instance
@@ -418,6 +434,7 @@ function App() {
       <MuteButton settings={settings} onSettingsChange={setSettings} />
       {/* A save that did not land (F24): one toast for every caller. */}
       <StorageToast />
+      <HabitToasts />
       <TabBar current={screen} onNavigate={navigate} />
     </>
   );

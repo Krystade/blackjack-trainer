@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { sayMomentAtPause } from '../../../habits/moment';
 import type { Settings } from '../../../store/types';
 import type { Card } from '../../../engine/cards';
 import { hiLoTag } from '../../../engine/count';
@@ -863,7 +864,7 @@ export function CountDrillView({
       nextTimer = window.setTimeout(() => {
         if (runIdRef.current !== runId) return;
         start();
-      }, nextQuestionDelayMs(answer, settings.audio));
+      }, nextQuestionDelayMs(answer, settings.audio) + sayMomentAtPause(settings.audio));
     }, answerPauseDelayMs(asked, settings.audio));
 
     return () => {

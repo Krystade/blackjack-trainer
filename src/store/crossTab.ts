@@ -58,6 +58,8 @@ export const OWNED_KEYS = [
   // Wave K: the casino ranking's cached simulations, so a result computed in
   // one tab shows in the other.
   'bjtrainer.casinoGameStats.v1',
+  // Wave N: the habit tracker's whole blob (habits/progressStore.ts).
+  'bjtrainer.progress.v1',
 ] as const;
 
 export interface ExternalWrite {

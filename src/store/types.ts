@@ -64,6 +64,11 @@ export interface Settings {
   // "Drive" button. `mode` is the Drills mode id; `voice` whether the
   // microphone was on. Absent = no such drill yet (no Drive button).
   lastDrive?: { mode: string; voice: boolean };
+  /**
+   * Wave N: the daily goal (habits/progress.ts GOALS): easy 5 min / 30
+   * answers, normal 10 / 60, hard 20 / 120. Absent = normal.
+   */
+  habits?: { goal?: 'easy' | 'normal' | 'hard' };
   drill: {
     flashCategory: 'all' | 'hard' | 'soft' | 'pairs';
     // #13: multi-select scope for the hand drills (flashcards, mastery, Mixed,

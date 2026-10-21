@@ -21,8 +21,9 @@ const fallbackStorage: Pick<Storage, 'getItem' | 'setItem'> = {
   },
 };
 
-// Default storage resolver (lazy, never throws)
-function getStorage(): Pick<Storage, 'getItem' | 'setItem'> {
+// Default storage resolver (lazy, never throws). Exported for the stores
+// that sit beside this one (Wave N habits), so tests inject one storage.
+export function getStorage(): Pick<Storage, 'getItem' | 'setItem'> {
   if (storage !== null) {
     return storage;
   }
@@ -415,11 +416,33 @@ export function loadStats(): Stats {
   }
 }
 
+/**
+ * Wave N: one observer of every stats save (the habit tracker, which counts
+ * the answers each save adds). Registered rather than imported so this layer
+ * depends on nothing above it. `replaced` is true when the stats were
+ * replaced wholesale (a backup restore), which is a new baseline, not answers.
+ */
+export type StatsSaveObserver = (written: Stats, replaced: boolean) => void;
+let statsSaveObserver: StatsSaveObserver | null = null;
+export function setStatsSaveObserver(fn: StatsSaveObserver | null): void {
+  statsSaveObserver = fn;
+}
+function notifyStatsSaved(written: Stats, replaced: boolean): void {
+  try {
+    statsSaveObserver?.(written, replaced);
+  } catch {
+    /* a habit tracker must never break saving an answer */
+  }
+}
+
 export function saveStats(s: Stats): boolean {
   // Capped on the way out rather than at each append site: there are eleven
   // history arrays written from a dozen places, and a policy applied at the
   // single choke point cannot be forgotten by the next one added.
-  return writeKey('bjtrainer.stats.v1', JSON.stringify(capHistories(s)));
+  const capped = capHistories(s);
+  const ok = writeKey('bjtrainer.stats.v1', JSON.stringify(capped));
+  if (ok) notifyStatsSaved(capped, false);
+  return ok;
 }
 
 /** Keys the export carries beyond settings+stats, with the blob field each
@@ -435,6 +458,8 @@ const EXTRA_KEYS: { key: string; field: string }[] = [
   // why it has its own key (see Charts.tsx) -- and why it was missed. It is
   // still something the operator chose and would have to choose again.
   { key: 'bjtrainer.chartOrder.v1', field: 'chartOrder' },
+  // Wave N: streaks, daily-goal days and earned achievements (habits/progressStore.ts).
+  { key: 'bjtrainer.progress.v1', field: 'progress' },
 ];
 
 /**
@@ -586,6 +611,8 @@ export function importAll(json: string): { ok: boolean; error?: string } {
       };
     }
 
+    // Wave N: the restored stats are a new baseline for the habit tracker.
+    notifyStatsSaved(loadStats(), true);
     return { ok: true };
   } catch (err) {
     return {

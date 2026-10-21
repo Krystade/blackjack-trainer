@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { sayMomentAtPause } from '../../../habits/moment';
 import type { Settings } from '../../../store/types';
 import type { GradedEvent } from '../../../engine/grade';
 import type { Card, Rank } from '../../../engine/cards';
@@ -296,7 +297,7 @@ export function useAnswerSession(settings: Settings, context: string) {
       advanceTimerRef.current = null;
       if (runIdRef.current !== runId) return;
       next();
-    }, autoAdvanceDelayMs(settings.audio.answerPauseMs, spokenMs));
+    }, autoAdvanceDelayMs(settings.audio.answerPauseMs, spokenMs + sayMomentAtPause(settings.audio)));
   };
 
   // Gates the SPOKEN "Correct." text (never the chime, never wrong-answer
