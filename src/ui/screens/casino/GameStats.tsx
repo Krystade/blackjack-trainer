@@ -246,13 +246,13 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
             })}
             {rules.rsa ? '' : ', no resplit of aces'}
             {row.input.spec.doubleSplitAces ? ', split aces may double (never hit)' : ''}
-            {row.input.spec.doubleOn ? `, double on ${row.input.spec.doubleOn} only` : ', double any two'}, min bet {money(row.input.spec.unit)}
+            {row.input.spec.doubleOn ? '' : ', double any two'}, min bet {money(row.input.spec.unit)}
             {row.input.spec.maxBet !== null ? `, max ${money(row.input.spec.maxBet)}` : ', no table max'}, {rph} rounds/h.
           </p>
           {row.input.commissionPer100 > 0 && (
             <p data-testid="gs-commission">
               <strong>Commission:</strong> {money(row.input.commissionPer100)} per $100 wagered, taken from every hand dealt to you, win or lose
-              (a card room&rsquo;s collection). It is inside the house edge and every EV here: {(row.input.commissionPer100).toFixed(2)}% of each bet.
+              ({casino.kind === 'cardroom' ? 'the collection a California card room charges' : 'a collection fee'}). It is inside the house edge and every EV here: {(row.input.commissionPer100).toFixed(2)}% of each bet.
             </p>
           )}
           {(row.input.spec.shoeDecks === 4 || row.input.spec.shoeDecks === 5) && (

@@ -19,6 +19,12 @@ for (const width of [375, 320]) {
     await page.goto('/?e2e=1');
     await openDrill(page, 'Flashcards');
     await expect(page.getByRole('button', { name: 'Stand', exact: true })).toBeVisible();
+    // The extra option must not widen the Deck pill over the scope chips (a
+    // native select sizes to its longest option: "Customize…" overlapped
+    // Pairs by 25px at 320 before the pill was sized by the chosen deck).
+    const pairs = await page.locator('.scope-chip', { hasText: 'Pairs' }).boundingBox();
+    const pill = await page.locator('.deck-select').boundingBox();
+    expect(pairs!.x + pairs!.width).toBeLessThanOrEqual(pill!.x);
     await deck(page).selectOption({ label: 'Customize…' });
 
     await expect(page.locator('.drill-heading', { hasText: 'Custom drill' })).toBeVisible();

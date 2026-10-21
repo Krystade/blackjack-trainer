@@ -1,4 +1,4 @@
-import type { CasinoGame, DeckCount, MidShoeEntry } from '../../../store/casinoLog';
+import type { CasinoGame, DeckCount, MidShoeEntry, UNSURE_FIELDS } from '../../../store/casinoLog';
 import { DEFAULT_ROUNDS_PER_HOUR } from '../../../store/casinoLog';
 import { Choice, Field, FieldGroup, MoneyInput } from './fields';
 import type { GameText } from './casinoInputs';
@@ -19,6 +19,25 @@ const YES_NO = [
   { value: 'no', label: 'No' },
 ] as const;
 
+/** The "Marked unsure" line names fields as the editor labels them. */
+const UNSURE_LABEL: Record<(typeof UNSURE_FIELDS)[number], string> = {
+  decks: 'decks',
+  s17: 'dealer soft 17',
+  das: 'double after split',
+  surrender: 'late surrender',
+  payout: 'blackjack pays',
+  cutDecksLeft: 'cut',
+  minBet: 'min bet',
+  maxBet: 'max bet',
+  midShoeEntry: 'mid-shoe entry',
+  csm: 'CSM',
+  rsa: 'resplit aces',
+  doubleSplitAces: 'double split aces',
+  maxSplitHands: 'split to',
+  doubleOn: 'double on',
+  commissionPer100: 'commission',
+};
+const unsureLabel = (f: string): string => UNSURE_LABEL[f as keyof typeof UNSURE_LABEL] ?? f;
 
 export function GameEditor({
   game,
@@ -65,8 +84,8 @@ export function GameEditor({
         <input className="cas-input" name={n('variantName')} autoComplete="off" maxLength={60} value={game.variantName ?? ''} onChange={(e) => onChange({ variantName: e.target.value })} />
       </Field>
       {game.unsure && game.unsure.length > 0 && (
-        <p className="cas-field-hint" data-testid="game-unsure">
-          Marked unsure: {game.unsure.join(', ')}.{' '}
+        <p className="cas-field-hint cas-ge-unsure" data-testid="game-unsure">
+          Marked unsure: {game.unsure.map(unsureLabel).join(', ')}.{' '}
           <button type="button" className="cas-link" onClick={() => onChange({ unsure: undefined })}>
             Confirmed
           </button>

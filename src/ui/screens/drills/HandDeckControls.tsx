@@ -5,6 +5,7 @@ import { saveSettings } from '../../../store/persist';
 import { DECK_SOURCES, deckOf } from '../../../drills/deckSource';
 import type { DeckSource } from '../../../drills/deckSource';
 import './handDeckControls.css';
+import './deckSelectFit.css';
 
 const CHIP_LABEL: Record<HandScope, string> = { hard: 'Hard', soft: 'Soft', pairs: 'Pairs' };
 const DECK_LABEL: Record<DeckSource, string> = {
@@ -75,8 +76,14 @@ export function HandDeckControls({
         {chip('all', 'All', all)}
         {ALL_SCOPES.map((s) => chip(s, CHIP_LABEL[s], !all && scopes.includes(s)))}
       </div>
-      <label className="deck-select">
+      <label className="deck-select deck-select-fit">
         <span className="deck-select-caption">Deck</span>
+        {/* Wave M: the pill is as wide as the CHOSEN deck's name, not the
+            longest option's (a native select sizes to its longest option, and
+            "Customize…" pushed it over the Pairs chip at 320). */}
+        <span className="deck-select-sizer" aria-hidden="true">
+          {DECK_LABEL[deck]}
+        </span>
         <select
           aria-label="Deck"
           value={deck}

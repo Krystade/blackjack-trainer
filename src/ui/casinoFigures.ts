@@ -279,7 +279,10 @@ export function casinoWarnBadges(c: Pick<Casino, 'games'>): string[] {
 
 /** "DD pit 3: 2D H17 · cut 0.75", or the summary alone without a label. Wave M: a variant name leads. */
 export function labelledSummary(g: CasinoGame): string {
-  const name = [g.label, g.variantName && g.variantName !== g.label ? g.variantName : null].filter(Boolean).join(', ');
+  // One name when either contains the other ("21st Century" / "21st Century Blackjack").
+  const l = g.label ?? '';
+  const v = g.variantName ?? '';
+  const name = !v ? l : !l ? v : v.toLowerCase().includes(l.toLowerCase()) ? v : l.toLowerCase().includes(v.toLowerCase()) ? l : `${l}, ${v}`;
   return name ? `${name}: ${gameSummary(g)}` : gameSummary(g);
 }
 

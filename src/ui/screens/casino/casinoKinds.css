@@ -4,3 +4,9 @@
   color: var(--ink-dim);
   background: var(--surface);
 }
+
+/* Wave M: the "Marked unsure" line sits in the game block's flex gap like a
+   field, not with a paragraph's own margins on top. */
+.cas-ge-unsure {
+  margin: 0;
+}

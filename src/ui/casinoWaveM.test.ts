@@ -37,6 +37,8 @@ describe('Wave M casino fields', () => {
     );
     expect(gameSummary({ decks: null, s17: null, das: null, surrender: null, payout: null, cutDecksLeft: null, doubleOn: '10-11', doubleSplitAces: true })).toBe('DSA D10-11');
     expect(labelledSummary({ ...blankGame('g'), variantName: '21st Century Blackjack', payout: '6:5' })).toBe('21st Century Blackjack: 6:5');
+    expect(labelledSummary({ ...blankGame('g'), label: '21st Century', variantName: '21st Century Blackjack' })).toBe('21st Century Blackjack: Game not logged');
+    expect(labelledSummary({ ...blankGame('g'), label: 'Pit 3', variantName: 'Free Bet' })).toBe('Pit 3, Free Bet: Game not logged');
     expect(kindBadge({ kind: 'cardroom' })).toBe('Card room');
     expect(kindBadge({})).toBeNull();
   });
