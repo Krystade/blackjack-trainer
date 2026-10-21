@@ -1,0 +1,21 @@
+/* Wave M: the "Card room" badge -- a fact, not a warning, so neither the
+   accent nor a tone colour: the dim ink, on a soft fill so it still reads. */
+.cas-badge[data-tone='info'] {
+  color: var(--ink-dim);
+  background: var(--surface);
+}
+
+/* Wave M: the "Marked unsure" line sits in the game block's flex gap like a
+   field, not with a paragraph's own margins on top. */
+.cas-ge-unsure {
+  margin: 0;
+}
+
+/* Wave M review S4: the rules a stats card's figures assumed, under its title
+   where the numbers are read, not only in the notes at the bottom. */
+.cas-gs-assumed-rules {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-dim);
+  line-height: 1.45;
+}

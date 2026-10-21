@@ -562,6 +562,9 @@ export function playPooledTone(
   volume: number,
   opts?: { releaseAfterMs?: number },
 ): Promise<PooledEnding> {
+  // MUTED STARTS NOTHING. iOS ignores `HTMLMediaElement.volume` (read-only,
+  // always 1), so "volume 0" on an element is full volume there.
+  if (!(elementVolume(volume) > 0)) return Promise.resolve('muted');
   const AudioCtor = getAudioCtor();
   if (!AudioCtor) return Promise.resolve('unavailable');
   let settle: (how: PooledEnding) => void = () => {};
@@ -649,8 +652,12 @@ function toneBuffer(ctx: AudioContext, spec: ToneSpec, endHz?: number): AudioBuf
  * prompt. Never throws.
  */
 export function playChimeTone(spec: ToneSpec, peak: number, endHz?: number): void {
+  // Silence starts nothing: see playPooledTone.
+  if (!(peak > 0)) return;
+  // Level baked into the samples and the element left at 1 -- never rely on
+  // `.volume`, which iOS ignores (Wave M).
   const onElement = () => {
-    void playPooledTone(cachedToneDataUri(spec, endHz), peak);
+    void playPooledTone(cachedToneDataUri(spec, endHz, peak), 1);
   };
   if (!chimeWantsWebAudio()) return onElement();
   const startTone = (ctx: AudioContext) => {
@@ -1062,6 +1069,14 @@ export function playClipsResumable(
       if (!AudioCtor) {
         diag('speak', 'clip-skip', { why: 'no-audio-element' });
         return NOTHING_PLAYED;
+      }
+
+      // MUTED STARTS NOTHING (Wave M backstop; speech.ts already routes muted
+      // lines away). iOS ignores `.volume`, so volume 0 on an element is
+      // full volume. Settled as played so nothing falls back to live TTS.
+      if (opts?.volume !== undefined && !(elementVolume(opts.volume) > 0)) {
+        diag('speak', 'clip-skip', { why: 'muted' });
+        return { played: true, remainder: null };
       }
 
       if (epoch !== interruptEpoch) {

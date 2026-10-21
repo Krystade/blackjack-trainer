@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sayMomentAtPause } from '../../../habits/moment';
 import { mulberry32 } from '../../../engine/cards';
 import type { Profile, Settings } from '../../../store/types';
 import {
@@ -167,7 +168,7 @@ export function BetSizingView({
     advanceTimerRef.current = window.setTimeout(() => {
       advanceTimerRef.current = null;
       nextScenario();
-    }, autoAdvanceDelayMs(settings.audio.answerPauseMs, spokenPauseFor(spoken, settings.audio.rate)));
+    }, autoAdvanceDelayMs(settings.audio.answerPauseMs, spokenPauseFor(spoken, settings.audio.rate) + sayMomentAtPause(settings.audio)));
   };
 
   const answer = (taken: BetAnswer) => {

@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { VoiceAction } from './voiceRecognition';
-import { SPOKEN_FORM, looksLikeAnAttempt, matchSpokenAlternatives, matchVoiceAction, nearestVoiceAction, resolveSpoken, detectVoiceSupport, setUserVoiceAliases, voicePhrases, VOICE_ACTIONS } from './voiceRecognition';
+import spokenPhrases from '../../scripts/spoken-phrases.json';
+import { MAX_ALIAS_WORDS } from './voiceAliases';
+import { MISHEARD_FORMS, SPOKEN_FORM, looksLikeAnAttempt, matchSpokenAlternatives, matchVoiceAction, nearestVoiceAction, resolveSpoken, detectVoiceSupport, setUserVoiceAliases, voicePhrases, VOICE_ACTIONS } from './voiceRecognition';
 
 /**
  * Matching is the half of voice input that can be tested without a
@@ -739,5 +741,68 @@ describe('a transcript naming several different commands', () => {
   it('does not touch repeats of the same command', () => {
     expect(matchVoiceAction('hit hit hit')).toBe('hit');
     expect(matchVoiceAction('Hit that again')).toBe('hit');
+  });
+});
+
+/**
+ * Wave M: the freeway flashcards drive (`btf`, 2026-10-20). Mishearings the
+ * owner actually produced, trusted only as the WHOLE winning transcript.
+ */
+describe('misheard forms from the btf drive', () => {
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  it('accepts each as the whole winner, marked misheard', () => {
+    expect(resolveSpoken(['Spot'])).toEqual({ action: 'split', via: 'misheard' });
+    expect(resolveSpoken(['Spot', 'Spit'])).toEqual({ action: 'split', via: 'misheard' });
+    expect(resolveSpoken(['Play them'])).toEqual({ action: 'split', via: 'misheard' });
+    expect(resolveSpoken(['Hate me'])).toEqual({ action: 'hit', via: 'misheard' });
+    expect(resolveSpoken(['Teach me.'])).toEqual({ action: 'hit', via: 'misheard' });
+    expect(resolveSpoken(['Settle down'])).toEqual({ action: 'double', via: 'misheard' });
+    // A runner-up agreeing (or saying nothing) leaves it standing.
+    expect(resolveSpoken(['Hate me', 'Hit me'])).toEqual({ action: 'hit', via: 'misheard' });
+    expect(resolveSpoken(['Spot', 'Spit', 'Split'])).toEqual({ action: 'split', via: 'misheard' });
+  });
+
+  it('never outvotes a runner-up that says a different command outright', () => {
+    // The engine is undecided between them: ask again, as for a winner naming two commands.
+    expect(resolveSpoken(['Hate me', 'Stand'])).toBe(null);
+    expect(resolveSpoken(['Spot', 'Stand'])).toBe(null);
+    expect(resolveSpoken(['Settle down', 'Surrender'])).toBe(null);
+    expect(resolveSpoken(['Teach me', 'Spit', 'Double'])).toBe(null);
+    expect(resolveSpoken(['Play them', 'Hit or stand'])).toBe(null);
+  });
+
+  it('does not take "let me": a hesitation iOS finalises at the pause', () => {
+    expect(MISHEARD_FORMS['let me']).toBeUndefined();
+    expect(resolveSpoken(['Let me'])).toBe(null);
+    // Now an ordinary short winner: a runner-up that says a command rescues it as before.
+    expect(resolveSpoken(['Let me', 'Stand pat'])).toEqual({ action: 'stand', via: 'alternative' });
+  });
+
+  it('never as a runner-up, and never inside a longer sentence', () => {
+    expect(resolveSpoken(['But', 'Spot'])).toBe(null);
+    expect(resolveSpoken(['Hmm', 'Hate me'])).toBe(null);
+    expect(resolveSpoken(['let me think'])).toBe(null);
+    expect(resolveSpoken(['spot on'])).toBe(null);
+    expect(matchVoiceAction('spot')).toBe(null);
+  });
+
+  it('rejects the btf readings that carry no evidence', () => {
+    for (const t of ['Tag', 'Play button', 'Thank you', 'Dead man', 'Please head back', 'Register']) {
+      expect(resolveSpoken([t]), t).toBe(null);
+    }
+  });
+
+  it('collides with no command, no alias, and nothing the app says', () => {
+    for (const [form, action] of Object.entries(MISHEARD_FORMS)) {
+      expect(matchVoiceAction(form), form).toBe(null);
+      expect(form.split(' ').length, form).toBeLessThanOrEqual(MAX_ALIAS_WORDS);
+      // Nearest command, if the near-miss rule sees one, is the same action.
+      const near = nearestVoiceAction(form);
+      if (near) expect(near, form).toBe(action);
+      for (const phrase of spokenPhrases as string[]) {
+        expect(` ${norm(phrase)} `.includes(` ${form} `), `"${form}" in "${phrase}"`).toBe(false);
+      }
+    }
   });
 });

@@ -6,7 +6,7 @@ import type { StrategyRules } from '../engine/ruleset';
 import { basicPlay, correctPlay } from '../engine/strategy';
 import type { PlayContext } from '../engine/strategy';
 import type { Settings } from '../store/types';
-import { pickComposition } from './buildHand';
+import { eitherOrder, pickComposition } from './buildHand';
 import { generateAllCells } from './flashcards';
 import { cellCategory } from './gradeAnswer';
 import { trackedElapsedMs } from './idleAnswer';
@@ -177,7 +177,11 @@ export function drawSpeedQuestion(
   const cell = CELLS.get(cellId)!;
   // #18: a hard cell is dealt as any of its two-card compositions.
   const total = Number(cellId.split('-')[1]);
-  const cards: Card[] = cellId.startsWith('hard-') ? (pickComposition(total, rng) ?? cell.cards) : cell.cards;
+  const cards: Card[] = cellId.startsWith('hard-')
+    ? (pickComposition(total, rng) ?? cell.cards)
+    : cellId.startsWith('soft-')
+      ? eitherOrder(cell.cards, rng)
+      : cell.cards;
   const judged = judgeSpeed(mode, cards, cell.up, pick.tc ?? 0, rules);
   return { mode, cellId, cards, up: cell.up, tc: pick.tc, ...judged };
 }

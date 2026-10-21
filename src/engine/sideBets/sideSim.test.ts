@@ -124,3 +124,17 @@ describe('Buster, priced by the linear estimate', () => {
     expect(Math.abs(mean - sim.evTop)).toBeLessThan(0.02);
   });
 });
+
+describe('Wave L merge: a 4-deck shoe (Wave M)', () => {
+  it('prices its rounds from the 4-deck shoe it deals, playing the 6-deck chart', () => {
+    const pays = payTableOf('luckyLadies', 'll-b')!.pays;
+    const sim = new SideSim({ bet: 'luckyLadies', pays, rules: { ...DEFAULT_RULES, decks: 6 }, shoeDecks: 4, cutDecks: 1, counts: [{ def: PUBLISHED_COUNTS.luckyLadies![0]! }] }, 5);
+    expect(sim.evTop).toBeCloseTo(sideBetEv('luckyLadies', pays, fullComp(4), { s17: DEFAULT_RULES.s17 }), 12);
+    expect(sim.evTop).not.toBeCloseTo(sideBetEv('luckyLadies', pays, fullComp(6), { s17: DEFAULT_RULES.s17 }), 6);
+    sim.run(2000);
+    // The composition it reads is the 4-deck shoe's: never more than 4 of a card, 208 in all.
+    expect(Math.max(...sim.sim.left!)).toBeLessThanOrEqual(4);
+    expect(compTotal(sim.sim.left!)).toBeLessThanOrEqual(208);
+    expect(sim.rounds).toBeGreaterThan(0);
+  });
+});

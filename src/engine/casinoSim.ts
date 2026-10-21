@@ -86,6 +86,25 @@ export interface SimSpec {
    * sets the same number to deal Play's exact shoes.
    */
   reserveCards?: number;
+  // ---- Wave M (lane m): the owner's real games. Absent = the old behaviour.
+  /**
+   * Decks in the physical shoe when it differs from `rules.decks` (4 or 5:
+   * RuleSet knows 1/2/6/8, and every chart lookup for 4+ decks is the same
+   * multi-deck chart, charts/index.ts `deckClassFor`).
+   */
+  shoeDecks?: number;
+  /** Most hands one original hand may become (absent = 4). */
+  maxSplitHands?: 2 | 3 | 4;
+  /** Which two-card hands may double (absent = any two). Hard-or-soft total, two cards. */
+  doubleOn?: 'any2' | '9-11' | '10-11';
+  /**
+   * Split aces may be doubled (one card, doubled stake). The hand still cannot
+   * hit: it doubles when the chart says double and stands otherwise.
+   */
+  doubleSplitAces?: boolean;
+  /** Commission, in percent of each hand's initial bet, charged once per hand dealt (not on split hands or doubles). */
+  commissionPct?: number;
+  // ---- end Wave M
 }
 
 /**
@@ -230,6 +249,9 @@ export class CasinoSim {
   private readonly cutCards: () => number;
   private rc = 0;
   private readonly decks: number;
+  /** Wave M: the split cap, and the commission as a fraction of each hand's bet. */
+  private readonly maxHands: number;
+  private readonly fee: number;
   private readonly chart: Chart;
   private readonly deviations: Deviation[];
   private readonly insThreshold: number | null;
@@ -268,7 +290,9 @@ export class CasinoSim {
   constructor(spec: SimSpec, mode: SimMode, seed: number) {
     this.spec = spec;
     this.mode = mode;
-    this.decks = spec.rules.decks;
+    this.decks = spec.shoeDecks ?? spec.rules.decks;
+    this.maxHands = spec.maxSplitHands ?? 4;
+    this.fee = (spec.commissionPct ?? 0) / 100;
     this.chart = getChart(spec.rules);
     const counting = mode === 'count' && spec.indices;
     this.deviations = counting ? indexSetFor(spec.rules) : [];
@@ -604,11 +628,15 @@ export class CasinoSim {
     for (let i = lastLive(hands); i !== -1; i = lastLive(hands)) {
       const hand = hands[i]!;
       const two = hand.cards.length === 2;
-      const canDouble = two && !hand.doubled && !hand.splitAces && (!hand.fromSplit || r.das);
+      const dsa = hand.splitAces && this.spec.doubleSplitAces === true;
+      const canDouble =
+        two && !hand.doubled && (!hand.splitAces || dsa) && (!hand.fromSplit || r.das) && this.doubleAllowed(hand);
       const canSplit =
-        two && VAL[hand.cards[0]!.rank] === VAL[hand.cards[1]!.rank] && countOrigin(hands, hand.origin) < 4 && (!hand.splitAces || r.rsa);
+        two && VAL[hand.cards[0]!.rank] === VAL[hand.cards[1]!.rank] && countOrigin(hands, hand.origin) < this.maxHands && (!hand.splitAces || r.rsa);
       const canSurrender = two && !hand.fromSplit && r.ls;
-      const action = this.decide(hand, up.rank, upIdx, counting ? this.tcNow() : 0, canDouble, canSplit, canSurrender);
+      let action = this.decide(hand, up.rank, upIdx, counting ? this.tcNow() : 0, canDouble, canSplit, canSurrender);
+      // Wave M: a split ace that may double but never hit stands on anything else.
+      if (hand.splitAces && (action === 'hit' || action === 'surrender')) action = 'stand';
       switch (action) {
         case 'hit':
           if (hand.splitAces) throw new Error('casinoSim: hit on a split ace (Game would refuse it too)');
@@ -673,7 +701,19 @@ export class CasinoSim {
     this.finish(hands, n, insurance);
   }
 
+  /** Wave M: the double-on restriction, on the two-card total. */
+  private doubleAllowed(h: SimHand): boolean {
+    const on = this.spec.doubleOn;
+    if (!on || on === 'any2') return true;
+    const t = totalOf(h.hard, h.aces);
+    return on === '9-11' ? t >= 9 && t <= 11 : t >= 10 && t <= 11;
+  }
+
+  /** Test hook (Wave M): every round's final hands, before they are summed. */
+  onHands?: (hands: readonly { cards: readonly Card[]; doubled: boolean; splitAces: boolean; origin: number }[]) => void;
+
   private finish(hands: SimHand[], n: number, insurance: number): void {
+    this.onHands?.(hands);
     // The first-dealt hand is the rightmost: origin n - 1.
     let first = 0;
     let total = 0;
@@ -681,8 +721,10 @@ export class CasinoSim {
       total += h.net;
       if (h.origin === n - 1) first += h.net;
     }
-    this.lastFirst = first + insurance;
-    this.lastTotal = total + insurance * n;
+    // Wave M: a card room's commission, once per hand DEALT (its initial bet),
+    // win or lose -- not again on a split hand or a double (review N5).
+    this.lastFirst = first + insurance - this.fee;
+    this.lastTotal = total + insurance * n - this.fee * n;
   }
 
   /** Game.performSplit: the new hand goes right of the old, and is dealt first. */
@@ -704,10 +746,13 @@ export class CasinoSim {
     this.drawTo(newH);
     this.drawTo(hand);
     if (aces) {
-      const atCap = countOrigin(hands, hand.origin) === 4;
-      hand.done = !this.spec.rules.rsa || hand.cards[1]!.rank !== 'A' || atCap;
-      newH.done = !this.spec.rules.rsa || newH.cards[1]!.rank !== 'A' || atCap;
-      if (atCap) for (const h of hands) if (h.origin === hand.origin && h.splitAces) h.done = true;
+      const atCap = countOrigin(hands, hand.origin) === this.maxHands;
+      // Wave M: with doubling on split aces each still gets its decision (double or stand).
+      const dsa = this.spec.doubleSplitAces === true;
+      const resplit = (h: SimHand) => this.spec.rules.rsa && h.cards[1]!.rank === 'A' && !atCap;
+      hand.done = !dsa && !resplit(hand);
+      newH.done = !dsa && !resplit(newH);
+      if (atCap && !dsa) for (const h of hands) if (h.origin === hand.origin && h.splitAces) h.done = true;
     }
   }
 }

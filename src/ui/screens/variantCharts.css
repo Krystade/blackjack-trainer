@@ -1,0 +1,213 @@
+/*
+ * Wave L: the variant charts. The grid, cells and palette are charts.css's;
+ * this adds only what the variant codes need -- a plain double (no fallback),
+ * the free double / free split (same family, dashed rim), the longer codes
+ * ('S4*', 'Dh5'), and the switch value table.
+ */
+
+.variant-picker {
+  flex-wrap: wrap;
+}
+
+/* The standard chart's 1rem side gutter, for the variant screen's prose. */
+.variant-edge,
+.variant-note,
+.variant-notes,
+.variant-table-title,
+.variant-checker,
+.variant-differs-group,
+.variant-switch > .chart-frame {
+  margin-left: 1rem;
+  margin-right: 1rem;
+}
+
+.variant-differs > .variant-table-title {
+  margin-left: 1rem;
+}
+
+.variant-cell {
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+/* 'S4*', 'Dh5': three letters in a column the standard chart fills with two. */
+.variant-cell[data-long='true'] {
+  font-size: var(--fs-2xs);
+}
+
+.chart-cell[data-action='D'],
+.chart-code[data-action='D'] {
+  background: var(--act-double);
+  color: var(--act-double-ink);
+}
+
+.chart-cell[data-action='FD'],
+.chart-code[data-action='FD'] {
+  background: var(--act-double);
+  color: var(--act-double-ink);
+  outline: 1px dashed var(--act-double-ink);
+  outline-offset: -1px;
+}
+
+.chart-cell[data-action='FP'],
+.chart-code[data-action='FP'] {
+  background: var(--act-split);
+  color: var(--act-split-ink);
+  outline: 1px dashed var(--act-split-ink);
+  outline-offset: -1px;
+}
+
+.variant-code {
+  min-width: 2.4rem;
+}
+
+.variant-table-title {
+  margin-top: 1.25rem;
+  margin-bottom: 0.4rem;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.variant-edge,
+.variant-note {
+  margin-top: 0.4rem;
+  margin-bottom: 0.4rem;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.variant-dim {
+  color: var(--ink-dim);
+  font-weight: 400;
+}
+
+.variant-notes {
+  margin-top: 0.4rem;
+  margin-bottom: 0.75rem;
+  padding-left: 1.1rem;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.variant-notes li + li {
+  margin-top: 0.3rem;
+}
+
+.variant-values-table td.variant-value {
+  height: 1.8rem;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+  color: var(--ink);
+  background: var(--surface-raised);
+  border-radius: 3px;
+}
+
+.variant-values-table td.variant-value[data-sign='plus'] {
+  background: var(--act-double);
+  color: var(--act-double-ink);
+}
+
+.variant-checker {
+  margin-top: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding: 0.6rem;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+
+.variant-checker-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.variant-select {
+  min-height: 2.25rem;
+  min-width: 2.9rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.variant-checker-result {
+  margin: 0.5rem 0 0;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.variant-differs {
+  margin-top: 1.25rem;
+}
+
+.variant-differs-reason {
+  margin: 0.75rem 0 0.25rem;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.variant-differs-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: var(--fs-xs);
+  color: var(--ink-dim);
+}
+
+.variant-differs-list code {
+  font-family: var(--mono);
+  color: var(--ink);
+}
+
+.variant-differs a {
+  color: var(--brass);
+}
+
+/*
+ * A cell that differs from the published chart: a dot in the corner (the
+ * standard chart's index mark is a triangle, so the two never read alike).
+ * Tap it for the other chart's play and the reason.
+ */
+.variant-cell[data-note]::before,
+.variant-note-dot::before {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  pointer-events: none;
+}
+
+.variant-note-dot {
+  position: relative;
+}
+
+.variant-cell-note p {
+  margin: 0;
+  font-size: var(--fs-xs);
+}
+
+.variant-cell-note p + p {
+  margin-top: 0.35rem;
+}
+
+/* N7: four pills, and "H17, redouble", on one line at 320. */
+@media (max-width: 360px) {
+  .variant-picker .charts-mode-btn,
+  .variant-rules .charts-mode-btn {
+    padding-left: 0.2rem;
+    padding-right: 0.2rem;
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+  }
+}

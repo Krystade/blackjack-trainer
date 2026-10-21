@@ -268,7 +268,7 @@ describe('wave K: version 2, several games per casino', () => {
   });
 
   it('repairs games: bad fields, duplicate ids, and an empty list gets one blank game', () => {
-    const c1 = normCasino({ id: 'c1', name: 'A', games: [{ id: 'x', decks: 4, roundsPerHour: -3 }, { id: 'x' }, 'junk'] })!;
+    const c1 = normCasino({ id: 'c1', name: 'A', games: [{ id: 'x', decks: 3, roundsPerHour: -3 }, { id: 'x' }, 'junk'] })!;
     expect(c1.games.map((g) => g.id)).toEqual(['x', 'g-c1-2']);
     expect(c1.games[0]!.decks).toBeNull();
     expect(c1.games[0]!.roundsPerHour).toBeNull();

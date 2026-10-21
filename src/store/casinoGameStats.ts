@@ -43,10 +43,26 @@ export const GAME_STATS_KEY = 'bjtrainer.casinoGameStats.v1';
  * Bump when the simulator changes what it computes, so every entry goes stale.
  * 2: exits are counted and their time charged (entries from 1 have no exit sums).
  * 3: an exit on a shoe's last round is not counted (re-review R3).
+ * 4: Wave M -- RSA, doubling split aces, the split cap, double-on and card-room
+ *    commission are simulated; 4- and 5-deck shoes.
  */
-export const SIM_VERSION = 3;
+export const SIM_VERSION = 4;
 
-export type AssumedField = 'decks' | 's17' | 'das' | 'surrender' | 'payout' | 'cut' | 'minBet';
+export type AssumedField =
+  | 'decks' | 's17' | 'das' | 'surrender' | 'payout' | 'cut' | 'minBet'
+  // Wave M
+  | 'rsa' | 'doubleSplitAces' | 'maxSplitHands' | 'doubleOn' | 'commission';
+
+/**
+ * Wave M: the conservative choice for each new rule when the game does not
+ * say -- no resplitting or doubling of aces, two hands at most, doubling on
+ * 10-11 only. Commission: none at a casino (they do not charge it); at a
+ * card room, ASSUMED_COMMISSION_PER_100, which is what every California card
+ * room in the owner's notes that states one charges ($1 per $100).
+ */
+export const ASSUMED_MAX_SPLIT_HANDS = 2;
+export const ASSUMED_DOUBLE_ON = '10-11' as const;
+export const ASSUMED_COMMISSION_PER_100 = 1;
 
 export interface SimInput {
   spec: SimSpec;
@@ -57,6 +73,8 @@ export interface SimInput {
   /** The cut the simulator actually used, in decks (clamped to the shoe). */
   cutUsed: number;
   methods: BetMethod[];
+  /** Wave M: dollars per $100 the simulation charged (0 = none). */
+  commissionPer100: number;
 }
 
 export const ASSUMED_CUT = 1.5;
@@ -73,15 +91,43 @@ export function simRules(game: CasinoGame): { rules: RuleSet; assumed: AssumedFi
     }
     return v;
   };
+  const shoe = pick(game.decks, ASSUMED_DECKS, 'decks');
   const rules: RuleSet = {
-    decks: pick(game.decks, ASSUMED_DECKS, 'decks'),
+    // 4 and 5 decks: the multi-deck chart, as charts/index.ts reads any 4+;
+    // the physical shoe size travels separately (`shoeDecksOf`).
+    decks: shoe === 4 || shoe === 5 ? 6 : shoe,
     s17: pick(game.s17, false, 's17'),
     das: pick(game.das, false, 'das'),
     ls: pick(game.surrender, false, 'surrender'),
-    rsa: false,
+    rsa: pick(game.rsa, false, 'rsa'),
     bj65: pick(game.payout, '6:5' as const, 'payout') === '6:5',
   };
   return { rules, assumed };
+}
+
+/** Wave M: the rules RuleSet has no room for, unknowns filled conservatively. */
+export function simExtras(
+  game: CasinoGame,
+  kind: 'casino' | 'cardroom' | undefined,
+): { extras: Pick<SimSpec, 'shoeDecks' | 'maxSplitHands' | 'doubleOn' | 'doubleSplitAces' | 'commissionPct'>; assumed: AssumedField[]; commissionPer100: number } {
+  const assumed: AssumedField[] = [];
+  const extras: Pick<SimSpec, 'shoeDecks' | 'maxSplitHands' | 'doubleOn' | 'doubleSplitAces' | 'commissionPct'> = {};
+  if (game.decks === 4 || game.decks === 5) extras.shoeDecks = game.decks;
+  if (game.doubleSplitAces == null) assumed.push('doubleSplitAces');
+  if (game.doubleSplitAces === true) extras.doubleSplitAces = true;
+  const split = game.maxSplitHands ?? (assumed.push('maxSplitHands'), ASSUMED_MAX_SPLIT_HANDS);
+  if (split !== 4) extras.maxSplitHands = split;
+  const on = game.doubleOn ?? (assumed.push('doubleOn'), ASSUMED_DOUBLE_ON);
+  if (on !== 'any2') extras.doubleOn = on;
+  let fee = game.commissionPer100;
+  if (fee == null) {
+    if (kind === 'cardroom') {
+      assumed.push('commission');
+      fee = ASSUMED_COMMISSION_PER_100;
+    } else fee = 0;
+  }
+  if (fee > 0) extras.commissionPct = fee;
+  return { extras, assumed, commissionPer100: fee };
 }
 
 /** FNV-1a, 32-bit: a stable hash of the input text (a cache key and a seed, not security). */
@@ -94,14 +140,22 @@ export function fnv1a(text: string): number {
   return h >>> 0;
 }
 
-export function simInputFor(game: CasinoGame, profile: Profile, custom: readonly BetMethod[]): SimInput {
+export function simInputFor(
+  game: CasinoGame,
+  profile: Profile,
+  custom: readonly BetMethod[],
+  kind?: 'casino' | 'cardroom',
+): SimInput {
   const { rules, assumed } = simRules(game);
+  const wm = simExtras(game, kind);
+  assumed.push(...wm.assumed);
+  const shoeDecks = wm.extras.shoeDecks ?? rules.decks;
   let cut = game.cutDecksLeft;
   if (cut === null || cut === undefined) {
     assumed.push('cut');
     cut = ASSUMED_CUT;
   }
-  const cutUsed = Math.min(Math.max(CUT_MIN_DECKS, rules.decks - CUT_MIN_DECKS), Math.max(CUT_MIN_DECKS, cut));
+  const cutUsed = Math.min(Math.max(CUT_MIN_DECKS, shoeDecks - CUT_MIN_DECKS), Math.max(CUT_MIN_DECKS, cut));
   let unit = game.minBet;
   if (unit === null || unit === undefined || !(unit > 0)) {
     assumed.push('minBet');
@@ -118,10 +172,11 @@ export function simInputFor(game: CasinoGame, profile: Profile, custom: readonly
     tcRounding: profile.tcRounding ?? 'floor',
     indices: profile.gradeDeviations !== false,
     methods,
+    ...wm.extras,
   };
   const text = JSON.stringify({ v: SIM_VERSION, ...spec });
   const h = fnv1a(text);
-  return { spec, key: `${SIM_VERSION}:${h.toString(36)}:${text.length.toString(36)}`, seed: h, assumed, cutUsed, methods };
+  return { spec, key: `${SIM_VERSION}:${h.toString(36)}:${text.length.toString(36)}`, seed: h, assumed, cutUsed, methods, commissionPer100: wm.commissionPer100 };
 }
 
 // ---------------------------------------------------------------- the cache

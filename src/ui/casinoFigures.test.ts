@@ -9,6 +9,8 @@ import {
   elapsedText,
   exportIsDue,
   gameSummary,
+  gameLogged,
+  GAME_NOT_LOGGED,
   heatTone,
   lastVisitText,
   localDateKey,
@@ -317,5 +319,16 @@ describe('formatting and parsing', () => {
     expect(exportIsDue(log, NOON, true)).toBe(true);
     expect(exportIsDue({ ...log, lastExportAt: iso(NOON - 29 * D) }, NOON, true)).toBe(false);
     expect(exportIsDue({ ...log, lastExportAt: iso(NOON - 31 * D) }, NOON, true)).toBe(true);
+  });
+});
+
+describe('Wave L merge: a game with nothing logged', () => {
+  it('reads "Game not logged" and is not logged; one rule logged is', () => {
+    const g = blankGame('g');
+    expect(gameSummary(g)).toBe(GAME_NOT_LOGGED);
+    expect(gameLogged(g)).toBe(false);
+    expect(gameLogged({ ...g, decks: 6 })).toBe(true);
+    expect(gameLogged({ ...g, s17: false })).toBe(true);
+    expect(gameLogged({ ...g, cutDecksLeft: 1 })).toBe(true);
   });
 });

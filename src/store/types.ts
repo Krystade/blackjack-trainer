@@ -65,6 +65,11 @@ export interface Settings {
   // "Drive" button. `mode` is the Drills mode id; `voice` whether the
   // microphone was on. Absent = no such drill yet (no Drive button).
   lastDrive?: { mode: string; voice: boolean };
+  /**
+   * Wave N: the daily goal (habits/progress.ts GOALS): easy 5 min / 30
+   * answers, normal 10 / 60, hard 20 / 120. Absent = normal.
+   */
+  habits?: { goal?: 'easy' | 'normal' | 'hard' };
   drill: {
     flashCategory: 'all' | 'hard' | 'soft' | 'pairs';
     // #13: multi-select scope for the hand drills (flashcards, mastery, Mixed,
@@ -262,6 +267,12 @@ export interface AudioSettings {
    * silent while every other setting stays exactly where it was.
    */
   muted: boolean;
+  /**
+   * Chime volume, 0..1: a multiplier on the alert tones' old level, applied on
+   * top of `volume` (Wave M, "Chimes way too loud"). Optional so old saves
+   * load; absent means DEFAULT_CHIME_LEVEL (audio/volume.ts, measured).
+   */
+  chimeVolume?: number;
   voiceURI: string; // 'default' or a SpeechSynthesisVoice.voiceURI
   answerPauseMs: number; // 0..5000, the eyes-free self-check pause
   // Eyes-free ZonePad presentation: false (default) shows the five labeled
@@ -323,6 +334,7 @@ export const DEFAULT_AUDIO: AudioSettings = {
   rate: 1,
   volume: 1,
   muted: false,
+  chimeVolume: 0.35,
   voiceURI: 'default',
   answerPauseMs: 3000,
   dimZones: false,

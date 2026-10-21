@@ -314,4 +314,29 @@ test.describe('the casino stats card', () => {
     await card.scrollIntoViewIfNeeded();
     await shot(page, 'side-casino-card');
   });
+
+  test('review S7: a variant game lists its side bets as not modelled and adds nothing to its row', async ({ page }) => {
+    const variant = { ...game, id: 'g-var', variant: 'freebet' };
+    const log = { ...LOG, casinos: [{ ...LOG.casinos[0]!, games: [variant] }] };
+    await page.addInitScript((l) => {
+      if (!sessionStorage.getItem('seeded')) {
+        localStorage.setItem('bjtrainer.casinoLog.v2', l);
+        sessionStorage.setItem('seeded', '1');
+      }
+    }, JSON.stringify(log));
+    await page.goto('/?e2e=1');
+    await page.locator('.tab-bar').getByRole('button', { name: 'Casino', exact: true }).click();
+    const row = page.getByTestId('games-ranked').getByTestId('rank-row').first();
+    await expect(row.getByTestId('rank-ev')).toHaveText('not modelled');
+    await expect(row.getByTestId('side-bet-badge')).toHaveCount(0);
+    await row.click();
+    await expect(page.getByTestId('game-stats')).toHaveAttribute('data-state', 'variant');
+    const card = page.getByTestId('gs-side-bets');
+    await expect(card).toHaveAttribute('data-state', 'not-modelled');
+    await expect(card.getByTestId('gs-side-row')).toHaveCount(2);
+    await expect(card.getByTestId('gs-side-not-modelled')).toHaveCount(2);
+    await expect(card.getByTestId('gs-side-not-modelled').first()).toHaveText('Not modelled for this variant');
+    await expect(card.getByTestId('gs-side-ev')).toHaveCount(0);
+    await expect(card.getByTestId('gs-side-edge')).toHaveCount(0);
+  });
 });

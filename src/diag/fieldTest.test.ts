@@ -524,6 +524,12 @@ describe('what the log gets', () => {
     expect(events).toEqual(['run-start', 'step-open', 'answer', 'run-end']);
   });
 
+  it('records the Chime volume the run chimes at (review N3: not imposed by the protocol)', () => {
+    logFieldTestRunStart('freeway', 'abc123', 32, false, 0.35);
+    const entry = readDiagnosticLog().find((e) => e.event === 'run-start');
+    expect(entry?.detail?.chimeLevel).toBe(0.35);
+  });
+
   it('records which step was opened and where in the run it was', () => {
     logFieldTestStep('wheel-gap', 'car', 6);
     const entry = readDiagnosticLog().find((e) => e.event === 'step-open');

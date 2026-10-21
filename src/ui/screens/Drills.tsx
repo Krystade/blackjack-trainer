@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { takeDrillLaunch, takeFlashHandOver, takeReviewIndexes } from '../drillLaunch';
 import { SpeedDrillView } from './drills/SpeedDrillView';
 import { TabSettingsButton } from '../components/TabSettingsButton';
@@ -30,6 +30,7 @@ import { DeckEstimationView } from './drills/DeckEstimationView';
 import { MasteryChallengeView } from './drills/MasteryChallengeView';
 import { HandDeckGate } from './drills/HandDeckGate';
 import { settingsForCustomStart } from '../../drills/deckSource';
+import { defaultSelection } from '../../drills/cellSelection';
 import { CustomDrillEditor } from '../components/CustomDrillEditor';
 import { useVoiceToggle, isVoiceOn } from '../voiceSession';
 import { useEyesFreeToggle, isEyesFreeOn } from '../eyesFreeSession';
@@ -42,6 +43,7 @@ import { FlashcardsView } from './drills/FlashcardsView';
 import { DeviationQuizView } from './drills/DeviationQuizView';
 import { MixedSessionView } from './drills/MixedSessionView';
 import { SideCountDrillView } from './drills/SideCountDrillView';
+import { VariantDrillView } from './drills/VariantDrillView';
 
 interface DrillsProps {
   settings: Settings;
@@ -68,12 +70,23 @@ type DrillMode =
   | 'mastery'
   | 'custom'
   | 'speed'
-  | 'sidecount';
+  | 'sidecount'
+  | 'variant';
+
+/** The painted tiers, order-free, with an unsaved selection read as the editor shows it. */
+function tiersKey(settings: Settings): string {
+  const tiers = settings.drill.custom?.tiers ?? defaultSelection().tiers;
+  return JSON.stringify(Object.entries(tiers).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
 
 export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }: DrillsProps) {
   // #28: Home's Next step can hand over the drill to open.
   const [launch] = useState(() => takeDrillLaunch());
   const [mode, setMode] = useState<'picker' | DrillMode>(() => launch ?? 'picker');
+  const [customReturn, setCustomReturn] = useState<'flash' | 'mastery' | null>(null);
+  // The custom tiers as they were when Customize opened from a drill, so Back
+  // can tell a look from an edit (only an edit switches the deck to Custom).
+  const customTiersAtOpen = useRef<string>('');
   // C-R3: Home's Drive tap starts the drill it opens; taken once, on mount.
   const [driveStart] = useState(() => takeDriveAutoStart());
   const autoStartFor = (m: DrillMode) => driveStart && launch === m;
@@ -158,13 +171,27 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
     );
   }
   // B2: the hand drills mount only on a deck with something in it.
-  const gate = (title: string, view: ReactNode) => (
+  /**
+   * Wave M: the Custom editor opened FROM a drill's Deck picker returns to
+   * that drill instead of the picker. Start, or Back after painting, lands on
+   * the Custom deck; Back after only looking leaves the deck and scopes he
+   * had (a Missed / Soft-only session must not be silently replaced, and the
+   * scopes are shared with Speed and Mastery). Null when opened from the
+   * picker or Home.
+   */
+  const openCustomize = (from: 'flash' | 'mastery') => {
+    customTiersAtOpen.current = tiersKey(settings);
+    setCustomReturn(from);
+    setMode('custom');
+  };
+  const gate = (title: string, view: ReactNode, from?: 'flash' | 'mastery') => (
     <HandDeckGate
       title={title}
       settings={settings}
       activeProfile={activeProfile}
       onSettingsChange={onSettingsChange}
       onBack={() => setMode('picker')}
+      onCustomize={from ? () => openCustomize(from) : undefined}
     >
       {view}
     </HandDeckGate>
@@ -195,7 +222,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
             activeProfile={activeProfile}
             onBack={() => setMode('picker')}
             onSettingsChange={onSettingsChange}
+            onCustomize={() => openCustomize('flash')}
           />,
+          'flash',
         )}
       />
     );
@@ -254,7 +283,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         activeProfile={activeProfile}
         onSettingsChange={onSettingsChange}
         onBack={() => setMode('picker')}
+        onCustomize={() => openCustomize('mastery')}
       />,
+      'mastery',
     );
   }
   if (mode === 'speed') {
@@ -279,9 +310,20 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
           const next = settingsForCustomStart(settings);
           saveSettings(next);
           onSettingsChange(next);
+          setCustomReturn(null);
           setMode(drill === 'flashcards' ? 'flash' : drill);
         }}
-        onBack={() => setMode('picker')}
+        backLabel={customReturn ? (customReturn === 'flash' ? 'Flashcards' : 'Mastery') : undefined}
+        onBack={() => {
+          if (!customReturn) return setMode('picker');
+          if (tiersKey(settings) !== customTiersAtOpen.current) {
+            const next = settingsForCustomStart(settings);
+            saveSettings(next);
+            onSettingsChange(next);
+          }
+          setCustomReturn(null);
+          setMode(customReturn);
+        }}
       />
     );
   }
@@ -307,6 +349,9 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         onBack={() => setMode('picker')}
       />
     );
+  if (mode === 'variant') {
+    return <VariantDrillView settings={settings} onSettingsChange={onSettingsChange} onBack={() => setMode('picker')} />;
+  }
   if (mode === 'rulesdiff') return <RulesDiffView settings={settings} activeProfile={activeProfile} onBack={() => setMode('picker')} />;
 
   // V3-4: SOFT competence gating — advanced pressure modes still work, but show
@@ -373,6 +418,7 @@ export function Drills({ settings, activeProfile, onNavigate, onSettingsChange }
         {entry('custom', 'Custom', 'Paint the chart cells you want, then drill just those in Flashcards, Mastery or Mixed.')}
         {entry('speed', 'Speed', 'Yes or no, against the clock: Surrender? Deviation here? Double? Split?')}
         {entry('rulesdiff', 'Rules differences', 'Only the plays that change between H17 and S17, 6 and 8 decks, or another game.')}
+        {entry('variant', 'Variant hands', 'Free Bet, Spanish 21 and Blackjack Switch hands, graded on their own charts.')}
 
         <h2 className="drills-group-title">Under pressure</h2>
         {entry('betsizing', BET_SIZING_DRILL, BET_SIZING_PICKER, true)}

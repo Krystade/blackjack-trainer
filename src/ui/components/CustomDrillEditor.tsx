@@ -61,7 +61,10 @@ export function CustomDrillEditor({
   onBack,
   rules,
   autoOnOpen = false,
+  backLabel,
 }: {
+  /** Wave M: names the drill Back returns to, when opened from one. */
+  backLabel?: string;
   settings: Settings;
   onSettingsChange: (next: Settings) => void;
   onStart: (mode: Mode) => void;
@@ -137,8 +140,12 @@ export function CustomDrillEditor({
   return (
     <div className="drill-screen cde">
       <div className="drill-topbar">
-        <button type="button" className="drill-back-btn" onClick={onBack}>
-          Back
+        <button
+          type="button"
+          className="drill-back-btn"
+          onClick={onBack}
+        >
+          {backLabel ? `Back to ${backLabel}` : 'Back'}
         </button>
         <div className="drill-heading">Custom drill</div>
       </div>

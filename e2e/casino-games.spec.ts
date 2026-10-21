@@ -19,7 +19,11 @@ const KEY = 'bjtrainer.casinoLog.v2';
 const STATS_KEY = 'bjtrainer.casinoGameStats.v1';
 const AT = '2026-10-01T00:00:00.000Z';
 
-const good = { id: 'g-good', decks: 6, s17: false, das: true, surrender: true, payout: '3:2', cutDecksLeft: 1, minBet: 25, maxBet: 1000, midShoeEntry: 'allowed', csm: false };
+// Wave M: every rule logged, including the split / double rules added then, so nothing is "Assumed".
+const good = {
+  id: 'g-good', decks: 6, s17: false, das: true, surrender: true, payout: '3:2', cutDecksLeft: 1, minBet: 25, maxBet: 1000, midShoeEntry: 'allowed', csm: false,
+  rsa: false, doubleSplitAces: false, maxSplitHands: 4, doubleOn: 'any2',
+};
 const csm = { id: 'g-csm', label: 'CSM pit', decks: 6, s17: false, das: true, surrender: false, payout: '6:5', cutDecksLeft: null, minBet: 15, maxBet: null, midShoeEntry: 'unknown', csm: true };
 const deep = { id: 'g-deep', decks: 2, s17: true, das: true, surrender: false, payout: '3:2', cutDecksLeft: 0.75, minBet: 25, maxBet: 500, midShoeEntry: 'no', csm: false };
 const base = { notes: '', createdAt: AT, updatedAt: AT, status: 'ok' };
@@ -131,6 +135,100 @@ test('compute all, then the ranking follows the figures; the cards say what they
   await page.reload();
   await openCasino(page);
   await expect(rows(page).and(page.locator('[data-state="current"]'))).toHaveCount(3);
+});
+
+/*
+ * Wave M review S4: games logged before the split / double rules existed are
+ * simulated at split-to-2 and double-10-11, which can decide their place in
+ * the ranking, so the row and the card say a rule was assumed, and which.
+ */
+test('rows and stats cards mark the rules their figures assumed', async ({ page }) => {
+  await seed(page);
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  const goodRow = rows(page).and(page.locator('[data-game="g-good"]'));
+  const deepRow = rows(page).and(page.locator('[data-game="g-deep"]'));
+  await expect(deepRow.getByTestId('assumed-badge')).toHaveText('4 rules assumed');
+  await expect(goodRow.getByTestId('assumed-badge')).toHaveCount(0);
+  // The shuffler's unknown cut is assumed too, but it is not a rule: still 4.
+  await expect(rows(page).and(page.locator('[data-game="g-csm"]')).getByTestId('assumed-badge')).toHaveText('4 rules assumed');
+
+  await deepRow.click();
+  const head = page.getByTestId('gs-assumed-rules');
+  await expect(head).toBeVisible();
+  for (const t of ['no resplitting aces', 'no doubling split aces', 'split to 2 hands only', 'double on 10-11 only']) await expect(head).toContainText(t);
+  // The cut is logged here and the min bet is never a rule: neither is in the marker.
+  await expect(head).not.toContainText('cut');
+  await expect(head).not.toContainText('min bet');
+  await back(page);
+  await goodRow.click();
+  await expect(page.getByTestId('game-stats')).toBeVisible();
+  await expect(page.getByTestId('gs-assumed-rules')).toHaveCount(0);
+});
+
+/*
+ * Merge of Wave L and Wave M: a row flags only the assumptions that can move
+ * the edge by 0.05% of action or more; the card still lists every one. A
+ * variant game is never simulated, so its row flags none.
+ */
+test('rows flag only material assumptions; the card lists all; a variant row flags none', async ({ page }) => {
+  // Every rule logged except doubling split aces (0.08%, material where it can happen).
+  const dsaOnly = { ...good, id: 'g-dsa', doubleSplitAces: undefined };
+  // The same with no double after a split logged: split aces can never double, so it is moot.
+  const moot = { ...dsaOnly, id: 'g-moot', das: false };
+  const variant = { id: 'g-var', decks: null, s17: null, das: null, surrender: null, payout: null, cutDecksLeft: null, minBet: 25, maxBet: null, midShoeEntry: 'unknown', csm: false, variant: 'freebet' };
+  const log = { ...LOG, casinos: [{ ...base, id: 'c1', name: 'Pala', games: [dsaOnly, moot, variant] }] };
+  await page.addInitScript(
+    ([k, l]) => {
+      if (!sessionStorage.getItem('seeded')) {
+        localStorage.setItem(k as string, l as string);
+        sessionStorage.setItem('seeded', '1');
+      }
+    },
+    [KEY, JSON.stringify(log)],
+  );
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  const row = (id: string) => rows(page).and(page.locator(`[data-game="${id}"]`));
+  await expect(row('g-dsa').getByTestId('assumed-badge')).toHaveText('1 rule assumed');
+  await expect(row('g-dsa').getByTestId('assumed-badge')).toHaveAttribute('title', 'no doubling split aces');
+  await expect(row('g-moot').getByTestId('assumed-badge')).toHaveCount(0);
+  await expect(row('g-var').getByTestId('rank-ev')).toHaveText('not modelled');
+  await expect(row('g-var').getByTestId('assumed-badge')).toHaveCount(0);
+
+  await row('g-moot').click();
+  await expect(page.getByTestId('gs-assumed-rules')).toContainText('no doubling split aces');
+  await back(page);
+  await row('g-var').click();
+  await expect(page.getByTestId('game-stats')).toHaveAttribute('data-state', 'variant');
+  await expect(page.getByTestId('gs-assumed-rules')).toHaveCount(0);
+});
+
+/*
+ * Merge of Wave L side bets and Wave M: a game with nothing logged reads
+ * "Game not logged" -- every rule is a guess, so its row does not single out
+ * "N rules assumed" as if the rest were known.
+ */
+test('a game with nothing logged reads "Game not logged" and flags no assumed rules', async ({ page }) => {
+  const blank = { id: 'g-blank', decks: null, s17: null, das: null, surrender: null, payout: null, cutDecksLeft: null, minBet: null, maxBet: null, midShoeEntry: 'unknown', csm: false };
+  const dsaOnly = { ...good, id: 'g-dsa', doubleSplitAces: undefined };
+  const log = { ...LOG, casinos: [{ ...base, id: 'c1', name: 'Pala', games: [blank, dsaOnly] }] };
+  await page.addInitScript(
+    ([k, l]) => {
+      if (!sessionStorage.getItem('seeded')) {
+        localStorage.setItem(k as string, l as string);
+        sessionStorage.setItem('seeded', '1');
+      }
+    },
+    [KEY, JSON.stringify(log)],
+  );
+  await page.goto('/?e2e=1');
+  await openCasino(page);
+  const row = (id: string) => rows(page).and(page.locator(`[data-game="${id}"]`));
+  await expect(row('g-blank')).toContainText('Game not logged');
+  await expect(row('g-blank').getByTestId('assumed-badge')).toHaveCount(0);
+  // The badge itself still works on a logged game beside it.
+  await expect(row('g-dsa').getByTestId('assumed-badge')).toHaveText('1 rule assumed');
 });
 
 test('editing a rule makes the result stale; Re-run makes it current again', async ({ page }) => {
@@ -431,10 +529,15 @@ for (const theme of ['midnight-felt', 'bone-ink'] as const) {
       }
     };
     const fits = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    await check(['.cas-rank-row:not([data-greyed]) .cas-rank-meta', '.cas-rank-place', '.cas-rank-row [data-testid="best-style"]', '.cas-row-note', '.cas-rank-controls .cas-note']);
+    await check(['.cas-rank-row:not([data-greyed]) .cas-rank-meta', '.cas-rank-place', '.cas-rank-row [data-testid="best-style"]', '.cas-row-note', '.cas-rank-controls .cas-note', '.cas-rank-row:not([data-greyed]) [data-testid="assumed-badge"]']);
     expect(await fits()).toBeLessThanOrEqual(0);
     await rows(page).and(page.locator('[data-game="g-good"]')).click();
     await check(['.cas-gs-sub', '.cas-gs-fig dt', '.cas-gs-fig-sub', '.cas-gs-fig dd[data-sign="1"]', '.cas-gs-fig dd[data-sign="-1"]', '.cas-gs-notes', '.cas-gs-state']);
+    expect(await fits()).toBeLessThanOrEqual(0);
+    await back(page);
+    await rows(page).and(page.locator('[data-game="g-deep"]')).click();
+    await expect(page.getByTestId('gs-assumed-rules')).toBeVisible();
+    await check(['.cas-gs-assumed-rules', '.cas-gs-assumed-rules .cas-badge']);
     expect(await fits()).toBeLessThanOrEqual(0);
     expect(bad, `low contrast in ${theme}`).toEqual([]);
   });

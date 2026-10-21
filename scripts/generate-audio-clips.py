@@ -266,6 +266,10 @@ def build_vocabulary() -> list[str]:
     # real modules rather than mirrored here — see the header.
     phrases.extend(load_spoken_phrases())
 
+    # Wave N: the daily-goal moment (src/habits/moment.ts): "Daily goal done."
+    # then the streak sentence, one clip per streak length up to one hundred.
+    phrases.extend(moment_sentences())
+
     # De-dupe while preserving order (e.g. "True count <tc>." appears once
     # from the quiz section and once from the true-count drill's own helper —
     # they mirror the identical wording, so only one clip is generated).
@@ -276,6 +280,28 @@ def build_vocabulary() -> list[str]:
             seen.add(p)
             unique.append(p)
     return unique
+
+
+TENS_WORDS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+              "eighty", "ninety"]
+
+
+def streak_number_word(n: int) -> str:
+    """Mirror of streakNumberWord() in src/habits/moment.ts."""
+    if n <= 20:
+        return number_word(n)
+    if n == 100:
+        return "one hundred"
+    t, u = divmod(n, 10)
+    return TENS_WORDS[t] if u == 0 else f"{TENS_WORDS[t]}-{number_word(u)}"
+
+
+def moment_sentences() -> list[str]:
+    """Mirror of allMomentSentences() in src/habits/moment.ts."""
+    out = ["Daily goal done.", "A new streak starts today.", "Over one hundred days in a row."]
+    for n in range(2, 101):
+        out.append(f"{capitalize(streak_number_word(n))} days in a row.")
+    return out
 
 
 # Terminal punctuation, encoded into the slug rather than thrown away.

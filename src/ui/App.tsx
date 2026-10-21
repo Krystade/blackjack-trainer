@@ -11,6 +11,10 @@ import { Charts } from './screens/Charts';
 import { TabBar } from './components/TabBar';
 import { MuteButton } from './components/MuteButton';
 import { StorageToast } from './components/StorageToast';
+import { HabitToasts } from './components/HabitToasts';
+import { Progress } from './screens/Progress';
+import { installHabits, ensureBackfilled } from '../habits/progressStore';
+import { isEyesFreeOn } from './eyesFreeSession';
 import { KIT_PROGRESS_KEY, parseProgress } from '../diag/testKit';
 import { fieldTestRunIsResumable } from '../diag/fieldTestRun';
 import { loadSettings, saveSettings } from '../store/persist';
@@ -26,6 +30,8 @@ import { diag } from '../diag/diagnosticLog';
 import { invokeWheelCommand, type WheelCommand } from '../audio/wheelCommands';
 import { releaseAudioFocus } from '../audio/audioFocus';
 import { installAudioUnlock } from '../audio/unlock';
+import { setChimeLevels } from '../audio/speech';
+import { effectiveVolume } from '../audio/volume';
 import { installAudioContextKeepAlive } from '../audio/audioContext';
 import { useActivityLive } from './activityLive';
 import { mayLeave } from './leaveGuard';
@@ -71,7 +77,8 @@ export type Screen =
   | 'fieldtest'
   | 'testkit'
   | 'casino'
-  | 'sidebets';
+  | 'sidebets'
+  | 'progress';
 
 /** Human names for the "Back to ..." affordance. */
 const SCREEN_LABEL: Record<Screen, string> = {
@@ -86,6 +93,7 @@ const SCREEN_LABEL: Record<Screen, string> = {
   testkit: 'the test kit',
   casino: 'Casino',
   sidebets: 'Side bets',
+  progress: 'Progress',
 };
 
 /**
@@ -136,7 +144,15 @@ function App() {
    * whatever drill or table you had open to go and check a cell.
    */
   const [chartsReturn, setChartsReturn] = useState<Screen>('home');
-  const [settings, setSettings] = useState<SettingsData>(() => loadSettings());
+  const [settings, setSettings] = useState<SettingsData>(() => {
+    const loaded = loadSettings();
+    // Review N2: seeded with the settings themselves, before any child mounts.
+    // The effect below runs after every child's effects, so a chime fired from
+    // a child's mount effect on a muted cold load would otherwise read the
+    // module default (volume 1). Idempotent: it only stores two numbers.
+    setChimeLevels(effectiveVolume(loaded.audio), loaded.audio.chimeVolume);
+    return loaded;
+  });
   const [activeProfile, setActiveProfileState] = useState<Profile>(() => getActiveProfile());
   /**
    * Bumped to deal a new table on purpose (#33). The Table's key already
@@ -172,6 +188,15 @@ function App() {
   useEffect(() => {
     startDiagnostics();
   }, []);
+
+  // Wave N: count every stats save toward the daily goal, and on a first run
+  // rebuild the habit record from history (one quiet summary toast).
+  // Before the first render, so Home's first paint already has the record.
+  useState(() => {
+    installHabits({ isDrive: isEyesFreeOn });
+    ensureBackfilled();
+    return 0;
+  });
 
   // AN UPDATE RELOAD WAITS WHILE A RUN IS OPEN (F2). The table holds a shoe and
   // the drill screen holds a drill; reloading either from the visibility change
@@ -216,6 +241,11 @@ function App() {
    * lands, before any drill has begun.
    */
   useEffect(() => installAudioUnlock(), []);
+  // Chimes that pass no options (turn, heard, the field test) read these, so
+  // mute and Chime volume reach every chime path, not just useAudio's.
+  useEffect(() => {
+    setChimeLevels(effectiveVolume(settings.audio), settings.audio.chimeVolume);
+  }, [settings.audio]);
   useEffect(() => installAudioContextKeepAlive(), []);
 
   // Give the car's media slot back when there is nothing here to control.
@@ -382,6 +412,8 @@ function App() {
       // Wave L: the side-bet reference, reached from the profile's Side bet section.
       case 'sidebets':
         return <SideBets activeProfile={activeProfile} onNavigate={navigate} />;
+      case 'progress':
+        return <Progress settings={settings} onNavigate={navigate} />;
       case 'charts':
         // Charts reads getChart(activeProfile.rules) at render time, so unlike
         // Table it needs no remount key -- there is no long-lived Game instance
@@ -424,6 +456,7 @@ function App() {
       <MuteButton settings={settings} onSettingsChange={setSettings} />
       {/* A save that did not land (F24): one toast for every caller. */}
       <StorageToast />
+      <HabitToasts />
       <TabBar current={screen} onNavigate={navigate} />
     </>
   );

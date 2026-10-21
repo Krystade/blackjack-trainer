@@ -32,7 +32,7 @@ import {
   chimeWantsWebAudio,
   stopClips,
 } from "./clips";
-import { chimePeak, utteranceVolume } from "./volume";
+import { DEFAULT_CHIME_LEVEL, chimeLevelPeak, clampChimeLevel, clampVolume, utteranceVolume } from "./volume";
 import type { Earcon } from "./tone";
 // Only the test reset is still wanted here: nothing in speech.ts touches the
 // Web Audio graph any more. The chimes were the last thing that did.
@@ -423,6 +423,7 @@ export function cancelSpeech(opts?: { evenProtected?: boolean }): void {
   speakInFlight = 0;
   stopClips();
   settleAllPendingSpeeches();
+  endMutedLines();
   if (!isSpeechSupported()) return;
   try {
     window.speechSynthesis.cancel();
@@ -627,13 +628,60 @@ export const CUE_WAIT_CEILING_MS = 6000;
  */
 let e2eUtterancesSounding = 0;
 
+/**
+ * MUTED utterances that are notionally sounding (Wave M, 2026-10-20).
+ *
+ * A muted line used to be PLAYED at volume 0 -- and iOS ignores
+ * `HTMLMediaElement.volume` (read-only, always 1), so Jack's muted flashcards
+ * at home spoke `correct.mp3` at full level (`k6u`/`h39`: `audio.muted: true`
+ * then a clip chain with no `path=webaudio`). Mute now starts no playback at
+ * all. The line still OCCUPIES its estimated length, exactly like the e2e
+ * harness's swallowed lines, so pacing, the speak queue and the microphone's
+ * deaf window are identical muted or not: mute changes the sound and nothing
+ * else.
+ */
+let mutedUtterancesSounding = 0;
+
+/** True when the options ask for silence: volume present and 0. */
+function isMutedRequest(opts?: { volume?: number }): boolean {
+  return opts?.volume !== undefined && utteranceVolume(opts.volume) === 0;
+}
+
+/**
+ * The muted lines still notionally sounding, each with the function that ends
+ * it. Review N1: `cancelSpeech` ends them at once, as it does a real line, so
+ * an interrupt does not leave the microphone and held cues waiting out a
+ * cancelled line's estimate (and its `onEnd` firing late).
+ */
+const mutedLinesSounding = new Set<() => void>();
+
+/** Run a muted line: logged, no element or utterance started, ends at the estimate. */
+function runMutedUtterance(text: string, opts: SpeechOpts | undefined, ended: () => void): void {
+  recordSpeechPath({ path: "muted", text, for: text, tag: opts?.tag });
+  mutedUtterancesSounding += 1;
+  const finish = () => {
+    if (!mutedLinesSounding.delete(finish)) return;
+    clearTimeout(timer);
+    mutedUtterancesSounding = Math.max(0, mutedUtterancesSounding - 1);
+    notifySpeechEnded();
+    ended();
+  };
+  mutedLinesSounding.add(finish);
+  const timer = setTimeout(finish, estimateSpeechMs(text, opts?.rate));
+}
+
+/** End every muted line now (cancelSpeech). */
+function endMutedLines(): void {
+  for (const finish of [...mutedLinesSounding]) finish();
+}
+
 /** Is the app making a noise right now, by any path? */
 export function isAppSpeaking(): boolean {
   return isSpeakingNow();
 }
 
 function isSpeakingNow(): boolean {
-  return pendingSpeeches.length > 0 || isClipChainActive() || e2eUtterancesSounding > 0;
+  return pendingSpeeches.length > 0 || isClipChainActive() || e2eUtterancesSounding > 0 || mutedUtterancesSounding > 0;
 }
 
 /**
@@ -778,6 +826,8 @@ export function _resetLastSpokenForTest(): void {
   // mid-sentence to the next test, which reads as a microphone that never
   // opens.
   e2eUtterancesSounding = 0;
+  mutedUtterancesSounding = 0;
+  mutedLinesSounding.clear();
 }
 
 /**
@@ -794,7 +844,7 @@ export function _resetLastSpokenForTest(): void {
  * `clip-failed-to-tts` is the nasty one -- the voice changing MID-utterance
  * because a clip chain broke part way through.
  */
-export type SpeechPath = "clip" | "clip-failed-to-tts" | "tts";
+export type SpeechPath = "clip" | "clip-failed-to-tts" | "tts" | "muted";
 
 export interface SpeechPathRecord {
   path: SpeechPath;
@@ -1024,6 +1074,11 @@ function speakNow(text: string, opts: SpeechOpts | undefined, ended: () => void)
       notifySpeechEnded();
       ended();
     }, estimateSpeechMs(text, opts?.rate));
+    return;
+  }
+
+  if (isMutedRequest(opts)) {
+    runMutedUtterance(text, opts, ended);
     return;
   }
 
@@ -1439,6 +1494,10 @@ export function speakAsync(text: string, opts?: SpeechOpts): Promise<void> {
     );
   }
 
+  if (isMutedRequest(opts)) {
+    return new Promise<void>((resolve) => runMutedUtterance(text, opts, resolve));
+  }
+
   // RECORDED HERE TOO, and it was not until 2026-09-23. `speak` has logged
   // the path since the voice-switch hunt, but this twin never did -- and the
   // field test speaks exclusively through this one, so every utterance the
@@ -1643,11 +1702,32 @@ export function chimeFrequencyForTest(kind: ChimeKind): number {
   return CHIME_EARCON[kind].notes[0]!.hz;
 }
 
+/** The master volume (mute folded in) chimes use when a caller passes none. */
+let chimeMasterVolume = 1;
+/** The Chime volume setting, a multiplier on the old chime level. */
+let chimeLevel = DEFAULT_CHIME_LEVEL;
+
+/**
+ * Sync the chime levels from settings. Called by App on every audio-settings
+ * change, so a chime with no options (turn, heard, field test) still obeys
+ * mute and the Chime volume setting.
+ */
+export function setChimeLevels(masterVolume: number, level: number | undefined): void {
+  chimeMasterVolume = clampVolume(masterVolume);
+  chimeLevel = level === undefined ? DEFAULT_CHIME_LEVEL : clampChimeLevel(level);
+}
+
+/** Test-only. */
+export function _resetChimeLevelsForTest(): void {
+  chimeMasterVolume = 1;
+  chimeLevel = DEFAULT_CHIME_LEVEL;
+}
+
 /**
  * Plays the kind's short earcon (50-220ms, see CHIME_EARCON). In e2e mode,
  * records `chime:<kind>` into `window.__speechLog` instead. Never throws.
  */
-export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
+export function chime(kind: ChimeKind, opts?: { volume?: number; level?: number }): void {
   // Before the e2e short-circuit, exactly as speak() does: the microphone's
   // bookkeeping is part of the behaviour under test, not part of the sound.
   //
@@ -1682,18 +1762,30 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
    * correlated the run-up with the independent variable and left no trace of
    * it whatsoever.
    */
+  // Volume and level resolved HERE, for every caller: `turn` and `heard`
+  // (useVoiceControl) and the field test pass none, so they used to play at
+  // volume 1 -- muted or not -- and logged no volume at all.
+  const volume = opts?.volume !== undefined ? clampVolume(opts.volume) : chimeMasterVolume;
+  const level = opts?.level !== undefined ? clampChimeLevel(opts.level) : chimeLevel;
+  const peak = chimeLevelPeak(volume, level);
   diag("speak", "chime", {
     kind,
-    ...(opts?.volume !== undefined ? { volume: opts.volume } : {}),
-    path: chimeWantsWebAudio() ? "webaudio" : "element",
+    volume,
+    level,
+    path: peak <= 0 ? "muted" : chimeWantsWebAudio() ? "webaudio" : "element",
   });
 
   if (isE2eAudioMode()) {
     // Volume carried too: a chime that still sounds while the app is
     // muted is exactly the noise mute is for.
-    pushSpeechLog(`chime:${kind}`, { volume: opts?.volume });
+    pushSpeechLog(`chime:${kind}`, { volume: opts?.volume ?? volume });
     return;
   }
+
+  // MUTED MEANS NOTHING STARTS. A "volume 0" element on iOS plays at full
+  // level (`.volume` is read-only there), which is how the k6u/h39 muted
+  // flashcards still chimed.
+  if (peak <= 0) return;
 
   /**
    * ON AN ELEMENT BY DEFAULT, NOT AN OSCILLATOR, since 2026-10-03. Once a
@@ -1725,7 +1817,7 @@ export function chime(kind: ChimeKind, opts?: { volume?: number }): void {
    * in a car.
    */
   try {
-    playChimeTone(CHIME_EARCON[kind], chimePeak(opts?.volume ?? 1));
+    playChimeTone(CHIME_EARCON[kind], peak);
   } catch {
     // never throw
   }

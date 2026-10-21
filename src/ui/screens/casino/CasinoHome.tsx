@@ -34,6 +34,7 @@ import {
   totals,
   casinoWarnBadges,
   distanceOf,
+  kindBadge,
   labelledSummary,
   notesFirstLine,
   worstHeat,
@@ -262,8 +263,13 @@ function CasinoRow({
             {noteLine}
           </span>
         )}
-        {(group === 'burned' || coolOffOver || heat !== 'none' || warns.length > 0) && (
+        {(group === 'burned' || coolOffOver || heat !== 'none' || warns.length > 0 || kindBadge(casino)) && (
           <span className="cas-row-badges">
+            {kindBadge(casino) && (
+              <span className="cas-badge" data-tone="info" data-testid="kind-badge">
+                {kindBadge(casino)}
+              </span>
+            )}
             {group === 'burned' && (
               <span className="cas-badge" data-tone="bad" data-testid="burned-badge">
                 Burned {burnedText(casino)}

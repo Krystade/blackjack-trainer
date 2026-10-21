@@ -73,3 +73,24 @@ describe('a casino game\'s side bets on the stats card', () => {
     expect(sideRowFor({ ...game, cutDecksLeft: 1.75 }, { bet: 'buster', payTable: 'bu-evo' })).toEqual(row);
   });
 });
+
+describe('Wave L merge: side bets at a 4- or 5-deck shoe (Wave M)', () => {
+  const sb = { bet: 'luckyLadies' as const, payTable: 'll-b' };
+  it('is dealt from the shoe it is, not the 6-deck chart the main game plays', () => {
+    const four = { ...blankGame('g4'), decks: 4 as const, s17: true, cutDecksLeft: 1 };
+    const spec = sideRowSpec(four, sb);
+    expect(spec.decks).toBe(4);
+    expect(spec.cutDecks).toBe(1);
+    // Not in the generated table (1, 2, 6, 8 decks): the game's own run.
+    expect(sideRowFor(four, sb)).toBeNull();
+    // The cut is clamped to the 4-deck shoe, as the main simulator clamps it.
+    expect(sideCutOf({ ...four, cutDecksLeft: 3.9 })).toBe(3.5);
+    expect(sideRowSpec({ ...four, decks: 5 }, sb).decks).toBe(5);
+  });
+  it('leaves 1, 2, 6 and 8 decks keyed as before (their seeds and cached rows unchanged)', () => {
+    const six = { ...blankGame('g6'), decks: 6 as const, s17: true, cutDecksLeft: 1.25 };
+    const spec = sideRowSpec(six, sb);
+    expect(spec.decks).toBe(6);
+    expect(sideSpecKey(spec)).toBe(`side${SIDE_SIM_VERSION}.sim${SIM_VERSION}/luckyLadies/ll-b/6/-/1.25/${spec.rounds}`);
+  });
+});

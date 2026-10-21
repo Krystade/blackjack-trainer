@@ -6,7 +6,7 @@ import { EV_REL_TARGET, hourly, houseEdge, summarize, type HourlyStats, type Rou
 import { describeMethod, type BetMethod } from '../engine/betMethods';
 import { evHourText } from './casinoStatsText';
 import { bestSideEvHour, gameSideFigures } from './casinoSideFigures';
-import { distanceMinutes, distanceOf, evPerTripHour, standing, warnBadges, type Distance } from './casinoFigures';
+import { distanceMinutes, distanceOf, evPerTripHour, standing, tripMinutesOf, warnBadges, type Distance } from './casinoFigures';
 
 /**
  * Wave K: the "Games ranked" list -- every logged game, its figures from the
@@ -190,6 +190,8 @@ export interface RankRow {
   sideEvHour?: number;
   /** Review S1: the figure with the side bet, when the ranking uses it. */
   withSide?: WithSide;
+  /** Wave L: a variant game; the simulator does not model it, so it is never computed. */
+  notModelled?: boolean;
 }
 
 /** Wave L: the EV per hour a row is ranked on -- the game's, or with its side bet where that is better (withSideBet). */
@@ -199,6 +201,7 @@ export function rankedEvHour(r: RankRow): number | null {
 
 /** A row with no result, a stale one, or a partial one: what "Compute all" runs. */
 export function needsCompute(r: RankRow): boolean {
+  if (r.notModelled) return false;
   return r.state.kind !== 'current' || r.state.result.status !== 'done';
 }
 
@@ -227,10 +230,13 @@ export function buildRanking(
     if (group === 'burned') continue;
     const distance = distanceOf(casino, here);
     for (const game of casino.games) {
-      const input = simInputFor(game, profile, custom);
-      const state = resultState(results[game.id], input.key);
+      const input = simInputFor(game, profile, custom, casino.kind);
+      // Wave L: a variant game is never simulated (it would be scored as standard blackjack).
+      const notModelled = game.variant !== undefined;
+      const state: ResultState = notModelled ? { kind: 'none' } : resultState(results[game.id], input.key);
       const figures = state.kind === 'none' ? null : gameFigures(state.result, roundsPerHourOf(game), bankroll, exitMinutesOf(log, game));
-      const sideEvHour = bestSideEvHour(gameSideFigures(game, roundsPerHourOf(game))).evHour;
+      // Wave L merge (review S7): a variant game's side bets are not modelled either, so they add nothing.
+      const sideEvHour = notModelled ? 0 : bestSideEvHour(gameSideFigures(game, roundsPerHourOf(game))).evHour;
       const withSide = figures ? withSideBet(figures, sideEvHour) : null;
       rows.push({
         casino,
@@ -241,10 +247,11 @@ export function buildRanking(
         greyed: group === 'avoid',
         warns: warnBadges(game),
         distance,
-        tripEv: figures ? evPerTripHour(withSide?.evHour ?? figures.evHour, session, casino.driveMinutes) : null,
+        tripEv: figures ? evPerTripHour(withSide?.evHour ?? figures.evHour, session, tripMinutesOf(casino)) : null,
         midShoeUnknown: game.midShoeEntry === 'unknown' && (withSide ? withSide.method?.method : figures?.best?.method)?.entryTc != null,
         exitRounds: (roundsPerHourOf(game) * exitMinutesOf(log, game)) / 60,
         ...(withSide ? { sideEvHour, withSide } : {}),
+        ...(notModelled ? { notModelled } : {}),
       });
     }
   }

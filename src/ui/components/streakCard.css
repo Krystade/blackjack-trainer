@@ -1,0 +1,68 @@
+/* Wave N: Home's streak card and the shared ring/flame (StreakCard.tsx). */
+.streak-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+  width: 100%;
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 0.75rem);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.streak-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+}
+
+.streak-flame { fill: var(--ink-faint); flex: none; }
+.streak-flame.is-lit { fill: var(--accent); }
+
+.streak-count { display: flex; align-items: baseline; gap: 0.25rem; flex: 1; min-width: 0; }
+.streak-num { font-size: var(--fs-3xl); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.streak-unit { color: var(--ink-soft); font-size: var(--fs-sm); }
+
+.streak-today { display: flex; align-items: center; gap: var(--space-2, 0.5rem); flex: none; }
+.streak-today-text { font-size: var(--fs-xs); color: var(--ink-soft); line-height: 1.3; font-variant-numeric: tabular-nums; }
+.streak-today-text strong { color: var(--good); font-size: var(--fs-sm); }
+
+.streak-ring { flex: none; }
+.streak-ring-track { fill: none; stroke: var(--line); stroke-width: 5; }
+.streak-ring-fill { fill: none; stroke: var(--accent); stroke-width: 5; stroke-linecap: round; }
+.streak-ring-fill.is-met { stroke: var(--good); }
+
+.streak-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2, 0.5rem); }
+.streak-week { display: flex; align-items: center; gap: 4px; }
+.streak-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  font-size: var(--fs-2xs);
+  color: var(--ink-faint);
+}
+.streak-dot.is-met { background: var(--good); border-color: var(--good); color: var(--bg); }
+.streak-dot.is-frozen { border: 1.5px solid var(--accent); background: var(--accent-wash); color: var(--accent); }
+.streak-dot.is-today { border: 2px solid var(--ink); color: var(--ink); font-weight: 700; }
+.streak-dot.is-missed { border-style: dashed; }
+.streak-dot.is-future,
+.streak-dot.is-before { opacity: 0.5; }
+.streak-week-text { margin-left: 4px; font-size: var(--fs-xs); color: var(--ink-soft); }
+.streak-freezes { font-size: var(--fs-sm); color: var(--ink-soft); white-space: nowrap; }
+
+.streak-note { font-size: var(--fs-xs); color: var(--ink-soft); }
+.streak-note.is-freeze { color: var(--accent); font-weight: 600; }
+.streak-note.is-risk { color: var(--bad); font-weight: 600; }
+
+@media (max-width: 340px) {
+  .streak-card { padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem); }
+  .streak-dot { width: 19px; height: 19px; }
+  .streak-week { gap: 3px; }
+}

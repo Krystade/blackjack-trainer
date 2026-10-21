@@ -52,6 +52,19 @@ export function pickComposition(total: number, rng: () => number): [Card, Card] 
 }
 
 /**
+ * A SOFT two-card hand in either order, half the time each (Wave M).
+ *
+ * Owner, 2026-10-20: every soft hand read "ace, four", never "four, ace" --
+ * the cells store the ace first. A real table deals the ace second half the
+ * time, and reading "four, ace" as soft 15 is the skill. Order is cosmetic:
+ * the cell id (the SR key) and the graded play depend on the cards as a set
+ * (buildHand.test.ts pins both).
+ */
+export function eitherOrder(cards: [Card, Card], rng: () => number): [Card, Card] {
+  return rng() < 0.5 ? cards : [cards[1], cards[0]];
+}
+
+/**
  * Every two-card HARD composition of `total`, in a stable order.
  *
  * V4-2 (docs/BACKLOG.md): the drills used to show ONE fixed pair per total,

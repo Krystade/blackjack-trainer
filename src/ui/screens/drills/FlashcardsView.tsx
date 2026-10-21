@@ -86,7 +86,10 @@ export function FlashcardsView({
   onBack,
   onSettingsChange,
   handOver = null,
-  onHome }: {
+  onHome,
+  onCustomize }: {
+  /** Wave M: open the Custom editor and come back here. */
+  onCustomize?: () => void;
   settings: Settings;
   activeProfile: Profile;
   onBack: () => void;
@@ -643,7 +646,7 @@ export function FlashcardsView({
               answered={lastResult !== null}
               summary={flashSummaryLine(settings.drill, activeProfile.rules, progressStats)}
             >
-              <HandDeckControls settings={settings} onChange={changeScopes} />
+              <HandDeckControls settings={settings} onChange={changeScopes} onCustomize={onCustomize} />
               <div className="flash-progress" data-testid="flash-progress">
                 {flashProgressLine(progressStats, scopesFrom(settings.drill))}
               </div>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { sayMomentAtPause } from '../../../habits/moment';
 import type { Settings } from '../../../store/types';
 import type { Card } from '../../../engine/cards';
 import { hiLoTag } from '../../../engine/count';
@@ -442,6 +443,9 @@ export function CountDrillView({
     speak(correct ? 'Correct.' : 'Wrong.', speechOptsFrom(settings.audio, { interrupt: true }));
     // No number was given, so there is no last stretch to grade (#46).
     finishRun(correct, actualValue, actualValue, false);
+    // Wave N: the result now waits for the next run -- the natural pause. A
+    // goal this run met is said here, queued behind the verdict.
+    sayMomentAtPause(settings.audio);
   };
 
   const updateDrill = (patch: Partial<Settings['drill']>) => {

@@ -60,6 +60,8 @@ export const OWNED_KEYS = [
   'bjtrainer.casinoGameStats.v1',
   // Wave L: the casino stats card's side-bet runs at a game's own cut.
   'bjtrainer.casinoSideBets.v1',
+  // Wave N: the habit tracker's whole blob (habits/progressStore.ts).
+  'bjtrainer.progress.v1',
 ] as const;
 
 export interface ExternalWrite {

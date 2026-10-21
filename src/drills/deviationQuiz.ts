@@ -7,7 +7,7 @@ import { indexSetFor } from '../engine/deviations';
 import { DEFAULT_RULES } from '../engine/ruleset';
 import { drillLegalActions, rulesChipLabels } from './legalActions';
 import type { StrategyRules } from '../engine/ruleset';
-import { makeHardHand } from './buildHand';
+import { eitherOrder, makeHardHand } from './buildHand';
 import { weightedIndex } from './weightedDraw';
 import { srWeight } from './spacedRepetition';
 import type { SrDeck } from './spacedRepetition';
@@ -63,7 +63,7 @@ export function makeSoftHand(total: number): [Card, Card] {
 /** The two cards an index is asked on: a ten pair, a soft hand, or a varied hard total. */
 function handFor(entry: Deviation, rng: () => number): [Card, Card] | null {
   if (entry.kind === 'pair10') return makePair10Cards();
-  if (entry.kind === 'soft') return makeSoftHand(entry.total!);
+  if (entry.kind === 'soft') return eitherOrder(makeSoftHand(entry.total!), rng);
   return makeHardHand(entry.total!, rng);
 }
 
@@ -376,13 +376,13 @@ function buildClosePair10Candidate(entry: Deviation, rng: () => number, rules: S
 function buildCloseSoftCandidate(entry: Deviation, rng: () => number, rules: StrategyRules): Candidate | null {
   const total = entry.total!;
   const attempts: Array<() => Candidate | null> = [
-    () => ({ cards: makeSoftHand(total), up: entry.up!, tc: tcWrongSide(entry, rng) }),
+    () => ({ cards: eitherOrder(makeSoftHand(total), rng), up: entry.up!, tc: tcWrongSide(entry, rng) }),
     ...adjacentUps(entry.up!).map(
-      (up) => () => ({ cards: makeSoftHand(total), up, tc: tcNearThreshold(entry.threshold, rng) }),
+      (up) => () => ({ cards: eitherOrder(makeSoftHand(total), rng), up, tc: tcNearThreshold(entry.threshold, rng) }),
     ),
     ...[total - 1, total + 1]
       .filter((t) => t >= 13 && t <= 20)
-      .map((t) => () => ({ cards: makeSoftHand(t), up: entry.up!, tc: tcNearThreshold(entry.threshold, rng) })),
+      .map((t) => () => ({ cards: eitherOrder(makeSoftHand(t), rng), up: entry.up!, tc: tcNearThreshold(entry.threshold, rng) })),
   ];
 
   for (const attempt of shuffled(attempts, rng)) {

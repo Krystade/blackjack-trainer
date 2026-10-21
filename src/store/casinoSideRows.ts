@@ -24,18 +24,29 @@ const MAX_CACHED = 120;
 
 /** The cut a game's side bet is simulated at: the game's own (as the main simulator clamps it), to the quarter deck. */
 export function sideCutOf(game: CasinoGame): number {
-  const { rules } = simRules(game);
   const cut = game.cutDecksLeft ?? ASSUMED_CUT;
-  const clamped = Math.min(Math.max(CUT_MIN_DECKS, rules.decks - CUT_MIN_DECKS), Math.max(CUT_MIN_DECKS, cut));
+  const shoe = sideShoeDecksOf(game);
+  const clamped = Math.min(Math.max(CUT_MIN_DECKS, shoe - CUT_MIN_DECKS), Math.max(CUT_MIN_DECKS, cut));
   return Math.round(clamped * 4) / 4;
+}
+
+/**
+ * Wave L merge: the shoe a game's side bet is dealt from. Wave M's 4- and
+ * 5-deck shoes play the 6-deck chart (simRules), but a side bet's odds are
+ * the shoe's own cards, so it keeps 4 or 5.
+ */
+export function sideShoeDecksOf(game: CasinoGame): SideRowSpec['decks'] {
+  if (game.decks === 4 || game.decks === 5) return game.decks;
+  return simRules(game).rules.decks;
 }
 
 export function sideRowSpec(game: CasinoGame, sb: CasinoSideBet): SideRowSpec {
   const { rules } = simRules(game);
   const s17 = sb.bet === 'buster' ? rules.s17 : null;
+  const decks = sideShoeDecksOf(game);
   const cutDecks = sideCutOf(game);
-  const key = `${sb.bet}/${sb.payTable}/${rules.decks}/${s17 === null ? '-' : s17 ? 's17' : 'h17'}/${cutDecks}`;
-  return { bet: sb.bet, payTable: sb.payTable, decks: rules.decks, s17, cutDecks, rounds: CASINO_SIDE_ROUNDS, seed: seedFor(key) };
+  const key = `${sb.bet}/${sb.payTable}/${decks}/${s17 === null ? '-' : s17 ? 's17' : 'h17'}/${cutDecks}`;
+  return { bet: sb.bet, payTable: sb.payTable, decks, s17, cutDecks, rounds: CASINO_SIDE_ROUNDS, seed: seedFor(key) };
 }
 
 /** The cache key: the spec, and the versions of both simulators (review S5) -- an engine fix retires every cached row. */

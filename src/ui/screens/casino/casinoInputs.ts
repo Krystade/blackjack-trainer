@@ -31,9 +31,11 @@ export interface GameText {
   maxBet: string;
   cut: string;
   roundsPerHour: string;
+  /** Wave M: a card room's commission, dollars per $100. */
+  commission: string;
 }
 
 export function gameText(g: CasinoGame): GameText {
   const t = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(n));
-  return { minBet: t(g.minBet), maxBet: t(g.maxBet), cut: t(g.cutDecksLeft), roundsPerHour: t(g.roundsPerHour) };
+  return { minBet: t(g.minBet), maxBet: t(g.maxBet), cut: t(g.cutDecksLeft), roundsPerHour: t(g.roundsPerHour), commission: t(g.commissionPer100) };
 }

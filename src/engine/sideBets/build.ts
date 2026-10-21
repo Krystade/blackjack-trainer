@@ -20,7 +20,8 @@ import type { RuleSet } from '../ruleset';
 export interface SideRowSpec {
   bet: SideBetId;
   payTable: string;
-  decks: RuleSet['decks'];
+  /** The shoe: 1, 2, 6 or 8 (the generated table's), or a casino's 4 or 5. */
+  decks: RuleSet['decks'] | 4 | 5;
   /** Buster only; null for every other bet (none depends on the dealer's rule). */
   s17: boolean | null;
   cutDecks: number;
@@ -55,10 +56,12 @@ export function buildSideRow(spec: SideRowSpec): SideBetRow {
   const t = payTableOf(spec.bet, spec.payTable);
   if (!t) throw new Error(`unknown pay table ${spec.bet}/${spec.payTable}`);
   const ruleS17 = spec.s17 ?? true;
-  const rules: RuleSet = { ...DEFAULT_RULES, decks: spec.decks, s17: ruleS17 };
+  // 4 and 5 decks: the multi-deck chart (as the main simulator plays them), the shoe's own cards.
+  const odd = spec.decks === 4 || spec.decks === 5;
+  const rules: RuleSet = { ...DEFAULT_RULES, decks: odd ? 6 : (spec.decks as RuleSet['decks']), s17: ruleS17 };
   const { counts, correlation, eor } = candidateCounts(t.bet, t.pays, spec.decks, ruleS17);
   const linear = t.bet === 'buster';
-  const sim = new SideSim({ bet: t.bet, pays: t.pays, rules, cutDecks: spec.cutDecks, counts, linear }, spec.seed);
+  const sim = new SideSim({ bet: t.bet, pays: t.pays, rules, ...(odd ? { shoeDecks: spec.decks } : {}), cutDecks: spec.cutDecks, counts, linear }, spec.seed);
   sim.run(spec.rounds);
   const cands: Candidate[] = counts.map((c, i) => {
     const bins = sim.binsOf(i);

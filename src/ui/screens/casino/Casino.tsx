@@ -11,6 +11,7 @@ import { GameStats } from './GameStats';
 import { CasinoSettings } from './CasinoSettings';
 import './casino.css';
 import './casinoGames.css';
+import './casinoKinds.css';
 
 /**
  * WAVE J (lane C): THE CASINO TAB. The real-play notebook -- casinos, their

@@ -5,6 +5,7 @@ import { _resetSharedAudioContextForTest } from './audioContext';
 import { readDiagnosticLog, clearDiagnosticLog } from '../diag/diagnosticLog';
 import { markMicSessionOpened, setVoiceCaptureActive, _resetMicSessionCostForTest } from './micSessionCost';
 import { toneSamples } from './tone';
+import { DEFAULT_CHIME_LEVEL } from './volume';
 
 interface Started {
   sample3: number;
@@ -135,7 +136,10 @@ describe('chime output path', () => {
     const lines = readDiagnosticLog().filter((e) => e.event === 'chime');
     expect(lines.map((e) => e.detail?.path)).toEqual(['element', 'webaudio']);
     expect(lines[1]!.detail?.volume).toBe(2);
-    // volume 200% -> full-scale gain on the Web Audio path.
-    expect(started[0]!.gain).toBe(1);
+    // A chime with no options still logs its volume and level (turn/heard).
+    expect(lines[0]!.detail?.volume).toBe(1);
+    expect(lines[0]!.detail?.level).toBe(DEFAULT_CHIME_LEVEL);
+    // volume 200% at the default Chime volume: 0.5 x 2 x 0.35.
+    expect(started[0]!.gain).toBeCloseTo(DEFAULT_CHIME_LEVEL, 6);
   });
 });

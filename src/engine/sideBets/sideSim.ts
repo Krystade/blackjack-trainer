@@ -50,6 +50,12 @@ export interface SideSimSpec {
   bet: SideBetId;
   pays: PayTable['pays'];
   rules: RuleSet;
+  /**
+   * Wave L merge (Wave M's 4- and 5-deck shoes): the physical shoe, when it
+   * is not the chart's deck count (`rules.decks` reads any 4+ as 6). The
+   * side bet's odds are the shoe's, so this is the deck count they use.
+   */
+  shoeDecks?: number;
   /** Decks left behind the cut. */
   cutDecks: number;
   counts: SideSimCount[];
@@ -123,6 +129,7 @@ export class SideSim {
     this.spec = spec;
     const simSpec: SimSpec = {
       rules: spec.rules,
+      ...(spec.shoeDecks !== undefined ? { shoeDecks: spec.shoeDecks } : {}),
       cutDecks: spec.cutDecks,
       csm: false,
       unit: 1,
@@ -134,7 +141,7 @@ export class SideSim {
     };
     this.sim = new CasinoSim(simSpec, 'basic', seed >>> 0);
     this.sim.trackComposition();
-    const decks = spec.rules.decks;
+    const decks = spec.shoeDecks ?? spec.rules.decks;
     const opts = { s17: spec.rules.s17 };
     this.eor = spec.linear ? effectsOfRemoval(spec.bet, spec.pays, decks, opts) : null;
     const full = new Int16Array(52).fill(decks);
@@ -149,7 +156,7 @@ export class SideSim {
 
   private score(): void {
     const c = this.sim.left!;
-    const decks = this.spec.rules.decks;
+    const decks = this.spec.shoeDecks ?? this.spec.rules.decks;
     const ev = this.eor
       ? linearEv(this.evTop, this.eor, decks, c)
       : sideBetEv(this.spec.bet, this.spec.pays, c, { s17: this.spec.rules.s17 });

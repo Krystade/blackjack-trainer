@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { sayMomentAtPause } from '../../../habits/moment';
 import type { Profile, Settings } from '../../../store/types';
 import { getActiveProfile, strategyRulesFor } from '../../../store/profiles';
 import { saveSettings } from '../../../store/persist';
@@ -200,7 +201,7 @@ function SpeedSession({
       clearAdvance();
       advanceTimerRef.current = window.setTimeout(
         nextAfterVerdict,
-        autoAdvanceDelayMs(settings.audio.answerPauseMs, spokenPauseFor(verdict, settings.audio.rate)),
+        autoAdvanceDelayMs(settings.audio.answerPauseMs, spokenPauseFor(verdict, settings.audio.rate) + sayMomentAtPause(settings.audio)),
       );
       return;
     }

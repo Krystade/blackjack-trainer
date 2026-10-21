@@ -256,8 +256,11 @@ describe('the cache key', () => {
 
   it('unknown rules are simulated at the conservative choice and listed as assumed', () => {
     const input = simInputFor(blankGame('b'), profile, []);
-    expect(input.assumed).toEqual(['decks', 's17', 'das', 'surrender', 'payout', 'cut', 'minBet']);
-    expect(input.spec.rules).toMatchObject({ decks: 6, s17: false, das: false, ls: false, bj65: true });
+    // Wave M adds rsa, doubling split aces, the split cap and double-on.
+    expect(input.assumed).toEqual(['decks', 's17', 'das', 'surrender', 'rsa', 'payout', 'doubleSplitAces', 'maxSplitHands', 'doubleOn', 'cut', 'minBet']);
+    expect(input.spec.rules).toMatchObject({ decks: 6, s17: false, das: false, ls: false, rsa: false, bj65: true });
+    expect(input.spec).toMatchObject({ maxSplitHands: 2, doubleOn: '10-11' });
+    expect(input.spec.commissionPct).toBeUndefined();
     expect(input.cutUsed).toBe(1.5);
   });
 
@@ -300,6 +303,21 @@ describe('Wave L: side bets in the ranking', () => {
     const rows2 = buildRanking(logOf([casino('c1', [plainGame]), casino('c3', [losing])]), profile, { gp: resultFor(plainGame, 2), gl: resultFor(losing, 2) }, NOW, null, 'ev');
     expect(rows2.map((r) => r.game.id)).toEqual(['gp', 'gl']);
     expect(rows2[1]!.sideEvHour).toBeUndefined();
+  });
+});
+
+describe('Wave L merge, review S7: side bets on a variant game add nothing', () => {
+  it('a variant row is not modelled and carries no side figure; its standard twin does', () => {
+    const sides = { sideBets: [{ bet: 'buster' as const, payTable: 'bu-evo', minBet: 25, maxBet: null }] };
+    const std = game('gs', { s17: true, ...sides });
+    const variant = game('gv', { s17: true, ...sides, variant: 'freebet' });
+    const rows = buildRanking(logOf([casino('c1', [std, variant])]), profile, { gs: resultFor(std, 2), gv: resultFor(std, 2) }, NOW, null, 'ev');
+    const v = rows.find((r) => r.game.id === 'gv')!;
+    expect(v.notModelled).toBe(true);
+    expect(v.sideEvHour).toBeUndefined();
+    expect(v.withSide).toBeUndefined();
+    expect(rankedEvHour(v)).toBeNull();
+    expect(rows.find((r) => r.game.id === 'gs')!.sideEvHour).toBeGreaterThan(0);
   });
 });
 

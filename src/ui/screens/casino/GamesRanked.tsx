@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import type { CasinoLog } from '../../../store/casinoLog';
 import { methodBadge } from '../../../engine/betMethods';
-import { labelledSummary } from '../../casinoFigures';
+import { gameLogged, kindBadge, labelledSummary } from '../../casinoFigures';
 import { useSideRuns } from './sideRunner';
 import { buildRanking, needsCompute, rankedEvHour, type RankRow, type RankSort } from '../../casinoRanking';
-import { ciText, evHourText, n0Text, pctText, roundsText } from '../../casinoStatsText';
+import { ASSUMED_TEXT, assumedRulesBadge, ciText, evHourText, materialAssumedRules, n0Text, pctText, roundsText } from '../../casinoStatsText';
 import { Choice } from './fields';
 import { cancelAll, enqueue } from './simRunner';
 import { useActiveProfile, useGameResults, useRunner, type useHere } from './useGameStats';
@@ -121,6 +121,12 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
 function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: number; sort: RankSort; running: boolean; onOpen: () => void }) {
   const f = row.figures;
   const value = !f ? null : sort === 'trip' && row.tripEv !== null ? row.tripEv : rankedEvHour(row);
+  // Review S4: the figure rests on conservative guesses for these rules; only
+  // the ones that can move it by 0.05% of action or more (the card lists all).
+  // A variant game is never simulated, so the standard game's guesses are not
+  // behind anything on its row. Nor is anything assumed of a game with no
+  // rules logged at all ("Game not logged"): every rule is a guess there.
+  const assumed = row.notModelled || !gameLogged(row.game) ? [] : materialAssumedRules(row.input.assumed, row.game);
   return (
     <li>
       <button
@@ -138,7 +144,7 @@ function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: 
             <span className="cas-row-name">{row.casino.name}</span>
           </span>
           <span className="cas-row-net" data-sign={value === null ? 0 : Math.sign(Math.round(value))} data-testid="rank-ev">
-            {running ? 'running…' : value === null ? 'not computed' : `${evHourText(value)}${sort === 'trip' && row.tripEv !== null ? ' trip' : ''}`}
+            {running ? 'running…' : row.notModelled ? 'not modelled' : value === null ? 'not computed' : `${evHourText(value)}${sort === 'trip' && row.tripEv !== null ? ' trip' : ''}`}
           </span>
         </span>
         <span className="cas-row-game">{labelledSummary(row.game)}</span>
@@ -177,6 +183,16 @@ function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: 
             </span>
           )}
           {row.greyed && <span className="cas-badge">Avoid</span>}
+          {kindBadge(row.casino) && (
+            <span className="cas-badge" data-tone="info" data-testid="kind-badge">
+              {kindBadge(row.casino)}
+            </span>
+          )}
+          {assumed.length > 0 && (
+            <span className="cas-badge" data-tone="warn" data-testid="assumed-badge" title={assumed.map((a) => ASSUMED_TEXT[a]).join('; ')}>
+              {assumedRulesBadge(assumed.length)}
+            </span>
+          )}
           {sort === 'trip' && f && row.tripEv === null && <span className="cas-badge">No drive time</span>}
           {row.warns.map((w) => (
             <span key={w} className="cas-badge" data-tone="warn" data-testid="warn-badge">

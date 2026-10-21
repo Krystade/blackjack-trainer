@@ -1,0 +1,28 @@
+/* Wave M: the Deck pill sized by the chosen deck's name. The sizer is an
+   invisible copy of the select's box (same padding, border, type); the select
+   lies over it. The native option list is unaffected. */
+.deck-select-sizer {
+  visibility: hidden;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0.7rem 1.7rem 0 0.75rem;
+  border: 1px solid transparent;
+  font-size: var(--fs-md);
+  line-height: 1.1;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.deck-select-fit select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* The select now comes after the caption in paint order; keep the caption on top. */
+.deck-select-fit .deck-select-caption {
+  z-index: 1;
+}
