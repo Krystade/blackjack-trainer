@@ -104,6 +104,12 @@ test('figures appear on their own, the ranking follows them, and the cards say w
   await expect(rows(page).getByTestId('partial-badge')).toHaveCount(3);
   // Review N6: a finished run's edge is shown bare (its interval is on the card).
   for (const meta of await rows(page).locator('.cas-rank-meta').allTextContents()) expect(meta).not.toContain('±');
+  // Review N7: a touch holds the order still for a moment, then lets it go.
+  const list = ranked(page).locator('.cas-rank-list');
+  await expect(list).not.toHaveAttribute('data-held', 'true');
+  await list.dispatchEvent('pointerdown');
+  await expect(list).toHaveAttribute('data-held', 'true');
+  await expect(list).not.toHaveAttribute('data-held', 'true', { timeout: 3000 });
   for (const t of await rows(page).getByTestId('partial-badge').allTextContents()) expect(t).toMatch(/^Partial ±\$\d[\d,]*\/h$/);
   await noComputeButtons(page);
 

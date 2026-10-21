@@ -334,6 +334,20 @@ export function buildRanking(
   });
 }
 
+/**
+ * Wave Q review N7: the rows in the order they were shown (`ids`), while the
+ * list is being touched or scrolled -- figures land on their own, and a
+ * re-sort under a finger opens the wrong card. Rows not shown before go last,
+ * in their own order.
+ */
+export function holdOrder<T extends { game: { id: string } }>(rows: readonly T[], ids: readonly string[]): T[] {
+  const at = new Map(ids.map((id, i) => [id, i]));
+  return rows
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => (at.get(a.r.game.id) ?? ids.length + a.i) - (at.get(b.r.game.id) ?? ids.length + b.i))
+    .map(({ r }) => r);
+}
+
 /** A casino's best game by EV per hour among computed ones, else its first. */
 export function bestGameOf(casino: Casino, rows: readonly RankRow[]): CasinoGame {
   let best: RankRow | null = null;

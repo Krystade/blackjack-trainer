@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CasinoLog } from '../../../store/casinoLog';
 import { methodBadge } from '../../../engine/betMethods';
 import { gameLogged, kindBadge, labelledSummary } from '../../casinoFigures';
 import { useSideRuns } from './sideRunner';
-import { buildRanking, rankedEvHour, type RankRow, type RankSort } from '../../casinoRanking';
+import { buildRanking, holdOrder, rankedEvHour, type RankRow, type RankSort } from '../../casinoRanking';
 import { assumedLabel, assumedRulesBadge, ciText, evHourText, materialAssumedRules, n0Text, pctText, roundsText } from '../../casinoStatsText';
 import { Choice } from './fields';
 import type { RunnerState } from './simRunner';
@@ -25,6 +25,8 @@ import './casinoAuto.css';
  */
 
 const SORT_KEY = 'bjtrainer.casinoRankSort.v1';
+/** Review N7: how long the order holds after the list was last touched or scrolled. */
+const HOLD_MS = 700;
 
 function readSort(): RankSort {
   try {
@@ -44,9 +46,33 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
   useSideRuns();
   const { state: here, toggle: toggleHere } = where;
   const [sort, setSort] = useState<RankSort>(readSort);
-  const rows = buildRanking(log, profile, results, Date.now(), here.here, sort, archive);
+  const sorted = buildRanking(log, profile, results, Date.now(), here.here, sort, archive);
+  // Review N7: while the list is touched or scrolled, rows keep their places; the new order lands after.
+  const [held, setHeld] = useState<readonly string[] | null>(null);
+  const rows = held ? holdOrder(sorted, held) : sorted;
+  const shownIds = useRef<string[]>([]);
+  useEffect(() => {
+    shownIds.current = rows.map((r) => r.game.id);
+  });
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hold = useCallback(() => {
+    setHeld((h) => h ?? [...shownIds.current]);
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setHeld(null);
+    }, HOLD_MS);
+  }, []);
+  useEffect(() => {
+    window.addEventListener('scroll', hold, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', hold);
+      if (timer.current !== null) clearTimeout(timer.current);
+    };
+  }, [hold]);
   if (rows.length === 0) return null;
   const changeSort = (v: RankSort) => {
+    setHeld(null);
     setSort(v);
     try {
       localStorage.setItem(SORT_KEY, v);
@@ -94,7 +120,7 @@ export function GamesRanked({ log, go, here: where }: { log: CasinoLog; go: (v: 
         </p>
         <AutoStatus runner={runner} rows={rows} />
       </div>
-      <ol className="cas-list cas-rank-list">
+      <ol className="cas-list cas-rank-list" onPointerDown={hold} data-held={held ? 'true' : undefined}>
         {rows.map((r, i) => (
           <RankItem
             key={r.game.id}

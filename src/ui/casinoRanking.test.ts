@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRanking, bestGameOf, evTargetMet, exitMinutesOf, gameFigures, rankedEvHour, seatedThroughout, sideCombinedText, withSideBet, type GameFigures } from './casinoRanking';
+import { holdOrder, buildRanking, bestGameOf, evTargetMet, exitMinutesOf, gameFigures, rankedEvHour, seatedThroughout, sideCombinedText, withSideBet, type GameFigures } from './casinoRanking';
 import { emptyCasinoLog, blankGame, type Casino, type CasinoGame, type CasinoLog } from '../store/casinoLog';
 import { resultState, simInputFor, type GameResult } from '../store/casinoGameStats';
 import { workFor } from './casinoAutoSim';
@@ -460,5 +460,14 @@ describe('review S1: a side bet rides only on a method that stays seated', () =>
     const f: GameFigures = { edge: 0.005, edgeCi: 0, methods: null, best: null, evHour: -10, evHourCi: 0, n0Hours: null, partial: false, exitMinutes: 0 };
     expect(withSideBet(f, 12)).toEqual({ evHour: 2, sideEvHour: 12, method: null });
     expect(withSideBet(f, 0)).toBeNull();
+  });
+});
+
+describe('Wave Q review N7: holdOrder', () => {
+  const r = (id: string) => ({ game: { id } });
+  it('keeps the shown order; rows not shown before go last, in their own order', () => {
+    expect(holdOrder([r('c'), r('a'), r('b')], ['a', 'b', 'c']).map((x) => x.game.id)).toEqual(['a', 'b', 'c']);
+    expect(holdOrder([r('n2'), r('b'), r('n1'), r('a')], ['a', 'b']).map((x) => x.game.id)).toEqual(['a', 'b', 'n2', 'n1']);
+    expect(holdOrder([r('a')], ['gone', 'a']).map((x) => x.game.id)).toEqual(['a']);
   });
 });
