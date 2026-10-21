@@ -80,7 +80,7 @@ test('#35: General comes first and open, then the rest closed, in order', async 
   const general = sections.first();
   await expect(general.getByText('Midnight Felt')).toBeVisible();
   await expect(general.getByRole('checkbox', { name: 'Audio enabled' })).toBeVisible();
-  await expect(general.locator('.settings-row', { hasText: 'Volume' })).toBeVisible();
+  await expect(general.locator('.settings-row', { hasText: /^Volume/ })).toBeVisible();
   await expect(general.locator('.settings-row', { hasText: 'Speech rate' })).toBeVisible();
   // What moved to the tab gears is gone from here.
   for (const moved of ['Feedback', 'Deal speed', 'Shot clock', 'Losing shoe', 'Bankroll']) {

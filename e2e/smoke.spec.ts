@@ -75,7 +75,7 @@ test('full journey: Home -> Profiles -> Settings -> Charts -> Table -> all ten D
   await expect(page.locator('.settings-heading')).toHaveText('Settings');
 
   await expect(page.locator('details.settings-section summary').first()).toHaveText('General');
-  await expect(page.locator('.settings-row', { hasText: 'Volume' })).toBeVisible();
+  await expect(page.locator('.settings-row', { hasText: /^Volume/ })).toBeVisible();
   await expect(page.locator('.settings-row', { hasText: 'Feedback' })).toHaveCount(0);
 
   await expect(page.locator('.settings-test-audio-btn')).toBeVisible();
