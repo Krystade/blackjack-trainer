@@ -17,6 +17,11 @@ describe('side-bet stats', () => {
     expect(sideBetTotals(s)).toEqual({ right: 3, wrong: 2, placed: 3, net: 250 });
   });
 
+  it('review N9: a placed bet that never settled (the session ended mid-round) is not counted', () => {
+    const s = addSideDecisions(base, 'over13', [d({ placed: true, expected: true }), d({ placed: true, expected: true, net: 25 })]);
+    expect(sideBetStatsOf(s).play.over13).toEqual({ right: 1, wrong: 0, placed: 1, net: 25 });
+  });
+
   it('is additive: a blob without the field reads as nothing, and nothing added changes nothing', () => {
     expect(sideBetStatsOf(base)).toEqual({ play: {}, drill: [] });
     expect(addSideDecisions(base, 'buster', [])).toBe(base);

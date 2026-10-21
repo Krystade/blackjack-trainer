@@ -9,14 +9,17 @@ import { money } from '../../casinoFigures';
 import { pct } from '../../sideBetSummary';
 import { triggerText } from '../../sideBetFeedback';
 import { requestSideRow, sideRunState, useSideRuns } from './sideRunner';
+import { sideCombinedText, type GameFigures } from '../../casinoRanking';
 
 /**
  * Wave L: the stats card's side bets -- one row per side bet the game
  * offers: its exact house edge, the count that beats it and from where, and
  * what counting it earns per hour at its stake; then the game's best EV per
- * hour with the best side bet added, when one is worth making.
+ * hour with the best side bet added, when one is worth making -- on a method
+ * that stays seated (review S1, casinoRanking.withSideBet): a back-counter or
+ * a wonger is away for many of the rounds the side figure counts.
  */
-export function SideBetsCard({ game, roundsPerHour, mainEvHour }: { game: CasinoGame; roundsPerHour: number; mainEvHour: number | null }) {
+export function SideBetsCard({ game, roundsPerHour, figures }: { game: CasinoGame; roundsPerHour: number; figures: GameFigures | null }) {
   useSideRuns();
   const figs = gameSideFigures(game, roundsPerHour);
   // A game cut off the standard cut is simulated at its own, on opening the card.
@@ -65,6 +68,8 @@ export function SideBetsCard({ game, roundsPerHour, mainEvHour }: { game: Casino
                   <div className="cas-gs-fig">
                     <dt>Counted EV</dt>
                     <dd data-sign={Math.sign(Math.round(f.evHour ?? 0))} data-testid="gs-side-ev">
+                      {/* Review N4: Buster's rounds are priced by the linear estimate. */}
+                      {f.row.linear && !f.always && f.trigger !== null ? '≈ ' : ''}
                       {evHourText(f.evHour ?? 0)}
                       <span className="cas-gs-fig-sub">at {money(f.stake)}</span>
                     </dd>
@@ -79,12 +84,9 @@ export function SideBetsCard({ game, roundsPerHour, mainEvHour }: { game: Casino
           );
         })}
       </ul>
-      {mainEvHour !== null && (
+      {figures && (
         <p className="cas-pad-x cas-sb-combined" data-testid="gs-side-combined">
-          <strong>Best with a side bet:</strong>{' '}
-          {best.fig
-            ? `${evHourText(mainEvHour + best.evHour)} (${evHourText(mainEvHour)} + ${BET_NAMES[best.fig.sb.bet]} ${evHourText(best.evHour)})`
-            : `${evHourText(mainEvHour)} — no side bet here is worth making`}
+          <strong>Best with a side bet:</strong> {sideCombinedText(figures, best.fig ? BET_NAMES[best.fig.sb.bet] : null, best.evHour)}
         </p>
       )}
       <p className="cas-pad-x cas-note">
@@ -94,3 +96,4 @@ export function SideBetsCard({ game, roundsPerHour, mainEvHour }: { game: Casino
     </section>
   );
 }
+

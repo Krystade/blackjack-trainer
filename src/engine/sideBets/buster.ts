@@ -17,8 +17,8 @@ import type { OutcomeProbs } from './odds';
  * and the dealer's draws, and how many the player takes depends on the
  * dealer's up card. That couples the two slightly; it is ignored, as the
  * Wizard of Odds' own dealer-probability analysis does (payTables.test.ts
- * compares the house edge with its published figures, and sideBetSim.test.ts
- * with the dealer's real hands from the Wave K simulator).
+ * compares the house edge with its published figures, and odds.test.ts
+ * with a brute-force deal of a short shoe's dealer draws).
  *
  * The player-blackjack lines (pay table Version 2) need the player's cards:
  * P(player blackjack) times the dealer's distribution from the shoe less one

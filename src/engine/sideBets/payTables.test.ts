@@ -37,12 +37,15 @@ describe('side-bet house edges: computed vs published', () => {
 });
 
 describe('recorded disagreements still disagree', () => {
-  for (const t of PAY_TABLES) {
-    for (const p of t.disagree ?? []) {
-      it(`${t.bet} ${t.name}, ${p.decks} decks: published ${(p.edge * 100).toFixed(2)}%`, () => {
+  // Review N1: 21+3 V7's "6 decks 3.70%" was the source's 8-deck table total,
+  // mislabelled; it now sits in `published` at 8 decks, so no row disagrees today.
+  it('every recorded disagreement (none today) still differs by more than rounding', () => {
+    for (const t of PAY_TABLES) {
+      for (const p of t.disagree ?? []) {
         const edge = -sideBetEv(t.bet, t.pays, fullComp(p.decks), { s17: p.s17 });
-        expect(Math.abs(edge - p.edge)).toBeGreaterThan(0.001);
-      });
+        expect(Math.abs(edge - p.edge), `${t.bet} ${t.name} ${p.decks}`).toBeGreaterThan(0.001);
+      }
     }
-  }
+    expect(payTableOf('twentyOnePlus3', '213-v7')!.published.map((p) => p.decks)).toEqual([4, 8]);
+  });
 });

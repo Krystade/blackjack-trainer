@@ -3,7 +3,8 @@ import { DEFAULT_EXIT_FIND_MINUTES, DEFAULT_EXIT_WAIT_MINUTES, DEFAULT_ROUNDS_PE
 import type { Profile } from '../store/types';
 import { resultState, simInputFor, type GameResult, type ResultState, type SimInput } from '../store/casinoGameStats';
 import { EV_REL_TARGET, hourly, houseEdge, summarize, type HourlyStats, type RoundStats } from '../engine/casinoStats';
-import type { BetMethod } from '../engine/betMethods';
+import { describeMethod, type BetMethod } from '../engine/betMethods';
+import { evHourText } from './casinoStatsText';
 import { bestSideEvHour, gameSideFigures } from './casinoSideFigures';
 import { distanceMinutes, distanceOf, evPerTripHour, standing, warnBadges, type Distance } from './casinoFigures';
 
@@ -97,6 +98,72 @@ export function gameFigures(result: GameResult, roundsPerHour: number, bankroll:
   };
 }
 
+/**
+ * Review S1: a method that is SEATED for every round of the shoe -- no
+ * back-count entry, no wong-out exit. Only such a method can make a counted
+ * side bet whenever its trigger comes up: the side figures are per 100
+ * rounds DEALT, and a method that leaves the table (Under 13's trigger is a
+ * crushingly negative count, exactly where a wonger has gone) is not there
+ * for many of them. Its side-bet rounds were never simulated on its sat-in
+ * rounds, so no side EV is added to it.
+ */
+export function seatedThroughout(m: BetMethod): boolean {
+  return m.entryTc === null && m.exitTc === null;
+}
+
+/** The best method by EV per hour among those seated throughout; null with none (or at a shuffler). */
+export function bestSeated(f: GameFigures): MethodFigures | null {
+  let seated: MethodFigures | null = null;
+  for (const m of f.methods ?? []) {
+    if (m.stats.time > 0 && seatedThroughout(m.method) && (!seated || m.hours.evHour > seated.hours.evHour)) seated = m;
+  }
+  return seated;
+}
+
+/**
+ * The stats card's "Best with a side bet" line, by the ranking's own rule
+ * (withSideBet): "$41/h (Profile ramp, play all $30/h + Lucky Ladies $11/h)",
+ * or why the side bet is left out.
+ */
+export function sideCombinedText(f: GameFigures, betName: string | null, sideEvHour: number): string {
+  if (!betName || !(sideEvHour > 0)) return `${evHourText(f.evHour)} — no side bet here is worth making`;
+  const ws = withSideBet(f, sideEvHour);
+  if (ws) {
+    const base = ws.method ? `${describeMethod(ws.method.method)} ${evHourText(ws.method.hours.evHour)}` : evHourText(f.evHour);
+    return `${evHourText(ws.evHour)} (${base} + ${betName} ${evHourText(sideEvHour)})`;
+  }
+  // The best method leaves the table for rounds the side figure counts.
+  const seated = bestSeated(f);
+  const leaves = f.best?.method.entryTc != null ? 'back-counts' : 'wongs out';
+  const why = `none — the best method ${leaves} (${evHourText(f.evHour)}), so ${betName} is not added to it`;
+  return seated ? `${why}. Seated with ${betName}: ${evHourText(seated.hours.evHour + sideEvHour)}` : why;
+}
+
+/** What the game is worth with its best side bet counted, when that beats the game alone. */
+export interface WithSide {
+  /** EV per hour: the seated method's (or a shuffler's flat bet) plus the side bet's. */
+  evHour: number;
+  sideEvHour: number;
+  /** The method the side bet rides on; null at a continuous shuffler (no methods). */
+  method: MethodFigures | null;
+}
+
+/**
+ * Review S1: the game's EV per hour with a side bet, or null when adding it
+ * does not beat the game's best method alone. The side bet rides on the best
+ * SEATED method (seatedThroughout), so a game whose best method backs off
+ * ranks on max(best method alone, best seated method + side bet). A
+ * continuous shuffler is played every round, so its side bet always adds.
+ */
+export function withSideBet(f: GameFigures, sideEvHour: number): WithSide | null {
+  if (!(sideEvHour > 0)) return null;
+  if (!f.methods) return { evHour: f.evHour + sideEvHour, sideEvHour, method: null };
+  const seated = bestSeated(f);
+  if (!seated) return null;
+  const evHour = seated.hours.evHour + sideEvHour;
+  return evHour > f.evHour ? { evHour, sideEvHour, method: seated } : null;
+}
+
 export type RankSort = 'ev' | 'distance' | 'trip';
 
 export interface RankRow {
@@ -116,16 +183,18 @@ export interface RankRow {
   /** Rounds one exit costs at this game now: rounds/hour x exit minutes / 60. */
   exitRounds: number;
   /**
-   * Wave L: what the game's best side bet adds per hour, counted (0 when none
-   * is worth making or none is logged). The EV sorts rank on the game's EV
-   * plus this.
+   * Wave L: the game's best side bet's counted EV per hour, present only when
+   * the ranking includes it (review S1: on a seated method, and only when
+   * that beats the best method alone -- `withSide`).
    */
   sideEvHour?: number;
+  /** Review S1: the figure with the side bet, when the ranking uses it. */
+  withSide?: WithSide;
 }
 
-/** Wave L: the EV per hour a row is ranked on -- the game's, plus its best side bet. */
+/** Wave L: the EV per hour a row is ranked on -- the game's, or with its side bet where that is better (withSideBet). */
 export function rankedEvHour(r: RankRow): number | null {
-  return r.figures ? r.figures.evHour + (r.sideEvHour ?? 0) : null;
+  return r.figures ? (r.withSide?.evHour ?? r.figures.evHour) : null;
 }
 
 /** A row with no result, a stale one, or a partial one: what "Compute all" runs. */
@@ -162,6 +231,7 @@ export function buildRanking(
       const state = resultState(results[game.id], input.key);
       const figures = state.kind === 'none' ? null : gameFigures(state.result, roundsPerHourOf(game), bankroll, exitMinutesOf(log, game));
       const sideEvHour = bestSideEvHour(gameSideFigures(game, roundsPerHourOf(game))).evHour;
+      const withSide = figures ? withSideBet(figures, sideEvHour) : null;
       rows.push({
         casino,
         game,
@@ -171,10 +241,10 @@ export function buildRanking(
         greyed: group === 'avoid',
         warns: warnBadges(game),
         distance,
-        tripEv: figures ? evPerTripHour(figures.evHour + sideEvHour, session, casino.driveMinutes) : null,
-        midShoeUnknown: game.midShoeEntry === 'unknown' && figures?.best?.method.entryTc != null,
+        tripEv: figures ? evPerTripHour(withSide?.evHour ?? figures.evHour, session, casino.driveMinutes) : null,
+        midShoeUnknown: game.midShoeEntry === 'unknown' && (withSide ? withSide.method?.method : figures?.best?.method)?.entryTc != null,
         exitRounds: (roundsPerHourOf(game) * exitMinutesOf(log, game)) / 60,
-        ...(sideEvHour > 0 ? { sideEvHour } : {}),
+        ...(withSide ? { sideEvHour, withSide } : {}),
       });
     }
   }

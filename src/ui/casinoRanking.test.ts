@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRanking, bestGameOf, evTargetMet, exitMinutesOf, gameFigures, needsCompute, type GameFigures } from './casinoRanking';
+import { buildRanking, bestGameOf, evTargetMet, exitMinutesOf, gameFigures, needsCompute, rankedEvHour, sideCombinedText, withSideBet, type GameFigures } from './casinoRanking';
 import { emptyCasinoLog, blankGame, type Casino, type CasinoGame, type CasinoLog } from '../store/casinoLog';
 import { resultState, simInputFor, type GameResult } from '../store/casinoGameStats';
 import { emptyAccum, type Accum } from '../engine/casinoSim';
@@ -300,5 +300,58 @@ describe('Wave L: side bets in the ranking', () => {
     const rows2 = buildRanking(logOf([casino('c1', [plainGame]), casino('c3', [losing])]), profile, { gp: resultFor(plainGame, 2), gl: resultFor(losing, 2) }, NOW, null, 'ev');
     expect(rows2.map((r) => r.game.id)).toEqual(['gp', 'gl']);
     expect(rows2[1]!.sideEvHour).toBeUndefined();
+  });
+});
+
+describe('review S1: a side bet rides only on a method that stays seated', () => {
+  const g = game('gs', { s17: true, sideBets: [{ bet: 'buster', payTable: 'bu-evo', minBet: 25, maxBet: null }] });
+  /** Every method wins `rest` a round, except the ones named. */
+  const result = (by: Record<string, number>, rest = 0): GameResult => {
+    const r = resultFor(g, 0);
+    return { ...r, methods: r.methods!.map(({ method }) => ({ method, acc: acc(by[method.id] ?? rest) })) };
+  };
+  const rowFor = (res: GameResult) => buildRanking(logOf([casino('c', [g], { driveMinutes: 30 })]), profile, { gs: res }, NOW, null, 'ev')[0]!;
+  // The side bet alone, from a ranking where the seated ramp is best (so it is added).
+  const sideAlone = rowFor(result({ ramp: 2 })).sideEvHour!;
+
+  it('the side bet is worth something here', () => {
+    expect(sideAlone).toBeGreaterThan(5);
+  });
+
+  it('best method wongs out and beats ramp + side: ranked on the wong alone, no side badge', () => {
+    // wong-1 $3/round = $240/h; ramp $2/round = $160/h; +side is still below $240.
+    const row = rowFor(result({ 'wong-1': 3, ramp: 2 }));
+    expect(row.figures!.best!.method.id).toBe('wong-1');
+    expect(rankedEvHour(row)).toBeCloseTo(240, 9);
+    expect(row.sideEvHour).toBeUndefined();
+    expect(row.withSide).toBeUndefined();
+    expect(sideCombinedText(row.figures!, 'Buster', sideAlone)).toMatch(/^none — the best method wongs out \(\+\$240\/h\), so Buster is not added to it\. Seated with Buster: \+\$\d+\/h$/);
+  });
+
+  it('best method wongs out but ramp + side beats it: ranked on ramp + side, never wong + side', () => {
+    // wong-1 $2.1/round = $168/h; ramp $160/h + side > $168.
+    const row = rowFor(result({ 'wong-1': 2.1, ramp: 2 }));
+    expect(row.figures!.best!.method.id).toBe('wong-1');
+    expect(row.withSide!.method!.method.id).toBe('ramp');
+    expect(rankedEvHour(row)).toBeCloseTo(160 + sideAlone, 9);
+    expect(rankedEvHour(row)).toBeLessThan(168 + sideAlone - 1);
+    expect(row.sideEvHour).toBeCloseTo(sideAlone, 9);
+    // The trip figure takes the same number.
+    const tripBase = rowFor(result({ ramp: 2 })); // ramp best, side added: the same ranked figure
+    expect(row.tripEv).toBeCloseTo(tripBase.tripEv!, 9);
+    expect(sideCombinedText(row.figures!, 'Buster', sideAlone)).toContain('(Profile ramp, play all ');
+  });
+
+  it('a back-count best method is treated the same', () => {
+    const row = rowFor(result({ 'bc+1-1': 3, ramp: 2 }));
+    expect(row.figures!.best!.method.id).toBe('bc+1-1');
+    expect(rankedEvHour(row)).toBeCloseTo(240, 9);
+    expect(row.withSide).toBeUndefined();
+  });
+
+  it('a continuous shuffler is played every round: its side bet always adds', () => {
+    const f: GameFigures = { edge: 0.005, edgeCi: 0, methods: null, best: null, evHour: -10, evHourCi: 0, n0Hours: null, partial: false, exitMinutes: 0 };
+    expect(withSideBet(f, 12)).toEqual({ evHour: 2, sideEvHour: 12, method: null });
+    expect(withSideBet(f, 0)).toBeNull();
   });
 });

@@ -1,6 +1,9 @@
 import { CasinoSim } from '../casinoSim';
 import type { SimSpec } from '../casinoSim';
 import { snapDecksRemaining } from '../cards';
+import { trueCount } from '../count';
+import type { TcRounding } from '../count';
+import { SIDE_TC_ROUNDING } from './tableBet';
 import type { RuleSet } from '../ruleset';
 import { compTotal, rankCounts, suitCounts } from './comp';
 import type { Comp } from './comp';
@@ -52,6 +55,12 @@ export interface SideSimSpec {
   counts: SideSimCount[];
   /** Price rounds by the linear estimate (see above); absent = exactly. */
   linear?: boolean;
+  /**
+   * The true count's rounding for the bins. ANALYSIS ONLY (counts.test.ts
+   * compares a published truncated trigger); absent = SIDE_TC_ROUNDING, the
+   * one convention every shipped trigger and every grade uses.
+   */
+  rounding?: TcRounding;
 }
 
 export interface TcBin {
@@ -92,11 +101,13 @@ export function sideRunningCount(def: SideCountDef, ranksLeft: readonly number[]
   return rc;
 }
 
-/** The count's true count before the deal, from what has left the shoe. Floored, as Play floors by default. */
+/**
+ * The count's true count before the deal, from what has left the shoe: in
+ * SIDE_TC_ROUNDING (floored), the one convention Play and the drill grade
+ * side bets by -- a trigger is only right under the rounding it was found with.
+ */
 export function sideTrueCount(def: SideCountDef, c: Comp, decks: number): number {
-  const rc = sideRunningCount(def, rankCounts(c), suitCounts(c), decks);
-  const tc = Math.floor(rc / snapDecksRemaining(compTotal(c), decks));
-  return tc === 0 ? 0 : tc;
+  return trueCount(sideRunningCount(def, rankCounts(c), suitCounts(c), decks), snapDecksRemaining(compTotal(c), decks), SIDE_TC_ROUNDING);
 }
 
 export class SideSim {
@@ -147,7 +158,7 @@ export class SideSim {
     const suits = suitCounts(c);
     const decksLeft = snapDecksRemaining(compTotal(c), decks);
     for (let i = 0; i < this.spec.counts.length; i++) {
-      const raw = Math.floor(sideRunningCount(this.spec.counts[i]!.def, ranks, suits, decks) / decksLeft) || 0;
+      const raw = trueCount(sideRunningCount(this.spec.counts[i]!.def, ranks, suits, decks), decksLeft, this.spec.rounding ?? SIDE_TC_ROUNDING);
       const tc = Math.max(-TC_BIN_CLAMP, Math.min(TC_BIN_CLAMP, raw));
       const m = this.bins[i]!;
       const b = m.get(tc);

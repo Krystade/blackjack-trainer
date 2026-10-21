@@ -3,7 +3,9 @@ import { bestSideEvHour, gameSideFigures, sideFigureOf, sideStakeOf } from './ca
 import { rankedEvHour } from './casinoRanking';
 import type { RankRow } from './casinoRanking';
 import { blankGame } from '../store/casinoLog';
-import { sideCutOf, sideRowFor, sideRowSpec } from '../store/casinoSideRows';
+import { saveSideRow, sideCutOf, sideRowFor, sideRowSpec, sideSpecKey } from '../store/casinoSideRows';
+import { SIM_VERSION } from '../store/casinoGameStats';
+import { SIDE_SIM_VERSION } from '../engine/sideBets/build';
 import { sideBetRow } from '../engine/sideBets/plan';
 
 describe('a casino game\'s side bets on the stats card', () => {
@@ -56,10 +58,18 @@ describe('a casino game\'s side bets on the stats card', () => {
     expect(bestSideEvHour(gameSideFigures({ ...game, sideBets: [{ bet: 'perfectPairs', payTable: 'pp-a' }] }, 100))).toEqual({ evHour: 0, fig: null });
   });
 
-  it('the ranking ranks on the game\'s EV plus its best side bet', () => {
-    const row = { figures: { evHour: 30 }, sideEvHour: 12 } as unknown as RankRow;
-    expect(rankedEvHour(row)).toBe(42);
-    expect(rankedEvHour({ figures: { evHour: 30 } } as unknown as RankRow)).toBe(30);
+  it('the ranking ranks on the figure with the side bet where it uses one (review S1), else the game\'s', () => {
+    const row = { figures: { evHour: 30 }, sideEvHour: 12, withSide: { evHour: 41, sideEvHour: 12, method: null } } as unknown as RankRow;
+    expect(rankedEvHour(row)).toBe(41);
+    expect(rankedEvHour({ figures: { evHour: 30 }, sideEvHour: 12 } as unknown as RankRow)).toBe(30);
     expect(rankedEvHour({ figures: null } as unknown as RankRow)).toBeNull();
+  });
+
+  it('review S5: a cached row is keyed by both simulators\' versions, so an engine fix retires it', () => {
+    const spec = sideRowSpec({ ...game, cutDecksLeft: 1.75 }, { bet: 'buster', payTable: 'bu-evo' });
+    expect(sideSpecKey(spec)).toBe(`side${SIDE_SIM_VERSION}.sim${SIM_VERSION}/buster/bu-evo/6/s17/1.75/${spec.rounds}`);
+    const row = sideBetRow('buster', 'bu-evo', 6, true)!;
+    saveSideRow(spec, row);
+    expect(sideRowFor({ ...game, cutDecksLeft: 1.75 }, { bet: 'buster', payTable: 'bu-evo' })).toEqual(row);
   });
 });

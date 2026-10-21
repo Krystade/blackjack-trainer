@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { withSettings, withProfile, playRoundByAdvice, shot } from './helpers';
-import { makeSideCountRun } from '../src/drills/sideCountDrill';
+import { decksText, makeSideCountRun } from '../src/drills/sideCountDrill';
+import { signed } from '../src/drills/signed';
 import { sidePlan } from '../src/engine/sideBets/plan';
 import { triggerText } from '../src/ui/sideBetFeedback';
 
@@ -40,7 +41,8 @@ test.describe('Play: the side-bet chip', () => {
     await shot(page, 'side-bet-chip-off');
     await deal(page).click();
     const miss = page.getByTestId('side-miss');
-    await expect(miss).toHaveText('Royal Match count +0 — bet it (every hand)');
+    // Review N7: no count to quote for a bet worth making every hand.
+    await expect(miss).toHaveText('Royal Match pays every hand — bet it');
     await expect.poll(async () => (await speech(page)).includes('Side count says bet.')).toBe(true);
     // Not a modal: the hand plays on.
     await expect(page.locator('.modal-backdrop')).toHaveCount(0);
@@ -96,8 +98,28 @@ test.describe('Play: the side-bet chip', () => {
   });
 });
 
-test.describe('Play: the voice words', () => {
-  test('"side on" and "skip side" set the chip; "yes" still deals', async ({ page }) => {
+/**
+ * Say a word and make sure the app HEARD it -- not suppressed as its own
+ * speech. sayOnceListening reads the status line straight after the word, and
+ * a status left from the previous word can pass for it; a check that a word
+ * does NOTHING (S3, N8) would then pass on a word nobody heard.
+ */
+async function sayHeard(page: Page, text: string): Promise<void> {
+  const { sayOnceListening } = await import('./helpers');
+  const status = page.locator('.voice-status-heard');
+  for (let i = 0; i < 10; i++) {
+    await sayOnceListening(page, text);
+    const ok = await expect
+      .poll(async () => (await status.textContent()) ?? '', { timeout: 2_000 })
+      .toContain(`“${text}”`)
+      .then(() => true, () => false);
+    if (ok && !/ignored/.test((await status.textContent()) ?? '')) return;
+    await page.waitForTimeout(300);
+  }
+  throw new Error(`"${text}" was never heard`);
+}
+
+async function fakeRecognition(page: Page): Promise<void> {
     await page.addInitScript(() => {
       class FakeRecognition {
         continuous = false;
@@ -125,6 +147,11 @@ test.describe('Play: the voice words', () => {
       w.SpeechRecognition = FakeRecognition;
       w.webkitSpeechRecognition = FakeRecognition;
     });
+}
+
+test.describe('Play: the voice words', () => {
+  test('"side on" and "skip side" set the chip; "yes" still deals', async ({ page }) => {
+    await fakeRecognition(page);
     await openTable(page, { bet: 'over13', payTable: 'ou-even' });
     await page.locator('.voice-btn').click();
     const { sayOnceListening } = await import('./helpers');
@@ -132,18 +159,34 @@ test.describe('Play: the voice words', () => {
     await expect(chip(page)).toHaveAttribute('aria-pressed', 'true');
     await sayOnceListening(page, 'skip side');
     await expect(chip(page)).toHaveAttribute('aria-pressed', 'false');
+    // Review S3: the late echo of "Side bet off." -- its head, "side bet" --
+    // does not turn the chip back on (heard, not suppressed as the app's own speech).
+    await sayHeard(page, 'side bet');
+    await expect(chip(page)).toHaveAttribute('aria-pressed', 'false');
+    await sayHeard(page, 'side bet off');
+    await expect(chip(page)).toHaveAttribute('aria-pressed', 'false');
     // A runner-up reading never flips it.
     await sayOnceListening(page, 'sit in', ['side on']);
     await expect(chip(page)).toHaveAttribute('aria-pressed', 'false');
     await sayOnceListening(page, 'yes');
     await expect(page.locator('.action-bar[data-advice]').or(page.getByRole('button', { name: 'Continue', exact: true }))).toBeVisible();
   });
+
+  test('review N8: while Out, "side on" does nothing, as the tap chip is disabled', async ({ page }) => {
+    await fakeRecognition(page);
+    await openTable(page, { bet: 'over13', payTable: 'ou-even' });
+    await page.locator('.voice-btn').click();
+    await page.getByRole('group', { name: 'In or out' }).getByRole('button', { name: 'Out', exact: true }).click();
+    await expect(chip(page)).toBeDisabled();
+    await sayHeard(page, 'side on');
+    await expect(chip(page)).toHaveAttribute('aria-pressed', 'false');
+  });
 });
 
 test.describe('the side count drill', () => {
   test('a seeded run: the checkpoint and the end ask the side count, then whether to bet', async ({ page }) => {
     await withSettings(page, { countCheckEvery: 0 });
-    await withProfile(page, { rules: { decks: 6, s17: true }, sideBet: { enabled: true, bet: 'over13', payTable: 'ou-even', stake: 25 } });
+    await withProfile(page, { rules: { decks: 6, s17: true }, cutDecks: 1.5, sideBet: { enabled: true, bet: 'over13', payTable: 'ou-even', stake: 25 } });
     await page.goto('/?seed=5&e2e=1');
     await page.getByRole('button', { name: 'Drills', exact: true }).click();
     await page.getByRole('button', { name: 'Side count', exact: true }).click();
@@ -160,6 +203,7 @@ test.describe('the side count drill', () => {
       count: plan.count!,
       plan: { always: plan.always, count: plan.count, trigger: plan.trigger, betBelow: plan.betBelow },
       decks: 6,
+      cutDecks: 1.5,
       cards: 8,
       groupSize: 1,
       checkpoints: 'one',
@@ -168,6 +212,14 @@ test.describe('the side count drill', () => {
     });
     expect(run.stops).toHaveLength(2);
     await page.getByTestId('side-drill-start').click();
+    // Review S6: picked up mid-shoe -- the count so far and the decks left, before the first card.
+    expect(run.start.dealt).toBeGreaterThan(0);
+    const startPanel = page.getByTestId('side-drill-start-panel');
+    await expect(startPanel).toBeVisible();
+    await expect(page.getByTestId('side-drill-start-side')).toHaveText(signed(run.start.sideRc, { plusZero: true }));
+    await expect(page.getByTestId('side-drill-start-decks')).toHaveText(`${decksText(run.start.decksLeft)} ${run.start.decksLeft === 1 ? 'deck' : 'decks'} left`);
+    await shot(page, 'side-drill-start');
+    await page.getByTestId('side-drill-begin').click();
 
     const ask = page.getByTestId('side-drill-ask');
     const enter = async (n: number) => {
@@ -177,7 +229,7 @@ test.describe('the side count drill', () => {
     };
     // Checkpoint: the right count.
     await expect(ask).toHaveAttribute('data-kind', 'count');
-    await expect(page.getByTestId('side-drill-question')).toHaveText(`After ${run.stops[0]!.cardsShown} cards`);
+    await expect(page.getByTestId('side-drill-question')).toHaveText(`After ${run.stops[0]!.cardsShown} more cards`);
     await expect(ask.locator('.numpad-label')).toHaveText('Side running count?');
     await shot(page, 'side-drill-checkpoint');
     const first = run.stops[0]!.questions[0]!;

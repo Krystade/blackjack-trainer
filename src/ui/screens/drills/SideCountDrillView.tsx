@@ -7,7 +7,7 @@ import type { SideBetId } from '../../../engine/sideBets/payTables';
 import { describeTags } from '../../../engine/sideBets/counts';
 import { sidePlan } from '../../../engine/sideBets/plan';
 import type { SidePlan } from '../../../engine/sideBets/plan';
-import { decksText, gradeSideAnswer, makeSideCountRun } from '../../../drills/sideCountDrill';
+import { decksText, gradeSideAnswer, makeSideCountRun, startSideCount } from '../../../drills/sideCountDrill';
 import type { SideCountRun, SideQuestion } from '../../../drills/sideCountDrill';
 import type { CheckpointFreq } from '../../../drills/countCheckpoints';
 import { signed } from '../../../drills/signed';
@@ -29,12 +29,14 @@ import { useEyesFreeToggle } from '../../eyesFreeSession';
 import { VoiceStatusBar } from '../../components/VoiceStatusBar';
 import { enableAudioNow } from '../../audioGate';
 import { profileSideBet } from '../../sideBetConfig';
+import { cutDecksOf } from '../../profileOptions';
 import {
   HILO_COUNT_PROMPT,
   SIDE_COUNT_PROMPT,
   SIDE_SAYS_BET,
   SIDE_SAYS_SKIP,
   narrateBetSidePrompt,
+  narrateSideStart,
   triggerText,
 } from '../../sideBetFeedback';
 import './sideCountDrill.css';
@@ -48,9 +50,16 @@ import './sideCountDrill.css';
  * by voice (read back, confirmed with "yes") or walked on the wheel (forward
  * +1, back −1, quiet commits), and the bet question is the wheel's two
  * verdicts: forward bet, back no bet -- as "yes" and "no" are by voice.
+ *
+ * Review S6: a run is usually picked up mid-shoe (sideCountDrill.ts), so it
+ * opens on the 'start' phase: the counts so far and the decks left, shown and
+ * said, held until "yes" / wheel forward / the button -- the counts have to
+ * be taken in before the first card.
  */
 
-type Phase = 'setup' | 'flashing' | 'asking' | 'result';
+type Phase = 'setup' | 'start' | 'flashing' | 'asking' | 'result';
+
+const SUIT_GLYPHS = ['♠', '♥', '♦', '♣'];
 
 interface Answered {
   q: SideQuestion;
@@ -170,7 +179,7 @@ export function SideCountDrillView({
       checkpoints,
       withHiLo,
       seed,
-      rounding: activeProfile.tcRounding,
+      cutDecks: cutDecksOf(activeProfile),
     });
     runIdRef.current += 1;
     setRun(r);
@@ -179,8 +188,19 @@ export function SideCountDrillView({
     setQIdx(0);
     setAnswers([]);
     setPending(null);
-    go('flashing');
+    go(r.start.dealt > 0 ? 'start' : 'flashing');
   };
+
+  const begin = () => {
+    if (phaseRef.current === 'start') go('flashing');
+  };
+
+  // The start, said (eyes-free or by voice) when it is shown.
+  useEffect(() => {
+    if (phase !== 'start' || !run) return;
+    if (spoken) sayBack(narrateSideStart(run.start, withHiLo));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, run]);
 
   // The flash: one group per beat, held for the pace; eyes-free, each group
   // is said and the next follows the line. A stop is reached once its group
@@ -264,6 +284,11 @@ export function SideCountDrillView({
 
   const handleVoice = (action: VoiceAction) => {
     const p = phaseRef.current;
+    if (p === 'start') {
+      if (action === 'yes') begin();
+      else if (action === 'repeat' && run) sayBack(narrateSideStart(run.start, withHiLo), true);
+      return;
+    }
     if (p === 'setup' || p === 'result') {
       if (action === 'yes') start();
       else if (action === 'repeat' && p === 'result') sayBack(SAY_YES_AGAIN, true);
@@ -374,7 +399,7 @@ export function SideCountDrillView({
                 <p className="stats-detail side-drill-count" data-testid="side-drill-count">
                   {plan.count.name}
                   {plan.count.kind === 'tags' && plan.count.tags ? ` — ${describeTags(plan.count.tags)}` : ' — most cards of one suit minus fewest'}
-                  . Bet {triggerText(plan)} (true count, {activeProfile.rules.decks} decks).
+                  . Bet {triggerText(plan)} (true count, floored; {activeProfile.rules.decks} decks).
                 </p>
               )}
               <Stepper label="Cards" value={cards} min={8} max={Math.max(8, activeProfile.rules.decks * 52 - 26)} step={2} onChange={setCards} />
@@ -427,6 +452,45 @@ export function SideCountDrillView({
         </div>
       )}
 
+      {phase === 'start' && run && (
+        <div className="side-drill-start" data-testid="side-drill-start-panel">
+          <div className="side-drill-start-head">Picking up a shoe</div>
+          <div className="side-drill-start-decks" data-testid="side-drill-start-decks">
+            {decksText(run.start.decksLeft)} {run.start.decksLeft === 1 ? 'deck' : 'decks'} left
+          </div>
+          <div className="side-drill-start-dealt">{run.start.dealt} cards dealt, not shown</div>
+          <dl className="side-drill-start-counts">
+            {run.start.suits ? (
+              <div className="side-drill-start-fig">
+                <dt>Suits seen, above the fewest</dt>
+                <dd className="side-drill-suits" data-testid="side-drill-start-suits">
+                  {run.start.suits.map((n, i) => (
+                    <span key={i} className="side-drill-suit" data-suit={i}>
+                      <span aria-hidden="true">{SUIT_GLYPHS[i]}</span> {n}
+                    </span>
+                  ))}
+                  <span className="side-drill-suit-spread">spread {startSideCount(run.start)}</span>
+                </dd>
+              </div>
+            ) : (
+              <div className="side-drill-start-fig">
+                <dt>Side count</dt>
+                <dd data-testid="side-drill-start-side">{signed(run.start.sideRc, { plusZero: true })}</dd>
+              </div>
+            )}
+            {withHiLo && (
+              <div className="side-drill-start-fig">
+                <dt>Hi-Lo</dt>
+                <dd data-testid="side-drill-start-hilo">{signed(run.start.hiLoRc, { plusZero: true })}</dd>
+              </div>
+            )}
+          </dl>
+          <button type="button" className="drill-primary-btn drill-start-btn side-drill-begin" data-testid="side-drill-begin" onClick={begin}>
+            Start counting
+          </button>
+        </div>
+      )}
+
       {phase === 'flashing' && (
         <div className="side-drill-flash" data-testid="side-drill-flash">
           {/* The count drill's card stage (cardSize.css): the same card size. */}
@@ -448,7 +512,7 @@ export function SideCountDrillView({
       {phase === 'asking' && question && (
         <div className="side-drill-ask" data-testid="side-drill-ask" data-kind={question.kind}>
           <div className="side-drill-question" data-testid="side-drill-question">
-            {question.kind === 'count' ? `After ${stop!.cardsShown} cards` : questionLabel(question)}
+            {question.kind === 'count' ? `After ${stop!.cardsShown} ${run && run.start.dealt > 0 ? 'more ' : ''}cards` : questionLabel(question)}
           </div>
           {question.kind === 'count' ? (
             <NumPad

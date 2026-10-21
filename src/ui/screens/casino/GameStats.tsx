@@ -215,7 +215,7 @@ export function GameStats({ log, casinoId, gameId, go }: { log: CasinoLog; casin
       )}
 
       {/* Wave L: a row per side bet the game offers. */}
-      <SideBetsCard game={game} roundsPerHour={rph} mainEvHour={figures ? figures.evHour : null} />
+      <SideBetsCard game={game} roundsPerHour={rph} figures={figures} />
 
       <section className="cas-section" aria-labelledby="gs-assume-title">
         <div className="cas-section-head">

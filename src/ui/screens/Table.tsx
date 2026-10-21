@@ -679,8 +679,9 @@ export function Table({ settings, activeProfile, onNavigate, onSettingsChange }:
         }
         // Wave L: "side on" / "side off" set the side-bet chip, with the
         // toggle's gates. No wheel gesture: the wheel's two buttons are
-        // already yes (deal) and repeat between rounds.
-        const side = game.cfg.sideBet ? sideWordIn(readings) : null;
+        // already yes (deal) and repeat between rounds. Review N8: only while
+        // In, as the tap chip is disabled when Out.
+        const side = game.cfg.sideBet && game.isIn ? sideWordIn(readings) : null;
         if (side !== null) {
           setSideOn(side);
           return side ? 'side on' : 'side off';

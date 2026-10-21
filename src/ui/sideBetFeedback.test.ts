@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SIDE_BET_LINES,
   SIDE_BIAS,
+  SIDE_OFF_LINE,
   SIDE_OFF_WORDS,
+  SIDE_ON_LINE,
   SIDE_ON_WORDS,
   SIDE_SAYS_BET,
   SIDE_SAYS_SKIP,
@@ -18,6 +21,8 @@ import { TOGGLE_WORDS, toggleWordIn } from './backCountWords';
 import { DEAL_WORDS, isDealWord } from './dealWord';
 import type { SideBetConfig, SideBetDecision } from '../engine/sideBets/tableBet';
 import { payTableOf } from '../engine/sideBets/payTables';
+import { normaliseAlias } from '../audio/voiceAliases';
+import SPOKEN from '../../scripts/spoken-phrases.json';
 
 const TEN = { id: 'jacobson-ten', name: 'Ten', kind: 'tags' as const, tags: [0, 1, 1, 1, 1, 1, 1, 1, 1, -2, -2, -2, -2] };
 const cfg: SideBetConfig = {
@@ -37,6 +42,11 @@ describe('the side bet in words', () => {
       spoken: SIDE_SAYS_SKIP,
     });
     expect(sideMissFeedback(cfg, decision({ correct: true }))).toBeNull();
+  });
+
+  it('review N7: a bet worth making every hand quotes no count', () => {
+    const always = { ...cfg, name: 'Royal Match', plan: { always: true, count: null, trigger: null, betBelow: false } };
+    expect(sideMissFeedback(always, decision({ tc: 0 }))).toEqual({ text: 'Royal Match pays every hand — bet it', spoken: SIDE_SAYS_BET });
   });
 
   it('says when a bet is made', () => {
@@ -85,5 +95,37 @@ describe('the chip\'s voice words', () => {
     expect(sideWordIn(['Skip side.'])).toBe(false);
     expect(sideWordIn(['sit out', 'side off'])).toBeNull();
     expect(sideWordIn([])).toBeNull();
+  });
+});
+
+describe('review S3: no chip word is an echo of something the app says', () => {
+  // Everything the app can say that a clip covers (held to the code by
+  // spokenPhrases.test.ts), and the side lines themselves.
+  const sentences = [...new Set([...(SPOKEN as string[]), ...SIDE_BET_LINES])];
+  const wordsOf = (t: string) => normaliseAlias(t).split(' ').filter(Boolean);
+  const contains = (line: string, word: string) => ` ${wordsOf(line).join(' ')} `.includes(` ${wordsOf(word).join(' ')} `);
+
+  it('the sentence list is the real one', () => {
+    expect(sentences.length).toBeGreaterThan(500);
+    expect(sentences).toContain(SIDE_OFF_LINE);
+    expect(sentences).toContain(SIDE_ON_LINE);
+  });
+
+  it('an ON word is in no spoken line but the ON confirmation; an OFF word in none but the OFF one', () => {
+    for (const w of SIDE_ON_WORDS) expect(sentences.filter((s) => s !== SIDE_ON_LINE && contains(s, w)), w).toEqual([]);
+    for (const w of SIDE_OFF_WORDS) expect(sentences.filter((s) => s !== SIDE_OFF_LINE && contains(s, w)), w).toEqual([]);
+  });
+
+  it('no fragment of "Side bet off." turns the chip on, and none of "Side bet on." turns it off', () => {
+    const fragments = (line: string) => {
+      const w = wordsOf(line);
+      const out: string[] = [];
+      for (let i = 0; i < w.length; i++) for (let j = i + 1; j <= w.length; j++) out.push(w.slice(i, j).join(' '));
+      return out;
+    };
+    // The late echo the review traced: "side bet", the head of the OFF line.
+    expect(fragments(SIDE_OFF_LINE)).toContain('side bet');
+    for (const f of fragments(SIDE_OFF_LINE)) expect(sideWordIn([f]), f).not.toBe(true);
+    for (const f of fragments(SIDE_ON_LINE)) expect(sideWordIn([f]), f).not.toBe(false);
   });
 });

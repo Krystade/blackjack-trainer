@@ -202,7 +202,13 @@ export const PAY_TABLES: readonly PayTable[] = [
     sourceName: 'Version 5 (Evolution)',
     sourceUrl: `${WOO}/21plus3/`,
     pays: { suitedTrips: 100, straightFlush: 40, trips: 25, straight: 10, flush: 5 },
-    published: [{ decks: 6, edge: 0.0714 }],
+    published: [
+      { decks: 4, edge: 0.0878 },
+      { decks: 6, edge: 0.0714 },
+      // Review N1: printed as "7 decks", but it is the page's own 8-deck table total.
+      { decks: 8, edge: 0.0629 },
+    ],
+    note: 'The page prints 6.29% as a 7-deck figure; it is the total of its own 8-deck combination table (11,912,160 = C(416,3) combinations), and the 8-deck edge here.',
   },
   {
     id: '213-v7',
@@ -211,15 +217,12 @@ export const PAY_TABLES: readonly PayTable[] = [
     sourceName: 'Version 7 (Evolution)',
     sourceUrl: `${WOO}/21plus3/`,
     pays: { suitedTrips: 100, straightFlush: 40, trips: 30, straight: 10, flush: 5 },
-    published: [{ decks: 4, edge: 0.0639 }],
-    disagree: [
-      {
-        decks: 6,
-        edge: 0.037,
-        reason:
-          'Computed 4.62%. The same page’s 4-deck figure (6.39%) is reproduced exactly with this table, and every other 21+3 table matches at 6 decks, so the 6-deck figure looks like a different table or a typo.',
-      },
+    published: [
+      { decks: 4, edge: 0.0639 },
+      // Review N1: printed as "6 decks", but it is the page's own 8-deck table total.
+      { decks: 8, edge: 0.037039 },
     ],
+    note: 'The page prints 3.70% as a 6-deck figure; it is the total of its own combination table, which is labelled 8 decks (11,912,160 = C(416,3) combinations) -- a labelling slip on the source, not a disagreement. The 6-deck edge is 4.62%.',
   },
   // ---------------------------------------------------------- Perfect Pairs
   {

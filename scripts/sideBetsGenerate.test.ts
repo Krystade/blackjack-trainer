@@ -15,7 +15,7 @@ import type { RuleSet } from '../src/engine/ruleset';
  *   SIDE_BETS_GENERATE=1 npx vitest run scripts/sideBetsGenerate.test.ts
  *
  * Deterministic: each row's seed is a hash of its key, so a re-run writes the
- * same file. sideBets.generated.test.ts re-derives what is cheap (edges,
+ * same file. src/engine/sideBets/generated.test.ts re-derives what is cheap (edges,
  * effects, tags) and re-simulates a sample row.
  */
 

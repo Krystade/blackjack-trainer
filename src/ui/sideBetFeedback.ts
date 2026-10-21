@@ -3,6 +3,7 @@ import { normaliseAlias } from '../audio/voiceAliases';
 import { capitalizeSpoken, narrateCountAnswer, narrateDecksRemaining } from '../audio/narrate';
 import { OUTCOME_LABELS } from '../engine/sideBets/settle';
 import type { SideBetConfig, SideBetDecision } from '../engine/sideBets/tableBet';
+import type { SideStart } from '../drills/sideCountDrill';
 
 /**
  * Wave L: the side bet at the table, in words.
@@ -29,6 +30,31 @@ export const SIDE_COUNT_PROMPT = 'Side count?';
 export const HILO_COUNT_PROMPT = 'Hi-Lo count?';
 export const BET_SIDE_PROMPT = 'Bet the side?';
 
+/** Review S6: the drill picks a shoe up mid-way; these say where. */
+export const SIDE_PICKUP_LINE = 'Picking up a shoe.';
+export const SIDE_LABEL_LINE = 'Side.';
+export const HILO_LABEL_LINE = 'Hi-Lo.';
+export const SIDE_START_COUNTING = 'Say yes to start counting.';
+/** A suit count's start is its four tallies, in this order (spades, hearts, diamonds, clubs). */
+export const SUIT_LABEL_LINES: readonly string[] = ['Spades.', 'Hearts.', 'Diamonds.', 'Clubs.'];
+
+/**
+ * "Picking up a shoe. Three decks remaining. Side. The count is plus
+ * fourteen. Hi-Lo. The count is plus six. Say yes to start counting." Every
+ * sentence is its own clip; the count sentences are the drill's own.
+ */
+export function narrateSideStart(start: SideStart, withHiLo: boolean): string {
+  const parts = [SIDE_PICKUP_LINE, `${capitalizeSpoken(narrateDecksRemaining(start.decksLeft))}.`];
+  if (start.suits) start.suits.forEach((n, i) => parts.push(SUIT_LABEL_LINES[i]!, narrateCountAnswer(n)));
+  else {
+    if (withHiLo) parts.push(SIDE_LABEL_LINE);
+    parts.push(narrateCountAnswer(start.sideRc));
+  }
+  if (withHiLo) parts.push(HILO_LABEL_LINE, narrateCountAnswer(start.hiLoRc));
+  parts.push(SIDE_START_COUNTING);
+  return parts.join(' ');
+}
+
 /** "Two decks remaining. Bet the side?" */
 export function narrateBetSidePrompt(decksLeft: number): string {
   return `${capitalizeSpoken(narrateDecksRemaining(decksLeft))}. ${BET_SIDE_PROMPT}`;
@@ -47,6 +73,11 @@ export const SIDE_BET_LINES: readonly string[] = [
   SIDE_COUNT_PROMPT,
   HILO_COUNT_PROMPT,
   BET_SIDE_PROMPT,
+  SIDE_PICKUP_LINE,
+  SIDE_LABEL_LINE,
+  HILO_LABEL_LINE,
+  SIDE_START_COUNTING,
+  ...SUIT_LABEL_LINES,
 ];
 
 /** Every sentence the side bet says, composed ones included -- what the clips cover. */
@@ -66,6 +97,8 @@ export function triggerText(plan: SideBetConfig['plan']): string {
 
 export function sideMissFeedback(cfg: SideBetConfig, d: SideBetDecision): SideMiss | null {
   if (d.correct) return null;
+  // Review N7: a bet worth making every hand has no count to quote.
+  if (cfg.plan.always) return { text: `${cfg.name} pays every hand — bet it`, spoken: SIDE_SAYS_BET };
   const count = `${cfg.name} count ${signed(d.tc, { plusZero: true })}`;
   return d.expected
     ? { text: `${count} — bet it (${triggerText(cfg.plan)})`, spoken: SIDE_SAYS_BET }
@@ -91,8 +124,15 @@ export function sideResultText(cfg: SideBetConfig, d: SideBetDecision): string |
  * self-echo ceiling, voiceAliases.ts), and none of them a command, a toggle
  * or a deal word: sideBetFeedback.test.ts checks every one against those
  * lists. "Side" alone is not taken -- it is one sound from "sit".
+ *
+ * Review S3: no word may be a run of words in anything the app SAYS, unless
+ * that line confirms the very state the word asks for. "Side bet" was an ON
+ * word and the head of "Side bet off.": the off line's late echo (2258 ms
+ * measured on the 2026-10-02 drive) reached the claim -- which runs before the
+ * echo filters -- and turned the chip back on. sideBetFeedback.test.ts holds
+ * every word against every spoken sentence.
  */
-export const SIDE_ON_WORDS: readonly string[] = ['side on', 'side bet'];
+export const SIDE_ON_WORDS: readonly string[] = ['side on'];
 export const SIDE_OFF_WORDS: readonly string[] = ['side off', 'skip side'];
 export const SIDE_BIAS: readonly string[] = [...SIDE_ON_WORDS, ...SIDE_OFF_WORDS];
 

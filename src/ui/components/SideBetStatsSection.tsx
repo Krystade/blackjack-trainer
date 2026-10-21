@@ -17,27 +17,31 @@ export function SideBetStatsSection({ stats }: { stats: Stats }) {
     return <p className="stats-detail">No side bets played or drilled yet. Turn one on in your profile&rsquo;s Side bet section.</p>;
   }
   return (
-    <ul className="mistake-list" data-testid="stats-side-bets">
-      {bets.map((id) => {
-        const t = side.play[id]!;
-        const calls = t.right + t.wrong;
-        return (
-          <li key={id} className="mistake-row" data-testid="stats-side-row" data-bet={id}>
-            <span>{BET_NAMES[id]}</span>
+    <>
+      <ul className="mistake-list" data-testid="stats-side-bets">
+        {bets.map((id) => {
+          const t = side.play[id]!;
+          const calls = t.right + t.wrong;
+          return (
+            <li key={id} className="mistake-row" data-testid="stats-side-row" data-bet={id}>
+              <span>{BET_NAMES[id]}</span>
+              <span>
+                {t.right}/{calls} calls right · {t.placed} placed · {dollars(t.net)}
+              </span>
+            </li>
+          );
+        })}
+        {side.drill.length > 0 && (
+          <li className="mistake-row" data-testid="stats-side-drill">
+            <span>Side count drill</span>
             <span>
-              {t.right}/{calls} calls right · {t.placed} placed · {dollars(t.net)}
+              {side.drill.length} run{side.drill.length === 1 ? '' : 's'} · {drillRight}/{drillAsked} right
             </span>
           </li>
-        );
-      })}
-      {side.drill.length > 0 && (
-        <li className="mistake-row" data-testid="stats-side-drill">
-          <span>Side count drill</span>
-          <span>
-            {side.drill.length} run{side.drill.length === 1 ? '' : 's'} · {drillRight}/{drillAsked} right
-          </span>
-        </li>
-      )}
-    </ul>
+        )}
+      </ul>
+      {/* Review N11: said, so the bankroll is not read as including it. */}
+      {bets.length > 0 && <p className="stats-detail" data-testid="stats-side-apart">Side-bet money is kept apart: it is not in the bankroll or a session&rsquo;s result.</p>}
+    </>
   );
 }

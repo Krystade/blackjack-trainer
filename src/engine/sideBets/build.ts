@@ -30,6 +30,17 @@ export interface SideRowSpec {
 
 const r6 = (x: number) => Number(x.toPrecision(6));
 
+/**
+ * Review S5: the side-bet simulation's version. BUMP IT with any change that
+ * can move a row -- the side simulation's binning or true count (sideSim.ts),
+ * the count candidates or the choice (select.ts), effects of removal (eor.ts),
+ * the bet's odds (odds.ts), this builder -- so rows cached at a game's own cut
+ * (store/casinoSideRows.ts) are recomputed rather than outliving the fix. The
+ * main simulator's SIM_VERSION is in the cache key too: the side run deals
+ * its shoes.
+ */
+export const SIDE_SIM_VERSION = 1;
+
 /** FNV-1a of a row's key: the seed, so a row is reproducible from its key alone. */
 export function seedFor(key: string): number {
   let h = 2166136261;

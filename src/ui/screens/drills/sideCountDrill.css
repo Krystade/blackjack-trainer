@@ -79,3 +79,90 @@
 .side-drill-answers li + li {
   margin-top: 0.25rem;
 }
+
+/* Review S6: the run picks a shoe up mid-way -- the counts so far, before the first card. */
+.side-drill-start {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+  padding: 0.75rem 16px;
+}
+
+.side-drill-start-head {
+  color: var(--ink-dim);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.side-drill-start-decks {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  text-align: center;
+}
+
+.side-drill-start-dealt {
+  margin-top: -0.5rem;
+  color: var(--ink-dim);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.side-drill-begin {
+  min-height: 56px;
+  font-size: var(--fs-lg);
+}
+
+.side-drill-start-counts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 1.5rem;
+  margin: 0;
+}
+
+.side-drill-start-fig {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.side-drill-start-fig dt {
+  color: var(--ink-dim);
+  font-size: var(--fs-sm);
+}
+
+.side-drill-start-fig dd {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.side-drill-start-fig dd.side-drill-suits {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 0.25rem 0.9rem;
+  font-size: var(--fs-lg);
+}
+
+/* The red suits' glyphs in the theme's red, which reads on the page in both themes. */
+.side-drill-suit[data-suit='1'] > [aria-hidden],
+.side-drill-suit[data-suit='2'] > [aria-hidden] {
+  color: var(--bad);
+}
+
+.side-drill-suit-spread {
+  flex-basis: 100%;
+  text-align: center;
+  color: var(--ink-dim);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}

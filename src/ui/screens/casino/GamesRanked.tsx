@@ -151,7 +151,8 @@ function RankItem({ row, place, sort, running, onOpen }: { row: RankRow; place: 
         <span className="cas-row-badges">
           {f?.best && (
             <span className="cas-badge" data-tone="good" data-testid="best-style">
-              {methodBadge(f.best.method)}
+              {/* Review S1: with a side bet, the seated method it rides on. */}
+              {methodBadge(row.withSide?.method?.method ?? f.best.method)}
             </span>
           )}
           {/* Wave L: the figure includes the game's best side bet, counted. */}

@@ -25,6 +25,9 @@ export function addSideDecisions(stats: Stats, bet: SideBetId, decisions: readon
   const side = sideOf(stats);
   const t = { ...ZERO, ...side.play[bet] };
   for (const d of decisions) {
+    // Review N9: a bet placed in a round the session ended inside never
+    // settled -- counting it would add a placed bet with no money.
+    if (d.placed && d.net === undefined) continue;
     if (d.correct) t.right += 1;
     else t.wrong += 1;
     if (d.placed) t.placed += 1;

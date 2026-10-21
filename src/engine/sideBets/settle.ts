@@ -5,7 +5,7 @@ import type { Outcome, PayTable, SideBetId } from './payTables';
 
 /**
  * Wave L: SETTLING a side bet from the cards actually dealt -- what Play
- * pays. The same outcome partition odds.ts prices (settle.test.ts deals every
+ * pays. The same outcome partition odds.ts prices (odds.test.ts deals every
  * two- and three-card combination of a deck through here and checks the
  * tallies against odds.ts), so what Play pays and what the house edge says
  * can never describe different bets.

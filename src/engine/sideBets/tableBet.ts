@@ -54,6 +54,18 @@ export interface SideTally {
   net: number;
 }
 
+/**
+ * Review S2: a side count's true count is always FLOORED. The triggers were
+ * found by simulation on floored true counts (sideSim.ts), and a trigger is
+ * only the right call under the rounding it was found with: under 'round' a
+ * Lucky Ladies table-B bet at exact TC 8.5-9 (2 decks) would be graded right
+ * where the simulation found it negative; under 'truncate', Under 13's own
+ * best trigger at 6 decks is -5, not -6. One convention, the simulated one,
+ * for Play, the drill and the reference page alike -- the profile's
+ * `tcRounding` applies to Hi-Lo only.
+ */
+export const SIDE_TC_ROUNDING: TcRounding = 'floor';
+
 export const EMPTY_SIDE_TALLY: SideTally = { right: 0, wrong: 0, placed: 0, net: 0 };
 
 /** The seen cards, by rank and by suit, since the shuffle. */
@@ -87,8 +99,9 @@ export class SideCounter {
     return rc;
   }
 
-  tc(def: SideCountDef, decksRemaining: number, rounding: TcRounding | undefined): number {
-    return trueCount(this.rc(def), decksRemaining, rounding);
+  /** The count's true count, FLOORED whatever the profile rounds Hi-Lo by (see SIDE_TC_ROUNDING). */
+  tc(def: SideCountDef, decksRemaining: number): number {
+    return trueCount(this.rc(def), decksRemaining, SIDE_TC_ROUNDING);
   }
 }
 

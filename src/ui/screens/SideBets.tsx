@@ -51,6 +51,8 @@ function TableRows({ table, s17 }: { table: PayTable; s17: boolean }) {
         const pub = table.published.find(match);
         const off = table.disagree?.find(match);
         const counted = plan.always || plan.candidate !== null;
+        // Review N4: Buster's simulated rounds are priced by the linear estimate.
+        const approx = counted && !plan.always && plan.row.linear;
         return (
           <div key={d} className="side-ref-grid-row" role="row" data-decks={d}>
             <span role="cell">{d}</span>
@@ -66,8 +68,8 @@ function TableRows({ table, s17 }: { table: PayTable; s17: boolean }) {
             <span role="cell">
               {plan.always ? 'every hand' : plan.candidate ? `${sum.trigger} · ${plan.candidate.name}` : 'never'}
             </span>
-            <span role="cell" className="side-ref-num">
-              {counted ? sum.per100.replace(' per 100 rounds', '') : '—'}
+            <span role="cell" className="side-ref-num" data-approx={approx ? 'true' : undefined}>
+              {counted ? `${approx ? '≈ ' : ''}${sum.per100.replace(' per 100 rounds', '')}` : '—'}
             </span>
           </div>
         );
@@ -133,8 +135,10 @@ export function SideBets({ activeProfile, onNavigate }: { activeProfile: Profile
       </div>
       <p className="stats-detail side-ref-intro">
         House edges are exact for a full shoe. &ldquo;Bet it&rdquo; is the true count from which the bet is in your favour
-        (simulated to the usual cut), and $/100 is what counting earns per 100 rounds dealt at a ${DEFAULT_SIDE_STAKE} side
-        bet. Buster at {s17 ? 'S17' : 'H17'}, as this profile.
+        (simulated to the usual cut; the side count&rsquo;s true count is always floored, whatever this profile rounds
+        Hi-Lo by), and $/100 is what counting earns per 100 rounds dealt at a ${DEFAULT_SIDE_STAKE} side
+        bet. Buster at {s17 ? 'S17' : 'H17'}, as this profile; its &ldquo;≈&rdquo; figures price each simulated round by
+        the linear estimate from the effects of removal, so a trigger can be a count off.
       </p>
       {SIDE_BET_IDS.map((bet) => (
         <BetSection key={bet} bet={bet} s17={s17} mine={own?.bet === bet ? own.payTable : null} />

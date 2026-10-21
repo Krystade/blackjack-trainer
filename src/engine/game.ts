@@ -530,10 +530,10 @@ export class Game {
     return count ? this.sideCounter.rc(count) : this.runningCount;
   }
 
-  /** Wave L: the side count's true count now, in the profile's rounding. */
+  /** Wave L: the side count's true count now -- floored, as the triggers were simulated (SIDE_TC_ROUNDING). */
   get sideTrueCount(): number {
     const count = this.cfg.sideBet?.plan.count;
-    return count ? this.sideCounter.tc(count, this.shoe.decksRemaining, this.cfg.tcRounding) : this.trueCountNow;
+    return count ? this.sideCounter.tc(count, this.shoe.decksRemaining) : this.trueCountNow;
   }
 
   /** Wave L: one card shown at the table: Hi-Lo and the side count both see it. */

@@ -1,11 +1,11 @@
 import type { CasinoGame } from './casinoLog';
 import type { CasinoSideBet } from './casinoSideBets';
-import { ASSUMED_CUT, simRules } from './casinoGameStats';
+import { ASSUMED_CUT, SIM_VERSION, simRules } from './casinoGameStats';
 import { CUT_MIN_DECKS } from '../engine/cut';
 import { CUT_FOR_DECKS, sideBetRow } from '../engine/sideBets/plan';
 import type { SideBetRow } from '../engine/sideBets/plan';
 import type { SideRowSpec } from '../engine/sideBets/build';
-import { seedFor } from '../engine/sideBets/build';
+import { SIDE_SIM_VERSION, seedFor } from '../engine/sideBets/build';
 import { subscribeToExternalWrites } from './crossTab';
 
 /**
@@ -38,8 +38,9 @@ export function sideRowSpec(game: CasinoGame, sb: CasinoSideBet): SideRowSpec {
   return { bet: sb.bet, payTable: sb.payTable, decks: rules.decks, s17, cutDecks, rounds: CASINO_SIDE_ROUNDS, seed: seedFor(key) };
 }
 
+/** The cache key: the spec, and the versions of both simulators (review S5) -- an engine fix retires every cached row. */
 export function sideSpecKey(s: SideRowSpec): string {
-  return `${s.bet}/${s.payTable}/${s.decks}/${s.s17 === null ? '-' : s.s17 ? 's17' : 'h17'}/${s.cutDecks}/${s.rounds}`;
+  return `side${SIDE_SIM_VERSION}.sim${SIM_VERSION}/${s.bet}/${s.payTable}/${s.decks}/${s.s17 === null ? '-' : s.s17 ? 's17' : 'h17'}/${s.cutDecks}/${s.rounds}`;
 }
 
 type MinimalStore = Pick<Storage, 'getItem' | 'setItem'>;

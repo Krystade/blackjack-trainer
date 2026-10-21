@@ -3,7 +3,7 @@ import { PUBLISHED_COUNTS, HI_LO_COUNT, describeTags } from './counts';
 import { bettingCorrelation, deriveTags, effectsOfRemoval, HI_LO_TAGS } from './eor';
 import { payTableOf } from './payTables';
 import { sideBetRow } from './plan';
-import { SideSim, countedResult } from './sideSim';
+import { SideSim, countedResult, findTrigger } from './sideSim';
 import { DEFAULT_RULES } from '../ruleset';
 
 /**
@@ -54,29 +54,37 @@ describe('derived counts against the published ones', () => {
 });
 
 describe('simulated triggers against the published ones', () => {
-  it('Buster (Evolution table, S17) with Jacobson\'s tags: 2 decks +5, 6 decks +4, as published', () => {
-    const two = cand('buster', 'bu-evo', 2, 'jacobson-buster');
-    const six = cand('buster', 'bu-evo', 6, 'jacobson-buster');
-    expect(two.trigger).toBe(5);
-    expect(six.trigger).toBe(4);
-    // Published: 2 decks 16.83% of hands, 1.228 units per 100; 6 decks 13.29%, 0.702.
-    expect(two.freq).toBeCloseTo(0.1683, 1);
-    expect(Math.abs(two.per100 / 1.228 - 1)).toBeLessThan(0.05);
-    expect(six.freq).toBeCloseTo(0.1329, 1);
-    expect(Math.abs(six.per100 / 0.702 - 1)).toBeLessThan(0.05);
+  it('INFORMATIONAL (review N5): Jacobson\'s Buster tags on the app\'s Evolution table -- 2 decks +5, 6 decks +4', () => {
+    // Jacobson's figures (2 decks +5, 16.83% of hands, 1.228 units per 100;
+    // 6 decks +4, 13.29%, 0.702) are for HIS "1,3,6" pay table, not the
+    // Evolution table simulated here (3, 4, 5+ cards pay 1, 2, 9), so they
+    // are not compared: agreement across different pay tables would prove
+    // nothing. These pin the app's own result only.
+    expect(cand('buster', 'bu-evo', 2, 'jacobson-buster').trigger).toBe(5);
+    expect(cand('buster', 'bu-evo', 6, 'jacobson-buster').trigger).toBe(4);
   });
 
   it('Over 13 with the crush count, 6 decks cut at 260 cards: +3, as published', () => {
     expect(cand('over13', 'ou-even', 6, 'jacobson-crush').trigger).toBe(3);
   });
 
-  it('DISAGREES: Under 13, 6 decks -- the app finds -6 where Jacobson publishes -5', () => {
-    // At -5 the app's bins are slightly negative on its rounds; the source's
-    // combined Over/Under figure is checked at its own triggers below.
+  it('CONVENTION, not a disagreement (review N2): Under 13, 6 decks -- floored <= -6 is truncated <= -5', () => {
+    // A floored "<= -6" bets TC < -5; a truncated "<= -5" bets TC <= -5: the
+    // same bet. The exact EV crosses zero near TC -4.85. The app floors
+    // (SIDE_TC_ROUNDING) and finds -6; binned by truncation, the same count
+    // finds Jacobson's -5.
     expect(cand('under13', 'ou-even', 6, 'jacobson-crush').trigger).toBe(-6);
-  });
+    const crush = pub('over13', 'jacobson-crush');
+    const rules = { ...DEFAULT_RULES, decks: 6 as const };
+    const under = new SideSim(
+      { bet: 'under13', pays: payTableOf('under13', 'ou-even')!.pays, rules, cutDecks: 1, counts: [{ def: crush, betBelow: true }], rounding: 'truncate' },
+      7,
+    );
+    under.run(600_000);
+    expect(findTrigger(under.binsOf(0), true)).toBe(-5);
+  }, 120_000);
 
-  it('DISAGREES: Over/Under 13 at the published triggers (+3 / -5) earns about 13% less than the published 1.034 units per 100', () => {
+  it('Over/Under 13 at the published triggers (+3 / -5): truncated, the bet frequency is Jacobson\'s; the edge when bet is still lower', () => {
     const crush = pub('over13', 'jacobson-crush');
     const rules = { ...DEFAULT_RULES, decks: 6 as const };
     const pays = payTableOf('over13', 'ou-even')!.pays;
@@ -87,14 +95,27 @@ describe('simulated triggers against the published ones', () => {
     const o = countedResult(over.binsOf(0), over.rounds, 3);
     const u = countedResult(under.binsOf(0), under.rounds, -5, true);
     // Published: 19.724% of hands, 5.242% average edge, 1.034 units per 100.
-    // The app (same seed, same rounds for both bets): 21.3% of hands, about
-    // 4.2% average edge, 0.895 units per 100. The bet frequencies are close;
-    // the edge when bet is lower. Recorded, not reconciled.
-    expect(o.freq + u.freq).toBeCloseTo(0.19724, 1);
+    // The app, floored: 21.3% of hands, 0.895 units per 100 -- a floored -5
+    // reaches one count higher than Jacobson's truncated -5.
+    expect(o.freq + u.freq).toBeGreaterThan(0.205);
     const per100 = o.per100 + u.per100;
     expect(per100).toBeGreaterThan(0.8);
     expect(per100).toBeLessThan(0.95);
-  }, 120_000);
+    // Truncated, as the source counts (review N2): the frequency is the
+    // published one (the review measured 19.67%). About 9% of the units per
+    // 100 stays unexplained (0.94 against 1.034). Recorded, not reconciled.
+    const sim = (bet: 'over13' | 'under13', betBelow: boolean) => {
+      const s = new SideSim({ bet, pays: payTableOf(bet, 'ou-even')!.pays, rules, cutDecks: 1, counts: [{ def: crush, betBelow }], rounding: 'truncate' }, 7);
+      s.run(300_000);
+      return s;
+    };
+    const ot = sim('over13', false);
+    const ut = sim('under13', true);
+    const to = countedResult(ot.binsOf(0), ot.rounds, 3);
+    const tu = countedResult(ut.binsOf(0), ut.rounds, -5, true);
+    expect(Math.abs(to.freq + tu.freq - 0.19724)).toBeLessThan(0.004);
+    expect(to.per100 + tu.per100).toBeLessThan(1.034 * 0.97);
+  }, 240_000);
 
   it('21+3 (Classic 9 to 1, 6 decks) with the suit spread: +8, as published', () => {
     expect(cand('twentyOnePlus3', '213-v1', 6, 'jacobson-suit').trigger).toBe(8);

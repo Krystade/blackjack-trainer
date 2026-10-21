@@ -4,7 +4,9 @@ import { Game, DEFAULT_SPREAD } from '../game';
 import type { GameConfig } from '../game';
 import { DEFAULT_RULES } from '../ruleset';
 import { payTableOf } from './payTables';
-import { sideExpected } from './tableBet';
+import { SIDE_TC_ROUNDING, sideExpected } from './tableBet';
+import { trueCount } from '../count';
+import type { TcRounding } from '../count';
 import type { SideBetConfig, SidePlanLite } from './tableBet';
 import type { SideBetId } from './payTables';
 
@@ -112,6 +114,50 @@ describe('Play grades the side bet against the side count', () => {
     game.sitOut();
     expect(game.sideDecisions).toHaveLength(0);
   });
+});
+
+describe('review S2: the side count is graded floored, whatever the profile rounds Hi-Lo by', () => {
+  // The triggers were simulated on floored true counts (sideSim.ts); Play must grade the same way.
+  const MODES: TcRounding[] = ['floor', 'truncate', 'round'];
+  const two = { rules: { ...DEFAULT_RULES, decks: 2 as const } };
+
+  it('the convention is floor', () => {
+    expect(SIDE_TC_ROUNDING).toBe('floor');
+  });
+
+  // Round 1 as above at two decks: Ten count +3, 98 cards left -> 2 decks: exact TC +1.5.
+  const round1 = [c('5'), c('4'), c('6'), c('J'), c('9'), c('8')];
+  const rest = [c('K'), c('8'), c('Q'), c('9'), ...Array<Card>(20).fill(c('8'))];
+  for (const mode of MODES) {
+    it(`+1.5 under '${mode}': graded +1, so a trigger of +2 says no bet`, () => {
+      // The modes really do differ here: round says +2.
+      expect(trueCount(3, 2, 'round')).toBe(2);
+      const game = Game.withRiggedShoe(cfg(side('luckyLadies', 'll-a', { trigger: 2 }), { ...two, tcRounding: mode }), [...round1, ...rest]);
+      game.startRound(1);
+      game.act('hit');
+      game.act('stand');
+      game.setSideOn(true);
+      game.startRound(1);
+      expect(game.sideDecisionThisRound).toMatchObject({ rc: 3, tc: 1, expected: false, correct: false });
+      // Hi-Lo keeps the profile's rounding.
+      expect(game.trueCountNow).toBe(trueCount(game.runningCount, 2, mode));
+    });
+  }
+
+  // Player K, Q (20) against J / 8 (18): Ten count -5 over 4 cards, 100 left -> 2 decks: exact TC -2.5.
+  const low = [c('K'), c('J'), c('Q'), c('8'), ...Array<Card>(30).fill(c('8'))];
+  for (const mode of MODES) {
+    it(`-2.5 under '${mode}': graded -3, so a bet-low trigger of -3 says bet`, () => {
+      // Truncate and round both say -2 here.
+      expect([trueCount(-5, 2, 'truncate'), trueCount(-5, 2, 'round')]).toEqual([-2, -2]);
+      const game = Game.withRiggedShoe(cfg(side('under13', 'ou-even', { trigger: -3, betBelow: true }), { ...two, tcRounding: mode }), low);
+      game.startRound(1);
+      game.act('stand');
+      expect(game.phase).toBe('settled');
+      game.startRound(1);
+      expect(game.sideDecisionThisRound).toMatchObject({ rc: -5, tc: -3, expected: true, placed: false, correct: false });
+    });
+  }
 });
 
 describe('Play settles the side bet', () => {
