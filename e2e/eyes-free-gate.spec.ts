@@ -93,6 +93,9 @@ test('the dim-screen companion appears, usable, once eyes-free is on', async ({ 
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
 
   const dim = page.locator('label', { hasText: 'Dim screen' }).locator('input');
+  // The drill is up, and its eyes-free toggle with it, before the companion
+  // is said to be missing.
+  await expect(page.locator('label', { hasText: 'Eyes-free audio' }).locator('input')).toBeVisible();
   await expect(dim).toHaveCount(0);
 
   await page.locator('label', { hasText: 'Eyes-free audio' }).locator('input').check();

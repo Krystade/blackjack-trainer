@@ -13,6 +13,8 @@ test('flashcards With count: 12 v 4 graded at the shown TC, the strip names the 
   await page.getByRole('button', { name: 'Flashcards', exact: true }).click();
 
   const tcBox = page.locator('.quiz-tc');
+  // The card is up (positive) before the TC box is said to be missing from it.
+  await expect(page.locator('.action-bar button').first()).toBeVisible();
   await expect(tcBox).toHaveCount(0);
   // Flashcards fold the deal toggles under Options; mastery shows them.
   const options = page.locator('details.drill-options > summary');
