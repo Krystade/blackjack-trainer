@@ -129,8 +129,18 @@ test('"yes" with nothing proposed submits nothing', async ({ page }) => {
   await expect(page.locator('.count-voice')).toBeVisible();
 
   await sayWhenListening(page, 'yes');
+  // The refusal is the app's reaction; only once it is said does an absence
+  // mean anything. And `.drill-result` alone proves nothing here -- eyes-on
+  // answers fast-advance to the strip (#54), so a wrongly submitted "yes"
+  // would never show a result screen. The strip and the stored row would.
+  await expect.poll(() => spoken(page)).toContain('I have no true count yet');
+  expect(await page.getByTestId('result-strip').count()).toBe(0);
   await expect(page.locator('.drill-result')).toHaveCount(0);
-  expect(await spoken(page)).toContain('I have no true count yet');
+  const history = await page.evaluate(
+    () =>
+      JSON.parse(window.localStorage.getItem('bjtrainer.stats.v1') ?? '{}')?.trueCount?.history ?? [],
+  );
+  expect(history).toHaveLength(0);
 });
 
 test('a bare "no" clears the proposal and asks the question again', async ({ page }) => {

@@ -348,6 +348,18 @@ test('a mixed session gates a quiz item the way the quiz does', async ({ page })
   const joined = (await speech(page)).join(' | ');
   expect(joined).toContain("isn't part of this question");
   expect(joined).not.toMatch(/Correct\.|Wrong\./);
+  // The speech can only rule out a grade that was spoken. One look at the
+  // strip, and the stores every grade writes, as in the quiz-picker test above.
+  expect(
+    await page.locator('.message-strip .result-correct, .message-strip .mistake-card, .message-strip .quiz-label').count(),
+    'no correction panel',
+  ).toBe(0);
+  const graded = await page.evaluate(() => ({
+    perIndex: JSON.parse(localStorage.getItem('bjtrainer.stats.v1') ?? '{}').perIndex ?? {},
+    deck: JSON.parse(localStorage.getItem('bjtrainer.quizsr.v1') ?? '{}'),
+  }));
+  expect(graded.perIndex['16v9'], 'no Stats row for the refused tap').toBeUndefined();
+  expect(graded.deck['16v9'], 'no review-deck entry for the refused tap').toBeUndefined();
 });
 
 /* ---------------------------------------------------------------------- */

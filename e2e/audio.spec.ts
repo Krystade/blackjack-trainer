@@ -575,6 +575,11 @@ test('eyes-free flashcards: a long press repeats the prompt without answering', 
   if (!box) throw new Error('ZonePad has no bounding box');
   const spoken = await readSpeechLog(page);
   const promptsBefore = spoken.filter((l) => l.startsWith('You have ')).length;
+  const storedGrades = () =>
+    page.evaluate(() =>
+      ['bjtrainer.stats.v1', 'bjtrainer.flashsr.v1'].map((k) => window.localStorage.getItem(k)),
+    );
+  const gradesBefore = await storedGrades();
 
   // Hold past the 600ms long-press threshold, in the same top-left quadrant the
   // tap test uses -- so a hold that leaked through as a tap would answer 'hit'
@@ -598,4 +603,7 @@ test('eyes-free flashcards: a long press repeats the prompt without answering', 
   ).toEqual([]);
   // And the card is still the one being asked about, not a fresh one.
   await expect(page.locator('.message-strip')).not.toContainText('Correct');
+  // The speech log only sees a grade that speaks; Stats and the review deck
+  // see every grade, and outlive a correction panel that auto-advanced away.
+  expect(await storedGrades(), 'a hold must not write a graded answer').toEqual(gradesBefore);
 });

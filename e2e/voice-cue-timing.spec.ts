@@ -102,6 +102,13 @@ test('#5: an answer given on the "your turn" tone is graded, not ignored', async
  * ends each line at its own estimate, which the diagnostics log records as the
  * `deafen` window. Read rather than recomputed, so the spec follows the app.
  */
+/** What a grade writes, whatever the screen shows by the time anyone looks. */
+async function graded(page: Page): Promise<unknown> {
+  return page.evaluate(() =>
+    ['bjtrainer.stats.v1', 'bjtrainer.flashsr.v1'].map((k) => window.localStorage.getItem(k)),
+  );
+}
+
 async function repeatLineMs(page: Page): Promise<number> {
   await page.evaluate(() => window.__wheelPress?.('back'));
   const said = (await log(page)).at(-1);
@@ -161,6 +168,7 @@ test('#5: an answer lost to the speech tail says it was too soon, not that the a
   await openFlashcards(page);
   await voiceOn(page);
   const lineMs = await repeatLineMs(page);
+  const stored = await graded(page);
   await page.evaluate(
     (lineMs) =>
       new Promise<void>((resolve) => {
@@ -174,20 +182,25 @@ test('#5: an answer lost to the speech tail says it was too soon, not that the a
     lineMs,
   );
   await expect(page.locator('.voice-status')).toContainText('ignored (too soon)');
-  await expect(page.locator('.feedback-cell')).toHaveCount(0);
+  // One look once the verdict is up (a grade would be up with it), and the
+  // stored stats: a retrying absence is satisfied by the panel auto-advancing.
+  expect(await page.locator('.feedback-cell').count()).toBe(0);
+  expect(await graded(page)).toEqual(stored);
 });
 
 test('#5: an answer over the prompt itself still says the app was speaking', async ({ page }) => {
   await openFlashcards(page);
   await voiceOn(page);
   await page.waitForTimeout(500);
+  const stored = await graded(page);
   await page.evaluate(() => {
     window.__wheelPress?.('back');
     const rec = (window as unknown as { __rec?: { onresult?: (e: unknown) => void } }).__rec;
     rec?.onresult?.({ results: [[{ transcript: 'double' }]] });
   });
   await expect(page.locator('.voice-status')).toContainText('the app was speaking');
-  await expect(page.locator('.feedback-cell')).toHaveCount(0);
+  expect(await page.locator('.feedback-cell').count()).toBe(0);
+  expect(await graded(page)).toEqual(stored);
 });
 
 test('#7: one "talk now" tone after the first prompt, not two', async ({ page }) => {

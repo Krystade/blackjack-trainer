@@ -77,6 +77,21 @@ async function say(page: Page, transcript: string, alternatives: string[] = []):
   }, { text: transcript, alts: alternatives });
 }
 
+/**
+ * What a grade leaves behind, whatever the screen shows by the time anyone
+ * looks: the stats and the spaced-repetition deck are written on every graded
+ * answer. A correction panel auto-advances (answerPauseMs), so a retrying
+ * `toBeHidden` can pass on a panel that appeared and already left; these
+ * cannot.
+ */
+async function graded(page: Page): Promise<{ stats: unknown; flashSr: unknown; quizSr: unknown }> {
+  return page.evaluate(() => ({
+    stats: JSON.parse(window.localStorage.getItem('bjtrainer.stats.v1') ?? 'null'),
+    flashSr: JSON.parse(window.localStorage.getItem('bjtrainer.flashsr.v1') ?? 'null'),
+    quizSr: JSON.parse(window.localStorage.getItem('bjtrainer.quizsr.v1') ?? 'null'),
+  }));
+}
+
 test('a spoken answer grades the card', async ({ page }) => {
   await openFlashcardsWithVoice(page);
   await say(page, 'stand');
@@ -96,9 +111,14 @@ test('filler before the answer is ignored, because engines prepend it', async ({
  */
 test('ordinary conversation does not answer the card', async ({ page }) => {
   await openFlashcardsWithVoice(page);
+  const before = await graded(page);
   await say(page, 'what is the weather like tomorrow');
+  // The verdict is the app's reaction to the result; a grade from the same
+  // result would be on screen by now -- one look, not a retry the panel's own
+  // auto-advance could satisfy -- and in storage regardless.
   await expect(page.locator('.voice-status-heard')).toContainText('not a command');
-  await expect(page.locator('.feedback-cell')).toBeHidden();
+  expect(await page.locator('.feedback-cell').count()).toBe(0);
+  expect(await graded(page)).toEqual(before);
 });
 
 /**
@@ -110,11 +130,13 @@ test('the app does not grade its own voice', async ({ page }) => {
   await openFlashcardsWithVoice(page);
 
   // "repeat" makes the app speak, which is what a real correction does too.
+  const before = await graded(page);
   await say(page, 'repeat');
   await say(page, 'hit');
 
   await expect(page.locator('.voice-status-heard')).toContainText('the app was speaking');
-  await expect(page.locator('.feedback-cell')).toBeHidden();
+  expect(await page.locator('.feedback-cell').count()).toBe(0);
+  expect(await graded(page)).toEqual(before);
 });
 
 /**
@@ -290,6 +312,9 @@ test('repeated misses escalate: tone, re-ask, then tone again with no hint', asy
 test('an understood word gets no say-again cue', async ({ page }) => {
   await openFlashcardsWithVoice(page);
   await say(page, 'stand');
+  // The card turning is the reaction; the cue, had there been one, comes off
+  // the same result. Read the log once that reaction is on screen.
+  await expect(page.locator('.feedback-cell')).toBeVisible();
 
   const log = await page.evaluate(() => (window as unknown as { __speechLog?: string[] }).__speechLog ?? []);
   expect(log).not.toContain('chime:again');
@@ -362,9 +387,11 @@ test('a spoken answer grades a deviation quiz item', async ({ page }) => {
 
 test('ordinary conversation does not answer a quiz item', async ({ page }) => {
   await openQuizWithVoice(page);
+  const before = await graded(page);
   await say(page, 'what is the weather like tomorrow');
   await expect(page.locator('.voice-status-heard')).toContainText('not a command');
-  await expect(page.locator('.message-strip .result-correct, .message-strip .mistake-card')).toHaveCount(0);
+  expect(await page.locator('.message-strip .result-correct, .message-strip .mistake-card').count()).toBe(0);
+  expect(await graded(page)).toEqual(before);
 });
 
 /**

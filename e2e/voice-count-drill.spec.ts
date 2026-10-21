@@ -209,9 +209,18 @@ test('"yes" with nothing proposed submits nothing', async ({ page }) => {
   await expect(page.locator('.count-voice')).toBeVisible({ timeout: 15_000 });
 
   await sayWhenListening(page, 'yes');
-  await expect(page.locator('.drill-result')).toHaveCount(0);
+  // The refusal is the reaction to the "yes" (it lands off a fired result,
+  // not a click); a submission would have rendered by the time it is said.
+  await expect.poll(() => spoken(page)).toContain('I have no count yet');
+  expect(await page.locator('.drill-result').count()).toBe(0);
   await expect(page.locator('.numpad')).toBeVisible();
-  expect(await spoken(page)).toContain('I have no count yet');
+  // And nothing was scored, whatever the screen shows.
+  const history = await page.evaluate(
+    () =>
+      JSON.parse(window.localStorage.getItem('bjtrainer.stats.v1') ?? '{}')?.countDrill?.history ??
+      [],
+  );
+  expect(history).toHaveLength(0);
 });
 
 test('a bare "no" clears the proposal and asks again', async ({ page }) => {
